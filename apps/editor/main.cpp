@@ -1,7 +1,10 @@
-// Milestone 1.1a de-risking spike: confirm a WebView2 control and a native
-// Vulkan-rendered child window can coexist as siblings in one top-level
-// window without fighting each other (z-order, paint, resize). No Vue
-// frontend and no IPC yet — that's 1.1b/1.1c once this is confirmed.
+// Milestone 1.1b: the Vue frontend (apps/editor/ui) hosts every panel
+// (Scene Tree, Inspector, and everything else, per the approved WebView2/Vue
+// pivot plan); the native Vulkan viewport is positioned "on top" of the
+// WebView2 surface at whatever rect the Vue app's viewport placeholder div
+// reports over IPC ("HTML hole punching" — see docs/development_plan.md's
+// approved plan for this pivot). The WebView2 control always fills the
+// entire client area; only the native viewport window's bounds are dynamic.
 #include "assets/SceneIO.h"
 #include "ecs/Registry.h"
 #include "editor/ViewportWindow.h"
@@ -10,48 +13,56 @@
 #include "renderer2d/Renderer2D.h"
 #include "rhi/VulkanRHI.h"
 
+#include <nlohmann/json.hpp>
+
 #include <windows.h>
 
 #include <combaseapi.h>
 
-#include <algorithm>
 #include <chrono>
-#include <memory>
 #include <string>
 
 #ifndef AIGE_EDITOR_SANDBOX_SCENE_PATH
 #define AIGE_EDITOR_SANDBOX_SCENE_PATH "."
 #endif
+#ifndef AIGE_EDITOR_UI_DIST_DIR
+#define AIGE_EDITOR_UI_DIST_DIR "."
+#endif
 
 namespace {
 
 const wchar_t* kMainWindowClass = L"AIGEEditorMainWindow";
-
-// Fraction of the client width given to the native viewport (right side);
-// the rest goes to the WebView2 control (left side). Hardcoded for this
-// spike — 1.1b replaces this with bounds reported by the Vue viewport
-// placeholder div over IPC.
-constexpr double kViewportFraction = 0.3;
+const wchar_t* kVirtualHostName = L"aige-editor.local";
 
 aige::WebViewHost* g_webView = nullptr;
-aige::ViewportWindow* g_viewportWindow = nullptr;
 
-void LayoutChildren(int clientWidth, int clientHeight) {
-    int viewportWidth = static_cast<int>(clientWidth * kViewportFraction);
-    int webViewWidth = clientWidth - viewportWidth;
+// Pure-ASCII only (source tree/build paths, and our own JSON IPC payloads) —
+// a full MultiByteToWideChar/WideCharToMultiByte conversion isn't needed for
+// what these strings ever actually contain. Written as explicit per-char
+// casts rather than the range constructor to avoid MSVC's (correct, but
+// irrelevant here) narrowing-conversion warning.
+std::wstring WidenAscii(const std::string& s) {
+    std::wstring result(s.size(), L'\0');
+    for (size_t i = 0; i < s.size(); ++i) {
+        result[i] = static_cast<wchar_t>(s[i]);
+    }
+    return result;
+}
 
-    if (g_webView != nullptr) {
-        g_webView->SetBounds(0, 0, webViewWidth, clientHeight);
+std::string NarrowAscii(const std::wstring& s) {
+    std::string result(s.size(), '\0');
+    for (size_t i = 0; i < s.size(); ++i) {
+        result[i] = static_cast<char>(s[i]);
     }
-    if (g_viewportWindow != nullptr) {
-        g_viewportWindow->SetBounds(webViewWidth, 0, viewportWidth, clientHeight);
-    }
+    return result;
 }
 
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     switch (msg) {
         case WM_SIZE: {
-            LayoutChildren(LOWORD(lparam), HIWORD(lparam));
+            if (g_webView != nullptr) {
+                g_webView->SetBounds(0, 0, LOWORD(lparam), HIWORD(lparam));
+            }
             return 0;
         }
         case WM_DESTROY:
@@ -89,33 +100,23 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
         wc.lpszClassName = kMainWindowClass;
         RegisterClassExW(&wc);
 
-        HWND mainWindow =
-            CreateWindowExW(0, kMainWindowClass, L"AI-Native Game Engine - Editor (1.1a spike)",
-                             WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1400, 900, nullptr, nullptr,
-                             hinstance, nullptr);
+        HWND mainWindow = CreateWindowExW(0, kMainWindowClass, L"AI-Native Game Engine - Editor",
+                                          WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1400, 900, nullptr,
+                                          nullptr, hinstance, nullptr);
         if (mainWindow == nullptr) {
             throw std::runtime_error("Failed to create main window");
         }
-
-        aige::WebViewHost webView(mainWindow);
-        g_webView = &webView;
-        webView.NavigateToHtml(
-            LR"(<html><body style="background:#1e1e2e;color:#eee;font-family:sans-serif;padding:24px;">
-<h1>WebView2 chrome (placeholder)</h1>
-<p>This region will become the Vue app (milestone 1.1b). The panel to the
-right is a native Vulkan viewport rendering directly into its own child
-window — not a texture displayed here.</p>
-</body></html>)");
 
         RECT clientRect{};
         GetClientRect(mainWindow, &clientRect);
         int clientWidth = clientRect.right - clientRect.left;
         int clientHeight = clientRect.bottom - clientRect.top;
-        int viewportWidth = static_cast<int>(clientWidth * kViewportFraction);
-        int webViewWidth = clientWidth - viewportWidth;
 
-        aige::ViewportWindow viewportWindow(mainWindow, hinstance, webViewWidth, 0, viewportWidth, clientHeight);
-        g_viewportWindow = &viewportWindow;
+        // Native viewport: sits "on top" of the WebView2 surface (created
+        // after it, so later in z-order) at whatever rect the Vue app
+        // reports for its placeholder div. Starts filling the whole window
+        // so something renders before the first IPC bounds message arrives.
+        aige::ViewportWindow viewportWindow(mainWindow, hinstance, 0, 0, clientWidth, clientHeight);
 
         aige::VulkanRHI rhi(
             viewportWindow.Handle(), viewportWindow.Instance(),
@@ -130,6 +131,28 @@ window — not a texture displayed here.</p>
         if (!aige::LoadScene(registry, sandboxScenePath)) {
             BuildFallbackScene(registry);
         }
+
+        aige::WebViewHost webView(mainWindow);
+        g_webView = &webView;
+        webView.SetBounds(0, 0, clientWidth, clientHeight);
+        webView.NavigateToVirtualHost(kVirtualHostName, WidenAscii(AIGE_EDITOR_UI_DIST_DIR), L"index.html");
+        webView.SetMessageHandler([&viewportWindow](std::wstring json) {
+            std::string narrow = NarrowAscii(json);
+            try {
+                auto message = nlohmann::json::parse(narrow);
+                if (message.value("type", "") == "viewport:bounds") {
+                    int x = message.value("x", 0);
+                    int y = message.value("y", 0);
+                    int width = message.value("width", 0);
+                    int height = message.value("height", 0);
+                    if (width > 0 && height > 0) {
+                        viewportWindow.SetBounds(x, y, width, height);
+                    }
+                }
+            } catch (const nlohmann::json::exception&) {
+                // Malformed/unrecognized message — ignore rather than crash the editor.
+            }
+        });
 
         ShowWindow(mainWindow, SW_SHOW);
         UpdateWindow(mainWindow);

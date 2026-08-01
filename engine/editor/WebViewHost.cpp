@@ -63,9 +63,13 @@ void WebViewHost::OnControllerCreated(ICoreWebView2Controller* controller) {
                 if (!messageHandler_) {
                     return S_OK;
                 }
-                wil::unique_cotaskmem_string json;
-                if (SUCCEEDED(args->get_WebMessageAsJson(&json))) {
-                    messageHandler_(std::wstring(json.get()));
+                // The web side posts window.chrome.webview.postMessage(JSON.stringify(...))
+                // — a plain string, not an object — so TryGetWebMessageAsString gives us
+                // that exact JSON text back, ready to parse (get_WebMessageAsJson would
+                // instead give a JSON-encoded *string literal*, i.e. double-escaped).
+                wil::unique_cotaskmem_string message;
+                if (SUCCEEDED(args->TryGetWebMessageAsString(&message))) {
+                    messageHandler_(std::wstring(message.get()));
                 }
                 return S_OK;
             })

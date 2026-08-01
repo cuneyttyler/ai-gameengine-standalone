@@ -16,7 +16,12 @@ FetchContent_Declare(
     URL https://www.nuget.org/api/v2/package/Microsoft.Windows.ImplementationLibrary/1.0.260126.7
     DOWNLOAD_NAME wil.zip
 )
-FetchContent_MakeAvailable(webview2sdk wil)
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+)
+FetchContent_MakeAvailable(webview2sdk wil nlohmann_json)
 
 add_library(webview2 INTERFACE)
 target_include_directories(webview2 INTERFACE ${webview2sdk_SOURCE_DIR}/build/native/include)
@@ -32,7 +37,7 @@ add_library(aige_editor STATIC
     WebViewHost.cpp
 )
 target_include_directories(aige_editor PUBLIC ${CMAKE_SOURCE_DIR}/engine)
-target_link_libraries(aige_editor PUBLIC aige_platform webview2 wil)
+target_link_libraries(aige_editor PUBLIC aige_platform webview2 wil nlohmann_json::nlohmann_json)
 target_compile_features(aige_editor PUBLIC cxx_std_20)
 # We call the explicit W-suffixed Win32 APIs everywhere, but predefined
 # resource macros (IDC_ARROW, etc.) are still UNICODE-macro-sensitive.
