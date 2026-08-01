@@ -11,8 +11,6 @@
 
 #include <algorithm>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <optional>
 #include <set>
@@ -80,16 +78,6 @@ bool IsDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface) {
     return formatCount > 0 && presentModeCount > 0;
 }
 
-std::filesystem::path ExecutableDir() {
-#ifdef _WIN32
-    wchar_t buffer[MAX_PATH];
-    DWORD len = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    return std::filesystem::path(std::wstring(buffer, len)).parent_path();
-#else
-    return std::filesystem::current_path();
-#endif
-}
-
 VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT,
                                               VkDebugUtilsMessageTypeFlagsEXT,
                                               const VkDebugUtilsMessengerCallbackDataEXT* data,
@@ -109,10 +97,10 @@ VulkanRHI::VulkanRHI(Window& window) : window_(window) {
     CreateSurface();
     PickPhysicalDevice();
     CreateLogicalDevice();
+    CreateAllocator();
     CreateSwapchain();
     CreateImageViews();
     CreateRenderPass();
-    CreateGraphicsPipeline();
     CreateFramebuffers();
     CreateCommandPool();
     CreateCommandBuffers();
@@ -143,9 +131,11 @@ VulkanRHI::~VulkanRHI() {
 
     CleanupSwapchain();
 
-    vkDestroyPipeline(device_, graphicsPipeline_, nullptr);
-    vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
     vkDestroyRenderPass(device_, renderPass_, nullptr);
+
+    if (allocator_ != VK_NULL_HANDLE) {
+        vmaDestroyAllocator(allocator_);
+    }
 
     vkDestroyDevice(device_, nullptr);
 
@@ -289,6 +279,21 @@ void VulkanRHI::CreateLogicalDevice() {
     vkGetDeviceQueue(device_, presentQueueFamily_, 0, &presentQueue_);
 }
 
+void VulkanRHI::CreateAllocator() {
+    VmaVulkanFunctions vulkanFunctions{};
+    vulkanFunctions.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
+    vulkanFunctions.vkGetDeviceProcAddr = vkGetDeviceProcAddr;
+
+    VmaAllocatorCreateInfo createInfo{};
+    createInfo.physicalDevice = physicalDevice_;
+    createInfo.device = device_;
+    createInfo.instance = instance_;
+    createInfo.pVulkanFunctions = &vulkanFunctions;
+    createInfo.vulkanApiVersion = VK_API_VERSION_1_2;
+
+    VkCheck(vmaCreateAllocator(&createInfo, &allocator_), "vmaCreateAllocator");
+}
+
 void VulkanRHI::CreateSwapchain() {
     VkSurfaceCapabilitiesKHR capabilities;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice_, surface_, &capabilities);
@@ -430,99 +435,6 @@ void VulkanRHI::CreateRenderPass() {
     VkCheck(vkCreateRenderPass(device_, &renderPassInfo, nullptr, &renderPass_), "vkCreateRenderPass");
 }
 
-VkShaderModule VulkanRHI::LoadShaderModule(const char* spirvFileName) const {
-    std::filesystem::path path = ExecutableDir() / "shaders" / spirvFileName;
-    std::ifstream file(path, std::ios::ate | std::ios::binary);
-    if (!file.is_open()) {
-        throw std::runtime_error("Failed to open shader: " + path.string());
-    }
-    size_t fileSize = static_cast<size_t>(file.tellg());
-    std::vector<char> buffer(fileSize);
-    file.seekg(0);
-    file.read(buffer.data(), static_cast<std::streamsize>(fileSize));
-    file.close();
-
-    VkShaderModuleCreateInfo createInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
-    createInfo.codeSize = buffer.size();
-    createInfo.pCode = reinterpret_cast<const uint32_t*>(buffer.data());
-
-    VkShaderModule module = VK_NULL_HANDLE;
-    VkCheck(vkCreateShaderModule(device_, &createInfo, nullptr, &module), "vkCreateShaderModule");
-    return module;
-}
-
-void VulkanRHI::CreateGraphicsPipeline() {
-    VkShaderModule vertModule = LoadShaderModule("triangle.vert.spv");
-    VkShaderModule fragModule = LoadShaderModule("triangle.frag.spv");
-
-    VkPipelineShaderStageCreateInfo vertStage{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-    vertStage.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertStage.module = vertModule;
-    vertStage.pName = "main";
-
-    VkPipelineShaderStageCreateInfo fragStage{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-    fragStage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragStage.module = fragModule;
-    fragStage.pName = "main";
-
-    VkPipelineShaderStageCreateInfo stages[] = {vertStage, fragStage};
-
-    VkPipelineVertexInputStateCreateInfo vertexInput{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-
-    VkPipelineInputAssemblyStateCreateInfo inputAssembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-    VkPipelineViewportStateCreateInfo viewportState{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
-    viewportState.viewportCount = 1;
-    viewportState.scissorCount = 1;
-
-    VkPipelineRasterizationStateCreateInfo rasterizer{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
-    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-    rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_NONE;
-    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
-
-    VkPipelineMultisampleStateCreateInfo multisampling{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
-    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                                           VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    colorBlendAttachment.blendEnable = VK_FALSE;
-
-    VkPipelineColorBlendStateCreateInfo colorBlending{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &colorBlendAttachment;
-
-    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dynamicState{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-    dynamicState.dynamicStateCount = 2;
-    dynamicState.pDynamicStates = dynamicStates;
-
-    VkPipelineLayoutCreateInfo layoutInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    VkCheck(vkCreatePipelineLayout(device_, &layoutInfo, nullptr, &pipelineLayout_), "vkCreatePipelineLayout");
-
-    VkGraphicsPipelineCreateInfo pipelineInfo{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
-    pipelineInfo.stageCount = 2;
-    pipelineInfo.pStages = stages;
-    pipelineInfo.pVertexInputState = &vertexInput;
-    pipelineInfo.pInputAssemblyState = &inputAssembly;
-    pipelineInfo.pViewportState = &viewportState;
-    pipelineInfo.pRasterizationState = &rasterizer;
-    pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pColorBlendState = &colorBlending;
-    pipelineInfo.pDynamicState = &dynamicState;
-    pipelineInfo.layout = pipelineLayout_;
-    pipelineInfo.renderPass = renderPass_;
-    pipelineInfo.subpass = 0;
-
-    VkCheck(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline_),
-            "vkCreateGraphicsPipelines");
-
-    vkDestroyShaderModule(device_, vertModule, nullptr);
-    vkDestroyShaderModule(device_, fragModule, nullptr);
-}
-
 void VulkanRHI::CreateFramebuffers() {
     swapchainFramebuffers_.resize(swapchainImageViews_.size());
     for (size_t i = 0; i < swapchainImageViews_.size(); ++i) {
@@ -606,7 +518,7 @@ void VulkanRHI::RecreateSwapchain() {
     CreateFramebuffers();
 }
 
-void VulkanRHI::DrawFrame() {
+VkCommandBuffer VulkanRHI::BeginFrame() {
     vkWaitForFences(device_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
 
     uint32_t imageIndex = 0;
@@ -615,7 +527,7 @@ void VulkanRHI::DrawFrame() {
                                                     &imageIndex);
     if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR) {
         RecreateSwapchain();
-        return;
+        return VK_NULL_HANDLE;
     }
     if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR) {
         throw std::runtime_error("vkAcquireNextImageKHR failed");
@@ -623,14 +535,14 @@ void VulkanRHI::DrawFrame() {
 
     vkResetFences(device_, 1, &inFlightFences_[currentFrame_]);
 
-    VkCommandBuffer cmd = commandBuffers_[currentFrame_];
-    vkResetCommandBuffer(cmd, 0);
+    currentImageIndex_ = imageIndex;
+    currentCommandBuffer_ = commandBuffers_[currentFrame_];
+    vkResetCommandBuffer(currentCommandBuffer_, 0);
 
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    VkCheck(vkBeginCommandBuffer(cmd, &beginInfo), "vkBeginCommandBuffer");
+    VkCheck(vkBeginCommandBuffer(currentCommandBuffer_, &beginInfo), "vkBeginCommandBuffer");
 
-    VkClearValue clearColor{{{0.02f, 0.02f, 0.05f, 1.0f}}};
-
+    VkClearValue clearColor{{{0.05f, 0.05f, 0.08f, 1.0f}}};
     VkRenderPassBeginInfo renderPassInfo{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     renderPassInfo.renderPass = renderPass_;
     renderPassInfo.framebuffer = swapchainFramebuffers_[imageIndex];
@@ -638,9 +550,7 @@ void VulkanRHI::DrawFrame() {
     renderPassInfo.renderArea.extent = swapchainExtent_;
     renderPassInfo.clearValueCount = 1;
     renderPassInfo.pClearValues = &clearColor;
-
-    vkCmdBeginRenderPass(cmd, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline_);
+    vkCmdBeginRenderPass(currentCommandBuffer_, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -649,15 +559,23 @@ void VulkanRHI::DrawFrame() {
     viewport.height = static_cast<float>(swapchainExtent_.height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
+    vkCmdSetViewport(currentCommandBuffer_, 0, 1, &viewport);
 
     VkRect2D scissor{{0, 0}, swapchainExtent_};
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
+    vkCmdSetScissor(currentCommandBuffer_, 0, 1, &scissor);
 
-    vkCmdDraw(cmd, 3, 1, 0, 0);
+    frameActive_ = true;
+    return currentCommandBuffer_;
+}
 
-    vkCmdEndRenderPass(cmd);
-    VkCheck(vkEndCommandBuffer(cmd), "vkEndCommandBuffer");
+void VulkanRHI::EndFrame() {
+    if (!frameActive_) {
+        return;
+    }
+    frameActive_ = false;
+
+    vkCmdEndRenderPass(currentCommandBuffer_);
+    VkCheck(vkEndCommandBuffer(currentCommandBuffer_), "vkEndCommandBuffer");
 
     VkSemaphore waitSemaphores[] = {imageAvailableSemaphores_[currentFrame_]};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
@@ -668,7 +586,7 @@ void VulkanRHI::DrawFrame() {
     submitInfo.pWaitSemaphores = waitSemaphores;
     submitInfo.pWaitDstStageMask = waitStages;
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &cmd;
+    submitInfo.pCommandBuffers = &currentCommandBuffer_;
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
@@ -680,7 +598,7 @@ void VulkanRHI::DrawFrame() {
     presentInfo.pWaitSemaphores = signalSemaphores;
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = swapchains;
-    presentInfo.pImageIndices = &imageIndex;
+    presentInfo.pImageIndices = &currentImageIndex_;
 
     VkResult presentResult = vkQueuePresentKHR(presentQueue_, &presentInfo);
     if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR || framebufferResized_) {

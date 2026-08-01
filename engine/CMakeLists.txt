@@ -20,3 +20,5 @@ target_link_libraries(aige_platform PUBLIC glfw)
 target_compile_features(aige_platform PUBLIC cxx_std_20)
 
 add_subdirectory(rhi)
+add_subdirectory(ecs)
+add_subdirectory(renderer2d)

@@ -11,8 +11,9 @@ FetchContent_MakeAvailable(googletest)
 add_executable(aige_tests
     platform_test.cpp
     rhi_test.cpp
+    renderer2d_test.cpp
 )
-target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi gtest_main)
+target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_renderer2d gtest_main)
 
 find_program(GLSLC_EXECUTABLE glslc HINTS "$ENV{VULKAN_SDK}/Bin" "$ENV{VULKAN_SDK}/bin")
 if(NOT GLSLC_EXECUTABLE)
@@ -20,14 +21,14 @@ if(NOT GLSLC_EXECUTABLE)
 endif()
 
 set(AIGE_SHADER_SOURCES
-    ${CMAKE_SOURCE_DIR}/engine/rhi/shaders/triangle.vert
-    ${CMAKE_SOURCE_DIR}/engine/rhi/shaders/triangle.frag
+    ${CMAKE_SOURCE_DIR}/engine/renderer2d/shaders/sprite.vert
+    ${CMAKE_SOURCE_DIR}/engine/renderer2d/shaders/sprite.frag
 )
 
 add_custom_command(
     TARGET aige_tests POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:aige_tests>/shaders"
-    COMMENT "Compiling RHI bootstrap shaders for tests"
+    COMMENT "Compiling renderer2d sprite shaders for tests"
 )
 foreach(SHADER ${AIGE_SHADER_SOURCES})
     get_filename_component(SHADER_NAME ${SHADER} NAME)
