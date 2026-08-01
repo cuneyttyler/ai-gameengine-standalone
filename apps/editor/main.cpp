@@ -1,23 +1,22 @@
+// Milestone 1.1a de-risking spike: confirm a WebView2 control and a native
+// Vulkan-rendered child window can coexist as siblings in one top-level
+// window without fighting each other (z-order, paint, resize). No Vue
+// frontend and no IPC yet — that's 1.1b/1.1c once this is confirmed.
 #include "assets/SceneIO.h"
 #include "ecs/Registry.h"
-#include "editor/ImGuiLayer.h"
-#include "physics2d/Components.h"
-#include "platform/Window.h"
+#include "editor/ViewportWindow.h"
+#include "editor/WebViewHost.h"
 #include "renderer2d/Components.h"
 #include "renderer2d/Renderer2D.h"
 #include "rhi/VulkanRHI.h"
-#include "scripting/Components.h"
-#include "scripting/LuaVM.h"
-#include "scripting/ScriptSystem.h"
 
-#include <imgui.h>
-#include <imgui_impl_vulkan.h>
-#include <imgui_internal.h>
+#include <windows.h>
+
+#include <combaseapi.h>
 
 #include <algorithm>
 #include <chrono>
-#include <entt/entt.hpp>
-#include <iostream>
+#include <memory>
 #include <string>
 
 #ifndef AIGE_EDITOR_SANDBOX_SCENE_PATH
@@ -26,225 +25,139 @@
 
 namespace {
 
-// Milestone 1.1 has no tagging/prefab system yet, so entity "kind" in the
-// Scene Tree is inferred from which components are present — the same kind
-// of heuristic apps/sandbox/main.cpp uses to find "the player" after a load.
-std::string DescribeEntity(aige::Registry& registry, aige::Entity entity) {
-    if (registry.all_of<aige::LuaScript>(entity)) {
-        return "Scripted NPC";
+const wchar_t* kMainWindowClass = L"AIGEEditorMainWindow";
+
+// Fraction of the client width given to the native viewport (right side);
+// the rest goes to the WebView2 control (left side). Hardcoded for this
+// spike — 1.1b replaces this with bounds reported by the Vue viewport
+// placeholder div over IPC.
+constexpr double kViewportFraction = 0.3;
+
+aige::WebViewHost* g_webView = nullptr;
+aige::ViewportWindow* g_viewportWindow = nullptr;
+
+void LayoutChildren(int clientWidth, int clientHeight) {
+    int viewportWidth = static_cast<int>(clientWidth * kViewportFraction);
+    int webViewWidth = clientWidth - viewportWidth;
+
+    if (g_webView != nullptr) {
+        g_webView->SetBounds(0, 0, webViewWidth, clientHeight);
     }
-    if (registry.all_of<aige::Velocity2D, aige::Collider2D>(entity)) {
-        return "Player";
+    if (g_viewportWindow != nullptr) {
+        g_viewportWindow->SetBounds(webViewWidth, 0, viewportWidth, clientHeight);
     }
-    if (registry.all_of<aige::WorldTransform2D>(entity)) {
-        return "NPC";
-    }
-    return "Tile";
 }
 
-// Used only if no apps/sandbox save file exists yet — just enough content to
-// exercise the Scene Tree/Inspector before you've ever run the sandbox.
+LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+    switch (msg) {
+        case WM_SIZE: {
+            LayoutChildren(LOWORD(lparam), HIWORD(lparam));
+            return 0;
+        }
+        case WM_DESTROY:
+            PostQuitMessage(0);
+            return 0;
+        default:
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
+    }
+}
+
 void BuildFallbackScene(aige::Registry& registry) {
     for (int i = 0; i < 4; ++i) {
         auto tile = registry.create();
-        registry.emplace<aige::ScreenTransform2D>(tile, 600.0f + static_cast<float>(i) * 40.0f, 300.0f,
+        registry.emplace<aige::ScreenTransform2D>(tile, 150.0f + static_cast<float>(i) * 40.0f, 200.0f,
                                                    static_cast<float>(i));
         registry.emplace<aige::Sprite>(tile, 64.0f, 32.0f, 0.0f, 0.0f, 0.5f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f);
     }
-
     auto player = registry.create();
-    registry.emplace<aige::WorldTransform2D>(player, 3.5f, 3.5f);
-    registry.emplace<aige::Velocity2D>(player);
-    registry.emplace<aige::Collider2D>(player, 0.3f, 0.3f);
-    registry.emplace<aige::ScreenTransform2D>(player, 700.0f, 300.0f, 10.0f);
+    registry.emplace<aige::ScreenTransform2D>(player, 250.0f, 200.0f, 10.0f);
     registry.emplace<aige::Sprite>(player, 32.0f, 48.0f, 0.0f, 0.5f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f);
-}
-
-void DrawSceneTreePanel(aige::Registry& registry, aige::Entity& selected) {
-    ImGui::Begin("Scene Tree");
-    for (auto entity : registry.view<entt::entity>()) {
-        std::string label =
-            DescribeEntity(registry, entity) + " ##" + std::to_string(static_cast<uint32_t>(entity));
-        bool isSelected = (entity == selected);
-        if (ImGui::Selectable(label.c_str(), isSelected)) {
-            selected = entity;
-        }
-    }
-    ImGui::End();
-}
-
-// Hand-wired per component type for now (development_plan.md milestone
-// 1.1) — becomes generated from the Reflection & Command Registry once that
-// exists (Phase 2), at which point this whole function goes away.
-void DrawInspectorPanel(aige::Registry& registry, aige::Entity selected) {
-    ImGui::Begin("Inspector");
-    if (selected == entt::null || !registry.valid(selected)) {
-        ImGui::TextDisabled("No entity selected");
-        ImGui::End();
-        return;
-    }
-
-    if (auto* c = registry.try_get<aige::WorldTransform2D>(selected)) {
-        if (ImGui::CollapsingHeader("WorldTransform2D", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::DragFloat("x##world", &c->x, 0.05f);
-            ImGui::DragFloat("y##world", &c->y, 0.05f);
-        }
-    }
-    if (auto* c = registry.try_get<aige::Velocity2D>(selected)) {
-        if (ImGui::CollapsingHeader("Velocity2D")) {
-            ImGui::DragFloat("x##vel", &c->x, 0.05f);
-            ImGui::DragFloat("y##vel", &c->y, 0.05f);
-        }
-    }
-    if (auto* c = registry.try_get<aige::Collider2D>(selected)) {
-        if (ImGui::CollapsingHeader("Collider2D")) {
-            ImGui::DragFloat("halfWidth##col", &c->halfWidth, 0.01f, 0.01f, 5.0f);
-            ImGui::DragFloat("halfHeight##col", &c->halfHeight, 0.01f, 0.01f, 5.0f);
-        }
-    }
-    if (auto* c = registry.try_get<aige::ScreenTransform2D>(selected)) {
-        if (ImGui::CollapsingHeader("ScreenTransform2D", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::DragFloat("x##screen", &c->x, 1.0f);
-            ImGui::DragFloat("y##screen", &c->y, 1.0f);
-            ImGui::DragFloat("depth##screen", &c->depth, 0.1f);
-        }
-    }
-    if (auto* c = registry.try_get<aige::Sprite>(selected)) {
-        if (ImGui::CollapsingHeader("Sprite")) {
-            ImGui::DragFloat("width##spr", &c->width, 1.0f, 1.0f, 512.0f);
-            ImGui::DragFloat("height##spr", &c->height, 1.0f, 1.0f, 512.0f);
-            ImGui::DragFloat4("uv (u0,v0,u1,v1)##spr", &c->u0, 0.01f, 0.0f, 1.0f);
-            ImGui::ColorEdit4("tint##spr", &c->r);
-        }
-    }
-    if (auto* c = registry.try_get<aige::LuaScript>(selected)) {
-        if (ImGui::CollapsingHeader("LuaScript", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::TextWrapped("%s", c->path.c_str());
-        }
-    }
-    ImGui::End();
 }
 
 } // namespace
 
-int main() {
+int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
     try {
-        aige::Window::Desc desc;
-        desc.title = "AI-Native Game Engine - Editor";
-        aige::Window window(desc);
-        aige::VulkanRHI rhi(window);
-        // Draws into the offscreen target, not the swapchain pass directly —
-        // the Viewport panel below displays it via ImGui::Image().
-        aige::Renderer2D renderer(rhi, rhi.OffscreenRenderPass());
-        aige::ImGuiLayer imguiLayer(window, rhi);
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
-        // lua must outlive registry — see the same note in apps/sandbox/main.cpp.
-        aige::LuaVM lua;
+        WNDCLASSEXW wc{};
+        wc.cbSize = sizeof(wc);
+        wc.lpfnWndProc = &MainWndProc;
+        wc.hInstance = hinstance;
+        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+        wc.lpszClassName = kMainWindowClass;
+        RegisterClassExW(&wc);
+
+        HWND mainWindow =
+            CreateWindowExW(0, kMainWindowClass, L"AI-Native Game Engine - Editor (1.1a spike)",
+                             WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1400, 900, nullptr, nullptr,
+                             hinstance, nullptr);
+        if (mainWindow == nullptr) {
+            throw std::runtime_error("Failed to create main window");
+        }
+
+        aige::WebViewHost webView(mainWindow);
+        g_webView = &webView;
+        webView.NavigateToHtml(
+            LR"(<html><body style="background:#1e1e2e;color:#eee;font-family:sans-serif;padding:24px;">
+<h1>WebView2 chrome (placeholder)</h1>
+<p>This region will become the Vue app (milestone 1.1b). The panel to the
+right is a native Vulkan viewport rendering directly into its own child
+window — not a texture displayed here.</p>
+</body></html>)");
+
+        RECT clientRect{};
+        GetClientRect(mainWindow, &clientRect);
+        int clientWidth = clientRect.right - clientRect.left;
+        int clientHeight = clientRect.bottom - clientRect.top;
+        int viewportWidth = static_cast<int>(clientWidth * kViewportFraction);
+        int webViewWidth = clientWidth - viewportWidth;
+
+        aige::ViewportWindow viewportWindow(mainWindow, hinstance, webViewWidth, 0, viewportWidth, clientHeight);
+        g_viewportWindow = &viewportWindow;
+
+        aige::VulkanRHI rhi(
+            viewportWindow.Handle(), viewportWindow.Instance(),
+            [&viewportWindow](int& w, int& h) { viewportWindow.GetFramebufferSize(w, h); },
+            [&viewportWindow](std::function<void(int, int)> cb) {
+                viewportWindow.SetResizeCallback(std::move(cb));
+            });
+        aige::Renderer2D renderer(rhi, rhi.RenderPass());
+
         aige::Registry registry;
-
         std::string sandboxScenePath = std::string(AIGE_EDITOR_SANDBOX_SCENE_PATH) + "/scene_save.aige";
-        if (aige::LoadScene(registry, sandboxScenePath)) {
-            std::cout << "Loaded scene from " << sandboxScenePath << std::endl;
-        } else {
+        if (!aige::LoadScene(registry, sandboxScenePath)) {
             BuildFallbackScene(registry);
         }
 
-        aige::ScriptBinder scriptBinder = [&registry](sol::environment& env, aige::Entity entity) {
-            env["get_position"] = [&registry, entity]() {
-                auto& world = registry.get<aige::WorldTransform2D>(entity);
-                return std::make_tuple(world.x, world.y);
-            };
-            env["set_position"] = [&registry, entity](float x, float y) {
-                auto& world = registry.get<aige::WorldTransform2D>(entity);
-                world.x = x;
-                world.y = y;
-            };
-        };
+        ShowWindow(mainWindow, SW_SHOW);
+        UpdateWindow(mainWindow);
 
-        aige::Entity selectedEntity{entt::null};
-        bool dockLayoutBuilt = false;
-
-        VkImageView lastOffscreenView = VK_NULL_HANDLE;
-        VkDescriptorSet viewportTextureId = VK_NULL_HANDLE;
-
-        using Clock = std::chrono::steady_clock;
-        constexpr double kFixedDt = 1.0 / 60.0;
-        auto previousTime = Clock::now();
-        double accumulator = 0.0;
-
-        while (!window.ShouldClose()) {
-            window.PollEvents();
-
-            auto currentTime = Clock::now();
-            double frameSeconds = std::chrono::duration<double>(currentTime - previousTime).count();
-            previousTime = currentTime;
-            frameSeconds = std::min(frameSeconds, 0.25);
-
-            accumulator += frameSeconds;
-            while (accumulator >= kFixedDt) {
-                // No player-input-driven movement in the editor — that's
-                // Playtest/Preview (product.md), a distinct future mode.
-                // Lua-scripted entities still update, so the viewport shows
-                // genuinely live RHI output rather than a frozen frame.
-                aige::UpdateScripts(registry, lua, static_cast<float>(kFixedDt), scriptBinder);
-                accumulator -= kFixedDt;
+        MSG msg{};
+        bool running = true;
+        while (running) {
+            while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+                if (msg.message == WM_QUIT) {
+                    running = false;
+                    break;
+                }
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+            if (!running) {
+                break;
             }
 
             VkCommandBuffer cmd = rhi.BeginFrame();
-            if (cmd == VK_NULL_HANDLE) {
-                continue;
+            if (cmd != VK_NULL_HANDLE) {
+                rhi.BeginSwapchainPass();
+                renderer.Render(cmd, registry);
+                rhi.EndFrame();
             }
-
-            if (rhi.OffscreenColorView() != lastOffscreenView) {
-                if (viewportTextureId != VK_NULL_HANDLE) {
-                    ImGui_ImplVulkan_RemoveTexture(viewportTextureId);
-                }
-                viewportTextureId = ImGui_ImplVulkan_AddTexture(rhi.OffscreenSampler(), rhi.OffscreenColorView(),
-                                                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-                lastOffscreenView = rhi.OffscreenColorView();
-            }
-
-            rhi.BeginOffscreenPass();
-            renderer.Render(cmd, registry);
-            rhi.EndOffscreenPass();
-
-            rhi.BeginSwapchainPass();
-
-            ImGuiID dockspaceId = imguiLayer.BeginFrame();
-            if (!dockLayoutBuilt) {
-                dockLayoutBuilt = true;
-                ImGui::DockBuilderRemoveNode(dockspaceId);
-                ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
-                ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetMainViewport()->Size);
-
-                ImGuiID rightId = 0;
-                ImGuiID centerId = 0;
-                ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, 0.28f, &rightId, &centerId);
-                ImGuiID inspectorId = 0;
-                ImGuiID sceneTreeId = 0;
-                ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Down, 0.5f, &inspectorId, &sceneTreeId);
-
-                ImGui::DockBuilderDockWindow("Viewport", centerId);
-                ImGui::DockBuilderDockWindow("Scene Tree", sceneTreeId);
-                ImGui::DockBuilderDockWindow("Inspector", inspectorId);
-                ImGui::DockBuilderFinish(dockspaceId);
-            }
-
-            ImGui::Begin("Viewport");
-            ImVec2 avail = ImGui::GetContentRegionAvail();
-            if (avail.x > 0.0f && avail.y > 0.0f && viewportTextureId != VK_NULL_HANDLE) {
-                ImGui::Image(reinterpret_cast<ImTextureID>(viewportTextureId), avail);
-            }
-            ImGui::End();
-
-            DrawSceneTreePanel(registry, selectedEntity);
-            DrawInspectorPanel(registry, selectedEntity);
-
-            imguiLayer.EndFrame(cmd);
-            rhi.EndFrame();
         }
     } catch (const std::exception& e) {
-        std::cerr << "Fatal: " << e.what() << std::endl;
+        MessageBoxA(nullptr, e.what(), "Fatal error", MB_ICONERROR);
         return 1;
     }
     return 0;

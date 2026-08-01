@@ -9,9 +9,7 @@ option(AIGE_BUILD_TESTS "Build engine unit tests" ON)
 
 add_subdirectory(engine)
 add_subdirectory(apps/sandbox)
-# apps/editor temporarily disabled during the WebView2/Vue editor UI pivot —
-# re-enabled once apps/editor/main.cpp is rewritten for the new architecture.
-# add_subdirectory(apps/editor)
+add_subdirectory(apps/editor)
 
 if(AIGE_BUILD_TESTS)
     enable_testing()

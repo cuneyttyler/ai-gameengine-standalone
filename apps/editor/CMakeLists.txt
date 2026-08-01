@@ -3,11 +3,10 @@ if(NOT GLSLC_EXECUTABLE)
     message(FATAL_ERROR "glslc not found; ensure the Vulkan SDK is installed and VULKAN_SDK is set")
 endif()
 
-add_executable(editor main.cpp)
-target_link_libraries(editor PRIVATE
-    aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d
-    aige_scripting aige_assets aige_editor
-)
+# WIN32: GUI subsystem (wWinMain entry point, no console) — this app is
+# Windows-native via WebView2 throughout, unlike apps/sandbox.
+add_executable(editor WIN32 main.cpp)
+target_link_libraries(editor PRIVATE aige_rhi aige_ecs aige_renderer2d aige_assets aige_editor)
 target_compile_definitions(editor PRIVATE AIGE_EDITOR_SANDBOX_SCENE_PATH="${CMAKE_SOURCE_DIR}/apps/sandbox")
 
 set(AIGE_SHADER_SOURCES
