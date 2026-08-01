@@ -408,10 +408,10 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry) {
     };
     std::vector<Instance> instances;
 
-    auto view = registry.view<Transform2D, Sprite>();
+    auto view = registry.view<ScreenTransform2D, Sprite>();
     instances.reserve(view.size_hint());
     for (auto entity : view) {
-        instances.push_back({entity, view.get<Transform2D>(entity).depth});
+        instances.push_back({entity, view.get<ScreenTransform2D>(entity).depth});
     }
     std::stable_sort(instances.begin(), instances.end(),
                       [](const Instance& a, const Instance& b) { return a.depth < b.depth; });
@@ -425,7 +425,7 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry) {
         if (vertexCount + kVerticesPerSprite > maxVertices) {
             break;
         }
-        const auto& t = view.get<Transform2D>(inst.entity);
+        const auto& t = view.get<ScreenTransform2D>(inst.entity);
         const auto& s = view.get<Sprite>(inst.entity);
 
         float x0 = t.x - s.width * 0.5f;

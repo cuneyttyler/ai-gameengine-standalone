@@ -12,8 +12,9 @@ add_executable(aige_tests
     platform_test.cpp
     rhi_test.cpp
     renderer2d_test.cpp
+    collision_test.cpp
 )
-target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_renderer2d gtest_main)
+target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d gtest_main)
 
 find_program(GLSLC_EXECUTABLE glslc HINTS "$ENV{VULKAN_SDK}/Bin" "$ENV{VULKAN_SDK}/bin")
 if(NOT GLSLC_EXECUTABLE)

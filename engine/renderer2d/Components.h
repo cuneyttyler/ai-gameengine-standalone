@@ -2,13 +2,15 @@
 
 namespace aige {
 
-// Screen-space position (pixels, origin top-left, Y down) — no camera/zoom
-// yet, that's introduced once there's a reason to move the viewport
-// (development_plan.md Phase 1). `depth` is the painter's-algorithm sort key:
-// lower draws first, so nearer/foreground content should use a larger value.
-// Content code (not the renderer) decides what depth means — e.g. an
-// isometric tilemap uses gridX + gridY.
-struct Transform2D {
+// Screen-space position (pixels, origin top-left, Y down) — what the renderer
+// actually draws at. `depth` is the painter's-algorithm sort key: lower draws
+// first, so nearer/foreground content should use a larger value. Content code
+// (not the renderer) decides what depth means. Static content can set this
+// directly; moving entities instead carry a WorldTransform2D
+// (engine/physics2d/Components.h) and have a projection step (currently the
+// isometric one in apps/sandbox/main.cpp) write this each frame — the
+// renderer never knows about "world space" or "isometric" at all.
+struct ScreenTransform2D {
     float x = 0.0f;
     float y = 0.0f;
     float depth = 0.0f;

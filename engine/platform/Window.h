@@ -1,5 +1,7 @@
 #pragma once
 
+#include "platform/Input.h"
+
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -33,6 +35,9 @@ public:
 
     void GetFramebufferSize(int& width, int& height) const;
     void SetResizeCallback(std::function<void(int, int)> callback);
+
+    bool IsKeyDown(Key key) const;
+    bool IsFocused() const;
 
     GLFWwindow* NativeHandle() const;
 

@@ -62,7 +62,8 @@ private:
     void CreateFramebuffers();
     void CreateCommandPool();
     void CreateCommandBuffers();
-    void CreateSyncObjects();
+    void CreateFrameSyncObjects();
+    void CreateRenderFinishedSemaphores();
 
     void CleanupSwapchain();
     void RecreateSwapchain();
@@ -95,9 +96,19 @@ private:
     std::vector<VkCommandBuffer> commandBuffers_;
 
     static constexpr int kMaxFramesInFlight = 2;
+    // Per frame-in-flight (size kMaxFramesInFlight): safe to index by
+    // currentFrame_ because CreateSyncObjects's fence wait already guarantees
+    // the previous use of that slot is done before it's reused.
     std::vector<VkSemaphore> imageAvailableSemaphores_;
-    std::vector<VkSemaphore> renderFinishedSemaphores_;
     std::vector<VkFence> inFlightFences_;
+    // Per swapchain image (size swapchainImages_.size(), NOT kMaxFramesInFlight):
+    // must be indexed by the acquired image index, not currentFrame_ — the
+    // presentation engine's use of this semaphore is tied to the image, and
+    // frame count != image count in general (we recreate this whenever the
+    // swapchain does). Indexing it by frame instead is a well-known footgun
+    // in the "naive" synchronization pattern: validation flags it as a real
+    // spec violation, and it manifested here as a hang under sustained input.
+    std::vector<VkSemaphore> renderFinishedSemaphores_;
     size_t currentFrame_ = 0;
 
     VkCommandBuffer currentCommandBuffer_ = VK_NULL_HANDLE;

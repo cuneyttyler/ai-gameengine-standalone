@@ -15,11 +15,11 @@ TEST(Renderer2DTest, RendersSpriteEntitiesWithoutThrowing) {
 
         aige::Registry registry;
         auto tile = registry.create();
-        registry.emplace<aige::Transform2D>(tile, 640.0f, 200.0f, 0.0f);
+        registry.emplace<aige::ScreenTransform2D>(tile, 640.0f, 200.0f, 0.0f);
         registry.emplace<aige::Sprite>(tile, 64.0f, 32.0f, 0.0f, 0.0f, 0.5f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f);
 
         auto character = registry.create();
-        registry.emplace<aige::Transform2D>(character, 640.0f, 190.0f, 1.0f);
+        registry.emplace<aige::ScreenTransform2D>(character, 640.0f, 190.0f, 1.0f);
         registry.emplace<aige::Sprite>(character, 32.0f, 48.0f, 0.0f, 0.5f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f);
 
         for (int i = 0; i < 5; ++i) {

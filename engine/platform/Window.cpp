@@ -8,6 +8,30 @@ namespace aige {
 
 namespace {
 int g_windowCount = 0;
+
+int ToGlfwKey(Key key) {
+    switch (key) {
+        case Key::W:
+            return GLFW_KEY_W;
+        case Key::A:
+            return GLFW_KEY_A;
+        case Key::S:
+            return GLFW_KEY_S;
+        case Key::D:
+            return GLFW_KEY_D;
+        case Key::Up:
+            return GLFW_KEY_UP;
+        case Key::Down:
+            return GLFW_KEY_DOWN;
+        case Key::Left:
+            return GLFW_KEY_LEFT;
+        case Key::Right:
+            return GLFW_KEY_RIGHT;
+        case Key::Escape:
+            return GLFW_KEY_ESCAPE;
+    }
+    return GLFW_KEY_UNKNOWN;
+}
 }
 
 Window::Window(const Desc& desc) {
@@ -57,6 +81,14 @@ void Window::GetFramebufferSize(int& width, int& height) const {
 
 void Window::SetResizeCallback(std::function<void(int, int)> callback) {
     resizeCallback_ = std::move(callback);
+}
+
+bool Window::IsKeyDown(Key key) const {
+    return glfwGetKey(handle_, ToGlfwKey(key)) == GLFW_PRESS;
+}
+
+bool Window::IsFocused() const {
+    return glfwGetWindowAttrib(handle_, GLFW_FOCUSED) != 0;
 }
 
 void Window::FramebufferResizeTrampoline(GLFWwindow* handle, int width, int height) {

@@ -104,7 +104,8 @@ VulkanRHI::VulkanRHI(Window& window) : window_(window) {
     CreateFramebuffers();
     CreateCommandPool();
     CreateCommandBuffers();
-    CreateSyncObjects();
+    CreateFrameSyncObjects();
+    CreateRenderFinishedSemaphores();
 
     window_.SetResizeCallback([this](int, int) { framebufferResized_ = true; });
 }
@@ -117,9 +118,6 @@ VulkanRHI::~VulkanRHI() {
     }
 
     for (int i = 0; i < kMaxFramesInFlight; ++i) {
-        if (i < static_cast<int>(renderFinishedSemaphores_.size())) {
-            vkDestroySemaphore(device_, renderFinishedSemaphores_[i], nullptr);
-        }
         if (i < static_cast<int>(imageAvailableSemaphores_.size())) {
             vkDestroySemaphore(device_, imageAvailableSemaphores_[i], nullptr);
         }
@@ -129,7 +127,7 @@ VulkanRHI::~VulkanRHI() {
     }
     vkDestroyCommandPool(device_, commandPool_, nullptr);
 
-    CleanupSwapchain();
+    CleanupSwapchain(); // also destroys renderFinishedSemaphores_ (per-swapchain-image)
 
     vkDestroyRenderPass(device_, renderPass_, nullptr);
 
@@ -468,9 +466,8 @@ void VulkanRHI::CreateCommandBuffers() {
     VkCheck(vkAllocateCommandBuffers(device_, &allocInfo, commandBuffers_.data()), "vkAllocateCommandBuffers");
 }
 
-void VulkanRHI::CreateSyncObjects() {
+void VulkanRHI::CreateFrameSyncObjects() {
     imageAvailableSemaphores_.resize(kMaxFramesInFlight);
-    renderFinishedSemaphores_.resize(kMaxFramesInFlight);
     inFlightFences_.resize(kMaxFramesInFlight);
 
     VkSemaphoreCreateInfo semInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
@@ -479,12 +476,24 @@ void VulkanRHI::CreateSyncObjects() {
 
     for (int i = 0; i < kMaxFramesInFlight; ++i) {
         VkCheck(vkCreateSemaphore(device_, &semInfo, nullptr, &imageAvailableSemaphores_[i]), "vkCreateSemaphore");
-        VkCheck(vkCreateSemaphore(device_, &semInfo, nullptr, &renderFinishedSemaphores_[i]), "vkCreateSemaphore");
         VkCheck(vkCreateFence(device_, &fenceInfo, nullptr, &inFlightFences_[i]), "vkCreateFence");
     }
 }
 
+void VulkanRHI::CreateRenderFinishedSemaphores() {
+    renderFinishedSemaphores_.resize(swapchainImages_.size());
+    VkSemaphoreCreateInfo semInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    for (auto& semaphore : renderFinishedSemaphores_) {
+        VkCheck(vkCreateSemaphore(device_, &semInfo, nullptr, &semaphore), "vkCreateSemaphore");
+    }
+}
+
 void VulkanRHI::CleanupSwapchain() {
+    for (auto semaphore : renderFinishedSemaphores_) {
+        vkDestroySemaphore(device_, semaphore, nullptr);
+    }
+    renderFinishedSemaphores_.clear();
+
     for (auto framebuffer : swapchainFramebuffers_) {
         vkDestroyFramebuffer(device_, framebuffer, nullptr);
     }
@@ -516,6 +525,7 @@ void VulkanRHI::RecreateSwapchain() {
     CreateSwapchain();
     CreateImageViews();
     CreateFramebuffers();
+    CreateRenderFinishedSemaphores();
 }
 
 VkCommandBuffer VulkanRHI::BeginFrame() {
@@ -579,7 +589,9 @@ void VulkanRHI::EndFrame() {
 
     VkSemaphore waitSemaphores[] = {imageAvailableSemaphores_[currentFrame_]};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-    VkSemaphore signalSemaphores[] = {renderFinishedSemaphores_[currentFrame_]};
+    // Indexed by the acquired image, not currentFrame_ — see the field comment
+    // in VulkanRHI.h for why that distinction matters.
+    VkSemaphore signalSemaphores[] = {renderFinishedSemaphores_[currentImageIndex_]};
 
     VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submitInfo.waitSemaphoreCount = 1;

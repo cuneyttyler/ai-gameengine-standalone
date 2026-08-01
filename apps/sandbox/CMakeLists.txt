@@ -4,7 +4,7 @@ if(NOT GLSLC_EXECUTABLE)
 endif()
 
 add_executable(sandbox main.cpp)
-target_link_libraries(sandbox PRIVATE aige_platform aige_rhi aige_ecs aige_renderer2d)
+target_link_libraries(sandbox PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d)
 
 set(AIGE_SHADER_SOURCES
     ${CMAKE_SOURCE_DIR}/engine/renderer2d/shaders/sprite.vert
