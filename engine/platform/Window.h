@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 struct GLFWwindow;
@@ -9,7 +10,9 @@ namespace aige {
 
 // Thin owned wrapper around the windowing backend (GLFW today) so engine/editor
 // code never depends on GLFW directly — swapping the backend later stays local
-// to Window.cpp.
+// to Window.cpp. The RHI still talks to GLFW's Vulkan-bridge calls
+// (glfwCreateWindowSurface, glfwGetRequiredInstanceExtensions) directly via
+// NativeHandle(), since those are Vulkan/platform interop, not windowing.
 class Window {
 public:
     struct Desc {
@@ -26,11 +29,18 @@ public:
 
     bool ShouldClose() const;
     void PollEvents();
+    void WaitEvents();
+
+    void GetFramebufferSize(int& width, int& height) const;
+    void SetResizeCallback(std::function<void(int, int)> callback);
 
     GLFWwindow* NativeHandle() const;
 
 private:
+    static void FramebufferResizeTrampoline(GLFWwindow* handle, int width, int height);
+
     GLFWwindow* handle_ = nullptr;
+    std::function<void(int, int)> resizeCallback_;
 };
 
 } // namespace aige

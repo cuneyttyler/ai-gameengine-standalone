@@ -27,6 +27,9 @@ Window::Window(const Desc& desc) {
         }
         throw std::runtime_error("Failed to create window");
     }
+
+    glfwSetWindowUserPointer(handle_, this);
+    glfwSetFramebufferSizeCallback(handle_, &Window::FramebufferResizeTrampoline);
 }
 
 Window::~Window() {
@@ -42,6 +45,25 @@ bool Window::ShouldClose() const {
 
 void Window::PollEvents() {
     glfwPollEvents();
+}
+
+void Window::WaitEvents() {
+    glfwWaitEvents();
+}
+
+void Window::GetFramebufferSize(int& width, int& height) const {
+    glfwGetFramebufferSize(handle_, &width, &height);
+}
+
+void Window::SetResizeCallback(std::function<void(int, int)> callback) {
+    resizeCallback_ = std::move(callback);
+}
+
+void Window::FramebufferResizeTrampoline(GLFWwindow* handle, int width, int height) {
+    auto* self = static_cast<Window*>(glfwGetWindowUserPointer(handle));
+    if (self && self->resizeCallback_) {
+        self->resizeCallback_(width, height);
+    }
 }
 
 GLFWwindow* Window::NativeHandle() const {
