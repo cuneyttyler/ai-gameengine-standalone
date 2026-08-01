@@ -14,6 +14,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(volk vma)
 
+if(WIN32)
+    # volk's own compiled sources need this too, not just code that includes
+    # its headers — otherwise Win32-specific entry points (e.g.
+    # vkCreateWin32SurfaceKHR, used by engine/editor's raw-HWND viewport
+    # window) compile out of volk.c and the link fails.
+    target_compile_definitions(volk PUBLIC VK_USE_PLATFORM_WIN32_KHR)
+endif()
+
 add_library(aige_rhi STATIC
     ShaderUtil.h
     ShaderUtil.cpp

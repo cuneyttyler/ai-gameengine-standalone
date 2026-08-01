@@ -1,8 +1,3 @@
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#endif
-
 #include "rhi/VulkanRHI.h"
 
 #include "platform/Window.h"
@@ -86,15 +81,55 @@ VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBits
     return VK_FALSE;
 }
 
+void SetFullExtentViewportScissor(VkCommandBuffer cmd, VkExtent2D extent) {
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(extent.width);
+    viewport.height = static_cast<float>(extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor{{0, 0}, extent};
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+}
+
 } // namespace
 
-VulkanRHI::VulkanRHI(Window& window) : window_(window) {
-    VkCheck(volkInitialize(), "volkInitialize");
+VulkanRHI::VulkanRHI(Window& window) : window_(&window) {
+    getFramebufferSize_ = [this](int& w, int& h) { window_->GetFramebufferSize(w, h); };
+    registerResizeCallback_ = [this](std::function<void(int, int)> cb) { window_->SetResizeCallback(std::move(cb)); };
 
+    VkCheck(volkInitialize(), "volkInitialize");
     CreateInstance();
     volkLoadInstance(instance_);
     SetupDebugMessenger();
     CreateSurface();
+    Init();
+
+    registerResizeCallback_([this](int, int) { framebufferResized_ = true; });
+}
+
+#ifdef _WIN32
+VulkanRHI::VulkanRHI(HWND hwnd, HINSTANCE hinstance, std::function<void(int&, int&)> getFramebufferSize,
+                     std::function<void(std::function<void(int, int)>)> registerResizeCallback)
+    : hwnd_(hwnd),
+      hinstance_(hinstance),
+      getFramebufferSize_(std::move(getFramebufferSize)),
+      registerResizeCallback_(std::move(registerResizeCallback)) {
+    VkCheck(volkInitialize(), "volkInitialize");
+    CreateInstance();
+    volkLoadInstance(instance_);
+    SetupDebugMessenger();
+    CreateSurfaceWin32();
+    Init();
+
+    registerResizeCallback_([this](int, int) { framebufferResized_ = true; });
+}
+#endif
+
+void VulkanRHI::Init() {
     PickPhysicalDevice();
     CreateLogicalDevice();
     CreateAllocator();
@@ -106,15 +141,12 @@ VulkanRHI::VulkanRHI(Window& window) : window_(window) {
     CreateCommandBuffers();
     CreateFrameSyncObjects();
     CreateRenderFinishedSemaphores();
-    CreateOffscreenRenderPass();
-    CreateOffscreenSampler();
-    CreateOffscreenTarget();
-
-    window_.SetResizeCallback([this](int, int) { framebufferResized_ = true; });
 }
 
 VulkanRHI::~VulkanRHI() {
-    window_.SetResizeCallback(nullptr);
+    if (registerResizeCallback_) {
+        registerResizeCallback_(nullptr);
+    }
 
     if (device_ != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(device_);
@@ -130,11 +162,9 @@ VulkanRHI::~VulkanRHI() {
     }
     vkDestroyCommandPool(device_, commandPool_, nullptr);
 
-    CleanupSwapchain(); // also destroys renderFinishedSemaphores_ and the offscreen target
+    CleanupSwapchain(); // also destroys renderFinishedSemaphores_
 
     vkDestroyRenderPass(device_, renderPass_, nullptr);
-    vkDestroyRenderPass(device_, offscreenRenderPass_, nullptr);
-    vkDestroySampler(device_, offscreenSampler_, nullptr);
 
     if (allocator_ != VK_NULL_HANDLE) {
         vmaDestroyAllocator(allocator_);
@@ -153,15 +183,23 @@ VulkanRHI::~VulkanRHI() {
 
 void VulkanRHI::CreateInstance() {
     VkApplicationInfo appInfo{VK_STRUCTURE_TYPE_APPLICATION_INFO};
-    appInfo.pApplicationName = "AIGE Sandbox";
+    appInfo.pApplicationName = "AI-Native Game Engine";
     appInfo.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
     appInfo.pEngineName = "AI-Native Game Engine";
     appInfo.engineVersion = VK_MAKE_VERSION(0, 1, 0);
     appInfo.apiVersion = VK_API_VERSION_1_2;
 
-    uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-    std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+    std::vector<const char*> extensions;
+    if (window_ != nullptr) {
+        uint32_t glfwExtensionCount = 0;
+        const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+        extensions.assign(glfwExtensions, glfwExtensions + glfwExtensionCount);
+    }
+#ifdef _WIN32
+    else {
+        extensions = {VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME};
+    }
+#endif
 
     bool validationAvailable = false;
 #ifndef NDEBUG
@@ -211,9 +249,18 @@ void VulkanRHI::SetupDebugMessenger() {
 }
 
 void VulkanRHI::CreateSurface() {
-    VkCheck(glfwCreateWindowSurface(instance_, window_.NativeHandle(), nullptr, &surface_),
+    VkCheck(glfwCreateWindowSurface(instance_, window_->NativeHandle(), nullptr, &surface_),
             "glfwCreateWindowSurface");
 }
+
+#ifdef _WIN32
+void VulkanRHI::CreateSurfaceWin32() {
+    VkWin32SurfaceCreateInfoKHR createInfo{VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
+    createInfo.hinstance = hinstance_;
+    createInfo.hwnd = hwnd_;
+    VkCheck(vkCreateWin32SurfaceKHR(instance_, &createInfo, nullptr, &surface_), "vkCreateWin32SurfaceKHR");
+}
+#endif
 
 void VulkanRHI::PickPhysicalDevice() {
     uint32_t count = 0;
@@ -333,7 +380,7 @@ void VulkanRHI::CreateSwapchain() {
     } else {
         int width = 0;
         int height = 0;
-        window_.GetFramebufferSize(width, height);
+        getFramebufferSize_(width, height);
         extent.width = std::clamp(static_cast<uint32_t>(width), capabilities.minImageExtent.width,
                                    capabilities.maxImageExtent.width);
         extent.height = std::clamp(static_cast<uint32_t>(height), capabilities.minImageExtent.height,
@@ -493,115 +540,7 @@ void VulkanRHI::CreateRenderFinishedSemaphores() {
     }
 }
 
-void VulkanRHI::CreateOffscreenRenderPass() {
-    VkAttachmentDescription colorAttachment{};
-    colorAttachment.format = swapchainFormat_;
-    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    // Sampled by ImGui (or whoever displays it) right after the pass ends,
-    // not presented directly — that's the whole point of the offscreen
-    // target vs. the swapchain-targeting renderPass_.
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-    VkAttachmentReference colorRef{};
-    colorRef.attachment = 0;
-    colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-    VkSubpassDescription subpass{};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorRef;
-
-    VkSubpassDependency dependency{};
-    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependency.dstSubpass = 0;
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.srcAccessMask = 0;
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-    VkRenderPassCreateInfo renderPassInfo{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;
-    renderPassInfo.subpassCount = 1;
-    renderPassInfo.pSubpasses = &subpass;
-    renderPassInfo.dependencyCount = 1;
-    renderPassInfo.pDependencies = &dependency;
-
-    VkCheck(vkCreateRenderPass(device_, &renderPassInfo, nullptr, &offscreenRenderPass_),
-            "vkCreateRenderPass(offscreen)");
-}
-
-void VulkanRHI::CreateOffscreenSampler() {
-    VkSamplerCreateInfo samplerInfo{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-    samplerInfo.magFilter = VK_FILTER_NEAREST; // pixel-art friendly, matches Renderer2D's atlas sampler
-    samplerInfo.minFilter = VK_FILTER_NEAREST;
-    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    samplerInfo.maxLod = 1.0f;
-
-    VkCheck(vkCreateSampler(device_, &samplerInfo, nullptr, &offscreenSampler_), "vkCreateSampler(offscreen)");
-}
-
-void VulkanRHI::CreateOffscreenTarget() {
-    VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
-    imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.extent = {swapchainExtent_.width, swapchainExtent_.height, 1};
-    imageInfo.mipLevels = 1;
-    imageInfo.arrayLayers = 1;
-    imageInfo.format = swapchainFormat_;
-    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VmaAllocationCreateInfo allocInfo{};
-    allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-    VkCheck(vmaCreateImage(allocator_, &imageInfo, &allocInfo, &offscreenImage_, &offscreenAllocation_, nullptr),
-            "vmaCreateImage(offscreen)");
-
-    VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-    viewInfo.image = offscreenImage_;
-    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    viewInfo.format = swapchainFormat_;
-    viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    VkCheck(vkCreateImageView(device_, &viewInfo, nullptr, &offscreenImageView_), "vkCreateImageView(offscreen)");
-
-    VkFramebufferCreateInfo framebufferInfo{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-    framebufferInfo.renderPass = offscreenRenderPass_;
-    framebufferInfo.attachmentCount = 1;
-    framebufferInfo.pAttachments = &offscreenImageView_;
-    framebufferInfo.width = swapchainExtent_.width;
-    framebufferInfo.height = swapchainExtent_.height;
-    framebufferInfo.layers = 1;
-    VkCheck(vkCreateFramebuffer(device_, &framebufferInfo, nullptr, &offscreenFramebuffer_),
-            "vkCreateFramebuffer(offscreen)");
-}
-
-void VulkanRHI::CleanupOffscreenTarget() {
-    if (offscreenFramebuffer_ != VK_NULL_HANDLE) {
-        vkDestroyFramebuffer(device_, offscreenFramebuffer_, nullptr);
-        offscreenFramebuffer_ = VK_NULL_HANDLE;
-    }
-    if (offscreenImageView_ != VK_NULL_HANDLE) {
-        vkDestroyImageView(device_, offscreenImageView_, nullptr);
-        offscreenImageView_ = VK_NULL_HANDLE;
-    }
-    if (offscreenImage_ != VK_NULL_HANDLE) {
-        vmaDestroyImage(allocator_, offscreenImage_, offscreenAllocation_);
-        offscreenImage_ = VK_NULL_HANDLE;
-    }
-}
-
 void VulkanRHI::CleanupSwapchain() {
-    CleanupOffscreenTarget();
-
     for (auto semaphore : renderFinishedSemaphores_) {
         vkDestroySemaphore(device_, semaphore, nullptr);
     }
@@ -626,10 +565,20 @@ void VulkanRHI::CleanupSwapchain() {
 void VulkanRHI::RecreateSwapchain() {
     int width = 0;
     int height = 0;
-    window_.GetFramebufferSize(width, height);
-    while (width == 0 || height == 0) {
-        window_.WaitEvents();
-        window_.GetFramebufferSize(width, height);
+    getFramebufferSize_(width, height);
+
+    if (window_ != nullptr) {
+        // Top-level OS window: block until un-minimized, pumping events so
+        // the resize we're waiting for can actually arrive.
+        while (width == 0 || height == 0) {
+            window_->WaitEvents();
+            getFramebufferSize_(width, height);
+        }
+    } else if (width == 0 || height == 0) {
+        // Raw child window (engine/editor's viewport): its size is driven by
+        // the app's own layout logic, not OS minimize state — just skip
+        // recreating a zero-sized swapchain and retry on the next resize.
+        return;
     }
 
     vkDeviceWaitIdle(device_);
@@ -639,7 +588,6 @@ void VulkanRHI::RecreateSwapchain() {
     CreateImageViews();
     CreateFramebuffers();
     CreateRenderFinishedSemaphores();
-    CreateOffscreenTarget();
 }
 
 VkCommandBuffer VulkanRHI::BeginFrame() {
@@ -668,42 +616,6 @@ VkCommandBuffer VulkanRHI::BeginFrame() {
 
     frameActive_ = true;
     return currentCommandBuffer_;
-}
-
-namespace {
-void SetFullExtentViewportScissor(VkCommandBuffer cmd, VkExtent2D extent) {
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(extent.width);
-    viewport.height = static_cast<float>(extent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-    VkRect2D scissor{{0, 0}, extent};
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
-}
-} // namespace
-
-void VulkanRHI::BeginOffscreenPass() {
-    VkClearValue clearColor{{{0.05f, 0.05f, 0.08f, 1.0f}}};
-    VkRenderPassBeginInfo renderPassInfo{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    renderPassInfo.renderPass = offscreenRenderPass_;
-    renderPassInfo.framebuffer = offscreenFramebuffer_;
-    renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = swapchainExtent_;
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
-    vkCmdBeginRenderPass(currentCommandBuffer_, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-    SetFullExtentViewportScissor(currentCommandBuffer_, swapchainExtent_);
-    renderPassActive_ = true;
-}
-
-void VulkanRHI::EndOffscreenPass() {
-    vkCmdEndRenderPass(currentCommandBuffer_);
-    renderPassActive_ = false;
 }
 
 void VulkanRHI::BeginSwapchainPass() {

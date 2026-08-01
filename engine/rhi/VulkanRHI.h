@@ -1,10 +1,20 @@
 #pragma once
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#define VK_USE_PLATFORM_WIN32_KHR
+#endif
+
 #include <volk.h>
 
 #include <vk_mem_alloc.h>
 
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 namespace aige {
@@ -18,18 +28,22 @@ class Window;
 //
 // RHI does NOT own any pipeline or draw calls. BeginFrame() only acquires an
 // image and begins the command buffer — no render pass is active yet.
-// Callers explicitly begin/end whichever pass(es) they need this frame:
-//   - BeginOffscreenPass()/EndOffscreenPass(): a sampleable color target
-//     (OffscreenRenderPass()/OffscreenColorView()) meant for a renderer
-//     (Renderer2D, later Renderer3D) to draw a scene into, which an editor
-//     then displays inside an ImGui::Image() viewport panel.
-//   - BeginSwapchainPass(): the render pass that actually targets the
-//     window's swapchain framebuffer — where ImGui itself draws, or where a
-//     non-editor app (apps/sandbox) draws directly with nothing further.
-// EndFrame() ends whichever pass is currently open, then submits/presents.
+// BeginSwapchainPass() begins the render pass that targets this instance's
+// own swapchain framebuffer; EndFrame() ends it, submits, and presents.
 class VulkanRHI {
 public:
     explicit VulkanRHI(Window& window);
+
+#ifdef _WIN32
+    // For hosting a viewport inside a raw Win32 child window (engine/editor's
+    // ViewportWindow) rather than a top-level aige::Window — surface creation
+    // goes through vkCreateWin32SurfaceKHR directly instead of GLFW's bridge.
+    // `getFramebufferSize`/`registerResizeCallback` mirror the two things
+    // VulkanRHI needs from aige::Window in the other constructor.
+    VulkanRHI(HWND hwnd, HINSTANCE hinstance, std::function<void(int&, int&)> getFramebufferSize,
+              std::function<void(std::function<void(int, int)>)> registerResizeCallback);
+#endif
+
     ~VulkanRHI();
 
     VulkanRHI(const VulkanRHI&) = delete;
@@ -41,8 +55,6 @@ public:
     // recreated) — callers must not record anything in that case.
     VkCommandBuffer BeginFrame();
 
-    void BeginOffscreenPass();
-    void EndOffscreenPass();
     void BeginSwapchainPass();
 
     // Ends the currently-active render pass (if any), submits, and presents.
@@ -62,15 +74,15 @@ public:
     uint32_t CurrentFrameIndex() const { return static_cast<uint32_t>(currentFrame_); }
     static constexpr int MaxFramesInFlight() { return kMaxFramesInFlight; }
 
-    VkRenderPass OffscreenRenderPass() const { return offscreenRenderPass_; }
-    VkImageView OffscreenColorView() const { return offscreenImageView_; }
-    VkSampler OffscreenSampler() const { return offscreenSampler_; }
-    VkExtent2D OffscreenExtent() const { return swapchainExtent_; } // same size for now, see §17 open question
-
 private:
+    void Init();
+
     void CreateInstance();
     void SetupDebugMessenger();
-    void CreateSurface();
+    void CreateSurface();       // GLFW path (Window constructor)
+#ifdef _WIN32
+    void CreateSurfaceWin32();  // raw-HWND path
+#endif
     void PickPhysicalDevice();
     void CreateLogicalDevice();
     void CreateAllocator();
@@ -82,15 +94,18 @@ private:
     void CreateCommandBuffers();
     void CreateFrameSyncObjects();
     void CreateRenderFinishedSemaphores();
-    void CreateOffscreenRenderPass();
-    void CreateOffscreenSampler();
-    void CreateOffscreenTarget();
-    void CleanupOffscreenTarget();
 
     void CleanupSwapchain();
     void RecreateSwapchain();
 
-    Window& window_;
+    Window* window_ = nullptr; // set when constructed from a Window; null for the raw-HWND path
+
+#ifdef _WIN32
+    HWND hwnd_ = nullptr;
+    HINSTANCE hinstance_ = nullptr;
+#endif
+    std::function<void(int&, int&)> getFramebufferSize_;
+    std::function<void(std::function<void(int, int)>)> registerResizeCallback_;
 
     VkInstance instance_ = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT debugMessenger_ = VK_NULL_HANDLE;
@@ -132,15 +147,6 @@ private:
     // spec violation, and it manifested here as a hang under sustained input.
     std::vector<VkSemaphore> renderFinishedSemaphores_;
     size_t currentFrame_ = 0;
-
-    // Created once (format/device-only, not extent-dependent).
-    VkRenderPass offscreenRenderPass_ = VK_NULL_HANDLE;
-    VkSampler offscreenSampler_ = VK_NULL_HANDLE;
-    // Extent-dependent: recreated alongside the swapchain on resize.
-    VkImage offscreenImage_ = VK_NULL_HANDLE;
-    VmaAllocation offscreenAllocation_ = nullptr;
-    VkImageView offscreenImageView_ = VK_NULL_HANDLE;
-    VkFramebuffer offscreenFramebuffer_ = VK_NULL_HANDLE;
 
     VkCommandBuffer currentCommandBuffer_ = VK_NULL_HANDLE;
     uint32_t currentImageIndex_ = 0;
