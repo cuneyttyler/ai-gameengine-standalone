@@ -6,10 +6,17 @@
 #include "renderer2d/Components.h"
 #include "renderer2d/Renderer2D.h"
 #include "rhi/VulkanRHI.h"
+#include "scripting/Components.h"
+#include "scripting/LuaVM.h"
+#include "scripting/ScriptSystem.h"
 
 #include <algorithm>
 #include <chrono>
 #include <iostream>
+
+#ifndef AIGE_SANDBOX_SOURCE_DIR
+#define AIGE_SANDBOX_SOURCE_DIR "."
+#endif
 
 namespace {
 
@@ -88,9 +95,17 @@ aige::Entity BuildScene(aige::Registry& registry, const IsoParams& iso) {
         ScreenPose pose = ProjectIso(worldX, worldY, iso);
         registry.emplace<aige::ScreenTransform2D>(entity, pose.x, pose.y - kTileHeight * 0.5f, pose.depth + 0.5f);
         registry.emplace<aige::Sprite>(entity, 32.0f, 48.0f, uv[0], uv[1], uv[2], uv[3], 1.0f, 1.0f, 1.0f, 1.0f);
+        return entity;
     };
     SpawnNpc(5.5f, 2.5f, kNpcUV);
-    SpawnNpc(5.5f, 5.5f, kNpcUV);
+
+    // Second NPC is Lua-driven instead of static — needs a WorldTransform2D
+    // (so UpdateWorldToScreen projects it every frame like the player) plus
+    // a LuaScript pointing at the source-tree file, so editing and saving it
+    // while the app runs hot-reloads the behavior (milestone 0.5).
+    auto scriptedNpc = SpawnNpc(5.5f, 5.5f, kNpcUV);
+    registry.emplace<aige::WorldTransform2D>(scriptedNpc, 5.5f, 5.5f);
+    registry.emplace<aige::LuaScript>(scriptedNpc).path = std::string(AIGE_SANDBOX_SOURCE_DIR) + "/scripts/npc_wander.lua";
 
     constexpr float kPlayerSpawnX = 3.5f;
     constexpr float kPlayerSpawnY = 3.5f;
@@ -149,12 +164,24 @@ void UpdatePlayer(aige::Registry& registry, aige::Entity player, aige::Window& w
                                    {velocity.x * dt, velocity.y * dt}, [](int gx, int gy) { return IsSolidCell(gx, gy); });
     world.x = resolved.x;
     world.y = resolved.y;
+}
 
-    ScreenPose pose = ProjectIso(world.x, world.y, iso);
-    auto& screen = registry.get<aige::ScreenTransform2D>(player);
-    screen.x = pose.x;
-    screen.y = pose.y - kTileHeight * 0.5f;
-    screen.depth = pose.depth + 0.5f;
+// Re-derives ScreenTransform2D from WorldTransform2D for every entity that has
+// both, each fixed step — the one place "world space" meets "screen space"
+// (technical.md §8's projection step), shared by anything that moves a
+// WorldTransform2D: the player (input+collision) and Lua-scripted entities
+// alike. Static content skips this entirely and keeps the ScreenTransform2D
+// it was given at scene-build time.
+void UpdateWorldToScreen(aige::Registry& registry, const IsoParams& iso) {
+    auto view = registry.view<aige::WorldTransform2D, aige::ScreenTransform2D>();
+    for (auto entity : view) {
+        auto& world = view.get<aige::WorldTransform2D>(entity);
+        auto& screen = view.get<aige::ScreenTransform2D>(entity);
+        ScreenPose pose = ProjectIso(world.x, world.y, iso);
+        screen.x = pose.x;
+        screen.y = pose.y - kTileHeight * 0.5f;
+        screen.depth = pose.depth + 0.5f;
+    }
 }
 
 } // namespace
@@ -168,8 +195,24 @@ int main() {
 
         IsoParams iso{kTileWidth, kTileHeight, static_cast<float>(desc.width) * 0.5f, 96.0f};
 
+        // lua must outlive registry: LuaScript components store a
+        // sol::environment referencing lua's Lua state, so registry (and
+        // anything in it) has to be destroyed before lua closes that state.
+        aige::LuaVM lua;
         aige::Registry registry;
         aige::Entity player = BuildScene(registry, iso);
+
+        aige::ScriptBinder scriptBinder = [&registry](sol::environment& env, aige::Entity entity) {
+            env["get_position"] = [&registry, entity]() {
+                auto& world = registry.get<aige::WorldTransform2D>(entity);
+                return std::make_tuple(world.x, world.y);
+            };
+            env["set_position"] = [&registry, entity](float x, float y) {
+                auto& world = registry.get<aige::WorldTransform2D>(entity);
+                world.x = x;
+                world.y = y;
+            };
+        };
 
         using Clock = std::chrono::steady_clock;
         constexpr double kFixedDt = 1.0 / 60.0;
@@ -190,6 +233,8 @@ int main() {
             accumulator += frameSeconds;
             while (accumulator >= kFixedDt) {
                 UpdatePlayer(registry, player, window, iso, static_cast<float>(kFixedDt));
+                aige::UpdateScripts(registry, lua, static_cast<float>(kFixedDt), scriptBinder);
+                UpdateWorldToScreen(registry, iso);
                 accumulator -= kFixedDt;
             }
 
