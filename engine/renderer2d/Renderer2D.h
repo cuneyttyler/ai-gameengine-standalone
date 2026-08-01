@@ -17,14 +17,20 @@ namespace aige {
 // sorted by Transform2D::depth.
 class Renderer2D {
 public:
-    explicit Renderer2D(VulkanRHI& rhi);
+    // `targetRenderPass` is whichever pass this renderer's pipeline draws
+    // into — callers begin that specific pass (VulkanRHI::BeginOffscreenPass
+    // or BeginSwapchainPass) before calling Render(). Explicit rather than
+    // assumed, since an editor draws into the offscreen target while a
+    // non-editor app (apps/sandbox) can draw straight to the swapchain pass.
+    Renderer2D(VulkanRHI& rhi, VkRenderPass targetRenderPass);
     ~Renderer2D();
 
     Renderer2D(const Renderer2D&) = delete;
     Renderer2D& operator=(const Renderer2D&) = delete;
 
-    // Must be called with `cmd` from an active VulkanRHI::BeginFrame() (render
-    // pass already begun, viewport/scissor already set).
+    // Must be called with `cmd` from an active VulkanRHI frame, inside the
+    // render pass this Renderer2D was constructed with (already begun,
+    // viewport/scissor already set).
     void Render(VkCommandBuffer cmd, Registry& registry);
 
 private:
@@ -41,6 +47,7 @@ private:
     void RunOneTimeCommands(const std::function<void(VkCommandBuffer)>& recordFn);
 
     VulkanRHI& rhi_;
+    VkRenderPass targetRenderPass_;
 
     VkImage atlasImage_ = VK_NULL_HANDLE;
     VmaAllocation atlasAllocation_ = nullptr;

@@ -82,7 +82,7 @@ std::vector<uint8_t> GenerateAtlasPixels() {
 
 } // namespace
 
-Renderer2D::Renderer2D(VulkanRHI& rhi) : rhi_(rhi) {
+Renderer2D::Renderer2D(VulkanRHI& rhi, VkRenderPass targetRenderPass) : rhi_(rhi), targetRenderPass_(targetRenderPass) {
     CreateAtlasTexture();
     CreateDescriptorSet();
     CreatePipeline();
@@ -367,7 +367,7 @@ void Renderer2D::CreatePipeline() {
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.layout = pipelineLayout_;
-    pipelineInfo.renderPass = rhi_.RenderPass();
+    pipelineInfo.renderPass = targetRenderPass_;
     pipelineInfo.subpass = 0;
 
     VkCheck(vkCreateGraphicsPipelines(rhi_.Device(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline_),

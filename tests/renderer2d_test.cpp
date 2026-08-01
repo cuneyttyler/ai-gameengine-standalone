@@ -11,7 +11,7 @@ TEST(Renderer2DTest, RendersSpriteEntitiesWithoutThrowing) {
     aige::VulkanRHI rhi(window);
 
     EXPECT_NO_THROW({
-        aige::Renderer2D renderer(rhi);
+        aige::Renderer2D renderer(rhi, rhi.RenderPass());
 
         aige::Registry registry;
         auto tile = registry.create();
@@ -26,6 +26,7 @@ TEST(Renderer2DTest, RendersSpriteEntitiesWithoutThrowing) {
             window.PollEvents();
             VkCommandBuffer cmd = rhi.BeginFrame();
             if (cmd != VK_NULL_HANDLE) {
+                rhi.BeginSwapchainPass();
                 renderer.Render(cmd, registry);
                 rhi.EndFrame();
             }
@@ -38,11 +39,12 @@ TEST(Renderer2DTest, RendersEmptyRegistryWithoutThrowing) {
     aige::VulkanRHI rhi(window);
 
     EXPECT_NO_THROW({
-        aige::Renderer2D renderer(rhi);
+        aige::Renderer2D renderer(rhi, rhi.RenderPass());
         aige::Registry registry;
 
         VkCommandBuffer cmd = rhi.BeginFrame();
         if (cmd != VK_NULL_HANDLE) {
+            rhi.BeginSwapchainPass();
             renderer.Render(cmd, registry);
             rhi.EndFrame();
         }

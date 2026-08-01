@@ -192,7 +192,7 @@ int main() {
         aige::Window::Desc desc;
         aige::Window window(desc);
         aige::VulkanRHI rhi(window);
-        aige::Renderer2D renderer(rhi);
+        aige::Renderer2D renderer(rhi, rhi.RenderPass()); // draws straight to the swapchain pass; no editor/ImGui here
 
         IsoParams iso{kTileWidth, kTileHeight, static_cast<float>(desc.width) * 0.5f, 96.0f};
 
@@ -261,6 +261,7 @@ int main() {
 
             VkCommandBuffer cmd = rhi.BeginFrame();
             if (cmd != VK_NULL_HANDLE) {
+                rhi.BeginSwapchainPass();
                 renderer.Render(cmd, registry);
                 rhi.EndFrame();
             }

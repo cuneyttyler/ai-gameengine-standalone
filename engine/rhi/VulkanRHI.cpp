@@ -106,6 +106,9 @@ VulkanRHI::VulkanRHI(Window& window) : window_(window) {
     CreateCommandBuffers();
     CreateFrameSyncObjects();
     CreateRenderFinishedSemaphores();
+    CreateOffscreenRenderPass();
+    CreateOffscreenSampler();
+    CreateOffscreenTarget();
 
     window_.SetResizeCallback([this](int, int) { framebufferResized_ = true; });
 }
@@ -127,9 +130,11 @@ VulkanRHI::~VulkanRHI() {
     }
     vkDestroyCommandPool(device_, commandPool_, nullptr);
 
-    CleanupSwapchain(); // also destroys renderFinishedSemaphores_ (per-swapchain-image)
+    CleanupSwapchain(); // also destroys renderFinishedSemaphores_ and the offscreen target
 
     vkDestroyRenderPass(device_, renderPass_, nullptr);
+    vkDestroyRenderPass(device_, offscreenRenderPass_, nullptr);
+    vkDestroySampler(device_, offscreenSampler_, nullptr);
 
     if (allocator_ != VK_NULL_HANDLE) {
         vmaDestroyAllocator(allocator_);
@@ -488,7 +493,115 @@ void VulkanRHI::CreateRenderFinishedSemaphores() {
     }
 }
 
+void VulkanRHI::CreateOffscreenRenderPass() {
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = swapchainFormat_;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    // Sampled by ImGui (or whoever displays it) right after the pass ends,
+    // not presented directly — that's the whole point of the offscreen
+    // target vs. the swapchain-targeting renderPass_.
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    VkAttachmentReference colorRef{};
+    colorRef.attachment = 0;
+    colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorRef;
+
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+    VkRenderPassCreateInfo renderPassInfo{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
+
+    VkCheck(vkCreateRenderPass(device_, &renderPassInfo, nullptr, &offscreenRenderPass_),
+            "vkCreateRenderPass(offscreen)");
+}
+
+void VulkanRHI::CreateOffscreenSampler() {
+    VkSamplerCreateInfo samplerInfo{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    samplerInfo.magFilter = VK_FILTER_NEAREST; // pixel-art friendly, matches Renderer2D's atlas sampler
+    samplerInfo.minFilter = VK_FILTER_NEAREST;
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.maxLod = 1.0f;
+
+    VkCheck(vkCreateSampler(device_, &samplerInfo, nullptr, &offscreenSampler_), "vkCreateSampler(offscreen)");
+}
+
+void VulkanRHI::CreateOffscreenTarget() {
+    VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageInfo.extent = {swapchainExtent_.width, swapchainExtent_.height, 1};
+    imageInfo.mipLevels = 1;
+    imageInfo.arrayLayers = 1;
+    imageInfo.format = swapchainFormat_;
+    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo allocInfo{};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    VkCheck(vmaCreateImage(allocator_, &imageInfo, &allocInfo, &offscreenImage_, &offscreenAllocation_, nullptr),
+            "vmaCreateImage(offscreen)");
+
+    VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    viewInfo.image = offscreenImage_;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = swapchainFormat_;
+    viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    VkCheck(vkCreateImageView(device_, &viewInfo, nullptr, &offscreenImageView_), "vkCreateImageView(offscreen)");
+
+    VkFramebufferCreateInfo framebufferInfo{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+    framebufferInfo.renderPass = offscreenRenderPass_;
+    framebufferInfo.attachmentCount = 1;
+    framebufferInfo.pAttachments = &offscreenImageView_;
+    framebufferInfo.width = swapchainExtent_.width;
+    framebufferInfo.height = swapchainExtent_.height;
+    framebufferInfo.layers = 1;
+    VkCheck(vkCreateFramebuffer(device_, &framebufferInfo, nullptr, &offscreenFramebuffer_),
+            "vkCreateFramebuffer(offscreen)");
+}
+
+void VulkanRHI::CleanupOffscreenTarget() {
+    if (offscreenFramebuffer_ != VK_NULL_HANDLE) {
+        vkDestroyFramebuffer(device_, offscreenFramebuffer_, nullptr);
+        offscreenFramebuffer_ = VK_NULL_HANDLE;
+    }
+    if (offscreenImageView_ != VK_NULL_HANDLE) {
+        vkDestroyImageView(device_, offscreenImageView_, nullptr);
+        offscreenImageView_ = VK_NULL_HANDLE;
+    }
+    if (offscreenImage_ != VK_NULL_HANDLE) {
+        vmaDestroyImage(allocator_, offscreenImage_, offscreenAllocation_);
+        offscreenImage_ = VK_NULL_HANDLE;
+    }
+}
+
 void VulkanRHI::CleanupSwapchain() {
+    CleanupOffscreenTarget();
+
     for (auto semaphore : renderFinishedSemaphores_) {
         vkDestroySemaphore(device_, semaphore, nullptr);
     }
@@ -526,6 +639,7 @@ void VulkanRHI::RecreateSwapchain() {
     CreateImageViews();
     CreateFramebuffers();
     CreateRenderFinishedSemaphores();
+    CreateOffscreenTarget();
 }
 
 VkCommandBuffer VulkanRHI::BeginFrame() {
@@ -552,30 +666,59 @@ VkCommandBuffer VulkanRHI::BeginFrame() {
     VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     VkCheck(vkBeginCommandBuffer(currentCommandBuffer_, &beginInfo), "vkBeginCommandBuffer");
 
+    frameActive_ = true;
+    return currentCommandBuffer_;
+}
+
+namespace {
+void SetFullExtentViewportScissor(VkCommandBuffer cmd, VkExtent2D extent) {
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(extent.width);
+    viewport.height = static_cast<float>(extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor{{0, 0}, extent};
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+}
+} // namespace
+
+void VulkanRHI::BeginOffscreenPass() {
     VkClearValue clearColor{{{0.05f, 0.05f, 0.08f, 1.0f}}};
     VkRenderPassBeginInfo renderPassInfo{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    renderPassInfo.renderPass = renderPass_;
-    renderPassInfo.framebuffer = swapchainFramebuffers_[imageIndex];
+    renderPassInfo.renderPass = offscreenRenderPass_;
+    renderPassInfo.framebuffer = offscreenFramebuffer_;
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapchainExtent_;
     renderPassInfo.clearValueCount = 1;
     renderPassInfo.pClearValues = &clearColor;
     vkCmdBeginRenderPass(currentCommandBuffer_, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(swapchainExtent_.width);
-    viewport.height = static_cast<float>(swapchainExtent_.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(currentCommandBuffer_, 0, 1, &viewport);
+    SetFullExtentViewportScissor(currentCommandBuffer_, swapchainExtent_);
+    renderPassActive_ = true;
+}
 
-    VkRect2D scissor{{0, 0}, swapchainExtent_};
-    vkCmdSetScissor(currentCommandBuffer_, 0, 1, &scissor);
+void VulkanRHI::EndOffscreenPass() {
+    vkCmdEndRenderPass(currentCommandBuffer_);
+    renderPassActive_ = false;
+}
 
-    frameActive_ = true;
-    return currentCommandBuffer_;
+void VulkanRHI::BeginSwapchainPass() {
+    VkClearValue clearColor{{{0.05f, 0.05f, 0.08f, 1.0f}}};
+    VkRenderPassBeginInfo renderPassInfo{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+    renderPassInfo.renderPass = renderPass_;
+    renderPassInfo.framebuffer = swapchainFramebuffers_[currentImageIndex_];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = swapchainExtent_;
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+    vkCmdBeginRenderPass(currentCommandBuffer_, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    SetFullExtentViewportScissor(currentCommandBuffer_, swapchainExtent_);
+    renderPassActive_ = true;
 }
 
 void VulkanRHI::EndFrame() {
@@ -584,7 +727,10 @@ void VulkanRHI::EndFrame() {
     }
     frameActive_ = false;
 
-    vkCmdEndRenderPass(currentCommandBuffer_);
+    if (renderPassActive_) {
+        vkCmdEndRenderPass(currentCommandBuffer_);
+        renderPassActive_ = false;
+    }
     VkCheck(vkEndCommandBuffer(currentCommandBuffer_), "vkEndCommandBuffer");
 
     VkSemaphore waitSemaphores[] = {imageAvailableSemaphores_[currentFrame_]};

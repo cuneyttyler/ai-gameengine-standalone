@@ -16,10 +16,17 @@ class Window;
 // abstraction yet) — the interface seam is the `rhi` module boundary itself;
 // virtual dispatch gets introduced only once a second backend actually exists.
 //
-// RHI does NOT own any pipeline or draw calls — it hands a begun command
-// buffer (inside an already-begun render pass) to BeginFrame()'s caller, who
-// records whatever they want (Renderer2D, later Renderer3D, ...) and calls
-// EndFrame() to submit/present.
+// RHI does NOT own any pipeline or draw calls. BeginFrame() only acquires an
+// image and begins the command buffer — no render pass is active yet.
+// Callers explicitly begin/end whichever pass(es) they need this frame:
+//   - BeginOffscreenPass()/EndOffscreenPass(): a sampleable color target
+//     (OffscreenRenderPass()/OffscreenColorView()) meant for a renderer
+//     (Renderer2D, later Renderer3D) to draw a scene into, which an editor
+//     then displays inside an ImGui::Image() viewport panel.
+//   - BeginSwapchainPass(): the render pass that actually targets the
+//     window's swapchain framebuffer — where ImGui itself draws, or where a
+//     non-editor app (apps/sandbox) draws directly with nothing further.
+// EndFrame() ends whichever pass is currently open, then submits/presents.
 class VulkanRHI {
 public:
     explicit VulkanRHI(Window& window);
@@ -29,15 +36,19 @@ public:
     VulkanRHI& operator=(const VulkanRHI&) = delete;
 
     // Waits on the in-flight fence, acquires a swapchain image, and begins
-    // the command buffer + render pass (viewport/scissor already set to the
-    // full swapchain extent). Returns VK_NULL_HANDLE if the frame must be
-    // skipped (swapchain was out of date and got recreated) — callers must
-    // not record anything in that case.
+    // the command buffer (no render pass active yet). Returns VK_NULL_HANDLE
+    // if the frame must be skipped (swapchain was out of date and got
+    // recreated) — callers must not record anything in that case.
     VkCommandBuffer BeginFrame();
 
-    // Ends the render pass/command buffer, submits, and presents.
+    void BeginOffscreenPass();
+    void EndOffscreenPass();
+    void BeginSwapchainPass();
+
+    // Ends the currently-active render pass (if any), submits, and presents.
     void EndFrame();
 
+    VkInstance Instance() const { return instance_; }
     VkDevice Device() const { return device_; }
     VkPhysicalDevice PhysicalDevice() const { return physicalDevice_; }
     VkQueue GraphicsQueue() const { return graphicsQueue_; }
@@ -45,9 +56,16 @@ public:
     VkCommandPool CommandPool() const { return commandPool_; }
     VkRenderPass RenderPass() const { return renderPass_; }
     VkExtent2D SwapchainExtent() const { return swapchainExtent_; }
+    uint32_t SwapchainImageCount() const { return static_cast<uint32_t>(swapchainImages_.size()); }
+    VkFormat SwapchainFormat() const { return swapchainFormat_; }
     VmaAllocator Allocator() const { return allocator_; }
     uint32_t CurrentFrameIndex() const { return static_cast<uint32_t>(currentFrame_); }
     static constexpr int MaxFramesInFlight() { return kMaxFramesInFlight; }
+
+    VkRenderPass OffscreenRenderPass() const { return offscreenRenderPass_; }
+    VkImageView OffscreenColorView() const { return offscreenImageView_; }
+    VkSampler OffscreenSampler() const { return offscreenSampler_; }
+    VkExtent2D OffscreenExtent() const { return swapchainExtent_; } // same size for now, see §17 open question
 
 private:
     void CreateInstance();
@@ -64,6 +82,10 @@ private:
     void CreateCommandBuffers();
     void CreateFrameSyncObjects();
     void CreateRenderFinishedSemaphores();
+    void CreateOffscreenRenderPass();
+    void CreateOffscreenSampler();
+    void CreateOffscreenTarget();
+    void CleanupOffscreenTarget();
 
     void CleanupSwapchain();
     void RecreateSwapchain();
@@ -111,9 +133,19 @@ private:
     std::vector<VkSemaphore> renderFinishedSemaphores_;
     size_t currentFrame_ = 0;
 
+    // Created once (format/device-only, not extent-dependent).
+    VkRenderPass offscreenRenderPass_ = VK_NULL_HANDLE;
+    VkSampler offscreenSampler_ = VK_NULL_HANDLE;
+    // Extent-dependent: recreated alongside the swapchain on resize.
+    VkImage offscreenImage_ = VK_NULL_HANDLE;
+    VmaAllocation offscreenAllocation_ = nullptr;
+    VkImageView offscreenImageView_ = VK_NULL_HANDLE;
+    VkFramebuffer offscreenFramebuffer_ = VK_NULL_HANDLE;
+
     VkCommandBuffer currentCommandBuffer_ = VK_NULL_HANDLE;
     uint32_t currentImageIndex_ = 0;
     bool frameActive_ = false;
+    bool renderPassActive_ = false;
 
     bool framebufferResized_ = false;
 };
