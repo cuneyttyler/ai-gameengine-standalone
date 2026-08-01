@@ -9,9 +9,11 @@
 #include "ecs/Registry.h"
 #include "editor/ViewportWindow.h"
 #include "editor/WebViewHost.h"
+#include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 #include "renderer2d/Renderer2D.h"
 #include "rhi/VulkanRHI.h"
+#include "scripting/Components.h"
 
 #include <nlohmann/json.hpp>
 
@@ -70,6 +72,98 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             return 0;
         default:
             return DefWindowProcW(hwnd, msg, wparam, lparam);
+    }
+}
+
+// No tagging/prefab system yet, so entity "kind" in the Scene Tree is
+// inferred from which components are present — the same heuristic the
+// (now-deleted) ImGui editor shell used.
+std::string DescribeEntity(aige::Registry& registry, aige::Entity entity) {
+    if (registry.all_of<aige::LuaScript>(entity)) {
+        return "Scripted NPC";
+    }
+    if (registry.all_of<aige::Velocity2D, aige::Collider2D>(entity)) {
+        return "Player";
+    }
+    if (registry.all_of<aige::WorldTransform2D>(entity)) {
+        return "NPC";
+    }
+    return "Tile";
+}
+
+nlohmann::json BuildSceneJson(aige::Registry& registry) {
+    nlohmann::json entities = nlohmann::json::array();
+    auto view = registry.view<entt::entity>();
+    for (auto entity : view) {
+        entities.push_back({{"id", static_cast<uint32_t>(entity)}, {"kind", DescribeEntity(registry, entity)}});
+    }
+    return {{"type", "scene:update"}, {"entities", entities}};
+}
+
+nlohmann::json BuildInspectorJson(aige::Registry& registry, aige::Entity entity) {
+    nlohmann::json components = nlohmann::json::object();
+    if (auto* c = registry.try_get<aige::WorldTransform2D>(entity)) {
+        components["WorldTransform2D"] = {{"x", c->x}, {"y", c->y}};
+    }
+    if (auto* c = registry.try_get<aige::Velocity2D>(entity)) {
+        components["Velocity2D"] = {{"x", c->x}, {"y", c->y}};
+    }
+    if (auto* c = registry.try_get<aige::Collider2D>(entity)) {
+        components["Collider2D"] = {{"halfWidth", c->halfWidth}, {"halfHeight", c->halfHeight}};
+    }
+    if (auto* c = registry.try_get<aige::ScreenTransform2D>(entity)) {
+        components["ScreenTransform2D"] = {{"x", c->x}, {"y", c->y}, {"depth", c->depth}};
+    }
+    if (auto* c = registry.try_get<aige::Sprite>(entity)) {
+        components["Sprite"] = {{"width", c->width},   {"height", c->height}, {"u0", c->u0}, {"v0", c->v0},
+                                 {"u1", c->u1},         {"v1", c->v1},         {"r", c->r},   {"g", c->g},
+                                 {"b", c->b},           {"a", c->a}};
+    }
+    if (auto* c = registry.try_get<aige::LuaScript>(entity)) {
+        components["LuaScript"] = {{"path", c->path}};
+    }
+    return {{"type", "inspector:data"}, {"id", static_cast<uint32_t>(entity)}, {"components", components}};
+}
+
+// Direct component field writes, mirroring what the deleted ImGui editor's
+// DragFloat callbacks did — hand-wired per component/field until Phase 2's
+// reflection-driven component authoring lands.
+void ApplySetField(aige::Registry& registry, aige::Entity entity, const std::string& component,
+                    const std::string& field, float value) {
+    if (component == "WorldTransform2D") {
+        if (auto* c = registry.try_get<aige::WorldTransform2D>(entity)) {
+            if (field == "x") c->x = value;
+            else if (field == "y") c->y = value;
+        }
+    } else if (component == "Velocity2D") {
+        if (auto* c = registry.try_get<aige::Velocity2D>(entity)) {
+            if (field == "x") c->x = value;
+            else if (field == "y") c->y = value;
+        }
+    } else if (component == "Collider2D") {
+        if (auto* c = registry.try_get<aige::Collider2D>(entity)) {
+            if (field == "halfWidth") c->halfWidth = value;
+            else if (field == "halfHeight") c->halfHeight = value;
+        }
+    } else if (component == "ScreenTransform2D") {
+        if (auto* c = registry.try_get<aige::ScreenTransform2D>(entity)) {
+            if (field == "x") c->x = value;
+            else if (field == "y") c->y = value;
+            else if (field == "depth") c->depth = value;
+        }
+    } else if (component == "Sprite") {
+        if (auto* c = registry.try_get<aige::Sprite>(entity)) {
+            if (field == "width") c->width = value;
+            else if (field == "height") c->height = value;
+            else if (field == "u0") c->u0 = value;
+            else if (field == "v0") c->v0 = value;
+            else if (field == "u1") c->u1 = value;
+            else if (field == "v1") c->v1 = value;
+            else if (field == "r") c->r = value;
+            else if (field == "g") c->g = value;
+            else if (field == "b") c->b = value;
+            else if (field == "a") c->a = value;
+        }
     }
 }
 
@@ -136,17 +230,31 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
         g_webView = &webView;
         webView.SetBounds(0, 0, clientWidth, clientHeight);
         webView.NavigateToVirtualHost(kVirtualHostName, WidenAscii(AIGE_EDITOR_UI_DIST_DIR), L"index.html");
-        webView.SetMessageHandler([&viewportWindow](std::wstring json) {
+        webView.SetMessageHandler([&viewportWindow, &webView, &registry](std::wstring json) {
             std::string narrow = NarrowAscii(json);
             try {
                 auto message = nlohmann::json::parse(narrow);
-                if (message.value("type", "") == "viewport:bounds") {
+                std::string type = message.value("type", "");
+                if (type == "viewport:bounds") {
                     int x = message.value("x", 0);
                     int y = message.value("y", 0);
                     int width = message.value("width", 0);
                     int height = message.value("height", 0);
                     if (width > 0 && height > 0) {
                         viewportWindow.SetBounds(x, y, width, height);
+                    }
+                } else if (type == "scene:request") {
+                    webView.PostMessageToPage(WidenAscii(BuildSceneJson(registry).dump()));
+                } else if (type == "entity:select") {
+                    auto entity = static_cast<aige::Entity>(message.value("id", 0u));
+                    if (registry.valid(entity)) {
+                        webView.PostMessageToPage(WidenAscii(BuildInspectorJson(registry, entity).dump()));
+                    }
+                } else if (type == "inspector:setField") {
+                    auto entity = static_cast<aige::Entity>(message.value("id", 0u));
+                    if (registry.valid(entity)) {
+                        ApplySetField(registry, entity, message.value("component", ""), message.value("field", ""),
+                                      message.value("value", 0.0f));
                     }
                 }
             } catch (const nlohmann::json::exception&) {
