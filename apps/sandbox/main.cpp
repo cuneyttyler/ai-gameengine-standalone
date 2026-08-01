@@ -1,3 +1,4 @@
+#include "assets/SceneIO.h"
 #include "ecs/Registry.h"
 #include "physics2d/Collision.h"
 #include "physics2d/Components.h"
@@ -200,7 +201,19 @@ int main() {
         // anything in it) has to be destroyed before lua closes that state.
         aige::LuaVM lua;
         aige::Registry registry;
-        aige::Entity player = BuildScene(registry, iso);
+
+        const std::string saveFilePath = std::string(AIGE_SANDBOX_SOURCE_DIR) + "/scene_save.aige";
+        aige::Entity player{};
+        if (aige::LoadScene(registry, saveFilePath)) {
+            std::cout << "Loaded scene from " << saveFilePath << std::endl;
+            // Only the player has both components in this bootstrap scene —
+            // a real "which entity is the player" tag arrives once the
+            // engine has any concept of prefabs/entity roles.
+            auto playerView = registry.view<aige::Velocity2D, aige::Collider2D>();
+            player = *playerView.begin();
+        } else {
+            player = BuildScene(registry, iso);
+        }
 
         aige::ScriptBinder scriptBinder = [&registry](sol::environment& env, aige::Entity entity) {
             env["get_position"] = [&registry, entity]() {
@@ -218,12 +231,20 @@ int main() {
         constexpr double kFixedDt = 1.0 / 60.0;
         auto previousTime = Clock::now();
         double accumulator = 0.0;
+        bool f5WasDown = false;
 
         while (!window.ShouldClose()) {
             window.PollEvents();
             if (window.IsKeyDown(aige::Key::Escape)) {
                 break;
             }
+
+            bool f5IsDown = window.IsKeyDown(aige::Key::F5);
+            if (f5IsDown && !f5WasDown) {
+                aige::SaveScene(registry, saveFilePath);
+                std::cout << "Saved scene to " << saveFilePath << std::endl;
+            }
+            f5WasDown = f5IsDown;
 
             auto currentTime = Clock::now();
             double frameSeconds = std::chrono::duration<double>(currentTime - previousTime).count();

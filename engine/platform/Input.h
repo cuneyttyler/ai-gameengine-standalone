@@ -15,6 +15,7 @@ enum class Key {
     Left,
     Right,
     Escape,
+    F5,
 };
 
 } // namespace aige
