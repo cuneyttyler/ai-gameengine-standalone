@@ -2,6 +2,7 @@
 
 #include <wrl.h>
 
+#include <filesystem>
 #include <stdexcept>
 
 using Microsoft::WRL::Callback;
@@ -135,6 +136,15 @@ void WebViewHost::NavigateToVirtualHost(const std::wstring& hostName, const std:
                                                      COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS);
     }
     std::wstring url = L"https://" + hostName + L"/" + relativePath;
+    // WebView2 caches what the virtual host serves, so after a UI rebuild it
+    // could keep showing the old index.html (and with it the old, hash-named
+    // scripts). The file's modification time in the URL makes every build a
+    // new address.
+    std::error_code ec;
+    auto stamp = std::filesystem::last_write_time(std::filesystem::path(folderPath) / relativePath, ec);
+    if (!ec) {
+        url += L"?v=" + std::to_wstring(stamp.time_since_epoch().count());
+    }
     webview_->Navigate(url.c_str());
 }
 
