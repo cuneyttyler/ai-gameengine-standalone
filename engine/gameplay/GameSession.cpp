@@ -474,7 +474,11 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
             }
         }
         UpdateFollowers(registry_, isSolid, dt);
-        UpdateScripts(registry_, lua_, dt, binder_, scriptRoot_);
+        UpdateScripts(registry_, lua_, dt, binder_, scriptRoot_, [this](Entity entity, const std::string& path, const std::string& message) {
+            if (scriptErrors_.size() < 64) {
+                scriptErrors_.push_back({entity, path, message});
+            }
+        });
         UpdateCombat(registry_, isSolid, dt, events_);
         UpdateSpriteFacing(registry_);
         UpdateWorldToScreen(registry_, iso_);

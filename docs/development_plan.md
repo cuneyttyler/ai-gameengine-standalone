@@ -286,6 +286,22 @@ applied change.
 - Tests: golden-file tests (fixed prompts → expected diff shape, schema-valid).
   **User test checkpoint:** does the applied change actually behave correctly in a
   playtest — schema validity isn't the same as gameplay correctness.
+- ✅ Built (user playtest deferred to end of Phase 2): golden tests — six fixed prompts
+  recorded against the real model (`ai_service/tests/golden/`, re-recordable with
+  `record.py`) and replayed offline, asserting each diff's shape (the plan's "burning
+  status effect" uses the built-in Burn effect on the hero prefab; "tougher skeletons"
+  edits the prefab and keeps them at full health; etc.). A C++ test applies the recorded
+  burning proposal to a copy of the demo project and simulates the fight: the hit sets
+  the skeleton on fire and burn ticks keep hurting it. After applying a proposal that
+  writes scripts the editor dry-runs the scene for 2 s and reports runtime script errors
+  with an "Ask AI to fix" follow-up. Every Inspector field and setting has an "Ask AI"
+  (✦) that focuses the chat on it. Recording surfaced real model mistakes, fixed in the
+  prompt/context: writing unneeded scripts, not raising Health.current with max,
+  replacing an existing script blind (script sources are now in the context), misusing
+  `get_health`/`get_field` (the Lua API is now spelled out), and a command-shape near-miss
+  (now normalized instead of costing a repair round). Known: the model's flee script
+  still fights its own Follow component — valid, error-free, and wrong in play; exactly
+  what the user playtest is for.
 
 **2.6 — Mode switcher**
 - The persistent AI-Driven/AI-Assisted toggle (`product.md` §4.3); confirm switching

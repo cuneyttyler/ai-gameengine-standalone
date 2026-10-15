@@ -1,0 +1,12 @@
+{
+  "name": "spawn_skeletons",
+  "instruction": "Add two more skeletons near the hero.",
+  "focus": null,
+  "model": "mistral-large-latest",
+  "recorded": "2026-10-15",
+  "attempts": 1,
+  "valid": true,
+  "responses": [
+    "{\n  \"summary\": \"Add two more skeletons near the hero (positions 3.5, 10.5 and 5.5, 10.5).\",\n  \"operations\": [\n    {\n      \"op\": \"command\",\n      \"name\": \"scene.spawn\",\n      \"args\": {\n        \"prefab\": \"prefabs/skeleton.prefab\",\n        \"x\": 3.5,\n        \"y\": 10.5\n      }\n    },\n    {\n      \"op\": \"command\",\n      \"name\": \"scene.spawn\",\n      \"args\": {\n        \"prefab\": \"prefabs/skeleton.prefab\",\n        \"x\": 5.5,\n        \"y\": 10.5\n      }\n    }\n  ],\n  \"notes\": \"Skeletons will use the prefab's Follow and MeleeAttack settings, so they'll chase and attack the player like the others.\"\n}"
+  ]
+}

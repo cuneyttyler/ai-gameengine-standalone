@@ -1,0 +1,12 @@
+{
+  "name": "tougher_skeletons",
+  "instruction": "Make all the skeletons tougher.",
+  "focus": null,
+  "model": "mistral-large-latest",
+  "recorded": "2026-10-15",
+  "attempts": 1,
+  "valid": true,
+  "responses": [
+    "{\n  \"summary\": \"Increase skeleton health and defense to make them tougher\",\n  \"operations\": [\n    {\n      \"op\": \"set_prefab_field\",\n      \"prefab\": \"prefabs/skeleton.prefab\",\n      \"component\": \"Health\",\n      \"field\": \"max\",\n      \"value\": 12\n    },\n    {\n      \"op\": \"set_prefab_field\",\n      \"prefab\": \"prefabs/skeleton.prefab\",\n      \"component\": \"Health\",\n      \"field\": \"current\",\n      \"value\": 12\n    },\n    {\n      \"op\": \"set_prefab_field\",\n      \"prefab\": \"prefabs/skeleton.prefab\",\n      \"component\": \"Stats\",\n      \"field\": \"defense\",\n      \"value\": 1\n    }\n  ],\n  \"notes\": \"Skeletons now have 12 max health (up from 8) and 1 defense (up from 0). All existing skeletons will update to match the prefab unless they override these fields.\"\n}"
+  ]
+}

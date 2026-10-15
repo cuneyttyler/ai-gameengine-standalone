@@ -230,7 +230,7 @@
       "description": "Hit points. At 0 the entity dies (enemies are removed; the player stays, dead).",
       "fields": [
         {
-          "description": "Current hit points.",
+          "description": "Current hit points; entities start the game with this, so keep it equal to max unless they should start hurt.",
           "max": 100000.0,
           "min": 0.0,
           "name": "current",

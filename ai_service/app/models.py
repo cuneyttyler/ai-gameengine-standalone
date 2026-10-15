@@ -109,6 +109,7 @@ class EditorContext(BaseModel):
     prefabs: list[PrefabSummary] = []
     assets: list[dict[str, Any]] = []  # {path, type}
     scripts: list[str] = []
+    scriptSources: dict[str, str] = {}  # path -> Lua source, so existing behavior can be extended
     settings: dict[str, dict[str, Any]] = {}
     selection: int | None = None
     focus: str | None = None  # e.g. "Skeleton.Health.max" when asked from an Inspector field

@@ -1,0 +1,12 @@
+{
+  "name": "burning",
+  "instruction": "Add a burning status effect that deals damage over time when the hero hits enemies.",
+  "focus": null,
+  "model": "mistral-large-latest",
+  "recorded": "2026-10-15",
+  "attempts": 1,
+  "valid": true,
+  "responses": [
+    "{\n  \"summary\": \"Make the hero's melee attack apply a 3-second burn effect dealing 1 damage per tick\",\n  \"operations\": [\n    {\n      \"op\": \"set_prefab_field\",\n      \"prefab\": \"prefabs/hero.prefab\",\n      \"component\": \"MeleeAttack\",\n      \"field\": \"effect\",\n      \"value\": \"Burn\"\n    },\n    {\n      \"op\": \"set_prefab_field\",\n      \"prefab\": \"prefabs/hero.prefab\",\n      \"component\": \"MeleeAttack\",\n      \"field\": \"effectDuration\",\n      \"value\": 3.0\n    },\n    {\n      \"op\": \"set_prefab_field\",\n      \"prefab\": \"prefabs/hero.prefab\",\n      \"component\": \"MeleeAttack\",\n      \"field\": \"effectMagnitude\",\n      \"value\": 1.0\n    }\n  ],\n  \"notes\": \"Burn is a built-in status effect (1 tick per second). Test by hitting a skeleton: it should take 1 damage immediately, then 1 more per second for 3 seconds.\"\n}"
+  ]
+}

@@ -73,6 +73,15 @@ public:
     // The player attacks toward a world point on the next step (mouse click).
     void RequestPlayerAttack(float worldX, float worldY);
 
+    struct ScriptError {
+        Entity entity;
+        std::string path;
+        std::string message;
+    };
+    // Script load/runtime errors since the last ClearScriptErrors (capped).
+    const std::vector<ScriptError>& ScriptErrors() const { return scriptErrors_; }
+    void ClearScriptErrors() { scriptErrors_.clear(); }
+
     // What happened during the last Advance (hits, deaths, pickups).
     const std::vector<GameEvent>& Events() const { return events_; }
 
@@ -101,6 +110,7 @@ private:
 
     TileGrid grid_; // rebuilt every Advance, so tiles edited mid-play apply
     std::vector<GameEvent> events_;
+    std::vector<ScriptError> scriptErrors_;
     std::function<void(const std::string&)> playSound_;
     SpawnFn spawner_;
     bool attackKeyWasDown_ = false;

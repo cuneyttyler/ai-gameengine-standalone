@@ -31,7 +31,13 @@ export const editorState = reactive({
   notice: '',
   prefabs: [] as Prefab[],
   ai: { state: 'off' as 'off' | 'starting' | 'ready' | 'failed', text: 'AI is off', busy: false },
+  // Set by an Inspector field's "Ask AI"; the AI panel picks it up (n makes repeats distinct).
+  aiAsk: { focus: '', n: 0 },
 })
+
+export function askAiAbout(focus: string): void {
+  editorState.aiAsk = { focus, n: editorState.aiAsk.n + 1 }
+}
 
 export function armPrefab(path: string): void {
   sendToHost({ type: 'tool:set', tool: 'prefab', prefab: path })

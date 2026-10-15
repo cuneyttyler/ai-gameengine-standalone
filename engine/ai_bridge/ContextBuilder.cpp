@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <climits>
 #include <filesystem>
+#include <fstream>
 #include <map>
 
 namespace aige {
@@ -112,6 +113,13 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
         }
     }
 
+    // Script paths, plus their sources so the model can extend an existing
+    // behavior instead of replacing it blind (bounded: scripts are small, but
+    // a project could have many).
+    constexpr size_t kMaxScriptChars = 6000;
+    constexpr size_t kMaxTotalScriptChars = 24000;
+    nlohmann::json scriptSources = nlohmann::json::object();
+    size_t totalScriptChars = 0;
     nlohmann::json scripts = nlohmann::json::array();
     std::error_code ec;
     std::filesystem::path scriptDir = project.root / "scripts";
@@ -124,6 +132,18 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
         }
         std::sort(found.begin(), found.end());
         scripts = found;
+        for (const auto& path : found) {
+            std::ifstream in(project.Resolve(path), std::ios::binary);
+            std::string source((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            if (source.size() > kMaxScriptChars) {
+                source = source.substr(0, kMaxScriptChars) + "\n-- (truncated)";
+            }
+            if (totalScriptChars + source.size() > kMaxTotalScriptChars) {
+                break;
+            }
+            totalScriptChars += source.size();
+            scriptSources[path] = source;
+        }
     }
 
     nlohmann::json settings = nlohmann::json::object();
@@ -136,7 +156,8 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
     }
 
     nlohmann::json context = {{"entities", entities}, {"tiles", tiles},       {"prefabs", prefabList},
-                              {"assets", assetList},  {"scripts", scripts},   {"settings", settings}};
+                              {"assets", assetList},  {"scripts", scripts},   {"scriptSources", scriptSources},
+                              {"settings", settings}};
     if (options.selection && registry.valid(*options.selection)) {
         context["selection"] = static_cast<uint32_t>(*options.selection);
     }

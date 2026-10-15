@@ -1,7 +1,13 @@
 #include <gtest/gtest.h>
 
+#include "ai_bridge/ContextBuilder.h"
+#include "assets/AssetDatabase.h"
+#include "assets/Prefab.h"
+#include "assets/Project.h"
+#include "assets/SceneIO.h"
 #include "editing/Commands.h"
 #include "gameplay/EngineReflection.h"
+#include "gameplay/GameSession.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -37,4 +43,27 @@ TEST(SchemaContractTest, CommittedSnapshotMatchesTheRegistry) {
     EXPECT_EQ(committed, current)
         << "The reflection registry changed but the AI service's schema snapshot didn't. If the change is "
            "intended, regenerate it with AIGE_UPDATE_FIXTURES=1 and run the ai_service tests.";
+}
+
+// The demo project as the AI sees it: the other half of the fixtures the
+// service's golden tests run against (with engine_schema.json). Regenerated
+// the same way; it only needs updating when the demo scene or registry
+// changes in a way the golden prompts care about.
+TEST(SchemaContractTest, DemoContextSnapshotIsCurrent) {
+    if (std::getenv("AIGE_UPDATE_FIXTURES") == nullptr) {
+        GTEST_SKIP() << "only regenerated on request (AIGE_UPDATE_FIXTURES=1)";
+    }
+    aige::Project project{std::filesystem::path(AIGE_SOURCE_DIR) / "projects" / "demo"};
+    aige::AssetDatabase assets(project);
+    assets.Refresh();
+    aige::PrefabLibrary prefabs(project);
+    prefabs.Refresh();
+    aige::Registry registry;
+    ASSERT_TRUE(aige::LoadScene(registry, project.MainScenePath().string()));
+    prefabs.SyncAll(registry);
+    nlohmann::json context = aige::BuildEditorContext(registry, aige::EngineReflection(), prefabs, assets, project,
+                                                      {aige::FindPlayer(registry)});
+    std::filesystem::path fixture =
+        std::filesystem::path(AIGE_SOURCE_DIR) / "ai_service" / "tests" / "fixtures" / "demo_context.json";
+    std::ofstream(fixture, std::ios::binary | std::ios::trunc) << context.dump(2) << "\n";
 }

@@ -27,8 +27,12 @@ using ScriptBinder = std::function<void(sol::environment&, Entity)>;
 // stderr and leave the entity's previous (or no) behavior in place rather
 // than throwing — a bad script shouldn't crash the game. Relative script paths
 // resolve against `baseDir` (the project root), so scenes stay portable.
+// Called for every load or runtime error (after it's logged), e.g. so a
+// host can show it or a dry run can collect it.
+using ScriptErrorFn = std::function<void(Entity, const std::string& path, const std::string& message)>;
+
 void UpdateScripts(Registry& registry, LuaVM& vm, float dt, const ScriptBinder& binder = {},
-                   const std::filesystem::path& baseDir = {});
+                   const std::filesystem::path& baseDir = {}, const ScriptErrorFn& onError = {});
 
 
 

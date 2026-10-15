@@ -3,6 +3,7 @@
 #include "Win32Util.h"
 
 #include "ai_bridge/ContextBuilder.h"
+#include "ai_bridge/DryRun.h"
 #include "ai_bridge/Proposal.h"
 
 #include "gameplay/EngineReflection.h"
@@ -1018,6 +1019,23 @@ void EditorApp::ApplyProposal(int proposalId, const nlohmann::json& decisions) {
            {"status", outcome.errors.empty() ? "applied" : "partial"},
            {"applied", outcome.applied},
            {"errors", outcome.errors}});
+
+    // Schema-valid isn't the same as working: play the scene headless for a
+    // moment and report errors from any script this proposal wrote.
+    std::vector<std::string> writtenScripts;
+    for (const auto& op : accepted) {
+        if (op.value("op", "") == "command" && op.value("name", "") == "script.write") {
+            writtenScripts.push_back(op["args"].value("path", ""));
+        }
+    }
+    if (!writtenScripts.empty()) {
+        auto problems = DryRunScripts(SerializeScene(registry_), assets_.GetProject(), 2.0, writtenScripts);
+        nlohmann::json list = nlohmann::json::array();
+        for (const auto& problem : problems) {
+            list.push_back({{"path", problem.path}, {"message", problem.message}, {"count", problem.count}});
+        }
+        post_({{"type", "ai:scriptCheck"}, {"id", proposalId}, {"scripts", writtenScripts}, {"problems", list}});
+    }
     LogAiDecision(proposalId, {{"decision", "applied"},
                                {"accepted", acceptedIndices},
                                {"appliedCount", outcome.applied},

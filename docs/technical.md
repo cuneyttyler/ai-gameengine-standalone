@@ -197,6 +197,8 @@ generated field automatically gets the "Ask AI" affordance for free.
   - Host → UI: `scene:update`, `selection:changed`, `inspector:data|clear`,
     `editor:state` (tool, brush, playing, dirty, canUndo/canRedo, scene name),
     `assets:list`, `assets:select`, `prefabs:list`, `notify`.
+  - AI: UI → host `ai:send {text, focus}`, `ai:apply {id, items}`, `ai:reject {id}`; host →
+    UI `ai:status`, `ai:busy`, `ai:message`, `ai:proposal`, `ai:decided`, `ai:scriptCheck`.
 - The open project folder is served to the UI under a second virtual host
   (`aige-project.local`), so the Assets panel shows thumbnails straight from disk.
 - Viewport tools call the UI-independent `engine/editing` API (picking, painting,

@@ -83,7 +83,7 @@ std::vector<ScriptProperty> ReadScriptProperties(LuaVM& vm, const std::filesyste
 }
 
 void UpdateScripts(Registry& registry, LuaVM& vm, float dt, const ScriptBinder& binder,
-                   const std::filesystem::path& baseDir) {
+                   const std::filesystem::path& baseDir, const ScriptErrorFn& onError) {
     auto view = registry.view<LuaScript>();
     for (auto entity : view) {
         auto& script = view.get<LuaScript>(entity);
@@ -110,6 +110,9 @@ void UpdateScripts(Registry& registry, LuaVM& vm, float dt, const ScriptBinder& 
             if (!result.valid()) {
                 sol::error err = result;
                 std::cerr << "[Lua] " << script.path << ": " << err.what() << std::endl;
+                if (onError) {
+                    onError(entity, script.path, err.what());
+                }
                 script.loaded = false;
             } else {
                 script.loaded = true;
@@ -130,6 +133,9 @@ void UpdateScripts(Registry& registry, LuaVM& vm, float dt, const ScriptBinder& 
         if (!callResult.valid()) {
             sol::error err = callResult;
             std::cerr << "[Lua] " << script.path << " update(): " << err.what() << std::endl;
+            if (onError) {
+                onError(entity, script.path, err.what());
+            }
         }
     }
 }

@@ -4,7 +4,7 @@
 // SettingsJson) — names, types, descriptions, constraints. With nothing
 // selected it shows the project settings, generated the same way.
 import { onMounted, reactive, ref } from 'vue'
-import { editorState } from '../editorState'
+import { askAiAbout, editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
 
@@ -169,7 +169,17 @@ function numberFrom(event: Event): number {
         <div v-if="!collapsed[section.name]" class="fields">
           <template v-for="field in section.fields" :key="field.name">
             <div class="field-row">
-              <label :title="field.description">{{ field.name }}</label>
+              <label :title="field.description">
+                {{ field.name }}
+                <button
+                  v-if="editorState.ai.state === 'ready'"
+                  class="ask-ai"
+                  title="Ask AI about this setting"
+                  @click="askAiAbout(`Settings.${section.name}.${field.name}`)"
+                >
+                  ✦
+                </button>
+              </label>
               <FieldEditor :field="field" @change="setSetting(section.name, field, $event)" />
             </div>
             <div v-if="errors[`${section.name}.${field.name}`]" class="field-error">
@@ -237,6 +247,14 @@ function numberFrom(event: Event): number {
             <div class="field-row" :class="{ overridden: field.overridden }">
               <label :title="field.overridden ? `${field.description}\n(Changed on this copy)` : field.description">
                 {{ field.name }}
+                <button
+                  v-if="editorState.ai.state === 'ready' && !editorState.playing"
+                  class="ask-ai"
+                  title="Ask AI about this field"
+                  @click="askAiAbout(`${current.label}.${component.name}.${field.name}`)"
+                >
+                  ✦
+                </button>
                 <button
                   v-if="field.overridden && !editorState.playing"
                   class="revert"
@@ -468,6 +486,23 @@ button {
 .checkbox {
   width: 14px;
   height: 14px;
+}
+.ask-ai {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-color: transparent;
+  background: none;
+  color: #93b4f8;
+  cursor: pointer;
+  font-size: 0.85em;
+  visibility: hidden;
+}
+.field-row:hover .ask-ai {
+  visibility: visible;
+}
+.ask-ai:hover {
+  border-color: #3b82f6;
 }
 .revert {
   width: 18px;

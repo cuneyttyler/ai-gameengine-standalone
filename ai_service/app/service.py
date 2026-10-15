@@ -25,9 +25,27 @@ class ProposalResult:
     model: str = ""
 
 
-def _parse(text: str) -> tuple[Proposal | None, list[str]]:
+_OPS = {"set_field", "add_component", "remove_component", "set_prefab_field", "set_setting", "set_script_property", "command"}
+
+
+def _normalize(data: object, schema: EngineSchema) -> object:
+    """Accepts one common near-miss: a command written as its own op
+    ({"op": "script.write", "path": ...}) instead of {"op": "command", ...}.
+    Rewriting it is cheaper than a repair round trip, and unambiguous."""
+    if not isinstance(data, dict) or not isinstance(data.get("operations"), list):
+        return data
+    fixed = []
+    for op in data["operations"]:
+        if isinstance(op, dict) and op.get("op") not in _OPS and schema.command(str(op.get("op"))):
+            args = op.get("args") if isinstance(op.get("args"), dict) else {k: v for k, v in op.items() if k != "op"}
+            op = {"op": "command", "name": op["op"], "args": args}
+        fixed.append(op)
+    return {**data, "operations": fixed}
+
+
+def _parse(text: str, schema: EngineSchema) -> tuple[Proposal | None, list[str]]:
     try:
-        data = json.loads(text)
+        data = _normalize(json.loads(text), schema)
     except json.JSONDecodeError as error:
         return None, [f"the answer wasn't valid JSON ({error.msg})"]
     try:
@@ -59,7 +77,7 @@ def propose(
         result.usage.add(completion.usage)
         result.model = completion.model
 
-        proposal, errors = _parse(completion.text)
+        proposal, errors = _parse(completion.text, schema)
         if proposal is not None:
             errors = validate_proposal(proposal, schema, context)
         if not errors:

@@ -29,6 +29,7 @@ interface ProposalEntry {
   usage: { inputTokens?: number; outputTokens?: number }
   status: 'pending' | 'applied' | 'partial' | 'rejected'
   applyErrors: string[]
+  scriptCheck: { scripts: string[]; problems: { path: string; message: string; count: number }[] } | null
   // Review state, per item.
   accepted: Record<number, boolean>
   edited: Record<number, unknown>
@@ -66,6 +67,7 @@ onHostMessage((message) => {
       usage: (message.usage as ProposalEntry['usage']) ?? {},
       status: 'pending',
       applyErrors: [],
+      scriptCheck: null,
       accepted: Object.fromEntries(items.map((item) => [item.index, !item.error])),
       edited: {},
       editedSource: {},
@@ -78,12 +80,29 @@ onHostMessage((message) => {
       entry.status = message.status as ProposalEntry['status']
       entry.applyErrors = (message.errors as string[]) ?? []
     }
+  } else if (message.type === 'ai:scriptCheck') {
+    const entry = entries.value.find((e) => e.kind === 'proposal' && e.id === message.id) as ProposalEntry | undefined
+    if (entry) {
+      entry.scriptCheck = {
+        scripts: message.scripts as string[],
+        problems: message.problems as { path: string; message: string; count: number }[],
+      }
+    }
   } else if (message.type === 'ai:ask') {
     // From an Inspector field's "Ask AI".
     focus.value = message.focus as string
     nextTick(() => inputEl.value?.focus())
   }
 })
+
+// "Ask AI" from an Inspector field: focus the request on that field.
+watch(
+  () => editorState.aiAsk.n,
+  () => {
+    focus.value = editorState.aiAsk.focus
+    nextTick(() => inputEl.value?.focus())
+  },
+)
 
 watch(
   () => entries.value.length,
@@ -119,6 +138,20 @@ function apply(entry: ProposalEntry): void {
     return decision
   })
   sendToHost({ type: 'ai:apply', id: entry.id, items })
+}
+
+// Sends the runtime errors back as a follow-up; the conversation history
+// gives the model the script it wrote.
+function askToFix(entry: ProposalEntry): void {
+  if (!entry.scriptCheck || !canSend.value) {
+    return
+  }
+  const lines = entry.scriptCheck.problems.map((p) => `- ${p.path}: ${p.message}`)
+  sendToHost({
+    type: 'ai:send',
+    text: `The script you wrote fails when the game runs:\n${lines.join('\n')}\nFix it (rewrite the whole script).`,
+    focus: '',
+  })
 }
 
 function reject(entry: ProposalEntry): void {
@@ -259,6 +292,20 @@ const examples = [
           <ul v-if="entry.applyErrors.length" class="apply-errors">
             <li v-for="error in entry.applyErrors" :key="error">{{ error }}</li>
           </ul>
+          <div v-if="entry.scriptCheck" class="script-check" :class="{ failing: entry.scriptCheck.problems.length }">
+            <template v-if="entry.scriptCheck.problems.length === 0">
+              ✓ Script check: ran {{ entry.scriptCheck.scripts.join(', ') }} for 2 seconds without errors
+            </template>
+            <template v-else>
+              <div>⚠ Script check found errors when the game runs:</div>
+              <ul>
+                <li v-for="problem in entry.scriptCheck.problems" :key="problem.path + problem.message">
+                  {{ problem.path }}: {{ problem.message }}
+                </li>
+              </ul>
+              <button class="primary" :disabled="!canSend" @click="askToFix(entry)">Ask AI to fix</button>
+            </template>
+          </div>
         </div>
       </template>
 
@@ -498,6 +545,21 @@ h2 {
   margin: 0;
   padding: 0 8px 8px 24px;
   color: #fcd34d;
+}
+.script-check {
+  margin: 0 8px 8px;
+  padding: 6px 8px;
+  border-left: 2px solid #22c55e;
+  background: #12201a;
+}
+.script-check.failing {
+  border-left-color: #f59e0b;
+  background: #221c10;
+}
+.script-check ul {
+  margin: 4px 0 6px;
+  padding-left: 16px;
+  word-break: break-word;
 }
 .thinking {
   opacity: 0.6;

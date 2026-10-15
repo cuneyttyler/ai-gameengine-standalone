@@ -34,21 +34,47 @@ Rules:
 - set_field needs the component to already be on the entity (add_component otherwise).
 - New behavior goes in Lua: write it with the script.write command (path scripts/<name>.lua),
   then attach it with add_component LuaScript {"path": ...} or set_field LuaScript.path.
+- Prefer what already exists over new code: settings, fields and status effects (Burn,
+  Poison, Slow, Regen on MeleeAttack.effect) are applied by the engine already. Write a
+  script only when nothing in the schema can express the behavior.
+- An entity has exactly one script (LuaScript.path). Replacing it replaces its whole
+  behavior, so a new script for an entity that already has one must also do what the old
+  one did (its source is in scriptSources) — e.g. a skeleton that should also flee must
+  keep attacking when it isn't fleeing.
+- Components keep running alongside scripts: Follow walks toward its target every frame.
+  A script that moves the entity some other way should pause it
+  (set_field(self_id(), "Follow", "speed", 0)) and restore it afterwards.
+- Health.current is what entities start with: when raising Health.max, raise current to match.
+- Every operation is a JSON object with "op" set to one of the seven kinds above; commands
+  always use {"op": "command", "name": ..., "args": {...}}.
 - Make the smallest change that does what was asked. If the request can't be done with
   what's available, return no operations and explain why in "notes".
 """
 
 LUA_API = """\
-Lua scripts (one environment per entity; `update(dt)` runs 60 times per second while playing):
-  self_id() -> id                          get_position() -> x, y        set_position(x, y)
-  move_toward(x, y, speed)                 position_of(id) -> x, y       distance_to(id) -> number
-  find_nearest("Player"|"Enemy"|"Neutral") -> id, distance             is_alive(id) -> bool
-  get_health([id]) -> current, max         attack_toward(id) / attack_toward(x, y) -> bool
-  apply_status(id, "burn"|"poison"|"slow"|"regen", seconds, magnitude)
-  get_field(id, "Component", "field")      set_field(id, "Component", "field", value)
-  spawn("prefabs/x.prefab", x, y) -> id    play_sound("assets/audio/x.wav")
-  A top-level `properties = { name = default, ... }` table becomes per-entity settings,
-  read inside functions as properties.name.
+Lua scripts (plain Lua 5.4; one environment per entity; `update(dt)` runs 60 times per
+second while playing). These are ALL the engine functions — there are no others:
+  self_id()                         -> id of this entity
+  get_position()                    -> x, y   (two numbers)
+  set_position(x, y)                   teleport, no collision
+  move_toward(x, y, speed)             walk one step toward a point, with collision
+  position_of(id)                   -> x, y, or nil if the entity is gone
+  distance_to(id)                   -> number, or nil
+  find_nearest(team)                -> id, distance (two values), or nil; team is "Player", "Enemy" or "Neutral"
+  is_alive(id)                      -> boolean
+  get_health()  / get_health(id)    -> current, max  (TWO numbers, not a table:
+                                       local hp, max_hp = get_health())
+  attack_toward(id) / attack_toward(x, y) -> boolean (false while on cooldown)
+  apply_status(id, kind, seconds, magnitude)   kind: "burn", "poison", "slow", "regen"
+  get_field(id, component, field)   -> value, or nil   e.g. get_field(self_id(), "Follow", "speed")
+  set_field(id, component, field, value) -> boolean
+  spawn(prefab_path, x, y)          -> id, or nil
+  play_sound(asset_path)
+Entity ids are always the first argument where one is taken; prefab values can't be read
+from scripts (remember a value in a local at load time if you need it later, e.g.
+`local normal_speed = nil` then set it on the first update). A top-level
+`properties = { name = default, ... }` table becomes per-entity settings, read inside
+functions as properties.name.
 World units: one tile = 1.0; cell centers are n + 0.5.
 """
 

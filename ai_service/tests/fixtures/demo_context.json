@@ -1,0 +1,1318 @@
+{
+  "assets": [
+    {
+      "path": "assets/audio/death.wav",
+      "type": "audio"
+    },
+    {
+      "path": "assets/audio/hit.wav",
+      "type": "audio"
+    },
+    {
+      "path": "assets/audio/hurt.wav",
+      "type": "audio"
+    },
+    {
+      "path": "assets/audio/pickup.wav",
+      "type": "audio"
+    },
+    {
+      "path": "assets/audio/swing.wav",
+      "type": "audio"
+    },
+    {
+      "path": "assets/textures/crate.png",
+      "type": "texture"
+    },
+    {
+      "path": "assets/textures/ground.png",
+      "type": "tileset"
+    },
+    {
+      "path": "assets/textures/hero.png",
+      "type": "texture"
+    },
+    {
+      "path": "assets/textures/potion.png",
+      "type": "texture"
+    },
+    {
+      "path": "assets/textures/rock.png",
+      "type": "texture"
+    },
+    {
+      "path": "assets/textures/skeleton.png",
+      "type": "texture"
+    },
+    {
+      "path": "assets/textures/tree.png",
+      "type": "texture"
+    },
+    {
+      "path": "assets/textures/villager.png",
+      "type": "texture"
+    }
+  ],
+  "entities": [
+    {
+      "components": {
+        "Name": {
+          "value": "Tree"
+        },
+        "Obstacle": {},
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 96.0,
+          "r": 1.0,
+          "texture": "assets/textures/tree.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 64.0
+        },
+        "WorldTransform2D": {
+          "x": 7.5,
+          "y": 1.5
+        }
+      },
+      "id": 280,
+      "name": "Tree",
+      "prefab": "prefabs/tree.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Tree"
+        },
+        "Obstacle": {},
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 96.0,
+          "r": 1.0,
+          "texture": "assets/textures/tree.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 64.0
+        },
+        "WorldTransform2D": {
+          "x": 2.5,
+          "y": 2.5
+        }
+      },
+      "id": 281,
+      "name": "Tree",
+      "prefab": "prefabs/tree.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Rock"
+        },
+        "Obstacle": {},
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 24.0,
+          "r": 1.0,
+          "texture": "assets/textures/rock.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "WorldTransform2D": {
+          "x": 7.5,
+          "y": 9.5
+        }
+      },
+      "id": 282,
+      "name": "Rock",
+      "prefab": "prefabs/rock.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Tree"
+        },
+        "Obstacle": {},
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 96.0,
+          "r": 1.0,
+          "texture": "assets/textures/tree.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 64.0
+        },
+        "WorldTransform2D": {
+          "x": 16.5,
+          "y": 9.5
+        }
+      },
+      "id": 283,
+      "name": "Tree",
+      "prefab": "prefabs/tree.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Rock"
+        },
+        "Obstacle": {},
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 24.0,
+          "r": 1.0,
+          "texture": "assets/textures/rock.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "WorldTransform2D": {
+          "x": 16.5,
+          "y": 10.5
+        }
+      },
+      "id": 284,
+      "name": "Rock",
+      "prefab": "prefabs/rock.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Tree"
+        },
+        "Obstacle": {},
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 96.0,
+          "r": 1.0,
+          "texture": "assets/textures/tree.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 64.0
+        },
+        "WorldTransform2D": {
+          "x": 2.5,
+          "y": 12.5
+        }
+      },
+      "id": 285,
+      "name": "Tree",
+      "prefab": "prefabs/tree.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Tree"
+        },
+        "Obstacle": {},
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 96.0,
+          "r": 1.0,
+          "texture": "assets/textures/tree.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 64.0
+        },
+        "WorldTransform2D": {
+          "x": 15.5,
+          "y": 12.5
+        }
+      },
+      "id": 286,
+      "name": "Tree",
+      "prefab": "prefabs/tree.prefab"
+    },
+    {
+      "components": {
+        "Collider2D": {
+          "halfHeight": 0.30000001192092896,
+          "halfWidth": 0.30000001192092896
+        },
+        "Faction": {
+          "team": "Player"
+        },
+        "Health": {
+          "current": 20.0,
+          "max": 20.0
+        },
+        "Hurtbox": {
+          "halfHeight": 0.3499999940395355,
+          "halfWidth": 0.3499999940395355,
+          "invulnerableTime": 0.4000000059604645
+        },
+        "MeleeAttack": {
+          "cooldown": 0.3499999940395355,
+          "damage": 3.0,
+          "effect": "None",
+          "effectDuration": 3.0,
+          "effectMagnitude": 1.0,
+          "knockback": 0.5,
+          "radius": 0.5,
+          "reach": 0.699999988079071
+        },
+        "Name": {
+          "value": "Hero"
+        },
+        "Sounds": {
+          "attack": "assets/audio/swing.wav",
+          "collect": "",
+          "death": "assets/audio/death.wav",
+          "hurt": "assets/audio/hurt.wav"
+        },
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 48.0,
+          "r": 1.0,
+          "texture": "assets/textures/hero.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "Stats": {
+          "attack": 1.0,
+          "defense": 0.0,
+          "moveSpeed": 4.199999809265137
+        },
+        "Velocity2D": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "WorldTransform2D": {
+          "x": 4.5,
+          "y": 11.5
+        }
+      },
+      "id": 287,
+      "name": "Hero",
+      "prefab": "prefabs/hero.prefab"
+    },
+    {
+      "components": {
+        "Faction": {
+          "team": "Neutral"
+        },
+        "Name": {
+          "value": "Villager"
+        },
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 48.0,
+          "r": 1.0,
+          "texture": "assets/textures/villager.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "WorldTransform2D": {
+          "x": 5.5,
+          "y": 2.5
+        }
+      },
+      "id": 288,
+      "name": "Villager",
+      "prefab": "prefabs/villager.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Health Potion"
+        },
+        "Pickup": {
+          "amount": 8.0,
+          "kind": "Heal",
+          "radius": 0.5
+        },
+        "Sounds": {
+          "attack": "",
+          "collect": "assets/audio/pickup.wav",
+          "death": "",
+          "hurt": ""
+        },
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 20.0,
+          "r": 1.0,
+          "texture": "assets/textures/potion.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 16.0
+        },
+        "WorldTransform2D": {
+          "x": 8.5,
+          "y": 1.5
+        }
+      },
+      "id": 289,
+      "name": "Health Potion",
+      "prefab": "prefabs/potion.prefab"
+    },
+    {
+      "components": {
+        "Collider2D": {
+          "halfHeight": 0.30000001192092896,
+          "halfWidth": 0.30000001192092896
+        },
+        "Faction": {
+          "team": "Enemy"
+        },
+        "Follow": {
+          "range": 5.0,
+          "speed": 1.600000023841858,
+          "stopDistance": 0.800000011920929,
+          "target": null
+        },
+        "Health": {
+          "current": 8.0,
+          "max": 8.0
+        },
+        "Hurtbox": {
+          "halfHeight": 0.3499999940395355,
+          "halfWidth": 0.3499999940395355,
+          "invulnerableTime": 0.4000000059604645
+        },
+        "LuaScript": {
+          "path": "scripts/enemy_melee.lua"
+        },
+        "MeleeAttack": {
+          "cooldown": 1.2000000476837158,
+          "damage": 2.0,
+          "effect": "None",
+          "effectDuration": 3.0,
+          "effectMagnitude": 1.0,
+          "knockback": 0.30000001192092896,
+          "radius": 0.44999998807907104,
+          "reach": 0.699999988079071
+        },
+        "Name": {
+          "value": "Skeleton"
+        },
+        "Sounds": {
+          "attack": "assets/audio/swing.wav",
+          "collect": "",
+          "death": "assets/audio/death.wav",
+          "hurt": "assets/audio/hit.wav"
+        },
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 48.0,
+          "r": 1.0,
+          "texture": "assets/textures/skeleton.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "Stats": {
+          "attack": 0.0,
+          "defense": 0.0,
+          "moveSpeed": 2.0
+        },
+        "WorldTransform2D": {
+          "x": 15.5,
+          "y": 9.5
+        }
+      },
+      "id": 290,
+      "name": "Skeleton",
+      "prefab": "prefabs/skeleton.prefab"
+    },
+    {
+      "components": {
+        "Collider2D": {
+          "halfHeight": 0.30000001192092896,
+          "halfWidth": 0.30000001192092896
+        },
+        "Faction": {
+          "team": "Enemy"
+        },
+        "Follow": {
+          "range": 5.0,
+          "speed": 1.600000023841858,
+          "stopDistance": 0.800000011920929,
+          "target": null
+        },
+        "Health": {
+          "current": 8.0,
+          "max": 8.0
+        },
+        "Hurtbox": {
+          "halfHeight": 0.3499999940395355,
+          "halfWidth": 0.3499999940395355,
+          "invulnerableTime": 0.4000000059604645
+        },
+        "LuaScript": {
+          "path": "scripts/enemy_melee.lua"
+        },
+        "MeleeAttack": {
+          "cooldown": 1.2000000476837158,
+          "damage": 2.0,
+          "effect": "None",
+          "effectDuration": 3.0,
+          "effectMagnitude": 1.0,
+          "knockback": 0.30000001192092896,
+          "radius": 0.44999998807907104,
+          "reach": 0.699999988079071
+        },
+        "Name": {
+          "value": "Skeleton"
+        },
+        "Sounds": {
+          "attack": "assets/audio/swing.wav",
+          "collect": "",
+          "death": "assets/audio/death.wav",
+          "hurt": "assets/audio/hit.wav"
+        },
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 48.0,
+          "r": 1.0,
+          "texture": "assets/textures/skeleton.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "Stats": {
+          "attack": 0.0,
+          "defense": 0.0,
+          "moveSpeed": 2.0
+        },
+        "WorldTransform2D": {
+          "x": 17.5,
+          "y": 11.5
+        }
+      },
+      "id": 291,
+      "name": "Skeleton",
+      "prefab": "prefabs/skeleton.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Health Potion"
+        },
+        "Pickup": {
+          "amount": 8.0,
+          "kind": "Heal",
+          "radius": 0.5
+        },
+        "Sounds": {
+          "attack": "",
+          "collect": "assets/audio/pickup.wav",
+          "death": "",
+          "hurt": ""
+        },
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 20.0,
+          "r": 1.0,
+          "texture": "assets/textures/potion.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 16.0
+        },
+        "WorldTransform2D": {
+          "x": 13.5,
+          "y": 10.5
+        }
+      },
+      "id": 292,
+      "name": "Health Potion",
+      "prefab": "prefabs/potion.prefab"
+    },
+    {
+      "components": {
+        "Collider2D": {
+          "halfHeight": 0.30000001192092896,
+          "halfWidth": 0.30000001192092896
+        },
+        "Faction": {
+          "team": "Enemy"
+        },
+        "Follow": {
+          "range": 5.0,
+          "speed": 1.600000023841858,
+          "stopDistance": 0.800000011920929,
+          "target": null
+        },
+        "Health": {
+          "current": 8.0,
+          "max": 8.0
+        },
+        "Hurtbox": {
+          "halfHeight": 0.3499999940395355,
+          "halfWidth": 0.3499999940395355,
+          "invulnerableTime": 0.4000000059604645
+        },
+        "LuaScript": {
+          "path": "scripts/enemy_melee.lua"
+        },
+        "MeleeAttack": {
+          "cooldown": 1.2000000476837158,
+          "damage": 2.0,
+          "effect": "None",
+          "effectDuration": 3.0,
+          "effectMagnitude": 1.0,
+          "knockback": 0.30000001192092896,
+          "radius": 0.44999998807907104,
+          "reach": 0.699999988079071
+        },
+        "Name": {
+          "value": "Skeleton"
+        },
+        "Sounds": {
+          "attack": "assets/audio/swing.wav",
+          "collect": "",
+          "death": "assets/audio/death.wav",
+          "hurt": "assets/audio/hit.wav"
+        },
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 48.0,
+          "r": 1.0,
+          "texture": "assets/textures/skeleton.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "Stats": {
+          "attack": 0.0,
+          "defense": 0.0,
+          "moveSpeed": 2.0
+        },
+        "WorldTransform2D": {
+          "x": 14.5,
+          "y": 3.5
+        }
+      },
+      "id": 293,
+      "name": "Skeleton",
+      "prefab": "prefabs/skeleton.prefab"
+    },
+    {
+      "components": {
+        "Collider2D": {
+          "halfHeight": 0.30000001192092896,
+          "halfWidth": 0.30000001192092896
+        },
+        "Faction": {
+          "team": "Enemy"
+        },
+        "Follow": {
+          "range": 5.0,
+          "speed": 1.600000023841858,
+          "stopDistance": 0.800000011920929,
+          "target": null
+        },
+        "Health": {
+          "current": 8.0,
+          "max": 8.0
+        },
+        "Hurtbox": {
+          "halfHeight": 0.3499999940395355,
+          "halfWidth": 0.3499999940395355,
+          "invulnerableTime": 0.4000000059604645
+        },
+        "LuaScript": {
+          "path": "scripts/enemy_melee.lua"
+        },
+        "MeleeAttack": {
+          "cooldown": 1.2000000476837158,
+          "damage": 2.0,
+          "effect": "None",
+          "effectDuration": 3.0,
+          "effectMagnitude": 1.0,
+          "knockback": 0.30000001192092896,
+          "radius": 0.44999998807907104,
+          "reach": 0.699999988079071
+        },
+        "Name": {
+          "value": "Skeleton"
+        },
+        "Sounds": {
+          "attack": "assets/audio/swing.wav",
+          "collect": "",
+          "death": "assets/audio/death.wav",
+          "hurt": "assets/audio/hit.wav"
+        },
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 48.0,
+          "r": 1.0,
+          "texture": "assets/textures/skeleton.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "Stats": {
+          "attack": 0.0,
+          "defense": 0.0,
+          "moveSpeed": 2.0
+        },
+        "WorldTransform2D": {
+          "x": 17.5,
+          "y": 5.5
+        }
+      },
+      "id": 294,
+      "name": "Skeleton",
+      "prefab": "prefabs/skeleton.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Health Potion"
+        },
+        "Pickup": {
+          "amount": 8.0,
+          "kind": "Heal",
+          "radius": 0.5
+        },
+        "Sounds": {
+          "attack": "",
+          "collect": "assets/audio/pickup.wav",
+          "death": "",
+          "hurt": ""
+        },
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 20.0,
+          "r": 1.0,
+          "texture": "assets/textures/potion.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 16.0
+        },
+        "WorldTransform2D": {
+          "x": 17.5,
+          "y": 2.5
+        }
+      },
+      "id": 295,
+      "name": "Health Potion",
+      "prefab": "prefabs/potion.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Crate"
+        },
+        "Obstacle": {},
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 32.0,
+          "r": 1.0,
+          "texture": "assets/textures/crate.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "WorldTransform2D": {
+          "x": 13.5,
+          "y": 2.5
+        }
+      },
+      "id": 296,
+      "name": "Crate",
+      "prefab": "prefabs/crate.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Crate"
+        },
+        "Obstacle": {},
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 32.0,
+          "r": 1.0,
+          "texture": "assets/textures/crate.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "WorldTransform2D": {
+          "x": 15.5,
+          "y": 8.5
+        }
+      },
+      "id": 297,
+      "name": "Crate",
+      "prefab": "prefabs/crate.prefab"
+    }
+  ],
+  "prefabs": [
+    {
+      "components": {
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 64.0,
+          "r": 1.0,
+          "texture": "assets/textures/ground.png",
+          "u0": 0.5,
+          "u1": 0.75,
+          "v0": 0.0,
+          "v1": 0.5,
+          "width": 64.0
+        },
+        "Tile": {
+          "solid": false
+        }
+      },
+      "isTile": true,
+      "name": "dirt",
+      "path": "prefabs/dirt.prefab"
+    },
+    {
+      "components": {
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 64.0,
+          "r": 1.0,
+          "texture": "assets/textures/ground.png",
+          "u0": 0.25,
+          "u1": 0.5,
+          "v0": 0.0,
+          "v1": 0.5,
+          "width": 64.0
+        },
+        "Tile": {
+          "solid": false
+        }
+      },
+      "isTile": true,
+      "name": "flowers",
+      "path": "prefabs/flowers.prefab"
+    },
+    {
+      "components": {
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 64.0,
+          "r": 1.0,
+          "texture": "assets/textures/ground.png",
+          "u0": 0.0,
+          "u1": 0.25,
+          "v0": 0.0,
+          "v1": 0.5,
+          "width": 64.0
+        },
+        "Tile": {
+          "solid": false
+        }
+      },
+      "isTile": true,
+      "name": "grass",
+      "path": "prefabs/grass.prefab"
+    },
+    {
+      "components": {
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 64.0,
+          "r": 1.0,
+          "texture": "assets/textures/ground.png",
+          "u0": 0.75,
+          "u1": 1.0,
+          "v0": 0.5,
+          "v1": 1.0,
+          "width": 64.0
+        },
+        "Tile": {
+          "solid": true
+        }
+      },
+      "isTile": true,
+      "name": "hedge",
+      "path": "prefabs/hedge.prefab"
+    },
+    {
+      "components": {
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 64.0,
+          "r": 1.0,
+          "texture": "assets/textures/ground.png",
+          "u0": 0.25,
+          "u1": 0.5,
+          "v0": 0.5,
+          "v1": 1.0,
+          "width": 64.0
+        },
+        "Tile": {
+          "solid": true
+        }
+      },
+      "isTile": true,
+      "name": "mossy_wall",
+      "path": "prefabs/mossy_wall.prefab"
+    },
+    {
+      "components": {
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 64.0,
+          "r": 1.0,
+          "texture": "assets/textures/ground.png",
+          "u0": 0.75,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 0.5,
+          "width": 64.0
+        },
+        "Tile": {
+          "solid": false
+        }
+      },
+      "isTile": true,
+      "name": "stone_floor",
+      "path": "prefabs/stone_floor.prefab"
+    },
+    {
+      "components": {
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 64.0,
+          "r": 1.0,
+          "texture": "assets/textures/ground.png",
+          "u0": 0.0,
+          "u1": 0.25,
+          "v0": 0.5,
+          "v1": 1.0,
+          "width": 64.0
+        },
+        "Tile": {
+          "solid": true
+        }
+      },
+      "isTile": true,
+      "name": "wall",
+      "path": "prefabs/wall.prefab"
+    },
+    {
+      "components": {
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 64.0,
+          "r": 1.0,
+          "texture": "assets/textures/ground.png",
+          "u0": 0.5,
+          "u1": 0.75,
+          "v0": 0.5,
+          "v1": 1.0,
+          "width": 64.0
+        },
+        "Tile": {
+          "solid": true
+        }
+      },
+      "isTile": true,
+      "name": "water",
+      "path": "prefabs/water.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Crate"
+        },
+        "Obstacle": {},
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 32.0,
+          "r": 1.0,
+          "texture": "assets/textures/crate.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "WorldTransform2D": {}
+      },
+      "isTile": false,
+      "name": "crate",
+      "path": "prefabs/crate.prefab"
+    },
+    {
+      "components": {
+        "Collider2D": {
+          "halfHeight": 0.30000001192092896,
+          "halfWidth": 0.30000001192092896
+        },
+        "Faction": {
+          "team": "Player"
+        },
+        "Health": {
+          "current": 20.0,
+          "max": 20.0
+        },
+        "Hurtbox": {
+          "halfHeight": 0.3499999940395355,
+          "halfWidth": 0.3499999940395355,
+          "invulnerableTime": 0.4000000059604645
+        },
+        "MeleeAttack": {
+          "cooldown": 0.3499999940395355,
+          "damage": 3.0,
+          "effect": "None",
+          "effectDuration": 3.0,
+          "effectMagnitude": 1.0,
+          "knockback": 0.5,
+          "radius": 0.5,
+          "reach": 0.699999988079071
+        },
+        "Name": {
+          "value": "Hero"
+        },
+        "Sounds": {
+          "attack": "assets/audio/swing.wav",
+          "collect": "",
+          "death": "assets/audio/death.wav",
+          "hurt": "assets/audio/hurt.wav"
+        },
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 48.0,
+          "r": 1.0,
+          "texture": "assets/textures/hero.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "Stats": {
+          "attack": 1.0,
+          "defense": 0.0,
+          "moveSpeed": 4.199999809265137
+        },
+        "Velocity2D": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "WorldTransform2D": {}
+      },
+      "isTile": false,
+      "name": "hero",
+      "path": "prefabs/hero.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Health Potion"
+        },
+        "Pickup": {
+          "amount": 8.0,
+          "kind": "Heal",
+          "radius": 0.5
+        },
+        "Sounds": {
+          "attack": "",
+          "collect": "assets/audio/pickup.wav",
+          "death": "",
+          "hurt": ""
+        },
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 20.0,
+          "r": 1.0,
+          "texture": "assets/textures/potion.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 16.0
+        },
+        "WorldTransform2D": {}
+      },
+      "isTile": false,
+      "name": "potion",
+      "path": "prefabs/potion.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Rock"
+        },
+        "Obstacle": {},
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 24.0,
+          "r": 1.0,
+          "texture": "assets/textures/rock.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "WorldTransform2D": {}
+      },
+      "isTile": false,
+      "name": "rock",
+      "path": "prefabs/rock.prefab"
+    },
+    {
+      "components": {
+        "Collider2D": {
+          "halfHeight": 0.30000001192092896,
+          "halfWidth": 0.30000001192092896
+        },
+        "Faction": {
+          "team": "Enemy"
+        },
+        "Follow": {
+          "range": 5.0,
+          "speed": 1.600000023841858,
+          "stopDistance": 0.800000011920929
+        },
+        "Health": {
+          "current": 8.0,
+          "max": 8.0
+        },
+        "Hurtbox": {
+          "halfHeight": 0.3499999940395355,
+          "halfWidth": 0.3499999940395355,
+          "invulnerableTime": 0.4000000059604645
+        },
+        "LuaScript": {
+          "path": "scripts/enemy_melee.lua"
+        },
+        "MeleeAttack": {
+          "cooldown": 1.2000000476837158,
+          "damage": 2.0,
+          "effect": "None",
+          "effectDuration": 3.0,
+          "effectMagnitude": 1.0,
+          "knockback": 0.30000001192092896,
+          "radius": 0.44999998807907104,
+          "reach": 0.699999988079071
+        },
+        "Name": {
+          "value": "Skeleton"
+        },
+        "Sounds": {
+          "attack": "assets/audio/swing.wav",
+          "collect": "",
+          "death": "assets/audio/death.wav",
+          "hurt": "assets/audio/hit.wav"
+        },
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 48.0,
+          "r": 1.0,
+          "texture": "assets/textures/skeleton.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "Stats": {
+          "attack": 0.0,
+          "defense": 0.0,
+          "moveSpeed": 2.0
+        },
+        "WorldTransform2D": {}
+      },
+      "isTile": false,
+      "name": "skeleton",
+      "path": "prefabs/skeleton.prefab"
+    },
+    {
+      "components": {
+        "Name": {
+          "value": "Tree"
+        },
+        "Obstacle": {},
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 96.0,
+          "r": 1.0,
+          "texture": "assets/textures/tree.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 64.0
+        },
+        "WorldTransform2D": {}
+      },
+      "isTile": false,
+      "name": "tree",
+      "path": "prefabs/tree.prefab"
+    },
+    {
+      "components": {
+        "Faction": {
+          "team": "Neutral"
+        },
+        "Name": {
+          "value": "Villager"
+        },
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "g": 1.0,
+          "height": 48.0,
+          "r": 1.0,
+          "texture": "assets/textures/villager.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 32.0
+        },
+        "WorldTransform2D": {}
+      },
+      "isTile": false,
+      "name": "villager",
+      "path": "prefabs/villager.prefab"
+    }
+  ],
+  "scriptSources": {
+    "scripts/enemy_melee.lua": "-- enemy_melee.lua: a basic melee enemy.\n-- Chasing is handled by the entity's Follow component; this script only\n-- decides when to swing. Edit and save while playing to hot-reload.\n\n-- Per-entity settings: each one shows up in the Inspector under LuaScript,\n-- where any skeleton (or the skeleton prefab) can change it.\nproperties = {\n    swing_range = 1.1, -- cells; a bit more than MeleeAttack.reach\n    taunt = \"\",        -- a sound to play when it first spots the player\n}\n\nlocal spotted = false\n\nfunction update(dt)\n    local target, distance = find_nearest(\"Player\")\n    if not target then\n        return\n    end\n    if not spotted and distance < get_field(self_id(), \"Follow\", \"range\") then\n        spotted = true\n        if properties.taunt ~= \"\" then\n            play_sound(properties.taunt)\n        end\n    end\n    if distance < properties.swing_range then\n        attack_toward(target)\n    end\nend\n",
+    "scripts/npc_wander.lua": "-- Milestone 0.5 hot-reload demo: bobs the NPC up and down in place.\n-- Edit amplitude/speed below and save while the app is running — the\n-- change takes effect within a fraction of a second, no restart needed.\n\nlocal base_x, base_y = get_position()\nlocal t = 0\nlocal amplitude = 1.6\nlocal speed = 2.0\n\nfunction update(dt)\n    t = t + dt\n    set_position(base_x, base_y + math.sin(t * speed) * amplitude)\nend\n"
+  },
+  "scripts": [
+    "scripts/enemy_melee.lua",
+    "scripts/npc_wander.lua"
+  ],
+  "selection": 287,
+  "settings": {
+    "Camera": {
+      "followStiffness": 6.0,
+      "playZoom": 1.0
+    },
+    "Combat": {
+      "hitFlashSeconds": 0.11999999731779099,
+      "knockbackScale": 1.0,
+      "minimumDamage": 1.0
+    },
+    "Physics": {
+      "playerCollides": true
+    },
+    "Renderer": {
+      "clearB": 0.07999999821186066,
+      "clearG": 0.05000000074505806,
+      "clearR": 0.05000000074505806
+    }
+  },
+  "tiles": {
+    "bounds": [
+      0,
+      0,
+      19,
+      13
+    ],
+    "byPrefab": {
+      "prefabs/dirt.prefab": 27,
+      "prefabs/flowers.prefab": 6,
+      "prefabs/grass.prefab": 123,
+      "prefabs/hedge.prefab": 71,
+      "prefabs/mossy_wall.prefab": 2,
+      "prefabs/stone_floor.prefab": 25,
+      "prefabs/wall.prefab": 22,
+      "prefabs/water.prefab": 4
+    },
+    "count": 280
+  }
+}

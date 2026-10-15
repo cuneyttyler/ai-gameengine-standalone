@@ -92,7 +92,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("team", &Faction::team, "Neutral, Player or Enemy.").Options({"Neutral", "Player", "Enemy"});
 
     r.Component<Health>("Health", "Hit points. At 0 the entity dies (enemies are removed; the player stays, dead).")
-        .Field("current", &Health::current, "Current hit points.").Range(0, 100000)
+        .Field("current", &Health::current, "Current hit points; entities start the game with this, so keep it equal to max unless they should start hurt.").Range(0, 100000)
         .Field("max", &Health::max, "Maximum hit points; healing stops here.").Range(1, 100000);
 
     r.Component<Stats>("Stats", "Combat numbers. Damage dealt = max(minimum, attack's damage + attack - "
