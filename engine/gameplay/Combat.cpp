@@ -1,6 +1,7 @@
 #include "gameplay/Combat.h"
 
 #include "gameplay/GameSession.h"
+#include "gameplay/Settings.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 
@@ -11,7 +12,7 @@ namespace aige {
 
 namespace {
 
-constexpr float kHitFlashSeconds = 0.12f;
+
 constexpr float kHitboxLifetime = 0.15f;
 
 bool Overlaps(float ax, float ay, float ahw, float ahh, float bx, float by, float bhw, float bhh) {
@@ -24,10 +25,10 @@ void StartHitFlash(Registry& registry, Entity entity) {
         return;
     }
     if (auto* flash = registry.try_get<HitFlash>(entity)) {
-        flash->remaining = kHitFlashSeconds; // already red; just extend
+        flash->remaining = ActiveSettings().combat.hitFlashSeconds; // already red; just extend
         return;
     }
-    registry.emplace<HitFlash>(entity, kHitFlashSeconds, sprite->r, sprite->g, sprite->b);
+    registry.emplace<HitFlash>(entity, ActiveSettings().combat.hitFlashSeconds, sprite->r, sprite->g, sprite->b);
     sprite->r = 1.0f;
     sprite->g = 0.3f;
     sprite->b = 0.3f;
@@ -84,7 +85,7 @@ std::optional<Entity> TryMeleeAttack(Registry& registry, Entity attacker, float 
     box.damage = attack->damage + (stats ? stats->attack : 0.0f);
     box.halfWidth = attack->radius;
     box.halfHeight = attack->radius;
-    box.knockback = attack->knockback;
+    box.knockback = attack->knockback * ActiveSettings().combat.knockbackScale;
     box.lifetime = kHitboxLifetime;
     box.effect = attack->effect;
     box.effectDuration = attack->effectDuration;
@@ -128,7 +129,7 @@ float DealDamage(Registry& registry, Entity target, float amount, Entity source,
     }
     if (applyDefense) {
         const auto* stats = registry.try_get<Stats>(target);
-        amount = std::max(1.0f, amount - (stats ? stats->defense : 0.0f));
+        amount = std::max(ActiveSettings().combat.minimumDamage, amount - (stats ? stats->defense : 0.0f));
     }
     if (cannotKill) {
         amount = std::min(amount, health->current - 1.0f);

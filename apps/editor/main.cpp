@@ -9,6 +9,9 @@
 
 #include "assets/AssetDatabase.h"
 #include "assets/SceneIO.h"
+#include "editing/Commands.h"
+#include "gameplay/EngineReflection.h"
+#include "gameplay/Settings.h"
 #include "audio/Audio.h"
 #include "ecs/Registry.h"
 #include "editor/ViewportWindow.h"
@@ -149,6 +152,8 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
         aige::Renderer2D renderer(rhi, rhi.RenderPass());
 
         aige::Project project{std::filesystem::absolute(ProjectRootFromCommandLine())};
+        aige::LoadSettings(aige::EngineReflection(), project.SettingsPath().string());
+        aige::RegisterEditingCommands(aige::EngineReflection());
         aige::AssetDatabase assets(project);
         assets.Refresh();
         renderer.SetTextureLoader([&assets](const std::string& path) { return assets.LoadTexture(path); });
@@ -216,6 +221,8 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
             app.Tick(std::chrono::duration<double>(currentTime - previousTime).count());
             previousTime = currentTime;
 
+            const auto& background = aige::ActiveSettings().renderer;
+            rhi.SetClearColor(background.clearR, background.clearG, background.clearB);
             VkCommandBuffer cmd = rhi.BeginFrame();
             if (cmd != VK_NULL_HANDLE) {
                 rhi.BeginSwapchainPass();

@@ -59,6 +59,13 @@ public:
 
     void BeginSwapchainPass();
 
+    // The color the swapchain pass clears to (the empty space around a level).
+    void SetClearColor(float r, float g, float b) {
+        clearColor_[0] = r;
+        clearColor_[1] = g;
+        clearColor_[2] = b;
+    }
+
     // Ends the currently-active render pass (if any), submits, and presents.
     void EndFrame();
 
@@ -77,6 +84,7 @@ public:
     static constexpr int MaxFramesInFlight() { return kMaxFramesInFlight; }
 
 private:
+    float clearColor_[3] = {0.05f, 0.05f, 0.08f};
     void Init();
 
     void CreateInstance();

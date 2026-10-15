@@ -619,7 +619,7 @@ VkCommandBuffer VulkanRHI::BeginFrame() {
 }
 
 void VulkanRHI::BeginSwapchainPass() {
-    VkClearValue clearColor{{{0.05f, 0.05f, 0.08f, 1.0f}}};
+    VkClearValue clearColor{{{clearColor_[0], clearColor_[1], clearColor_[2], 1.0f}}};
     VkRenderPassBeginInfo renderPassInfo{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     renderPassInfo.renderPass = renderPass_;
     renderPassInfo.framebuffer = swapchainFramebuffers_[currentImageIndex_];

@@ -220,6 +220,18 @@ applied change.
   engine settings (renderer, physics) onto it.
 - Tests: GoogleTest contract tests — register a type, query it back, verify
   constraints/validation round-trip correctly.
+- ✅ Built: `engine/reflection` — `ReflectionRegistry` with builder-style registration
+  (`registry.Component<Health>("Health", "...").Field("max", &Health::max, "...").Min(1)`),
+  field types inferred from C++ members, descriptions on everything, min/max/options
+  constraints with readable validation errors, project settings sections bound to a live
+  instance (Renderer, Camera, Combat, Physics — saved in `<project>/settings.aige` and
+  wired into the systems they describe), typed commands with argument validation
+  (`scene.spawn`, `scene.paintRect`, `entity.delete`, `prefab.createFromEntity`,
+  `script.write`), and `ExportSchema()` for the AI service. Phase 1's component table was
+  replaced by `gameplay/EngineReflection` registrations; scene files, prefabs, the
+  Inspector and Lua all go through the registry. Registration is explicit (a
+  `Register...()` function per module) rather than static-initialization macros, so
+  tests can build fresh registries.
 
 **2.2 — Reflection Inspector (generated UI)**
 - Replace Phase 1's hand-wired inspector panels with panels generated from the registry.

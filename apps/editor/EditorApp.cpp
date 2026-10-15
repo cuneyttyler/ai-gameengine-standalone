@@ -2,12 +2,13 @@
 
 #include "Win32Util.h"
 
-#include "gameplay/ComponentTable.h"
+#include "gameplay/EngineReflection.h"
 #include "assets/SceneIO.h"
 #include "editing/SceneEditing.h"
 #include "gameplay/BootstrapLevel.h"
 #include "gameplay/CameraFollow.h"
 #include "gameplay/Components.h"
+#include "gameplay/Settings.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 #include "scripting/Components.h"
@@ -674,6 +675,7 @@ void EditorApp::StartPlay() {
     // Play with a camera that follows the player; the editing view comes
     // back on Stop.
     cameraBeforePlay_ = camera_;
+    camera_.zoom = ActiveSettings().camera.playZoom;
     if (auto player = FindPlayer(registry_)) {
         int width = 0;
         int height = 0;
@@ -720,7 +722,7 @@ void EditorApp::Tick(double frameSeconds) {
             int height = 0;
             viewport_.GetFramebufferSize(width, height);
             FollowWithCamera(camera_, registry_, *player, static_cast<float>(width), static_cast<float>(height),
-                             static_cast<float>(frameSeconds));
+                             static_cast<float>(frameSeconds), ActiveSettings().camera.followStiffness);
         }
         sinceInspectorRefresh_ += frameSeconds;
         if (sinceInspectorRefresh_ >= kPlayInspectorRefreshSeconds) {
@@ -995,8 +997,8 @@ void EditorApp::NoteOverride(Entity entity, const std::string& component, const 
         AddOverride(registry_, entity, "-" + component); // the copy dropped a component
         return;
     }
-    const ComponentDesc* desc = FindComponent(component);
-    const FieldDesc* fieldDesc = desc ? desc->Field(field) : nullptr;
+    const ComponentInfo* desc = FindComponent(component);
+    const FieldInfo* fieldDesc = desc ? desc->Field(field) : nullptr;
     if (fieldDesc != nullptr && !IsInstanceLocal(component, *fieldDesc)) {
         AddOverride(registry_, entity, component + "." + field);
     }
@@ -1361,11 +1363,11 @@ std::vector<std::string> EditorApp::ListScripts() {
 
 bool EditorApp::ApplySetField(Entity entity, const std::string& componentName, const std::string& fieldName,
                               const nlohmann::json& value) {
-    const ComponentDesc* component = FindComponent(componentName);
+    const ComponentInfo* component = FindComponent(componentName);
     if (component == nullptr || !component->has(registry_, entity)) {
         return false;
     }
-    const FieldDesc* field = component->Field(fieldName);
+    const FieldInfo* field = component->Field(fieldName);
     if (field == nullptr) {
         return false;
     }

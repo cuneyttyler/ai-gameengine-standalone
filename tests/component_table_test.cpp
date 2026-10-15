@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "gameplay/ComponentTable.h"
+#include "gameplay/EngineReflection.h"
 #include "assets/SceneIO.h"
 #include "ecs/Registry.h"
 #include "gameplay/Archetypes.h"
@@ -15,10 +15,10 @@
 
 namespace {
 
-const aige::FieldDesc& FieldOf(const std::string& component, const std::string& field) {
-    const aige::ComponentDesc* desc = aige::FindComponent(component);
+const aige::FieldInfo& FieldOf(const std::string& component, const std::string& field) {
+    const aige::ComponentInfo* desc = aige::FindComponent(component);
     EXPECT_NE(desc, nullptr) << component;
-    const aige::FieldDesc* f = desc->Field(field);
+    const aige::FieldInfo* f = desc->Field(field);
     EXPECT_NE(f, nullptr) << component << "." << field;
     return *f;
 }
@@ -115,7 +115,7 @@ TEST(ComponentTableTest, ScreenTransformIsDerivedForPositionedEntities) {
     auto character = aige::CreateNpc(registry, 1.5f, 1.5f);
     auto decoration = registry.create();
     registry.emplace<aige::ScreenTransform2D>(decoration);
-    const aige::ComponentDesc* screen = aige::FindComponent("ScreenTransform2D");
+    const aige::ComponentInfo* screen = aige::FindComponent("ScreenTransform2D");
     EXPECT_TRUE(screen->derived(registry, character));
     EXPECT_FALSE(screen->derived(registry, decoration));
 }

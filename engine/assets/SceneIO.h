@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ecs/Registry.h"
+#include "reflection/Reflection.h"
 
 #include <string>
 #include <vector>
@@ -32,5 +33,12 @@ void DeserializeScene(Registry& registry, const std::string& text);
 // prefabs (one entity per file).
 std::string SerializeEntities(Registry& registry, const std::vector<Entity>& entities);
 std::vector<Entity> AppendEntities(Registry& registry, const std::string& text);
+
+// Project settings (every registered settings section), one line per
+// section in the same `key=value` style. LoadSettings returns false if the
+// file doesn't exist (settings keep their defaults); unknown sections or
+// fields and invalid values are skipped.
+void SaveSettings(const ReflectionRegistry& reflection, const std::string& path);
+bool LoadSettings(const ReflectionRegistry& reflection, const std::string& path);
 
 } // namespace aige

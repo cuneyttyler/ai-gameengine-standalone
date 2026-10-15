@@ -1,7 +1,7 @@
 #include "assets/Prefab.h"
 
 #include "assets/SceneIO.h"
-#include "gameplay/ComponentTable.h"
+#include "gameplay/EngineReflection.h"
 #include "gameplay/Components.h"
 #include "gameplay/TileGrid.h"
 #include "physics2d/Components.h"
@@ -36,7 +36,7 @@ std::string JoinOverrides(const std::set<std::string>& overrides) {
 
 // Copies one component's values from `src` to `dst` (adding it if needed),
 // skipping instance-local fields and `skip` (override keys).
-void CopyComponent(const ComponentDesc& component, Registry& src, Entity srcEntity, Registry& dst, Entity dstEntity,
+void CopyComponent(const ComponentInfo& component, Registry& src, Entity srcEntity, Registry& dst, Entity dstEntity,
                    const std::set<std::string>& skip, bool copyInstanceLocal) {
     if (!component.has(dst, dstEntity)) {
         component.add(dst, dstEntity);

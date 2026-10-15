@@ -4,6 +4,8 @@
 #include "assets/Prefab.h"
 #include "assets/Project.h"
 #include "assets/SceneIO.h"
+#include "gameplay/EngineReflection.h"
+#include "gameplay/Settings.h"
 #include "audio/Audio.h"
 #include "ecs/Registry.h"
 #include "gameplay/BootstrapLevel.h"
@@ -35,6 +37,8 @@ int main(int argc, char** argv) {
             }
         }
         aige::Project project{std::filesystem::absolute(root)};
+        aige::LoadSettings(aige::EngineReflection(), project.SettingsPath().string());
+        const aige::ProjectSettings& settings = aige::ActiveSettings();
 
         aige::Window::Desc desc;
         aige::Window window(desc);
@@ -79,6 +83,7 @@ int main(int argc, char** argv) {
         // The camera follows the player; snapped into place whenever a level
         // (re)starts so it doesn't sweep across the map.
         aige::Camera2D camera;
+        camera.zoom = settings.camera.playZoom;
         auto snapCamera = [&]() {
             aige::UpdateWorldToScreen(registry, aige::BootstrapIso());
             if (auto player = aige::FindPlayer(registry)) {
@@ -123,12 +128,14 @@ int main(int argc, char** argv) {
             if (auto player = aige::FindPlayer(registry)) {
                 VkExtent2D extent = rhi.SwapchainExtent();
                 aige::FollowWithCamera(camera, registry, *player, static_cast<float>(extent.width),
-                                       static_cast<float>(extent.height), static_cast<float>(frameSeconds));
+                                       static_cast<float>(extent.height), static_cast<float>(frameSeconds),
+                                       settings.camera.followStiffness);
             }
 
             std::vector<aige::OverlayLine> overlay;
             aige::AppendHealthBars(registry, overlay);
 
+            rhi.SetClearColor(settings.renderer.clearR, settings.renderer.clearG, settings.renderer.clearB);
             VkCommandBuffer cmd = rhi.BeginFrame();
             if (cmd != VK_NULL_HANDLE) {
                 rhi.BeginSwapchainPass();

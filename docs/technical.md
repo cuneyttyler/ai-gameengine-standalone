@@ -113,7 +113,7 @@ so the engine is split into modules from day one, not refactored into them later
 | `rhi` | Render Hardware Interface — thin abstraction over Vulkan (see §8) |
 | `renderer2d` / `renderer3d` | Sprite/tilemap/y-sort rendering now; forward/deferred 3D later, both consuming `rhi` |
 | `ecs` | EnTT-backed entity/component storage, wrapped by our own component registration macros |
-| `reflection` | The Reflection & Command Registry (§7) — the AI-adjustability backbone |
+| `reflection` | The Reflection & Command Registry (§7) — the AI-adjustability backbone. Engine types are registered in `gameplay/EngineReflection.cpp`, editor commands in `editing/Commands.cpp` |
 | `physics2d` / `physics3d` | Custom lightweight 2D physics now; Jolt-backed 3D physics later |
 | `audio` | miniaudio-backed mixer/playback |
 | `scripting` | Lua VM embedding, hot reload, sandboxing |

@@ -1,8 +1,9 @@
 #include "gameplay/GameSession.h"
 
-#include "gameplay/ComponentTable.h"
+#include "gameplay/EngineReflection.h"
 #include "scripting/LuaVM.h"
 #include "gameplay/Components.h"
+#include "gameplay/Settings.h"
 #include "gameplay/TileGrid.h"
 #include "scripting/Components.h"
 #include "physics2d/Components.h"
@@ -69,8 +70,11 @@ void UpdatePlayer(Registry& registry, Entity player, const KeyQueryFn& isKeyDown
     auto& world = registry.get<WorldTransform2D>(player);
     const auto& collider = registry.get<Collider2D>(player);
 
+    // Physics.playerCollides off (a debugging aid) walks through everything.
+    static const SolidQueryFn kNothingSolid = [](int, int) { return false; };
     Vec2 resolved = ResolveAabbMovement({world.x, world.y}, {collider.halfWidth, collider.halfHeight},
-                                         {velocity.x * dt, velocity.y * dt}, isSolid);
+                                         {velocity.x * dt, velocity.y * dt},
+                                         ActiveSettings().physics.playerCollides ? isSolid : kNothingSolid);
     world.x = resolved.x;
     world.y = resolved.y;
 }
@@ -354,8 +358,8 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
     env["get_field"] = [&registry, L](lua_Integer id, const std::string& componentName,
                                       const std::string& fieldName) -> sol::object {
         Entity entity = ToEntity(id);
-        const ComponentDesc* component = FindComponent(componentName);
-        const FieldDesc* field = component ? component->Field(fieldName) : nullptr;
+        const ComponentInfo* component = FindComponent(componentName);
+        const FieldInfo* field = component ? component->Field(fieldName) : nullptr;
         if (field == nullptr || !registry.valid(entity) || !component->has(registry, entity)) {
             return sol::lua_nil;
         }
@@ -382,8 +386,8 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
     env["set_field"] = [&registry](lua_Integer id, const std::string& componentName, const std::string& fieldName,
                                    sol::object value) {
         Entity entity = ToEntity(id);
-        const ComponentDesc* component = FindComponent(componentName);
-        const FieldDesc* field = component ? component->Field(fieldName) : nullptr;
+        const ComponentInfo* component = FindComponent(componentName);
+        const FieldInfo* field = component ? component->Field(fieldName) : nullptr;
         if (field == nullptr || !registry.valid(entity) || !component->has(registry, entity)) {
             return false;
         }

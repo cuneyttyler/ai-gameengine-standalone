@@ -11,6 +11,14 @@ set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(glfw)
 
+# JSON for the reflection schema, the editor's IPC and the AI service bridge.
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 add_library(aige_platform STATIC
     platform/Window.h
     platform/Window.cpp
@@ -21,6 +29,7 @@ target_compile_features(aige_platform PUBLIC cxx_std_20)
 
 add_subdirectory(rhi)
 add_subdirectory(ecs)
+add_subdirectory(reflection)
 add_subdirectory(physics2d)
 add_subdirectory(renderer2d)
 add_subdirectory(scripting)

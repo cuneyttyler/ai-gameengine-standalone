@@ -16,12 +16,7 @@ FetchContent_Declare(
     URL https://www.nuget.org/api/v2/package/Microsoft.Windows.ImplementationLibrary/1.0.260126.7
     DOWNLOAD_NAME wil.zip
 )
-FetchContent_Declare(
-    nlohmann_json
-    GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG v3.11.3
-)
-FetchContent_MakeAvailable(webview2sdk wil nlohmann_json)
+FetchContent_MakeAvailable(webview2sdk wil)
 
 add_library(webview2 INTERFACE)
 target_include_directories(webview2 INTERFACE ${webview2sdk_SOURCE_DIR}/build/native/include)

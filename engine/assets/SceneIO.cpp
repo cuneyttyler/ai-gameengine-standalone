@@ -1,6 +1,6 @@
 #include "assets/SceneIO.h"
 
-#include "gameplay/ComponentTable.h"
+#include "gameplay/EngineReflection.h"
 #include "scripting/Components.h"
 
 #include <entt/entt.hpp>
@@ -108,7 +108,7 @@ std::vector<Entity> ReadScene(Registry& registry, std::istream& in) {
     // resolved after everything is created.
     struct PendingRef {
         Entity entity;
-        const FieldDesc* field;
+        const FieldInfo* field;
         size_t index;
     };
     std::vector<PendingRef> pendingRefs;
@@ -139,7 +139,7 @@ std::vector<Entity> ReadScene(Registry& registry, std::istream& in) {
         // Unknown component names are skipped rather than failing the load —
         // forward/backward compatible with engine versions that know about
         // more or fewer component types.
-        const ComponentDesc* component = FindComponent(componentName);
+        const ComponentInfo* component = FindComponent(componentName);
         if (component == nullptr) {
             continue;
         }
@@ -162,7 +162,7 @@ std::vector<Entity> ReadScene(Registry& registry, std::istream& in) {
         }
 
         for (const auto& [key, text] : ParseFields(rest)) {
-            const FieldDesc* field = component->Field(key);
+            const FieldInfo* field = component->Field(key);
             if (field == nullptr) {
                 if (component->readExtra) {
                     component->readExtra(registry, current, key, text);
@@ -226,6 +226,55 @@ std::string SerializeEntities(Registry& registry, const std::vector<Entity>& ent
 std::vector<Entity> AppendEntities(Registry& registry, const std::string& text) {
     std::istringstream in(text);
     return ReadScene(registry, in);
+}
+
+void SaveSettings(const ReflectionRegistry& reflection, const std::string& path) {
+    std::ofstream out(path, std::ios::trunc);
+    if (!out) {
+        throw std::runtime_error("Failed to open settings file for writing: " + path);
+    }
+    out << "# AIGE Settings v1\n";
+    for (const auto& section : reflection.AllSettings()) {
+        out << section.name;
+        for (const auto& field : section.fields) {
+            out << " " << field.name << "=" << FormatField(field, field.get(), {});
+        }
+        out << "\n";
+    }
+}
+
+bool LoadSettings(const ReflectionRegistry& reflection, const std::string& path) {
+    std::ifstream in(path);
+    if (!in) {
+        return false;
+    }
+    std::string line;
+    while (std::getline(in, line)) {
+        std::string trimmed = Trim(line);
+        if (trimmed.empty() || trimmed[0] == '#') {
+            continue;
+        }
+        std::istringstream iss(trimmed);
+        std::string sectionName;
+        iss >> sectionName;
+        std::string rest;
+        std::getline(iss, rest);
+        const SettingsInfo* section = reflection.FindSettings(sectionName);
+        if (section == nullptr) {
+            continue; // a section this engine version doesn't know
+        }
+        for (const auto& [key, text] : ParseFields(rest)) {
+            const SettingField* field = section->Field(key);
+            if (field == nullptr) {
+                continue;
+            }
+            // Values that fail parsing or validation keep the default.
+            if (auto value = ParseField(*field, text); value && !Validate(*field, *value)) {
+                field->set(*value);
+            }
+        }
+    }
+    return true;
 }
 
 } // namespace aige
