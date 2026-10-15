@@ -1,0 +1,697 @@
+{
+  "commands": [
+    {
+      "description": "Places a copy of a prefab at a world position. Placing the player prefab when a player exists moves that player instead.",
+      "name": "scene.spawn",
+      "params": [
+        {
+          "description": "The prefab, e.g. prefabs/skeleton.prefab.",
+          "name": "prefab",
+          "type": "prefab"
+        },
+        {
+          "description": "World x (cell centers are n + 0.5).",
+          "name": "x",
+          "type": "float"
+        },
+        {
+          "description": "World y.",
+          "name": "y",
+          "type": "float"
+        }
+      ]
+    },
+    {
+      "description": "Fills a rectangle of grid cells (inclusive) with a tile prefab, replacing whatever tiles were there.",
+      "name": "scene.paintRect",
+      "params": [
+        {
+          "description": "A tile prefab, e.g. prefabs/grass.prefab.",
+          "name": "prefab",
+          "type": "prefab"
+        },
+        {
+          "description": "First column.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "x0",
+          "type": "int"
+        },
+        {
+          "description": "First row.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "y0",
+          "type": "int"
+        },
+        {
+          "description": "Last column.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "x1",
+          "type": "int"
+        },
+        {
+          "description": "Last row.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "y1",
+          "type": "int"
+        }
+      ]
+    },
+    {
+      "description": "Removes an entity from the scene.",
+      "name": "entity.delete",
+      "params": [
+        {
+          "description": "The entity to remove.",
+          "name": "entity",
+          "type": "entity"
+        }
+      ]
+    },
+    {
+      "description": "Saves an entity as a new prefab (prefabs/<name>.prefab); the entity becomes its first copy.",
+      "name": "prefab.createFromEntity",
+      "params": [
+        {
+          "description": "The entity to save.",
+          "name": "entity",
+          "type": "entity"
+        },
+        {
+          "description": "File name: letters, digits, - and _.",
+          "name": "name",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "description": "Creates or replaces a Lua script (see docs/scripting.md for the API scripts can use). Attach it with a LuaScript component.",
+      "name": "script.write",
+      "params": [
+        {
+          "description": "Where to write it: scripts/<name>.lua.",
+          "name": "path",
+          "type": "script"
+        },
+        {
+          "description": "The complete Lua source.",
+          "name": "source",
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "components": [
+    {
+      "dependencies": [],
+      "description": "A designer-facing name, shown in the Scene Tree and usable from scripts.",
+      "fields": [
+        {
+          "description": "The entity's name.",
+          "name": "value",
+          "type": "string"
+        }
+      ],
+      "name": "Name",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "ScreenTransform2D"
+      ],
+      "description": "A ground cell. Collision comes from tiles: a cell is walkable only if it holds a non-solid tile, so empty space is a wall.",
+      "fields": [
+        {
+          "description": "Grid column.",
+          "name": "gx",
+          "type": "int"
+        },
+        {
+          "description": "Grid row.",
+          "name": "gy",
+          "type": "int"
+        },
+        {
+          "description": "Blocks movement (walls, water, hedges).",
+          "name": "solid",
+          "type": "bool"
+        }
+      ],
+      "name": "Tile",
+      "userEditable": false
+    },
+    {
+      "dependencies": [
+        "ScreenTransform2D"
+      ],
+      "description": "Position in world grid units (1.0 = one tile; cell centers are n + 0.5).",
+      "fields": [
+        {
+          "description": "Grid x; increases down-right on screen.",
+          "name": "x",
+          "type": "float"
+        },
+        {
+          "description": "Grid y; increases down-left on screen.",
+          "name": "y",
+          "type": "float"
+        }
+      ],
+      "name": "WorldTransform2D",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Movement this frame, in cells per second. Velocity2D + Collider2D marks the player.",
+      "fields": [
+        {
+          "description": "Cells per second along grid x.",
+          "name": "x",
+          "type": "float"
+        },
+        {
+          "description": "Cells per second along grid y.",
+          "name": "y",
+          "type": "float"
+        }
+      ],
+      "name": "Velocity2D",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Box used for wall collision, centered on the position, in cells.",
+      "fields": [
+        {
+          "description": "Half the box width, in cells.",
+          "max": 2.0,
+          "min": 0.05,
+          "name": "halfWidth",
+          "type": "float"
+        },
+        {
+          "description": "Half the box height, in cells.",
+          "max": 2.0,
+          "min": 0.05,
+          "name": "halfHeight",
+          "type": "float"
+        }
+      ],
+      "name": "Collider2D",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "Which side an entity is on. Attacks never hurt members of the same non-neutral team.",
+      "fields": [
+        {
+          "description": "Neutral, Player or Enemy.",
+          "name": "team",
+          "options": [
+            "Neutral",
+            "Player",
+            "Enemy"
+          ],
+          "type": "enum"
+        }
+      ],
+      "name": "Faction",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "Hit points. At 0 the entity dies (enemies are removed; the player stays, dead).",
+      "fields": [
+        {
+          "description": "Current hit points.",
+          "max": 100000.0,
+          "min": 0.0,
+          "name": "current",
+          "type": "float"
+        },
+        {
+          "description": "Maximum hit points; healing stops here.",
+          "max": 100000.0,
+          "min": 1.0,
+          "name": "max",
+          "type": "float"
+        }
+      ],
+      "name": "Health",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "Combat numbers. Damage dealt = max(minimum, attack's damage + attack - target's defense).",
+      "fields": [
+        {
+          "description": "Added to every attack's damage.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "attack",
+          "type": "float"
+        },
+        {
+          "description": "Subtracted from damage taken.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "defense",
+          "type": "float"
+        },
+        {
+          "description": "Walking speed in cells per second (the player's).",
+          "max": 50.0,
+          "min": 0.0,
+          "name": "moveSpeed",
+          "type": "float"
+        }
+      ],
+      "name": "Stats",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D",
+        "Health"
+      ],
+      "description": "The area attacks can hit, centered on the position; brief invulnerability after each hit.",
+      "fields": [
+        {
+          "description": "Half the area's width, in cells.",
+          "max": 3.0,
+          "min": 0.05,
+          "name": "halfWidth",
+          "type": "float"
+        },
+        {
+          "description": "Half the area's height, in cells.",
+          "max": 3.0,
+          "min": 0.05,
+          "name": "halfHeight",
+          "type": "float"
+        },
+        {
+          "description": "Seconds of invulnerability after being hit.",
+          "max": 10.0,
+          "min": 0.0,
+          "name": "invulnerableTime",
+          "type": "float"
+        }
+      ],
+      "name": "Hurtbox",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "A close-range swing: a short-lived hit area `reach` cells in front of the attacker, optionally applying a status effect on hit.",
+      "fields": [
+        {
+          "description": "Damage per hit (before stats).",
+          "max": 100000.0,
+          "min": 0.0,
+          "name": "damage",
+          "type": "float"
+        },
+        {
+          "description": "How far in front the hit area appears, in cells.",
+          "max": 10.0,
+          "min": 0.0,
+          "name": "reach",
+          "type": "float"
+        },
+        {
+          "description": "Half-size of the hit area, in cells.",
+          "max": 5.0,
+          "min": 0.05,
+          "name": "radius",
+          "type": "float"
+        },
+        {
+          "description": "Seconds between swings.",
+          "max": 60.0,
+          "min": 0.0,
+          "name": "cooldown",
+          "type": "float"
+        },
+        {
+          "description": "How far a hit pushes the target, in cells.",
+          "max": 10.0,
+          "min": 0.0,
+          "name": "knockback",
+          "type": "float"
+        },
+        {
+          "description": "Status effect applied on hit.",
+          "name": "effect",
+          "options": [
+            "None",
+            "Burn",
+            "Poison",
+            "Slow",
+            "Regen"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "How long the effect lasts, in seconds.",
+          "max": 600.0,
+          "min": 0.0,
+          "name": "effectDuration",
+          "type": "float"
+        },
+        {
+          "description": "Burn/Poison: damage per tick. Regen: healing per tick. Slow: fraction of speed removed (0-1).",
+          "max": 100000.0,
+          "min": 0.0,
+          "name": "effectMagnitude",
+          "type": "float"
+        }
+      ],
+      "name": "MeleeAttack",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Collected when the player walks over it (left alone at full health).",
+      "fields": [
+        {
+          "description": "What it does.",
+          "name": "kind",
+          "options": [
+            "Heal"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "Hit points restored.",
+          "max": 100000.0,
+          "min": 0.0,
+          "name": "amount",
+          "type": "float"
+        },
+        {
+          "description": "Pickup distance, in cells.",
+          "max": 5.0,
+          "min": 0.05,
+          "name": "radius",
+          "type": "float"
+        }
+      ],
+      "name": "Pickup",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Blocks movement through the cell it stands in (trees, rocks, crates).",
+      "fields": [],
+      "name": "Obstacle",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "Sound effects this entity plays.",
+      "fields": [
+        {
+          "description": "When it swings.",
+          "name": "attack",
+          "type": "audio"
+        },
+        {
+          "description": "When it takes damage.",
+          "name": "hurt",
+          "type": "audio"
+        },
+        {
+          "description": "When it dies.",
+          "name": "death",
+          "type": "audio"
+        },
+        {
+          "description": "When it's picked up (pickups).",
+          "name": "collect",
+          "type": "audio"
+        }
+      ],
+      "name": "Sounds",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Walks toward a target (the player if none is set) while within range, stopping at stopDistance; collides with walls.",
+      "fields": [
+        {
+          "description": "Who to follow; none = the player.",
+          "name": "target",
+          "type": "entity"
+        },
+        {
+          "description": "Cells per second.",
+          "max": 50.0,
+          "min": 0.0,
+          "name": "speed",
+          "type": "float"
+        },
+        {
+          "description": "Stops this close to the target, in cells.",
+          "max": 50.0,
+          "min": 0.0,
+          "name": "stopDistance",
+          "type": "float"
+        },
+        {
+          "description": "Only follows within this distance; 0 = always.",
+          "max": 1000.0,
+          "min": 0.0,
+          "name": "range",
+          "type": "float"
+        }
+      ],
+      "name": "Follow",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "Screen position in scene pixels and draw order. Computed from the world position for characters and tiles.",
+      "fields": [
+        {
+          "description": "Pixels from the left.",
+          "name": "x",
+          "type": "float"
+        },
+        {
+          "description": "Pixels from the top.",
+          "name": "y",
+          "type": "float"
+        },
+        {
+          "description": "Draw order: higher draws in front.",
+          "name": "depth",
+          "type": "float"
+        }
+      ],
+      "name": "ScreenTransform2D",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "ScreenTransform2D"
+      ],
+      "description": "The image drawn for this entity: a texture (or a region of one, like a tileset tile), its size on screen and a color tint.",
+      "fields": [
+        {
+          "description": "Texture asset; empty = built-in placeholder.",
+          "name": "texture",
+          "type": "texture"
+        },
+        {
+          "description": "On-screen width in pixels.",
+          "max": 4096.0,
+          "min": 1.0,
+          "name": "width",
+          "type": "float"
+        },
+        {
+          "description": "On-screen height in pixels.",
+          "max": 4096.0,
+          "min": 1.0,
+          "name": "height",
+          "type": "float"
+        },
+        {
+          "description": "Texture region left (0-1); greater than u1 mirrors it.",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "u0",
+          "type": "float"
+        },
+        {
+          "description": "Texture region top (0-1).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "v0",
+          "type": "float"
+        },
+        {
+          "description": "Texture region right (0-1).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "u1",
+          "type": "float"
+        },
+        {
+          "description": "Texture region bottom (0-1).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "v1",
+          "type": "float"
+        },
+        {
+          "description": "Red tint (0-1).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "r",
+          "type": "float"
+        },
+        {
+          "description": "Green tint (0-1).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "g",
+          "type": "float"
+        },
+        {
+          "description": "Blue tint (0-1).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "b",
+          "type": "float"
+        },
+        {
+          "description": "Opacity (0-1).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "a",
+          "type": "float"
+        }
+      ],
+      "name": "Sprite",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "Lua behavior (see docs/scripting.md). The script's `properties` table becomes per-entity settings.",
+      "fields": [
+        {
+          "description": "The .lua file, relative to the project.",
+          "name": "path",
+          "type": "script"
+        }
+      ],
+      "name": "LuaScript",
+      "userEditable": true
+    }
+  ],
+  "settings": [
+    {
+      "description": "How the game is drawn.",
+      "fields": [
+        {
+          "description": "Background red (0-1).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "clearR",
+          "type": "float"
+        },
+        {
+          "description": "Background green (0-1).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "clearG",
+          "type": "float"
+        },
+        {
+          "description": "Background blue (0-1).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "clearB",
+          "type": "float"
+        }
+      ],
+      "name": "Renderer"
+    },
+    {
+      "description": "The play camera.",
+      "fields": [
+        {
+          "description": "How quickly the camera catches up with the player; higher is snappier.",
+          "max": 50.0,
+          "min": 0.5,
+          "name": "followStiffness",
+          "type": "float"
+        },
+        {
+          "description": "Zoom while playing.",
+          "max": 4.0,
+          "min": 0.25,
+          "name": "playZoom",
+          "type": "float"
+        }
+      ],
+      "name": "Camera"
+    },
+    {
+      "description": "Rules shared by every attack.",
+      "fields": [
+        {
+          "description": "A hit never deals less than this.",
+          "max": 1000.0,
+          "min": 0.0,
+          "name": "minimumDamage",
+          "type": "float"
+        },
+        {
+          "description": "How long a hit sprite flashes red.",
+          "max": 2.0,
+          "min": 0.0,
+          "name": "hitFlashSeconds",
+          "type": "float"
+        },
+        {
+          "description": "Multiplies every attack's knockback.",
+          "max": 10.0,
+          "min": 0.0,
+          "name": "knockbackScale",
+          "type": "float"
+        }
+      ],
+      "name": "Combat"
+    },
+    {
+      "description": "Movement and collision.",
+      "fields": [
+        {
+          "description": "Off lets the player walk through walls.",
+          "name": "playerCollides",
+          "type": "bool"
+        }
+      ],
+      "name": "Physics"
+    }
+  ],
+  "version": 1
+}

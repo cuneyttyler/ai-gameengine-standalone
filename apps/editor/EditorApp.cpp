@@ -167,6 +167,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         }
     } else if (type == "scene:request") {
         // The page (re)loaded: resend everything it needs.
+        post_(AiStatusJson());
         sceneTreeStale_ = true;
         editorStateStale_ = true;
         Select(selected_);
@@ -749,6 +750,7 @@ void EditorApp::RestoreSelection(std::optional<size_t> index) {
 // --- Frame ------------------------------------------------------------------
 
 void EditorApp::Tick(double frameSeconds) {
+    PollAi();
     if (playing_) {
         session_.Advance(frameSeconds, [this](Key key) { return viewport_.IsKeyDown(key); });
         auto player = FindPlayer(registry_);
@@ -847,6 +849,40 @@ void EditorApp::UpdateTitle() {
 void EditorApp::OnAppActivated() {
     RefreshAssets();
     RefreshPrefabs();
+}
+
+// --- AI ----------------------------------------------------------------------
+
+void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
+    AiClient::Options options;
+    options.serviceDir = serviceDir;
+    ai_ = std::make_unique<AiClient>(options);
+    ai_->Start(EngineReflection().ExportSchema());
+    post_(AiStatusJson());
+}
+
+nlohmann::json EditorApp::AiStatusJson() {
+    std::string state = "off";
+    if (ai_) {
+        switch (ai_->GetState()) {
+            case AiClient::State::Starting: state = "starting"; break;
+            case AiClient::State::Ready: state = "ready"; break;
+            case AiClient::State::Failed: state = "failed"; break;
+            case AiClient::State::Stopped: state = "off"; break;
+        }
+    }
+    return {{"type", "ai:status"}, {"state", state}, {"text", ai_ ? ai_->StatusText() : "AI is off"}};
+}
+
+void EditorApp::PollAi() {
+    if (!ai_) {
+        return;
+    }
+    while (auto result = ai_->Poll()) {
+        if (result->kind == AiClient::Result::Kind::Status) {
+            post_(AiStatusJson());
+        }
+    }
 }
 
 // --- Prefabs ----------------------------------------------------------------

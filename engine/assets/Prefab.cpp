@@ -289,6 +289,15 @@ bool PrefabLibrary::SaveAsPrefab(Registry& registry, Entity entity, const std::s
     return true;
 }
 
+bool PrefabLibrary::VisitTemplate(const std::string& path, const std::function<void(Registry&, Entity)>& visit) {
+    Template* prefab = Load(path);
+    if (prefab == nullptr || !prefab->error.empty()) {
+        return false;
+    }
+    visit(prefab->registry, prefab->entity);
+    return true;
+}
+
 void PrefabLibrary::Revert(Registry& registry, Entity instance, const std::string& overrideKey) {
     if (auto* link = registry.try_get<PrefabInstance>(instance)) {
         auto keys = ParseOverrides(link->overrides);

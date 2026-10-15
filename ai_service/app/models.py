@@ -1,0 +1,189 @@
+"""Data shapes shared with the engine.
+
+`EngineSchema` mirrors ReflectionRegistry::ExportSchema() (engine/reflection);
+tests/fixtures/engine_schema.json is a snapshot the C++ test suite keeps in
+sync. `EditorContext` is what the editor sends about the open project.
+`Proposal` is what the service returns and the editor validates and applies.
+"""
+
+from __future__ import annotations
+
+from typing import Annotated, Any, Literal, Union
+
+from pydantic import BaseModel, ConfigDict, Field
+
+# --- Engine schema ----------------------------------------------------------------
+
+FieldTypeName = Literal[
+    "float", "int", "bool", "string", "enum", "entity", "texture", "script", "audio", "prefab", "component"
+]
+
+
+class FieldSpec(BaseModel):
+    name: str
+    type: FieldTypeName
+    description: str = ""
+    options: list[str] | None = None
+    min: float | None = None
+    max: float | None = None
+
+
+class ComponentSpec(BaseModel):
+    name: str
+    description: str = ""
+    userEditable: bool = True
+    dependencies: list[str] = []
+    fields: list[FieldSpec] = []
+
+    def field(self, name: str) -> FieldSpec | None:
+        return next((f for f in self.fields if f.name == name), None)
+
+
+class SettingsSpec(BaseModel):
+    name: str
+    description: str = ""
+    fields: list[FieldSpec] = []
+
+    def field(self, name: str) -> FieldSpec | None:
+        return next((f for f in self.fields if f.name == name), None)
+
+
+class CommandSpec(BaseModel):
+    name: str
+    description: str = ""
+    params: list[FieldSpec] = []
+
+
+class EngineSchema(BaseModel):
+    version: int
+    components: list[ComponentSpec]
+    settings: list[SettingsSpec] = []
+    commands: list[CommandSpec] = []
+
+    def component(self, name: str) -> ComponentSpec | None:
+        return next((c for c in self.components if c.name == name), None)
+
+    def settings_section(self, name: str) -> SettingsSpec | None:
+        return next((s for s in self.settings if s.name == name), None)
+
+    def command(self, name: str) -> CommandSpec | None:
+        return next((c for c in self.commands if c.name == name), None)
+
+
+# --- Editor context ---------------------------------------------------------------
+
+
+class EntitySummary(BaseModel):
+    """One non-tile entity: its id (valid for this request only), name,
+    prefab, and current component values (enums by name, references as ids)."""
+
+    id: int
+    name: str = ""
+    kind: str = ""
+    prefab: str | None = None
+    components: dict[str, dict[str, Any]] = {}
+    scriptProperties: dict[str, Any] = {}
+
+
+class TileSummary(BaseModel):
+    """Tiles are summarized (there can be thousands): counts per prefab and the
+    occupied grid bounds."""
+
+    count: int = 0
+    byPrefab: dict[str, int] = {}
+    bounds: list[int] | None = None  # [minX, minY, maxX, maxY]
+
+
+class PrefabSummary(BaseModel):
+    path: str
+    name: str
+    isTile: bool = False
+    components: dict[str, dict[str, Any]] = {}
+
+
+class EditorContext(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    entities: list[EntitySummary] = []
+    tiles: TileSummary = TileSummary()
+    prefabs: list[PrefabSummary] = []
+    assets: list[dict[str, Any]] = []  # {path, type}
+    scripts: list[str] = []
+    settings: dict[str, dict[str, Any]] = {}
+    selection: int | None = None
+    focus: str | None = None  # e.g. "Skeleton.Health.max" when asked from an Inspector field
+
+
+# --- Proposals --------------------------------------------------------------------
+
+
+class SetField(BaseModel):
+    op: Literal["set_field"]
+    entity: int
+    component: str
+    field: str
+    value: Any
+
+
+class AddComponent(BaseModel):
+    op: Literal["add_component"]
+    entity: int
+    component: str
+    fields: dict[str, Any] = {}
+
+
+class RemoveComponent(BaseModel):
+    op: Literal["remove_component"]
+    entity: int
+    component: str
+
+
+class SetPrefabField(BaseModel):
+    op: Literal["set_prefab_field"]
+    prefab: str
+    component: str
+    field: str
+    value: Any
+
+
+class SetSetting(BaseModel):
+    op: Literal["set_setting"]
+    section: str
+    field: str
+    value: Any
+
+
+class SetScriptProperty(BaseModel):
+    op: Literal["set_script_property"]
+    entity: int
+    name: str
+    value: float | bool | str
+
+
+class RunCommand(BaseModel):
+    op: Literal["command"]
+    name: str
+    args: dict[str, Any] = {}
+
+
+Operation = Annotated[
+    Union[SetField, AddComponent, RemoveComponent, SetPrefabField, SetSetting, SetScriptProperty, RunCommand],
+    Field(discriminator="op"),
+]
+
+
+class Proposal(BaseModel):
+    summary: str
+    operations: list[Operation]
+    notes: str = ""
+
+
+class Usage(BaseModel):
+    inputTokens: int = 0
+    outputTokens: int = 0
+    requests: int = 0
+
+    def add(self, other: "Usage") -> None:
+        self.inputTokens += other.inputTokens
+        self.outputTokens += other.outputTokens
+        self.requests += other.requests

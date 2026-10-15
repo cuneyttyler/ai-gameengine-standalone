@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ai_bridge/AiClient.h"
 #include "assets/AssetDatabase.h"
 #include "assets/Prefab.h"
 #include "audio/Audio.h"
@@ -39,6 +40,10 @@ public:
 
     EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& registry, LuaVM& lua, AssetDatabase& assets,
               AudioEngine& audio, Renderer2D& renderer, PostFn post);
+
+    // Starts the AI service from `serviceDir` (ai_service/); call once after
+    // construction. Without it, AI features report themselves unavailable.
+    void StartAi(const std::filesystem::path& serviceDir);
 
     void OnWebMessage(const nlohmann::json& message);
     void OnViewportMouse(const ViewportMouseEvent& event);
@@ -105,6 +110,9 @@ private:
     // and instance-local fields).
     void NoteOverride(Entity entity, const std::string& component, const std::string& field);
 
+    nlohmann::json AiStatusJson();
+    void PollAi();
+
     // Project settings (Renderer, Camera, ...), from the registry.
     nlohmann::json SettingsJson();
     std::optional<std::string> SetSetting(const std::string& section, const std::string& field,
@@ -136,6 +144,9 @@ private:
     LuaVM& lua_;
     AssetDatabase& assets_;
     PrefabLibrary prefabs_;
+    // The AI Orchestration Service (started with the editor; optional — the
+    // editor is fully usable without it).
+    std::unique_ptr<AiClient> ai_;
     AudioEngine& audio_;
     Renderer2D& renderer_;
     std::string scenePath_;

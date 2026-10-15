@@ -249,6 +249,17 @@ applied change.
   `ai_bridge`; a single provider adapter (cloud LLM) wired end-to-end.
 - Tests: `pytest` with a mocked provider; contract test that schema export matches what
   2.1's registry actually exposes.
+- ✅ Built: `ai_service/` (uv project, FastAPI): `PUT/GET /schema`, `POST /propose`, `/health`,
+  `/usage`; Mistral provider (JSON mode, `mistral-large-latest` by default) behind a provider
+  interface; prompt built from a compact rendering of the schema plus the project context;
+  proposals parsed into typed operations (`set_field`, `add_component`,
+  `remove_component`, `set_prefab_field`, `set_setting`, `set_script_property`,
+  `command`) and validated against schema and context, with one repair round trip.
+  `engine/ai_bridge`: `AiClient` launches the sidecar (Windows job object, so it dies with
+  the editor), pushes the schema, and runs requests on a worker thread; `BuildEditorContext`
+  summarizes the open project. Contract: `ai_service/tests/fixtures/engine_schema.json` is
+  checked against the live registry by a C++ test and drives the pytest suite. Verified
+  with a real Mistral request (valid proposal on the first attempt, ~3s, ~3.3k tokens).
 
 **2.4 — AI chat + Diff Review panels**
 - The webview host and JSON bridge already exist from 1.1; this milestone adds the Vue

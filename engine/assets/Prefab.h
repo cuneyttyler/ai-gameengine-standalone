@@ -4,6 +4,7 @@
 #include "ecs/Registry.h"
 
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -66,6 +67,10 @@ public:
     // with no overrides. Overwrites an existing prefab — that's how "apply
     // instance changes to the prefab" works.
     bool SaveAsPrefab(Registry& registry, Entity entity, const std::string& path, std::string* error = nullptr);
+
+    // Calls `visit` with the prefab's template entity (read-only use), e.g. to
+    // describe its values; false if the prefab can't be loaded.
+    bool VisitTemplate(const std::string& path, const std::function<void(Registry&, Entity)>& visit);
 
     // Drops one override (the field takes the prefab's value again) or all.
     void Revert(Registry& registry, Entity instance, const std::string& overrideKey);

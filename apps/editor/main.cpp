@@ -35,6 +35,9 @@
 #ifndef AIGE_EDITOR_DEFAULT_PROJECT
 #define AIGE_EDITOR_DEFAULT_PROJECT "."
 #endif
+#ifndef AIGE_EDITOR_AI_SERVICE_DIR
+#define AIGE_EDITOR_AI_SERVICE_DIR ""
+#endif
 #ifndef AIGE_EDITOR_UI_DIST_DIR
 #define AIGE_EDITOR_UI_DIST_DIR "."
 #endif
@@ -180,6 +183,7 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
                                 webView.PostMessageToPage(aige::Utf8ToWide(message.dump()));
                             });
         g_app = &app;
+        app.StartAi(AIGE_EDITOR_AI_SERVICE_DIR);
 
         viewportWindow.SetMouseCallback([&app](const aige::ViewportMouseEvent& event) { app.OnViewportMouse(event); });
         viewportWindow.SetKeyDownCallback(
