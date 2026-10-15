@@ -1,6 +1,7 @@
 #include "ai_bridge/Proposal.h"
 
 #include "assets/Prefab.h"
+#include "editing/Edits.h"
 #include "assets/Project.h"
 #include "gameplay/Components.h"
 #include "reflection/Reflection.h"
@@ -104,8 +105,9 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
         if (!value) return item;
         item.after = ValueToJson(*field, *value);
         if (apply) {
-            field->set(registry, *entity, *value);
-            RecordOverride(registry, *entity, componentName, fieldName);
+            if (auto problem = EditField(reflection, registry, *entity, componentName, fieldName, op["value"])) {
+                error = *problem;
+            }
         }
 
     } else if (kind == "add_component") {
@@ -141,13 +143,8 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
         }
         item.after = fields;
         if (apply) {
-            AddComponent(reflection, registry, *entity, componentName);
-            if (HasOverride(registry, *entity, "-" + componentName)) {
-                prefabs.Revert(registry, *entity, "-" + componentName); // re-adding a removed prefab component
-            }
-            for (const auto& [field, value] : values) {
-                field->set(registry, *entity, value);
-                RecordOverride(registry, *entity, componentName, field->name);
+            if (auto problem = EditAddComponent(reflection, registry, &prefabs, *entity, componentName, fields)) {
+                error = *problem;
             }
         }
 
@@ -167,11 +164,9 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             return item;
         }
         if (apply) {
-            if (auto problem = RemoveComponent(reflection, registry, *entity, componentName)) {
+            if (auto problem = EditRemoveComponent(reflection, registry, *entity, componentName)) {
                 error = *problem;
-                return item;
             }
-            RecordOverride(registry, *entity, componentName, "");
         }
 
     } else if (kind == "set_prefab_field") {
@@ -234,7 +229,10 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
         if (!value) return item;
         item.after = ValueToJson(*field, *value);
         if (apply) {
-            field->set(*value);
+            if (auto problem = EditSetting(reflection, sectionName, fieldName, op["value"])) {
+                error = *problem;
+                return item;
+            }
             if (outcome) outcome->settingsChanged = true;
         }
 
@@ -259,9 +257,8 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
         }
         item.after = op["value"];
         if (apply) {
-            script->properties[name] = *value;
-            if (registry.all_of<PrefabInstance>(*entity)) {
-                AddOverride(registry, *entity, "LuaScript.prop." + name);
+            if (auto problem = EditScriptProperty(registry, *entity, name, op["value"])) {
+                error = *problem;
             }
         }
 

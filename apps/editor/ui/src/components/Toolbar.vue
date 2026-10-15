@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { armPrefab, editorState, type ToolId } from '../editorState'
+import { armPrefab, editorState, setMode, type ToolId } from '../editorState'
 import { sendToHost } from '../ipc'
 import PrefabThumb from './PrefabThumb.vue'
 
@@ -61,6 +61,27 @@ function send(type: string): void {
     </div>
 
     <div class="spacer"></div>
+
+    <div class="group" role="radiogroup" aria-label="Editor mode">
+      <button
+        role="radio"
+        :aria-checked="editorState.mode === 'assisted'"
+        :class="{ active: editorState.mode === 'assisted' }"
+        title="AI-Assisted: you edit directly; open the AI panel when you want help"
+        @click="setMode('assisted')"
+      >
+        Assisted
+      </button>
+      <button
+        role="radio"
+        :aria-checked="editorState.mode === 'driven'"
+        :class="{ active: editorState.mode === 'driven' }"
+        title="AI-Driven: describe changes in the AI panel and review them — same files either way"
+        @click="setMode('driven')"
+      >
+        AI-Driven
+      </button>
+    </div>
 
     <button
       class="play-button"

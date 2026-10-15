@@ -8,6 +8,7 @@
 
 #include "gameplay/EngineReflection.h"
 #include "assets/SceneIO.h"
+#include "editing/Edits.h"
 #include "editing/SceneEditing.h"
 #include "gameplay/BootstrapLevel.h"
 #include "gameplay/CameraFollow.h"
@@ -186,12 +187,9 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             std::string field = message.value("field", "");
             std::optional<std::string> error;
             ApplyOneShotEdit([&] {
-                error = ApplySetField(entity, component, field, message["value"]);
-                if (error) {
-                    return false;
-                }
-                NoteOverride(entity, component, field);
-                return true;
+                // The same write path an applied AI proposal uses (editing/Edits).
+                error = EditField(EngineReflection(), registry_, entity, component, field, message["value"]);
+                return !error.has_value();
             });
             // The Inspector shows the reason next to the field; the refresh
             // below puts the field back to its real value.
@@ -208,25 +206,13 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         if (!playing_ && registry_.valid(entity)) {
             std::optional<std::string> failure;
             ApplyOneShotEdit([&] {
-                if (type == "component:add") {
-                    if (!AddComponent(registry_, entity, component)) {
-                        return false;
-                    }
-                    // Re-adding a prefab component this copy had removed: the
-                    // prefab's values apply again.
-                    if (HasOverride(registry_, entity, "-" + component)) {
-                        prefabs_.Revert(registry_, entity, "-" + component);
-                    }
-                    return true;
-                }
-                failure = RemoveComponent(registry_, entity, component);
-                if (!failure) {
-                    NoteOverride(entity, component, "");
-                }
+                failure = type == "component:add"
+                              ? EditAddComponent(EngineReflection(), registry_, &prefabs_, entity, component)
+                              : EditRemoveComponent(EngineReflection(), registry_, entity, component);
                 return !failure.has_value();
             });
             if (failure) {
-                post_({{"type", "notify"}, {"text", "Can't remove: " + *failure}});
+                post_({{"type", "notify"}, {"text", "Can't change " + component + ": " + *failure}});
             }
             inspectorStale_ = true;
             sceneTreeStale_ = true;
@@ -1249,21 +1235,6 @@ void EditorApp::RevertOverride(const std::string& key) {
     sceneTreeStale_ = true;
 }
 
-void EditorApp::NoteOverride(Entity entity, const std::string& component, const std::string& field) {
-    if (!registry_.all_of<PrefabInstance>(entity)) {
-        return;
-    }
-    if (field.empty()) {
-        AddOverride(registry_, entity, "-" + component); // the copy dropped a component
-        return;
-    }
-    const ComponentInfo* desc = FindComponent(component);
-    const FieldInfo* fieldDesc = desc ? desc->Field(field) : nullptr;
-    if (fieldDesc != nullptr && !IsInstanceLocal(component, *fieldDesc)) {
-        AddOverride(registry_, entity, component + "." + field);
-    }
-}
-
 // --- Project settings --------------------------------------------------------
 
 nlohmann::json EditorApp::SettingsJson() {
@@ -1280,19 +1251,9 @@ nlohmann::json EditorApp::SettingsJson() {
 
 std::optional<std::string> EditorApp::SetSetting(const std::string& sectionName, const std::string& fieldName,
                                                  const nlohmann::json& value) {
-    const SettingsInfo* section = EngineReflection().FindSettings(sectionName);
-    const SettingField* field = section ? section->Field(fieldName) : nullptr;
-    if (field == nullptr) {
-        return "no setting " + sectionName + "." + fieldName;
+    if (auto error = EditSetting(EngineReflection(), sectionName, fieldName, value)) {
+        return error;
     }
-    auto converted = ValueFromJson(*field, value);
-    if (!converted) {
-        return fieldName + " can't be set to " + value.dump();
-    }
-    if (auto error = Validate(*field, *converted)) {
-        return *error;
-    }
-    field->set(*converted);
     // Settings live in settings.aige, outside the scene's undo history;
     // they're saved with the scene.
     settingsDirty_ = true;
@@ -1336,22 +1297,11 @@ nlohmann::json EditorApp::ScriptPropertiesJson(Entity entity) {
 }
 
 void EditorApp::SetScriptProperty(Entity entity, const std::string& name, const nlohmann::json& value) {
-    ScriptValue converted;
-    if (value.is_number()) {
-        converted = value.get<double>();
-    } else if (value.is_boolean()) {
-        converted = value.get<bool>();
-    } else if (value.is_string()) {
-        converted = value.get<std::string>();
-    } else {
-        return;
-    }
     ApplyOneShotEdit([&] {
-        auto& script = registry_.get<LuaScript>(entity);
-        script.properties[name] = converted;
-        if (registry_.all_of<PrefabInstance>(entity)) {
-            AddOverride(registry_, entity, "LuaScript.prop." + name);
+        if (EditScriptProperty(registry_, entity, name, value)) {
+            return false;
         }
+        auto& script = registry_.get<LuaScript>(entity);
         if (script.loaded) {
             ApplyScriptProperties(lua_, script); // live while playing
         }
@@ -1615,35 +1565,6 @@ std::vector<std::string> EditorApp::ListScripts() {
     }
     std::sort(scripts.begin(), scripts.end());
     return scripts;
-}
-
-std::optional<std::string> EditorApp::ApplySetField(Entity entity, const std::string& componentName,
-                                                    const std::string& fieldName, const nlohmann::json& value) {
-    const ComponentInfo* component = FindComponent(componentName);
-    if (component == nullptr || !component->has(registry_, entity)) {
-        return "this entity has no " + componentName;
-    }
-    const FieldInfo* field = component->Field(fieldName);
-    if (field == nullptr) {
-        return componentName + " has no field " + fieldName;
-    }
-    // The same checks every writer gets (Inspector, scripts, AI proposals):
-    // the registry's type and constraints, then reference validity.
-    auto converted = ValueFromJson(*field, value);
-    if (!converted) {
-        return fieldName + " can't be set to " + value.dump();
-    }
-    if (auto error = Validate(*field, *converted)) {
-        return *error;
-    }
-    if (field->type == FieldType::EntityRef) {
-        Entity target = ToEntity(*converted);
-        if (target != entt::null && !registry_.valid(target)) {
-            return "that entity no longer exists";
-        }
-    }
-    field->set(registry_, entity, *converted);
-    return std::nullopt;
 }
 
 void EditorApp::CreateScriptFor(Entity entity, const std::string& requestedName) {

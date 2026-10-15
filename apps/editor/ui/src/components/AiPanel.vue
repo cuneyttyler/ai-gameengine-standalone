@@ -204,8 +204,16 @@ const examples = [
     <header class="panel-header">
       <h2>AI</h2>
       <span class="status" :class="editorState.ai.state" :title="editorState.ai.text">
-        <span class="dot"></span>{{ editorState.ai.state === 'ready' ? editorState.ai.text : editorState.ai.text }}
+        <span class="dot"></span>{{ editorState.ai.text }}
       </span>
+      <button
+        v-if="editorState.mode === 'assisted'"
+        class="collapse"
+        title="Collapse the AI panel"
+        @click="editorState.aiOpen = false"
+      >
+        ›
+      </button>
     </header>
 
     <div ref="listEl" class="entries">
@@ -355,6 +363,21 @@ h2 {
   letter-spacing: 0.05em;
   opacity: 0.7;
   margin: 0;
+}
+.collapse {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #333;
+  border-radius: 0;
+  background: #11111b;
+  color: #eee;
+  cursor: pointer;
+}
+.collapse:hover {
+  background: #262637;
 }
 .status {
   display: flex;

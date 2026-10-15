@@ -8,6 +8,21 @@ import { onHostMessage, sendToHost } from './ipc'
 // and the prefab brush (paints tile prefabs, places everything else).
 export type ToolId = 'select' | 'erase' | 'prefab'
 
+// The two working modes (product.md §4.3). They differ only in which surface
+// is in front: AI-Driven foregrounds the AI panel, AI-Assisted keeps it as a
+// rail you open on demand. Both write through the same engine path, so the
+// mode is a UI preference — nothing on disk depends on it.
+export type EditorMode = 'assisted' | 'driven'
+const MODE_KEY = 'aige.editor.mode'
+
+function loadMode(): EditorMode {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'driven' ? 'driven' : 'assisted'
+  } catch {
+    return 'assisted'
+  }
+}
+
 export interface Prefab {
   path: string
   name: string
@@ -33,9 +48,22 @@ export const editorState = reactive({
   ai: { state: 'off' as 'off' | 'starting' | 'ready' | 'failed', text: 'AI is off', busy: false },
   // Set by an Inspector field's "Ask AI"; the AI panel picks it up (n makes repeats distinct).
   aiAsk: { focus: '', n: 0 },
+  mode: loadMode(),
+  aiOpen: false, // AI-Assisted only: the panel is expanded from its rail
 })
 
+export function setMode(mode: EditorMode): void {
+  editorState.mode = mode
+  editorState.aiOpen = false
+  try {
+    localStorage.setItem(MODE_KEY, mode)
+  } catch {
+    // Not persisting is fine; the editor starts in AI-Assisted next time.
+  }
+}
+
 export function askAiAbout(focus: string): void {
+  editorState.aiOpen = true
   editorState.aiAsk = { focus, n: editorState.aiAsk.n + 1 }
 }
 

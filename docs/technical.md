@@ -234,8 +234,12 @@ not enumerated per feature.
 are foregrounded/default-open in the editor shell. Both modes read/write the exact same
 project files through the exact same registry and asset pipeline — there is no separate
 serialization path, conversion step, or "AI project" flag on disk. This is enforced by
-construction: the webview and the native inspector both apply changes through `ai_bridge`
-→ registry, never through a side channel.
+construction: Inspector edits and applied AI proposals both go through
+`engine/editing/Edits` (validate → write → record prefab override), never through a side
+channel, and `ModeParityTest` checks that the same edits made through each surface save
+byte-identical files. In the UI the mode is `editorState.mode`, kept in localStorage.
+AI-Driven shows the AI panel wide; AI-Assisted collapses it to a rail that ✦ Ask AI
+expands.
 
 ## 12. Physics & audio
 

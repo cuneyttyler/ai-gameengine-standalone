@@ -107,9 +107,6 @@ private:
     void SaveSelectedAsPrefab(const std::string& name);
     void ApplySelectedToPrefab();
     void RevertOverride(const std::string& key);
-    // Records that `key` was changed on this copy (no-op for non-instances
-    // and instance-local fields).
-    void NoteOverride(Entity entity, const std::string& component, const std::string& field);
 
     nlohmann::json AiStatusJson();
     void PollAi();
@@ -136,10 +133,6 @@ private:
     nlohmann::json SceneJson();
     nlohmann::json InspectorJson(Entity entity);
     nlohmann::json EditorStateJson();
-    // Sets a field from its JSON form after validating it against the
-    // registry; returns why not if it can't.
-    std::optional<std::string> ApplySetField(Entity entity, const std::string& component, const std::string& field,
-                                             const nlohmann::json& value);
     void CreateScriptFor(Entity entity, const std::string& name);
     std::string LabelOf(Entity entity);
     std::vector<std::string> ListScripts();

@@ -308,6 +308,18 @@ applied change.
   mid-session causes no data loss or conversion step.
 - Tests: automated check that both modes read/write identical on-disk state for the same
   edit performed through each mode's surface.
+- ✅ Built: an Assisted / AI-Driven toggle in the toolbar, remembered across launches.
+  AI-Driven shows the AI panel wide; AI-Assisted collapses it to a rail on the right that
+  expands on click or from any ✦ Ask AI. Collapsing only hides the panel, so the
+  conversation and pending proposals survive switching. Each mode keeps its own panel
+  width. To make "same files either way" true by construction, the Inspector and applied
+  proposals now share a single write path, `engine/editing/Edits` (`EditField`,
+  `EditAddComponent`, `EditRemoveComponent`, `EditScriptProperty`, `EditSetting`):
+  validation, the write, and prefab override recording happen in one place. Previously
+  `EditorApp` and `Proposal` each had their own copy. `ModeParityTest` makes the same six
+  edits (fields, add/remove component, script property, setting) through each surface, on
+  two copies of the demo project. It asserts that the saved scene and settings files are
+  byte-identical and that the edits really landed.
 
 **Phase 2 exit criteria:** you can describe a mechanic in natural language, review a
 real diff against the actual engine schema, accept it, and see it work in a playtest —
