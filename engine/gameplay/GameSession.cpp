@@ -1,5 +1,7 @@
 #include "gameplay/GameSession.h"
 
+#include "gameplay/ComponentTable.h"
+#include "scripting/LuaVM.h"
 #include "gameplay/Components.h"
 #include "gameplay/TileGrid.h"
 #include "scripting/Components.h"
@@ -9,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <tuple>
+#include <type_traits>
 
 namespace aige {
 
@@ -73,14 +76,16 @@ void UpdatePlayer(Registry& registry, Entity player, const KeyQueryFn& isKeyDown
 }
 
 void UpdateFollowers(Registry& registry, const SolidQueryFn& isSolid, float dt) {
+    const auto player = FindPlayer(registry);
     auto view = registry.view<Follow, WorldTransform2D>();
     for (auto entity : view) {
         const auto& follow = view.get<Follow>(entity);
-        if (follow.target == entity || !registry.valid(follow.target)) {
+        Entity targetEntity = follow.target == entt::null && player ? *player : follow.target;
+        if (targetEntity == entity || !registry.valid(targetEntity)) {
             continue;
         }
-        const auto* target = registry.try_get<WorldTransform2D>(follow.target);
-        if (target == nullptr || registry.all_of<Dead>(follow.target) || registry.all_of<Dead>(entity)) {
+        const auto* target = registry.try_get<WorldTransform2D>(targetEntity);
+        if (target == nullptr || registry.all_of<Dead>(targetEntity) || registry.all_of<Dead>(entity)) {
             continue;
         }
         auto& world = view.get<WorldTransform2D>(entity);
@@ -341,6 +346,95 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
         if (playSound_) {
             playSound_(path);
         }
+    };
+
+    // get_field(id, "Component", "field") -> value or nil. Any field the
+    // Inspector shows; enums come back as their option name, entity
+    // references as ids.
+    env["get_field"] = [&registry, L](lua_Integer id, const std::string& componentName,
+                                      const std::string& fieldName) -> sol::object {
+        Entity entity = ToEntity(id);
+        const ComponentDesc* component = FindComponent(componentName);
+        const FieldDesc* field = component ? component->Field(fieldName) : nullptr;
+        if (field == nullptr || !registry.valid(entity) || !component->has(registry, entity)) {
+            return sol::lua_nil;
+        }
+        FieldValue value = field->get(registry, entity);
+        if (field->type == FieldType::Enum) {
+            int index = std::get<int>(value);
+            return index >= 0 && index < static_cast<int>(field->options.size())
+                       ? sol::make_object(L, field->options[index])
+                       : sol::make_object(L, index);
+        }
+        if (const auto* target = std::get_if<Entity>(&value)) {
+            return registry.valid(*target) ? sol::make_object(L, ToId(*target)) : sol::lua_nil;
+        }
+        return std::visit([L](const auto& v) -> sol::object {
+            if constexpr (std::is_same_v<std::decay_t<decltype(v)>, Entity>) {
+                return sol::lua_nil;
+            } else {
+                return sol::make_object(L, v);
+            }
+        }, value);
+    };
+
+    // set_field(id, "Component", "field", value) -> true if set.
+    env["set_field"] = [&registry](lua_Integer id, const std::string& componentName, const std::string& fieldName,
+                                   sol::object value) {
+        Entity entity = ToEntity(id);
+        const ComponentDesc* component = FindComponent(componentName);
+        const FieldDesc* field = component ? component->Field(fieldName) : nullptr;
+        if (field == nullptr || !registry.valid(entity) || !component->has(registry, entity)) {
+            return false;
+        }
+        switch (field->type) {
+            case FieldType::Float:
+                if (!value.is<double>()) return false;
+                field->set(registry, entity, static_cast<float>(value.as<double>()));
+                return true;
+            case FieldType::Int:
+                if (!value.is<double>()) return false;
+                field->set(registry, entity, static_cast<int>(value.as<double>()));
+                return true;
+            case FieldType::Bool:
+                if (!value.is<bool>()) return false;
+                field->set(registry, entity, value.as<bool>());
+                return true;
+            case FieldType::Enum: {
+                if (value.is<std::string>()) {
+                    auto it = std::find(field->options.begin(), field->options.end(), value.as<std::string>());
+                    if (it == field->options.end()) return false;
+                    field->set(registry, entity, static_cast<int>(it - field->options.begin()));
+                    return true;
+                }
+                if (!value.is<double>()) return false;
+                field->set(registry, entity, static_cast<int>(value.as<double>()));
+                return true;
+            }
+            case FieldType::EntityRef: {
+                Entity target = value.is<double>() ? ToEntity(value.as<lua_Integer>()) : Entity{entt::null};
+                if (target != entt::null && !registry.valid(target)) return false;
+                field->set(registry, entity, target);
+                return true;
+            }
+            case FieldType::String:
+            case FieldType::Texture:
+            case FieldType::Script:
+            case FieldType::Audio:
+                if (!value.is<std::string>()) return false;
+                field->set(registry, entity, value.as<std::string>());
+                return true;
+        }
+        return false;
+    };
+
+    // spawn("prefabs/skeleton.prefab", x, y) -> id or nil.
+    env["spawn"] = [this](const std::string& prefab, float x, float y) -> sol::object {
+        if (!spawner_) {
+            return sol::lua_nil;
+        }
+        auto entity = spawner_(prefab, x, y);
+        return entity ? sol::make_object(lua_.State(), ToId(*entity)) : sol::lua_nil;
     };
 }
 

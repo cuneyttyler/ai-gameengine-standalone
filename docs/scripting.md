@@ -38,18 +38,52 @@ Entities are referred to by integer **ids** (as returned by `find_nearest` or `s
 | `attack_toward(id)` / `attack_toward(x, y)` | boolean | Swings this entity's `MeleeAttack`; false while on cooldown. |
 | `apply_status(id, kind, seconds, magnitude)` | — | `kind`: `"burn"`, `"poison"` (damage per tick; poison can't kill), `"slow"` (speed × (1 − magnitude)), `"regen"` (healing per tick). Re-applying refreshes rather than stacks. |
 | `play_sound(path)` | — | Project-relative, e.g. `"assets/audio/hit.wav"`. |
+| `get_field(id, component, field)` | value or nil | Any field the Inspector shows, e.g. `get_field(self_id(), "Health", "max")`. Enums come back as their option name (`"Enemy"`), entity references as ids. |
+| `set_field(id, component, field, value)` | boolean | The reverse; enums accept the option name or index. False if the entity lacks the component or the value has the wrong type. |
+| `spawn(prefab, x, y)` | id or nil | Places a copy of a prefab, e.g. `spawn("prefabs/skeleton.prefab", 4.5, 2.5)`. Tile prefabs paint the cell under the point. |
+
+## Script properties
+
+A script can declare settings that each entity using it may change in the Inspector:
+
+```lua
+properties = {
+    swing_range = 1.1,   -- numbers, booleans and strings become editable fields
+    taunt = "",
+}
+```
+
+The values in that table are the defaults. Each entity's own values (shown under its
+`LuaScript` section, with a ↺ to go back to the default) are written into `properties`
+after the script loads, so **read them inside functions** like `update`, not in top-level
+code. Editing a value while the game runs applies immediately. Prefabs carry property
+values too, and a copy can override them like any other field.
 
 ## Example: a melee enemy
 
-Chasing is handled by the entity's `Follow` component; the script decides when to swing
-(`projects/demo/scripts/enemy_melee.lua`):
+Chasing is handled by the entity's `Follow` component (with no target it follows the
+player); the script decides when to swing (`projects/demo/scripts/enemy_melee.lua`):
 
 ```lua
-local swing_range = 1.1
+properties = {
+    swing_range = 1.1, -- cells; a bit more than MeleeAttack.reach
+    taunt = "",        -- a sound to play when it first spots the player
+}
+
+local spotted = false
 
 function update(dt)
     local target, distance = find_nearest("Player")
-    if target and distance < swing_range then
+    if not target then
+        return
+    end
+    if not spotted and distance < get_field(self_id(), "Follow", "range") then
+        spotted = true
+        if properties.taunt ~= "" then
+            play_sound(properties.taunt)
+        end
+    end
+    if distance < properties.swing_range then
         attack_toward(target)
     end
 end
@@ -64,4 +98,5 @@ end
 - `Stats` — attack (added to damage dealt), defense (subtracted from damage taken, minimum
   1), moveSpeed (the player's walk speed in cells/s).
 - `Pickup` — heals the player on contact (left on the ground at full health).
-- `Follow` — walks toward a target entity within `range`, stopping at `stopDistance`.
+- `Follow` — walks toward a target entity (the player, if none is set) within `range`,
+  stopping at `stopDistance`.

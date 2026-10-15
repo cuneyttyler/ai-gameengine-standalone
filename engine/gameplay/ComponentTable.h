@@ -59,6 +59,16 @@ struct ComponentDesc {
     // (ScreenTransform2D of a character or tile), so edits wouldn't stick.
     std::function<bool(Registry&, Entity)> derived;
 
+    // Fields beyond `fields` that vary per entity (a script's properties):
+    // extra `key=value` pairs written after the regular fields (values
+    // already formatted, see QuoteValue), and parsed back on load (returns
+    // false for keys it doesn't own).
+    std::function<std::vector<std::pair<std::string, std::string>>(Registry&, Entity)> writeExtra;
+    std::function<bool(Registry&, Entity, const std::string& key, const std::string& text)> readExtra;
+    // Shown in the Inspector as its own section (false for bookkeeping
+    // components the Inspector presents differently, like PrefabInstance).
+    bool inspectorVisible = true;
+
     const FieldDesc* Field(const std::string& fieldName) const;
 };
 
@@ -85,5 +95,14 @@ std::string FormatField(const FieldDesc& field, const FieldValue& value,
 // nullopt for malformed input.
 std::optional<FieldValue> ParseField(const FieldDesc& field, const std::string& text,
                                      std::optional<size_t>* refIndex = nullptr);
+
+// Quotes a string value when it would otherwise break the scene format's
+// whitespace-separated `key=value` pairs.
+std::string QuoteValue(const std::string& value);
+
+// Whether a field holds where this particular entity is (position, grid
+// cell) or another entity, rather than what kind of thing it is — such
+// fields are never copied from a prefab to its instances.
+bool IsInstanceLocal(const std::string& component, const FieldDesc& field);
 
 } // namespace aige

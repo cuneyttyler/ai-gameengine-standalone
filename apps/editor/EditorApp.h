@@ -1,6 +1,7 @@
 #pragma once
 
 #include "assets/AssetDatabase.h"
+#include "assets/Prefab.h"
 #include "audio/Audio.h"
 #include "ecs/Registry.h"
 #include "editing/EditHistory.h"
@@ -59,8 +60,9 @@ public:
     void Save();
 
 private:
-    enum class Tool { Select, PaintGrass, PaintDirt, PaintWall, PlaceNpc, PlacePlayer, Erase, PlaceSprite, PaintTileset,
-                      PlaceEnemy, PlacePickup };
+    // Everything placeable is a prefab, so there are only three tools: pick,
+    // erase, and the prefab brush (paints tile prefabs, places the others).
+    enum class Tool { Select, Erase, Prefab };
 
     // Edit transactions: BeginEdit snapshots the scene; the snapshot only
     // becomes an undo step once MarkChanged reports a real change, so clicks
@@ -90,6 +92,23 @@ private:
     void RefreshAssets();
     void ImportAssets();
     void ApplyAssetToSelected(const std::string& path, int tile);
+
+    // Prefabs.
+    void RefreshPrefabs();
+    void EnsureStarterPrefabs();
+    nlohmann::json PrefabsJson();
+    void CreatePrefabFromAsset(const std::string& asset, int tile, bool asTile, bool solid, const std::string& name);
+    void SaveSelectedAsPrefab(const std::string& name);
+    void ApplySelectedToPrefab();
+    void RevertOverride(const std::string& key);
+    // Records that `key` was changed on this copy (no-op for non-instances
+    // and instance-local fields).
+    void NoteOverride(Entity entity, const std::string& component, const std::string& field);
+
+    // Script properties (a script's `properties = { ... }`).
+    nlohmann::json ScriptPropertiesJson(Entity entity);
+    void SetScriptProperty(Entity entity, const std::string& name, const nlohmann::json& value);
+    void ResetScriptProperty(Entity entity, const std::string& name);
     // The style a tileset brush paints with (texture region, size, solidity).
     std::optional<TileStyle> TilesetStyle(const std::string& path, int tile, bool solid) const;
     nlohmann::json AssetsJson();
@@ -109,7 +128,9 @@ private:
     HWND mainWindow_;
     ViewportWindow& viewport_;
     Registry& registry_;
+    LuaVM& lua_;
     AssetDatabase& assets_;
+    PrefabLibrary prefabs_;
     AudioEngine& audio_;
     Renderer2D& renderer_;
     std::string scenePath_;
@@ -122,9 +143,7 @@ private:
     bool framedOnce_ = false;
 
     Tool tool_ = Tool::Select;
-    std::string brushAsset_; // PlaceSprite / PaintTileset
-    int brushTile_ = 0;
-    bool brushSolid_ = false;
+    std::string brushPrefab_; // Tool::Prefab
     // Bumped when a texture is re-cooked, so the UI reloads its thumbnail.
     std::unordered_map<std::string, int> assetVersions_;
     std::optional<Entity> selected_;

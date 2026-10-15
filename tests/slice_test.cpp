@@ -157,7 +157,8 @@ TEST(SliceTest, DemoLevelIsComplete) {
     auto enemies = LivingEnemies(registry);
     EXPECT_EQ(enemies.size(), 4u);
     for (auto enemy : enemies) {
-        EXPECT_EQ(registry.get<aige::Follow>(enemy).target, *player);
+        // No explicit target: Follow chases the player.
+        EXPECT_TRUE(registry.get<aige::Follow>(enemy).target == entt::null);
     }
     EXPECT_GE(registry.view<aige::Pickup>().size(), 1u);
 

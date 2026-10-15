@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { editorState } from '../editorState'
+import { armPrefab, editorState } from '../editorState'
+import PrefabThumb from './PrefabThumb.vue'
 import { onHostMessage, sendToHost } from '../ipc'
 
 interface Asset {
@@ -123,34 +124,31 @@ const tiles = computed(() => {
   return result
 })
 
-function placeAsProp(): void {
-  sendToHost({ type: 'tool:set', tool: 'place:sprite', asset: selectedPath.value, tile: selectedTile.value })
-}
+// Everything placed in the world is a prefab, so an asset becomes placeable
+// by turning it into one: a tile (painted onto cells) or a prop (stands in
+// the world). The new prefab is armed as the brush right away.
+const newPrefabName = ref('')
+watch([selectedPath, selectedTile], () => {
+  const stem = (selected.value?.name ?? '').replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_-]/g, '_')
+  newPrefabName.value = selected.value?.type === 'tileset' ? `${stem}_${selectedTile.value}` : stem
+})
 
-function paintTiles(): void {
+function createPrefab(asTile: boolean): void {
   sendToHost({
-    type: 'tool:set',
-    tool: 'tile:asset',
+    type: 'prefab:createFromAsset',
     asset: selectedPath.value,
     tile: selectedTile.value,
+    asTile,
     solid: paintSolid.value,
+    name: newPrefabName.value,
   })
 }
 
-// Keep an active brush in sync when the tile or solidity changes.
-watch([selectedTile, paintSolid], () => {
-  const brushActive =
-    (editorState.tool === 'tile:asset' || editorState.tool === 'place:sprite') &&
-    editorState.brush.asset === selectedPath.value
-  if (brushActive) {
-    sendToHost({
-      type: 'tool:set',
-      tool: editorState.tool,
-      asset: selectedPath.value,
-      tile: selectedTile.value,
-      solid: paintSolid.value,
-    })
-  }
+// Prefabs tab: the project's palette.
+const tab = ref<'prefabs' | 'assets'>('prefabs')
+const visiblePrefabs = computed(() => {
+  const query = filter.value.trim().toLowerCase()
+  return query ? editorState.prefabs.filter((p) => p.name.toLowerCase().includes(query)) : editorState.prefabs
 })
 
 function applyToSelected(): void {
@@ -167,21 +165,62 @@ function formatDuration(seconds?: number): string {
 
 onMounted(() => {
   sendToHost({ type: 'assets:request' })
+  sendToHost({ type: 'prefabs:request' })
 })
 </script>
 
 <template>
   <div class="asset-browser">
     <div class="header">
-      <h2>Assets</h2>
+      <div class="tabs">
+        <button :class="{ active: tab === 'prefabs' }" @click="tab = 'prefabs'">Prefabs</button>
+        <button :class="{ active: tab === 'assets' }" @click="tab = 'assets'">Assets</button>
+      </div>
       <input v-model="filter" class="filter" type="search" placeholder="Filter" spellcheck="false" />
-      <button title="Copy images or audio into the project" @click="sendToHost({ type: 'asset:import' })">
+      <button
+        v-if="tab === 'assets'"
+        title="Copy images or audio into the project"
+        @click="sendToHost({ type: 'asset:import' })"
+      >
         Import…
       </button>
-      <button title="Rescan the assets folder" @click="sendToHost({ type: 'assets:refresh' })">Refresh</button>
+      <button title="Rescan the project folder" @click="sendToHost({ type: 'assets:refresh' })">Refresh</button>
     </div>
 
-    <div class="body">
+    <div v-if="tab === 'prefabs'" class="body">
+      <div class="grid">
+        <p v-if="editorState.prefabs.length === 0" class="placeholder">
+          No prefabs yet. Turn an asset into one from the Assets tab, or select an entity and use "Save as
+          prefab" in the Inspector.
+        </p>
+        <button
+          v-for="(prefab, index) in visiblePrefabs"
+          :key="prefab.path"
+          class="card"
+          :class="{
+            selected: editorState.tool === 'prefab' && editorState.brush === prefab.path,
+            broken: !!prefab.error,
+          }"
+          :title="
+            prefab.error ||
+            `${prefab.isTile ? 'Paint' : 'Place'} ${prefab.name}${index < 9 ? ` (${index + 1})` : ''} — ${prefab.path}`
+          "
+          :disabled="editorState.playing"
+          @click="armPrefab(prefab.path)"
+        >
+          <span class="thumb">
+            <PrefabThumb :prefab="prefab" :box="52" />
+          </span>
+          <span class="name">{{ prefab.name }}</span>
+          <span class="badge">
+            {{ prefab.isTile ? 'tile' : prefab.isPlayer ? 'player' : 'object' }}
+            <template v-if="index < 9 && !filter"> · {{ index + 1 }}</template>
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <div v-else class="body">
       <div class="grid">
         <p v-if="assets.length === 0" class="placeholder">
           No assets yet. Import PNG/JPG images or WAV/MP3/FLAC audio.
@@ -255,14 +294,27 @@ onMounted(() => {
             ></button>
           </div>
 
-          <div v-if="!settingsChanged" class="actions">
-            <button title="Click cells in the viewport to paint ground tiles" @click="paintTiles">Paint tiles</button>
-            <label class="check"><input v-model="paintSolid" type="checkbox" /> Solid</label>
-            <button title="Click a cell in the viewport to place this as a standing object" @click="placeAsProp">
-              Place as prop
-            </button>
-            <button title="Use this on the selected entity's sprite" @click="applyToSelected">Apply to selected</button>
-          </div>
+          <template v-if="!settingsChanged">
+            <div class="section-label">Make a prefab from it</div>
+            <div class="row">
+              <span>Name</span>
+              <input v-model="newPrefabName" class="name-input" type="text" spellcheck="false" />
+            </div>
+            <div class="actions">
+              <button title="A ground tile you paint onto cells" @click="createPrefab(true)">New tile prefab</button>
+              <button title="An object that stands in the world (tree, crate, ...)" @click="createPrefab(false)">
+                New prop prefab
+              </button>
+              <label class="check" title="Tiles: blocks movement. Props: blocks its cell.">
+                <input v-model="paintSolid" type="checkbox" /> Solid
+              </label>
+            </div>
+            <div class="actions">
+              <button title="Use this on the selected entity's sprite" @click="applyToSelected">
+                Apply to selected entity
+              </button>
+            </div>
+          </template>
         </template>
       </aside>
     </div>
@@ -292,6 +344,27 @@ h2 {
   letter-spacing: 0.05em;
   opacity: 0.7;
   margin: 0 8px 0 0;
+}
+.tabs {
+  display: flex;
+  margin-right: 8px;
+}
+.tabs button {
+  border-bottom-width: 2px;
+}
+.tabs button.active {
+  border-bottom-color: #3b82f6;
+  background: #262637;
+}
+.section-label {
+  margin: 10px 0 6px;
+  font-size: 0.85em;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.name-input {
+  width: 150px;
 }
 .filter {
   width: 160px;

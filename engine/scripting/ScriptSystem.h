@@ -1,11 +1,14 @@
 #pragma once
 
 #include "ecs/Registry.h"
+#include "scripting/Components.h"
 
 #include <sol/sol.hpp>
 
 #include <filesystem>
 #include <functional>
+#include <string>
+#include <vector>
 
 namespace aige {
 
@@ -26,5 +29,25 @@ using ScriptBinder = std::function<void(sol::environment&, Entity)>;
 // resolve against `baseDir` (the project root), so scenes stay portable.
 void UpdateScripts(Registry& registry, LuaVM& vm, float dt, const ScriptBinder& binder = {},
                    const std::filesystem::path& baseDir = {});
+
+
+
+// Pushes an entity's property values into its loaded script's `properties`
+// table (creating the table if the script declared none). Called after
+// every (re)load; call it again after editing values on a running script.
+void ApplyScriptProperties(LuaVM& vm, LuaScript& script);
+
+struct ScriptProperty {
+    std::string name;
+    ScriptValue value; // the script's default
+};
+
+// The properties a script declares with a top-level `properties = { ... }`
+// table (number, boolean and string entries; sorted by name), found by
+// running it in a sandbox where every unknown global is a no-op — so the
+// editor can list them without a running game. Empty, with `error` set, if
+// the script fails to load.
+std::vector<ScriptProperty> ReadScriptProperties(LuaVM& vm, const std::filesystem::path& path,
+                                                 std::string* error = nullptr);
 
 } // namespace aige

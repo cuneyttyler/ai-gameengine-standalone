@@ -4,16 +4,8 @@ import { editorState } from '../editorState'
 
 const hints: Record<string, string> = {
   select: 'Click to select · drag to move · Del delete · Ctrl+D duplicate',
-  'tile:grass': 'Click or drag to paint grass',
-  'tile:dirt': 'Click or drag to paint dirt',
-  'tile:wall': 'Click or drag to paint walls',
-  'place:npc': 'Click a cell to place an NPC',
-  'place:player': 'Click a cell to place the player (moves the existing one)',
   erase: 'Click or drag to erase',
-  'place:sprite': 'Click a cell to place the selected asset as a prop',
-  'tile:asset': 'Click or drag to paint tiles from the selected tileset',
-  'place:enemy': 'Click a cell to place an enemy (chases and attacks the player)',
-  'place:pickup': 'Click a cell to place a health potion',
+  prefab: 'Tile prefabs: click or drag to paint · others: click to place · 1-9 pick from the palette',
 }
 
 const hint = computed(() =>

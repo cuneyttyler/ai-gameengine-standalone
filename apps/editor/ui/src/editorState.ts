@@ -4,68 +4,66 @@
 import { reactive } from 'vue'
 import { onHostMessage, sendToHost } from './ipc'
 
-export type ToolId =
-  | 'select'
-  | 'tile:grass'
-  | 'tile:dirt'
-  | 'tile:wall'
-  | 'place:npc'
-  | 'place:player'
-  | 'erase'
-  | 'place:sprite'
-  | 'tile:asset'
-  | 'place:enemy'
-  | 'place:pickup'
+// Everything placeable is a prefab, so there are three tools: pick, erase,
+// and the prefab brush (paints tile prefabs, places everything else).
+export type ToolId = 'select' | 'erase' | 'prefab'
+
+export interface Prefab {
+  path: string
+  name: string
+  error: string
+  isTile: boolean
+  isPlayer: boolean
+  texture: string
+  uv: [number, number, number, number]
+  size: [number, number]
+}
 
 export const editorState = reactive({
   tool: 'select' as ToolId,
+  brush: '', // prefab path for the 'prefab' tool
   playing: false,
   dirty: false,
   canUndo: false,
   canRedo: false,
   sceneName: '',
-  brush: { asset: '', tile: 0, solid: false },
   selectedId: null as number | null,
   notice: '',
+  prefabs: [] as Prefab[],
 })
+
+export function armPrefab(path: string): void {
+  sendToHost({ type: 'tool:set', tool: 'prefab', prefab: path })
+}
 
 let noticeTimer: number | undefined
 
 onHostMessage((message) => {
   if (message.type === 'editor:state') {
     editorState.tool = message.tool as ToolId
+    editorState.brush = message.brush as string
     editorState.playing = message.playing as boolean
     editorState.dirty = message.dirty as boolean
     editorState.canUndo = message.canUndo as boolean
     editorState.canRedo = message.canRedo as boolean
     editorState.sceneName = message.sceneName as string
-    editorState.brush = message.brush as typeof editorState.brush
   } else if (message.type === 'selection:changed') {
     editorState.selectedId = (message.id as number | null) ?? null
+  } else if (message.type === 'prefabs:list') {
+    editorState.prefabs = message.prefabs as Prefab[]
   } else if (message.type === 'notify') {
     editorState.notice = message.text as string
     window.clearTimeout(noticeTimer)
-    noticeTimer = window.setTimeout(() => (editorState.notice = ''), 3000)
+    noticeTimer = window.setTimeout(() => (editorState.notice = ''), 3500)
   }
 })
 
 // Shortcuts while the web UI has focus. The native viewport handles the
 // same keys itself when it has focus (EditorApp::OnViewportKey).
-const toolKeys: Record<string, ToolId> = {
-  v: 'select',
-  '1': 'tile:grass',
-  '2': 'tile:dirt',
-  '3': 'tile:wall',
-  n: 'place:npc',
-  p: 'place:player',
-  e: 'erase',
-  x: 'place:enemy',
-  h: 'place:pickup',
-}
-
 window.addEventListener('keydown', (event) => {
   const target = event.target as HTMLElement | null
-  const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+  const typing =
+    !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
   const key = event.key.toLowerCase()
 
   if (event.ctrlKey) {
@@ -89,7 +87,14 @@ window.addEventListener('keydown', (event) => {
     sendToHost({ type: 'edit:delete' })
   } else if (key === 'f') {
     sendToHost({ type: 'view:frame' })
-  } else if (toolKeys[key]) {
-    sendToHost({ type: 'tool:set', tool: toolKeys[key] })
+  } else if (key === 'v') {
+    sendToHost({ type: 'tool:set', tool: 'select' })
+  } else if (key === 'e') {
+    sendToHost({ type: 'tool:set', tool: 'erase' })
+  } else if (key >= '1' && key <= '9') {
+    const prefab = editorState.prefabs[Number(key) - 1]
+    if (prefab) {
+      armPrefab(prefab.path)
+    }
   }
 })

@@ -1,6 +1,7 @@
 // Standalone runtime: plays a project's main scene without the editor.
 // `sandbox [--project] <dir>`; defaults to the repo's demo project.
 #include "assets/AssetDatabase.h"
+#include "assets/Prefab.h"
 #include "assets/Project.h"
 #include "assets/SceneIO.h"
 #include "audio/Audio.h"
@@ -43,6 +44,8 @@ int main(int argc, char** argv) {
         aige::AssetDatabase assets(project);
         renderer.SetTextureLoader([&assets](const std::string& path) { return assets.LoadTexture(path); });
         aige::AudioEngine audio;
+        aige::PrefabLibrary prefabs(project);
+        prefabs.Refresh();
 
         // lua must outlive registry: LuaScript components store a
         // sol::environment referencing lua's Lua state, so registry (and
@@ -58,11 +61,15 @@ int main(int argc, char** argv) {
                 registry.clear();
                 aige::BuildBootstrapScene(registry, "scripts/npc_wander.lua");
             }
+            prefabs.SyncAll(registry); // prefab edits since the scene was saved apply here too
         };
         loadLevel();
 
         aige::GameSession session(registry, lua, aige::BootstrapIso(), project.root);
         session.SetSoundPlayer([&](const std::string& path) { audio.Play(project.Resolve(path)); });
+        session.SetSpawner([&](const std::string& prefab, float x, float y) {
+            return prefabs.Instantiate(registry, prefab, x, y);
+        });
         auto isKeyDown = [&window](aige::Key key) { return window.IsKeyDown(key); };
 
         using Clock = std::chrono::steady_clock;

@@ -151,11 +151,18 @@ struct Sounds {
     std::string collect;
 };
 
+// Placed from a prefab (see engine/assets/Prefab.h). `overrides` lists the
+// fields changed on this copy, which prefab updates leave alone.
+struct PrefabInstance {
+    std::string path;
+    std::string overrides;
+};
+
 // Walks toward another entity (with collision) until within stopDistance.
 // The simplest useful "AI": an enemy that chases the player needs nothing
 // but this and a target. Distances in world grid units, speed in cells/s.
 struct Follow {
-    Entity target = entt::null;
+    Entity target = entt::null; // none = the player, so enemy prefabs need no reference
     float speed = 2.0f;
     float stopDistance = 0.8f;
     float range = 6.0f; // only follows while the target is this close; 0 = always

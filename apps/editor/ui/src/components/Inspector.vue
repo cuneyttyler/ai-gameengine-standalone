@@ -10,6 +10,15 @@ interface Field {
   type: FieldType
   value: number | boolean | string | null
   options?: string[]
+  overridden: boolean // changed on this prefab copy
+}
+
+interface ScriptProperty {
+  name: string
+  type: 'float' | 'bool' | 'string'
+  value: number | boolean | string
+  set: boolean // this entity has its own value (otherwise the script's default)
+  overridden: boolean
 }
 
 interface ComponentData {
@@ -17,11 +26,13 @@ interface ComponentData {
   removable: boolean
   derived: boolean
   fields: Field[]
+  script?: { properties: ScriptProperty[]; error: string }
 }
 
 interface InspectorData {
   id: number
   label: string
+  prefab: { path: string; name: string; missing: boolean; overrides: string[] } | null
   components: ComponentData[]
   addable: string[]
   choices: {
@@ -95,6 +106,39 @@ function openScript(path: string): void {
 function fileName(path: string): string {
   return path.split('/').pop() ?? path
 }
+
+// Prefabs.
+const savingPrefab = ref(false)
+const newPrefabName = ref('')
+
+function startSavePrefab(): void {
+  newPrefabName.value = (current.value?.label ?? '').replace(/[^A-Za-z0-9_-]/g, '_').toLowerCase()
+  savingPrefab.value = true
+}
+
+function savePrefab(): void {
+  if (newPrefabName.value.trim()) {
+    sendToHost({ type: 'prefab:saveSelected', name: newPrefabName.value.trim() })
+  }
+  savingPrefab.value = false
+}
+
+function revert(key: string): void {
+  sendToHost({ type: 'prefab:revert', key })
+}
+
+// Script properties.
+function setProperty(name: string, value: unknown): void {
+  if (current.value && !(typeof value === 'number' && Number.isNaN(value))) {
+    sendToHost({ type: 'script:setProperty', id: current.value.id, name, value })
+  }
+}
+
+function resetProperty(name: string): void {
+  if (current.value) {
+    sendToHost({ type: 'script:resetProperty', id: current.value.id, name })
+  }
+}
 </script>
 
 <template>
@@ -103,6 +147,33 @@ function fileName(path: string): string {
     <p v-if="!current" class="placeholder">No entity selected.</p>
     <template v-else>
       <div class="entity-label">{{ current.label }}</div>
+
+      <div v-if="current.prefab" class="prefab-header" :class="{ missing: current.prefab.missing }">
+        <div class="prefab-title">
+          <span class="prefab-kind">Prefab</span>
+          <span :title="current.prefab.path">{{ current.prefab.name }}</span>
+          <span v-if="current.prefab.missing" class="warning">(file missing)</span>
+        </div>
+        <div v-if="!editorState.playing" class="prefab-actions">
+          <span class="override-count">
+            {{ current.prefab.overrides.length }} override{{ current.prefab.overrides.length === 1 ? '' : 's' }}
+          </span>
+          <button
+            :disabled="current.prefab.missing"
+            title="Make this copy's values the prefab's; every other copy updates (keeping their own overrides)"
+            @click="sendToHost({ type: 'prefab:applySelected' })"
+          >
+            Apply to prefab
+          </button>
+          <button
+            :disabled="current.prefab.overrides.length === 0"
+            title="Discard this copy's changes"
+            @click="revert('')"
+          >
+            Revert all
+          </button>
+        </div>
+      </div>
 
       <section v-for="component in current.components" :key="component.name" class="component">
         <header>
@@ -123,8 +194,18 @@ function fileName(path: string): string {
         </header>
 
         <div v-if="!collapsed[component.name]" class="fields">
-          <div v-for="field in component.fields" :key="field.name" class="field-row">
-            <label>{{ field.name }}</label>
+          <div v-for="field in component.fields" :key="field.name" class="field-row" :class="{ overridden: field.overridden }">
+            <label :title="field.overridden ? 'Changed on this copy; prefab updates won\'t touch it' : undefined">
+              {{ field.name }}
+              <button
+                v-if="field.overridden && !editorState.playing"
+                class="revert"
+                title="Revert to the prefab's value"
+                @click="revert(`${component.name}.${field.name}`)"
+              >
+                ↺
+              </button>
+            </label>
 
             <input
               v-if="field.type === 'float' || field.type === 'int'"
@@ -218,6 +299,52 @@ function fileName(path: string): string {
               </button>
             </span>
           </div>
+
+          <template v-if="component.script">
+            <p v-if="component.script.error" class="script-error">{{ component.script.error }}</p>
+            <div v-else-if="component.script.properties.length > 0" class="properties-label">
+              Script properties
+            </div>
+            <div
+              v-for="property in component.script.properties"
+              :key="property.name"
+              class="field-row"
+              :class="{ overridden: property.overridden, unset: !property.set }"
+            >
+              <label :title="property.set ? 'Set on this entity' : 'Script default'">
+                {{ property.name }}
+                <button
+                  v-if="property.set && !editorState.playing"
+                  class="revert"
+                  title="Back to the default"
+                  @click="resetProperty(property.name)"
+                >
+                  ↺
+                </button>
+              </label>
+              <input
+                v-if="property.type === 'float'"
+                type="number"
+                step="0.1"
+                :value="property.value as number"
+                @change="setProperty(property.name, numberFrom($event))"
+              />
+              <input
+                v-else-if="property.type === 'bool'"
+                type="checkbox"
+                class="checkbox"
+                :checked="property.value as boolean"
+                @change="setProperty(property.name, ($event.target as HTMLInputElement).checked)"
+              />
+              <input
+                v-else
+                type="text"
+                spellcheck="false"
+                :value="property.value as string"
+                @change="setProperty(property.name, ($event.target as HTMLInputElement).value)"
+              />
+            </div>
+          </template>
         </div>
       </section>
 
@@ -239,6 +366,28 @@ function fileName(path: string): string {
           <button @click="createScript">Create</button>
         </div>
         <button v-else class="link" @click="creatingScript = true">+ New script…</button>
+
+        <template v-if="!current.prefab">
+          <div v-if="savingPrefab" class="new-script">
+            <input
+              v-model="newPrefabName"
+              type="text"
+              placeholder="prefab name"
+              spellcheck="false"
+              @keydown.enter="savePrefab"
+              @keydown.esc="savingPrefab = false"
+            />
+            <button @click="savePrefab">Save</button>
+          </div>
+          <button
+            v-else
+            class="link"
+            title="Store this entity as a reusable prefab; it becomes the first copy"
+            @click="startSavePrefab"
+          >
+            Save as prefab…
+          </button>
+        </template>
       </div>
     </template>
   </div>
@@ -316,8 +465,89 @@ header {
   font-size: 0.85em;
 }
 .field-row label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   opacity: 0.7;
   flex-shrink: 0;
+}
+.field-row.overridden {
+  box-shadow: inset 2px 0 0 #3b82f6;
+  padding-left: 6px;
+}
+.field-row.overridden label {
+  opacity: 1;
+  color: #93b4f8;
+}
+.field-row.unset input:not(:focus) {
+  opacity: 0.6;
+}
+.revert {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-color: transparent;
+  background: none;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+.revert:hover {
+  border-color: #3b82f6;
+}
+.prefab-header {
+  border: 1px solid #3b82f6;
+  background: #1f2440;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  font-size: 0.85em;
+}
+.prefab-header.missing {
+  border-color: #ef4444;
+}
+.prefab-title {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.prefab-kind {
+  font-size: 0.8em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.warning {
+  color: #ef4444;
+}
+.prefab-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+.prefab-actions button {
+  padding: 0 8px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.prefab-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.override-count {
+  flex-basis: 100%;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+.properties-label {
+  margin: 8px 0 4px;
+  font-size: 0.75em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.script-error {
+  color: #ef4444;
+  font-size: 0.8em;
+  word-break: break-word;
 }
 input,
 select,

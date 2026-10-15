@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "assets/ComponentTable.h"
+#include "gameplay/ComponentTable.h"
 #include "assets/SceneIO.h"
 #include "ecs/Registry.h"
 #include "gameplay/Archetypes.h"

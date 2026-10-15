@@ -3,6 +3,8 @@ add_library(aige_gameplay STATIC
     Isometric.h
     Combat.h
     Combat.cpp
+    ComponentTable.h
+    ComponentTable.cpp
     CameraFollow.h
     Archetypes.h
     Archetypes.cpp

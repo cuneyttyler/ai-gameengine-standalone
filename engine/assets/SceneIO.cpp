@@ -1,6 +1,6 @@
 #include "assets/SceneIO.h"
 
-#include "assets/ComponentTable.h"
+#include "gameplay/ComponentTable.h"
 #include "scripting/Components.h"
 
 #include <entt/entt.hpp>
@@ -70,10 +70,9 @@ FieldMap ParseFields(const std::string& rest) {
 // followed by one indented line per component, `Name field=value ...`.
 // Which components exist and how their fields are written comes entirely
 // from the component table.
-void WriteScene(Registry& registry, std::ostream& out) {
+void WriteScene(Registry& registry, std::ostream& out, const std::vector<Entity>& entities) {
     out << "# AIGE Scene v1\n";
 
-    std::vector<Entity> entities = EntitiesInOrder(registry);
     std::unordered_map<Entity, size_t> indexOf;
     for (size_t i = 0; i < entities.size(); ++i) {
         indexOf[entities[i]] = i;
@@ -93,13 +92,17 @@ void WriteScene(Registry& registry, std::ostream& out) {
             for (const auto& field : component.fields) {
                 out << " " << field.name << "=" << FormatField(field, field.get(registry, entity), entityIndex);
             }
+            if (component.writeExtra) {
+                for (const auto& [key, text] : component.writeExtra(registry, entity)) {
+                    out << " " << key << "=" << text;
+                }
+            }
             out << "\n";
         }
     }
 }
 
-void ReadScene(Registry& registry, std::istream& in) {
-    registry.clear();
+std::vector<Entity> ReadScene(Registry& registry, std::istream& in) {
 
     // Entity references point at entities later in the file too, so they're
     // resolved after everything is created.
@@ -145,17 +148,25 @@ void ReadScene(Registry& registry, std::istream& in) {
         }
 
         // Before 1.3 a LuaScript path was written unquoted as the rest of the
-        // line, spaces and all.
+        // line, spaces and all. Only that exact shape (an unquoted path with
+        // spaces and nothing after it) takes this route; anything else,
+        // including paths followed by script properties, parses normally.
         std::string trimmedRest = Trim(rest);
         if (componentName == "LuaScript" && trimmedRest.rfind("path=", 0) == 0 &&
             trimmedRest.rfind("path=\"", 0) != 0) {
-            registry.get<LuaScript>(current) = LuaScript{trimmedRest.substr(5)};
-            continue;
+            std::string legacyPath = trimmedRest.substr(5);
+            if (legacyPath.find(' ') != std::string::npos && legacyPath.find('=') == std::string::npos) {
+                registry.get<LuaScript>(current).path = legacyPath;
+                continue;
+            }
         }
 
         for (const auto& [key, text] : ParseFields(rest)) {
             const FieldDesc* field = component->Field(key);
             if (field == nullptr) {
+                if (component->readExtra) {
+                    component->readExtra(registry, current, key, text);
+                }
                 continue;
             }
             std::optional<size_t> refIndex;
@@ -173,6 +184,7 @@ void ReadScene(Registry& registry, std::istream& in) {
             ref.field->set(registry, ref.entity, created[ref.index]);
         }
     }
+    return created;
 }
 
 } // namespace
@@ -182,7 +194,7 @@ void SaveScene(Registry& registry, const std::string& path) {
     if (!out) {
         throw std::runtime_error("Failed to open scene file for writing: " + path);
     }
-    WriteScene(registry, out);
+    WriteScene(registry, out, EntitiesInOrder(registry));
 }
 
 bool LoadScene(Registry& registry, const std::string& path) {
@@ -190,19 +202,30 @@ bool LoadScene(Registry& registry, const std::string& path) {
     if (!in) {
         return false;
     }
+    registry.clear();
     ReadScene(registry, in);
     return true;
 }
 
 std::string SerializeScene(Registry& registry) {
-    std::ostringstream out;
-    WriteScene(registry, out);
-    return out.str();
+    return SerializeEntities(registry, EntitiesInOrder(registry));
 }
 
 void DeserializeScene(Registry& registry, const std::string& text) {
+    registry.clear();
     std::istringstream in(text);
     ReadScene(registry, in);
+}
+
+std::string SerializeEntities(Registry& registry, const std::vector<Entity>& entities) {
+    std::ostringstream out;
+    WriteScene(registry, out, entities);
+    return out.str();
+}
+
+std::vector<Entity> AppendEntities(Registry& registry, const std::string& text) {
+    std::istringstream in(text);
+    return ReadScene(registry, in);
 }
 
 } // namespace aige

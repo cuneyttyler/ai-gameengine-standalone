@@ -1,4 +1,4 @@
-#include "assets/ComponentTable.h"
+#include "gameplay/ComponentTable.h"
 
 #include "gameplay/Components.h"
 #include "physics2d/Components.h"
@@ -12,6 +12,9 @@
 namespace aige {
 
 namespace {
+
+std::string EncodeScriptValue(const ScriptValue& value);
+std::optional<ScriptValue> DecodeScriptValue(const std::string& text);
 
 float ToFloat(const FieldValue& value) {
     if (auto* f = std::get_if<float>(&value)) return *f;
@@ -184,16 +187,91 @@ std::vector<ComponentDesc> BuildTable() {
     // Changing the path must drop the loaded environment so the new script
     // loads on the next update.
     script.fields[0].set = [](Registry& registry, Entity entity, const FieldValue& value) {
-        registry.get<LuaScript>(entity) = LuaScript{ToString(value)};
+        auto& script = registry.get<LuaScript>(entity);
+        script.path = ToString(value);
+        script.Unload();
+    };
+    // Per-entity values for the script's declared properties, saved as
+    // `prop.<name>=<type>:<value>` (n: number, b: boolean, s: string) so a
+    // scene loads without having to run the script to learn the types.
+    script.writeExtra = [](Registry& registry, Entity entity) {
+        std::vector<std::pair<std::string, std::string>> extra;
+        for (const auto& [name, value] : registry.get<LuaScript>(entity).properties) {
+            extra.emplace_back("prop." + name, QuoteValue(EncodeScriptValue(value)));
+        }
+        return extra;
+    };
+    script.readExtra = [](Registry& registry, Entity entity, const std::string& key, const std::string& text) {
+        if (key.rfind("prop.", 0) != 0) {
+            return false;
+        }
+        if (auto value = DecodeScriptValue(text)) {
+            registry.get<LuaScript>(entity).properties[key.substr(5)] = *value;
+        }
+        return true;
     };
     table.push_back(std::move(script));
+
+    // Which prefab an entity was placed from, and which of its fields were
+    // changed on this copy (so prefab edits don't overwrite them): a
+    // comma-separated list of `Component.field`, plus `-Component` for
+    // components removed from this copy. Presented by the Inspector's prefab
+    // header rather than as a section.
+    ComponentDesc prefab = Component<PrefabInstance>("PrefabInstance",
+                                                     {Member("path", FieldType::String, &PrefabInstance::path),
+                                                      Member("overrides", FieldType::String, &PrefabInstance::overrides)},
+                                                     {}, false);
+    prefab.inspectorVisible = false;
+    table.push_back(std::move(prefab));
 
     return table;
 }
 
+std::string EncodeScriptValue(const ScriptValue& value) {
+    if (const auto* number = std::get_if<double>(&value)) {
+        std::ostringstream out;
+        out.precision(15);
+        out << "n:" << *number;
+        return out.str();
+    }
+    if (const auto* flag = std::get_if<bool>(&value)) {
+        return *flag ? "b:1" : "b:0";
+    }
+    return "s:" + std::get<std::string>(value);
+}
+
+std::optional<ScriptValue> DecodeScriptValue(const std::string& text) {
+    if (text.size() < 2 || text[1] != ':') {
+        return std::nullopt;
+    }
+    std::string payload = text.substr(2);
+    try {
+        switch (text[0]) {
+            case 'n': return ScriptValue(std::stod(payload));
+            case 'b': return ScriptValue(payload == "1");
+            case 's': return ScriptValue(payload);
+            default: return std::nullopt;
+        }
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+} // namespace
+
 // Quotes a string value when it would otherwise break the scene format's
 // whitespace splitting (see SceneIO's ParseFields).
-std::string Quote(const std::string& value) {
+bool IsInstanceLocal(const std::string& component, const FieldDesc& field) {
+    if (field.type == FieldType::EntityRef) {
+        return true; // references point at other entities in this scene
+    }
+    if (component == "WorldTransform2D" || component == "ScreenTransform2D" || component == "PrefabInstance") {
+        return true;
+    }
+    return component == "Tile" && (field.name == "gx" || field.name == "gy");
+}
+
+std::string QuoteValue(const std::string& value) {
     bool needsQuotes = value.empty() || value.find_first_of(" \t\"\\") != std::string::npos;
     if (!needsQuotes) {
         return value;
@@ -207,8 +285,6 @@ std::string Quote(const std::string& value) {
     }
     return quoted + "\"";
 }
-
-} // namespace
 
 const FieldDesc* ComponentDesc::Field(const std::string& fieldName) const {
     for (const auto& field : fields) {
@@ -290,7 +366,7 @@ std::string FormatField(const FieldDesc& field, const FieldValue& value,
         case FieldType::Texture:
         case FieldType::Script:
         case FieldType::Audio:
-            return Quote(ToString(value));
+            return QuoteValue(ToString(value));
     }
     return {};
 }

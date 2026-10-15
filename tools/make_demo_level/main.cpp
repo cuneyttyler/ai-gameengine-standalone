@@ -3,13 +3,15 @@
 //
 //   make_demo_level [project-dir]     (default: projects/demo)
 //
-// It uses the same archetypes and editing API as the editor's tools, so the
-// result is an ordinary scene: open it in the editor to tweak it by hand.
+// It writes the project's prefabs (prefabs/*.prefab) and places instances of
+// them exactly like the editor's prefab brush, so the result is an ordinary
+// scene: open it in the editor to tweak it by hand.
 // Re-running this overwrites the scene — it exists so the level is
 // reproducible and reviewable as text, not as the only way to change it.
 //
 // Expects the demo art in <project>/assets (tools/demo-art/generate.mjs).
 #include "assets/AssetDatabase.h"
+#include "assets/Prefab.h"
 #include "assets/Project.h"
 #include "assets/SceneIO.h"
 #include "ecs/Registry.h"
@@ -20,6 +22,7 @@
 
 #include <array>
 #include <filesystem>
+#include <functional>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -99,12 +102,73 @@ void UseTexture(aige::Registry& registry, aige::Entity entity, const std::string
     sprite = aige::Sprite{width, height, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, texture};
 }
 
-aige::Entity Prop(aige::Registry& registry, int gx, int gy, const char* name, const std::string& texture, float width,
-                  float height) {
-    auto entity = aige::CreateProp(registry, gx + 0.5f, gy + 0.5f, texture, width, height);
+
+// Writes one prefab built by `make` in a scratch registry.
+void MakePrefab(aige::PrefabLibrary& prefabs, const std::string& name,
+                const std::function<aige::Entity(aige::Registry&)>& make) {
+    aige::Registry scratch;
+    aige::Entity entity = make(scratch);
+    std::string error;
+    if (!prefabs.SaveAsPrefab(scratch, entity, "prefabs/" + name + ".prefab", &error)) {
+        std::cerr << "Couldn't write prefab " << name << ": " << error << std::endl;
+    }
+}
+
+aige::Entity MakeProp(aige::Registry& registry, const char* name, const std::string& texture, float width,
+                      float height) {
+    auto entity = aige::CreateProp(registry, 0.0f, 0.0f, texture, width, height);
     registry.emplace<aige::Name>(entity, name);
     registry.emplace<aige::Obstacle>(entity);
     return entity;
+}
+
+// The project's palette: every placeable thing is a prefab file, so the
+// editor's brush, this tool and scripts' spawn() all use the same data.
+void WritePrefabs(aige::PrefabLibrary& prefabs) {
+    const std::array<std::pair<const char*, bool>, 8> tiles = {{
+        {"grass", false},
+        {"flowers", false},
+        {"dirt", false},
+        {"stone_floor", false},
+        {"wall", true},
+        {"mossy_wall", true},
+        {"water", true},
+        {"hedge", true},
+    }};
+    for (int i = 0; i < static_cast<int>(tiles.size()); ++i) {
+        MakePrefab(prefabs, tiles[i].first,
+                   [&](aige::Registry& r) { return aige::CreateTile(r, 0, 0, TilesetTile(i, tiles[i].second)); });
+    }
+
+    MakePrefab(prefabs, "hero", [](aige::Registry& r) {
+        auto e = aige::CreatePlayer(r, 0.0f, 0.0f);
+        r.get<aige::Name>(e).value = "Hero";
+        UseTexture(r, e, "assets/textures/hero.png", 32.0f, 48.0f);
+        r.emplace<aige::Sounds>(e, "assets/audio/swing.wav", "assets/audio/hurt.wav", "assets/audio/death.wav", "");
+        return e;
+    });
+    MakePrefab(prefabs, "skeleton", [](aige::Registry& r) {
+        auto e = aige::CreateEnemy(r, 0.0f, 0.0f, entt::null); // no target = chases the player
+        r.get<aige::Name>(e).value = "Skeleton";
+        UseTexture(r, e, "assets/textures/skeleton.png", 32.0f, 48.0f);
+        r.emplace<aige::Sounds>(e, "assets/audio/swing.wav", "assets/audio/hit.wav", "assets/audio/death.wav", "");
+        return e;
+    });
+    MakePrefab(prefabs, "potion", [](aige::Registry& r) {
+        auto e = aige::CreateHealthPickup(r, 0.0f, 0.0f, 8.0f);
+        UseTexture(r, e, "assets/textures/potion.png", 16.0f, 20.0f);
+        r.emplace<aige::Sounds>(e, "", "", "", "assets/audio/pickup.wav");
+        return e;
+    });
+    MakePrefab(prefabs, "villager", [](aige::Registry& r) {
+        auto e = aige::CreateNpc(r, 0.0f, 0.0f);
+        r.get<aige::Name>(e).value = "Villager";
+        UseTexture(r, e, "assets/textures/villager.png", 32.0f, 48.0f);
+        return e;
+    });
+    MakePrefab(prefabs, "tree", [](aige::Registry& r) { return MakeProp(r, "Tree", "assets/textures/tree.png", 64.0f, 96.0f); });
+    MakePrefab(prefabs, "rock", [](aige::Registry& r) { return MakeProp(r, "Rock", "assets/textures/rock.png", 32.0f, 24.0f); });
+    MakePrefab(prefabs, "crate", [](aige::Registry& r) { return MakeProp(r, "Crate", "assets/textures/crate.png", 32.0f, 32.0f); });
 }
 
 } // namespace
@@ -121,85 +185,62 @@ int main(int argc, char** argv) {
     }
     assets.SetImageSettings(kTileset, aige::AssetType::Tileset, 64, 64);
 
-    aige::Registry registry;
+    aige::PrefabLibrary prefabs(project);
+    WritePrefabs(prefabs);
+    prefabs.Refresh();
 
-    // Ground.
+    aige::Registry registry;
+    auto place = [&](const char* prefab, int gx, int gy) {
+        auto entity = prefabs.Instantiate(registry, std::string("prefabs/") + prefab + ".prefab", gx + 0.5f, gy + 0.5f);
+        if (!entity) {
+            std::cerr << "Couldn't place " << prefab << std::endl;
+        }
+        return entity;
+    };
+
+    // Ground, then the scenery standing on it.
     for (int gy = 0; gy < static_cast<int>(kGround.size()); ++gy) {
         const std::string row = kGround[gy];
         for (int gx = 0; gx < static_cast<int>(row.size()); ++gx) {
             switch (row[gx]) {
-                case '.': case 'T': case 'R': aige::CreateTile(registry, gx, gy, TilesetTile(0, false)); break;
-                case ',': aige::CreateTile(registry, gx, gy, TilesetTile(1, false)); break;
-                case '=': aige::CreateTile(registry, gx, gy, TilesetTile(2, false)); break;
-                case '_': aige::CreateTile(registry, gx, gy, TilesetTile(3, false)); break;
-                case '#': aige::CreateTile(registry, gx, gy, TilesetTile(4, true)); break;
-                case 'M': aige::CreateTile(registry, gx, gy, TilesetTile(5, true)); break;
-                case '~': aige::CreateTile(registry, gx, gy, TilesetTile(6, true)); break;
-                case 'h': aige::CreateTile(registry, gx, gy, TilesetTile(7, true)); break;
+                case '.': case 'T': case 'R': place("grass", gx, gy); break;
+                case ',': place("flowers", gx, gy); break;
+                case '=': place("dirt", gx, gy); break;
+                case '_': place("stone_floor", gx, gy); break;
+                case '#': place("wall", gx, gy); break;
+                case 'M': place("mossy_wall", gx, gy); break;
+                case '~': place("water", gx, gy); break;
+                case 'h': place("hedge", gx, gy); break;
                 default: break;
             }
         }
     }
-
-    // Scenery standing on the grass.
     for (int gy = 0; gy < static_cast<int>(kGround.size()); ++gy) {
         const std::string row = kGround[gy];
         for (int gx = 0; gx < static_cast<int>(row.size()); ++gx) {
             if (row[gx] == 'T') {
-                Prop(registry, gx, gy, "Tree", "assets/textures/tree.png", 64.0f, 96.0f);
+                place("tree", gx, gy);
             } else if (row[gx] == 'R') {
-                Prop(registry, gx, gy, "Rock", "assets/textures/rock.png", 32.0f, 24.0f);
+                place("rock", gx, gy);
             }
-        }
-    }
-
-    // The player first, so enemies can target it.
-    aige::Entity player = entt::null;
-    for (const auto& placement : kEntities) {
-        if (placement.kind == 'P') {
-            player = aige::CreatePlayer(registry, placement.gx + 0.5f, placement.gy + 0.5f);
-            UseTexture(registry, player, "assets/textures/hero.png", 32.0f, 48.0f);
-            registry.emplace<aige::Sounds>(player, "assets/audio/swing.wav", "assets/audio/hurt.wav",
-                                           "assets/audio/death.wav", "");
         }
     }
 
     int skeletons = 0;
     for (const auto& placement : kEntities) {
-        float x = placement.gx + 0.5f;
-        float y = placement.gy + 0.5f;
         switch (placement.kind) {
-            case 'S': {
-                auto skeleton = aige::CreateEnemy(registry, x, y, player);
-                registry.get<aige::Name>(skeleton).value = "Skeleton " + std::to_string(++skeletons);
-                UseTexture(registry, skeleton, "assets/textures/skeleton.png", 32.0f, 48.0f);
-                registry.emplace<aige::Sounds>(skeleton, "assets/audio/swing.wav", "assets/audio/hit.wav",
-                                               "assets/audio/death.wav", "");
-                break;
-            }
-            case '+': {
-                auto potion = aige::CreateHealthPickup(registry, x, y, 8.0f);
-                UseTexture(registry, potion, "assets/textures/potion.png", 16.0f, 20.0f);
-                registry.emplace<aige::Sounds>(potion, "", "", "", "assets/audio/pickup.wav");
-                break;
-            }
-            case 'V': {
-                auto villager = aige::CreateNpc(registry, x, y);
-                registry.get<aige::Name>(villager).value = "Villager";
-                UseTexture(registry, villager, "assets/textures/villager.png", 32.0f, 48.0f);
-                break;
-            }
-            case 'C':
-                Prop(registry, placement.gx, placement.gy, "Crate", "assets/textures/crate.png", 32.0f, 32.0f);
-                break;
-            default:
-                break;
+            case 'P': place("hero", placement.gx, placement.gy); break;
+            case 'S': place("skeleton", placement.gx, placement.gy); ++skeletons; break;
+            case '+': place("potion", placement.gx, placement.gy); break;
+            case 'V': place("villager", placement.gx, placement.gy); break;
+            case 'C': place("crate", placement.gx, placement.gy); break;
+            default: break;
         }
     }
 
     std::filesystem::create_directories(project.MainScenePath().parent_path());
     aige::SaveScene(registry, project.MainScenePath().string());
-    std::cout << "Wrote " << project.MainScenePath().string() << " (" << registry.view<aige::Tile>().size()
-              << " tiles, " << skeletons << " skeletons)" << std::endl;
+    std::cout << "Wrote " << prefabs.Prefabs().size() << " prefabs and " << project.MainScenePath().string() << " ("
+              << registry.view<aige::Tile>().size() << " tiles, " << skeletons << " skeletons)" << std::endl;
     return 0;
 }

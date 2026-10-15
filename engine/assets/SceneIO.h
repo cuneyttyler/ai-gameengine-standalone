@@ -3,14 +3,14 @@
 #include "ecs/Registry.h"
 
 #include <string>
+#include <vector>
 
 namespace aige {
 
 // Serializes every entity's known components to a plain-text, git-diffable
 // scene file (technical.md §13): a blank-line-separated block per entity,
-// one line per component, `Key=Value` fields. Deliberately hand-written
-// per-component-type for now — becomes reflection-driven once the
-// Reflection & Command Registry exists (development_plan.md Phase 2).
+// one line per component, `Key=Value` fields. Which components and fields
+// exist comes from the component table (gameplay/ComponentTable.h).
 void SaveScene(Registry& registry, const std::string& path);
 
 // Clears `registry` and repopulates it from a scene file written by
@@ -25,5 +25,12 @@ bool LoadScene(Registry& registry, const std::string& path);
 // DeserializeScene clears `registry` first, like LoadScene.
 std::string SerializeScene(Registry& registry);
 void DeserializeScene(Registry& registry, const std::string& text);
+
+// The same format for a chosen subset of entities, and loading entities into
+// a registry without clearing it (returns them in file order). Entity
+// references to entities outside the subset are written as `none`. Used for
+// prefabs (one entity per file).
+std::string SerializeEntities(Registry& registry, const std::vector<Entity>& entities);
+std::vector<Entity> AppendEntities(Registry& registry, const std::string& text);
 
 } // namespace aige

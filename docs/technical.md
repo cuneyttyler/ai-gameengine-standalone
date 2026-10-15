@@ -190,11 +190,13 @@ generated field automatically gets the "Ask AI" affordance for free.
   owns all editor state; the UI renders what it's sent and sends requests:
   - UI → host: `scene:request`, `entity:select`, `inspector:setField`,
     `component:add|remove`, `script:create|open`, `tool:set`,
+    `prefabs:request`, `prefab:createFromAsset|saveSelected|applySelected|revert`,
+    `script:setProperty|resetProperty`,
     `edit:undo|redo|delete|duplicate`, `scene:save`, `view:frame`, `play:start|stop`,
     `viewport:bounds`, `assets:request|refresh`, `asset:import|settings|apply|preview`.
   - Host → UI: `scene:update`, `selection:changed`, `inspector:data|clear`,
     `editor:state` (tool, brush, playing, dirty, canUndo/canRedo, scene name),
-    `assets:list`, `assets:select`, `notify`.
+    `assets:list`, `assets:select`, `prefabs:list`, `notify`.
 - The open project folder is served to the UI under a second virtual host
   (`aige-project.local`), so the Assets panel shows thumbnails straight from disk.
 - Viewport tools call the UI-independent `engine/editing` API (picking, painting,
@@ -317,6 +319,7 @@ ai-gameengine-standalone/
 │   │   └── jobs/
 │   └── tests/
 ├── projects/                   game projects: scenes/, scripts/, assets/ (+ .meta), .cache/
+│   │   (+ prefabs/: placeable entity templates — the editor's palette)
 │   └── demo/                   the default project the editor and sandbox open
 ├── tools/                      dev tools: demo-art generator (Node), make_demo_level (C++)
 ├── templates/                  starter projects (Isometric ARPG, Cozy Sim)

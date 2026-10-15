@@ -1,7 +1,7 @@
 # Phase 1 — Manual Test Checklist
 
 The user-test checkpoints from every Phase 1 milestone (`development_plan.md`), collected
-for one end-of-phase pass. Automated coverage (83 GoogleTest cases, including a scripted
+for one end-of-phase pass. Automated coverage (96 GoogleTest cases, including a scripted
 playthrough of the demo level) already checks the logic; this list is for what tests can't
 judge: feel, usability, and whether it's actually fun.
 
@@ -67,6 +67,24 @@ Build: `cmake --build build --config Debug`, then run `build/apps/editor/Debug/e
 
 - [ ] Build a small scene from scratch (new tiles, an enemy, a potion), script a behaviour,
       and play it — entirely by hand.
+
+## 1.7 — Prefabs and script properties
+
+- [ ] The **Prefabs** tab lists the demo's 15 prefabs with thumbnails; clicking one (or
+      pressing 1-9) arms the brush shown in the toolbar. Tile prefabs paint with
+      click-drag; others place one per click; placing the hero again moves the existing one.
+- [ ] Select a skeleton: the Inspector shows **Prefab: skeleton**. Change its Health —
+      the field is marked as overridden (blue bar) and ↺ reverts it.
+- [ ] Change a value on one skeleton and **Apply to prefab**: the other skeletons update,
+      except fields they override.
+- [ ] Edit `projects/demo/prefabs/skeleton.prefab` in a text editor (e.g. `moveSpeed`),
+      switch back to the editor: every skeleton updates.
+- [ ] Select an entity that isn't a prefab copy, **Save as prefab…**, and place more copies.
+- [ ] Assets tab: select a texture (or a tileset tile) and **New tile prefab** / **New
+      prop prefab**; it appears in the palette, armed.
+- [ ] A skeleton's `LuaScript` section shows the script's properties (`swing_range`,
+      `taunt`). Set `taunt` to `assets/audio/hurt.wav` on one skeleton and hear it when it
+      spots you; set `swing_range` to 3 and watch it swing from further away.
 
 ## Known limitations (expected, not bugs)
 

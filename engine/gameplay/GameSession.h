@@ -37,7 +37,7 @@ void UpdatePlayer(Registry& registry, Entity player, const KeyQueryFn& isKeyDown
 
 // Moves every Follow entity toward its target (resolving collisions like the
 // player), stopping at stopDistance; ignores targets beyond `range` and dead
-// targets.
+// targets. A Follow with no target follows the player.
 void UpdateFollowers(Registry& registry, const SolidQueryFn& isSolid, float dt);
 
 // Mirrors sprites horizontally to match their Facing (art is drawn facing
@@ -80,6 +80,11 @@ public:
     // project-relative). Without one, play_sound does nothing.
     void SetSoundPlayer(std::function<void(const std::string&)> playSound) { playSound_ = std::move(playSound); }
 
+    // How scripts' spawn(prefab, x, y) creates entities (the host owns the
+    // prefab library). Without one, spawn returns nil.
+    using SpawnFn = std::function<std::optional<Entity>(const std::string& prefab, float x, float y)>;
+    void SetSpawner(SpawnFn spawner) { spawner_ = std::move(spawner); }
+
 private:
     // TryMeleeAttack plus an Attack event (with the attacker's sound).
     bool Swing(Entity attacker, float dirX, float dirY);
@@ -97,6 +102,7 @@ private:
     TileGrid grid_; // rebuilt every Advance, so tiles edited mid-play apply
     std::vector<GameEvent> events_;
     std::function<void(const std::string&)> playSound_;
+    SpawnFn spawner_;
     bool attackKeyWasDown_ = false;
     std::optional<std::pair<float, float>> requestedAttack_;
 };

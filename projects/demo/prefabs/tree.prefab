@@ -1,0 +1,8 @@
+# AIGE Scene v1
+
+entity
+  Name value=Tree
+  WorldTransform2D x=0 y=0
+  Obstacle
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/tree.png width=64 height=96 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1

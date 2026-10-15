@@ -111,7 +111,7 @@ std::optional<Entity> DuplicateEntity(Registry& registry, Entity entity) {
     // A script's loaded Lua environment must not be shared between entities:
     // keep the path, let the copy load its own.
     if (auto* script = registry.try_get<LuaScript>(copy)) {
-        *script = LuaScript{script->path};
+        script->Unload();
     }
 
     if (auto* world = registry.try_get<WorldTransform2D>(copy)) {

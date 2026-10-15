@@ -184,6 +184,22 @@ proven *before* any AI integration exists to lean on.
   assembled by a script calling the tools' underlying API rather than by clicking, so
   the manual check should include editing it by hand in the editor.
 
+**1.7 — Prefabs and script properties (added after the Phase 1 review)**
+- Prompted by the end-of-phase review: the toolbar's placement tools were hardcoded to the
+  built-in placeholder look and not connected to project assets, and customizing an actor
+  meant either C++ or per-entity hand edits.
+- ✅ Built: prefabs (`<project>/prefabs/*.prefab`, one entity in scene format) with
+  per-copy overrides, revert, and "Apply to prefab"; scenes resync with their prefabs on
+  open (editor and sandbox). The toolbar is now Select / prefab brush / Erase — the palette
+  is the project's prefabs (Prefabs tab, keys 1-9), and assets become placeable via "New
+  tile prefab" / "New prop prefab". Script properties: a script's `properties = {...}` table
+  becomes per-entity Inspector fields, saved with scenes and prefabs. Lua `get_field` /
+  `set_field` reach any component field, `spawn(prefab, x, y)` places prefabs. A `Follow`
+  with no target follows the player. The component table moved to `engine/gameplay` so
+  scripts can use it.
+- Deliberately not built: nested prefabs and prefab variants — revisit with Phase 2's
+  reflection registry.
+
 **Phase 1 exit criteria:** you can build a small isometric scene, script basic behavior,
 place enemies/items, and play it — entirely by hand, with zero AI involvement. This is
 the baseline `product.md` §4.2's "must be fully usable with AI disabled" guarantee has

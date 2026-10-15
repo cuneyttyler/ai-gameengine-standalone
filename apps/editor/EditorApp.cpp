@@ -2,7 +2,7 @@
 
 #include "Win32Util.h"
 
-#include "assets/ComponentTable.h"
+#include "gameplay/ComponentTable.h"
 #include "assets/SceneIO.h"
 #include "editing/SceneEditing.h"
 #include "gameplay/BootstrapLevel.h"
@@ -30,9 +30,7 @@ constexpr float kMaxZoom = 4.0f;
 constexpr double kPlayInspectorRefreshSeconds = 0.1;
 
 // Ids shared with the UI's toolbar (apps/editor/ui/src/components/Toolbar.vue).
-constexpr const char* kToolIds[] = {"select",    "tile:grass",   "tile:dirt", "tile:wall",   "place:npc",
-                                    "place:player", "erase", "place:sprite", "tile:asset", "place:enemy",
-                                    "place:pickup"};
+constexpr const char* kToolIds[] = {"select", "erase", "prefab"};
 
 // Accent colors for viewport overlays, matching the UI's accent.
 constexpr float kAccent[3] = {0.231f, 0.510f, 0.965f};
@@ -111,7 +109,9 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
     : mainWindow_(mainWindow),
       viewport_(viewport),
       registry_(registry),
+      lua_(lua),
       assets_(assets),
+      prefabs_(assets.GetProject()),
       audio_(audio),
       renderer_(renderer),
       scenePath_(assets.GetProject().MainScenePath().string()),
@@ -119,6 +119,14 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
       iso_(BootstrapIso()),
       session_(registry, lua, iso_, assets.GetProject().root) {
     session_.SetSoundPlayer([this](const std::string& path) { audio_.Play(assets_.GetProject().Resolve(path)); });
+    session_.SetSpawner([this](const std::string& prefab, float x, float y) {
+        return prefabs_.Instantiate(registry_, prefab, x, y);
+    });
+    EnsureStarterPrefabs();
+    prefabs_.Refresh();
+    // Scenes store full copies of every instance; syncing on open applies any
+    // prefab edits made since the scene was saved.
+    prefabs_.SyncAll(registry_);
     UpdateTitle();
 }
 
@@ -150,7 +158,13 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         if (registry_.valid(entity) && message.contains("value")) {
             std::string component = message.value("component", "");
             std::string field = message.value("field", "");
-            ApplyOneShotEdit([&] { return ApplySetField(entity, component, field, message["value"]); });
+            ApplyOneShotEdit([&] {
+                if (!ApplySetField(entity, component, field, message["value"])) {
+                    return false;
+                }
+                NoteOverride(entity, component, field);
+                return true;
+            });
             inspectorStale_ = true;
             sceneTreeStale_ = true; // a Name edit changes the tree's label
         }
@@ -161,9 +175,20 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             std::optional<std::string> failure;
             ApplyOneShotEdit([&] {
                 if (type == "component:add") {
-                    return AddComponent(registry_, entity, component);
+                    if (!AddComponent(registry_, entity, component)) {
+                        return false;
+                    }
+                    // Re-adding a prefab component this copy had removed: the
+                    // prefab's values apply again.
+                    if (HasOverride(registry_, entity, "-" + component)) {
+                        prefabs_.Revert(registry_, entity, "-" + component);
+                    }
+                    return true;
                 }
                 failure = RemoveComponent(registry_, entity, component);
+                if (!failure) {
+                    NoteOverride(entity, component, "");
+                }
                 return !failure.has_value();
             });
             if (failure) {
@@ -185,12 +210,10 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             ShellExecuteW(mainWindow_, L"open", L"notepad.exe", path.c_str(), nullptr, SW_SHOWNORMAL);
         }
     } else if (type == "tool:set") {
-        // Asset brushes carry their asset (and tileset tile/solidity); other
-        // tools keep the last brush so switching back restores it.
-        if (message.contains("asset")) {
-            brushAsset_ = message.value("asset", "");
-            brushTile_ = message.value("tile", 0);
-            brushSolid_ = message.value("solid", false);
+        // The prefab brush carries its prefab; other tools keep the last one
+        // so switching back restores it.
+        if (message.contains("prefab")) {
+            brushPrefab_ = message.value("prefab", "");
         }
         std::string id = message.value("tool", "");
         for (int i = 0; i < static_cast<int>(std::size(kToolIds)); ++i) {
@@ -198,10 +221,31 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
                 SetTool(static_cast<Tool>(i));
             }
         }
+    } else if (type == "prefabs:request") {
+        post_(PrefabsJson());
+    } else if (type == "prefab:createFromAsset") {
+        CreatePrefabFromAsset(message.value("asset", ""), message.value("tile", 0), message.value("asTile", false),
+                              message.value("solid", false), message.value("name", ""));
+    } else if (type == "prefab:saveSelected") {
+        SaveSelectedAsPrefab(message.value("name", ""));
+    } else if (type == "prefab:applySelected") {
+        ApplySelectedToPrefab();
+    } else if (type == "prefab:revert") {
+        RevertOverride(message.value("key", ""));
+    } else if (type == "script:setProperty" || type == "script:resetProperty") {
+        auto entity = static_cast<Entity>(message.value("id", 0u));
+        if (registry_.valid(entity) && registry_.all_of<LuaScript>(entity)) {
+            if (type == "script:setProperty" && message.contains("value")) {
+                SetScriptProperty(entity, message.value("name", ""), message["value"]);
+            } else {
+                ResetScriptProperty(entity, message.value("name", ""));
+            }
+        }
     } else if (type == "assets:request") {
         post_(AssetsJson());
     } else if (type == "assets:refresh") {
         RefreshAssets();
+        RefreshPrefabs();
     } else if (type == "asset:import") {
         ImportAssets();
     } else if (type == "asset:settings") {
@@ -370,31 +414,18 @@ void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
         case 'V':
             SetTool(Tool::Select);
             return;
-        case '1':
-            SetTool(Tool::PaintGrass);
-            return;
-        case '2':
-            SetTool(Tool::PaintDirt);
-            return;
-        case '3':
-            SetTool(Tool::PaintWall);
-            return;
-        case 'N':
-            SetTool(Tool::PlaceNpc);
-            return;
-        case 'P':
-            SetTool(Tool::PlacePlayer);
-            return;
         case 'E':
             SetTool(Tool::Erase);
             return;
-        case 'X':
-            SetTool(Tool::PlaceEnemy);
-            return;
-        case 'H':
-            SetTool(Tool::PlacePickup);
-            return;
         default:
+            // 1-9 arm the prefab brush with the palette's first nine prefabs.
+            if (virtualKey >= '1' && virtualKey <= '9') {
+                size_t index = static_cast<size_t>(virtualKey - '1');
+                if (index < prefabs_.Prefabs().size()) {
+                    brushPrefab_ = prefabs_.Prefabs()[index].path;
+                    SetTool(Tool::Prefab);
+                }
+            }
             return;
     }
 }
@@ -410,34 +441,40 @@ void EditorApp::ToolStroke(float sceneX, float sceneY, bool first) {
     lastStrokeGy_ = gy;
 
     switch (tool_) {
-        case Tool::PaintGrass:
-        case Tool::PaintDirt:
-        case Tool::PaintWall: {
-            TileKind kind = tool_ == Tool::PaintWall  ? TileKind::Wall
-                            : tool_ == Tool::PaintDirt ? TileKind::Dirt
-                                                       : TileKind::Grass;
-            // Painting replaces the tile entity; drop a selection pointing at it.
-            if (selected_ && registry_.valid(*selected_) && registry_.all_of<Tile>(*selected_)) {
-                const auto& tile = registry_.get<Tile>(*selected_);
-                if (tile.gx == gx && tile.gy == gy) {
-                    Select(std::nullopt);
+        case Tool::Prefab: {
+            const PrefabInfo* prefab = prefabs_.Find(brushPrefab_);
+            if (prefab == nullptr || !prefab->error.empty()) {
+                if (first) {
+                    post_({{"type", "notify"}, {"text", "Pick a prefab in the Prefabs panel first"}});
+                }
+                return;
+            }
+            const float cellX = static_cast<float>(gx) + 0.5f;
+            const float cellY = static_cast<float>(gy) + 0.5f;
+            if (prefab->isTile) {
+                // Tile prefabs paint: every cell the stroke crosses.
+                if (selected_ && registry_.valid(*selected_) && registry_.all_of<Tile>(*selected_)) {
+                    const auto& tile = registry_.get<Tile>(*selected_);
+                    if (tile.gx == gx && tile.gy == gy) {
+                        Select(std::nullopt); // that tile is about to be replaced
+                    }
+                }
+                prefabs_.Instantiate(registry_, prefab->path, cellX, cellY);
+                break;
+            }
+            if (!first) {
+                return; // everything else: one per click, not a trail
+            }
+            // There's only ever one player: placing the player prefab again
+            // moves the existing one.
+            if (prefab->isPlayer) {
+                if (auto player = FindPlayer(registry_)) {
+                    registry_.get<WorldTransform2D>(*player) = {cellX, cellY};
+                    Select(*player);
+                    break;
                 }
             }
-            PaintTile(registry_, gx, gy, kind);
-            break;
-        }
-        case Tool::PlaceNpc:
-        case Tool::PlacePlayer:
-        case Tool::PlaceEnemy:
-        case Tool::PlacePickup: {
-            if (!first) {
-                return; // one per click, not a trail of them
-            }
-            CharacterKind kind = tool_ == Tool::PlacePlayer  ? CharacterKind::Player
-                                 : tool_ == Tool::PlaceEnemy  ? CharacterKind::Enemy
-                                 : tool_ == Tool::PlacePickup ? CharacterKind::Pickup
-                                                              : CharacterKind::Npc;
-            Select(PlaceCharacter(registry_, kind, gx, gy));
+            Select(prefabs_.Instantiate(registry_, prefab->path, cellX, cellY));
             break;
         }
         case Tool::Erase: {
@@ -449,48 +486,6 @@ void EditorApp::ToolStroke(float sceneX, float sceneY, bool first) {
                 Select(std::nullopt);
             }
             DeleteEntity(registry_, *picked);
-            break;
-        }
-        case Tool::PlaceSprite: {
-            if (!first) {
-                return;
-            }
-            const AssetInfo* asset = assets_.Find(brushAsset_);
-            if (asset == nullptr || asset->type == AssetType::Audio || !asset->error.empty()) {
-                post_({{"type", "notify"}, {"text", "Pick a texture in the Assets panel first"}});
-                return;
-            }
-            float width = static_cast<float>(asset->type == AssetType::Tileset ? asset->tileWidth : asset->width);
-            float height = static_cast<float>(asset->type == AssetType::Tileset ? asset->tileHeight : asset->height);
-            Entity prop = CreateProp(registry_, static_cast<float>(gx) + 0.5f, static_cast<float>(gy) + 0.5f,
-                                     brushAsset_, width, height);
-            if (asset->type == AssetType::Tileset) {
-                if (auto style = TilesetStyle(brushAsset_, brushTile_, false)) {
-                    auto& sprite = registry_.get<Sprite>(prop);
-                    sprite.u0 = style->u0;
-                    sprite.v0 = style->v0;
-                    sprite.u1 = style->u1;
-                    sprite.v1 = style->v1;
-                }
-            }
-            Select(prop);
-            break;
-        }
-        case Tool::PaintTileset: {
-            auto style = TilesetStyle(brushAsset_, brushTile_, brushSolid_);
-            if (!style) {
-                if (first) {
-                    post_({{"type", "notify"}, {"text", "Pick a tile from a tileset in the Assets panel first"}});
-                }
-                return;
-            }
-            if (selected_ && registry_.valid(*selected_) && registry_.all_of<Tile>(*selected_)) {
-                const auto& tile = registry_.get<Tile>(*selected_);
-                if (tile.gx == gx && tile.gy == gy) {
-                    Select(std::nullopt);
-                }
-            }
-            PaintTile(registry_, gx, gy, *style);
             break;
         }
         case Tool::Select:
@@ -776,19 +771,13 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
                     AddEntityOutline(overlay, registry_, *hovered, iso_, kWhite, 0.35f, 1.0f);
                 }
                 break;
-            case Tool::PaintGrass:
-            case Tool::PaintDirt:
-            case Tool::PaintWall:
-            case Tool::PaintTileset:
-                AddCellOutline(overlay, gx, gy, iso_, kWhite, 0.8f, 1.5f);
+            case Tool::Prefab: {
+                // White for painting tiles, accent for placing things.
+                const PrefabInfo* prefab = prefabs_.Find(brushPrefab_);
+                bool isTile = prefab != nullptr && prefab->isTile;
+                AddCellOutline(overlay, gx, gy, iso_, isTile ? kWhite : kAccent, isTile ? 0.8f : 0.9f, 1.5f);
                 break;
-            case Tool::PlaceNpc:
-            case Tool::PlacePlayer:
-            case Tool::PlaceSprite:
-            case Tool::PlaceEnemy:
-            case Tool::PlacePickup:
-                AddCellOutline(overlay, gx, gy, iso_, kAccent, 0.9f, 1.5f);
-                break;
+            }
             case Tool::Erase:
                 if (auto hovered = PickEntity(registry_, hoverX_, hoverY_, iso_)) {
                     AddEntityOutline(overlay, registry_, *hovered, iso_, kErase, 0.9f, 2.0f);
@@ -813,6 +802,279 @@ void EditorApp::UpdateTitle() {
 
 void EditorApp::OnAppActivated() {
     RefreshAssets();
+    RefreshPrefabs();
+}
+
+// --- Prefabs ----------------------------------------------------------------
+
+void EditorApp::RefreshPrefabs() {
+    // Prefab files edited outside the editor (or by "Apply to prefab")
+    // update every copy in the open scene.
+    for (const auto& path : prefabs_.Refresh()) {
+        prefabs_.SyncAll(registry_, path);
+        sceneTreeStale_ = true;
+        inspectorStale_ = true;
+    }
+    post_(PrefabsJson());
+}
+
+void EditorApp::EnsureStarterPrefabs() {
+    // A project with no prefabs yet gets the built-in placeholder set, so the
+    // palette is never empty. They're ordinary files: edit, restyle or delete.
+    std::error_code ec;
+    std::filesystem::path dir = assets_.GetProject().root / "prefabs";
+    if (std::filesystem::exists(dir, ec)) {
+        return;
+    }
+    Registry scratch;
+    auto save = [&](Entity entity, const std::string& name) {
+        prefabs_.SaveAsPrefab(scratch, entity, "prefabs/" + name + ".prefab");
+    };
+    save(CreateTile(scratch, 0, 0, TileKind::Grass), "grass");
+    save(CreateTile(scratch, 0, 0, TileKind::Dirt), "dirt");
+    save(CreateTile(scratch, 0, 0, TileKind::Wall), "wall");
+    save(CreatePlayer(scratch, 0.0f, 0.0f), "player");
+    save(CreateNpc(scratch, 0.0f, 0.0f), "npc");
+    save(CreateEnemy(scratch, 0.0f, 0.0f, entt::null), "enemy");
+    save(CreateHealthPickup(scratch, 0.0f, 0.0f), "potion");
+}
+
+nlohmann::json EditorApp::PrefabsJson() {
+    nlohmann::json list = nlohmann::json::array();
+    for (const auto& prefab : prefabs_.Prefabs()) {
+        list.push_back({{"path", prefab.path},
+                        {"name", prefab.name},
+                        {"error", prefab.error},
+                        {"isTile", prefab.isTile},
+                        {"isPlayer", prefab.isPlayer},
+                        {"texture", prefab.texture},
+                        {"uv", {prefab.u0, prefab.v0, prefab.u1, prefab.v1}},
+                        {"size", {prefab.width, prefab.height}}});
+    }
+    return {{"type", "prefabs:list"}, {"prefabs", list}};
+}
+
+void EditorApp::CreatePrefabFromAsset(const std::string& asset, int tile, bool asTile, bool solid,
+                                      const std::string& requestedName) {
+    auto style = TilesetStyle(asset, tile, solid);
+    if (!style) {
+        post_({{"type", "notify"}, {"text", "Pick a texture (and tile) first"}});
+        return;
+    }
+    std::string name;
+    for (char c : requestedName) {
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-') {
+            name += c;
+        }
+    }
+    if (name.empty()) {
+        post_({{"type", "notify"}, {"text", "Prefab names can use letters, digits, - and _"}});
+        return;
+    }
+    std::string path = "prefabs/" + name + ".prefab";
+    if (prefabs_.Find(path) != nullptr) {
+        post_({{"type", "notify"}, {"text", path + " already exists"}});
+        return;
+    }
+
+    Registry scratch;
+    Entity entity = entt::null;
+    if (asTile) {
+        entity = CreateTile(scratch, 0, 0, *style);
+    } else {
+        entity = CreateProp(scratch, 0.0f, 0.0f, style->texture, style->width, style->height);
+        auto& sprite = scratch.get<Sprite>(entity);
+        sprite.u0 = style->u0;
+        sprite.v0 = style->v0;
+        sprite.u1 = style->u1;
+        sprite.v1 = style->v1;
+        scratch.emplace<Name>(entity, name);
+        if (solid) {
+            scratch.emplace<Obstacle>(entity);
+        }
+    }
+    std::string error;
+    if (!prefabs_.SaveAsPrefab(scratch, entity, path, &error)) {
+        post_({{"type", "notify"}, {"text", "Couldn't create prefab: " + error}});
+        return;
+    }
+    brushPrefab_ = path;
+    SetTool(Tool::Prefab);
+    post_(PrefabsJson());
+    post_({{"type", "notify"}, {"text", "Created " + path + " — click in the viewport to place it"}});
+}
+
+void EditorApp::SaveSelectedAsPrefab(const std::string& requestedName) {
+    if (playing_ || !selected_ || !registry_.valid(*selected_)) {
+        return;
+    }
+    std::string name;
+    for (char c : requestedName) {
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-') {
+            name += c;
+        }
+    }
+    if (name.empty()) {
+        post_({{"type", "notify"}, {"text", "Prefab names can use letters, digits, - and _"}});
+        return;
+    }
+    std::string path = "prefabs/" + name + ".prefab";
+    if (prefabs_.Find(path) != nullptr) {
+        post_({{"type", "notify"}, {"text", path + " already exists — select one of its copies and use Apply"}});
+        return;
+    }
+    Entity entity = *selected_;
+    std::string error;
+    bool saved = false;
+    ApplyOneShotEdit([&] { // the entity becomes an instance: undoable on the scene side
+        saved = prefabs_.SaveAsPrefab(registry_, entity, path, &error);
+        return saved;
+    });
+    if (!saved) {
+        post_({{"type", "notify"}, {"text", "Couldn't save prefab: " + error}});
+        return;
+    }
+    post_(PrefabsJson());
+    post_({{"type", "notify"}, {"text", "Saved " + path}});
+    inspectorStale_ = true;
+}
+
+void EditorApp::ApplySelectedToPrefab() {
+    if (playing_ || !selected_ || !registry_.valid(*selected_)) {
+        return;
+    }
+    const auto* link = registry_.try_get<PrefabInstance>(*selected_);
+    if (link == nullptr) {
+        return;
+    }
+    std::string path = link->path;
+    Entity entity = *selected_;
+    std::string error;
+    bool saved = false;
+    ApplyOneShotEdit([&] {
+        // This copy's values become the prefab; every other copy follows,
+        // keeping its own overrides.
+        saved = prefabs_.SaveAsPrefab(registry_, entity, path, &error);
+        if (saved) {
+            prefabs_.SyncAll(registry_, path);
+        }
+        return saved;
+    });
+    if (!saved) {
+        post_({{"type", "notify"}, {"text", "Couldn't update prefab: " + error}});
+        return;
+    }
+    post_(PrefabsJson());
+    post_({{"type", "notify"}, {"text", "Updated " + path + " and its copies"}});
+    inspectorStale_ = true;
+    sceneTreeStale_ = true;
+}
+
+void EditorApp::RevertOverride(const std::string& key) {
+    if (playing_ || !selected_ || !registry_.valid(*selected_) || !registry_.all_of<PrefabInstance>(*selected_)) {
+        return;
+    }
+    Entity entity = *selected_;
+    ApplyOneShotEdit([&] {
+        if (key.empty()) {
+            prefabs_.RevertAll(registry_, entity);
+        } else {
+            prefabs_.Revert(registry_, entity, key);
+        }
+        return true;
+    });
+    inspectorStale_ = true;
+    sceneTreeStale_ = true;
+}
+
+void EditorApp::NoteOverride(Entity entity, const std::string& component, const std::string& field) {
+    if (!registry_.all_of<PrefabInstance>(entity)) {
+        return;
+    }
+    if (field.empty()) {
+        AddOverride(registry_, entity, "-" + component); // the copy dropped a component
+        return;
+    }
+    const ComponentDesc* desc = FindComponent(component);
+    const FieldDesc* fieldDesc = desc ? desc->Field(field) : nullptr;
+    if (fieldDesc != nullptr && !IsInstanceLocal(component, *fieldDesc)) {
+        AddOverride(registry_, entity, component + "." + field);
+    }
+}
+
+// --- Script properties --------------------------------------------------------
+
+nlohmann::json EditorApp::ScriptPropertiesJson(Entity entity) {
+    const auto& script = registry_.get<LuaScript>(entity);
+    nlohmann::json result = {{"properties", nlohmann::json::array()}, {"error", ""}};
+    if (script.path.empty()) {
+        return result;
+    }
+    std::string error;
+    auto declared = ReadScriptProperties(lua_, assets_.GetProject().Resolve(script.path), &error);
+    result["error"] = error;
+    for (const auto& property : declared) {
+        auto it = script.properties.find(property.name);
+        const ScriptValue& value = it != script.properties.end() ? it->second : property.value;
+        nlohmann::json entry = {{"name", property.name},
+                                {"set", it != script.properties.end()},
+                                {"overridden", HasOverride(registry_, entity, "LuaScript.prop." + property.name)}};
+        std::visit(
+            [&](const auto& v) {
+                using T = std::decay_t<decltype(v)>;
+                entry["type"] = std::is_same_v<T, double> ? "float" : std::is_same_v<T, bool> ? "bool" : "string";
+                entry["value"] = v;
+            },
+            value);
+        // The editor offers the default's type even if the stored value
+        // drifted (e.g. the script changed its default from 3 to "fast").
+        std::visit([&](const auto& v) {
+            using T = std::decay_t<decltype(v)>;
+            entry["type"] = std::is_same_v<T, double> ? "float" : std::is_same_v<T, bool> ? "bool" : "string";
+        }, property.value);
+        result["properties"].push_back(entry);
+    }
+    return result;
+}
+
+void EditorApp::SetScriptProperty(Entity entity, const std::string& name, const nlohmann::json& value) {
+    ScriptValue converted;
+    if (value.is_number()) {
+        converted = value.get<double>();
+    } else if (value.is_boolean()) {
+        converted = value.get<bool>();
+    } else if (value.is_string()) {
+        converted = value.get<std::string>();
+    } else {
+        return;
+    }
+    ApplyOneShotEdit([&] {
+        auto& script = registry_.get<LuaScript>(entity);
+        script.properties[name] = converted;
+        if (registry_.all_of<PrefabInstance>(entity)) {
+            AddOverride(registry_, entity, "LuaScript.prop." + name);
+        }
+        if (script.loaded) {
+            ApplyScriptProperties(lua_, script); // live while playing
+        }
+        return true;
+    });
+    inspectorStale_ = true;
+}
+
+void EditorApp::ResetScriptProperty(Entity entity, const std::string& name) {
+    ApplyOneShotEdit([&] {
+        registry_.get<LuaScript>(entity).properties.erase(name);
+        if (HasOverride(registry_, entity, "LuaScript.prop." + name)) {
+            prefabs_.Revert(registry_, entity, "LuaScript.prop." + name); // back to the prefab's value
+        }
+        auto& script = registry_.get<LuaScript>(entity);
+        if (script.loaded) {
+            script.Unload(); // reload so the script's own default applies again
+        }
+        return true;
+    });
+    inspectorStale_ = true;
 }
 
 void EditorApp::RefreshAssets() {
@@ -954,7 +1216,7 @@ nlohmann::json EditorApp::SceneJson() {
 nlohmann::json EditorApp::EditorStateJson() {
     return {{"type", "editor:state"},
             {"tool", kToolIds[static_cast<int>(tool_)]},
-            {"brush", {{"asset", brushAsset_}, {"tile", brushTile_}, {"solid", brushSolid_}}},
+            {"brush", brushPrefab_},
             {"playing", playing_},
             {"dirty", dirty_},
             {"canUndo", history_.CanUndo() && !playing_},
@@ -973,10 +1235,16 @@ nlohmann::json EditorApp::InspectorJson(Entity entity) {
             }
             continue;
         }
+        if (!component.inspectorVisible) {
+            continue;
+        }
         nlohmann::json fields = nlohmann::json::array();
         for (const auto& field : component.fields) {
             FieldValue value = field.get(registry_, entity);
-            nlohmann::json entry = {{"name", field.name}};
+            nlohmann::json entry = {
+                {"name", field.name},
+                {"overridden", HasOverride(registry_, entity, component.name + "." + field.name)},
+            };
             switch (field.type) {
                 case FieldType::Float:
                     entry["type"] = "float";
@@ -1021,10 +1289,14 @@ nlohmann::json EditorApp::InspectorJson(Entity entity) {
             }
             fields.push_back(entry);
         }
-        components.push_back({{"name", component.name},
-                              {"removable", component.userEditable},
-                              {"derived", component.derived(registry_, entity)},
-                              {"fields", fields}});
+        nlohmann::json section = {{"name", component.name},
+                                  {"removable", component.userEditable},
+                                  {"derived", component.derived(registry_, entity)},
+                                  {"fields", fields}};
+        if (component.name == "LuaScript") {
+            section["script"] = ScriptPropertiesJson(entity);
+        }
+        components.push_back(section);
     }
 
     // Choices for reference-typed fields.
@@ -1042,9 +1314,20 @@ nlohmann::json EditorApp::InspectorJson(Entity entity) {
         }
     }
 
+    nlohmann::json prefab = nullptr;
+    if (const auto* link = registry_.try_get<PrefabInstance>(entity)) {
+        auto overrides = ParseOverrides(link->overrides);
+        const PrefabInfo* info = prefabs_.Find(link->path);
+        prefab = {{"path", link->path},
+                  {"name", info ? info->name : link->path},
+                  {"missing", info == nullptr},
+                  {"overrides", std::vector<std::string>(overrides.begin(), overrides.end())}};
+    }
+
     return {{"type", "inspector:data"},
             {"id", static_cast<uint32_t>(entity)},
             {"label", LabelOf(entity)},
+            {"prefab", prefab},
             {"components", components},
             {"addable", addable},
             {"choices", {{"entities", entities}, {"textures", textures}, {"audio", audio}, {"scripts", ListScripts()}}}};
