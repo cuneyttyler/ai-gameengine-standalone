@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { armPrefab, editorState } from '../editorState'
 import PrefabThumb from './PrefabThumb.vue'
 import WorldPanel from './WorldPanel.vue'
+import StoryPanel from './StoryPanel.vue'
 import { onHostMessage, sendToHost } from '../ipc'
 
 interface Asset {
@@ -146,7 +147,7 @@ function createPrefab(asTile: boolean): void {
 }
 
 // Prefabs tab: the project's palette.
-const tab = ref<'prefabs' | 'assets' | 'world'>('prefabs')
+const tab = ref<'prefabs' | 'assets' | 'world' | 'story'>('prefabs')
 const visiblePrefabs = computed(() => {
   const query = filter.value.trim().toLowerCase()
   return query ? editorState.prefabs.filter((p) => p.name.toLowerCase().includes(query)) : editorState.prefabs
@@ -179,8 +180,16 @@ onMounted(() => {
         <button :class="{ active: tab === 'world' }" title="World Bible: the game's canon" @click="tab = 'world'">
           World
         </button>
+        <button :class="{ active: tab === 'story' }" title="Dialogue and quests" @click="tab = 'story'">Story</button>
       </div>
-      <input v-if="tab !== 'world'" v-model="filter" class="filter" type="search" placeholder="Filter" spellcheck="false" />
+      <input
+        v-if="tab === 'prefabs' || tab === 'assets'"
+        v-model="filter"
+        class="filter"
+        type="search"
+        placeholder="Filter"
+        spellcheck="false"
+      />
       <button
         v-if="tab === 'assets'"
         title="Copy images or audio into the project"
@@ -188,12 +197,15 @@ onMounted(() => {
       >
         Import…
       </button>
-      <button v-if="tab !== 'world'" title="Rescan the project folder" @click="sendToHost({ type: 'assets:refresh' })">
+      <button
+        v-if="tab === 'prefabs' || tab === 'assets'"
+        title="Rescan the project folder" @click="sendToHost({ type: 'assets:refresh' })">
         Refresh
       </button>
     </div>
 
     <WorldPanel v-if="tab === 'world'" class="body world-body" />
+    <StoryPanel v-else-if="tab === 'story'" class="body" />
     <div v-else-if="tab === 'prefabs'" class="body">
       <div class="grid">
         <p v-if="editorState.prefabs.length === 0" class="placeholder">

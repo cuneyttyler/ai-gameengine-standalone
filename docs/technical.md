@@ -209,6 +209,9 @@ generated field automatically gets the "Ask AI" affordance for free.
     is a rename that rewrites relations), `world:delete {key}`, `world:search {query}`;
     host → UI `world:list {kinds, entries, problems}`, `world:saved {key, error}`,
     `world:searchResults {result}`.
+  - Story: UI → host `story:request`, `story:save {kind, id, originalId, content}`,
+    `story:delete {file}`; host → UI `story:list {dialogues, quests, problems, world,
+    prefabs, usedBy}`, `story:saved {file, error}`.
 - The open project folder is served to the UI under a second virtual host
   (`aige-project.local`), so the Assets panel shows thumbnails straight from disk.
 - Viewport tools call the UI-independent `engine/editing` API (picking, painting,

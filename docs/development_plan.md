@@ -588,6 +588,26 @@ of the sibling project's Phase 2-3.
   - **3.2c Editing.** A **Story** tab for dialogues and quests: a node list with links
     you can follow and problems inline. Talk is generated in the Inspector like any
     component.
+    - ✅ Built: a **Story** tab in the bottom panel.
+      - The list shows dialogues (⚠ for problems, "N×" for how many entities in the
+        open scene use each) and quests.
+      - The dialogue editor covers file id, speaker (World Bible characters), start
+        node, and "different start when…" rows. Each node is a card: id (renaming
+        rewrites every link), speaker (default, the player, or another character),
+        text, and either "then end / go to" or up to 4 choices with next node,
+        conditions and effects. → jumps to a linked node.
+      - The quest editor covers name, giver, description, ordered objectives (type,
+        and a target picked from prefabs, "Any enemy" or World Bible characters,
+        plus count) and completion effects.
+      - Problems from both validators show at the top. Save goes through the
+        engine's own reader and writer, so the files stay in one shape. A changed
+        id renames the file. Delete confirms and names the entities using the
+        dialogue. Ctrl+S saves.
+      - Shared `ed-form` control styles moved to `main.css`, so child editors match.
+      - Talk is edited in the Inspector like every component.
+      - Not covered by automated tests (`EditorApp` has no harness). The JSON round
+        trip and validation it relies on are tested in `story_test.cpp`, and the
+        panel is on the Phase 3 checklist.
   - **3.2d Grounded generation.** For each request, the World Bible entries most related
     to it (3.1 search) plus the tone guide go into the AI context. Commands
     `dialogue.write` and `quest.write` go through Diff Review, and the prompt asks the

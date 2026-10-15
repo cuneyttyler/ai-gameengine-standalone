@@ -9,6 +9,7 @@
 #include "gameplay/EngineReflection.h"
 #include "assets/SceneIO.h"
 #include "editing/Edits.h"
+#include "world/StoryReferences.h"
 #include "editing/SceneEditing.h"
 #include "gameplay/BootstrapLevel.h"
 #include "gameplay/CameraFollow.h"
@@ -293,6 +294,25 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             post_({{"type", "notify"}, {"text", *error}});
         }
         post_(WorldJson());
+    } else if (type == "story:request") {
+        post_(StoryJson());
+    } else if (type == "story:save") {
+        // {kind: dialogue|quest, id, originalId, content}: a changed id is a rename.
+        const std::string kind = message.value("kind", "");
+        const std::string folder = kind == "quest" ? "quests" : "dialogue";
+        auto error = SaveStoryFile(folder, message.value("id", ""), message.value("originalId", ""),
+                                   message.value("content", nlohmann::json::object()));
+        post_({{"type", "story:saved"},
+               {"file", folder + "/" + message.value("id", "") + ".json"},
+               {"error", error ? nlohmann::json(*error) : nlohmann::json(nullptr)}});
+        post_(StoryJson());
+    } else if (type == "story:delete") {
+        const std::string file = message.value("file", "");
+        std::error_code ec;
+        if ((file.rfind("dialogue/", 0) == 0 || file.rfind("quests/", 0) == 0) && file.find("..") == std::string::npos) {
+            std::filesystem::remove(assets_.GetProject().Resolve(file), ec);
+        }
+        post_(StoryJson());
     } else if (type == "world:search") {
         if (Ai() != nullptr && Ai()->GetState() == AiClient::State::Ready) {
             worldSearchRequest_ =
@@ -1441,6 +1461,83 @@ void EditorApp::EnsureStarterPrefabs() {
     save(CreateNpc(scratch, 0.0f, 0.0f), "npc");
     save(CreateEnemy(scratch, 0.0f, 0.0f, entt::null), "enemy");
     save(CreateHealthPickup(scratch, 0.0f, 0.0f), "potion");
+}
+
+// Writes dialogue/<id>.json or quests/<id>.json after checking it parses as
+// one; `originalId` set and different means a rename (the old file goes).
+std::optional<std::string> EditorApp::SaveStoryFile(const std::string& folder, const std::string& id,
+                                                    const std::string& originalId, const nlohmann::json& content) {
+    if (!IsValidWorldId(id)) {
+        return "file names are lowercase letters, digits, - and _";
+    }
+    std::string error;
+    const std::string relative = folder + "/" + id + ".json";
+    bool ok = folder == "quests" ? QuestFromJson(content, id, &error).has_value()
+                                 : DialogueFromJson(content, relative, &error).has_value();
+    if (!ok) {
+        return error;
+    }
+    const std::filesystem::path path = assets_.GetProject().Resolve(relative);
+    std::error_code ec;
+    if (!originalId.empty() && originalId != id && std::filesystem::exists(path, ec)) {
+        return relative + " already exists";
+    }
+    std::filesystem::create_directories(path.parent_path(), ec);
+    // Normalized through the engine's own writer, so files stay in one shape.
+    nlohmann::json normalized = folder == "quests" ? QuestToJson(*QuestFromJson(content, id, &error))
+                                                   : DialogueToJson(*DialogueFromJson(content, relative, &error));
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return "couldn't write " + relative;
+    }
+    out << normalized.dump(2) << "\n";
+    out.close();
+    if (!originalId.empty() && originalId != id) {
+        std::filesystem::remove(assets_.GetProject().Resolve(folder + "/" + originalId + ".json"), ec);
+    }
+    return std::nullopt;
+}
+
+nlohmann::json EditorApp::StoryJson() {
+    story_.Refresh();
+    world_.Refresh();
+    nlohmann::json dialogues = nlohmann::json::array();
+    for (const auto& dialogue : story_.Dialogues()) {
+        std::string id = std::filesystem::path(dialogue.path).stem().string();
+        dialogues.push_back({{"id", id}, {"file", dialogue.path}, {"content", DialogueToJson(dialogue)}});
+    }
+    nlohmann::json quests = nlohmann::json::array();
+    for (const auto& quest : story_.Quests()) {
+        quests.push_back({{"id", quest.id}, {"file", "quests/" + quest.id + ".json"}, {"content", QuestToJson(quest)}});
+    }
+    std::vector<std::string> prefabPaths;
+    for (const auto& info : prefabs_.Prefabs()) {
+        prefabPaths.push_back(info.path);
+    }
+    nlohmann::json problems = nlohmann::json::array();
+    for (const auto& problem : story_.Validate()) {
+        problems.push_back({{"file", problem.file}, {"message", problem.message}});
+    }
+    for (const auto& problem : ValidateStoryReferences(story_, world_, prefabPaths)) {
+        problems.push_back({{"file", problem.file}, {"message", problem.message}});
+    }
+    nlohmann::json characters = nlohmann::json::array();
+    for (const auto& entry : world_.Entries()) {
+        characters.push_back({{"key", entry.Key()}, {"name", entry.name}, {"kind", entry.kind}});
+    }
+    // Who uses each dialogue in the open scene (so the panel can say "Talk on Villager").
+    nlohmann::json usedBy = nlohmann::json::object();
+    for (auto [entity, talk] : registry_.view<Talk>().each()) {
+        const auto* name = registry_.try_get<Name>(entity);
+        usedBy[talk.dialogue].push_back(name ? name->value : "Entity #" + std::to_string(static_cast<uint32_t>(entity)));
+    }
+    return {{"type", "story:list"},
+            {"dialogues", dialogues},
+            {"quests", quests},
+            {"problems", problems},
+            {"world", characters},
+            {"prefabs", prefabPaths},
+            {"usedBy", usedBy}};
 }
 
 // The World Bible for the World panel: every entry, plus problems to fix.

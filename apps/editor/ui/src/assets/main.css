@@ -17,3 +17,38 @@ body {
   background: #11111b;
   color: #eee;
 }
+
+/* Form controls in panels that are built from several components (the Story
+   tab and its condition/effect editors): square and dark like the rest of the
+   editor. Put class="ed-form" on the panel's root. */
+.ed-form input,
+.ed-form select,
+.ed-form textarea {
+  border: 1px solid #333;
+  border-radius: 0;
+  background: #11111b;
+  color: #eee;
+  padding: 3px 6px;
+  font: inherit;
+  min-width: 0;
+}
+.ed-form button {
+  border: 1px solid #333;
+  border-radius: 0;
+  background: #11111b;
+  color: #eee;
+  font: inherit;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.ed-form button:hover:not(:disabled) {
+  background: #262637;
+}
+.ed-form button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.ed-form button.primary:not(:disabled) {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}

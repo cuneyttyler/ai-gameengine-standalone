@@ -160,6 +160,9 @@ private:
     StoryLibrary story_; // dialogue/ and quests/ (3.2b), reloaded when Play starts
     int worldSearchRequest_ = 0;
     nlohmann::json WorldJson();
+    nlohmann::json StoryJson(); // the Story tab: dialogues, quests, problems, what can be referenced
+    std::optional<std::string> SaveStoryFile(const std::string& folder, const std::string& id,
+                                             const std::string& originalId, const nlohmann::json& content);
     // The AI Orchestration Service (started with the editor; optional — the
     // editor is fully usable without it).
     std::unique_ptr<UserPrefs> userPrefs_;
