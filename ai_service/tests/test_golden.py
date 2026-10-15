@@ -199,3 +199,22 @@ def test_editing_a_conversation_keeps_it_whole_and_in_voice(schema, demo_context
     greet = next(n for n in dialogue["nodes"] if n["id"] == "greet")
     assert any(c.get("next") in {n["id"] for n in new_nodes} for c in greet["choices"])
     assert len(greet["choices"]) <= 4
+
+
+# --- Level generation (development_plan.md 3.4) ---------------------------------------
+
+
+def test_a_dungeon_is_generated_not_painted_and_left_clear_of_the_village(schema, demo_context):
+    proposal = replay("dungeon", schema, demo_context)
+    generates = [op for op in ops(proposal, "command") if op.name == "level.generate"]
+    assert len(generates) == 1
+    assert not [op for op in ops(proposal, "command") if op.name == "scene.paintRect"]
+    a = generates[0].args
+    bx0, by0, bx1, by1 = demo_context.tiles.bounds
+    # East of the village and outside its tiles, so nothing that's there is replaced.
+    assert a["x0"] > bx1 or a["y0"] > by1 or a["x1"] < bx0 or a["y1"] < by0
+    assert a["x0"] >= bx0
+    tiles = {p.path for p in demo_context.prefabs if p.isTile}
+    assert a["floor"] in tiles and a["wall"] in tiles
+    assert a["enemy"] == "prefabs/skeleton.prefab" and a["enemies"] > 0
+    assert a["pickup"] == "prefabs/potion.prefab" and 1 <= a["pickups"] <= 4

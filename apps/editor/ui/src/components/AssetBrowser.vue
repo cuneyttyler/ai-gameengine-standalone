@@ -4,6 +4,7 @@ import { armPrefab, editorState } from '../editorState'
 import PrefabThumb from './PrefabThumb.vue'
 import WorldPanel from './WorldPanel.vue'
 import StoryPanel from './StoryPanel.vue'
+import LevelPanel from './LevelPanel.vue'
 import { onHostMessage, sendToHost } from '../ipc'
 
 interface Asset {
@@ -147,7 +148,7 @@ function createPrefab(asTile: boolean): void {
 }
 
 // Prefabs tab: the project's palette.
-const tab = ref<'prefabs' | 'assets' | 'world' | 'story'>('prefabs')
+const tab = ref<'prefabs' | 'assets' | 'world' | 'story' | 'level'>('prefabs')
 const visiblePrefabs = computed(() => {
   const query = filter.value.trim().toLowerCase()
   return query ? editorState.prefabs.filter((p) => p.name.toLowerCase().includes(query)) : editorState.prefabs
@@ -181,6 +182,7 @@ onMounted(() => {
           World
         </button>
         <button :class="{ active: tab === 'story' }" title="Dialogue and quests" @click="tab = 'story'">Story</button>
+        <button :class="{ active: tab === 'level' }" title="Generate a dungeon" @click="tab = 'level'">Level</button>
       </div>
       <input
         v-if="tab === 'prefabs' || tab === 'assets'"
@@ -206,6 +208,7 @@ onMounted(() => {
 
     <WorldPanel v-if="tab === 'world'" class="body world-body" />
     <StoryPanel v-else-if="tab === 'story'" class="body" />
+    <LevelPanel v-else-if="tab === 'level'" class="body" />
     <div v-else-if="tab === 'prefabs'" class="body">
       <div class="grid">
         <p v-if="editorState.prefabs.length === 0" class="placeholder">

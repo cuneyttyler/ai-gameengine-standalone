@@ -145,6 +145,121 @@
       ]
     },
     {
+      "description": "Builds a dungeon in a rectangle of grid cells: rooms joined by corridors, walled in, every room reachable, with enemies (more of them further from the start) and pickups. Everything already in the area except the player is replaced. Deterministic: the same seed gives the same level. Pick an area away from what should stay (see the tile bounds).",
+      "name": "level.generate",
+      "params": [
+        {
+          "description": "Area: first column.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "x0",
+          "type": "int"
+        },
+        {
+          "description": "Area: first row.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "y0",
+          "type": "int"
+        },
+        {
+          "description": "Area: last column.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "x1",
+          "type": "int"
+        },
+        {
+          "description": "Area: last row.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "y1",
+          "type": "int"
+        },
+        {
+          "description": "Any number; change it for a different layout.",
+          "max": 1000000000.0,
+          "min": 0.0,
+          "name": "seed",
+          "type": "int"
+        },
+        {
+          "description": "How many rooms to try to fit.",
+          "max": 40.0,
+          "min": 2.0,
+          "name": "rooms",
+          "type": "int"
+        },
+        {
+          "description": "Smallest room side, in cells.",
+          "max": 30.0,
+          "min": 2.0,
+          "name": "roomMin",
+          "type": "int"
+        },
+        {
+          "description": "Largest room side, in cells.",
+          "max": 30.0,
+          "min": 2.0,
+          "name": "roomMax",
+          "type": "int"
+        },
+        {
+          "description": "Corridor width, cells.",
+          "max": 3.0,
+          "min": 1.0,
+          "name": "corridorWidth",
+          "type": "int"
+        },
+        {
+          "description": "0-1: extra corridors so not every path is a dead end.",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "loops",
+          "type": "float"
+        },
+        {
+          "description": "Tile prefab for the floor, e.g. prefabs/stone_floor.prefab.",
+          "name": "floor",
+          "type": "prefab"
+        },
+        {
+          "description": "Solid tile prefab for the walls, e.g. prefabs/wall.prefab.",
+          "name": "wall",
+          "type": "prefab"
+        },
+        {
+          "description": "Enemy prefab; empty for none.",
+          "name": "enemy",
+          "type": "prefab"
+        },
+        {
+          "description": "How many enemies.",
+          "max": 200.0,
+          "min": 0.0,
+          "name": "enemies",
+          "type": "int"
+        },
+        {
+          "description": "Pickup prefab (e.g. a potion); empty for none.",
+          "name": "pickup",
+          "type": "prefab"
+        },
+        {
+          "description": "How many pickups.",
+          "max": 100.0,
+          "min": 0.0,
+          "name": "pickups",
+          "type": "int"
+        },
+        {
+          "description": "Move the player to the start room.",
+          "name": "movePlayer",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "description": "Deletes a World Bible entry.",
       "name": "world.delete",
       "params": [

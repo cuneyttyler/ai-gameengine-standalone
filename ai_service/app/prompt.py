@@ -68,6 +68,10 @@ Rules:
   A script that moves the entity some other way should pause it
   (set_field(self_id(), "Follow", "speed", 0)) and restore it afterwards.
 - Health.current is what entities start with: when raising Health.max, raise current to match.
+- A dungeon, cave or any new multi-room area: use the level.generate command (one operation;
+  it guarantees every room is reachable and walls it in). Never paint rooms tile by tile.
+  Put it in an empty area outside the existing tiles' bounds (context "tiles"), with a tile
+  prefab for the floor, a solid one for the walls, and the project's enemy/pickup prefabs.
 - Ids exist only for entities already in the project context. Something spawned in this
   answer has no id yet: to change it, do that in the next step of a task.
 - A new prefab: set up an existing entity first (set_field/add_component, in an earlier

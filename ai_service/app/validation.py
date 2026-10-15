@@ -58,7 +58,7 @@ def check_value(spec: FieldSpec, value: Any, context: EditorContext, where: str)
     else:
         if not isinstance(value, str):
             return [f"{where}: {spec.name} must be text"]
-        if t == "prefab" and value not in {p.path for p in context.prefabs}:
+        if t == "prefab" and value and value not in {p.path for p in context.prefabs}:
             errors.append(f"{where}: no prefab {value!r}")
         elif t == "texture" and value and value not in {a["path"] for a in context.assets if a.get("type") != "audio"}:
             errors.append(f"{where}: no texture {value!r}")

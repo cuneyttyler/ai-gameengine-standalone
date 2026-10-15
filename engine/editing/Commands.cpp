@@ -5,6 +5,7 @@
 #include "gameplay/Components.h"
 #include "gameplay/GameSession.h"
 #include "physics2d/Components.h"
+#include "editing/LevelBuild.h"
 #include "world/WorldBible.h"
 
 #include <cctype>
@@ -199,6 +200,47 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
             }
             if (auto error = world.Save(entry)) {
                 return Fail(*error);
+            }
+            return {};
+        });
+
+    // Level generation (development_plan.md 3.4).
+    r.Command("level.generate",
+              "Builds a dungeon in a rectangle of grid cells: rooms joined by corridors, walled in, every room "
+              "reachable, with enemies (more of them further from the start) and pickups. Everything already in "
+              "the area except the player is replaced. Deterministic: the same seed gives the same level. Pick "
+              "an area away from what should stay (see the tile bounds).")
+        .Param("x0", FieldType::Int, "Area: first column.").Range(-1000, 1000)
+        .Param("y0", FieldType::Int, "Area: first row.").Range(-1000, 1000)
+        .Param("x1", FieldType::Int, "Area: last column.").Range(-1000, 1000)
+        .Param("y1", FieldType::Int, "Area: last row.").Range(-1000, 1000)
+        .Param("seed", FieldType::Int, "Any number; change it for a different layout.").Range(0, 1000000000)
+        .Param("rooms", FieldType::Int, "How many rooms to try to fit.").Range(2, 40)
+        .Param("roomMin", FieldType::Int, "Smallest room side, in cells.").Range(2, 30)
+        .Param("roomMax", FieldType::Int, "Largest room side, in cells.").Range(2, 30)
+        .Param("corridorWidth", FieldType::Int, "Corridor width, cells.").Range(1, 3)
+        .Param("loops", FieldType::Float, "0-1: extra corridors so not every path is a dead end.").Range(0, 1)
+        .Param("floor", FieldType::Prefab, "Tile prefab for the floor, e.g. prefabs/stone_floor.prefab.")
+        .Param("wall", FieldType::Prefab, "Solid tile prefab for the walls, e.g. prefabs/wall.prefab.")
+        .Param("enemy", FieldType::Prefab, "Enemy prefab; empty for none.")
+        .Param("enemies", FieldType::Int, "How many enemies.").Range(0, 200)
+        .Param("pickup", FieldType::Prefab, "Pickup prefab (e.g. a potion); empty for none.")
+        .Param("pickups", FieldType::Int, "How many pickups.").Range(0, 100)
+        .Param("movePlayer", FieldType::Bool, "Move the player to the start room.")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.prefabs == nullptr) {
+                return Fail("prefabs aren't available here");
+            }
+            LevelParams params = LevelParamsFromArgs(args);
+            std::string error;
+            auto layout = GenerateLevel(params, &error);
+            if (!layout) {
+                return Fail(error);
+            }
+            LevelPrefabs use{ToString(args[10]), ToString(args[11]), ToString(args[12]), ToString(args[14]),
+                             ToBool(args[16])};
+            if (auto problem = BuildLevel(context.registry, *context.prefabs, params, *layout, use)) {
+                return Fail(*problem);
             }
             return {};
         });

@@ -56,6 +56,11 @@ PROMPTS: dict[str, dict] = {
         "instruction": "Add the Wardens' quartermaster in Brookvale as a new character, and write a short "
         "conversation where she warns the hero about the old keep.",
     },
+    # Level generation (development_plan.md 3.4).
+    "dungeon": {
+        "instruction": "Build a small dungeon east of the village: about six rooms, skeletons guarding it "
+        "(more of them deeper in), and a couple of healing potions.",
+    },
     "tamsin_wardens": {
         "instruction": "Old Tamsin should have something to say about the Wardens: add a choice to her "
         "conversation where the hero asks what she thinks of them. Keep everything else she says.",

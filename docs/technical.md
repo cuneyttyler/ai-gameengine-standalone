@@ -212,6 +212,8 @@ generated field automatically gets the "Ask AI" affordance for free.
   - Consistency (3.3): host → UI `ai:consistency {id, result}` (first `{checking: true}`,
     then the service's `/consistency` answer); World tab UI → host `world:check {key}`,
     host → UI `world:checkResult {key, result}`.
+  - Level (3.4): UI → host `level:defaults`, `level:preview {args}`, `level:generate {args}`;
+    host → UI `level:defaults {x0, y0, tiles, things}`, `level:preview {text, error}`.
   - Story: UI → host `story:request`, `story:save {kind, id, originalId, content}`,
     `story:delete {file}`; host → UI `story:list {dialogues, quests, problems, world,
     prefabs, usedBy}`, `story:saved {file, error}`.

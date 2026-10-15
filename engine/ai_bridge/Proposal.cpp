@@ -6,6 +6,7 @@
 #include "gameplay/Components.h"
 #include "reflection/Reflection.h"
 #include "scripting/Components.h"
+#include "editing/LevelBuild.h"
 #include "gameplay/Story.h"
 #include "world/WorldBible.h"
 
@@ -432,6 +433,19 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             if (world.Find(entry.Key()) != nullptr) {
                 item.before = "(replaces the existing entry)";
             }
+        } else if (name == "level.generate") {
+            // Shown as what it will build: generation is pure and quick, so
+            // review gets the real layout (as a map) before anything changes.
+            LevelParams params = LevelParamsFromJson(args);
+            item.target = "Generate a level in (" + std::to_string(params.x0) + "," + std::to_string(params.y0) +
+                          ")-(" + std::to_string(params.x1) + "," + std::to_string(params.y1) + ")";
+            std::string why;
+            auto layout = GenerateLevel(params, &why);
+            if (!layout) {
+                error = why;
+                return item;
+            }
+            item.detail = DescribeLevel(params, *layout);
         } else if (name == "world.delete") {
             item.target = "World Bible · delete " + args.value("key", std::string());
         } else {

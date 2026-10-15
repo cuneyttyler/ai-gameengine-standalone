@@ -9,6 +9,7 @@
 #include "gameplay/EngineReflection.h"
 #include "assets/SceneIO.h"
 #include "editing/Edits.h"
+#include "editing/LevelBuild.h"
 #include "world/StoryReferences.h"
 #include "editing/SceneEditing.h"
 #include "gameplay/BootstrapLevel.h"
@@ -294,6 +295,43 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             post_({{"type", "notify"}, {"text", *error}});
         }
         post_(WorldJson());
+    } else if (type == "level:defaults") {
+        // A free area to suggest: just east of everything already in the scene.
+        int maxX = 0, minY = 0;
+        bool any = false;
+        for (auto [entity, tile] : registry_.view<Tile>().each()) {
+            maxX = any ? std::max(maxX, tile.gx) : tile.gx;
+            minY = any ? std::min(minY, tile.gy) : tile.gy;
+            any = true;
+        }
+        std::vector<std::string> tiles, things;
+        for (const auto& info : prefabs_.Prefabs()) {
+            (info.isTile ? tiles : things).push_back(info.path);
+        }
+        post_({{"type", "level:defaults"},
+               {"x0", any ? maxX + 4 : 0},
+               {"y0", minY},
+               {"tiles", tiles},
+               {"things", things}});
+    } else if (type == "level:preview") {
+        LevelParams params = LevelParamsFromJson(message.value("args", nlohmann::json::object()));
+        std::string error;
+        auto layout = GenerateLevel(params, &error);
+        post_({{"type", "level:preview"},
+               {"text", layout ? DescribeLevel(params, *layout) : std::string()},
+               {"error", error}});
+    } else if (type == "level:generate") {
+        // The same operation the AI proposes, applied as one undo step.
+        nlohmann::json op = {{"op", "command"}, {"name", "level.generate"}, {"args", message.value("args", nlohmann::json::object())}};
+        if (playing_) {
+            return;
+        }
+        ApplyOutcome outcome = ApplyAccepted({op});
+        post_({{"type", "notify"},
+               {"text", outcome.errors.empty() ? "Level generated (Ctrl+Z undoes it)" : outcome.errors.front()}});
+        if (outcome.errors.empty()) {
+            FrameScene();
+        }
     } else if (type == "story:request") {
         post_(StoryJson());
     } else if (type == "story:save") {

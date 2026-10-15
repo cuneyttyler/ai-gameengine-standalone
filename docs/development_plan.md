@@ -711,6 +711,30 @@ of the sibling project's Phase 2-3.
     - An end-to-end smoke run with the real embedder and checker flagged "Aren,
       the oldest Warden alive" against the hero entry, for about 1k input tokens.
 - **3.4 Dungeon/level layout generation** for the ARPG template.
+  - A deterministic, seeded generator (`gameplay/LevelGen`, pure data): rooms placed
+    in a rectangle of cells, joined by a minimum spanning tree of corridors plus a few
+    loops, walled in. The player starts in the room nearest the area's corner; enemies
+    are kept away from the start and get denser with walking distance; pickups are
+    spread over the rooms.
+  - `editing/LevelBuild` puts a layout into the scene: it clears the area (except the
+    player), paints floor and wall tile prefabs, and places enemies, pickups and the
+    player. The command `level.generate` ties both together for the AI, and its review
+    shows a summary and an ASCII map of the real layout before anything changes.
+  - A **Level** tab drives the same command by hand: area (suggested east of the
+    current scene), seed with 🎲, rooms and sizes, corridors and loops, prefabs and
+    counts. It shows a live map preview, and Generate is one undo step.
+  - Tests: 60 seeds checked for full connectivity, walls enclosing every floor cell,
+    staying in the area, exact counts and no overlaps; enemies away from the start
+    and denser further in; determinism; impossible parameters explained; building
+    through the command (area cleared, walls solid, floor walkable, a `GameSession`
+    walk); bad prefabs refused with nothing changed; and the AI's recorded proposal
+    actually generating.
+  - **User test:** play a few generated dungeons. Are they navigable and fun to clear?
+  - ✅ Built as described. The 60-seed test found a real bug on its first run: an
+    L-shaped corridor whose corner coincided with its start carved nothing, leaving
+    rooms unreachable. Fixed, with explicit legs. Golden: "a small dungeon east of the
+    village" → one `level.generate` in an area just outside the village's tiles, using
+    stone floor, walls, skeletons and potions, and no tile-by-tile painting.
 - **3.5 NPC schedule/behavior generation** for the cozy-sim template, built on the
   Phase 2 behavior-graph runtime.
 - **3.6 Asset Generator Studio**: text-to-sprite pipeline, variant-family generation,

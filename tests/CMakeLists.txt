@@ -35,6 +35,7 @@ add_executable(aige_tests
     world_bible_test.cpp
     text_test.cpp
     story_test.cpp
+    level_gen_test.cpp
 )
 target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets aige_gameplay aige_editing aige_world aige_ai_bridge aige_ui gtest_main)
 target_compile_definitions(aige_tests PRIVATE AIGE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
