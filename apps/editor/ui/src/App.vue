@@ -7,6 +7,7 @@ import Toolbar from './components/Toolbar.vue'
 import Splitter from './components/Splitter.vue'
 import StatusBar from './components/StatusBar.vue'
 import AssetBrowser from './components/AssetBrowser.vue'
+import AiPanel from './components/AiPanel.vue'
 
 // Panel sizes are per-user layout preferences, so localStorage is enough.
 // Every access is guarded: storage can be unavailable, and the layout must
@@ -21,6 +22,12 @@ const MIN_ASSET_PANEL = 120
 const sidebarWidth = ref(320)
 const treeFraction = ref(0.45) // Scene Tree's share of the side panel's height
 const assetPanelHeight = ref(240)
+const aiPanelWidth = ref(360)
+const MIN_AI_PANEL = 260
+
+function onAiPanelDrag(x: number): void {
+  aiPanelWidth.value = clamp(window.innerWidth - x, MIN_AI_PANEL, window.innerWidth - sidebarWidth.value - MIN_VIEWPORT)
+}
 
 const sidePanel = ref<HTMLElement | null>(null)
 
@@ -55,6 +62,7 @@ function saveLayout(): void {
         sidebarWidth: sidebarWidth.value,
         treeFraction: treeFraction.value,
         assetPanelHeight: assetPanelHeight.value,
+        aiPanelWidth: aiPanelWidth.value,
       }),
     )
   } catch {
@@ -71,6 +79,9 @@ onMounted(() => {
     }
     if (saved && typeof saved.assetPanelHeight === 'number') {
       assetPanelHeight.value = clamp(saved.assetPanelHeight, MIN_ASSET_PANEL, window.innerHeight / 2)
+    }
+    if (saved && typeof saved.aiPanelWidth === 'number') {
+      aiPanelWidth.value = clamp(saved.aiPanelWidth, MIN_AI_PANEL, window.innerWidth / 2)
     }
   } catch {
     // Corrupt or unavailable storage: keep the defaults.
@@ -101,6 +112,10 @@ onMounted(() => {
       </div>
       <StatusBar />
     </main>
+    <Splitter direction="horizontal" @drag="onAiPanelDrag" @end="saveLayout" />
+    <aside class="ai-slot" :style="{ width: `${aiPanelWidth}px` }">
+      <AiPanel />
+    </aside>
   </div>
 </template>
 
@@ -137,6 +152,10 @@ onMounted(() => {
 .viewport-slot {
   flex: 1;
   min-height: 0;
+}
+.ai-slot {
+  flex-shrink: 0;
+  min-width: 0;
 }
 .asset-slot {
   flex-shrink: 0;

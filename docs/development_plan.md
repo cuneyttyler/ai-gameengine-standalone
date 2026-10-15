@@ -268,6 +268,16 @@ applied change.
 - **User test checkpoint:** a proposal round-trips from chat to diff review to the
   applied change in the viewport — the seam between the UI, `ai_bridge` and the AI
   service is where this breaks, not inside any one of them.
+- ✅ Built (user check deferred to end of Phase 2): an AI panel on the right (resizable,
+  remembered width) with chat and a Diff Review card per proposal — per-change
+  checkboxes, before → after, inline editing of values (the Inspector's field editor)
+  and of written scripts, "file" badges for changes outside scene undo, token usage,
+  Apply / Reject. `ai_bridge/Proposal`: `ResolveProposal` re-validates every operation
+  against the live registry and scene and computes before/after; `ApplyOperations` runs
+  accepted ones through the registry setters, prefab library and commands (one undo
+  step for the scene side), recording prefab overrides like a manual edit. Every
+  decision is appended to `<project>/ai_log.jsonl`. Follow-up requests carry the recent
+  conversation.
 
 **2.5 — First end-to-end NL → structured diff → apply**
 - A real instruction (e.g., "add a burning status effect that deals damage over time")

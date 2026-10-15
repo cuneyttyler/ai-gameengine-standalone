@@ -15,6 +15,8 @@ add_library(aige_ai_bridge STATIC
     AiClient.cpp
     ContextBuilder.h
     ContextBuilder.cpp
+    Proposal.h
+    Proposal.cpp
 )
 target_include_directories(aige_ai_bridge PUBLIC ${CMAKE_SOURCE_DIR}/engine)
 target_include_directories(aige_ai_bridge PUBLIC ${httplib_SOURCE_DIR})

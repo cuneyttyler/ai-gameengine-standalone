@@ -92,6 +92,21 @@ void AddOverride(Registry& registry, Entity entity, const std::string& key) {
     }
 }
 
+void RecordOverride(Registry& registry, Entity entity, const std::string& component, const std::string& field) {
+    if (!registry.all_of<PrefabInstance>(entity)) {
+        return;
+    }
+    if (field.empty()) {
+        AddOverride(registry, entity, "-" + component);
+        return;
+    }
+    const ComponentInfo* info = EngineReflection().FindComponent(component);
+    const FieldInfo* fieldInfo = info ? info->Field(field) : nullptr;
+    if (fieldInfo != nullptr && !IsInstanceLocal(component, *fieldInfo)) {
+        AddOverride(registry, entity, component + "." + field);
+    }
+}
+
 PrefabLibrary::PrefabLibrary(Project project) : project_(std::move(project)) {}
 PrefabLibrary::~PrefabLibrary() = default;
 
@@ -287,6 +302,35 @@ bool PrefabLibrary::SaveAsPrefab(Registry& registry, Entity entity, const std::s
     templates_.erase(path);
     Refresh();
     return true;
+}
+
+std::optional<std::string> PrefabLibrary::SetTemplateField(const std::string& path, const std::string& component,
+                                                           const std::string& field, const FieldValue& value) {
+    Template* prefab = Load(path);
+    if (prefab == nullptr || !prefab->error.empty()) {
+        return "no prefab " + path;
+    }
+    const ComponentInfo* info = EngineReflection().FindComponent(component);
+    const FieldInfo* fieldInfo = info ? info->Field(field) : nullptr;
+    if (fieldInfo == nullptr) {
+        return "unknown field " + component + "." + field;
+    }
+    if (!info->has(prefab->registry, prefab->entity)) {
+        return path + " has no " + component;
+    }
+    if (auto error = Validate(*fieldInfo, value)) {
+        return *error;
+    }
+    fieldInfo->set(prefab->registry, prefab->entity, value);
+    std::ofstream out(project_.Resolve(path), std::ios::trunc);
+    if (!out) {
+        return "can't write " + path;
+    }
+    out << SerializeEntities(prefab->registry, {prefab->entity});
+    out.close();
+    templates_.erase(path); // reload from disk next time (and report it changed)
+    Refresh();
+    return std::nullopt;
 }
 
 bool PrefabLibrary::VisitTemplate(const std::string& path, const std::function<void(Registry&, Entity)>& visit) {

@@ -2,6 +2,7 @@
 
 #include "assets/Project.h"
 #include "ecs/Registry.h"
+#include "reflection/Reflection.h"
 
 #include <filesystem>
 #include <functional>
@@ -72,6 +73,11 @@ public:
     // describe its values; false if the prefab can't be loaded.
     bool VisitTemplate(const std::string& path, const std::function<void(Registry&, Entity)>& visit);
 
+    // Changes one field of the prefab itself (rewriting its file); copies pick
+    // it up on the next Sync. Returns why not if it can't.
+    std::optional<std::string> SetTemplateField(const std::string& path, const std::string& component,
+                                                const std::string& field, const FieldValue& value);
+
     // Drops one override (the field takes the prefab's value again) or all.
     void Revert(Registry& registry, Entity instance, const std::string& overrideKey);
     void RevertAll(Registry& registry, Entity instance);
@@ -89,5 +95,10 @@ private:
 std::set<std::string> ParseOverrides(const std::string& overrides);
 bool HasOverride(Registry& registry, Entity entity, const std::string& key);
 void AddOverride(Registry& registry, Entity entity, const std::string& key);
+
+// Records that a field was changed on a prefab copy (so prefab updates leave
+// it alone); empty `field` records the component as removed. No-op for
+// entities that aren't prefab copies and for per-copy fields like position.
+void RecordOverride(Registry& registry, Entity entity, const std::string& component, const std::string& field);
 
 } // namespace aige

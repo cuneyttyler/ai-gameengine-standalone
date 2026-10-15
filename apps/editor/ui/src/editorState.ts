@@ -30,6 +30,7 @@ export const editorState = reactive({
   selectedId: null as number | null,
   notice: '',
   prefabs: [] as Prefab[],
+  ai: { state: 'off' as 'off' | 'starting' | 'ready' | 'failed', text: 'AI is off', busy: false },
 })
 
 export function armPrefab(path: string): void {
@@ -49,6 +50,11 @@ onHostMessage((message) => {
     editorState.sceneName = message.sceneName as string
   } else if (message.type === 'selection:changed') {
     editorState.selectedId = (message.id as number | null) ?? null
+  } else if (message.type === 'ai:status') {
+    editorState.ai.state = message.state as typeof editorState.ai.state
+    editorState.ai.text = message.text as string
+  } else if (message.type === 'ai:busy') {
+    editorState.ai.busy = message.busy as boolean
   } else if (message.type === 'prefabs:list') {
     editorState.prefabs = message.prefabs as Prefab[]
   } else if (message.type === 'notify') {

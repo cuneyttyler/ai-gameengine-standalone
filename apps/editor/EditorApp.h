@@ -18,6 +18,7 @@
 #include <windows.h>
 
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -112,6 +113,11 @@ private:
 
     nlohmann::json AiStatusJson();
     void PollAi();
+    void SendToAi(const std::string& text, const std::string& focus);
+    void OnProposal(int requestId, const nlohmann::json& body);
+    void ApplyProposal(int proposalId, const nlohmann::json& decisions);
+    void RejectProposal(int proposalId);
+    void LogAiDecision(int proposalId, const nlohmann::json& decision);
 
     // Project settings (Renderer, Camera, ...), from the registry.
     nlohmann::json SettingsJson();
@@ -147,6 +153,16 @@ private:
     // The AI Orchestration Service (started with the editor; optional — the
     // editor is fully usable without it).
     std::unique_ptr<AiClient> ai_;
+    struct PendingProposal {
+        std::string instruction;
+        nlohmann::json proposal; // as the service returned it
+        bool decided = false;
+    };
+    std::map<int, PendingProposal> proposals_; // by request id
+    std::map<int, std::string> requestInstructions_;
+    // The conversation so far, sent back as context for follow-ups ("make
+    // them faster too"). Plain text turns, newest last.
+    std::vector<std::pair<std::string, std::string>> conversation_;
     AudioEngine& audio_;
     Renderer2D& renderer_;
     std::string scenePath_;

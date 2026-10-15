@@ -15,3 +15,5 @@ ai_service/.env
 ai_service/.venv/
 __pycache__/
 .pytest_cache/
+# The AI audit trail is per user/session, not part of the shared demo project
+projects/*/ai_log.jsonl

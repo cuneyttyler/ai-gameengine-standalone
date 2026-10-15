@@ -2,6 +2,9 @@
 
 #include "Win32Util.h"
 
+#include "ai_bridge/ContextBuilder.h"
+#include "ai_bridge/Proposal.h"
+
 #include "gameplay/EngineReflection.h"
 #include "assets/SceneIO.h"
 #include "editing/SceneEditing.h"
@@ -14,6 +17,7 @@
 #include "scripting/Components.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cctype>
 #include <filesystem>
@@ -250,6 +254,12 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
                 SetTool(static_cast<Tool>(i));
             }
         }
+    } else if (type == "ai:send") {
+        SendToAi(message.value("text", ""), message.value("focus", ""));
+    } else if (type == "ai:apply") {
+        ApplyProposal(message.value("id", 0), message.value("items", nlohmann::json::array()));
+    } else if (type == "ai:reject") {
+        RejectProposal(message.value("id", 0));
     } else if (type == "settings:request") {
         post_(SettingsJson());
     } else if (type == "settings:set") {
@@ -881,8 +891,162 @@ void EditorApp::PollAi() {
     while (auto result = ai_->Poll()) {
         if (result->kind == AiClient::Result::Kind::Status) {
             post_(AiStatusJson());
+        } else {
+            OnProposal(result->requestId, result->body);
         }
     }
+}
+
+void EditorApp::SendToAi(const std::string& text, const std::string& focus) {
+    if (!ai_ || text.empty()) {
+        return;
+    }
+    if (playing_) {
+        post_({{"type", "ai:message"}, {"role", "error"}, {"text", "Stop Play mode before asking for changes."}});
+        return;
+    }
+    ContextOptions options;
+    options.selection = selected_;
+    options.focus = focus;
+    nlohmann::json context =
+        BuildEditorContext(registry_, EngineReflection(), prefabs_, assets_, assets_.GetProject(), options);
+
+    // The last few turns, so follow-ups like "now make them faster" work.
+    nlohmann::json history = nlohmann::json::array();
+    size_t first = conversation_.size() > 8 ? conversation_.size() - 8 : 0;
+    for (size_t i = first; i < conversation_.size(); ++i) {
+        history.push_back({{"role", conversation_[i].first}, {"content", conversation_[i].second}});
+    }
+
+    int id = ai_->Propose(text, context, history);
+    requestInstructions_[id] = text;
+    conversation_.emplace_back("user", text);
+    post_({{"type", "ai:message"}, {"role", "user"}, {"text", text}, {"requestId", id}});
+    post_({{"type", "ai:busy"}, {"busy", true}});
+}
+
+void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
+    post_({{"type", "ai:busy"}, {"busy", false}});
+    std::string instruction = requestInstructions_[requestId];
+    requestInstructions_.erase(requestId);
+
+    if (!body.value("ok", false) || !body.contains("proposal") || body["proposal"].is_null()) {
+        std::string text = "The AI couldn't produce a valid change.";
+        for (const auto& error : body.value("errors", nlohmann::json::array())) {
+            text += "\n• " + error.get<std::string>();
+        }
+        post_({{"type", "ai:message"}, {"role", "error"}, {"text", text}});
+        conversation_.emplace_back("assistant", "(failed: no valid proposal)");
+        return;
+    }
+
+    const nlohmann::json& proposal = body["proposal"];
+    ResolvedProposal resolved = ResolveProposal(proposal, registry_, EngineReflection(), prefabs_, assets_.GetProject());
+    nlohmann::json items = nlohmann::json::array();
+    for (size_t i = 0; i < resolved.items.size(); ++i) {
+        const ChangeItem& item = resolved.items[i];
+        items.push_back({{"index", i},
+                         {"kind", item.kind},
+                         {"target", item.target},
+                         {"before", item.before},
+                         {"after", item.after},
+                         {"field", item.field},
+                         {"detail", item.detail},
+                         {"touchesFiles", item.touchesFiles},
+                         {"error", item.error}});
+    }
+    proposals_[requestId] = {instruction, proposal, false};
+    conversation_.emplace_back("assistant", resolved.summary + (resolved.notes.empty() ? "" : " " + resolved.notes));
+
+    nlohmann::json usage = body.value("usage", nlohmann::json::object());
+    post_({{"type", "ai:proposal"},
+           {"id", requestId},
+           {"instruction", instruction},
+           {"summary", resolved.summary},
+           {"notes", resolved.notes},
+           {"items", items},
+           {"usage", usage},
+           {"model", body.value("model", "")}});
+}
+
+void EditorApp::ApplyProposal(int proposalId, const nlohmann::json& decisions) {
+    auto it = proposals_.find(proposalId);
+    if (it == proposals_.end() || it->second.decided || playing_) {
+        return;
+    }
+    const nlohmann::json operations = it->second.proposal.value("operations", nlohmann::json::array());
+
+    // Accepted operations, with any edits made in review (a changed value, a
+    // tweaked script) folded in.
+    std::vector<nlohmann::json> accepted;
+    nlohmann::json acceptedIndices = nlohmann::json::array();
+    for (const auto& decision : decisions) {
+        size_t index = decision.value("index", static_cast<size_t>(-1));
+        if (index >= operations.size() || !decision.value("accepted", false)) {
+            continue;
+        }
+        nlohmann::json op = operations[index];
+        if (decision.contains("value")) {
+            op["value"] = decision["value"];
+        }
+        if (decision.contains("source") && op.value("name", "") == "script.write") {
+            op["args"]["source"] = decision["source"];
+        }
+        accepted.push_back(op);
+        acceptedIndices.push_back(index);
+    }
+
+    ApplyOutcome outcome;
+    ApplyOneShotEdit([&] { // one undo step for the scene side of the change
+        outcome = ApplyOperations(accepted, registry_, EngineReflection(), prefabs_, assets_.GetProject());
+        return outcome.applied > 0;
+    });
+    if (outcome.settingsChanged) {
+        settingsDirty_ = true;
+        post_(SettingsJson());
+    }
+    if (outcome.prefabsChanged) {
+        post_(PrefabsJson());
+    }
+    it->second.decided = true;
+    sceneTreeStale_ = true;
+    inspectorStale_ = true;
+    editorStateStale_ = true;
+
+    post_({{"type", "ai:decided"},
+           {"id", proposalId},
+           {"status", outcome.errors.empty() ? "applied" : "partial"},
+           {"applied", outcome.applied},
+           {"errors", outcome.errors}});
+    LogAiDecision(proposalId, {{"decision", "applied"},
+                               {"accepted", acceptedIndices},
+                               {"appliedCount", outcome.applied},
+                               {"errors", outcome.errors},
+                               {"operations", accepted}});
+}
+
+void EditorApp::RejectProposal(int proposalId) {
+    auto it = proposals_.find(proposalId);
+    if (it == proposals_.end() || it->second.decided) {
+        return;
+    }
+    it->second.decided = true;
+    post_({{"type", "ai:decided"}, {"id", proposalId}, {"status", "rejected"}});
+    LogAiDecision(proposalId, {{"decision", "rejected"}});
+}
+
+// Every AI proposal and what was decided, appended to the project's
+// ai_log.jsonl — the audit trail product.md §7 asks for.
+void EditorApp::LogAiDecision(int proposalId, const nlohmann::json& decision) {
+    const auto& pending = proposals_[proposalId];
+    auto now = std::chrono::system_clock::now();
+    nlohmann::json entry = {{"time", std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count()},
+                            {"instruction", pending.instruction},
+                            {"summary", pending.proposal.value("summary", "")},
+                            {"proposed", pending.proposal.value("operations", nlohmann::json::array())}};
+    entry.update(decision);
+    std::ofstream log(assets_.GetProject().root / "ai_log.jsonl", std::ios::app);
+    log << entry.dump() << "\n";
 }
 
 // --- Prefabs ----------------------------------------------------------------
