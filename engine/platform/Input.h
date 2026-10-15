@@ -17,6 +17,12 @@ enum class Key {
     Escape,
     F5,
     Space,
+    E,     // talk / interact
+    Enter, // confirm a dialogue choice
+    Num1,  // dialogue choices 1-4
+    Num2,
+    Num3,
+    Num4,
 };
 
 } // namespace aige

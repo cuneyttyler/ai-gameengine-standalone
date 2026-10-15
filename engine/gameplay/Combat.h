@@ -28,6 +28,10 @@ struct GameEvent {
     // The sound to play for this event (from the relevant entity's Sounds;
     // captured here because a dying entity is gone by the time it's read).
     std::string sound;
+    // Death: the prefab the dead entity was a copy of; Pickup: the pickup's.
+    // Quest objectives count by prefab (gameplay/Story).
+    std::string prefab;
+    Team team = Team::Neutral; // Death: the dead entity's team
 };
 
 Team TeamOf(Registry& registry, Entity entity);

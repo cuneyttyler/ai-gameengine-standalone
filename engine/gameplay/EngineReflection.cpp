@@ -150,6 +150,14 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("range", &Follow::range, "Only follows within this distance; 0 = always.").Range(0, 1000)
         .DependsOn({"WorldTransform2D"});
 
+    r.Component<Talk>("Talk", "Someone the player can talk to: pressing E within range starts the dialogue.")
+        .Field("dialogue", &Talk::dialogue, "The conversation, dialogue/<id>.json.")
+        .Field("character", &Talk::character,
+               "Who they are in the World Bible (e.g. character/villager): their name on screen, and "
+               "what 'talk to' quest objectives point at.")
+        .Field("range", &Talk::range, "How close the player must be, in cells.").Range(0.3, 10)
+        .DependsOn({"WorldTransform2D"});
+
     // --- Rendering -------------------------------------------------------------------
 
     r.Component<ScreenTransform2D>("ScreenTransform2D",

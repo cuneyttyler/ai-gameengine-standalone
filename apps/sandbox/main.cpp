@@ -15,6 +15,7 @@
 #include "platform/Window.h"
 #include "renderer2d/Renderer2D.h"
 #include "ui/GameUi.h"
+#include "world/WorldBible.h"
 #include "rhi/VulkanRHI.h"
 #include "scripting/LuaVM.h"
 
@@ -82,6 +83,16 @@ int main(int argc, char** argv) {
         session.SetSpawner([&](const std::string& prefab, float x, float y) {
             return prefabs.Instantiate(registry, prefab, x, y);
         });
+        // Dialogue and quests, with names from the World Bible.
+        aige::StoryLibrary story(project.root);
+        story.Refresh();
+        aige::WorldBible world(project);
+        world.Refresh();
+        session.SetStory(&story);
+        session.SetNameResolver([&world](const std::string& key) {
+            const aige::WorldEntry* entry = world.Find(key);
+            return entry ? entry->name : std::string();
+        });
         auto isKeyDown = [&window](aige::Key key) { return window.IsKeyDown(key); };
 
         using Clock = std::chrono::steady_clock;
@@ -136,6 +147,7 @@ int main(int argc, char** argv) {
                 if (restartIn < 0.0) {
                     banner = {};
                     loadLevel();
+                    session.SetStory(&story); // a fresh run: quests and flags start over
                     session.ResetClock();
                     snapCamera();
                 }
@@ -156,6 +168,7 @@ int main(int argc, char** argv) {
                 VkExtent2D extent = rhi.SwapchainExtent();
                 const float width = static_cast<float>(extent.width);
                 const float height = static_cast<float>(extent.height);
+                session.BuildUi(ui, width, height);
                 if (!banner.first.empty()) {
                     aige::AddBanner(ui, banner.first, banner.second, width, height);
                 }

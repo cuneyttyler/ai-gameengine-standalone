@@ -273,8 +273,9 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
             }
             Heal(registry, *player, pickup.amount);
             const auto* sounds = registry.try_get<Sounds>(entity);
-            events.push_back(
-                {GameEvent::Type::Pickup, *player, entity, pickup.amount, sounds ? sounds->collect : std::string()});
+            const auto* instance = registry.try_get<PrefabInstance>(entity);
+            events.push_back({GameEvent::Type::Pickup, *player, entity, pickup.amount,
+                              sounds ? sounds->collect : std::string(), instance ? instance->path : std::string()});
             expired.push_back(entity);
         }
     }
@@ -291,7 +292,9 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
     for (auto entity : died) {
         registry.emplace<Dead>(entity);
         const auto* sounds = registry.try_get<Sounds>(entity);
-        events.push_back({GameEvent::Type::Death, entity, entt::null, 0.0f, sounds ? sounds->death : std::string()});
+        const auto* instance = registry.try_get<PrefabInstance>(entity);
+        events.push_back({GameEvent::Type::Death, entity, entt::null, 0.0f, sounds ? sounds->death : std::string(),
+                          instance ? instance->path : std::string(), TeamOf(registry, entity)});
         enemyDied |= TeamOf(registry, entity) == Team::Enemy;
     }
     if (enemyDied) {

@@ -95,6 +95,10 @@ second while playing). These are ALL the engine functions — there are no other
   get_field(id, component, field)   -> value, or nil   e.g. get_field(self_id(), "Follow", "speed")
   set_field(id, component, field, value) -> boolean
   spawn(prefab_path, x, y)          -> id, or nil
+  start_quest(id)                      starts quests/<id>.json
+  complete_objective(quest, objective) completes the quest's current objective if it's that one
+  quest_state(id)                   -> "inactive" | "active" | "completed"
+  set_flag(name[, value]) / get_flag(name) -> story flags, shared with dialogue conditions
   play_sound(asset_path)
 Entity ids are always the first argument where one is taken; prefab values can't be read
 from scripts (remember a value in a local at load time if you need it later, e.g.

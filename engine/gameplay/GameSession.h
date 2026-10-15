@@ -3,10 +3,12 @@
 #include "ecs/Registry.h"
 #include "gameplay/Combat.h"
 #include "gameplay/Isometric.h"
+#include "gameplay/Story.h"
 #include "gameplay/TileGrid.h"
 #include "physics2d/Collision.h"
 #include "platform/Input.h"
 #include "scripting/ScriptSystem.h"
+#include "renderer2d/Text.h"
 
 #include <filesystem>
 #include <functional>
@@ -94,7 +96,31 @@ public:
     using SpawnFn = std::function<std::optional<Entity>(const std::string& prefab, float x, float y)>;
     void SetSpawner(SpawnFn spawner) { spawner_ = std::move(spawner); }
 
+    // Dialogue and quests (development_plan.md 3.2b). With a library, E talks
+    // to the nearest Talk entity in range, conversations pause the game, and
+    // deaths, pickups and conversations advance quest objectives. The
+    // library must outlive the session (or the next SetStory).
+    void SetStory(const StoryLibrary* library);
+    // World Bible key -> name shown on screen (speakers, prompts). Without
+    // one, the talking entity's Name is used.
+    void SetNameResolver(std::function<std::string(const std::string&)> nameOf) { nameOf_ = std::move(nameOf); }
+    StoryState& Story() { return story_; }
+    const StoryState& Story() const { return story_; }
+    const DialogueRunner& Conversation() const { return conversation_; }
+    // Who E would talk to right now (in range, not in a conversation).
+    std::optional<Entity> TalkTarget();
+
+    // The game's own UI for the story: the dialogue box, the talk prompt,
+    // the current objective and quest notices. Viewport pixels.
+    void BuildUi(std::vector<UiQuad>& out, float viewportWidth, float viewportHeight);
+
 private:
+    void HandleStoryInput(const KeyQueryFn& isKeyDown);
+    void ShowNotices();
+    void OnStoryEvents(size_t firstEvent);
+    std::string NameOf(const std::string& key, Entity fallback) const;
+    bool Pressed(Key key, const KeyQueryFn& isKeyDown); // went down since the last Advance
+
     // TryMeleeAttack plus an Attack event (with the attacker's sound).
     bool Swing(Entity attacker, float dirX, float dirY);
 
@@ -115,6 +141,15 @@ private:
     SpawnFn spawner_;
     bool attackKeyWasDown_ = false;
     std::optional<std::pair<float, float>> requestedAttack_;
+
+    const StoryLibrary* storyLibrary_ = nullptr;
+    StoryState story_;
+    DialogueRunner conversation_;
+    Entity talkingTo_ = entt::null;
+    std::function<std::string(const std::string&)> nameOf_;
+    std::vector<Key> keysDown_; // for edge detection of the story keys
+    std::string notice_;        // "New quest: ...", shown for a moment
+    double noticeSeconds_ = 0.0;
 };
 
 } // namespace aige

@@ -537,6 +537,33 @@
       "userEditable": true
     },
     {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Someone the player can talk to: pressing E within range starts the dialogue.",
+      "fields": [
+        {
+          "description": "The conversation, dialogue/<id>.json.",
+          "name": "dialogue",
+          "type": "string"
+        },
+        {
+          "description": "Who they are in the World Bible (e.g. character/villager): their name on screen, and what 'talk to' quest objectives point at.",
+          "name": "character",
+          "type": "string"
+        },
+        {
+          "description": "How close the player must be, in cells.",
+          "max": 10.0,
+          "min": 0.3,
+          "name": "range",
+          "type": "float"
+        }
+      ],
+      "name": "Talk",
+      "userEditable": true
+    },
+    {
       "dependencies": [],
       "description": "Screen position in scene pixels and draw order. Computed from the world position for characters and tiles.",
       "fields": [

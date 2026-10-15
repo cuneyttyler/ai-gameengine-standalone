@@ -124,6 +124,16 @@ void AddObjective(std::vector<UiQuad>& out, const std::string& title, const std:
     font.Draw(out, line, kMargin + kPadding, kMargin + 14.0f + small.LineHeight(), kText);
 }
 
+void AddToast(std::vector<UiQuad>& out, const std::string& text, float viewportWidth, float viewportHeight) {
+    (void)viewportHeight;
+    const Font& font = Font::Builtin(kTextSize);
+    float width = std::min(font.Measure(text) + kPadding * 2.0f, viewportWidth - kMargin * 2.0f);
+    float height = font.LineHeight() + 16.0f;
+    float x0 = std::round((viewportWidth - width) * 0.5f);
+    AddFramedPanel(out, x0, kMargin, x0 + width, kMargin + height);
+    font.Draw(out, text, x0 + kPadding, kMargin + 8.0f, kHighlight);
+}
+
 void AddPrompt(std::vector<UiQuad>& out, const std::string& key, const std::string& text, float viewportWidth,
                float viewportHeight) {
     const Font& font = Font::Builtin(kTextSize);

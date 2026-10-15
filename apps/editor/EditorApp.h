@@ -157,6 +157,7 @@ private:
     PrefabLibrary prefabs_;
     std::pair<std::string, std::string> banner_; // Play: "Victory!" / "You died", drawn by the game
     WorldBible world_; // the project's canon, world/ (development_plan.md 3.1)
+    StoryLibrary story_; // dialogue/ and quests/ (3.2b), reloaded when Play starts
     int worldSearchRequest_ = 0;
     nlohmann::json WorldJson();
     // The AI Orchestration Service (started with the editor; optional — the

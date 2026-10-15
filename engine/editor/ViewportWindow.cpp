@@ -42,6 +42,12 @@ int ToVirtualKey(Key key) {
         case Key::Escape: return VK_ESCAPE;
         case Key::F5: return VK_F5;
         case Key::Space: return VK_SPACE;
+        case Key::E: return 'E';
+        case Key::Enter: return VK_RETURN;
+        case Key::Num1: return '1';
+        case Key::Num2: return '2';
+        case Key::Num3: return '3';
+        case Key::Num4: return '4';
     }
     return 0;
 }

@@ -168,4 +168,12 @@ struct Follow {
     float range = 6.0f; // only follows while the target is this close; 0 = always
 };
 
+// Someone the player can talk to (E within range): which conversation, and
+// who they are in the World Bible (their name on screen, talk objectives).
+struct Talk {
+    std::string dialogue;  // dialogue/<id>.json
+    std::string character; // World Bible key, e.g. character/villager
+    float range = 1.5f;    // cells
+};
+
 } // namespace aige

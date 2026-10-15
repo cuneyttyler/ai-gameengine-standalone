@@ -43,6 +43,9 @@ DialogueBoxLayout AddDialogueBox(std::vector<UiQuad>& out, const DialogueView& v
 void AddObjective(std::vector<UiQuad>& out, const std::string& title, const std::string& line, float viewportWidth,
                   float viewportHeight);
 
+// A brief notice at the top center ("New quest: Clear the courtyard").
+void AddToast(std::vector<UiQuad>& out, const std::string& text, float viewportWidth, float viewportHeight);
+
 // A short prompt above the dialogue area ("E  Talk to Old Tamsin").
 void AddPrompt(std::vector<UiQuad>& out, const std::string& key, const std::string& text, float viewportWidth,
                float viewportHeight);

@@ -549,6 +549,42 @@ of the sibling project's Phase 2-3.
       choices with 1-4 or the arrows plus Enter, objectives tracked from game events,
       and the current objective shown on screen. Lua: `start_quest`, `quest_state`,
       `set_flag`, `get_flag`.
+    - ✅ Built:
+      - `gameplay/Story`: the dialogue and quest formats (documented in
+        `docs/story.md`) and `StoryLibrary`, which loads and validates them: parse
+        errors, broken links, unreachable nodes, more than 4 choices, unknown quests,
+        objectives, effects and objective types.
+      - `StoryState` holds flags and quests. Objectives are done in order, and only
+        the current one counts. Defeat counts by prefab or team, collect by prefab,
+        talk by World Bible key; `onComplete` effects and notices follow.
+      - `DialogueRunner`: starts depend on conditions, choices are hidden by their
+        conditions, effects run on node and choice, and the highlight wraps.
+      - `world/StoryReferences` checks speakers, givers and talk targets against the
+        World Bible, and defeat/collect targets against prefabs. It lives there
+        because `gameplay` can't depend on `world`.
+      - `Talk` component; new keys E, Enter and 1-4 (GLFW and the editor viewport).
+        Death and Pickup events now carry the prefab and team.
+      - `GameSession`: E talks to the nearest Talk entity in range, and a
+        conversation pauses the world. Deaths, pickups and conversations advance
+        objectives. Victory is suppressed while a quest is active, since the quest
+        is the goal.
+      - `GameSession::BuildUi` draws the dialogue box, "E  Talk to <name>" (names come
+        from the World Bible), the current objective with progress, and notices
+        ("New quest: …").
+      - Lua: `start_quest`, `complete_objective`, `quest_state`, `set_flag`,
+        `get_flag`, also added to the AI prompt's API list.
+      - The sandbox and the editor's Play load the story fresh each run.
+      - Demo: Old Tamsin (the villager prefab gets Talk) offers "Quiet the
+        courtyard": defeat 3 skeletons, then return. She greets you differently while
+        it's active and once it's done.
+      - Tests (`story_test.cpp`): JSON round trip, conditions and effects,
+        objectives in order (including team targets and notices), validation and
+        reference problems, the demo story is valid, and a scripted
+        `GameSession` playthrough of the demo quest: E out of range does nothing;
+        in range, the world stays still during the talk; choices 1 then 1 accept,
+        Space closes, killing 3 skeletons moves the objective to "Return to Old
+        Tamsin", and E completes the quest, sets the flag and opens the "thanks"
+        line.
   - **3.2c Editing.** A **Story** tab for dialogues and quests: a node list with links
     you can follow and problems inline. Talk is generated in the Inspector like any
     component.

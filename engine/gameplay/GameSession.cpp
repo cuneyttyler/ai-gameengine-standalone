@@ -8,6 +8,7 @@
 #include "scripting/Components.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
+#include "ui/GameUi.h"
 
 #include <algorithm>
 #include <cmath>
@@ -440,11 +441,200 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
         auto entity = spawner_(prefab, x, y);
         return entity ? sol::make_object(lua_.State(), ToId(*entity)) : sol::lua_nil;
     };
+
+    // Story (gameplay/Story): quests and flags, shared with dialogue.
+    env["start_quest"] = [this](const std::string& id) {
+        if (storyLibrary_) story_.StartQuest(id, *storyLibrary_);
+    };
+    env["complete_objective"] = [this](const std::string& quest, const std::string& objective) {
+        if (storyLibrary_) story_.CompleteObjective(quest, objective, *storyLibrary_);
+    };
+    env["quest_state"] = [this](const std::string& id) {
+        return std::string(StoryState::StateName(story_.Quest(id).state));
+    };
+    env["set_flag"] = [this](const std::string& name, sol::optional<bool> value) {
+        story_.SetFlag(name, value.value_or(true));
+    };
+    env["get_flag"] = [this](const std::string& name) { return story_.Flag(name); };
+}
+
+// --- Story -------------------------------------------------------------------
+
+void GameSession::SetStory(const StoryLibrary* library) {
+    storyLibrary_ = library;
+    story_ = {};
+    conversation_.End();
+    talkingTo_ = entt::null;
+    notice_.clear();
+}
+
+bool GameSession::Pressed(Key key, const KeyQueryFn& isKeyDown) {
+    bool down = isKeyDown(key);
+    bool was = std::find(keysDown_.begin(), keysDown_.end(), key) != keysDown_.end();
+    if (down && !was) {
+        keysDown_.push_back(key);
+    } else if (!down && was) {
+        keysDown_.erase(std::remove(keysDown_.begin(), keysDown_.end(), key), keysDown_.end());
+    }
+    return down && !was;
+}
+
+std::optional<Entity> GameSession::TalkTarget() {
+    if (storyLibrary_ == nullptr || conversation_.Active()) {
+        return std::nullopt;
+    }
+    auto player = FindPlayer(registry_);
+    if (!player || registry_.all_of<Dead>(*player)) {
+        return std::nullopt;
+    }
+    const auto& p = registry_.get<WorldTransform2D>(*player);
+    std::optional<Entity> best;
+    float bestDistance = 0.0f;
+    for (auto [entity, talk, world] : registry_.view<Talk, WorldTransform2D>(entt::exclude<Dead>).each()) {
+        float distance = std::hypot(world.x - p.x, world.y - p.y);
+        if (distance <= talk.range && (!best || distance < bestDistance)) {
+            best = entity;
+            bestDistance = distance;
+        }
+    }
+    return best;
+}
+
+std::string GameSession::NameOf(const std::string& key, Entity fallback) const {
+    if (nameOf_ && !key.empty()) {
+        std::string name = nameOf_(key);
+        if (!name.empty()) {
+            return name;
+        }
+    }
+    if (registry_.valid(fallback)) {
+        if (const auto* name = registry_.try_get<Name>(fallback); name && !name->value.empty()) {
+            return name->value;
+        }
+    }
+    return key;
+}
+
+void GameSession::HandleStoryInput(const KeyQueryFn& isKeyDown) {
+    // Read every edge once per frame, so a press isn't seen twice.
+    const bool e = Pressed(Key::E, isKeyDown);
+    const bool enter = Pressed(Key::Enter, isKeyDown);
+    const bool space = Pressed(Key::Space, isKeyDown);
+    const bool up = Pressed(Key::Up, isKeyDown);
+    const bool down = Pressed(Key::Down, isKeyDown);
+    int number = 0;
+    for (int i = 0; i < 4; ++i) {
+        if (Pressed(static_cast<Key>(static_cast<int>(Key::Num1) + i), isKeyDown)) {
+            number = i + 1;
+        }
+    }
+    if (storyLibrary_ == nullptr) {
+        return;
+    }
+    if (conversation_.Active()) {
+        if (number > 0) {
+            conversation_.Choose(static_cast<size_t>(number - 1), story_, *storyLibrary_);
+        } else if (up || down) {
+            conversation_.MoveHighlight(up ? -1 : 1);
+        } else if (enter || space || e) {
+            conversation_.Continue(story_, *storyLibrary_);
+        }
+        if (!conversation_.Active()) {
+            talkingTo_ = entt::null;
+            attackKeyWasDown_ = isKeyDown(Key::Space); // the closing Space isn't a swing
+        }
+        return;
+    }
+    if (e) {
+        if (auto npc = TalkTarget()) {
+            const Talk& talk = registry_.get<Talk>(*npc);
+            if (const Dialogue* dialogue = storyLibrary_->FindDialogue(talk.dialogue)) {
+                story_.OnTalkedTo(talk.character, *storyLibrary_);
+                if (conversation_.Start(*dialogue, story_, *storyLibrary_)) {
+                    talkingTo_ = *npc;
+                }
+            }
+        }
+    }
+}
+
+void GameSession::OnStoryEvents(size_t firstEvent) {
+    if (storyLibrary_ == nullptr) {
+        return;
+    }
+    for (size_t i = firstEvent; i < events_.size(); ++i) {
+        const GameEvent& event = events_[i];
+        if (event.type == GameEvent::Type::Death) {
+            story_.OnDefeated(event.prefab, event.team == Team::Enemy ? "Enemy" : "", *storyLibrary_);
+        } else if (event.type == GameEvent::Type::Pickup) {
+            story_.OnCollected(event.prefab, *storyLibrary_);
+        }
+    }
+}
+
+void GameSession::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float viewportHeight) {
+    if (storyLibrary_ == nullptr) {
+        return;
+    }
+    if (auto shown = story_.CurrentObjective(*storyLibrary_)) {
+        AddObjective(out, shown->quest, shown->text, viewportWidth, viewportHeight);
+    }
+    if (!notice_.empty()) {
+        AddToast(out, notice_, viewportWidth, viewportHeight);
+    }
+    if (const DialogueNode* node = conversation_.Node()) {
+        const Dialogue* dialogue = conversation_.Current();
+        DialogueView view;
+        const std::string speaker = node->speaker.empty() ? dialogue->speaker : node->speaker;
+        if (speaker == "player") {
+            auto player = FindPlayer(registry_);
+            view.speaker = player ? NameOf("", *player) : std::string();
+            if (view.speaker.empty()) {
+                view.speaker = "You";
+            }
+        } else {
+            view.speaker = NameOf(speaker, talkingTo_);
+        }
+        view.text = node->text;
+        for (size_t index : conversation_.VisibleChoices()) {
+            view.choices.push_back(node->choices[index].text);
+        }
+        view.highlighted = conversation_.Highlighted();
+        AddDialogueBox(out, view, viewportWidth, viewportHeight);
+    } else if (auto npc = TalkTarget()) {
+        const Talk& talk = registry_.get<Talk>(*npc);
+        if (storyLibrary_->FindDialogue(talk.dialogue) != nullptr) {
+            AddPrompt(out, "E", "Talk to " + NameOf(talk.character, *npc), viewportWidth, viewportHeight);
+        }
+    }
+}
+
+void GameSession::ShowNotices() {
+    for (const auto& notice : story_.TakeNotices()) {
+        using Kind = StoryState::Notice::Kind;
+        notice_ = notice.kind == Kind::QuestStarted     ? "New quest: " + notice.text
+                  : notice.kind == Kind::QuestCompleted ? "Quest complete: " + notice.text
+                                                        : "Done: " + notice.text;
+        noticeSeconds_ = 3.0;
+    }
 }
 
 int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
     events_.clear();
     accumulator_ += std::min(frameSeconds, 0.25);
+    HandleStoryInput(isKeyDown);
+    if (noticeSeconds_ > 0.0) {
+        noticeSeconds_ -= frameSeconds;
+        if (noticeSeconds_ <= 0.0) {
+            notice_.clear();
+        }
+    }
+    ShowNotices();
+    if (conversation_.Active()) {
+        // A conversation pauses the world.
+        accumulator_ = std::fmod(accumulator_, kFixedDt);
+        return 0;
+    }
     if (accumulator_ < kFixedDt) {
         return 0;
     }
@@ -479,7 +669,9 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
                 scriptErrors_.push_back({entity, path, message});
             }
         });
+        const size_t firstEvent = events_.size();
         UpdateCombat(registry_, isSolid, dt, events_);
+        OnStoryEvents(firstEvent);
         UpdateSpriteFacing(registry_);
         UpdateWorldToScreen(registry_, iso_);
 
@@ -491,6 +683,14 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         accumulator_ -= kFixedDt;
         ++steps;
     }
+    // While a quest is under way it's the goal: clearing every enemy isn't
+    // the end of the game.
+    if (story_.AnyQuestActive()) {
+        events_.erase(std::remove_if(events_.begin(), events_.end(),
+                                     [](const GameEvent& e) { return e.type == GameEvent::Type::Victory; }),
+                      events_.end());
+    }
+    ShowNotices();
     return steps;
 }
 

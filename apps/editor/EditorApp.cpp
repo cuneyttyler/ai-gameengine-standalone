@@ -139,6 +139,7 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
       assets_(assets),
       prefabs_(assets.GetProject()),
       world_(assets.GetProject()),
+      story_(assets.GetProject().root),
       audio_(audio),
       renderer_(renderer),
       scenePath_(assets.GetProject().MainScenePath().string()),
@@ -772,6 +773,14 @@ void EditorApp::StartPlay() {
     playSnapshot_ = SerializeScene(registry_);
     selectionIndexAtPlay_ = selected_ ? IndexOfEntity(registry_, *selected_) : std::nullopt;
     session_.ResetClock();
+    // Dialogue and quests as they are on disk now; a fresh run each Play.
+    story_.Refresh();
+    world_.Refresh();
+    session_.SetStory(&story_);
+    session_.SetNameResolver([this](const std::string& key) {
+        const WorldEntry* entry = world_.Find(key);
+        return entry ? entry->name : std::string();
+    });
     playing_ = true;
     sinceInspectorRefresh_ = 0.0;
     // Play with a camera that follows the player; the editing view comes
@@ -818,6 +827,7 @@ std::vector<UiQuad> EditorApp::BuildUi() {
     int width = 0;
     int height = 0;
     viewport_.GetFramebufferSize(width, height);
+    session_.BuildUi(ui, static_cast<float>(width), static_cast<float>(height));
     if (!banner_.first.empty()) {
         AddBanner(ui, banner_.first, banner_.second, static_cast<float>(width), static_cast<float>(height));
     }

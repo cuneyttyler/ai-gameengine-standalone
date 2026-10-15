@@ -41,6 +41,11 @@ Entities are referred to by integer **ids** (as returned by `find_nearest` or `s
 | `get_field(id, component, field)` | value or nil | Any field the Inspector shows, e.g. `get_field(self_id(), "Health", "max")`. Enums come back as their option name (`"Enemy"`), entity references as ids. |
 | `set_field(id, component, field, value)` | boolean | The reverse; enums accept the option name or index. False if the entity lacks the component or the value has the wrong type. |
 | `spawn(prefab, x, y)` | id or nil | Places a copy of a prefab, e.g. `spawn("prefabs/skeleton.prefab", 4.5, 2.5)`. Tile prefabs paint the cell under the point. |
+| `start_quest(id)` | — | Starts `quests/<id>.json` (if it hasn't been started). See [story.md](story.md). |
+| `complete_objective(quest, objective)` | — | Completes the quest's current objective if it's that one. |
+| `quest_state(id)` | string | `"inactive"`, `"active"` or `"completed"`. |
+| `set_flag(name[, value])` | — | Story flags shared with dialogue conditions; `value` defaults to true. |
+| `get_flag(name)` | boolean | |
 
 ## Script properties
 
