@@ -1,9 +1,9 @@
 # Phase 2 — Manual Test Checklist
 
 The user-test checkpoints from every Phase 2 milestone (`development_plan.md`), collected
-for one end-of-phase pass. Automated coverage already checks the logic: 131 GoogleTest
-cases and 28 pytest cases, including golden replays of real model output, a simulated
-fight with the AI-made burning sword, and a byte-for-byte check that both modes save the
+for one end-of-phase pass. Automated coverage already checks the logic: 144 GoogleTest
+cases and 39 pytest cases, including golden replays of real model output, a simulated
+fight with the AI-made burning sword, and a byte-for-byte check that hand and AI edits save the
 same files. This list is for what tests can't judge: whether the AI's changes actually
 play right, and whether the workflow feels good.
 
@@ -71,6 +71,40 @@ diff card that appears in the chat, click **Apply**, then **Play** and judge the
 - [ ] Do the same edit by hand in the Inspector (e.g. Skeleton prefab copy → Health.max)
       that the AI did. The result is indistinguishable (same values, same prefab override
       marker).
+
+## 2.7 — AI is opt-in
+
+- [ ] To see the first run: delete `%LOCALAPPDATA%\aige\editor.json` and start the editor.
+      The AI panel asks "Use AI in this editor?" and lists what a request sends. No
+      `uv`/python process is running (Task Manager) until you click **Turn on AI**.
+- [ ] **Not now**: restart, and the service still never starts. ⚙ → **Turn AI off** works the
+      same way later.
+
+## 2.8 — Review policy
+
+- [ ] ⚙ → **Apply small tweaks directly**. Ask "make skeletons a bit faster and the
+      knockback stronger". Value changes apply immediately (✓ in the card, "N small tweaks
+      applied automatically"); anything else in the proposal still waits for **Apply**.
+- [ ] **Undo** on that card restores the values. Change one of them by hand first, then
+      Undo: your value is kept and named in the card.
+- [ ] Scripts, components, spawning and prefab edits are never applied without review.
+      Switch back to **Review every change**, and nothing applies until you click Apply.
+
+## 2.9 — Bigger tasks
+
+- [ ] "Add a necromancer enemy that keeps its distance, summons a skeleton every 5 seconds
+      and is weak in melee; make it a prefab and put two in the courtyard." A task card
+      shows the plan and each step as it happens (✓ or "N to fix"). The project doesn't
+      change while it works.
+- [ ] When it finishes, the result card ("Result of N steps") lists every change. Apply it,
+      play, and judge: does the necromancer behave as asked? One Ctrl+Z undoes the scene
+      part.
+- [ ] Start another task and press **Stop** mid-way: "Stopped. Nothing was changed."
+- [ ] "Turn this into a complete open-world RPG with inventory, crafting, quests, a world
+      map and save games." Instead of changes, the AI suggests smaller requests. Clicking
+      one puts it in the message box.
+- [ ] Ordinary requests ("make skeletons tougher") still come back as one proposal, with
+      no task card.
 
 ## 2.1–2.2 — Generated Inspector and Project Settings
 
