@@ -89,6 +89,9 @@ int main(int argc, char** argv) {
         aige::WorldBible world(project);
         world.Refresh();
         session.SetStory(&story);
+        aige::ScheduleLibrary schedules(project.root);
+        schedules.Refresh();
+        session.SetSchedules(&schedules);
         session.SetNameResolver([&world](const std::string& key) {
             const aige::WorldEntry* entry = world.Find(key);
             return entry ? entry->name : std::string();
@@ -148,6 +151,7 @@ int main(int argc, char** argv) {
                     banner = {};
                     loadLevel();
                     session.SetStory(&story); // a fresh run: quests and flags start over
+                    session.SetClockMinutes(-1.0); // and the day starts again
                     session.ResetClock();
                     snapCamera();
                 }

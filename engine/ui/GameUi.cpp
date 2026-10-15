@@ -124,6 +124,15 @@ void AddObjective(std::vector<UiQuad>& out, const std::string& title, const std:
     font.Draw(out, line, kMargin + kPadding, kMargin + 14.0f + small.LineHeight(), kText);
 }
 
+void AddClock(std::vector<UiQuad>& out, const std::string& text, float viewportWidth, float viewportHeight) {
+    (void)viewportHeight;
+    const Font& font = Font::Builtin(kSmallSize);
+    float width = font.Measure(text) + 20.0f;
+    float x1 = viewportWidth - kMargin;
+    AddFramedPanel(out, x1 - width, kMargin, x1, kMargin + font.LineHeight() + 12.0f);
+    font.Draw(out, text, x1 - width + 10.0f, kMargin + 6.0f, kText);
+}
+
 void AddToast(std::vector<UiQuad>& out, const std::string& text, float viewportWidth, float viewportHeight) {
     (void)viewportHeight;
     const Font& font = Font::Builtin(kTextSize);

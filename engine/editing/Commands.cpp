@@ -6,6 +6,7 @@
 #include "gameplay/GameSession.h"
 #include "physics2d/Components.h"
 #include "editing/LevelBuild.h"
+#include "renderer2d/Components.h"
 #include "world/WorldBible.h"
 
 #include <cctype>
@@ -202,6 +203,33 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
                 return Fail(*error);
             }
             return {};
+        });
+
+    // Named places for routines (development_plan.md 3.5).
+    r.Command("scene.addMarker", "Adds a named place (a Marker) that schedules can send people to, e.g. "
+                                 "herb_garden. Invisible in play. Use a free, walkable cell.")
+        .Param("name", FieldType::String, "Lowercase letters, digits and _, e.g. village_well.")
+        .Param("x", FieldType::Float, "World x (cell centers are n + 0.5).")
+        .Param("y", FieldType::Float, "World y.")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            const std::string name = ToString(args[0]);
+            bool safe = !name.empty() && std::all_of(name.begin(), name.end(), [](unsigned char c) {
+                return (std::isalnum(c) && !std::isupper(c)) || c == '_' || c == '-';
+            });
+            if (!safe) {
+                return Fail("marker names are lowercase letters, digits and _");
+            }
+            for (auto [entity, marker] : context.registry.view<Marker>().each()) {
+                if (marker.name == name) {
+                    return Fail("there's already a marker called " + name);
+                }
+            }
+            Entity entity = context.registry.create();
+            context.registry.emplace<Name>(entity, name);
+            context.registry.emplace<WorldTransform2D>(entity, ToFloat(args[1]), ToFloat(args[2]));
+            context.registry.emplace<ScreenTransform2D>(entity);
+            context.registry.emplace<Marker>(entity, name);
+            return {true, {}, entity};
         });
 
     // Level generation (development_plan.md 3.4).

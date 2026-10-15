@@ -61,6 +61,11 @@ PROMPTS: dict[str, dict] = {
         "instruction": "Build a small dungeon east of the village: about six rooms, skeletons guarding it "
         "(more of them deeper in), and a couple of healing potions.",
     },
+    # Routines (development_plan.md 3.5).
+    "tamsin_routine": {
+        "instruction": "Give Old Tamsin a daily routine: she tends her herb garden in the morning, sits by the "
+        "village well in the afternoon, and sleeps at home at night. Add the places she needs.",
+    },
     "tamsin_wardens": {
         "instruction": "Old Tamsin should have something to say about the Wardens: add a choice to her "
         "conversation where the hero asks what she thinks of them. Keep everything else she says.",

@@ -45,6 +45,7 @@ Operations (use exact component, field, setting and command names from the schem
   {"op": "command", "name": "<command name>", "args": {"<param>": <value>, ...}}
   {"op": "write_dialogue", "id": "<file id>", "dialogue": {...see STORY below...}}
   {"op": "write_quest", "id": "<file id>", "quest": {...see STORY below...}}
+  {"op": "write_schedule", "id": "<file id>", "schedule": {...see ROUTINES below...}}
 
 Rules:
 - Only use components, fields, settings and commands that appear in the schema, and only
@@ -77,7 +78,7 @@ Rules:
 - A new prefab: set up an existing entity first (set_field/add_component, in an earlier
   step if it was just spawned), then prefab.createFromEntity — the prefab copies the
   entity as it is. Don't set_prefab_field on a prefab created in the same answer.
-- Every operation is a JSON object with "op" set to one of the nine kinds above; commands
+- Every operation is a JSON object with "op" set to one of the ten kinds above; commands
   always use {"op": "command", "name": ..., "args": {...}}.
 - Make the smallest change that does what was asked. If the request can't be done with
   what's available, return no operations and explain why in "notes".
@@ -108,6 +109,19 @@ contradict it; write in the voice its style entries describe. A new named charac
 also be added to the canon with the world.write command in the same proposal.
 """
 
+ROUTINES = """\
+ROUTINES (an NPC's day; file schedules/<id>.json)
+{"name": "...", "entries": [{"from": "HH:MM", "activity": "stay"|"wander"|"sleep", "place": "<marker name>",
+                             "radius": <cells, wander only>}]}
+  Each entry lasts until the next one starts; the last runs past midnight. "stay" stands at the place,
+  "wander" strolls within radius of it, "sleep" goes there and is hidden (and can't be talked to) until the
+  next entry. Places are Markers: ONLY the ones listed in context "markers" exist (an empty list means
+  none do, whatever the village has in it). Add every other place with the scene.addMarker command on free
+  floor cells, in the same proposal as the schedule that uses it. Make someone follow it: add_component Routine
+  {"schedule": "schedules/<id>.json"} (or set_prefab_field on their prefab). The clock starts at
+  Time.startHour.
+"""
+
 LUA_API = """\
 Lua scripts (plain Lua 5.4; one environment per entity; `update(dt)` runs 60 times per
 second while playing). These are ALL the engine functions — there are no others:
@@ -130,6 +144,8 @@ second while playing). These are ALL the engine functions — there are no other
   complete_objective(quest, objective) completes the quest's current objective if it's that one
   quest_state(id)                   -> "inactive" | "active" | "completed"
   set_flag(name[, value]) / get_flag(name) -> story flags, shared with dialogue conditions
+  time_of_day()                     -> hours since midnight (fractional), e.g. 13.5
+  day()                             -> the day number, from 1
   play_sound(asset_path)
 Entity ids are always the first argument where one is taken; prefab values can't be read
 from scripts (remember a value in a local at load time if you need it later, e.g.
@@ -187,6 +203,7 @@ def build_messages(
             "applies the accepted ones through the same code its manual editor uses.",
             OUTPUT_FORMAT,
             STORY,
+            ROUTINES,
             LUA_API,
             "ENGINE SCHEMA (everything that can be changed)\n" + describe_schema(schema),
         ]

@@ -43,6 +43,16 @@ interface QuestContent {
   objectives: Objective[]
   onComplete?: Effect[]
 }
+interface ScheduleEntry {
+  from: string
+  activity: string
+  place: string
+  radius?: number
+}
+interface ScheduleContent {
+  name: string
+  entries: ScheduleEntry[]
+}
 interface FileEntry<T> {
   id: string
   file: string
@@ -51,17 +61,20 @@ interface FileEntry<T> {
 
 const dialogues = ref<FileEntry<DialogueContent>[]>([])
 const quests = ref<FileEntry<QuestContent>[]>([])
+const schedules = ref<FileEntry<ScheduleContent>[]>([])
+const markers = ref<string[]>([])
 const problems = ref<{ file: string; message: string }[]>([])
 const world = ref<{ key: string; name: string; kind: string }[]>([])
 const prefabs = ref<string[]>([])
 const usedBy = ref<Record<string, string[]>>({})
 
 // The draft being edited.
-const kind = ref<'dialogue' | 'quest' | null>(null)
+const kind = ref<'dialogue' | 'quest' | 'schedule' | null>(null)
 const draftId = ref('')
 const originalId = ref('')
 const dialogue = reactive<DialogueContent>({ speaker: '', start: '', starts: [], nodes: [] })
 const quest = reactive<QuestContent>({ name: '', description: '', giver: '', objectives: [], onComplete: [] })
+const schedule = reactive<ScheduleContent>({ name: '', entries: [] })
 const saved = ref('')
 const saveError = ref('')
 let reselect: string | null = null
@@ -70,6 +83,8 @@ onHostMessage((message) => {
   if (message.type === 'story:list') {
     dialogues.value = message.dialogues as FileEntry<DialogueContent>[]
     quests.value = message.quests as FileEntry<QuestContent>[]
+    schedules.value = (message.schedules as FileEntry<ScheduleContent>[]) ?? []
+    markers.value = (message.markers as string[]) ?? []
     problems.value = message.problems as { file: string; message: string }[]
     world.value = message.world as { key: string; name: string; kind: string }[]
     prefabs.value = message.prefabs as string[]
@@ -89,9 +104,8 @@ onMounted(() => sendToHost({ type: 'story:request' }))
 
 const characters = computed(() => world.value.filter((e) => e.kind === 'character'))
 const questIds = computed(() => quests.value.map((q) => q.id))
-const currentFile = computed(() =>
-  kind.value === 'quest' ? `quests/${originalId.value || draftId.value}.json` : `dialogue/${originalId.value || draftId.value}.json`,
-)
+const folderOf = { dialogue: 'dialogue', quest: 'quests', schedule: 'schedules' } as const
+const currentFile = computed(() => `${folderOf[kind.value ?? 'dialogue']}/${originalId.value || draftId.value}.json`)
 
 function objectivesOf(id: string): string[] {
   return quests.value.find((q) => q.id === id)?.content.objectives.map((o) => o.id) ?? []
@@ -119,8 +133,12 @@ function normalize(content: DialogueContent): DialogueContent {
   return content
 }
 
+function draftContent(): DialogueContent | QuestContent | ScheduleContent {
+  return kind.value === 'dialogue' ? dialogue : kind.value === 'quest' ? quest : schedule
+}
+
 function snapshot(): string {
-  return JSON.stringify({ id: draftId.value, d: kind.value === 'dialogue' ? dialogue : quest })
+  return JSON.stringify({ id: draftId.value, d: draftContent() })
 }
 const dirty = computed(() => kind.value !== null && snapshot() !== saved.value)
 
@@ -132,7 +150,16 @@ function open(file: string, force = false): void {
   if (!force && !confirmDiscard()) return
   const d = dialogues.value.find((x) => x.file === file)
   const q = quests.value.find((x) => x.file === file)
+  const sc = schedules.value.find((x) => x.file === file)
   saveError.value = ''
+  if (sc) {
+    kind.value = 'schedule'
+    draftId.value = originalId.value = sc.id
+    const copy = JSON.parse(JSON.stringify(sc.content)) as ScheduleContent
+    Object.assign(schedule, { name: copy.name, entries: copy.entries })
+    saved.value = snapshot()
+    return
+  }
   if (d) {
     kind.value = 'dialogue'
     draftId.value = originalId.value = d.id
@@ -180,6 +207,23 @@ function newQuest(): void {
   saveError.value = ''
 }
 
+function newSchedule(): void {
+  if (!confirmDiscard()) return
+  kind.value = 'schedule'
+  draftId.value = ''
+  originalId.value = ''
+  const place = markers.value[0] ?? ''
+  Object.assign(schedule, {
+    name: '',
+    entries: [
+      { from: '07:00', activity: 'wander', place, radius: 2 },
+      { from: '21:00', activity: 'sleep', place },
+    ],
+  })
+  saved.value = ''
+  saveError.value = ''
+}
+
 function save(): void {
   saveError.value = ''
   sendToHost({
@@ -187,7 +231,7 @@ function save(): void {
     kind: kind.value,
     id: draftId.value.trim(),
     originalId: originalId.value,
-    content: JSON.parse(JSON.stringify(kind.value === 'quest' ? quest : dialogue)),
+    content: JSON.parse(JSON.stringify(draftContent())),
   })
 }
 
@@ -271,6 +315,20 @@ function targetsFor(type: string): { value: string; label: string }[] {
         <span class="name">{{ d.id }}</span>
         <span v-if="problemsFor(d.file).length" class="warn">⚠</span>
         <span v-else-if="usedBy[d.file]?.length" class="muted small">{{ usedBy[d.file]!.length }}×</span>
+      </button>
+      <div class="group-head">
+        <span>Routines</span><button class="add" title="New daily routine" @click="newSchedule">+</button>
+      </div>
+      <button
+        v-for="r in schedules"
+        :key="r.file"
+        class="row"
+        :class="{ active: kind === 'schedule' && originalId === r.id }"
+        :title="usedBy[r.file]?.length ? 'Routine on ' + usedBy[r.file]!.join(', ') : 'Nobody in the open scene follows it'"
+        @click="open(r.file)"
+      >
+        <span class="name">{{ r.content.name || r.id }}</span>
+        <span v-if="problemsFor(r.file).length" class="warn">⚠</span>
       </button>
       <div class="group-head">
         <span>Quests</span><button class="add" title="New quest" @click="newQuest">+</button>
@@ -389,6 +447,46 @@ function targetsFor(type: string): { value: string; label: string }[] {
           <EffectList :effects="node.do!" :quests="questIds" :objectives-of="objectivesOf" />
         </div>
         <button class="small-button" @click="addNode">+ Node</button>
+      </template>
+
+      <!-- Routine ------------------------------------------------------------->
+      <template v-else-if="kind === 'schedule'">
+        <div class="form-row">
+          <label>File</label>
+          <span class="muted">schedules/</span><input v-model="draftId" class="id" spellcheck="false" /><span class="muted">.json</span>
+          <label class="inline">Name</label>
+          <input v-model="schedule.name" class="grow" />
+        </div>
+        <p class="muted small">
+          Each part of the day lasts until the next one starts. Places are markers in the scene (place the Marker
+          component, or ask the AI). Give someone a <b>Routine</b> component to follow it.
+        </p>
+        <div v-for="(e, i) in schedule.entries" :key="i" class="objective">
+          <span class="muted">from</span>
+          <input v-model="e.from" type="time" class="time" />
+          <select v-model="e.activity">
+            <option value="stay">stay at</option>
+            <option value="wander">wander around</option>
+            <option value="sleep">sleep at</option>
+          </select>
+          <select v-model="e.place">
+            <option v-for="m in markers" :key="m" :value="m">{{ m }}</option>
+            <option v-if="e.place && !markers.includes(e.place)" :value="e.place">{{ e.place }} (missing)</option>
+          </select>
+          <template v-if="e.activity === 'wander'">
+            <span class="muted">within</span>
+            <input v-model.number="e.radius" type="number" min="1" max="20" class="count" />
+            <span class="muted">cells</span>
+          </template>
+          <button title="Remove" @click="schedule.entries.splice(i, 1)">×</button>
+        </div>
+        <button
+          class="small-button"
+          @click="schedule.entries.push({ from: '12:00', activity: 'stay', place: markers[0] ?? '' })"
+        >
+          + Part of the day
+        </button>
+        <p v-if="markers.length === 0" class="problems">The open scene has no markers yet.</p>
       </template>
 
       <!-- Quest --------------------------------------------------------------->
@@ -546,6 +644,9 @@ function targetsFor(type: string): { value: string; label: string }[] {
 }
 .count {
   width: 56px;
+}
+.time {
+  width: 96px;
 }
 .node {
   border: 1px solid #2a2a3a;

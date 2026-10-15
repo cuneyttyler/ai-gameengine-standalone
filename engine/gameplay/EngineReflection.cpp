@@ -150,6 +150,14 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("range", &Follow::range, "Only follows within this distance; 0 = always.").Range(0, 1000)
         .DependsOn({"WorldTransform2D"});
 
+    r.Component<Marker>("Marker", "A named place in the scene, for routines to send people to. Invisible in play.")
+        .Field("name", &Marker::name, "The place's name, e.g. herb_garden.")
+        .DependsOn({"WorldTransform2D"});
+    r.Component<Routine>("Routine", "Follows a daily schedule: where to be, and what to do there, through the day.")
+        .Field("schedule", &Routine::schedule, "The schedule, schedules/<id>.json.")
+        .Field("speed", &Routine::speed, "Walking speed, cells per second.").Range(0.1, 20)
+        .DependsOn({"WorldTransform2D"});
+
     r.Component<Talk>("Talk", "Someone the player can talk to: pressing E within range starts the dialogue.")
         .Field("dialogue", &Talk::dialogue, "The conversation, dialogue/<id>.json.")
         .Field("character", &Talk::character,
@@ -241,6 +249,11 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Range(0, 10);
     r.Settings("Physics", "Movement and collision.", &settings.physics)
         .Field("playerCollides", &PhysicsSettings::playerCollides, "Off lets the player walk through walls.");
+    r.Settings("Time", "The game clock (routines follow it).", &settings.time)
+        .Field("startHour", &TimeSettings::startHour, "Time of day when a game starts, in hours.").Range(0, 23.99)
+        .Field("minutesPerSecond", &TimeSettings::minutesPerSecond,
+               "Game minutes per real second; 2 makes a day last 12 minutes.").Range(0.1, 600)
+        .Field("showClock", &TimeSettings::showClock, "Always show the clock in play.");
 }
 
 ReflectionRegistry& EngineReflection() {

@@ -46,6 +46,8 @@ Entities are referred to by integer **ids** (as returned by `find_nearest` or `s
 | `quest_state(id)` | string | `"inactive"`, `"active"` or `"completed"`. |
 | `set_flag(name[, value])` | — | Story flags shared with dialogue conditions; `value` defaults to true. |
 | `get_flag(name)` | boolean | |
+| `time_of_day()` | number | Hours since midnight on the game clock, e.g. `13.5`. See [story.md](story.md#routines-schedulesidjson). |
+| `day()` | number | The day number, from 1. |
 
 ## Script properties
 

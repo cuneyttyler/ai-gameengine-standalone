@@ -26,8 +26,9 @@ from .models import (
     SetSetting,
     WriteDialogue,
     WriteQuest,
+    WriteSchedule,
 )
-from .story import StoryScope, check_dialogue, check_quest
+from .story import StoryScope, check_dialogue, check_quest, check_schedule
 
 _SAFE_SCRIPT = re.compile(r"^scripts/[A-Za-z0-9_\-/]+\.lua$")
 
@@ -177,6 +178,27 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
             errors += check_dialogue(op.id, op.dialogue, scope, f"operation {index} (write_dialogue {op.id})")
         elif isinstance(op, WriteQuest):
             errors += check_quest(op.id, op.quest, scope, f"operation {index} (write_quest {op.id})")
+
+    # Routines: places must be markers in the scene or added here; a Routine
+    # must point at a schedule that exists or is written here.
+    markers = {m.get("name", "") for m in context.markers}
+    markers |= {str(op.args.get("name", "")) for op in proposal.operations
+                if isinstance(op, RunCommand) and op.name == "scene.addMarker"}
+    schedules = {f"schedules/{s.get('id', '')}.json" for s in context.schedules}
+    for index, op in enumerate(proposal.operations, start=1):
+        if isinstance(op, WriteSchedule):
+            errors += check_schedule(op.id, op.schedule, markers, f"operation {index} (write_schedule {op.id})")
+            schedules.add(f"schedules/{op.id}.json")
+    for index, op in enumerate(proposal.operations, start=1):
+        value = None
+        if isinstance(op, SetField) and op.component == "Routine" and op.field == "schedule":
+            value = op.value
+        elif isinstance(op, AddComponent) and op.component == "Routine":
+            value = op.fields.get("schedule")
+        elif isinstance(op, SetPrefabField) and op.component == "Routine" and op.field == "schedule":
+            value = op.value
+        if isinstance(value, str) and value and value not in schedules:
+            errors.append(f"operation {index} ({op.op}): schedule {value!r} doesn't exist and isn't written here")
 
     # A Talk component must point at a dialogue that exists or is written here.
     dialogues = {f"dialogue/{d.get('id', '')}.json" for d in context.dialogues}

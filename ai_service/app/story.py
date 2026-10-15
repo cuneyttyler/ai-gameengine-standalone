@@ -145,6 +145,42 @@ def check_dialogue(dialogue_id: str, d: dict[str, Any], scope: StoryScope, where
     return errors
 
 
+ACTIVITIES = {"stay", "wander", "sleep"}
+CLOCK = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
+
+
+def check_schedule(schedule_id: str, s: dict[str, Any], markers: set[str], where: str) -> list[str]:
+    """Mirror of engine ValidateSchedule (engine/gameplay/Schedule)."""
+    errors: list[str] = []
+    if not SAFE_ID.match(schedule_id or ""):
+        errors.append(f"{where}: id must be lowercase letters, digits, - and _")
+    entries = s.get("entries")
+    if not isinstance(entries, list) or not entries:
+        return errors + [f"{where}: needs a non-empty \"entries\" list"]
+    starts = []
+    for e in entries:
+        if not isinstance(e, dict):
+            errors.append(f"{where}: entries must be objects")
+            continue
+        start = e.get("from", "")
+        at = f"{where} entry {start!r}"
+        if not isinstance(start, str) or not CLOCK.match(start):
+            errors.append(f"{at}: \"from\" must be a time like 06:30")
+            continue
+        starts.append(start.zfill(5))
+        if e.get("activity") not in ACTIVITIES:
+            errors.append(f"{at}: activity must be stay, wander or sleep")
+        if e.get("place") not in markers:
+            errors.append(f"{at}: no marker called {e.get('place')!r} (add it with scene.addMarker)")
+        if e.get("activity") == "wander":
+            radius = e.get("radius", 2)
+            if not isinstance(radius, (int, float)) or isinstance(radius, bool) or not 0 < radius <= 20:
+                errors.append(f"{at}: wander radius must be between 0 and 20 cells")
+    if len(set(starts)) != len(starts):
+        errors.append(f"{where}: two entries start at the same time")
+    return errors
+
+
 def check_quest(quest_id: str, q: dict[str, Any], scope: StoryScope, where: str) -> list[str]:
     errors: list[str] = []
     if not SAFE_ID.match(quest_id or ""):

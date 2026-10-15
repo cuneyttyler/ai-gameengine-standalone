@@ -145,6 +145,27 @@
       ]
     },
     {
+      "description": "Adds a named place (a Marker) that schedules can send people to, e.g. herb_garden. Invisible in play. Use a free, walkable cell.",
+      "name": "scene.addMarker",
+      "params": [
+        {
+          "description": "Lowercase letters, digits and _, e.g. village_well.",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "World x (cell centers are n + 0.5).",
+          "name": "x",
+          "type": "float"
+        },
+        {
+          "description": "World y.",
+          "name": "y",
+          "type": "float"
+        }
+      ]
+    },
+    {
       "description": "Builds a dungeon in a rectangle of grid cells: rooms joined by corridors, walled in, every room reachable, with enemies (more of them further from the start) and pickups. Everything already in the area except the player is replaced. Deterministic: the same seed gives the same level. Pick an area away from what should stay (see the tile bounds).",
       "name": "level.generate",
       "params": [
@@ -655,6 +676,43 @@
       "dependencies": [
         "WorldTransform2D"
       ],
+      "description": "A named place in the scene, for routines to send people to. Invisible in play.",
+      "fields": [
+        {
+          "description": "The place's name, e.g. herb_garden.",
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "name": "Marker",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Follows a daily schedule: where to be, and what to do there, through the day.",
+      "fields": [
+        {
+          "description": "The schedule, schedules/<id>.json.",
+          "name": "schedule",
+          "type": "string"
+        },
+        {
+          "description": "Walking speed, cells per second.",
+          "max": 20.0,
+          "min": 0.1,
+          "name": "speed",
+          "type": "float"
+        }
+      ],
+      "name": "Routine",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
       "description": "Someone the player can talk to: pressing E within range starts the dialogue.",
       "fields": [
         {
@@ -885,6 +943,31 @@
         }
       ],
       "name": "Physics"
+    },
+    {
+      "description": "The game clock (routines follow it).",
+      "fields": [
+        {
+          "description": "Time of day when a game starts, in hours.",
+          "max": 23.99,
+          "min": 0.0,
+          "name": "startHour",
+          "type": "float"
+        },
+        {
+          "description": "Game minutes per real second; 2 makes a day last 12 minutes.",
+          "max": 600.0,
+          "min": 0.1,
+          "name": "minutesPerSecond",
+          "type": "float"
+        },
+        {
+          "description": "Always show the clock in play.",
+          "name": "showClock",
+          "type": "bool"
+        }
+      ],
+      "name": "Time"
     }
   ],
   "version": 1

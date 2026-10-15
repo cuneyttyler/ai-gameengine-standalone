@@ -215,8 +215,9 @@ generated field automatically gets the "Ask AI" affordance for free.
   - Level (3.4): UI → host `level:defaults`, `level:preview {args}`, `level:generate {args}`;
     host → UI `level:defaults {x0, y0, tiles, things}`, `level:preview {text, error}`.
   - Story: UI → host `story:request`, `story:save {kind, id, originalId, content}`,
-    `story:delete {file}`; host → UI `story:list {dialogues, quests, problems, world,
-    prefabs, usedBy}`, `story:saved {file, error}`.
+    `story:delete {file}`; host → UI `story:list {dialogues, quests, schedules, markers,
+    problems, world, prefabs, usedBy}`, `story:saved {file, error}`. `story:save` kind
+    `schedule` writes `schedules/<id>.json` (3.5).
 - The open project folder is served to the UI under a second virtual host
   (`aige-project.local`), so the Assets panel shows thumbnails straight from disk.
 - Viewport tools call the UI-independent `engine/editing` API (picking, painting,

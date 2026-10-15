@@ -142,6 +142,7 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
       prefabs_(assets.GetProject()),
       world_(assets.GetProject()),
       story_(assets.GetProject().root),
+      schedules_(assets.GetProject().root),
       audio_(audio),
       renderer_(renderer),
       scenePath_(assets.GetProject().MainScenePath().string()),
@@ -337,7 +338,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     } else if (type == "story:save") {
         // {kind: dialogue|quest, id, originalId, content}: a changed id is a rename.
         const std::string kind = message.value("kind", "");
-        const std::string folder = kind == "quest" ? "quests" : "dialogue";
+        const std::string folder = kind == "quest" ? "quests" : kind == "schedule" ? "schedules" : "dialogue";
         auto error = SaveStoryFile(folder, message.value("id", ""), message.value("originalId", ""),
                                    message.value("content", nlohmann::json::object()));
         post_({{"type", "story:saved"},
@@ -347,7 +348,8 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     } else if (type == "story:delete") {
         const std::string file = message.value("file", "");
         std::error_code ec;
-        if ((file.rfind("dialogue/", 0) == 0 || file.rfind("quests/", 0) == 0) && file.find("..") == std::string::npos) {
+        if ((file.rfind("dialogue/", 0) == 0 || file.rfind("quests/", 0) == 0 || file.rfind("schedules/", 0) == 0) &&
+            file.find("..") == std::string::npos) {
             std::filesystem::remove(assets_.GetProject().Resolve(file), ec);
         }
         post_(StoryJson());
@@ -868,6 +870,9 @@ void EditorApp::StartPlay() {
     story_.Refresh();
     world_.Refresh();
     session_.SetStory(&story_);
+    schedules_.Refresh();
+    session_.SetSchedules(&schedules_);
+    session_.SetClockMinutes(-1.0); // each Play starts the day at Time.startHour
     session_.SetNameResolver([this](const std::string& key) {
         const WorldEntry* entry = world_.Find(key);
         return entry ? entry->name : std::string();
@@ -913,6 +918,18 @@ void EditorApp::RestoreSelection(std::optional<size_t> index) {
 std::vector<UiQuad> EditorApp::BuildUi() {
     std::vector<UiQuad> ui;
     if (!playing_) {
+        // Markers (development_plan.md 3.5) are invisible in play; while
+        // editing they're labelled where they stand.
+        const Font& font = Font::Builtin(15.0f);
+        for (auto [entity, marker, screen] : registry_.view<Marker, ScreenTransform2D>().each()) {
+            float vx = 0.0f, vy = 0.0f;
+            camera_.SceneToViewport(screen.x, screen.y, vx, vy);
+            const std::string text = "@ " + marker.name;
+            float w = font.Measure(text) + 10.0f;
+            AddUiRect(ui, vx - w * 0.5f, vy - 28.0f, vx + w * 0.5f, vy - 28.0f + font.LineHeight() + 4.0f,
+                      {0.05f, 0.05f, 0.09f, 0.8f});
+            font.Draw(ui, text, vx - w * 0.5f + 5.0f, vy - 26.0f, {0.99f, 0.86f, 0.45f, 1.0f});
+        }
         return ui;
     }
     int width = 0;
@@ -982,6 +999,11 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
     AppendHealthBars(registry_, overlay);
     if (playing_) {
         return overlay;
+    }
+    static constexpr float kMarkerColor[3] = {0.99f, 0.86f, 0.45f};
+    for (auto [entity, marker, world] : registry_.view<Marker, WorldTransform2D>().each()) {
+        AddCellOutline(overlay, static_cast<int>(std::floor(world.x)), static_cast<int>(std::floor(world.y)), iso_,
+                       kMarkerColor, 0.9f, 1.5f);
     }
 
     if (hasHover_ && !panning_ && !dragging_) {
@@ -1576,7 +1598,7 @@ std::optional<std::string> EditorApp::SaveStoryFile(const std::string& folder, c
     if (!originalId.empty() && originalId != id && std::filesystem::exists(root / folder / (id + ".json"), ec)) {
         return folder + "/" + id + ".json already exists";
     }
-    if (auto error = WriteStoryFile(root, folder, id, content)) {
+    if (auto error = folder == "schedules" ? WriteScheduleFile(root, id, content) : WriteStoryFile(root, folder, id, content)) {
         return error;
     }
     if (!originalId.empty() && originalId != id) {
@@ -1608,6 +1630,26 @@ nlohmann::json EditorApp::StoryJson() {
     for (const auto& problem : ValidateStoryReferences(story_, world_, prefabPaths)) {
         problems.push_back({{"file", problem.file}, {"message", problem.message}});
     }
+    schedules_.Refresh();
+    nlohmann::json schedules = nlohmann::json::array();
+    auto markerPositions = MarkerPositions(registry_);
+    for (const auto& schedule : schedules_.Schedules()) {
+        const std::string file = "schedules/" + schedule.id + ".json";
+        schedules.push_back({{"id", schedule.id}, {"file", file}, {"content", ScheduleToJson(schedule)}});
+        for (const auto& message : ValidateSchedule(schedule, [&](const std::string& name) {
+                 return std::any_of(markerPositions.begin(), markerPositions.end(),
+                                    [&](const auto& m) { return m.first == name; });
+             })) {
+            problems.push_back({{"file", file}, {"message", message}});
+        }
+    }
+    for (const auto& [file, message] : schedules_.LoadProblems()) {
+        problems.push_back({{"file", file}, {"message", message}});
+    }
+    nlohmann::json markerNames = nlohmann::json::array();
+    for (const auto& [name, pos] : markerPositions) {
+        markerNames.push_back(name);
+    }
     nlohmann::json characters = nlohmann::json::array();
     for (const auto& entry : world_.Entries()) {
         characters.push_back({{"key", entry.Key()}, {"name", entry.name}, {"kind", entry.kind}});
@@ -1618,9 +1660,16 @@ nlohmann::json EditorApp::StoryJson() {
         const auto* name = registry_.try_get<Name>(entity);
         usedBy[talk.dialogue].push_back(name ? name->value : "Entity #" + std::to_string(static_cast<uint32_t>(entity)));
     }
+    // ... and each schedule ("Routine on Villager").
+    for (auto [entity, routine] : registry_.view<Routine>().each()) {
+        const auto* name = registry_.try_get<Name>(entity);
+        usedBy[routine.schedule].push_back(name ? name->value : "Entity #" + std::to_string(static_cast<uint32_t>(entity)));
+    }
     return {{"type", "story:list"},
             {"dialogues", dialogues},
             {"quests", quests},
+            {"schedules", schedules},
+            {"markers", markerNames},
             {"problems", problems},
             {"world", characters},
             {"prefabs", prefabPaths},

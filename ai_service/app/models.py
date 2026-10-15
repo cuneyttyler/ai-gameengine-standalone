@@ -120,6 +120,9 @@ class EditorContext(BaseModel):
     # {"id", "speaker", "truncated": true} when the project's are too long to include.
     dialogues: list[dict[str, Any]] = []
     quests: list[dict[str, Any]] = []
+    # Routines: the scene's named places ({name, x, y}) and schedules (each with "id").
+    markers: list[dict[str, Any]] = []
+    schedules: list[dict[str, Any]] = []
 
 
 # --- Proposals --------------------------------------------------------------------
@@ -182,6 +185,14 @@ class WriteDialogue(BaseModel):
     dialogue: dict[str, Any]
 
 
+class WriteSchedule(BaseModel):
+    """Creates or replaces schedules/<id>.json (a daily routine; docs/story.md)."""
+
+    op: Literal["write_schedule"]
+    id: str
+    schedule: dict[str, Any]
+
+
 class WriteQuest(BaseModel):
     """Creates or replaces quests/<id>.json (format: docs/story.md)."""
 
@@ -193,7 +204,7 @@ class WriteQuest(BaseModel):
 Operation = Annotated[
     Union[
         SetField, AddComponent, RemoveComponent, SetPrefabField, SetSetting, SetScriptProperty, RunCommand,
-        WriteDialogue, WriteQuest,
+        WriteDialogue, WriteQuest, WriteSchedule,
     ],
     Field(discriminator="op"),
 ]

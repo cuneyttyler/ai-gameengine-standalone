@@ -3,6 +3,7 @@
 #include "ecs/Registry.h"
 #include "gameplay/Combat.h"
 #include "gameplay/Isometric.h"
+#include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
 #include "gameplay/TileGrid.h"
 #include "physics2d/Collision.h"
@@ -104,6 +105,14 @@ public:
     // World Bible key -> name shown on screen (speakers, prompts). Without
     // one, the talking entity's Name is used.
     void SetNameResolver(std::function<std::string(const std::string&)> nameOf) { nameOf_ = std::move(nameOf); }
+    // Daily routines (development_plan.md 3.5); the library must outlive the session.
+    void SetSchedules(const ScheduleLibrary* schedules) { schedules_ = schedules; }
+    // The game clock, in minutes since day 0 began; starts at Time.startHour.
+    double ClockMinutes() const { return clockMinutes_; }
+    void SetClockMinutes(double minutes) { clockMinutes_ = minutes; }
+    float MinuteOfDay() const;
+    int Day() const;
+
     StoryState& Story() { return story_; }
     const StoryState& Story() const { return story_; }
     const DialogueRunner& Conversation() const { return conversation_; }
@@ -149,6 +158,9 @@ private:
     std::function<std::string(const std::string&)> nameOf_;
     std::vector<Key> keysDown_; // for edge detection of the story keys
     std::string notice_;        // "New quest: ...", shown for a moment
+    const ScheduleLibrary* schedules_ = nullptr;
+    double clockMinutes_ = -1.0; // < 0: start at Time.startHour on the first Advance
+    uint64_t routineRng_ = 0x5EED;
     double noticeSeconds_ = 0.0;
 };
 

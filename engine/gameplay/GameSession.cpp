@@ -5,6 +5,7 @@
 #include "gameplay/Components.h"
 #include "gameplay/Settings.h"
 #include "gameplay/TileGrid.h"
+#include "gameplay/Schedule.h"
 #include "scripting/Components.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
@@ -456,6 +457,9 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
         story_.SetFlag(name, value.value_or(true));
     };
     env["get_flag"] = [this](const std::string& name) { return story_.Flag(name); };
+    // The game clock: hours since midnight (fractional), and the day number from 1.
+    env["time_of_day"] = [this]() { return MinuteOfDay() / 60.0f; };
+    env["day"] = [this]() { return Day(); };
 }
 
 // --- Story -------------------------------------------------------------------
@@ -490,7 +494,7 @@ std::optional<Entity> GameSession::TalkTarget() {
     const auto& p = registry_.get<WorldTransform2D>(*player);
     std::optional<Entity> best;
     float bestDistance = 0.0f;
-    for (auto [entity, talk, world] : registry_.view<Talk, WorldTransform2D>(entt::exclude<Dead>).each()) {
+    for (auto [entity, talk, world] : registry_.view<Talk, WorldTransform2D>(entt::exclude<Dead, Sleeping>).each()) {
         float distance = std::hypot(world.x - p.x, world.y - p.y);
         if (distance <= talk.range && (!best || distance < bestDistance)) {
             best = entity;
@@ -572,7 +576,21 @@ void GameSession::OnStoryEvents(size_t firstEvent) {
     }
 }
 
+float GameSession::MinuteOfDay() const {
+    double minutes = std::max(0.0, clockMinutes_);
+    return static_cast<float>(std::fmod(minutes, static_cast<double>(kMinutesPerDay)));
+}
+
+int GameSession::Day() const {
+    return static_cast<int>(std::max(0.0, clockMinutes_) / kMinutesPerDay) + 1;
+}
+
 void GameSession::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float viewportHeight) {
+    const auto routines = registry_.view<Routine>();
+    if (ActiveSettings().time.showClock || routines.begin() != routines.end()) {
+        AddClock(out, "Day " + std::to_string(Day()) + "  " + FormatClockTime(static_cast<int>(MinuteOfDay())),
+                 viewportWidth, viewportHeight);
+    }
     if (storyLibrary_ == nullptr) {
         return;
     }
@@ -622,6 +640,9 @@ void GameSession::ShowNotices() {
 int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
     events_.clear();
     accumulator_ += std::min(frameSeconds, 0.25);
+    if (clockMinutes_ < 0.0) {
+        clockMinutes_ = ActiveSettings().time.startHour * 60.0;
+    }
     HandleStoryInput(isKeyDown);
     if (noticeSeconds_ > 0.0) {
         noticeSeconds_ -= frameSeconds;
@@ -664,6 +685,10 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
             }
         }
         UpdateFollowers(registry_, isSolid, dt);
+        clockMinutes_ += dt * ActiveSettings().time.minutesPerSecond;
+        if (schedules_ != nullptr) {
+            UpdateRoutines(registry_, *schedules_, MinuteOfDay(), isSolid, dt, routineRng_);
+        }
         UpdateScripts(registry_, lua_, dt, binder_, scriptRoot_, [this](Entity entity, const std::string& path, const std::string& message) {
             if (scriptErrors_.size() < 64) {
                 scriptErrors_.push_back({entity, path, message});

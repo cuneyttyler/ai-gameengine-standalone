@@ -218,3 +218,19 @@ def test_a_dungeon_is_generated_not_painted_and_left_clear_of_the_village(schema
     assert a["floor"] in tiles and a["wall"] in tiles
     assert a["enemy"] == "prefabs/skeleton.prefab" and a["enemies"] > 0
     assert a["pickup"] == "prefabs/potion.prefab" and 1 <= a["pickups"] <= 4
+
+
+# --- Routines (development_plan.md 3.5) --------------------------------------------------
+
+
+def test_a_routine_starts_by_adding_the_places_it_needs(schema, demo_context):
+    proposal = replay("tamsin_routine", schema, demo_context)
+    markers = [op for op in ops(proposal, "command") if op.name == "scene.addMarker"]
+    names = {op.args["name"] for op in markers}
+    assert any("garden" in n for n in names) and any("home" in n for n in names)
+    bx0, by0, bx1, by1 = demo_context.tiles.bounds
+    for op in markers:  # on the map
+        assert bx0 <= op.args["x"] <= bx1 + 1 and by0 <= op.args["y"] <= by1 + 1
+    schedules = ops(proposal, "write_schedule")
+    if proposal.scope == "task" and not schedules:  # the schedule comes in a later step
+        assert any("schedule" in step.lower() for step in proposal.plan)

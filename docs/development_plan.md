@@ -737,6 +737,66 @@ of the sibling project's Phase 2-3.
     stone floor, walls, skeletons and potions, and no tile-by-tile painting.
 - **3.5 NPC schedule/behavior generation** for the cozy-sim template, built on the
   Phase 2 behavior-graph runtime.
+  - Revised: Phase 2 never built a behavior-graph runtime (scripts and components
+    covered its needs). A cozy-sim NPC's day is a schedule, not a graph, so 3.5
+    builds that directly:
+    - **Game clock**: time of day, with `Time` settings for start hour and minutes per
+      real second.
+    - **Markers**: named places in the scene, such as `tamsin_home` or `herb_garden`.
+    - **Schedules**: `schedules/<id>.json`, a day as entries
+      `{"from": "06:00", "activity": "stay" | "wander" | "sleep", "place": <marker>,
+      "radius": n}`, each lasting until the next.
+    - **Routine component**: an NPC follows a schedule.
+    - **Pathfinding**: A* on the tile grid, so NPCs walk around walls to the place.
+      `wander` roams within the radius; `sleep` goes home and is hidden and can't be
+      talked to until morning.
+  - In play, a clock shows when anyone has a routine. In the editor, markers show as
+    labelled diamonds. The Story tab gets a schedule editor. Lua: `time_of_day()` and
+    `day()`.
+  - AI: `write_schedule` (checked like dialogue: known markers and activities, times
+    that parse) and a `scene.addMarker` command, with markers and schedules in the
+    context, so "Tamsin tends her herbs in the morning and sleeps at home at night"
+    becomes markers + schedule + Routine in one reviewed proposal.
+  - Tests: clock and entry selection (including past midnight); A* (shortest
+    route, around walls, no corner cutting, unreachable); schedule parsing and
+    validation; a simulated day where an NPC walks round a wall to each place in time,
+    wanders within its radius, and sleeps (hidden, can't be talked to) then wakes;
+    golden prompt.
+  - **User test:** does a village with a few routines feel alive?
+  - ✅ Built as described:
+    - Engine: `gameplay/Pathfinding` (A*, octile, no corner cutting, expansion cap)
+      and `gameplay/Schedule` (clock times, active entry with midnight wrap, JSON,
+      validation, library, `WriteScheduleFile`). `UpdateRoutines` plans a path on
+      each new entry, walks it with collision, re-plans when stuck, wanders on
+      2–5 s strolls inside the radius, and handles sleep (hidden, restored on
+      waking).
+    - `Marker`, `Routine` and `Time` settings are in the registry; `RoutineState`
+      and `Sleeping` are runtime only, so Stop restores the scene exactly.
+    - `GameSession` runs the clock, routines, `time_of_day()` and `day()`, and
+      draws a top-right clock. Sleepers can't be talked to. Both hosts load
+      schedules and restart the day on each run.
+    - Editor: markers are drawn as diamonds with "@ name" labels while editing,
+      and the Story tab has a Routines section (time pickers, activity, place from
+      the scene's markers, radius).
+    - AI: `scene.addMarker` and `write_schedule`, checked on both sides; a schedule
+      may use markers the same proposal adds, and a Routine must point at an
+      existing or new schedule. Markers and schedules are in the context, and the
+      prompt has a ROUTINES section.
+    - Tests: clock parsing and wrap; A* (shortest, around a wall through its gap,
+      no corner squeeze, unreachable, wall goal); validation; and a simulated day.
+      The NPC is asleep at 05:00; wakes at 06:00, walks round a wall to the
+      garden, and wanders within its radius (and does move); at 20:00 goes home,
+      sleeps and can't be talked to; and is up again on day 2. Also markers plus a
+      schedule resolved and applied together, and duplicate markers refused.
+    - Golden ("give Tamsin a daily routine…"): a task whose first step adds the
+      garden and home markers on the map. In every recording the model assumed a
+      village well existed even with no markers in the context, despite an explicit
+      rule. The step that uses it is refused with "no marker called 'village_well'
+      (add it with scene.addMarker)", which the repair round or the next task step
+      fixes; a test covers that safety net.
+    - Demo: the demo scene has no markers or routines, because adding them would
+      mean editing `main.aige`, which has your local changes. Ask the AI, or place
+      Marker components, to try it.
 - **3.6 Asset Generator Studio**: text-to-sprite pipeline, variant-family generation,
   prompt/seed/model-tagged assets.
 

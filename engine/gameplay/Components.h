@@ -168,6 +168,34 @@ struct Follow {
     float range = 6.0f; // only follows while the target is this close; 0 = always
 };
 
+// A named place in the scene (development_plan.md 3.5): where routines send
+// people ("herb_garden", "tamsin_home"). Invisible in play.
+struct Marker {
+    std::string name;
+};
+
+// Follows a daily schedule (schedules/<id>.json, gameplay/Schedule).
+struct Routine {
+    std::string schedule; // schedules/<id>.json
+    float speed = 1.5f;   // walking speed, cells per second
+};
+
+// Runtime only (not saved): where a Routine is in its day.
+struct RoutineState {
+    int entry = -1;                        // the schedule entry being carried out
+    std::vector<std::pair<int, int>> path; // cells to walk
+    size_t next = 0;
+    bool arrived = false;
+    float idle = 0.0f;  // wander: seconds until the next stroll
+    float stuck = 0.0f; // seconds without progress (re-plan after a while)
+};
+
+// Runtime only: asleep (hidden; can't be talked to). `alpha` is the sprite's
+// opacity to restore on waking.
+struct Sleeping {
+    float alpha = 1.0f;
+};
+
 // Someone the player can talk to (E within range): which conversation, and
 // who they are in the World Bible (their name on screen, talk objectives).
 struct Talk {

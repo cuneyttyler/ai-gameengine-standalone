@@ -158,6 +158,7 @@ private:
     std::pair<std::string, std::string> banner_; // Play: "Victory!" / "You died", drawn by the game
     WorldBible world_; // the project's canon, world/ (development_plan.md 3.1)
     StoryLibrary story_; // dialogue/ and quests/ (3.2b), reloaded when Play starts
+    ScheduleLibrary schedules_; // schedules/ (3.5), reloaded when Play starts
     int worldSearchRequest_ = 0;
     // Contradiction checks (development_plan.md 3.3) in flight: request id ->
     // the proposal they're for; and the World tab's "Check against canon".

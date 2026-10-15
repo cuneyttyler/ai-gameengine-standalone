@@ -7,6 +7,7 @@
 #include "reflection/Reflection.h"
 #include "scripting/Components.h"
 #include "editing/LevelBuild.h"
+#include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
 #include "world/WorldBible.h"
 
@@ -25,6 +26,7 @@ enum class Mode { Resolve, Apply };
 struct ProposalScope {
     std::map<std::string, Quest> quests; // write_quest, by id
     std::set<std::string> worldKeys;     // world.write, "<kind>/<id>"
+    std::set<std::string> markers;       // scene.addMarker, by name
 };
 
 ProposalScope ScanProposal(const std::vector<nlohmann::json>& operations) {
@@ -36,6 +38,8 @@ ProposalScope ScanProposal(const std::vector<nlohmann::json>& operations) {
             if (auto quest = QuestFromJson(op.value("quest", nlohmann::json()), op.value("id", ""), &error)) {
                 scope.quests[quest->id] = *quest;
             }
+        } else if (kind == "command" && op.value("name", "") == "scene.addMarker") {
+            scope.markers.insert(op.value("args", nlohmann::json::object()).value("name", ""));
         } else if (kind == "command" && op.value("name", "") == "world.write") {
             const nlohmann::json args = op.value("args", nlohmann::json::object());
             std::string id = args.value("id", "");
@@ -308,6 +312,38 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             if (auto problem = EditScriptProperty(registry, *entity, name, op["value"])) {
                 error = *problem;
             }
+        }
+
+    } else if (kind == "write_schedule") {
+        // A daily routine (development_plan.md 3.5), shown as its file.
+        const std::string id = op.value("id", "");
+        const std::string relative = "schedules/" + id + ".json";
+        const nlohmann::json content = op.value("schedule", nlohmann::json());
+        item.kind = "schedule";
+        item.touchesFiles = true;
+        item.target = "Schedule · " + relative;
+        std::string parseError;
+        auto schedule = ScheduleFromJson(content, id, &parseError);
+        if (!schedule) {
+            error = parseError;
+            return item;
+        }
+        if (!schedule->name.empty()) item.target += " (" + schedule->name + ")";
+        item.detail = ScheduleToJson(*schedule).dump(2);
+        auto markers = MarkerPositions(registry);
+        auto problems = ValidateSchedule(*schedule, [&](const std::string& name) {
+            return scope.markers.contains(name) ||
+                   std::any_of(markers.begin(), markers.end(), [&](const auto& m) { return m.first == name; });
+        });
+        if (!problems.empty()) {
+            error = JoinProblems(problems);
+            return item;
+        }
+        std::error_code ec;
+        if (std::filesystem::exists(project.Resolve(relative), ec)) item.before = "(replaces the existing file)";
+        item.after = content;
+        if (apply) {
+            if (auto problem = WriteScheduleFile(project.root, id, content)) error = *problem;
         }
 
     } else if (kind == "write_dialogue" || kind == "write_quest") {

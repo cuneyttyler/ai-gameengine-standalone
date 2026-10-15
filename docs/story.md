@@ -96,6 +96,36 @@ quest is active, defeating every enemy no longer ends the game: the quest is the
 Scripts can drive the same state; see `start_quest`, `quest_state`, `set_flag` and the
 other story functions in [scripting.md](scripting.md).
 
+## Routines: `schedules/<id>.json`
+
+A day for an NPC. Each entry lasts until the next one starts, and the last runs past
+midnight:
+
+```json
+{
+  "name": "Tamsin's day",
+  "entries": [
+    { "from": "06:00", "activity": "wander", "place": "herb_garden", "radius": 2 },
+    { "from": "13:00", "activity": "stay", "place": "village_well" },
+    { "from": "21:00", "activity": "sleep", "place": "tamsin_home" }
+  ]
+}
+```
+
+| `activity` | What they do at `place` |
+|---|---|
+| `stay` | Stand there. |
+| `wander` | Stroll within `radius` cells of it. |
+| `sleep` | Go there and disappear indoors. They can't be talked to until the next entry. |
+
+Places are **Markers**: entities with a Marker component (`name`). They're invisible in
+play and labelled in the editor. Give an NPC a **Routine** component (`schedule`,
+`speed`) to follow a schedule. They find their way around walls (A* pathfinding).
+
+The game clock starts at **Time.startHour** and runs at **Time.minutesPerSecond** game
+minutes per real second (Project Settings). It shows top-right in play when anyone has a
+routine. Scripts read it with `time_of_day()` and `day()`.
+
 ## Writing with the AI
 
 Ask in the AI panel ("give Old Tamsin a quest to…", "what would she say about…"). The

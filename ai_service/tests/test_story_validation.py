@@ -119,3 +119,34 @@ def test_the_relevant_canon_reaches_the_prompt(schema, context, tmp_path):
     assert "[character/villager] Old Tamsin" in prompt
     assert "[style/tone]" in prompt  # the tone guide always comes along
     assert "won't take payment from a Warden" in prompt  # the full text, not just the summary
+
+
+def test_schedules_are_checked_against_the_scene_and_the_proposal(schema, demo_context):
+    day = {"name": "Tamsin", "entries": [
+        {"from": "06:00", "activity": "wander", "place": "herb_garden", "radius": 2},
+        {"from": "13:00", "activity": "stay", "place": "village_well"},
+        {"from": "21:00", "activity": "sleep", "place": "tamsin_home"}]}
+    markers = [{"op": "command", "name": "scene.addMarker", "args": {"name": n, "x": 4.5, "y": 1.5}}
+               for n in ("herb_garden", "village_well", "tamsin_home")]
+    ok = proposal(*markers, {"op": "write_schedule", "id": "tamsin", "schedule": day},
+                  {"op": "add_component", "entity": 288, "component": "Routine",
+                   "fields": {"schedule": "schedules/tamsin.json"}})
+    assert validate_proposal(ok, schema, demo_context) == []
+
+    # The model's habit in recordings: assuming a well that isn't there. The
+    # step that uses it is refused, with how to fix it.
+    assumed = proposal(*markers[::2], {"op": "write_schedule", "id": "tamsin", "schedule": day})
+    errors = validate_proposal(assumed, schema, demo_context)
+    assert any("no marker called 'village_well' (add it with scene.addMarker)" in e for e in errors)
+
+    broken = {"entries": [{"from": "25:00", "activity": "stay", "place": "herb_garden"},
+                          {"from": "06:00", "activity": "dance", "place": "herb_garden"},
+                          {"from": "06:00", "activity": "wander", "place": "herb_garden", "radius": 99}]}
+    errors = validate_proposal(proposal(*markers, {"op": "write_schedule", "id": "Bad", "schedule": broken},
+                                        {"op": "add_component", "entity": 288, "component": "Routine",
+                                         "fields": {"schedule": "schedules/missing.json"}}), schema, demo_context)
+    text = "\n".join(errors)
+    for expected in ["id must be lowercase", "must be a time like 06:30", "activity must be stay, wander or sleep",
+                     "radius must be between 0 and 20", "two entries start at the same time",
+                     "schedule 'schedules/missing.json' doesn't exist"]:
+        assert expected in text, (expected, text)

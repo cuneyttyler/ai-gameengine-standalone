@@ -917,6 +917,7 @@
       "prefab": "prefabs/crate.prefab"
     }
   ],
+  "markers": [],
   "prefabs": [
     {
       "components": {
@@ -1408,6 +1409,7 @@
       ]
     }
   ],
+  "schedules": [],
   "scriptSources": {
     "scripts/enemy_melee.lua": "-- enemy_melee.lua: a basic melee enemy.\n-- Chasing is handled by the entity's Follow component; this script only\n-- decides when to swing. Edit and save while playing to hot-reload.\n\n-- Per-entity settings: each one shows up in the Inspector under LuaScript,\n-- where any skeleton (or the skeleton prefab) can change it.\nproperties = {\n    swing_range = 1.1, -- cells; a bit more than MeleeAttack.reach\n    taunt = \"\",        -- a sound to play when it first spots the player\n}\n\nlocal spotted = false\n\nfunction update(dt)\n    local target, distance = find_nearest(\"Player\")\n    if not target then\n        return\n    end\n    if not spotted and distance < get_field(self_id(), \"Follow\", \"range\") then\n        spotted = true\n        if properties.taunt ~= \"\" then\n            play_sound(properties.taunt)\n        end\n    end\n    if distance < properties.swing_range then\n        attack_toward(target)\n    end\nend\n",
     "scripts/npc_wander.lua": "-- Milestone 0.5 hot-reload demo: bobs the NPC up and down in place.\n-- Edit amplitude/speed below and save while the app is running — the\n-- change takes effect within a fraction of a second, no restart needed.\n\nlocal base_x, base_y = get_position()\nlocal t = 0\nlocal amplitude = 1.6\nlocal speed = 2.0\n\nfunction update(dt)\n    t = t + dt\n    set_position(base_x, base_y + math.sin(t * speed) * amplitude)\nend\n"
@@ -1434,6 +1436,11 @@
       "clearB": 0.07999999821186066,
       "clearG": 0.05000000074505806,
       "clearR": 0.05000000074505806
+    },
+    "Time": {
+      "minutesPerSecond": 2.0,
+      "showClock": false,
+      "startHour": 8.0
     }
   },
   "tiles": {

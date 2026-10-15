@@ -19,6 +19,10 @@ add_library(aige_gameplay STATIC
     Story.cpp
     LevelGen.h
     LevelGen.cpp
+    Pathfinding.h
+    Pathfinding.cpp
+    Schedule.h
+    Schedule.cpp
 )
 target_include_directories(aige_gameplay PUBLIC ${CMAKE_SOURCE_DIR}/engine)
 target_link_libraries(aige_gameplay PUBLIC aige_ecs aige_reflection aige_physics2d aige_renderer2d aige_ui aige_scripting)

@@ -8,6 +8,7 @@
 #include "reflection/Reflection.h"
 #include "renderer2d/Components.h"
 #include "scripting/Components.h"
+#include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
 #include "world/WorldBible.h"
 
@@ -193,10 +194,24 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
         dialogues.push_back(json);
     }
 
+    // Routines: the scene's named places and the schedules that use them.
+    nlohmann::json markers = nlohmann::json::array();
+    for (const auto& [name, pos] : MarkerPositions(registry)) {
+        markers.push_back({{"name", name}, {"x", pos.first}, {"y", pos.second}});
+    }
+    ScheduleLibrary scheduleLibrary(project.root);
+    scheduleLibrary.Refresh();
+    nlohmann::json schedules = nlohmann::json::array();
+    for (const auto& schedule : scheduleLibrary.Schedules()) {
+        nlohmann::json json = ScheduleToJson(schedule);
+        json["id"] = schedule.id;
+        schedules.push_back(json);
+    }
+
     nlohmann::json context = {{"entities", entities}, {"tiles", tiles},       {"prefabs", prefabList},
                               {"assets", assetList},  {"scripts", scripts},   {"scriptSources", scriptSources},
                               {"settings", settings}, {"world", worldList},   {"dialogues", dialogues},
-                              {"quests", quests}};
+                              {"quests", quests},     {"markers", markers},   {"schedules", schedules}};
     if (options.selection && registry.valid(*options.selection)) {
         context["selection"] = static_cast<uint32_t>(*options.selection);
     }

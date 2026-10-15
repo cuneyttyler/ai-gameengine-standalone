@@ -29,11 +29,18 @@ struct PhysicsSettings {
     bool playerCollides = true; // off = the player walks through walls (debugging)
 };
 
+struct TimeSettings {
+    float startHour = 8.0f;        // the time of day a game starts at
+    float minutesPerSecond = 2.0f; // game minutes per real second (2: a day takes 12 minutes)
+    bool showClock = false;        // always show the clock (it shows anyway when someone has a routine)
+};
+
 struct ProjectSettings {
     RendererSettings renderer;
     CameraSettings camera;
     CombatSettings combat;
     PhysicsSettings physics;
+    TimeSettings time;
 };
 
 ProjectSettings& ActiveSettings();
