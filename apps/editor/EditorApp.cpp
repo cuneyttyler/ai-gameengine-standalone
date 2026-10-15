@@ -313,6 +313,39 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             std::filesystem::remove(assets_.GetProject().Resolve(file), ec);
         }
         post_(StoryJson());
+    } else if (type == "world:check") {
+        // "Check against canon" for a hand-written entry: as if it were being
+        // written now, compared with the rest of the World Bible.
+        world_.Refresh();
+        const WorldEntry* entry = world_.Find(message.value("key", ""));
+        if (entry == nullptr || Ai() == nullptr || Ai()->GetState() != AiClient::State::Ready) {
+            post_({{"type", "world:checkResult"},
+                   {"key", message.value("key", "")},
+                   {"result", {{"ok", false}, {"errors", {"AI isn't available"}}}}});
+        } else {
+            std::string relations;
+            for (const auto& relation : entry->relations) {
+                relations += (relations.empty() ? "" : "; ") + relation.type + " " + relation.target;
+            }
+            std::string tags;
+            for (const auto& tag : entry->tags) {
+                tags += (tags.empty() ? "" : ", ") + tag;
+            }
+            nlohmann::json op = {{"op", "command"},
+                                 {"name", "world.write"},
+                                 {"args",
+                                  {{"kind", entry->kind},
+                                   {"id", entry->id},
+                                   {"name", entry->name},
+                                   {"summary", entry->summary},
+                                   {"tags", tags},
+                                   {"relations", relations},
+                                   {"body", entry->body}}}};
+            worldCheckKey_ = entry->Key();
+            worldCheckRequest_ = Ai()->Request("POST", "/consistency",
+                                               {{"operations", nlohmann::json::array({op})}, {"exclude", {entry->Key()}}},
+                                               90);
+        }
     } else if (type == "world:search") {
         if (Ai() != nullptr && Ai()->GetState() == AiClient::State::Ready) {
             worldSearchRequest_ =
@@ -1027,6 +1060,15 @@ void EditorApp::PollAi() {
         } else if (result->kind == AiClient::Result::Kind::Response) {
             if (result->requestId == worldSearchRequest_) {
                 post_({{"type", "world:searchResults"}, {"result", result->body}});
+            } else if (result->requestId == worldCheckRequest_) {
+                post_({{"type", "world:checkResult"}, {"key", worldCheckKey_}, {"result", result->body}});
+            } else if (auto it = consistencyRequests_.find(result->requestId); it != consistencyRequests_.end()) {
+                post_({{"type", "ai:consistency"}, {"id", it->second}, {"result", result->body}});
+                if (proposals_.contains(it->second)) {
+                    LogAiDecision(it->second, {{"decision", "consistency-check"},
+                                               {"issues", result->body.value("issues", nlohmann::json::array())}});
+                }
+                consistencyRequests_.erase(it);
             }
         } else {
             OnProposal(result->requestId, result->body);
@@ -1170,6 +1212,9 @@ void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
            {"autoErrors", autoOutcome.errors},
            {"usage", usage},
            {"model", body.value("model", "")}});
+    if (RequestConsistencyCheck(requestId, proposal.value("operations", nlohmann::json::array()))) {
+        post_({{"type", "ai:consistency"}, {"id", requestId}, {"result", {{"checking", true}}}});
+    }
     if (!pending.autoApplied.empty()) {
         LogAiDecision(requestId, {{"decision", "auto-applied"},
                                   {"policy", ReviewPolicyName(policy)},
@@ -1178,6 +1223,24 @@ void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
                                   {"errors", autoOutcome.errors},
                                   {"operations", autoOps}});
     }
+}
+
+// Proposals that write canon, dialogue or quests are checked against the
+// World Bible by a second model (development_plan.md 3.3). The answer comes
+// later, as ai:consistency; it flags, it doesn't block.
+bool EditorApp::RequestConsistencyCheck(int proposalId, const nlohmann::json& operations) {
+    bool makesClaims = false;
+    for (const auto& op : operations) {
+        const std::string kind = op.value("op", "");
+        makesClaims |= kind == "write_dialogue" || kind == "write_quest" ||
+                       (kind == "command" && op.value("name", "") == "world.write");
+    }
+    if (!makesClaims || Ai() == nullptr || Ai()->GetState() != AiClient::State::Ready) {
+        return false;
+    }
+    int id = Ai()->Request("POST", "/consistency", {{"operations", operations}}, 90);
+    consistencyRequests_[id] = proposalId;
+    return true;
 }
 
 ReviewPolicy EditorApp::CurrentReviewPolicy() const {
@@ -1290,6 +1353,9 @@ void EditorApp::FinishTask() {
            {"items", ItemsJson(task->CombinedItems())},
            {"task", {{"plan", task->Plan()}, {"steps", steps}, {"stopped", task->StopReason()}}},
            {"usage", nlohmann::json::object()}});
+    if (RequestConsistencyCheck(taskId_, pending.proposal.value("operations", nlohmann::json::array()))) {
+        post_({{"type", "ai:consistency"}, {"id", taskId_}, {"result", {{"checking", true}}}});
+    }
     LogAiDecision(taskId_, {{"decision", "task-finished"},
                             {"steps", task->Steps().size()},
                             {"stopReason", task->StopReason()},

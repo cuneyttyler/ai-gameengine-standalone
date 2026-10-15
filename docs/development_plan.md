@@ -661,6 +661,55 @@ of the sibling project's Phase 2-3.
     golden prompts checking generated dialogue uses canon names and places.
     **User test:** does the generated dialogue read well and fit the tone?
 - **3.3 Contradiction-checking pass** (fixture-tested per `technical.md` §14).
+  - After a proposal that writes canon, dialogue or quests (`world.write`,
+    `write_dialogue`, `write_quest`), the editor asks the service to check it
+    (`POST /consistency`). A second, cheaper model (`mistral-small-latest` by default)
+    gets the new writing and the canon most related to it (3.1 retrieval, by the new
+    text itself), and lists each contradiction: the quote, which entry it conflicts
+    with, why, and how sure it is (`contradiction` or `possible`).
+  - The proposal card shows "Checking against the World Bible…", then either
+    "Consistent" or the issues, each marked on its item, with **Ask AI to fix**. It
+    flags but doesn't block: the developer decides. Task results are checked as a
+    whole when the task finishes.
+  - The World tab's entry form gets **Check against canon** for hand-written entries,
+    checked against the rest of canon.
+  - Tests: content extraction from operations, parsing and sanity-checking of the
+    checker's answer (unknown entries dropped, op numbers mapped to items), and the
+    endpoint with a scripted checker. Golden fixtures recorded against the real
+    model: known contradictions (Tamsin calling herself the village blacksmith;
+    Aren as a thirty-year veteran) must be flagged against the right entries, and a
+    consistent piece (the recorded `tamsin_wardens` dialogue) must not be.
+  - ✅ Built:
+    - **Evidence.** The first recordings showed the checker treating "the canon
+      doesn't mention this" as a contradiction, even when told not to. So every
+      issue must now copy the exact canon words it contradicts (`canonSays`), and
+      the service verifies them sentence by sentence against the entry it showed the
+      model, along with the quote against the new writing. Anything it can't back up
+      is dropped. Keys written with extra text (`character/villager/Old Tamsin`)
+      still resolve.
+    - **Model.** Chosen by comparing small, medium and large on the five fixtures.
+      Small kept producing false alarms; large had one; **medium was right on all
+      five**, so it's the default (`MISTRAL_CHECK_MODEL`).
+    - **What gets compared.** The canon is retrieved by the new writing itself
+      (8 entries plus the tone guide). Entries the proposal rewrites are excluded,
+      so an edit isn't compared with its old version.
+    - **Fixtures** (`tests/golden/checks/`, re-recordable with `record_checks.py`):
+      Tamsin as the blacksmith, Aren as a thirty-year veteran, and "the richest
+      order in the realm" are each flagged against the right entry with a verified
+      quote. The recorded Wardens dialogue and the new quartermaster entry are not
+      flagged.
+    - **Editor.** After a proposal or a finished task that writes canon or story,
+      the card shows "Checking against the World Bible…", then either "✓
+      Consistent" or the issues: severity, the quote, what the canon says, why, and
+      ⚠ on the item. **Ask AI to fix** sends them back as a follow-up. Results are
+      logged as `consistency-check`. The World tab's form has **Check against
+      canon**, which checks the saved entry against the rest of canon.
+    - **Tests.** Python: what gets extracted from which operations, unverifiable
+      issues dropped (invented evidence, misquotes, entries not shown,
+      out-of-range op numbers), the endpoint with a scripted checker (no project,
+      nothing to check, retrieval, self-exclusion), and the golden fixtures.
+    - An end-to-end smoke run with the real embedder and checker flagged "Aren,
+      the oldest Warden alive" against the hero entry, for about 1k input tokens.
 - **3.4 Dungeon/level layout generation** for the ARPG template.
 - **3.5 NPC schedule/behavior generation** for the cozy-sim template, built on the
   Phase 2 behavior-graph runtime.

@@ -209,6 +209,9 @@ generated field automatically gets the "Ask AI" affordance for free.
     is a rename that rewrites relations), `world:delete {key}`, `world:search {query}`;
     host → UI `world:list {kinds, entries, problems}`, `world:saved {key, error}`,
     `world:searchResults {result}`.
+  - Consistency (3.3): host → UI `ai:consistency {id, result}` (first `{checking: true}`,
+    then the service's `/consistency` answer); World tab UI → host `world:check {key}`,
+    host → UI `world:checkResult {key, result}`.
   - Story: UI → host `story:request`, `story:save {kind, id, originalId, content}`,
     `story:delete {file}`; host → UI `story:list {dialogues, quests, problems, world,
     prefabs, usedBy}`, `story:saved {file, error}`.

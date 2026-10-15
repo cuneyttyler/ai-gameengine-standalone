@@ -1,0 +1,143 @@
+{
+  "name": "consistent_wardens",
+  "expect": null,
+  "model": "mistral-medium-latest",
+  "recorded": "2026-10-15",
+  "operations": [
+    {
+      "op": "write_dialogue",
+      "id": "tamsin",
+      "dialogue": {
+        "speaker": "character/villager",
+        "start": "greet",
+        "starts": [
+          {
+            "if": [
+              {
+                "quest": "quiet-the-courtyard",
+                "is": "completed"
+              }
+            ],
+            "node": "thanks"
+          },
+          {
+            "if": [
+              {
+                "quest": "quiet-the-courtyard",
+                "is": "active"
+              }
+            ],
+            "node": "progress"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "greet",
+            "text": "Another Warden? The last one went up that hill and came back in a sack.",
+            "choices": [
+              {
+                "text": "I'm here about the dead in the keep.",
+                "next": "offer"
+              },
+              {
+                "text": "Who are you?",
+                "next": "about"
+              },
+              {
+                "text": "What do you think of the Wardens?",
+                "next": "wardens"
+              },
+              {
+                "text": "Just passing through.",
+                "next": "bye"
+              }
+            ]
+          },
+          {
+            "id": "about",
+            "text": "Tamsin. I keep the herbs, mend the cuts, and bury who I can't mend. Those red draughts in the courtyard are mine.",
+            "choices": [
+              {
+                "text": "About the keep...",
+                "next": "offer"
+              },
+              {
+                "text": "What do you think of the Wardens?",
+                "next": "wardens"
+              },
+              {
+                "text": "Goodbye.",
+                "next": "bye"
+              }
+            ]
+          },
+          {
+            "id": "offer",
+            "text": "The dead walk that courtyard every night now. Put three of them back in the ground and come tell me. I'll sleep easier.",
+            "choices": [
+              {
+                "text": "I'll do it.",
+                "next": "accept",
+                "do": [
+                  {
+                    "op": "start_quest",
+                    "quest": "quiet-the-courtyard"
+                  }
+                ]
+              },
+              {
+                "text": "Not yet.",
+                "next": "bye"
+              }
+            ]
+          },
+          {
+            "id": "wardens",
+            "text": "They're thin on the ground, but they're all we've got. Most of them mean well, even if they're too young to know what they're doing.",
+            "choices": [
+              {
+                "text": "I'll do my best.",
+                "next": "greet"
+              },
+              {
+                "text": "Goodbye.",
+                "next": "bye"
+              }
+            ]
+          },
+          {
+            "id": "accept",
+            "text": "Mind the draughts. Drink them, don't admire them.",
+            "next": ""
+          },
+          {
+            "id": "progress",
+            "text": "Still breathing? Good. Three of them, Warden. Then come back and tell me.",
+            "next": ""
+          },
+          {
+            "id": "thanks",
+            "text": "You did it, then. Quieter up there already, I can feel it in my knees. The Wardens chose right, for once.",
+            "next": ""
+          },
+          {
+            "id": "bye",
+            "text": "Hmph. Walk careful.",
+            "next": ""
+          }
+        ]
+      }
+    }
+  ],
+  "canon": {
+    "character/villager": "[character/villager] Old Tamsin \u2014 Brookvale's herb-keeper, who brews the red healing draughts.\ntags: villager, healer\nlives_in location/brookvale\nTamsin has outlived two husbands and three village elders. Gruff, superstitious, and\nkinder than she lets on. She leaves her healing draughts in the courtyard for whoever is\nbrave enough to go near the keep, and won't take payment from a Warden.",
+    "faction/wardens": "[faction/wardens] The Wardens \u2014 A small order that protects the valley's villages from what comes out of the old places.\ntags: order, protectors\nUnder-funded and spread thin across the valley. A Warden carries a sword, a lantern and\nthe right to ask any village for bread and a bed.",
+    "style/tone": "[style/tone] Tone and style \u2014 Cozy-dark folk tale: small stakes, warm people, eerie places; plain spoken dialogue.\ntags: tone, style guide\n- Dialogue is short and plain-spoken; villagers talk like farmers, not poets.\n- Humor is dry and gentle. No modern slang, no pop-culture references.\n- The undead are eerie and sad rather than gory.\n- Names are short and rural-English sounding (Aren, Tamsin, Brookvale).",
+    "character/hero": "[character/hero] Aren \u2014 A young warden sent alone to clear the old keep, the hero of the game.\ntags: player, warden\nserves faction/wardens\nprotects location/brookvale\nAren is barely past training, sworn to the Wardens a year ago. Earnest, a little\nreckless, and quick with a sword. Aren grew up in Brookvale and knows most of its people\nby name, which is why the Wardens sent Aren when the dead started walking near the keep.",
+    "location/old-keep": "[location/old-keep] The Old Keep \u2014 A ruined hill fort whose courtyard is now overrun by the restless dead.\ntags: ruin, dungeon, courtyard\nhaunted_by faction/restless-dead\nAbandoned for a century after a siege nobody in Brookvale remembers clearly. The walls\nstill stand; the courtyard is littered with crates, rocks and the bones of the defenders,\nsome of which no longer lie still.",
+    "faction/restless-dead": "[faction/restless-dead] The Restless Dead \u2014 Skeletons of the keep's old defenders, risen and hostile to the living.\ntags: enemy, undead, skeleton\nhaunts location/old-keep\nThey fight as they did in life, in close melee with rusted blades. Nobody knows what woke\nthem. They don't speak and don't flee; they guard the keep as if the siege never ended.",
+    "location/brookvale": "[location/brookvale] Brookvale \u2014 A small farming village at the foot of the hill where the old keep stands.\ntags: village, home\nnear location/old-keep\nThatched roofs, a mill on the brook, and a single crossroads shrine. Since the skeletons\nappeared, nobody walks the hill road after dark."
+  },
+  "writing": "[op 1] Dialogue dialogue/tamsin.json (speaker character/villager)\ncharacter/villager: Another Warden? The last one went up that hill and came back in a sack.\n  player: I'm here about the dead in the keep.\n  player: Who are you?\n  player: What do you think of the Wardens?\n  player: Just passing through.\ncharacter/villager: Tamsin. I keep the herbs, mend the cuts, and bury who I can't mend. Those red draughts in the courtyard are mine.\n  player: About the keep...\n  player: What do you think of the Wardens?\n  player: Goodbye.\ncharacter/villager: The dead walk that courtyard every night now. Put three of them back in the ground and come tell me. I'll sleep easier.\n  player: I'll do it.\n  player: Not yet.\ncharacter/villager: They're thin on the ground, but they're all we've got. Most of them mean well, even if they're too young to know what they're doing.\n  player: I'll do my best.\n  player: Goodbye.\ncharacter/villager: Mind the draughts. Drink them, don't admire them.\ncharacter/villager: Still breathing? Good. Three of them, Warden. Then come back and tell me.\ncharacter/villager: You did it, then. Quieter up there already, I can feel it in my knees. The Wardens chose right, for once.\ncharacter/villager: Hmph. Walk careful.",
+  "response": "{\"issues\": []}"
+}

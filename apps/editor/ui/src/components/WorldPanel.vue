@@ -52,6 +52,8 @@ const draft = reactive({
   body: '',
 })
 const idEdited = ref(false)
+// "Check against canon" (development_plan.md 3.3) for the open entry.
+const check = ref<{ key: string; state: 'checking' | 'done' | 'failed'; issues: { quote: string; conflictsWith: string; canonSays: string; explanation: string; severity: string }[]; error: string } | null>(null)
 const saveError = ref('')
 const savedSnapshot = ref('')
 
@@ -76,6 +78,14 @@ onHostMessage((message) => {
       // Re-open from the saved entry once the list arrives.
       savedSnapshot.value = snapshot()
       pendingSelect = message.key as string
+    }
+  } else if (message.type === 'world:checkResult') {
+    const result = message.result as { ok?: boolean; checked?: boolean; issues?: never[]; errors?: string[] }
+    check.value = {
+      key: message.key as string,
+      state: result.ok ? 'done' : 'failed',
+      issues: result.issues ?? [],
+      error: result.errors?.[0] ?? '',
     }
   } else if (message.type === 'world:searchResults') {
     const result = message.result as { ok: boolean; hits?: Hit[] }
@@ -224,6 +234,12 @@ function remove(): void {
   }
   sendToHost({ type: 'world:delete', key: entry.key })
   selectedKey.value = null
+}
+
+function checkAgainstCanon(): void {
+  if (!draft.originalKey) return
+  check.value = { key: draft.originalKey, state: 'checking', issues: [], error: '' }
+  sendToHost({ type: 'world:check', key: draft.originalKey })
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -387,12 +403,31 @@ const backlinks = computed(() =>
         <li v-for="message in problemsFor(draft.originalKey)" :key="message">{{ message }}</li>
       </ul>
       <div v-if="saveError" class="problems">{{ saveError }}</div>
+      <div v-if="check && check.key === draft.originalKey" class="check" :class="check.state">
+        <template v-if="check.state === 'checking'">Checking against the rest of the World Bible…</template>
+        <template v-else-if="check.state === 'failed'">Couldn't check: {{ check.error || 'AI is off' }}</template>
+        <template v-else-if="check.issues.length === 0">✓ Consistent with the rest of the World Bible</template>
+        <ul v-else>
+          <li v-for="(issue, i) in check.issues" :key="i">
+            <b>{{ issue.severity }}</b>: “{{ issue.quote }}” — {{ issue.conflictsWith }} says “{{ issue.canonSays }}”.
+            <span class="muted">{{ issue.explanation }}</span>
+          </li>
+        </ul>
+      </div>
       <div class="actions">
         <button class="primary" :disabled="!draft.name.trim()" title="Save (Ctrl+S)" @click="save">
           {{ draft.originalKey ? 'Save' : 'Create' }}
         </button>
         <button :disabled="!dirty && !!draft.originalKey" @click="revert">{{ draft.originalKey ? 'Revert' : 'Cancel' }}</button>
         <span v-if="dirty" class="muted">Unsaved changes</span>
+        <button
+          v-if="draft.originalKey"
+          :disabled="dirty || editorState.ai.state !== 'ready'"
+          :title="dirty ? 'Save first' : 'Ask the AI whether this entry contradicts the rest of the canon'"
+          @click="checkAgainstCanon"
+        >
+          Check against canon
+        </button>
         <span class="spacer"></span>
         <span v-if="draft.originalKey" class="muted path">world/{{ draft.kind }}/{{ draft.id }}.md</span>
         <button v-if="draft.originalKey" class="danger" @click="remove">Delete…</button>
@@ -556,6 +591,22 @@ const backlinks = computed(() =>
 }
 .path {
   font-size: 0.8em;
+}
+.check {
+  padding: 6px 8px;
+  border-left: 2px solid #3b82f6;
+  background: #11111b;
+  font-size: 0.9em;
+}
+.check.done:not(:has(ul)) {
+  border-left-color: #22c55e;
+}
+.check:has(ul) {
+  border-left-color: #f59e0b;
+}
+.check ul {
+  margin: 0;
+  padding-left: 16px;
 }
 .problems {
   margin: 0;

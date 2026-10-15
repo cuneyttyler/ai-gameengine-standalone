@@ -21,6 +21,17 @@ interface ChangeItem {
   autoApplied?: boolean // applied without review (review policy)
 }
 
+// A contradiction the checker found between this proposal and the World Bible
+// (development_plan.md 3.3).
+interface ConsistencyIssue {
+  op: number | null // 1-based operation, i.e. item.index + 1
+  quote: string
+  conflictsWith: string
+  canonSays: string
+  explanation: string
+  severity: 'contradiction' | 'possible'
+}
+
 interface ProposalEntry {
   kind: 'proposal'
   id: number
@@ -32,6 +43,7 @@ interface ProposalEntry {
   applyErrors: string[]
   scriptCheck: { scripts: string[]; problems: { path: string; message: string; count: number }[] } | null
   task: { plan: string[]; steps: { number: number; summary: string }[]; stopped: string } | null
+  consistency: { state: 'none' | 'checking' | 'done' | 'failed'; issues: ConsistencyIssue[]; errors: string[] }
   autoApplied: number[]
   autoState: 'applied' | 'undone'
   autoNote: string // targets "Undo" left alone because they'd changed since
@@ -95,6 +107,7 @@ onHostMessage((message) => {
       scriptCheck: null,
       task: (message.task as ProposalEntry['task']) ?? null,
       autoApplied: (message.autoApplied as number[]) ?? [],
+      consistency: { state: 'none', issues: [], errors: [] },
       autoState: 'applied',
       autoNote: '',
       accepted: Object.fromEntries(items.map((item) => [item.index, !item.error && !item.autoApplied])),
@@ -147,6 +160,20 @@ onHostMessage((message) => {
       notes: message.notes as string,
       parts: (message.parts as string[]) ?? [],
     })
+  } else if (message.type === 'ai:consistency') {
+    const entry = entries.value.find((e) => e.kind === 'proposal' && e.id === message.id) as ProposalEntry | undefined
+    const result = message.result as { checking?: boolean; ok?: boolean; checked?: boolean; issues?: ConsistencyIssue[]; errors?: string[] }
+    if (entry) {
+      if (result.checking) {
+        entry.consistency = { state: 'checking', issues: [], errors: [] }
+      } else if (result.ok && result.checked) {
+        entry.consistency = { state: 'done', issues: result.issues ?? [], errors: [] }
+      } else if (result.ok) {
+        entry.consistency = { state: 'none', issues: [], errors: [] }
+      } else {
+        entry.consistency = { state: 'failed', issues: [], errors: result.errors ?? [] }
+      }
+    }
   } else if (message.type === 'ai:autoUndone') {
     const entry = entries.value.find((e) => e.kind === 'proposal' && e.id === message.id) as ProposalEntry | undefined
     if (entry) {
@@ -229,6 +256,23 @@ function askToFix(entry: ProposalEntry): void {
 
 function reject(entry: ProposalEntry): void {
   sendToHost({ type: 'ai:reject', id: entry.id })
+}
+
+function issuesFor(entry: ProposalEntry, item: ChangeItem): ConsistencyIssue[] {
+  return entry.consistency.issues.filter((issue) => issue.op === item.index + 1)
+}
+
+// Sends the contradictions back as a follow-up, like "Ask AI to fix" for scripts.
+function fixContradictions(entry: ProposalEntry): void {
+  if (!canSend.value) return
+  const lines = entry.consistency.issues.map(
+    (i) => `- "${i.quote}" contradicts ${i.conflictsWith}, which says "${i.canonSays}"`,
+  )
+  sendToHost({
+    type: 'ai:send',
+    text: `Your last proposal contradicts the World Bible:\n${lines.join('\n')}\nPropose it again, consistent with the canon.`,
+    focus: '',
+  })
 }
 
 function stopTask(entry: TaskEntry): void {
@@ -439,6 +483,29 @@ const examples = [
           <div v-if="entry.task?.stopped" class="item-error">{{ entry.task.stopped }}</div>
           <div class="summary">{{ entry.summary }}</div>
           <div v-if="entry.notes" class="notes">{{ entry.notes }}</div>
+          <div v-if="entry.consistency.state !== 'none'" class="consistency" :class="entry.consistency.state">
+            <template v-if="entry.consistency.state === 'checking'">Checking against the World Bible…</template>
+            <template v-else-if="entry.consistency.state === 'failed'">
+              Couldn't check against the World Bible{{ entry.consistency.errors.length ? ': ' + entry.consistency.errors[0] : '' }}
+            </template>
+            <template v-else-if="entry.consistency.issues.length === 0">✓ Consistent with the World Bible</template>
+            <template v-else>
+              <div class="consistency-head">
+                ⚠ {{ entry.consistency.issues.length }} possible
+                {{ entry.consistency.issues.length === 1 ? 'contradiction' : 'contradictions' }} with the World Bible
+              </div>
+              <ul>
+                <li v-for="(issue, i) in entry.consistency.issues" :key="i">
+                  <span class="severity" :class="issue.severity">{{ issue.severity }}</span>
+                  “{{ issue.quote }}” — {{ issue.conflictsWith }} says “{{ issue.canonSays }}”.
+                  <span class="muted">{{ issue.explanation }}</span>
+                </li>
+              </ul>
+              <button v-if="entry.status === 'pending'" class="primary" :disabled="!canSend" @click="fixContradictions(entry)">
+                Ask AI to fix
+              </button>
+            </template>
+          </div>
           <p v-if="entry.items.length === 0" class="no-changes">No changes proposed.</p>
 
           <ul class="items">
@@ -461,6 +528,13 @@ const examples = [
                   @change="entry.accepted[item.index] = ($event.target as HTMLInputElement).checked"
                 />
                 <span class="kind" :title="item.kind">{{ kindIcons[item.kind] ?? '•' }}</span>
+                <span
+                  v-if="issuesFor(entry, item).length"
+                  class="issue-mark"
+                  :title="issuesFor(entry, item).map((i) => i.explanation).join('\n')"
+                >
+                  ⚠
+                </span>
                 <span class="target" :title="item.target">{{ item.target }}</span>
                 <span v-if="item.touchesFiles" class="badge" title="Changes a file (prefab, script or settings); not covered by scene undo">
                   file
@@ -716,6 +790,45 @@ h2 {
   margin-bottom: 6px;
   font-size: 0.9em;
   color: #93c5fd;
+}
+.consistency {
+  margin: 6px 0;
+  padding: 6px 8px;
+  border-left: 2px solid #3b82f6;
+  background: #11111b;
+  font-size: 0.9em;
+}
+.consistency.done:not(:has(ul)) {
+  border-left-color: #22c55e;
+}
+.consistency:has(ul) {
+  border-left-color: #f59e0b;
+}
+.consistency ul {
+  margin: 4px 0 6px;
+  padding-left: 16px;
+}
+.consistency li {
+  margin-bottom: 4px;
+}
+.consistency-head {
+  color: #f59e0b;
+}
+.severity {
+  font-size: 0.8em;
+  padding: 0 4px;
+  border: 1px solid #555;
+  margin-right: 4px;
+}
+.severity.contradiction {
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+.issue-mark {
+  color: #f59e0b;
+}
+.muted {
+  opacity: 0.65;
 }
 .auto-tag {
   width: 13px;

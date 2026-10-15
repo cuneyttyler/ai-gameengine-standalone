@@ -202,21 +202,28 @@ class WorldIndex:
             self.entries = load_entries(self.root)
         return self._by_keywords(query, k), "keywords"
 
-    def canon_for(self, query: str, k: int = 6, max_chars: int = 8000) -> str:
+    def canon_entries(
+        self, query: str, k: int = 6, max_chars: int = 8000, exclude: set[str] | None = None
+    ) -> list[WorldEntry]:
         """Grounding for a request: the k entries most related to it, plus every
-        style entry (the tone guide always applies), as text for the prompt."""
-        hits, _ = self.search(query, k)
-        keys = [h.key for h in hits]
-        keys += [e.key for e in self.entries if e.kind == "style" and e.key not in keys]
+        style entry (the tone guide always applies), within a size budget."""
+        exclude = exclude or set()
+        hits, _ = self.search(query, k + len(exclude))
+        keys = [h.key for h in hits if h.key not in exclude][:k]
+        keys += [e.key for e in self.entries if e.kind == "style" and e.key not in keys and e.key not in exclude]
         by_key = {e.key: e for e in self.entries}
-        parts, total = [], 0
+        chosen, total = [], 0
         for key in keys:
-            text = format_entry(by_key[key])
-            if total + len(text) > max_chars:
+            size = len(format_entry(by_key[key]))
+            if total + size > max_chars:
                 break
-            parts.append(text)
-            total += len(text)
-        return "\n\n".join(parts)
+            chosen.append(by_key[key])
+            total += size
+        return chosen
+
+    def canon_for(self, query: str, k: int = 6, max_chars: int = 8000, exclude: set[str] | None = None) -> str:
+        """canon_entries as text for a prompt."""
+        return "\n\n".join(format_entry(e) for e in self.canon_entries(query, k, max_chars, exclude))
 
     def _hit(self, entry: WorldEntry, score: float) -> SearchHit:
         return SearchHit(entry.key, entry.kind, entry.name, entry.summary, round(score, 4))

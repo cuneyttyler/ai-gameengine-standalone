@@ -159,6 +159,12 @@ private:
     WorldBible world_; // the project's canon, world/ (development_plan.md 3.1)
     StoryLibrary story_; // dialogue/ and quests/ (3.2b), reloaded when Play starts
     int worldSearchRequest_ = 0;
+    // Contradiction checks (development_plan.md 3.3) in flight: request id ->
+    // the proposal they're for; and the World tab's "Check against canon".
+    std::map<int, int> consistencyRequests_;
+    int worldCheckRequest_ = 0;
+    std::string worldCheckKey_;
+    bool RequestConsistencyCheck(int proposalId, const nlohmann::json& operations);
     nlohmann::json WorldJson();
     nlohmann::json StoryJson(); // the Story tab: dialogues, quests, problems, what can be referenced
     std::optional<std::string> SaveStoryFile(const std::string& folder, const std::string& id,

@@ -58,6 +58,13 @@ related to the request, plus the tone guide, as a WORLD BIBLE block. Dialogue an
 are written with the `write_dialogue` / `write_quest` operations (format in
 `docs/story.md`), checked by `app/story.py` like the editor checks them.
 
+Writing that makes claims about the world (canon entries, dialogue, quests) can be
+checked with `POST /consistency` (`app/consistency.py`). A second model
+(`MISTRAL_CHECK_MODEL`, default `mistral-medium-latest`) compares it with the canon
+retrieved for it, and each issue must quote the canon it contradicts. Issues are
+verified against the entry before they're returned. Fixtures:
+`tests/golden/checks/`, recorded by `python -m tests.golden.record_checks`.
+
 Providers live in `app/providers.py` (`MistralProvider`, and `ScriptedProvider` for tests).
 
 ## Tests

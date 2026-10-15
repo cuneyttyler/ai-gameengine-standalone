@@ -7,6 +7,7 @@
   GET  /usage           token totals for this session (cost visibility)
   PUT  /project         {root}: the open project, so its World Bible can be indexed
   POST /world/search    {query, k?} -> the most related World Bible entries
+  POST /consistency     {operations, exclude?} -> contradictions with the canon (a second, cheaper model)
 
 Run: uv run uvicorn app.main:app --port 8765
 """
@@ -21,9 +22,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from .models import EditorContext, EngineSchema, Proposal, Usage
+from .consistency import check_consistency, writing_from_operations
 from .providers import MistralEmbedder, MistralProvider, Provider, ProviderError
 from .service import propose
-from .world import Embedder, WorldIndex, load_entries
+from .world import Embedder, WorldIndex, format_entry, load_entries
 
 DEFAULT_MODEL = "mistral-large-latest"
 
@@ -43,6 +45,11 @@ class SearchRequest(BaseModel):
     k: int = 5
 
 
+class ConsistencyRequest(BaseModel):
+    operations: list[dict] = []
+    exclude: list[str] = []  # canon keys not to compare against (an entry being re-checked)
+
+
 class ProposeResponse(BaseModel):
     ok: bool
     proposal: Proposal | None = None
@@ -60,6 +67,17 @@ def default_provider() -> Provider | None:
     return MistralProvider(api_key=key, model=os.environ.get("MISTRAL_MODEL", DEFAULT_MODEL))
 
 
+def default_checker() -> Provider | None:
+    """The contradiction checker: a cheaper model than the one that writes."""
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    key = os.environ.get("MISTRAL_API_KEY")
+    if not key:
+        return None
+    # mistral-medium: on the recorded fixtures (tests/golden/checks) small flagged
+    # consistent writing and large one false positive; medium was right on all.
+    return MistralProvider(api_key=key, model=os.environ.get("MISTRAL_CHECK_MODEL", "mistral-medium-latest"))
+
+
 def default_embedder() -> Embedder | None:
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     key = os.environ.get("MISTRAL_API_KEY")
@@ -67,10 +85,20 @@ def default_embedder() -> Embedder | None:
 
 
 def create_app(
-    provider: Provider | None = None, schema: EngineSchema | None = None, embedder: Embedder | None = None
+    provider: Provider | None = None,
+    schema: EngineSchema | None = None,
+    embedder: Embedder | None = None,
+    checker: Provider | None = None,
 ) -> FastAPI:
     app = FastAPI(title="AIGE AI Orchestration Service", version="0.1.0")
-    state = {"provider": provider, "schema": schema, "usage": Usage(), "embedder": embedder, "world": None}
+    state = {
+        "provider": provider,
+        "schema": schema,
+        "usage": Usage(),
+        "embedder": embedder,
+        "world": None,
+        "checker": checker,
+    }
 
     @app.get("/health")
     def health() -> dict:
@@ -147,7 +175,36 @@ def create_app(
         hits, method = index.search(request.query, max(1, min(request.k, 20)))
         return {"ok": True, "method": method, "hits": [hit.__dict__ for hit in hits]}
 
+    @app.post("/consistency")
+    def consistency(request: ConsistencyRequest) -> dict:
+        writing = writing_from_operations(request.operations)
+        if not writing:
+            return {"ok": True, "checked": False, "issues": [], "reason": "nothing that makes claims about the world"}
+        index: WorldIndex | None = state["world"]
+        checker: Provider | None = state["checker"]
+        if index is None or checker is None:
+            return {"ok": False, "checked": False, "issues": [], "errors": ["No checker or World Bible available"]}
+        # Entries this proposal rewrites aren't compared with their old versions.
+        exclude = set(request.exclude)
+        for op in request.operations:
+            if op.get("op") == "command" and op.get("name") == "world.write":
+                args = op.get("args", {})
+                if args.get("id"):
+                    exclude.add(f"{args.get('kind')}/{args['id']}")
+        entries = index.canon_entries(writing, k=8, max_chars=10000, exclude=exclude)
+        canon = {e.key: format_entry(e) for e in entries}
+        result = check_consistency(checker, canon, writing, len(request.operations))
+        state["usage"].add(result.usage)
+        return {
+            "ok": result.checked,
+            "checked": result.checked,
+            "issues": [issue.__dict__ for issue in result.issues],
+            "errors": result.errors,
+            "canonKeys": result.canonKeys,
+            "usage": result.usage.model_dump(),
+        }
+
     return app
 
 
-app = create_app(provider=default_provider(), embedder=default_embedder())
+app = create_app(provider=default_provider(), embedder=default_embedder(), checker=default_checker())
