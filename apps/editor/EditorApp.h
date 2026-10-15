@@ -56,7 +56,7 @@ public:
     std::vector<OverlayLine> BuildOverlay();
 
     // True when the scene has unsaved edits (asked before closing).
-    bool IsDirty() const { return dirty_; }
+    bool IsDirty() const { return dirty_ || settingsDirty_; }
     void Save();
 
 private:
@@ -105,6 +105,11 @@ private:
     // and instance-local fields).
     void NoteOverride(Entity entity, const std::string& component, const std::string& field);
 
+    // Project settings (Renderer, Camera, ...), from the registry.
+    nlohmann::json SettingsJson();
+    std::optional<std::string> SetSetting(const std::string& section, const std::string& field,
+                                          const nlohmann::json& value);
+
     // Script properties (a script's `properties = { ... }`).
     nlohmann::json ScriptPropertiesJson(Entity entity);
     void SetScriptProperty(Entity entity, const std::string& name, const nlohmann::json& value);
@@ -117,10 +122,10 @@ private:
     nlohmann::json SceneJson();
     nlohmann::json InspectorJson(Entity entity);
     nlohmann::json EditorStateJson();
-    // Sets a field from its JSON form; false if the component/field is
-    // unknown or the value has the wrong type.
-    bool ApplySetField(Entity entity, const std::string& component, const std::string& field,
-                       const nlohmann::json& value);
+    // Sets a field from its JSON form after validating it against the
+    // registry; returns why not if it can't.
+    std::optional<std::string> ApplySetField(Entity entity, const std::string& component, const std::string& field,
+                                             const nlohmann::json& value);
     void CreateScriptFor(Entity entity, const std::string& name);
     std::string LabelOf(Entity entity);
     std::vector<std::string> ListScripts();
@@ -149,6 +154,7 @@ private:
     std::optional<Entity> selected_;
 
     bool dirty_ = false;
+    bool settingsDirty_ = false; // project settings edited since the last save
     std::optional<std::string> pendingSnapshot_;
     bool pendingPushed_ = false;
 

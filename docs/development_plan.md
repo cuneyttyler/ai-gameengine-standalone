@@ -237,6 +237,12 @@ applied change.
 - Replace Phase 1's hand-wired inspector panels with panels generated from the registry.
 - **User test checkpoint:** confirm the generated inspector is at least as usable as the
   hand-wired one it replaces — a real regression risk worth a manual look.
+- ✅ Built (user check deferred to end of Phase 2): every Inspector section and field is
+  generated from registry metadata — descriptions as tooltips (fields, components, the
+  Add Component list), min/max on inputs, sliders for 0-1 values, enums by name, and every
+  edit validated against the registry with the reason shown inline. With nothing selected
+  the Inspector shows Project Settings, generated the same way and saved with the scene.
+  Field editing is one reusable `FieldEditor` component for components and settings.
 
 **2.3 — AI Orchestration Service skeleton**
 - FastAPI sidecar; a schema-export endpoint that reads the reflection registry via

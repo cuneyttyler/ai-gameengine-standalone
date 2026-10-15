@@ -103,6 +103,25 @@ void AddEntityOutline(std::vector<OverlayLine>& out, Registry& registry, Entity 
     }
 }
 
+// A field's metadata and current value, as the Inspector (and the AI
+// context) presents it.
+nlohmann::json FieldJson(const FieldMeta& meta, const FieldValue& value) {
+    nlohmann::json entry = {{"name", meta.name},
+                            {"type", FieldTypeName(meta.type)},
+                            {"description", meta.description},
+                            {"value", ValueToJson(meta, value)}};
+    if (!meta.options.empty()) {
+        entry["options"] = meta.options;
+    }
+    if (meta.min) {
+        entry["min"] = *meta.min;
+    }
+    if (meta.max) {
+        entry["max"] = *meta.max;
+    }
+    return entry;
+}
+
 } // namespace
 
 EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& registry, LuaVM& lua, AssetDatabase& assets,
@@ -159,13 +178,21 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         if (registry_.valid(entity) && message.contains("value")) {
             std::string component = message.value("component", "");
             std::string field = message.value("field", "");
+            std::optional<std::string> error;
             ApplyOneShotEdit([&] {
-                if (!ApplySetField(entity, component, field, message["value"])) {
+                error = ApplySetField(entity, component, field, message["value"]);
+                if (error) {
                     return false;
                 }
                 NoteOverride(entity, component, field);
                 return true;
             });
+            // The Inspector shows the reason next to the field; the refresh
+            // below puts the field back to its real value.
+            post_({{"type", "inspector:fieldError"},
+                   {"component", component},
+                   {"field", field},
+                   {"error", error ? nlohmann::json(*error) : nlohmann::json(nullptr)}});
             inspectorStale_ = true;
             sceneTreeStale_ = true; // a Name edit changes the tree's label
         }
@@ -222,6 +249,17 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
                 SetTool(static_cast<Tool>(i));
             }
         }
+    } else if (type == "settings:request") {
+        post_(SettingsJson());
+    } else if (type == "settings:set") {
+        std::string sectionName = message.value("section", "");
+        std::string fieldName = message.value("field", "");
+        std::optional<std::string> error = SetSetting(sectionName, fieldName, message.value("value", nlohmann::json()));
+        post_({{"type", "inspector:fieldError"},
+               {"component", sectionName},
+               {"field", fieldName},
+               {"error", error ? nlohmann::json(*error) : nlohmann::json(nullptr)}});
+        post_(SettingsJson());
     } else if (type == "prefabs:request") {
         post_(PrefabsJson());
     } else if (type == "prefab:createFromAsset") {
@@ -646,6 +684,10 @@ void EditorApp::Save() {
     }
     try {
         SaveScene(registry_, scenePath_);
+        if (settingsDirty_) {
+            SaveSettings(EngineReflection(), assets_.GetProject().SettingsPath().string());
+            settingsDirty_ = false;
+        }
     } catch (const std::exception& e) {
         post_({{"type", "notify"}, {"text", std::string("Save failed: ") + e.what()}});
         return;
@@ -1004,6 +1046,42 @@ void EditorApp::NoteOverride(Entity entity, const std::string& component, const 
     }
 }
 
+// --- Project settings --------------------------------------------------------
+
+nlohmann::json EditorApp::SettingsJson() {
+    nlohmann::json sections = nlohmann::json::array();
+    for (const auto& section : EngineReflection().AllSettings()) {
+        nlohmann::json fields = nlohmann::json::array();
+        for (const auto& field : section.fields) {
+            fields.push_back(FieldJson(field, field.get()));
+        }
+        sections.push_back({{"name", section.name}, {"description", section.description}, {"fields", fields}});
+    }
+    return {{"type", "settings:data"}, {"sections", sections}};
+}
+
+std::optional<std::string> EditorApp::SetSetting(const std::string& sectionName, const std::string& fieldName,
+                                                 const nlohmann::json& value) {
+    const SettingsInfo* section = EngineReflection().FindSettings(sectionName);
+    const SettingField* field = section ? section->Field(fieldName) : nullptr;
+    if (field == nullptr) {
+        return "no setting " + sectionName + "." + fieldName;
+    }
+    auto converted = ValueFromJson(*field, value);
+    if (!converted) {
+        return fieldName + " can't be set to " + value.dump();
+    }
+    if (auto error = Validate(*field, *converted)) {
+        return *error;
+    }
+    field->set(*converted);
+    // Settings live in settings.aige, outside the scene's undo history;
+    // they're saved with the scene.
+    settingsDirty_ = true;
+    editorStateStale_ = true;
+    return std::nullopt;
+}
+
 // --- Script properties --------------------------------------------------------
 
 nlohmann::json EditorApp::ScriptPropertiesJson(Entity entity) {
@@ -1220,7 +1298,7 @@ nlohmann::json EditorApp::EditorStateJson() {
             {"tool", kToolIds[static_cast<int>(tool_)]},
             {"brush", brushPrefab_},
             {"playing", playing_},
-            {"dirty", dirty_},
+            {"dirty", dirty_ || settingsDirty_},
             {"canUndo", history_.CanUndo() && !playing_},
             {"canRedo", history_.CanRedo() && !playing_},
             {"sceneName", std::filesystem::path(scenePath_).filename().string()}};
@@ -1233,7 +1311,7 @@ nlohmann::json EditorApp::InspectorJson(Entity entity) {
     for (const auto& component : Components()) {
         if (!component.has(registry_, entity)) {
             if (component.userEditable) {
-                addable.push_back(component.name);
+                addable.push_back({{"name", component.name}, {"description", component.description}});
             }
             continue;
         }
@@ -1242,56 +1320,16 @@ nlohmann::json EditorApp::InspectorJson(Entity entity) {
         }
         nlohmann::json fields = nlohmann::json::array();
         for (const auto& field : component.fields) {
-            FieldValue value = field.get(registry_, entity);
-            nlohmann::json entry = {
-                {"name", field.name},
-                {"overridden", HasOverride(registry_, entity, component.name + "." + field.name)},
-            };
-            switch (field.type) {
-                case FieldType::Float:
-                    entry["type"] = "float";
-                    entry["value"] = std::get<float>(value);
-                    break;
-                case FieldType::Int:
-                    entry["type"] = "int";
-                    entry["value"] = std::get<int>(value);
-                    break;
-                case FieldType::Bool:
-                    entry["type"] = "bool";
-                    entry["value"] = std::get<bool>(value);
-                    break;
-                case FieldType::String:
-                    entry["type"] = "string";
-                    entry["value"] = std::get<std::string>(value);
-                    break;
-                case FieldType::Enum:
-                    entry["type"] = "enum";
-                    entry["value"] = std::get<int>(value);
-                    entry["options"] = field.options;
-                    break;
-                case FieldType::EntityRef: {
-                    entry["type"] = "entity";
-                    Entity target = std::get<Entity>(value);
-                    entry["value"] = registry_.valid(target) ? nlohmann::json(static_cast<uint32_t>(target))
-                                                             : nlohmann::json(nullptr);
-                    break;
-                }
-                case FieldType::Texture:
-                    entry["type"] = "texture";
-                    entry["value"] = std::get<std::string>(value);
-                    break;
-                case FieldType::Script:
-                    entry["type"] = "script";
-                    entry["value"] = std::get<std::string>(value);
-                    break;
-                case FieldType::Audio:
-                    entry["type"] = "audio";
-                    entry["value"] = std::get<std::string>(value);
-                    break;
+            nlohmann::json entry = FieldJson(field, field.get(registry_, entity));
+            if (field.type == FieldType::EntityRef && entry["value"].is_number() &&
+                !registry_.valid(static_cast<Entity>(entry["value"].get<uint32_t>()))) {
+                entry["value"] = nullptr; // a reference to something deleted
             }
+            entry["overridden"] = HasOverride(registry_, entity, component.name + "." + field.name);
             fields.push_back(entry);
         }
         nlohmann::json section = {{"name", component.name},
+                                  {"description", component.description},
                                   {"removable", component.userEditable},
                                   {"derived", component.derived(registry_, entity)},
                                   {"fields", fields}};
@@ -1361,47 +1399,33 @@ std::vector<std::string> EditorApp::ListScripts() {
     return scripts;
 }
 
-bool EditorApp::ApplySetField(Entity entity, const std::string& componentName, const std::string& fieldName,
-                              const nlohmann::json& value) {
+std::optional<std::string> EditorApp::ApplySetField(Entity entity, const std::string& componentName,
+                                                    const std::string& fieldName, const nlohmann::json& value) {
     const ComponentInfo* component = FindComponent(componentName);
     if (component == nullptr || !component->has(registry_, entity)) {
-        return false;
+        return "this entity has no " + componentName;
     }
     const FieldInfo* field = component->Field(fieldName);
     if (field == nullptr) {
-        return false;
+        return componentName + " has no field " + fieldName;
     }
-    try {
-        switch (field->type) {
-            case FieldType::Float:
-                field->set(registry_, entity, value.get<float>());
-                break;
-            case FieldType::Int:
-            case FieldType::Enum:
-                field->set(registry_, entity, static_cast<int>(value.get<double>()));
-                break;
-            case FieldType::Bool:
-                field->set(registry_, entity, value.is_boolean() ? value.get<bool>() : value.get<double>() != 0.0);
-                break;
-            case FieldType::String:
-            case FieldType::Texture:
-            case FieldType::Script:
-            case FieldType::Audio:
-                field->set(registry_, entity, value.get<std::string>());
-                break;
-            case FieldType::EntityRef: {
-                Entity target = value.is_null() ? Entity{entt::null} : static_cast<Entity>(value.get<uint32_t>());
-                if (target != entt::null && !registry_.valid(target)) {
-                    return false;
-                }
-                field->set(registry_, entity, target);
-                break;
-            }
+    // The same checks every writer gets (Inspector, scripts, AI proposals):
+    // the registry's type and constraints, then reference validity.
+    auto converted = ValueFromJson(*field, value);
+    if (!converted) {
+        return fieldName + " can't be set to " + value.dump();
+    }
+    if (auto error = Validate(*field, *converted)) {
+        return *error;
+    }
+    if (field->type == FieldType::EntityRef) {
+        Entity target = ToEntity(*converted);
+        if (target != entt::null && !registry_.valid(target)) {
+            return "that entity no longer exists";
         }
-    } catch (const nlohmann::json::exception&) {
-        return false; // wrong JSON type for the field
     }
-    return true;
+    field->set(registry_, entity, *converted);
+    return std::nullopt;
 }
 
 void EditorApp::CreateScriptFor(Entity entity, const std::string& requestedName) {

@@ -1,17 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+// The Reflection Inspector: every section and field is generated from the
+// engine's reflection registry (apps/editor/EditorApp InspectorJson /
+// SettingsJson) — names, types, descriptions, constraints. With nothing
+// selected it shows the project settings, generated the same way.
+import { onMounted, reactive, ref } from 'vue'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
-
-type FieldType = 'float' | 'int' | 'bool' | 'string' | 'enum' | 'entity' | 'texture' | 'script' | 'audio'
-
-interface Field {
-  name: string
-  type: FieldType
-  value: number | boolean | string | null
-  options?: string[]
-  overridden: boolean // changed on this prefab copy
-}
+import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
 
 interface ScriptProperty {
   name: string
@@ -23,9 +18,10 @@ interface ScriptProperty {
 
 interface ComponentData {
   name: string
+  description: string
   removable: boolean
   derived: boolean
-  fields: Field[]
+  fields: FieldData[]
   script?: { properties: ScriptProperty[]; error: string }
 }
 
@@ -34,19 +30,25 @@ interface InspectorData {
   label: string
   prefab: { path: string; name: string; missing: boolean; overrides: string[] } | null
   components: ComponentData[]
-  addable: string[]
-  choices: {
-    entities: { id: number; label: string }[]
-    textures: string[]
-    audio: string[]
-    scripts: string[]
-  }
+  addable: { name: string; description: string }[]
+  choices: Choices
+}
+
+interface SettingsSection {
+  name: string
+  description: string
+  fields: FieldData[]
 }
 
 const current = ref<InspectorData | null>(null)
-const collapsed = ref<Record<string, boolean>>({})
+const settings = ref<SettingsSection[]>([])
+const collapsed = reactive<Record<string, boolean>>({})
+// Last validation error per "Component.field" (or "Section.field").
+const errors = reactive<Record<string, string>>({})
 const newScriptName = ref('')
 const creatingScript = ref(false)
+const savingPrefab = ref(false)
+const newPrefabName = ref('')
 
 onHostMessage((message) => {
   if (message.type === 'inspector:data') {
@@ -57,24 +59,35 @@ onHostMessage((message) => {
     if (focused?.closest('.inspector') && current.value?.id === data.id && editorState.playing) {
       return
     }
+    if (current.value?.id !== data.id) {
+      Object.keys(errors).forEach((key) => delete errors[key])
+    }
     current.value = data
   } else if (message.type === 'inspector:clear') {
     current.value = null
+    sendToHost({ type: 'settings:request' })
+  } else if (message.type === 'settings:data') {
+    settings.value = message.sections as SettingsSection[]
+  } else if (message.type === 'inspector:fieldError') {
+    const key = `${message.component}.${message.field}`
+    if (message.error) {
+      errors[key] = message.error as string
+    } else {
+      delete errors[key]
+    }
   }
 })
 
-function setField(component: string, field: Field, value: unknown): void {
-  if (!current.value) {
-    return
+onMounted(() => sendToHost({ type: 'settings:request' }))
+
+function setField(component: string, field: FieldData, value: unknown): void {
+  if (current.value) {
+    sendToHost({ type: 'inspector:setField', id: current.value.id, component, field: field.name, value })
   }
-  if ((field.type === 'float' || field.type === 'int') && (typeof value !== 'number' || Number.isNaN(value))) {
-    return
-  }
-  sendToHost({ type: 'inspector:setField', id: current.value.id, component, field: field.name, value })
 }
 
-function numberFrom(event: Event): number {
-  return Number((event.target as HTMLInputElement).value)
+function setSetting(section: string, field: FieldData, value: unknown): void {
+  sendToHost({ type: 'settings:set', section, field: field.name, value })
 }
 
 function addComponent(event: Event): void {
@@ -103,14 +116,6 @@ function openScript(path: string): void {
   sendToHost({ type: 'script:open', path })
 }
 
-function fileName(path: string): string {
-  return path.split('/').pop() ?? path
-}
-
-// Prefabs.
-const savingPrefab = ref(false)
-const newPrefabName = ref('')
-
 function startSavePrefab(): void {
   newPrefabName.value = (current.value?.label ?? '').replace(/[^A-Za-z0-9_-]/g, '_').toLowerCase()
   savingPrefab.value = true
@@ -127,7 +132,6 @@ function revert(key: string): void {
   sendToHost({ type: 'prefab:revert', key })
 }
 
-// Script properties.
 function setProperty(name: string, value: unknown): void {
   if (current.value && !(typeof value === 'number' && Number.isNaN(value))) {
     sendToHost({ type: 'script:setProperty', id: current.value.id, name, value })
@@ -139,12 +143,43 @@ function resetProperty(name: string): void {
     sendToHost({ type: 'script:resetProperty', id: current.value.id, name })
   }
 }
+
+function numberFrom(event: Event): number {
+  return Number((event.target as HTMLInputElement).value)
+}
 </script>
 
 <template>
   <div class="panel inspector">
-    <h2>Inspector</h2>
-    <p v-if="!current" class="placeholder">No entity selected.</p>
+    <h2>{{ current ? 'Inspector' : 'Project Settings' }}</h2>
+
+    <!-- Nothing selected: project settings, generated from the registry. -->
+    <template v-if="!current">
+      <p class="hint">Select something in the viewport or Scene Tree to inspect it. Settings save with the scene.</p>
+      <section v-for="section in settings" :key="section.name" class="component">
+        <header>
+          <button
+            class="collapse"
+            :title="section.description"
+            @click="collapsed[section.name] = !collapsed[section.name]"
+          >
+            {{ collapsed[section.name] ? '▸' : '▾' }} {{ section.name }}
+          </button>
+        </header>
+        <div v-if="!collapsed[section.name]" class="fields">
+          <template v-for="field in section.fields" :key="field.name">
+            <div class="field-row">
+              <label :title="field.description">{{ field.name }}</label>
+              <FieldEditor :field="field" @change="setSetting(section.name, field, $event)" />
+            </div>
+            <div v-if="errors[`${section.name}.${field.name}`]" class="field-error">
+              {{ errors[`${section.name}.${field.name}`] }}
+            </div>
+          </template>
+        </div>
+      </section>
+    </template>
+
     <template v-else>
       <div class="entity-label">{{ current.label }}</div>
 
@@ -177,7 +212,11 @@ function resetProperty(name: string): void {
 
       <section v-for="component in current.components" :key="component.name" class="component">
         <header>
-          <button class="collapse" @click="collapsed[component.name] = !collapsed[component.name]">
+          <button
+            class="collapse"
+            :title="component.description"
+            @click="collapsed[component.name] = !collapsed[component.name]"
+          >
             {{ collapsed[component.name] ? '▸' : '▾' }} {{ component.name }}
           </button>
           <span v-if="component.derived" class="derived" title="Computed every frame from the world position">
@@ -194,117 +233,35 @@ function resetProperty(name: string): void {
         </header>
 
         <div v-if="!collapsed[component.name]" class="fields">
-          <div v-for="field in component.fields" :key="field.name" class="field-row" :class="{ overridden: field.overridden }">
-            <label :title="field.overridden ? 'Changed on this copy; prefab updates won\'t touch it' : undefined">
-              {{ field.name }}
-              <button
-                v-if="field.overridden && !editorState.playing"
-                class="revert"
-                title="Revert to the prefab's value"
-                @click="revert(`${component.name}.${field.name}`)"
-              >
-                ↺
-              </button>
-            </label>
-
-            <input
-              v-if="field.type === 'float' || field.type === 'int'"
-              type="number"
-              :step="field.type === 'int' ? 1 : 0.05"
-              :value="field.value as number"
-              :disabled="component.derived"
-              @change="setField(component.name, field, numberFrom($event))"
-            />
-
-            <input
-              v-else-if="field.type === 'bool'"
-              type="checkbox"
-              class="checkbox"
-              :checked="field.value as boolean"
-              @change="setField(component.name, field, ($event.target as HTMLInputElement).checked)"
-            />
-
-            <input
-              v-else-if="field.type === 'string'"
-              type="text"
-              spellcheck="false"
-              :value="field.value as string"
-              @change="setField(component.name, field, ($event.target as HTMLInputElement).value)"
-            />
-
-            <select
-              v-else-if="field.type === 'enum'"
-              :value="field.value as number"
-              @change="setField(component.name, field, Number(($event.target as HTMLSelectElement).value))"
-            >
-              <option v-for="(option, index) in field.options" :key="option" :value="index">{{ option }}</option>
-            </select>
-
-            <select
-              v-else-if="field.type === 'entity'"
-              :value="field.value ?? ''"
-              @change="
-                setField(
-                  component.name,
-                  field,
-                  ($event.target as HTMLSelectElement).value === ''
-                    ? null
-                    : Number(($event.target as HTMLSelectElement).value),
-                )
-              "
-            >
-              <option value="">(none)</option>
-              <option v-for="entity in current.choices.entities" :key="entity.id" :value="entity.id">
-                {{ entity.label }} #{{ entity.id }}
-              </option>
-            </select>
-
-            <select
-              v-else-if="field.type === 'texture'"
-              :value="field.value as string"
-              :title="field.value as string"
-              @change="setField(component.name, field, ($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">(built-in)</option>
-              <option v-for="texture in current.choices.textures" :key="texture" :value="texture">
-                {{ fileName(texture) }}
-              </option>
-            </select>
-
-            <select
-              v-else-if="field.type === 'audio'"
-              :value="field.value as string"
-              :title="field.value as string"
-              @change="setField(component.name, field, ($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">(none)</option>
-              <option v-for="sound in current.choices.audio" :key="sound" :value="sound">
-                {{ fileName(sound) }}
-              </option>
-            </select>
-
-            <span v-else-if="field.type === 'script'" class="script-field">
-              <select
-                :value="field.value as string"
-                :title="field.value as string"
-                @change="setField(component.name, field, ($event.target as HTMLSelectElement).value)"
-              >
-                <option value="">(none)</option>
-                <option v-for="script in current.choices.scripts" :key="script" :value="script">
-                  {{ fileName(script) }}
-                </option>
-              </select>
-              <button v-if="field.value" title="Open in your editor" @click="openScript(field.value as string)">
-                Open
-              </button>
-            </span>
-          </div>
+          <template v-for="field in component.fields" :key="field.name">
+            <div class="field-row" :class="{ overridden: field.overridden }">
+              <label :title="field.overridden ? `${field.description}\n(Changed on this copy)` : field.description">
+                {{ field.name }}
+                <button
+                  v-if="field.overridden && !editorState.playing"
+                  class="revert"
+                  title="Revert to the prefab's value"
+                  @click="revert(`${component.name}.${field.name}`)"
+                >
+                  ↺
+                </button>
+              </label>
+              <FieldEditor
+                :field="field"
+                :choices="current.choices"
+                :disabled="component.derived"
+                @change="setField(component.name, field, $event)"
+                @open-script="openScript"
+              />
+            </div>
+            <div v-if="errors[`${component.name}.${field.name}`]" class="field-error">
+              {{ errors[`${component.name}.${field.name}`] }}
+            </div>
+          </template>
 
           <template v-if="component.script">
             <p v-if="component.script.error" class="script-error">{{ component.script.error }}</p>
-            <div v-else-if="component.script.properties.length > 0" class="properties-label">
-              Script properties
-            </div>
+            <div v-else-if="component.script.properties.length > 0" class="properties-label">Script properties</div>
             <div
               v-for="property in component.script.properties"
               :key="property.name"
@@ -324,6 +281,7 @@ function resetProperty(name: string): void {
               </label>
               <input
                 v-if="property.type === 'float'"
+                class="property-input"
                 type="number"
                 step="0.1"
                 :value="property.value as number"
@@ -338,6 +296,7 @@ function resetProperty(name: string): void {
               />
               <input
                 v-else
+                class="property-input"
                 type="text"
                 spellcheck="false"
                 :value="property.value as string"
@@ -351,10 +310,12 @@ function resetProperty(name: string): void {
       <div v-if="!editorState.playing" class="footer">
         <select v-if="current.addable.length > 0" class="add" @change="addComponent">
           <option value="">+ Add component</option>
-          <option v-for="name in current.addable" :key="name" :value="name">{{ name }}</option>
+          <option v-for="item in current.addable" :key="item.name" :value="item.name" :title="item.description">
+            {{ item.name }}
+          </option>
         </select>
 
-        <div v-if="creatingScript" class="new-script">
+        <div v-if="creatingScript" class="inline-form">
           <input
             v-model="newScriptName"
             type="text"
@@ -368,7 +329,7 @@ function resetProperty(name: string): void {
         <button v-else class="link" @click="creatingScript = true">+ New script…</button>
 
         <template v-if="!current.prefab">
-          <div v-if="savingPrefab" class="new-script">
+          <div v-if="savingPrefab" class="inline-form">
             <input
               v-model="newPrefabName"
               type="text"
@@ -406,9 +367,10 @@ h2 {
   opacity: 0.7;
   margin: 0 0 8px;
 }
-.placeholder {
+.hint {
   opacity: 0.5;
-  font-size: 0.9em;
+  font-size: 0.8em;
+  margin: 0 0 8px;
 }
 .entity-label {
   font-weight: 600;
@@ -470,6 +432,7 @@ header {
   gap: 4px;
   opacity: 0.7;
   flex-shrink: 0;
+  cursor: help;
 }
 .field-row.overridden {
   box-shadow: inset 2px 0 0 #3b82f6;
@@ -481,6 +444,30 @@ header {
 }
 .field-row.unset input:not(:focus) {
   opacity: 0.6;
+}
+.field-error {
+  margin: -2px 0 6px;
+  color: #f87171;
+  font-size: 0.75em;
+  text-align: right;
+}
+input,
+select,
+button {
+  height: 22px;
+  border: 1px solid #333;
+  border-radius: 0;
+  background: #11111b;
+  color: #eee;
+  font: inherit;
+}
+.property-input {
+  width: 120px;
+  padding: 0 4px;
+}
+.checkbox {
+  width: 14px;
+  height: 14px;
 }
 .revert {
   width: 18px;
@@ -549,43 +536,6 @@ header {
   font-size: 0.8em;
   word-break: break-word;
 }
-input,
-select,
-button {
-  height: 22px;
-  border: 1px solid #333;
-  border-radius: 0;
-  background: #11111b;
-  color: #eee;
-  font: inherit;
-}
-.field-row input[type='number'],
-.field-row input[type='text'] {
-  width: 120px;
-  padding: 0 4px;
-}
-.field-row select {
-  width: 128px;
-  min-width: 0;
-}
-.field-row input:disabled {
-  opacity: 0.5;
-}
-.checkbox {
-  width: 14px;
-  height: 14px;
-}
-.script-field {
-  display: flex;
-  gap: 2px;
-}
-.script-field select {
-  width: 84px;
-}
-.script-field button {
-  padding: 0 6px;
-  cursor: pointer;
-}
 .footer {
   display: flex;
   flex-direction: column;
@@ -596,15 +546,15 @@ button {
 .add {
   width: 100%;
 }
-.new-script {
+.inline-form {
   display: flex;
   gap: 4px;
 }
-.new-script input {
+.inline-form input {
   flex: 1;
   padding: 0 4px;
 }
-.new-script button,
+.inline-form button,
 .link {
   padding: 0 8px;
   cursor: pointer;
