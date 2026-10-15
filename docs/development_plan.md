@@ -82,10 +82,10 @@ get the same scene back. No editor UI yet beyond whatever's needed to trigger th
 
 ---
 
-## Phase 1 — Manual Isometric Editor (AI-Assisted mode, standalone)
+## Phase 1 — Manual Isometric Editor (no AI, standalone)
 
 **Goal:** a genuinely usable manual editor and runtime for isometric 2.5D games — the
-"AI-Assisted mode must stand on its own" requirement from `product.md` §10, built and
+"manual editing must stand on its own" requirement from `product.md` §10, built and
 proven *before* any AI integration exists to lean on.
 
 ### Milestones
@@ -202,15 +202,15 @@ proven *before* any AI integration exists to lean on.
 
 **Phase 1 exit criteria:** you can build a small isometric scene, script basic behavior,
 place enemies/items, and play it — entirely by hand, with zero AI involvement. This is
-the baseline `product.md` §4.2's "must be fully usable with AI disabled" guarantee has
+the baseline `product.md` §4.1's "must be fully usable with AI turned off" guarantee has
 to hold against, and it's proven before AI exists to make it moot.
 
 ---
 
-## Phase 2 — Reflection Layer & AI-Driven Mode v1
+## Phase 2 — Reflection Layer & AI Editing v1
 
 **Goal:** build the Reflection & Command Registry (`technical.md` §7) and stand up the
-first end-to-end AI-Driven flow: a natural-language instruction becomes a reviewed,
+first end-to-end AI editing flow: a natural-language instruction becomes a reviewed,
 applied change.
 
 ### Milestones
@@ -303,27 +303,69 @@ applied change.
   still fights its own Follow component — valid, error-free, and wrong in play; exactly
   what the user playtest is for.
 
-**2.6 — Mode switcher**
-- The persistent AI-Driven/AI-Assisted toggle (`product.md` §4.3); confirm switching
-  mid-session causes no data loss or conversion step.
-- Tests: automated check that both modes read/write identical on-disk state for the same
-  edit performed through each mode's surface.
-- ✅ Built: an Assisted / AI-Driven toggle in the toolbar, remembered across launches.
-  AI-Driven shows the AI panel wide; AI-Assisted collapses it to a rail on the right that
-  expands on click or from any ✦ Ask AI. Collapsing only hides the panel, so the
-  conversation and pending proposals survive switching. Each mode keeps its own panel
-  width. To make "same files either way" true by construction, the Inspector and applied
-  proposals now share a single write path, `engine/editing/Edits` (`EditField`,
-  `EditAddComponent`, `EditRemoveComponent`, `EditScriptProperty`, `EditSetting`):
-  validation, the write, and prefab override recording happen in one place. Previously
-  `EditorApp` and `Proposal` each had their own copy. `ModeParityTest` makes the same six
-  edits (fields, add/remove component, script property, setting) through each surface, on
-  two copies of the demo project. It asserts that the saved scene and settings files are
-  byte-identical and that the edits really landed.
+**2.6 — Hand edits and AI edits share one path** *(was: Mode switcher)*
+- Originally: a persistent AI-Driven/AI-Assisted toggle, with an automated check that both
+  modes write identical files for the same edit.
+- ✅ Built, then revised: the toggle shipped, but the two modes only differed in panel
+  width — the engine, files and workflow were the same — so the modes were **dropped**
+  (`product.md` §4). What remains:
+  - One write path: the Inspector and applied proposals share `engine/editing/Edits`
+    (`EditField`, `EditAddComponent`, `EditRemoveComponent`, `EditScriptProperty`,
+    `EditSetting`), so validation, the write and prefab override recording happen in
+    one place (previously `EditorApp` and `Proposal` each had a copy).
+  - `EditParityTest` makes the same six edits (fields, add/remove component, script
+    property, setting) by hand and through an applied proposal, on two copies of the demo
+    project, and asserts the saved scene and settings files are byte-identical and that
+    the edits really landed.
+  - The AI panel collapses to a ✦ rail (remembered); ✦ Ask AI expands it, and collapsing
+    keeps the conversation and pending proposals.
+  - An **AI on/off** switch (per user, `%LOCALAPPDATA%\aige\editor.json`): off stops the
+    AI service so nothing is sent to the model, hides Ask AI, and the panel offers "Turn
+    on AI". The start of 2.7.
 
 **Phase 2 exit criteria:** you can describe a mechanic in natural language, review a
 real diff against the actual engine schema, accept it, and see it work in a playtest —
-and you can freely toggle to manual mode and edit the same thing by hand.
+and you can edit the same thing by hand, or turn AI off entirely, with the same files
+either way.
+
+### Follow-up milestones: how much the AI does
+
+Automation grows inside the one editor as choices the developer makes, not as a separate
+mode (`product.md` §4.3). These come after the Phase 2 playtest, so they're shaped by
+what it finds.
+
+**2.7 — Minimal AI**
+- AI fully optional and out of the way for people who want little or none of it.
+- ✅ Partly built in 2.6: the per-user on/off switch and the collapsible panel.
+- Still to do: a first-run choice (AI on/off) with a plain statement of what is sent to
+  the model; move the switch into an editor Preferences page next to provider settings
+  once that exists; make sure nothing AI-related (sidecar, `uv`, network) is touched when
+  it's off.
+- Tests: with AI off the editor never launches the service (C++ test on `EditorApp`'s
+  start logic); the Phase 1 manual checklist still passes with AI off.
+
+**2.8 — Review policy**
+- A per-user preference for which proposal items apply without review. Default: review
+  everything (today's behavior). Options build up by risk: e.g. "apply simple field and
+  setting changes directly, always review scripts, file writes, prefab edits and
+  deletions."
+- Auto-applied changes still show in the chat as a compact, already-applied card with
+  one-click undo, and are still logged in `ai_log.jsonl`.
+- Tests: policy classification per operation kind (unit); an auto-applied proposal is one
+  undo step and is logged; a mixed proposal applies the safe items and leaves the rest
+  pending.
+
+**2.9 — Bigger tasks (multi-step requests)**
+- A request the AI carries out in several steps — propose, apply to a scratch copy, dry
+  run / headless playtest, read errors, revise — until checks pass or a step limit is hit,
+  with progress shown in the chat. The developer reviews **one** combined result, never
+  the intermediate attempts, and nothing touches the real project until it's accepted.
+- Builds on the dry run (2.5) and the "Ask AI to fix" loop, made automatic; needs a step
+  and token budget per request, and a Stop button.
+- Tests: a scripted provider that fails the first attempt and fixes it on the second
+  produces one final proposal; the step limit is enforced; cancelling leaves the project
+  untouched. User test: a feature-sized request ("add a dodge roll with i-frames") lands
+  working without manual follow-ups.
 
 ---
 

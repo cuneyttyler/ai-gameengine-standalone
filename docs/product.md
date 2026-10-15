@@ -28,11 +28,11 @@ AI-native exists long before the engine has AAA-grade rendering.
 
 ## 1. What this is, in one paragraph
 
-An **AI-native game engine**, built from scratch in C++, designed around two coequal
-ways of working: an **AI-Driven mode**, where a developer describes a game in natural
-language and the engine turns that into real, inspectable project files (scenes,
-components, scripts, assets), and an **AI-Assisted mode** — traditional, fully manual
-editing with the same tools any hand-built engine would offer. Every module, every
+An **AI-native game engine**, built from scratch in C++: one editor where a developer
+can describe what they want in natural language — and the engine turns that into real,
+inspectable project files (scenes, components, scripts, assets) — or edit everything by
+hand with the same tools any hand-built engine would offer, mixing the two freely and
+choosing how much the AI does on its own. Every module, every
 inspector field, every asset, every piece of gameplay logic is exposed through a single
 **reflection and command layer** that both the manual UI and the AI service read from —
 so natural language can query or modify *anything* the engine knows about, not just a
@@ -75,36 +75,43 @@ This is the mechanism behind the product requirement that **any field, anywhere 
 engine, can be changed with a natural-language instruction** — see `technical.md` §7 for
 how this is actually implemented.
 
-## 4. The two modes
+## 4. One editor, adjustable AI
 
-### 4.1 AI-Driven Mode
-The primary surface is conversational: a chat/prompt panel where the developer describes
-what they want ("add a dodge-roll with i-frames," "make this dungeon 30% bigger and
-darker," "this NPC should remember if the player stole from them"). The engine turns
-each request into a structured proposal against the reflection registry — new
-components, modified resources, generated assets, edited behavior graphs — shown as a
-diff for review before anything is written to disk. The manual editor is still present
-and reachable at any time, just not the primary focus of the screen.
+There are no modes. (Early plans had an "AI-Driven" and an "AI-Assisted" mode; in
+practice a mode only rearranged panels while the engine, files and workflow stayed the
+same, so it was dropped in Phase 2 — see `development_plan.md` 2.6.) Instead there is
+one editor, and the developer decides how much the AI does.
 
-### 4.2 AI-Assisted Mode
+### 4.1 Direct editing
 Traditional direct-manipulation editing: scene tree, viewport, inspector, script editor,
-node-graph editors — the same surfaces a Unity/Unreal/Godot user would expect. AI is
-still available per-field and per-panel (see §3) but nothing is proposed unless asked
-for. This mode must be **fully usable with AI disabled entirely** — a hard product
+node-graph editors — the same surfaces a Unity/Unreal/Godot user would expect. The
+editor must be **fully usable with AI turned off entirely** — a hard product
 requirement, not a nice-to-have, so the engine is a legitimate manual game engine on its
-own merits, with AI as an accelerant rather than a dependency.
+own merits, with AI as an accelerant rather than a dependency. Turning AI off (a per-user
+preference) stops the AI service, so nothing is sent to a model.
 
-### 4.3 Switching modes
-Both modes operate on **exactly the same underlying project files** — there is no
-separate "AI project format" vs. "manual project format." Switching is just a UI-layer
-toggle of which panels are foregrounded; it can happen at any time, mid-session, with no
-conversion step and no risk of losing work, because the reflection registry and the
-on-disk file formats are the single source of truth for both modes.
+### 4.2 The AI panel
+A chat panel, collapsible to a thin rail, where the developer describes what they want
+("add a dodge-roll with i-frames," "make this dungeon 30% bigger and darker," "this NPC
+should remember if the player stole from them"). The engine turns each request into a
+structured proposal against the reflection registry — new components, modified
+resources, generated assets, edited behavior graphs — shown as a diff for review. AI is
+also reachable from any field or panel ("Ask AI", see §3), but nothing is proposed
+unless asked for.
 
-### 4.4 Naming
-"AI-Driven" and "AI-Assisted" are working names. Open to alternatives (e.g., "Copilot
-Mode" / "Studio Mode," "Prompt Mode" / "Craft Mode") once the UX is further along and we
-have a feel for how developers actually describe switching between them.
+### 4.3 Automation grows inside the panel, not as a mode
+More autonomy comes as choices the developer makes, not a different editor:
+- **Review policy** — which changes apply without review (e.g., simple field tweaks)
+  and which always need it (scripts, file writes, deletions).
+- **Bigger tasks** — one request carried out in several steps (write, playtest, fix,
+  repeat), with progress shown in the chat and one reviewable result.
+- **Minimal AI** — AI off, or collapsed out of the way and only used through Ask AI.
+
+### 4.4 One set of files
+Hand edits and AI edits operate on **exactly the same project files** through the same
+write path — there is no "AI project format," no conversion step, and no record of who
+made a change other than the AI decision log. The reflection registry and the on-disk
+file formats are the single source of truth.
 
 ## 5. Core product pillars
 
@@ -163,9 +170,8 @@ decisions are made "general from day one" vs. "deferred but not designed away."
 | Page | Purpose |
 |---|---|
 | **Project Dashboard** | Create/open projects; genre templates (Isometric ARPG, Cozy Sim, Blank); recent projects; AI provider/budget status |
-| **Mode Switcher** | Persistent, always-visible toggle between AI-Driven and AI-Assisted; never hidden or buried in a menu |
 | **World Bible / Lore** | Canonical source of truth: characters, factions, locations, timeline, tone/style guide; human-editable, AI-grounded |
-| **Scene / Level Editor** | Native viewport + inspector (AI-Assisted default) with an AI layout panel (AI-Driven default) for the same underlying scene |
+| **Scene / Level Editor** | Native viewport + inspector, with the collapsible AI panel beside it, all on the same underlying scene |
 | **Reflection Inspector** | The generated, per-field inspector described in §3 — every property of every module, each with an inline "Ask AI" affordance |
 | **Mechanic & System Composer** | Chat panel: describe a mechanic/system → structured component/system diff → review → accept/edit/reject |
 | **Quest & Dialogue Designer** | Visual node graph for quests/dialogue; "scaffold from prompt"; live lore-consistency checker |
@@ -179,8 +185,7 @@ decisions are made "general from day one" vs. "deferred but not designed away."
 
 ## 8. Steps to develop a game with this product
 
-1. **Create a project** from a template (Isometric ARPG, Cozy Sim, Blank) and pick a
-   starting mode (switchable anytime).
+1. **Create a project** from a template (Isometric ARPG, Cozy Sim, Blank).
 2. **Seed the World Bible** via prompts; review/edit generated canon.
 3. **Block out the world** — hand-paint tiles/levels, or describe them and accept/edit
    an AI-generated first pass.
@@ -216,8 +221,8 @@ decisions are made "general from day one" vs. "deferred but not designed away."
 | Phase | Product-level focus |
 |---|---|
 | **0 — Engine Bootstrap** | No AI yet. A window opens, a triangle/sprite renders, an entity moves, a project can be saved/loaded. Proves the from-scratch foundation before any AI investment. |
-| **1 — Manual Isometric Editor** | A genuinely usable, AI-Assisted-only isometric 2.5D editor and runtime: scene editing, sprites, basic 2D physics, Lua scripting, save/load. This must stand on its own as a real (if minimal) game engine. |
-| **2 — Reflection Layer & AI-Driven Mode v1** | The universal reflection/command registry goes in; AI Orchestration Service connects to it; Mechanic Composer, AI Diff Review, and mode switching ship. |
+| **1 — Manual Isometric Editor** | A genuinely usable, manual-only isometric 2.5D editor and runtime: scene editing, sprites, basic 2D physics, Lua scripting, save/load. This must stand on its own as a real (if minimal) game engine. |
+| **2 — Reflection Layer & AI Editing v1** | The universal reflection/command registry goes in; AI Orchestration Service connects to it; the AI panel (Mechanic Composer) and AI Diff Review ship. |
 | **3 — Content Depth** | World Bible/lore graph, contradiction checking, dungeon layout generation, NPC schedule/behavior generation, cozy-sim content generation. |
 | **4 — Polish & Ecosystem** | Performance passes, local-model support, plugin/module marketplace groundwork. |
 | **5 — Platform & Engine Expansion** | Mobile export hardening, full 3D rendering path, broader genre support — the "become a general-purpose engine" phase. |

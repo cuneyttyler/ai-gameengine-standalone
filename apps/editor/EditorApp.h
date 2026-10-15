@@ -44,6 +44,8 @@ public:
 
     // Starts the AI service from `serviceDir` (ai_service/); call once after
     // construction. Without it, AI features report themselves unavailable.
+    // Does nothing while the user has AI turned off (a per-user preference,
+    // see UserPrefsPath); turning it back on starts the service then.
     void StartAi(const std::filesystem::path& serviceDir);
 
     void OnWebMessage(const nlohmann::json& message);
@@ -146,6 +148,9 @@ private:
     // The AI Orchestration Service (started with the editor; optional — the
     // editor is fully usable without it).
     std::unique_ptr<AiClient> ai_;
+    std::filesystem::path aiServiceDir_;
+    bool aiEnabled_ = true;
+    void SetAiEnabled(bool enabled);
     struct PendingProposal {
         std::string instruction;
         nlohmann::json proposal; // as the service returned it

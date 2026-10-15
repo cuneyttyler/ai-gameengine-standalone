@@ -197,8 +197,9 @@ generated field automatically gets the "Ask AI" affordance for free.
   - Host → UI: `scene:update`, `selection:changed`, `inspector:data|clear`,
     `editor:state` (tool, brush, playing, dirty, canUndo/canRedo, scene name),
     `assets:list`, `assets:select`, `prefabs:list`, `notify`.
-  - AI: UI → host `ai:send {text, focus}`, `ai:apply {id, items}`, `ai:reject {id}`; host →
-    UI `ai:status`, `ai:busy`, `ai:message`, `ai:proposal`, `ai:decided`, `ai:scriptCheck`.
+  - AI: UI → host `ai:send {text, focus}`, `ai:apply {id, items}`, `ai:reject {id}`,
+    `ai:setEnabled {enabled}`; host → UI `ai:status {state, text, enabled}`, `ai:busy`,
+    `ai:message`, `ai:proposal`, `ai:decided`, `ai:scriptCheck`.
 - The open project folder is served to the UI under a second virtual host
   (`aige-project.local`), so the Assets panel shows thumbnails straight from disk.
 - Viewport tools call the UI-independent `engine/editing` API (picking, painting,
@@ -228,18 +229,21 @@ comes from **this engine's Reflection & Command Registry** (§7) instead of a
 hand-curated ECS component list, since "every module" needs to be exposed generically,
 not enumerated per feature.
 
-## 11. Mode switching, technically
+## 11. Hand edits and AI edits, technically
 
-"AI-Driven" vs. "AI-Assisted" (`product.md` §4) is purely a UI-layer state: which panels
-are foregrounded/default-open in the editor shell. Both modes read/write the exact same
-project files through the exact same registry and asset pipeline — there is no separate
-serialization path, conversion step, or "AI project" flag on disk. This is enforced by
-construction: Inspector edits and applied AI proposals both go through
+There are no editor modes (`product.md` §4). Hand edits and AI edits read and write the
+exact same project files through the exact same registry and asset pipeline — there is no
+separate serialization path, conversion step, or "AI project" flag on disk. This is
+enforced by construction: Inspector edits and applied AI proposals both go through
 `engine/editing/Edits` (validate → write → record prefab override), never through a side
-channel, and `ModeParityTest` checks that the same edits made through each surface save
-byte-identical files. In the UI the mode is `editorState.mode`, kept in localStorage.
-AI-Driven shows the AI panel wide; AI-Assisted collapses it to a rail that ✦ Ask AI
-expands.
+channel, and `EditParityTest` checks that the same edits made each way save
+byte-identical files.
+
+UI state: the AI panel collapses to a rail (`editorState.aiOpen`, localStorage); ✦ Ask AI
+expands it. Whether AI is on at all is a per-user preference owned by the host,
+`%LOCALAPPDATA%\aige\editor.json` → `aiEnabled` (default on), toggled with
+`ai:setEnabled` and reported in `ai:status.enabled`. When it's off `EditorApp` never
+starts the sidecar (and stops a running one), so no project data leaves the machine.
 
 ## 12. Physics & audio
 

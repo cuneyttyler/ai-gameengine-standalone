@@ -28,7 +28,7 @@ add_executable(aige_tests
     ai_bridge_test.cpp
     proposal_test.cpp
     ai_gameplay_test.cpp
-    mode_parity_test.cpp
+    edit_parity_test.cpp
 )
 target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets aige_gameplay aige_editing aige_ai_bridge gtest_main)
 target_compile_definitions(aige_tests PRIVATE AIGE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

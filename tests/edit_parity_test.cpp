@@ -32,7 +32,7 @@ std::string ReadFile(const fs::path& path) {
 struct ProjectCopy {
     explicit ProjectCopy(const std::string& name) {
         fs::path source = fs::path(AIGE_SOURCE_DIR) / "projects" / "demo";
-        project.root = fs::temp_directory_path() / ("aige_mode_parity_" + name);
+        project.root = fs::temp_directory_path() / ("aige_edit_parity_" + name);
         fs::remove_all(project.root);
         fs::create_directories(project.root);
         for (const char* dir : {"scenes", "scripts", "prefabs"}) {
@@ -67,16 +67,15 @@ struct ProjectCopy {
 
 } // namespace
 
-// development_plan.md 2.6: "both modes read/write identical on-disk state for
-// the same edit performed through each mode's surface". The AI-Assisted
-// surface is the Inspector, which calls editing/Edits; the AI-Driven surface
-// is an applied proposal. The same changes made each way must produce
+// development_plan.md 2.6: an edit made by hand and the same edit made by the
+// AI must leave identical files. The Inspector calls editing/Edits directly;
+// an applied proposal goes through ApplyOperations. Both must produce
 // byte-identical scene and settings files — no conversion, no AI-only format.
-TEST(ModeParityTest, SameEditsThroughEitherSurfaceProduceIdenticalFiles) {
+TEST(EditParityTest, SameEditsByHandAndByAiProduceIdenticalFiles) {
     aige::RegisterEditingCommands(aige::EngineReflection());
     aige::ProjectSettings saved = aige::ActiveSettings();
 
-    // --- AI-Assisted: what the Inspector does for each edit -------------------
+    // --- By hand: what the Inspector does for each edit -----------------------
     aige::ActiveSettings() = aige::ProjectSettings{};
     ProjectCopy manual("manual");
     aige::Entity hero = manual.Named("Hero");
@@ -93,7 +92,7 @@ TEST(ModeParityTest, SameEditsThroughEitherSurfaceProduceIdenticalFiles) {
     EXPECT_FALSE(aige::EditSetting(r, "Combat", "knockbackScale", 1.5));
     manual.Save();
 
-    // --- AI-Driven: the same changes as an applied proposal ---------------------
+    // --- By the AI: the same changes as an applied proposal --------------------
     aige::ActiveSettings() = aige::ProjectSettings{};
     ProjectCopy driven("driven");
     auto id = [&](const std::string& name) { return static_cast<uint32_t>(driven.Named(name)); };

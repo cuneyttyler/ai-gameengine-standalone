@@ -241,6 +241,8 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
                 SetTool(static_cast<Tool>(i));
             }
         }
+    } else if (type == "ai:setEnabled") {
+        SetAiEnabled(message.value("enabled", true));
     } else if (type == "ai:send") {
         SendToAi(message.value("text", ""), message.value("focus", ""));
     } else if (type == "ai:apply") {
@@ -850,12 +852,68 @@ void EditorApp::OnAppActivated() {
 
 // --- AI ----------------------------------------------------------------------
 
+namespace {
+
+// Per-user editor preferences (not per project: whether you want AI help is
+// about how you work, not about the game). %LOCALAPPDATA%\aige\editor.json.
+std::filesystem::path UserPrefsPath() {
+    wchar_t* base = nullptr;
+    size_t length = 0;
+    std::filesystem::path dir;
+    if (_wdupenv_s(&base, &length, L"LOCALAPPDATA") == 0 && base != nullptr) {
+        dir = std::filesystem::path(base) / "aige";
+    }
+    free(base);
+    return dir.empty() ? std::filesystem::path() : dir / "editor.json";
+}
+
+nlohmann::json LoadUserPrefs() {
+    std::ifstream in(UserPrefsPath());
+    nlohmann::json prefs = nlohmann::json::parse(in, nullptr, false);
+    return prefs.is_object() ? prefs : nlohmann::json::object();
+}
+
+void SaveUserPref(const std::string& key, const nlohmann::json& value) {
+    std::filesystem::path path = UserPrefsPath();
+    if (path.empty()) {
+        return;
+    }
+    nlohmann::json prefs = LoadUserPrefs();
+    prefs[key] = value;
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    std::ofstream(path) << prefs.dump(2);
+}
+
+} // namespace
+
 void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
-    AiClient::Options options;
-    options.serviceDir = serviceDir;
-    ai_ = std::make_unique<AiClient>(options);
-    ai_->Start(EngineReflection().ExportSchema());
+    aiServiceDir_ = serviceDir;
+    aiEnabled_ = LoadUserPrefs().value("aiEnabled", true);
+    if (aiEnabled_) {
+        AiClient::Options options;
+        options.serviceDir = serviceDir;
+        ai_ = std::make_unique<AiClient>(options);
+        ai_->Start(EngineReflection().ExportSchema());
+    }
     post_(AiStatusJson());
+}
+
+void EditorApp::SetAiEnabled(bool enabled) {
+    if (enabled == aiEnabled_) {
+        post_(AiStatusJson());
+        return;
+    }
+    SaveUserPref("aiEnabled", enabled);
+    aiEnabled_ = enabled;
+    if (!enabled) {
+        ai_.reset(); // stops the service; nothing more is sent to the model
+        requestInstructions_.clear();
+        post_({{"type", "ai:busy"}, {"busy", false}});
+        post_(AiStatusJson());
+    } else if (!aiServiceDir_.empty()) {
+        StartAi(aiServiceDir_);
+    }
 }
 
 nlohmann::json EditorApp::AiStatusJson() {
@@ -868,7 +926,10 @@ nlohmann::json EditorApp::AiStatusJson() {
             case AiClient::State::Stopped: state = "off"; break;
         }
     }
-    return {{"type", "ai:status"}, {"state", state}, {"text", ai_ ? ai_->StatusText() : "AI is off"}};
+    return {{"type", "ai:status"},
+            {"state", state},
+            {"enabled", aiEnabled_},
+            {"text", ai_ ? ai_->StatusText() : aiEnabled_ ? "AI is off" : "AI is turned off"}};
 }
 
 void EditorApp::PollAi() {

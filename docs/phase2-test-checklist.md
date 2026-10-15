@@ -59,15 +59,15 @@ diff card that appears in the chat, click **Apply**, then **Play** and judge the
       (an "About Skeleton.Health.max" chip above the input). The next request is about it;
       **×** on the chip clears it.
 
-## 2.6 — Modes
+## 2.6 — AI panel, AI off, hand vs. AI edits
 
-- [ ] The toolbar toggle **Assisted / AI-Driven** switches instantly. AI-Driven shows a
-      wide AI panel; Assisted shows a thin ✦ AI rail on the right.
-- [ ] In Assisted, clicking the rail or any ✦ opens the panel, and **›** collapses it.
-      The conversation and any pending proposal are still there.
-- [ ] Switch modes mid-session, with unsaved edits and a pending proposal: nothing is lost,
-      and no prompt or conversion happens. Save, then restart: the mode is remembered, and
-      the scene is the same in either mode.
+- [ ] **›** in the AI panel header collapses it to a thin ✦ AI rail. Clicking the rail or
+      any ✦ Ask AI opens it again, and the conversation and any pending proposal are still
+      there. Restart: the panel comes back open or collapsed, as you left it.
+- [ ] **Turn off** in the AI panel header: the rail says "AI off", the ✦ Ask AI buttons
+      disappear, the panel offers **Turn on AI**, and the `uv`/python process is gone
+      (Task Manager). Restart: AI stays off and the service is never started. Everything
+      else in the editor works. **Turn on AI** starts it again.
 - [ ] Do the same edit by hand in the Inspector (e.g. Skeleton prefab copy → Health.max)
       that the AI did. The result is indistinguishable (same values, same prefab override
       marker).

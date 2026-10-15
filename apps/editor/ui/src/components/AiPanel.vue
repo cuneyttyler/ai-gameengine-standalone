@@ -4,7 +4,7 @@
 // edited, and nothing touches the project until "Apply". The host validates
 // again on apply and runs everything through the same code as manual edits.
 import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { editorState } from '../editorState'
+import { editorState, setAiEnabled, setAiOpen } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 import FieldEditor, { type FieldData } from './FieldEditor.vue'
 
@@ -207,17 +207,22 @@ const examples = [
         <span class="dot"></span>{{ editorState.ai.text }}
       </span>
       <button
-        v-if="editorState.mode === 'assisted'"
-        class="collapse"
-        title="Collapse the AI panel"
-        @click="editorState.aiOpen = false"
+        v-if="editorState.ai.enabled"
+        class="header-button power"
+        title="Turn AI off: stops the AI service, nothing is sent to the model"
+        @click="setAiEnabled(false)"
       >
-        ›
+        Turn off
       </button>
+      <button class="header-button" title="Collapse the AI panel" @click="setAiOpen(false)">›</button>
     </header>
 
     <div ref="listEl" class="entries">
-      <div v-if="entries.length === 0" class="empty">
+      <div v-if="!editorState.ai.enabled" class="empty">
+        <p>AI is turned off. The AI service isn't running and nothing is sent to the model.</p>
+        <button class="primary turn-on" @click="setAiEnabled(true)">Turn on AI</button>
+      </div>
+      <div v-else-if="entries.length === 0" class="empty">
         <p>Describe a change in plain language. You'll review every edit before anything is applied.</p>
         <button v-for="example in examples" :key="example" class="example" @click="input = example">
           {{ example }}
@@ -364,26 +369,31 @@ h2 {
   opacity: 0.7;
   margin: 0;
 }
-.collapse {
-  margin-left: auto;
+.header-button {
   flex-shrink: 0;
-  width: 22px;
+  min-width: 22px;
   height: 22px;
-  padding: 0;
+  padding: 0 6px;
   border: 1px solid #333;
   border-radius: 0;
   background: #11111b;
   color: #eee;
+  font: inherit;
+  font-size: 0.85em;
   cursor: pointer;
 }
-.collapse:hover {
+.header-button:hover {
   background: #262637;
+}
+.turn-on {
+  margin-top: 8px;
 }
 .status {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  margin-right: auto; /* pushes the header buttons right */
   opacity: 0.75;
   font-size: 0.85em;
   white-space: nowrap;

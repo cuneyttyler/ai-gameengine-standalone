@@ -13,10 +13,10 @@ class PrefabLibrary;
 class ReflectionRegistry;
 
 // The single write path for field-level edits, shared by every surface: the
-// Inspector (AI-Assisted mode) and applied AI proposals (AI-Driven mode).
-// Because both modes call exactly these functions, an edit made either way
+// Inspector and applied AI proposals.
+// Because both call exactly these functions, an edit made either way
 // produces identical project files (product.md §4.3, technical.md §11) —
-// enforced by construction, and checked by ModeParityTest.
+// enforced by construction, and checked by EditParityTest.
 //
 // Each validates against the reflection registry, writes, and records the
 // change as an override when the entity is a prefab copy. They return why

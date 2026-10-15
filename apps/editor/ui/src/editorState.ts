@@ -8,18 +8,16 @@ import { onHostMessage, sendToHost } from './ipc'
 // and the prefab brush (paints tile prefabs, places everything else).
 export type ToolId = 'select' | 'erase' | 'prefab'
 
-// The two working modes (product.md §4.3). They differ only in which surface
-// is in front: AI-Driven foregrounds the AI panel, AI-Assisted keeps it as a
-// rail you open on demand. Both write through the same engine path, so the
-// mode is a UI preference — nothing on disk depends on it.
-export type EditorMode = 'assisted' | 'driven'
-const MODE_KEY = 'aige.editor.mode'
+// Whether the AI panel is expanded or collapsed to its rail: a per-user
+// layout preference, so localStorage is enough. (Whether AI is on at all is
+// the host's per-user preference, reported in ai:status.)
+const AI_OPEN_KEY = 'aige.editor.aiOpen'
 
-function loadMode(): EditorMode {
+function loadAiOpen(): boolean {
   try {
-    return localStorage.getItem(MODE_KEY) === 'driven' ? 'driven' : 'assisted'
+    return localStorage.getItem(AI_OPEN_KEY) !== 'false'
   } catch {
-    return 'assisted'
+    return true
   }
 }
 
@@ -45,25 +43,28 @@ export const editorState = reactive({
   selectedId: null as number | null,
   notice: '',
   prefabs: [] as Prefab[],
-  ai: { state: 'off' as 'off' | 'starting' | 'ready' | 'failed', text: 'AI is off', busy: false },
+  ai: { state: 'off' as 'off' | 'starting' | 'ready' | 'failed', text: 'AI is off', busy: false, enabled: true },
   // Set by an Inspector field's "Ask AI"; the AI panel picks it up (n makes repeats distinct).
   aiAsk: { focus: '', n: 0 },
-  mode: loadMode(),
-  aiOpen: false, // AI-Assisted only: the panel is expanded from its rail
+  aiOpen: loadAiOpen(),
 })
 
-export function setMode(mode: EditorMode): void {
-  editorState.mode = mode
-  editorState.aiOpen = false
+export function setAiOpen(open: boolean): void {
+  editorState.aiOpen = open
   try {
-    localStorage.setItem(MODE_KEY, mode)
+    localStorage.setItem(AI_OPEN_KEY, String(open))
   } catch {
-    // Not persisting is fine; the editor starts in AI-Assisted next time.
+    // Not persisting is fine; the panel just opens next launch.
   }
 }
 
+// Turning AI off stops the service, so nothing is sent to the model.
+export function setAiEnabled(enabled: boolean): void {
+  sendToHost({ type: 'ai:setEnabled', enabled })
+}
+
 export function askAiAbout(focus: string): void {
-  editorState.aiOpen = true
+  setAiOpen(true)
   editorState.aiAsk = { focus, n: editorState.aiAsk.n + 1 }
 }
 
@@ -87,6 +88,7 @@ onHostMessage((message) => {
   } else if (message.type === 'ai:status') {
     editorState.ai.state = message.state as typeof editorState.ai.state
     editorState.ai.text = message.text as string
+    editorState.ai.enabled = (message.enabled as boolean | undefined) ?? true
   } else if (message.type === 'ai:busy') {
     editorState.ai.busy = message.busy as boolean
   } else if (message.type === 'prefabs:list') {

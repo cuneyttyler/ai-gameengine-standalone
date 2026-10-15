@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { editorState } from './editorState'
+import { editorState, setAiOpen } from './editorState'
 import SceneTree from './components/SceneTree.vue'
 import Inspector from './components/Inspector.vue'
 import ViewportHole from './components/ViewportHole.vue'
@@ -23,21 +23,13 @@ const MIN_ASSET_PANEL = 120
 const sidebarWidth = ref(320)
 const treeFraction = ref(0.45) // Scene Tree's share of the side panel's height
 const assetPanelHeight = ref(240)
-// The AI panel has a width per mode: AI-Driven foregrounds it (wide), AI-Assisted
-// keeps it as a rail that expands to a narrower width when opened.
+// The AI panel collapses to a thin rail; open/closed is remembered (editorState).
 const aiPanelWidth = ref(360)
-const drivenPanelWidth = ref(560)
 const MIN_AI_PANEL = 260
-const aiCollapsed = computed(() => editorState.mode === 'assisted' && !editorState.aiOpen)
-const aiWidth = computed(() => (editorState.mode === 'driven' ? drivenPanelWidth.value : aiPanelWidth.value))
+const aiCollapsed = computed(() => !editorState.aiOpen)
 
 function onAiPanelDrag(x: number): void {
-  const width = clamp(window.innerWidth - x, MIN_AI_PANEL, window.innerWidth - sidebarWidth.value - MIN_VIEWPORT)
-  if (editorState.mode === 'driven') {
-    drivenPanelWidth.value = width
-  } else {
-    aiPanelWidth.value = width
-  }
+  aiPanelWidth.value = clamp(window.innerWidth - x, MIN_AI_PANEL, window.innerWidth - sidebarWidth.value - MIN_VIEWPORT)
 }
 
 const sidePanel = ref<HTMLElement | null>(null)
@@ -74,7 +66,6 @@ function saveLayout(): void {
         treeFraction: treeFraction.value,
         assetPanelHeight: assetPanelHeight.value,
         aiPanelWidth: aiPanelWidth.value,
-        drivenPanelWidth: drivenPanelWidth.value,
       }),
     )
   } catch {
@@ -94,9 +85,6 @@ onMounted(() => {
     }
     if (saved && typeof saved.aiPanelWidth === 'number') {
       aiPanelWidth.value = clamp(saved.aiPanelWidth, MIN_AI_PANEL, window.innerWidth / 2)
-    }
-    if (saved && typeof saved.drivenPanelWidth === 'number') {
-      drivenPanelWidth.value = clamp(saved.drivenPanelWidth, MIN_AI_PANEL, window.innerWidth * 0.6)
     }
   } catch {
     // Corrupt or unavailable storage: keep the defaults.
@@ -130,16 +118,17 @@ onMounted(() => {
     <button
       v-if="aiCollapsed"
       class="ai-rail"
+      :class="{ off: !editorState.ai.enabled }"
       title="Open the AI panel"
-      @click="editorState.aiOpen = true"
+      @click="setAiOpen(true)"
     >
       <span class="rail-mark">✦</span>
-      <span class="rail-label">AI</span>
+      <span class="rail-label">{{ editorState.ai.enabled ? 'AI' : 'AI off' }}</span>
       <span v-if="editorState.ai.busy" class="rail-busy"></span>
     </button>
     <!-- v-show, not v-if: collapsing keeps the conversation and pending proposals. -->
     <Splitter v-show="!aiCollapsed" direction="horizontal" @drag="onAiPanelDrag" @end="saveLayout" />
-    <aside v-show="!aiCollapsed" class="ai-slot" :style="{ width: `${aiWidth}px` }">
+    <aside v-show="!aiCollapsed" class="ai-slot" :style="{ width: `${aiPanelWidth}px` }">
       <AiPanel />
     </aside>
   </div>
@@ -204,6 +193,9 @@ onMounted(() => {
 }
 .rail-mark {
   color: #3b82f6;
+}
+.ai-rail.off .rail-mark {
+  color: #666;
 }
 .rail-label {
   writing-mode: vertical-rl;

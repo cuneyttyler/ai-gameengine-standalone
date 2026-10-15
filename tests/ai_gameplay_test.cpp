@@ -41,7 +41,8 @@ protected:
         for (const char* dir : {"scenes", "scripts", "prefabs", "assets"}) {
             fs::copy(source_ / dir, root_ / dir, fs::copy_options::recursive);
         }
-        // The committed prefab, not any local edit in the working copy.
+        // Note: this is the working copy, so local edits to the demo (e.g. from
+        // a playtest) show up here; tests below shouldn't depend on them.
         project_ = aige::Project{root_};
         prefabs_ = std::make_unique<aige::PrefabLibrary>(project_);
         prefabs_->Refresh();
@@ -126,8 +127,10 @@ TEST_F(AiGameplayTest, BurningProposalMakesHitsBurnInPlay) {
 TEST_F(AiGameplayTest, DryRunCatchesTheBuggyModelWrittenScript) {
     fs::copy_file(fs::path(AIGE_SOURCE_DIR) / "tests" / "fixtures" / "model_written_flee_buggy.lua",
                   root_ / "scripts" / "flee.lua");
-    for (auto [entity, script] : registry_.view<aige::LuaScript>().each()) {
-        if (script.path == "scripts/enemy_melee.lua") {
+    // Every enemy runs it, whatever script the (possibly locally edited) demo
+    // prefab currently uses.
+    for (auto [entity, script, faction] : registry_.view<aige::LuaScript, aige::Faction>().each()) {
+        if (faction.team == aige::Team::Enemy) {
             script.path = "scripts/flee.lua";
         }
     }
