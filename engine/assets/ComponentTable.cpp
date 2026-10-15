@@ -149,6 +149,11 @@ std::vector<ComponentDesc> BuildTable() {
                                        Member("amount", FieldType::Float, &Pickup::amount),
                                        Member("radius", FieldType::Float, &Pickup::radius)},
                                       {"WorldTransform2D"}));
+    table.push_back(Component<Obstacle>("Obstacle", {}, {"WorldTransform2D"}));
+    table.push_back(Component<Sounds>("Sounds", {Member("attack", FieldType::Audio, &Sounds::attack),
+                                                 Member("hurt", FieldType::Audio, &Sounds::hurt),
+                                                 Member("death", FieldType::Audio, &Sounds::death),
+                                                 Member("collect", FieldType::Audio, &Sounds::collect)}));
     table.push_back(Component<Follow>("Follow",
                                       {Member("target", FieldType::EntityRef, &Follow::target),
                                        Member("speed", FieldType::Float, &Follow::speed),
@@ -284,6 +289,7 @@ std::string FormatField(const FieldDesc& field, const FieldValue& value,
         case FieldType::String:
         case FieldType::Texture:
         case FieldType::Script:
+        case FieldType::Audio:
             return Quote(ToString(value));
     }
     return {};
@@ -317,6 +323,7 @@ std::optional<FieldValue> ParseField(const FieldDesc& field, const std::string& 
             case FieldType::String:
             case FieldType::Texture:
             case FieldType::Script:
+            case FieldType::Audio:
                 return FieldValue(text);
         }
     } catch (const std::exception&) {

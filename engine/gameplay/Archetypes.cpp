@@ -70,6 +70,7 @@ Entity CreateProp(Registry& registry, float worldX, float worldY, const std::str
 Entity CreateNpc(Registry& registry, float worldX, float worldY, const std::string& scriptPath) {
     auto entity = registry.create();
     registry.emplace<Name>(entity, "NPC");
+    registry.emplace<Faction>(entity, Team::Neutral);
     registry.emplace<WorldTransform2D>(entity, worldX, worldY);
     AddCharacterVisuals(registry, entity, kNpcUV);
     if (!scriptPath.empty()) {

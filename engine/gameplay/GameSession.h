@@ -40,6 +40,10 @@ void UpdatePlayer(Registry& registry, Entity player, const KeyQueryFn& isKeyDown
 // targets.
 void UpdateFollowers(Registry& registry, const SolidQueryFn& isSolid, float dt);
 
+// Mirrors sprites horizontally to match their Facing (art is drawn facing
+// right), so characters look the way they move.
+void UpdateSpriteFacing(Registry& registry);
+
 // Re-derives ScreenTransform2D from WorldTransform2D (characters) and from
 // Tile (ground cells) — the one place world space meets screen space.
 // Content with neither keeps whatever ScreenTransform2D it was given.
@@ -77,6 +81,9 @@ public:
     void SetSoundPlayer(std::function<void(const std::string&)> playSound) { playSound_ = std::move(playSound); }
 
 private:
+    // TryMeleeAttack plus an Attack event (with the attacker's sound).
+    bool Swing(Entity attacker, float dirX, float dirY);
+
     // The Lua API every script gets (see docs/scripting.md).
     void BindScriptApi(sol::environment& env, Entity self);
 

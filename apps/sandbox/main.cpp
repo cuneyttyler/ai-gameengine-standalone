@@ -3,8 +3,10 @@
 #include "assets/AssetDatabase.h"
 #include "assets/Project.h"
 #include "assets/SceneIO.h"
+#include "audio/Audio.h"
 #include "ecs/Registry.h"
 #include "gameplay/BootstrapLevel.h"
+#include "gameplay/CameraFollow.h"
 #include "gameplay/GameSession.h"
 #include "platform/Input.h"
 #include "platform/Window.h"
@@ -40,6 +42,7 @@ int main(int argc, char** argv) {
 
         aige::AssetDatabase assets(project);
         renderer.SetTextureLoader([&assets](const std::string& path) { return assets.LoadTexture(path); });
+        aige::AudioEngine audio;
 
         // lua must outlive registry: LuaScript components store a
         // sol::environment referencing lua's Lua state, so registry (and
@@ -59,11 +62,25 @@ int main(int argc, char** argv) {
         loadLevel();
 
         aige::GameSession session(registry, lua, aige::BootstrapIso(), project.root);
+        session.SetSoundPlayer([&](const std::string& path) { audio.Play(project.Resolve(path)); });
         auto isKeyDown = [&window](aige::Key key) { return window.IsKeyDown(key); };
 
         using Clock = std::chrono::steady_clock;
         auto previousTime = Clock::now();
-        double restartIn = -1.0; // counts down after the player dies
+        double restartIn = -1.0; // counts down after the player dies or wins
+
+        // The camera follows the player; snapped into place whenever a level
+        // (re)starts so it doesn't sweep across the map.
+        aige::Camera2D camera;
+        auto snapCamera = [&]() {
+            aige::UpdateWorldToScreen(registry, aige::BootstrapIso());
+            if (auto player = aige::FindPlayer(registry)) {
+                VkExtent2D extent = rhi.SwapchainExtent();
+                aige::SnapCameraTo(camera, registry, *player, static_cast<float>(extent.width),
+                                   static_cast<float>(extent.height));
+            }
+        };
+        snapCamera();
 
         while (!window.ShouldClose()) {
             window.PollEvents();
@@ -82,6 +99,9 @@ int main(int argc, char** argv) {
                 if (event.type == aige::GameEvent::Type::Death && player && event.entity == *player) {
                     std::cout << "You died. Restarting..." << std::endl;
                     restartIn = 2.0;
+                } else if (event.type == aige::GameEvent::Type::Victory) {
+                    std::cout << "Victory! All enemies defeated. Restarting..." << std::endl;
+                    restartIn = 3.0;
                 }
             }
             if (restartIn >= 0.0) {
@@ -89,7 +109,14 @@ int main(int argc, char** argv) {
                 if (restartIn < 0.0) {
                     loadLevel();
                     session.ResetClock();
+                    snapCamera();
                 }
+            }
+
+            if (auto player = aige::FindPlayer(registry)) {
+                VkExtent2D extent = rhi.SwapchainExtent();
+                aige::FollowWithCamera(camera, registry, *player, static_cast<float>(extent.width),
+                                       static_cast<float>(extent.height), static_cast<float>(frameSeconds));
             }
 
             std::vector<aige::OverlayLine> overlay;
@@ -98,7 +125,7 @@ int main(int argc, char** argv) {
             VkCommandBuffer cmd = rhi.BeginFrame();
             if (cmd != VK_NULL_HANDLE) {
                 rhi.BeginSwapchainPass();
-                renderer.Render(cmd, registry, {}, overlay);
+                renderer.Render(cmd, registry, camera, overlay);
                 rhi.EndFrame();
             }
         }

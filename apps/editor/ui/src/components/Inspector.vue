@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 
-type FieldType = 'float' | 'int' | 'bool' | 'string' | 'enum' | 'entity' | 'texture' | 'script'
+type FieldType = 'float' | 'int' | 'bool' | 'string' | 'enum' | 'entity' | 'texture' | 'script' | 'audio'
 
 interface Field {
   name: string
@@ -27,6 +27,7 @@ interface InspectorData {
   choices: {
     entities: { id: number; label: string }[]
     textures: string[]
+    audio: string[]
     scripts: string[]
   }
 }
@@ -186,6 +187,18 @@ function fileName(path: string): string {
               <option value="">(built-in)</option>
               <option v-for="texture in current.choices.textures" :key="texture" :value="texture">
                 {{ fileName(texture) }}
+              </option>
+            </select>
+
+            <select
+              v-else-if="field.type === 'audio'"
+              :value="field.value as string"
+              :title="field.value as string"
+              @change="setField(component.name, field, ($event.target as HTMLSelectElement).value)"
+            >
+              <option value="">(none)</option>
+              <option v-for="sound in current.choices.audio" :key="sound" :value="sound">
+                {{ fileName(sound) }}
               </option>
             </select>
 

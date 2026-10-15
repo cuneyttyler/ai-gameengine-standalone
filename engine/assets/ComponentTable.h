@@ -29,6 +29,7 @@ enum class FieldType {
     EntityRef, // another entity; serialized by its index in the scene file
     Texture,   // project-relative texture asset path ("" = built-in atlas)
     Script,    // project-relative .lua path
+    Audio,     // project-relative audio asset path ("" = silent)
 };
 
 using FieldValue = std::variant<float, int, bool, std::string, Entity>;

@@ -318,6 +318,7 @@ ai-gameengine-standalone/
 │   └── tests/
 ├── projects/                   game projects: scenes/, scripts/, assets/ (+ .meta), .cache/
 │   └── demo/                   the default project the editor and sandbox open
+├── tools/                      dev tools: demo-art generator (Node), make_demo_level (C++)
 ├── templates/                  starter projects (Isometric ARPG, Cozy Sim)
 ├── tests/                      GoogleTest suites for engine/, top-level test runner
 └── tools/                      build/dev scripts

@@ -6,6 +6,7 @@
 #include "renderer2d/Renderer2D.h"
 
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace aige {
@@ -13,11 +14,20 @@ namespace aige {
 // Something that happened during a combat step, for the host to react to
 // (sounds, UI, game over) without polling every component.
 struct GameEvent {
-    enum class Type { Hit, Death, Pickup };
+    enum class Type {
+        Hit,     // entity took `amount` damage from `other`
+        Death,   // entity's health reached zero
+        Pickup,  // entity collected pickup `other`, healing `amount`
+        Attack,  // entity swung its MeleeAttack
+        Victory, // the last enemy died
+    };
     Type type;
-    Entity entity = entt::null; // who was hit / died / picked up
-    Entity other = entt::null;  // the attacker / the pickup
-    float amount = 0.0f;        // damage dealt / amount healed
+    Entity entity = entt::null;
+    Entity other = entt::null;
+    float amount = 0.0f;
+    // The sound to play for this event (from the relevant entity's Sounds;
+    // captured here because a dying entity is gone by the time it's read).
+    std::string sound;
 };
 
 Team TeamOf(Registry& registry, Entity entity);

@@ -103,6 +103,20 @@ void UpdateFollowers(Registry& registry, const SolidQueryFn& isSolid, float dt) 
     }
 }
 
+void UpdateSpriteFacing(Registry& registry) {
+    for (auto [entity, facing, sprite] : registry.view<Facing, Sprite>().each()) {
+        // Screen-horizontal component of the world-space facing direction.
+        float screenDx = facing.x - facing.y;
+        if (std::abs(screenDx) < 0.2f) {
+            continue; // moving straight up/down screen: keep the current side
+        }
+        bool wantFlipped = screenDx < 0.0f; // art faces right
+        if (wantFlipped != (sprite.u0 > sprite.u1)) {
+            std::swap(sprite.u0, sprite.u1);
+        }
+    }
+}
+
 void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
     auto view = registry.view<WorldTransform2D, ScreenTransform2D>();
     for (auto entity : view) {
@@ -174,6 +188,15 @@ void GameSession::ResetClock() {
     attackKeyWasDown_ = false;
     requestedAttack_.reset();
     events_.clear();
+}
+
+bool GameSession::Swing(Entity attacker, float dirX, float dirY) {
+    if (!TryMeleeAttack(registry_, attacker, dirX, dirY)) {
+        return false;
+    }
+    const auto* sounds = registry_.try_get<Sounds>(attacker);
+    events_.push_back({GameEvent::Type::Attack, attacker, entt::null, 0.0f, sounds ? sounds->attack : std::string()});
+    return true;
 }
 
 void GameSession::RequestPlayerAttack(float worldX, float worldY) {
@@ -283,7 +306,7 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
 
     // Swings this entity's MeleeAttack toward another entity (by id) or a
     // point (x, y). Returns true if the swing happened (not on cooldown).
-    env["attack_toward"] = [&registry, self](sol::object idOrX, sol::optional<float> y) {
+    env["attack_toward"] = [this, &registry, self](sol::object idOrX, sol::optional<float> y) {
         const auto* from = registry.try_get<WorldTransform2D>(self);
         if (from == nullptr || !idOrX.is<double>()) {
             return false;
@@ -302,7 +325,7 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
             tx = to->x;
             ty = to->y;
         }
-        return TryMeleeAttack(registry, self, tx - from->x, ty - from->y).has_value();
+        return Swing(self, tx - from->x, ty - from->y);
     };
 
     // apply_status(id, "burn" | "poison" | "slow" | "regen", seconds, magnitude)
@@ -332,6 +355,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
     auto isSolid = [this](int gx, int gy) { return grid_.IsSolid(gx, gy); };
 
     int steps = 0;
+    size_t soundsPlayed = 0;
     while (accumulator_ >= kFixedDt) {
         const float dt = static_cast<float>(kFixedDt);
         if (auto player = FindPlayer(registry_)) {
@@ -341,12 +365,12 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
             // not while held); a click swings toward the clicked point.
             bool attackKeyDown = isKeyDown(Key::Space);
             if (attackKeyDown && !attackKeyWasDown_) {
-                TryMeleeAttack(registry_, *player, 0.0f, 0.0f);
+                Swing(*player, 0.0f, 0.0f);
             }
             attackKeyWasDown_ = attackKeyDown;
             if (requestedAttack_) {
                 const auto& world = registry_.get<WorldTransform2D>(*player);
-                TryMeleeAttack(registry_, *player, requestedAttack_->first - world.x,
+                Swing(*player, requestedAttack_->first - world.x,
                                requestedAttack_->second - world.y);
                 requestedAttack_.reset();
             }
@@ -354,7 +378,14 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         UpdateFollowers(registry_, isSolid, dt);
         UpdateScripts(registry_, lua_, dt, binder_, scriptRoot_);
         UpdateCombat(registry_, isSolid, dt, events_);
+        UpdateSpriteFacing(registry_);
         UpdateWorldToScreen(registry_, iso_);
+
+        for (; soundsPlayed < events_.size(); ++soundsPlayed) {
+            if (playSound_ && !events_[soundsPlayed].sound.empty()) {
+                playSound_(events_[soundsPlayed].sound);
+            }
+        }
         accumulator_ -= kFixedDt;
         ++steps;
     }

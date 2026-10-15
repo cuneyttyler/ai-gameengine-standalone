@@ -138,6 +138,7 @@ private:
     // The selection when Play started, restored on Stop. Indices taken from
     // the live registry at Stop would be off once enemies die mid-play.
     std::optional<size_t> selectionIndexAtPlay_;
+    Camera2D cameraBeforePlay_;
 
     // Pointer state, in scene pixels.
     bool hasHover_ = false;

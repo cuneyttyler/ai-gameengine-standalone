@@ -139,7 +139,8 @@ float DealDamage(Registry& registry, Entity target, float amount, Entity source,
     health->current -= amount;
     StartHitFlash(registry, target);
     if (events) {
-        events->push_back({GameEvent::Type::Hit, target, source, amount});
+        const auto* sounds = registry.try_get<Sounds>(target);
+        events->push_back({GameEvent::Type::Hit, target, source, amount, sounds ? sounds->hurt : std::string()});
     }
     return amount;
 }
@@ -270,7 +271,9 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
                 continue; // don't waste a potion at full health
             }
             Heal(registry, *player, pickup.amount);
-            events.push_back({GameEvent::Type::Pickup, *player, entity, pickup.amount});
+            const auto* sounds = registry.try_get<Sounds>(entity);
+            events.push_back(
+                {GameEvent::Type::Pickup, *player, entity, pickup.amount, sounds ? sounds->collect : std::string()});
             expired.push_back(entity);
         }
     }
@@ -283,9 +286,21 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
             died.push_back(entity);
         }
     }
+    bool enemyDied = false;
     for (auto entity : died) {
         registry.emplace<Dead>(entity);
-        events.push_back({GameEvent::Type::Death, entity});
+        const auto* sounds = registry.try_get<Sounds>(entity);
+        events.push_back({GameEvent::Type::Death, entity, entt::null, 0.0f, sounds ? sounds->death : std::string()});
+        enemyDied |= TeamOf(registry, entity) == Team::Enemy;
+    }
+    if (enemyDied) {
+        bool enemiesLeft = false;
+        for (auto [entity, faction] : registry.view<Faction>(entt::exclude<Dead>).each()) {
+            enemiesLeft |= faction.team == Team::Enemy;
+        }
+        if (!enemiesLeft) {
+            events.push_back({GameEvent::Type::Victory});
+        }
     }
     auto player = FindPlayer(registry);
     for (auto entity : registry.view<Dead>()) {
@@ -305,8 +320,10 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
 
 void AppendHealthBars(Registry& registry, std::vector<OverlayLine>& out) {
     for (auto [entity, health, screen, sprite] : registry.view<Health, ScreenTransform2D, Sprite>().each()) {
-        if (health.max <= 0.0f || health.current >= health.max) {
-            continue; // full health: no bar, less clutter
+        // Full-health enemies get no bar (less clutter); the player's is always shown.
+        bool isPlayer = TeamOf(registry, entity) == Team::Player;
+        if (health.max <= 0.0f || (health.current >= health.max && !isPlayer)) {
+            continue;
         }
         float fraction = std::clamp(health.current / health.max, 0.0f, 1.0f);
         float width = std::max(24.0f, sprite.width * 0.8f);

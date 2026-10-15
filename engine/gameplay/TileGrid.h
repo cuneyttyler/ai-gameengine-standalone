@@ -10,6 +10,7 @@ namespace aige {
 // Snapshot of every Tile in a registry, keyed by cell, for collision queries
 // and "what's in this cell" lookups. Cheap to rebuild; GameSession rebuilds
 // it once per Advance so tiles edited mid-play take effect immediately.
+// Cells holding an Obstacle entity count as solid.
 class TileGrid {
 public:
     static TileGrid Build(Registry& registry);

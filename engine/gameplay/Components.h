@@ -138,6 +138,19 @@ struct HitFlash {
 // player stays (and stops responding) so the host can show a game over.
 struct Dead {};
 
+// Blocks movement through the cell it stands in (trees, rocks, crates) —
+// TileGrid treats that cell as solid.
+struct Obstacle {};
+
+// Sound effects (project-relative audio asset paths) played when this
+// entity swings, takes damage, dies, or — for a pickup — is collected.
+struct Sounds {
+    std::string attack;
+    std::string hurt;
+    std::string death;
+    std::string collect;
+};
+
 // Walks toward another entity (with collision) until within stopDistance.
 // The simplest useful "AI": an enemy that chases the player needs nothing
 // but this and a target. Distances in world grid units, speed in cells/s.

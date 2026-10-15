@@ -10,6 +10,7 @@ option(AIGE_BUILD_TESTS "Build engine unit tests" ON)
 add_subdirectory(engine)
 add_subdirectory(apps/sandbox)
 add_subdirectory(apps/editor)
+add_subdirectory(tools)
 
 if(AIGE_BUILD_TESTS)
     enable_testing()

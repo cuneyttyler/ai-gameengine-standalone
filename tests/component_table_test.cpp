@@ -127,7 +127,7 @@ TEST(ComponentTableTest, SceneRoundTripPreservesAllFieldTypesAndReferences) {
     auto enemy = aige::CreateNpc(registry, 2.5f, 2.5f);
     auto player = aige::CreatePlayer(registry, 5.5f, 5.5f);
     registry.get<aige::Name>(enemy).value = "Skeleton \"Bones\" Jr";
-    registry.emplace<aige::Faction>(enemy, aige::Team::Enemy);
+    registry.emplace_or_replace<aige::Faction>(enemy, aige::Team::Enemy);
     registry.emplace<aige::Health>(enemy, 7.0f, 12.0f);
     registry.emplace<aige::Follow>(enemy, player, 2.5f, 0.75f, 5.0f);
     auto dangling = registry.create();

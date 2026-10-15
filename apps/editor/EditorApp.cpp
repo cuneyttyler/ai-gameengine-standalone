@@ -6,6 +6,7 @@
 #include "assets/SceneIO.h"
 #include "editing/SceneEditing.h"
 #include "gameplay/BootstrapLevel.h"
+#include "gameplay/CameraFollow.h"
 #include "gameplay/Components.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
@@ -53,9 +54,12 @@ std::string DescribeKind(Registry& registry, Entity entity) {
     if (registry.all_of<LuaScript>(entity)) {
         return "Scripted NPC";
     }
+    // Characters belong to a side; props and scenery don't.
+    if (registry.all_of<WorldTransform2D, Faction>(entity)) {
+        return "NPC";
+    }
     if (registry.all_of<WorldTransform2D>(entity)) {
-        const auto* sprite = registry.try_get<Sprite>(entity);
-        return sprite && !sprite->texture.empty() ? "Prop" : "NPC";
+        return "Prop";
     }
     return "Decoration";
 }
@@ -672,6 +676,16 @@ void EditorApp::StartPlay() {
     session_.ResetClock();
     playing_ = true;
     sinceInspectorRefresh_ = 0.0;
+    // Play with a camera that follows the player; the editing view comes
+    // back on Stop.
+    cameraBeforePlay_ = camera_;
+    if (auto player = FindPlayer(registry_)) {
+        int width = 0;
+        int height = 0;
+        viewport_.GetFramebufferSize(width, height);
+        UpdateWorldToScreen(registry_, iso_);
+        SnapCameraTo(camera_, registry_, *player, static_cast<float>(width), static_cast<float>(height));
+    }
     viewport_.Focus(); // so WASD works without first clicking the viewport
     editorStateStale_ = true;
 }
@@ -684,6 +698,7 @@ void EditorApp::StopPlay() {
     playSnapshot_.clear();
     playing_ = false;
     RestoreSelection(selectionIndexAtPlay_);
+    camera_ = cameraBeforePlay_;
     sceneTreeStale_ = true;
     editorStateStale_ = true;
 }
@@ -697,11 +712,20 @@ void EditorApp::RestoreSelection(std::optional<size_t> index) {
 void EditorApp::Tick(double frameSeconds) {
     if (playing_) {
         session_.Advance(frameSeconds, [this](Key key) { return viewport_.IsKeyDown(key); });
+        auto player = FindPlayer(registry_);
         for (const auto& event : session_.Events()) {
-            auto player = FindPlayer(registry_);
             if (event.type == GameEvent::Type::Death && player && event.entity == *player) {
                 post_({{"type", "notify"}, {"text", "You died. Press Esc or Stop to return to editing."}});
+            } else if (event.type == GameEvent::Type::Victory) {
+                post_({{"type", "notify"}, {"text", "Victory! All enemies defeated."}});
             }
+        }
+        if (player && !panning_) {
+            int width = 0;
+            int height = 0;
+            viewport_.GetFramebufferSize(width, height);
+            FollowWithCamera(camera_, registry_, *player, static_cast<float>(width), static_cast<float>(height),
+                             static_cast<float>(frameSeconds));
         }
         sinceInspectorRefresh_ += frameSeconds;
         if (sinceInspectorRefresh_ >= kPlayInspectorRefreshSeconds) {
@@ -990,6 +1014,10 @@ nlohmann::json EditorApp::InspectorJson(Entity entity) {
                     entry["type"] = "script";
                     entry["value"] = std::get<std::string>(value);
                     break;
+                case FieldType::Audio:
+                    entry["type"] = "audio";
+                    entry["value"] = std::get<std::string>(value);
+                    break;
             }
             fields.push_back(entry);
         }
@@ -1007,9 +1035,10 @@ nlohmann::json EditorApp::InspectorJson(Entity entity) {
         }
     }
     nlohmann::json textures = nlohmann::json::array();
+    nlohmann::json audio = nlohmann::json::array();
     for (const auto& asset : assets_.Assets()) {
-        if (asset.type != AssetType::Audio && asset.error.empty()) {
-            textures.push_back(asset.path);
+        if (asset.error.empty()) {
+            (asset.type == AssetType::Audio ? audio : textures).push_back(asset.path);
         }
     }
 
@@ -1018,7 +1047,7 @@ nlohmann::json EditorApp::InspectorJson(Entity entity) {
             {"label", LabelOf(entity)},
             {"components", components},
             {"addable", addable},
-            {"choices", {{"entities", entities}, {"textures", textures}, {"scripts", ListScripts()}}}};
+            {"choices", {{"entities", entities}, {"textures", textures}, {"audio", audio}, {"scripts", ListScripts()}}}};
 }
 
 std::string EditorApp::LabelOf(Entity entity) {
@@ -1072,6 +1101,7 @@ bool EditorApp::ApplySetField(Entity entity, const std::string& componentName, c
             case FieldType::String:
             case FieldType::Texture:
             case FieldType::Script:
+            case FieldType::Audio:
                 field->set(registry_, entity, value.get<std::string>());
                 break;
             case FieldType::EntityRef: {

@@ -3,337 +3,1567 @@
 entity
   Tile gx=0 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=0 gy=1 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=0 gy=2 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=0 gy=3 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=0 gy=4 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=0 gy=5 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=0 gy=6 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=0 gy=7 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
   Tile gx=1 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=1 gy=1 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=1 gy=2 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=1 gy=3 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=1 gy=4 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=1 gy=5 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=1 gy=6 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=1 gy=7 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
   Tile gx=2 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=2 gy=1 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=2 gy=2 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=2 gy=3 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=2 gy=4 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=2 gy=5 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=2 gy=6 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=2 gy=7 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
   Tile gx=3 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=3 gy=1 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=3 gy=2 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=3 gy=3 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=3 gy=4 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=3 gy=5 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=3 gy=6 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=3 gy=7 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
   Tile gx=4 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=4 gy=1 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=4 gy=2 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=4 gy=3 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=4 gy=4 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=4 gy=5 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=4 gy=6 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=4 gy=7 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
   Tile gx=5 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=5 gy=1 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=5 gy=2 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=5 gy=3 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=5 gy=4 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=5 gy=5 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=5 gy=6 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=5 gy=7 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
   Tile gx=6 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
-
-entity
-  Tile gx=6 gy=1 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=6 gy=2 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=6 gy=3 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=6 gy=4 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=6 gy=5 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=6 gy=6 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
-
-entity
-  Tile gx=6 gy=7 solid=1
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
   Tile gx=7 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
-  Tile gx=7 gy=1 solid=1
+  Tile gx=8 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
-  Tile gx=7 gy=2 solid=1
+  Tile gx=9 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
-  Tile gx=7 gy=3 solid=1
+  Tile gx=10 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
-  Tile gx=7 gy=4 solid=1
+  Tile gx=11 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
-  Tile gx=7 gy=5 solid=1
+  Tile gx=12 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
-  Tile gx=7 gy=6 solid=1
+  Tile gx=13 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
-  Tile gx=7 gy=7 solid=1
+  Tile gx=14 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
-  WorldTransform2D x=5.5 y=2.5
+  Tile gx=15 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=32 height=48 u0=0.5 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
-  WorldTransform2D x=5.5 y=5.5
+  Tile gx=16 gy=0 solid=1
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=32 height=48 u0=0.5 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
-  LuaScript path=scripts/npc_wander.lua
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
 
 entity
-  WorldTransform2D x=3.5 y=3.5
+  Tile gx=17 gy=0 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=18 gy=0 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=19 gy=0 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=0 gy=1 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.25 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=7 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=8 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=9 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=10 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=11 gy=1 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=12 gy=1 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=13 gy=1 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=14 gy=1 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=15 gy=1 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=16 gy=1 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=17 gy=1 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=18 gy=1 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=19 gy=1 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=0 gy=2 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=7 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=8 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=9 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=10 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=11 gy=2 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=12 gy=2 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=13 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=14 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=15 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=16 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=17 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=18 gy=2 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.25 v0=0.5 u1=0.5 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=19 gy=2 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=0 gy=3 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.25 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=7 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=8 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=9 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=10 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=11 gy=3 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=12 gy=3 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=13 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=14 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=15 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=16 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=17 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=18 gy=3 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=19 gy=3 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=0 gy=4 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=7 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=8 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=9 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=10 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=11 gy=4 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=12 gy=4 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=13 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=14 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=15 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=16 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=17 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=18 gy=4 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=19 gy=4 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=0 gy=5 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=7 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=8 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=9 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=10 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=11 gy=5 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=12 gy=5 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=13 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=14 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=15 gy=5 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=16 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=17 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=18 gy=5 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=19 gy=5 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=0 gy=6 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=7 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=8 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=9 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=10 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=11 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=12 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=13 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=14 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=15 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=16 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=17 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=18 gy=6 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=19 gy=6 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=0 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=7 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=7 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=7 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=7 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=7 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=7 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.25 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=7 gy=7 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=8 gy=7 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=9 gy=7 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=10 gy=7 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=11 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=12 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=13 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.25 v0=0.5 u1=0.5 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=14 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=15 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=16 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=17 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=18 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0.5 u1=0.25 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=19 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=0 gy=8 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=7 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=8 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=9 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=10 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=11 gy=8 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=12 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=13 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=14 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=15 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=16 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=17 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=18 gy=8 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=19 gy=8 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=0 gy=9 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=9 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0.5 u1=0.75 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=9 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0.5 u1=0.75 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=7 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=8 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=9 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=10 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=11 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=12 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=13 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.25 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=14 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=15 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=16 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=17 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=18 gy=9 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=19 gy=9 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=0 gy=10 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=10 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0.5 u1=0.75 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=10 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0.5 u1=0.75 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=7 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=8 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.25 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=9 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=10 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=11 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=12 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=13 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=14 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=15 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=16 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=17 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=18 gy=10 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=19 gy=10 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=0 gy=11 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=7 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=8 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=9 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=10 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=11 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=12 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.5 v0=0 u1=0.75 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=13 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=14 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=15 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=16 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=17 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=18 gy=11 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=19 gy=11 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=0 gy=12 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=7 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=8 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=9 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.25 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=10 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=11 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=12 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=13 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=14 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=15 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=16 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=17 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=18 gy=12 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0 v0=0 u1=0.25 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=19 gy=12 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=0 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=7 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=8 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=9 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=10 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=11 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=12 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=13 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=14 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=15 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=16 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=17 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=18 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=19 gy=13 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.75 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Name value=Tree
+  WorldTransform2D x=7.5 y=1.5
+  Obstacle
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/tree.png width=64 height=96 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Name value=Tree
+  WorldTransform2D x=2.5 y=2.5
+  Obstacle
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/tree.png width=64 height=96 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Name value=Rock
+  WorldTransform2D x=7.5 y=9.5
+  Obstacle
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/rock.png width=32 height=24 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Name value=Tree
+  WorldTransform2D x=16.5 y=9.5
+  Obstacle
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/tree.png width=64 height=96 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Name value=Rock
+  WorldTransform2D x=16.5 y=10.5
+  Obstacle
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/rock.png width=32 height=24 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Name value=Tree
+  WorldTransform2D x=2.5 y=12.5
+  Obstacle
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/tree.png width=64 height=96 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Name value=Tree
+  WorldTransform2D x=15.5 y=12.5
+  Obstacle
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/tree.png width=64 height=96 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Name value=Player
+  WorldTransform2D x=4.5 y=11.5
   Velocity2D x=0 y=0
   Collider2D halfWidth=0.300000012 halfHeight=0.300000012
+  Faction team=Player
+  Health current=20 max=20
+  Stats attack=1 defense=0 moveSpeed=4.19999981
+  Hurtbox halfWidth=0.349999994 halfHeight=0.349999994 invulnerableTime=0.400000006
+  MeleeAttack damage=3 reach=0.699999988 radius=0.5 cooldown=0.349999994 knockback=0.5 effect=None effectDuration=3 effectMagnitude=1
+  Sounds attack=assets/audio/swing.wav hurt=assets/audio/hurt.wav death=assets/audio/death.wav collect=""
   ScreenTransform2D x=0 y=0 depth=0
-  Sprite width=32 height=48 u0=0 v0=0.5 u1=0.5 v1=1 r=1 g=1 b=1 a=1
+  Sprite texture=assets/textures/hero.png width=32 height=48 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Name value=Villager
+  WorldTransform2D x=5.5 y=2.5
+  Faction team=Neutral
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/villager.png width=32 height=48 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Name value="Health Potion"
+  WorldTransform2D x=8.5 y=1.5
+  Pickup kind=Heal amount=8 radius=0.5
+  Sounds attack="" hurt="" death="" collect=assets/audio/pickup.wav
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/potion.png width=16 height=20 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Name value="Skeleton 1"
+  WorldTransform2D x=15.5 y=9.5
+  Collider2D halfWidth=0.300000012 halfHeight=0.300000012
+  Faction team=Enemy
+  Health current=8 max=8
+  Stats attack=0 defense=0 moveSpeed=2
+  Hurtbox halfWidth=0.349999994 halfHeight=0.349999994 invulnerableTime=0.400000006
+  MeleeAttack damage=2 reach=0.699999988 radius=0.449999988 cooldown=1.20000005 knockback=0.300000012 effect=None effectDuration=3 effectMagnitude=1
+  Sounds attack=assets/audio/swing.wav hurt=assets/audio/hit.wav death=assets/audio/death.wav collect=""
+  Follow target=#287 speed=1.60000002 stopDistance=0.800000012 range=5
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/skeleton.png width=32 height=48 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+  LuaScript path=scripts/enemy_melee.lua
+
+entity
+  Name value="Skeleton 2"
+  WorldTransform2D x=17.5 y=11.5
+  Collider2D halfWidth=0.300000012 halfHeight=0.300000012
+  Faction team=Enemy
+  Health current=8 max=8
+  Stats attack=0 defense=0 moveSpeed=2
+  Hurtbox halfWidth=0.349999994 halfHeight=0.349999994 invulnerableTime=0.400000006
+  MeleeAttack damage=2 reach=0.699999988 radius=0.449999988 cooldown=1.20000005 knockback=0.300000012 effect=None effectDuration=3 effectMagnitude=1
+  Sounds attack=assets/audio/swing.wav hurt=assets/audio/hit.wav death=assets/audio/death.wav collect=""
+  Follow target=#287 speed=1.60000002 stopDistance=0.800000012 range=5
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/skeleton.png width=32 height=48 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+  LuaScript path=scripts/enemy_melee.lua
+
+entity
+  Name value="Health Potion"
+  WorldTransform2D x=13.5 y=10.5
+  Pickup kind=Heal amount=8 radius=0.5
+  Sounds attack="" hurt="" death="" collect=assets/audio/pickup.wav
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/potion.png width=16 height=20 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Name value="Skeleton 3"
+  WorldTransform2D x=14.5 y=3.5
+  Collider2D halfWidth=0.300000012 halfHeight=0.300000012
+  Faction team=Enemy
+  Health current=8 max=8
+  Stats attack=0 defense=0 moveSpeed=2
+  Hurtbox halfWidth=0.349999994 halfHeight=0.349999994 invulnerableTime=0.400000006
+  MeleeAttack damage=2 reach=0.699999988 radius=0.449999988 cooldown=1.20000005 knockback=0.300000012 effect=None effectDuration=3 effectMagnitude=1
+  Sounds attack=assets/audio/swing.wav hurt=assets/audio/hit.wav death=assets/audio/death.wav collect=""
+  Follow target=#287 speed=1.60000002 stopDistance=0.800000012 range=5
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/skeleton.png width=32 height=48 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+  LuaScript path=scripts/enemy_melee.lua
+
+entity
+  Name value="Skeleton 4"
+  WorldTransform2D x=17.5 y=5.5
+  Collider2D halfWidth=0.300000012 halfHeight=0.300000012
+  Faction team=Enemy
+  Health current=8 max=8
+  Stats attack=0 defense=0 moveSpeed=2
+  Hurtbox halfWidth=0.349999994 halfHeight=0.349999994 invulnerableTime=0.400000006
+  MeleeAttack damage=2 reach=0.699999988 radius=0.449999988 cooldown=1.20000005 knockback=0.300000012 effect=None effectDuration=3 effectMagnitude=1
+  Sounds attack=assets/audio/swing.wav hurt=assets/audio/hit.wav death=assets/audio/death.wav collect=""
+  Follow target=#287 speed=1.60000002 stopDistance=0.800000012 range=5
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/skeleton.png width=32 height=48 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+  LuaScript path=scripts/enemy_melee.lua
+
+entity
+  Name value="Health Potion"
+  WorldTransform2D x=17.5 y=2.5
+  Pickup kind=Heal amount=8 radius=0.5
+  Sounds attack="" hurt="" death="" collect=assets/audio/pickup.wav
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/potion.png width=16 height=20 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Name value=Crate
+  WorldTransform2D x=13.5 y=2.5
+  Obstacle
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/crate.png width=32 height=32 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  Name value=Crate
+  WorldTransform2D x=15.5 y=8.5
+  Obstacle
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/crate.png width=32 height=32 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1
