@@ -360,11 +360,24 @@ what it finds.
   run / headless playtest, read errors, revise — until checks pass or a step limit is hit,
   with progress shown in the chat. The developer reviews **one** combined result, never
   the intermediate attempts, and nothing touches the real project until it's accepted.
-- Builds on the dry run (2.5) and the "Ask AI to fix" loop, made automatic; needs a step
-  and token budget per request, and a Stop button.
+- **No separate button or mode.** Every request goes through the same Send. The AI
+  decides how to handle it:
+  - **Small:** one proposal, reviewed as today.
+  - **Feature-sized:** the AI decides whether the work needs planning, then works through
+    it in steps. The chat shows progress ("Step 2 of 5: playtesting…") with a **Stop**
+    button, and the result is one combined proposal reviewed like any other.
+  - **Too big for one go** (e.g. "make the whole dungeon crawler"): the AI doesn't start.
+    It asks the user to split the request into smaller parts, suggesting a split.
+- No user-facing "plan first" option and no per-request step setting. Planning and
+  splitting are the AI's judgment, guided by the prompt. A fixed internal safety limit on
+  steps and tokens still applies, so a runaway loop ends with an explanation instead of
+  running on.
+- Builds on the dry run (2.5) and the "Ask AI to fix" loop, made automatic.
 - Tests: a scripted provider that fails the first attempt and fixes it on the second
-  produces one final proposal; the step limit is enforced; cancelling leaves the project
-  untouched. User test: a feature-sized request ("add a dodge roll with i-frames") lands
+  produces one final proposal; the internal limit is enforced; cancelling leaves the
+  project untouched; golden prompts check the AI's judgment (a small request stays
+  single-step, a feature-sized one goes multi-step, an oversized one is answered with a
+  suggested split instead of a proposal). User test: a feature-sized request ("add a dodge roll with i-frames") lands
   working without manual follow-ups.
 
 ---
