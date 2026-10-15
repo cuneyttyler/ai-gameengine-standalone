@@ -43,7 +43,14 @@ export const editorState = reactive({
   selectedId: null as number | null,
   notice: '',
   prefabs: [] as Prefab[],
-  ai: { state: 'off' as 'off' | 'starting' | 'ready' | 'failed', text: 'AI is off', busy: false, enabled: true },
+  ai: {
+    state: 'off' as 'off' | 'starting' | 'ready' | 'failed',
+    text: 'AI is off',
+    busy: false,
+    enabled: false,
+    // 'undecided' until the user answers the first-run question; until then nothing runs.
+    choice: 'undecided' as 'undecided' | 'on' | 'off',
+  },
   // Set by an Inspector field's "Ask AI"; the AI panel picks it up (n makes repeats distinct).
   aiAsk: { focus: '', n: 0 },
   aiOpen: loadAiOpen(),
@@ -88,7 +95,8 @@ onHostMessage((message) => {
   } else if (message.type === 'ai:status') {
     editorState.ai.state = message.state as typeof editorState.ai.state
     editorState.ai.text = message.text as string
-    editorState.ai.enabled = (message.enabled as boolean | undefined) ?? true
+    editorState.ai.enabled = message.enabled as boolean
+    editorState.ai.choice = message.choice as typeof editorState.ai.choice
   } else if (message.type === 'ai:busy') {
     editorState.ai.busy = message.busy as boolean
   } else if (message.type === 'prefabs:list') {

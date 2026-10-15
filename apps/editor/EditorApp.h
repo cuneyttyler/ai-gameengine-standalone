@@ -1,6 +1,8 @@
 #pragma once
 
 #include "ai_bridge/AiClient.h"
+#include "ai_bridge/AiConnection.h"
+#include "ai_bridge/UserPrefs.h"
 #include "assets/AssetDatabase.h"
 #include "assets/Prefab.h"
 #include "audio/Audio.h"
@@ -44,8 +46,8 @@ public:
 
     // Starts the AI service from `serviceDir` (ai_service/); call once after
     // construction. Without it, AI features report themselves unavailable.
-    // Does nothing while the user has AI turned off (a per-user preference,
-    // see UserPrefsPath); turning it back on starts the service then.
+    // Does nothing until the user has said yes to AI (a per-user preference,
+    // see AiConnection); turning it on later starts the service then.
     void StartAi(const std::filesystem::path& serviceDir);
 
     void OnWebMessage(const nlohmann::json& message);
@@ -147,9 +149,9 @@ private:
     PrefabLibrary prefabs_;
     // The AI Orchestration Service (started with the editor; optional — the
     // editor is fully usable without it).
-    std::unique_ptr<AiClient> ai_;
-    std::filesystem::path aiServiceDir_;
-    bool aiEnabled_ = true;
+    std::unique_ptr<UserPrefs> userPrefs_;
+    std::unique_ptr<AiConnection> aiConnection_; // runs the service only if the user said yes
+    AiClient* Ai();                              // null while AI is off or not set up
     void SetAiEnabled(bool enabled);
     struct PendingProposal {
         std::string instruction;

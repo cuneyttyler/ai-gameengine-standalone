@@ -852,91 +852,60 @@ void EditorApp::OnAppActivated() {
 
 // --- AI ----------------------------------------------------------------------
 
-namespace {
-
-// Per-user editor preferences (not per project: whether you want AI help is
-// about how you work, not about the game). %LOCALAPPDATA%\aige\editor.json.
-std::filesystem::path UserPrefsPath() {
-    wchar_t* base = nullptr;
-    size_t length = 0;
-    std::filesystem::path dir;
-    if (_wdupenv_s(&base, &length, L"LOCALAPPDATA") == 0 && base != nullptr) {
-        dir = std::filesystem::path(base) / "aige";
-    }
-    free(base);
-    return dir.empty() ? std::filesystem::path() : dir / "editor.json";
-}
-
-nlohmann::json LoadUserPrefs() {
-    std::ifstream in(UserPrefsPath());
-    nlohmann::json prefs = nlohmann::json::parse(in, nullptr, false);
-    return prefs.is_object() ? prefs : nlohmann::json::object();
-}
-
-void SaveUserPref(const std::string& key, const nlohmann::json& value) {
-    std::filesystem::path path = UserPrefsPath();
-    if (path.empty()) {
-        return;
-    }
-    nlohmann::json prefs = LoadUserPrefs();
-    prefs[key] = value;
-    std::error_code ec;
-    std::filesystem::create_directories(path.parent_path(), ec);
-    std::ofstream(path) << prefs.dump(2);
-}
-
-} // namespace
-
 void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
-    aiServiceDir_ = serviceDir;
-    aiEnabled_ = LoadUserPrefs().value("aiEnabled", true);
-    if (aiEnabled_) {
+    userPrefs_ = std::make_unique<UserPrefs>(UserPrefs::DefaultPath());
+    aiConnection_ = std::make_unique<AiConnection>(*userPrefs_, [serviceDir]() {
         AiClient::Options options;
         options.serviceDir = serviceDir;
-        ai_ = std::make_unique<AiClient>(options);
-        ai_->Start(EngineReflection().ExportSchema());
+        auto client = std::make_unique<AiClient>(options);
+        client->Start(EngineReflection().ExportSchema());
+        return client;
+    });
+    aiConnection_->Start(); // only if the user has said yes to AI
+    post_(AiStatusJson());
+}
+
+AiClient* EditorApp::Ai() {
+    return aiConnection_ ? aiConnection_->Client() : nullptr;
+}
+
+void EditorApp::SetAiEnabled(bool enabled) {
+    if (!aiConnection_) {
+        return;
+    }
+    aiConnection_->SetEnabled(enabled);
+    if (!enabled) {
+        requestInstructions_.clear();
+        post_({{"type", "ai:busy"}, {"busy", false}});
     }
     post_(AiStatusJson());
 }
 
-void EditorApp::SetAiEnabled(bool enabled) {
-    if (enabled == aiEnabled_) {
-        post_(AiStatusJson());
-        return;
-    }
-    SaveUserPref("aiEnabled", enabled);
-    aiEnabled_ = enabled;
-    if (!enabled) {
-        ai_.reset(); // stops the service; nothing more is sent to the model
-        requestInstructions_.clear();
-        post_({{"type", "ai:busy"}, {"busy", false}});
-        post_(AiStatusJson());
-    } else if (!aiServiceDir_.empty()) {
-        StartAi(aiServiceDir_);
-    }
-}
-
 nlohmann::json EditorApp::AiStatusJson() {
+    AiClient* ai = Ai();
     std::string state = "off";
-    if (ai_) {
-        switch (ai_->GetState()) {
+    if (ai) {
+        switch (ai->GetState()) {
             case AiClient::State::Starting: state = "starting"; break;
             case AiClient::State::Ready: state = "ready"; break;
             case AiClient::State::Failed: state = "failed"; break;
             case AiClient::State::Stopped: state = "off"; break;
         }
     }
+    AiChoice choice = aiConnection_ ? aiConnection_->Choice() : AiChoice::Off;
+    const char* text = choice == AiChoice::Undecided ? "AI not set up yet" : "AI is turned off";
     return {{"type", "ai:status"},
             {"state", state},
-            {"enabled", aiEnabled_},
-            {"text", ai_ ? ai_->StatusText() : aiEnabled_ ? "AI is off" : "AI is turned off"}};
+            {"enabled", choice == AiChoice::On},
+            {"choice", choice == AiChoice::On ? "on" : choice == AiChoice::Off ? "off" : "undecided"},
+            {"text", ai ? ai->StatusText() : text}};
 }
 
 void EditorApp::PollAi() {
-    if (!ai_) {
+    if (!Ai()) {
         return;
     }
-    while (auto result = ai_->Poll()) {
+    while (auto result = Ai()->Poll()) {
         if (result->kind == AiClient::Result::Kind::Status) {
             post_(AiStatusJson());
         } else {
@@ -946,7 +915,7 @@ void EditorApp::PollAi() {
 }
 
 void EditorApp::SendToAi(const std::string& text, const std::string& focus) {
-    if (!ai_ || text.empty()) {
+    if (!Ai() || text.empty()) {
         return;
     }
     if (playing_) {
@@ -966,7 +935,7 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus) {
         history.push_back({{"role", conversation_[i].first}, {"content", conversation_[i].second}});
     }
 
-    int id = ai_->Propose(text, context, history);
+    int id = Ai()->Propose(text, context, history);
     requestInstructions_[id] = text;
     conversation_.emplace_back("user", text);
     post_({{"type", "ai:message"}, {"role", "user"}, {"text", text}, {"requestId", id}});

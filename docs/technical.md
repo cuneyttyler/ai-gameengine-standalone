@@ -198,7 +198,7 @@ generated field automatically gets the "Ask AI" affordance for free.
     `editor:state` (tool, brush, playing, dirty, canUndo/canRedo, scene name),
     `assets:list`, `assets:select`, `prefabs:list`, `notify`.
   - AI: UI → host `ai:send {text, focus}`, `ai:apply {id, items}`, `ai:reject {id}`,
-    `ai:setEnabled {enabled}`; host → UI `ai:status {state, text, enabled}`, `ai:busy`,
+    `ai:setEnabled {enabled}`; host → UI `ai:status {state, text, enabled, choice}`, `ai:busy`,
     `ai:message`, `ai:proposal`, `ai:decided`, `ai:scriptCheck`.
 - The open project folder is served to the UI under a second virtual host
   (`aige-project.local`), so the Assets panel shows thumbnails straight from disk.
@@ -240,10 +240,12 @@ channel, and `EditParityTest` checks that the same edits made each way save
 byte-identical files.
 
 UI state: the AI panel collapses to a rail (`editorState.aiOpen`, localStorage); ✦ Ask AI
-expands it. Whether AI is on at all is a per-user preference owned by the host,
-`%LOCALAPPDATA%\aige\editor.json` → `aiEnabled` (default on), toggled with
-`ai:setEnabled` and reported in `ai:status.enabled`. When it's off `EditorApp` never
-starts the sidecar (and stops a running one), so no project data leaves the machine.
+expands it. Whether AI is on at all is a per-user preference (`ai_bridge/UserPrefs`,
+`%LOCALAPPDATA%\aige\editor.json` → `aiEnabled`). It's opt-in: absent means undecided,
+and the AI panel asks on first run. It's toggled with `ai:setEnabled` and reported in
+`ai:status {enabled, choice}`. `ai_bridge/AiConnection` launches the sidecar only while
+the choice is On and stops it on Off, so until the user opts in no project data leaves
+the machine.
 
 ## 12. Physics & audio
 

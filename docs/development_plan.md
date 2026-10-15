@@ -343,6 +343,17 @@ what it finds.
   it's off.
 - Tests: with AI off the editor never launches the service (C++ test on `EditorApp`'s
   start logic); the Phase 1 manual checklist still passes with AI off.
+- ✅ Built: AI is now **opt-in**. On first launch nothing AI-related runs. The AI panel
+  asks "Use AI in this editor?" and lists exactly what a request sends: the message, the
+  scene's entities/components/values and tile counts, prefabs, settings, asset file
+  names, Lua script sources, and the earlier conversation. **Turn on AI** and **Not now**
+  are both remembered. The start logic moved out of `EditorApp` into
+  `ai_bridge/AiConnection`, which launches the service only while the choice is On and
+  stops it on Off. `ai_bridge/UserPrefs` is the per-user preference file, which 2.8 reuses.
+  `AiConnectionTest`, with an injected launcher that counts launches, checks: undecided
+  and off never launch, on launches once, off stops it, and the choice survives a
+  restart. Not done: a Preferences page, because none exists yet; the switch stays in
+  the AI panel header until there is one.
 
 **2.8 — Review policy**
 - A per-user preference for which proposal items apply without review. Default: review

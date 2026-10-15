@@ -118,12 +118,12 @@ onMounted(() => {
     <button
       v-if="aiCollapsed"
       class="ai-rail"
-      :class="{ off: !editorState.ai.enabled }"
+      :class="{ off: editorState.ai.choice === 'off' }"
       title="Open the AI panel"
       @click="setAiOpen(true)"
     >
       <span class="rail-mark">✦</span>
-      <span class="rail-label">{{ editorState.ai.enabled ? 'AI' : 'AI off' }}</span>
+      <span class="rail-label">{{ editorState.ai.choice === 'off' ? 'AI off' : 'AI' }}</span>
       <span v-if="editorState.ai.busy" class="rail-busy"></span>
     </button>
     <!-- v-show, not v-if: collapsing keeps the conversation and pending proposals. -->

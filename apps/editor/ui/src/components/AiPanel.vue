@@ -218,7 +218,26 @@ const examples = [
     </header>
 
     <div ref="listEl" class="entries">
-      <div v-if="!editorState.ai.enabled" class="empty">
+      <div v-if="editorState.ai.choice === 'undecided'" class="empty first-run">
+        <p><strong>Use AI in this editor?</strong></p>
+        <p>
+          You can describe changes in plain language and review each one before it's applied. Everything
+          else in the editor works without AI.
+        </p>
+        <p>When AI is on, each request sends your message to the AI provider (Mistral), along with:</p>
+        <ul>
+          <li>the open scene's entities, their components and values, and tile counts</li>
+          <li>your prefabs, project settings and asset file names</li>
+          <li>the source of your Lua scripts</li>
+          <li>the earlier messages in the conversation</li>
+        </ul>
+        <p>Nothing is sent until you turn it on, and you can turn it off at any time.</p>
+        <div class="first-run-buttons">
+          <button class="primary" @click="setAiEnabled(true)">Turn on AI</button>
+          <button @click="setAiEnabled(false)">Not now</button>
+        </div>
+      </div>
+      <div v-else-if="!editorState.ai.enabled" class="empty">
         <p>AI is turned off. The AI service isn't running and nothing is sent to the model.</p>
         <button class="primary turn-on" @click="setAiEnabled(true)">Turn on AI</button>
       </div>
@@ -384,6 +403,16 @@ h2 {
 }
 .header-button:hover {
   background: #262637;
+}
+.first-run ul {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  opacity: 0.8;
+}
+.first-run-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
 }
 .turn-on {
   margin-top: 8px;
