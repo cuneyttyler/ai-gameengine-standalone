@@ -15,8 +15,8 @@ const entities = ref<EntitySummary[]>([])
 // collapsed by default.
 const groups = computed(() => [
   { name: 'Characters', items: entities.value.filter((e) => ['Player', 'NPC', 'Scripted NPC'].includes(e.kind)) },
+  { name: 'Props', items: entities.value.filter((e) => e.kind === 'Prop' || e.kind === 'Decoration') },
   { name: 'Tiles', items: entities.value.filter((e) => e.kind === 'Tile') },
-  { name: 'Other', items: entities.value.filter((e) => e.kind === 'Decoration') },
 ])
 const collapsed = reactive<Record<string, boolean>>({ Tiles: true })
 

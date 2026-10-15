@@ -10,6 +10,8 @@ const hints: Record<string, string> = {
   'place:npc': 'Click a cell to place an NPC',
   'place:player': 'Click a cell to place the player (moves the existing one)',
   erase: 'Click or drag to erase',
+  'place:sprite': 'Click a cell to place the selected asset as a prop',
+  'tile:asset': 'Click or drag to paint tiles from the selected tileset',
 }
 
 const hint = computed(() =>

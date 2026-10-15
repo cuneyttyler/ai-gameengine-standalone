@@ -125,6 +125,15 @@ proven *before* any AI integration exists to lean on.
 - Import sprites/tilesets/audio from disk into the project's asset format; basic asset
   browser panel.
 - Tests: import round-trip tests (known source file → expected cooked asset).
+- ✅ Built (user test deferred to end of Phase 1): projects as folders
+  (`projects/demo`: `scenes/`, `scripts/`, `assets/`, git-ignored `.cache/`) with every
+  stored path project-relative; `AssetDatabase` (import with collision-safe naming,
+  `.meta` sidecars for import settings, texture cooking to raw RGBA8 with staleness
+  checks, audio validation via miniaudio); multi-texture `Renderer2D` with lazy loading
+  and invalidation; Assets panel (thumbnails, import dialog, texture/tileset settings,
+  tile picker, tile brush, prop placement, apply-to-selected, audio preview); assets
+  rescan when the editor regains focus, so external edits hot-reload. The sandbox is
+  now a project player (`sandbox [--project] <dir>`).
 
 **1.4 — Component authoring UI**
 - Add/remove components on entities through the inspector; component data editing

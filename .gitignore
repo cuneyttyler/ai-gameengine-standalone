@@ -5,6 +5,7 @@ out/
 *.user
 CMakeUserPresets.json
 *.log
-apps/sandbox/scene_save.aige
+
 build_scratch/
 *.bak
+projects/*/.cache/

@@ -4,10 +4,11 @@
 #include "rhi/ShaderUtil.h"
 
 #include <algorithm>
-#include <cmath>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -30,12 +31,18 @@ struct SpriteVertex {
 
 constexpr uint32_t kAtlasSize = 64;
 
+// Descriptor sets are one per texture; the pool bounds how many distinct
+// textures can be live at once.
+constexpr uint32_t kMaxTextures = 512;
+
 // Procedural placeholder atlas: a 2x2 grid of bordered, distinctly colored
-// quadrants (grass / dirt / player-marker / npc-marker). Real texture import
-// (stb_image, .png assets) is Phase 1 milestone 1.3 — this exists purely to
-// prove the atlas-UV/texturing pipeline end to end before real art exists.
-std::vector<uint8_t> GenerateAtlasPixels() {
-    std::vector<uint8_t> pixels(static_cast<size_t>(kAtlasSize) * kAtlasSize * 4);
+// quadrants (grass / dirt / player-marker / npc-marker). Sprites with no
+// `texture` sample it; it's also the fallback when a texture fails to load.
+ImageData GenerateAtlas() {
+    ImageData image;
+    image.width = kAtlasSize;
+    image.height = kAtlasSize;
+    image.rgba.resize(static_cast<size_t>(kAtlasSize) * kAtlasSize * 4);
     const uint32_t half = kAtlasSize / 2;
 
     for (uint32_t y = 0; y < kAtlasSize; ++y) {
@@ -72,20 +79,21 @@ std::vector<uint8_t> GenerateAtlasPixels() {
             }
 
             size_t idx = (static_cast<size_t>(y) * kAtlasSize + x) * 4;
-            pixels[idx + 0] = r;
-            pixels[idx + 1] = g;
-            pixels[idx + 2] = b;
-            pixels[idx + 3] = 255;
+            image.rgba[idx + 0] = r;
+            image.rgba[idx + 1] = g;
+            image.rgba[idx + 2] = b;
+            image.rgba[idx + 3] = 255;
         }
     }
-    return pixels;
+    return image;
 }
 
 } // namespace
 
 Renderer2D::Renderer2D(VulkanRHI& rhi, VkRenderPass targetRenderPass) : rhi_(rhi), targetRenderPass_(targetRenderPass) {
-    CreateAtlasTexture();
-    CreateDescriptorSet();
+    CreateSampler();
+    CreateDescriptorLayoutAndPool();
+    builtinAtlas_ = UploadTexture(GenerateAtlas());
     CreatePipeline();
     CreateVertexBuffers();
 }
@@ -100,16 +108,63 @@ Renderer2D::~Renderer2D() {
         }
     }
 
+    for (auto& [path, texture] : textures_) {
+        DestroyTexture(texture);
+    }
+    DestroyTexture(builtinAtlas_);
+
     vkDestroyPipeline(device, pipeline_, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout_, nullptr);
     vkDestroyDescriptorPool(device, descriptorPool_, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptorSetLayout_, nullptr);
+    vkDestroySampler(device, sampler_, nullptr);
+}
 
-    vkDestroySampler(device, atlasSampler_, nullptr);
-    vkDestroyImageView(device, atlasImageView_, nullptr);
-    if (atlasImage_ != VK_NULL_HANDLE) {
-        vmaDestroyImage(rhi_.Allocator(), atlasImage_, atlasAllocation_);
+void Renderer2D::SetTextureLoader(TextureLoader loader) {
+    loader_ = std::move(loader);
+}
+
+void Renderer2D::InvalidateTexture(const std::string& path) {
+    auto it = textures_.find(path);
+    if (it == textures_.end()) {
+        return;
     }
+    // Rare (asset reimport), so a full wait is simpler than deferring the
+    // destroy until no in-flight frame references the texture.
+    vkDeviceWaitIdle(rhi_.Device());
+    DestroyTexture(it->second);
+    textures_.erase(it);
+}
+
+std::optional<Renderer2D::TextureSize> Renderer2D::TextureSizeOf(const std::string& path) {
+    const Texture& texture = Resolve(path);
+    if (&texture == &builtinAtlas_) {
+        return std::nullopt;
+    }
+    return TextureSize{texture.width, texture.height};
+}
+
+const Renderer2D::Texture& Renderer2D::Resolve(const std::string& path) {
+    if (path.empty()) {
+        return builtinAtlas_;
+    }
+    auto it = textures_.find(path);
+    if (it != textures_.end()) {
+        return it->second.image != VK_NULL_HANDLE ? it->second : builtinAtlas_;
+    }
+
+    // First use: load through the app-provided loader. A failure is cached
+    // as an empty entry so a missing file is reported once, not every frame.
+    Texture texture;
+    std::optional<ImageData> image = loader_ ? loader_(path) : std::nullopt;
+    if (image && image->width > 0 && image->height > 0 &&
+        image->rgba.size() == static_cast<size_t>(image->width) * image->height * 4) {
+        texture = UploadTexture(*image);
+    } else {
+        std::cerr << "[Renderer2D] texture unavailable, using placeholder: " << path << std::endl;
+    }
+    auto [inserted, ok] = textures_.emplace(path, texture);
+    return inserted->second.image != VK_NULL_HANDLE ? inserted->second : builtinAtlas_;
 }
 
 void Renderer2D::RunOneTimeCommands(const std::function<void(VkCommandBuffer)>& recordFn) {
@@ -138,9 +193,49 @@ void Renderer2D::RunOneTimeCommands(const std::function<void(VkCommandBuffer)>& 
     vkFreeCommandBuffers(rhi_.Device(), rhi_.CommandPool(), 1, &cmd);
 }
 
-void Renderer2D::CreateAtlasTexture() {
-    std::vector<uint8_t> pixels = GenerateAtlasPixels();
-    VkDeviceSize imageSize = pixels.size();
+void Renderer2D::CreateSampler() {
+    // Nearest filtering: the target look is crisp pixel art.
+    VkSamplerCreateInfo samplerInfo{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    samplerInfo.magFilter = VK_FILTER_NEAREST;
+    samplerInfo.minFilter = VK_FILTER_NEAREST;
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    VkCheck(vkCreateSampler(rhi_.Device(), &samplerInfo, nullptr, &sampler_), "vkCreateSampler");
+}
+
+void Renderer2D::CreateDescriptorLayoutAndPool() {
+    VkDescriptorSetLayoutBinding binding{};
+    binding.binding = 0;
+    binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    binding.descriptorCount = 1;
+    binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &binding;
+    VkCheck(vkCreateDescriptorSetLayout(rhi_.Device(), &layoutInfo, nullptr, &descriptorSetLayout_),
+            "vkCreateDescriptorSetLayout");
+
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSize.descriptorCount = kMaxTextures;
+
+    VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT; // textures can be invalidated
+    poolInfo.maxSets = kMaxTextures;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    VkCheck(vkCreateDescriptorPool(rhi_.Device(), &poolInfo, nullptr, &descriptorPool_), "vkCreateDescriptorPool");
+}
+
+Renderer2D::Texture Renderer2D::UploadTexture(const ImageData& image) {
+    Texture texture;
+    texture.width = image.width;
+    texture.height = image.height;
+    VkDeviceSize imageSize = image.rgba.size();
 
     VkBufferCreateInfo stagingInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     stagingInfo.size = imageSize;
@@ -158,11 +253,11 @@ void Renderer2D::CreateAtlasTexture() {
     VkCheck(vmaCreateBuffer(rhi_.Allocator(), &stagingInfo, &stagingAllocInfo, &stagingBuffer, &stagingAllocation,
                              &stagingInfoOut),
             "vmaCreateBuffer(staging)");
-    std::memcpy(stagingInfoOut.pMappedData, pixels.data(), static_cast<size_t>(imageSize));
+    std::memcpy(stagingInfoOut.pMappedData, image.rgba.data(), static_cast<size_t>(imageSize));
 
     VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.extent = {kAtlasSize, kAtlasSize, 1};
+    imageInfo.extent = {image.width, image.height, 1};
     imageInfo.mipLevels = 1;
     imageInfo.arrayLayers = 1;
     imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -175,7 +270,7 @@ void Renderer2D::CreateAtlasTexture() {
     VmaAllocationCreateInfo imageAllocInfo{};
     imageAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
-    VkCheck(vmaCreateImage(rhi_.Allocator(), &imageInfo, &imageAllocInfo, &atlasImage_, &atlasAllocation_, nullptr),
+    VkCheck(vmaCreateImage(rhi_.Allocator(), &imageInfo, &imageAllocInfo, &texture.image, &texture.allocation, nullptr),
             "vmaCreateImage");
 
     RunOneTimeCommands([&](VkCommandBuffer cmd) {
@@ -184,7 +279,7 @@ void Renderer2D::CreateAtlasTexture() {
         toDst.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         toDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         toDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        toDst.image = atlasImage_;
+        toDst.image = texture.image;
         toDst.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         toDst.srcAccessMask = 0;
         toDst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -192,20 +287,16 @@ void Renderer2D::CreateAtlasTexture() {
                              nullptr, 1, &toDst);
 
         VkBufferImageCopy region{};
-        region.bufferOffset = 0;
-        region.bufferRowLength = 0;
-        region.bufferImageHeight = 0;
         region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-        region.imageOffset = {0, 0, 0};
-        region.imageExtent = {kAtlasSize, kAtlasSize, 1};
-        vkCmdCopyBufferToImage(cmd, stagingBuffer, atlasImage_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+        region.imageExtent = {image.width, image.height, 1};
+        vkCmdCopyBufferToImage(cmd, stagingBuffer, texture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
         VkImageMemoryBarrier toShaderRead{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
         toShaderRead.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         toShaderRead.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         toShaderRead.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         toShaderRead.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        toShaderRead.image = atlasImage_;
+        toShaderRead.image = texture.image;
         toShaderRead.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         toShaderRead.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         toShaderRead.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -216,65 +307,45 @@ void Renderer2D::CreateAtlasTexture() {
     vmaDestroyBuffer(rhi_.Allocator(), stagingBuffer, stagingAllocation);
 
     VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-    viewInfo.image = atlasImage_;
+    viewInfo.image = texture.image;
     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
     viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
     viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    VkCheck(vkCreateImageView(rhi_.Device(), &viewInfo, nullptr, &atlasImageView_), "vkCreateImageView");
-
-    VkSamplerCreateInfo samplerInfo{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-    samplerInfo.magFilter = VK_FILTER_NEAREST;
-    samplerInfo.minFilter = VK_FILTER_NEAREST;
-    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-    VkCheck(vkCreateSampler(rhi_.Device(), &samplerInfo, nullptr, &atlasSampler_), "vkCreateSampler");
-}
-
-void Renderer2D::CreateDescriptorSet() {
-    VkDescriptorSetLayoutBinding binding{};
-    binding.binding = 0;
-    binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    binding.descriptorCount = 1;
-    binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-    VkDescriptorSetLayoutCreateInfo layoutInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    layoutInfo.bindingCount = 1;
-    layoutInfo.pBindings = &binding;
-    VkCheck(vkCreateDescriptorSetLayout(rhi_.Device(), &layoutInfo, nullptr, &descriptorSetLayout_),
-            "vkCreateDescriptorSetLayout");
-
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSize.descriptorCount = 1;
-
-    VkDescriptorPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    poolInfo.maxSets = 1;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
-    VkCheck(vkCreateDescriptorPool(rhi_.Device(), &poolInfo, nullptr, &descriptorPool_), "vkCreateDescriptorPool");
+    VkCheck(vkCreateImageView(rhi_.Device(), &viewInfo, nullptr, &texture.view), "vkCreateImageView");
 
     VkDescriptorSetAllocateInfo allocInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     allocInfo.descriptorPool = descriptorPool_;
     allocInfo.descriptorSetCount = 1;
     allocInfo.pSetLayouts = &descriptorSetLayout_;
-    VkCheck(vkAllocateDescriptorSets(rhi_.Device(), &allocInfo, &descriptorSet_), "vkAllocateDescriptorSets");
+    VkCheck(vkAllocateDescriptorSets(rhi_.Device(), &allocInfo, &texture.descriptorSet), "vkAllocateDescriptorSets");
 
-    VkDescriptorImageInfo imageInfo{};
-    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    imageInfo.imageView = atlasImageView_;
-    imageInfo.sampler = atlasSampler_;
+    VkDescriptorImageInfo descriptorImage{};
+    descriptorImage.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    descriptorImage.imageView = texture.view;
+    descriptorImage.sampler = sampler_;
 
     VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-    write.dstSet = descriptorSet_;
+    write.dstSet = texture.descriptorSet;
     write.dstBinding = 0;
     write.descriptorCount = 1;
     write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    write.pImageInfo = &imageInfo;
-
+    write.pImageInfo = &descriptorImage;
     vkUpdateDescriptorSets(rhi_.Device(), 1, &write, 0, nullptr);
+
+    return texture;
+}
+
+void Renderer2D::DestroyTexture(Texture& texture) {
+    if (texture.descriptorSet != VK_NULL_HANDLE) {
+        vkFreeDescriptorSets(rhi_.Device(), descriptorPool_, 1, &texture.descriptorSet);
+    }
+    if (texture.view != VK_NULL_HANDLE) {
+        vkDestroyImageView(rhi_.Device(), texture.view, nullptr);
+    }
+    if (texture.image != VK_NULL_HANDLE) {
+        vmaDestroyImage(rhi_.Allocator(), texture.image, texture.allocation);
+    }
+    texture = Texture{};
 }
 
 void Renderer2D::CreatePipeline() {
@@ -407,21 +478,40 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
     struct Instance {
         Entity entity;
         float depth;
+        const Texture* texture;
     };
     std::vector<Instance> instances;
 
     auto view = registry.view<ScreenTransform2D, Sprite>();
     instances.reserve(view.size_hint());
     for (auto entity : view) {
-        instances.push_back({entity, view.get<ScreenTransform2D>(entity).depth});
+        // Resolve (and lazily load) textures before recording any draws.
+        instances.push_back({entity, view.get<ScreenTransform2D>(entity).depth,
+                             &Resolve(view.get<Sprite>(entity).texture)});
     }
     std::stable_sort(instances.begin(), instances.end(),
                       [](const Instance& a, const Instance& b) { return a.depth < b.depth; });
+
+    // Painter's order must be kept, so consecutive sprites sharing a texture
+    // form one draw call and a texture change starts the next.
+    struct Batch {
+        const Texture* texture;
+        uint32_t firstVertex;
+        uint32_t vertexCount;
+    };
+    std::vector<Batch> batches;
 
     Buffer& frameBuffer = vertexBuffers_[rhi_.CurrentFrameIndex()];
     auto* vertices = static_cast<SpriteVertex*>(frameBuffer.mapped);
     uint32_t vertexCount = 0;
     const uint32_t maxVertices = kMaxSprites * kVerticesPerSprite;
+
+    auto appendToBatch = [&](const Texture* texture) {
+        if (batches.empty() || batches.back().texture != texture) {
+            batches.push_back({texture, vertexCount, 0});
+        }
+        batches.back().vertexCount += kVerticesPerSprite;
+    };
 
     for (const auto& inst : instances) {
         if (vertexCount + kVerticesPerSprite > maxVertices) {
@@ -442,6 +532,7 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
             {{x1, y1}, {s.u1, s.v1}, {s.r, s.g, s.b, s.a}}, {{x0, y0}, {s.u0, s.v0}, {s.r, s.g, s.b, s.a}},
             {{x1, y1}, {s.u1, s.v1}, {s.r, s.g, s.b, s.a}}, {{x0, y1}, {s.u0, s.v1}, {s.r, s.g, s.b, s.a}},
         };
+        appendToBatch(inst.texture);
         std::memcpy(vertices + vertexCount, quad, sizeof(quad));
         vertexCount += kVerticesPerSprite;
     }
@@ -485,6 +576,7 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
             {{bx - nx, by - ny}, {noUV[0], noUV[1]}, {line.r, line.g, line.b, line.a}},
             {{ax - nx, ay - ny}, {noUV[0], noUV[1]}, {line.r, line.g, line.b, line.a}},
         };
+        appendToBatch(&builtinAtlas_); // any valid set works; overlay ignores the texture
         std::memcpy(vertices + vertexCount, quad, sizeof(quad));
         vertexCount += kVerticesPerSprite;
     }
@@ -494,7 +586,6 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
     }
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, 1, &descriptorSet_, 0, nullptr);
 
     VkExtent2D extent = rhi_.SwapchainExtent();
     float viewportSize[2] = {static_cast<float>(extent.width), static_cast<float>(extent.height)};
@@ -504,7 +595,11 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
     VkDeviceSize offsets[] = {0};
     vkCmdBindVertexBuffers(cmd, 0, 1, buffers, offsets);
 
-    vkCmdDraw(cmd, vertexCount, 1, 0, 0);
+    for (const auto& batch : batches) {
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, 1,
+                                &batch.texture->descriptorSet, 0, nullptr);
+        vkCmdDraw(cmd, batch.vertexCount, 1, batch.firstVertex, 0);
+    }
 }
 
 } // namespace aige

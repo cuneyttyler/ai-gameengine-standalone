@@ -91,6 +91,11 @@ void WebViewHost::ApplyPendingState() {
         pendingBounds_.reset();
     }
 
+    for (const auto& mapping : pendingMappings_) {
+        MapVirtualHostToFolder(mapping.hostName, mapping.folderPath);
+    }
+    pendingMappings_.clear();
+
     if (pendingVirtualHost_) {
         auto webview3 = webview_.try_query<ICoreWebView2_3>();
         if (webview3) {
@@ -131,6 +136,20 @@ void WebViewHost::NavigateToVirtualHost(const std::wstring& hostName, const std:
     }
     std::wstring url = L"https://" + hostName + L"/" + relativePath;
     webview_->Navigate(url.c_str());
+}
+
+void WebViewHost::MapVirtualHostToFolder(const std::wstring& hostName, const std::wstring& folderPath) {
+    if (!webview_) {
+        pendingMappings_.push_back({hostName, folderPath, L""});
+        return;
+    }
+    auto webview3 = webview_.try_query<ICoreWebView2_3>();
+    if (webview3) {
+        // ALLOW (not DENY_CORS): the editor page on another virtual host
+        // loads images from here.
+        webview3->SetVirtualHostNameToFolderMapping(hostName.c_str(), folderPath.c_str(),
+                                                     COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_ALLOW);
+    }
 }
 
 void WebViewHost::NavigateToHtml(const std::wstring& html) {

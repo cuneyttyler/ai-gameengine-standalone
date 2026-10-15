@@ -49,11 +49,15 @@ std::optional<Entity> PickEntity(Registry& registry, float sceneX, float sceneY,
 }
 
 Entity PaintTile(Registry& registry, int gx, int gy, TileKind kind) {
+    return PaintTile(registry, gx, gy, StyleFor(kind));
+}
+
+Entity PaintTile(Registry& registry, int gx, int gy, const TileStyle& style) {
     Entity existing = TileGrid::Build(registry).At(gx, gy);
     if (existing != entt::null) {
         registry.destroy(existing);
     }
-    return CreateTile(registry, gx, gy, kind);
+    return CreateTile(registry, gx, gy, style);
 }
 
 Entity PlaceCharacter(Registry& registry, CharacterKind kind, int gx, int gy) {

@@ -1,3 +1,7 @@
+// Standalone runtime: plays a project's main scene without the editor.
+// `sandbox [--project] <dir>`; defaults to the repo's demo project.
+#include "assets/AssetDatabase.h"
+#include "assets/Project.h"
 #include "assets/SceneIO.h"
 #include "ecs/Registry.h"
 #include "gameplay/BootstrapLevel.h"
@@ -10,50 +14,57 @@
 
 #include <chrono>
 #include <iostream>
+#include <string>
 
-#ifndef AIGE_SANDBOX_SOURCE_DIR
-#define AIGE_SANDBOX_SOURCE_DIR "."
+#ifndef AIGE_DEFAULT_PROJECT
+#define AIGE_DEFAULT_PROJECT "."
 #endif
 
-int main() {
+int main(int argc, char** argv) {
     try {
+        std::filesystem::path root = AIGE_DEFAULT_PROJECT;
+        for (int i = 1; i < argc; ++i) {
+            std::string arg = argv[i];
+            if (arg == "--project" && i + 1 < argc) {
+                root = argv[++i];
+            } else if (!arg.empty() && arg[0] != '-') {
+                root = arg;
+            }
+        }
+        aige::Project project{std::filesystem::absolute(root)};
+
         aige::Window::Desc desc;
         aige::Window window(desc);
         aige::VulkanRHI rhi(window);
         aige::Renderer2D renderer(rhi, rhi.RenderPass()); // draws straight to the swapchain pass
+
+        aige::AssetDatabase assets(project);
+        renderer.SetTextureLoader([&assets](const std::string& path) { return assets.LoadTexture(path); });
 
         // lua must outlive registry: LuaScript components store a
         // sol::environment referencing lua's Lua state, so registry (and
         // anything in it) has to be destroyed before lua closes that state.
         aige::LuaVM lua;
         aige::Registry registry;
-
-        const std::string saveFilePath = std::string(AIGE_SANDBOX_SOURCE_DIR) + "/scene_save.aige";
-        if (aige::LoadScene(registry, saveFilePath)) {
-            std::cout << "Loaded scene from " << saveFilePath << std::endl;
+        if (aige::LoadScene(registry, project.MainScenePath().string())) {
+            std::cout << "Loaded " << project.MainScenePath().string() << std::endl;
         } else {
-            aige::BuildBootstrapScene(registry, std::string(AIGE_SANDBOX_SOURCE_DIR) + "/scripts/npc_wander.lua");
+            std::cout << "No scene at " << project.MainScenePath().string() << "; playing the bootstrap level"
+                      << std::endl;
+            aige::BuildBootstrapScene(registry, "scripts/npc_wander.lua");
         }
 
-        aige::GameSession session(registry, lua, aige::BootstrapIso());
+        aige::GameSession session(registry, lua, aige::BootstrapIso(), project.root);
         auto isKeyDown = [&window](aige::Key key) { return window.IsKeyDown(key); };
 
         using Clock = std::chrono::steady_clock;
         auto previousTime = Clock::now();
-        bool f5WasDown = false;
 
         while (!window.ShouldClose()) {
             window.PollEvents();
             if (window.IsKeyDown(aige::Key::Escape)) {
                 break;
             }
-
-            bool f5IsDown = window.IsKeyDown(aige::Key::F5);
-            if (f5IsDown && !f5WasDown) {
-                aige::SaveScene(registry, saveFilePath);
-                std::cout << "Saved scene to " << saveFilePath << std::endl;
-            }
-            f5WasDown = f5IsDown;
 
             auto currentTime = Clock::now();
             session.Advance(std::chrono::duration<double>(currentTime - previousTime).count(), isKeyDown);

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { editorState, type ToolId } from '../editorState'
 import { sendToHost } from '../ipc'
 
@@ -18,6 +19,11 @@ const tools: ToolButton[] = [
   { id: 'place:player', label: 'Player', key: 'P', swatch: '#c83c3c' },
   { id: 'erase', label: 'Erase', key: 'E' },
 ]
+
+const brushName = computed(() => {
+  const name = editorState.brush.asset.split('/').pop() ?? ''
+  return editorState.brush.tile > 0 ? `${name} #${editorState.brush.tile}` : name
+})
 
 function setTool(id: ToolId): void {
   sendToHost({ type: 'tool:set', tool: id })
@@ -43,6 +49,16 @@ function send(type: string): void {
         <span v-if="tool.swatch" class="swatch" :style="{ background: tool.swatch }"></span>
         {{ tool.label }}
       </button>
+    </div>
+
+    <div
+      v-if="editorState.tool === 'place:sprite' || editorState.tool === 'tile:asset'"
+      class="brush"
+      :title="editorState.brush.asset"
+    >
+      <span class="brush-kind">{{ editorState.tool === 'tile:asset' ? 'Tile brush' : 'Prop' }}</span>
+      {{ brushName }}
+      <span v-if="editorState.tool === 'tile:asset' && editorState.brush.solid" class="brush-kind">solid</span>
     </div>
 
     <div class="group">
@@ -123,6 +139,22 @@ button.active {
   width: 10px;
   height: 10px;
   border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.brush {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #3b82f6;
+  background: #313148;
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+.brush-kind {
+  opacity: 0.6;
+  text-transform: uppercase;
+  font-size: 0.85em;
 }
 .dirty-dot {
   width: 6px;

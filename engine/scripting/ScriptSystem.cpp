@@ -8,13 +8,18 @@
 
 namespace aige {
 
-void UpdateScripts(Registry& registry, LuaVM& vm, float dt, const ScriptBinder& binder) {
+void UpdateScripts(Registry& registry, LuaVM& vm, float dt, const ScriptBinder& binder,
+                   const std::filesystem::path& baseDir) {
     auto view = registry.view<LuaScript>();
     for (auto entity : view) {
         auto& script = view.get<LuaScript>(entity);
+        std::filesystem::path scriptPath = script.path;
+        if (scriptPath.is_relative() && !baseDir.empty()) {
+            scriptPath = baseDir / scriptPath;
+        }
 
         std::error_code ec;
-        auto mtime = std::filesystem::last_write_time(script.path, ec);
+        auto mtime = std::filesystem::last_write_time(scriptPath, ec);
         bool changed = !ec && (!script.loaded || mtime != script.lastWriteTime);
 
         if (changed) {
@@ -23,7 +28,7 @@ void UpdateScripts(Registry& registry, LuaVM& vm, float dt, const ScriptBinder& 
                 binder(script.env, entity);
             }
 
-            auto result = vm.State().script_file(script.path, script.env, sol::script_pass_on_error);
+            auto result = vm.State().script_file(scriptPath.string(), script.env, sol::script_pass_on_error);
             if (!result.valid()) {
                 sol::error err = result;
                 std::cerr << "[Lua] " << script.path << ": " << err.what() << std::endl;

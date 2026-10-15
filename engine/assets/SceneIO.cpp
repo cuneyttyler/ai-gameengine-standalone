@@ -7,6 +7,7 @@
 
 #include <entt/entt.hpp>
 
+#include <cctype>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -27,18 +28,64 @@ std::string Trim(const std::string& s) {
 
 using FieldMap = std::unordered_map<std::string, std::string>;
 
+// `key=value` pairs separated by whitespace. A value may be double-quoted
+// (with \" and \\ escapes) to contain spaces — see Quote().
 FieldMap ParseFields(const std::string& rest) {
     FieldMap fields;
-    std::istringstream iss(rest);
-    std::string token;
-    while (iss >> token) {
-        size_t eq = token.find('=');
-        if (eq == std::string::npos) {
-            continue;
+    size_t i = 0;
+    const size_t n = rest.size();
+    while (i < n) {
+        while (i < n && std::isspace(static_cast<unsigned char>(rest[i]))) {
+            ++i;
         }
-        fields[token.substr(0, eq)] = token.substr(eq + 1);
+        size_t keyStart = i;
+        while (i < n && rest[i] != '=' && !std::isspace(static_cast<unsigned char>(rest[i]))) {
+            ++i;
+        }
+        if (i >= n || rest[i] != '=') {
+            continue; // a bare word without '=': skip it
+        }
+        std::string key = rest.substr(keyStart, i - keyStart);
+        ++i; // '='
+        std::string value;
+        if (i < n && rest[i] == '"') {
+            ++i;
+            while (i < n && rest[i] != '"') {
+                if (rest[i] == '\\' && i + 1 < n) {
+                    ++i;
+                }
+                value += rest[i++];
+            }
+            ++i; // closing quote
+        } else {
+            while (i < n && !std::isspace(static_cast<unsigned char>(rest[i]))) {
+                value += rest[i++];
+            }
+        }
+        fields[key] = value;
     }
     return fields;
+}
+
+// Quotes a string value when it would otherwise break whitespace splitting.
+std::string Quote(const std::string& value) {
+    bool needsQuotes = value.empty() || value.find_first_of(" \t\"\\") != std::string::npos;
+    if (!needsQuotes) {
+        return value;
+    }
+    std::string quoted = "\"";
+    for (char c : value) {
+        if (c == '"' || c == '\\') {
+            quoted += '\\';
+        }
+        quoted += c;
+    }
+    return quoted + "\"";
+}
+
+std::string GetString(const FieldMap& fields, const char* key) {
+    auto it = fields.find(key);
+    return it != fields.end() ? it->second : std::string();
 }
 
 float GetFloat(const FieldMap& fields, const char* key, float fallback = 0.0f) {
@@ -71,10 +118,14 @@ void WriteScene(Registry& registry, std::ostream& out) {
         if (auto* c = registry.try_get<Sprite>(entity)) {
             out << "  Sprite width=" << c->width << " height=" << c->height << " u0=" << c->u0 << " v0=" << c->v0
                 << " u1=" << c->u1 << " v1=" << c->v1 << " r=" << c->r << " g=" << c->g << " b=" << c->b
-                << " a=" << c->a << "\n";
+                << " a=" << c->a;
+            if (!c->texture.empty()) {
+                out << " texture=" << Quote(c->texture);
+            }
+            out << "\n";
         }
         if (auto* c = registry.try_get<LuaScript>(entity)) {
-            out << "  LuaScript path=" << c->path << "\n";
+            out << "  LuaScript path=" << Quote(c->path) << "\n";
         }
     }
 }
@@ -128,11 +179,17 @@ void ReadScene(Registry& registry, std::istream& in) {
                                       GetFloat(fields, "v1", 1.0f), GetFloat(fields, "r", 1.0f),
                                       GetFloat(fields, "g", 1.0f), GetFloat(fields, "b", 1.0f),
                                       GetFloat(fields, "a", 1.0f));
+            registry.get<Sprite>(current).texture = GetString(fields, "texture");
         } else if (componentName == "LuaScript") {
             std::string trimmedRest = Trim(rest);
             const std::string prefix = "path=";
-            std::string scriptPath =
-                trimmedRest.rfind(prefix, 0) == 0 ? trimmedRest.substr(prefix.size()) : "";
+            // Quoted since 1.3; older files hold the raw rest-of-line, spaces and all.
+            std::string scriptPath;
+            if (trimmedRest.rfind(prefix + "\"", 0) == 0) {
+                scriptPath = GetString(ParseFields(trimmedRest), "path");
+            } else if (trimmedRest.rfind(prefix, 0) == 0) {
+                scriptPath = trimmedRest.substr(prefix.size());
+            }
             registry.emplace<LuaScript>(current).path = scriptPath;
         }
         // Unknown component names are skipped rather than failing the load —

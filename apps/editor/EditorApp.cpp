@@ -1,5 +1,7 @@
 #include "EditorApp.h"
 
+#include "Win32Util.h"
+
 #include "assets/SceneIO.h"
 #include "editing/SceneEditing.h"
 #include "gameplay/BootstrapLevel.h"
@@ -22,8 +24,8 @@ constexpr float kMaxZoom = 4.0f;
 constexpr double kPlayInspectorRefreshSeconds = 0.1;
 
 // Ids shared with the UI's toolbar (apps/editor/ui/src/components/Toolbar.vue).
-constexpr const char* kToolIds[] = {"select", "tile:grass", "tile:dirt", "tile:wall",
-                                    "place:npc", "place:player", "erase"};
+constexpr const char* kToolIds[] = {"select",    "tile:grass",   "tile:dirt", "tile:wall",   "place:npc",
+                                    "place:player", "erase", "place:sprite", "tile:asset"};
 
 // Accent colors for viewport overlays, matching the UI's accent.
 constexpr float kAccent[3] = {0.231f, 0.510f, 0.965f};
@@ -40,7 +42,8 @@ std::string DescribeKind(Registry& registry, Entity entity) {
         return "Scripted NPC";
     }
     if (registry.all_of<WorldTransform2D>(entity)) {
-        return "NPC";
+        const auto* sprite = registry.try_get<Sprite>(entity);
+        return sprite && !sprite->texture.empty() ? "Prop" : "NPC";
     }
     return "Decoration";
 }
@@ -87,15 +90,18 @@ void AddEntityOutline(std::vector<OverlayLine>& out, Registry& registry, Entity 
 
 } // namespace
 
-EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& registry, LuaVM& lua, std::string scenePath,
-                     PostFn post)
+EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& registry, LuaVM& lua, AssetDatabase& assets,
+                     AudioEngine& audio, Renderer2D& renderer, PostFn post)
     : mainWindow_(mainWindow),
       viewport_(viewport),
       registry_(registry),
-      scenePath_(std::move(scenePath)),
+      assets_(assets),
+      audio_(audio),
+      renderer_(renderer),
+      scenePath_(assets.GetProject().MainScenePath().string()),
       post_(std::move(post)),
       iso_(BootstrapIso()),
-      session_(registry, lua, iso_) {
+      session_(registry, lua, iso_, assets.GetProject().root) {
     UpdateTitle();
 }
 
@@ -136,11 +142,42 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             sceneTreeStale_ = true; // e.g. Tile.solid doesn't change kind, but cheap to resend
         }
     } else if (type == "tool:set") {
+        // Asset brushes carry their asset (and tileset tile/solidity); other
+        // tools keep the last brush so switching back restores it.
+        if (message.contains("asset")) {
+            brushAsset_ = message.value("asset", "");
+            brushTile_ = message.value("tile", 0);
+            brushSolid_ = message.value("solid", false);
+        }
         std::string id = message.value("tool", "");
         for (int i = 0; i < static_cast<int>(std::size(kToolIds)); ++i) {
             if (id == kToolIds[i]) {
                 SetTool(static_cast<Tool>(i));
             }
+        }
+    } else if (type == "assets:request") {
+        post_(AssetsJson());
+    } else if (type == "assets:refresh") {
+        RefreshAssets();
+    } else if (type == "asset:import") {
+        ImportAssets();
+    } else if (type == "asset:settings") {
+        std::string path = message.value("path", "");
+        AssetType assetType = message.value("assetType", "texture") == "tileset" ? AssetType::Tileset
+                                                                                 : AssetType::Texture;
+        if (assets_.SetImageSettings(path, assetType, message.value("tileWidth", 0u),
+                                     message.value("tileHeight", 0u))) {
+            post_(AssetsJson());
+        } else {
+            post_({{"type", "notify"}, {"text", "Couldn't change settings for " + path}});
+        }
+    } else if (type == "asset:apply") {
+        ApplyAssetToSelected(message.value("path", ""), message.value("tile", 0));
+    } else if (type == "asset:preview") {
+        std::string path = message.value("path", "");
+        if (!audio_.Play(assets_.GetProject().Resolve(path))) {
+            post_({{"type", "notify"}, {"text", audio_.IsAvailable() ? "Couldn't play " + path
+                                                                     : "No audio device available"}});
         }
     } else if (type == "edit:undo") {
         Undo();
@@ -349,6 +386,48 @@ void EditorApp::ToolStroke(float sceneX, float sceneY, bool first) {
                 Select(std::nullopt);
             }
             DeleteEntity(registry_, *picked);
+            break;
+        }
+        case Tool::PlaceSprite: {
+            if (!first) {
+                return;
+            }
+            const AssetInfo* asset = assets_.Find(brushAsset_);
+            if (asset == nullptr || asset->type == AssetType::Audio || !asset->error.empty()) {
+                post_({{"type", "notify"}, {"text", "Pick a texture in the Assets panel first"}});
+                return;
+            }
+            float width = static_cast<float>(asset->type == AssetType::Tileset ? asset->tileWidth : asset->width);
+            float height = static_cast<float>(asset->type == AssetType::Tileset ? asset->tileHeight : asset->height);
+            Entity prop = CreateProp(registry_, static_cast<float>(gx) + 0.5f, static_cast<float>(gy) + 0.5f,
+                                     brushAsset_, width, height);
+            if (asset->type == AssetType::Tileset) {
+                if (auto style = TilesetStyle(brushAsset_, brushTile_, false)) {
+                    auto& sprite = registry_.get<Sprite>(prop);
+                    sprite.u0 = style->u0;
+                    sprite.v0 = style->v0;
+                    sprite.u1 = style->u1;
+                    sprite.v1 = style->v1;
+                }
+            }
+            Select(prop);
+            break;
+        }
+        case Tool::PaintTileset: {
+            auto style = TilesetStyle(brushAsset_, brushTile_, brushSolid_);
+            if (!style) {
+                if (first) {
+                    post_({{"type", "notify"}, {"text", "Pick a tile from a tileset in the Assets panel first"}});
+                }
+                return;
+            }
+            if (selected_ && registry_.valid(*selected_) && registry_.all_of<Tile>(*selected_)) {
+                const auto& tile = registry_.get<Tile>(*selected_);
+                if (tile.gx == gx && tile.gy == gy) {
+                    Select(std::nullopt);
+                }
+            }
+            PaintTile(registry_, gx, gy, *style);
             break;
         }
         case Tool::Select:
@@ -610,10 +689,12 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
             case Tool::PaintGrass:
             case Tool::PaintDirt:
             case Tool::PaintWall:
+            case Tool::PaintTileset:
                 AddCellOutline(overlay, gx, gy, iso_, kWhite, 0.8f, 1.5f);
                 break;
             case Tool::PlaceNpc:
             case Tool::PlacePlayer:
+            case Tool::PlaceSprite:
                 AddCellOutline(overlay, gx, gy, iso_, kAccent, 0.9f, 1.5f);
                 break;
             case Tool::Erase:
@@ -636,6 +717,137 @@ void EditorApp::UpdateTitle() {
     SetWindowTextW(mainWindow_, title.c_str());
 }
 
+// --- Assets -----------------------------------------------------------------
+
+void EditorApp::OnAppActivated() {
+    RefreshAssets();
+}
+
+void EditorApp::RefreshAssets() {
+    for (const auto& path : assets_.Refresh()) {
+        renderer_.InvalidateTexture(path);
+        ++assetVersions_[path];
+    }
+    post_(AssetsJson());
+}
+
+void EditorApp::ImportAssets() {
+    std::vector<std::filesystem::path> files = ShowImportDialog(mainWindow_);
+    if (files.empty()) {
+        return;
+    }
+    int imported = 0;
+    std::string lastError;
+    std::string lastPath;
+    for (const auto& file : files) {
+        std::string error;
+        if (auto path = assets_.Import(file, &error)) {
+            ++imported;
+            lastPath = *path;
+        } else {
+            lastError = WideToUtf8(file.filename().wstring()) + ": " + error;
+        }
+    }
+    post_(AssetsJson());
+    if (!lastError.empty()) {
+        post_({{"type", "notify"}, {"text", "Import failed — " + lastError}});
+    } else {
+        post_({{"type", "notify"},
+               {"text", imported == 1 ? "Imported " + lastPath : "Imported " + std::to_string(imported) + " assets"}});
+    }
+    if (!lastPath.empty()) {
+        post_({{"type", "assets:select"}, {"path", lastPath}});
+    }
+}
+
+std::optional<TileStyle> EditorApp::TilesetStyle(const std::string& path, int tile, bool solid) const {
+    const AssetInfo* asset = assets_.Find(path);
+    if (asset == nullptr || asset->type == AssetType::Audio || !asset->error.empty() || asset->width == 0 ||
+        asset->height == 0) {
+        return std::nullopt;
+    }
+    TileStyle style;
+    style.texture = path;
+    style.solid = solid;
+    if (asset->type == AssetType::Texture) {
+        // A plain texture used as a tile covers the whole image.
+        style.width = static_cast<float>(asset->width);
+        style.height = static_cast<float>(asset->height);
+        return style;
+    }
+    uint32_t columns = asset->TileColumns();
+    if (columns == 0 || tile < 0 || static_cast<uint32_t>(tile) >= asset->TileCount()) {
+        return std::nullopt;
+    }
+    uint32_t col = static_cast<uint32_t>(tile) % columns;
+    uint32_t row = static_cast<uint32_t>(tile) / columns;
+    float w = static_cast<float>(asset->width);
+    float h = static_cast<float>(asset->height);
+    style.u0 = static_cast<float>(col * asset->tileWidth) / w;
+    style.v0 = static_cast<float>(row * asset->tileHeight) / h;
+    style.u1 = static_cast<float>((col + 1) * asset->tileWidth) / w;
+    style.v1 = static_cast<float>((row + 1) * asset->tileHeight) / h;
+    style.width = static_cast<float>(asset->tileWidth);
+    style.height = static_cast<float>(asset->tileHeight);
+    return style;
+}
+
+void EditorApp::ApplyAssetToSelected(const std::string& path, int tile) {
+    if (playing_) {
+        return;
+    }
+    if (!selected_ || !registry_.valid(*selected_) || !registry_.all_of<Sprite>(*selected_)) {
+        post_({{"type", "notify"}, {"text", "Select an entity with a Sprite to apply a texture to"}});
+        return;
+    }
+    auto style = TilesetStyle(path, tile, false);
+    if (!style) {
+        post_({{"type", "notify"}, {"text", "Can't apply " + path}});
+        return;
+    }
+    Entity entity = *selected_;
+    ApplyOneShotEdit([&] {
+        auto& sprite = registry_.get<Sprite>(entity);
+        sprite.texture = style->texture;
+        sprite.u0 = style->u0;
+        sprite.v0 = style->v0;
+        sprite.u1 = style->u1;
+        sprite.v1 = style->v1;
+        sprite.width = style->width;
+        sprite.height = style->height;
+        return true;
+    });
+    inspectorStale_ = true;
+    sceneTreeStale_ = true; // an NPC with a texture now lists as a Prop
+}
+
+nlohmann::json EditorApp::AssetsJson() {
+    nlohmann::json list = nlohmann::json::array();
+    for (const auto& asset : assets_.Assets()) {
+        nlohmann::json entry = {
+            {"path", asset.path},
+            {"name", WideToUtf8(std::filesystem::path(Utf8ToWide(asset.path)).filename().wstring())},
+            {"type", AssetTypeName(asset.type)},
+            {"error", asset.error},
+            {"version", assetVersions_[asset.path]},
+        };
+        if (asset.type == AssetType::Audio) {
+            entry["duration"] = asset.durationSeconds;
+        } else {
+            entry["width"] = asset.width;
+            entry["height"] = asset.height;
+            if (asset.type == AssetType::Tileset) {
+                entry["tileWidth"] = asset.tileWidth;
+                entry["tileHeight"] = asset.tileHeight;
+                entry["columns"] = asset.TileColumns();
+                entry["rows"] = asset.TileRows();
+            }
+        }
+        list.push_back(entry);
+    }
+    return {{"type", "assets:list"}, {"assets", list}};
+}
+
 // --- JSON -------------------------------------------------------------------
 
 nlohmann::json EditorApp::SceneJson() {
@@ -654,6 +866,7 @@ nlohmann::json EditorApp::SceneJson() {
 nlohmann::json EditorApp::EditorStateJson() {
     return {{"type", "editor:state"},
             {"tool", kToolIds[static_cast<int>(tool_)]},
+            {"brush", {{"asset", brushAsset_}, {"tile", brushTile_}, {"solid", brushSolid_}}},
             {"playing", playing_},
             {"dirty", dirty_},
             {"canUndo", history_.CanUndo() && !playing_},
@@ -679,9 +892,17 @@ nlohmann::json EditorApp::InspectorJson(Entity entity) {
         components["ScreenTransform2D"] = {{"x", c->x}, {"y", c->y}, {"depth", c->depth}};
     }
     if (auto* c = registry_.try_get<Sprite>(entity)) {
-        components["Sprite"] = {{"width", c->width}, {"height", c->height}, {"u0", c->u0}, {"v0", c->v0},
-                                {"u1", c->u1},       {"v1", c->v1},         {"r", c->r},   {"g", c->g},
-                                {"b", c->b},         {"a", c->a}};
+        components["Sprite"] = {{"texture", c->texture.empty() ? "(built-in)" : c->texture},
+                                {"width", c->width},
+                                {"height", c->height},
+                                {"u0", c->u0},
+                                {"v0", c->v0},
+                                {"u1", c->u1},
+                                {"v1", c->v1},
+                                {"r", c->r},
+                                {"g", c->g},
+                                {"b", c->b},
+                                {"a", c->a}};
     }
     if (auto* c = registry_.try_get<LuaScript>(entity)) {
         components["LuaScript"] = {{"path", c->path}};

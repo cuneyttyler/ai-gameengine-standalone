@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(ai_gameengine LANGUAGES CXX C) # C: needed for the vendored Lua source (engine/scripting)
+project(ai_gameengine LANGUAGES CXX C) # C: vendored Lua source (engine/scripting) and miniaudio (engine/audio)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

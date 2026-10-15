@@ -1,0 +1,339 @@
+# AIGE Scene v1
+
+entity
+  Tile gx=0 gy=0 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=0 gy=1 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=0 gy=2 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=0 gy=3 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=0 gy=4 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=0 gy=5 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=0 gy=6 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=0 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=1 gy=0 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=1 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=1 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=2 gy=0 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=2 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=2 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=2 gy=3 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=2 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=2 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=3 gy=0 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=3 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=3 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=4 gy=0 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=4 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=4 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=5 gy=0 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=5 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=5 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=6 gy=0 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=6 gy=1 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=2 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=3 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=4 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=5 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=6 solid=0
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  Tile gx=6 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=7 gy=0 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=7 gy=1 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=7 gy=2 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=7 gy=3 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=7 gy=4 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=7 gy=5 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=7 gy=6 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  Tile gx=7 gy=7 solid=1
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  WorldTransform2D x=5.5 y=2.5
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=32 height=48 u0=0.5 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  WorldTransform2D x=5.5 y=5.5
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=32 height=48 u0=0.5 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+  LuaScript path=scripts/npc_wander.lua
+
+entity
+  WorldTransform2D x=3.5 y=3.5
+  Velocity2D x=0 y=0
+  Collider2D halfWidth=0.300000012 halfHeight=0.300000012
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite width=32 height=48 u0=0 v0=0.5 u1=0.5 v1=1 r=1 g=1 b=1 a=1

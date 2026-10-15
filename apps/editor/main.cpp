@@ -5,8 +5,11 @@
 // ("hole punching", docs/technical.md §4). The WebView2 control always
 // fills the client area; only the viewport window's bounds are dynamic.
 #include "EditorApp.h"
+#include "Win32Util.h"
 
+#include "assets/AssetDatabase.h"
 #include "assets/SceneIO.h"
+#include "audio/Audio.h"
 #include "ecs/Registry.h"
 #include "editor/ViewportWindow.h"
 #include "editor/WebViewHost.h"
@@ -22,10 +25,12 @@
 #include <combaseapi.h>
 
 #include <chrono>
+#include <filesystem>
+#include <shellapi.h>
 #include <string>
 
-#ifndef AIGE_EDITOR_SANDBOX_SCENE_PATH
-#define AIGE_EDITOR_SANDBOX_SCENE_PATH "."
+#ifndef AIGE_EDITOR_DEFAULT_PROJECT
+#define AIGE_EDITOR_DEFAULT_PROJECT "."
 #endif
 #ifndef AIGE_EDITOR_UI_DIST_DIR
 #define AIGE_EDITOR_UI_DIST_DIR "."
@@ -35,29 +40,28 @@ namespace {
 
 const wchar_t* kMainWindowClass = L"AIGEEditorMainWindow";
 const wchar_t* kVirtualHostName = L"aige-editor.local";
+// The open project folder, so the UI can show asset thumbnails
+// (apps/editor/ui/src/components/AssetBrowser.vue uses the same name).
+const wchar_t* kProjectHostName = L"aige-project.local";
 
 aige::WebViewHost* g_webView = nullptr;
 aige::EditorApp* g_app = nullptr;
 
-// Pure-ASCII only (source tree/build paths, and our own JSON IPC payloads) —
-// a full MultiByteToWideChar/WideCharToMultiByte conversion isn't needed for
-// what these strings ever actually contain. Written as explicit per-char
-// casts rather than the range constructor to avoid MSVC's (correct, but
-// irrelevant here) narrowing-conversion warning.
-std::wstring WidenAscii(const std::string& s) {
-    std::wstring result(s.size(), L'\0');
-    for (size_t i = 0; i < s.size(); ++i) {
-        result[i] = static_cast<wchar_t>(s[i]);
+// `editor.exe [--project] <dir>`; defaults to the repo's demo project.
+std::filesystem::path ProjectRootFromCommandLine() {
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    std::filesystem::path root = aige::Utf8ToWide(AIGE_EDITOR_DEFAULT_PROJECT);
+    for (int i = 1; i < argc; ++i) {
+        std::wstring arg = argv[i];
+        if (arg == L"--project" && i + 1 < argc) {
+            root = argv[++i];
+        } else if (!arg.empty() && arg[0] != L'-') {
+            root = arg;
+        }
     }
-    return result;
-}
-
-std::string NarrowAscii(const std::wstring& s) {
-    std::string result(s.size(), '\0');
-    for (size_t i = 0; i < s.size(); ++i) {
-        result[i] = static_cast<char>(s[i]);
-    }
-    return result;
+    LocalFree(argv);
+    return root;
 }
 
 // Asks about unsaved edits. Returns false if closing should be cancelled.
@@ -85,6 +89,11 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             }
             return 0;
         }
+        case WM_ACTIVATEAPP:
+            if (wparam != FALSE && g_app != nullptr) {
+                g_app->OnAppActivated(); // pick up assets edited in other programs
+            }
+            return 0;
         case WM_CLOSE:
             if (ConfirmClose(hwnd)) {
                 DestroyWindow(hwnd);
@@ -139,22 +148,31 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
             });
         aige::Renderer2D renderer(rhi, rhi.RenderPass());
 
+        aige::Project project{std::filesystem::absolute(ProjectRootFromCommandLine())};
+        aige::AssetDatabase assets(project);
+        assets.Refresh();
+        renderer.SetTextureLoader([&assets](const std::string& path) { return assets.LoadTexture(path); });
+        aige::AudioEngine audio;
+
         // lua must outlive registry: LuaScript components hold
         // sol::environments referencing lua's state.
         aige::LuaVM lua;
         aige::Registry registry;
-        const std::string sandboxDir = AIGE_EDITOR_SANDBOX_SCENE_PATH;
-        const std::string scenePath = sandboxDir + "/scene_save.aige";
-        if (!aige::LoadScene(registry, scenePath)) {
-            aige::BuildBootstrapScene(registry, sandboxDir + "/scripts/npc_wander.lua");
+        const std::filesystem::path scenePath = project.MainScenePath();
+        if (!aige::LoadScene(registry, scenePath.string())) {
+            // A new project: start from the bootstrap level and save it, so
+            // the project is complete on disk from the first launch.
+            aige::BuildBootstrapScene(registry, "scripts/npc_wander.lua");
+            std::filesystem::create_directories(scenePath.parent_path());
+            aige::SaveScene(registry, scenePath.string());
         }
 
         aige::WebViewHost webView(mainWindow);
         g_webView = &webView;
 
-        aige::EditorApp app(mainWindow, viewportWindow, registry, lua, scenePath,
+        aige::EditorApp app(mainWindow, viewportWindow, registry, lua, assets, audio, renderer,
                             [&webView](const nlohmann::json& message) {
-                                webView.PostMessageToPage(WidenAscii(message.dump()));
+                                webView.PostMessageToPage(aige::Utf8ToWide(message.dump()));
                             });
         g_app = &app;
 
@@ -163,10 +181,11 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
             [&app](int virtualKey, bool ctrl, bool shift) { app.OnViewportKey(virtualKey, ctrl, shift); });
 
         webView.SetBounds(0, 0, clientWidth, clientHeight);
-        webView.NavigateToVirtualHost(kVirtualHostName, WidenAscii(AIGE_EDITOR_UI_DIST_DIR), L"index.html");
+        webView.MapVirtualHostToFolder(kProjectHostName, project.root.wstring());
+        webView.NavigateToVirtualHost(kVirtualHostName, aige::Utf8ToWide(AIGE_EDITOR_UI_DIST_DIR), L"index.html");
         webView.SetMessageHandler([&app](std::wstring json) {
             try {
-                app.OnWebMessage(nlohmann::json::parse(NarrowAscii(json)));
+                app.OnWebMessage(nlohmann::json::parse(aige::WideToUtf8(json)));
             } catch (const nlohmann::json::exception&) {
                 // Malformed/unrecognized message — ignore rather than crash the editor.
             }

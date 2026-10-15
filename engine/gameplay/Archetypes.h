@@ -17,9 +17,31 @@ enum class TileKind {
     Wall,
 };
 
+// How a tile looks and behaves: which texture region it shows and whether
+// it blocks movement. The built-in kinds are just preset styles.
+struct TileStyle {
+    std::string texture; // empty = built-in atlas
+    float u0 = 0.0f;
+    float v0 = 0.0f;
+    float u1 = 1.0f;
+    float v1 = 1.0f;
+    float width = 64.0f; // on-screen size; taller than the diamond extends upward
+    float height = 32.0f;
+    float tint = 1.0f;
+    bool solid = false;
+};
+
+TileStyle StyleFor(TileKind kind);
+
 // Creates a tile at grid cell (gx, gy). Does not check whether the cell is
 // already occupied; callers that care use TileGrid first.
 Entity CreateTile(Registry& registry, int gx, int gy, TileKind kind);
+Entity CreateTile(Registry& registry, int gx, int gy, const TileStyle& style);
+
+// A textured, non-colliding object standing in the world (tree, crate,
+// signpost): positioned and depth-sorted like a character.
+Entity CreateProp(Registry& registry, float worldX, float worldY, const std::string& texture, float width,
+                  float height);
 
 // Characters are placed in world grid units; cell centers are (n + 0.5).
 Entity CreateNpc(Registry& registry, float worldX, float worldY, const std::string& scriptPath = {});

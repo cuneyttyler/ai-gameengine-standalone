@@ -4,6 +4,7 @@
 
 #include <sol/sol.hpp>
 
+#include <filesystem>
 #include <functional>
 
 namespace aige {
@@ -21,7 +22,9 @@ using ScriptBinder = std::function<void(sol::environment&, Entity)>;
 // changed (or it hasn't loaded yet), then calls its `update(dt)` Lua
 // function if one is defined. Load/reload/runtime errors are logged to
 // stderr and leave the entity's previous (or no) behavior in place rather
-// than throwing — a bad script shouldn't crash the game.
-void UpdateScripts(Registry& registry, LuaVM& vm, float dt, const ScriptBinder& binder = {});
+// than throwing — a bad script shouldn't crash the game. Relative script paths
+// resolve against `baseDir` (the project root), so scenes stay portable.
+void UpdateScripts(Registry& registry, LuaVM& vm, float dt, const ScriptBinder& binder = {},
+                   const std::filesystem::path& baseDir = {});
 
 } // namespace aige

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 namespace aige {
 
 // Screen-space position (pixels, origin top-left, Y down) — what the renderer
@@ -16,8 +18,11 @@ struct ScreenTransform2D {
     float depth = 0.0f;
 };
 
-// A sprite quad sampled from Renderer2D's shared atlas texture. (u0,v0)-(u1,v1)
-// is the sub-rect in the atlas; (r,g,b,a) tints the sampled texel.
+// A sprite quad. `texture` is a project-relative asset path ("assets/
+// textures/hero.png"), or empty for Renderer2D's built-in placeholder atlas.
+// (u0,v0)-(u1,v1) is the sub-rect sampled from it (a tileset tile, or the
+// whole image); (r,g,b,a) tints the sampled texel. width/height are the
+// on-screen size in scene pixels.
 struct Sprite {
     float width = 32.0f;
     float height = 32.0f;
@@ -29,6 +34,7 @@ struct Sprite {
     float g = 1.0f;
     float b = 1.0f;
     float a = 1.0f;
+    std::string texture;
 };
 
 } // namespace aige

@@ -1,8 +1,11 @@
 #pragma once
 
+#include "assets/AssetDatabase.h"
+#include "audio/Audio.h"
 #include "ecs/Registry.h"
 #include "editing/EditHistory.h"
 #include "editor/ViewportWindow.h"
+#include "gameplay/Archetypes.h"
 #include "gameplay/GameSession.h"
 #include "gameplay/Isometric.h"
 #include "renderer2d/Camera2D.h"
@@ -15,6 +18,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace aige {
@@ -32,12 +36,16 @@ class EditorApp {
 public:
     using PostFn = std::function<void(const nlohmann::json&)>;
 
-    EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& registry, LuaVM& lua, std::string scenePath,
-              PostFn post);
+    EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& registry, LuaVM& lua, AssetDatabase& assets,
+              AudioEngine& audio, Renderer2D& renderer, PostFn post);
 
     void OnWebMessage(const nlohmann::json& message);
     void OnViewportMouse(const ViewportMouseEvent& event);
     void OnViewportKey(int virtualKey, bool ctrl, bool shift);
+
+    // The editor window regained focus: rescan assets so files edited in
+    // other programs hot-reload.
+    void OnAppActivated();
 
     // Once per frame, before rendering: advances Play mode or re-projects the
     // edited scene, and flushes pending UI updates.
@@ -51,7 +59,7 @@ public:
     void Save();
 
 private:
-    enum class Tool { Select, PaintGrass, PaintDirt, PaintWall, PlaceNpc, PlacePlayer, Erase };
+    enum class Tool { Select, PaintGrass, PaintDirt, PaintWall, PlaceNpc, PlacePlayer, Erase, PlaceSprite, PaintTileset };
 
     // Edit transactions: BeginEdit snapshots the scene; the snapshot only
     // becomes an undo step once MarkChanged reports a real change, so clicks
@@ -77,6 +85,13 @@ private:
     void RestoreSelection(std::optional<size_t> index);
 
     void ToolStroke(float sceneX, float sceneY, bool first);
+
+    void RefreshAssets();
+    void ImportAssets();
+    void ApplyAssetToSelected(const std::string& path, int tile);
+    // The style a tileset brush paints with (texture region, size, solidity).
+    std::optional<TileStyle> TilesetStyle(const std::string& path, int tile, bool solid) const;
+    nlohmann::json AssetsJson();
     void UpdateTitle();
 
     nlohmann::json SceneJson();
@@ -87,6 +102,9 @@ private:
     HWND mainWindow_;
     ViewportWindow& viewport_;
     Registry& registry_;
+    AssetDatabase& assets_;
+    AudioEngine& audio_;
+    Renderer2D& renderer_;
     std::string scenePath_;
     PostFn post_;
 
@@ -97,6 +115,11 @@ private:
     bool framedOnce_ = false;
 
     Tool tool_ = Tool::Select;
+    std::string brushAsset_; // PlaceSprite / PaintTileset
+    int brushTile_ = 0;
+    bool brushSolid_ = false;
+    // Bumped when a texture is re-cooked, so the UI reloads its thumbnail.
+    std::unordered_map<std::string, int> assetVersions_;
     std::optional<Entity> selected_;
 
     bool dirty_ = false;

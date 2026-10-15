@@ -6,6 +6,7 @@ import ViewportHole from './components/ViewportHole.vue'
 import Toolbar from './components/Toolbar.vue'
 import Splitter from './components/Splitter.vue'
 import StatusBar from './components/StatusBar.vue'
+import AssetBrowser from './components/AssetBrowser.vue'
 
 // Panel sizes are per-user layout preferences, so localStorage is enough.
 // Every access is guarded: storage can be unavailable, and the layout must
@@ -15,10 +16,19 @@ const MIN_SIDEBAR = 200
 const MIN_VIEWPORT = 320
 const MIN_PANEL = 80
 
+const MIN_ASSET_PANEL = 120
+
 const sidebarWidth = ref(320)
 const treeFraction = ref(0.45) // Scene Tree's share of the side panel's height
+const assetPanelHeight = ref(240)
 
 const sidePanel = ref<HTMLElement | null>(null)
+
+function onAssetPanelDrag(y: number): void {
+  // The status bar (24px) sits below the asset panel.
+  const height = window.innerHeight - 24 - y
+  assetPanelHeight.value = clamp(height, MIN_ASSET_PANEL, window.innerHeight - 36 - 24 - MIN_VIEWPORT / 2)
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max))
@@ -41,7 +51,11 @@ function saveLayout(): void {
   try {
     localStorage.setItem(
       LAYOUT_KEY,
-      JSON.stringify({ sidebarWidth: sidebarWidth.value, treeFraction: treeFraction.value }),
+      JSON.stringify({
+        sidebarWidth: sidebarWidth.value,
+        treeFraction: treeFraction.value,
+        assetPanelHeight: assetPanelHeight.value,
+      }),
     )
   } catch {
     // Not persisting is fine; the layout just resets next launch.
@@ -54,6 +68,9 @@ onMounted(() => {
     if (saved && typeof saved.sidebarWidth === 'number' && typeof saved.treeFraction === 'number') {
       sidebarWidth.value = clamp(saved.sidebarWidth, MIN_SIDEBAR, window.innerWidth - MIN_VIEWPORT)
       treeFraction.value = clamp(saved.treeFraction, 0.1, 0.9)
+    }
+    if (saved && typeof saved.assetPanelHeight === 'number') {
+      assetPanelHeight.value = clamp(saved.assetPanelHeight, MIN_ASSET_PANEL, window.innerHeight / 2)
     }
   } catch {
     // Corrupt or unavailable storage: keep the defaults.
@@ -77,6 +94,10 @@ onMounted(() => {
       <Toolbar />
       <div class="viewport-slot">
         <ViewportHole />
+      </div>
+      <Splitter direction="vertical" @drag="onAssetPanelDrag" @end="saveLayout" />
+      <div class="asset-slot" :style="{ height: `${assetPanelHeight}px` }">
+        <AssetBrowser />
       </div>
       <StatusBar />
     </main>
@@ -115,6 +136,10 @@ onMounted(() => {
 }
 .viewport-slot {
   flex: 1;
+  min-height: 0;
+}
+.asset-slot {
+  flex-shrink: 0;
   min-height: 0;
 }
 </style>

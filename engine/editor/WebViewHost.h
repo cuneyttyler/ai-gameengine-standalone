@@ -8,6 +8,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace aige {
 
@@ -41,6 +42,10 @@ public:
     void NavigateToVirtualHost(const std::wstring& hostName, const std::wstring& folderPath,
                                 const std::wstring& relativePath);
 
+    // Serves another local folder under its own virtual hostname (e.g. the
+    // open project, so the UI can show asset thumbnails) without navigating.
+    void MapVirtualHostToFolder(const std::wstring& hostName, const std::wstring& folderPath);
+
     // Navigates directly to an inline HTML string — used by the 1.1a
     // de-risking spike, before any Vue build exists.
     void NavigateToHtml(const std::wstring& html);
@@ -71,6 +76,7 @@ private:
         std::wstring relativePath;
     };
     std::optional<PendingVirtualHost> pendingVirtualHost_;
+    std::vector<PendingVirtualHost> pendingMappings_;
 };
 
 } // namespace aige

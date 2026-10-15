@@ -64,10 +64,15 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
         auto& world = view.get<WorldTransform2D>(entity);
         auto& screen = view.get<ScreenTransform2D>(entity);
         ScreenPose pose = ProjectIso(world.x, world.y, iso);
-        // Characters stand on a tile rather than being centered in it:
-        // lift by half a tile and draw just in front of the tile they're on.
+        // Characters and props stand on the ground point rather than being
+        // centered on it: the sprite's bottom edge sits a quarter tile below
+        // the point (inside the diamond), whatever the sprite's height. With
+        // no sprite, fall back to a half-tile lift. Drawn just in front of
+        // the tile they stand on.
+        const auto* sprite = registry.try_get<Sprite>(entity);
+        float lift = sprite ? sprite->height * 0.5f - iso.tileHeight * 0.25f : iso.tileHeight * 0.5f;
         screen.x = pose.x;
-        screen.y = pose.y - iso.tileHeight * 0.5f;
+        screen.y = pose.y - lift;
         screen.depth = pose.depth + 0.5f;
     }
 
@@ -76,8 +81,12 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
         const auto& tile = tiles.get<Tile>(entity);
         auto& screen = tiles.get<ScreenTransform2D>(entity);
         ScreenPose pose = ProjectIso(static_cast<float>(tile.gx) + 0.5f, static_cast<float>(tile.gy) + 0.5f, iso);
+        // A tile sprite taller than the diamond (a wall block, a tree on a
+        // tile) extends upward: its bottom diamond stays on the cell.
+        const auto* sprite = registry.try_get<Sprite>(entity);
+        float extra = sprite ? std::max(0.0f, sprite->height - iso.tileHeight) : 0.0f;
         screen.x = pose.x;
-        screen.y = pose.y;
+        screen.y = pose.y - extra * 0.5f;
         screen.depth = pose.depth;
     }
 }
@@ -96,8 +105,12 @@ ScriptBinder MakeWorldTransformBinder(Registry& registry) {
     };
 }
 
-GameSession::GameSession(Registry& registry, LuaVM& lua, IsoParams iso)
-    : registry_(registry), lua_(lua), iso_(iso), binder_(MakeWorldTransformBinder(registry)) {}
+GameSession::GameSession(Registry& registry, LuaVM& lua, IsoParams iso, std::filesystem::path scriptRoot)
+    : registry_(registry),
+      lua_(lua),
+      iso_(iso),
+      scriptRoot_(std::move(scriptRoot)),
+      binder_(MakeWorldTransformBinder(registry)) {}
 
 int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
     accumulator_ += std::min(frameSeconds, 0.25);
@@ -114,7 +127,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         if (auto player = FindPlayer(registry_)) {
             UpdatePlayer(registry_, *player, isKeyDown, isSolid, dt);
         }
-        UpdateScripts(registry_, lua_, dt, binder_);
+        UpdateScripts(registry_, lua_, dt, binder_, scriptRoot_);
         UpdateWorldToScreen(registry_, iso_);
         accumulator_ -= kFixedDt;
         ++steps;

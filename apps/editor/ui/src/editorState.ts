@@ -12,6 +12,8 @@ export type ToolId =
   | 'place:npc'
   | 'place:player'
   | 'erase'
+  | 'place:sprite'
+  | 'tile:asset'
 
 export const editorState = reactive({
   tool: 'select' as ToolId,
@@ -20,6 +22,7 @@ export const editorState = reactive({
   canUndo: false,
   canRedo: false,
   sceneName: '',
+  brush: { asset: '', tile: 0, solid: false },
   selectedId: null as number | null,
   notice: '',
 })
@@ -34,6 +37,7 @@ onHostMessage((message) => {
     editorState.canUndo = message.canUndo as boolean
     editorState.canRedo = message.canRedo as boolean
     editorState.sceneName = message.sceneName as string
+    editorState.brush = message.brush as typeof editorState.brush
   } else if (message.type === 'selection:changed') {
     editorState.selectedId = (message.id as number | null) ?? null
   } else if (message.type === 'notify') {

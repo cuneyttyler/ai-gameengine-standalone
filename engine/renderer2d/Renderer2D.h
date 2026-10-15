@@ -2,11 +2,15 @@
 
 #include "ecs/Registry.h"
 #include "renderer2d/Camera2D.h"
+#include "renderer2d/ImageData.h"
 #include "rhi/VulkanRHI.h"
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <span>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace aige {
@@ -27,24 +31,34 @@ struct OverlayLine {
     float a = 1.0f;
 };
 
-// Sprite batcher built on top of VulkanRHI's frame lifecycle (technical.md §8,
-// §5). Owns its own pipeline/descriptor set/vertex buffers and a single
-// procedurally-generated placeholder atlas texture — real texture import is
-// development_plan.md Phase 1 milestone 1.3, out of scope here. Draws every
-// entity with (Transform2D, Sprite) in the given registry, painter's-algorithm
-// sorted by Transform2D::depth.
+// Sprite batcher built on top of VulkanRHI's frame lifecycle (technical.md §8).
+// Draws every entity with (ScreenTransform2D, Sprite), painter's-algorithm
+// sorted by depth. Each Sprite names its texture by project-relative path;
+// textures are loaded lazily through the app-provided TextureLoader (the
+// asset pipeline), and an empty path means the built-in placeholder atlas.
 class Renderer2D {
 public:
     // `targetRenderPass` is whichever pass this renderer's pipeline draws
-    // into — callers begin that specific pass (VulkanRHI::BeginOffscreenPass
-    // or BeginSwapchainPass) before calling Render(). Explicit rather than
-    // assumed, since an editor draws into the offscreen target while a
-    // non-editor app (apps/sandbox) can draw straight to the swapchain pass.
+    // into; callers begin it before calling Render().
     Renderer2D(VulkanRHI& rhi, VkRenderPass targetRenderPass);
     ~Renderer2D();
 
     Renderer2D(const Renderer2D&) = delete;
     Renderer2D& operator=(const Renderer2D&) = delete;
+
+    using TextureLoader = std::function<std::optional<ImageData>(const std::string& path)>;
+    void SetTextureLoader(TextureLoader loader);
+
+    // Drops a cached texture so the next use reloads it (asset reimport).
+    void InvalidateTexture(const std::string& path);
+
+    struct TextureSize {
+        uint32_t width;
+        uint32_t height;
+    };
+    // Loads the texture if needed; nullopt for the built-in atlas or a
+    // texture that failed to load.
+    std::optional<TextureSize> TextureSizeOf(const std::string& path);
 
     // Must be called with `cmd` from an active VulkanRHI frame, inside the
     // render pass this Renderer2D was constructed with (already begun,
@@ -60,23 +74,39 @@ private:
         void* mapped = nullptr;
     };
 
-    void CreateAtlasTexture();
-    void CreateDescriptorSet();
+    struct Texture {
+        VkImage image = VK_NULL_HANDLE;
+        VmaAllocation allocation = nullptr;
+        VkImageView view = VK_NULL_HANDLE;
+        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+        uint32_t width = 0;
+        uint32_t height = 0;
+    };
+
+    void CreateSampler();
+    void CreateDescriptorLayoutAndPool();
     void CreatePipeline();
     void CreateVertexBuffers();
     void RunOneTimeCommands(const std::function<void(VkCommandBuffer)>& recordFn);
 
+    Texture UploadTexture(const ImageData& image);
+    void DestroyTexture(Texture& texture);
+
+    // The texture to draw a sprite with: cached, freshly loaded, or the
+    // built-in atlas as a fallback. Never fails.
+    const Texture& Resolve(const std::string& path);
+
     VulkanRHI& rhi_;
     VkRenderPass targetRenderPass_;
 
-    VkImage atlasImage_ = VK_NULL_HANDLE;
-    VmaAllocation atlasAllocation_ = nullptr;
-    VkImageView atlasImageView_ = VK_NULL_HANDLE;
-    VkSampler atlasSampler_ = VK_NULL_HANDLE;
-
+    VkSampler sampler_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout descriptorSetLayout_ = VK_NULL_HANDLE;
     VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
-    VkDescriptorSet descriptorSet_ = VK_NULL_HANDLE;
+
+    Texture builtinAtlas_;
+    TextureLoader loader_;
+    // A failed load is cached as an empty Texture (image == VK_NULL_HANDLE).
+    std::unordered_map<std::string, Texture> textures_;
 
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;

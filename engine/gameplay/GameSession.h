@@ -6,6 +6,7 @@
 #include "platform/Input.h"
 #include "scripting/ScriptSystem.h"
 
+#include <filesystem>
 #include <functional>
 #include <optional>
 
@@ -44,7 +45,9 @@ class GameSession {
 public:
     static constexpr double kFixedDt = 1.0 / 60.0;
 
-    GameSession(Registry& registry, LuaVM& lua, IsoParams iso);
+    // `scriptRoot` is what relative LuaScript paths resolve against (the
+    // project root).
+    GameSession(Registry& registry, LuaVM& lua, IsoParams iso, std::filesystem::path scriptRoot = {});
 
     // Consumes `frameSeconds` of real time in kFixedDt steps (clamped, to
     // avoid a spiral of death after a long stall). Returns steps run.
@@ -57,6 +60,7 @@ private:
     Registry& registry_;
     LuaVM& lua_;
     IsoParams iso_;
+    std::filesystem::path scriptRoot_;
     ScriptBinder binder_;
     double accumulator_ = 0.0;
 };

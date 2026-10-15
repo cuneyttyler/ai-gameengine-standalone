@@ -25,6 +25,7 @@ std::optional<Entity> PickEntity(Registry& registry, float sceneX, float sceneY,
 
 // Places a tile, replacing whatever tile already occupied the cell.
 Entity PaintTile(Registry& registry, int gx, int gy, TileKind kind);
+Entity PaintTile(Registry& registry, int gx, int gy, const TileStyle& style);
 
 enum class CharacterKind {
     Npc,
