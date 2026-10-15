@@ -18,7 +18,7 @@ Tip: commit or copy `projects/demo` first, so you can throw away what the AI cha
 ## 2.5 — Describe → review → apply → play (most important)
 
 The Phase 2 exit criterion. Each row: type the instruction in the AI panel, review the
-diff, Accept, then **Play** and judge the result.
+diff card that appears in the chat, click **Apply**, then **Play** and judge the result.
 
 - [ ] *"Give the hero a sword that burns enemies for 3 seconds"*: hit a skeleton and
       it keeps taking damage for a few seconds (burn ticks, red flashes).
@@ -35,7 +35,7 @@ diff, Accept, then **Play** and judge the result.
       right" that this playtest exists to find.
 - [ ] Something of your own the examples don't cover. Was the diff what you meant?
       Would you have accepted it without reading the notes?
-- [ ] One **Ctrl+Z** undoes a whole accepted proposal. Ctrl+Y redoes it.
+- [ ] One **Ctrl+Z** undoes a whole applied proposal. Ctrl+Y redoes it.
 
 ## 2.4 — AI chat and Diff Review
 
@@ -53,7 +53,7 @@ diff, Accept, then **Play** and judge the result.
 
 ## 2.5 — Script check and Ask AI
 
-- [ ] After accepting a proposal that writes a script, a script check reports "no errors"
+- [ ] After applying a proposal that writes a script, a script check reports "no errors"
       or lists runtime errors. Use **Ask AI to fix** on an error and the follow-up repairs it.
 - [ ] The ✦ next to an Inspector field or setting opens the AI panel focused on that field
       (an "About Skeleton.Health.max" chip above the input). The next request is about it;
