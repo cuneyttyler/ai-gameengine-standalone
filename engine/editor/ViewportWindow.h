@@ -1,7 +1,10 @@
 #pragma once
 
+#include "platform/Input.h"
+
 #include <windows.h>
 
+#include <array>
 #include <functional>
 
 namespace aige {
@@ -32,6 +35,14 @@ public:
     // reported bounds) changes.
     void SetBounds(int x, int y, int width, int height);
 
+    // Keyboard state as seen by this window only: keys pressed while the
+    // WebView2 UI has focus never reach it, so typing in an inspector field
+    // can't move the player. Clicking the viewport focuses it; losing focus
+    // releases every key, so nothing sticks "held" after alt-tabbing away.
+    bool IsKeyDown(Key key) const;
+    bool HasFocus() const { return GetFocus() == hwnd_; }
+    void Focus() { SetFocus(hwnd_); }
+
     // Public so the free function registering the window class (which needs
     // a plain WNDPROC pointer) can reference it.
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
@@ -40,6 +51,7 @@ private:
     HWND hwnd_ = nullptr;
     HINSTANCE hinstance_ = nullptr;
     std::function<void(int, int)> resizeCallback_;
+    std::array<bool, 256> keyDown_{}; // indexed by Win32 virtual-key code
 };
 
 } // namespace aige

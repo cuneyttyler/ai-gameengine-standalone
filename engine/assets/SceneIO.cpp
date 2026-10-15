@@ -45,13 +45,7 @@ float GetFloat(const FieldMap& fields, const char* key, float fallback = 0.0f) {
     return it != fields.end() ? std::stof(it->second) : fallback;
 }
 
-} // namespace
-
-void SaveScene(Registry& registry, const std::string& path) {
-    std::ofstream out(path, std::ios::trunc);
-    if (!out) {
-        throw std::runtime_error("Failed to open scene file for writing: " + path);
-    }
+void WriteScene(Registry& registry, std::ostream& out) {
     out.precision(9); // enough significant digits to round-trip an IEEE 754 float exactly
     out << "# AIGE Scene v1\n";
 
@@ -82,12 +76,7 @@ void SaveScene(Registry& registry, const std::string& path) {
     }
 }
 
-bool LoadScene(Registry& registry, const std::string& path) {
-    std::ifstream in(path);
-    if (!in) {
-        return false;
-    }
-
+void ReadScene(Registry& registry, std::istream& in) {
     registry.clear();
 
     std::string line;
@@ -143,7 +132,36 @@ bool LoadScene(Registry& registry, const std::string& path) {
         // forward/backward compatible with engine versions that know about
         // more or fewer component types.
     }
+}
+
+} // namespace
+
+void SaveScene(Registry& registry, const std::string& path) {
+    std::ofstream out(path, std::ios::trunc);
+    if (!out) {
+        throw std::runtime_error("Failed to open scene file for writing: " + path);
+    }
+    WriteScene(registry, out);
+}
+
+bool LoadScene(Registry& registry, const std::string& path) {
+    std::ifstream in(path);
+    if (!in) {
+        return false;
+    }
+    ReadScene(registry, in);
     return true;
+}
+
+std::string SerializeScene(Registry& registry) {
+    std::ostringstream out;
+    WriteScene(registry, out);
+    return out.str();
+}
+
+void DeserializeScene(Registry& registry, const std::string& text) {
+    std::istringstream in(text);
+    ReadScene(registry, in);
 }
 
 } // namespace aige

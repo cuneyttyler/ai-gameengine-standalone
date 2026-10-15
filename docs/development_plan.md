@@ -101,6 +101,9 @@ proven *before* any AI integration exists to lean on.
 - 1.1c ✅ Scene tree and inspector (hand-wired for now — the generated Reflection
   Inspector comes in Phase 2) working over the JSON bridge; inspector edits move the
   sprite live.
+- 1.1d Play mode: Play/Stop toolbar runs the shared fixed-step simulation
+  (`engine/gameplay`, also used by the sandbox) in the editor; the scene is snapshotted on
+  Play and restored on Stop; the viewport takes keyboard focus on click.
 - Remaining: resizable/rearrangeable panel layout.
 - **User test checkpoint:** the editor shell is usable — panels resize sensibly, the
   viewport doesn't fight with input focus.

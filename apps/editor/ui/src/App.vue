@@ -2,6 +2,7 @@
 import SceneTree from './components/SceneTree.vue'
 import Inspector from './components/Inspector.vue'
 import ViewportHole from './components/ViewportHole.vue'
+import Toolbar from './components/Toolbar.vue'
 </script>
 
 <template>
@@ -11,7 +12,10 @@ import ViewportHole from './components/ViewportHole.vue'
       <Inspector />
     </aside>
     <main class="viewport-region">
-      <ViewportHole />
+      <Toolbar />
+      <div class="viewport-slot">
+        <ViewportHole />
+      </div>
     </main>
   </div>
 </template>
@@ -32,5 +36,12 @@ import ViewportHole from './components/ViewportHole.vue'
 }
 .viewport-region {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.viewport-slot {
+  flex: 1;
+  min-height: 0;
 }
 </style>

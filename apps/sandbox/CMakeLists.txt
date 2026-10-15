@@ -4,7 +4,7 @@ if(NOT GLSLC_EXECUTABLE)
 endif()
 
 add_executable(sandbox main.cpp)
-target_link_libraries(sandbox PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets)
+target_link_libraries(sandbox PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets aige_gameplay)
 target_compile_definitions(sandbox PRIVATE AIGE_SANDBOX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 set(AIGE_SHADER_SOURCES

@@ -9,11 +9,14 @@
 #include "ecs/Registry.h"
 #include "editor/ViewportWindow.h"
 #include "editor/WebViewHost.h"
+#include "gameplay/BootstrapLevel.h"
+#include "gameplay/GameSession.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 #include "renderer2d/Renderer2D.h"
 #include "rhi/VulkanRHI.h"
 #include "scripting/Components.h"
+#include "scripting/LuaVM.h"
 
 #include <nlohmann/json.hpp>
 
@@ -22,6 +25,7 @@
 #include <combaseapi.h>
 
 #include <chrono>
+#include <optional>
 #include <string>
 
 #ifndef AIGE_EDITOR_SANDBOX_SCENE_PATH
@@ -167,16 +171,8 @@ void ApplySetField(aige::Registry& registry, aige::Entity entity, const std::str
     }
 }
 
-void BuildFallbackScene(aige::Registry& registry) {
-    for (int i = 0; i < 4; ++i) {
-        auto tile = registry.create();
-        registry.emplace<aige::ScreenTransform2D>(tile, 150.0f + static_cast<float>(i) * 40.0f, 200.0f,
-                                                   static_cast<float>(i));
-        registry.emplace<aige::Sprite>(tile, 64.0f, 32.0f, 0.0f, 0.0f, 0.5f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f);
-    }
-    auto player = registry.create();
-    registry.emplace<aige::ScreenTransform2D>(player, 250.0f, 200.0f, 10.0f);
-    registry.emplace<aige::Sprite>(player, 32.0f, 48.0f, 0.0f, 0.5f, 0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f);
+nlohmann::json BuildPlayStateJson(bool playing) {
+    return {{"type", "play:state"}, {"playing", playing}};
 }
 
 } // namespace
@@ -220,17 +216,60 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
             });
         aige::Renderer2D renderer(rhi, rhi.RenderPass());
 
+        // lua must outlive registry: LuaScript components hold
+        // sol::environments referencing lua's state.
+        aige::LuaVM lua;
         aige::Registry registry;
-        std::string sandboxScenePath = std::string(AIGE_EDITOR_SANDBOX_SCENE_PATH) + "/scene_save.aige";
-        if (!aige::LoadScene(registry, sandboxScenePath)) {
-            BuildFallbackScene(registry);
+        const std::string sandboxDir = AIGE_EDITOR_SANDBOX_SCENE_PATH;
+        if (!aige::LoadScene(registry, sandboxDir + "/scene_save.aige")) {
+            aige::BuildBootstrapScene(registry, sandboxDir + "/scripts/npc_wander.lua");
         }
+
+        const aige::IsoParams iso = aige::BootstrapIso();
+        aige::GameSession session(registry, lua, iso, &aige::IsBootstrapSolidCell);
+        auto isKeyDown = [&viewportWindow](aige::Key key) { return viewportWindow.IsKeyDown(key); };
 
         aige::WebViewHost webView(mainWindow);
         g_webView = &webView;
+
+        // Play mode: the scene is snapshotted on Play and restored on Stop, so
+        // a playtest (and any inspector edits made during it) never changes
+        // the edited scene. Restoring recreates every entity, so entity ids
+        // the UI holds go stale — the selection is dropped and the Scene Tree
+        // refreshed.
+        bool playing = false;
+        std::string playSnapshot;
+        std::optional<aige::Entity> selected;
+
+        auto postJson = [&webView](const nlohmann::json& message) {
+            webView.PostMessageToPage(WidenAscii(message.dump()));
+        };
+        auto startPlay = [&]() {
+            if (playing) {
+                return;
+            }
+            playSnapshot = aige::SerializeScene(registry);
+            session.ResetClock();
+            playing = true;
+            viewportWindow.Focus(); // so WASD works without first clicking the viewport
+            postJson(BuildPlayStateJson(true));
+        };
+        auto stopPlay = [&]() {
+            if (!playing) {
+                return;
+            }
+            aige::DeserializeScene(registry, playSnapshot);
+            playSnapshot.clear();
+            playing = false;
+            selected.reset();
+            postJson(BuildPlayStateJson(false));
+            postJson(BuildSceneJson(registry));
+            postJson({{"type", "inspector:clear"}});
+        };
+
         webView.SetBounds(0, 0, clientWidth, clientHeight);
         webView.NavigateToVirtualHost(kVirtualHostName, WidenAscii(AIGE_EDITOR_UI_DIST_DIR), L"index.html");
-        webView.SetMessageHandler([&viewportWindow, &webView, &registry](std::wstring json) {
+        webView.SetMessageHandler([&](std::wstring json) {
             std::string narrow = NarrowAscii(json);
             try {
                 auto message = nlohmann::json::parse(narrow);
@@ -244,12 +283,18 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
                         viewportWindow.SetBounds(x, y, width, height);
                     }
                 } else if (type == "scene:request") {
-                    webView.PostMessageToPage(WidenAscii(BuildSceneJson(registry).dump()));
+                    postJson(BuildSceneJson(registry));
+                    postJson(BuildPlayStateJson(playing));
                 } else if (type == "entity:select") {
                     auto entity = static_cast<aige::Entity>(message.value("id", 0u));
                     if (registry.valid(entity)) {
-                        webView.PostMessageToPage(WidenAscii(BuildInspectorJson(registry, entity).dump()));
+                        selected = entity;
+                        postJson(BuildInspectorJson(registry, entity));
                     }
+                } else if (type == "play:start") {
+                    startPlay();
+                } else if (type == "play:stop") {
+                    stopPlay();
                 } else if (type == "inspector:setField") {
                     auto entity = static_cast<aige::Entity>(message.value("id", 0u));
                     if (registry.valid(entity)) {
@@ -265,6 +310,11 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
         ShowWindow(mainWindow, SW_SHOW);
         UpdateWindow(mainWindow);
 
+        using Clock = std::chrono::steady_clock;
+        constexpr double kInspectorRefreshSeconds = 0.1;
+        auto previousTime = Clock::now();
+        double sinceInspectorRefresh = 0.0;
+
         MSG msg{};
         bool running = true;
         while (running) {
@@ -278,6 +328,31 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
             }
             if (!running) {
                 break;
+            }
+
+            auto currentTime = Clock::now();
+            double frameSeconds = std::chrono::duration<double>(currentTime - previousTime).count();
+            previousTime = currentTime;
+
+            if (playing) {
+                if (viewportWindow.IsKeyDown(aige::Key::Escape)) {
+                    stopPlay();
+                } else {
+                    session.Advance(frameSeconds, isKeyDown);
+
+                    // Live values for the selected entity while it moves.
+                    sinceInspectorRefresh += frameSeconds;
+                    if (sinceInspectorRefresh >= kInspectorRefreshSeconds) {
+                        sinceInspectorRefresh = 0.0;
+                        if (selected && registry.valid(*selected)) {
+                            postJson(BuildInspectorJson(registry, *selected));
+                        }
+                    }
+                }
+            } else {
+                // Edit mode runs no simulation, only the projection, so
+                // inspector edits to WorldTransform2D show up immediately.
+                aige::UpdateWorldToScreen(registry, iso);
             }
 
             VkCommandBuffer cmd = rhi.BeginFrame();

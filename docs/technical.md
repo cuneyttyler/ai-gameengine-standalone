@@ -187,7 +187,11 @@ generated field automatically gets the "Ask AI" affordance for free.
 - The UI (`apps/editor/ui`) is served through WebView2's
   `SetVirtualHostNameToFolderMapping`, avoiding `file://` ES-module/CORS restrictions.
   Messages are JSON strings in both directions (e.g. `scene:request` → `scene:update`,
-  `entity:select` → `inspector:data`, `inspector:setField`).
+  `entity:select` → `inspector:data`, `inspector:setField`, `play:start`/`play:stop` →
+  `play:state`).
+- Play mode runs the same `engine/gameplay` `GameSession` the sandbox uses. The scene is
+  serialized to an in-memory snapshot on Play and restored on Stop. Keyboard input is
+  read from the viewport window only, so typing in the web UI never drives gameplay.
 - Communication between C++ host ⇄ webview ⇄ `ai_bridge` ⇄ AI service uses one
   consistent JSON message schema end-to-end, so a "propose change" message looks the
   same whether it originated from a native inspector's "Ask AI" button or the webview

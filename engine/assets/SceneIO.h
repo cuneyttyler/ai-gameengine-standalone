@@ -19,4 +19,11 @@ void SaveScene(Registry& registry, const std::string& path);
 // whole load, so scene files stay loadable across small engine changes.
 bool LoadScene(Registry& registry, const std::string& path);
 
+// In-memory equivalents of SaveScene/LoadScene, same text format. Used for
+// the editor's Play-mode snapshot: serialize on Play, deserialize on Stop, so
+// nothing that happens during a playtest leaks into the edited scene.
+// DeserializeScene clears `registry` first, like LoadScene.
+std::string SerializeScene(Registry& registry);
+void DeserializeScene(Registry& registry, const std::string& text);
+
 } // namespace aige

@@ -13,6 +13,9 @@ const selectedId = ref<number | null>(null)
 onHostMessage((message) => {
   if (message.type === 'scene:update') {
     entities.value = message.entities as EntitySummary[]
+    if (!entities.value.some((e) => e.id === selectedId.value)) {
+      selectedId.value = null
+    }
   }
 })
 

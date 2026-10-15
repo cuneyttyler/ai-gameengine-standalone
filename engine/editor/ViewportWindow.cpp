@@ -29,6 +29,22 @@ void EnsureClassRegistered(HINSTANCE hinstance) {
     }
 }
 
+int ToVirtualKey(Key key) {
+    switch (key) {
+        case Key::W: return 'W';
+        case Key::A: return 'A';
+        case Key::S: return 'S';
+        case Key::D: return 'D';
+        case Key::Up: return VK_UP;
+        case Key::Down: return VK_DOWN;
+        case Key::Left: return VK_LEFT;
+        case Key::Right: return VK_RIGHT;
+        case Key::Escape: return VK_ESCAPE;
+        case Key::F5: return VK_F5;
+    }
+    return 0;
+}
+
 } // namespace
 
 ViewportWindow::ViewportWindow(HWND parent, HINSTANCE hinstance, int x, int y, int width, int height)
@@ -63,6 +79,10 @@ void ViewportWindow::SetBounds(int x, int y, int width, int height) {
     SetWindowPos(hwnd_, nullptr, x, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+bool ViewportWindow::IsKeyDown(Key key) const {
+    return keyDown_[ToVirtualKey(key)];
+}
+
 LRESULT CALLBACK ViewportWindow::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     if (msg == WM_NCCREATE) {
         auto* createStruct = reinterpret_cast<CREATESTRUCTW*>(lparam);
@@ -83,6 +103,22 @@ LRESULT CALLBACK ViewportWindow::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPA
         }
         case WM_ERASEBKGND:
             return 1; // we render every pixel ourselves; avoid GDI erase-flicker
+        case WM_LBUTTONDOWN:
+        case WM_RBUTTONDOWN:
+        case WM_MBUTTONDOWN:
+            SetFocus(hwnd); // plain child windows don't take focus on click by themselves
+            return 0;
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+            if (self != nullptr && wparam < self->keyDown_.size()) {
+                self->keyDown_[wparam] = (msg == WM_KEYDOWN);
+            }
+            return 0;
+        case WM_KILLFOCUS:
+            if (self != nullptr) {
+                self->keyDown_.fill(false);
+            }
+            return 0;
         default:
             return DefWindowProcW(hwnd, msg, wparam, lparam);
     }

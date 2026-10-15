@@ -12,6 +12,8 @@ const current = ref<InspectorData | null>(null)
 onHostMessage((message) => {
   if (message.type === 'inspector:data') {
     current.value = message as unknown as InspectorData
+  } else if (message.type === 'inspector:clear') {
+    current.value = null
   }
 })
 

@@ -15,8 +15,9 @@ add_executable(aige_tests
     collision_test.cpp
     scripting_test.cpp
     scene_io_test.cpp
+    gameplay_test.cpp
 )
-target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets gtest_main)
+target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets aige_gameplay gtest_main)
 
 find_program(GLSLC_EXECUTABLE glslc HINTS "$ENV{VULKAN_SDK}/Bin" "$ENV{VULKAN_SDK}/bin")
 if(NOT GLSLC_EXECUTABLE)
