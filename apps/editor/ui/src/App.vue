@@ -1,16 +1,77 @@
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
 import SceneTree from './components/SceneTree.vue'
 import Inspector from './components/Inspector.vue'
 import ViewportHole from './components/ViewportHole.vue'
 import Toolbar from './components/Toolbar.vue'
+import Splitter from './components/Splitter.vue'
+
+// Panel sizes are per-user layout preferences, so localStorage is enough.
+// Every access is guarded: storage can be unavailable, and the layout must
+// still work with the defaults.
+const LAYOUT_KEY = 'aige.editor.layout'
+const MIN_SIDEBAR = 200
+const MIN_VIEWPORT = 320
+const MIN_PANEL = 80
+
+const sidebarWidth = ref(320)
+const treeFraction = ref(0.45) // Scene Tree's share of the side panel's height
+
+const sidePanel = ref<HTMLElement | null>(null)
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max))
+}
+
+function onSidebarDrag(x: number): void {
+  sidebarWidth.value = clamp(x, MIN_SIDEBAR, window.innerWidth - MIN_VIEWPORT)
+}
+
+function onTreeDrag(y: number): void {
+  if (!sidePanel.value) {
+    return
+  }
+  const rect = sidePanel.value.getBoundingClientRect()
+  const height = clamp(y - rect.top, MIN_PANEL, rect.height - MIN_PANEL)
+  treeFraction.value = height / rect.height
+}
+
+function saveLayout(): void {
+  try {
+    localStorage.setItem(
+      LAYOUT_KEY,
+      JSON.stringify({ sidebarWidth: sidebarWidth.value, treeFraction: treeFraction.value }),
+    )
+  } catch {
+    // Not persisting is fine; the layout just resets next launch.
+  }
+}
+
+onMounted(() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? 'null')
+    if (saved && typeof saved.sidebarWidth === 'number' && typeof saved.treeFraction === 'number') {
+      sidebarWidth.value = clamp(saved.sidebarWidth, MIN_SIDEBAR, window.innerWidth - MIN_VIEWPORT)
+      treeFraction.value = clamp(saved.treeFraction, 0.1, 0.9)
+    }
+  } catch {
+    // Corrupt or unavailable storage: keep the defaults.
+  }
+})
 </script>
 
 <template>
   <div class="app-shell">
-    <aside class="side-panel">
-      <SceneTree />
-      <Inspector />
+    <aside ref="sidePanel" class="side-panel" :style="{ width: `${sidebarWidth}px` }">
+      <div class="panel-slot" :style="{ flexBasis: `${treeFraction * 100}%` }">
+        <SceneTree />
+      </div>
+      <Splitter direction="vertical" @drag="onTreeDrag" @end="saveLayout" />
+      <div class="panel-slot fill">
+        <Inspector />
+      </div>
     </aside>
+    <Splitter direction="horizontal" @drag="onSidebarDrag" @end="saveLayout" />
     <main class="viewport-region">
       <Toolbar />
       <div class="viewport-slot">
@@ -27,12 +88,22 @@ import Toolbar from './components/Toolbar.vue'
   height: 100vh;
 }
 .side-panel {
-  width: 320px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   background: #181825;
-  border-right: 1px solid #333;
+  min-height: 0;
+}
+.panel-slot {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 0;
+  flex-shrink: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.panel-slot.fill {
+  flex: 1;
 }
 .viewport-region {
   flex: 1;

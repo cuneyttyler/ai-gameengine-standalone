@@ -49,7 +49,6 @@ onMounted(() => {
 <style scoped>
 .panel {
   padding: 12px;
-  border-bottom: 1px solid #333;
   flex: 1;
   overflow: auto;
 }
