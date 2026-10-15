@@ -17,6 +17,8 @@ const tools: ToolButton[] = [
   { id: 'tile:wall', label: 'Wall', key: '3', swatch: '#2f4d2a' },
   { id: 'place:npc', label: 'NPC', key: 'N', swatch: '#3c5ac8' },
   { id: 'place:player', label: 'Player', key: 'P', swatch: '#c83c3c' },
+  { id: 'place:enemy', label: 'Enemy', key: 'X', swatch: '#c88c8c' },
+  { id: 'place:pickup', label: 'Potion', key: 'H', swatch: '#4cff66' },
   { id: 'erase', label: 'Erase', key: 'E' },
 ]
 

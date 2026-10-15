@@ -46,19 +46,24 @@ int main(int argc, char** argv) {
         // anything in it) has to be destroyed before lua closes that state.
         aige::LuaVM lua;
         aige::Registry registry;
-        if (aige::LoadScene(registry, project.MainScenePath().string())) {
-            std::cout << "Loaded " << project.MainScenePath().string() << std::endl;
-        } else {
-            std::cout << "No scene at " << project.MainScenePath().string() << "; playing the bootstrap level"
-                      << std::endl;
-            aige::BuildBootstrapScene(registry, "scripts/npc_wander.lua");
-        }
+        auto loadLevel = [&]() {
+            if (aige::LoadScene(registry, project.MainScenePath().string())) {
+                std::cout << "Loaded " << project.MainScenePath().string() << std::endl;
+            } else {
+                std::cout << "No scene at " << project.MainScenePath().string() << "; playing the bootstrap level"
+                          << std::endl;
+                registry.clear();
+                aige::BuildBootstrapScene(registry, "scripts/npc_wander.lua");
+            }
+        };
+        loadLevel();
 
         aige::GameSession session(registry, lua, aige::BootstrapIso(), project.root);
         auto isKeyDown = [&window](aige::Key key) { return window.IsKeyDown(key); };
 
         using Clock = std::chrono::steady_clock;
         auto previousTime = Clock::now();
+        double restartIn = -1.0; // counts down after the player dies
 
         while (!window.ShouldClose()) {
             window.PollEvents();
@@ -67,13 +72,33 @@ int main(int argc, char** argv) {
             }
 
             auto currentTime = Clock::now();
-            session.Advance(std::chrono::duration<double>(currentTime - previousTime).count(), isKeyDown);
+            double frameSeconds = std::chrono::duration<double>(currentTime - previousTime).count();
             previousTime = currentTime;
+            session.Advance(frameSeconds, isKeyDown);
+
+            // Player death: a short pause, then restart the level.
+            for (const auto& event : session.Events()) {
+                auto player = aige::FindPlayer(registry);
+                if (event.type == aige::GameEvent::Type::Death && player && event.entity == *player) {
+                    std::cout << "You died. Restarting..." << std::endl;
+                    restartIn = 2.0;
+                }
+            }
+            if (restartIn >= 0.0) {
+                restartIn -= frameSeconds;
+                if (restartIn < 0.0) {
+                    loadLevel();
+                    session.ResetClock();
+                }
+            }
+
+            std::vector<aige::OverlayLine> overlay;
+            aige::AppendHealthBars(registry, overlay);
 
             VkCommandBuffer cmd = rhi.BeginFrame();
             if (cmd != VK_NULL_HANDLE) {
                 rhi.BeginSwapchainPass();
-                renderer.Render(cmd, registry);
+                renderer.Render(cmd, registry, {}, overlay);
                 rhi.EndFrame();
             }
         }

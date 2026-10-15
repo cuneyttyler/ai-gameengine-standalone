@@ -30,6 +30,8 @@ Entity PaintTile(Registry& registry, int gx, int gy, const TileStyle& style);
 enum class CharacterKind {
     Npc,
     Player,
+    Enemy,  // chases and attacks the player
+    Pickup, // a health potion
 };
 
 // Places a character at the cell's center. There is only ever one player:

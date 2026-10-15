@@ -30,7 +30,8 @@ constexpr double kPlayInspectorRefreshSeconds = 0.1;
 
 // Ids shared with the UI's toolbar (apps/editor/ui/src/components/Toolbar.vue).
 constexpr const char* kToolIds[] = {"select",    "tile:grass",   "tile:dirt", "tile:wall",   "place:npc",
-                                    "place:player", "erase", "place:sprite", "tile:asset"};
+                                    "place:player", "erase", "place:sprite", "tile:asset", "place:enemy",
+                                    "place:pickup"};
 
 // Accent colors for viewport overlays, matching the UI's accent.
 constexpr float kAccent[3] = {0.231f, 0.510f, 0.965f};
@@ -40,8 +41,14 @@ std::string DescribeKind(Registry& registry, Entity entity) {
     if (registry.all_of<Tile>(entity)) {
         return "Tile";
     }
+    if (registry.all_of<Pickup>(entity)) {
+        return "Pickup";
+    }
     if (registry.all_of<Velocity2D, Collider2D>(entity)) {
         return "Player";
+    }
+    if (const auto* faction = registry.try_get<Faction>(entity); faction && faction->team == Team::Enemy) {
+        return "Enemy";
     }
     if (registry.all_of<LuaScript>(entity)) {
         return "Scripted NPC";
@@ -107,6 +114,7 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
       post_(std::move(post)),
       iso_(BootstrapIso()),
       session_(registry, lua, iso_, assets.GetProject().root) {
+    session_.SetSoundPlayer([this](const std::string& path) { audio_.Play(assets_.GetProject().Resolve(path)); });
     UpdateTitle();
 }
 
@@ -255,7 +263,15 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                 panLastY_ = event.y;
                 return;
             }
-            if (event.button != Button::Left || playing_) {
+            if (event.button != Button::Left) {
+                return;
+            }
+            if (playing_) {
+                // Diablo-style: click to attack toward the cursor.
+                float worldX = 0.0f;
+                float worldY = 0.0f;
+                UnprojectIso(sceneX, sceneY, iso_, worldX, worldY);
+                session_.RequestPlayerAttack(worldX, worldY);
                 return;
             }
             if (tool_ == Tool::Select) {
@@ -368,6 +384,12 @@ void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
         case 'E':
             SetTool(Tool::Erase);
             return;
+        case 'X':
+            SetTool(Tool::PlaceEnemy);
+            return;
+        case 'H':
+            SetTool(Tool::PlacePickup);
+            return;
         default:
             return;
     }
@@ -402,12 +424,18 @@ void EditorApp::ToolStroke(float sceneX, float sceneY, bool first) {
         }
         case Tool::PlaceNpc:
         case Tool::PlacePlayer:
+        case Tool::PlaceEnemy:
+        case Tool::PlacePickup: {
             if (!first) {
-                return; // one character per click, not a trail of them
+                return; // one per click, not a trail of them
             }
-            Select(PlaceCharacter(registry_,
-                                  tool_ == Tool::PlacePlayer ? CharacterKind::Player : CharacterKind::Npc, gx, gy));
+            CharacterKind kind = tool_ == Tool::PlacePlayer  ? CharacterKind::Player
+                                 : tool_ == Tool::PlaceEnemy  ? CharacterKind::Enemy
+                                 : tool_ == Tool::PlacePickup ? CharacterKind::Pickup
+                                                              : CharacterKind::Npc;
+            Select(PlaceCharacter(registry_, kind, gx, gy));
             break;
+        }
         case Tool::Erase: {
             auto picked = PickEntity(registry_, sceneX, sceneY, iso_);
             if (!picked) {
@@ -640,6 +668,7 @@ void EditorApp::StartPlay() {
     dragging_ = false;
     stroking_ = false;
     playSnapshot_ = SerializeScene(registry_);
+    selectionIndexAtPlay_ = selected_ ? IndexOfEntity(registry_, *selected_) : std::nullopt;
     session_.ResetClock();
     playing_ = true;
     sinceInspectorRefresh_ = 0.0;
@@ -651,11 +680,10 @@ void EditorApp::StopPlay() {
     if (!playing_) {
         return;
     }
-    auto index = selected_ ? IndexOfEntity(registry_, *selected_) : std::nullopt;
     DeserializeScene(registry_, playSnapshot_);
     playSnapshot_.clear();
     playing_ = false;
-    RestoreSelection(index);
+    RestoreSelection(selectionIndexAtPlay_);
     sceneTreeStale_ = true;
     editorStateStale_ = true;
 }
@@ -669,6 +697,12 @@ void EditorApp::RestoreSelection(std::optional<size_t> index) {
 void EditorApp::Tick(double frameSeconds) {
     if (playing_) {
         session_.Advance(frameSeconds, [this](Key key) { return viewport_.IsKeyDown(key); });
+        for (const auto& event : session_.Events()) {
+            auto player = FindPlayer(registry_);
+            if (event.type == GameEvent::Type::Death && player && event.entity == *player) {
+                post_({{"type", "notify"}, {"text", "You died. Press Esc or Stop to return to editing."}});
+            }
+        }
         sinceInspectorRefresh_ += frameSeconds;
         if (sinceInspectorRefresh_ >= kPlayInspectorRefreshSeconds) {
             sinceInspectorRefresh_ = 0.0;
@@ -702,6 +736,7 @@ void EditorApp::Tick(double frameSeconds) {
 
 std::vector<OverlayLine> EditorApp::BuildOverlay() {
     std::vector<OverlayLine> overlay;
+    AppendHealthBars(registry_, overlay);
     if (playing_) {
         return overlay;
     }
@@ -726,6 +761,8 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
             case Tool::PlaceNpc:
             case Tool::PlacePlayer:
             case Tool::PlaceSprite:
+            case Tool::PlaceEnemy:
+            case Tool::PlacePickup:
                 AddCellOutline(overlay, gx, gy, iso_, kAccent, 0.9f, 1.5f);
                 break;
             case Tool::Erase:

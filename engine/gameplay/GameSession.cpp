@@ -2,6 +2,7 @@
 
 #include "gameplay/Components.h"
 #include "gameplay/TileGrid.h"
+#include "scripting/Components.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 
@@ -21,7 +22,12 @@ std::optional<Entity> FindPlayer(Registry& registry) {
 
 void UpdatePlayer(Registry& registry, Entity player, const KeyQueryFn& isKeyDown, const SolidQueryFn& isSolid,
                   float dt) {
-    constexpr float kMoveSpeed = 3.0f; // grid cells per second
+    if (registry.all_of<Dead>(player)) {
+        registry.get<Velocity2D>(player) = {};
+        return;
+    }
+    const auto* stats = registry.try_get<Stats>(player);
+    const float moveSpeed = (stats ? stats->moveSpeed : 4.2f) * SpeedMultiplier(registry, player); // cells/s
 
     // Screen-relative input is world-diagonal (ProjectIso maps world
     // diagonals to screen cardinals), so rotate the (right, down) input pair
@@ -40,15 +46,22 @@ void UpdatePlayer(Registry& registry, Entity player, const KeyQueryFn& isKeyDown
     if (isKeyDown(Key::W) || isKeyDown(Key::Up)) {
         inputDown -= 1.0f;
     }
-    if (inputRight != 0.0f && inputDown != 0.0f) {
-        constexpr float kInvSqrt2 = 0.70710678f; // don't let a diagonal screen direction move faster
-        inputRight *= kInvSqrt2;
-        inputDown *= kInvSqrt2;
-    }
-
+    // Rotated into world space, then normalized so every direction moves at
+    // exactly moveSpeed cells/s (unnormalized, screen-cardinal input would
+    // move √2 faster in world space than intended).
+    float dirX = inputRight + inputDown;
+    float dirY = inputDown - inputRight;
+    float length = std::sqrt(dirX * dirX + dirY * dirY);
     auto& velocity = registry.get<Velocity2D>(player);
-    velocity.x = (inputRight + inputDown) * kMoveSpeed;
-    velocity.y = (inputDown - inputRight) * kMoveSpeed;
+    if (length > 1e-4f) {
+        dirX /= length;
+        dirY /= length;
+        velocity.x = dirX * moveSpeed;
+        velocity.y = dirY * moveSpeed;
+        registry.emplace_or_replace<Facing>(player, dirX, dirY);
+    } else {
+        velocity = {};
+    }
 
     auto& world = registry.get<WorldTransform2D>(player);
     const auto& collider = registry.get<Collider2D>(player);
@@ -67,7 +80,7 @@ void UpdateFollowers(Registry& registry, const SolidQueryFn& isSolid, float dt) 
             continue;
         }
         const auto* target = registry.try_get<WorldTransform2D>(follow.target);
-        if (target == nullptr) {
+        if (target == nullptr || registry.all_of<Dead>(follow.target) || registry.all_of<Dead>(entity)) {
             continue;
         }
         auto& world = view.get<WorldTransform2D>(entity);
@@ -77,7 +90,9 @@ void UpdateFollowers(Registry& registry, const SolidQueryFn& isSolid, float dt) 
         if (distance <= follow.stopDistance || distance < 1e-4f || (follow.range > 0.0f && distance > follow.range)) {
             continue;
         }
-        float step = std::min(follow.speed * dt, distance - follow.stopDistance);
+        registry.emplace_or_replace<Facing>(entity, dx / distance, dy / distance);
+        float speed = follow.speed * SpeedMultiplier(registry, entity);
+        float step = std::min(speed * dt, distance - follow.stopDistance);
         Vec2 half{0.3f, 0.3f};
         if (const auto* collider = registry.try_get<Collider2D>(entity)) {
             half = {collider->halfWidth, collider->halfHeight};
@@ -121,44 +136,224 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
     }
 }
 
-ScriptBinder MakeWorldTransformBinder(Registry& registry) {
-    return [&registry](sol::environment& env, Entity entity) {
-        env["get_position"] = [&registry, entity]() {
-            auto& world = registry.get<WorldTransform2D>(entity);
-            return std::make_tuple(world.x, world.y);
-        };
-        env["set_position"] = [&registry, entity](float x, float y) {
-            auto& world = registry.get<WorldTransform2D>(entity);
-            world.x = x;
-            world.y = y;
-        };
+namespace {
+
+std::optional<Team> ParseTeam(const std::string& name) {
+    if (name == "Player" || name == "player") return Team::Player;
+    if (name == "Enemy" || name == "enemy") return Team::Enemy;
+    if (name == "Neutral" || name == "neutral") return Team::Neutral;
+    return std::nullopt;
+}
+
+std::optional<EffectKind> ParseEffect(const std::string& name) {
+    if (name == "burn") return EffectKind::Burn;
+    if (name == "poison") return EffectKind::Poison;
+    if (name == "slow") return EffectKind::Slow;
+    if (name == "regen") return EffectKind::Regen;
+    return std::nullopt;
+}
+
+// Scripts refer to entities by their integer id.
+Entity ToEntity(lua_Integer id) {
+    return static_cast<Entity>(static_cast<uint32_t>(id));
+}
+
+lua_Integer ToId(Entity entity) {
+    return static_cast<lua_Integer>(static_cast<uint32_t>(entity));
+}
+
+} // namespace
+
+GameSession::GameSession(Registry& registry, LuaVM& lua, IsoParams iso, std::filesystem::path scriptRoot)
+    : registry_(registry), lua_(lua), iso_(iso), scriptRoot_(std::move(scriptRoot)) {
+    binder_ = [this](sol::environment& env, Entity self) { BindScriptApi(env, self); };
+}
+
+void GameSession::ResetClock() {
+    accumulator_ = 0.0;
+    attackKeyWasDown_ = false;
+    requestedAttack_.reset();
+    events_.clear();
+}
+
+void GameSession::RequestPlayerAttack(float worldX, float worldY) {
+    requestedAttack_ = std::make_pair(worldX, worldY);
+}
+
+void GameSession::BindScriptApi(sol::environment& env, Entity self) {
+    Registry& registry = registry_;
+    lua_State* L = env.lua_state();
+
+    env["self_id"] = [self]() { return ToId(self); };
+
+    env["get_position"] = [&registry, self]() {
+        const auto* world = registry.try_get<WorldTransform2D>(self);
+        return world ? std::make_tuple(world->x, world->y) : std::make_tuple(0.0f, 0.0f);
+    };
+    env["set_position"] = [&registry, self](float x, float y) {
+        if (auto* world = registry.try_get<WorldTransform2D>(self)) {
+            world->x = x;
+            world->y = y;
+        }
+    };
+
+    // Walks toward a point at `speed` cells/s for this frame, with collision.
+    env["move_toward"] = [this, &registry, self](float x, float y, float speed) {
+        auto* world = registry.try_get<WorldTransform2D>(self);
+        if (world == nullptr || registry.all_of<Dead>(self)) {
+            return;
+        }
+        float dx = x - world->x;
+        float dy = y - world->y;
+        float distance = std::sqrt(dx * dx + dy * dy);
+        if (distance < 1e-4f) {
+            return;
+        }
+        float step = std::min(speed * SpeedMultiplier(registry, self) * static_cast<float>(kFixedDt), distance);
+        Vec2 half{0.3f, 0.3f};
+        if (const auto* collider = registry.try_get<Collider2D>(self)) {
+            half = {collider->halfWidth, collider->halfHeight};
+        }
+        Vec2 moved = ResolveAabbMovement({world->x, world->y}, half, {dx / distance * step, dy / distance * step},
+                                         [this](int gx, int gy) { return grid_.IsSolid(gx, gy); });
+        world->x = moved.x;
+        world->y = moved.y;
+        registry.emplace_or_replace<Facing>(self, dx / distance, dy / distance);
+    };
+
+    // id, distance of the closest living entity of a team ("Player",
+    // "Enemy", "Neutral"), or nil.
+    env["find_nearest"] = [&registry, self, L](const std::string& teamName) -> std::tuple<sol::object, sol::object> {
+        auto team = ParseTeam(teamName);
+        const auto* from = registry.try_get<WorldTransform2D>(self);
+        if (!team || from == nullptr) {
+            return {sol::lua_nil, sol::lua_nil};
+        }
+        std::optional<Entity> best;
+        float bestDistance = 0.0f;
+        for (auto [entity, faction, world] : registry.view<Faction, WorldTransform2D>(entt::exclude<Dead>).each()) {
+            if (entity == self || faction.team != *team) {
+                continue;
+            }
+            float distance = std::hypot(world.x - from->x, world.y - from->y);
+            if (!best || distance < bestDistance) {
+                best = entity;
+                bestDistance = distance;
+            }
+        }
+        if (!best) {
+            return {sol::lua_nil, sol::lua_nil};
+        }
+        return {sol::make_object(L, ToId(*best)), sol::make_object(L, bestDistance)};
+    };
+
+    env["position_of"] = [&registry, L](lua_Integer id) -> std::tuple<sol::object, sol::object> {
+        Entity entity = ToEntity(id);
+        const auto* world = registry.valid(entity) ? registry.try_get<WorldTransform2D>(entity) : nullptr;
+        if (world == nullptr) {
+            return {sol::lua_nil, sol::lua_nil};
+        }
+        return {sol::make_object(L, world->x), sol::make_object(L, world->y)};
+    };
+
+    env["distance_to"] = [&registry, self, L](lua_Integer id) -> sol::object {
+        Entity entity = ToEntity(id);
+        const auto* from = registry.try_get<WorldTransform2D>(self);
+        const auto* to = registry.valid(entity) ? registry.try_get<WorldTransform2D>(entity) : nullptr;
+        if (from == nullptr || to == nullptr) {
+            return sol::lua_nil;
+        }
+        return sol::make_object(L, std::hypot(to->x - from->x, to->y - from->y));
+    };
+
+    env["is_alive"] = [&registry](lua_Integer id) {
+        Entity entity = ToEntity(id);
+        return registry.valid(entity) && !registry.all_of<Dead>(entity);
+    };
+
+    // current, max of this entity (or another, by id).
+    env["get_health"] = [&registry, self, L](sol::optional<lua_Integer> id) -> std::tuple<sol::object, sol::object> {
+        Entity entity = id ? ToEntity(*id) : self;
+        const auto* health = registry.valid(entity) ? registry.try_get<Health>(entity) : nullptr;
+        if (health == nullptr) {
+            return {sol::lua_nil, sol::lua_nil};
+        }
+        return {sol::make_object(L, health->current), sol::make_object(L, health->max)};
+    };
+
+    // Swings this entity's MeleeAttack toward another entity (by id) or a
+    // point (x, y). Returns true if the swing happened (not on cooldown).
+    env["attack_toward"] = [&registry, self](sol::object idOrX, sol::optional<float> y) {
+        const auto* from = registry.try_get<WorldTransform2D>(self);
+        if (from == nullptr || !idOrX.is<double>()) {
+            return false;
+        }
+        float tx = 0.0f;
+        float ty = 0.0f;
+        if (y) {
+            tx = static_cast<float>(idOrX.as<double>());
+            ty = *y;
+        } else {
+            Entity target = ToEntity(idOrX.as<lua_Integer>());
+            const auto* to = registry.valid(target) ? registry.try_get<WorldTransform2D>(target) : nullptr;
+            if (to == nullptr) {
+                return false;
+            }
+            tx = to->x;
+            ty = to->y;
+        }
+        return TryMeleeAttack(registry, self, tx - from->x, ty - from->y).has_value();
+    };
+
+    // apply_status(id, "burn" | "poison" | "slow" | "regen", seconds, magnitude)
+    env["apply_status"] = [&registry](lua_Integer id, const std::string& kind, float duration, float magnitude) {
+        Entity target = ToEntity(id);
+        auto effect = ParseEffect(kind);
+        if (registry.valid(target) && effect) {
+            ApplyStatus(registry, target, *effect, duration, magnitude);
+        }
+    };
+
+    env["play_sound"] = [this](const std::string& path) {
+        if (playSound_) {
+            playSound_(path);
+        }
     };
 }
 
-GameSession::GameSession(Registry& registry, LuaVM& lua, IsoParams iso, std::filesystem::path scriptRoot)
-    : registry_(registry),
-      lua_(lua),
-      iso_(iso),
-      scriptRoot_(std::move(scriptRoot)),
-      binder_(MakeWorldTransformBinder(registry)) {}
-
 int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
+    events_.clear();
     accumulator_ += std::min(frameSeconds, 0.25);
     if (accumulator_ < kFixedDt) {
         return 0;
     }
 
-    TileGrid grid = TileGrid::Build(registry_);
-    auto isSolid = [&grid](int gx, int gy) { return grid.IsSolid(gx, gy); };
+    grid_ = TileGrid::Build(registry_);
+    auto isSolid = [this](int gx, int gy) { return grid_.IsSolid(gx, gy); };
 
     int steps = 0;
     while (accumulator_ >= kFixedDt) {
         const float dt = static_cast<float>(kFixedDt);
         if (auto player = FindPlayer(registry_)) {
             UpdatePlayer(registry_, *player, isKeyDown, isSolid, dt);
+
+            // Attacks: Space swings toward the facing direction (on press,
+            // not while held); a click swings toward the clicked point.
+            bool attackKeyDown = isKeyDown(Key::Space);
+            if (attackKeyDown && !attackKeyWasDown_) {
+                TryMeleeAttack(registry_, *player, 0.0f, 0.0f);
+            }
+            attackKeyWasDown_ = attackKeyDown;
+            if (requestedAttack_) {
+                const auto& world = registry_.get<WorldTransform2D>(*player);
+                TryMeleeAttack(registry_, *player, requestedAttack_->first - world.x,
+                               requestedAttack_->second - world.y);
+                requestedAttack_.reset();
+            }
         }
         UpdateFollowers(registry_, isSolid, dt);
         UpdateScripts(registry_, lua_, dt, binder_, scriptRoot_);
+        UpdateCombat(registry_, isSolid, dt, events_);
         UpdateWorldToScreen(registry_, iso_);
         accumulator_ -= kFixedDt;
         ++steps;

@@ -1,6 +1,8 @@
 add_library(aige_gameplay STATIC
     Components.h
     Isometric.h
+    Combat.h
+    Combat.cpp
     Archetypes.h
     Archetypes.cpp
     BootstrapLevel.h

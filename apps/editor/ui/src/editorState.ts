@@ -14,6 +14,8 @@ export type ToolId =
   | 'erase'
   | 'place:sprite'
   | 'tile:asset'
+  | 'place:enemy'
+  | 'place:pickup'
 
 export const editorState = reactive({
   tool: 'select' as ToolId,
@@ -57,6 +59,8 @@ const toolKeys: Record<string, ToolId> = {
   n: 'place:npc',
   p: 'place:player',
   e: 'erase',
+  x: 'place:enemy',
+  h: 'place:pickup',
 }
 
 window.addEventListener('keydown', (event) => {

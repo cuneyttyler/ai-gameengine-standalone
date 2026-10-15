@@ -125,6 +125,30 @@ std::vector<ComponentDesc> BuildTable() {
         "Faction", {Member("team", FieldType::Enum, &Faction::team, {"Neutral", "Player", "Enemy"})}));
     table.push_back(Component<Health>("Health", {Member("current", FieldType::Float, &Health::current),
                                                  Member("max", FieldType::Float, &Health::max)}));
+    table.push_back(Component<Stats>("Stats", {Member("attack", FieldType::Float, &Stats::attack),
+                                               Member("defense", FieldType::Float, &Stats::defense),
+                                               Member("moveSpeed", FieldType::Float, &Stats::moveSpeed)}));
+    table.push_back(Component<Hurtbox>("Hurtbox",
+                                       {Member("halfWidth", FieldType::Float, &Hurtbox::halfWidth),
+                                        Member("halfHeight", FieldType::Float, &Hurtbox::halfHeight),
+                                        Member("invulnerableTime", FieldType::Float, &Hurtbox::invulnerableTime)},
+                                       {"WorldTransform2D", "Health"}));
+    static const std::vector<std::string> kEffects = {"None", "Burn", "Poison", "Slow", "Regen"};
+    table.push_back(Component<MeleeAttack>(
+        "MeleeAttack",
+        {Member("damage", FieldType::Float, &MeleeAttack::damage), Member("reach", FieldType::Float, &MeleeAttack::reach),
+         Member("radius", FieldType::Float, &MeleeAttack::radius),
+         Member("cooldown", FieldType::Float, &MeleeAttack::cooldown),
+         Member("knockback", FieldType::Float, &MeleeAttack::knockback),
+         Member("effect", FieldType::Enum, &MeleeAttack::effect, kEffects),
+         Member("effectDuration", FieldType::Float, &MeleeAttack::effectDuration),
+         Member("effectMagnitude", FieldType::Float, &MeleeAttack::effectMagnitude)},
+        {"WorldTransform2D"}));
+    table.push_back(Component<Pickup>("Pickup",
+                                      {Member("kind", FieldType::Enum, &Pickup::kind, {"Heal"}),
+                                       Member("amount", FieldType::Float, &Pickup::amount),
+                                       Member("radius", FieldType::Float, &Pickup::radius)},
+                                      {"WorldTransform2D"}));
     table.push_back(Component<Follow>("Follow",
                                       {Member("target", FieldType::EntityRef, &Follow::target),
                                        Member("speed", FieldType::Float, &Follow::speed),

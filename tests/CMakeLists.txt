@@ -19,6 +19,7 @@ add_executable(aige_tests
     editing_test.cpp
     assets_test.cpp
     component_table_test.cpp
+    combat_test.cpp
 )
 target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets aige_gameplay aige_editing gtest_main)
 

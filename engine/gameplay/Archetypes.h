@@ -45,6 +45,18 @@ Entity CreateProp(Registry& registry, float worldX, float worldY, const std::str
 
 // Characters are placed in world grid units; cell centers are (n + 0.5).
 Entity CreateNpc(Registry& registry, float worldX, float worldY, const std::string& scriptPath = {});
+
+// The player: input-driven movement (Velocity2D + Collider2D mark it), team
+// Player, health, and a melee attack (Space / click).
 Entity CreatePlayer(Registry& registry, float worldX, float worldY);
+
+// A melee enemy: chases the player (Follow) when within range and swings
+// at it via `scriptPath` (see projects/demo/scripts/enemy_melee.lua).
+// `target` is what it chases — normally the player.
+Entity CreateEnemy(Registry& registry, float worldX, float worldY, Entity target,
+                   const std::string& scriptPath = "scripts/enemy_melee.lua");
+
+// A health potion lying on the ground.
+Entity CreateHealthPickup(Registry& registry, float worldX, float worldY, float amount = 6.0f);
 
 } // namespace aige

@@ -59,7 +59,8 @@ public:
     void Save();
 
 private:
-    enum class Tool { Select, PaintGrass, PaintDirt, PaintWall, PlaceNpc, PlacePlayer, Erase, PlaceSprite, PaintTileset };
+    enum class Tool { Select, PaintGrass, PaintDirt, PaintWall, PlaceNpc, PlacePlayer, Erase, PlaceSprite, PaintTileset,
+                      PlaceEnemy, PlacePickup };
 
     // Edit transactions: BeginEdit snapshots the scene; the snapshot only
     // becomes an undo step once MarkChanged reports a real change, so clicks
@@ -134,6 +135,9 @@ private:
 
     bool playing_ = false;
     std::string playSnapshot_;
+    // The selection when Play started, restored on Stop. Indices taken from
+    // the live registry at Stop would be off once enemies die mid-play.
+    std::optional<size_t> selectionIndexAtPlay_;
 
     // Pointer state, in scene pixels.
     bool hasHover_ = false;

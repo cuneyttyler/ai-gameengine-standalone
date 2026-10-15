@@ -153,6 +153,16 @@ proven *before* any AI integration exists to lean on.
   status-effect ECS pattern (per `technical.md`'s ECS-for-data-heavy-systems approach) —
   enough to build a minimal Diablo-like attack in scripting.
 - Tests: GoogleTest on hit detection and status-effect application/expiry logic.
+- ✅ Built (user test deferred to end of Phase 1): `engine/gameplay/Combat` — authorable
+  `Stats`, `Hurtbox` (with invulnerability frames), `MeleeAttack` (cooldown, knockback,
+  on-hit status effect) and `Pickup`; runtime-only `Hitbox` entities, status effects as
+  their own entities (burn, poison, slow, regen; refresh rather than stack), hit flash,
+  death (enemies removed, player kept). Player: Space attacks the facing direction,
+  clicking in the viewport attacks toward the cursor. Enemy and Health Potion
+  archetypes with editor tools; enemies chase via `Follow` and swing via
+  `scripts/enemy_melee.lua`. Lua API documented in `docs/scripting.md`. Health bars over
+  damaged characters. Also fixed: player speed was √2 too fast on screen-cardinal input;
+  `Stats.moveSpeed` is now true cells/s.
 
 **1.6 — Minimal playable vertical slice**
 - One small hand-built isometric level: a controllable character, one enemy type, one

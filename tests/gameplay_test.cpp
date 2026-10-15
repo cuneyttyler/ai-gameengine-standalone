@@ -11,6 +11,7 @@
 #include "scripting/LuaVM.h"
 
 #include <algorithm>
+#include <cmath>
 #include <initializer_list>
 #include <string>
 #include <vector>
@@ -72,10 +73,24 @@ TEST(GameplayTest, UpIsScreenUpWhichIsWorldDiagonal) {
 
     aige::UpdatePlayer(registry, player, KeysHeld({aige::Key::W}), &NoWalls, 0.1f);
 
-    // W = screen-up = -x, -y in world space, at 3 cells/s.
+    // W = screen-up = equal parts -x and -y in world space; without Stats
+    // the player walks 4.2 cells/s in every direction.
     const auto& world = registry.get<aige::WorldTransform2D>(player);
-    EXPECT_FLOAT_EQ(world.x, 3.2f);
-    EXPECT_FLOAT_EQ(world.y, 3.2f);
+    const float perAxis = 0.42f / std::sqrt(2.0f);
+    EXPECT_NEAR(world.x, 3.5f - perAxis, 1e-4f);
+    EXPECT_NEAR(world.y, 3.5f - perAxis, 1e-4f);
+}
+
+TEST(GameplayTest, SpeedIsTheSameInEveryDirection) {
+    for (auto keys : {std::initializer_list<aige::Key>{aige::Key::D},
+                      std::initializer_list<aige::Key>{aige::Key::D, aige::Key::S},
+                      std::initializer_list<aige::Key>{aige::Key::W}}) {
+        aige::Registry registry;
+        auto player = MakePlayer(registry, 3.5f, 3.5f);
+        aige::UpdatePlayer(registry, player, KeysHeld(keys), &NoWalls, 0.1f);
+        const auto& velocity = registry.get<aige::Velocity2D>(player);
+        EXPECT_NEAR(std::hypot(velocity.x, velocity.y), 4.2f, 1e-4f);
+    }
 }
 
 TEST(GameplayTest, NoInputMeansNoMovement) {

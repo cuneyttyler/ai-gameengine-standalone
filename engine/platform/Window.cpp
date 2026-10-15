@@ -31,6 +31,8 @@ int ToGlfwKey(Key key) {
             return GLFW_KEY_ESCAPE;
         case Key::F5:
             return GLFW_KEY_F5;
+        case Key::Space:
+            return GLFW_KEY_SPACE;
     }
     return GLFW_KEY_UNKNOWN;
 }

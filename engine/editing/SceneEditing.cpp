@@ -72,6 +72,13 @@ Entity PlaceCharacter(Registry& registry, CharacterKind kind, int gx, int gy) {
         }
         return CreatePlayer(registry, worldX, worldY);
     }
+    if (kind == CharacterKind::Enemy) {
+        auto player = FindPlayer(registry);
+        return CreateEnemy(registry, worldX, worldY, player ? *player : Entity{entt::null});
+    }
+    if (kind == CharacterKind::Pickup) {
+        return CreateHealthPickup(registry, worldX, worldY);
+    }
     return CreateNpc(registry, worldX, worldY);
 }
 

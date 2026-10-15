@@ -14,8 +14,8 @@ const entities = ref<EntitySummary[]>([])
 // Tiles vastly outnumber everything else, so they get their own group,
 // collapsed by default.
 const groups = computed(() => [
-  { name: 'Characters', items: entities.value.filter((e) => ['Player', 'NPC', 'Scripted NPC'].includes(e.kind)) },
-  { name: 'Props', items: entities.value.filter((e) => e.kind === 'Prop' || e.kind === 'Decoration') },
+  { name: 'Characters', items: entities.value.filter((e) => ['Player', 'Enemy', 'NPC', 'Scripted NPC'].includes(e.kind)) },
+  { name: 'Props', items: entities.value.filter((e) => ['Prop', 'Pickup', 'Decoration'].includes(e.kind)) },
   { name: 'Tiles', items: entities.value.filter((e) => e.kind === 'Tile') },
 ])
 const collapsed = reactive<Record<string, boolean>>({ Tiles: true })

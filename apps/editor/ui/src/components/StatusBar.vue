@@ -12,11 +12,13 @@ const hints: Record<string, string> = {
   erase: 'Click or drag to erase',
   'place:sprite': 'Click a cell to place the selected asset as a prop',
   'tile:asset': 'Click or drag to paint tiles from the selected tileset',
+  'place:enemy': 'Click a cell to place an enemy (chases and attacks the player)',
+  'place:pickup': 'Click a cell to place a health potion',
 }
 
 const hint = computed(() =>
   editorState.playing
-    ? 'Playing · WASD / arrows to move · Esc to stop · changes revert on stop'
+    ? 'Playing · WASD move · Space or click attack · Esc stop · changes revert on stop'
     : `${hints[editorState.tool] ?? ''} · right-drag pan · wheel zoom · F frame`,
 )
 </script>

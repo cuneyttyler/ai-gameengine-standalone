@@ -84,7 +84,49 @@ Entity CreatePlayer(Registry& registry, float worldX, float worldY) {
     registry.emplace<WorldTransform2D>(entity, worldX, worldY);
     registry.emplace<Velocity2D>(entity);
     registry.emplace<Collider2D>(entity, 0.3f, 0.3f);
+    registry.emplace<Faction>(entity, Team::Player);
+    registry.emplace<Health>(entity, 20.0f, 20.0f);
+    registry.emplace<Stats>(entity, 1.0f, 0.0f, 4.2f);
+    registry.emplace<Hurtbox>(entity);
+    registry.emplace<MeleeAttack>(entity, 3.0f, 0.7f, 0.5f, 0.35f, 0.5f);
     AddCharacterVisuals(registry, entity, kPlayerUV);
+    return entity;
+}
+
+Entity CreateEnemy(Registry& registry, float worldX, float worldY, Entity target, const std::string& scriptPath) {
+    auto entity = registry.create();
+    registry.emplace<Name>(entity, "Enemy");
+    registry.emplace<WorldTransform2D>(entity, worldX, worldY);
+    registry.emplace<Collider2D>(entity, 0.3f, 0.3f);
+    registry.emplace<Faction>(entity, Team::Enemy);
+    registry.emplace<Health>(entity, 8.0f, 8.0f);
+    registry.emplace<Stats>(entity, 0.0f, 0.0f, 2.0f);
+    registry.emplace<Hurtbox>(entity);
+    // Slower, weaker swings than the player so a 1-on-1 is winnable.
+    registry.emplace<MeleeAttack>(entity, 2.0f, 0.7f, 0.45f, 1.2f, 0.3f);
+    registry.emplace<Follow>(entity, target, 1.6f, 0.8f, 5.0f);
+    AddCharacterVisuals(registry, entity, kNpcUV);
+    // Tinted so enemies read differently from friendly NPCs at a glance.
+    auto& sprite = registry.get<Sprite>(entity);
+    sprite.r = 1.0f;
+    sprite.g = 0.55f;
+    sprite.b = 0.55f;
+    if (!scriptPath.empty()) {
+        registry.emplace<LuaScript>(entity).path = scriptPath;
+    }
+    return entity;
+}
+
+Entity CreateHealthPickup(Registry& registry, float worldX, float worldY, float amount) {
+    auto entity = registry.create();
+    registry.emplace<Name>(entity, "Health Potion");
+    registry.emplace<WorldTransform2D>(entity, worldX, worldY);
+    registry.emplace<Pickup>(entity, PickupKind::Heal, amount, 0.5f);
+    registry.emplace<ScreenTransform2D>(entity);
+    // Small, bright marker until real art exists: the player-marker texel,
+    // tinted green.
+    registry.emplace<Sprite>(entity, 16.0f, 16.0f, kPlayerUV[0], kPlayerUV[1], kPlayerUV[2], kPlayerUV[3], 0.3f,
+                             1.0f, 0.4f, 1.0f);
     return entity;
 }
 
