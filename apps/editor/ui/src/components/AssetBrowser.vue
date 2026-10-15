@@ -5,6 +5,7 @@ import PrefabThumb from './PrefabThumb.vue'
 import WorldPanel from './WorldPanel.vue'
 import StoryPanel from './StoryPanel.vue'
 import LevelPanel from './LevelPanel.vue'
+import ArtPanel from './ArtPanel.vue'
 import { onHostMessage, sendToHost } from '../ipc'
 
 interface Asset {
@@ -20,6 +21,8 @@ interface Asset {
   columns?: number
   rows?: number
   duration?: number
+  // Made in the Art tab (3.6): from its .gen.json.
+  generation?: { description: string; variant: string | null; model: string; created: string }
 }
 
 // The host maps the open project folder to this virtual host
@@ -148,7 +151,7 @@ function createPrefab(asTile: boolean): void {
 }
 
 // Prefabs tab: the project's palette.
-const tab = ref<'prefabs' | 'assets' | 'world' | 'story' | 'level'>('prefabs')
+const tab = ref<'prefabs' | 'assets' | 'world' | 'story' | 'level' | 'art'>('prefabs')
 const visiblePrefabs = computed(() => {
   const query = filter.value.trim().toLowerCase()
   return query ? editorState.prefabs.filter((p) => p.name.toLowerCase().includes(query)) : editorState.prefabs
@@ -183,6 +186,7 @@ onMounted(() => {
         </button>
         <button :class="{ active: tab === 'story' }" title="Dialogue and quests" @click="tab = 'story'">Story</button>
         <button :class="{ active: tab === 'level' }" title="Generate a dungeon" @click="tab = 'level'">Level</button>
+        <button :class="{ active: tab === 'art' }" title="Generate sprites from a description" @click="tab = 'art'">Art</button>
       </div>
       <input
         v-if="tab === 'prefabs' || tab === 'assets'"
@@ -209,6 +213,7 @@ onMounted(() => {
     <WorldPanel v-if="tab === 'world'" class="body world-body" />
     <StoryPanel v-else-if="tab === 'story'" class="body" />
     <LevelPanel v-else-if="tab === 'level'" class="body" />
+    <ArtPanel v-else-if="tab === 'art'" class="body" />
     <div v-else-if="tab === 'prefabs'" class="body">
       <div class="grid">
         <p v-if="editorState.prefabs.length === 0" class="placeholder">
@@ -277,6 +282,13 @@ onMounted(() => {
 
         <template v-else>
           <div class="row"><span>Size</span><span>{{ selected.width }} × {{ selected.height }}</span></div>
+          <div v-if="selected.generation" class="row" :title="'Generated ' + (selected.generation.created ?? '')">
+            <span>Generated</span>
+            <span>
+              {{ selected.generation.description }}{{ selected.generation.variant ? ' — ' + selected.generation.variant : '' }}
+              <span class="muted">({{ selected.generation.model }})</span>
+            </span>
+          </div>
           <div class="row">
             <span>Import as</span>
             <select v-model="settingsType">

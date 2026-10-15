@@ -164,6 +164,8 @@ private:
     // the proposal they're for; and the World tab's "Check against canon".
     std::map<int, int> consistencyRequests_;
     int worldCheckRequest_ = 0;
+    int artRequest_ = 0; // the Art tab's generation in flight (development_plan.md 3.6)
+    nlohmann::json ArtJson();
     std::string worldCheckKey_;
     bool RequestConsistencyCheck(int proposalId, const nlohmann::json& operations);
     nlohmann::json WorldJson();

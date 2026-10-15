@@ -799,6 +799,61 @@ of the sibling project's Phase 2-3.
       Marker components, to try it.
 - **3.6 Asset Generator Studio**: text-to-sprite pipeline, variant-family generation,
   prompt/seed/model-tagged assets.
+  - Images come from Mistral's image generation (FLUX, through the Agents API's
+    `image_generation` tool, with the same key). A probe gave a clean isometric pixel-art
+    barrel on white in about 7.5 s. The service reuses one agent and downloads the
+    result.
+  - **Sprite pipeline** (`ai_service/app/sprites.py`, Pillow): remove the background (a
+    flood fill from the borders at the background colour, so white inside the object
+    survives, then defringe the light halo), crop to the object, scale to the target
+    height, and optionally reduce the palette for a crisp pixel-art look. Saved as
+    `assets/textures/generated/<name>.png`.
+  - **Tagged**: each image has a `<file>.gen.json` sidecar with the description, the
+    prompt actually sent, provider and model, seed (recorded as not exposed: Mistral
+    doesn't return one), variant, family, processing settings and time. That's enough
+    to regenerate it or explain where it came from.
+  - **Variant families**: one description, several variations ("mossy", "broken",
+    "painted red"), saved as `<name>-<variant>.png` in one family.
+  - **Studio**: an **Art** tab with description, name, kind (object or character),
+    height, style, and variants. It shows generation progress and a gallery of
+    results with Keep, Discard, Regenerate and Make prefab. The Assets tab shows each
+    generated texture's description and model.
+  - v1 scope: objects and characters. Floor tiles need exact isometric diamonds,
+    which free-form generation rarely produces. Proposals don't generate images yet;
+    applying is synchronous, and a generation takes seconds.
+  - Tests: the pipeline on synthetic images (background removed, white interior
+    kept, halo gone, crop, size, palette limit), file naming and sidecars, the
+    endpoint with a fake generator (variants, unsafe names refused, no project or
+    generator), and a real end-to-end run with the image kept for the user test.
+  - **User test:** do generated sprites look acceptable in the game?
+  - ✅ Built as described:
+    - `app/images.py`: `MistralImageGenerator` (one reused agent named
+      `aige-sprite-generator` on the account; it downloads the result URL or file),
+      `build_prompt` (subject, isometric view, style, cutout backdrop) and
+      `generate_sprites` (variants, files, sidecars).
+    - `app/sprites.py`: background colour from the border, flood-fill removal,
+      halo defringe, crop, premultiplied resize, and palette reduction for the
+      pixel style.
+    - `POST /assets/generate`.
+    - Editor: the **Art** tab (form; gallery on a checkerboard with Regenerate,
+      Make prefab through the existing asset → prefab path, and Discard, which
+      removes the png, sidecar and meta). The Assets tab shows "Generated: <what>
+      (model)".
+    - Tests (`test_sprites.py`): on a synthetic anti-aliased object with a white
+      patch inside, the backdrop is gone, the patch kept and no light halo
+      remains; crop, size, hard alpha and the palette limit for pixel style; no
+      white fringe after the smooth resize; an empty picture doesn't fail;
+      variants become a tagged family (sidecar contents); prompt shape; the
+      endpoint (no project, unsafe names, bad kind, size and count refused).
+    - Real runs: a barrel, a mossy variant and an old herbalist, each about 10 s
+      and 48 px tall, cut out cleanly.
+    - Learned from them: the model tends to draw a patch of ground under the
+      subject despite "no ground". A stronger backdrop phrase ("isolated cutout…
+      nothing under it, no floor, no grass, no base") reduced it to a faint ring
+      or strip, but didn't remove it. That's documented in the panel ("regenerate
+      if so"), with no fragile pixel cleanup.
+    - The seed is recorded as not exposed, because Mistral's tool doesn't return
+      one. The exact provider prompt and model are recorded.
 
 Each of 3.1-3.6 gets its own fixture/golden-file tests per `technical.md` §14; several
 (especially 3.4, 3.5, 3.6) also get a **user test checkpoint** since "is this dungeon

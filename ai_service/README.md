@@ -58,6 +58,12 @@ related to the request, plus the tone guide, as a WORLD BIBLE block. Dialogue an
 are written with the `write_dialogue` / `write_quest` operations (format in
 `docs/story.md`), checked by `app/story.py` like the editor checks them.
 
+Sprites (`POST /assets/generate`, `app/images.py` + `app/sprites.py`): a description
+becomes a FLUX image through Mistral's Agents API image tool, then a cut-out, cropped,
+scaled sprite in the project's `assets/textures/generated/`, with a `.gen.json` sidecar
+(description, prompt sent, model, variant, processing). The service creates one agent on
+the Mistral account, named `aige-sprite-generator`, and reuses it.
+
 Writing that makes claims about the world (canon entries, dialogue, quests) can be
 checked with `POST /consistency` (`app/consistency.py`). A second model
 (`MISTRAL_CHECK_MODEL`, default `mistral-medium-latest`) compares it with the canon

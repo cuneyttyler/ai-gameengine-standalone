@@ -214,6 +214,9 @@ generated field automatically gets the "Ask AI" affordance for free.
     host → UI `world:checkResult {key, result}`.
   - Level (3.4): UI → host `level:defaults`, `level:preview {args}`, `level:generate {args}`;
     host → UI `level:defaults {x0, y0, tiles, things}`, `level:preview {text, error}`.
+  - Art (3.6): UI → host `art:request`, `art:generate {request}` (forwarded to the service's
+    `/assets/generate`), `art:discard {path}`; host → UI `art:list {items, busy}`,
+    `art:result {result}`. `assets:list` entries carry `generation` when a `.gen.json` exists.
   - Story: UI → host `story:request`, `story:save {kind, id, originalId, content}`,
     `story:delete {file}`; host → UI `story:list {dialogues, quests, schedules, markers,
     problems, world, prefabs, usedBy}`, `story:saved {file, error}`. `story:save` kind

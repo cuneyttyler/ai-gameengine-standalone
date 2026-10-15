@@ -296,6 +296,26 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             post_({{"type", "notify"}, {"text", *error}});
         }
         post_(WorldJson());
+    } else if (type == "art:request") {
+        post_(ArtJson());
+    } else if (type == "art:generate") {
+        // Takes a few seconds per image, on the AI client's worker thread.
+        if (Ai() == nullptr || Ai()->GetState() != AiClient::State::Ready) {
+            post_({{"type", "art:result"}, {"result", {{"ok", false}, {"errors", {"AI is off"}}}}});
+        } else if (artRequest_ == 0) {
+            artRequest_ = Ai()->Request("POST", "/assets/generate", message.value("request", nlohmann::json::object()), 300);
+        }
+    } else if (type == "art:discard") {
+        // Only generated art, by its project-relative path.
+        const std::string path = message.value("path", "");
+        if (path.rfind("assets/textures/generated/", 0) == 0 && path.find("..") == std::string::npos) {
+            std::error_code ec;
+            for (const char* suffix : {"", ".gen.json", ".meta"}) {
+                std::filesystem::remove(assets_.GetProject().Resolve(path + suffix), ec);
+            }
+            RefreshAssets();
+        }
+        post_(ArtJson());
     } else if (type == "level:defaults") {
         // A free area to suggest: just east of everything already in the scene.
         int maxX = 0, minY = 0;
@@ -1120,6 +1140,11 @@ void EditorApp::PollAi() {
         } else if (result->kind == AiClient::Result::Kind::Response) {
             if (result->requestId == worldSearchRequest_) {
                 post_({{"type", "world:searchResults"}, {"result", result->body}});
+            } else if (result->requestId == artRequest_) {
+                artRequest_ = 0;
+                RefreshAssets(); // the new textures
+                post_({{"type", "art:result"}, {"result", result->body}});
+                post_(ArtJson());
             } else if (result->requestId == worldCheckRequest_) {
                 post_({{"type", "world:checkResult"}, {"key", worldCheckKey_}, {"result", result->body}});
             } else if (auto it = consistencyRequests_.find(result->requestId); it != consistencyRequests_.end()) {
@@ -2036,6 +2061,29 @@ void EditorApp::ApplyAssetToSelected(const std::string& path, int tile) {
     sceneTreeStale_ = true; // an NPC with a texture now lists as a Prop
 }
 
+// Generated art (assets/textures/generated, development_plan.md 3.6), newest
+// first, with where each came from.
+nlohmann::json EditorApp::ArtJson() {
+    std::vector<std::pair<std::string, nlohmann::json>> found;
+    std::error_code ec;
+    const std::filesystem::path folder = assets_.GetProject().Resolve("assets/textures/generated");
+    for (const auto& file : std::filesystem::directory_iterator(folder, ec)) {
+        if (file.path().extension() != ".png") continue;
+        std::ifstream in(std::filesystem::path(file.path()).concat(".gen.json"));
+        nlohmann::json meta = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json::object();
+        if (!meta.is_object()) meta = nlohmann::json::object();
+        found.push_back({"assets/textures/generated/" + file.path().filename().string(), meta});
+    }
+    std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) {
+        return a.second.value("created", "") > b.second.value("created", "");
+    });
+    nlohmann::json list = nlohmann::json::array();
+    for (const auto& [path, meta] : found) {
+        list.push_back({{"path", path}, {"version", assetVersions_[path]}, {"meta", meta}});
+    }
+    return {{"type", "art:list"}, {"items", list}, {"busy", artRequest_ != 0}};
+}
+
 nlohmann::json EditorApp::AssetsJson() {
     nlohmann::json list = nlohmann::json::array();
     for (const auto& asset : assets_.Assets()) {
@@ -2056,6 +2104,17 @@ nlohmann::json EditorApp::AssetsJson() {
                 entry["tileHeight"] = asset.tileHeight;
                 entry["columns"] = asset.TileColumns();
                 entry["rows"] = asset.TileRows();
+            }
+        }
+        // Generated art (3.6) says where it came from.
+        std::ifstream sidecar(assets_.GetProject().Resolve(asset.path + ".gen.json"));
+        if (sidecar) {
+            nlohmann::json meta = nlohmann::json::parse(sidecar, nullptr, false);
+            if (meta.is_object()) {
+                entry["generation"] = {{"description", meta.value("description", "")},
+                                       {"variant", meta.value("variant", nlohmann::json())},
+                                       {"model", meta.value("model", "")},
+                                       {"created", meta.value("created", "")}};
             }
         }
         list.push_back(entry);

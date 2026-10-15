@@ -8,6 +8,7 @@
   PUT  /project         {root}: the open project, so its World Bible can be indexed
   POST /world/search    {query, k?} -> the most related World Bible entries
   POST /consistency     {operations, exclude?} -> contradictions with the canon (a second, cheaper model)
+  POST /assets/generate {name, description, kind, height, style, variants} -> sprites written to the project
 
 Run: uv run uvicorn app.main:app --port 8765
 """
@@ -23,6 +24,7 @@ from pydantic import BaseModel
 
 from .models import EditorContext, EngineSchema, Proposal, Usage
 from .consistency import check_consistency, writing_from_operations
+from .images import ImageGenerator, MistralImageGenerator, generate_sprites
 from .providers import MistralEmbedder, MistralProvider, Provider, ProviderError
 from .service import propose
 from .world import Embedder, WorldIndex, format_entry, load_entries
@@ -48,6 +50,15 @@ class SearchRequest(BaseModel):
 class ConsistencyRequest(BaseModel):
     operations: list[dict] = []
     exclude: list[str] = []  # canon keys not to compare against (an entry being re-checked)
+
+
+class GenerateAssetRequest(BaseModel):
+    name: str
+    description: str
+    kind: str = "object"
+    height: int = 48
+    style: str = "pixel"
+    variants: list[str] = []
 
 
 class ProposeResponse(BaseModel):
@@ -78,6 +89,12 @@ def default_checker() -> Provider | None:
     return MistralProvider(api_key=key, model=os.environ.get("MISTRAL_CHECK_MODEL", "mistral-medium-latest"))
 
 
+def default_image_generator() -> ImageGenerator | None:
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    key = os.environ.get("MISTRAL_API_KEY")
+    return MistralImageGenerator(api_key=key) if key else None
+
+
 def default_embedder() -> Embedder | None:
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     key = os.environ.get("MISTRAL_API_KEY")
@@ -89,6 +106,7 @@ def create_app(
     schema: EngineSchema | None = None,
     embedder: Embedder | None = None,
     checker: Provider | None = None,
+    images: ImageGenerator | None = None,
 ) -> FastAPI:
     app = FastAPI(title="AIGE AI Orchestration Service", version="0.1.0")
     state = {
@@ -98,6 +116,8 @@ def create_app(
         "embedder": embedder,
         "world": None,
         "checker": checker,
+        "images": images,
+        "root": None,
     }
 
     @app.get("/health")
@@ -165,6 +185,7 @@ def create_app(
         if not root.is_dir():
             raise HTTPException(400, f"not a folder: {request.root}")
         state["world"] = WorldIndex(root, state["embedder"])
+        state["root"] = root
         return {"ok": True, "worldEntries": len(load_entries(root))}
 
     @app.post("/world/search")
@@ -174,6 +195,23 @@ def create_app(
             return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
         hits, method = index.search(request.query, max(1, min(request.k, 20)))
         return {"ok": True, "method": method, "hits": [hit.__dict__ for hit in hits]}
+
+    @app.post("/assets/generate")
+    def assets_generate(request: GenerateAssetRequest) -> dict:
+        root: Path | None = state["root"]
+        images: ImageGenerator | None = state["images"]
+        if root is None or images is None:
+            return {"ok": False, "errors": ["No project or image generator available (MISTRAL_API_KEY)"]}
+        if len(request.variants) > 6:
+            return {"ok": False, "errors": ["At most 6 variants at a time"]}
+        try:
+            results = generate_sprites(images, root, request.name, request.description, request.kind,
+                                       request.height, request.style, request.variants)
+        except ValueError as error:
+            return {"ok": False, "errors": [str(error)]}
+        except ProviderError as error:
+            return {"ok": False, "errors": [str(error)]}
+        return {"ok": True, "assets": results}
 
     @app.post("/consistency")
     def consistency(request: ConsistencyRequest) -> dict:
@@ -207,4 +245,9 @@ def create_app(
     return app
 
 
-app = create_app(provider=default_provider(), embedder=default_embedder(), checker=default_checker())
+app = create_app(
+    provider=default_provider(),
+    embedder=default_embedder(),
+    checker=default_checker(),
+    images=default_image_generator(),
+)
