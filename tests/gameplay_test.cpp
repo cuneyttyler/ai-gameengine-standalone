@@ -2,8 +2,10 @@
 
 #include "assets/SceneIO.h"
 #include "ecs/Registry.h"
+#include "gameplay/Archetypes.h"
 #include "gameplay/BootstrapLevel.h"
 #include "gameplay/GameSession.h"
+#include "gameplay/TileGrid.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 #include "scripting/LuaVM.h"
@@ -30,6 +32,15 @@ size_t CountEntities(aige::Registry& registry) {
 
 bool NoWalls(int, int) {
     return false;
+}
+
+// A walkable 8x8 floor, so session tests aren't blocked by "empty cells are solid".
+void MakeFloor(aige::Registry& registry) {
+    for (int gx = 0; gx < 8; ++gx) {
+        for (int gy = 0; gy < 8; ++gy) {
+            aige::CreateTile(registry, gx, gy, aige::TileKind::Grass);
+        }
+    }
 }
 
 aige::Entity MakePlayer(aige::Registry& registry, float x, float y) {
@@ -80,15 +91,54 @@ TEST(GameplayTest, NoInputMeansNoMovement) {
 
 TEST(GameplayTest, BootstrapWallsBlockMovement) {
     aige::Registry registry;
-    auto player = MakePlayer(registry, 1.5f, 1.5f); // next to the border ring
+    aige::BuildBootstrapScene(registry, "");
+    auto player = *aige::FindPlayer(registry);
+    registry.get<aige::WorldTransform2D>(player) = {1.5f, 1.5f}; // next to the border ring
+    aige::TileGrid grid = aige::TileGrid::Build(registry);
+    auto isSolid = [&grid](int gx, int gy) { return grid.IsSolid(gx, gy); };
 
     for (int i = 0; i < 60; ++i) {
-        aige::UpdatePlayer(registry, player, KeysHeld({aige::Key::W}), &aige::IsBootstrapSolidCell, 1.0f / 60.0f);
+        aige::UpdatePlayer(registry, player, KeysHeld({aige::Key::W}), isSolid, 1.0f / 60.0f);
     }
 
     const auto& world = registry.get<aige::WorldTransform2D>(player);
     EXPECT_GE(world.x - 0.3f, 1.0f);
     EXPECT_GE(world.y - 0.3f, 1.0f);
+}
+
+TEST(GameplayTest, TileGridTreatsEmptyCellsAsSolid) {
+    aige::Registry registry;
+    aige::CreateTile(registry, 0, 0, aige::TileKind::Grass);
+    aige::CreateTile(registry, 1, 0, aige::TileKind::Wall);
+    aige::TileGrid grid = aige::TileGrid::Build(registry);
+
+    EXPECT_FALSE(grid.IsSolid(0, 0));
+    EXPECT_TRUE(grid.IsSolid(1, 0));
+    EXPECT_TRUE(grid.IsSolid(5, 5)); // no tile at all
+    EXPECT_TRUE(grid.At(0, 0) != entt::null);
+    EXPECT_TRUE(grid.At(5, 5) == entt::null);
+}
+
+TEST(GameplayTest, TilesProjectToTheirCellCenter) {
+    aige::Registry registry;
+    auto tile = aige::CreateTile(registry, 2, 3, aige::TileKind::Dirt);
+    const aige::IsoParams iso = aige::BootstrapIso();
+    aige::UpdateWorldToScreen(registry, iso);
+
+    aige::ScreenPose pose = aige::ProjectIso(2.5f, 3.5f, iso);
+    const auto& screen = registry.get<aige::ScreenTransform2D>(tile);
+    EXPECT_FLOAT_EQ(screen.x, pose.x);
+    EXPECT_FLOAT_EQ(screen.y, pose.y);
+}
+
+TEST(GameplayTest, UnprojectInvertsProject) {
+    const aige::IsoParams iso = aige::BootstrapIso();
+    aige::ScreenPose pose = aige::ProjectIso(3.25f, 6.75f, iso);
+    float wx = 0.0f;
+    float wy = 0.0f;
+    aige::UnprojectIso(pose.x, pose.y, iso, wx, wy);
+    EXPECT_NEAR(wx, 3.25f, 1e-4f);
+    EXPECT_NEAR(wy, 6.75f, 1e-4f);
 }
 
 TEST(GameplayTest, WorldToScreenMatchesIsoProjection) {
@@ -114,7 +164,8 @@ TEST(GameplayTest, SessionRunsFixedStepsAndCarriesRemainder) {
     aige::LuaVM lua;
     aige::Registry registry;
     MakePlayer(registry, 3.5f, 3.5f);
-    aige::GameSession session(registry, lua, aige::BootstrapIso(), &NoWalls);
+    MakeFloor(registry);
+    aige::GameSession session(registry, lua, aige::BootstrapIso());
 
     EXPECT_EQ(session.Advance(aige::GameSession::kFixedDt * 2.5, KeysHeld({})), 2);
     EXPECT_EQ(session.Advance(aige::GameSession::kFixedDt * 0.6, KeysHeld({})), 1); // 0.5 + 0.6 carried over
@@ -127,7 +178,8 @@ TEST(GameplayTest, SessionMovesPlayerFromKeys) {
     aige::LuaVM lua;
     aige::Registry registry;
     auto player = MakePlayer(registry, 3.5f, 3.5f);
-    aige::GameSession session(registry, lua, aige::BootstrapIso(), &NoWalls);
+    MakeFloor(registry);
+    aige::GameSession session(registry, lua, aige::BootstrapIso());
 
     session.Advance(0.2, KeysHeld({aige::Key::D}));
 
@@ -146,7 +198,7 @@ TEST(GameplayTest, PlaySnapshotRestoresSceneAfterSimulation) {
 
     std::string snapshot = aige::SerializeScene(registry);
 
-    aige::GameSession session(registry, lua, aige::BootstrapIso(), &aige::IsBootstrapSolidCell);
+    aige::GameSession session(registry, lua, aige::BootstrapIso());
     session.Advance(0.25, KeysHeld({aige::Key::S}));
     auto player = *aige::FindPlayer(registry);
     EXPECT_NE(registry.get<aige::WorldTransform2D>(player).y, 3.5f);

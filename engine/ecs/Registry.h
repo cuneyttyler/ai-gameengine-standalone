@@ -2,6 +2,9 @@
 
 #include <entt/entt.hpp>
 
+#include <algorithm>
+#include <vector>
+
 namespace aige {
 
 // Thin naming seam over EnTT (technical.md §6): the rest of the engine
@@ -10,5 +13,19 @@ namespace aige {
 // a project-wide rename.
 using Registry = entt::registry;
 using Entity = entt::entity;
+
+// Every live entity in storage order (EnTT's all-entities view iterates it
+// in reverse). Storage order equals creation order for a freshly loaded
+// registry, and the scene writer uses this order, so an entity's index here
+// survives a save/load round trip even though its id does not — which is
+// how the editor keeps the selection across undo and Play/Stop.
+inline std::vector<Entity> EntitiesInOrder(Registry& registry) {
+    std::vector<Entity> entities;
+    for (auto entity : registry.view<Entity>()) {
+        entities.push_back(entity);
+    }
+    std::reverse(entities.begin(), entities.end());
+    return entities;
+}
 
 } // namespace aige

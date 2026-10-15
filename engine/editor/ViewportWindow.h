@@ -9,6 +9,19 @@
 
 namespace aige {
 
+struct ViewportMouseEvent {
+    enum class Type { Down, Up, Move, Wheel, Leave };
+    enum class Button { None, Left, Right, Middle };
+
+    Type type = Type::Move;
+    Button button = Button::None;
+    float x = 0.0f; // viewport client pixels
+    float y = 0.0f;
+    float wheelSteps = 0.0f; // Wheel only: +1 per notch away from the user
+    bool ctrl = false;
+    bool shift = false;
+};
+
 // A raw Win32 WS_CHILD window used as the render target for the editor's
 // native Vulkan viewport — a sibling of the WebView2 control that hosts
 // everything else (see WebViewHost). Deliberately not aige::Window (GLFW):
@@ -43,6 +56,15 @@ public:
     bool HasFocus() const { return GetFocus() == hwnd_; }
     void Focus() { SetFocus(hwnd_); }
 
+    // Mouse input over the viewport. The window captures the mouse while a
+    // button is held, so drags keep reporting even outside its bounds.
+    void SetMouseCallback(std::function<void(const ViewportMouseEvent&)> callback);
+
+    // Every WM_KEYDOWN (including auto-repeat) with its Win32 virtual-key
+    // code — for editor shortcuts, as opposed to IsKeyDown's held-state
+    // polling used by gameplay.
+    void SetKeyDownCallback(std::function<void(int virtualKey, bool ctrl, bool shift)> callback);
+
     // Public so the free function registering the window class (which needs
     // a plain WNDPROC pointer) can reference it.
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
@@ -51,7 +73,11 @@ private:
     HWND hwnd_ = nullptr;
     HINSTANCE hinstance_ = nullptr;
     std::function<void(int, int)> resizeCallback_;
+    std::function<void(const ViewportMouseEvent&)> mouseCallback_;
+    std::function<void(int, bool, bool)> keyDownCallback_;
     std::array<bool, 256> keyDown_{}; // indexed by Win32 virtual-key code
+    int buttonsHeld_ = 0;
+    bool trackingLeave_ = false;
 };
 
 } // namespace aige

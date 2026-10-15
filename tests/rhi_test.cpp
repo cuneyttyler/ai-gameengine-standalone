@@ -11,6 +11,7 @@ TEST(VulkanRHITest, InitializesAndRunsFrameLifecycleWithoutThrowing) {
             window.PollEvents();
             VkCommandBuffer cmd = rhi.BeginFrame();
             if (cmd != VK_NULL_HANDLE) {
+                rhi.BeginSwapchainPass(); // transitions the image so it can be presented
                 rhi.EndFrame();
             }
         }

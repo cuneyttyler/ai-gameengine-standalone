@@ -1,5 +1,6 @@
 add_library(aige_renderer2d STATIC
     Components.h
+    Camera2D.h
     Renderer2D.h
     Renderer2D.cpp
 )

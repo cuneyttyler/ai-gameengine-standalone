@@ -83,6 +83,14 @@ bool ViewportWindow::IsKeyDown(Key key) const {
     return keyDown_[ToVirtualKey(key)];
 }
 
+void ViewportWindow::SetMouseCallback(std::function<void(const ViewportMouseEvent&)> callback) {
+    mouseCallback_ = std::move(callback);
+}
+
+void ViewportWindow::SetKeyDownCallback(std::function<void(int, bool, bool)> callback) {
+    keyDownCallback_ = std::move(callback);
+}
+
 LRESULT CALLBACK ViewportWindow::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     if (msg == WM_NCCREATE) {
         auto* createStruct = reinterpret_cast<CREATESTRUCTW*>(lparam);
@@ -106,12 +114,95 @@ LRESULT CALLBACK ViewportWindow::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPA
         case WM_LBUTTONDOWN:
         case WM_RBUTTONDOWN:
         case WM_MBUTTONDOWN:
-            SetFocus(hwnd); // plain child windows don't take focus on click by themselves
+        case WM_LBUTTONUP:
+        case WM_RBUTTONUP:
+        case WM_MBUTTONUP:
+        case WM_MOUSEMOVE: {
+            if (self == nullptr) {
+                return 0;
+            }
+            ViewportMouseEvent event;
+            event.x = static_cast<float>(static_cast<short>(LOWORD(lparam)));
+            event.y = static_cast<float>(static_cast<short>(HIWORD(lparam)));
+            event.ctrl = (wparam & MK_CONTROL) != 0;
+            event.shift = (wparam & MK_SHIFT) != 0;
+
+            if (msg == WM_MOUSEMOVE) {
+                event.type = ViewportMouseEvent::Type::Move;
+                if (!self->trackingLeave_) {
+                    TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, hwnd, 0};
+                    self->trackingLeave_ = TrackMouseEvent(&track) != FALSE;
+                }
+            } else {
+                bool down = msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN;
+                event.type = down ? ViewportMouseEvent::Type::Down : ViewportMouseEvent::Type::Up;
+                if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) {
+                    event.button = ViewportMouseEvent::Button::Left;
+                } else if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP) {
+                    event.button = ViewportMouseEvent::Button::Right;
+                } else {
+                    event.button = ViewportMouseEvent::Button::Middle;
+                }
+                if (down) {
+                    SetFocus(hwnd); // plain child windows don't take focus on click by themselves
+                    if (self->buttonsHeld_++ == 0) {
+                        SetCapture(hwnd);
+                    }
+                } else if (self->buttonsHeld_ > 0 && --self->buttonsHeld_ == 0) {
+                    ReleaseCapture();
+                }
+            }
+            if (self->mouseCallback_) {
+                self->mouseCallback_(event);
+            }
             return 0;
+        }
+        case WM_CAPTURECHANGED:
+            // Capture lost mid-drag (alt-tab, a dialog): the matching button-up
+            // will never arrive, so report a button-less Up that ends any drag.
+            if (self != nullptr && self->buttonsHeld_ > 0) {
+                self->buttonsHeld_ = 0;
+                if (self->mouseCallback_) {
+                    ViewportMouseEvent event;
+                    event.type = ViewportMouseEvent::Type::Up;
+                    self->mouseCallback_(event);
+                }
+            }
+            return 0;
+        case WM_MOUSELEAVE:
+            if (self != nullptr) {
+                self->trackingLeave_ = false;
+                if (self->mouseCallback_) {
+                    ViewportMouseEvent event;
+                    event.type = ViewportMouseEvent::Type::Leave;
+                    self->mouseCallback_(event);
+                }
+            }
+            return 0;
+        case WM_MOUSEWHEEL: {
+            if (self != nullptr && self->mouseCallback_) {
+                POINT point{static_cast<short>(LOWORD(lparam)), static_cast<short>(HIWORD(lparam))};
+                ScreenToClient(hwnd, &point); // wheel coordinates arrive in screen space
+                ViewportMouseEvent event;
+                event.type = ViewportMouseEvent::Type::Wheel;
+                event.x = static_cast<float>(point.x);
+                event.y = static_cast<float>(point.y);
+                event.wheelSteps = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / WHEEL_DELTA;
+                event.ctrl = (GET_KEYSTATE_WPARAM(wparam) & MK_CONTROL) != 0;
+                event.shift = (GET_KEYSTATE_WPARAM(wparam) & MK_SHIFT) != 0;
+                self->mouseCallback_(event);
+            }
+            return 0;
+        }
         case WM_KEYDOWN:
         case WM_KEYUP:
             if (self != nullptr && wparam < self->keyDown_.size()) {
                 self->keyDown_[wparam] = (msg == WM_KEYDOWN);
+                if (msg == WM_KEYDOWN && self->keyDownCallback_) {
+                    bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+                    bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+                    self->keyDownCallback_(static_cast<int>(wparam), ctrl, shift);
+                }
             }
             return 0;
         case WM_KILLFOCUS:

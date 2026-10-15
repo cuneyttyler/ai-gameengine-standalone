@@ -186,9 +186,16 @@ generated field automatically gets the "Ask AI" affordance for free.
   (via `VulkanRHI`'s raw-HWND constructor).
 - The UI (`apps/editor/ui`) is served through WebView2's
   `SetVirtualHostNameToFolderMapping`, avoiding `file://` ES-module/CORS restrictions.
-  Messages are JSON strings in both directions (e.g. `scene:request` → `scene:update`,
-  `entity:select` → `inspector:data`, `inspector:setField`, `play:start`/`play:stop` →
-  `play:state`).
+  Messages are JSON strings in both directions. The C++ side (`apps/editor/EditorApp`)
+  owns all editor state; the UI renders what it's sent and sends requests:
+  - UI → host: `scene:request`, `entity:select`, `inspector:setField`, `tool:set`,
+    `edit:undo|redo|delete|duplicate`, `scene:save`, `view:frame`, `play:start|stop`,
+    `viewport:bounds`.
+  - Host → UI: `scene:update`, `selection:changed`, `inspector:data|clear`,
+    `editor:state` (tool, playing, dirty, canUndo/canRedo, scene name), `notify`.
+- Viewport tools call the UI-independent `engine/editing` API (picking, painting,
+  dragging, undo), which is where the GoogleTest coverage lives. Undo is whole-scene
+  snapshots for now; the Phase 2 command layer replaces it.
 - Play mode runs the same `engine/gameplay` `GameSession` the sandbox uses. The scene is
   serialized to an in-memory snapshot on Play and restored on Stop. Keyboard input is
   read from the viewport window only, so typing in the web UI never drives gameplay.

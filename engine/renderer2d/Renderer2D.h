@@ -1,13 +1,31 @@
 #pragma once
 
 #include "ecs/Registry.h"
+#include "renderer2d/Camera2D.h"
 #include "rhi/VulkanRHI.h"
 
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <vector>
 
 namespace aige {
+
+// A solid-color line drawn on top of every sprite: editor selection outlines,
+// hover markers, debug shapes. Endpoints are in scene pixels (the camera
+// applies); thickness is in viewport pixels, so outlines stay crisp at any
+// zoom.
+struct OverlayLine {
+    float x0 = 0.0f;
+    float y0 = 0.0f;
+    float x1 = 0.0f;
+    float y1 = 0.0f;
+    float thickness = 1.0f;
+    float r = 1.0f;
+    float g = 1.0f;
+    float b = 1.0f;
+    float a = 1.0f;
+};
 
 // Sprite batcher built on top of VulkanRHI's frame lifecycle (technical.md §8,
 // §5). Owns its own pipeline/descriptor set/vertex buffers and a single
@@ -30,8 +48,10 @@ public:
 
     // Must be called with `cmd` from an active VulkanRHI frame, inside the
     // render pass this Renderer2D was constructed with (already begun,
-    // viewport/scissor already set).
-    void Render(VkCommandBuffer cmd, Registry& registry);
+    // viewport/scissor already set). Sprites are drawn through `camera`, then
+    // `overlay` lines on top.
+    void Render(VkCommandBuffer cmd, Registry& registry, const Camera2D& camera = {},
+                std::span<const OverlayLine> overlay = {});
 
 private:
     struct Buffer {

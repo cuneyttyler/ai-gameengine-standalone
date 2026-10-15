@@ -28,9 +28,9 @@ std::optional<Entity> FindPlayer(Registry& registry);
 void UpdatePlayer(Registry& registry, Entity player, const KeyQueryFn& isKeyDown, const SolidQueryFn& isSolid,
                   float dt);
 
-// Re-derives ScreenTransform2D from WorldTransform2D for every entity that
-// has both — the one place world space meets screen space. Static content
-// without a WorldTransform2D keeps whatever ScreenTransform2D it was given.
+// Re-derives ScreenTransform2D from WorldTransform2D (characters) and from
+// Tile (ground cells) — the one place world space meets screen space.
+// Content with neither keeps whatever ScreenTransform2D it was given.
 void UpdateWorldToScreen(Registry& registry, const IsoParams& iso);
 
 // Exposes get_position/set_position (bound to the entity's WorldTransform2D)
@@ -39,12 +39,12 @@ ScriptBinder MakeWorldTransformBinder(Registry& registry);
 
 // Fixed-timestep simulation (player input, Lua scripts, projection) over a
 // registry, shared by the sandbox and the editor's Play mode so the two can't
-// drift apart.
+// drift apart. Collision comes from the registry's Tile entities (TileGrid).
 class GameSession {
 public:
     static constexpr double kFixedDt = 1.0 / 60.0;
 
-    GameSession(Registry& registry, LuaVM& lua, IsoParams iso, SolidQueryFn isSolid);
+    GameSession(Registry& registry, LuaVM& lua, IsoParams iso);
 
     // Consumes `frameSeconds` of real time in kFixedDt steps (clamped, to
     // avoid a spiral of death after a long stall). Returns steps run.
@@ -57,7 +57,6 @@ private:
     Registry& registry_;
     LuaVM& lua_;
     IsoParams iso_;
-    SolidQueryFn isSolid_;
     ScriptBinder binder_;
     double accumulator_ = 0.0;
 };

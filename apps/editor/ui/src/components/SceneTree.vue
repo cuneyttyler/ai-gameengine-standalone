@@ -1,28 +1,51 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 
 interface EntitySummary {
   id: number
   kind: string
+  label: string
 }
 
 const entities = ref<EntitySummary[]>([])
-const selectedId = ref<number | null>(null)
+
+// Tiles vastly outnumber everything else, so they get their own group,
+// collapsed by default.
+const groups = computed(() => [
+  { name: 'Characters', items: entities.value.filter((e) => ['Player', 'NPC', 'Scripted NPC'].includes(e.kind)) },
+  { name: 'Tiles', items: entities.value.filter((e) => e.kind === 'Tile') },
+  { name: 'Other', items: entities.value.filter((e) => e.kind === 'Decoration') },
+])
+const collapsed = reactive<Record<string, boolean>>({ Tiles: true })
 
 onHostMessage((message) => {
   if (message.type === 'scene:update') {
     entities.value = message.entities as EntitySummary[]
-    if (!entities.value.some((e) => e.id === selectedId.value)) {
-      selectedId.value = null
-    }
   }
 })
 
 function select(entity: EntitySummary): void {
-  selectedId.value = entity.id
   sendToHost({ type: 'entity:select', id: entity.id })
 }
+
+// Selecting in the viewport should reveal the entity here too.
+const listEl = ref<HTMLElement | null>(null)
+watch(
+  () => editorState.selectedId,
+  async (id) => {
+    if (id === null) {
+      return
+    }
+    const group = groups.value.find((g) => g.items.some((e) => e.id === id))
+    if (group && collapsed[group.name]) {
+      collapsed[group.name] = false
+    }
+    await nextTick()
+    listEl.value?.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: 'nearest' })
+  },
+)
 
 onMounted(() => {
   sendToHost({ type: 'scene:request' })
@@ -33,16 +56,28 @@ onMounted(() => {
   <div class="panel">
     <h2>Scene Tree</h2>
     <p v-if="entities.length === 0" class="placeholder">No entities.</p>
-    <ul v-else class="entity-list">
-      <li
-        v-for="entity in entities"
-        :key="entity.id"
-        :class="{ selected: entity.id === selectedId }"
-        @click="select(entity)"
-      >
-        {{ entity.kind }} <span class="id">#{{ entity.id }}</span>
-      </li>
-    </ul>
+    <div v-else ref="listEl">
+      <template v-for="group in groups" :key="group.name">
+        <div v-if="group.items.length > 0" class="group">
+          <button class="group-header" @click="collapsed[group.name] = !collapsed[group.name]">
+            <span class="chevron">{{ collapsed[group.name] ? '▸' : '▾' }}</span>
+            {{ group.name }}
+            <span class="count">{{ group.items.length }}</span>
+          </button>
+          <ul v-if="!collapsed[group.name]" class="entity-list">
+            <li
+              v-for="entity in group.items"
+              :key="entity.id"
+              :data-id="entity.id"
+              :class="{ selected: entity.id === editorState.selectedId }"
+              @click="select(entity)"
+            >
+              {{ entity.label }}
+            </li>
+          </ul>
+        </div>
+      </template>
+    </div>
   </div>
 </template>
 
@@ -63,24 +98,46 @@ h2 {
   opacity: 0.5;
   font-size: 0.9em;
 }
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 4px;
+  border: 0;
+  background: none;
+  color: #eee;
+  font: inherit;
+  font-size: 0.8em;
+  opacity: 0.8;
+  cursor: pointer;
+  text-align: left;
+}
+.group-header:hover {
+  background: #262637;
+}
+.chevron {
+  width: 10px;
+}
+.count {
+  margin-left: auto;
+  opacity: 0.5;
+}
 .entity-list {
   list-style: none;
-  margin: 0;
+  margin: 0 0 6px;
   padding: 0;
 }
 .entity-list li {
-  padding: 4px 8px;
+  padding: 3px 8px 3px 20px;
   cursor: pointer;
-  font-size: 0.9em;
+  font-size: 0.85em;
 }
 .entity-list li:hover {
   background: #262637;
 }
 .entity-list li.selected {
   background: #313148;
-}
-.id {
-  opacity: 0.5;
-  font-size: 0.85em;
+  box-shadow: inset 2px 0 0 #3b82f6;
 }
 </style>

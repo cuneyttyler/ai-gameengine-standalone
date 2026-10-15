@@ -1,5 +1,7 @@
 #include "gameplay/GameSession.h"
 
+#include "gameplay/Components.h"
+#include "gameplay/TileGrid.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 
@@ -68,6 +70,16 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
         screen.y = pose.y - iso.tileHeight * 0.5f;
         screen.depth = pose.depth + 0.5f;
     }
+
+    auto tiles = registry.view<Tile, ScreenTransform2D>();
+    for (auto entity : tiles) {
+        const auto& tile = tiles.get<Tile>(entity);
+        auto& screen = tiles.get<ScreenTransform2D>(entity);
+        ScreenPose pose = ProjectIso(static_cast<float>(tile.gx) + 0.5f, static_cast<float>(tile.gy) + 0.5f, iso);
+        screen.x = pose.x;
+        screen.y = pose.y;
+        screen.depth = pose.depth;
+    }
 }
 
 ScriptBinder MakeWorldTransformBinder(Registry& registry) {
@@ -84,20 +96,23 @@ ScriptBinder MakeWorldTransformBinder(Registry& registry) {
     };
 }
 
-GameSession::GameSession(Registry& registry, LuaVM& lua, IsoParams iso, SolidQueryFn isSolid)
-    : registry_(registry),
-      lua_(lua),
-      iso_(iso),
-      isSolid_(std::move(isSolid)),
-      binder_(MakeWorldTransformBinder(registry)) {}
+GameSession::GameSession(Registry& registry, LuaVM& lua, IsoParams iso)
+    : registry_(registry), lua_(lua), iso_(iso), binder_(MakeWorldTransformBinder(registry)) {}
 
 int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
     accumulator_ += std::min(frameSeconds, 0.25);
+    if (accumulator_ < kFixedDt) {
+        return 0;
+    }
+
+    TileGrid grid = TileGrid::Build(registry_);
+    auto isSolid = [&grid](int gx, int gy) { return grid.IsSolid(gx, gy); };
+
     int steps = 0;
     while (accumulator_ >= kFixedDt) {
         const float dt = static_cast<float>(kFixedDt);
         if (auto player = FindPlayer(registry_)) {
-            UpdatePlayer(registry_, *player, isKeyDown, isSolid_, dt);
+            UpdatePlayer(registry_, *player, isKeyDown, isSolid, dt);
         }
         UpdateScripts(registry_, lua_, dt, binder_);
         UpdateWorldToScreen(registry_, iso_);

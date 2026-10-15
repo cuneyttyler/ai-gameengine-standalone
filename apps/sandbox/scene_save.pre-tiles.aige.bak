@@ -1,0 +1,274 @@
+# AIGE Scene v1
+
+entity
+  WorldTransform2D x=2.85000062 y=6.70000982
+  Velocity2D x=0 y=0
+  Collider2D halfWidth=0.300000012 halfHeight=0.300000012
+  ScreenTransform2D x=516.799683 y=232.800171 depth=10.0500107
+  Sprite width=32 height=48 u0=0 v0=0.5 u1=0.5 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  WorldTransform2D x=5.5 y=6.53811073
+  ScreenTransform2D x=606.780457 y=272.609772 depth=12.5381107
+  Sprite width=32 height=48 u0=0.5 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+  LuaScript path=D:/Dev/ai-gameengine-standalone/apps/sandbox/scripts/npc_wander.lua
+
+entity
+  ScreenTransform2D x=736 y=208 depth=8.5
+  Sprite width=32 height=48 u0=0.5 v0=0.5 u1=1 v1=1 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=640 y=336 depth=15
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=672 y=320 depth=14
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=704 y=304 depth=13
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=736 y=288 depth=12
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=768 y=272 depth=11
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=800 y=256 depth=10
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=832 y=240 depth=9
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=864 y=224 depth=8
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=608 y=320 depth=14
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=640 y=304 depth=13
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=672 y=288 depth=12
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=704 y=272 depth=11
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=736 y=256 depth=10
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=768 y=240 depth=9
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=800 y=224 depth=8
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=832 y=208 depth=7
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=576 y=304 depth=13
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=608 y=288 depth=12
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=640 y=272 depth=11
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=672 y=256 depth=10
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=704 y=240 depth=9
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=736 y=224 depth=8
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=768 y=208 depth=7
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=800 y=192 depth=6
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=544 y=288 depth=12
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=576 y=272 depth=11
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=608 y=256 depth=10
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=640 y=240 depth=9
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=672 y=224 depth=8
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=704 y=208 depth=7
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=736 y=192 depth=6
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=768 y=176 depth=5
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=512 y=272 depth=11
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=544 y=256 depth=10
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=576 y=240 depth=9
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=608 y=224 depth=8
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=640 y=208 depth=7
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=672 y=192 depth=6
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=704 y=176 depth=5
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=736 y=160 depth=4
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=480 y=256 depth=10
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=512 y=240 depth=9
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=544 y=224 depth=8
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=576 y=208 depth=7
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=608 y=192 depth=6
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=640 y=176 depth=5
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=672 y=160 depth=4
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=704 y=144 depth=3
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=448 y=240 depth=9
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=480 y=224 depth=8
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=512 y=208 depth=7
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=544 y=192 depth=6
+  Sprite width=64 height=32 u0=0.5 v0=0 u1=1 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=576 y=176 depth=5
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=608 y=160 depth=4
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=640 y=144 depth=3
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1
+
+entity
+  ScreenTransform2D x=672 y=128 depth=2
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=416 y=224 depth=8
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=448 y=208 depth=7
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=480 y=192 depth=6
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=512 y=176 depth=5
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=544 y=160 depth=4
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=576 y=144 depth=3
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=608 y=128 depth=2
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1
+
+entity
+  ScreenTransform2D x=640 y=112 depth=1
+  Sprite width=64 height=32 u0=0 v0=0 u1=0.5 v1=0.5 r=0.550000012 g=0.550000012 b=0.550000012 a=1

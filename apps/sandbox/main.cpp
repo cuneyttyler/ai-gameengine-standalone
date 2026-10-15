@@ -35,7 +35,7 @@ int main() {
             aige::BuildBootstrapScene(registry, std::string(AIGE_SANDBOX_SOURCE_DIR) + "/scripts/npc_wander.lua");
         }
 
-        aige::GameSession session(registry, lua, aige::BootstrapIso(), &aige::IsBootstrapSolidCell);
+        aige::GameSession session(registry, lua, aige::BootstrapIso());
         auto isKeyDown = [&window](aige::Key key) { return window.IsKeyDown(key); };
 
         using Clock = std::chrono::steady_clock;

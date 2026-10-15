@@ -113,6 +113,13 @@ proven *before* any AI integration exists to lean on.
   inspector edits reflected live in the viewport.
 - Tests: GoogleTest on the underlying scene-mutation API (independent of UI). **User
   test checkpoint:** the actual editing feel — selection precision, gizmo behavior.
+- ✅ Built (user test deferred to end of Phase 1): `engine/editing` (pick, paint/place,
+  drag, duplicate, delete, snapshot undo/redo), tool palette (select, grass/dirt/wall
+  brushes, NPC/player placement, erase), camera pan/zoom/frame, selection outlines,
+  Ctrl+S save with unsaved-changes prompt. Tiles became a `Tile` grid component and
+  collision now comes from the scene's tiles (empty cells are solid), so editor-built
+  levels are walkable. No transform gizmo: tiles snap by cell and characters drag
+  directly, which covers the 2D isometric case.
 
 **1.3 — Asset import pipeline (manual)**
 - Import sprites/tilesets/audio from disk into the project's asset format; basic asset

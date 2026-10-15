@@ -1,7 +1,12 @@
 add_library(aige_gameplay STATIC
+    Components.h
     Isometric.h
+    Archetypes.h
+    Archetypes.cpp
     BootstrapLevel.h
     BootstrapLevel.cpp
+    TileGrid.h
+    TileGrid.cpp
     GameSession.h
     GameSession.cpp
 )

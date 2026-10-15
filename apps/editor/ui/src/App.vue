@@ -5,6 +5,7 @@ import Inspector from './components/Inspector.vue'
 import ViewportHole from './components/ViewportHole.vue'
 import Toolbar from './components/Toolbar.vue'
 import Splitter from './components/Splitter.vue'
+import StatusBar from './components/StatusBar.vue'
 
 // Panel sizes are per-user layout preferences, so localStorage is enough.
 // Every access is guarded: storage can be unavailable, and the layout must
@@ -77,6 +78,7 @@ onMounted(() => {
       <div class="viewport-slot">
         <ViewportHole />
       </div>
+      <StatusBar />
     </main>
   </div>
 </template>

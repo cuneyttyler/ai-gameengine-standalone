@@ -41,4 +41,4 @@ target_link_libraries(aige_editor PUBLIC aige_platform webview2 wil nlohmann_jso
 target_compile_features(aige_editor PUBLIC cxx_std_20)
 # We call the explicit W-suffixed Win32 APIs everywhere, but predefined
 # resource macros (IDC_ARROW, etc.) are still UNICODE-macro-sensitive.
-target_compile_definitions(aige_editor PUBLIC UNICODE _UNICODE)
+target_compile_definitions(aige_editor PUBLIC UNICODE _UNICODE NOMINMAX)

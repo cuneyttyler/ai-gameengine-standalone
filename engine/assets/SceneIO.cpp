@@ -1,5 +1,6 @@
 #include "assets/SceneIO.h"
 
+#include "gameplay/Components.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 #include "scripting/Components.h"
@@ -49,10 +50,12 @@ void WriteScene(Registry& registry, std::ostream& out) {
     out.precision(9); // enough significant digits to round-trip an IEEE 754 float exactly
     out << "# AIGE Scene v1\n";
 
-    auto view = registry.view<entt::entity>();
-    for (auto entity : view) {
+    for (auto entity : EntitiesInOrder(registry)) {
         out << "\nentity\n";
 
+        if (auto* c = registry.try_get<Tile>(entity)) {
+            out << "  Tile gx=" << c->gx << " gy=" << c->gy << " solid=" << (c->solid ? 1 : 0) << "\n";
+        }
         if (auto* c = registry.try_get<WorldTransform2D>(entity)) {
             out << "  WorldTransform2D x=" << c->x << " y=" << c->y << "\n";
         }
@@ -100,7 +103,11 @@ void ReadScene(Registry& registry, std::istream& in) {
         std::string rest;
         std::getline(iss, rest);
 
-        if (componentName == "WorldTransform2D") {
+        if (componentName == "Tile") {
+            auto fields = ParseFields(rest);
+            registry.emplace<Tile>(current, static_cast<int>(GetFloat(fields, "gx")),
+                                   static_cast<int>(GetFloat(fields, "gy")), GetFloat(fields, "solid") != 0.0f);
+        } else if (componentName == "WorldTransform2D") {
             auto fields = ParseFields(rest);
             registry.emplace<WorldTransform2D>(current, GetFloat(fields, "x"), GetFloat(fields, "y"));
         } else if (componentName == "Velocity2D") {

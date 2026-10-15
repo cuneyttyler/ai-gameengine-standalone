@@ -4,6 +4,7 @@
 #include "rhi/ShaderUtil.h"
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <cstddef>
 #include <cstring>
@@ -401,7 +402,8 @@ void Renderer2D::CreateVertexBuffers() {
     }
 }
 
-void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry) {
+void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D& camera,
+                        std::span<const OverlayLine> overlay) {
     struct Instance {
         Entity entity;
         float depth;
@@ -428,15 +430,60 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry) {
         const auto& t = view.get<ScreenTransform2D>(inst.entity);
         const auto& s = view.get<Sprite>(inst.entity);
 
-        float x0 = t.x - s.width * 0.5f;
-        float y0 = t.y - s.height * 0.5f;
-        float x1 = t.x + s.width * 0.5f;
-        float y1 = t.y + s.height * 0.5f;
+        float x0 = 0.0f;
+        float y0 = 0.0f;
+        float x1 = 0.0f;
+        float y1 = 0.0f;
+        camera.SceneToViewport(t.x - s.width * 0.5f, t.y - s.height * 0.5f, x0, y0);
+        camera.SceneToViewport(t.x + s.width * 0.5f, t.y + s.height * 0.5f, x1, y1);
 
         SpriteVertex quad[kVerticesPerSprite] = {
             {{x0, y0}, {s.u0, s.v0}, {s.r, s.g, s.b, s.a}}, {{x1, y0}, {s.u1, s.v0}, {s.r, s.g, s.b, s.a}},
             {{x1, y1}, {s.u1, s.v1}, {s.r, s.g, s.b, s.a}}, {{x0, y0}, {s.u0, s.v0}, {s.r, s.g, s.b, s.a}},
             {{x1, y1}, {s.u1, s.v1}, {s.r, s.g, s.b, s.a}}, {{x0, y1}, {s.u0, s.v1}, {s.r, s.g, s.b, s.a}},
+        };
+        std::memcpy(vertices + vertexCount, quad, sizeof(quad));
+        vertexCount += kVerticesPerSprite;
+    }
+
+    // Overlay lines as thin quads expanded perpendicular to the line in
+    // viewport space. UV (-1, -1) tells the fragment shader to skip the
+    // texture and output the vertex color as-is.
+    for (const auto& line : overlay) {
+        if (vertexCount + kVerticesPerSprite > maxVertices) {
+            break;
+        }
+        float ax = 0.0f;
+        float ay = 0.0f;
+        float bx = 0.0f;
+        float by = 0.0f;
+        camera.SceneToViewport(line.x0, line.y0, ax, ay);
+        camera.SceneToViewport(line.x1, line.y1, bx, by);
+        float dx = bx - ax;
+        float dy = by - ay;
+        float length = std::sqrt(dx * dx + dy * dy);
+        if (length < 1e-4f) {
+            continue;
+        }
+        float half = line.thickness * 0.5f;
+        float nx = -dy / length * half;
+        float ny = dx / length * half;
+        // Extend along the line too, so outline corners meet without notches.
+        float ex = dx / length * half;
+        float ey = dy / length * half;
+        ax -= ex;
+        ay -= ey;
+        bx += ex;
+        by += ey;
+
+        const float noUV[2] = {-1.0f, -1.0f};
+        SpriteVertex quad[kVerticesPerSprite] = {
+            {{ax + nx, ay + ny}, {noUV[0], noUV[1]}, {line.r, line.g, line.b, line.a}},
+            {{bx + nx, by + ny}, {noUV[0], noUV[1]}, {line.r, line.g, line.b, line.a}},
+            {{bx - nx, by - ny}, {noUV[0], noUV[1]}, {line.r, line.g, line.b, line.a}},
+            {{ax + nx, ay + ny}, {noUV[0], noUV[1]}, {line.r, line.g, line.b, line.a}},
+            {{bx - nx, by - ny}, {noUV[0], noUV[1]}, {line.r, line.g, line.b, line.a}},
+            {{ax - nx, ay - ny}, {noUV[0], noUV[1]}, {line.r, line.g, line.b, line.a}},
         };
         std::memcpy(vertices + vertexCount, quad, sizeof(quad));
         vertexCount += kVerticesPerSprite;
