@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 
+#include "ai_bridge/Proposal.h"
 #include "assets/Prefab.h"
+#include "editing/Commands.h"
+#include "gameplay/EngineReflection.h"
 #include "assets/Project.h"
 #include "assets/SceneIO.h"
 #include "gameplay/BootstrapLevel.h"
@@ -339,4 +342,60 @@ TEST(StoryPlaythroughTest, TalkAcceptDefeatAndReturn) {
     ui.clear();
     session.BuildUi(ui, 1280, 720);
     EXPECT_GT(ui.size(), 40u); // the dialogue box with its text
+}
+
+// development_plan.md 3.2d: the AI writes dialogue and quests through
+// reviewable operations, checked like the Story tab checks them.
+TEST(StoryProposalTest, QuestsAndDialogueWrittenTogetherResolveAndApply) {
+    Fixture f;
+    fs::copy(kDemo / "world", f.root / "world", fs::copy_options::recursive);
+    fs::create_directories(f.root / "prefabs");
+    std::ofstream(f.root / "prefabs" / "potion.prefab") << "# AIGE Scene v1\n\nentity\n  Name value=Potion\n";
+    aige::Project project{f.root};
+    aige::PrefabLibrary prefabs(project);
+    prefabs.Refresh();
+    aige::Registry registry;
+
+    nlohmann::json ops = nlohmann::json::parse(R"([
+        {"op": "write_quest", "id": "draughts", "quest": {
+            "name": "Draughts", "giver": "character/villager",
+            "objectives": [{"id": "get", "text": "Collect draughts", "type": "collect", "target": "prefabs/potion.prefab", "count": 2}]}},
+        {"op": "command", "name": "world.write", "args": {"kind": "character", "id": "mira", "name": "Mira",
+            "summary": "Quartermaster.", "tags": "", "relations": "serves faction/wardens", "body": ""}},
+        {"op": "write_dialogue", "id": "mira", "dialogue": {"speaker": "character/mira", "start": "hi", "nodes": [
+            {"id": "hi", "text": "Mind the keep.", "choices": [
+                {"text": "Any work?", "next": "", "do": [{"op": "start_quest", "quest": "draughts"}]}]}]}}
+    ])");
+    aige::RegisterEditingCommands(aige::EngineReflection());
+    auto resolved = aige::ResolveProposal({{"summary", "x"}, {"operations", ops}}, registry, aige::EngineReflection(),
+                                          prefabs, project);
+    ASSERT_EQ(resolved.items.size(), 3u);
+    for (const auto& item : resolved.items) {
+        EXPECT_TRUE(item.error.empty()) << item.target << ": " << item.error;
+        EXPECT_TRUE(item.touchesFiles);
+    }
+    EXPECT_EQ(resolved.items[0].target, "Quest · quests/draughts.json (Draughts)");
+    EXPECT_NE(resolved.items[2].detail.find("\"start_quest\""), std::string::npos); // shown as the file
+
+    auto outcome = aige::ApplyOperations(ops.get<std::vector<nlohmann::json>>(), registry, aige::EngineReflection(),
+                                         prefabs, project);
+    ASSERT_TRUE(outcome.errors.empty()) << outcome.errors[0];
+    aige::StoryLibrary library(f.root);
+    library.Refresh();
+    ASSERT_NE(library.FindQuest("draughts"), nullptr);
+    ASSERT_NE(library.FindDialogue("dialogue/mira.json"), nullptr);
+    EXPECT_TRUE(library.Validate().empty());
+
+    // Broken references are errors in review, so they can't be applied.
+    nlohmann::json bad = nlohmann::json::parse(R"([
+        {"op": "write_dialogue", "id": "ghost", "dialogue": {"speaker": "character/ghost", "start": "a", "nodes": [
+            {"id": "a", "text": "Boo.", "choices": [{"text": "Eh?", "next": "b"}]}]}},
+        {"op": "write_quest", "id": "bad", "quest": {"name": "Bad", "giver": "character/villager",
+            "objectives": [{"id": "x", "text": "x", "type": "collect", "target": "prefabs/dragon.prefab"}]}}
+    ])");
+    resolved = aige::ResolveProposal({{"summary", "x"}, {"operations", bad}}, registry, aige::EngineReflection(),
+                                     prefabs, project);
+    EXPECT_NE(resolved.items[0].error.find("goes to 'b', which isn't a node"), std::string::npos) << resolved.items[0].error;
+    EXPECT_NE(resolved.items[0].error.find("speaker character/ghost isn't in the World Bible"), std::string::npos);
+    EXPECT_NE(resolved.items[1].error.find("prefabs/dragon.prefab isn't a prefab"), std::string::npos);
 }

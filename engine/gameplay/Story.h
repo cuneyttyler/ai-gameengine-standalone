@@ -90,6 +90,17 @@ nlohmann::json DialogueToJson(const Dialogue& dialogue);
 std::optional<Quest> QuestFromJson(const nlohmann::json& json, const std::string& id, std::string* error);
 nlohmann::json QuestToJson(const Quest& quest);
 
+// Problems with one dialogue or quest on its own terms (links, reachability,
+// effects and conditions); `findQuest` answers for the quests it mentions.
+using QuestLookup = std::function<const Quest*(const std::string&)>;
+std::vector<std::string> ValidateDialogue(const Dialogue& dialogue, const QuestLookup& findQuest);
+std::vector<std::string> ValidateQuest(const Quest& quest, const QuestLookup& findQuest);
+
+// Writes dialogue/<id>.json or quests/<id>.json, normalized through the
+// reader and writer above (so every file has one shape). Returns why not.
+std::optional<std::string> WriteStoryFile(const std::filesystem::path& projectRoot, const std::string& folder,
+                                          const std::string& id, const nlohmann::json& content);
+
 // Every dialogue and quest of a project.
 class StoryLibrary {
 public:

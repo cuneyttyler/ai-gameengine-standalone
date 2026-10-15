@@ -24,7 +24,10 @@ from .models import (
     SetPrefabField,
     SetScriptProperty,
     SetSetting,
+    WriteDialogue,
+    WriteQuest,
 )
+from .story import StoryScope, check_dialogue, check_quest
 
 _SAFE_SCRIPT = re.compile(r"^scripts/[A-Za-z0-9_\-/]+\.lua$")
 
@@ -157,6 +160,38 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
                     errors.append(f"{where}: scripts must be written to scripts/<name>.lua")
                 else:
                     written_scripts.add(path)
+
+    # Dialogue and quests, checked against the project plus what this
+    # proposal adds (quests it writes, World Bible entries it writes).
+    quests = {q.get("id", ""): q for q in context.quests}
+    world_keys = {e.get("key", "") for e in context.world}
+    for op in proposal.operations:
+        if isinstance(op, WriteQuest):
+            quests[op.id] = op.quest
+        elif isinstance(op, RunCommand) and op.name == "world.write":
+            entry_id = op.args.get("id") or re.sub(r"[^a-z0-9_]+", "-", str(op.args.get("name", "")).lower()).strip("-")
+            world_keys.add(f"{op.args.get('kind', '')}/{entry_id}")
+    scope = StoryScope(quests, world_keys, {p.path for p in context.prefabs})
+    for index, op in enumerate(proposal.operations, start=1):
+        if isinstance(op, WriteDialogue):
+            errors += check_dialogue(op.id, op.dialogue, scope, f"operation {index} (write_dialogue {op.id})")
+        elif isinstance(op, WriteQuest):
+            errors += check_quest(op.id, op.quest, scope, f"operation {index} (write_quest {op.id})")
+
+    # A Talk component must point at a dialogue that exists or is written here.
+    dialogues = {f"dialogue/{d.get('id', '')}.json" for d in context.dialogues}
+    dialogues |= {f"dialogue/{op.id}.json" for op in proposal.operations if isinstance(op, WriteDialogue)}
+    for index, op in enumerate(proposal.operations, start=1):
+        value = None
+        if isinstance(op, SetField) and op.component == "Talk" and op.field == "dialogue":
+            value = op.value
+        elif isinstance(op, AddComponent) and op.component == "Talk":
+            value = op.fields.get("dialogue")
+            character = op.fields.get("character")
+            if character and character not in world_keys:
+                errors.append(f"operation {index} ({op.op}): Talk character {character!r} isn't in the World Bible")
+        if isinstance(value, str) and value and value not in dialogues:
+            errors.append(f"operation {index} ({op.op}): dialogue {value!r} doesn't exist and isn't written here")
 
     # A script attached in this proposal must exist or be written by it.
     known_scripts = set(context.scripts) | written_scripts

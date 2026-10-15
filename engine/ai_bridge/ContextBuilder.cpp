@@ -8,6 +8,8 @@
 #include "reflection/Reflection.h"
 #include "renderer2d/Components.h"
 #include "scripting/Components.h"
+#include "gameplay/Story.h"
+#include "world/WorldBible.h"
 
 #include <algorithm>
 #include <climits>
@@ -155,9 +157,46 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
         settings[section.name] = values;
     }
 
+    // The World Bible, compact: every entry's key, name and summary. The AI
+    // service adds the full text of the entries most related to the request
+    // (its search index), so the model is grounded without the whole canon in
+    // every prompt.
+    nlohmann::json worldList = nlohmann::json::array();
+    WorldBible world(project);
+    world.Refresh();
+    for (const auto& entry : world.Entries()) {
+        worldList.push_back({{"key", entry.Key()}, {"name", entry.name}, {"summary", entry.summary}});
+    }
+
+    // Dialogue and quests, in full while they fit: changing an existing
+    // conversation needs its nodes.
+    constexpr size_t kMaxStoryChars = 16000;
+    size_t storyChars = 0;
+    StoryLibrary story(project.root);
+    story.Refresh();
+    nlohmann::json quests = nlohmann::json::array();
+    for (const auto& quest : story.Quests()) {
+        nlohmann::json json = QuestToJson(quest);
+        json["id"] = quest.id;
+        storyChars += json.dump().size();
+        quests.push_back(json);
+    }
+    nlohmann::json dialogues = nlohmann::json::array();
+    for (const auto& dialogue : story.Dialogues()) {
+        nlohmann::json json = DialogueToJson(dialogue);
+        json["id"] = std::filesystem::path(dialogue.path).stem().string();
+        size_t size = json.dump().size();
+        if (storyChars + size > kMaxStoryChars) {
+            json = {{"id", json["id"]}, {"speaker", dialogue.speaker}, {"truncated", true}};
+        }
+        storyChars += size;
+        dialogues.push_back(json);
+    }
+
     nlohmann::json context = {{"entities", entities}, {"tiles", tiles},       {"prefabs", prefabList},
                               {"assets", assetList},  {"scripts", scripts},   {"scriptSources", scriptSources},
-                              {"settings", settings}};
+                              {"settings", settings}, {"world", worldList},   {"dialogues", dialogues},
+                              {"quests", quests}};
     if (options.selection && registry.valid(*options.selection)) {
         context["selection"] = static_cast<uint32_t>(*options.selection);
     }

@@ -62,3 +62,10 @@ def context() -> EditorContext:
             "selection": 7,
         }
     )
+
+
+@pytest.fixture
+def demo_context() -> EditorContext:
+    """The whole demo project as the editor describes it (written by the C++
+    test SchemaContractTest.DemoContextSnapshotIsCurrent)."""
+    return EditorContext.model_validate_json((FIXTURES / "demo_context.json").read_text(encoding="utf-8"))

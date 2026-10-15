@@ -100,7 +100,9 @@ onHostMessage((message) => {
       accepted: Object.fromEntries(items.map((item) => [item.index, !item.error && !item.autoApplied])),
       edited: {},
       editedSource: {},
-      expanded: Object.fromEntries(items.map((item) => [item.index, item.kind === 'command'])),
+      expanded: Object.fromEntries(
+        items.map((item) => [item.index, ['command', 'dialogue', 'quest'].includes(item.kind)]),
+      ),
     })
     entries.value.push(entry)
   } else if (message.type === 'ai:decided') {
@@ -279,6 +281,8 @@ const kindIcons: Record<string, string> = {
   remove_component: '−',
   script_property: '✎',
   command: '▸',
+  dialogue: '“',
+  quest: '!',
 }
 
 const examples = [
@@ -471,7 +475,7 @@ const examples = [
                 </button>
               </div>
 
-              <div v-if="item.kind !== 'command' && item.kind !== 'remove_component'" class="change">
+              <div v-if="!['command', 'remove_component', 'dialogue', 'quest'].includes(item.kind)" class="change">
                 <span class="before" :title="'Before: ' + show(item.before)">{{ show(item.before) }}</span>
                 <span class="arrow">→</span>
                 <FieldEditor

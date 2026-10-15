@@ -138,6 +138,18 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / (na * nb) if na and nb else 0.0
 
 
+def format_entry(entry: WorldEntry) -> str:
+    """An entry as the model reads it: the same facts as its file."""
+    lines = [f"[{entry.key}] {entry.name}" + (f" — {entry.summary}" if entry.summary else "")]
+    if entry.tags:
+        lines.append("tags: " + ", ".join(entry.tags))
+    for type_, target in entry.relations:
+        lines.append(f"{type_} {target}")
+    if entry.body:
+        lines.append(entry.body)
+    return "\n".join(lines)
+
+
 class WorldIndex:
     """Embeddings of a project's World Bible in <root>/.cache/world_index.sqlite."""
 
@@ -189,6 +201,22 @@ class WorldIndex:
         except Exception:  # an unreachable embedder must not break search
             self.entries = load_entries(self.root)
         return self._by_keywords(query, k), "keywords"
+
+    def canon_for(self, query: str, k: int = 6, max_chars: int = 8000) -> str:
+        """Grounding for a request: the k entries most related to it, plus every
+        style entry (the tone guide always applies), as text for the prompt."""
+        hits, _ = self.search(query, k)
+        keys = [h.key for h in hits]
+        keys += [e.key for e in self.entries if e.kind == "style" and e.key not in keys]
+        by_key = {e.key: e for e in self.entries}
+        parts, total = [], 0
+        for key in keys:
+            text = format_entry(by_key[key])
+            if total + len(text) > max_chars:
+                break
+            parts.append(text)
+            total += len(text)
+        return "\n\n".join(parts)
 
     def _hit(self, entry: WorldEntry, score: float) -> SearchHit:
         return SearchHit(entry.key, entry.kind, entry.name, entry.summary, round(score, 4))

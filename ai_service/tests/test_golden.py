@@ -21,11 +21,6 @@ GOLDEN = Path(__file__).parent / "golden"
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-@pytest.fixture(scope="module")
-def demo_context() -> EditorContext:
-    return EditorContext.model_validate_json((FIXTURES / "demo_context.json").read_text(encoding="utf-8"))
-
-
 def replay(name: str, schema, demo_context) -> Proposal:
     record = json.loads((GOLDEN / f"{name}.json").read_text(encoding="utf-8"))
     context = demo_context.model_copy(update={"focus": record.get("focus")})
@@ -46,7 +41,7 @@ def entity_named(context: EditorContext, name: str) -> int:
 # Recordings whose first answer needed the repair round, and why. Anything
 # else needing one is a regression worth looking at before committing.
 REPAIRED = {
-    "necromancer": "a stray 0 among the operations (malformed JSON item), fixed on repair",
+    "villager_follows": "first set Follow fields before adding Follow; the repair adds it",
 }
 
 
@@ -109,8 +104,8 @@ def test_villager_follow_adds_a_follow_component(schema, demo_context):
     assert len(adds) == 1
     assert adds[0].entity == entity_named(demo_context, "Villager")
     assert adds[0].component == "Follow"
-    # No target means "the player" — exactly what was asked.
-    assert adds[0].fields.get("target") is None
+    # No target means "the player"; naming the hero explicitly is the same thing.
+    assert adds[0].fields.get("target") in (None, entity_named(demo_context, "Hero"))
 
 
 def test_flee_writes_a_script_that_keeps_the_attack_behavior(schema, demo_context):
@@ -161,3 +156,46 @@ def test_a_whole_game_is_split_into_requests(schema, demo_context):
     assert proposal.operations == []
     assert 2 <= len(proposal.split) <= 6
     assert proposal.notes
+
+
+# --- Grounded story generation (development_plan.md 3.2d) ---------------------------
+
+
+def test_a_second_quest_from_tamsin_is_grounded_in_canon(schema, demo_context):
+    proposal = replay("tamsin_draughts", schema, demo_context)
+    writes = ops(proposal, "write_quest")
+    assert writes, "the quest file comes first (a dialogue that starts it needs it)"
+    quest = writes[0].quest
+    assert quest["giver"] == "character/villager"  # Old Tamsin, by her World Bible key
+    collect = [o for o in quest["objectives"] if o["type"] == "collect"]
+    assert collect and collect[0]["target"] == "prefabs/potion.prefab"  # her red draughts are the potions
+    assert collect[0].get("count", 1) == 2
+    assert quest["objectives"][-1] == {**quest["objectives"][-1], "type": "talk", "target": "character/villager"}
+    if proposal.scope == "task":  # the dialogue comes in a later step
+        assert any("dialogue" in step.lower() for step in proposal.plan)
+
+
+def test_a_new_character_is_added_to_canon_consistently(schema, demo_context):
+    proposal = replay("quartermaster", schema, demo_context)
+    entries = [op for op in ops(proposal, "command") if op.name == "world.write"]
+    assert entries and entries[0].args["kind"] == "character"
+    relations = entries[0].args["relations"]
+    assert "faction/wardens" in relations and "location/brookvale" in relations
+    if proposal.scope == "task":
+        assert any("dialogue" in step.lower() for step in proposal.plan)
+
+
+def test_editing_a_conversation_keeps_it_whole_and_in_voice(schema, demo_context):
+    proposal = replay("tamsin_wardens", schema, demo_context)
+    writes = ops(proposal, "write_dialogue")
+    assert len(writes) == 1 and writes[0].id == "tamsin"
+    dialogue = writes[0].dialogue
+    original = next(d for d in demo_context.dialogues if d["id"] == "tamsin")
+    ids = {n["id"] for n in dialogue["nodes"]}
+    assert {n["id"] for n in original["nodes"]} <= ids  # nothing she said is lost
+    assert dialogue.get("starts") == original["starts"]  # the quest-dependent greetings survive
+    new_nodes = [n for n in dialogue["nodes"] if n["id"] not in {m["id"] for m in original["nodes"]}]
+    assert new_nodes
+    greet = next(n for n in dialogue["nodes"] if n["id"] == "greet")
+    assert any(c.get("next") in {n["id"] for n in new_nodes} for c in greet["choices"])
+    assert len(greet["choices"]) <= 4

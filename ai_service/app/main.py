@@ -110,8 +110,15 @@ def create_app(
             return ProposeResponse(ok=False, errors=["The editor hasn't sent its schema yet"])
         if not request.instruction.strip():
             return ProposeResponse(ok=False, errors=["Say what you'd like to change"])
+        canon = ""
+        index: WorldIndex | None = state["world"]
+        if index is not None:
+            # Retrieval: the canon related to what's asked (and about what).
+            canon = index.canon_for(" ".join(filter(None, [request.instruction, request.context.focus])))
         try:
-            result = propose(state["provider"], state["schema"], request.context, request.instruction, request.history)
+            result = propose(
+                state["provider"], state["schema"], request.context, request.instruction, request.history, canon
+            )
         except ProviderError as error:
             return ProposeResponse(ok=False, errors=[str(error)])
         state["usage"].add(result.usage)

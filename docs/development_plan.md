@@ -612,6 +612,49 @@ of the sibling project's Phase 2-3.
     to it (3.1 search) plus the tone guide go into the AI context. Commands
     `dialogue.write` and `quest.write` go through Diff Review, and the prompt asks the
     AI to stay consistent with canon and add new canon via `world.write`.
+    - ✅ Built:
+      - **Operations.** `write_dialogue` / `write_quest` carry the file content as a
+        JSON object, which is more reliable than JSON inside a command's string
+        argument. They're checked the same way on both sides: `app/story.py` mirrors
+        the engine's `ValidateDialogue`, `ValidateQuest` and reference checks. A
+        proposal is checked as a whole, so a dialogue may start a quest, and speak
+        for a character, that the same proposal writes. A Talk component must point
+        at a dialogue that exists or is being written. Diff Review shows the file
+        itself. `WriteStoryFile` is shared with the Story tab.
+      - **Context.** All World Bible entries (key, name, summary) plus the
+        dialogues and quests in full, up to a size cap.
+      - **Retrieval.** The service's `canon_for` adds the full text of the six
+        entries most related to the request, plus every style entry, as a
+        WORLD BIBLE block. It uses the same index as 3.1's search, with no extra
+        round trip.
+      - **Prompt.** A STORY section with both formats and the CANON rule: canon is
+        true, use its names and voice, and add new named things with `world.write`.
+      - **Normalization.** A recurring Mistral JSON-mode glitch, a bare number at
+        the start of a list of objects, is now dropped before validation instead of
+        costing a repair round.
+      - **Golden recordings, all against the real model with retrieval.**
+        - "A second quest from Tamsin" became a task whose first step writes the
+          quest. The target is her red draughts (the potion prefab, count 2), the
+          giver and last objective are her by World Bible key, and the dialogue
+          update is in the plan.
+        - "The Wardens' quartermaster" became a task whose first step adds Mira to
+          the canon, with relations to the Wardens and Brookvale.
+        - "What Tamsin thinks of the Wardens" was a single `write_dialogue` that
+          keeps every original node and both quest-dependent starts, and adds a
+          choice and a reply in her voice that echoes the canon ("thin on the
+          ground, but they're all we've got").
+        - Only one of 11 recordings needed a repair: the villager, where the model
+          set Follow fields before adding the component.
+      - **Tests.** C++: a quest, a new character and the dialogue that uses both
+        resolve and apply together, and broken links and references block review.
+        Python: the story checks (ten precise problems), a same-proposal
+        character speaking, the stray-scalar cleanup, and canon retrieval reaching
+        the prompt in full with the tone guide. The demo context fixture is now
+        generated from a clean `git archive` of the committed demo
+        (`AIGE_DEMO_PROJECT`), so local edits can't leak in.
+      - Not automated: a whole multi-step story task against the real model. That's
+        on the checklist, along with the user test of whether the writing reads
+        well.
   - Tests: text layout (wrapping, measuring), dialogue/quest parsing and validation
     (dangling links, unknown speakers, unreachable nodes), a scripted playthrough
     (talk → accept the quest → defeat skeletons → objective completes → return), and

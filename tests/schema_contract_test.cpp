@@ -53,7 +53,13 @@ TEST(SchemaContractTest, DemoContextSnapshotIsCurrent) {
     if (std::getenv("AIGE_UPDATE_FIXTURES") == nullptr) {
         GTEST_SKIP() << "only regenerated on request (AIGE_UPDATE_FIXTURES=1)";
     }
-    aige::Project project{std::filesystem::path(AIGE_SOURCE_DIR) / "projects" / "demo"};
+    // AIGE_DEMO_PROJECT points at a clean copy of the committed demo, so local
+    // edits in the working copy don't leak into the fixture:
+    //   git archive HEAD projects/demo | tar -x -C <tmp>
+    //   AIGE_UPDATE_FIXTURES=1 AIGE_DEMO_PROJECT=<tmp>/projects/demo aige_tests --gtest_filter=*DemoContext*
+    const char* demo = std::getenv("AIGE_DEMO_PROJECT");
+    aige::Project project{demo ? std::filesystem::path(demo)
+                               : std::filesystem::path(AIGE_SOURCE_DIR) / "projects" / "demo"};
     aige::AssetDatabase assets(project);
     assets.Refresh();
     aige::PrefabLibrary prefabs(project);

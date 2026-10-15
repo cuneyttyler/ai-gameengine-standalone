@@ -53,6 +53,107 @@
       "type": "texture"
     }
   ],
+  "dialogues": [
+    {
+      "id": "tamsin",
+      "nodes": [
+        {
+          "choices": [
+            {
+              "next": "offer",
+              "text": "I'm here about the dead in the keep."
+            },
+            {
+              "next": "about",
+              "text": "Who are you?"
+            },
+            {
+              "next": "bye",
+              "text": "Just passing through."
+            }
+          ],
+          "id": "greet",
+          "text": "Another Warden? The last one went up that hill and came back in a sack."
+        },
+        {
+          "choices": [
+            {
+              "next": "offer",
+              "text": "About the keep..."
+            },
+            {
+              "next": "bye",
+              "text": "Goodbye."
+            }
+          ],
+          "id": "about",
+          "text": "Tamsin. I keep the herbs, mend the cuts, and bury who I can't mend. Those red draughts in the courtyard are mine."
+        },
+        {
+          "choices": [
+            {
+              "do": [
+                {
+                  "op": "start_quest",
+                  "quest": "quiet-the-courtyard"
+                }
+              ],
+              "next": "accept",
+              "text": "I'll do it."
+            },
+            {
+              "next": "bye",
+              "text": "Not yet."
+            }
+          ],
+          "id": "offer",
+          "text": "The dead walk that courtyard every night now. Put three of them back in the ground and come tell me. I'll sleep easier."
+        },
+        {
+          "id": "accept",
+          "next": "",
+          "text": "Mind the draughts. Drink them, don't admire them."
+        },
+        {
+          "id": "progress",
+          "next": "",
+          "text": "Still breathing? Good. Three of them, Warden. Then come back and tell me."
+        },
+        {
+          "id": "thanks",
+          "next": "",
+          "text": "You did it, then. Quieter up there already, I can feel it in my knees. The Wardens chose right, for once."
+        },
+        {
+          "id": "bye",
+          "next": "",
+          "text": "Hmph. Walk careful."
+        }
+      ],
+      "speaker": "character/villager",
+      "start": "greet",
+      "starts": [
+        {
+          "if": [
+            {
+              "is": "completed",
+              "quest": "quiet-the-courtyard"
+            }
+          ],
+          "node": "thanks"
+        },
+        {
+          "if": [
+            {
+              "is": "active",
+              "quest": "quiet-the-courtyard"
+            }
+          ],
+          "node": "progress"
+        }
+      ]
+    }
+  ],
   "entities": [
     {
       "components": {
@@ -338,6 +439,11 @@
           "v0": 0.0,
           "v1": 1.0,
           "width": 32.0
+        },
+        "Talk": {
+          "character": "character/villager",
+          "dialogue": "dialogue/tamsin.json",
+          "range": 1.5
         },
         "WorldTransform2D": {
           "x": 5.5,
@@ -1261,11 +1367,45 @@
           "v1": 1.0,
           "width": 32.0
         },
+        "Talk": {
+          "character": "character/villager",
+          "dialogue": "dialogue/tamsin.json",
+          "range": 1.5
+        },
         "WorldTransform2D": {}
       },
       "isTile": false,
       "name": "villager",
       "path": "prefabs/villager.prefab"
+    }
+  ],
+  "quests": [
+    {
+      "description": "Old Tamsin asked you to put three of the restless dead in the old keep's courtyard back in the ground.",
+      "giver": "character/villager",
+      "id": "quiet-the-courtyard",
+      "name": "Quiet the courtyard",
+      "objectives": [
+        {
+          "count": 3,
+          "id": "skeletons",
+          "target": "prefabs/skeleton.prefab",
+          "text": "Defeat skeletons in the courtyard",
+          "type": "defeat"
+        },
+        {
+          "id": "report",
+          "target": "character/villager",
+          "text": "Return to Old Tamsin",
+          "type": "talk"
+        }
+      ],
+      "onComplete": [
+        {
+          "flag": "courtyard_quieted",
+          "op": "set_flag"
+        }
+      ]
     }
   ],
   "scriptSources": {
@@ -1314,5 +1454,42 @@
       "prefabs/water.prefab": 4
     },
     "count": 280
-  }
+  },
+  "world": [
+    {
+      "key": "character/hero",
+      "name": "Aren",
+      "summary": "A young warden sent alone to clear the old keep, the hero of the game."
+    },
+    {
+      "key": "character/villager",
+      "name": "Old Tamsin",
+      "summary": "Brookvale's herb-keeper, who brews the red healing draughts."
+    },
+    {
+      "key": "faction/restless-dead",
+      "name": "The Restless Dead",
+      "summary": "Skeletons of the keep's old defenders, risen and hostile to the living."
+    },
+    {
+      "key": "faction/wardens",
+      "name": "The Wardens",
+      "summary": "A small order that protects the valley's villages from what comes out of the old places."
+    },
+    {
+      "key": "location/brookvale",
+      "name": "Brookvale",
+      "summary": "A small farming village at the foot of the hill where the old keep stands."
+    },
+    {
+      "key": "location/old-keep",
+      "name": "The Old Keep",
+      "summary": "A ruined hill fort whose courtyard is now overrun by the restless dead."
+    },
+    {
+      "key": "style/tone",
+      "name": "Tone and style",
+      "summary": "Cozy-dark folk tale: small stakes, warm people, eerie places; plain spoken dialogue."
+    }
+  ]
 }

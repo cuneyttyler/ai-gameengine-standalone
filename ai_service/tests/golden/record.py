@@ -13,14 +13,17 @@ evidence of how the model actually behaves.
 from __future__ import annotations
 
 import json
+import shutil
 import sys
+import tempfile
 from datetime import date
 from pathlib import Path
 
-from app.main import default_provider
+from app.main import default_embedder, default_provider
 from app.models import EditorContext, EngineSchema
 from app.providers import Completion
 from app.service import propose
+from app.world import WorldIndex
 
 HERE = Path(__file__).parent
 FIXTURES = HERE.parent / "fixtures"
@@ -44,7 +47,24 @@ PROMPTS: dict[str, dict] = {
         "instruction": "Turn this into a complete open-world RPG with an inventory, crafting, a quest line with "
         "dialogue, a world map, day and night, and save games.",
     },
+    # Grounded story generation (development_plan.md 3.2d): canon names, places and tone.
+    "tamsin_draughts": {
+        "instruction": "Give Old Tamsin a second quest for after the courtyard is quiet: bring her two of her red "
+        "healing draughts back from the courtyard. Update her conversation so she offers it.",
+    },
+    "quartermaster": {
+        "instruction": "Add the Wardens' quartermaster in Brookvale as a new character, and write a short "
+        "conversation where she warns the hero about the old keep.",
+    },
+    "tamsin_wardens": {
+        "instruction": "Old Tamsin should have something to say about the Wardens: add a choice to her "
+        "conversation where the hero asks what she thinks of them. Keep everything else she says.",
+    },
 }
+
+# The demo's World Bible, indexed like the editor's service indexes it, so the
+# recorded answers saw the same retrieved canon.
+DEMO = HERE.parents[2] / "projects" / "demo"
 
 
 class Recorder:
@@ -69,11 +89,16 @@ def main(names: list[str]) -> int:
     schema = EngineSchema.model_validate_json((FIXTURES / "engine_schema.json").read_text(encoding="utf-8"))
     context_json = json.loads((FIXTURES / "demo_context.json").read_text(encoding="utf-8"))
 
+    scratch = Path(tempfile.mkdtemp(prefix="aige_golden_"))
+    shutil.copytree(DEMO / "world", scratch / "world")
+    index = WorldIndex(scratch, default_embedder())
+
     for name in names or list(PROMPTS):
         prompt = PROMPTS[name]
         context = EditorContext.model_validate({**context_json, "focus": prompt.get("focus")})
         recorder = Recorder(provider)
-        result = propose(recorder, schema, context, prompt["instruction"])
+        canon = index.canon_for(" ".join(filter(None, [prompt["instruction"], prompt.get("focus")])))
+        result = propose(recorder, schema, context, prompt["instruction"], canon=canon)
         record = {
             "name": name,
             "instruction": prompt["instruction"],
@@ -82,6 +107,7 @@ def main(names: list[str]) -> int:
             "recorded": date.today().isoformat(),
             "attempts": result.attempts,
             "valid": result.proposal is not None and not result.errors,
+            "canon": canon,
             "responses": recorder.responses,
         }
         (HERE / f"{name}.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")

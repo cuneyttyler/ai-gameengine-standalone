@@ -113,6 +113,13 @@ class EditorContext(BaseModel):
     settings: dict[str, dict[str, Any]] = {}
     selection: int | None = None
     focus: str | None = None  # e.g. "Skeleton.Health.max" when asked from an Inspector field
+    # The World Bible, compact: {key, name, summary} per entry (the service adds
+    # the full text of the entries most related to the request).
+    world: list[dict[str, Any]] = []
+    # Dialogue and quests (docs/story.md), each with its "id"; a dialogue may be
+    # {"id", "speaker", "truncated": true} when the project's are too long to include.
+    dialogues: list[dict[str, Any]] = []
+    quests: list[dict[str, Any]] = []
 
 
 # --- Proposals --------------------------------------------------------------------
@@ -167,8 +174,27 @@ class RunCommand(BaseModel):
     args: dict[str, Any] = {}
 
 
+class WriteDialogue(BaseModel):
+    """Creates or replaces dialogue/<id>.json (format: docs/story.md)."""
+
+    op: Literal["write_dialogue"]
+    id: str
+    dialogue: dict[str, Any]
+
+
+class WriteQuest(BaseModel):
+    """Creates or replaces quests/<id>.json (format: docs/story.md)."""
+
+    op: Literal["write_quest"]
+    id: str
+    quest: dict[str, Any]
+
+
 Operation = Annotated[
-    Union[SetField, AddComponent, RemoveComponent, SetPrefabField, SetSetting, SetScriptProperty, RunCommand],
+    Union[
+        SetField, AddComponent, RemoveComponent, SetPrefabField, SetSetting, SetScriptProperty, RunCommand,
+        WriteDialogue, WriteQuest,
+    ],
     Field(discriminator="op"),
 ]
 

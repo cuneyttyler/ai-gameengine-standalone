@@ -96,6 +96,15 @@ quest is active, defeating every enemy no longer ends the game: the quest is the
 Scripts can drive the same state; see `start_quest`, `quest_state`, `set_flag` and the
 other story functions in [scripting.md](scripting.md).
 
+## Writing with the AI
+
+Ask in the AI panel ("give Old Tamsin a quest to…", "what would she say about…"). The
+AI sees every World Bible entry by name. It also gets the full text of the ones related
+to your request, plus the tone guide. Its answers are `write_dialogue` / `write_quest`
+operations, shown in Diff Review as the files they'll write, and checked like the Story
+tab checks them. Any new named character or place it invents is added to the World
+Bible in the same proposal.
+
 ## Checks
 
 The editor reports, and the tests enforce for the demo:

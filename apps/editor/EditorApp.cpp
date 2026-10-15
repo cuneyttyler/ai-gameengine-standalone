@@ -1463,37 +1463,20 @@ void EditorApp::EnsureStarterPrefabs() {
     save(CreateHealthPickup(scratch, 0.0f, 0.0f), "potion");
 }
 
-// Writes dialogue/<id>.json or quests/<id>.json after checking it parses as
-// one; `originalId` set and different means a rename (the old file goes).
+// Saves a file from the Story tab; `originalId` set and different means a
+// rename (the old file goes).
 std::optional<std::string> EditorApp::SaveStoryFile(const std::string& folder, const std::string& id,
                                                     const std::string& originalId, const nlohmann::json& content) {
-    if (!IsValidWorldId(id)) {
-        return "file names are lowercase letters, digits, - and _";
+    const std::filesystem::path root = assets_.GetProject().root;
+    std::error_code ec;
+    if (!originalId.empty() && originalId != id && std::filesystem::exists(root / folder / (id + ".json"), ec)) {
+        return folder + "/" + id + ".json already exists";
     }
-    std::string error;
-    const std::string relative = folder + "/" + id + ".json";
-    bool ok = folder == "quests" ? QuestFromJson(content, id, &error).has_value()
-                                 : DialogueFromJson(content, relative, &error).has_value();
-    if (!ok) {
+    if (auto error = WriteStoryFile(root, folder, id, content)) {
         return error;
     }
-    const std::filesystem::path path = assets_.GetProject().Resolve(relative);
-    std::error_code ec;
-    if (!originalId.empty() && originalId != id && std::filesystem::exists(path, ec)) {
-        return relative + " already exists";
-    }
-    std::filesystem::create_directories(path.parent_path(), ec);
-    // Normalized through the engine's own writer, so files stay in one shape.
-    nlohmann::json normalized = folder == "quests" ? QuestToJson(*QuestFromJson(content, id, &error))
-                                                   : DialogueToJson(*DialogueFromJson(content, relative, &error));
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) {
-        return "couldn't write " + relative;
-    }
-    out << normalized.dump(2) << "\n";
-    out.close();
     if (!originalId.empty() && originalId != id) {
-        std::filesystem::remove(assets_.GetProject().Resolve(folder + "/" + originalId + ".json"), ec);
+        std::filesystem::remove(root / folder / (originalId + ".json"), ec);
     }
     return std::nullopt;
 }

@@ -1,6 +1,7 @@
 #include "gameplay/Story.h"
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 
 namespace aige {
@@ -265,132 +266,185 @@ const Quest* StoryLibrary::FindQuest(const std::string& id) const {
     return nullptr;
 }
 
-std::vector<StoryLibrary::Problem> StoryLibrary::Validate() const {
-    std::vector<Problem> problems = loadProblems_;
-    auto checkEffects = [&](const std::string& file, const std::string& where, const std::vector<StoryEffect>& effects) {
-        for (const auto& effect : effects) {
-            if (!kEffectOps.contains(effect.op)) {
-                problems.push_back({file, where + ": unknown effect '" + effect.op + "'"});
-                continue;
-            }
-            bool questOp = effect.op.find("quest") != std::string::npos || effect.op == "complete_objective";
-            if (questOp) {
-                const Quest* quest = FindQuest(effect.name);
-                if (quest == nullptr) {
-                    problems.push_back({file, where + ": no quest '" + effect.name + "'"});
-                } else if (effect.op == "complete_objective" &&
-                           std::none_of(quest->objectives.begin(), quest->objectives.end(),
-                                        [&](const QuestObjective& o) { return o.id == effect.objective; })) {
-                    problems.push_back({file, where + ": quest '" + effect.name + "' has no objective '" +
-                                                  effect.objective + "'"});
-                }
-            } else if (effect.name.empty()) {
-                problems.push_back({file, where + ": " + effect.op + " needs a flag name"});
-            }
-        }
-    };
-    auto checkConditions = [&](const std::string& file, const std::string& where,
-                               const std::vector<StoryCondition>& conditions) {
-        for (const auto& c : conditions) {
-            if (c.flag.empty() && FindQuest(c.quest) == nullptr) {
-                problems.push_back({file, where + ": condition on unknown quest '" + c.quest + "'"});
-            } else if (c.flag.empty() && !kQuestStates.contains(c.questState)) {
-                problems.push_back({file, where + ": quest state should be inactive, active or completed"});
-            }
-        }
-    };
+namespace {
 
-    for (const auto& d : dialogues_) {
-        std::set<std::string> ids;
-        for (const auto& node : d.nodes) {
-            if (node.id.empty()) {
-                problems.push_back({d.path, "a node has no id"});
-            } else if (!ids.insert(node.id).second) {
-                problems.push_back({d.path, "two nodes are called '" + node.id + "'"});
-            }
+void CheckEffects(std::vector<std::string>& problems, const std::string& where, const std::vector<StoryEffect>& effects,
+                  const QuestLookup& findQuest) {
+    for (const auto& effect : effects) {
+        if (!kEffectOps.contains(effect.op)) {
+            problems.push_back(where + ": unknown effect '" + effect.op + "'");
+            continue;
         }
-        if (d.Node(d.start) == nullptr) {
-            problems.push_back({d.path, "starts at '" + d.start + "', which isn't a node"});
-        }
-        // Reachability from every start.
-        std::set<std::string> reached;
-        std::vector<std::string> stack = {d.start};
-        for (const auto& s : d.starts) {
-            if (d.Node(s.node) == nullptr) {
-                problems.push_back({d.path, "a start goes to '" + s.node + "', which isn't a node"});
+        bool questOp = effect.op.find("quest") != std::string::npos || effect.op == "complete_objective";
+        if (questOp) {
+            const Quest* quest = findQuest(effect.name);
+            if (quest == nullptr) {
+                problems.push_back(where + ": no quest '" + effect.name + "'");
+            } else if (effect.op == "complete_objective" &&
+                       std::none_of(quest->objectives.begin(), quest->objectives.end(),
+                                    [&](const QuestObjective& o) { return o.id == effect.objective; })) {
+                problems.push_back(where + ": quest '" + effect.name + "' has no objective '" + effect.objective + "'");
             }
-            stack.push_back(s.node);
-            checkConditions(d.path, "start '" + s.node + "'", s.conditions);
-        }
-        while (!stack.empty()) {
-            std::string id = stack.back();
-            stack.pop_back();
-            const DialogueNode* node = d.Node(id);
-            if (node == nullptr || !reached.insert(id).second) {
-                continue;
-            }
-            if (node->choices.empty() && !node->next.empty()) stack.push_back(node->next);
-            for (const auto& choice : node->choices) {
-                if (!choice.next.empty()) stack.push_back(choice.next);
-            }
-        }
-        for (const auto& node : d.nodes) {
-            const std::string where = "node '" + node.id + "'";
-            if (node.text.empty()) {
-                problems.push_back({d.path, where + " has no text"});
-            }
-            if (!node.id.empty() && !reached.contains(node.id)) {
-                problems.push_back({d.path, where + " can't be reached"});
-            }
-            if (node.choices.empty() && !node.next.empty() && d.Node(node.next) == nullptr) {
-                problems.push_back({d.path, where + " continues to '" + node.next + "', which isn't a node"});
-            }
-            checkEffects(d.path, where, node.effects);
-            for (size_t i = 0; i < node.choices.size(); ++i) {
-                const auto& choice = node.choices[i];
-                const std::string at = where + " choice " + std::to_string(i + 1);
-                if (choice.text.empty()) {
-                    problems.push_back({d.path, at + " has no text"});
-                }
-                if (!choice.next.empty() && d.Node(choice.next) == nullptr) {
-                    problems.push_back({d.path, at + " goes to '" + choice.next + "', which isn't a node"});
-                }
-                checkConditions(d.path, at, choice.conditions);
-                checkEffects(d.path, at, choice.effects);
-            }
-            if (node.choices.size() > 4) {
-                problems.push_back({d.path, where + " has more than 4 choices (only 1-4 can be picked by key)"});
-            }
+        } else if (effect.name.empty()) {
+            problems.push_back(where + ": " + effect.op + " needs a flag name");
         }
     }
+}
 
-    for (const auto& q : quests_) {
-        const std::string file = "quests/" + q.id + ".json";
-        if (q.name.empty()) {
-            problems.push_back({file, "has no name"});
+void CheckConditions(std::vector<std::string>& problems, const std::string& where,
+                     const std::vector<StoryCondition>& conditions, const QuestLookup& findQuest) {
+    for (const auto& c : conditions) {
+        if (c.flag.empty() && findQuest(c.quest) == nullptr) {
+            problems.push_back(where + ": condition on unknown quest '" + c.quest + "'");
+        } else if (c.flag.empty() && !kQuestStates.contains(c.questState)) {
+            problems.push_back(where + ": quest state should be inactive, active or completed");
         }
-        if (q.objectives.empty()) {
-            problems.push_back({file, "has no objectives"});
+    }
+}
+
+} // namespace
+
+std::vector<std::string> ValidateDialogue(const Dialogue& d, const QuestLookup& findQuest) {
+    std::vector<std::string> problems;
+    std::set<std::string> ids;
+    for (const auto& node : d.nodes) {
+        if (node.id.empty()) {
+            problems.push_back("a node has no id");
+        } else if (!ids.insert(node.id).second) {
+            problems.push_back("two nodes are called '" + node.id + "'");
         }
-        std::set<std::string> ids;
-        for (const auto& o : q.objectives) {
-            const std::string where = "objective '" + o.id + "'";
-            if (o.id.empty() || !ids.insert(o.id).second) {
-                problems.push_back({file, "objective ids must be present and unique"});
-            }
-            if (!kObjectiveTypes.contains(o.type)) {
-                problems.push_back({file, where + ": type should be defeat, talk or collect"});
-            }
-            if (o.target.empty()) {
-                problems.push_back({file, where + " has no target"});
-            }
-            if (o.text.empty()) {
-                problems.push_back({file, where + " has no text to show"});
-            }
+    }
+    if (d.Node(d.start) == nullptr) {
+        problems.push_back("starts at '" + d.start + "', which isn't a node");
+    }
+    // Reachability from every start.
+    std::set<std::string> reached;
+    std::vector<std::string> stack = {d.start};
+    for (const auto& s : d.starts) {
+        if (d.Node(s.node) == nullptr) {
+            problems.push_back("a start goes to '" + s.node + "', which isn't a node");
         }
-        checkEffects(file, "onComplete", q.onComplete);
+        stack.push_back(s.node);
+        CheckConditions(problems, "start '" + s.node + "'", s.conditions, findQuest);
+    }
+    while (!stack.empty()) {
+        std::string id = stack.back();
+        stack.pop_back();
+        const DialogueNode* node = d.Node(id);
+        if (node == nullptr || !reached.insert(id).second) {
+            continue;
+        }
+        if (node->choices.empty() && !node->next.empty()) stack.push_back(node->next);
+        for (const auto& choice : node->choices) {
+            if (!choice.next.empty()) stack.push_back(choice.next);
+        }
+    }
+    for (const auto& node : d.nodes) {
+        const std::string where = "node '" + node.id + "'";
+        if (node.text.empty()) {
+            problems.push_back(where + " has no text");
+        }
+        if (!node.id.empty() && !reached.contains(node.id)) {
+            problems.push_back(where + " can't be reached");
+        }
+        if (node.choices.empty() && !node.next.empty() && d.Node(node.next) == nullptr) {
+            problems.push_back(where + " continues to '" + node.next + "', which isn't a node");
+        }
+        CheckEffects(problems, where, node.effects, findQuest);
+        for (size_t i = 0; i < node.choices.size(); ++i) {
+            const auto& choice = node.choices[i];
+            const std::string at = where + " choice " + std::to_string(i + 1);
+            if (choice.text.empty()) {
+                problems.push_back(at + " has no text");
+            }
+            if (!choice.next.empty() && d.Node(choice.next) == nullptr) {
+                problems.push_back(at + " goes to '" + choice.next + "', which isn't a node");
+            }
+            CheckConditions(problems, at, choice.conditions, findQuest);
+            CheckEffects(problems, at, choice.effects, findQuest);
+        }
+        if (node.choices.size() > 4) {
+            problems.push_back(where + " has more than 4 choices (only 1-4 can be picked by key)");
+        }
     }
     return problems;
+}
+
+std::vector<std::string> ValidateQuest(const Quest& q, const QuestLookup& findQuest) {
+    std::vector<std::string> problems;
+    if (q.name.empty()) {
+        problems.push_back("has no name");
+    }
+    if (q.objectives.empty()) {
+        problems.push_back("has no objectives");
+    }
+    std::set<std::string> ids;
+    for (const auto& o : q.objectives) {
+        const std::string where = "objective '" + o.id + "'";
+        if (o.id.empty() || !ids.insert(o.id).second) {
+            problems.push_back("objective ids must be present and unique");
+        }
+        if (!kObjectiveTypes.contains(o.type)) {
+            problems.push_back(where + ": type should be defeat, talk or collect");
+        }
+        if (o.target.empty()) {
+            problems.push_back(where + " has no target");
+        }
+        if (o.text.empty()) {
+            problems.push_back(where + " has no text to show");
+        }
+    }
+    CheckEffects(problems, "onComplete", q.onComplete, findQuest);
+    return problems;
+}
+
+std::vector<StoryLibrary::Problem> StoryLibrary::Validate() const {
+    std::vector<Problem> problems = loadProblems_;
+    QuestLookup find = [this](const std::string& id) { return FindQuest(id); };
+    for (const auto& d : dialogues_) {
+        for (auto& message : ValidateDialogue(d, find)) {
+            problems.push_back({d.path, std::move(message)});
+        }
+    }
+    for (const auto& q : quests_) {
+        for (auto& message : ValidateQuest(q, find)) {
+            problems.push_back({"quests/" + q.id + ".json", std::move(message)});
+        }
+    }
+    return problems;
+}
+
+std::optional<std::string> WriteStoryFile(const fs::path& projectRoot, const std::string& folder, const std::string& id,
+                                          const nlohmann::json& content) {
+    if (folder != "dialogue" && folder != "quests") {
+        return "stories live in dialogue/ or quests/";
+    }
+    bool safe = !id.empty() && std::all_of(id.begin(), id.end(), [](unsigned char c) {
+        return (std::isalnum(c) && !std::isupper(c)) || c == '-' || c == '_';
+    });
+    if (!safe) {
+        return "file names are lowercase letters, digits, - and _";
+    }
+    const std::string relative = folder + "/" + id + ".json";
+    std::string error;
+    nlohmann::json normalized;
+    if (folder == "quests") {
+        auto quest = QuestFromJson(content, id, &error);
+        if (!quest) return error;
+        normalized = QuestToJson(*quest);
+    } else {
+        auto dialogue = DialogueFromJson(content, relative, &error);
+        if (!dialogue) return error;
+        normalized = DialogueToJson(*dialogue);
+    }
+    std::error_code ec;
+    fs::create_directories(projectRoot / folder, ec);
+    std::ofstream out(projectRoot / relative, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return "couldn't write " + relative;
+    }
+    out << normalized.dump(2) << "\n";
+    return std::nullopt;
 }
 
 // --- State -------------------------------------------------------------------

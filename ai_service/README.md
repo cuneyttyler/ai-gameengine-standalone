@@ -52,6 +52,12 @@ one step at a time: the editor applies each step to a working copy, plays it, an
 `done`), or `split` (no operations, smaller requests suggested in `split`). The service
 stays stateless; the editor's `ai_bridge/TaskRunner` drives tasks.
 
+The World Bible grounds story requests: after `PUT /project` the service indexes
+`world/` (`app/world.py`), and every `/propose` gets the full text of the canon most
+related to the request, plus the tone guide, as a WORLD BIBLE block. Dialogue and quests
+are written with the `write_dialogue` / `write_quest` operations (format in
+`docs/story.md`), checked by `app/story.py` like the editor checks them.
+
 Providers live in `app/providers.py` (`MistralProvider`, and `ScriptedProvider` for tests).
 
 ## Tests

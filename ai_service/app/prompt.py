@@ -43,6 +43,8 @@ Operations (use exact component, field, setting and command names from the schem
   {"op": "set_setting", "section": "Combat", "field": "knockbackScale", "value": 1.5}
   {"op": "set_script_property", "entity": <id>, "name": "swing_range", "value": 2}
   {"op": "command", "name": "<command name>", "args": {"<param>": <value>, ...}}
+  {"op": "write_dialogue", "id": "<file id>", "dialogue": {...see STORY below...}}
+  {"op": "write_quest", "id": "<file id>", "quest": {...see STORY below...}}
 
 Rules:
 - Only use components, fields, settings and commands that appear in the schema, and only
@@ -71,10 +73,35 @@ Rules:
 - A new prefab: set up an existing entity first (set_field/add_component, in an earlier
   step if it was just spawned), then prefab.createFromEntity — the prefab copies the
   entity as it is. Don't set_prefab_field on a prefab created in the same answer.
-- Every operation is a JSON object with "op" set to one of the seven kinds above; commands
+- Every operation is a JSON object with "op" set to one of the nine kinds above; commands
   always use {"op": "command", "name": ..., "args": {...}}.
 - Make the smallest change that does what was asked. If the request can't be done with
   what's available, return no operations and explain why in "notes".
+"""
+
+STORY = """\
+STORY (dialogue and quests; files dialogue/<id>.json and quests/<id>.json, ids lowercase-with-dashes)
+Dialogue: {"speaker": "<World Bible key>", "start": "<node id>",
+  "starts": [{"if": [<condition>], "node": "<node id>"}],   (optional: checked before "start", first match wins)
+  "nodes": [{"id": "...", "speaker": "<key or 'player'>" (optional), "text": "...",
+             "choices": [{"text": "...", "next": "<node id or '' to end>", "if": [<condition>], "do": [<effect>]}]
+             OR "next": "<node id or ''>", "do": [<effect>] (optional, runs when shown)}]}
+  At most 4 choices per node; every node must be reachable; keep lines short (one or two sentences).
+Conditions: {"flag": "name"} | {"flag": "name", "is": false} | {"quest": "<id>", "is": "inactive"|"active"|"completed"}
+Effects: {"op": "set_flag"|"clear_flag", "flag": "..."} | {"op": "start_quest"|"complete_quest", "quest": "<id>"}
+         | {"op": "complete_objective", "quest": "<id>", "objective": "<objective id>"}
+Quest: {"name": "...", "description": "...", "giver": "<World Bible key>",
+  "objectives": [{"id": "...", "text": "shown on screen", "type": "defeat"|"collect"|"talk",
+                  "target": "<prefab path, or 'Enemy' for defeat; World Bible key for talk>", "count": 1}],
+  "onComplete": [<effect>]}
+  Objectives are done in order. A "talk" objective completes when the player talks to an entity whose
+  Talk.character is that key — usually the giver, as the last objective ("Return to ...").
+To make someone talkable: add_component Talk {"dialogue": "dialogue/<id>.json", "character": "<World Bible key>"}
+on their entity (or set_prefab_field on their prefab). Write a quest before a dialogue that starts it. To
+change an existing dialogue, write it again whole with the same id (its current content is in the context).
+CANON: everything in the WORLD BIBLE is true in this game. Use its names, places, factions and history; never
+contradict it; write in the voice its style entries describe. A new named character, place or faction must
+also be added to the canon with the world.write command in the same proposal.
 """
 
 LUA_API = """\
@@ -142,7 +169,11 @@ def describe_schema(schema: EngineSchema) -> str:
 
 
 def build_messages(
-    schema: EngineSchema, context: EditorContext, instruction: str, history: list[dict] | None = None
+    schema: EngineSchema,
+    context: EditorContext,
+    instruction: str,
+    history: list[dict] | None = None,
+    canon: str = "",
 ) -> list[dict]:
     system = "\n\n".join(
         [
@@ -151,16 +182,21 @@ def build_messages(
             "directly: you propose operations, the developer reviews them in a diff view, and the engine "
             "applies the accepted ones through the same code its manual editor uses.",
             OUTPUT_FORMAT,
+            STORY,
             LUA_API,
             "ENGINE SCHEMA (everything that can be changed)\n" + describe_schema(schema),
         ]
     )
     project = context.model_dump(exclude_none=True)
     focus = f"\nThe developer asked about {context.focus} specifically.\n" if context.focus else ""
+    # The canon most related to this request, in full (the context lists every
+    # entry by name and summary only).
+    canon_block = f"\n\nWORLD BIBLE (canon most related to this request, in full)\n{canon}" if canon else ""
     user = (
         "PROJECT CONTEXT (current state of the open project)\n"
         + json.dumps(project, separators=(",", ":"))
         + focus
+        + canon_block
         + "\n\nREQUEST\n"
         + instruction
     )

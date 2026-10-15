@@ -6,13 +6,59 @@
 #include "gameplay/Components.h"
 #include "reflection/Reflection.h"
 #include "scripting/Components.h"
+#include "gameplay/Story.h"
 #include "world/WorldBible.h"
+
+#include <map>
+#include <set>
 
 namespace aige {
 
 namespace {
 
 enum class Mode { Resolve, Apply };
+
+// What the whole proposal adds, so one operation may refer to another's
+// result: a dialogue that starts a quest written in the same proposal, or
+// speaks for a character it adds to the World Bible.
+struct ProposalScope {
+    std::map<std::string, Quest> quests; // write_quest, by id
+    std::set<std::string> worldKeys;     // world.write, "<kind>/<id>"
+};
+
+ProposalScope ScanProposal(const std::vector<nlohmann::json>& operations) {
+    ProposalScope scope;
+    for (const auto& op : operations) {
+        const std::string kind = op.value("op", "");
+        if (kind == "write_quest") {
+            std::string error;
+            if (auto quest = QuestFromJson(op.value("quest", nlohmann::json()), op.value("id", ""), &error)) {
+                scope.quests[quest->id] = *quest;
+            }
+        } else if (kind == "command" && op.value("name", "") == "world.write") {
+            const nlohmann::json args = op.value("args", nlohmann::json::object());
+            std::string id = args.value("id", "");
+            if (id.empty()) id = WorldIdFromName(args.value("name", ""));
+            scope.worldKeys.insert(args.value("kind", "") + "/" + id);
+        }
+    }
+    return scope;
+}
+
+// Problems with a World Bible reference ("character/x"); plain names are fine.
+bool KnownCharacter(const std::string& who, const WorldBible& world, const ProposalScope& scope) {
+    return who.empty() || who == "player" || who.find('/') == std::string::npos || world.Find(who) != nullptr ||
+           scope.worldKeys.contains(who);
+}
+
+std::string JoinProblems(const std::vector<std::string>& problems) {
+    std::string text;
+    for (size_t i = 0; i < problems.size() && i < 4; ++i) {
+        text += (i ? "; " : "") + problems[i];
+    }
+    if (problems.size() > 4) text += "; and " + std::to_string(problems.size() - 4) + " more";
+    return text;
+}
 
 nlohmann::json MetaJson(const FieldMeta& meta) {
     nlohmann::json json = {{"name", meta.name}, {"type", FieldTypeName(meta.type)}};
@@ -76,7 +122,7 @@ std::optional<ScriptValue> ReadScriptValue(const nlohmann::json& value) {
 // an operation — what it targets, validation, before/after — lives here once,
 // so review and apply can't disagree.
 ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, const ReflectionRegistry& reflection,
-                   PrefabLibrary& prefabs, const Project& project, ApplyOutcome* outcome) {
+                   PrefabLibrary& prefabs, const Project& project, const ProposalScope& scope, ApplyOutcome* outcome) {
     ChangeItem item;
     item.op = op;
     const std::string kind = op.value("op", "");
@@ -263,6 +309,82 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             }
         }
 
+    } else if (kind == "write_dialogue" || kind == "write_quest") {
+        // Dialogue and quests (development_plan.md 3.2d): whole files, shown as
+        // the file they'll write, checked like the Story tab checks them.
+        const bool isQuest = kind == "write_quest";
+        const std::string folder = isQuest ? "quests" : "dialogue";
+        const std::string id = op.value("id", "");
+        const std::string relative = folder + "/" + id + ".json";
+        const nlohmann::json content = op.value(isQuest ? "quest" : "dialogue", nlohmann::json());
+        item.kind = isQuest ? "quest" : "dialogue";
+        item.touchesFiles = true;
+        item.target = (isQuest ? "Quest · " : "Dialogue · ") + relative;
+        StoryLibrary library(project.root);
+        library.Refresh();
+        QuestLookup findQuest = [&](const std::string& questId) -> const Quest* {
+            auto it = scope.quests.find(questId);
+            return it != scope.quests.end() ? &it->second : library.FindQuest(questId);
+        };
+        WorldBible world(project);
+        world.Refresh();
+        std::vector<std::string> problems;
+        std::string parseError;
+        if (isQuest) {
+            auto quest = QuestFromJson(content, id, &parseError);
+            if (!quest) {
+                error = parseError;
+                return item;
+            }
+            if (!quest->name.empty()) item.target += " (" + quest->name + ")";
+            item.detail = QuestToJson(*quest).dump(2);
+            problems = ValidateQuest(*quest, findQuest);
+            if (!KnownCharacter(quest->giver, world, scope)) {
+                problems.push_back("giver " + quest->giver + " isn't in the World Bible");
+            }
+            for (const auto& objective : quest->objectives) {
+                const std::string where = "objective '" + objective.id + "'";
+                if (objective.type == "talk" && world.Find(objective.target) == nullptr &&
+                    !scope.worldKeys.contains(objective.target)) {
+                    problems.push_back(where + ": " + objective.target + " isn't in the World Bible");
+                } else if ((objective.type == "defeat" || objective.type == "collect") &&
+                           prefabs.Find(objective.target) == nullptr &&
+                           !(objective.type == "defeat" && (objective.target == "Enemy" || objective.target == "Neutral"))) {
+                    problems.push_back(where + ": " + objective.target + " isn't a prefab");
+                }
+            }
+        } else {
+            auto dialogue = DialogueFromJson(content, relative, &parseError);
+            if (!dialogue) {
+                error = parseError;
+                return item;
+            }
+            item.detail = DialogueToJson(*dialogue).dump(2);
+            problems = ValidateDialogue(*dialogue, findQuest);
+            if (!KnownCharacter(dialogue->speaker, world, scope)) {
+                problems.push_back("speaker " + dialogue->speaker + " isn't in the World Bible");
+            }
+            for (const auto& node : dialogue->nodes) {
+                if (!KnownCharacter(node.speaker, world, scope)) {
+                    problems.push_back("node '" + node.id + "' speaker " + node.speaker + " isn't in the World Bible");
+                }
+            }
+        }
+        if (!problems.empty()) {
+            error = JoinProblems(problems);
+            return item;
+        }
+        std::error_code ec;
+        if (std::filesystem::exists(project.Resolve(relative), ec)) {
+            item.before = "(replaces the existing file)";
+        }
+        item.after = content;
+        if (apply) {
+            if (auto problem = WriteStoryFile(project.root, folder, id, content)) {
+                error = *problem;
+            }
+        }
+
     } else if (kind == "command") {
         item.kind = "command";
         const std::string name = op.value("name", "");
@@ -357,8 +479,10 @@ ResolvedProposal ResolveProposal(const nlohmann::json& proposal, Registry& regis
     ResolvedProposal resolved;
     resolved.summary = proposal.value("summary", "");
     resolved.notes = proposal.value("notes", "");
-    for (const auto& op : proposal.value("operations", nlohmann::json::array())) {
-        resolved.items.push_back(Process(op, Mode::Resolve, registry, reflection, prefabs, project, nullptr));
+    const auto operations = proposal.value("operations", nlohmann::json::array()).get<std::vector<nlohmann::json>>();
+    const ProposalScope scope = ScanProposal(operations);
+    for (const auto& op : operations) {
+        resolved.items.push_back(Process(op, Mode::Resolve, registry, reflection, prefabs, project, scope, nullptr));
     }
     return resolved;
 }
@@ -366,9 +490,10 @@ ResolvedProposal ResolveProposal(const nlohmann::json& proposal, Registry& regis
 ApplyOutcome ApplyOperations(const std::vector<nlohmann::json>& operations, Registry& registry,
                              const ReflectionRegistry& reflection, PrefabLibrary& prefabs, const Project& project) {
     ApplyOutcome outcome;
+    const ProposalScope scope = ScanProposal(operations);
     for (const auto& op : operations) {
         outcome.created.push_back(entt::null);
-        ChangeItem item = Process(op, Mode::Apply, registry, reflection, prefabs, project, &outcome);
+        ChangeItem item = Process(op, Mode::Apply, registry, reflection, prefabs, project, scope, &outcome);
         if (item.error.empty()) {
             ++outcome.applied;
         } else {
