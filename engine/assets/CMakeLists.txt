@@ -13,6 +13,8 @@ add_library(aige_assets STATIC
     Project.h
     SceneIO.h
     SceneIO.cpp
+    ComponentTable.h
+    ComponentTable.cpp
     TextureCook.h
     TextureCook.cpp
     StbImpl.cpp

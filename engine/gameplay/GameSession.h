@@ -29,6 +29,10 @@ std::optional<Entity> FindPlayer(Registry& registry);
 void UpdatePlayer(Registry& registry, Entity player, const KeyQueryFn& isKeyDown, const SolidQueryFn& isSolid,
                   float dt);
 
+// Moves every Follow entity toward its target (resolving collisions like the
+// player), stopping at stopDistance; ignores targets beyond `range`.
+void UpdateFollowers(Registry& registry, const SolidQueryFn& isSolid, float dt);
+
 // Re-derives ScreenTransform2D from WorldTransform2D (characters) and from
 // Tile (ground cells) — the one place world space meets screen space.
 // Content with neither keeps whatever ScreenTransform2D it was given.

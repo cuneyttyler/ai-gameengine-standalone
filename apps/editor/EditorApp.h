@@ -97,7 +97,13 @@ private:
     nlohmann::json SceneJson();
     nlohmann::json InspectorJson(Entity entity);
     nlohmann::json EditorStateJson();
-    void ApplySetField(Entity entity, const std::string& component, const std::string& field, float value);
+    // Sets a field from its JSON form; false if the component/field is
+    // unknown or the value has the wrong type.
+    bool ApplySetField(Entity entity, const std::string& component, const std::string& field,
+                       const nlohmann::json& value);
+    void CreateScriptFor(Entity entity, const std::string& name);
+    std::string LabelOf(Entity entity);
+    std::vector<std::string> ListScripts();
 
     HWND mainWindow_;
     ViewportWindow& viewport_;

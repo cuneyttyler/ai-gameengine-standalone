@@ -69,6 +69,7 @@ Entity CreateProp(Registry& registry, float worldX, float worldY, const std::str
 
 Entity CreateNpc(Registry& registry, float worldX, float worldY, const std::string& scriptPath) {
     auto entity = registry.create();
+    registry.emplace<Name>(entity, "NPC");
     registry.emplace<WorldTransform2D>(entity, worldX, worldY);
     AddCharacterVisuals(registry, entity, kNpcUV);
     if (!scriptPath.empty()) {
@@ -79,6 +80,7 @@ Entity CreateNpc(Registry& registry, float worldX, float worldY, const std::stri
 
 Entity CreatePlayer(Registry& registry, float worldX, float worldY) {
     auto entity = registry.create();
+    registry.emplace<Name>(entity, "Player");
     registry.emplace<WorldTransform2D>(entity, worldX, worldY);
     registry.emplace<Velocity2D>(entity);
     registry.emplace<Collider2D>(entity, 0.3f, 0.3f);

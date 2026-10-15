@@ -2,6 +2,7 @@
 
 #include "Win32Util.h"
 
+#include "assets/ComponentTable.h"
 #include "assets/SceneIO.h"
 #include "editing/SceneEditing.h"
 #include "gameplay/BootstrapLevel.h"
@@ -12,8 +13,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <filesystem>
+#include <fstream>
 #include <limits>
+
+#include <shellapi.h>
 
 namespace aige {
 
@@ -130,16 +135,42 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         Select(registry_.valid(entity) ? std::optional<Entity>(entity) : std::nullopt);
     } else if (type == "inspector:setField") {
         auto entity = static_cast<Entity>(message.value("id", 0u));
-        if (registry_.valid(entity)) {
+        if (registry_.valid(entity) && message.contains("value")) {
             std::string component = message.value("component", "");
             std::string field = message.value("field", "");
-            float value = message.value("value", 0.0f);
-            ApplyOneShotEdit([&] {
-                ApplySetField(entity, component, field, value);
-                return true;
-            });
+            ApplyOneShotEdit([&] { return ApplySetField(entity, component, field, message["value"]); });
             inspectorStale_ = true;
-            sceneTreeStale_ = true; // e.g. Tile.solid doesn't change kind, but cheap to resend
+            sceneTreeStale_ = true; // a Name edit changes the tree's label
+        }
+    } else if (type == "component:add" || type == "component:remove") {
+        auto entity = static_cast<Entity>(message.value("id", 0u));
+        std::string component = message.value("component", "");
+        if (!playing_ && registry_.valid(entity)) {
+            std::optional<std::string> failure;
+            ApplyOneShotEdit([&] {
+                if (type == "component:add") {
+                    return AddComponent(registry_, entity, component);
+                }
+                failure = RemoveComponent(registry_, entity, component);
+                return !failure.has_value();
+            });
+            if (failure) {
+                post_({{"type", "notify"}, {"text", "Can't remove: " + *failure}});
+            }
+            inspectorStale_ = true;
+            sceneTreeStale_ = true;
+        }
+    } else if (type == "script:create") {
+        auto entity = static_cast<Entity>(message.value("id", 0u));
+        if (!playing_ && registry_.valid(entity)) {
+            CreateScriptFor(entity, message.value("name", ""));
+        }
+    } else if (type == "script:open") {
+        // Opens in whatever the user has associated with .lua files.
+        std::filesystem::path path = assets_.GetProject().Resolve(message.value("path", ""));
+        if (reinterpret_cast<INT_PTR>(ShellExecuteW(mainWindow_, L"open", path.c_str(), nullptr, nullptr,
+                                                    SW_SHOWNORMAL)) <= 32) {
+            ShellExecuteW(mainWindow_, L"open", L"notepad.exe", path.c_str(), nullptr, SW_SHOWNORMAL);
         }
     } else if (type == "tool:set") {
         // Asset brushes carry their asset (and tileset tile/solidity); other
@@ -854,11 +885,7 @@ nlohmann::json EditorApp::SceneJson() {
     nlohmann::json entities = nlohmann::json::array();
     for (auto entity : EntitiesInOrder(registry_)) {
         std::string kind = DescribeKind(registry_, entity);
-        std::string label = kind;
-        if (const auto* tile = registry_.try_get<Tile>(entity)) {
-            label = "Tile " + std::to_string(tile->gx) + "," + std::to_string(tile->gy) + (tile->solid ? " (wall)" : "");
-        }
-        entities.push_back({{"id", static_cast<uint32_t>(entity)}, {"kind", kind}, {"label", label}});
+        entities.push_back({{"id", static_cast<uint32_t>(entity)}, {"kind", kind}, {"label", LabelOf(entity)}});
     }
     return {{"type", "scene:update"}, {"entities", entities}};
 }
@@ -875,84 +902,192 @@ nlohmann::json EditorApp::EditorStateJson() {
 }
 
 nlohmann::json EditorApp::InspectorJson(Entity entity) {
-    nlohmann::json components = nlohmann::json::object();
-    if (auto* c = registry_.try_get<Tile>(entity)) {
-        components["Tile"] = {{"gx", c->gx}, {"gy", c->gy}, {"solid", c->solid ? 1 : 0}};
+    nlohmann::json components = nlohmann::json::array();
+    nlohmann::json addable = nlohmann::json::array();
+
+    for (const auto& component : Components()) {
+        if (!component.has(registry_, entity)) {
+            if (component.userEditable) {
+                addable.push_back(component.name);
+            }
+            continue;
+        }
+        nlohmann::json fields = nlohmann::json::array();
+        for (const auto& field : component.fields) {
+            FieldValue value = field.get(registry_, entity);
+            nlohmann::json entry = {{"name", field.name}};
+            switch (field.type) {
+                case FieldType::Float:
+                    entry["type"] = "float";
+                    entry["value"] = std::get<float>(value);
+                    break;
+                case FieldType::Int:
+                    entry["type"] = "int";
+                    entry["value"] = std::get<int>(value);
+                    break;
+                case FieldType::Bool:
+                    entry["type"] = "bool";
+                    entry["value"] = std::get<bool>(value);
+                    break;
+                case FieldType::String:
+                    entry["type"] = "string";
+                    entry["value"] = std::get<std::string>(value);
+                    break;
+                case FieldType::Enum:
+                    entry["type"] = "enum";
+                    entry["value"] = std::get<int>(value);
+                    entry["options"] = field.options;
+                    break;
+                case FieldType::EntityRef: {
+                    entry["type"] = "entity";
+                    Entity target = std::get<Entity>(value);
+                    entry["value"] = registry_.valid(target) ? nlohmann::json(static_cast<uint32_t>(target))
+                                                             : nlohmann::json(nullptr);
+                    break;
+                }
+                case FieldType::Texture:
+                    entry["type"] = "texture";
+                    entry["value"] = std::get<std::string>(value);
+                    break;
+                case FieldType::Script:
+                    entry["type"] = "script";
+                    entry["value"] = std::get<std::string>(value);
+                    break;
+            }
+            fields.push_back(entry);
+        }
+        components.push_back({{"name", component.name},
+                              {"removable", component.userEditable},
+                              {"derived", component.derived(registry_, entity)},
+                              {"fields", fields}});
     }
-    if (auto* c = registry_.try_get<WorldTransform2D>(entity)) {
-        components["WorldTransform2D"] = {{"x", c->x}, {"y", c->y}};
+
+    // Choices for reference-typed fields.
+    nlohmann::json entities = nlohmann::json::array();
+    for (auto other : EntitiesInOrder(registry_)) {
+        if (other != entity && !registry_.all_of<Tile>(other)) {
+            entities.push_back({{"id", static_cast<uint32_t>(other)}, {"label", LabelOf(other)}});
+        }
     }
-    if (auto* c = registry_.try_get<Velocity2D>(entity)) {
-        components["Velocity2D"] = {{"x", c->x}, {"y", c->y}};
+    nlohmann::json textures = nlohmann::json::array();
+    for (const auto& asset : assets_.Assets()) {
+        if (asset.type != AssetType::Audio && asset.error.empty()) {
+            textures.push_back(asset.path);
+        }
     }
-    if (auto* c = registry_.try_get<Collider2D>(entity)) {
-        components["Collider2D"] = {{"halfWidth", c->halfWidth}, {"halfHeight", c->halfHeight}};
-    }
-    if (auto* c = registry_.try_get<ScreenTransform2D>(entity)) {
-        components["ScreenTransform2D"] = {{"x", c->x}, {"y", c->y}, {"depth", c->depth}};
-    }
-    if (auto* c = registry_.try_get<Sprite>(entity)) {
-        components["Sprite"] = {{"texture", c->texture.empty() ? "(built-in)" : c->texture},
-                                {"width", c->width},
-                                {"height", c->height},
-                                {"u0", c->u0},
-                                {"v0", c->v0},
-                                {"u1", c->u1},
-                                {"v1", c->v1},
-                                {"r", c->r},
-                                {"g", c->g},
-                                {"b", c->b},
-                                {"a", c->a}};
-    }
-    if (auto* c = registry_.try_get<LuaScript>(entity)) {
-        components["LuaScript"] = {{"path", c->path}};
-    }
-    return {{"type", "inspector:data"}, {"id", static_cast<uint32_t>(entity)}, {"components", components}};
+
+    return {{"type", "inspector:data"},
+            {"id", static_cast<uint32_t>(entity)},
+            {"label", LabelOf(entity)},
+            {"components", components},
+            {"addable", addable},
+            {"choices", {{"entities", entities}, {"textures", textures}, {"scripts", ListScripts()}}}};
 }
 
-// Hand-wired per component/field until milestone 1.4's component table.
-void EditorApp::ApplySetField(Entity entity, const std::string& component, const std::string& field, float value) {
-    if (component == "Tile") {
-        if (auto* c = registry_.try_get<Tile>(entity)) {
-            if (field == "gx") c->gx = static_cast<int>(value);
-            else if (field == "gy") c->gy = static_cast<int>(value);
-            else if (field == "solid") c->solid = value != 0.0f;
-        }
-    } else if (component == "WorldTransform2D") {
-        if (auto* c = registry_.try_get<WorldTransform2D>(entity)) {
-            if (field == "x") c->x = value;
-            else if (field == "y") c->y = value;
-        }
-    } else if (component == "Velocity2D") {
-        if (auto* c = registry_.try_get<Velocity2D>(entity)) {
-            if (field == "x") c->x = value;
-            else if (field == "y") c->y = value;
-        }
-    } else if (component == "Collider2D") {
-        if (auto* c = registry_.try_get<Collider2D>(entity)) {
-            if (field == "halfWidth") c->halfWidth = value;
-            else if (field == "halfHeight") c->halfHeight = value;
-        }
-    } else if (component == "ScreenTransform2D") {
-        if (auto* c = registry_.try_get<ScreenTransform2D>(entity)) {
-            if (field == "x") c->x = value;
-            else if (field == "y") c->y = value;
-            else if (field == "depth") c->depth = value;
-        }
-    } else if (component == "Sprite") {
-        if (auto* c = registry_.try_get<Sprite>(entity)) {
-            if (field == "width") c->width = value;
-            else if (field == "height") c->height = value;
-            else if (field == "u0") c->u0 = value;
-            else if (field == "v0") c->v0 = value;
-            else if (field == "u1") c->u1 = value;
-            else if (field == "v1") c->v1 = value;
-            else if (field == "r") c->r = value;
-            else if (field == "g") c->g = value;
-            else if (field == "b") c->b = value;
-            else if (field == "a") c->a = value;
+std::string EditorApp::LabelOf(Entity entity) {
+    if (const auto* name = registry_.try_get<Name>(entity); name != nullptr && !name->value.empty()) {
+        return name->value;
+    }
+    if (const auto* tile = registry_.try_get<Tile>(entity)) {
+        return "Tile " + std::to_string(tile->gx) + "," + std::to_string(tile->gy) + (tile->solid ? " (wall)" : "");
+    }
+    return DescribeKind(registry_, entity);
+}
+
+std::vector<std::string> EditorApp::ListScripts() {
+    std::vector<std::string> scripts;
+    const Project& project = assets_.GetProject();
+    std::error_code ec;
+    std::filesystem::path dir = project.root / "scripts";
+    if (std::filesystem::exists(dir, ec)) {
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(dir, ec)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".lua") {
+                scripts.push_back(project.Relative(entry.path()));
+            }
         }
     }
+    std::sort(scripts.begin(), scripts.end());
+    return scripts;
+}
+
+bool EditorApp::ApplySetField(Entity entity, const std::string& componentName, const std::string& fieldName,
+                              const nlohmann::json& value) {
+    const ComponentDesc* component = FindComponent(componentName);
+    if (component == nullptr || !component->has(registry_, entity)) {
+        return false;
+    }
+    const FieldDesc* field = component->Field(fieldName);
+    if (field == nullptr) {
+        return false;
+    }
+    try {
+        switch (field->type) {
+            case FieldType::Float:
+                field->set(registry_, entity, value.get<float>());
+                break;
+            case FieldType::Int:
+            case FieldType::Enum:
+                field->set(registry_, entity, static_cast<int>(value.get<double>()));
+                break;
+            case FieldType::Bool:
+                field->set(registry_, entity, value.is_boolean() ? value.get<bool>() : value.get<double>() != 0.0);
+                break;
+            case FieldType::String:
+            case FieldType::Texture:
+            case FieldType::Script:
+                field->set(registry_, entity, value.get<std::string>());
+                break;
+            case FieldType::EntityRef: {
+                Entity target = value.is_null() ? Entity{entt::null} : static_cast<Entity>(value.get<uint32_t>());
+                if (target != entt::null && !registry_.valid(target)) {
+                    return false;
+                }
+                field->set(registry_, entity, target);
+                break;
+            }
+        }
+    } catch (const nlohmann::json::exception&) {
+        return false; // wrong JSON type for the field
+    }
+    return true;
+}
+
+void EditorApp::CreateScriptFor(Entity entity, const std::string& requestedName) {
+    // Keep script names to a safe, portable character set.
+    std::string name;
+    for (char c : requestedName) {
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-') {
+            name += c;
+        }
+    }
+    if (name.empty()) {
+        post_({{"type", "notify"}, {"text", "Script names can use letters, digits, - and _"}});
+        return;
+    }
+    const Project& project = assets_.GetProject();
+    std::string relative = "scripts/" + name + ".lua";
+    std::filesystem::path path = project.Resolve(relative);
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) {
+        std::filesystem::create_directories(path.parent_path(), ec);
+        std::ofstream out(path);
+        out << "-- " << name << ".lua\n"
+            << "-- Runs once when loaded (and again on every save while the game runs).\n"
+            << "-- get_position() / set_position(x, y) move this entity in world grid units.\n\n"
+            << "function update(dt)\n"
+            << "    -- called 60 times per second while playing\n"
+            << "end\n";
+    }
+    ApplyOneShotEdit([&] {
+        if (!registry_.all_of<LuaScript>(entity)) {
+            AddComponent(registry_, entity, "LuaScript");
+        }
+        registry_.get<LuaScript>(entity) = LuaScript{relative};
+        return true;
+    });
+    inspectorStale_ = true;
+    sceneTreeStale_ = true;
+    post_({{"type", "notify"}, {"text", "Created " + relative}});
 }
 
 } // namespace aige

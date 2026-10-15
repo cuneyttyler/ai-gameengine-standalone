@@ -188,7 +188,8 @@ generated field automatically gets the "Ask AI" affordance for free.
   `SetVirtualHostNameToFolderMapping`, avoiding `file://` ES-module/CORS restrictions.
   Messages are JSON strings in both directions. The C++ side (`apps/editor/EditorApp`)
   owns all editor state; the UI renders what it's sent and sends requests:
-  - UI → host: `scene:request`, `entity:select`, `inspector:setField`, `tool:set`,
+  - UI → host: `scene:request`, `entity:select`, `inspector:setField`,
+    `component:add|remove`, `script:create|open`, `tool:set`,
     `edit:undo|redo|delete|duplicate`, `scene:save`, `view:frame`, `play:start|stop`,
     `viewport:bounds`, `assets:request|refresh`, `asset:import|settings|apply|preview`.
   - Host → UI: `scene:update`, `selection:changed`, `inspector:data|clear`,

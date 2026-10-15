@@ -6,6 +6,7 @@
 #include "renderer2d/Components.h"
 
 #include <algorithm>
+#include <cmath>
 #include <tuple>
 
 namespace aige {
@@ -56,6 +57,35 @@ void UpdatePlayer(Registry& registry, Entity player, const KeyQueryFn& isKeyDown
                                          {velocity.x * dt, velocity.y * dt}, isSolid);
     world.x = resolved.x;
     world.y = resolved.y;
+}
+
+void UpdateFollowers(Registry& registry, const SolidQueryFn& isSolid, float dt) {
+    auto view = registry.view<Follow, WorldTransform2D>();
+    for (auto entity : view) {
+        const auto& follow = view.get<Follow>(entity);
+        if (follow.target == entity || !registry.valid(follow.target)) {
+            continue;
+        }
+        const auto* target = registry.try_get<WorldTransform2D>(follow.target);
+        if (target == nullptr) {
+            continue;
+        }
+        auto& world = view.get<WorldTransform2D>(entity);
+        float dx = target->x - world.x;
+        float dy = target->y - world.y;
+        float distance = std::sqrt(dx * dx + dy * dy);
+        if (distance <= follow.stopDistance || distance < 1e-4f || (follow.range > 0.0f && distance > follow.range)) {
+            continue;
+        }
+        float step = std::min(follow.speed * dt, distance - follow.stopDistance);
+        Vec2 half{0.3f, 0.3f};
+        if (const auto* collider = registry.try_get<Collider2D>(entity)) {
+            half = {collider->halfWidth, collider->halfHeight};
+        }
+        Vec2 resolved = ResolveAabbMovement({world.x, world.y}, half, {dx / distance * step, dy / distance * step}, isSolid);
+        world.x = resolved.x;
+        world.y = resolved.y;
+    }
 }
 
 void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
@@ -127,6 +157,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         if (auto player = FindPlayer(registry_)) {
             UpdatePlayer(registry_, *player, isKeyDown, isSolid, dt);
         }
+        UpdateFollowers(registry_, isSolid, dt);
         UpdateScripts(registry_, lua_, dt, binder_, scriptRoot_);
         UpdateWorldToScreen(registry_, iso_);
         accumulator_ -= kFixedDt;

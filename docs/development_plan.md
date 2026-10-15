@@ -139,6 +139,14 @@ proven *before* any AI integration exists to lean on.
 - Add/remove components on entities through the inspector; component data editing
   (numbers, strings, enums, references) without yet being registry-generated.
 - Tests: GoogleTest on component add/remove/edit at the ECS level.
+- ✅ Built (user test deferred to end of Phase 1): `engine/assets/ComponentTable` — one
+  hand-written table of components, typed fields (float, int, bool, string, enum, entity
+  reference, texture, script) and dependencies that now drives scene files, the
+  Inspector, and add/remove. Entity references are saved by entity index and remapped
+  on load. New components: `Name`, `Faction`, `Health`, and `Follow` (with a chase
+  system in the shared game loop). Inspector renders typed editors, add/remove
+  component, and "New script…" / "Open" for Lua behaviours. This table is the seed of
+  Phase 2.1's reflection registry.
 
 **1.5 — Physics & combat/movement primitives for the ARPG genre**
 - Basic combat-relevant primitives: hitboxes/hurtboxes, simple stat components, a
