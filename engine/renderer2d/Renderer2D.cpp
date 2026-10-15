@@ -473,8 +473,15 @@ void Renderer2D::CreateVertexBuffers() {
     }
 }
 
+void Renderer2D::RegisterTexture(const std::string& name, const ImageData& image) {
+    if (textures_.contains(name)) {
+        return;
+    }
+    textures_[name] = UploadTexture(image);
+}
+
 void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D& camera,
-                        std::span<const OverlayLine> overlay) {
+                        std::span<const OverlayLine> overlay, std::span<const UiQuad> ui) {
     struct Instance {
         Entity entity;
         float depth;
@@ -577,6 +584,30 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
             {{ax - nx, ay - ny}, {noUV[0], noUV[1]}, {line.r, line.g, line.b, line.a}},
         };
         appendToBatch(&builtinAtlas_); // any valid set works; overlay ignores the texture
+        std::memcpy(vertices + vertexCount, quad, sizeof(quad));
+        vertexCount += kVerticesPerSprite;
+    }
+
+    // In-game UI: already in viewport pixels. A named texture must have been
+    // registered (RegisterTexture); untextured quads use UV -1 like overlays.
+    for (const auto& q : ui) {
+        if (vertexCount + kVerticesPerSprite > maxVertices) {
+            break;
+        }
+        const Texture* texture = &builtinAtlas_;
+        if (!q.texture.empty()) {
+            auto it = textures_.find(q.texture);
+            if (it == textures_.end() || it->second.image == VK_NULL_HANDLE) {
+                continue;
+            }
+            texture = &it->second;
+        }
+        SpriteVertex quad[kVerticesPerSprite] = {
+            {{q.x0, q.y0}, {q.u0, q.v0}, {q.r, q.g, q.b, q.a}}, {{q.x1, q.y0}, {q.u1, q.v0}, {q.r, q.g, q.b, q.a}},
+            {{q.x1, q.y1}, {q.u1, q.v1}, {q.r, q.g, q.b, q.a}}, {{q.x0, q.y0}, {q.u0, q.v0}, {q.r, q.g, q.b, q.a}},
+            {{q.x1, q.y1}, {q.u1, q.v1}, {q.r, q.g, q.b, q.a}}, {{q.x0, q.y1}, {q.u0, q.v1}, {q.r, q.g, q.b, q.a}},
+        };
+        appendToBatch(texture);
         std::memcpy(vertices + vertexCount, quad, sizeof(quad));
         vertexCount += kVerticesPerSprite;
     }

@@ -513,6 +513,54 @@ of the sibling project's Phase 2-3.
       Restless Dead; "how should dialogue sound" → the tone guide.
     - The AI doesn't read the World Bible yet; that's 3.2.
 - **3.2 RAG-grounded generation** for dialogue/quests, using the World Bible as context.
+  The engine has no dialogue or quests yet, so 3.2 builds them first, in four steps:
+  - **3.2a In-game text and dialogue box.** A game's dialogue is drawn by the game, not
+    the editor's web UI: font atlas baking (stb_truetype, a bundled OFL font),
+    screen-space text with word wrap in `renderer2d`, and a dialogue box with speaker,
+    text and numbered choices.
+    - ✅ Built:
+      - `renderer2d/Text` (`Font`): bakes Latin-1 from a TTF at any pixel size, cached per
+        size. Glyphs are 1:1 and pixel-snapped, so they're crisp with the nearest
+        sampler; other characters draw as `?`. It measures with kerning and wraps
+        (greedy, `
+`, long words broken between characters).
+      - The built-in font is compiled in from `fonts/` by CMake, and stb moved up to the
+        engine level so both modules share it.
+      - `Renderer2D` gained `RegisterTexture` and a `ui` quad layer drawn last in
+        viewport pixels.
+      - `engine/ui/GameUi`: banner, dialogue box (speaker, wrapped text, numbered
+        choices, highlight, hint), objective panel and key prompt.
+      - First use: "Victory!" / "You died" banners drawn by the game in the standalone
+        player and in the editor's Play mode.
+      - The sandbox gained `--ui-preview` (sample UI over the level) and
+        `--exit-after <s>` for smoke runs.
+      - Tests (`text_test.cpp`): baking, measuring, one quad per visible character,
+        pixel alignment, UTF-8 decoding including invalid and truncated input,
+        wrapping at three widths with nothing lost, and the dialogue box and other
+        widgets staying inside their bounds and the screen.
+      - A screenshot of `--ui-preview` confirmed crisp text and the intended layout.
+  - **3.2b Dialogue and quest data and runtime.**
+    - `dialogue/<id>.json`: a graph of nodes, each with a speaker, text and choices that
+      lead to other nodes. Choices can have conditions (flags, quest state) and effects
+      (set a flag, start a quest, complete an objective).
+    - `quests/<id>.json`: name, giver, objectives (defeat N of an enemy, talk to someone,
+      collect an item) and what completing it does.
+    - Runtime: a `Talk` component (which dialogue an NPC has), **E** to talk when close,
+      choices with 1-4 or the arrows plus Enter, objectives tracked from game events,
+      and the current objective shown on screen. Lua: `start_quest`, `quest_state`,
+      `set_flag`, `get_flag`.
+  - **3.2c Editing.** A **Story** tab for dialogues and quests: a node list with links
+    you can follow and problems inline. Talk is generated in the Inspector like any
+    component.
+  - **3.2d Grounded generation.** For each request, the World Bible entries most related
+    to it (3.1 search) plus the tone guide go into the AI context. Commands
+    `dialogue.write` and `quest.write` go through Diff Review, and the prompt asks the
+    AI to stay consistent with canon and add new canon via `world.write`.
+  - Tests: text layout (wrapping, measuring), dialogue/quest parsing and validation
+    (dangling links, unknown speakers, unreachable nodes), a scripted playthrough
+    (talk → accept the quest → defeat skeletons → objective completes → return), and
+    golden prompts checking generated dialogue uses canon names and places.
+    **User test:** does the generated dialogue read well and fit the tone?
 - **3.3 Contradiction-checking pass** (fixture-tested per `technical.md` §14).
 - **3.4 Dungeon/level layout generation** for the ARPG template.
 - **3.5 NPC schedule/behavior generation** for the cozy-sim template, built on the

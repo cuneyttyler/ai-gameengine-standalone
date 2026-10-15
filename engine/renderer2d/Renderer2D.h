@@ -3,6 +3,7 @@
 #include "ecs/Registry.h"
 #include "renderer2d/Camera2D.h"
 #include "renderer2d/ImageData.h"
+#include "renderer2d/Text.h"
 #include "rhi/VulkanRHI.h"
 
 #include <cstdint>
@@ -52,6 +53,10 @@ public:
     // Drops a cached texture so the next use reloads it (asset reimport).
     void InvalidateTexture(const std::string& path);
 
+    // Uploads a texture made in code (a font atlas) under `name`, once; later
+    // calls with the same name do nothing. UiQuads refer to it by name.
+    void RegisterTexture(const std::string& name, const ImageData& image);
+
     struct TextureSize {
         uint32_t width;
         uint32_t height;
@@ -63,9 +68,9 @@ public:
     // Must be called with `cmd` from an active VulkanRHI frame, inside the
     // render pass this Renderer2D was constructed with (already begun,
     // viewport/scissor already set). Sprites are drawn through `camera`, then
-    // `overlay` lines on top.
+    // `overlay` lines on top, then `ui` quads in viewport pixels (no camera).
     void Render(VkCommandBuffer cmd, Registry& registry, const Camera2D& camera = {},
-                std::span<const OverlayLine> overlay = {});
+                std::span<const OverlayLine> overlay = {}, std::span<const UiQuad> ui = {});
 
 private:
     struct Buffer {

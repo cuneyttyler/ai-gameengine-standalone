@@ -111,7 +111,8 @@ so the engine is split into modules from day one, not refactored into them later
 |---|---|
 | `core` | Platform abstraction, math, containers, job system, logging, serialization |
 | `rhi` | Render Hardware Interface — thin abstraction over Vulkan (see §8) |
-| `renderer2d` / `renderer3d` | Sprite/tilemap/y-sort rendering now; forward/deferred 3D later, both consuming `rhi` |
+| `renderer2d` / `renderer3d` | Sprite/tilemap/y-sort rendering now; forward/deferred 3D later, both consuming `rhi`. `renderer2d/Text` bakes fonts (stb_truetype) and lays out text; the built-in font (Atkinson Hyperlegible, SIL OFL 1.1, `renderer2d/fonts/`) is compiled into the binary |
+| `ui` | The game's own UI (dialogue box, banners, objective, prompts) as screen-space quads: what a shipped game shows, as opposed to the editor's web UI |
 | `ecs` | EnTT-backed entity/component storage, wrapped by our own component registration macros |
 | `reflection` | The Reflection & Command Registry (§7) — the AI-adjustability backbone. Engine types are registered in `gameplay/EngineReflection.cpp`, editor commands in `editing/Commands.cpp` |
 | `physics2d` / `physics3d` | Custom lightweight 2D physics now; Jolt-backed 3D physics later |
@@ -119,6 +120,7 @@ so the engine is split into modules from day one, not refactored into them later
 | `scripting` | Lua VM embedding, hot reload, sandboxing |
 | `behavior_graph` | Runtime for the data-driven quest/dialogue/behavior-tree format |
 | `assets` | Import/cook pipeline, on-disk formats, hot reload |
+| `world` | The World Bible: canon entries as `world/<kind>/<id>.md` files — parse, write, validate, rename |
 | `editor` | Native viewport window + webview host, all editor-only code (stripped from shipped games) |
 | `ai_bridge` | The engine-side client of the AI Orchestration Service: job submission, diff application, IPC with the webview |
 | `platform_*` | Per-platform export/packaging glue (desktop first, mobile later) |

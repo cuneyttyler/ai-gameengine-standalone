@@ -18,6 +18,7 @@
 #include "gameplay/Isometric.h"
 #include "renderer2d/Camera2D.h"
 #include "renderer2d/Renderer2D.h"
+#include "ui/GameUi.h"
 
 #include <nlohmann/json.hpp>
 
@@ -70,6 +71,7 @@ public:
 
     const Camera2D& Camera() const { return camera_; }
     std::vector<OverlayLine> BuildOverlay();
+    std::vector<UiQuad> BuildUi(); // the game's own UI, in Play mode
 
     // True when the scene has unsaved edits (asked before closing).
     bool IsDirty() const { return dirty_ || settingsDirty_; }
@@ -153,6 +155,7 @@ private:
     LuaVM& lua_;
     AssetDatabase& assets_;
     PrefabLibrary prefabs_;
+    std::pair<std::string, std::string> banner_; // Play: "Victory!" / "You died", drawn by the game
     WorldBible world_; // the project's canon, world/ (development_plan.md 3.1)
     int worldSearchRequest_ = 0;
     nlohmann::json WorldJson();

@@ -796,6 +796,7 @@ void EditorApp::StopPlay() {
     DeserializeScene(registry_, playSnapshot_);
     playSnapshot_.clear();
     playing_ = false;
+    banner_ = {};
     RestoreSelection(selectionIndexAtPlay_);
     camera_ = cameraBeforePlay_;
     sceneTreeStale_ = true;
@@ -808,6 +809,21 @@ void EditorApp::RestoreSelection(std::optional<size_t> index) {
 
 // --- Frame ------------------------------------------------------------------
 
+// The game's own UI while playing (ui/GameUi): what a shipped game would show.
+std::vector<UiQuad> EditorApp::BuildUi() {
+    std::vector<UiQuad> ui;
+    if (!playing_) {
+        return ui;
+    }
+    int width = 0;
+    int height = 0;
+    viewport_.GetFramebufferSize(width, height);
+    if (!banner_.first.empty()) {
+        AddBanner(ui, banner_.first, banner_.second, static_cast<float>(width), static_cast<float>(height));
+    }
+    return ui;
+}
+
 void EditorApp::Tick(double frameSeconds) {
     PollAi();
     if (playing_) {
@@ -816,8 +832,10 @@ void EditorApp::Tick(double frameSeconds) {
         for (const auto& event : session_.Events()) {
             if (event.type == GameEvent::Type::Death && player && event.entity == *player) {
                 post_({{"type", "notify"}, {"text", "You died. Press Esc or Stop to return to editing."}});
+                banner_ = {"You died", "Esc or Stop to return to editing"};
             } else if (event.type == GameEvent::Type::Victory) {
                 post_({{"type", "notify"}, {"text", "Victory! All enemies defeated."}});
+                banner_ = {"Victory!", "All enemies defeated"};
             }
         }
         if (player && !panning_) {

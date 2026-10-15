@@ -19,6 +19,16 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# stb (image decoding in assets, font baking in renderer2d). No release tags;
+# pinned to a specific commit for reproducible builds.
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG 2c980bb59875b0d32144a71867fbdebb2f77cd20
+    SOURCE_SUBDIR no-cmake
+)
+FetchContent_MakeAvailable(stb)
+
 add_library(aige_platform STATIC
     platform/Window.h
     platform/Window.cpp
@@ -32,6 +42,7 @@ add_subdirectory(ecs)
 add_subdirectory(reflection)
 add_subdirectory(physics2d)
 add_subdirectory(renderer2d)
+add_subdirectory(ui)
 add_subdirectory(scripting)
 add_subdirectory(audio)
 add_subdirectory(assets)

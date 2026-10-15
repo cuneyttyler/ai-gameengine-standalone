@@ -1,14 +1,5 @@
 include(FetchContent)
 
-# stb has no release tags; pinned to a specific commit for reproducible builds.
-FetchContent_Declare(
-    stb
-    GIT_REPOSITORY https://github.com/nothings/stb.git
-    GIT_TAG 2c980bb59875b0d32144a71867fbdebb2f77cd20
-    SOURCE_SUBDIR no-cmake
-)
-FetchContent_MakeAvailable(stb)
-
 add_library(aige_assets STATIC
     Project.h
     SceneIO.h

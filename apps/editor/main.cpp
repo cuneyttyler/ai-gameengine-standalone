@@ -18,6 +18,7 @@
 #include "editor/WebViewHost.h"
 #include "gameplay/BootstrapLevel.h"
 #include "renderer2d/Renderer2D.h"
+#include "ui/GameUi.h"
 #include "rhi/VulkanRHI.h"
 #include "scripting/LuaVM.h"
 
@@ -153,6 +154,7 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
                 viewportWindow.SetResizeCallback(std::move(cb));
             });
         aige::Renderer2D renderer(rhi, rhi.RenderPass());
+        aige::RegisterGameUiFonts(renderer);
 
         aige::Project project{std::filesystem::absolute(ProjectRootFromCommandLine())};
         aige::LoadSettings(aige::EngineReflection(), project.SettingsPath().string());
@@ -230,7 +232,7 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
             VkCommandBuffer cmd = rhi.BeginFrame();
             if (cmd != VK_NULL_HANDLE) {
                 rhi.BeginSwapchainPass();
-                renderer.Render(cmd, registry, app.Camera(), app.BuildOverlay());
+                renderer.Render(cmd, registry, app.Camera(), app.BuildOverlay(), app.BuildUi());
                 rhi.EndFrame();
             }
         }

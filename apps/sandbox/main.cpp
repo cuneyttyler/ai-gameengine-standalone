@@ -14,6 +14,7 @@
 #include "platform/Input.h"
 #include "platform/Window.h"
 #include "renderer2d/Renderer2D.h"
+#include "ui/GameUi.h"
 #include "rhi/VulkanRHI.h"
 #include "scripting/LuaVM.h"
 
@@ -28,10 +29,16 @@
 int main(int argc, char** argv) {
     try {
         std::filesystem::path root = AIGE_DEFAULT_PROJECT;
+        bool uiPreview = false;   // --ui-preview: sample game UI over the level (UI development)
+        double exitAfter = -1.0;  // --exit-after <seconds>: quit by itself (smoke runs)
         for (int i = 1; i < argc; ++i) {
             std::string arg = argv[i];
             if (arg == "--project" && i + 1 < argc) {
                 root = argv[++i];
+            } else if (arg == "--ui-preview") {
+                uiPreview = true;
+            } else if (arg == "--exit-after" && i + 1 < argc) {
+                exitAfter = std::stod(argv[++i]);
             } else if (!arg.empty() && arg[0] != '-') {
                 root = arg;
             }
@@ -44,6 +51,7 @@ int main(int argc, char** argv) {
         aige::Window window(desc);
         aige::VulkanRHI rhi(window);
         aige::Renderer2D renderer(rhi, rhi.RenderPass()); // draws straight to the swapchain pass
+        aige::RegisterGameUiFonts(renderer);
 
         aige::AssetDatabase assets(project);
         renderer.SetTextureLoader([&assets](const std::string& path) { return assets.LoadTexture(path); });
@@ -79,6 +87,7 @@ int main(int argc, char** argv) {
         using Clock = std::chrono::steady_clock;
         auto previousTime = Clock::now();
         double restartIn = -1.0; // counts down after the player dies or wins
+        std::pair<std::string, std::string> banner; // title, subtitle; drawn by the game while set
 
         // The camera follows the player; snapped into place whenever a level
         // (re)starts so it doesn't sweep across the map.
@@ -94,8 +103,12 @@ int main(int argc, char** argv) {
         };
         snapCamera();
 
+        const auto startTime = Clock::now();
         while (!window.ShouldClose()) {
             window.PollEvents();
+            if (exitAfter >= 0.0 && std::chrono::duration<double>(Clock::now() - startTime).count() > exitAfter) {
+                break;
+            }
             if (window.IsKeyDown(aige::Key::Escape)) {
                 break;
             }
@@ -110,15 +123,18 @@ int main(int argc, char** argv) {
                 auto player = aige::FindPlayer(registry);
                 if (event.type == aige::GameEvent::Type::Death && player && event.entity == *player) {
                     std::cout << "You died. Restarting..." << std::endl;
+                    banner = {"You died", "Back to the start in a moment"};
                     restartIn = 2.0;
                 } else if (event.type == aige::GameEvent::Type::Victory) {
                     std::cout << "Victory! All enemies defeated. Restarting..." << std::endl;
+                    banner = {"Victory!", "All enemies defeated"};
                     restartIn = 3.0;
                 }
             }
             if (restartIn >= 0.0) {
                 restartIn -= frameSeconds;
                 if (restartIn < 0.0) {
+                    banner = {};
                     loadLevel();
                     session.ResetClock();
                     snapCamera();
@@ -135,11 +151,31 @@ int main(int argc, char** argv) {
             std::vector<aige::OverlayLine> overlay;
             aige::AppendHealthBars(registry, overlay);
 
+            std::vector<aige::UiQuad> ui;
+            {
+                VkExtent2D extent = rhi.SwapchainExtent();
+                const float width = static_cast<float>(extent.width);
+                const float height = static_cast<float>(extent.height);
+                if (!banner.first.empty()) {
+                    aige::AddBanner(ui, banner.first, banner.second, width, height);
+                }
+                if (uiPreview) {
+                    aige::AddObjective(ui, "Clear the courtyard", "Skeletons defeated: 2/4", width, height);
+                    aige::DialogueView view;
+                    view.speaker = "Old Tamsin";
+                    view.text = "Another Warden? The last one went up that hill and came back in a sack. "
+                                "Take a draught, at least.";
+                    view.choices = {"I'll be careful.", "What happened to the last one?", "Goodbye."};
+                    view.highlighted = 1;
+                    aige::AddDialogueBox(ui, view, width, height);
+                }
+            }
+
             rhi.SetClearColor(settings.renderer.clearR, settings.renderer.clearG, settings.renderer.clearB);
             VkCommandBuffer cmd = rhi.BeginFrame();
             if (cmd != VK_NULL_HANDLE) {
                 rhi.BeginSwapchainPass();
-                renderer.Render(cmd, registry, camera, overlay);
+                renderer.Render(cmd, registry, camera, overlay, ui);
                 rhi.EndFrame();
             }
         }
