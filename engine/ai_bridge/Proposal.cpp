@@ -305,6 +305,9 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             if (name == "prefab.createFromEntity" && outcome) {
                 outcome->prefabsChanged = true;
             }
+            if (result.created && outcome) {
+                outcome->created.back() = *result.created;
+            }
         }
 
     } else {
@@ -342,6 +345,7 @@ ApplyOutcome ApplyOperations(const std::vector<nlohmann::json>& operations, Regi
                              const ReflectionRegistry& reflection, PrefabLibrary& prefabs, const Project& project) {
     ApplyOutcome outcome;
     for (const auto& op : operations) {
+        outcome.created.push_back(entt::null);
         ChangeItem item = Process(op, Mode::Apply, registry, reflection, prefabs, project, &outcome);
         if (item.error.empty()) {
             ++outcome.applied;

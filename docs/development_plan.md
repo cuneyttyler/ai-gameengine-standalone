@@ -410,6 +410,48 @@ what it finds.
   single-step, a feature-sized one goes multi-step, an oversized one is answered with a
   suggested split instead of a proposal). User test: a feature-sized request ("add a dodge roll with i-frames") lands
   working without manual follow-ups.
+- ✅ Built:
+  - **Answer format** (`ai_service`): `scope` = `small` | `task` | `split`, plus `plan`,
+    `done` and `split`. The prompt explains how to size a request. A split must have no
+    operations and at least two parts.
+  - **`ai_bridge/TaskRunner`** carries out a task on a working copy:
+    - `CloneScene` keeps entity ids, so the model's ids mean the same entities.
+    - Scripts and prefabs are copied to a temp folder, and the working copy has its own
+      project settings, swapped in only while it's being changed, played or described.
+    - Each step is applied operation by operation, so a step can use what an earlier
+      operation created. Written scripts are then played headless for 2 s.
+    - The follow-up message (plan, what failed, script errors, "fix first", "set done
+      when finished") goes back with the working copy as context and the task's own
+      conversation.
+    - It ends when the model says done and the step is clean, or at the internal limits
+      (6 steps or 250k input tokens), with a reason.
+    - The combined result is every operation that applied, with before/after from the
+      working copy. Accepting replays it on the real scene as one undo step, and
+      references to entities the task spawned are translated to the ones spawned on
+      replay. Task results are always reviewed, whatever the review policy.
+  - **Editor**: a live task card (plan, steps with ✓ / "N to fix", **Stop**). Stop
+    discards the working copy; a step answer that arrives late is ignored. The result
+    card says "Result of N steps — nothing has been applied yet". A split shows its
+    suggested requests as buttons that fill the message box. Turning AI off stops a
+    running task. Everything is logged (`task-finished`, `task-stopped`, `split`).
+  - **Tests**:
+    - `TaskRunnerTest`, with scripted answers: a script error goes back to the model and
+      the fix finishes the task; the task's spawned entity is translated on replay even
+      after the user took its id in the real scene; the step limit (including "done" with
+      errors left); Stop leaves scene, settings, prefab and scripts untouched and deletes
+      the working copy; an empty answer finishes.
+    - Python: scope and split validation, the API passing a split through, and golden
+      sizing with the real model. Five ordinary requests stay small, the necromancer
+      ("new enemy + prefab + two copies") is a task with a plan whose first step only
+      spawns a base, and "a complete open-world RPG" is split into six requests.
+  - **Prompt changes from recording**: the model tried to edit a prefab it was creating
+    in the same answer, and to set prefab fields for a component the prefab lacks. Rules
+    for both were added, and a sizing hint that mentioned scripts was reworded because it
+    led to an unneeded script. "Skeletons flee below 3 health" is now judged a task (write,
+    attach, test); the golden test accepts either form.
+  - **Not done:** an automated end-to-end run of a whole task against the real model.
+    Only the first answer of each golden prompt is recorded; whole runs are for the
+    manual checklist.
 
 ---
 

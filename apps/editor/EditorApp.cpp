@@ -248,6 +248,8 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             userPrefs_->Set("reviewPolicy", ReviewPolicyName(ParseReviewPolicy(message.value("policy", ""))));
         }
         post_(AiStatusJson());
+    } else if (type == "ai:taskStop") {
+        StopTask(message.value("id", 0), "Stopped. Nothing was changed.");
     } else if (type == "ai:undoAuto") {
         UndoAutoApplied(message.value("id", 0));
     } else if (type == "ai:send") {
@@ -880,6 +882,9 @@ void EditorApp::SetAiEnabled(bool enabled) {
     if (!aiConnection_) {
         return;
     }
+    if (!enabled) {
+        StopTask(taskId_, "AI was turned off. Nothing was changed.");
+    }
     aiConnection_->SetEnabled(enabled);
     if (!enabled) {
         requestInstructions_.clear();
@@ -950,26 +955,12 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus) {
     post_({{"type", "ai:busy"}, {"busy", true}});
 }
 
-void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
-    post_({{"type", "ai:busy"}, {"busy", false}});
-    std::string instruction = requestInstructions_[requestId];
-    requestInstructions_.erase(requestId);
+namespace {
 
-    if (!body.value("ok", false) || !body.contains("proposal") || body["proposal"].is_null()) {
-        std::string text = "The AI couldn't produce a valid change.";
-        for (const auto& error : body.value("errors", nlohmann::json::array())) {
-            text += "\n• " + error.get<std::string>();
-        }
-        post_({{"type", "ai:message"}, {"role", "error"}, {"text", text}});
-        conversation_.emplace_back("assistant", "(failed: no valid proposal)");
-        return;
-    }
-
-    const nlohmann::json& proposal = body["proposal"];
-    ResolvedProposal resolved = ResolveProposal(proposal, registry_, EngineReflection(), prefabs_, assets_.GetProject());
+nlohmann::json ItemsJson(const std::vector<ChangeItem>& changes) {
     nlohmann::json items = nlohmann::json::array();
-    for (size_t i = 0; i < resolved.items.size(); ++i) {
-        const ChangeItem& item = resolved.items[i];
+    for (size_t i = 0; i < changes.size(); ++i) {
+        const ChangeItem& item = changes[i];
         items.push_back({{"index", i},
                          {"kind", item.kind},
                          {"target", item.target},
@@ -980,6 +971,59 @@ void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
                          {"touchesFiles", item.touchesFiles},
                          {"error", item.error}});
     }
+    return items;
+}
+
+std::string FailureText(const nlohmann::json& body, const std::string& lead) {
+    std::string text = lead;
+    for (const auto& error : body.value("errors", nlohmann::json::array())) {
+        text += "\n• " + error.get<std::string>();
+    }
+    return text;
+}
+
+} // namespace
+
+void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
+    if (cancelledRequests_.erase(requestId) > 0) {
+        return; // a step of a task the user stopped
+    }
+    if (task_ && requestId == taskRequestId_) {
+        OnTaskAnswer(body);
+        return;
+    }
+    post_({{"type", "ai:busy"}, {"busy", false}});
+    std::string instruction = requestInstructions_[requestId];
+    requestInstructions_.erase(requestId);
+
+    if (!body.value("ok", false) || !body.contains("proposal") || body["proposal"].is_null()) {
+        post_({{"type", "ai:message"}, {"role", "error"}, {"text", FailureText(body, "The AI couldn't produce a valid change.")}});
+        conversation_.emplace_back("assistant", "(failed: no valid proposal)");
+        return;
+    }
+
+    const nlohmann::json& proposal = body["proposal"];
+    const std::string scope = proposal.value("scope", "small");
+    if (scope == "split") {
+        // Too big for one go: the AI suggests smaller requests instead.
+        proposals_[requestId] = {instruction, proposal, true};
+        conversation_.emplace_back("assistant", proposal.value("notes", "") + " Suggested parts: " +
+                                                    proposal.value("split", nlohmann::json::array()).dump());
+        post_({{"type", "ai:split"},
+               {"id", requestId},
+               {"summary", proposal.value("summary", "")},
+               {"notes", proposal.value("notes", "")},
+               {"parts", proposal.value("split", nlohmann::json::array())}});
+        LogAiDecision(requestId, {{"decision", "split"}});
+        return;
+    }
+    if (scope == "task") {
+        StartTask(requestId, instruction, proposal, body.value("usage", nlohmann::json::object()));
+        return;
+    }
+
+    ResolvedProposal resolved = ResolveProposal(proposal, registry_, EngineReflection(), prefabs_, assets_.GetProject());
+    nlohmann::json items = ItemsJson(resolved.items);
     PendingProposal& pending = proposals_[requestId];
     pending.instruction = instruction;
     pending.proposal = proposal;
@@ -1036,10 +1080,20 @@ ReviewPolicy EditorApp::CurrentReviewPolicy() const {
 
 // Applies proposal operations as one undo step (scene side) and refreshes
 // whatever they touched.
-ApplyOutcome EditorApp::ApplyAccepted(const std::vector<nlohmann::json>& operations) {
+ApplyOutcome EditorApp::ApplyAccepted(const std::vector<nlohmann::json>& operations, const TaskRunner* task,
+                                      const std::vector<size_t>& indices) {
     ApplyOutcome outcome;
     ApplyOneShotEdit([&] {
-        outcome = ApplyOperations(operations, registry_, EngineReflection(), prefabs_, assets_.GetProject());
+        if (task != nullptr) {
+            // A task's result: replay it, translating the entities it spawned.
+            std::vector<std::pair<size_t, nlohmann::json>> accepted;
+            for (size_t i = 0; i < operations.size(); ++i) {
+                accepted.emplace_back(indices[i], operations[i]);
+            }
+            outcome = task->Replay(accepted, registry_, prefabs_, assets_.GetProject());
+        } else {
+            outcome = ApplyOperations(operations, registry_, EngineReflection(), prefabs_, assets_.GetProject());
+        }
         return outcome.applied > 0;
     });
     if (outcome.settingsChanged) {
@@ -1053,6 +1107,102 @@ ApplyOutcome EditorApp::ApplyAccepted(const std::vector<nlohmann::json>& operati
     inspectorStale_ = true;
     editorStateStale_ = true;
     return outcome;
+}
+
+// --- Bigger tasks (development_plan.md 2.9) ---------------------------------
+// The AI answered a request with scope "task": it's carried out step by step
+// on a working copy (TaskRunner), with each step's results sent back for the
+// next, and the combined result is reviewed like any other proposal.
+
+void EditorApp::StartTask(int requestId, const std::string& instruction, const nlohmann::json& firstAnswer,
+                          const nlohmann::json& usage) {
+    task_ = std::make_shared<TaskRunner>(registry_, assets_.GetProject(), EngineReflection(), instruction);
+    taskId_ = requestId;
+    proposals_[requestId] = {instruction, firstAnswer, false};
+    FeedTask(firstAnswer, usage.value("inputTokens", 0));
+}
+
+void EditorApp::FeedTask(const nlohmann::json& answer, int inputTokens) {
+    TaskRunner::State state = task_->OnAnswer(answer, inputTokens);
+    const TaskStep& step = task_->Steps().back();
+    nlohmann::json problems = nlohmann::json::array();
+    for (const auto& problem : step.problems) {
+        problems.push_back({{"path", problem.path}, {"message", problem.message}, {"count", problem.count}});
+    }
+    post_({{"type", "ai:taskProgress"},
+           {"id", taskId_},
+           {"instruction", task_->Instruction()},
+           {"plan", task_->Plan()},
+           {"step", step.number},
+           {"summary", step.summary},
+           {"applyErrors", step.applyErrors},
+           {"problems", problems},
+           {"state", state == TaskRunner::State::Working ? "working" : "finished"}});
+    if (state != TaskRunner::State::Working) {
+        FinishTask();
+        return;
+    }
+    if (Ai() == nullptr) {
+        StopTask(taskId_, "AI was turned off.");
+        return;
+    }
+    taskRequestId_ = Ai()->Propose(task_->NextInstruction(), task_->Context(assets_), task_->History());
+    post_({{"type", "ai:busy"}, {"busy", true}});
+}
+
+void EditorApp::OnTaskAnswer(const nlohmann::json& body) {
+    if (!body.value("ok", false) || !body.contains("proposal") || body["proposal"].is_null()) {
+        StopTask(taskId_, FailureText(body, "The AI couldn't produce the next step."));
+        return;
+    }
+    FeedTask(body["proposal"], body.value("usage", nlohmann::json::object()).value("inputTokens", 0));
+}
+
+// The task is over (finished, or at its limits): its combined result goes up
+// for review. Accepting replays it on the real scene (ApplyProposal).
+void EditorApp::FinishTask() {
+    post_({{"type", "ai:busy"}, {"busy", false}});
+    std::shared_ptr<TaskRunner> task = std::move(task_);
+    PendingProposal& pending = proposals_[taskId_];
+    pending.proposal = task->CombinedProposal();
+    pending.task = task;
+    nlohmann::json steps = nlohmann::json::array();
+    for (const auto& step : task->Steps()) {
+        steps.push_back({{"number", step.number},
+                         {"summary", step.summary},
+                         {"problems", step.problems.size()},
+                         {"applyErrors", step.applyErrors.size()}});
+    }
+    conversation_.emplace_back("assistant", "Carried out in " + std::to_string(task->Steps().size()) +
+                                                " steps; result: " + pending.proposal["operations"].dump());
+    post_({{"type", "ai:proposal"},
+           {"id", taskId_},
+           {"instruction", task->Instruction()},
+           {"summary", task->Instruction()},
+           {"notes", task->StopReason()},
+           {"items", ItemsJson(task->CombinedItems())},
+           {"task", {{"plan", task->Plan()}, {"steps", steps}, {"stopped", task->StopReason()}}},
+           {"usage", nlohmann::json::object()}});
+    LogAiDecision(taskId_, {{"decision", "task-finished"},
+                            {"steps", task->Steps().size()},
+                            {"stopReason", task->StopReason()},
+                            {"history", task->History()}});
+}
+
+// Stop: the working copy is discarded and nothing reaches the project.
+void EditorApp::StopTask(int id, const std::string& reason) {
+    if (!task_ || id != taskId_) {
+        return;
+    }
+    if (taskRequestId_ != 0) {
+        cancelledRequests_.insert(taskRequestId_);
+    }
+    LogAiDecision(taskId_, {{"decision", "task-stopped"}, {"reason", reason}, {"steps", task_->Steps().size()}});
+    task_.reset();
+    taskRequestId_ = 0;
+    proposals_[id].decided = true;
+    post_({{"type", "ai:busy"}, {"busy", false}});
+    post_({{"type", "ai:taskStopped"}, {"id", id}, {"reason", reason}});
 }
 
 // "Undo" on auto-applied changes: puts each value back, unless it has been
@@ -1113,8 +1263,10 @@ void EditorApp::ApplyProposal(int proposalId, const nlohmann::json& decisions) {
         acceptedIndices.push_back(index);
     }
 
-    ApplyOutcome outcome = ApplyAccepted(accepted); // one undo step for the scene side
+    std::vector<size_t> indices = acceptedIndices.get<std::vector<size_t>>();
+    ApplyOutcome outcome = ApplyAccepted(accepted, it->second.task.get(), indices); // one undo step (scene side)
     it->second.decided = true;
+    it->second.task.reset(); // done with its working copy
 
     post_({{"type", "ai:decided"},
            {"id", proposalId},
@@ -1151,6 +1303,7 @@ void EditorApp::RejectProposal(int proposalId) {
         return;
     }
     it->second.decided = true;
+    it->second.task.reset();
     post_({{"type", "ai:decided"}, {"id", proposalId}, {"status", "rejected"}});
     LogAiDecision(proposalId, {{"decision", "rejected"}});
 }

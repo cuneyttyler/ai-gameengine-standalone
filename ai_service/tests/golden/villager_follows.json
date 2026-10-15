@@ -7,6 +7,6 @@
   "attempts": 1,
   "valid": true,
   "responses": [
-    "{\n  \"summary\": \"Make the villager follow the hero using a Follow component\",\n  \"operations\": [\n    {\n      \"op\": \"add_component\",\n      \"entity\": 288,\n      \"component\": \"Follow\",\n      \"fields\": {\n        \"speed\": 1.5,\n        \"stopDistance\": 1.0,\n        \"range\": 10.0\n      }\n    }\n  ],\n  \"notes\": \"The villager will now follow the hero when within 10 cells. Adjust speed, stopDistance, or range in the Inspector if needed.\"\n}"
+    "{\n  \"scope\": \"small\",\n  \"summary\": \"Make the villager follow the hero using a Follow component\",\n  \"operations\": [\n    {\n      \"op\": \"add_component\",\n      \"entity\": 288,\n      \"component\": \"Follow\",\n      \"fields\": {\n        \"speed\": 1.5,\n        \"stopDistance\": 1.0,\n        \"range\": 10.0,\n        \"target\": null\n      }\n    }\n  ],\n  \"done\": true,\n  \"notes\": \"The villager will now follow the hero when within 10 cells. Adjust speed, stopDistance, or range in the Follow component if needed.\"\n}"
   ]
 }

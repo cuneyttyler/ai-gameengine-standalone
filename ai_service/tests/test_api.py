@@ -100,3 +100,18 @@ def test_without_a_provider_the_service_says_how_to_configure_one(schema):
     client = TestClient(create_app(provider=None, schema=schema))
     response = client.post("/propose", json={"instruction": "x"}).json()
     assert "MISTRAL_API_KEY" in response["errors"][0]
+
+
+def test_a_split_answer_comes_back_with_its_suggestions(schema, context):
+    split = json.dumps(
+        {"scope": "split", "summary": "That's a whole game", "split": ["add a dodge roll", "add a boss"],
+         "notes": "Too much for one go."}
+    )
+    client, provider = client_with([split], schema=schema)
+    response = client.post("/propose", json={"instruction": "make an RPG", "context": context.model_dump()}).json()
+    assert response["ok"] is True
+    assert response["proposal"]["scope"] == "split"
+    assert response["proposal"]["split"] == ["add a dodge roll", "add a boss"]
+    assert response["proposal"]["operations"] == []
+    # The model was told how to size requests.
+    assert '"scope": "small" | "task" | "split"' in provider.requests[0][0]["content"]

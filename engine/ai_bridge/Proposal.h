@@ -50,6 +50,8 @@ struct ApplyOutcome {
     std::vector<std::string> errors; // per failed item, prefixed with its target
     bool settingsChanged = false;
     bool prefabsChanged = false;
+    // One per operation: the entity it created (scene.spawn), else entt::null.
+    std::vector<Entity> created;
 };
 
 // Applies the accepted operations, in order, through the same registry

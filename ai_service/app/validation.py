@@ -68,6 +68,12 @@ def check_value(spec: FieldSpec, value: Any, context: EditorContext, where: str)
 
 def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorContext) -> list[str]:
     errors: list[str] = []
+    if proposal.scope == "split":
+        if proposal.operations:
+            errors.append('a "split" answer has no operations: suggest the smaller requests in "split" instead')
+        if len(proposal.split) < 2:
+            errors.append('a "split" answer needs at least two smaller requests in "split"')
+        return errors
     entities = {e.id: e for e in context.entities}
     written_scripts: set[str] = set()
 

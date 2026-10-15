@@ -27,6 +27,11 @@ bool LoadScene(Registry& registry, const std::string& path);
 std::string SerializeScene(Registry& registry);
 void DeserializeScene(Registry& registry, const std::string& text);
 
+// Copies the scene into `to` (cleared first) keeping every entity's
+// identifier, so references by id — like an AI proposal's — mean the same
+// entity in both. `to` should be a fresh registry.
+void CloneScene(Registry& from, Registry& to);
+
 // The same format for a chosen subset of entities, and loading entities into
 // a registry without clearing it (returns them in file order). Entity
 // references to entities outside the subset are written as `none`. Used for

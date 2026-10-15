@@ -35,6 +35,15 @@ PROMPTS: dict[str, dict] = {
     "flee_script": {
         "instruction": "Skeletons should run away from the hero when their health drops below 3.",
     },
+    # Request sizing (development_plan.md 2.9): feature-sized -> "task", too big -> "split".
+    "necromancer": {
+        "instruction": "Add a necromancer enemy: it keeps its distance from the hero, summons a skeleton next to "
+        "itself every 5 seconds, and is weak in melee. Make it a prefab and put two of them in the courtyard.",
+    },
+    "whole_rpg": {
+        "instruction": "Turn this into a complete open-world RPG with an inventory, crafting, a quest line with "
+        "dialogue, a world map, day and night, and save games.",
+    },
 }
 
 

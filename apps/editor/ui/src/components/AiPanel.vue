@@ -31,6 +31,7 @@ interface ProposalEntry {
   status: 'pending' | 'applied' | 'partial' | 'rejected'
   applyErrors: string[]
   scriptCheck: { scripts: string[]; problems: { path: string; message: string; count: number }[] } | null
+  task: { plan: string[]; steps: { number: number; summary: string }[]; stopped: string } | null
   autoApplied: number[]
   autoState: 'applied' | 'undone'
   autoNote: string // targets "Undo" left alone because they'd changed since
@@ -47,7 +48,27 @@ interface MessageEntry {
   text: string
 }
 
-type Entry = ProposalEntry | MessageEntry
+// A multi-step task in progress (development_plan.md 2.9): its plan and steps
+// as they happen; its result arrives later as an ordinary proposal.
+interface TaskEntry {
+  kind: 'task'
+  id: number
+  plan: string[]
+  steps: { number: number; summary: string; problems: number; applyErrors: number }[]
+  state: 'working' | 'finished' | 'stopped'
+  reason: string
+}
+
+// "Too big for one go": suggested smaller requests.
+interface SplitEntry {
+  kind: 'split'
+  id: number
+  summary: string
+  notes: string
+  parts: string[]
+}
+
+type Entry = ProposalEntry | MessageEntry | TaskEntry | SplitEntry
 
 const entries = ref<Entry[]>([])
 const input = ref('')
@@ -72,6 +93,7 @@ onHostMessage((message) => {
       status: message.decided ? 'applied' : 'pending',
       applyErrors: (message.autoErrors as string[]) ?? [],
       scriptCheck: null,
+      task: (message.task as ProposalEntry['task']) ?? null,
       autoApplied: (message.autoApplied as number[]) ?? [],
       autoState: 'applied',
       autoNote: '',
@@ -87,6 +109,42 @@ onHostMessage((message) => {
       entry.status = message.status as ProposalEntry['status']
       entry.applyErrors = (message.errors as string[]) ?? []
     }
+  } else if (message.type === 'ai:taskProgress') {
+    let entry = entries.value.find((e) => e.kind === 'task' && e.id === message.id) as TaskEntry | undefined
+    if (!entry) {
+      const created: TaskEntry = reactive({
+        kind: 'task',
+        id: message.id as number,
+        plan: [],
+        steps: [],
+        state: 'working',
+        reason: '',
+      })
+      entries.value.push(created)
+      entry = created
+    }
+    entry.plan = (message.plan as string[]) ?? []
+    entry.steps.push({
+      number: message.step as number,
+      summary: message.summary as string,
+      problems: ((message.problems as unknown[]) ?? []).length,
+      applyErrors: ((message.applyErrors as unknown[]) ?? []).length,
+    })
+    entry.state = message.state as TaskEntry['state']
+  } else if (message.type === 'ai:taskStopped') {
+    const entry = entries.value.find((e) => e.kind === 'task' && e.id === message.id) as TaskEntry | undefined
+    if (entry) {
+      entry.state = 'stopped'
+      entry.reason = message.reason as string
+    }
+  } else if (message.type === 'ai:split') {
+    entries.value.push({
+      kind: 'split',
+      id: message.id as number,
+      summary: message.summary as string,
+      notes: message.notes as string,
+      parts: (message.parts as string[]) ?? [],
+    })
   } else if (message.type === 'ai:autoUndone') {
     const entry = entries.value.find((e) => e.kind === 'proposal' && e.id === message.id) as ProposalEntry | undefined
     if (entry) {
@@ -169,6 +227,15 @@ function askToFix(entry: ProposalEntry): void {
 
 function reject(entry: ProposalEntry): void {
   sendToHost({ type: 'ai:reject', id: entry.id })
+}
+
+function stopTask(entry: TaskEntry): void {
+  sendToHost({ type: 'ai:taskStop', id: entry.id })
+}
+
+function useSplitPart(part: string): void {
+  input.value = part
+  nextTick(() => inputEl.value?.focus())
 }
 
 function undoAuto(entry: ProposalEntry): void {
@@ -311,7 +378,61 @@ const examples = [
       <template v-for="(entry, entryIndex) in entries" :key="entryIndex">
         <div v-if="entry.kind === 'message'" class="message" :class="entry.role">{{ entry.text }}</div>
 
+        <div v-else-if="entry.kind === 'task'" class="task" :class="entry.state">
+          <div class="task-head">
+            <span class="task-title">
+              {{
+                entry.state === 'working'
+                  ? `Working — step ${entry.steps.length + 1}`
+                  : entry.state === 'stopped'
+                    ? 'Stopped'
+                    : `Done in ${entry.steps.length} ${entry.steps.length === 1 ? 'step' : 'steps'}`
+              }}
+            </span>
+            <button v-if="entry.state === 'working'" title="Stop; nothing is changed" @click="stopTask(entry)">
+              Stop
+            </button>
+          </div>
+          <ol v-if="entry.plan.length" class="task-plan">
+            <li v-for="(line, i) in entry.plan" :key="i">{{ line }}</li>
+          </ol>
+          <ul class="task-steps">
+            <li v-for="step in entry.steps" :key="step.number">
+              <span class="step-number">{{ step.number }}</span>
+              <span class="step-summary">{{ step.summary }}</span>
+              <span v-if="step.problems || step.applyErrors" class="step-problems">
+                {{ step.problems + step.applyErrors }} to fix
+              </span>
+              <span v-else class="step-ok">✓</span>
+            </li>
+          </ul>
+          <div v-if="entry.state === 'working'" class="task-note">
+            Changes go to a working copy; nothing reaches your project until you review the result.
+          </div>
+          <div v-if="entry.reason" class="task-note">{{ entry.reason }}</div>
+        </div>
+
+        <div v-else-if="entry.kind === 'split'" class="split">
+          <div class="summary">{{ entry.summary }}</div>
+          <div v-if="entry.notes" class="notes">{{ entry.notes }}</div>
+          <div class="split-hint">Try these one at a time:</div>
+          <button
+            v-for="part in entry.parts"
+            :key="part"
+            class="example"
+            title="Put this request in the message box"
+            @click="useSplitPart(part)"
+          >
+            {{ part }}
+          </button>
+        </div>
+
         <div v-else class="proposal" :class="entry.status">
+          <div v-if="entry.task" class="task-result">
+            Result of {{ entry.task.steps.length }} {{ entry.task.steps.length === 1 ? 'step' : 'steps' }} — review
+            it all here; nothing has been applied yet.
+          </div>
+          <div v-if="entry.task?.stopped" class="item-error">{{ entry.task.stopped }}</div>
           <div class="summary">{{ entry.summary }}</div>
           <div v-if="entry.notes" class="notes">{{ entry.notes }}</div>
           <p v-if="entry.items.length === 0" class="no-changes">No changes proposed.</p>
@@ -530,6 +651,67 @@ h2 {
 .turn-off {
   align-self: flex-start;
   margin-top: 4px;
+}
+.task,
+.split {
+  margin: 8px 0;
+  padding: 10px;
+  border: 1px solid #2a2a3a;
+  background: #11111b;
+}
+.task.working {
+  border-color: #3b82f6;
+}
+.task-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.task-title {
+  font-weight: 600;
+}
+.task-plan {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  opacity: 0.75;
+}
+.task-steps {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.task-steps li {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+  border-top: 1px solid #222232;
+}
+.step-number {
+  width: 16px;
+  opacity: 0.5;
+}
+.step-summary {
+  flex: 1;
+  min-width: 0;
+}
+.step-problems {
+  color: #f59e0b;
+  white-space: nowrap;
+}
+.step-ok {
+  color: #22c55e;
+}
+.task-note,
+.split-hint {
+  margin-top: 8px;
+  font-size: 0.9em;
+  opacity: 0.65;
+}
+.task-result {
+  margin-bottom: 6px;
+  font-size: 0.9em;
+  color: #93c5fd;
 }
 .auto-tag {
   width: 13px;

@@ -11,10 +11,29 @@ from .models import EditorContext, EngineSchema, FieldSpec
 OUTPUT_FORMAT = """\
 Answer with ONE JSON object and nothing else:
 {
-  "summary": "one sentence describing the change, for the review panel",
+  "scope": "small" | "task" | "split",
+  "summary": "one sentence describing the change (for a task: this step), for the review panel",
+  "plan": ["only for a task that benefits from planning: 2-6 short steps"],
   "operations": [ ...operations, applied in order... ],
+  "done": true/false (task only: true on the step that finishes the request),
+  "split": ["only for split: smaller, self-contained requests, in the user's words"],
   "notes": "optional: anything the user should know (assumptions, how to test it)"
 }
+
+First decide how big the request is:
+- "small": it fits in one reviewable set of operations. Most requests are small, including
+  changing how something that already exists behaves. Give all the operations now.
+- "task": a new feature with several parts that build on each other, e.g. a new kind of
+  enemy with its own behavior, a new prefab, and copies of it placed in the level. Give a "plan"
+  if planning helps, and only the FIRST step's operations, with
+  "done": false. The editor applies each step to a working copy of the project, plays it
+  for a few seconds, and sends you the results; you then answer with the next step (or
+  fixes) and "done": true on the last one. Nothing reaches the real project until the
+  developer reviews the whole result.
+- "split": too big for one task — a whole game, many unrelated features, or more than about
+  six steps of work. Don't start: give no operations, suggest 2-6 smaller requests in
+  "split" that together cover it (each one a sensible request on its own), and explain why
+  in "notes".
 
 Operations (use exact component, field, setting and command names from the schema):
   {"op": "set_field", "entity": <id>, "component": "Health", "field": "max", "value": 20}
@@ -31,7 +50,9 @@ Rules:
 - Respect each field's type, min/max and enum options. Enum values are option names.
 - To change every copy of something (all skeletons), prefer set_prefab_field on its prefab:
   copies follow unless they override that field.
-- set_field needs the component to already be on the entity (add_component otherwise).
+- set_field needs the component to already be on the entity (add_component otherwise), and
+  set_prefab_field needs it on the prefab (see its components in the context); to give one
+  entity a new component, add_component on that entity.
 - New behavior goes in Lua: write it with the script.write command (path scripts/<name>.lua),
   then attach it with add_component LuaScript {"path": ...} or set_field LuaScript.path.
 - Prefer what already exists over new code: settings, fields and status effects (Burn,
@@ -45,6 +66,11 @@ Rules:
   A script that moves the entity some other way should pause it
   (set_field(self_id(), "Follow", "speed", 0)) and restore it afterwards.
 - Health.current is what entities start with: when raising Health.max, raise current to match.
+- Ids exist only for entities already in the project context. Something spawned in this
+  answer has no id yet: to change it, do that in the next step of a task.
+- A new prefab: set up an existing entity first (set_field/add_component, in an earlier
+  step if it was just spawned), then prefab.createFromEntity — the prefab copies the
+  entity as it is. Don't set_prefab_field on a prefab created in the same answer.
 - Every operation is a JSON object with "op" set to one of the seven kinds above; commands
   always use {"op": "command", "name": ..., "args": {...}}.
 - Make the smallest change that does what was asked. If the request can't be done with

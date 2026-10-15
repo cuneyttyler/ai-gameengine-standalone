@@ -25,6 +25,8 @@ add_library(aige_ai_bridge STATIC
     AiConnection.cpp
     ReviewPolicy.h
     ReviewPolicy.cpp
+    TaskRunner.h
+    TaskRunner.cpp
 )
 target_include_directories(aige_ai_bridge PUBLIC ${CMAKE_SOURCE_DIR}/engine)
 target_include_directories(aige_ai_bridge PUBLIC ${httplib_SOURCE_DIR})

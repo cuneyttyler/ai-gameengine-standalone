@@ -46,6 +46,12 @@ working on the service (`--reload`).
 4. The editor validates the proposal again against its live registry, shows it in Diff
    Review, and applies only what the user accepts.
 
+The model also sizes each request (`scope`): `small` (one proposal), `task` (a plan and
+one step at a time: the editor applies each step to a working copy, plays it, and calls
+`/propose` again with the results and the task's own history until the model says
+`done`), or `split` (no operations, smaller requests suggested in `split`). The service
+stays stateless; the editor's `ai_bridge/TaskRunner` drives tasks.
+
 Providers live in `app/providers.py` (`MistralProvider`, and `ScriptedProvider` for tests).
 
 ## Tests

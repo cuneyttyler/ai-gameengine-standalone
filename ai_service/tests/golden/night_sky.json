@@ -7,6 +7,6 @@
   "attempts": 1,
   "valid": true,
   "responses": [
-    "{\n  \"summary\": \"Change the background color to a dark blue night sky.\",\n  \"operations\": [\n    {\n      \"op\": \"set_setting\",\n      \"section\": \"Renderer\",\n      \"field\": \"clearR\",\n      \"value\": 0.05\n    },\n    {\n      \"op\": \"set_setting\",\n      \"section\": \"Renderer\",\n      \"field\": \"clearG\",\n      \"value\": 0.05\n    },\n    {\n      \"op\": \"set_setting\",\n      \"section\": \"Renderer\",\n      \"field\": \"clearB\",\n      \"value\": 0.2\n    }\n  ],\n  \"notes\": \"The background color is now a dark blue (RGB: 0.05, 0.05, 0.2). Test by playing the scene to see the new sky color.\"\n}"
+    "{\n  \"scope\": \"small\",\n  \"summary\": \"Set the background color to a dark blue night sky\",\n  \"operations\": [\n    {\n      \"op\": \"set_setting\",\n      \"section\": \"Renderer\",\n      \"field\": \"clearR\",\n      \"value\": 0.05\n    },\n    {\n      \"op\": \"set_setting\",\n      \"section\": \"Renderer\",\n      \"field\": \"clearG\",\n      \"value\": 0.05\n    },\n    {\n      \"op\": \"set_setting\",\n      \"section\": \"Renderer\",\n      \"field\": \"clearB\",\n      \"value\": 0.2\n    }\n  ],\n  \"done\": true,\n  \"notes\": \"The background color is now a dark blue (RGB 0.05, 0.05, 0.2). Test by playing the scene.\"\n}"
   ]
 }

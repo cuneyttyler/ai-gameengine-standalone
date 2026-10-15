@@ -102,7 +102,9 @@ void WriteScene(Registry& registry, std::ostream& out, const std::vector<Entity>
     }
 }
 
-std::vector<Entity> ReadScene(Registry& registry, std::istream& in) {
+// `ids`, when given, are the identifiers to create the entities with, in file
+// order (CloneScene); otherwise the registry picks.
+std::vector<Entity> ReadScene(Registry& registry, std::istream& in, const std::vector<Entity>* ids = nullptr) {
 
     // Entity references point at entities later in the file too, so they're
     // resolved after everything is created.
@@ -122,7 +124,7 @@ std::vector<Entity> ReadScene(Registry& registry, std::istream& in) {
             continue;
         }
         if (trimmed == "entity") {
-            current = registry.create();
+            current = ids && created.size() < ids->size() ? registry.create((*ids)[created.size()]) : registry.create();
             created.push_back(current);
             continue;
         }
@@ -215,6 +217,13 @@ void DeserializeScene(Registry& registry, const std::string& text) {
     registry.clear();
     std::istringstream in(text);
     ReadScene(registry, in);
+}
+
+void CloneScene(Registry& from, Registry& to) {
+    std::vector<Entity> order = EntitiesInOrder(from);
+    std::istringstream in(SerializeEntities(from, order));
+    to.clear();
+    ReadScene(to, in, &order);
 }
 
 std::string SerializeEntities(Registry& registry, const std::vector<Entity>& entities) {

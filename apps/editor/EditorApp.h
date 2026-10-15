@@ -4,6 +4,7 @@
 #include "ai_bridge/AiConnection.h"
 #include "ai_bridge/Proposal.h"
 #include "ai_bridge/ReviewPolicy.h"
+#include "ai_bridge/TaskRunner.h"
 #include "ai_bridge/UserPrefs.h"
 #include "assets/AssetDatabase.h"
 #include "assets/Prefab.h"
@@ -23,6 +24,8 @@
 
 #include <functional>
 #include <map>
+#include <memory>
+#include <set>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -169,8 +172,21 @@ private:
         };
         std::vector<AutoUndo> autoUndo;
         bool autoUndone = false;
+        std::shared_ptr<TaskRunner> task; // set when this is a finished task's combined result
     };
-    ApplyOutcome ApplyAccepted(const std::vector<nlohmann::json>& operations);
+    ApplyOutcome ApplyAccepted(const std::vector<nlohmann::json>& operations, const TaskRunner* task = nullptr,
+                               const std::vector<size_t>& indices = {});
+    // The multi-step task in progress, if any (development_plan.md 2.9).
+    std::shared_ptr<TaskRunner> task_;
+    int taskId_ = 0;        // the request that started it (its card in the chat)
+    int taskRequestId_ = 0; // the step request in flight
+    std::set<int> cancelledRequests_;
+    void StartTask(int requestId, const std::string& instruction, const nlohmann::json& firstAnswer,
+                   const nlohmann::json& usage);
+    void FeedTask(const nlohmann::json& answer, int inputTokens);
+    void OnTaskAnswer(const nlohmann::json& body);
+    void FinishTask();
+    void StopTask(int id, const std::string& reason);
     void UndoAutoApplied(int proposalId);
     ReviewPolicy CurrentReviewPolicy() const;
     std::map<int, PendingProposal> proposals_; // by request id

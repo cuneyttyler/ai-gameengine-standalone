@@ -175,8 +175,18 @@ Operation = Annotated[
 
 class Proposal(BaseModel):
     summary: str
-    operations: list[Operation]
+    operations: list[Operation] = []
     notes: str = ""
+    # How big the request is, decided by the model (development_plan.md 2.9):
+    #   small - one reviewable set of operations (most requests)
+    #   task  - several steps; `operations` is the current step, `done` marks the
+    #           last one; the editor applies each to a working copy, plays it and
+    #           sends the results back for the next step
+    #   split - too big for one go; no operations, `split` suggests smaller requests
+    scope: Literal["small", "task", "split"] = "small"
+    plan: list[str] = []
+    done: bool = False
+    split: list[str] = []
 
 
 class Usage(BaseModel):

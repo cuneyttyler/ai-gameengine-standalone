@@ -112,3 +112,45 @@ def test_structural_components_cannot_be_added(schema, context):
         proposal({"op": "add_component", "entity": 7, "component": "Tile", "fields": {}}), schema, context
     )
     assert "can't be added by hand" in errors[0]
+
+
+# --- Request size (development_plan.md 2.9) --------------------------------------
+
+
+def test_small_is_the_default_scope():
+    p = proposal({"op": "set_field", "entity": 7, "component": "Health", "field": "max", "value": 12})
+    assert p.scope == "small" and p.plan == [] and p.split == [] and p.done is False
+
+
+def test_a_task_step_is_validated_like_any_proposal(schema, context):
+    p = Proposal.model_validate(
+        {
+            "scope": "task",
+            "summary": "step 1: write the dodge script",
+            "plan": ["write the script", "attach it to the hero", "tune the speed"],
+            "operations": [{"op": "set_field", "entity": 7, "component": "Health", "field": "max", "value": -1}],
+            "done": False,
+        }
+    )
+    assert p.plan[0] == "write the script"
+    assert validate_proposal(p, schema, context) != []  # same checks as a small proposal
+
+
+def test_a_split_suggests_requests_instead_of_operations(schema, context):
+    good = Proposal.model_validate(
+        {"scope": "split", "summary": "too big", "split": ["add a dodge roll", "add a boss fight"], "notes": "why"}
+    )
+    assert validate_proposal(good, schema, context) == []
+
+    with_ops = Proposal.model_validate(
+        {
+            "scope": "split",
+            "summary": "too big",
+            "split": ["a", "b"],
+            "operations": [{"op": "set_setting", "section": "Combat", "field": "knockbackScale", "value": 1.5}],
+        }
+    )
+    assert "has no operations" in validate_proposal(with_ops, schema, context)[0]
+
+    one_part = Proposal.model_validate({"scope": "split", "summary": "too big", "split": ["everything"]})
+    assert "at least two" in validate_proposal(one_part, schema, context)[0]
