@@ -86,6 +86,22 @@ int AiClient::Propose(const std::string& instruction, nlohmann::json context, nl
     return id;
 }
 
+int AiClient::Request(const std::string& method, const std::string& path, nlohmann::json body, int timeoutSeconds) {
+    std::lock_guard lock(mutex_);
+    int id = nextRequestId_++;
+    jobs_.push_back([this, id, method, path, body = std::move(body), timeoutSeconds] {
+        if (state_ != State::Ready) {
+            Push({Result::Kind::Response, id, Failure(StatusText())});
+            return;
+        }
+        std::string error;
+        auto response = Send(method, path, &body, timeoutSeconds, &error);
+        Push({Result::Kind::Response, id, response ? *response : Failure(error)});
+    });
+    wake_.notify_one();
+    return id;
+}
+
 std::optional<AiClient::Result> AiClient::Poll() {
     std::lock_guard lock(mutex_);
     if (results_.empty()) {

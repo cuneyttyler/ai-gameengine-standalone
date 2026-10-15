@@ -463,6 +463,55 @@ of the sibling project's Phase 2-3.
 
 ### Milestones
 - **3.1 World Bible store** (SQLite + embeddings) and editor panel.
+  - **Canon lives in project files**, one human-readable entry per file:
+    `world/<kind>/<id>.md`, with a small `key: value` header (kind, name, summary, tags,
+    `rel:` lines naming related entries) and a free-text Markdown body. This follows
+    `product.md` §4.4: the files are the source of truth, they diff in git, and they're
+    editable with AI off. SQLite with embeddings is the **search index** over them
+    (`.cache/world_index.sqlite`, owned by the AI service, rebuildable at any time),
+    not a second store. (`technical.md` §13 said "SQLite store"; this refines it.)
+  - Kinds: character, faction, location, item, event, lore, style (tone and style guide).
+  - `engine/world`: parse, write, list and validate entries (unknown kind, missing name,
+    relation to a missing entry, duplicate ids), plus renaming with relations updated.
+    `world.*` commands go in the reflection registry so the AI can propose entries
+    through Diff Review like any other change (generation itself is 3.2).
+  - Editor: a **World** tab in the bottom panel, with entries grouped by kind, search,
+    an editing form with problems shown inline, new, delete (with confirmation), and
+    clickable relations.
+  - AI service: `PUT /project` tells it the project root. It indexes `world/` (Mistral
+    embeddings, re-embedding only changed entries) and serves `POST /world/search`.
+    Without embeddings (no key, offline) it falls back to keyword ranking, so search
+    always works.
+  - The demo project gets a small seed World Bible: hero, village, skeletons, the old
+    keep, tone.
+  - Tests: C++ round trip, validation and rename; Python index with a deterministic fake
+    embedder (only changed entries are re-embedded, ranking, keyword fallback).
+  - ✅ Built as described:
+    - `engine/world/WorldBible` (`aige_world`) does parse, format, refresh, validate,
+      save, remove and rename. Rename rewrites relations that point at the entry, and
+      header keys this version doesn't know survive a save.
+    - Commands `world.write` and `world.delete`. Diff Review shows a write as the exact
+      file it will produce, and says when it replaces an existing entry.
+    - The World tab in the bottom panel: entries grouped by kind with + per kind, text
+      search, and "Related by meaning" (semantic search, while AI is on). The form edits
+      kind, id, name, summary, tags, relations (go-to, remove, backlinks) and body.
+      Problems show inline, Ctrl+S saves the entry, and Delete confirms, naming the
+      entries that refer to it.
+    - Files edited outside the editor are picked up when the window regains focus.
+    - The AI service gets `PUT /project` (sent right after the schema) and
+      `POST /world/search`, plus a `MistralEmbedder`.
+    - Task working copies (2.9) include `world/`.
+    - The demo has seven canon entries: Aren, Old Tamsin, Brookvale, the Old Keep, the
+      Restless Dead, the Wardens, and the tone guide.
+    - Tests: `WorldBibleTest` (round trip, byte stability, forgiving parsing, validation
+      messages, refusals, rename and remove, the AI command through Resolve and Apply,
+      the demo canon is valid); `test_world.py` (parsing matches the engine,
+      incremental embedding across restarts, ranking, keyword fallback when there's no
+      embedder or it fails, the API).
+    - A smoke run against real Mistral embeddings ranked sensibly: "who heals people in
+      the village?" → Old Tamsin; "what is haunting the ruins" → the Old Keep, then the
+      Restless Dead; "how should dialogue sound" → the tone guide.
+    - The AI doesn't read the World Bible yet; that's 3.2.
 - **3.2 RAG-grounded generation** for dialogue/quests, using the World Bible as context.
 - **3.3 Contradiction-checking pass** (fixture-tested per `technical.md` §14).
 - **3.4 Dungeon/level layout generation** for the ARPG template.

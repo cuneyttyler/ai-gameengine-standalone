@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { armPrefab, editorState } from '../editorState'
 import PrefabThumb from './PrefabThumb.vue'
+import WorldPanel from './WorldPanel.vue'
 import { onHostMessage, sendToHost } from '../ipc'
 
 interface Asset {
@@ -145,7 +146,7 @@ function createPrefab(asTile: boolean): void {
 }
 
 // Prefabs tab: the project's palette.
-const tab = ref<'prefabs' | 'assets'>('prefabs')
+const tab = ref<'prefabs' | 'assets' | 'world'>('prefabs')
 const visiblePrefabs = computed(() => {
   const query = filter.value.trim().toLowerCase()
   return query ? editorState.prefabs.filter((p) => p.name.toLowerCase().includes(query)) : editorState.prefabs
@@ -175,8 +176,11 @@ onMounted(() => {
       <div class="tabs">
         <button :class="{ active: tab === 'prefabs' }" @click="tab = 'prefabs'">Prefabs</button>
         <button :class="{ active: tab === 'assets' }" @click="tab = 'assets'">Assets</button>
+        <button :class="{ active: tab === 'world' }" title="World Bible: the game's canon" @click="tab = 'world'">
+          World
+        </button>
       </div>
-      <input v-model="filter" class="filter" type="search" placeholder="Filter" spellcheck="false" />
+      <input v-if="tab !== 'world'" v-model="filter" class="filter" type="search" placeholder="Filter" spellcheck="false" />
       <button
         v-if="tab === 'assets'"
         title="Copy images or audio into the project"
@@ -184,10 +188,13 @@ onMounted(() => {
       >
         Import…
       </button>
-      <button title="Rescan the project folder" @click="sendToHost({ type: 'assets:refresh' })">Refresh</button>
+      <button v-if="tab !== 'world'" title="Rescan the project folder" @click="sendToHost({ type: 'assets:refresh' })">
+        Refresh
+      </button>
     </div>
 
-    <div v-if="tab === 'prefabs'" class="body">
+    <WorldPanel v-if="tab === 'world'" class="body world-body" />
+    <div v-else-if="tab === 'prefabs'" class="body">
       <div class="grid">
         <p v-if="editorState.prefabs.length === 0" class="placeholder">
           No prefabs yet. Turn an asset into one from the Assets tab, or select an entity and use "Save as

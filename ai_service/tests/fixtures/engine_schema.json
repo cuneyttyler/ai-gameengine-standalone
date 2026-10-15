@@ -102,6 +102,58 @@
           "type": "string"
         }
       ]
+    },
+    {
+      "description": "Creates or replaces a World Bible entry (canon: characters, factions, locations, items, events, lore, style).",
+      "name": "world.write",
+      "params": [
+        {
+          "description": "character, faction, location, item, event, lore or style.",
+          "name": "kind",
+          "type": "string"
+        },
+        {
+          "description": "File name: lowercase letters, digits, - and _ (empty: made from the name).",
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "description": "Display name.",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "One sentence.",
+          "name": "summary",
+          "type": "string"
+        },
+        {
+          "description": "Comma-separated tags (may be empty).",
+          "name": "tags",
+          "type": "string"
+        },
+        {
+          "description": "Links to other entries, '; '-separated, each '<type> <kind>/<id>', e.g. 'lives_in location/brookvale; member_of faction/iron-guild' (may be empty).",
+          "name": "relations",
+          "type": "string"
+        },
+        {
+          "description": "The full description, Markdown.",
+          "name": "body",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "description": "Deletes a World Bible entry.",
+      "name": "world.delete",
+      "params": [
+        {
+          "description": "The entry, '<kind>/<id>'.",
+          "name": "key",
+          "type": "string"
+        }
+      ]
     }
   ],
   "components": [

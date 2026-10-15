@@ -203,6 +203,10 @@ generated field automatically gets the "Ask AI" affordance for free.
     `ai:busy`, `ai:autoUndone`,
     `ai:message`, `ai:proposal` (with `task` for a task's result), `ai:decided`, `ai:scriptCheck`,
     `ai:taskProgress`, `ai:taskStopped`, `ai:split`.
+  - World Bible: UI → host `world:request`, `world:save {entry, originalKey}` (a changed kind/id
+    is a rename that rewrites relations), `world:delete {key}`, `world:search {query}`;
+    host → UI `world:list {kinds, entries, problems}`, `world:saved {key, error}`,
+    `world:searchResults {result}`.
 - The open project folder is served to the UI under a second virtual host
   (`aige-project.local`), so the Assets panel shows thumbnails straight from disk.
 - Viewport tools call the UI-independent `engine/editing` API (picking, painting,
@@ -267,9 +271,9 @@ the machine.
 | Gameplay scripts | `.lua` |
 | Quests / dialogue / behavior trees | Our own JSON-based graph format |
 | Generated images/meshes | `.png`/`.glb` + sidecar metadata (prompt, seed, model) for reproducibility |
-| World Bible / lore graph | SQLite (AI service side) — entities, relationships, embeddings |
+| World Bible / lore graph | One Markdown file per entry, `world/<kind>/<id>.md` (a `key: value` header with name, summary, tags and `rel:` lines, then free text; `engine/world`). The files are the canon: human-editable, diffable, usable with AI off |
 | Generation job history, cost tracking | SQLite (same local DB) |
-| Vector search (RAG) | Embedded vector index (`sqlite-vec` or in-process) |
+| Vector search (RAG) | `.cache/world_index.sqlite` in the project, owned by the AI service: one embedding per World Bible entry (`mistral-embed`), re-embedded only when the entry changes, cosine similarity in-process (hundreds of entries, no vector extension needed), keyword ranking when no embedder is available. Rebuildable, git-ignored |
 | Version control | Git; Git LFS for binaries; text formats chosen specifically to diff well |
 
 ## 14. Testing strategy

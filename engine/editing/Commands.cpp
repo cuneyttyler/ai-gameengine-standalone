@@ -5,6 +5,7 @@
 #include "gameplay/Components.h"
 #include "gameplay/GameSession.h"
 #include "physics2d/Components.h"
+#include "world/WorldBible.h"
 
 #include <cctype>
 #include <cmath>
@@ -164,6 +165,55 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
                 return Fail("can't write " + path);
             }
             out << ToString(args[1]);
+            return {};
+        });
+
+    // World Bible (development_plan.md 3.1): canon entries in world/<kind>/<id>.md.
+    r.Command("world.write", "Creates or replaces a World Bible entry (canon: characters, factions, locations, items, "
+                             "events, lore, style).")
+        .Param("kind", FieldType::String, "character, faction, location, item, event, lore or style.")
+        .Param("id", FieldType::String, "File name: lowercase letters, digits, - and _ (empty: made from the name).")
+        .Param("name", FieldType::String, "Display name.")
+        .Param("summary", FieldType::String, "One sentence.")
+        .Param("tags", FieldType::String, "Comma-separated tags (may be empty).")
+        .Param("relations", FieldType::String,
+               "Links to other entries, '; '-separated, each '<type> <kind>/<id>', e.g. "
+               "'lives_in location/brookvale; member_of faction/iron-guild' (may be empty).")
+        .Param("body", FieldType::String, "The full description, Markdown.")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.project == nullptr) {
+                return Fail("no project is open");
+            }
+            WorldEntry entry;
+            entry.kind = ToString(args[0]);
+            entry.name = ToString(args[2]);
+            entry.id = ToString(args[1]).empty() ? WorldIdFromName(entry.name) : ToString(args[1]);
+            entry.summary = ToString(args[3]);
+            entry.tags = ParseTagList(ToString(args[4]));
+            entry.relations = ParseRelationList(ToString(args[5]));
+            entry.body = ToString(args[6]);
+            WorldBible world(*context.project);
+            world.Refresh();
+            if (const WorldEntry* existing = world.Find(entry.Key())) {
+                entry.extra = existing->extra; // hand-written header keys survive
+            }
+            if (auto error = world.Save(entry)) {
+                return Fail(*error);
+            }
+            return {};
+        });
+
+    r.Command("world.delete", "Deletes a World Bible entry.")
+        .Param("key", FieldType::String, "The entry, '<kind>/<id>'.")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.project == nullptr) {
+                return Fail("no project is open");
+            }
+            WorldBible world(*context.project);
+            world.Refresh();
+            if (auto error = world.Remove(ToString(args[0]))) {
+                return Fail(*error);
+            }
             return {};
         });
 }

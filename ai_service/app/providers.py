@@ -79,3 +79,21 @@ class ScriptedProvider:
         else:
             raise ProviderError("scripted provider has no answers left")
         return Completion(text=text, usage=Usage(inputTokens=100, outputTokens=50, requests=1), model=self.model)
+
+
+class MistralEmbedder:
+    """Text embeddings for the World Bible index (app/world.py)."""
+
+    def __init__(self, api_key: str, model: str = "mistral-embed", timeout_s: float = 30.0):
+        from mistralai.client import Mistral
+
+        self.name = model
+        self._client = Mistral(api_key=api_key)
+        self._timeout_ms = int(timeout_s * 1000)
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        try:
+            response = self._client.embeddings.create(model=self.name, inputs=texts, timeout_ms=self._timeout_ms)
+        except Exception as error:
+            raise ProviderError(f"Mistral embeddings failed: {error}") from error
+        return [item.embedding for item in response.data]

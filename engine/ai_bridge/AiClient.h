@@ -48,8 +48,12 @@ public:
     // Queues a request; its answer arrives through Poll() with this id.
     int Propose(const std::string& instruction, nlohmann::json context, nlohmann::json history = nlohmann::json::array());
 
+    // Queues any other call to the service ("PUT /project", "POST /world/search");
+    // its answer arrives through Poll() as a Response result with this id.
+    int Request(const std::string& method, const std::string& path, nlohmann::json body, int timeoutSeconds = 30);
+
     struct Result {
-        enum class Kind { Status, Proposal };
+        enum class Kind { Status, Proposal, Response };
         Kind kind;
         int requestId = 0;
         nlohmann::json body; // the service's response (or {"ok":false,"errors":[...]})

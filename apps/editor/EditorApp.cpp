@@ -138,6 +138,7 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
       lua_(lua),
       assets_(assets),
       prefabs_(assets.GetProject()),
+      world_(assets.GetProject()),
       audio_(audio),
       renderer_(renderer),
       scenePath_(assets.GetProject().MainScenePath().string()),
@@ -248,6 +249,56 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             userPrefs_->Set("reviewPolicy", ReviewPolicyName(ParseReviewPolicy(message.value("policy", ""))));
         }
         post_(AiStatusJson());
+    } else if (type == "world:request") {
+        world_.Refresh();
+        post_(WorldJson());
+    } else if (type == "world:save") {
+        // The panel sends the whole entry; a changed kind or id is a rename.
+        const nlohmann::json& in = message["entry"];
+        WorldEntry entry;
+        entry.kind = in.value("kind", "");
+        entry.id = in.value("id", "");
+        entry.name = in.value("name", "");
+        if (entry.id.empty()) {
+            entry.id = WorldIdFromName(entry.name);
+        }
+        entry.summary = in.value("summary", "");
+        entry.body = in.value("body", "");
+        for (const auto& tag : in.value("tags", nlohmann::json::array())) {
+            entry.tags.push_back(tag.get<std::string>());
+        }
+        for (const auto& relation : in.value("relations", nlohmann::json::array())) {
+            entry.relations.push_back({relation.value("type", ""), relation.value("target", "")});
+        }
+        world_.Refresh();
+        const std::string original = message.value("originalKey", "");
+        std::optional<std::string> error;
+        if (!original.empty() && original != entry.Key()) {
+            error = world_.Rename(original, entry.Key());
+        }
+        if (const WorldEntry* existing = world_.Find(entry.Key()); existing && !error) {
+            entry.extra = existing->extra;
+        }
+        if (!error) {
+            error = world_.Save(entry);
+        }
+        post_({{"type", "world:saved"},
+               {"key", entry.Key()},
+               {"error", error ? nlohmann::json(*error) : nlohmann::json(nullptr)}});
+        post_(WorldJson());
+    } else if (type == "world:delete") {
+        world_.Refresh();
+        if (auto error = world_.Remove(message.value("key", ""))) {
+            post_({{"type", "notify"}, {"text", *error}});
+        }
+        post_(WorldJson());
+    } else if (type == "world:search") {
+        if (Ai() != nullptr && Ai()->GetState() == AiClient::State::Ready) {
+            worldSearchRequest_ =
+                Ai()->Request("POST", "/world/search", {{"query", message.value("query", "")}, {"k", 8}});
+        } else {
+            post_({{"type", "world:searchResults"}, {"result", {{"ok", false}}}});
+        }
     } else if (type == "ai:taskStop") {
         StopTask(message.value("id", 0), "Stopped. Nothing was changed.");
     } else if (type == "ai:undoAuto") {
@@ -857,17 +908,21 @@ void EditorApp::UpdateTitle() {
 void EditorApp::OnAppActivated() {
     RefreshAssets();
     RefreshPrefabs();
+    world_.Refresh(); // entries edited in a text editor
+    post_(WorldJson());
 }
 
 // --- AI ----------------------------------------------------------------------
 
 void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
     userPrefs_ = std::make_unique<UserPrefs>(UserPrefs::DefaultPath());
-    aiConnection_ = std::make_unique<AiConnection>(*userPrefs_, [serviceDir]() {
+    std::string projectRoot = std::filesystem::absolute(assets_.GetProject().root).string();
+    aiConnection_ = std::make_unique<AiConnection>(*userPrefs_, [serviceDir, projectRoot]() {
         AiClient::Options options;
         options.serviceDir = serviceDir;
         auto client = std::make_unique<AiClient>(options);
         client->Start(EngineReflection().ExportSchema());
+        client->Request("PUT", "/project", {{"root", projectRoot}}); // so it can index the World Bible
         return client;
     });
     aiConnection_->Start(); // only if the user has said yes to AI
@@ -921,6 +976,10 @@ void EditorApp::PollAi() {
     while (auto result = Ai()->Poll()) {
         if (result->kind == AiClient::Result::Kind::Status) {
             post_(AiStatusJson());
+        } else if (result->kind == AiClient::Result::Kind::Response) {
+            if (result->requestId == worldSearchRequest_) {
+                post_({{"type", "world:searchResults"}, {"result", result->body}});
+            }
         } else {
             OnProposal(result->requestId, result->body);
         }
@@ -1354,6 +1413,30 @@ void EditorApp::EnsureStarterPrefabs() {
     save(CreateNpc(scratch, 0.0f, 0.0f), "npc");
     save(CreateEnemy(scratch, 0.0f, 0.0f, entt::null), "enemy");
     save(CreateHealthPickup(scratch, 0.0f, 0.0f), "potion");
+}
+
+// The World Bible for the World panel: every entry, plus problems to fix.
+nlohmann::json EditorApp::WorldJson() {
+    nlohmann::json entries = nlohmann::json::array();
+    for (const auto& entry : world_.Entries()) {
+        nlohmann::json relations = nlohmann::json::array();
+        for (const auto& relation : entry.relations) {
+            relations.push_back({{"type", relation.type}, {"target", relation.target}});
+        }
+        entries.push_back({{"key", entry.Key()},
+                           {"kind", entry.kind},
+                           {"id", entry.id},
+                           {"name", entry.name},
+                           {"summary", entry.summary},
+                           {"tags", entry.tags},
+                           {"relations", relations},
+                           {"body", entry.body}});
+    }
+    nlohmann::json problems = nlohmann::json::array();
+    for (const auto& problem : world_.Validate()) {
+        problems.push_back({{"key", problem.key}, {"message", problem.message}});
+    }
+    return {{"type", "world:list"}, {"kinds", WorldKinds()}, {"entries", entries}, {"problems", problems}};
 }
 
 nlohmann::json EditorApp::PrefabsJson() {

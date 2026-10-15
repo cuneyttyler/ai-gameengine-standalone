@@ -6,6 +6,7 @@
 #include "gameplay/Components.h"
 #include "reflection/Reflection.h"
 #include "scripting/Components.h"
+#include "world/WorldBible.h"
 
 namespace aige {
 
@@ -271,7 +272,8 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             error = "unknown command " + name;
             return item;
         }
-        item.touchesFiles = name == "script.write" || name == "prefab.createFromEntity";
+        item.touchesFiles = name == "script.write" || name == "prefab.createFromEntity" || name == "world.write" ||
+                            name == "world.delete";
         nlohmann::json args = op.value("args", nlohmann::json::object());
         std::vector<FieldValue> values;
         for (const auto& param : command->params) {
@@ -290,6 +292,26 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             if (std::filesystem::exists(project.Resolve(args.value("path", std::string())), ec)) {
                 item.before = "(replaces the existing file)";
             }
+        } else if (name == "world.write") {
+            // Shown as the file it will write.
+            WorldEntry entry;
+            entry.kind = args.value("kind", std::string());
+            entry.name = args.value("name", std::string());
+            entry.id = args.value("id", std::string());
+            if (entry.id.empty()) entry.id = WorldIdFromName(entry.name);
+            entry.summary = args.value("summary", std::string());
+            entry.body = args.value("body", std::string());
+            entry.tags = ParseTagList(args.value("tags", std::string()));
+            entry.relations = ParseRelationList(args.value("relations", std::string()));
+            item.target = "World Bible · " + entry.Key() + " (" + entry.name + ")";
+            item.detail = FormatWorldEntry(entry);
+            WorldBible world(project);
+            world.Refresh();
+            if (world.Find(entry.Key()) != nullptr) {
+                item.before = "(replaces the existing entry)";
+            }
+        } else if (name == "world.delete") {
+            item.target = "World Bible · delete " + args.value("key", std::string());
         } else {
             nlohmann::json shown = args;
             item.detail = shown.dump();

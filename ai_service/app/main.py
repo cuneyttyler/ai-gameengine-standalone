@@ -5,6 +5,8 @@
   GET  /schema          the schema the service is working against
   POST /propose         {instruction, context, history?} -> validated proposal
   GET  /usage           token totals for this session (cost visibility)
+  PUT  /project         {root}: the open project, so its World Bible can be indexed
+  POST /world/search    {query, k?} -> the most related World Bible entries
 
 Run: uv run uvicorn app.main:app --port 8765
 """
@@ -19,8 +21,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from .models import EditorContext, EngineSchema, Proposal, Usage
-from .providers import MistralProvider, Provider, ProviderError
+from .providers import MistralEmbedder, MistralProvider, Provider, ProviderError
 from .service import propose
+from .world import Embedder, WorldIndex, load_entries
 
 DEFAULT_MODEL = "mistral-large-latest"
 
@@ -29,6 +32,15 @@ class ProposeRequest(BaseModel):
     instruction: str
     context: EditorContext = EditorContext()
     history: list[dict] = []
+
+
+class ProjectRequest(BaseModel):
+    root: str
+
+
+class SearchRequest(BaseModel):
+    query: str
+    k: int = 5
 
 
 class ProposeResponse(BaseModel):
@@ -48,9 +60,17 @@ def default_provider() -> Provider | None:
     return MistralProvider(api_key=key, model=os.environ.get("MISTRAL_MODEL", DEFAULT_MODEL))
 
 
-def create_app(provider: Provider | None = None, schema: EngineSchema | None = None) -> FastAPI:
+def default_embedder() -> Embedder | None:
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    key = os.environ.get("MISTRAL_API_KEY")
+    return MistralEmbedder(api_key=key) if key else None
+
+
+def create_app(
+    provider: Provider | None = None, schema: EngineSchema | None = None, embedder: Embedder | None = None
+) -> FastAPI:
     app = FastAPI(title="AIGE AI Orchestration Service", version="0.1.0")
-    state = {"provider": provider, "schema": schema, "usage": Usage()}
+    state = {"provider": provider, "schema": schema, "usage": Usage(), "embedder": embedder, "world": None}
 
     @app.get("/health")
     def health() -> dict:
@@ -104,7 +124,23 @@ def create_app(provider: Provider | None = None, schema: EngineSchema | None = N
             model=result.model,
         )
 
+    @app.put("/project")
+    def put_project(request: ProjectRequest) -> dict:
+        root = Path(request.root)
+        if not root.is_dir():
+            raise HTTPException(400, f"not a folder: {request.root}")
+        state["world"] = WorldIndex(root, state["embedder"])
+        return {"ok": True, "worldEntries": len(load_entries(root))}
+
+    @app.post("/world/search")
+    def world_search(request: SearchRequest) -> dict:
+        index: WorldIndex | None = state["world"]
+        if index is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        hits, method = index.search(request.query, max(1, min(request.k, 20)))
+        return {"ok": True, "method": method, "hits": [hit.__dict__ for hit in hits]}
+
     return app
 
 
-app = create_app(provider=default_provider())
+app = create_app(provider=default_provider(), embedder=default_embedder())

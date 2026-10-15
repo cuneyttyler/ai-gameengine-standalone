@@ -6,6 +6,7 @@
 #include "ai_bridge/ReviewPolicy.h"
 #include "ai_bridge/TaskRunner.h"
 #include "ai_bridge/UserPrefs.h"
+#include "world/WorldBible.h"
 #include "assets/AssetDatabase.h"
 #include "assets/Prefab.h"
 #include "audio/Audio.h"
@@ -152,6 +153,9 @@ private:
     LuaVM& lua_;
     AssetDatabase& assets_;
     PrefabLibrary prefabs_;
+    WorldBible world_; // the project's canon, world/ (development_plan.md 3.1)
+    int worldSearchRequest_ = 0;
+    nlohmann::json WorldJson();
     // The AI Orchestration Service (started with the editor; optional — the
     // editor is fully usable without it).
     std::unique_ptr<UserPrefs> userPrefs_;
