@@ -243,6 +243,13 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         }
     } else if (type == "ai:setEnabled") {
         SetAiEnabled(message.value("enabled", true));
+    } else if (type == "ai:setReviewPolicy") {
+        if (userPrefs_) {
+            userPrefs_->Set("reviewPolicy", ReviewPolicyName(ParseReviewPolicy(message.value("policy", ""))));
+        }
+        post_(AiStatusJson());
+    } else if (type == "ai:undoAuto") {
+        UndoAutoApplied(message.value("id", 0));
     } else if (type == "ai:send") {
         SendToAi(message.value("text", ""), message.value("focus", ""));
     } else if (type == "ai:apply") {
@@ -898,6 +905,7 @@ nlohmann::json EditorApp::AiStatusJson() {
             {"state", state},
             {"enabled", choice == AiChoice::On},
             {"choice", choice == AiChoice::On ? "on" : choice == AiChoice::Off ? "off" : "undecided"},
+            {"reviewPolicy", ReviewPolicyName(CurrentReviewPolicy())},
             {"text", ai ? ai->StatusText() : text}};
 }
 
@@ -972,8 +980,32 @@ void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
                          {"touchesFiles", item.touchesFiles},
                          {"error", item.error}});
     }
-    proposals_[requestId] = {instruction, proposal, false};
+    PendingProposal& pending = proposals_[requestId];
+    pending.instruction = instruction;
+    pending.proposal = proposal;
     conversation_.emplace_back("assistant", resolved.summary + (resolved.notes.empty() ? "" : " " + resolved.notes));
+
+    // Small tweaks the user's review policy lets through are applied now, as
+    // one undo step; the rest waits for review as usual.
+    ReviewPolicy policy = CurrentReviewPolicy();
+    std::vector<nlohmann::json> autoOps;
+    for (size_t i = 0; i < resolved.items.size(); ++i) {
+        const ChangeItem& item = resolved.items[i];
+        if (AppliesWithoutReview(item, policy)) {
+            pending.autoApplied.push_back(i);
+            pending.autoUndo.push_back({*InverseOperation(item), item.after, item.target});
+            autoOps.push_back(item.op);
+            items[i]["autoApplied"] = true;
+        }
+    }
+    ApplyOutcome autoOutcome;
+    if (!autoOps.empty() && !playing_) {
+        autoOutcome = ApplyAccepted(autoOps);
+        pending.decided = pending.autoApplied.size() == resolved.items.size();
+    } else {
+        pending.autoApplied.clear();
+        pending.autoUndo.clear();
+    }
 
     nlohmann::json usage = body.value("usage", nlohmann::json::object());
     post_({{"type", "ai:proposal"},
@@ -982,8 +1014,72 @@ void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
            {"summary", resolved.summary},
            {"notes", resolved.notes},
            {"items", items},
+           {"autoApplied", pending.autoApplied},
+           {"decided", pending.decided},
+           {"autoErrors", autoOutcome.errors},
            {"usage", usage},
            {"model", body.value("model", "")}});
+    if (!pending.autoApplied.empty()) {
+        LogAiDecision(requestId, {{"decision", "auto-applied"},
+                                  {"policy", ReviewPolicyName(policy)},
+                                  {"accepted", pending.autoApplied},
+                                  {"appliedCount", autoOutcome.applied},
+                                  {"errors", autoOutcome.errors},
+                                  {"operations", autoOps}});
+    }
+}
+
+ReviewPolicy EditorApp::CurrentReviewPolicy() const {
+    return userPrefs_ ? ParseReviewPolicy(userPrefs_->Get("reviewPolicy", "").get<std::string>())
+                      : ReviewPolicy::ReviewAll;
+}
+
+// Applies proposal operations as one undo step (scene side) and refreshes
+// whatever they touched.
+ApplyOutcome EditorApp::ApplyAccepted(const std::vector<nlohmann::json>& operations) {
+    ApplyOutcome outcome;
+    ApplyOneShotEdit([&] {
+        outcome = ApplyOperations(operations, registry_, EngineReflection(), prefabs_, assets_.GetProject());
+        return outcome.applied > 0;
+    });
+    if (outcome.settingsChanged) {
+        settingsDirty_ = true;
+        post_(SettingsJson());
+    }
+    if (outcome.prefabsChanged) {
+        post_(PrefabsJson());
+    }
+    sceneTreeStale_ = true;
+    inspectorStale_ = true;
+    editorStateStale_ = true;
+    return outcome;
+}
+
+// "Undo" on auto-applied changes: puts each value back, unless it has been
+// changed again since (then the newer value wins and it's reported).
+void EditorApp::UndoAutoApplied(int proposalId) {
+    auto it = proposals_.find(proposalId);
+    if (it == proposals_.end() || it->second.autoApplied.empty() || it->second.autoUndone || playing_) {
+        return;
+    }
+    PendingProposal& pending = it->second;
+    std::vector<nlohmann::json> restore;
+    nlohmann::json skipped = nlohmann::json::array();
+    for (const auto& undo : pending.autoUndo) {
+        // Resolving the inverse reports the current value as its "before".
+        nlohmann::json single = {{"operations", nlohmann::json::array({undo.op})}};
+        ResolvedProposal check = ResolveProposal(single, registry_, EngineReflection(), prefabs_, assets_.GetProject());
+        const ChangeItem& item = check.items.front();
+        if (item.error.empty() && item.before == undo.after) {
+            restore.push_back(undo.op);
+        } else {
+            skipped.push_back(undo.target);
+        }
+    }
+    ApplyOutcome outcome = restore.empty() ? ApplyOutcome{} : ApplyAccepted(restore);
+    pending.autoUndone = true;
+    post_({{"type", "ai:autoUndone"}, {"id", proposalId}, {"restored", outcome.applied}, {"skipped", skipped}});
+    LogAiDecision(proposalId, {{"decision", "auto-undone"}, {"operations", restore}, {"skipped", skipped}});
 }
 
 void EditorApp::ApplyProposal(int proposalId, const nlohmann::json& decisions) {
@@ -1002,6 +1098,10 @@ void EditorApp::ApplyProposal(int proposalId, const nlohmann::json& decisions) {
         if (index >= operations.size() || !decision.value("accepted", false)) {
             continue;
         }
+        const auto& autoApplied = it->second.autoApplied;
+        if (std::find(autoApplied.begin(), autoApplied.end(), index) != autoApplied.end()) {
+            continue; // already applied without review
+        }
         nlohmann::json op = operations[index];
         if (decision.contains("value")) {
             op["value"] = decision["value"];
@@ -1013,22 +1113,8 @@ void EditorApp::ApplyProposal(int proposalId, const nlohmann::json& decisions) {
         acceptedIndices.push_back(index);
     }
 
-    ApplyOutcome outcome;
-    ApplyOneShotEdit([&] { // one undo step for the scene side of the change
-        outcome = ApplyOperations(accepted, registry_, EngineReflection(), prefabs_, assets_.GetProject());
-        return outcome.applied > 0;
-    });
-    if (outcome.settingsChanged) {
-        settingsDirty_ = true;
-        post_(SettingsJson());
-    }
-    if (outcome.prefabsChanged) {
-        post_(PrefabsJson());
-    }
+    ApplyOutcome outcome = ApplyAccepted(accepted); // one undo step for the scene side
     it->second.decided = true;
-    sceneTreeStale_ = true;
-    inspectorStale_ = true;
-    editorStateStale_ = true;
 
     post_({{"type", "ai:decided"},
            {"id", proposalId},

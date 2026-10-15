@@ -365,6 +365,26 @@ what it finds.
 - Tests: policy classification per operation kind (unit); an auto-applied proposal is one
   undo step and is logged; a mixed proposal applies the safe items and leaves the rest
   pending.
+- ✅ Built: two options under ⚙ in the AI panel (stored in `UserPrefs` as `reviewPolicy`):
+  **Review every change** (the default) and **Apply small tweaks directly**. Turn AI off
+  moved into the same menu.
+  - A small tweak is a new value for an existing field, setting or script property, and
+    only if it can be put back exactly (`ai_bridge/ReviewPolicy`: `AppliesWithoutReview`
+    and `InverseOperation`). `LuaScript.path` and `PrefabInstance` never count as tweaks.
+    Components, spawning, painting, deletions, scripts, prefab edits and new script
+    properties are always reviewed.
+  - When a proposal arrives, its tweaks are applied at once as one undo step and logged
+    as `auto-applied`. The card marks them ✓, shows "N small tweaks applied
+    automatically · Undo", and keeps the remaining items pending. "Reject the rest"
+    rejects only those.
+  - **Undo** restores each before value, but only if it's still the value the AI set. A
+    value you've changed since is kept and named in the card. Undo is logged as
+    `auto-undone`.
+  - Tests: `ReviewPolicyTest` covers classification across ten operation kinds, including
+    invalid ones; that `ReviewAll` never skips review; that policy names round-trip; and
+    that a mixed proposal applies its three tweaks, leaves the new component pending, and
+    the inverse operations restore every value. The editor glue (one undo step, logging,
+    the card) is covered by the manual checklist, because `EditorApp` has no test harness.
 
 **2.9 — Bigger tasks (multi-step requests)**
 - A request the AI carries out in several steps — propose, apply to a scratch copy, dry

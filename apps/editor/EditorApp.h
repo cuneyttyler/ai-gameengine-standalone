@@ -2,6 +2,8 @@
 
 #include "ai_bridge/AiClient.h"
 #include "ai_bridge/AiConnection.h"
+#include "ai_bridge/Proposal.h"
+#include "ai_bridge/ReviewPolicy.h"
 #include "ai_bridge/UserPrefs.h"
 #include "assets/AssetDatabase.h"
 #include "assets/Prefab.h"
@@ -157,7 +159,20 @@ private:
         std::string instruction;
         nlohmann::json proposal; // as the service returned it
         bool decided = false;
+        // Items applied without review (ReviewPolicy), and how to put them
+        // back: each undo op restores `before` if the value is still `after`.
+        std::vector<size_t> autoApplied;
+        struct AutoUndo {
+            nlohmann::json op;
+            nlohmann::json after;
+            std::string target;
+        };
+        std::vector<AutoUndo> autoUndo;
+        bool autoUndone = false;
     };
+    ApplyOutcome ApplyAccepted(const std::vector<nlohmann::json>& operations);
+    void UndoAutoApplied(int proposalId);
+    ReviewPolicy CurrentReviewPolicy() const;
     std::map<int, PendingProposal> proposals_; // by request id
     std::map<int, std::string> requestInstructions_;
     // The conversation so far, sent back as context for follow-ups ("make

@@ -198,7 +198,8 @@ generated field automatically gets the "Ask AI" affordance for free.
     `editor:state` (tool, brush, playing, dirty, canUndo/canRedo, scene name),
     `assets:list`, `assets:select`, `prefabs:list`, `notify`.
   - AI: UI → host `ai:send {text, focus}`, `ai:apply {id, items}`, `ai:reject {id}`,
-    `ai:setEnabled {enabled}`; host → UI `ai:status {state, text, enabled, choice}`, `ai:busy`,
+    `ai:setEnabled {enabled}`, `ai:setReviewPolicy {policy}`, `ai:undoAuto {id}`; host → UI
+    `ai:status {state, text, enabled, choice, reviewPolicy}`, `ai:busy`, `ai:autoUndone`,
     `ai:message`, `ai:proposal`, `ai:decided`, `ai:scriptCheck`.
 - The open project folder is served to the UI under a second virtual host
   (`aige-project.local`), so the Assets panel shows thumbnails straight from disk.

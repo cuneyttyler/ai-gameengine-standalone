@@ -18,6 +18,7 @@ interface ChangeItem {
   detail: string
   touchesFiles: boolean
   error: string
+  autoApplied?: boolean // applied without review (review policy)
 }
 
 interface ProposalEntry {
@@ -30,6 +31,9 @@ interface ProposalEntry {
   status: 'pending' | 'applied' | 'partial' | 'rejected'
   applyErrors: string[]
   scriptCheck: { scripts: string[]; problems: { path: string; message: string; count: number }[] } | null
+  autoApplied: number[]
+  autoState: 'applied' | 'undone'
+  autoNote: string // targets "Undo" left alone because they'd changed since
   // Review state, per item.
   accepted: Record<number, boolean>
   edited: Record<number, unknown>
@@ -65,10 +69,13 @@ onHostMessage((message) => {
       notes: message.notes as string,
       items,
       usage: (message.usage as ProposalEntry['usage']) ?? {},
-      status: 'pending',
-      applyErrors: [],
+      status: message.decided ? 'applied' : 'pending',
+      applyErrors: (message.autoErrors as string[]) ?? [],
       scriptCheck: null,
-      accepted: Object.fromEntries(items.map((item) => [item.index, !item.error])),
+      autoApplied: (message.autoApplied as number[]) ?? [],
+      autoState: 'applied',
+      autoNote: '',
+      accepted: Object.fromEntries(items.map((item) => [item.index, !item.error && !item.autoApplied])),
       edited: {},
       editedSource: {},
       expanded: Object.fromEntries(items.map((item) => [item.index, item.kind === 'command'])),
@@ -79,6 +86,12 @@ onHostMessage((message) => {
     if (entry) {
       entry.status = message.status as ProposalEntry['status']
       entry.applyErrors = (message.errors as string[]) ?? []
+    }
+  } else if (message.type === 'ai:autoUndone') {
+    const entry = entries.value.find((e) => e.kind === 'proposal' && e.id === message.id) as ProposalEntry | undefined
+    if (entry) {
+      entry.autoState = 'undone'
+      entry.autoNote = ((message.skipped as string[]) ?? []).join(', ')
     }
   } else if (message.type === 'ai:scriptCheck') {
     const entry = entries.value.find((e) => e.kind === 'proposal' && e.id === message.id) as ProposalEntry | undefined
@@ -158,6 +171,16 @@ function reject(entry: ProposalEntry): void {
   sendToHost({ type: 'ai:reject', id: entry.id })
 }
 
+function undoAuto(entry: ProposalEntry): void {
+  sendToHost({ type: 'ai:undoAuto', id: entry.id })
+}
+
+const showSettings = ref(false)
+
+function setReviewPolicy(policy: string): void {
+  sendToHost({ type: 'ai:setReviewPolicy', policy })
+}
+
 // The editable "after" of field-like changes, via the Inspector's editor.
 function editableField(item: ChangeItem, entry: ProposalEntry): FieldData | null {
   if (!item.field || !['field', 'prefab_field', 'setting'].includes(item.kind)) {
@@ -208,14 +231,44 @@ const examples = [
       </span>
       <button
         v-if="editorState.ai.enabled"
-        class="header-button power"
-        title="Turn AI off: stops the AI service, nothing is sent to the model"
-        @click="setAiEnabled(false)"
+        class="header-button"
+        :class="{ active: showSettings }"
+        title="AI settings"
+        @click="showSettings = !showSettings"
       >
-        Turn off
+        ⚙
       </button>
       <button class="header-button" title="Collapse the AI panel" @click="setAiOpen(false)">›</button>
     </header>
+
+    <div v-if="showSettings && editorState.ai.enabled" class="settings">
+      <div class="settings-title">Review</div>
+      <label>
+        <input
+          type="radio"
+          name="review-policy"
+          :checked="editorState.ai.reviewPolicy === 'reviewAll'"
+          @change="setReviewPolicy('reviewAll')"
+        />
+        Review every change before it's applied
+      </label>
+      <label>
+        <input
+          type="radio"
+          name="review-policy"
+          :checked="editorState.ai.reviewPolicy === 'autoApplyTweaks'"
+          @change="setReviewPolicy('autoApplyTweaks')"
+        />
+        Apply small tweaks directly
+      </label>
+      <p class="settings-hint">
+        Small tweaks are new values for existing fields, settings and script properties. They apply right away and
+        can be undone from the chat. Components, spawning, scripts, prefab edits and deletions are always reviewed.
+      </p>
+      <button class="turn-off" title="Stops the AI service; nothing is sent to the model" @click="setAiEnabled(false)">
+        Turn AI off
+      </button>
+    </div>
 
     <div ref="listEl" class="entries">
       <div v-if="editorState.ai.choice === 'undecided'" class="empty first-run">
@@ -242,7 +295,14 @@ const examples = [
         <button class="primary turn-on" @click="setAiEnabled(true)">Turn on AI</button>
       </div>
       <div v-else-if="entries.length === 0" class="empty">
-        <p>Describe a change in plain language. You'll review every edit before anything is applied.</p>
+        <p>
+          Describe a change in plain language.
+          {{
+            editorState.ai.reviewPolicy === 'reviewAll'
+              ? "You'll review every edit before anything is applied."
+              : 'Small tweaks apply right away (with Undo); everything else waits for your review.'
+          }}
+        </p>
         <button v-for="example in examples" :key="example" class="example" @click="input = example">
           {{ example }}
         </button>
@@ -259,7 +319,16 @@ const examples = [
           <ul class="items">
             <li v-for="item in entry.items" :key="item.index" :class="{ invalid: !!item.error }">
               <div class="item-row">
+                <span
+                  v-if="item.autoApplied"
+                  class="auto-tag"
+                  :class="{ undone: entry.autoState === 'undone' }"
+                  :title="entry.autoState === 'undone' ? 'Applied automatically, then undone' : 'Applied automatically (small tweak)'"
+                >
+                  {{ entry.autoState === 'undone' ? '↺' : '✓' }}
+                </span>
                 <input
+                  v-else
                   type="checkbox"
                   :checked="entry.accepted[item.index] && !item.error"
                   :disabled="!!item.error || entry.status !== 'pending'"
@@ -285,7 +354,7 @@ const examples = [
                 <span class="before" :title="'Before: ' + show(item.before)">{{ show(item.before) }}</span>
                 <span class="arrow">→</span>
                 <FieldEditor
-                  v-if="editableField(item, entry) && entry.status === 'pending' && !item.error"
+                  v-if="editableField(item, entry) && entry.status === 'pending' && !item.error && !item.autoApplied"
                   class="after-editor"
                   :field="editableField(item, entry)!"
                   @change="entry.edited[item.index] = $event"
@@ -307,15 +376,31 @@ const examples = [
             </li>
           </ul>
 
+          <div v-if="entry.autoApplied.length" class="auto-line">
+            <template v-if="entry.autoState === 'undone'">
+              Undone{{ entry.autoNote ? ` — kept your newer value for ${entry.autoNote}` : '' }}
+            </template>
+            <template v-else>
+              {{ entry.autoApplied.length }} small {{ entry.autoApplied.length === 1 ? 'tweak' : 'tweaks' }} applied
+              automatically
+              <button :disabled="editorState.playing" title="Put the previous values back" @click="undoAuto(entry)">
+                Undo
+              </button>
+            </template>
+          </div>
           <div class="footer">
             <template v-if="entry.status === 'pending'">
               <button class="primary" :disabled="acceptedCount(entry) === 0 || editorState.playing" @click="apply(entry)">
                 Apply {{ acceptedCount(entry) }}
               </button>
-              <button @click="reject(entry)">Reject</button>
+              <button @click="reject(entry)">{{ entry.autoApplied.length ? 'Reject the rest' : 'Reject' }}</button>
             </template>
             <span v-else class="decision">
-              {{ entry.status === 'rejected' ? 'Rejected' : entry.status === 'applied' ? 'Applied ✓' : 'Partly applied' }}
+              {{
+                entry.status === 'rejected'
+                  ? entry.autoApplied.length ? 'Rest rejected' : 'Rejected'
+                  : entry.status === 'applied' ? 'Applied ✓' : 'Partly applied'
+              }}
             </span>
             <span class="usage" title="Tokens used (input / output)">
               {{ entry.usage.inputTokens ?? 0 }} / {{ entry.usage.outputTokens ?? 0 }} tok
@@ -413,6 +498,54 @@ h2 {
   display: flex;
   gap: 6px;
   margin-top: 8px;
+}
+.header-button.active {
+  border-color: #3b82f6;
+}
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a2a3a;
+  background: #11111b;
+}
+.settings-title {
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+}
+.settings label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.settings-hint {
+  margin: 0;
+  font-size: 0.9em;
+  opacity: 0.6;
+}
+.turn-off {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+.auto-tag {
+  width: 13px;
+  text-align: center;
+  color: #22c55e;
+}
+.auto-tag.undone {
+  color: #888;
+}
+.auto-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 0.9em;
+  opacity: 0.85;
 }
 .turn-on {
   margin-top: 8px;

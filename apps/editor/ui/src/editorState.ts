@@ -50,6 +50,7 @@ export const editorState = reactive({
     enabled: false,
     // 'undecided' until the user answers the first-run question; until then nothing runs.
     choice: 'undecided' as 'undecided' | 'on' | 'off',
+    reviewPolicy: 'reviewAll' as 'reviewAll' | 'autoApplyTweaks',
   },
   // Set by an Inspector field's "Ask AI"; the AI panel picks it up (n makes repeats distinct).
   aiAsk: { focus: '', n: 0 },
@@ -97,6 +98,7 @@ onHostMessage((message) => {
     editorState.ai.text = message.text as string
     editorState.ai.enabled = message.enabled as boolean
     editorState.ai.choice = message.choice as typeof editorState.ai.choice
+    editorState.ai.reviewPolicy = message.reviewPolicy as typeof editorState.ai.reviewPolicy
   } else if (message.type === 'ai:busy') {
     editorState.ai.busy = message.busy as boolean
   } else if (message.type === 'prefabs:list') {
