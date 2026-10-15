@@ -34,8 +34,8 @@ a wrong call early, while the cost of being wrong is still cheap.
 
 **0.1 — Build & platform skeleton**
 - CMake project builds on Windows (primary dev platform) with a clean dependency setup
-  (`volk`, VMA, GLFW-equivalent windowing, EnTT, sol2/Lua, Dear ImGui as vendored/fetched
-  deps).
+  (`volk`, VMA, GLFW-equivalent windowing, EnTT, sol2/Lua as vendored/fetched deps; the
+  editor later adds the WebView2 SDK, WIL and nlohmann/json in 1.1).
 - Deliverable: a window opens and closes cleanly, no rendering yet.
 - Tests: CI-style headless build check (compiles, links, exits 0). **User test
   checkpoint:** confirm the window actually opens and behaves (resizes, closes) on your
@@ -90,11 +90,19 @@ proven *before* any AI integration exists to lean on.
 
 ### Milestones
 
-**1.1 — ImGui editor shell**
-- Docking layout, viewport panel (rendering the RHI output into an ImGui image), scene
-  tree, basic inspector (hand-wired for now — the generated Reflection Inspector comes
-  in Phase 2).
-- **User test checkpoint:** the editor shell is usable — panels dock/resize sensibly, the
+**1.1 — Editor shell (native viewport + WebView2/Vue UI)**
+- First built in Dear ImGui, then replaced (see `technical.md` §4): the viewport is a
+  native child window with its own Vulkan swapchain, and every other panel is Vue 3 UI
+  in a WebView2 control filling the window.
+- 1.1a ✅ Spike: WebView2 and the native Vulkan viewport coexist (z-order, resize, no
+  flicker).
+- 1.1b ✅ Vue/Vite frontend, built from CMake; viewport positioned from the Vue layout's
+  placeholder rect over IPC.
+- 1.1c ✅ Scene tree and inspector (hand-wired for now — the generated Reflection
+  Inspector comes in Phase 2) working over the JSON bridge; inspector edits move the
+  sprite live.
+- Remaining: resizable/rearrangeable panel layout.
+- **User test checkpoint:** the editor shell is usable — panels resize sensibly, the
   viewport doesn't fight with input focus.
 
 **1.2 — Scene editing: place, select, transform**
@@ -158,12 +166,13 @@ applied change.
 - Tests: `pytest` with a mocked provider; contract test that schema export matches what
   2.1's registry actually exposes.
 
-**2.4 — Webview host + AI Diff Review panel**
-- Embed the webview, stand up the React/TS chat + diff review UI, wire the local IPC
-  schema (`technical.md` §9).
-- **User test checkpoint:** the webview panel actually renders and responds inside the
-  native shell on your machine — cross-process/cross-UI-stack integration is exactly the
-  kind of thing that looks fine in isolation and breaks at the seam.
+**2.4 — AI chat + Diff Review panels**
+- The webview host and JSON bridge already exist from 1.1; this milestone adds the Vue
+  chat and diff review panels and extends the message schema for AI proposals
+  (`technical.md` §9).
+- **User test checkpoint:** a proposal round-trips from chat to diff review to the
+  applied change in the viewport — the seam between the UI, `ai_bridge` and the AI
+  service is where this breaks, not inside any one of them.
 
 **2.5 — First end-to-end NL → structured diff → apply**
 - A real instruction (e.g., "add a burning status effect that deals damage over time")

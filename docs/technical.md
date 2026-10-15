@@ -24,8 +24,8 @@ code.
 | Reflection & Command Layer (the AI-adjustability backbone, §7) | **C++20** (compile-time + runtime reflection metadata) | Must live where the data lives; a bolt-on/out-of-process reflection layer would lag every engine change |
 | Gameplay scripting (what a designer writes day to day, and the primary AI-codegen target for logic) | **Lua** (via LuaJIT where available) embedded through **sol2** bindings | Simple grammar an LLM emits reliably and a human reads easily; fast iteration/hot-reload; sandboxable; the standard scripting choice for custom C++ engines |
 | Quests / dialogue / behavior trees / item-enemy defs | **Data-driven graphs** (our own JSON/text graph format), not code | Same rationale as the sibling project: structured data is far easier to validate, diff, and safely AI-regenerate than free text; visual graph editors give humans the same authoring surface |
-| Editor UI shell (viewport, scene tree, inspector, docking) | **C++ / Dear ImGui** (docking branch) | Integrates directly with our own renderer with no IPC or second process; the standard approach for custom-engine editors; fast to build and iterate |
-| AI-heavy editor panels (chat, diff/markdown review, asset gallery) | **TypeScript/React**, embedded via a native webview (WebView2 on Windows, WKWebView/CEF elsewhere) | Rich chat/markdown/diff UI is painful in immediate-mode ImGui; isolating these panels in a webview lets the fast-moving AI UX iterate independently of the native editor shell (see §9) |
+| Editor viewport | **C++**: a native Win32 child window with its own Vulkan surface/swapchain | The one surface that must render the game scene at interactive framerates stays fully native — no texture streaming into a browser, no offscreen-texture indirection |
+| All other editor UI (scene tree, inspector, layout, and later chat, diff review, asset gallery) | **TypeScript / Vue 3** (Vite), embedded via a native webview (WebView2 on Windows, WKWebView/CEF elsewhere) | A real modern-UI design ceiling for the whole editor, one UI stack for manual and AI panels alike, and UI iteration decoupled from the C++ build (see §4, §9) |
 | AI Orchestration Service | **Python (FastAPI)**, local sidecar | Same rationale as the sibling project: the ML ecosystem (LLM SDKs, `diffusers`, `transformers`, local inference) is Python-first; never touches the frame loop |
 | Tooling / build scripts | Python or shell | Not shipped |
 
@@ -41,19 +41,25 @@ generate," it's Python, and it always produces plain engine files as output.
 | C# via CoreCLR/Mono | Better raw performance and a bigger ecosystem, but embedding a full CLR is a significant engineering cost we don't need for v1-era gameplay code, and it's a heavier, noisier target for AI code generation than Lua. Revisit only if profiling shows Lua is a real bottleneck for a specific system (candidate: large-population simulation code, which likely belongs in C++/ECS systems anyway, not scripting). |
 | A bespoke DSL designed purely for AI generation | Tempting (full control over what the model can express), but reinvents a scripting language, its tooling (syntax highlighting, debugger, docs), and its own LLM-familiarity from zero — Lua already has all of that and is simple enough that the "control" argument mostly evaporates. Reconsider only if the reflection/graph layer (§7-8) turns out to cover so much that free-form scripting becomes a rare escape hatch rather than a daily tool — at that point a tiny bespoke expression language might be worth it. |
 
-## 4. Why Dear ImGui for the editor shell, plus a webview for AI panels
+## 4. Why a native viewport inside a webview editor UI
 
 | Option | Verdict |
 |---|---|
-| **ImGui shell + webview AI panels (chosen)** | ImGui integrates trivially with our own renderer (no extra process, immediate-mode fits a viewport/inspector/docking editor extremely well) and is the proven approach for custom-engine tooling. The webview is scoped narrowly to panels that are genuinely easier to build as rich web UI (markdown diffs, chat, image galleries) and that need to evolve fast alongside the AI product surface. |
-| Pure ImGui, everything native | Avoids a second UI stack, but rich markdown/diff rendering and a fast-iterating chat UI are a poor fit for immediate-mode retained-nothing UI; would slow AI-panel development significantly. |
-| Pure web UI (whole editor is a web app, engine is headless behind it) | Maximum UI flexibility, but the viewport (the thing that has to render the actual game scene at interactive framerates) then needs a texture-streaming bridge into a browser process — real cost for the one thing ImGui-in-process does for free. Revisit only if the whole product direction shifts toward a browser-hosted editor (e.g., cloud editing). |
-| Qt / other native desktop UI toolkit | Mature and rich, but adds a large, license-bearing dependency and doesn't solve the "rich chat/markdown" problem any better than a webview does, while giving up ImGui's trivial renderer integration. |
+| **Native Vulkan viewport + webview (Vue) for everything else (chosen)** | The viewport is a native child window rendering straight into its own swapchain, so the game scene pays no browser or texture-copy cost. Every other panel is web UI, which gives the editor a modern design ceiling and lets manual and AI panels share one stack, one component library, and one IPC path. Proven in milestone 1.1a-c. |
+| ImGui shell + webview for AI panels only (original plan, built then reverted in 1.1) | Trivial renderer integration, but it means two UI stacks with different looks and idioms, and ImGui caps how polished the manual editor can look. Rejected once the 1.1a spike showed the native-viewport-in-webview seam (z-order, resize, flicker) works cleanly. |
+| Pure web UI (engine headless, viewport streamed into the browser) | Maximum UI flexibility, but the viewport then needs a texture-streaming bridge into a browser process. Revisit only if the product moves toward a browser-hosted editor (e.g., cloud editing). |
+| Qt / other native desktop UI toolkit | Mature and rich, but adds a large, license-bearing dependency and doesn't solve the rich chat/markdown problem any better than a webview does. |
 
-The webview and the native shell communicate over a local IPC channel (see §9) using the
+**How the two coexist ("hole punching"):** the WebView2 control fills the whole top-level
+window. The Vue layout reserves an empty placeholder element for the viewport
+(`ViewportHole.vue`) and reports its rect to the host via `ResizeObserver` +
+`postMessage`; the host positions the native viewport child window over that rect, above
+the webview in z-order. The Vue app's own CSS layout decides where the viewport goes —
+C++ never computes the layout.
+
+The webview and the C++ host communicate over a JSON message channel (see §9) using the
 same message shape the AI Orchestration Service itself uses, so "propose a diff" looks
-identical whether it's triggered from a native inspector's "Ask AI" button or the webview
-chat panel.
+identical whether it's triggered from an inspector's "Ask AI" button or the chat panel.
 
 ## 5. System architecture
 
@@ -68,11 +74,11 @@ chat panel.
 │  Lua VM (sol2) — gameplay scripts, hot reload                      │    │
 │  Behavior-graph runtime — quests/dialogue/AI behavior              │    │
 │                                                                     │    │
-│  Editor shell (Dear ImGui): viewport, scene tree, inspector,       │    │
-│  generated Reflection Inspector panels, script editor              │    │
+│  Editor viewport: native child window, own Vulkan swapchain        │    │
 │                                                                     │    │
-│  Embedded webview (React/TS): chat/Composer, AI Diff Review,       │    │
-│  Asset Generator gallery, Quest/Dialogue graph editor               │    │
+│  Embedded webview (Vue/TS): scene tree, inspector, generated       │    │
+│  Reflection Inspector, script editor, chat/Composer, AI Diff       │    │
+│  Review, Asset Generator gallery, Quest/Dialogue graph editor       │    │
 │         │ local IPC (shared message schema)                        │    │
 └─────────┼────────────────────────────────────────────────────────┘    │
           │ localhost HTTP/JSON (async jobs)                             │
@@ -113,7 +119,7 @@ so the engine is split into modules from day one, not refactored into them later
 | `scripting` | Lua VM embedding, hot reload, sandboxing |
 | `behavior_graph` | Runtime for the data-driven quest/dialogue/behavior-tree format |
 | `assets` | Import/cook pipeline, on-disk formats, hot reload |
-| `editor` | ImGui shell + webview host, all editor-only code (stripped from shipped games) |
+| `editor` | Native viewport window + webview host, all editor-only code (stripped from shipped games) |
 | `ai_bridge` | The engine-side client of the AI Orchestration Service: job submission, diff application, IPC with the webview |
 | `platform_*` | Per-platform export/packaging glue (desktop first, mobile later) |
 
@@ -174,15 +180,23 @@ generated field automatically gets the "Ask AI" affordance for free.
 
 ## 9. Editor architecture detail
 
-- The native shell (ImGui) and the webview host live in the same process; the webview
-  renders into an OS-native child window/surface composited by the shell.
-- Communication between native shell ⇄ webview ⇄ `ai_bridge` ⇄ AI service uses one
+- The C++ host, the WebView2 control and the native viewport live in the same process.
+  `engine/editor/WebViewHost` wraps WebView2 setup and the JSON bridge;
+  `engine/editor/ViewportWindow` is the Win32 child window the Vulkan RHI renders into
+  (via `VulkanRHI`'s raw-HWND constructor).
+- The UI (`apps/editor/ui`) is served through WebView2's
+  `SetVirtualHostNameToFolderMapping`, avoiding `file://` ES-module/CORS restrictions.
+  Messages are JSON strings in both directions (e.g. `scene:request` → `scene:update`,
+  `entity:select` → `inspector:data`, `inspector:setField`).
+- Communication between C++ host ⇄ webview ⇄ `ai_bridge` ⇄ AI service uses one
   consistent JSON message schema end-to-end, so a "propose change" message looks the
   same whether it originated from a native inspector's "Ask AI" button or the webview
   chat panel — there is exactly one code path for "AI proposes, user reviews, registry
   applies," not two.
-- The webview's local dev loop (React/TS) is intentionally decoupled from the C++ build,
-  so AI-panel UI iteration doesn't require recompiling the engine.
+- The webview's local dev loop (Vue/TS via Vite) is decoupled from the C++ build, so UI
+  iteration doesn't require recompiling the engine. The C++ build still runs
+  `npm install && npm run build` as a custom command whenever `ui/src` or `package.json`
+  changes, so a plain CMake build always produces a working editor.
 
 ## 10. AI Orchestration Service
 
@@ -274,10 +288,12 @@ ai-gameengine-standalone/
 │   ├── scripting/              Lua/sol2 embedding
 │   ├── behavior_graph/
 │   └── assets/
-├── editor/                     ImGui shell + webview host + ai_bridge
-│   ├── shell/                  C++ ImGui panels
-│   ├── webview_ui/             React/TS AI panels (chat, diff review, asset gallery)
+│   ├── editor/                 ViewportWindow, WebViewHost (native side of the editor)
 │   └── ai_bridge/              engine-side client of the AI service
+├── apps/
+│   ├── editor/                 editor executable (C++ host, IPC handlers)
+│   │   └── ui/                 Vue 3 + TS editor UI (all panels, manual and AI)
+│   └── sandbox/                standalone runtime test app
 ├── ai_service/                 Python FastAPI orchestration service
 │   ├── app/
 │   │   ├── providers/
@@ -303,6 +319,8 @@ ai-gameengine-standalone/
 - How the AI Orchestration Service ships alongside the editor for non-technical users
   (bundled Python runtime vs. one-time local install) — same open question as the
   sibling project, doesn't need resolving until closer to Phase 2.
-- Webview technology per platform (WebView2 on Windows is straightforward; the
+- Webview technology per platform (WebView2 on Windows is in place as of 1.1; the
   macOS/Linux equivalents need a concrete choice — WKWebView vs. CEF vs. a lighter
-  embed) — needs resolving before Phase 2 (AI-Driven mode v1), not before Phase 0/1.
+  embed). Since the whole editor UI now depends on it, this needs resolving before the
+  editor ships on a second platform, along with the native-child-window viewport on
+  that platform.
