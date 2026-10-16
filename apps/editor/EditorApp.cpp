@@ -11,6 +11,7 @@
 #include "assets/ProjectTemplate.h"
 #include "editing/Edits.h"
 #include "editing/LevelBuild.h"
+#include "editing/SceneTools.h"
 #include "world/StoryReferences.h"
 #include "editing/SceneEditing.h"
 #include "gameplay/BootstrapLevel.h"
@@ -22,6 +23,8 @@
 #include "scripting/Components.h"
 
 #include <algorithm>
+#include <climits>
+#include <variant>
 #include <chrono>
 #include <cmath>
 #include <cctype>
@@ -179,6 +182,25 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
                 FrameScene();
             }
         }
+    } else if (type == "edit:scale") {
+        ScaleSelected(message.value("factor", 1.0f));
+    } else if (type == "edit:nudge") {
+        NudgeSelected(message.value("dx", 0.0f), message.value("dy", 0.0f));
+    } else if (type == "edit:copy") {
+        CopySelected();
+    } else if (type == "edit:paste") {
+        if (message.contains("gx") && message.contains("gy")) {
+            PasteAtCursor(std::pair{message.value("gx", 0), message.value("gy", 0)});
+        } else {
+            PasteAtCursor();
+        }
+    } else if (type == "view:grid") {
+        showGrid_ = message.value("on", !showGrid_);
+        editorStateStale_ = true;
+    } else if (type == "play:toggle") {
+        playing_ ? StopPlay() : StartPlay();
+    } else if (type == "prefab:remove") {
+        RemovePrefab(message.value("path", ""));
     } else if (type == "project:request") {
         post_(ProjectInfoJson());
     } else if (type == "project:open") {
@@ -358,6 +380,9 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         // so switching back restores it.
         if (message.contains("prefab")) {
             brushPrefab_ = message.value("prefab", "");
+        }
+        if (message.contains("scale") && message["scale"].is_number()) {
+            brushScale_ = std::clamp(message["scale"].get<float>(), 0.1f, 10.0f);
         }
         std::string id = message.value("tool", "");
         for (int i = 0; i < static_cast<int>(std::size(kToolIds)); ++i) {
@@ -617,6 +642,91 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     }
 }
 
+// --- Scene editing polish (development_plan.md 4.3) -------------------------
+
+void EditorApp::ScaleSelected(float factor) {
+    if (playing_ || !selected_ || !registry_.valid(*selected_)) {
+        return;
+    }
+    std::optional<std::string> problem;
+    ApplyOneShotEdit([&] {
+        problem = ScaleEntity(EngineReflection(), registry_, *selected_, factor);
+        return !problem.has_value();
+    });
+    if (problem) {
+        post_({{"type", "notify"}, {"text", *problem}});
+    }
+    inspectorStale_ = true;
+}
+
+void EditorApp::NudgeSelected(float dx, float dy) {
+    if (playing_ || !selected_ || !registry_.valid(*selected_)) {
+        return;
+    }
+    ApplyOneShotEdit([&] { return NudgeEntity(registry_, *selected_, dx, dy, iso_); });
+    inspectorStale_ = true;
+}
+
+void EditorApp::CopySelected() {
+    if (!selected_ || !registry_.valid(*selected_)) {
+        return;
+    }
+    clipboard_ = CopyEntities(registry_, {*selected_});
+    post_({{"type", "notify"}, {"text", "Copied — Ctrl+V pastes at the cursor"}});
+}
+
+void EditorApp::PasteAtCursor(std::optional<std::pair<int, int>> cell) {
+    if (playing_ || clipboard_.empty()) {
+        return;
+    }
+    int gx = 0, gy = 0;
+    if (cell) {
+        gx = cell->first;
+        gy = cell->second;
+    } else if (hasHover_) {
+        CellAt(hoverX_, hoverY_, iso_, gx, gy);
+    } else if (selected_ && registry_.valid(*selected_)) {
+        if (const auto* world = registry_.try_get<WorldTransform2D>(*selected_)) {
+            gx = static_cast<int>(std::floor(world->x)) + 1;
+            gy = static_cast<int>(std::floor(world->y));
+        }
+    }
+    std::vector<Entity> pasted;
+    ApplyOneShotEdit([&] {
+        pasted = PasteEntities(registry_, clipboard_, gx, gy);
+        return !pasted.empty();
+    });
+    if (!pasted.empty()) {
+        Select(pasted.front());
+    }
+    sceneTreeStale_ = true;
+}
+
+void EditorApp::RemovePrefab(const std::string& path) {
+    if (playing_) {
+        return;
+    }
+    // The scene side (copies unlinked) is one undo step; the file is gone.
+    std::variant<int, std::string> result;
+    ApplyOneShotEdit([&] {
+        result = prefabs_.Remove(registry_, path);
+        return std::holds_alternative<int>(result) && std::get<int>(result) > 0;
+    });
+    if (auto* error = std::get_if<std::string>(&result)) {
+        post_({{"type", "notify"}, {"text", *error}});
+        return;
+    }
+    if (brushPrefab_ == path) {
+        brushPrefab_.clear();
+        SetTool(Tool::Select);
+    }
+    post_(PrefabsJson());
+    sceneTreeStale_ = true;
+    inspectorStale_ = true;
+    post_({{"type", "notify"},
+           {"text", "Deleted " + path + " (" + std::to_string(std::get<int>(result)) + " copies kept as ordinary entities)"}});
+}
+
 // --- Projects (development_plan.md 4.2) -----------------------------------
 
 void EditorApp::RememberRecentProject() {
@@ -691,6 +801,10 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
 
     switch (event.type) {
         case Type::Wheel: {
+            if ((GetKeyState(VK_MENU) & 0x8000) != 0 && selected_ && !playing_) {
+                ScaleSelected(event.wheelSteps > 0 ? 1.1f : 1.0f / 1.1f);
+                return;
+            }
             float zoom = std::clamp(camera_.zoom * std::pow(1.15f, event.wheelSteps), kMinZoom, kMaxZoom);
             camera_.ZoomAt(event.x, event.y, zoom);
             return;
@@ -799,7 +913,7 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
 
 void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
     if (playing_) {
-        if (virtualKey == VK_ESCAPE) {
+        if (virtualKey == VK_ESCAPE || virtualKey == VK_F5) {
             StopPlay();
         }
         return; // every other key belongs to the game
@@ -821,6 +935,12 @@ void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
             return;
         }
         switch (virtualKey) {
+            case 'C':
+                CopySelected();
+                return;
+            case 'V':
+                PasteAtCursor();
+                return;
             case 'Z':
                 shift ? Redo() : Undo();
                 return;
@@ -841,6 +961,29 @@ void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
     switch (virtualKey) {
         case VK_F1:
             post_({{"type", "ui:shortcut"}, {"name", "help"}});
+            return;
+        case VK_F5:
+            StartPlay();
+            return;
+        case VK_OEM_4: // [
+            ScaleSelected(shift ? 1.0f / 1.02f : 1.0f / 1.1f);
+            return;
+        case VK_OEM_6: // ]
+            ScaleSelected(shift ? 1.02f : 1.1f);
+            return;
+        case VK_LEFT:
+        case VK_RIGHT:
+        case VK_UP:
+        case VK_DOWN: {
+            // Along the grid's axes; Shift: a tenth of a cell.
+            const float step = shift ? 0.1f : 1.0f;
+            NudgeSelected(virtualKey == VK_LEFT ? -step : virtualKey == VK_RIGHT ? step : 0.0f,
+                          virtualKey == VK_UP ? -step : virtualKey == VK_DOWN ? step : 0.0f);
+            return;
+        }
+        case 'G':
+            showGrid_ = !showGrid_;
+            editorStateStale_ = true;
             return;
         case VK_DELETE:
         case VK_BACK:
@@ -916,7 +1059,13 @@ void EditorApp::ToolStroke(float sceneX, float sceneY, bool first) {
                     break;
                 }
             }
-            Select(prefabs_.Instantiate(registry_, prefab->path, cellX, cellY));
+            {
+                auto placed = prefabs_.Instantiate(registry_, prefab->path, cellX, cellY);
+                if (placed && std::abs(brushScale_ - 1.0f) > 1e-3f) {
+                    ScaleEntity(EngineReflection(), registry_, *placed, brushScale_);
+                }
+                Select(placed);
+            }
             break;
         }
         case Tool::Erase: {
@@ -1248,6 +1397,32 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
     AppendHealthBars(registry_, overlay);
     if (playing_) {
         return overlay;
+    }
+    if (showGrid_) {
+        // Tile borders on empty ground (4.3), over the visible part of the scene.
+        int width = 0, height = 0;
+        viewport_.GetFramebufferSize(width, height);
+        int minX = INT_MAX, minY = INT_MAX, maxX = INT_MIN, maxY = INT_MIN;
+        for (auto [vx, vy] : {std::pair{0.0f, 0.0f}, std::pair{static_cast<float>(width), 0.0f},
+                              std::pair{0.0f, static_cast<float>(height)},
+                              std::pair{static_cast<float>(width), static_cast<float>(height)}}) {
+            float sx = 0.0f, sy = 0.0f;
+            camera_.ViewportToScene(vx, vy, sx, sy);
+            int gx = 0, gy = 0;
+            CellAt(sx, sy, iso_, gx, gy);
+            minX = std::min(minX, gx);
+            minY = std::min(minY, gy);
+            maxX = std::max(maxX, gx);
+            maxY = std::max(maxY, gy);
+        }
+        if (static_cast<long long>(maxX - minX + 1) * (maxY - minY + 1) <= 12000) {
+            std::set<std::pair<int, int>> tiled;
+            for (auto [entity, tile] : registry_.view<Tile>().each()) tiled.insert({tile.gx, tile.gy});
+            static constexpr float kGridColor[3] = {0.6f, 0.65f, 0.8f};
+            for (int gx = minX - 1; gx <= maxX + 1; ++gx)
+                for (int gy = minY - 1; gy <= maxY + 1; ++gy)
+                    if (!tiled.contains({gx, gy})) AddCellOutline(overlay, gx, gy, iso_, kGridColor, 0.25f, 1.0f);
+        }
     }
     static constexpr float kMarkerColor[3] = {0.99f, 0.86f, 0.45f};
     for (auto [entity, marker, world] : registry_.view<Marker, WorldTransform2D>().each()) {
@@ -2376,7 +2551,9 @@ nlohmann::json EditorApp::EditorStateJson() {
             {"dirty", dirty_ || settingsDirty_},
             {"canUndo", history_.CanUndo() && !playing_},
             {"canRedo", history_.CanRedo() && !playing_},
-            {"sceneName", std::filesystem::path(scenePath_).filename().string()}};
+            {"sceneName", std::filesystem::path(scenePath_).filename().string()},
+            {"grid", showGrid_},
+            {"brushScale", brushScale_}};
 }
 
 nlohmann::json EditorApp::InspectorJson(Entity entity) {

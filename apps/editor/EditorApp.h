@@ -165,6 +165,15 @@ private:
     std::map<int, int> consistencyRequests_;
     int worldCheckRequest_ = 0;
     int artRequest_ = 0; // the Art tab's generation in flight (development_plan.md 3.6)
+    // Scene editing polish (4.3).
+    bool showGrid_ = false;   // tile borders on empty ground
+    float brushScale_ = 1.0f; // the prefab brush places copies at this size
+    std::string clipboard_;   // Ctrl+C: the selection as scene text
+    void ScaleSelected(float factor);
+    void NudgeSelected(float dx, float dy);
+    void CopySelected();
+    void PasteAtCursor(std::optional<std::pair<int, int>> cell = std::nullopt);
+    void RemovePrefab(const std::string& path);
     // Projects (4.2): asks about unsaved changes, then reopens the editor on `root`.
     void SwitchProject(const std::filesystem::path& root, bool askAboutChanges = true);
     nlohmann::json ProjectInfoJson();

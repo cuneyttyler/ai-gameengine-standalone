@@ -10,6 +10,11 @@ function setTool(id: ToolId): void {
   sendToHost({ type: 'tool:set', tool: id })
 }
 
+function setBrushScale(percent: number): void {
+  if (!Number.isFinite(percent) || percent <= 0) return
+  sendToHost({ type: 'tool:set', tool: editorState.tool, scale: percent / 100 })
+}
+
 function send(type: string): void {
   sendToHost({ type })
 }
@@ -41,6 +46,16 @@ function send(type: string): void {
         <span v-if="brush">{{ brush.isTile ? 'Paint' : 'Place' }} {{ brush.name }}</span>
         <span v-else class="muted">No prefab picked</span>
       </button>
+      <label v-if="brush && !brush.isTile" class="size" title="Size of what the brush places (% of the prefab)">
+        <input
+          type="number"
+          min="10"
+          max="1000"
+          step="10"
+          :value="Math.round(editorState.brushScale * 100)"
+          @change="setBrushScale(Number(($event.target as HTMLInputElement).value))"
+        />%
+      </label>
       <button
         :class="{ active: editorState.tool === 'erase' }"
         title="Erase (E)"
@@ -130,6 +145,23 @@ button.active {
 }
 .muted {
   opacity: 0.6;
+}
+.size {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.8em;
+  opacity: 0.85;
+}
+.size input {
+  width: 52px;
+  height: 22px;
+  border: 1px solid #333;
+  border-radius: 0;
+  background: #11111b;
+  color: #eee;
+  font: inherit;
+  padding: 0 4px;
 }
 .dirty-dot {
   width: 6px;

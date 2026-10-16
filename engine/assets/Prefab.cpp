@@ -351,6 +351,25 @@ void PrefabLibrary::Revert(Registry& registry, Entity instance, const std::strin
     }
 }
 
+std::variant<int, std::string> PrefabLibrary::Remove(Registry& registry, const std::string& path) {
+    if (Find(path) == nullptr) {
+        return "no prefab " + path;
+    }
+    std::error_code ec;
+    std::filesystem::remove(project_.Resolve(path), ec);
+    if (ec) {
+        return "couldn't delete " + path + ": " + ec.message();
+    }
+    std::vector<Entity> copies;
+    for (auto [entity, instance] : registry.view<PrefabInstance>().each()) {
+        if (instance.path == path) copies.push_back(entity);
+    }
+    for (Entity entity : copies) registry.remove<PrefabInstance>(entity);
+    templates_.erase(path);
+    Refresh();
+    return static_cast<int>(copies.size());
+}
+
 void PrefabLibrary::RevertAll(Registry& registry, Entity instance) {
     if (auto* link = registry.try_get<PrefabInstance>(instance)) {
         link->overrides.clear();

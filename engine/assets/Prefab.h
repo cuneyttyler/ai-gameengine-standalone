@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <variant>
 #include <memory>
 #include <optional>
 #include <set>
@@ -77,6 +78,11 @@ public:
     // it up on the next Sync. Returns why not if it can't.
     std::optional<std::string> SetTemplateField(const std::string& path, const std::string& component,
                                                 const std::string& field, const FieldValue& value);
+
+    // Deletes a prefab (development_plan.md 4.3). Its copies in `registry`
+    // stay, as ordinary entities (no longer linked). Returns how many copies
+    // were unlinked, or why not.
+    std::variant<int, std::string> Remove(Registry& registry, const std::string& path);
 
     // Drops one override (the field takes the prefab's value again) or all.
     void Revert(Registry& registry, Entity instance, const std::string& overrideKey);

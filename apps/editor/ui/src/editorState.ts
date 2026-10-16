@@ -70,6 +70,8 @@ export const editorState = reactive({
   aiOpen: loadAiOpen(),
   panels: loadPanels(),
   showShortcuts: false, // Help ▸ Keyboard Shortcuts
+  grid: false, // tile borders on empty ground (G)
+  brushScale: 1, // the prefab brush places copies at this size
 })
 
 function savePanels(): void {
@@ -131,6 +133,8 @@ onHostMessage((message) => {
     editorState.canUndo = message.canUndo as boolean
     editorState.canRedo = message.canRedo as boolean
     editorState.sceneName = message.sceneName as string
+    editorState.grid = (message.grid as boolean) ?? false
+    editorState.brushScale = (message.brushScale as number) ?? 1
   } else if (message.type === 'selection:changed') {
     editorState.selectedId = (message.id as number | null) ?? null
   } else if (message.type === 'ai:status') {
@@ -165,6 +169,41 @@ window.addEventListener('keydown', (event) => {
     event.preventDefault()
     runShortcut('help')
     return
+  }
+  if (event.key === 'F5') {
+    event.preventDefault()
+    sendToHost({ type: 'play:toggle' })
+    return
+  }
+  // Scene editing (4.3), when not typing.
+  if (!typing && !editorState.playing) {
+    if (event.ctrlKey && (key === 'c' || key === 'v')) {
+      event.preventDefault()
+      sendToHost({ type: key === 'c' ? 'edit:copy' : 'edit:paste' })
+      return
+    }
+    if (!event.ctrlKey && (key === '[' || key === ']')) {
+      event.preventDefault()
+      const step = event.shiftKey ? 1.02 : 1.1
+      sendToHost({ type: 'edit:scale', factor: key === ']' ? step : 1 / step })
+      return
+    }
+    if (!event.ctrlKey && key === 'g') {
+      sendToHost({ type: 'view:grid' })
+      return
+    }
+    const arrows: Record<string, [number, number]> = {
+      arrowleft: [-1, 0],
+      arrowright: [1, 0],
+      arrowup: [0, -1],
+      arrowdown: [0, 1],
+    }
+    if (arrows[key] && editorState.selectedId !== null && !event.ctrlKey && !event.altKey) {
+      event.preventDefault()
+      const step = event.shiftKey ? 0.1 : 1
+      sendToHost({ type: 'edit:nudge', dx: arrows[key][0] * step, dy: arrows[key][1] * step })
+      return
+    }
   }
   if (event.ctrlKey && !typing) {
     const layout: Record<string, string> = { b: 'toggleLeft', j: 'toggleBottom', i: 'toggleAi' }

@@ -954,6 +954,22 @@ runs into.
   F5 Play/Stop, Ctrl+Shift+S Save As, and panel toggles.
 - Tests: scaling (sprite, colliders and overrides), removing a prefab (copies kept and
   unlinked), copy/paste round trip, nudge.
+- ✅ Built:
+  - `editing/SceneTools`: `ScaleEntity` (Sprite size, Collider2D and Hurtbox together,
+    through the shared edit path so prefab copies record overrides; tiles refused; sizes
+    clamped), `NudgeEntity` (whole cells for tiles, refusing an occupied cell; exact
+    otherwise), `CopyEntities` / `PasteEntities` (scene text; pasted at a cell, a pasted
+    tile replaces the tile there). `PrefabLibrary::Remove` deletes the file and unlinks
+    its copies.
+  - Editor: `[` / `]` (Shift: finer) and Alt+wheel resize the selection; the brush's
+    size % applies to placed prefabs (tiles are the grid, so they stay one cell); arrows
+    nudge (Shift: a tenth of a cell); Ctrl+C / Ctrl+V (pastes under the cursor, or "Paste
+    here" on the ground menu); F5 plays and stops; G draws tile borders on the empty
+    ground in view. Every change is one undo step.
+  - Menus: Edit ▸ Copy, Paste, Bigger, Smaller; View ▸ Tile grid; entity menu Copy,
+    Bigger, Smaller; prefab card Delete prefab… (confirmed). All in the shortcuts table.
+  - Tests: `SceneToolsTest` (4). Paste found a real bug on its first run: replacing a
+    tile moved the Tile storage under a held pointer.
 
 **4.4 — Organizing prefabs and assets** *(notes)*
 - Other engines use folders plus search plus filters. So: the Prefabs and Assets
