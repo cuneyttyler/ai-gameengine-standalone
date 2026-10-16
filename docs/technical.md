@@ -228,6 +228,9 @@ generated field automatically gets the "Ask AI" affordance for free.
   - Organizing (4.4): UI → host `file:move {from, to}` (rename or move a prefab or asset;
     every reference is rewritten, see `assets/ProjectMove`); host → UI
     `file:moved {from, to, error}`. `prefabs:list` entries carry `kind`.
+  - Keeping AI work (4.5): UI → host `ai:history`, `ai:clear`, `art:clearHistory`; host → UI
+    `ai:restore {events}` (the kept chat messages, replayed by the panel); `art:list` carries
+    `history`. Stored in the project's `.cache` (`ai_conversation.json`, `art_history.json`).
   - Story: UI → host `story:request`, `story:save {kind, id, originalId, content}`,
     `story:delete {file}`; host → UI `story:list {dialogues, quests, schedules, markers,
     problems, world, prefabs, usedBy}`, `story:saved {file, error}`. `story:save` kind

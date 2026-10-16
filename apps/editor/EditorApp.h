@@ -11,6 +11,8 @@
 #include "assets/Prefab.h"
 #include "audio/Audio.h"
 #include "ecs/Registry.h"
+#include "ai_bridge/AiTranscript.h"
+#include "ai_bridge/ArtHistory.h"
 #include "editing/EditHistory.h"
 #include "editor/ViewportWindow.h"
 #include "gameplay/Archetypes.h"
@@ -236,6 +238,10 @@ private:
     // The conversation so far, sent back as context for follow-ups ("make
     // them faster too"). Plain text turns, newest last.
     std::vector<std::pair<std::string, std::string>> conversation_;
+    // Kept per project (4.5): the chat as the panel showed it, and the Art tab's requests.
+    AiTranscript transcript_;
+    ArtHistory artHistory_;
+    int artHistoryId_ = 0;
     AudioEngine& audio_;
     Renderer2D& renderer_;
     std::string scenePath_;

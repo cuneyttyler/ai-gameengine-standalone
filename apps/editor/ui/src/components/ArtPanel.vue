@@ -36,6 +36,17 @@ const form = reactive({
   style: 'pixel' as 'pixel' | 'smooth',
   variants: '',
 })
+// Every request made here (development_plan.md 4.5), newest first.
+interface HistoryEntry {
+  id: number
+  created: string
+  request: { name?: string; description?: string; kind?: string; height?: number; style?: string; variants?: string[] }
+  state: 'working' | 'done' | 'failed'
+  errors: string[]
+  results: { path: string; discarded: boolean }[]
+}
+const view = ref<'files' | 'history'>('files')
+const history = ref<HistoryEntry[]>([])
 const items = ref<Item[]>([])
 const busy = ref(false)
 const error = ref('')
@@ -45,6 +56,7 @@ onHostMessage((message) => {
   if (message.type === 'art:list') {
     items.value = message.items as Item[]
     busy.value = message.busy as boolean
+    history.value = (message.history as HistoryEntry[]) ?? []
   } else if (message.type === 'art:result') {
     busy.value = false
     const result = message.result as { ok: boolean; errors?: string[] }
@@ -103,6 +115,38 @@ function regenerate(item: Item): void {
     height: m.processing?.size?.[1] ?? form.height,
     style: (m.processing?.style as 'pixel' | 'smooth') ?? form.style,
   })
+}
+
+// "Use again": the form as it was for that request.
+function useAgain(entry: HistoryEntry): void {
+  const r = entry.request
+  form.description = r.description ?? ''
+  form.name = r.name ?? ''
+  form.kind = (r.kind as 'object' | 'character') ?? 'object'
+  form.height = r.height ?? 48
+  form.style = (r.style as 'pixel' | 'smooth') ?? 'pixel'
+  form.variants = (r.variants ?? []).join(', ')
+}
+
+function generateAgain(entry: HistoryEntry): void {
+  useAgain(entry)
+  generate()
+}
+
+// A later request can overwrite the same file name.
+function replaced(entry: HistoryEntry, path: string): boolean {
+  return history.value.some((other) => other.id > entry.id && other.results.some((r) => r.path === path && !r.discarded))
+}
+
+async function clearHistory(): Promise<void> {
+  if (await confirmDialog({ message: 'Forget the Art history? Generated files stay.', confirmLabel: 'Clear', danger: true })) {
+    sendToHost({ type: 'art:clearHistory' })
+  }
+}
+
+function when(iso: string): string {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
 }
 
 function makePrefab(item: Item): void {
@@ -174,7 +218,51 @@ const aiReady = computed(() => editorState.ai.state === 'ready')
         a .gen.json next to it. Sometimes a little ground is drawn under the subject — regenerate if so.
       </p>
     </section>
-    <section class="gallery">
+    <section class="right">
+      <div class="view-tabs">
+        <button :class="{ active: view === 'files' }" @click="view = 'files'">Files ({{ items.length }})</button>
+        <button :class="{ active: view === 'history' }" @click="view = 'history'">
+          History ({{ history.length }})
+        </button>
+        <span class="spacer"></span>
+        <button v-if="view === 'history' && history.length" title="Forget the history (files stay)" @click="clearHistory">
+          Clear history
+        </button>
+      </div>
+      <section v-if="view === 'history'" class="gallery">
+        <p v-if="history.length === 0" class="muted">No requests yet. Everything you ask for here is listed, kept or not.</p>
+        <div v-for="entry in history" :key="entry.id" class="card history" :class="entry.state">
+          <div class="info">
+            <div class="title" :title="entry.request.description">
+              {{ entry.request.description || entry.request.name }}
+            </div>
+            <div class="muted small">
+              {{ when(entry.created) }} · {{ entry.request.kind }} · {{ entry.request.height }} px ·
+              {{ entry.request.style }}{{ entry.request.variants?.length ? ' · ' + entry.request.variants.join(', ') : '' }}
+            </div>
+            <div v-if="entry.state === 'working'" class="muted small">Drawing…</div>
+            <div v-else-if="entry.state === 'failed'" class="error small">{{ entry.errors[0] ?? 'Failed' }}</div>
+            <div v-else class="results">
+              <span
+                v-for="result in entry.results"
+                :key="result.path"
+                class="mini"
+                :title="result.path + (result.discarded ? ' (discarded)' : replaced(entry, result.path) ? ' (drawn again later)' : '')"
+              >
+                <img v-if="!result.discarded && !replaced(entry, result.path)" :src="thumb({ path: result.path, version: 0, meta: { created: entry.created } })" alt="" />
+                <span v-else class="muted small">{{ result.discarded ? 'discarded' : 'redrawn' }}</span>
+              </span>
+            </div>
+            <div class="actions">
+              <button title="Put this request back in the form" @click="useAgain(entry)">Use again</button>
+              <button :disabled="busy || !aiReady" title="Send the same request again" @click="generateAgain(entry)">
+                Generate again
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section v-else class="gallery">
       <p v-if="items.length === 0" class="muted">Nothing generated yet.</p>
       <div v-for="item in items" :key="item.path" class="card">
         <div class="thumb"><img :src="thumb(item)" :alt="item.path" /></div>
@@ -195,6 +283,7 @@ const aiReady = computed(() => editorState.ai.state === 'ready')
           </div>
         </div>
       </div>
+      </section>
     </section>
   </div>
 </template>
@@ -239,6 +328,45 @@ const aiReady = computed(() => editorState.ai.state === 'ready')
 }
 .num {
   width: 64px;
+}
+.right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.view-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px 0;
+}
+.view-tabs button.active {
+  border-color: #3b82f6;
+  background: #313148;
+}
+.spacer {
+  flex: 1;
+}
+.history.failed {
+  border-color: #5a3a1a;
+}
+.results {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.mini {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2a2a35;
+}
+.mini img {
+  max-width: 46px;
+  max-height: 46px;
+  image-rendering: pixelated;
 }
 .gallery {
   flex: 1;

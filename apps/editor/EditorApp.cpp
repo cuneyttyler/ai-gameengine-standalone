@@ -148,6 +148,8 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
       world_(assets.GetProject()),
       story_(assets.GetProject().root),
       schedules_(assets.GetProject().root),
+      transcript_(assets.GetProject().CacheDir() / "ai_conversation.json"),
+      artHistory_(assets.GetProject().CacheDir() / "art_history.json"),
       audio_(audio),
       renderer_(renderer),
       scenePath_(assets.GetProject().MainScenePath().string()),
@@ -155,6 +157,17 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
       iso_(BootstrapIso()),
       session_(registry, lua, iso_, assets.GetProject().root) {
     session_.SetSoundPlayer([this](const std::string& path) { audio_.Play(assets_.GetProject().Resolve(path)); });
+    // The AI chat and Art history come back with the project (4.5): every chat
+    // message the panel is sent is also kept in .cache.
+    transcript_.Load();
+    conversation_ = transcript_.Context();
+    artHistory_.Load();
+    post_ = [this, raw = std::move(post_)](const nlohmann::json& message) {
+        if (message.is_object() && AiTranscript::Records(message.value("type", ""))) {
+            transcript_.Record(message, conversation_);
+        }
+        raw(message);
+    };
     session_.SetSpawner([this](const std::string& prefab, float x, float y) {
         return prefabs_.Instantiate(registry_, prefab, x, y);
     });
@@ -443,6 +456,15 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             post_({{"type", "notify"}, {"text", *error}});
         }
         post_(WorldJson());
+    } else if (type == "ai:history") {
+        post_({{"type", "ai:restore"}, {"events", transcript_.RestoreEvents()}});
+    } else if (type == "ai:clear") {
+        transcript_.Clear();
+        conversation_.clear();
+        post_({{"type", "ai:restore"}, {"events", nlohmann::json::array()}});
+    } else if (type == "art:clearHistory") {
+        artHistory_.Clear();
+        post_(ArtJson());
     } else if (type == "art:request") {
         post_(ArtJson());
     } else if (type == "art:generate") {
@@ -450,7 +472,10 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         if (Ai() == nullptr || Ai()->GetState() != AiClient::State::Ready) {
             post_({{"type", "art:result"}, {"result", {{"ok", false}, {"errors", {"AI is off"}}}}});
         } else if (artRequest_ == 0) {
-            artRequest_ = Ai()->Request("POST", "/assets/generate", message.value("request", nlohmann::json::object()), 300);
+            const nlohmann::json request = message.value("request", nlohmann::json::object());
+            artRequest_ = Ai()->Request("POST", "/assets/generate", request, 300);
+            artHistoryId_ = artHistory_.Begin(request);
+            post_(ArtJson());
         }
     } else if (type == "art:discard") {
         // Only generated art, by its project-relative path.
@@ -460,6 +485,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             for (const char* suffix : {"", ".gen.json", ".meta"}) {
                 std::filesystem::remove(assets_.GetProject().Resolve(path + suffix), ec);
             }
+            artHistory_.Discarded(path);
             RefreshAssets();
         }
         post_(ArtJson());
@@ -749,6 +775,7 @@ void EditorApp::MoveProjectItem(const std::string& from, const std::string& to) 
     if (brushPrefab_ == from) {
         brushPrefab_ = to;
     }
+    artHistory_.Moved(from, to);
     renderer_.InvalidateTexture(from);
     RefreshAssets();
     RefreshPrefabs();
@@ -1584,6 +1611,7 @@ void EditorApp::PollAi() {
                 post_({{"type", "world:searchResults"}, {"result", result->body}});
             } else if (result->requestId == artRequest_) {
                 artRequest_ = 0;
+                artHistory_.Finish(artHistoryId_, result->body);
                 RefreshAssets(); // the new textures
                 post_({{"type", "art:result"}, {"result", result->body}});
                 post_(ArtJson());
@@ -2524,7 +2552,7 @@ nlohmann::json EditorApp::ArtJson() {
     for (const auto& [path, meta] : found) {
         list.push_back({{"path", path}, {"version", assetVersions_[path]}, {"meta", meta}});
     }
-    return {{"type", "art:list"}, {"items", list}, {"busy", artRequest_ != 0}};
+    return {{"type", "art:list"}, {"items", list}, {"busy", artRequest_ != 0}, {"history", artHistory_.Entries()}};
 }
 
 nlohmann::json EditorApp::AssetsJson() {

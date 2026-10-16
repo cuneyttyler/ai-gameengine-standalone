@@ -3,7 +3,8 @@
 // every proposed change is listed with its before/after, can be unticked or
 // edited, and nothing touches the project until "Apply". The host validates
 // again on apply and runs everything through the same code as manual edits.
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { confirmDialog } from '../dialogs'
 import { editorState, setAiEnabled, setAiOpen } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 import FieldEditor, { type FieldData } from './FieldEditor.vue'
@@ -39,7 +40,7 @@ interface ProposalEntry {
   notes: string
   items: ChangeItem[]
   usage: { inputTokens?: number; outputTokens?: number }
-  status: 'pending' | 'applied' | 'partial' | 'rejected'
+  status: 'pending' | 'applied' | 'partial' | 'rejected' | 'expired' // expired: from before a restart
   applyErrors: string[]
   scriptCheck: { scripts: string[]; problems: { path: string; message: string; count: number }[] } | null
   task: { plan: string[]; steps: { number: number; summary: string }[]; stopped: string } | null
@@ -91,6 +92,46 @@ const inputEl = ref<HTMLTextAreaElement | null>(null)
 const canSend = computed(() => editorState.ai.state === 'ready' && !editorState.ai.busy && !editorState.playing)
 
 onHostMessage((message) => {
+  if (message.type === 'ai:restore') {
+    restore(message.events as Record<string, unknown>[])
+  } else {
+    handle(message)
+  }
+})
+
+// The conversation is kept per project (development_plan.md 4.5): on open the
+// host replays what the panel was sent. Earlier runs' entries have negative
+// ids; their undecided proposals can't be applied any more.
+function restore(events: Record<string, unknown>[]): void {
+  entries.value = []
+  for (const event of events) handle(event)
+  for (const entry of entries.value) {
+    if (entry.kind === 'proposal' && entry.id < 0) {
+      if (entry.status === 'pending') entry.status = 'expired'
+      if (entry.consistency.state === 'checking') entry.consistency.state = 'none'
+    } else if (entry.kind === 'task' && entry.id < 0 && entry.state === 'working') {
+      entry.state = 'stopped'
+      entry.reason = 'The editor was closed while it was working.'
+    }
+  }
+}
+
+onMounted(() => sendToHost({ type: 'ai:history' }))
+
+async function clearConversation(): Promise<void> {
+  if (
+    await confirmDialog({
+      title: 'Clear conversation',
+      message: 'Forget this conversation? The AI starts fresh. Changes already applied stay.',
+      confirmLabel: 'Clear',
+      danger: true,
+    })
+  ) {
+    sendToHost({ type: 'ai:clear' })
+  }
+}
+
+function handle(message: Record<string, unknown>): void {
   if (message.type === 'ai:message') {
     entries.value.push({ kind: 'message', role: message.role as 'user' | 'error', text: message.text as string })
   } else if (message.type === 'ai:proposal') {
@@ -193,7 +234,7 @@ onHostMessage((message) => {
     focus.value = message.focus as string
     nextTick(() => inputEl.value?.focus())
   }
-})
+}
 
 // "Ask AI" from an Inspector field: focus the request on that field.
 watch(
@@ -352,6 +393,14 @@ const examples = [
         @click="showSettings = !showSettings"
       >
         ⚙
+      </button>
+      <button
+        v-if="entries.length"
+        class="header-button"
+        title="Clear the conversation (it's kept with the project until you do)"
+        @click="clearConversation"
+      >
+        ⌫
       </button>
       <button class="header-button" title="Collapse the AI panel" @click="setAiOpen(false)">›</button>
     </header>
@@ -582,7 +631,12 @@ const examples = [
             <template v-else>
               {{ entry.autoApplied.length }} small {{ entry.autoApplied.length === 1 ? 'tweak' : 'tweaks' }} applied
               automatically
-              <button :disabled="editorState.playing" title="Put the previous values back" @click="undoAuto(entry)">
+              <button
+                v-if="entry.id > 0"
+                :disabled="editorState.playing"
+                title="Put the previous values back"
+                @click="undoAuto(entry)"
+              >
                 Undo
               </button>
             </template>
@@ -598,7 +652,11 @@ const examples = [
               {{
                 entry.status === 'rejected'
                   ? entry.autoApplied.length ? 'Rest rejected' : 'Rejected'
-                  : entry.status === 'applied' ? 'Applied ✓' : 'Partly applied'
+                  : entry.status === 'applied'
+                    ? 'Applied ✓'
+                    : entry.status === 'expired'
+                      ? 'Not applied — from before the editor restarted; ask again to redo it'
+                      : 'Partly applied'
               }}
             </span>
             <span class="usage" title="Tokens used (input / output)">

@@ -1005,6 +1005,23 @@ runs into.
   including discarded ones) is kept, with "use again".
 - Tests: the conversation round trip, history kept across restarts, and decided
   proposals not re-appliable after a reload.
+- ✅ Built:
+  - `ai_bridge/AiTranscript`: every host → UI chat message (requests, proposals,
+    decisions, task progress, checks, splits) is kept with the model's context turns in
+    `.cache/ai_conversation.json`, the newest 400. On open the panel asks for it
+    (`ai:history`) and replays it through its usual handlers. Earlier runs' ids become
+    negative and unique per run, so they can't collide with new requests (ids restart
+    at 1). Their undecided proposals show as "not applied, from before the editor
+    restarted", unfinished tasks as stopped, and their auto-applied Undo is hidden.
+    Follow-ups keep their context. ⌫ in the panel header clears it (confirmed).
+  - `ai_bridge/ArtHistory`: every Art request (`.cache/art_history.json`) with its
+    settings, state, errors and results. Discards, renames and moves are recorded on
+    the results, and a request still drawing when the editor closed comes back as
+    failed. The Art tab has Files and History views. History shows thumbnails
+    ("discarded" or "redrawn" when the file is gone or was overwritten), **Use again**
+    (back into the form) and **Generate again**, and Clear history.
+  - Tests: `AiTranscriptTest` (restart round trip, ids across three runs, context,
+    trimming, a broken file, clear) and `ArtHistoryTest`.
 
 **4.6 — Performance pass**
 - A frame-stats overlay (F3: frame and update ms, sprites, draw calls), and a
@@ -1018,6 +1035,7 @@ runs into.
   chosen per pipeline: writing, checking and embeddings. Example: proposals on
   Mistral, contradiction checks on a local model.
 - Tests: the provider against a fake OpenAI-compatible server, and configuration.
+- Leave this to later
 
 **4.8 — Module groundwork**
 - **Lua modules**: a `modules/<name>/module.json` declares components (fields with
