@@ -143,6 +143,7 @@ onMounted(() => {
         class="asset-slot"
         :class="{ fill: !editorState.panels.viewport }"
         :style="editorState.panels.viewport ? { height: `${assetPanelHeight}px` } : {}"
+      >
         <AssetBrowser />
       </div>
       <button v-if="!editorState.panels.bottom" class="bottom-rail" title="Show the bottom panel (Ctrl+J)" @click="toggleBottomPanel">

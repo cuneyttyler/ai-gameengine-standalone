@@ -118,7 +118,7 @@ def test_the_endpoint(tmp_path):
     result = client.post("/assets/generate", json=body).json()
     assert result["ok"] and result["assets"][0]["path"] == "assets/textures/generated/barrel.png"
     for bad in [{"name": "../escape", "description": "x"}, {"name": "Barrel", "description": "x"},
-                {"name": "b", "description": " "}, {"name": "b", "description": "x", "kind": "tile"},
+                {"name": "b", "description": " "}, {"name": "b", "description": "x", "kind": "building"},
                 {"name": "b", "description": "x", "height": 4},
                 {"name": "b", "description": "x", "variants": list("abcdefg")}]:
         answer = client.post("/assets/generate", json=bad).json()

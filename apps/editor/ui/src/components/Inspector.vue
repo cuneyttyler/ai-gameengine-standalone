@@ -143,9 +143,6 @@ function numberFrom(event: Event): number {
       <p class="hint">Select something in the viewport or Scene Tree to inspect it.</p>
       <button class="settings-link" @click="projectState.showProjectSettings = true">Project Settings…</button>
     </template>
-        </div>
-      </section>
-    </template>
 
     <template v-else>
       <div class="entity-label">{{ current.label }}</div>

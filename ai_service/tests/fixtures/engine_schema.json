@@ -691,6 +691,26 @@
       "dependencies": [
         "WorldTransform2D"
       ],
+      "description": "A way into another scene: stepping into its cell during play takes the player there.",
+      "fields": [
+        {
+          "description": "The scene it leads to, e.g. scenes/cave.aige.",
+          "name": "scene",
+          "type": "string"
+        },
+        {
+          "description": "The Marker in that scene the player arrives at.",
+          "name": "marker",
+          "type": "string"
+        }
+      ],
+      "name": "Gateway",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
       "description": "Follows a daily schedule: where to be, and what to do there, through the day.",
       "fields": [
         {
@@ -839,6 +859,18 @@
           "min": 0.0,
           "name": "a",
           "type": "float"
+        },
+        {
+          "description": "Lies flat on the ground: for art drawn top-down. The image is mapped onto the cell's diamond (width x height) instead of standing upright.",
+          "name": "flat",
+          "type": "bool"
+        },
+        {
+          "description": "Quarter turns clockwise of a flat image (0-3).",
+          "max": 3.0,
+          "min": 0.0,
+          "name": "rotation",
+          "type": "int"
         }
       ],
       "name": "Sprite",
@@ -943,6 +975,17 @@
         }
       ],
       "name": "Physics"
+    },
+    {
+      "description": "The game as a whole.",
+      "fields": [
+        {
+          "description": "The scene the game starts in (scenes/*.aige).",
+          "name": "startScene",
+          "type": "string"
+        }
+      ],
+      "name": "Game"
     },
     {
       "description": "The game clock (routines follow it).",

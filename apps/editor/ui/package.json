@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
-    "test": "node --test tests/"
+    "test": "node --test \"tests/*.test.ts\""
   },
   "dependencies": {
     "vue": "^3.5.40"

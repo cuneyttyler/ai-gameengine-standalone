@@ -124,7 +124,7 @@ TEST(ScenesTest, TravelCarriesThePlayerAsTheyAreToTheMarker) {
     aige::Registry registry;
     aige::Entity hero = aige::CreatePlayer(registry, 2.5f, 2.5f);
     registry.get<aige::Health>(hero).current = 3.0f; // hurt on the way
-    registry.emplace<aige::Name>(hero, "Wren");
+    registry.emplace_or_replace<aige::Name>(hero, "Wren");
 
     // A follower in the cave pointed at the cave's own player.
     aige::Registry caveEdit;

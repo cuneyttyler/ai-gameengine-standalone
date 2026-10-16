@@ -25,6 +25,10 @@
       "type": "texture"
     },
     {
+      "path": "assets/textures/gateway.png",
+      "type": "texture"
+    },
+    {
       "path": "assets/textures/ground.png",
       "type": "tileset"
     },
@@ -164,9 +168,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 96.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/tree.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -192,9 +198,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 96.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/tree.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -220,9 +228,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 24.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/rock.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -248,9 +258,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 96.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/tree.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -276,9 +288,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 24.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/rock.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -304,9 +318,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 96.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/tree.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -332,9 +348,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 96.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/tree.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -391,9 +409,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 48.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/hero.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -430,9 +450,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 48.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/villager.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -473,9 +495,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 20.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/potion.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -541,9 +565,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 48.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/skeleton.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -614,9 +640,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 48.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/skeleton.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -657,9 +685,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 20.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/potion.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -725,9 +755,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 48.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/skeleton.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -798,9 +830,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 48.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/skeleton.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -841,9 +875,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 20.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/potion.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -869,9 +905,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 32.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/crate.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -897,9 +935,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 32.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/crate.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -924,9 +964,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 64.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/ground.png",
           "u0": 0.5,
           "u1": 0.75,
@@ -947,9 +989,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 64.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/ground.png",
           "u0": 0.25,
           "u1": 0.5,
@@ -970,9 +1014,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 64.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/ground.png",
           "u0": 0.0,
           "u1": 0.25,
@@ -993,9 +1039,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 64.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/ground.png",
           "u0": 0.75,
           "u1": 1.0,
@@ -1016,9 +1064,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 64.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/ground.png",
           "u0": 0.25,
           "u1": 0.5,
@@ -1039,9 +1089,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 64.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/ground.png",
           "u0": 0.75,
           "u1": 1.0,
@@ -1062,9 +1114,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 64.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/ground.png",
           "u0": 0.0,
           "u1": 0.25,
@@ -1085,9 +1139,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 64.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/ground.png",
           "u0": 0.5,
           "u1": 0.75,
@@ -1112,9 +1168,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 32.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/crate.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -1127,6 +1185,36 @@
       "isTile": false,
       "name": "crate",
       "path": "prefabs/crate.prefab"
+    },
+    {
+      "components": {
+        "Gateway": {
+          "marker": "",
+          "scene": ""
+        },
+        "Name": {
+          "value": "Gateway"
+        },
+        "Sprite": {
+          "a": 1.0,
+          "b": 1.0,
+          "flat": true,
+          "g": 1.0,
+          "height": 32.0,
+          "r": 1.0,
+          "rotation": 0,
+          "texture": "assets/textures/gateway.png",
+          "u0": 0.0,
+          "u1": 1.0,
+          "v0": 0.0,
+          "v1": 1.0,
+          "width": 64.0
+        },
+        "WorldTransform2D": {}
+      },
+      "isTile": false,
+      "name": "gateway",
+      "path": "prefabs/gateway.prefab"
     },
     {
       "components": {
@@ -1168,9 +1256,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 48.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/hero.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -1212,9 +1302,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 20.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/potion.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -1237,9 +1329,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 24.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/rock.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -1301,9 +1395,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 48.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/skeleton.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -1331,9 +1427,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 96.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/tree.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -1358,9 +1456,11 @@
         "Sprite": {
           "a": 1.0,
           "b": 1.0,
+          "flat": false,
           "g": 1.0,
           "height": 48.0,
           "r": 1.0,
+          "rotation": 0,
           "texture": "assets/textures/villager.png",
           "u0": 0.0,
           "u1": 1.0,
@@ -1409,6 +1509,13 @@
       ]
     }
   ],
+  "scenes": [
+    {
+      "markers": [],
+      "path": "scenes/main.aige",
+      "start": true
+    }
+  ],
   "schedules": [],
   "scriptSources": {
     "scripts/enemy_melee.lua": "-- enemy_melee.lua: a basic melee enemy.\n-- Chasing is handled by the entity's Follow component; this script only\n-- decides when to swing. Edit and save while playing to hot-reload.\n\n-- Per-entity settings: each one shows up in the Inspector under LuaScript,\n-- where any skeleton (or the skeleton prefab) can change it.\nproperties = {\n    swing_range = 1.1, -- cells; a bit more than MeleeAttack.reach\n    taunt = \"\",        -- a sound to play when it first spots the player\n}\n\nlocal spotted = false\n\nfunction update(dt)\n    local target, distance = find_nearest(\"Player\")\n    if not target then\n        return\n    end\n    if not spotted and distance < get_field(self_id(), \"Follow\", \"range\") then\n        spotted = true\n        if properties.taunt ~= \"\" then\n            play_sound(properties.taunt)\n        end\n    end\n    if distance < properties.swing_range then\n        attack_toward(target)\n    end\nend\n",
@@ -1428,6 +1535,9 @@
       "hitFlashSeconds": 0.11999999731779099,
       "knockbackScale": 1.0,
       "minimumDamage": 1.0
+    },
+    "Game": {
+      "startScene": "scenes/main.aige"
     },
     "Physics": {
       "playerCollides": true
