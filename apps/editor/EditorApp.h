@@ -196,6 +196,12 @@ private:
     void ApplyBrushRotation(std::optional<Entity> placed);
     std::string clipboard_;   // Ctrl+C: the selection as scene text
     void ScaleSelected(float factor);
+    // [ ] - + and Alt+wheel: with the brush armed, the brush (its ghost and
+    // everything it places next); otherwise the selection.
+    void Resize(float factor);
+    // An entity's size as a % of its prefab's (the Inspector's Size field);
+    // nothing for entities that aren't prefab copies with a sprite.
+    std::optional<float> SizePercent(Entity entity);
     void NudgeSelected(float dx, float dy);
     void CopySelected();
     void PasteAtCursor(std::optional<std::pair<int, int>> cell = std::nullopt);

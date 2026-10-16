@@ -214,7 +214,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             }
         }
     } else if (type == "edit:scale") {
-        ScaleSelected(message.value("factor", 1.0f));
+        Resize(message.value("factor", 1.0f));
     } else if (type == "edit:nudge") {
         NudgeSelected(message.value("dx", 0.0f), message.value("dy", 0.0f));
     } else if (type == "edit:copy") {
@@ -445,6 +445,23 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             if (registry_.valid(e)) entity = e;
         }
         Select(entity);
+    } else if (type == "entity:setSize") {
+        // The Inspector's Size %: the sprite and its collision together,
+        // as [ and ] do, so a copy stays the prefab scaled.
+        auto entity = static_cast<Entity>(message.value("id", 0u));
+        const float target = message.value("percent", 0.0f);
+        const auto current = registry_.valid(entity) ? SizePercent(entity) : std::nullopt;
+        if (!playing_ && current && *current > 0.0f && target > 0.0f && std::abs(target - *current) > 0.05f) {
+            std::optional<std::string> problem;
+            ApplyOneShotEdit([&] {
+                problem = ScaleEntity(EngineReflection(), registry_, entity, target / *current);
+                return !problem.has_value();
+            });
+            if (problem) {
+                post_({{"type", "notify"}, {"text", *problem}});
+            }
+        }
+        inspectorStale_ = true;
     } else if (type == "inspector:setField") {
         auto entity = static_cast<Entity>(message.value("id", 0u));
         if (registry_.valid(entity) && message.contains("value")) {
@@ -913,6 +930,34 @@ void EditorApp::ApplyBrushRotation(std::optional<Entity> placed) {
     }
 }
 
+std::optional<float> EditorApp::SizePercent(Entity entity) {
+    const auto* sprite = registry_.try_get<Sprite>(entity);
+    const auto* link = registry_.try_get<PrefabInstance>(entity);
+    const PrefabInfo* info = link ? prefabs_.Find(link->path) : nullptr;
+    if (sprite == nullptr || info == nullptr || info->width <= 0.0f) {
+        return std::nullopt;
+    }
+    return sprite->width / info->width * 100.0f;
+}
+
+void EditorApp::Resize(float factor) {
+    if (playing_ || factor <= 0.0f) {
+        return;
+    }
+    if (tool_ == Tool::Prefab && prefabs_.Find(brushPrefab_) != nullptr) {
+        // The brush: the ghost shows the new size at once (UpdatePreview).
+        brushScale_ = std::clamp(brushScale_ * factor, 0.1f, 10.0f);
+        if (std::abs(brushScale_ - 1.0f) < 0.02f) {
+            brushScale_ = 1.0f; // land on 100% exactly when passing it
+        }
+        editorStateStale_ = true;
+        post_({{"type", "notify"},
+               {"text", "Brush size " + std::to_string(static_cast<int>(std::lround(brushScale_ * 100.0f))) + "%"}});
+        return;
+    }
+    ScaleSelected(factor);
+}
+
 void EditorApp::ScaleSelected(float factor) {
     if (playing_) {
         return;
@@ -1366,8 +1411,11 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
 
     switch (event.type) {
         case Type::Wheel: {
-            if ((GetKeyState(VK_MENU) & 0x8000) != 0 && selected_ && !playing_) {
-                ScaleSelected(event.wheelSteps > 0 ? 1.1f : 1.0f / 1.1f);
+            // Alt held: resize instead of zoom. The physical key state, since
+            // Alt may have been pressed while a panel (another process's
+            // window) had focus, which this thread's key state never sees.
+            if ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0 && !playing_) {
+                Resize(event.wheelSteps > 0 ? 1.1f : 1.0f / 1.1f);
                 return;
             }
             float zoom = std::clamp(camera_.zoom * std::pow(1.15f, event.wheelSteps), kMinZoom, kMaxZoom);
@@ -3218,10 +3266,12 @@ nlohmann::json EditorApp::InspectorJson(Entity entity) {
                   {"overrides", std::vector<std::string>(overrides.begin(), overrides.end())}};
     }
 
+    const auto size = SizePercent(entity);
     return {{"type", "inspector:data"},
             {"id", static_cast<uint32_t>(entity)},
             {"label", LabelOf(entity)},
             {"prefab", prefab},
+            {"size", size ? nlohmann::json(std::round(*size * 10.0f) / 10.0f) : nlohmann::json(nullptr)},
             {"components", components},
             {"addable", addable},
             {"choices", {{"entities", entities}, {"textures", textures}, {"audio", audio}, {"scripts", ListScripts()}}}};

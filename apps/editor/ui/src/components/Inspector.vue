@@ -30,6 +30,7 @@ interface InspectorData {
   id: number
   label: string
   prefab: { path: string; name: string; missing: boolean; overrides: string[] } | null
+  size: number | null // % of its prefab's size (prefab copies with a sprite)
   components: ComponentData[]
   addable: { name: string; description: string }[]
   choices: Choices
@@ -68,6 +69,12 @@ onHostMessage((message) => {
     }
   }
 })
+
+function setSize(percent: number): void {
+  if (current.value && Number.isFinite(percent) && percent > 0) {
+    sendToHost({ type: 'entity:setSize', id: current.value.id, percent })
+  }
+}
 
 function setField(component: string, field: FieldData, value: unknown): void {
   if (current.value) {
@@ -146,6 +153,20 @@ function numberFrom(event: Event): number {
 
     <template v-else>
       <div class="entity-label">{{ current.label }}</div>
+
+      <label v-if="current.size !== null" class="size-row" title="Its size as a % of the prefab's: sprite and collision together ([ ] and Alt+wheel too)">
+        <span>Size</span>
+        <input
+          type="number"
+          min="10"
+          max="1000"
+          step="5"
+          :value="current.size"
+          :disabled="editorState.playing"
+          @change="setSize(Number(($event.target as HTMLInputElement).value))"
+        />
+        <span class="unit">% of the prefab</span>
+      </label>
 
       <div v-if="current.prefab" class="prefab-header" :class="{ missing: current.prefab.missing }">
         <div class="prefab-title">
@@ -327,6 +348,30 @@ function numberFrom(event: Event): number {
 </template>
 
 <style scoped>
+.size-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 0.85em;
+}
+.size-row > span:first-child {
+  opacity: 0.8;
+  width: 40px;
+}
+.size-row input {
+  width: 72px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid #333;
+  border-radius: 0;
+  background: #11111b;
+  color: #eee;
+  font: inherit;
+}
+.size-row .unit {
+  opacity: 0.55;
+}
 .settings-link {
   margin: 4px 0 0;
   height: 26px;

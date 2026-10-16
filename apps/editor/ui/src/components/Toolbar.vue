@@ -54,7 +54,8 @@ function send(type: string): void {
       >
         ↻ {{ editorState.brushRotation * 90 }}°
       </button>
-      <label v-if="brush" class="size" title="Size of what the brush places (% of the prefab)">
+      <label v-if="brush" class="size" title="Brush size: what the brush places next, as a % of the prefab ([ ] and Alt+wheel too, while the brush is armed)">
+        Size
         <input
           type="number"
           min="10"
