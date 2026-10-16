@@ -5,25 +5,52 @@
 #include <filesystem>
 #include <stdexcept>
 
+#include <cstdio>
+
 using Microsoft::WRL::Callback;
 
 namespace aige {
 
 WebViewHost::WebViewHost(HWND parent) : parent_(parent) {
+    CreateEnvironment();
+}
+
+void WebViewHost::CreateEnvironment() {
     HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
         nullptr, nullptr, nullptr,
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [this](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
-                if (FAILED(result)) {
-                    return result;
+                if (FAILED(result) || environment == nullptr) {
+                    Retry("the WebView2 environment", result);
+                    return S_OK;
                 }
                 OnEnvironmentCreated(environment);
                 return S_OK;
             })
             .Get());
     if (FAILED(hr)) {
-        throw std::runtime_error("CreateCoreWebView2EnvironmentWithOptions failed");
+        Retry("the WebView2 environment", hr);
     }
+}
+
+// Starting WebView2 can fail for a moment, e.g. while another editor
+// process sharing the same data folder is still shutting down (switching
+// projects, the welcome window). Try again a few times, then say so: a
+// silent failure leaves a window with no UI at all.
+void WebViewHost::Retry(const char* what, HRESULT result) {
+    if (++attempts_ < kMaxAttempts) {
+        Sleep(400);
+        environment_ = nullptr;
+        CreateEnvironment();
+        return;
+    }
+    char text[256];
+    std::snprintf(text, sizeof(text),
+                  "The editor's interface couldn't start: creating %s failed (0x%08lX).\n\n"
+                  "Close every editor window and try again. If it keeps happening, check that the "
+                  "Microsoft Edge WebView2 Runtime is installed.",
+                  what, static_cast<unsigned long>(result));
+    MessageBoxA(parent_, text, "Editor", MB_ICONERROR);
 }
 
 WebViewHost::~WebViewHost() {
@@ -39,7 +66,8 @@ void WebViewHost::OnEnvironmentCreated(ICoreWebView2Environment* environment) {
         parent_, Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
                      [this](HRESULT result, ICoreWebView2Controller* controller) -> HRESULT {
                          if (FAILED(result) || controller == nullptr) {
-                             return result;
+                             Retry("the WebView2 controller", result);
+                             return S_OK;
                          }
                          OnControllerCreated(controller);
                          return S_OK;

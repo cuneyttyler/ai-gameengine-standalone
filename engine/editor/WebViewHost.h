@@ -58,6 +58,10 @@ public:
     void SetMessageHandler(std::function<void(std::wstring)> handler);
 
 private:
+    void CreateEnvironment();
+    void Retry(const char* what, HRESULT result);
+    static constexpr int kMaxAttempts = 8;
+    int attempts_ = 0;
     void OnEnvironmentCreated(ICoreWebView2Environment* environment);
     void OnControllerCreated(ICoreWebView2Controller* controller);
     void ApplyPendingState();

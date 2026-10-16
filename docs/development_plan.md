@@ -1298,6 +1298,19 @@ the Phase 4 testing (2026-10-16).
   - Tests: `apps/editor/ui/tests/selection.test.ts` (7, `npm test`, Node's own test
     runner with no new dependency). Multi-file moves reuse 4.4's tested path.
 
+**Fixed after the phase-end run (from testing, 2026-10-16):** the editor opened with no UI
+(only the viewport, or a gray window). The 5.3 File-menu code rewrote a menu list it also
+watched, so it re-ran itself forever before the UI mounted. Vue's production build has no
+guard against that, and nothing reported it. Fixed by giving each feature its own menu slot.
+Found by loading the built UI in headless Chrome over the DevTools protocol and pausing the
+stuck page. Along the way:
+- a JavaScript error before the UI is up is now shown in a message box instead of leaving a
+  blank window;
+- if WebView2 fails to start, the editor retries a few times and then reports it, instead of
+  failing silently;
+- an editor started by another one (switching projects, the welcome window, Close Project)
+  waits for that one to exit before starting WebView2 (`--after <pid>`).
+
 **Phase 5 exit criteria:** a game can be exported and played outside the editor;
 top-down tiles paint cleanly onto the isometric grid; a game can span several connected
 scenes; the editor opens to a project picker; the Phase 4 testing notes are resolved.

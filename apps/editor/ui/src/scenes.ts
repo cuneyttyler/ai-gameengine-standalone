@@ -4,6 +4,7 @@ import { reactive, watch } from 'vue'
 import { promptDialog } from './dialogs'
 import { editorState } from './editorState'
 import { sendToHost } from './ipc'
+import { separator } from './contextMenu'
 import { menuExtensions } from './menus'
 
 // Lets menus switch the bottom panel to a tab (AssetBrowser watches it).
@@ -26,12 +27,11 @@ export async function newScene(): Promise<void> {
 }
 
 function updateMenu(): void {
-  const items = (menuExtensions.file.top ?? []).filter((i) => i.label !== 'New Scene…' && i.label !== 'Scenes…')
-  menuExtensions.file.top = [
-    ...items,
+  menuExtensions.file.scenes = [
     { label: 'New Scene…', disabled: editorState.playing, action: newScene },
     { label: 'Scenes…', action: () => showTab('scenes') },
+    separator,
   ]
 }
 
-watch(() => [editorState.playing, menuExtensions.file.top?.length], updateMenu, { immediate: true })
+watch(() => editorState.playing, updateMenu, { immediate: true })

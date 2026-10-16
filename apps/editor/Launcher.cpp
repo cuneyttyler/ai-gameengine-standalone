@@ -37,7 +37,12 @@ void Launcher::Open(const std::filesystem::path& root) {
 
 void Launcher::OnWebMessage(const nlohmann::json& message) {
     const std::string type = message.value("type", "");
-    if (type == "welcome:request") {
+    if (type == "ui:error") {
+        if (message.value("fatal", false)) {
+            MessageBoxW(window_, Utf8ToWide("The welcome window failed to start:\n\n" + message.value("text", "")).c_str(),
+                        L"Editor", MB_ICONERROR);
+        }
+    } else if (type == "welcome:request") {
         post_(InfoJson());
     } else if (type == "welcome:open") {
         Open(std::filesystem::path(Utf8ToWide(message.value("path", ""))));

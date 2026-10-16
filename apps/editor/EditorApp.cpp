@@ -227,6 +227,11 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     } else if (type == "view:grid") {
         showGrid_ = message.value("on", !showGrid_);
         editorStateStale_ = true;
+    } else if (type == "ui:error") {
+        if (message.value("fatal", false)) {
+            MessageBoxW(mainWindow_, Utf8ToWide("The editor's interface failed to start:\n\n" + message.value("text", "")).c_str(),
+                        L"Editor", MB_ICONERROR);
+        }
     } else if (type == "viewport:visible") {
         // Ctrl+M (5.5): the UI lets the bottom panel take the space.
         ShowWindow(viewport_.Handle(), message.value("on", true) ? SW_SHOWNA : SW_HIDE);

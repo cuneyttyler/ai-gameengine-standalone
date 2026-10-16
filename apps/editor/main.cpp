@@ -65,7 +65,19 @@ aige::EditorApp* g_app = nullptr;
 struct CommandLine {
     std::optional<std::filesystem::path> project;
     bool welcome = false;
+    DWORD after = 0; // the editor process that started this one (see StartEditorProcess)
 };
+
+// Waits (a while) for the editor that started this one to finish closing.
+void WaitForProcess(DWORD pid) {
+    if (pid == 0) {
+        return;
+    }
+    if (HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid)) {
+        WaitForSingleObject(process, 15000);
+        CloseHandle(process);
+    }
+}
 
 CommandLine ParseCommandLine() {
     CommandLine result;
@@ -77,6 +89,8 @@ CommandLine ParseCommandLine() {
             result.project = argv[++i];
         } else if (arg == L"--welcome") {
             result.welcome = true;
+        } else if (arg == L"--after" && i + 1 < argc) {
+            result.after = static_cast<DWORD>(std::wcstoul(argv[++i], nullptr, 10));
         } else if (!arg.empty() && arg[0] != L'-') {
             result.project = arg;
         }
@@ -171,6 +185,8 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
     try {
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        const CommandLine commandLine = ParseCommandLine();
+        WaitForProcess(commandLine.after);
 
         WNDCLASSEXW wc{};
         wc.cbSize = sizeof(wc);
@@ -190,7 +206,6 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
 
         // Which project, if any (5.4): the command line, else the last one when
         // the user asked to reopen it directly, else the welcome window.
-        CommandLine commandLine = ParseCommandLine();
         std::optional<std::filesystem::path> projectRoot = commandLine.project;
         if (!projectRoot && !commandLine.welcome) {
             projectRoot = aige::LastProjectToReopen(aige::UserPrefs(aige::UserPrefs::DefaultPath()));

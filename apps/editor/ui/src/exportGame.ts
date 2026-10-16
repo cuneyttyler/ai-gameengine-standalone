@@ -49,10 +49,7 @@ onHostMessage(async (message) => {
 })
 
 function updateMenu(): void {
-  menuExtensions.file.afterSave = [
-    ...(menuExtensions.file.afterSave ?? []).filter((item) => item.label !== 'Export Game…'),
-    { label: 'Export Game…', disabled: editorState.playing, action: exportGame },
-  ]
+  menuExtensions.file.export = [{ label: 'Export Game…', disabled: editorState.playing, action: exportGame }]
 }
 
-watch(() => [editorState.playing, projectState.recent], updateMenu, { immediate: true })
+watch(() => editorState.playing, updateMenu, { immediate: true })

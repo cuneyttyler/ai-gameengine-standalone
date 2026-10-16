@@ -93,7 +93,10 @@ std::optional<std::filesystem::path> ShowFolderDialog(HWND owner, const std::wst
 bool StartEditorProcess(const std::wstring& arguments) {
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
-    std::wstring command = L"\"" + std::wstring(exe) + L"\" " + arguments;
+    // --after: the new editor waits for this one to exit first, so the two
+    // never start and stop WebView2 on the same data folder at once.
+    std::wstring command = L"\"" + std::wstring(exe) + L"\" " + arguments + L" --after " +
+                           std::to_wstring(GetCurrentProcessId());
     STARTUPINFOW startup{sizeof(startup)};
     PROCESS_INFORMATION process{};
     if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {

@@ -14,8 +14,10 @@ const open = ref<string | null>(null)
 const menus = computed<Record<string, MenuItem[]>>(() => ({
   File: [
     ...menuExtensions.file.top,
+    ...menuExtensions.file.scenes,
     { label: 'Save', shortcut: 'Ctrl+S', disabled: editorState.playing, action: () => sendToHost({ type: 'scene:save' }) },
     ...menuExtensions.file.afterSave,
+    ...menuExtensions.file.export,
     separator,
     { label: 'Project Settings…', action: () => (projectState.showProjectSettings = true) },
     ...menuExtensions.file.settings,
