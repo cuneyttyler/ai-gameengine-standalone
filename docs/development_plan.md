@@ -1055,14 +1055,7 @@ runs into.
     look if Release misses the budget: shared environments, or spatial queries
     instead of `find_nearest`'s scan.
 
-**4.7 — Local models**
-- An OpenAI-compatible provider, which covers Ollama, llama.cpp server and LM Studio,
-  chosen per pipeline: writing, checking and embeddings. Example: proposals on
-  Mistral, contradiction checks on a local model.
-- Tests: the provider against a fake OpenAI-compatible server, and configuration.
-- ⏸ Deferred (2026-10-16, at the user's request): left for later. Mistral stays the
-  only provider for now.
-- Leave this to later
+**4.7 — Local models** → moved to Phase 6 (6.1), 2026-10-16.
 
 **4.8 — Module groundwork**
 - **Lua modules**: a `modules/<name>/module.json` declares components (fields with
@@ -1090,16 +1083,16 @@ runs into.
     broken module reported while the good part still loads. That test found a crash:
     a Lua syntax error's result outlived its VM.
 
-**Phase 4 exit criteria:** the notes are resolved; big scenes stay smooth; the AI can
-run on a local model (deferred with 4.7); a project can add its own components without C++.
+**Phase 4 exit criteria:** the notes are resolved; big scenes stay smooth; a project
+can add its own components without C++. (Local models moved to Phase 6.)
 
 ---
 
-## Phase 5 — Platform & Engine Expansion
+## Phase 5 — Shipping & Workflow
 
-**Goal:** shipping and the first real 3D rendering path (`technical.md` §8's "path to
-3D"), moving the engine from "isometric indie engine" toward the general-purpose
-ambition in `product.md` §6.
+**Goal:** games ship as standalone builds, a game can span several connected scenes,
+and art made top-down works on the isometric grid. Plus the editor workflow notes from
+the Phase 4 testing (2026-10-16).
 
 ### Milestones
 
@@ -1131,7 +1124,96 @@ ambition in `product.md` §6.
   - Note: on this machine Bitdefender blocks freshly built Release executables (see
     4.6), so exports made here use the Debug player.
 
-**5.2 — Platform layer and mobile groundwork**
+**5.2 — Top-down art on the isometric grid** *(testing; most important)*
+- **The problem (from testing):** the grid is isometric, with diamond-shaped cells at
+  2:1, but most tile art is drawn **top-down**: a square image seen from straight
+  above, such as a road running up the image. Painted as a tile, that square is drawn
+  as an upright rectangle over the diamond. It doesn't line up with the cell, so a road
+  can't follow the grid.
+- **The fix: a tile's art has a projection.**
+  - **Isometric** (what the engine does now): the image is already drawn as a diamond,
+    or a block standing on one.
+  - **Top-down:** the square image is mapped corner to corner onto the cell's diamond
+    (turned 45° and halved in height), so it lies flat on the ground and neighbouring
+    tiles join edge to edge. A road then runs along the grid's axes.
+  - Chosen when making a tile prefab from an asset. A square image suggests top-down,
+    and a 2:1 diamond image suggests isometric. It can be changed later in the
+    Inspector, and the Art tab can generate tiles either way.
+- **Rotation in 90° steps** for tiles (the brush's R key while painting, or the
+  Inspector), so the same road piece runs either way, and corners and T-pieces turn.
+- **Props from top-down art:** they still stand upright, and a "lies flat" option
+  (rugs, decals, shadows) maps them onto the ground like tiles.
+- The renderer draws sprites as four free corners instead of upright rectangles. Picking,
+  culling and the grid overlay follow the same diamond.
+- Tests: the corner mapping for each rotation, neighbouring tiles sharing edges, picking
+  on a mapped tile, the projection and rotation round trip through scenes and prefabs,
+  and old scenes loading unchanged. Checklist: import a top-down road and paint a
+  straight road and a corner.
+
+**5.3 — Multiple scenes and gateways** *(testing)*
+- A project has any number of scenes (`scenes/*.aige`). One is the **start scene**,
+  set in Project Settings.
+- A **Scene Manager** panel lists them, with new, open, rename (references follow, as
+  in 4.4), duplicate, delete (confirmed, and refused while a gateway points at the
+  scene) and set as start. The editor title and File menu show the open scene.
+  Switching asks about unsaved changes.
+- **Gateways:** a component (target scene and target marker, with the trigger area of
+  its cell) that moves the player to that scene's marker during play. Quest progress,
+  story flags, the clock and the player's health carry over. A gateway prefab is added
+  to the starter palette (your `portal` prefab can become one). Broken targets show as
+  problems, like the Story tab's.
+- The AI is told the scene list and can propose gateways. Export ships every scene, and
+  the player starts in the start scene.
+- Tests: scene list operations and reference rewriting, a gateway round trip, play state
+  carrying across a scene change (headless), and export with several scenes.
+
+**5.4 — Start window** *(testing)*
+- Launching the editor without a project opens a **welcome window**:
+  - recent projects (name, folder, last opened; missing ones marked, removable);
+  - **New Project**, **Open Folder…**, and **Open the demo**.
+- Opening one starts the editor on it, as File ▸ Open does.
+- A preference makes it reopen the last project directly. File ▸ Close Project goes
+  back to the window.
+- Tests: the recent list (ordering, missing folders, pruning); the rest is on the
+  checklist.
+
+**5.5 — Editor refinements** *(testing)*
+- **File ▸ Recent Projects** becomes a submenu instead of a list of items. Context
+  menus gain submenus, which other menus can use too.
+- **Assets and Prefabs multi-select:** Ctrl+click, Shift+click ranges and Ctrl+A.
+  Move to folder…, Delete… (one confirmation listing them all) and drag-to-folder act
+  on the whole selection.
+- **A shortcut to show or hide the viewport**, like the panel toggles (Ctrl+B, Ctrl+J
+  and Ctrl+I). The panels take its space. It's listed in the shortcuts table and the
+  View menu.
+- The shortcuts list's F1 entry reads "Shortcuts" instead of "This list".
+- **Project Settings in its own window:** a separate panel with a close button (and
+  Esc), instead of taking over the Inspector where it can't be closed.
+- Tests: the selection logic (ranges, Ctrl+A in a filtered view), multi-file moves
+  through the 4.4 path, and the checklist for the rest.
+
+**Phase 5 exit criteria:** a game can be exported and played outside the editor;
+top-down tiles paint cleanly onto the isometric grid; a game can span several connected
+scenes; the editor opens to a project picker; the Phase 4 testing notes are resolved.
+
+---
+
+## Phase 6 — Engine Expansion
+
+**Goal:** local models, mobile, and the first real 3D rendering path (`technical.md`
+§8's "path to 3D"), moving the engine from "isometric indie engine" toward the
+general-purpose ambition in `product.md` §6. Moved here from Phases 4 and 5 on
+2026-10-16.
+
+### Milestones
+
+**6.1 — Local models** *(was 4.7)*
+- An OpenAI-compatible provider, which covers Ollama, llama.cpp server and LM Studio,
+  chosen per pipeline: writing, checking and embeddings. Example: proposals on
+  Mistral, contradiction checks on a local model.
+- Tests: the provider against a fake OpenAI-compatible server, and configuration.
+
+**6.2 — Platform layer and mobile groundwork** *(was 5.2)*
 - Input, windowing, file paths and the game loop go behind `platform/` interfaces,
   so a mobile front end can plug in. There's a touch-input mapping (virtual stick and
   buttons) usable on desktop for testing, and an Android CMake preset.
@@ -1140,7 +1222,7 @@ ambition in `product.md` §6.
   groundwork and documents the setup steps; the export itself waits for the
   toolchains.
 
-**5.3 — 3D rendering path v1**
+**6.3 — 3D rendering path v1** *(was 5.3)*
 - `renderer3d` on the same RHI: a mesh pipeline with depth, a perspective camera,
   directional and ambient light, and textured meshes from glTF 2.0 (cgltf).
 - `Transform3D`, `MeshRenderer`, `Camera3D` and `Light` components are registered
@@ -1150,16 +1232,13 @@ ambition in `product.md` §6.
 - Tests: transform and camera maths, glTF loading (meshes, materials, a bad-file
   error), components in a scene round trip, and a headless render smoke test.
 
-**5.4 — 3D in the editor (first step)**
+**6.4 — 3D in the editor (first step)** *(was 5.4)*
 - The editor's viewport renders 3D scenes, with orbit, pan and zoom and picking by
   ray. The Inspector and AI work on 3D entities unchanged, through reflection.
 - Tests: the ray-picking maths, plus the checklist.
 
-*5.2–5.4 are on hold (2026-10-16, at the user's request: only 5.1 for now).*
-
-**Phase 5 exit criteria:** a game can be exported and played outside the editor; a 3D
-scene can be built, edited and lit; mobile is ready to be finished when the toolchain
-is available.
+**Phase 6 exit criteria:** the AI can run on a local model; a 3D scene can be built,
+edited and lit; mobile is ready to be finished when the toolchain is available.
 
 ---
 
