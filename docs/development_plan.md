@@ -866,18 +866,134 @@ judgment calls, not assertions.
 
 **Goal:** performance passes, local-model maturity, and the groundwork for the module
 system (`technical.md` §6) to support third-party/plugin modules, not just internal
-ones. Lower detail here deliberately — this phase's shape depends heavily on what Phases
-0-3 reveal about where the real bottlenecks are.
+ones. Phase 2-3 testing also produced a list of editor usability needs and bugs
+(`docs/notes.md`); they come first, because they're what using the editor every day
+runs into.
+
+### Milestones
+
+**4.1 — Editor shell: menus, context menus, dialogs, panels** *(notes)*
+- The native viewport sits on top of the web UI, so HTML can't overlap it. Fix:
+  open menus and dialogs are cut out of the viewport window's region (`SetWindowRgn`).
+- Built on that:
+  - **In-app confirmation dialogs** replace `window.confirm`. Bug from testing:
+    deleting a quest showed an "aige-editor.local says" box, did nothing, and locked
+    the window.
+  - A **menu bar**: File (New/Open/Recent Projects, Save, Save As…, Settings), Edit,
+    View, Help.
+  - **Right-click menus** on the scene (entity / empty ground), the Scene Tree,
+    prefabs and assets. Destructive items confirm first.
+  - A **collapsible left panel**, **shortcuts to show or hide each panel**, and a
+    **Keyboard Shortcuts** reference (Help, F1).
+- Tests: occlusion-region maths (C++); the rest goes on the checklist.
+
+**4.2 — Projects** *(notes)*
+- **New Project** (folder picker, then a starter project), **Open Project**,
+  **Recent Projects** (per-user, `UserPrefs`), and **Save Project As…** (copies the
+  project, then opens it). Switching projects relaunches the editor on the other
+  folder, after asking about unsaved changes.
+- **Settings**: Project Settings, plus a Preferences dialog for the per-user choices
+  (AI on/off, review policy).
+- Tests: the new-project template is complete and valid; Save As copies everything a
+  project owns and nothing from `.cache`.
+
+**4.3 — Scene editing polish** *(notes)*
+- **Resizing**: `[` / `]` and Alt+wheel scale the selection, and the brush has a size %
+  that applies when placing or painting. Sprite and colliders scale together, as an
+  override on prefab copies.
+- **Removing a prefab**: copies in the scene become ordinary entities, with a
+  confirmation naming how many.
+- **Tile borders** on empty ground while editing (G toggles).
+- **Shortcuts refined**: arrows nudge (Shift: finer), Ctrl+C / Ctrl+V copy and paste,
+  F5 Play/Stop, Ctrl+Shift+S Save As, and panel toggles.
+- Tests: scaling (sprite, colliders and overrides), removing a prefab (copies kept and
+  unlinked), copy/paste round trip, nudge.
+
+**4.4 — Organizing prefabs and assets** *(notes)*
+- Other engines use folders plus search plus filters. So: the Prefabs and Assets
+  tabs gain a **folder tree** (subfolders of `prefabs/` and `assets/`), **search**, and
+  **kind filters** (tiles, characters, items, other; textures, audio, generated).
+- **Move to folder… / Rename…** from the right-click menu. Prefab moves rewrite every
+  reference: scene copies, other prefabs, and story targets.
+- Tests: moving and renaming update every reference; grouping and filtering.
+
+**4.5 — Keeping AI work** *(notes)*
+- **Conversations persist per project**, so saving, quitting and reopening brings the
+  AI chat back. This was a bug from testing. Stored in `.cache/ai_conversation.json`,
+  with Clear available.
+- **Art tab history**: every generation request (description, settings, results,
+  including discarded ones) is kept, with "use again".
+- Tests: the conversation round trip, history kept across restarts, and decided
+  proposals not re-appliable after a reload.
+
+**4.6 — Performance pass**
+- A frame-stats overlay (F3: frame and update ms, sprites, draw calls), and a
+  benchmark scene of 10k tiles plus 500 characters.
+- Lift the fixed 4096-sprite batch limit (vertex buffers grow), and cull sprites
+  outside the camera.
+- Tests: a benchmark with a time budget (Release), and culling correctness.
+
+**4.7 — Local models**
+- An OpenAI-compatible provider, which covers Ollama, llama.cpp server and LM Studio,
+  chosen per pipeline: writing, checking and embeddings. Example: proposals on
+  Mistral, contradiction checks on a local model.
+- Tests: the provider against a fake OpenAI-compatible server, and configuration.
+
+**4.8 — Module groundwork**
+- **Lua modules**: a `modules/<name>/module.json` declares components (fields with
+  types and ranges) and commands implemented in Lua. They join the reflection
+  registry, so the Inspector, scenes, scripts and the AI see them like built-ins.
+- Tests: a sample module (a `Lantern` component with a light radius, and a command)
+  shows up in the schema, round-trips through a scene, and runs its Lua.
+
+**Phase 4 exit criteria:** the notes are resolved; big scenes stay smooth; the AI can
+run on a local model; a project can add its own components without C++.
 
 ---
 
 ## Phase 5 — Platform & Engine Expansion
 
-**Goal:** mobile export hardening and the first real 3D rendering path
-(`technical.md` §8's "path to 3D"), moving the engine from "isometric indie engine" toward
-the general-purpose ambition in `product.md` §6. Also deliberately light on detail now —
-revisit once Phase 3-4 output (and real usage) tells us which genre/platform gap matters
-most to close first.
+**Goal:** shipping and the first real 3D rendering path (`technical.md` §8's "path to
+3D"), moving the engine from "isometric indie engine" toward the general-purpose
+ambition in `product.md` §6.
+
+### Milestones
+
+**5.1 — Build & Export (desktop)**
+- File → **Export Game…** builds a folder with the player (Release, renamed), the
+  project's runtime content, and none of `.cache`, AI logs or editor-only files. The
+  window title and icon come from the project name, and there's a zip option.
+- The player loads the exported folder.
+- Tests: the export has everything the game needs and nothing it doesn't; the exported
+  player runs the scene headless for a few seconds (smoke).
+
+**5.2 — Platform layer and mobile groundwork**
+- Input, windowing, file paths and the game loop go behind `platform/` interfaces,
+  so a mobile front end can plug in. There's a touch-input mapping (virtual stick and
+  buttons) usable on desktop for testing, and an Android CMake preset.
+- **Blocked here:** building and verifying an Android or iOS export needs the Android
+  SDK/NDK or Xcode, which this machine doesn't have. The milestone delivers the
+  groundwork and documents the setup steps; the export itself waits for the
+  toolchains.
+
+**5.3 — 3D rendering path v1**
+- `renderer3d` on the same RHI: a mesh pipeline with depth, a perspective camera,
+  directional and ambient light, and textured meshes from glTF 2.0 (cgltf).
+- `Transform3D`, `MeshRenderer`, `Camera3D` and `Light` components are registered
+  (Inspector, scenes, AI).
+- A 3D sample (`apps/sample3d`, `projects/sample3d`) with an orbit camera, a lit
+  textured model and simple primitives.
+- Tests: transform and camera maths, glTF loading (meshes, materials, a bad-file
+  error), components in a scene round trip, and a headless render smoke test.
+
+**5.4 — 3D in the editor (first step)**
+- The editor's viewport renders 3D scenes, with orbit, pan and zoom and picking by
+  ray. The Inspector and AI work on 3D entities unchanged, through reflection.
+- Tests: the ray-picking maths, plus the checklist.
+
+**Phase 5 exit criteria:** a game can be exported and played outside the editor; a 3D
+scene can be built, edited and lit; mobile is ready to be finished when the toolchain
+is available.
 
 ---
 
