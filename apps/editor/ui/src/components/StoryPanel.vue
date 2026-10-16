@@ -6,6 +6,7 @@
 // writer.
 import { computed, onMounted, reactive, ref } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
+import { confirmDialog } from '../dialogs'
 import ConditionList, { type Condition } from './story/ConditionList.vue'
 import EffectList, { type Effect } from './story/EffectList.vue'
 
@@ -142,12 +143,12 @@ function snapshot(): string {
 }
 const dirty = computed(() => kind.value !== null && snapshot() !== saved.value)
 
-function confirmDiscard(): boolean {
-  return !dirty.value || window.confirm('Discard your unsaved changes?')
+async function confirmDiscard(): Promise<boolean> {
+  return !dirty.value || (await confirmDialog({ message: 'Discard your unsaved changes?', confirmLabel: 'Discard', danger: true }))
 }
 
-function open(file: string, force = false): void {
-  if (!force && !confirmDiscard()) return
+async function open(file: string, force = false): Promise<void> {
+  if (!force && !(await confirmDiscard())) return
   const d = dialogues.value.find((x) => x.file === file)
   const q = quests.value.find((x) => x.file === file)
   const sc = schedules.value.find((x) => x.file === file)
@@ -176,8 +177,8 @@ function open(file: string, force = false): void {
   saved.value = snapshot()
 }
 
-function newDialogue(): void {
-  if (!confirmDiscard()) return
+async function newDialogue(): Promise<void> {
+  if (!(await confirmDiscard())) return
   kind.value = 'dialogue'
   draftId.value = ''
   originalId.value = ''
@@ -191,8 +192,8 @@ function newDialogue(): void {
   saveError.value = ''
 }
 
-function newQuest(): void {
-  if (!confirmDiscard()) return
+async function newQuest(): Promise<void> {
+  if (!(await confirmDiscard())) return
   kind.value = 'quest'
   draftId.value = ''
   originalId.value = ''
@@ -207,8 +208,8 @@ function newQuest(): void {
   saveError.value = ''
 }
 
-function newSchedule(): void {
-  if (!confirmDiscard()) return
+async function newSchedule(): Promise<void> {
+  if (!(await confirmDiscard())) return
   kind.value = 'schedule'
   draftId.value = ''
   originalId.value = ''
@@ -235,11 +236,12 @@ function save(): void {
   })
 }
 
-function remove(): void {
+async function remove(): Promise<void> {
   const file = currentFile.value
   const users = usedBy.value[file]
   const warning = users?.length ? `\n\nUsed by ${users.join(', ')} in the open scene.` : ''
-  if (!originalId.value || !window.confirm(`Delete ${file}?${warning}`)) return
+  if (!originalId.value) return
+  if (!(await confirmDialog({ message: `Delete ${file}?${warning}`, confirmLabel: 'Delete', danger: true }))) return
   sendToHost({ type: 'story:delete', file })
   kind.value = null
 }

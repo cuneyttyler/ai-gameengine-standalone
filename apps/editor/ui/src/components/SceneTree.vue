@@ -2,11 +2,20 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
+import { openContextMenu } from '../contextMenu'
+import { entityMenu } from '../sceneMenus'
+
+function showMenu(entity: EntitySummary, event: MouseEvent): void {
+  select(entity)
+  openContextMenu(event.clientX, event.clientY,
+                  entityMenu({ id: entity.id, name: entity.label, prefab: entity.prefab, tile: entity.kind === 'Tile' }))
+}
 
 interface EntitySummary {
   id: number
   kind: string
   label: string
+  prefab: string | null
 }
 
 const entities = ref<EntitySummary[]>([])
@@ -71,6 +80,7 @@ onMounted(() => {
               :data-id="entity.id"
               :class="{ selected: entity.id === editorState.selectedId }"
               @click="select(entity)"
+              @contextmenu.prevent="showMenu(entity, $event)"
             >
               {{ entity.label }}
             </li>

@@ -8,6 +8,7 @@
 
 #include "gameplay/EngineReflection.h"
 #include "assets/SceneIO.h"
+#include "assets/ProjectTemplate.h"
 #include "editing/Edits.h"
 #include "editing/LevelBuild.h"
 #include "world/StoryReferences.h"
@@ -171,11 +172,124 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         int height = message.value("height", 0);
         if (width > 0 && height > 0) {
             viewport_.SetBounds(message.value("x", 0), message.value("y", 0), width, height);
+            viewportBounds_ = {message.value("x", 0), message.value("y", 0), width, height};
+            ApplyOcclusion();
             if (!framedOnce_) {
                 framedOnce_ = true;
                 FrameScene();
             }
         }
+    } else if (type == "project:request") {
+        post_(ProjectInfoJson());
+    } else if (type == "project:open") {
+        std::filesystem::path root;
+        if (message.contains("path") && message["path"].is_string()) {
+            root = std::filesystem::path(Utf8ToWide(message["path"].get<std::string>()));
+        } else if (auto picked = ShowFolderDialog(mainWindow_, L"Open project")) {
+            root = *picked;
+        } else {
+            return;
+        }
+        if (!LooksLikeProject(root)) {
+            post_({{"type", "notify"}, {"text", WideToUtf8(root.wstring()) + " isn't an AIGE project"}});
+            return;
+        }
+        SwitchProject(root);
+    } else if (type == "project:new") {
+        const std::string name = message.value("name", "");
+        auto parent = ShowFolderDialog(mainWindow_, L"Where to create \"" + Utf8ToWide(name) + L"\"");
+        if (!parent || name.empty()) {
+            return;
+        }
+        std::filesystem::path root = *parent / Utf8ToWide(name);
+        std::optional<std::filesystem::path> starter;
+        if (message.value("starter", false)) {
+            starter = std::filesystem::path(AIGE_EDITOR_DEFAULT_PROJECT);
+        }
+        if (auto error = CreateProject(root, starter)) {
+            post_({{"type", "notify"}, {"text", *error}});
+            return;
+        }
+        SwitchProject(root);
+    } else if (type == "project:saveAs") {
+        // The copy gets the scene as it is now, saved or not; this project's
+        // own files are left as they are.
+        const std::string name = message.value("name", "");
+        auto parent = ShowFolderDialog(mainWindow_, L"Where to save \"" + Utf8ToWide(name) + L"\"");
+        if (!parent || name.empty() || playing_) {
+            return;
+        }
+        std::filesystem::path to = *parent / Utf8ToWide(name);
+        if (auto error = CopyProject(assets_.GetProject().root, to)) {
+            post_({{"type", "notify"}, {"text", *error}});
+            return;
+        }
+        Project copy{to};
+        SaveScene(registry_, copy.MainScenePath().string());
+        SaveSettings(EngineReflection(), copy.SettingsPath().string());
+        SwitchProject(to, /*askAboutChanges=*/false);
+    } else if (type == "app:quit") {
+        PostMessageW(mainWindow_, WM_CLOSE, 0, 0); // asks about unsaved changes first
+    } else if (type == "help:docs") {
+        ShellExecuteW(mainWindow_, L"open", Utf8ToWide(AIGE_EDITOR_DOCS_DIR).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    } else if (type == "scene:placeAt" || type == "scene:addMarker") {
+        // From the viewport's right-click menu, as one undo step.
+        if (playing_) {
+            return;
+        }
+        nlohmann::json op;
+        if (type == "scene:placeAt") {
+            const std::string prefab = message.value("prefab", "");
+            const PrefabInfo* info = prefabs_.Find(prefab);
+            if (info == nullptr) {
+                return;
+            }
+            float x = message.value("gx", 0) + 0.5f;
+            float y = message.value("gy", 0) + 0.5f;
+            op = info->isTile ? nlohmann::json{{"op", "command"},
+                                               {"name", "scene.paintRect"},
+                                               {"args",
+                                                {{"prefab", prefab},
+                                                 {"x0", message.value("gx", 0)},
+                                                 {"y0", message.value("gy", 0)},
+                                                 {"x1", message.value("gx", 0)},
+                                                 {"y1", message.value("gy", 0)}}}}
+                              : nlohmann::json{{"op", "command"},
+                                               {"name", "scene.spawn"},
+                                               {"args", {{"prefab", prefab}, {"x", x}, {"y", y}}}};
+        } else {
+            op = {{"op", "command"},
+                  {"name", "scene.addMarker"},
+                  {"args",
+                   {{"name", message.value("name", "")},
+                    {"x", message.value("gx", 0) + 0.5f},
+                    {"y", message.value("gy", 0) + 0.5f}}}};
+        }
+        ApplyOutcome outcome = ApplyAccepted({op});
+        if (!outcome.errors.empty()) {
+            post_({{"type", "notify"}, {"text", outcome.errors.front()}});
+        }
+    } else if (type == "asset:reveal") {
+        std::wstring target = L"/select,\"" + assets_.GetProject().Resolve(message.value("path", "")).wstring() + L"\"";
+        ShellExecuteW(mainWindow_, nullptr, L"explorer.exe", target.c_str(), nullptr, SW_SHOWNORMAL);
+    } else if (type == "asset:delete") {
+        const std::string path = message.value("path", "");
+        if (path.rfind("assets/", 0) == 0 && path.find("..") == std::string::npos) {
+            std::error_code ec;
+            for (const char* suffix : {"", ".meta", ".gen.json"}) {
+                std::filesystem::remove(assets_.GetProject().Resolve(path + suffix), ec);
+            }
+            RefreshAssets();
+        }
+    } else if (type == "viewport:occlude") {
+        // Open menus and dialogs, in page pixels: cut out of the viewport.
+        overlays_.clear();
+        for (const auto& r : message.value("rects", nlohmann::json::array())) {
+            if (r.is_array() && r.size() == 4) {
+                overlays_.push_back({r[0].get<int>(), r[1].get<int>(), r[2].get<int>(), r[3].get<int>()});
+            }
+        }
+        ApplyOcclusion();
     } else if (type == "scene:request") {
         // The page (re)loaded: resend everything it needs.
         post_(AiStatusJson());
@@ -183,8 +297,13 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         editorStateStale_ = true;
         Select(selected_);
     } else if (type == "entity:select") {
-        auto entity = static_cast<Entity>(message.value("id", 0u));
-        Select(registry_.valid(entity) ? std::optional<Entity>(entity) : std::nullopt);
+        // id null (or missing) deselects: the Inspector then shows Project Settings.
+        std::optional<Entity> entity;
+        if (message.contains("id") && message["id"].is_number_unsigned()) {
+            Entity e = static_cast<Entity>(message["id"].get<uint32_t>());
+            if (registry_.valid(e)) entity = e;
+        }
+        Select(entity);
     } else if (type == "inspector:setField") {
         auto entity = static_cast<Entity>(message.value("id", 0u));
         if (registry_.valid(entity) && message.contains("value")) {
@@ -498,7 +617,69 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     }
 }
 
+// --- Projects (development_plan.md 4.2) -----------------------------------
+
+void EditorApp::RememberRecentProject() {
+    if (!userPrefs_) {
+        return;
+    }
+    const std::string current = WideToUtf8(std::filesystem::absolute(assets_.GetProject().root).wstring());
+    nlohmann::json recent = nlohmann::json::array({current});
+    for (const auto& path : userPrefs_->Get("recentProjects", nlohmann::json::array())) {
+        if (path.is_string() && path.get<std::string>() != current && recent.size() < 10 &&
+            std::filesystem::exists(std::filesystem::path(Utf8ToWide(path.get<std::string>())))) {
+            recent.push_back(path);
+        }
+    }
+    userPrefs_->Set("recentProjects", recent);
+}
+
+nlohmann::json EditorApp::ProjectInfoJson() {
+    nlohmann::json recent = userPrefs_ ? userPrefs_->Get("recentProjects", nlohmann::json::array())
+                                       : nlohmann::json::array();
+    return {{"type", "project:info"},
+            {"current", WideToUtf8(std::filesystem::absolute(assets_.GetProject().root).wstring())},
+            {"recent", recent}};
+}
+
+void EditorApp::SwitchProject(const std::filesystem::path& root, bool askAboutChanges) {
+    if (playing_) {
+        StopPlay();
+    }
+    if (askAboutChanges && IsDirty()) {
+        int answer = MessageBoxW(mainWindow_, L"Save changes to the scene before switching projects?",
+                                 L"Unsaved changes", MB_YESNOCANCEL | MB_ICONWARNING);
+        if (answer == IDCANCEL) {
+            return;
+        }
+        if (answer == IDYES) {
+            Save();
+            if (IsDirty()) {
+                return; // the save failed: stay
+            }
+        }
+    }
+    // A fresh editor process on the other project: every system (assets,
+    // prefabs, AI service, undo) starts clean, exactly as when launched.
+    wchar_t exe[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    std::wstring command = L"\"" + std::wstring(exe) + L"\" --project \"" + std::filesystem::absolute(root).wstring() + L"\"";
+    STARTUPINFOW startup{sizeof(startup)};
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
+        post_({{"type", "notify"}, {"text", "Couldn't start the editor for that project"}});
+        return;
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    DestroyWindow(mainWindow_); // past WM_CLOSE: we've already asked
+}
+
 // --- Viewport input ---------------------------------------------------------
+
+void EditorApp::ApplyOcclusion() {
+    viewport_.SetOcclusion(LocalOcclusion(viewportBounds_, overlays_));
+}
 
 void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
     using Type = ViewportMouseEvent::Type;
@@ -522,6 +703,11 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                 panning_ = true;
                 panLastX_ = event.x;
                 panLastY_ = event.y;
+                if (event.button == Button::Right) {
+                    rightDownX_ = event.x;
+                    rightDownY_ = event.y;
+                    rightMoved_ = false;
+                }
                 return;
             }
             if (event.button != Button::Left) {
@@ -551,6 +737,29 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
             }
             return;
         case Type::Up:
+            if (event.button == Button::Right && !rightMoved_ && !playing_) {
+                // A right-click: the menu for what's under the cursor (the UI draws it).
+                auto picked = PickEntity(registry_, sceneX, sceneY, iso_);
+                Select(picked);
+                int gx = 0, gy = 0;
+                CellAt(sceneX, sceneY, iso_, gx, gy);
+                nlohmann::json entity = nullptr;
+                if (picked) {
+                    const auto* name = registry_.try_get<Name>(*picked);
+                    entity = {{"id", static_cast<uint32_t>(*picked)},
+                              {"name", name ? name->value : std::string()},
+                              {"prefab", registry_.all_of<PrefabInstance>(*picked)
+                                             ? nlohmann::json(registry_.get<PrefabInstance>(*picked).path)
+                                             : nlohmann::json(nullptr)},
+                              {"tile", registry_.all_of<Tile>(*picked)}};
+                }
+                post_({{"type", "viewport:contextMenu"},
+                       {"x", viewportBounds_.x + static_cast<int>(event.x)},
+                       {"y", viewportBounds_.y + static_cast<int>(event.y)},
+                       {"entity", entity},
+                       {"cell", {gx, gy}},
+                       {"brush", tool_ == Tool::Prefab ? brushPrefab_ : std::string()}});
+            }
             if (event.button == Button::Right || event.button == Button::Middle || event.button == Button::None) {
                 panning_ = false;
             }
@@ -566,6 +775,9 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
             hasHover_ = true;
             hoverX_ = sceneX;
             hoverY_ = sceneY;
+            if (panning_ && std::hypot(event.x - rightDownX_, event.y - rightDownY_) > 4.0f) {
+                rightMoved_ = true;
+            }
             if (panning_) {
                 camera_.offsetX -= (event.x - panLastX_) / camera_.zoom;
                 camera_.offsetY -= (event.y - panLastY_) / camera_.zoom;
@@ -594,6 +806,20 @@ void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
     }
 
     if (ctrl) {
+        // Layout shortcuts belong to the UI; forward them when the viewport has focus.
+        if (virtualKey == 'N' || (virtualKey == 'S' && shift)) {
+            post_({{"type", "ui:shortcut"}, {"name", virtualKey == 'N' ? "newProject" : "saveAs"}});
+            return;
+        }
+        if (virtualKey == 'O') {
+            OnWebMessage({{"type", "project:open"}});
+            return;
+        }
+        if (virtualKey == 'B' || virtualKey == 'J' || virtualKey == 'I') {
+            post_({{"type", "ui:shortcut"},
+                   {"name", virtualKey == 'B' ? "toggleLeft" : virtualKey == 'J' ? "toggleBottom" : "toggleAi"}});
+            return;
+        }
         switch (virtualKey) {
             case 'Z':
                 shift ? Redo() : Undo();
@@ -613,6 +839,9 @@ void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
     }
 
     switch (virtualKey) {
+        case VK_F1:
+            post_({{"type", "ui:shortcut"}, {"name", "help"}});
+            return;
         case VK_DELETE:
         case VK_BACK:
             DeleteSelected();
@@ -1087,6 +1316,8 @@ void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
         return client;
     });
     aiConnection_->Start(); // only if the user has said yes to AI
+    RememberRecentProject();
+    post_(ProjectInfoJson());
     post_(AiStatusJson());
 }
 
@@ -2128,7 +2359,11 @@ nlohmann::json EditorApp::SceneJson() {
     nlohmann::json entities = nlohmann::json::array();
     for (auto entity : EntitiesInOrder(registry_)) {
         std::string kind = DescribeKind(registry_, entity);
-        entities.push_back({{"id", static_cast<uint32_t>(entity)}, {"kind", kind}, {"label", LabelOf(entity)}});
+        const auto* instance = registry_.try_get<PrefabInstance>(entity);
+        entities.push_back({{"id", static_cast<uint32_t>(entity)},
+                            {"kind", kind},
+                            {"label", LabelOf(entity)},
+                            {"prefab", instance ? nlohmann::json(instance->path) : nlohmann::json(nullptr)}});
     }
     return {{"type", "scene:update"}, {"entities", entities}};
 }

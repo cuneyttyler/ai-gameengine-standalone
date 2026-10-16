@@ -9,6 +9,12 @@ import Splitter from './components/Splitter.vue'
 import StatusBar from './components/StatusBar.vue'
 import AssetBrowser from './components/AssetBrowser.vue'
 import AiPanel from './components/AiPanel.vue'
+import MenuBar from './components/MenuBar.vue'
+import DialogHost from './components/DialogHost.vue'
+import ContextMenuHost from './components/ContextMenuHost.vue'
+import ShortcutsDialog from './components/ShortcutsDialog.vue'
+import PreferencesDialog from './components/PreferencesDialog.vue'
+import { toggleBottomPanel, toggleLeftPanel } from './editorState'
 
 // Panel sizes are per-user layout preferences, so localStorage is enough.
 // Every access is guarded: storage can be unavailable, and the layout must
@@ -93,8 +99,13 @@ onMounted(() => {
 </script>
 
 <template>
+  <div class="app-frame">
+  <MenuBar />
   <div class="app-shell">
-    <aside ref="sidePanel" class="side-panel" :style="{ width: `${sidebarWidth}px` }">
+    <button v-if="!editorState.panels.left" class="left-rail" title="Show the Scene panel (Ctrl+B)" @click="toggleLeftPanel">
+      <span class="rail-label">Scene</span>
+    </button>
+    <aside v-show="editorState.panels.left" ref="sidePanel" class="side-panel" :style="{ width: `${sidebarWidth}px` }">
       <div class="panel-slot" :style="{ flexBasis: `${treeFraction * 100}%` }">
         <SceneTree />
       </div>
@@ -103,16 +114,20 @@ onMounted(() => {
         <Inspector />
       </div>
     </aside>
-    <Splitter direction="horizontal" @drag="onSidebarDrag" @end="saveLayout" />
+    <Splitter v-show="editorState.panels.left" direction="horizontal" @drag="onSidebarDrag" @end="saveLayout" />
     <main class="viewport-region">
       <Toolbar />
       <div class="viewport-slot">
         <ViewportHole />
       </div>
-      <Splitter direction="vertical" @drag="onAssetPanelDrag" @end="saveLayout" />
-      <div class="asset-slot" :style="{ height: `${assetPanelHeight}px` }">
+      <Splitter v-show="editorState.panels.bottom" direction="vertical" @drag="onAssetPanelDrag" @end="saveLayout" />
+      <!-- v-show: hiding keeps the tabs' state (drafts in Story, World, Art). -->
+      <div v-show="editorState.panels.bottom" class="asset-slot" :style="{ height: `${assetPanelHeight}px` }">
         <AssetBrowser />
       </div>
+      <button v-if="!editorState.panels.bottom" class="bottom-rail" title="Show the bottom panel (Ctrl+J)" @click="toggleBottomPanel">
+        ▴ Prefabs · Assets · World · Story · Level · Art
+      </button>
       <StatusBar />
     </main>
     <button
@@ -132,13 +147,55 @@ onMounted(() => {
       <AiPanel />
     </aside>
   </div>
+  </div>
+  <ContextMenuHost />
+  <ShortcutsDialog />
+  <PreferencesDialog />
+  <DialogHost />
 </template>
 
 <style scoped>
-.app-shell {
+.app-frame {
   display: flex;
+  flex-direction: column;
   width: 100vw;
   height: 100vh;
+}
+.app-shell {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.left-rail {
+  flex-shrink: 0;
+  width: 26px;
+  border: none;
+  border-right: 1px solid #333;
+  border-radius: 0;
+  background: #181825;
+  color: #eee;
+  cursor: pointer;
+  padding: 10px 0;
+  display: flex;
+  justify-content: center;
+}
+.left-rail:hover,
+.bottom-rail:hover {
+  background: #262637;
+}
+.bottom-rail {
+  flex-shrink: 0;
+  height: 22px;
+  border: none;
+  border-top: 1px solid #333;
+  border-radius: 0;
+  background: #181825;
+  color: #aaa;
+  font: inherit;
+  font-size: 0.8em;
+  cursor: pointer;
+  text-align: left;
+  padding: 0 10px;
 }
 .side-panel {
   flex-shrink: 0;

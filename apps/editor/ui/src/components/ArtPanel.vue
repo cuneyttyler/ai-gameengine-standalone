@@ -6,6 +6,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
+import { confirmDialog } from '../dialogs'
 
 const PROJECT_HOST = 'https://aige-project.local/'
 
@@ -109,8 +110,10 @@ function makePrefab(item: Item): void {
   sendToHost({ type: 'prefab:createFromAsset', asset: item.path, tile: 0, asTile: false, solid: false, name })
 }
 
-function discard(item: Item): void {
-  if (window.confirm(`Delete ${item.path}?`)) sendToHost({ type: 'art:discard', path: item.path })
+async function discard(item: Item): Promise<void> {
+  if (await confirmDialog({ message: `Delete ${item.path}?`, confirmLabel: 'Discard', danger: true })) {
+    sendToHost({ type: 'art:discard', path: item.path })
+  }
 }
 
 function thumb(item: Item): string {

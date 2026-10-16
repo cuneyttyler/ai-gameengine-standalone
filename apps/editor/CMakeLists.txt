@@ -15,6 +15,7 @@ target_link_libraries(editor PRIVATE aige_rhi aige_ecs aige_physics2d aige_rende
 target_compile_definitions(editor PRIVATE
     AIGE_EDITOR_DEFAULT_PROJECT="${CMAKE_SOURCE_DIR}/projects/demo"
     AIGE_EDITOR_UI_DIST_DIR="${CMAKE_CURRENT_SOURCE_DIR}/ui/dist"
+    AIGE_EDITOR_DOCS_DIR="${CMAKE_SOURCE_DIR}/docs"
     AIGE_EDITOR_AI_SERVICE_DIR="${CMAKE_SOURCE_DIR}/ai_service"
 )
 

@@ -886,6 +886,34 @@ runs into.
   - A **collapsible left panel**, **shortcuts to show or hide each panel**, and a
     **Keyboard Shortcuts** reference (Help, F1).
 - Tests: occlusion-region maths (C++); the rest goes on the checklist.
+- ✅ Built:
+  - **Occlusion**: `editor/Occlusion` (`LocalOcclusion`) and
+    `ViewportWindow::SetOcclusion` (`SetWindowRgn` with the rects subtracted). The UI's
+    `overlay.ts` reports the rectangles of open overlays (`viewport:occlude`), and they
+    are re-applied when the viewport moves.
+  - **Dialogs**: `dialogs.ts` with `DialogHost` (confirm, prompt, info; Esc and Enter;
+    modal backdrop) replaces every `window.confirm`. The quest-delete lockup came from
+    `window.confirm`.
+  - **Context menus**: `contextMenu.ts` with `ContextMenuHost` (kept on screen; closes on
+    an outside click, Esc or blur; items can confirm first).
+    - **Viewport**: a right-click that doesn't drag (more than 4 px is a pan) gives
+      `viewport:contextMenu` with the entity under the cursor (now selected) and the
+      cell. Entity menu: duplicate, save as prefab…, revert to prefab, ask AI, delete.
+      Ground menu: paint or place the brush here, add a marker here…, frame.
+    - **Scene Tree**: the same entity menu.
+    - **Prefab cards**: place, show in Explorer.
+    - **Asset cards**: details, show in Explorer, delete… (confirmed).
+    - Features add their own items through `menuExtensions`, `entityMenuExtensions`
+      and `prefabMenuExtensions`.
+  - **Menu bar**: File / Edit / View / Play / Help. Its dropdowns are context menus;
+    moving across the bar switches between them.
+  - **Panels**: the left panel collapses to a rail and the bottom panel to a strip, both
+    remembered. Ctrl+B, Ctrl+J and Ctrl+I work from the web UI and from the viewport
+    (`ui:shortcut`).
+  - **Help**: Keyboard Shortcuts (F1) is built from the single `shortcuts.ts` table;
+    Documentation opens `docs/`.
+  - Fixed on the way: `entity:select` with a null id threw. Deselecting (as Project
+    Settings needs) now works.
 
 **4.2 — Projects** *(notes)*
 - **New Project** (folder picker, then a starter project), **Open Project**,
@@ -896,6 +924,24 @@ runs into.
   (AI on/off, review policy).
 - Tests: the new-project template is complete and valid; Save As copies everything a
   project owns and nothing from `.cache`.
+- ✅ Built:
+  - `assets/ProjectTemplate` (`CreateProject`, optionally with the demo's art, prefabs
+    and scripts as a palette but not its scene, story, canon or generated art;
+    `CopyProject` without `.cache` or `ai_log.jsonl`; `LooksLikeProject`).
+  - File menu: New Project… (asks for a name and whether to start from the demo palette,
+    then a folder picker), Open Project… (folder picker; refuses non-projects), up to 8
+    Recent projects (per-user `recentProjects`, pruned when missing), and Save Project
+    As…, which gives the copy the scene and settings as they are now, saved or not.
+  - Switching starts a fresh editor process on the other project (`--project`), after
+    the usual unsaved-changes question, so every system starts clean.
+  - Ctrl+N, Ctrl+O and Ctrl+Shift+S work from the web UI and the viewport.
+  - Preferences… gathers the per-user choices (AI on/off, review policy).
+  - Tests: `ProjectTemplateTest` (folders, settings and README; the starter palette
+    without scene, canon or generated art; never over an existing folder; Save As
+    leaving out `.cache` and the log).
+  - Also: three tests that read the demo assumed its exact contents (4 skeletons, the
+    village's tile bounds, the "thanks" line). They now check that the designed
+    content is still there, because the demo is a working project you're adding to.
 
 **4.3 — Scene editing polish** *(notes)*
 - **Resizing**: `[` / `]` and Alt+wheel scale the selection, and the brush has a size %

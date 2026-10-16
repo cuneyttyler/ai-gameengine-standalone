@@ -28,6 +28,8 @@ target_include_directories(wil INTERFACE ${wil_SOURCE_DIR}/include)
 add_library(aige_editor STATIC
     ViewportWindow.h
     ViewportWindow.cpp
+    Occlusion.h
+    Occlusion.cpp
     WebViewHost.h
     WebViewHost.cpp
 )

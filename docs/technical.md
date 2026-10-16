@@ -217,6 +217,11 @@ generated field automatically gets the "Ask AI" affordance for free.
   - Art (3.6): UI → host `art:request`, `art:generate {request}` (forwarded to the service's
     `/assets/generate`), `art:discard {path}`; host → UI `art:list {items, busy}`,
     `art:result {result}`. `assets:list` entries carry `generation` when a `.gen.json` exists.
+  - Shell (4.1): UI → host `viewport:occlude {rects}`, `app:quit`, `help:docs`,
+    `scene:placeAt {prefab, gx, gy}`, `scene:addMarker {name, gx, gy}`, `asset:reveal {path}`,
+    `asset:delete {path}`; host → UI `viewport:contextMenu {x, y, entity, cell, brush}`,
+    `ui:shortcut {name}`. Open menus and dialogs are cut out of the native viewport
+    window (`editor/Occlusion`), so HTML can be drawn over it.
   - Story: UI → host `story:request`, `story:save {kind, id, originalId, content}`,
     `story:delete {file}`; host → UI `story:list {dialogues, quests, schedules, markers,
     problems, world, prefabs, usedBy}`, `story:saved {file, error}`. `story:save` kind

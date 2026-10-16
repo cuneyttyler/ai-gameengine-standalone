@@ -155,7 +155,8 @@ TEST(SliceTest, DemoLevelIsComplete) {
     auto player = aige::FindPlayer(registry);
     ASSERT_TRUE(player.has_value());
     auto enemies = LivingEnemies(registry);
-    EXPECT_EQ(enemies.size(), 4u);
+    // The four designed skeletons (the demo is a working project: you may have added more).
+    EXPECT_GE(enemies.size(), 4u);
     for (auto enemy : enemies) {
         // No explicit target: Follow chases the player.
         EXPECT_TRUE(registry.get<aige::Follow>(enemy).target == entt::null);

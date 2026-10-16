@@ -1,11 +1,13 @@
 #pragma once
 
+#include "editor/Occlusion.h"
 #include "platform/Input.h"
 
 #include <windows.h>
 
 #include <array>
 #include <functional>
+#include <vector>
 
 namespace aige {
 
@@ -47,6 +49,11 @@ public:
     // whenever the host's layout (driven by the Vue viewport placeholder's
     // reported bounds) changes.
     void SetBounds(int x, int y, int width, int height);
+
+    // Cuts these rects (window-local pixels) out of the window, so the web UI
+    // under it shows through there: open menus and dialogs (editor/Occlusion).
+    // Empty restores the whole window.
+    void SetOcclusion(const std::vector<PixelRect>& rects);
 
     // Keyboard state as seen by this window only: keys pressed while the
     // WebView2 UI has focus never reach it, so typing in an inspector field

@@ -86,6 +86,22 @@ void ViewportWindow::SetBounds(int x, int y, int width, int height) {
     SetWindowPos(hwnd_, nullptr, x, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+void ViewportWindow::SetOcclusion(const std::vector<PixelRect>& rects) {
+    if (rects.empty()) {
+        SetWindowRgn(hwnd_, nullptr, TRUE);
+        return;
+    }
+    RECT client{};
+    GetClientRect(hwnd_, &client);
+    HRGN region = CreateRectRgn(0, 0, client.right, client.bottom);
+    for (const auto& r : rects) {
+        HRGN hole = CreateRectRgn(r.x, r.y, r.x + r.w, r.y + r.h);
+        CombineRgn(region, region, hole, RGN_DIFF);
+        DeleteObject(hole);
+    }
+    SetWindowRgn(hwnd_, region, TRUE); // the system owns `region` now
+}
+
 bool ViewportWindow::IsKeyDown(Key key) const {
     return keyDown_[ToVirtualKey(key)];
 }

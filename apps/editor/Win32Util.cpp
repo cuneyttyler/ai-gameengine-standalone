@@ -70,4 +70,24 @@ std::vector<std::filesystem::path> ShowImportDialog(HWND owner) {
     return result;
 }
 
+std::optional<std::filesystem::path> ShowFolderDialog(HWND owner, const std::wstring& title) {
+    wil::com_ptr<IFileOpenDialog> dialog;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) {
+        return std::nullopt;
+    }
+    dialog->SetTitle(title.c_str());
+    FILEOPENDIALOGOPTIONS options = 0;
+    dialog->GetOptions(&options);
+    dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+    if (FAILED(dialog->Show(owner))) {
+        return std::nullopt; // cancelled
+    }
+    wil::com_ptr<IShellItem> item;
+    wil::unique_cotaskmem_string path;
+    if (FAILED(dialog->GetResult(&item)) || FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
+        return std::nullopt;
+    }
+    return std::filesystem::path(path.get());
+}
+
 } // namespace aige

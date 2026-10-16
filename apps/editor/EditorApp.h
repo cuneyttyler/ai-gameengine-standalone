@@ -165,6 +165,17 @@ private:
     std::map<int, int> consistencyRequests_;
     int worldCheckRequest_ = 0;
     int artRequest_ = 0; // the Art tab's generation in flight (development_plan.md 3.6)
+    // Projects (4.2): asks about unsaved changes, then reopens the editor on `root`.
+    void SwitchProject(const std::filesystem::path& root, bool askAboutChanges = true);
+    nlohmann::json ProjectInfoJson();
+    void RememberRecentProject();
+    // Where the viewport is on the page, and the open menus/dialogs over it (4.1).
+    PixelRect viewportBounds_;
+    std::vector<PixelRect> overlays_;
+    void ApplyOcclusion();
+    // Right-click: a press that doesn't move far is a context menu, not a pan.
+    float rightDownX_ = 0.0f, rightDownY_ = 0.0f;
+    bool rightMoved_ = false;
     nlohmann::json ArtJson();
     std::string worldCheckKey_;
     bool RequestConsistencyCheck(int proposalId, const nlohmann::json& operations);

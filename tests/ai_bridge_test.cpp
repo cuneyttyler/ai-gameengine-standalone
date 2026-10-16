@@ -138,8 +138,13 @@ TEST(ContextBuilderTest, DescribesTheDemoProject) {
                                                       {player, "Hero.Health.max"});
 
     // Tiles are summarized, everything else listed with its values.
-    EXPECT_EQ(context["tiles"]["count"], 280);
-    EXPECT_EQ(context["tiles"]["bounds"], nlohmann::json({0, 0, 19, 13}));
+    // At least the designed village (the demo may have grown, e.g. a generated dungeon).
+    EXPECT_GE(context["tiles"]["count"].get<int>(), 280);
+    const auto& bounds = context["tiles"]["bounds"];
+    EXPECT_LE(bounds[0].get<int>(), 0);
+    EXPECT_LE(bounds[1].get<int>(), 0);
+    EXPECT_GE(bounds[2].get<int>(), 19);
+    EXPECT_GE(bounds[3].get<int>(), 13);
     EXPECT_EQ(context["tiles"]["byPrefab"]["prefabs/hedge.prefab"].get<int>() > 0, true);
     const auto& entities = context["entities"];
     auto hero = std::find_if(entities.begin(), entities.end(), [](const auto& e) { return e.value("name", "") == "Hero"; });

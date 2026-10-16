@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -16,5 +17,9 @@ std::string WideToUtf8(const std::wstring& wide);
 // The native multi-select "Import assets" dialog. Returns nothing if the
 // user cancels.
 std::vector<std::filesystem::path> ShowImportDialog(HWND owner);
+
+// The native folder picker (projects, development_plan.md 4.2). Nothing if
+// the user cancels.
+std::optional<std::filesystem::path> ShowFolderDialog(HWND owner, const std::wstring& title);
 
 } // namespace aige

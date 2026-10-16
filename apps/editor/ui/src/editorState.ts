@@ -21,6 +21,19 @@ function loadAiOpen(): boolean {
   }
 }
 
+// Which panels are showing (development_plan.md 4.1): per-user layout, kept
+// in localStorage. Ctrl+B / Ctrl+J / Ctrl+I toggle them.
+const LAYOUT_PANELS_KEY = 'aige.editor.panels'
+
+function loadPanels(): { left: boolean; bottom: boolean } {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LAYOUT_PANELS_KEY) ?? 'null')
+    return { left: saved?.left !== false, bottom: saved?.bottom !== false }
+  } catch {
+    return { left: true, bottom: true }
+  }
+}
+
 export interface Prefab {
   path: string
   name: string
@@ -55,7 +68,34 @@ export const editorState = reactive({
   // Set by an Inspector field's "Ask AI"; the AI panel picks it up (n makes repeats distinct).
   aiAsk: { focus: '', n: 0 },
   aiOpen: loadAiOpen(),
+  panels: loadPanels(),
+  showShortcuts: false, // Help ▸ Keyboard Shortcuts
 })
+
+function savePanels(): void {
+  try {
+    localStorage.setItem(LAYOUT_PANELS_KEY, JSON.stringify(editorState.panels))
+  } catch {
+    // Not persisting is fine.
+  }
+}
+
+export function toggleLeftPanel(): void {
+  editorState.panels.left = !editorState.panels.left
+  savePanels()
+}
+
+export function toggleBottomPanel(): void {
+  editorState.panels.bottom = !editorState.panels.bottom
+  savePanels()
+}
+
+export function runShortcut(name: string): void {
+  if (name === 'toggleLeft') toggleLeftPanel()
+  else if (name === 'toggleBottom') toggleBottomPanel()
+  else if (name === 'toggleAi') setAiOpen(!editorState.aiOpen)
+  else if (name === 'help') editorState.showShortcuts = true
+}
 
 export function setAiOpen(open: boolean): void {
   editorState.aiOpen = open
@@ -103,6 +143,9 @@ onHostMessage((message) => {
     editorState.ai.busy = message.busy as boolean
   } else if (message.type === 'prefabs:list') {
     editorState.prefabs = message.prefabs as Prefab[]
+  } else if (message.type === 'ui:shortcut') {
+    // Pressed while the viewport had focus.
+    runShortcut(message.name as string)
   } else if (message.type === 'notify') {
     editorState.notice = message.text as string
     window.clearTimeout(noticeTimer)
@@ -118,6 +161,19 @@ window.addEventListener('keydown', (event) => {
     !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
   const key = event.key.toLowerCase()
 
+  if (event.key === 'F1') {
+    event.preventDefault()
+    runShortcut('help')
+    return
+  }
+  if (event.ctrlKey && !typing) {
+    const layout: Record<string, string> = { b: 'toggleLeft', j: 'toggleBottom', i: 'toggleAi' }
+    if (layout[key]) {
+      event.preventDefault()
+      runShortcut(layout[key])
+      return
+    }
+  }
   if (event.ctrlKey) {
     const command: Record<string, string> = {
       s: 'scene:save',

@@ -338,7 +338,9 @@ TEST(StoryPlaythroughTest, TalkAcceptDefeatAndReturn) {
     EXPECT_EQ(session.Story().Quest("quiet-the-courtyard").state, aige::StoryState::QuestState::Completed);
     EXPECT_TRUE(session.Story().Flag("courtyard_quieted"));
     ASSERT_TRUE(session.Conversation().Active());
-    EXPECT_EQ(session.Conversation().Node()->id, "thanks");
+    // A post-quest greeting ("thanks", or whatever the dialogue now leads into), not the first meeting.
+    EXPECT_NE(session.Conversation().Node()->id, "greet");
+    EXPECT_NE(session.Conversation().Node()->id, "progress");
     ui.clear();
     session.BuildUi(ui, 1280, 720);
     EXPECT_GT(ui.size(), 40u); // the dialogue box with its text

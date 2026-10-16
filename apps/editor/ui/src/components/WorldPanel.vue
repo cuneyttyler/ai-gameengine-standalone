@@ -6,6 +6,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
+import { confirmDialog } from '../dialogs'
 
 interface Relation {
   type: string
@@ -145,8 +146,8 @@ function snapshot(): string {
 
 const dirty = computed(() => selectedKey.value !== null && snapshot() !== savedSnapshot.value)
 
-function select(key: string): void {
-  if (dirty.value && !window.confirm('Discard your unsaved changes to this entry?')) {
+async function select(key: string): Promise<void> {
+  if (dirty.value && !(await confirmDialog({ message: 'Discard your unsaved changes to this entry?', confirmLabel: 'Discard', danger: true }))) {
     return
   }
   const entry = entries.value.find((e) => e.key === key)
@@ -167,8 +168,8 @@ function select(key: string): void {
   savedSnapshot.value = snapshot()
 }
 
-function startNew(kind: string): void {
-  if (dirty.value && !window.confirm('Discard your unsaved changes to this entry?')) {
+async function startNew(kind: string): Promise<void> {
+  if (dirty.value && !(await confirmDialog({ message: 'Discard your unsaved changes to this entry?', confirmLabel: 'Discard', danger: true }))) {
     return
   }
   selectedKey.value = ''
@@ -220,7 +221,7 @@ function revert(): void {
   }
 }
 
-function remove(): void {
+async function remove(): Promise<void> {
   const entry = entries.value.find((e) => e.key === draft.originalKey)
   if (!entry) return
   const pointing = entries.value.filter((e) => e.relations.some((r) => r.target === entry.key))
@@ -229,7 +230,7 @@ function remove(): void {
         .map((e) => e.name)
         .join(', ')}); those links will show as problems.`
     : ''
-  if (!window.confirm(`Delete "${entry.name}" (${entry.key})? This deletes its file.${warning}`)) {
+  if (!(await confirmDialog({ message: `Delete "${entry.name}" (${entry.key})? This deletes its file.${warning}`, confirmLabel: 'Delete', danger: true }))) {
     return
   }
   sendToHost({ type: 'world:delete', key: entry.key })

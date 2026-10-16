@@ -3,6 +3,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { armPrefab, editorState } from '../editorState'
 import PrefabThumb from './PrefabThumb.vue'
 import WorldPanel from './WorldPanel.vue'
+import { openContextMenu, separator, type MenuItem } from '../contextMenu'
+import { prefabMenuExtensions } from '../assetMenus'
 import StoryPanel from './StoryPanel.vue'
 import LevelPanel from './LevelPanel.vue'
 import ArtPanel from './ArtPanel.vue'
@@ -150,6 +152,33 @@ function createPrefab(asTile: boolean): void {
   })
 }
 
+// Right-click menus (development_plan.md 4.1).
+function prefabMenu(prefab: (typeof editorState.prefabs)[number], event: MouseEvent): void {
+  const items: MenuItem[] = [
+    { label: prefab.isTile ? 'Paint with it' : 'Place it', disabled: editorState.playing, action: () => armPrefab(prefab.path) },
+    ...prefabMenuExtensions.flatMap((extend) => extend(prefab)),
+    separator,
+    { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: prefab.path }) },
+  ]
+  openContextMenu(event.clientX, event.clientY, items)
+}
+
+function assetMenu(asset: Asset, event: MouseEvent): void {
+  selectedPath.value = asset.path
+  const items: MenuItem[] = [
+    { label: 'Details', action: () => (selectedPath.value = asset.path) },
+    { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: asset.path }) },
+    separator,
+    {
+      label: 'Delete…',
+      danger: true,
+      confirm: `Delete ${asset.path}? This deletes the file. Prefabs that use it will show a missing texture.`,
+      action: () => sendToHost({ type: 'asset:delete', path: asset.path }),
+    },
+  ]
+  openContextMenu(event.clientX, event.clientY, items)
+}
+
 // Prefabs tab: the project's palette.
 const tab = ref<'prefabs' | 'assets' | 'world' | 'story' | 'level' | 'art'>('prefabs')
 const visiblePrefabs = computed(() => {
@@ -234,6 +263,7 @@ onMounted(() => {
           "
           :disabled="editorState.playing"
           @click="armPrefab(prefab.path)"
+          @contextmenu.prevent="prefabMenu(prefab, $event)"
         >
           <span class="thumb">
             <PrefabThumb :prefab="prefab" :box="52" />
@@ -259,6 +289,7 @@ onMounted(() => {
           :class="{ selected: asset.path === selectedPath, broken: !!asset.error }"
           :title="asset.error || asset.path"
           @click="selectedPath = asset.path"
+          @contextmenu.prevent="assetMenu(asset, $event)"
         >
           <span class="thumb">
             <img v-if="asset.type !== 'audio' && !asset.error" :src="urlOf(asset)" alt="" draggable="false" />
