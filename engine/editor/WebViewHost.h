@@ -42,6 +42,10 @@ public:
     void NavigateToVirtualHost(const std::wstring& hostName, const std::wstring& folderPath,
                                 const std::wstring& relativePath);
 
+    // Appended as "#fragment" to every later NavigateToVirtualHost (the
+    // editor's welcome page is index.html#welcome, development_plan.md 5.4).
+    void SetUrlFragment(std::wstring fragment) { fragment_ = std::move(fragment); }
+
     // Serves another local folder under its own virtual hostname (e.g. the
     // open project, so the UI can show asset thumbnails) without navigating.
     void MapVirtualHostToFolder(const std::wstring& hostName, const std::wstring& folderPath);
@@ -57,6 +61,10 @@ private:
     void OnEnvironmentCreated(ICoreWebView2Environment* environment);
     void OnControllerCreated(ICoreWebView2Controller* controller);
     void ApplyPendingState();
+    // https://host/relative?v=<file time>#fragment
+    std::wstring VirtualUrl(const std::wstring& hostName, const std::wstring& folderPath,
+                            const std::wstring& relativePath) const;
+    std::wstring fragment_;
 
     HWND parent_;
     wil::com_ptr<ICoreWebView2Environment> environment_;

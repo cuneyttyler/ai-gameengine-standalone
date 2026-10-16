@@ -13,6 +13,7 @@ export const projectState = reactive({
   current: '',
   name: '',
   recent: [] as string[],
+  openLast: false, // start in the last project instead of the welcome window (5.4)
   showPreferences: false,
 })
 
@@ -64,6 +65,7 @@ function updateMenus(): void {
   ]
   menuExtensions.file.afterSave = [
     { label: 'Save Project As…', shortcut: 'Ctrl+Shift+S', disabled: editorState.playing, action: saveAs },
+    { label: 'Close Project', action: () => sendToHost({ type: 'project:close' }) },
   ]
   menuExtensions.file.settings = [
     { label: 'Preferences…', action: () => (projectState.showPreferences = true) },
@@ -75,6 +77,7 @@ onHostMessage((message) => {
     projectState.current = message.current as string
     projectState.name = baseName(projectState.current)
     projectState.recent = (message.recent as string[]) ?? []
+    projectState.openLast = !!message.openLast
     updateMenus()
   }
 })

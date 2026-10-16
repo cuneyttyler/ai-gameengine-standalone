@@ -104,7 +104,8 @@ void WebViewHost::ApplyPendingState() {
                                                          pendingVirtualHost_->folderPath.c_str(),
                                                          COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS);
         }
-        std::wstring url = L"https://" + pendingVirtualHost_->hostName + L"/" + pendingVirtualHost_->relativePath;
+        const std::wstring url = VirtualUrl(pendingVirtualHost_->hostName, pendingVirtualHost_->folderPath,
+                                            pendingVirtualHost_->relativePath);
         webview_->Navigate(url.c_str());
         pendingVirtualHost_.reset();
     }
@@ -135,6 +136,11 @@ void WebViewHost::NavigateToVirtualHost(const std::wstring& hostName, const std:
         webview3->SetVirtualHostNameToFolderMapping(hostName.c_str(), folderPath.c_str(),
                                                      COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS);
     }
+    webview_->Navigate(VirtualUrl(hostName, folderPath, relativePath).c_str());
+}
+
+std::wstring WebViewHost::VirtualUrl(const std::wstring& hostName, const std::wstring& folderPath,
+                                     const std::wstring& relativePath) const {
     std::wstring url = L"https://" + hostName + L"/" + relativePath;
     // WebView2 caches what the virtual host serves, so after a UI rebuild it
     // could keep showing the old index.html (and with it the old, hash-named
@@ -145,7 +151,10 @@ void WebViewHost::NavigateToVirtualHost(const std::wstring& hostName, const std:
     if (!ec) {
         url += L"?v=" + std::to_wstring(stamp.time_since_epoch().count());
     }
-    webview_->Navigate(url.c_str());
+    if (!fragment_.empty()) {
+        url += L"#" + fragment_;
+    }
+    return url;
 }
 
 void WebViewHost::MapVirtualHostToFolder(const std::wstring& hostName, const std::wstring& folderPath) {

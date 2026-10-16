@@ -12,6 +12,7 @@
 #include "editing/Edits.h"
 #include "editing/LevelBuild.h"
 #include "editing/SceneTools.h"
+#include "ai_bridge/RecentProjects.h"
 #include "assets/Export.h"
 #include "assets/SceneFiles.h"
 #include "assets/ProjectMove.h"
@@ -31,6 +32,7 @@
 #include <climits>
 #include <variant>
 #include <chrono>
+#include <ctime>
 #include <cstdio>
 #include <cmath>
 #include <cctype>
@@ -314,6 +316,21 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             return;
         }
         SwitchProject(root);
+    } else if (type == "project:close") {
+        // Back to the welcome window (5.4), after the usual question.
+        if (playing_) {
+            StopPlay();
+        }
+        if (AskToSaveChanges(L"Save changes to the scene before closing the project?")) {
+            if (StartEditorProcess(L"--welcome")) {
+                DestroyWindow(mainWindow_);
+            }
+        }
+    } else if (type == "prefs:openLast") {
+        if (userPrefs_) {
+            userPrefs_->Set("openLastProject", message.value("on", false));
+        }
+        post_(ProjectInfoJson());
     } else if (type == "project:saveAs") {
         // The copy gets the scene as it is now, saved or not; this project's
         // own files are left as they are.
@@ -1109,14 +1126,12 @@ void EditorApp::RememberRecentProject() {
         return;
     }
     const std::string current = WideToUtf8(std::filesystem::absolute(assets_.GetProject().root).wstring());
-    nlohmann::json recent = nlohmann::json::array({current});
-    for (const auto& path : userPrefs_->Get("recentProjects", nlohmann::json::array())) {
-        if (path.is_string() && path.get<std::string>() != current && recent.size() < 10 &&
-            std::filesystem::exists(std::filesystem::path(Utf8ToWide(path.get<std::string>())))) {
-            recent.push_back(path);
-        }
-    }
-    userPrefs_->Set("recentProjects", recent);
+    const std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm utc{};
+    gmtime_s(&utc, &now);
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H:%M:%SZ", &utc);
+    RememberProject(*userPrefs_, current, stamp);
 }
 
 nlohmann::json EditorApp::ProjectInfoJson() {
@@ -1124,7 +1139,8 @@ nlohmann::json EditorApp::ProjectInfoJson() {
                                        : nlohmann::json::array();
     return {{"type", "project:info"},
             {"current", WideToUtf8(std::filesystem::absolute(assets_.GetProject().root).wstring())},
-            {"recent", recent}};
+            {"recent", recent},
+            {"openLast", userPrefs_ ? userPrefs_->Get("openLastProject", false) : nlohmann::json(false)}};
 }
 
 void EditorApp::SwitchProject(const std::filesystem::path& root, bool askAboutChanges) {
@@ -1146,17 +1162,10 @@ void EditorApp::SwitchProject(const std::filesystem::path& root, bool askAboutCh
     }
     // A fresh editor process on the other project: every system (assets,
     // prefabs, AI service, undo) starts clean, exactly as when launched.
-    wchar_t exe[MAX_PATH] = {};
-    GetModuleFileNameW(nullptr, exe, MAX_PATH);
-    std::wstring command = L"\"" + std::wstring(exe) + L"\" --project \"" + std::filesystem::absolute(root).wstring() + L"\"";
-    STARTUPINFOW startup{sizeof(startup)};
-    PROCESS_INFORMATION process{};
-    if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
+    if (!StartEditorProcess(L"--project \"" + std::filesystem::absolute(root).wstring() + L"\"")) {
         post_({{"type", "notify"}, {"text", "Couldn't start the editor for that project"}});
         return;
     }
-    CloseHandle(process.hThread);
-    CloseHandle(process.hProcess);
     DestroyWindow(mainWindow_); // past WM_CLOSE: we've already asked
 }
 

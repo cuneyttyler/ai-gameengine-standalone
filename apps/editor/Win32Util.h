@@ -22,4 +22,8 @@ std::vector<std::filesystem::path> ShowImportDialog(HWND owner);
 // the user cancels.
 std::optional<std::filesystem::path> ShowFolderDialog(HWND owner, const std::wstring& title);
 
+// Starts another editor process with `arguments` (e.g. --project "<dir>",
+// or --welcome). False if it couldn't be started.
+bool StartEditorProcess(const std::wstring& arguments);
+
 } // namespace aige

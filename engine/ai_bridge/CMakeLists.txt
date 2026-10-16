@@ -21,6 +21,8 @@ add_library(aige_ai_bridge STATIC
     DryRun.cpp
     UserPrefs.h
     UserPrefs.cpp
+    RecentProjects.h
+    RecentProjects.cpp
     AiConnection.h
     AiConnection.cpp
     ReviewPolicy.h

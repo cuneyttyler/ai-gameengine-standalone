@@ -90,4 +90,18 @@ std::optional<std::filesystem::path> ShowFolderDialog(HWND owner, const std::wst
     return std::filesystem::path(path.get());
 }
 
+bool StartEditorProcess(const std::wstring& arguments) {
+    wchar_t exe[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    std::wstring command = L"\"" + std::wstring(exe) + L"\" " + arguments;
+    STARTUPINFOW startup{sizeof(startup)};
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
+        return false;
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    return true;
+}
+
 } // namespace aige

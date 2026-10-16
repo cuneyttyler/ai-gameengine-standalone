@@ -1242,6 +1242,24 @@ the Phase 4 testing (2026-10-16).
   back to the window.
 - Tests: the recent list (ordering, missing folders, pruning); the rest is on the
   checklist.
+- ✅ Built (build and tests at the end of the phase):
+  - `editor.exe` with no project (or with `--welcome`) runs the **welcome window**:
+    just the web UI (`index.html#welcome`, `WelcomeApp.vue`), with no viewport and no
+    project loaded. It shows recent projects (name, folder, last opened; missing ones
+    marked; × removes one), New Project… (name, palette, folder), Open Folder… (refuses
+    non-projects) and Open the demo. A choice starts the editor on that project as a
+    new process and closes the window (`apps/editor/Launcher`).
+  - "Open the last project directly at launch" (on the welcome page and in
+    Preferences) skips the window when the last project still exists. File ▸ Close
+    Project asks about unsaved changes, then goes back to the welcome window.
+  - `ai_bridge/RecentProjects`: remember (newest first, once each, capped, with
+    when-opened), forget, and list with an on-disk check. Paths compare whatever
+    their separators, `..` or (on Windows) case. The editor's recent list (4.2) uses
+    it too.
+  - Changes in behaviour: starting `editor.exe` with no arguments used to open the
+    demo; it now shows the welcome window. `WebViewHost` gained a URL fragment, and
+    its pending navigation now gets the cache-busting stamp too.
+  - Tests: `RecentProjectsTest` (3).
 
 **5.5 — Editor refinements** *(testing)*
 - **File ▸ Recent Projects** becomes a submenu instead of a list of items. Context

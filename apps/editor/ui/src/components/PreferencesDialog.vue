@@ -75,6 +75,14 @@ function close(): void {
       <section>
         <h4>Project</h4>
         <p class="muted">{{ projectState.current }}</p>
+        <label class="row">
+          <input
+            type="checkbox"
+            :checked="projectState.openLast"
+            @change="sendToHost({ type: 'prefs:openLast', on: ($event.target as HTMLInputElement).checked })"
+          />
+          Open the last project directly at launch (otherwise the welcome window; File ▸ Close Project shows it)
+        </label>
         <p class="muted">Project-wide settings (camera, combat, time…) are in File ▸ Project Settings.</p>
       </section>
     </div>

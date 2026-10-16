@@ -5,6 +5,7 @@
 // ("hole punching", docs/technical.md §4). The WebView2 control always
 // fills the client area; only the viewport window's bounds are dynamic.
 #include "EditorApp.h"
+#include "Launcher.h"
 #include "Win32Util.h"
 
 #include "assets/AssetDatabase.h"
@@ -34,6 +35,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <optional>
 #include <shellapi.h>
 #include <string>
 
@@ -58,21 +60,67 @@ const wchar_t* kProjectHostName = L"aige-project.local";
 aige::WebViewHost* g_webView = nullptr;
 aige::EditorApp* g_app = nullptr;
 
-// `editor.exe [--project] <dir>`; defaults to the repo's demo project.
-std::filesystem::path ProjectRootFromCommandLine() {
+// `editor.exe [--project] <dir>` opens a project; `--welcome` (or no project)
+// shows the welcome window (development_plan.md 5.4).
+struct CommandLine {
+    std::optional<std::filesystem::path> project;
+    bool welcome = false;
+};
+
+CommandLine ParseCommandLine() {
+    CommandLine result;
     int argc = 0;
     LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    std::filesystem::path root = aige::Utf8ToWide(AIGE_EDITOR_DEFAULT_PROJECT);
     for (int i = 1; i < argc; ++i) {
         std::wstring arg = argv[i];
         if (arg == L"--project" && i + 1 < argc) {
-            root = argv[++i];
+            result.project = argv[++i];
+        } else if (arg == L"--welcome") {
+            result.welcome = true;
         } else if (!arg.empty() && arg[0] != L'-') {
-            root = arg;
+            result.project = arg;
         }
     }
     LocalFree(argv);
-    return root;
+    return result;
+}
+
+// The welcome window: only the web UI (no viewport, no project), until a
+// project is chosen and a new editor process opens it.
+int RunWelcome(HWND mainWindow) {
+    SetWindowTextW(mainWindow, L"AI-Native Game Engine");
+    // Smaller than the editor, centered.
+    const int width = 1000, height = 640;
+    SetWindowPos(mainWindow, nullptr, (GetSystemMetrics(SM_CXSCREEN) - width) / 2,
+                 (GetSystemMetrics(SM_CYSCREEN) - height) / 2, width, height, SWP_NOZORDER);
+    RECT client{};
+    GetClientRect(mainWindow, &client);
+
+    aige::WebViewHost webView(mainWindow);
+    g_webView = &webView;
+    aige::Launcher launcher(mainWindow, std::filesystem::path(aige::Utf8ToWide(AIGE_EDITOR_DEFAULT_PROJECT)),
+                            [&webView](const nlohmann::json& message) {
+                                webView.PostMessageToPage(aige::Utf8ToWide(message.dump()));
+                            });
+    webView.SetBounds(0, 0, client.right - client.left, client.bottom - client.top);
+    webView.SetUrlFragment(L"welcome");
+    webView.NavigateToVirtualHost(kVirtualHostName, aige::Utf8ToWide(AIGE_EDITOR_UI_DIST_DIR), L"index.html");
+    webView.SetMessageHandler([&launcher](std::wstring json) {
+        try {
+            launcher.OnWebMessage(nlohmann::json::parse(aige::WideToUtf8(json)));
+        } catch (const nlohmann::json::exception&) {
+        }
+    });
+    ShowWindow(mainWindow, SW_SHOW);
+    UpdateWindow(mainWindow);
+
+    MSG msg{};
+    while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    g_webView = nullptr;
+    return 0;
 }
 
 // Asks about unsaved edits. Returns false if closing should be cancelled.
@@ -140,6 +188,17 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
             throw std::runtime_error("Failed to create main window");
         }
 
+        // Which project, if any (5.4): the command line, else the last one when
+        // the user asked to reopen it directly, else the welcome window.
+        CommandLine commandLine = ParseCommandLine();
+        std::optional<std::filesystem::path> projectRoot = commandLine.project;
+        if (!projectRoot && !commandLine.welcome) {
+            projectRoot = aige::LastProjectToReopen(aige::UserPrefs(aige::UserPrefs::DefaultPath()));
+        }
+        if (!projectRoot) {
+            return RunWelcome(mainWindow);
+        }
+
         RECT clientRect{};
         GetClientRect(mainWindow, &clientRect);
         int clientWidth = clientRect.right - clientRect.left;
@@ -160,7 +219,7 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
         aige::Renderer2D renderer(rhi, rhi.RenderPass());
         aige::RegisterGameUiFonts(renderer);
 
-        aige::Project project{std::filesystem::absolute(ProjectRootFromCommandLine())};
+        aige::Project project{std::filesystem::absolute(*projectRoot)};
         aige::LoadSettings(aige::EngineReflection(), project.SettingsPath().string());
         aige::RegisterEditingCommands(aige::EngineReflection());
         // The project's Lua modules (4.8), before any scene is read.
