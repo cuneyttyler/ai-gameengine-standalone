@@ -11,7 +11,9 @@ import ArtPanel from './ArtPanel.vue'
 import ScenesPanel from './ScenesPanel.vue'
 import { bottomTab } from '../scenes'
 import { onHostMessage, sendToHost } from '../ipc'
-import { askMoveToFolder, foldersOf, inFolder, moveItem, renameItem, type Root } from '../organize'
+import { askMoveManyToFolder, askMoveToFolder, foldersOf, inFolder, moveItem, renameItem, type Root } from '../organize'
+import { clickItem, emptySelection, keepShown, renamed, selectAll, type Selection } from '../selection'
+import { confirmDialog } from '../dialogs'
 
 interface Asset {
   path: string
@@ -88,19 +90,30 @@ function folderLabel(folder: string): string {
   return folder.slice(folder.lastIndexOf('/') + 1)
 }
 
-// Drag a card onto a folder to move it there.
-const dragging = ref<string | null>(null)
+// Multi-select (5.5): Ctrl+click, Shift+click, Ctrl+A, per tab.
+const assetPick = ref<Selection>(emptySelection)
+const prefabPick = ref<Selection>(emptySelection)
+const pickedAssets = computed(() => assetPick.value.picked)
+const pickedPrefabs = computed(() => prefabPick.value.picked)
+
+// Drag a card (or every picked card) onto a folder to move it there.
+const dragging = ref<string[] | null>(null)
 const dropTarget = ref<string | null>(null)
+function startDrag(path: string, picked: string[]): void {
+  dragging.value = picked.length > 1 && picked.includes(path) ? [...picked] : [path]
+}
 function dropOn(folder: string, root: Root): void {
-  if (dragging.value) moveItem(dragging.value, root, folder)
+  for (const path of dragging.value ?? []) moveItem(path, root, folder)
   dragging.value = null
   dropTarget.value = null
 }
 
 onHostMessage((message) => {
   // A moved file keeps its selection.
-  if (message.type === 'file:moved' && !message.error && selectedPath.value === message.from) {
-    selectedPath.value = message.to as string
+  if (message.type === 'file:moved' && !message.error) {
+    if (selectedPath.value === message.from) selectedPath.value = message.to as string
+    assetPick.value = renamed(assetPick.value, message.from as string, message.to as string)
+    prefabPick.value = renamed(prefabPick.value, message.from as string, message.to as string)
   }
 })
 const selected = computed(() => assets.value.find((a) => a.path === selectedPath.value) ?? null)
@@ -219,6 +232,11 @@ function createPrefab(asTile: boolean): void {
 
 // Right-click menus (development_plan.md 4.1).
 function prefabMenu(prefab: (typeof editorState.prefabs)[number], event: MouseEvent): void {
+  if (pickedPrefabs.value.length > 1 && pickedPrefabs.value.includes(prefab.path)) {
+    manyMenu('prefabs', event)
+    return
+  }
+  prefabPick.value = { picked: [prefab.path], anchor: prefab.path }
   const items: MenuItem[] = [
     { label: prefab.isTile ? 'Paint with it' : 'Place it', disabled: editorState.playing, action: () => armPrefab(prefab.path) },
     separator,
@@ -231,7 +249,84 @@ function prefabMenu(prefab: (typeof editorState.prefabs)[number], event: MouseEv
   openContextMenu(event.clientX, event.clientY, items)
 }
 
+function modifiers(event: MouseEvent | KeyboardEvent): { ctrl: boolean; shift: boolean } {
+  return { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey }
+}
+
+function clickAsset(asset: Asset, event: MouseEvent): void {
+  assetPick.value = clickItem(assetPick.value, visible.value.map((a) => a.path), asset.path, modifiers(event))
+  // The details pane shows one asset; several picked show a summary.
+  selectedPath.value = assetPick.value.picked.length === 1 ? assetPick.value.picked[0]! : null
+}
+
+function clickPrefab(prefab: (typeof editorState.prefabs)[number], event: MouseEvent): void {
+  const mods = modifiers(event)
+  prefabPick.value = clickItem(prefabPick.value, visiblePrefabs.value.map((p) => p.path), prefab.path, mods)
+  if (!mods.ctrl && !mods.shift) armPrefab(prefab.path) // a plain click still picks the brush
+}
+
+// Ctrl+A picks what's shown; Delete deletes what's picked; Esc clears.
+function gridKey(event: KeyboardEvent, which: 'assets' | 'prefabs'): void {
+  const shown = which === 'assets' ? visible.value.map((a) => a.path) : visiblePrefabs.value.map((p) => p.path)
+  const pick = which === 'assets' ? assetPick : prefabPick
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+    event.preventDefault()
+    event.stopPropagation()
+    pick.value = selectAll(shown)
+    if (which === 'assets') selectedPath.value = shown.length === 1 ? shown[0]! : null
+  } else if (event.key === 'Delete' && pick.value.picked.length > 0) {
+    event.preventDefault()
+    event.stopPropagation()
+    void deletePicked(which)
+  } else if (event.key === 'Escape' && pick.value.picked.length > 0) {
+    pick.value = emptySelection
+  }
+}
+
+async function deletePicked(which: 'assets' | 'prefabs'): Promise<void> {
+  const paths = which === 'assets' ? pickedAssets.value : pickedPrefabs.value
+  if (paths.length === 0 || editorState.playing) return
+  const list = paths.slice(0, 12).join('\n') + (paths.length > 12 ? `\n…and ${paths.length - 12} more` : '')
+  const consequence =
+    which === 'assets'
+      ? 'This deletes the files. Prefabs that use them will show a missing texture.'
+      : 'Their copies in the scene stay, as ordinary entities.'
+  if (
+    !(await confirmDialog({
+      title: `Delete ${paths.length} ${which === 'assets' ? 'assets' : 'prefabs'}`,
+      message: `${consequence}\n\n${list}`,
+      confirmLabel: 'Delete',
+      danger: true,
+    }))
+  ) {
+    return
+  }
+  for (const path of paths) sendToHost({ type: which === 'assets' ? 'asset:delete' : 'prefab:remove', path })
+  if (which === 'assets') assetPick.value = emptySelection
+  else prefabPick.value = emptySelection
+}
+
+// Right-click on one of several picked cards: what to do with all of them.
+function manyMenu(which: 'assets' | 'prefabs', event: MouseEvent): void {
+  const paths = which === 'assets' ? pickedAssets.value : pickedPrefabs.value
+  const items: MenuItem[] = [
+    {
+      label: `Move ${paths.length} to folder…`,
+      disabled: editorState.playing,
+      action: () => askMoveManyToFolder([...paths], which),
+    },
+    separator,
+    { label: `Delete ${paths.length}…`, danger: true, disabled: editorState.playing, action: () => deletePicked(which) },
+  ]
+  openContextMenu(event.clientX, event.clientY, items)
+}
+
 function assetMenu(asset: Asset, event: MouseEvent): void {
+  if (pickedAssets.value.length > 1 && pickedAssets.value.includes(asset.path)) {
+    manyMenu('assets', event)
+    return
+  }
+  assetPick.value = { picked: [asset.path], anchor: asset.path }
   selectedPath.value = asset.path
   const items: MenuItem[] = [
     { label: 'Details', action: () => (selectedPath.value = asset.path) },
@@ -269,6 +364,9 @@ const visiblePrefabs = computed(() => {
 function paletteIndex(path: string): number {
   return editorState.prefabs.findIndex((p) => p.path === path)
 }
+
+watch(visible, (list) => (assetPick.value = keepShown(assetPick.value, list.map((a) => a.path))))
+watch(visiblePrefabs, (list) => (prefabPick.value = keepShown(prefabPick.value, list.map((p) => p.path))))
 
 function applyToSelected(): void {
   sendToHost({ type: 'asset:apply', path: selectedPath.value, tile: selectedTile.value })
@@ -357,7 +455,7 @@ onMounted(() => {
             {{ label }}
           </button>
         </div>
-        <div class="grid">
+        <div class="grid" tabindex="-1" @keydown="gridKey($event, 'prefabs')">
           <p v-if="editorState.prefabs.length === 0" class="placeholder">
             No prefabs yet. Turn an asset into one from the Assets tab, or select an entity and use "Save as
             prefab" in the Inspector.
@@ -369,6 +467,7 @@ onMounted(() => {
             class="card"
             :class="{
               selected: editorState.tool === 'prefab' && editorState.brush === prefab.path,
+              picked: pickedPrefabs.length > 1 && pickedPrefabs.includes(prefab.path),
               broken: !!prefab.error,
             }"
             :title="
@@ -377,8 +476,8 @@ onMounted(() => {
             "
             :disabled="editorState.playing"
             draggable="true"
-            @click="armPrefab(prefab.path)"
-            @dragstart="dragging = prefab.path"
+            @click="clickPrefab(prefab, $event)"
+            @dragstart="startDrag(prefab.path, pickedPrefabs)"
             @dragend="dragging = null"
             @contextmenu.prevent="prefabMenu(prefab, $event)"
           >
@@ -421,7 +520,7 @@ onMounted(() => {
             {{ label }}
           </button>
         </div>
-        <div class="grid">
+        <div class="grid" tabindex="-1" @keydown="gridKey($event, 'assets')">
           <p v-if="assets.length === 0" class="placeholder">
             No assets yet. Import PNG/JPG images or WAV/MP3/FLAC audio.
           </p>
@@ -430,11 +529,11 @@ onMounted(() => {
             v-for="asset in visible"
             :key="asset.path"
             class="card"
-            :class="{ selected: asset.path === selectedPath, broken: !!asset.error }"
+            :class="{ selected: pickedAssets.includes(asset.path), broken: !!asset.error }"
             :title="asset.error || asset.path"
             draggable="true"
-            @click="selectedPath = asset.path"
-            @dragstart="dragging = asset.path"
+            @click="clickAsset(asset, $event)"
+            @dragstart="startDrag(asset.path, pickedAssets)"
             @dragend="dragging = null"
             @contextmenu.prevent="assetMenu(asset, $event)"
           >
@@ -448,7 +547,18 @@ onMounted(() => {
         </div>
       </div>
 
-      <aside v-if="selected" class="details">
+      <aside v-if="pickedAssets.length > 1" class="details">
+        <div class="title">{{ pickedAssets.length }} assets picked</div>
+        <p class="muted small">Ctrl+click adds or removes one, Shift+click a range, Ctrl+A everything shown, Esc clears.</p>
+        <div class="actions">
+          <button :disabled="editorState.playing" @click="askMoveManyToFolder([...pickedAssets], 'assets')">
+            Move to folder…
+          </button>
+          <button :disabled="editorState.playing" @click="deletePicked('assets')">Delete…</button>
+        </div>
+        <p class="muted small">Or drag any picked card onto a folder.</p>
+      </aside>
+      <aside v-else-if="selected" class="details">
         <div class="title" :title="selected.path">{{ selected.path }}</div>
         <p v-if="selected.error" class="error">{{ selected.error }}</p>
 
@@ -687,6 +797,16 @@ button.primary {
 .card.selected {
   border-color: #3b82f6;
   background: #313148;
+}
+.muted {
+  opacity: 0.6;
+}
+.small {
+  font-size: 0.85em;
+}
+.card.picked {
+  border-color: #3b82f6;
+  border-style: dashed;
 }
 .card.broken {
   border-color: #ef4444;

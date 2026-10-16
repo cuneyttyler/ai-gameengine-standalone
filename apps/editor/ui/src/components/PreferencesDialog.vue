@@ -83,7 +83,7 @@ function close(): void {
           />
           Open the last project directly at launch (otherwise the welcome window; File ▸ Close Project shows it)
         </label>
-        <p class="muted">Project-wide settings (camera, combat, time…) are in File ▸ Project Settings.</p>
+        <p class="muted">Project-wide settings (camera, combat, time…) are in File ▸ Project Settings…</p>
       </section>
     </div>
   </div>

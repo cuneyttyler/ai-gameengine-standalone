@@ -25,12 +25,12 @@ function loadAiOpen(): boolean {
 // in localStorage. Ctrl+B / Ctrl+J / Ctrl+I toggle them.
 const LAYOUT_PANELS_KEY = 'aige.editor.panels'
 
-function loadPanels(): { left: boolean; bottom: boolean } {
+function loadPanels(): { left: boolean; bottom: boolean; viewport: boolean } {
   try {
     const saved = JSON.parse(localStorage.getItem(LAYOUT_PANELS_KEY) ?? 'null')
-    return { left: saved?.left !== false, bottom: saved?.bottom !== false }
+    return { left: saved?.left !== false, bottom: saved?.bottom !== false, viewport: saved?.viewport !== false }
   } catch {
-    return { left: true, bottom: true }
+    return { left: true, bottom: true, viewport: true }
   }
 }
 
@@ -92,12 +92,27 @@ export function toggleLeftPanel(): void {
 
 export function toggleBottomPanel(): void {
   editorState.panels.bottom = !editorState.panels.bottom
+  if (!editorState.panels.bottom) showViewport(true) // something has to fill the middle
   savePanels()
+}
+
+// Ctrl+M (5.5): hides the viewport so the bottom panel takes its space
+// (writing a quest or browsing art), and brings it back.
+export function showViewport(on: boolean): void {
+  editorState.panels.viewport = on
+  if (!on) editorState.panels.bottom = true
+  sendToHost({ type: 'viewport:visible', on })
+  savePanels()
+}
+
+export function toggleViewport(): void {
+  showViewport(!editorState.panels.viewport)
 }
 
 export function runShortcut(name: string): void {
   if (name === 'toggleLeft') toggleLeftPanel()
   else if (name === 'toggleBottom') toggleBottomPanel()
+  else if (name === 'toggleViewport') toggleViewport()
   else if (name === 'toggleAi') setAiOpen(!editorState.aiOpen)
   else if (name === 'help') editorState.showShortcuts = true
 }
@@ -222,7 +237,7 @@ window.addEventListener('keydown', (event) => {
     }
   }
   if (event.ctrlKey && !typing) {
-    const layout: Record<string, string> = { b: 'toggleLeft', j: 'toggleBottom', i: 'toggleAi' }
+    const layout: Record<string, string> = { b: 'toggleLeft', j: 'toggleBottom', i: 'toggleAi', m: 'toggleViewport' }
     if (layout[key]) {
       event.preventDefault()
       runShortcut(layout[key])

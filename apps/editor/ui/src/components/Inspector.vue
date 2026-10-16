@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // The Reflection Inspector: every section and field is generated from the
 // engine's reflection registry (apps/editor/EditorApp InspectorJson /
-// SettingsJson) — names, types, descriptions, constraints. With nothing
-// selected it shows the project settings, generated the same way.
-import { onMounted, reactive, ref } from 'vue'
+// SettingsJson) — names, types, descriptions, constraints. Project settings
+// have their own window (ProjectSettingsDialog, 5.5).
+import { reactive, ref } from 'vue'
 import { askAiAbout, editorState } from '../editorState'
+import { projectState } from '../projects'
 import { onHostMessage, sendToHost } from '../ipc'
 import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
 
@@ -34,14 +35,7 @@ interface InspectorData {
   choices: Choices
 }
 
-interface SettingsSection {
-  name: string
-  description: string
-  fields: FieldData[]
-}
-
 const current = ref<InspectorData | null>(null)
-const settings = ref<SettingsSection[]>([])
 const collapsed = reactive<Record<string, boolean>>({})
 // Last validation error per "Component.field" (or "Section.field").
 const errors = reactive<Record<string, string>>({})
@@ -65,9 +59,6 @@ onHostMessage((message) => {
     current.value = data
   } else if (message.type === 'inspector:clear') {
     current.value = null
-    sendToHost({ type: 'settings:request' })
-  } else if (message.type === 'settings:data') {
-    settings.value = message.sections as SettingsSection[]
   } else if (message.type === 'inspector:fieldError') {
     const key = `${message.component}.${message.field}`
     if (message.error) {
@@ -78,16 +69,10 @@ onHostMessage((message) => {
   }
 })
 
-onMounted(() => sendToHost({ type: 'settings:request' }))
-
 function setField(component: string, field: FieldData, value: unknown): void {
   if (current.value) {
     sendToHost({ type: 'inspector:setField', id: current.value.id, component, field: field.name, value })
   }
-}
-
-function setSetting(section: string, field: FieldData, value: unknown): void {
-  sendToHost({ type: 'settings:set', section, field: field.name, value })
 }
 
 function addComponent(event: Event): void {
@@ -151,41 +136,13 @@ function numberFrom(event: Event): number {
 
 <template>
   <div class="panel inspector">
-    <h2>{{ current ? 'Inspector' : 'Project Settings' }}</h2>
+    <h2>Inspector</h2>
 
-    <!-- Nothing selected: project settings, generated from the registry. -->
+    <!-- Nothing selected. Project settings have their own window (5.5). -->
     <template v-if="!current">
-      <p class="hint">Select something in the viewport or Scene Tree to inspect it. Settings save with the scene.</p>
-      <section v-for="section in settings" :key="section.name" class="component">
-        <header>
-          <button
-            class="collapse"
-            :title="section.description"
-            @click="collapsed[section.name] = !collapsed[section.name]"
-          >
-            {{ collapsed[section.name] ? '▸' : '▾' }} {{ section.name }}
-          </button>
-        </header>
-        <div v-if="!collapsed[section.name]" class="fields">
-          <template v-for="field in section.fields" :key="field.name">
-            <div class="field-row">
-              <label :title="field.description">
-                {{ field.name }}
-                <button
-                  v-if="editorState.ai.state === 'ready'"
-                  class="ask-ai"
-                  title="Ask AI about this setting"
-                  @click="askAiAbout(`Settings.${section.name}.${field.name}`)"
-                >
-                  ✦
-                </button>
-              </label>
-              <FieldEditor :field="field" @change="setSetting(section.name, field, $event)" />
-            </div>
-            <div v-if="errors[`${section.name}.${field.name}`]" class="field-error">
-              {{ errors[`${section.name}.${field.name}`] }}
-            </div>
-          </template>
+      <p class="hint">Select something in the viewport or Scene Tree to inspect it.</p>
+      <button class="settings-link" @click="projectState.showProjectSettings = true">Project Settings…</button>
+    </template>
         </div>
       </section>
     </template>
@@ -373,6 +330,20 @@ function numberFrom(event: Event): number {
 </template>
 
 <style scoped>
+.settings-link {
+  margin: 4px 0 0;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #333;
+  border-radius: 0;
+  background: #11111b;
+  color: #eee;
+  font: inherit;
+  cursor: pointer;
+}
+.settings-link:hover {
+  background: #262637;
+}
 .panel {
   padding: 12px;
   flex: 1;

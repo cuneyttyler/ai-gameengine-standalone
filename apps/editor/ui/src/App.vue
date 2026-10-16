@@ -14,7 +14,8 @@ import DialogHost from './components/DialogHost.vue'
 import ContextMenuHost from './components/ContextMenuHost.vue'
 import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import PreferencesDialog from './components/PreferencesDialog.vue'
-import { toggleBottomPanel, toggleLeftPanel } from './editorState'
+import ProjectSettingsDialog from './components/ProjectSettingsDialog.vue'
+import { showViewport, toggleBottomPanel, toggleLeftPanel } from './editorState'
 
 // Panel sizes are per-user layout preferences, so localStorage is enough.
 // Every access is guarded: storage can be unavailable, and the layout must
@@ -80,6 +81,7 @@ function saveLayout(): void {
 }
 
 onMounted(() => {
+  if (!editorState.panels.viewport) showViewport(false)
   try {
     const saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? 'null')
     if (saved && typeof saved.sidebarWidth === 'number' && typeof saved.treeFraction === 'number') {
@@ -117,12 +119,30 @@ onMounted(() => {
     <Splitter v-show="editorState.panels.left" direction="horizontal" @drag="onSidebarDrag" @end="saveLayout" />
     <main class="viewport-region">
       <Toolbar />
-      <div class="viewport-slot">
+      <!-- v-show: the hole keeps reporting (0 x 0 while hidden; the host hides the native window). -->
+      <div v-show="editorState.panels.viewport" class="viewport-slot">
         <ViewportHole />
       </div>
-      <Splitter v-show="editorState.panels.bottom" direction="vertical" @drag="onAssetPanelDrag" @end="saveLayout" />
+      <button
+        v-if="!editorState.panels.viewport"
+        class="bottom-rail"
+        title="Show the viewport (Ctrl+M)"
+        @click="showViewport(true)"
+      >
+        ▾ Viewport
+      </button>
+      <Splitter
+        v-show="editorState.panels.bottom && editorState.panels.viewport"
+        direction="vertical"
+        @drag="onAssetPanelDrag"
+        @end="saveLayout"
+      />
       <!-- v-show: hiding keeps the tabs' state (drafts in Story, World, Art). -->
-      <div v-show="editorState.panels.bottom" class="asset-slot" :style="{ height: `${assetPanelHeight}px` }">
+      <div
+        v-show="editorState.panels.bottom"
+        class="asset-slot"
+        :class="{ fill: !editorState.panels.viewport }"
+        :style="editorState.panels.viewport ? { height: `${assetPanelHeight}px` } : {}"
         <AssetBrowser />
       </div>
       <button v-if="!editorState.panels.bottom" class="bottom-rail" title="Show the bottom panel (Ctrl+J)" @click="toggleBottomPanel">
@@ -151,6 +171,7 @@ onMounted(() => {
   <ContextMenuHost />
   <ShortcutsDialog />
   <PreferencesDialog />
+  <ProjectSettingsDialog />
   <DialogHost />
 </template>
 
@@ -268,5 +289,8 @@ onMounted(() => {
 .asset-slot {
   flex-shrink: 0;
   min-height: 0;
+}
+.asset-slot.fill {
+  flex: 1;
 }
 </style>

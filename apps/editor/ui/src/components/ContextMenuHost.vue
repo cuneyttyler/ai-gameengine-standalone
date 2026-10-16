@@ -1,10 +1,44 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import { closeContextMenu, menuState, runMenuItem } from '../contextMenu'
+import { closeContextMenu, menuState, runMenuItem, type MenuItem } from '../contextMenu'
 import { trackOverlay, untrackOverlay } from '../overlay'
 
 const menu = ref<HTMLElement | null>(null)
 const position = ref({ x: 0, y: 0 })
+// The open submenu (5.5): its items and where it sits, beside its item.
+const sub = ref<HTMLElement | null>(null)
+const subItems = ref<MenuItem[] | null>(null)
+const subPosition = ref({ x: 0, y: 0 })
+const subOwner = ref(-1)
+
+async function hover(item: MenuItem, index: number, event: MouseEvent): Promise<void> {
+  if (!item.submenu || item.disabled) {
+    closeSub()
+    return
+  }
+  if (subOwner.value === index) return
+  closeSub()
+  const r = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  subItems.value = item.submenu
+  subOwner.value = index
+  subPosition.value = { x: r.right, y: r.top - 4 }
+  await nextTick()
+  if (!sub.value) return
+  const s = sub.value.getBoundingClientRect()
+  subPosition.value = {
+    // Flip to the left when there's no room on the right.
+    x: r.right + s.width > window.innerWidth - 4 ? Math.max(4, r.left - s.width) : r.right,
+    y: Math.min(r.top - 4, window.innerHeight - s.height - 4),
+  }
+  await nextTick()
+  trackOverlay(sub.value)
+}
+
+function closeSub(): void {
+  if (sub.value) untrackOverlay(sub.value)
+  subItems.value = null
+  subOwner.value = -1
+}
 
 watch(
   () => menuState.open,
@@ -22,14 +56,24 @@ watch(
       await nextTick()
       trackOverlay(menu.value)
       menu.value.focus()
-    } else if (menu.value) {
-      untrackOverlay(menu.value)
+    } else {
+      closeSub()
+      if (menu.value) untrackOverlay(menu.value)
     }
   },
 )
 
+// Moving across the menu bar swaps the items while open.
+watch(
+  () => menuState.items,
+  () => closeSub(),
+)
+
 window.addEventListener('mousedown', (event) => {
-  if (menuState.open && menu.value && !menu.value.contains(event.target as Node)) closeContextMenu()
+  const target = event.target as Node
+  if (menuState.open && menu.value && !menu.value.contains(target) && !(sub.value && sub.value.contains(target))) {
+    closeContextMenu()
+  }
 })
 window.addEventListener('blur', () => closeContextMenu())
 
@@ -51,11 +95,33 @@ function onKeydown(event: KeyboardEvent): void {
   >
     <template v-for="(item, i) in menuState.items" :key="i">
       <div v-if="item.separator" class="separator"></div>
-      <button v-else :disabled="item.disabled" :class="{ danger: item.danger }" @click="runMenuItem(item)">
+      <button
+        v-else
+        :disabled="item.disabled"
+        :class="{ danger: item.danger, open: subOwner === i }"
+        @click="runMenuItem(item)"
+        @mouseenter="hover(item, i, $event)"
+      >
         <span>{{ item.label }}</span>
-        <span v-if="item.shortcut" class="shortcut">{{ item.shortcut }}</span>
+        <span v-if="item.submenu" class="shortcut">▸</span>
+        <span v-else-if="item.shortcut" class="shortcut">{{ item.shortcut }}</span>
       </button>
     </template>
+  </div>
+  <div
+    v-if="menuState.open && subItems"
+    ref="sub"
+    class="menu"
+    :style="{ left: subPosition.x + 'px', top: subPosition.y + 'px' }"
+    @contextmenu.prevent
+  >
+    <template v-for="(item, i) in subItems" :key="i">
+      <div v-if="item.separator" class="separator"></div>
+      <button v-else :disabled="item.disabled" :class="{ danger: item.danger }" :title="item.shortcut" @click="runMenuItem(item)">
+        <span>{{ item.label }}</span>
+      </button>
+    </template>
+    <div v-if="subItems.length === 0" class="empty">Nothing yet</div>
   </div>
 </template>
 
@@ -95,6 +161,13 @@ button.danger {
   color: #fca5a5;
 }
 .shortcut {
+  opacity: 0.5;
+}
+button.open {
+  background: #313148;
+}
+.empty {
+  padding: 5px 12px;
   opacity: 0.5;
 }
 .separator {

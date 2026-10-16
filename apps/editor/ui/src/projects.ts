@@ -15,6 +15,7 @@ export const projectState = reactive({
   recent: [] as string[],
   openLast: false, // start in the last project instead of the welcome window (5.4)
   showPreferences: false,
+  showProjectSettings: false, // File ▸ Project Settings (5.5)
 })
 
 function baseName(path: string): string {
@@ -47,13 +48,20 @@ async function saveAs(): Promise<void> {
   if (name?.trim()) sendToHost({ type: 'project:saveAs', name: name.trim() })
 }
 
+// File ▸ Recent Projects ▸ (a submenu, 5.5): the full path shows on hover.
 function recentItems(): MenuItem[] {
-  const others = projectState.recent.filter((p) => p !== projectState.current).slice(0, 8)
-  return others.map((path) => ({
-    label: `Recent: ${baseName(path)}`,
-    shortcut: path.length > 40 ? '…' + path.slice(-38) : path,
-    action: () => sendToHost({ type: 'project:open', path }),
-  }))
+  const others = projectState.recent.filter((p) => p !== projectState.current).slice(0, 10)
+  return [
+    {
+      label: 'Recent Projects',
+      disabled: editorState.playing,
+      submenu: others.map((path) => ({
+        label: baseName(path),
+        shortcut: path,
+        action: () => sendToHost({ type: 'project:open', path }),
+      })),
+    },
+  ]
 }
 
 function updateMenus(): void {

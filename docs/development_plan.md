@@ -1275,6 +1275,28 @@ the Phase 4 testing (2026-10-16).
   Esc), instead of taking over the Inspector where it can't be closed.
 - Tests: the selection logic (ranges, Ctrl+A in a filtered view), multi-file moves
   through the 4.4 path, and the checklist for the rest.
+- ✅ Built (build and tests at the end of the phase):
+  - **Submenus** in context menus and the menu bar (`MenuItem.submenu`, opening on
+    hover beside the item, flipping left at the screen edge, cut out of the viewport
+    like other overlays). **File ▸ Recent Projects ▸** uses one, with the full path on
+    hover.
+  - **Multi-select** in Prefabs and Assets (`selection.ts`): Ctrl+click toggles,
+    Shift+click picks a range from the anchor (Ctrl+Shift adds it), Ctrl+A picks what
+    the folder, filter and search show, Esc clears, and Delete deletes the picks after
+    one confirmation listing them. Right-clicking a picked card acts on all of them
+    (Move N to folder…, Delete N…), and dragging one drags them all onto a folder. A
+    plain click on a prefab still picks the brush. Assets show a summary pane when
+    several are picked. Moves keep the picks under their new paths.
+  - **Ctrl+M** shows or hides the viewport. The bottom panel takes its space and the
+    native window is hidden (`viewport:visible`). It's remembered, it works from the
+    viewport too, and it's in View ▸ Viewport and the shortcuts list. Hiding the bottom
+    panel brings the viewport back, so the middle is never empty.
+  - The F1 entry reads "Shortcuts".
+  - **Project Settings in its own window** (`ProjectSettingsDialog`): File ▸ Project
+    Settings… opens it, with × and Esc to close, collapsible sections, field errors
+    and ✦ Ask AI. The Inspector with nothing selected now just points there.
+  - Tests: `apps/editor/ui/tests/selection.test.ts` (7, `npm test`, Node's own test
+    runner with no new dependency). Multi-file moves reuse 4.4's tested path.
 
 **Phase 5 exit criteria:** a game can be exported and played outside the editor;
 top-down tiles paint cleanly onto the isometric grid; a game can span several connected

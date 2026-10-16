@@ -68,6 +68,19 @@ export async function renameItem(path: string): Promise<void> {
   sendToHost({ type: 'file:move', from: path, to: `${path.slice(0, path.lastIndexOf('/') + 1)}${clean}${ext}` })
 }
 
+// Several at once (multi-select, 5.5): one question, then a move each.
+export async function askMoveManyToFolder(paths: string[], root: Root): Promise<void> {
+  if (paths.length === 0) return
+  const folder = await promptDialog({
+    title: 'Move to folder',
+    message: `Folder inside ${root}/ for ${paths.length} items (empty for the top). New folders are created. References are updated.`,
+    value: folderOf(paths[0]!, root),
+    placeholder: 'characters',
+    confirmLabel: 'Move',
+  })
+  if (folder !== null) for (const path of paths) moveItem(path, root, folder)
+}
+
 export async function askMoveToFolder(path: string, root: Root): Promise<void> {
   const folder = await promptDialog({
     title: 'Move to folder',

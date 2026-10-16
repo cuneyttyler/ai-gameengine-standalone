@@ -13,6 +13,8 @@ export interface MenuItem {
   // Asked before `action` runs.
   confirm?: string
   separator?: boolean
+  // Opens beside the item on hover (development_plan.md 5.5), e.g. File ▸ Recent Projects.
+  submenu?: MenuItem[]
 }
 
 export const menuState = reactive({ open: false, x: 0, y: 0, items: [] as MenuItem[] })
@@ -29,6 +31,7 @@ export function closeContextMenu(): void {
 }
 
 export async function runMenuItem(item: MenuItem): Promise<void> {
+  if (item.submenu) return // opens on hover; nothing to run
   closeContextMenu()
   if (item.disabled || !item.action) return
   if (item.confirm && !(await confirmDialog({ message: item.confirm, confirmLabel: item.label.replace(/…$/, ''), danger: item.danger }))) {

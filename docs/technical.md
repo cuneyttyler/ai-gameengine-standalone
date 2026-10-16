@@ -234,6 +234,7 @@ generated field automatically gets the "Ask AI" affordance for free.
   - Performance (4.6): UI → host `view:stats` (toggles the F3 overlay).
   - Export (5.1): UI → host `game:export {name, zip}`, `game:reveal {path}`; host → UI
     `game:exported {ok, error, folder, zip, files, build}`.
+  - Editor refinements (5.5): UI → host `viewport:visible {on}` (Ctrl+M).
   - Welcome window (5.4, `apps/editor/Launcher`): UI → host `welcome:request`,
     `welcome:open {path}`, `welcome:openFolder`, `welcome:demo`, `welcome:new {name, starter}`,
     `welcome:forget {path}`, `prefs:openLast {on}`; host → UI `welcome:info {recent, openLast,

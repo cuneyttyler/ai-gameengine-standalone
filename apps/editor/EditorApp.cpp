@@ -227,6 +227,9 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     } else if (type == "view:grid") {
         showGrid_ = message.value("on", !showGrid_);
         editorStateStale_ = true;
+    } else if (type == "viewport:visible") {
+        // Ctrl+M (5.5): the UI lets the bottom panel take the space.
+        ShowWindow(viewport_.Handle(), message.value("on", true) ? SW_SHOWNA : SW_HIDE);
     } else if (type == "view:stats") {
         showStats_ = !showStats_;
     } else if (type == "play:toggle") {
@@ -1340,9 +1343,12 @@ void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
             OnWebMessage({{"type", "project:open"}});
             return;
         }
-        if (virtualKey == 'B' || virtualKey == 'J' || virtualKey == 'I') {
+        if (virtualKey == 'B' || virtualKey == 'J' || virtualKey == 'I' || virtualKey == 'M') {
             post_({{"type", "ui:shortcut"},
-                   {"name", virtualKey == 'B' ? "toggleLeft" : virtualKey == 'J' ? "toggleBottom" : "toggleAi"}});
+                   {"name", virtualKey == 'B'   ? "toggleLeft"
+                            : virtualKey == 'J' ? "toggleBottom"
+                            : virtualKey == 'I' ? "toggleAi"
+                                                : "toggleViewport"}});
             return;
         }
         switch (virtualKey) {

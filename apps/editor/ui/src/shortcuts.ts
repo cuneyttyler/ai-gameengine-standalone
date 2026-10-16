@@ -48,6 +48,7 @@ export const shortcutGroups: { name: string; items: Shortcut[] }[] = [
       { keys: 'Ctrl+B', action: 'Show / hide the Scene panel (left)' },
       { keys: 'Ctrl+J', action: 'Show / hide the bottom panel' },
       { keys: 'Ctrl+I', action: 'Show / hide the AI panel' },
+      { keys: 'Ctrl+M', action: 'Show / hide the viewport (the bottom panel takes its space)' },
       { keys: 'F3', action: 'Frame stats: frame and update time, sprites drawn and culled, draw calls' },
     ],
   },
@@ -62,5 +63,5 @@ export const shortcutGroups: { name: string; items: Shortcut[] }[] = [
       { keys: 'Esc', action: 'Stop playing' },
     ],
   },
-  { name: 'Help', items: [{ keys: 'F1', action: 'This list' }] },
+  { name: 'Help', items: [{ keys: 'F1', action: 'Shortcuts' }] },
 ]

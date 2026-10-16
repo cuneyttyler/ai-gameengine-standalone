@@ -3,7 +3,7 @@
 // prefab card's Delete.
 import { watch } from 'vue'
 import { prefabMenuExtensions } from './assetMenus'
-import { editorState } from './editorState'
+import { editorState, runShortcut } from './editorState'
 import { sendToHost } from './ipc'
 import { menuExtensions } from './menus'
 import { entityMenuExtensions, groundMenuExtensions } from './sceneMenus'
@@ -17,11 +17,16 @@ function updateMenus(): void {
   ]
   menuExtensions.view = [
     { label: 'Frame stats', shortcut: 'F3', action: () => sendToHost({ type: 'view:stats' }) },
+    {
+      label: `${editorState.panels.viewport ? '✓ ' : ''}Viewport`,
+      shortcut: 'Ctrl+M',
+      action: () => runShortcut('toggleViewport'),
+    },
     { label: `${editorState.grid ? '✓ ' : ''}Tile grid on empty ground`, shortcut: 'G', action: () => sendToHost({ type: 'view:grid' }) },
   ]
 }
 
-watch(() => [editorState.selectedId, editorState.grid], updateMenus, { immediate: true })
+watch(() => [editorState.selectedId, editorState.grid, editorState.panels.viewport], updateMenus, { immediate: true })
 
 entityMenuExtensions.push((entity) => [
   ...(entity.tile

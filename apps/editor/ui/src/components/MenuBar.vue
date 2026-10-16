@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { projectState } from '../projects'
 // The menu bar (development_plan.md 4.1): File, Edit, View, Play, Help. Its
 // dropdowns are context menus (contextMenu.ts) opened under the title, so
 // they're cut out of the viewport like any other overlay.
@@ -16,14 +17,7 @@ const menus = computed<Record<string, MenuItem[]>>(() => ({
     { label: 'Save', shortcut: 'Ctrl+S', disabled: editorState.playing, action: () => sendToHost({ type: 'scene:save' }) },
     ...menuExtensions.file.afterSave,
     separator,
-    {
-      label: 'Project Settings',
-      action: () => {
-        // With nothing selected the Inspector shows the project's settings.
-        sendToHost({ type: 'entity:select', id: null })
-        if (!editorState.panels.left) runShortcut('toggleLeft')
-      },
-    },
+    { label: 'Project Settings…', action: () => (projectState.showProjectSettings = true) },
     ...menuExtensions.file.settings,
     separator,
     { label: 'Exit', action: () => sendToHost({ type: 'app:quit' }) },
