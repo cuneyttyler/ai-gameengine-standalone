@@ -8,6 +8,7 @@
 #include "gameplay/Settings.h"
 #include "audio/Audio.h"
 #include "ecs/Registry.h"
+#include "gameplay/Benchmark.h"
 #include "gameplay/BootstrapLevel.h"
 #include "gameplay/CameraFollow.h"
 #include "gameplay/GameSession.h"
@@ -20,6 +21,7 @@
 #include "scripting/LuaVM.h"
 
 #include <chrono>
+#include <cstdio>
 #include <iostream>
 #include <string>
 
@@ -32,10 +34,13 @@ int main(int argc, char** argv) {
         std::filesystem::path root = AIGE_DEFAULT_PROJECT;
         bool uiPreview = false;   // --ui-preview: sample game UI over the level (UI development)
         double exitAfter = -1.0;  // --exit-after <seconds>: quit by itself (smoke runs)
+        bool bench = false;       // --bench: 10k tiles + 500 characters, stats on (development_plan.md 4.6)
         for (int i = 1; i < argc; ++i) {
             std::string arg = argv[i];
             if (arg == "--project" && i + 1 < argc) {
                 root = argv[++i];
+            } else if (arg == "--bench") {
+                bench = true;
             } else if (arg == "--ui-preview") {
                 uiPreview = true;
             } else if (arg == "--exit-after" && i + 1 < argc) {
@@ -66,6 +71,12 @@ int main(int argc, char** argv) {
         aige::LuaVM lua;
         aige::Registry registry;
         auto loadLevel = [&]() {
+            if (bench) {
+                registry.clear();
+                aige::BuildBenchmarkScene(registry);
+                std::cout << "Benchmark scene: 10000 tiles, 500 characters" << std::endl;
+                return;
+            }
             if (aige::LoadScene(registry, project.MainScenePath().string())) {
                 std::cout << "Loaded " << project.MainScenePath().string() << std::endl;
             } else {
@@ -107,6 +118,9 @@ int main(int argc, char** argv) {
         // (re)starts so it doesn't sweep across the map.
         aige::Camera2D camera;
         camera.zoom = settings.camera.playZoom;
+        if (bench) {
+            camera.zoom = 0.3f; // most of the field on screen: far past the old 4096-sprite limit
+        }
         auto snapCamera = [&]() {
             aige::UpdateWorldToScreen(registry, aige::BootstrapIso());
             if (auto player = aige::FindPlayer(registry)) {
@@ -116,6 +130,11 @@ int main(int argc, char** argv) {
             }
         };
         snapCamera();
+
+        // F3: frame stats (smoothed), on from the start in --bench.
+        bool showStats = bench;
+        bool f3WasDown = false;
+        double frameMs = 0.0, updateMs = 0.0, benchFrames = 0.0, benchFrameMs = 0.0, benchUpdateMs = 0.0;
 
         const auto startTime = Clock::now();
         while (!window.ShouldClose()) {
@@ -130,7 +149,21 @@ int main(int argc, char** argv) {
             auto currentTime = Clock::now();
             double frameSeconds = std::chrono::duration<double>(currentTime - previousTime).count();
             previousTime = currentTime;
+            const auto updateStart = Clock::now();
             session.Advance(frameSeconds, isKeyDown);
+            const double stepMs = std::chrono::duration<double, std::milli>(Clock::now() - updateStart).count();
+            frameMs = frameMs * 0.9 + frameSeconds * 1000.0 * 0.1;
+            updateMs = updateMs * 0.9 + stepMs * 0.1;
+            if (bench && std::chrono::duration<double>(currentTime - startTime).count() > 1.0) { // after warm-up
+                benchFrames += 1.0;
+                benchFrameMs += frameSeconds * 1000.0;
+                benchUpdateMs += stepMs;
+            }
+            const bool f3Down = window.IsKeyDown(aige::Key::F3);
+            if (f3Down && !f3WasDown) {
+                showStats = !showStats;
+            }
+            f3WasDown = f3Down;
 
             // Player death: a short pause, then restart the level.
             for (const auto& event : session.Events()) {
@@ -176,6 +209,24 @@ int main(int argc, char** argv) {
                 if (!banner.first.empty()) {
                     aige::AddBanner(ui, banner.first, banner.second, width, height);
                 }
+                if (showStats) {
+                    const aige::RenderStats& stats = renderer.LastStats();
+                    char lines[3][96];
+                    std::snprintf(lines[0], sizeof(lines[0]), "frame %.1f ms (%.0f fps)", frameMs,
+                                  frameMs > 0.0 ? 1000.0 / frameMs : 0.0);
+                    std::snprintf(lines[1], sizeof(lines[1]), "update %.2f ms", updateMs);
+                    std::snprintf(lines[2], sizeof(lines[2]), "sprites %zu drawn, %zu culled - %zu draw calls",
+                                  stats.sprites, stats.culled, stats.drawCalls);
+                    const aige::Font& font = aige::Font::Builtin(14.0f);
+                    float textWidth = 0.0f;
+                    for (const char* line : lines) textWidth = std::max(textWidth, font.Measure(line));
+                    aige::AddUiRect(ui, 8.0f, 8.0f, 20.0f + textWidth, 14.0f + font.LineHeight() * 3.0f,
+                                    {0.0f, 0.0f, 0.0f, 0.65f});
+                    for (int i = 0; i < 3; ++i) {
+                        font.Draw(ui, lines[i], 14.0f, 11.0f + font.LineHeight() * static_cast<float>(i),
+                                  {0.85f, 0.95f, 0.85f, 1.0f});
+                    }
+                }
                 if (uiPreview) {
                     aige::AddObjective(ui, "Clear the courtyard", "Skeletons defeated: 2/4", width, height);
                     aige::DialogueView view;
@@ -195,6 +246,10 @@ int main(int argc, char** argv) {
                 renderer.Render(cmd, registry, camera, overlay, ui);
                 rhi.EndFrame();
             }
+        }
+        if (bench && benchFrames > 0.0) {
+            std::cout << "Benchmark: " << benchFrames << " frames, average frame " << benchFrameMs / benchFrames
+                      << " ms, update " << benchUpdateMs / benchFrames << " ms" << std::endl;
         }
     } catch (const std::exception& e) {
         std::cerr << "Fatal: " << e.what() << std::endl;

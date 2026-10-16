@@ -47,7 +47,7 @@ export const shortcutGroups: { name: string; items: Shortcut[] }[] = [
       { keys: 'Ctrl+B', action: 'Show / hide the Scene panel (left)' },
       { keys: 'Ctrl+J', action: 'Show / hide the bottom panel' },
       { keys: 'Ctrl+I', action: 'Show / hide the AI panel' },
-      { keys: 'F3', action: 'Frame stats in play' },
+      { keys: 'F3', action: 'Frame stats: frame and update time, sprites drawn and culled, draw calls' },
     ],
   },
   {

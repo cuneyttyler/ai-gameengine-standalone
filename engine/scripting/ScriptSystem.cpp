@@ -1,5 +1,7 @@
 #include "scripting/ScriptSystem.h"
 
+#include <unordered_map>
+
 #include "scripting/Components.h"
 #include "scripting/LuaVM.h"
 
@@ -84,6 +86,13 @@ std::vector<ScriptProperty> ReadScriptProperties(LuaVM& vm, const std::filesyste
 
 void UpdateScripts(Registry& registry, LuaVM& vm, float dt, const ScriptBinder& binder,
                    const std::filesystem::path& baseDir, const ScriptErrorFn& onError) {
+    // Hot reload checks each script file's time once per update, not once
+    // per entity: 500 skeletons share one file (development_plan.md 4.6).
+    struct FileTime {
+        std::filesystem::file_time_type time;
+        std::error_code ec;
+    };
+    std::unordered_map<std::string, FileTime> fileTimes;
     auto view = registry.view<LuaScript>();
     for (auto entity : view) {
         auto& script = view.get<LuaScript>(entity);
@@ -92,8 +101,12 @@ void UpdateScripts(Registry& registry, LuaVM& vm, float dt, const ScriptBinder& 
             scriptPath = baseDir / scriptPath;
         }
 
-        std::error_code ec;
-        auto mtime = std::filesystem::last_write_time(scriptPath, ec);
+        auto [cached, inserted] = fileTimes.try_emplace(script.path);
+        if (inserted) {
+            cached->second.time = std::filesystem::last_write_time(scriptPath, cached->second.ec);
+        }
+        const std::error_code ec = cached->second.ec;
+        const auto mtime = cached->second.time;
         // Load when the file changed since the last attempt (Unload() resets
         // the time to force one). A failed load isn't retried every frame —
         // only once the file is saved again.
@@ -117,7 +130,9 @@ void UpdateScripts(Registry& registry, LuaVM& vm, float dt, const ScriptBinder& 
             } else {
                 script.loaded = true;
                 ApplyScriptProperties(vm, script);
-                std::cout << "[Lua] (re)loaded " << script.path << std::endl;
+                if (inserted) { // once per file, not once per entity using it
+                    std::cout << "[Lua] (re)loaded " << script.path << std::endl;
+                }
             }
         }
 

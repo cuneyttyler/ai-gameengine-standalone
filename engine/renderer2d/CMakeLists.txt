@@ -21,6 +21,8 @@ add_library(aige_renderer2d STATIC
     ImageData.h
     Renderer2D.h
     Renderer2D.cpp
+    SpriteCulling.h
+    SpriteCulling.cpp
     Text.h
     Text.cpp
     ${AIGE_FONT_CPP}

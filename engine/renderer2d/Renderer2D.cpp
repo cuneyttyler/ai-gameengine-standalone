@@ -451,10 +451,27 @@ void Renderer2D::CreatePipeline() {
 
 void Renderer2D::CreateVertexBuffers() {
     vertexBuffers_.resize(VulkanRHI::MaxFramesInFlight());
-
-    VkDeviceSize bufferSize = static_cast<VkDeviceSize>(kMaxSprites) * kVerticesPerSprite * sizeof(SpriteVertex);
-
     for (auto& buf : vertexBuffers_) {
+        CreateVertexBuffer(buf, kInitialSprites * kVerticesPerSprite);
+    }
+}
+
+void Renderer2D::EnsureCapacity(Buffer& buf, uint32_t vertices) {
+    if (vertices <= buf.capacity) {
+        return;
+    }
+    uint32_t capacity = std::max(buf.capacity, 1u);
+    while (capacity < vertices) {
+        capacity *= 2;
+    }
+    vmaDestroyBuffer(rhi_.Allocator(), buf.buffer, buf.allocation);
+    buf = {};
+    CreateVertexBuffer(buf, capacity);
+}
+
+void Renderer2D::CreateVertexBuffer(Buffer& buf, uint32_t vertices) {
+    VkDeviceSize bufferSize = static_cast<VkDeviceSize>(vertices) * sizeof(SpriteVertex);
+    {
         VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         bufferInfo.size = bufferSize;
         bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
@@ -470,6 +487,7 @@ void Renderer2D::CreateVertexBuffers() {
                                  &allocResult),
                 "vmaCreateBuffer(vertex)");
         buf.mapped = allocResult.pMappedData;
+        buf.capacity = vertices;
     }
 }
 
@@ -484,20 +502,21 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
                         std::span<const OverlayLine> overlay, std::span<const UiQuad> ui) {
     struct Instance {
         Entity entity;
-        float depth;
         const Texture* texture;
     };
     std::vector<Instance> instances;
 
+    // Only what the camera sees, in painter's order (4.6).
+    VkExtent2D target = rhi_.SwapchainExtent();
+    size_t culled = 0;
     auto view = registry.view<ScreenTransform2D, Sprite>();
-    instances.reserve(view.size_hint());
-    for (auto entity : view) {
+    const std::vector<Entity> visible = VisibleSprites(registry, camera, static_cast<float>(target.width),
+                                                       static_cast<float>(target.height), &culled);
+    instances.reserve(visible.size());
+    for (Entity entity : visible) {
         // Resolve (and lazily load) textures before recording any draws.
-        instances.push_back({entity, view.get<ScreenTransform2D>(entity).depth,
-                             &Resolve(view.get<Sprite>(entity).texture)});
+        instances.push_back({entity, &Resolve(view.get<Sprite>(entity).texture)});
     }
-    std::stable_sort(instances.begin(), instances.end(),
-                      [](const Instance& a, const Instance& b) { return a.depth < b.depth; });
 
     // Painter's order must be kept, so consecutive sprites sharing a texture
     // form one draw call and a texture change starts the next.
@@ -509,9 +528,12 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
     std::vector<Batch> batches;
 
     Buffer& frameBuffer = vertexBuffers_[rhi_.CurrentFrameIndex()];
+    // No fixed sprite limit: the buffer grows to what this frame needs.
+    EnsureCapacity(frameBuffer,
+                   static_cast<uint32_t>((instances.size() + overlay.size() + ui.size()) * kVerticesPerSprite));
     auto* vertices = static_cast<SpriteVertex*>(frameBuffer.mapped);
     uint32_t vertexCount = 0;
-    const uint32_t maxVertices = kMaxSprites * kVerticesPerSprite;
+    const uint32_t maxVertices = frameBuffer.capacity;
 
     auto appendToBatch = [&](const Texture* texture) {
         if (batches.empty() || batches.back().texture != texture) {
@@ -612,6 +634,7 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
         vertexCount += kVerticesPerSprite;
     }
 
+    stats_ = {instances.size(), culled, batches.size(), vertexCount};
     if (vertexCount == 0) {
         return;
     }

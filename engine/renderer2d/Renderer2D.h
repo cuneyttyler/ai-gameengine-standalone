@@ -3,6 +3,7 @@
 #include "ecs/Registry.h"
 #include "renderer2d/Camera2D.h"
 #include "renderer2d/ImageData.h"
+#include "renderer2d/SpriteCulling.h"
 #include "renderer2d/Text.h"
 #include "rhi/VulkanRHI.h"
 
@@ -72,11 +73,15 @@ public:
     void Render(VkCommandBuffer cmd, Registry& registry, const Camera2D& camera = {},
                 std::span<const OverlayLine> overlay = {}, std::span<const UiQuad> ui = {});
 
+    // What the last Render drew (the F3 stats overlay).
+    const RenderStats& LastStats() const { return stats_; }
+
 private:
     struct Buffer {
         VkBuffer buffer = VK_NULL_HANDLE;
         VmaAllocation allocation = nullptr;
         void* mapped = nullptr;
+        uint32_t capacity = 0; // in vertices
     };
 
     struct Texture {
@@ -92,6 +97,11 @@ private:
     void CreateDescriptorLayoutAndPool();
     void CreatePipeline();
     void CreateVertexBuffers();
+    // Grows (never shrinks) this frame's vertex buffer to hold `vertices`. The
+    // frame's previous use has finished (its fence was waited on), so the old
+    // buffer can go right away.
+    void EnsureCapacity(Buffer& buffer, uint32_t vertices);
+    void CreateVertexBuffer(Buffer& buffer, uint32_t vertices);
     void RunOneTimeCommands(const std::function<void(VkCommandBuffer)>& recordFn);
 
     Texture UploadTexture(const ImageData& image);
@@ -116,9 +126,10 @@ private:
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
 
-    static constexpr uint32_t kMaxSprites = 4096;
+    static constexpr uint32_t kInitialSprites = 4096; // buffers grow past this as needed (4.6)
     static constexpr uint32_t kVerticesPerSprite = 6;
     std::vector<Buffer> vertexBuffers_; // one per frame-in-flight
+    RenderStats stats_;
 };
 
 } // namespace aige

@@ -1029,6 +1029,31 @@ runs into.
 - Lift the fixed 4096-sprite batch limit (vertex buffers grow), and cull sprites
   outside the camera.
 - Tests: a benchmark with a time budget (Release), and culling correctness.
+- ✅ Built (Release budget not yet verified, see below):
+  - `renderer2d/SpriteCulling`: `VisibleSprites` gives what the camera sees, in
+    painter's order, without a GPU. Renderer2D draws only those, and its per-frame
+    vertex buffers grow (doubling) instead of stopping at 4096 sprites. `LastStats()`
+    reports sprites drawn and culled, draw calls and vertices.
+  - **F3** frame stats (frame and update ms, smoothed; sprites drawn and culled; draw
+    calls) in the editor (editing and play; also View ▸ Frame stats) and in the
+    sandbox player.
+  - `gameplay/Benchmark`: `BuildBenchmarkScene` (100×100 tiles with a wall ring, the
+    player, 500 scripted skeletons). `sandbox --bench` plays it zoomed out (about 10k
+    sprites on screen) with stats on and prints averages on exit.
+  - Found by profiling: every script checked its file's time every step for hot
+    reload (500 filesystem calls per step), now once per file per step, and the
+    "(re)loaded" log is once per file. `find_nearest` compares squared distances, and
+    tiles aren't projected twice.
+  - Tests: `CullingTest` (edges, off-screen, a sprite larger than the view, depth
+    order) and `PerfTest` (the benchmark scene: counts, no script errors, most of the
+    field culled, with an 8 ms step-plus-sprite-list budget in Release builds).
+  - **Not verified here:** on this machine Bitdefender refuses to start freshly built
+    Release executables ("Access is denied"), so the Release budget hasn't been seen
+    to pass. In Debug a benchmark step is about 185 ms, about 150 of it Lua (500
+    scripts × find_nearest over 500 characters through unoptimized sol2) and about 38
+    without scripts. Debug is no guide to Release, but Lua per entity is the place to
+    look if Release misses the budget: shared environments, or spatial queries
+    instead of `find_nearest`'s scan.
 
 **4.7 — Local models**
 - An OpenAI-compatible provider, which covers Ollama, llama.cpp server and LM Studio,

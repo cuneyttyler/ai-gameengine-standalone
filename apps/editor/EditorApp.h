@@ -167,6 +167,11 @@ private:
     std::map<int, int> consistencyRequests_;
     int worldCheckRequest_ = 0;
     int artRequest_ = 0; // the Art tab's generation in flight (development_plan.md 3.6)
+    // Frame stats overlay (4.6, F3): smoothed frame and update times.
+    bool showStats_ = false;
+    double frameMs_ = 0.0;
+    double updateMs_ = 0.0;
+    void AddStatsOverlay(std::vector<UiQuad>& ui);
     // Scene editing polish (4.3).
     bool showGrid_ = false;   // tile borders on empty ground
     float brushScale_ = 1.0f; // the prefab brush places copies at this size

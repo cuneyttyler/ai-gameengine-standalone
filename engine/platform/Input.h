@@ -15,6 +15,7 @@ enum class Key {
     Left,
     Right,
     Escape,
+    F3, // frame stats
     F5,
     Space,
     E,     // talk / interact

@@ -171,6 +171,11 @@ window.addEventListener('keydown', (event) => {
     runShortcut('help')
     return
   }
+  if (event.key === 'F3') {
+    event.preventDefault()
+    sendToHost({ type: 'view:stats' })
+    return
+  }
   if (event.key === 'F5') {
     event.preventDefault()
     sendToHost({ type: 'play:toggle' })

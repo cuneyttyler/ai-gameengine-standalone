@@ -129,7 +129,8 @@ void UpdateSpriteFacing(Registry& registry) {
 }
 
 void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
-    auto view = registry.view<WorldTransform2D, ScreenTransform2D>();
+    // Tiles are placed by their cell below, so they're skipped here.
+    auto view = registry.view<WorldTransform2D, ScreenTransform2D>(entt::exclude<Tile>);
     for (auto entity : view) {
         auto& world = view.get<WorldTransform2D>(entity);
         auto& screen = view.get<ScreenTransform2D>(entity);
@@ -269,7 +270,8 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
             if (entity == self || faction.team != *team) {
                 continue;
             }
-            float distance = std::hypot(world.x - from->x, world.y - from->y);
+            const float dx = world.x - from->x, dy = world.y - from->y;
+            const float distance = dx * dx + dy * dy; // squared until the end
             if (!best || distance < bestDistance) {
                 best = entity;
                 bestDistance = distance;
@@ -278,6 +280,7 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
         if (!best) {
             return {sol::lua_nil, sol::lua_nil};
         }
+        bestDistance = std::sqrt(bestDistance);
         return {sol::make_object(L, ToId(*best)), sol::make_object(L, bestDistance)};
     };
 

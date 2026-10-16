@@ -231,6 +231,7 @@ generated field automatically gets the "Ask AI" affordance for free.
   - Keeping AI work (4.5): UI → host `ai:history`, `ai:clear`, `art:clearHistory`; host → UI
     `ai:restore {events}` (the kept chat messages, replayed by the panel); `art:list` carries
     `history`. Stored in the project's `.cache` (`ai_conversation.json`, `art_history.json`).
+  - Performance (4.6): UI → host `view:stats` (toggles the F3 overlay).
   - Story: UI → host `story:request`, `story:save {kind, id, originalId, content}`,
     `story:delete {file}`; host → UI `story:list {dialogues, quests, schedules, markers,
     problems, world, prefabs, usedBy}`, `story:saved {file, error}`. `story:save` kind

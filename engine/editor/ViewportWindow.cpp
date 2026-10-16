@@ -40,6 +40,7 @@ int ToVirtualKey(Key key) {
         case Key::Left: return VK_LEFT;
         case Key::Right: return VK_RIGHT;
         case Key::Escape: return VK_ESCAPE;
+        case Key::F3: return VK_F3;
         case Key::F5: return VK_F5;
         case Key::Space: return VK_SPACE;
         case Key::E: return 'E';

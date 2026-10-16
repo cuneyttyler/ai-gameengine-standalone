@@ -16,6 +16,7 @@ function updateMenus(): void {
     { label: 'Smaller', shortcut: '[', disabled: editorState.selectedId === null, action: () => sendToHost({ type: 'edit:scale', factor: 1 / 1.1 }) },
   ]
   menuExtensions.view = [
+    { label: 'Frame stats', shortcut: 'F3', action: () => sendToHost({ type: 'view:stats' }) },
     { label: `${editorState.grid ? '✓ ' : ''}Tile grid on empty ground`, shortcut: 'G', action: () => sendToHost({ type: 'view:grid' }) },
   ]
 }

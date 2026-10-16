@@ -27,6 +27,7 @@
 #include <climits>
 #include <variant>
 #include <chrono>
+#include <cstdio>
 #include <cmath>
 #include <cctype>
 #include <filesystem>
@@ -211,6 +212,8 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     } else if (type == "view:grid") {
         showGrid_ = message.value("on", !showGrid_);
         editorStateStale_ = true;
+    } else if (type == "view:stats") {
+        showStats_ = !showStats_;
     } else if (type == "play:toggle") {
         playing_ ? StopPlay() : StartPlay();
     } else if (type == "file:move") {
@@ -978,6 +981,8 @@ void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
     if (playing_) {
         if (virtualKey == VK_ESCAPE || virtualKey == VK_F5) {
             StopPlay();
+        } else if (virtualKey == VK_F3) {
+            showStats_ = !showStats_;
         }
         return; // every other key belongs to the game
     }
@@ -1027,6 +1032,9 @@ void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
             return;
         case VK_F5:
             StartPlay();
+            return;
+        case VK_F3:
+            showStats_ = !showStats_;
             return;
         case VK_OEM_4: // [
             ScaleSelected(shift ? 1.0f / 1.02f : 1.0f / 1.1f);
@@ -1391,6 +1399,7 @@ std::vector<UiQuad> EditorApp::BuildUi() {
                       {0.05f, 0.05f, 0.09f, 0.8f});
             font.Draw(ui, text, vx - w * 0.5f + 5.0f, vy - 26.0f, {0.99f, 0.86f, 0.45f, 1.0f});
         }
+        AddStatsOverlay(ui);
         return ui;
     }
     int width = 0;
@@ -1400,13 +1409,40 @@ std::vector<UiQuad> EditorApp::BuildUi() {
     if (!banner_.first.empty()) {
         AddBanner(ui, banner_.first, banner_.second, static_cast<float>(width), static_cast<float>(height));
     }
+    AddStatsOverlay(ui);
     return ui;
+}
+
+void EditorApp::AddStatsOverlay(std::vector<UiQuad>& ui) {
+    if (!showStats_) {
+        return;
+    }
+    const RenderStats& stats = renderer_.LastStats();
+    char lines[3][96];
+    std::snprintf(lines[0], sizeof(lines[0]), "frame %.1f ms (%.0f fps)", frameMs_, frameMs_ > 0.0 ? 1000.0 / frameMs_ : 0.0);
+    std::snprintf(lines[1], sizeof(lines[1]), "update %.2f ms%s", updateMs_, playing_ ? "" : " (not playing)");
+    std::snprintf(lines[2], sizeof(lines[2]), "sprites %zu drawn, %zu culled - %zu draw calls", stats.sprites,
+                  stats.culled, stats.drawCalls);
+    const Font& font = Font::Builtin(14.0f);
+    float width = 0.0f;
+    for (const char* line : lines) {
+        width = std::max(width, font.Measure(line));
+    }
+    const float lineHeight = font.LineHeight();
+    AddUiRect(ui, 8.0f, 8.0f, 20.0f + width, 14.0f + lineHeight * 3.0f, {0.0f, 0.0f, 0.0f, 0.65f});
+    for (int i = 0; i < 3; ++i) {
+        font.Draw(ui, lines[i], 14.0f, 11.0f + lineHeight * static_cast<float>(i), {0.85f, 0.95f, 0.85f, 1.0f});
+    }
 }
 
 void EditorApp::Tick(double frameSeconds) {
     PollAi();
+    frameMs_ = frameMs_ * 0.9 + frameSeconds * 1000.0 * 0.1;
     if (playing_) {
+        const auto updateStart = std::chrono::steady_clock::now();
         session_.Advance(frameSeconds, [this](Key key) { return viewport_.IsKeyDown(key); });
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - updateStart).count();
+        updateMs_ = updateMs_ * 0.9 + ms * 0.1;
         auto player = FindPlayer(registry_);
         for (const auto& event : session_.Events()) {
             if (event.type == GameEvent::Type::Death && player && event.entity == *player) {
