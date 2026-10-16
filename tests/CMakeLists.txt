@@ -43,8 +43,9 @@ add_executable(aige_tests
     project_move_test.cpp
     ai_transcript_test.cpp
     perf_test.cpp
+    modules_test.cpp
 )
-target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets aige_gameplay aige_editing aige_world aige_ai_bridge aige_ui aige_editor gtest_main)
+target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets aige_gameplay aige_editing aige_world aige_ai_bridge aige_ui aige_editor aige_modules gtest_main)
 target_compile_definitions(aige_tests PRIVATE AIGE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
 find_program(GLSLC_EXECUTABLE glslc HINTS "$ENV{VULKAN_SDK}/Bin" "$ENV{VULKAN_SDK}/bin")

@@ -1,0 +1,30 @@
+{
+  "description": "A sample module (development_plan.md 4.8): a Lantern component and commands written in Lua, with no C++.",
+  "script": "module.lua",
+  "components": [
+    {
+      "name": "Lantern",
+      "description": "A light source: how far its light reaches and whether it's lit.",
+      "fields": [
+        { "name": "radius", "type": "float", "default": 3, "min": 0.5, "max": 20, "description": "How far the light reaches, in cells." },
+        { "name": "lit", "type": "bool", "default": true, "description": "Whether it's burning." },
+        { "name": "color", "type": "enum", "options": ["warm", "cold", "green"], "default": "warm", "description": "The light's tint." },
+        { "name": "fuel", "type": "int", "default": 100, "min": 0, "max": 1000, "description": "Minutes of oil left." }
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "name": "lantern.setAll",
+      "description": "Lights or puts out every lantern in the scene.",
+      "params": [{ "name": "lit", "type": "bool", "description": "true to light them, false to put them out" }],
+      "function": "set_all"
+    },
+    {
+      "name": "lantern.scaleRadius",
+      "description": "Multiplies every lantern's radius (clamped to its range).",
+      "params": [{ "name": "factor", "type": "float", "min": 0.1, "max": 10, "description": "1.5 makes them reach half again as far" }],
+      "function": "scale_radius"
+    }
+  ]
+}

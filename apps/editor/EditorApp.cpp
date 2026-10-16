@@ -13,6 +13,7 @@
 #include "editing/LevelBuild.h"
 #include "editing/SceneTools.h"
 #include "assets/ProjectMove.h"
+#include "modules/Modules.h"
 #include "world/StoryReferences.h"
 #include "editing/SceneEditing.h"
 #include "gameplay/BootstrapLevel.h"
@@ -612,6 +613,15 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         post_(SettingsJson());
     } else if (type == "prefabs:request") {
         post_(PrefabsJson());
+        // Sent once the UI is up: say what the project's modules (4.8) couldn't load.
+        static bool moduleErrorsShown = false;
+        if (!moduleErrorsShown && !LastModuleLoad().errors.empty()) {
+            moduleErrorsShown = true;
+            const auto& errors = LastModuleLoad().errors;
+            post_({{"type", "notify"},
+                   {"text", "Module problem: " + errors.front() +
+                                  (errors.size() > 1 ? " (+" + std::to_string(errors.size() - 1) + " more in the console)" : "")}});
+        }
     } else if (type == "prefab:createFromAsset") {
         CreatePrefabFromAsset(message.value("asset", ""), message.value("tile", 0), message.value("asTile", false),
                               message.value("solid", false), message.value("name", ""));

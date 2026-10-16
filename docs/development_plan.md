@@ -1060,6 +1060,8 @@ runs into.
   chosen per pipeline: writing, checking and embeddings. Example: proposals on
   Mistral, contradiction checks on a local model.
 - Tests: the provider against a fake OpenAI-compatible server, and configuration.
+- ⏸ Deferred (2026-10-16, at the user's request): left for later. Mistral stays the
+  only provider for now.
 - Leave this to later
 
 **4.8 — Module groundwork**
@@ -1068,9 +1070,28 @@ runs into.
   registry, so the Inspector, scenes, scripts and the AI see them like built-ins.
 - Tests: a sample module (a `Lantern` component with a light radius, and a command)
   shows up in the schema, round-trips through a scene, and runs its Lua.
+- ✅ Built:
+  - `engine/modules` (`LoadModules`): reads `modules/*/module.json` and registers its
+    components and commands in the reflection registry. Module components keep their
+    values in one bookkeeping `ModuleData` per entity; each registered component reads
+    and writes its part through the usual field functions, so scenes, prefabs and
+    overrides, the Inspector, copy/paste, Lua's `get_field`/`set_field` and AI
+    proposals need no changes.
+  - Commands run their Lua function in the module's own Lua state, with
+    `get_field`, `set_field` (validated), `entities_with` and `log`. They fail with
+    `false, "why"` or an error.
+  - The editor and the player load modules before the scene. Problems go to the
+    console, and the editor shows the first one. A broken module never stops the
+    rest.
+  - Sample: `projects/demo/modules/lantern` (`Lantern`: radius, lit, color, fuel;
+    `lantern.setAll`, `lantern.scaleRadius`). Guide: `docs/modules.md`.
+  - Tests: `ModulesTest` (4): in the schema with types and ranges, a scene round
+    trip, the commands with checks and a refusal from the Lua, and six kinds of
+    broken module reported while the good part still loads. That test found a crash:
+    a Lua syntax error's result outlived its VM.
 
 **Phase 4 exit criteria:** the notes are resolved; big scenes stay smooth; the AI can
-run on a local model; a project can add its own components without C++.
+run on a local model (deferred with 4.7); a project can add its own components without C++.
 
 ---
 

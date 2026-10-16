@@ -5,6 +5,7 @@
 #include "assets/Project.h"
 #include "assets/SceneIO.h"
 #include "gameplay/EngineReflection.h"
+#include "modules/Modules.h"
 #include "gameplay/Settings.h"
 #include "audio/Audio.h"
 #include "ecs/Registry.h"
@@ -51,6 +52,9 @@ int main(int argc, char** argv) {
         }
         aige::Project project{std::filesystem::absolute(root)};
         aige::LoadSettings(aige::EngineReflection(), project.SettingsPath().string());
+        for (const auto& error : aige::LoadModules(aige::EngineReflection(), project.root).errors) {
+            std::cerr << "[modules] " << error << std::endl;
+        }
         const aige::ProjectSettings& settings = aige::ActiveSettings();
 
         aige::Window::Desc desc;

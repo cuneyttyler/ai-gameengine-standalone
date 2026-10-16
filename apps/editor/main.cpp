@@ -11,6 +11,9 @@
 #include "assets/SceneIO.h"
 #include "editing/Commands.h"
 #include "gameplay/EngineReflection.h"
+#include "modules/Modules.h"
+
+#include <iostream>
 #include "gameplay/Settings.h"
 #include "audio/Audio.h"
 #include "ecs/Registry.h"
@@ -159,6 +162,10 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
         aige::Project project{std::filesystem::absolute(ProjectRootFromCommandLine())};
         aige::LoadSettings(aige::EngineReflection(), project.SettingsPath().string());
         aige::RegisterEditingCommands(aige::EngineReflection());
+        // The project's Lua modules (4.8), before any scene is read.
+        for (const auto& error : aige::LoadModules(aige::EngineReflection(), project.root).errors) {
+            std::cerr << "[modules] " << error << std::endl;
+        }
         aige::AssetDatabase assets(project);
         assets.Refresh();
         renderer.SetTextureLoader([&assets](const std::string& path) { return assets.LoadTexture(path); });

@@ -164,6 +164,17 @@ public:
 
     // Registration-time access for builders and special cases.
     ComponentInfo& MutableComponent(const std::string& name);
+    // Ready-made entries, for types defined at runtime (Lua modules, 4.8).
+    // Register before anything holds pointers into the registry.
+    void AddComponentInfo(ComponentInfo info) { components_.push_back(std::move(info)); }
+    void AddCommandInfo(CommandInfo info) { commands_.push_back(std::move(info)); }
+    // And their removal (tests; unloading a module).
+    void RemoveComponentInfo(const std::string& name) {
+        std::erase_if(components_, [&](const ComponentInfo& c) { return c.name == name; });
+    }
+    void RemoveCommandInfo(const std::string& name) {
+        std::erase_if(commands_, [&](const CommandInfo& c) { return c.name == name; });
+    }
 
     // Checks `args` against the command's parameters, then runs it.
     CommandResult Run(CommandContext& context, const std::string& command, const std::vector<FieldValue>& args) const;
