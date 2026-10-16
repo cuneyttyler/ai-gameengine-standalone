@@ -1,8 +1,10 @@
 <script setup lang="ts">
+// The editor's frame (development_plan.md 4.1, 5.6): the menu bar, three
+// docks (left, right, bottom) around the viewport, and the dialogs. Panels
+// are teleported into whichever dock they're in (layout.ts), so moving one
+// keeps its state — drafts, the AI conversation.
 import { computed, onMounted, ref } from 'vue'
-import { editorState, setAiOpen } from './editorState'
-import SceneTree from './components/SceneTree.vue'
-import Inspector from './components/Inspector.vue'
+import { editorState } from './editorState'
 import ViewportHole from './components/ViewportHole.vue'
 import Toolbar from './components/Toolbar.vue'
 import Splitter from './components/Splitter.vue'
@@ -15,160 +17,146 @@ import ContextMenuHost from './components/ContextMenuHost.vue'
 import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import PreferencesDialog from './components/PreferencesDialog.vue'
 import ProjectSettingsDialog from './components/ProjectSettingsDialog.vue'
-import { showViewport, toggleBottomPanel, toggleLeftPanel } from './editorState'
+import PanelFrame from './components/PanelFrame.vue'
+import ScenePanel from './components/ScenePanel.vue'
+import { keyLabel } from './keys'
+import {
+  layout,
+  panelNames,
+  panelsIn,
+  saveLayout,
+  setPanelVisible,
+  showViewport,
+  visibleIn,
+  type Dock,
+  type PanelId,
+} from './layout'
 
-// Panel sizes are per-user layout preferences, so localStorage is enough.
-// Every access is guarded: storage can be unavailable, and the layout must
-// still work with the defaults.
-const LAYOUT_KEY = 'aige.editor.layout'
-const MIN_SIDEBAR = 200
+const MIN_SIDE = 200
+const MIN_BOTTOM = 120
 const MIN_VIEWPORT = 320
-const MIN_PANEL = 80
 
-const MIN_ASSET_PANEL = 120
-
-const sidebarWidth = ref(320)
-const treeFraction = ref(0.45) // Scene Tree's share of the side panel's height
-const assetPanelHeight = ref(240)
-// The AI panel collapses to a thin rail; open/closed is remembered (editorState).
-const aiPanelWidth = ref(360)
-const MIN_AI_PANEL = 260
-const aiCollapsed = computed(() => !editorState.aiOpen)
-
-function onAiPanelDrag(x: number): void {
-  aiPanelWidth.value = clamp(window.innerWidth - x, MIN_AI_PANEL, window.innerWidth - sidebarWidth.value - MIN_VIEWPORT)
+const shown = computed(() => ({
+  left: visibleIn('left').length > 0,
+  right: visibleIn('right').length > 0,
+  bottom: visibleIn('bottom').length > 0,
+}))
+function hiddenIn(dock: Dock): PanelId[] {
+  return panelsIn(dock).filter((id) => !layout.visible[id])
 }
 
-const sidePanel = ref<HTMLElement | null>(null)
-
-function onAssetPanelDrag(y: number): void {
-  // The status bar (24px) sits below the asset panel.
-  const height = window.innerHeight - 24 - y
-  assetPanelHeight.value = clamp(height, MIN_ASSET_PANEL, window.innerHeight - 36 - 24 - MIN_VIEWPORT / 2)
-}
+const leftDock = ref<HTMLElement | null>(null)
+const rightDock = ref<HTMLElement | null>(null)
+const center = ref<HTMLElement | null>(null)
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max))
 }
 
-function onSidebarDrag(x: number): void {
-  sidebarWidth.value = clamp(x, MIN_SIDEBAR, window.innerWidth - MIN_VIEWPORT)
+function onLeftDrag(x: number): void {
+  const start = leftDock.value?.getBoundingClientRect().left ?? 0
+  layout.size.left = clamp(x - start, MIN_SIDE, window.innerWidth - layout.size.right - MIN_VIEWPORT)
 }
-
-function onTreeDrag(y: number): void {
-  if (!sidePanel.value) {
-    return
-  }
-  const rect = sidePanel.value.getBoundingClientRect()
-  const height = clamp(y - rect.top, MIN_PANEL, rect.height - MIN_PANEL)
-  treeFraction.value = height / rect.height
+function onRightDrag(x: number): void {
+  const end = rightDock.value?.getBoundingClientRect().right ?? window.innerWidth
+  layout.size.right = clamp(end - x, MIN_SIDE, window.innerWidth - layout.size.left - MIN_VIEWPORT)
 }
-
-function saveLayout(): void {
-  try {
-    localStorage.setItem(
-      LAYOUT_KEY,
-      JSON.stringify({
-        sidebarWidth: sidebarWidth.value,
-        treeFraction: treeFraction.value,
-        assetPanelHeight: assetPanelHeight.value,
-        aiPanelWidth: aiPanelWidth.value,
-      }),
-    )
-  } catch {
-    // Not persisting is fine; the layout just resets next launch.
-  }
+function onBottomDrag(y: number): void {
+  // The status bar (24px) sits below the bottom dock.
+  const end = (center.value?.getBoundingClientRect().bottom ?? window.innerHeight) - 24
+  layout.size.bottom = clamp(end - y, MIN_BOTTOM, window.innerHeight - 140)
 }
 
 onMounted(() => {
-  if (!editorState.panels.viewport) showViewport(false)
-  try {
-    const saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? 'null')
-    if (saved && typeof saved.sidebarWidth === 'number' && typeof saved.treeFraction === 'number') {
-      sidebarWidth.value = clamp(saved.sidebarWidth, MIN_SIDEBAR, window.innerWidth - MIN_VIEWPORT)
-      treeFraction.value = clamp(saved.treeFraction, 0.1, 0.9)
-    }
-    if (saved && typeof saved.assetPanelHeight === 'number') {
-      assetPanelHeight.value = clamp(saved.assetPanelHeight, MIN_ASSET_PANEL, window.innerHeight / 2)
-    }
-    if (saved && typeof saved.aiPanelWidth === 'number') {
-      aiPanelWidth.value = clamp(saved.aiPanelWidth, MIN_AI_PANEL, window.innerWidth / 2)
-    }
-  } catch {
-    // Corrupt or unavailable storage: keep the defaults.
-  }
+  if (!layout.viewport) showViewport(false) // tell the host to hide the native window
+  layout.size.left = clamp(layout.size.left, MIN_SIDE, window.innerWidth / 2)
+  layout.size.right = clamp(layout.size.right, MIN_SIDE, window.innerWidth / 2)
+  layout.size.bottom = clamp(layout.size.bottom, MIN_BOTTOM, window.innerHeight / 2)
 })
 </script>
 
 <template>
   <div class="app-frame">
-  <MenuBar />
-  <div class="app-shell">
-    <button v-if="!editorState.panels.left" class="left-rail" title="Show the Scene panel (Ctrl+B)" @click="toggleLeftPanel">
-      <span class="rail-label">Scene</span>
-    </button>
-    <aside v-show="editorState.panels.left" ref="sidePanel" class="side-panel" :style="{ width: `${sidebarWidth}px` }">
-      <div class="panel-slot" :style="{ flexBasis: `${treeFraction * 100}%` }">
-        <SceneTree />
+    <MenuBar />
+    <div class="app-shell">
+      <div v-if="hiddenIn('left').length" class="rails side">
+        <button
+          v-for="id in hiddenIn('left')"
+          :key="id"
+          class="rail"
+          :title="`Show the ${panelNames[id]} panel (${keyLabel(`panel.${id}`)})`"
+          @click="setPanelVisible(id, true)"
+        >
+          <span v-if="id === 'ai'" class="rail-mark" :class="{ off: editorState.ai.choice === 'off' }">✦</span>
+          <span class="rail-label">{{ panelNames[id] }}</span>
+        </button>
       </div>
-      <Splitter direction="vertical" @drag="onTreeDrag" @end="saveLayout" />
-      <div class="panel-slot fill">
-        <Inspector />
+      <aside v-show="shown.left" id="dock-left" ref="leftDock" class="dock side" :style="{ width: `${layout.size.left}px` }"></aside>
+      <Splitter v-show="shown.left" direction="horizontal" @drag="onLeftDrag" @end="saveLayout" />
+
+      <main ref="center" class="viewport-region">
+        <Toolbar />
+        <!-- v-show: the hole keeps reporting (0 x 0 while hidden; the host hides the native window). -->
+        <div v-show="layout.viewport" class="viewport-slot">
+          <ViewportHole />
+        </div>
+        <button v-if="!layout.viewport" class="strip" :title="`Show the viewport (${keyLabel('panel.viewport')})`" @click="showViewport(true)">
+          ▾ Viewport
+        </button>
+        <p v-if="!layout.viewport && !shown.bottom" class="empty-center">
+          The viewport is hidden. Panels docked at the bottom take its place here.
+        </p>
+        <Splitter v-show="shown.bottom && layout.viewport" direction="vertical" @drag="onBottomDrag" @end="saveLayout" />
+        <div
+          v-show="shown.bottom"
+          id="dock-bottom"
+          class="dock bottom"
+          :class="{ fill: !layout.viewport }"
+          :style="layout.viewport ? { height: `${layout.size.bottom}px` } : {}"
+        ></div>
+        <div v-if="hiddenIn('bottom').length" class="strips">
+          <button
+            v-for="id in hiddenIn('bottom')"
+            :key="id"
+            class="strip"
+            :title="`Show the ${panelNames[id]} panel (${keyLabel(`panel.${id}`)})`"
+            @click="setPanelVisible(id, true)"
+          >
+            ▴ {{ panelNames[id] }}
+          </button>
+        </div>
+        <StatusBar />
+      </main>
+
+      <Splitter v-show="shown.right" direction="horizontal" @drag="onRightDrag" @end="saveLayout" />
+      <aside v-show="shown.right" id="dock-right" ref="rightDock" class="dock side" :style="{ width: `${layout.size.right}px` }"></aside>
+      <div v-if="hiddenIn('right').length" class="rails side right">
+        <button
+          v-for="id in hiddenIn('right')"
+          :key="id"
+          class="rail"
+          :title="`Show the ${panelNames[id]} panel (${keyLabel(`panel.${id}`)})`"
+          @click="setPanelVisible(id, true)"
+        >
+          <span v-if="id === 'ai'" class="rail-mark" :class="{ off: editorState.ai.choice === 'off' }">✦</span>
+          <span class="rail-label">{{ id === 'ai' && editorState.ai.choice === 'off' ? 'AI off' : panelNames[id] }}</span>
+          <span v-if="id === 'ai' && editorState.ai.busy" class="rail-busy"></span>
+        </button>
       </div>
-    </aside>
-    <Splitter v-show="editorState.panels.left" direction="horizontal" @drag="onSidebarDrag" @end="saveLayout" />
-    <main class="viewport-region">
-      <Toolbar />
-      <!-- v-show: the hole keeps reporting (0 x 0 while hidden; the host hides the native window). -->
-      <div v-show="editorState.panels.viewport" class="viewport-slot">
-        <ViewportHole />
-      </div>
-      <button
-        v-if="!editorState.panels.viewport"
-        class="bottom-rail"
-        title="Show the viewport (Ctrl+M)"
-        @click="showViewport(true)"
-      >
-        ▾ Viewport
-      </button>
-      <Splitter
-        v-show="editorState.panels.bottom && editorState.panels.viewport"
-        direction="vertical"
-        @drag="onAssetPanelDrag"
-        @end="saveLayout"
-      />
-      <!-- v-show: hiding keeps the tabs' state (drafts in Story, World, Art). -->
-      <div
-        v-show="editorState.panels.bottom"
-        class="asset-slot"
-        :class="{ fill: !editorState.panels.viewport }"
-        :style="editorState.panels.viewport ? { height: `${assetPanelHeight}px` } : {}"
-      >
-        <AssetBrowser />
-      </div>
-      <button v-if="!editorState.panels.bottom" class="bottom-rail" title="Show the bottom panel (Ctrl+J)" @click="toggleBottomPanel">
-        ▴ Prefabs · Assets · World · Story · Level · Art
-      </button>
-      <StatusBar />
-    </main>
-    <button
-      v-if="aiCollapsed"
-      class="ai-rail"
-      :class="{ off: editorState.ai.choice === 'off' }"
-      title="Open the AI panel"
-      @click="setAiOpen(true)"
-    >
-      <span class="rail-mark">✦</span>
-      <span class="rail-label">{{ editorState.ai.choice === 'off' ? 'AI off' : 'AI' }}</span>
-      <span v-if="editorState.ai.busy" class="rail-busy"></span>
-    </button>
-    <!-- v-show, not v-if: collapsing keeps the conversation and pending proposals. -->
-    <Splitter v-show="!aiCollapsed" direction="horizontal" @drag="onAiPanelDrag" @end="saveLayout" />
-    <aside v-show="!aiCollapsed" class="ai-slot" :style="{ width: `${aiPanelWidth}px` }">
-      <AiPanel />
-    </aside>
+    </div>
   </div>
-  </div>
+
+  <!-- The panels, wherever they're docked. -->
+  <Teleport defer :to="`#dock-${layout.dock.scene}`">
+    <PanelFrame id="scene"><ScenePanel /></PanelFrame>
+  </Teleport>
+  <Teleport defer :to="`#dock-${layout.dock.assets}`">
+    <PanelFrame id="assets"><AssetBrowser /></PanelFrame>
+  </Teleport>
+  <Teleport defer :to="`#dock-${layout.dock.ai}`">
+    <PanelFrame id="ai"><AiPanel /></PanelFrame>
+  </Teleport>
+
   <ContextMenuHost />
   <ShortcutsDialog />
   <PreferencesDialog />
@@ -188,53 +176,21 @@ onMounted(() => {
   flex: 1;
   min-height: 0;
 }
-.left-rail {
-  flex-shrink: 0;
-  width: 26px;
-  border: none;
-  border-right: 1px solid #333;
-  border-radius: 0;
-  background: #181825;
-  color: #eee;
-  cursor: pointer;
-  padding: 10px 0;
+.dock {
   display: flex;
-  justify-content: center;
-}
-.left-rail:hover,
-.bottom-rail:hover {
-  background: #262637;
-}
-.bottom-rail {
-  flex-shrink: 0;
-  height: 22px;
-  border: none;
-  border-top: 1px solid #333;
-  border-radius: 0;
-  background: #181825;
-  color: #aaa;
-  font: inherit;
-  font-size: 0.8em;
-  cursor: pointer;
-  text-align: left;
-  padding: 0 10px;
-}
-.side-panel {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  background: #181825;
+  min-width: 0;
   min-height: 0;
+  background: #181825;
 }
-.panel-slot {
-  display: flex;
-  flex-direction: column;
-  flex-grow: 0;
+.dock.side {
   flex-shrink: 0;
-  min-height: 0;
-  overflow: hidden;
+  flex-direction: column;
 }
-.panel-slot.fill {
+.dock.bottom {
+  flex-shrink: 0;
+  flex-direction: row;
+}
+.dock.bottom.fill {
   flex: 1;
 }
 .viewport-region {
@@ -247,33 +203,40 @@ onMounted(() => {
   flex: 1;
   min-height: 0;
 }
-.ai-slot {
+.rails {
   flex-shrink: 0;
-  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #181825;
+  border-right: 1px solid #333;
 }
-.ai-rail {
-  flex-shrink: 0;
-  width: 32px;
+.rails.right {
+  border-right: none;
+  border-left: 1px solid #333;
+}
+.rail {
+  width: 30px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
   padding: 10px 0;
   border: none;
-  border-left: 1px solid #333;
+  border-bottom: 1px solid #2a2a3a;
   border-radius: 0;
-  background: #181825;
+  background: transparent;
   color: #eee;
   font: inherit;
   cursor: pointer;
 }
-.ai-rail:hover {
+.rail:hover,
+.strip:hover {
   background: #262637;
 }
 .rail-mark {
   color: #3b82f6;
 }
-.ai-rail.off .rail-mark {
+.rail-mark.off {
   color: #666;
 }
 .rail-label {
@@ -287,11 +250,33 @@ onMounted(() => {
   height: 6px;
   background: #3b82f6;
 }
-.asset-slot {
+.strips {
+  display: flex;
   flex-shrink: 0;
-  min-height: 0;
+  border-top: 1px solid #333;
 }
-.asset-slot.fill {
+.strip {
+  flex-shrink: 0;
+  height: 22px;
+  border: none;
+  border-top: 1px solid #333;
+  border-radius: 0;
+  background: #181825;
+  color: #aaa;
+  font: inherit;
+  font-size: 0.8em;
+  cursor: pointer;
+  text-align: left;
+  padding: 0 10px;
+}
+.strips .strip {
+  border-top: none;
+  border-right: 1px solid #333;
+}
+.empty-center {
   flex: 1;
+  margin: 0;
+  padding: 24px;
+  opacity: 0.5;
 }
 </style>

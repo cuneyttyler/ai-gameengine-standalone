@@ -6,6 +6,7 @@ import { openContextMenu, separator, type MenuItem } from './contextMenu'
 import { promptDialog } from './dialogs'
 import { askAiAbout, editorState } from './editorState'
 import { onHostMessage, sendToHost } from './ipc'
+import { keyLabel } from './keys'
 
 export interface MenuEntity {
   id: number
@@ -22,7 +23,7 @@ export function entityMenu(entity: MenuEntity): MenuItem[] {
   const select = () => sendToHost({ type: 'entity:select', id: entity.id })
   const label = entity.name || (entity.tile ? 'Tile' : `Entity #${entity.id}`)
   return [
-    { label: `Duplicate ${label}`, shortcut: 'Ctrl+D', action: () => (select(), sendToHost({ type: 'edit:duplicate' })) },
+    { label: `Duplicate ${label}`, shortcut: keyLabel('edit.duplicate'), action: () => (select(), sendToHost({ type: 'edit:duplicate' })) },
     ...entityMenuExtensions.flatMap((extend) => extend(entity)),
     separator,
     {
@@ -51,7 +52,7 @@ export function entityMenu(entity: MenuEntity): MenuItem[] {
       action: () => askAiAbout(label),
     },
     separator,
-    { label: 'Delete', shortcut: 'Del', danger: true, action: () => (select(), sendToHost({ type: 'edit:delete' })) },
+    { label: 'Delete', shortcut: keyLabel('edit.delete'), danger: true, action: () => (select(), sendToHost({ type: 'edit:delete' })) },
   ]
 }
 
@@ -76,7 +77,7 @@ function groundMenu(cell: [number, number], brush: string): MenuItem[] {
       },
     },
     separator,
-    { label: 'Frame scene', shortcut: 'F', action: () => sendToHost({ type: 'view:frame' }) },
+    { label: 'Frame scene', shortcut: keyLabel('view.frame'), action: () => sendToHost({ type: 'view:frame' }) },
   ]
 }
 

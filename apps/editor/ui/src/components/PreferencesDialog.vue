@@ -85,6 +85,10 @@ function close(): void {
         </label>
         <p class="muted">Project-wide settings (camera, combat, time…) are in File ▸ Project Settings…</p>
       </section>
+      <section>
+        <h4>Keyboard</h4>
+        <button class="keys-button" @click="(close(), (editorState.showShortcuts = true))">Keyboard shortcuts…</button>
+      </section>
     </div>
   </div>
 </template>
@@ -133,5 +137,15 @@ h4 {
   font-size: 0.9em;
   margin: 4px 0;
   word-break: break-all;
+}
+.keys-button {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #333;
+  border-radius: 0;
+  background: #11111b;
+  color: #eee;
+  font: inherit;
+  cursor: pointer;
 }
 </style>

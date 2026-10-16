@@ -1298,6 +1298,60 @@ the Phase 4 testing (2026-10-16).
   - Tests: `apps/editor/ui/tests/selection.test.ts` (7, `npm test`, Node's own test
     runner with no new dependency). Multi-file moves reuse 4.4's tested path.
 
+**5.6 — Layout and keys** *(testing, 2026-10-16)*
+- Panels can move: the Scene, Assets and AI panels each dock left, bottom or right.
+- Shortcuts can be edited, in settings.
+- The panel shortcuts drop Ctrl: B, J, I and M.
+- With several assets picked, the side pane keeps "Drawn" and the make-a-prefab buttons.
+- Prefabs and Assets folders get right-click menus: Rename folder…, Show in Explorer and
+  Remove folder…. Removing asks first, with a checkbox for "Also remove the assets/prefabs
+  in it".
+- The viewport pointer shows the tool: select, brush or erase. The brush shows a
+  see-through copy of what it would put down.
+- ✅ Built:
+  - **Docking** (`layout.ts`, `PanelFrame`, `ScenePanel`):
+    - Each panel lives in a dock (left, right, bottom), shown or hidden, with dock
+      sizes and per-panel shares saved per user. The 4.1 layout is migrated.
+    - Panels are teleported into their dock, so moving one keeps its state (drafts, the
+      AI chat). Two panels in one dock share it with a handle between them.
+    - Moving: right-click a panel's header ▸ Dock left/bottom/right or Hide, or View ▸
+      <panel> ▸. Hidden panels leave a rail (sides) or a strip (bottom) to bring them
+      back.
+    - The Scene panel stacks the tree and Inspector in a side dock and puts them side by
+      side at the bottom. With the viewport hidden, the bottom dock fills the middle.
+  - **Shortcuts as data** (`keymap.ts`, `keys.ts`):
+    - Every rebindable action has its default keys, and the user's changes are kept by
+      the host (`UserPrefs` "keymap", only the differences).
+    - Keys are named by the character typed for symbols, so any layout works.
+    - The viewport no longer has its own shortcuts. It forwards each key as a combo
+      (`viewport:key`, Alt combinations too) and the UI runs whatever it's bound to, so
+      one keymap rules both. Only arrows (nudge), 1–9 (prefabs) and Esc (stop Play) stay
+      fixed. In Play only Play-time actions run (F5, F3, F1); the game reads its own keys
+      as before.
+    - Panel toggles are B, J, I and M.
+    - **Help ▸ Keyboard Shortcuts** (F1, also in Preferences) edits them. Click a key to
+      record a replacement, + to add one, × to remove one. A key taken from another
+      action says so. Reset works per action or for all.
+    - Menus show the current keys.
+  - **Folders**: right-click a folder in Prefabs or Assets:
+    - Rename folder…: everything in it moves, references follow (4.4).
+    - Show in Explorer.
+    - Remove folder…: one confirmation with a checkbox (the new `confirmWithOption`).
+      Ticked, the contents are deleted (prefab copies in the scene stay, unlinked, as one
+      undo step). Unticked, they move up a level, references followed. The folder goes
+      once empty; anything else in it stays and is reported.
+  - **Multi-select pane**: with several assets picked, it keeps "Drawn" and **New tile
+    prefabs / New prop prefabs** (one each, named after the files) and Solid.
+  - **Pointers**: Select shows an arrow, or move arrows over something that can be moved;
+    the brush shows a crosshair; Erase shows a drawn eraser; panning shows a hand.
+    **Ghost**: a half-transparent copy of the brush prefab follows the cursor, snapped
+    to its cell, with the brush's size and rotation. It lives in its own registry, which
+    `Renderer2D::Render` draws with the scene (never saved, never undone).
+  - Tests:
+    - UI: `keymap.test.ts` (6: naming on any layout, defaults, rebinding with a taken
+      key, unbinding, reset).
+    - C++: folder listing, moving up and empty-folder removal (`ProjectMoveTest`).
+
 **Fixed after the phase-end run (from testing, 2026-10-16):** the editor opened with no UI
 (only the viewport, or a gray window). The 5.3 File-menu code rewrote a menu list it also
 watched, so it re-ran itself forever before the UI mounted. Vue's production build has no

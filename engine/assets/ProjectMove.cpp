@@ -2,6 +2,7 @@
 
 #include "reflection/Reflection.h"
 
+#include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <sstream>
@@ -123,6 +124,54 @@ std::string CheckMove(const Project& project, const std::string& from, const std
         return to + " already exists";
     }
     return {};
+}
+
+std::vector<std::string> FolderContents(const Project& project, const std::string& folder) {
+    std::vector<std::string> items;
+    const bool prefabs = StartsWith(folder, "prefabs/") || folder == "prefabs";
+    std::error_code ec;
+    for (auto it = fs::recursive_directory_iterator(project.Resolve(folder), ec);
+         it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (ec) break;
+        if (!it->is_regular_file()) continue;
+        const std::string path = project.Relative(it->path());
+        const std::string ext = it->path().extension().string();
+        if (prefabs ? ext == ".prefab" : (ext != ".meta" && path.find(".gen.json") == std::string::npos)) {
+            items.push_back(path);
+        }
+    }
+    std::sort(items.begin(), items.end());
+    return items;
+}
+
+std::string PathAfterFolderChange(const std::string& path, const std::string& folder, const std::string& newFolder) {
+    if (!StartsWith(path, folder + "/")) return path;
+    const std::string rest = path.substr(folder.size() + 1);
+    std::string target = newFolder;
+    if (target.empty()) {
+        const auto slash = folder.find_last_of('/');
+        target = slash == std::string::npos ? "" : folder.substr(0, slash);
+    }
+    return target.empty() ? rest : target + "/" + rest;
+}
+
+bool RemoveEmptyFolders(const Project& project, const std::string& folder) {
+    std::error_code ec;
+    const fs::path dir = project.Resolve(folder);
+    if (!fs::is_directory(dir, ec)) return true;
+    // Deepest first, so a folder whose subfolders were all empty goes too.
+    std::vector<fs::path> dirs{dir};
+    for (auto it = fs::recursive_directory_iterator(dir, ec); it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (ec) break;
+        if (it->is_directory()) dirs.push_back(it->path());
+    }
+    std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) {
+        return a.native().size() > b.native().size();
+    });
+    for (const fs::path& d : dirs) {
+        if (fs::is_empty(d, ec)) fs::remove(d, ec);
+    }
+    return !fs::exists(dir, ec);
 }
 
 MoveResult MoveProjectFile(const Project& project, const std::string& from, const std::string& to) {

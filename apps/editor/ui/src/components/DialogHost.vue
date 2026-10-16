@@ -10,6 +10,7 @@ const backdrop = ref<HTMLElement | null>(null)
 const input = ref<HTMLInputElement | null>(null)
 const okButton = ref<HTMLButtonElement | null>(null)
 const value = ref('')
+const checked = ref(false)
 
 watch(
   current,
@@ -23,6 +24,7 @@ watch(
     }
     if (now) {
       value.value = now.value
+      checked.value = now.checked
       await nextTick()
       if (now.kind === 'prompt') {
         input.value?.focus()
@@ -36,6 +38,7 @@ watch(
 )
 
 function ok(): void {
+  if (current.value?.checkbox) current.value.checked = checked.value
   finishDialog(current.value?.kind === 'prompt' ? value.value : true)
 }
 
@@ -67,6 +70,10 @@ function onKeydown(event: KeyboardEvent): void {
         :placeholder="current.placeholder"
         spellcheck="false"
       />
+      <label v-if="current.checkbox" class="option">
+        <input v-model="checked" type="checkbox" />
+        {{ current.checkbox }}
+      </label>
       <div class="buttons">
         <button v-if="current.kind !== 'info'" @click="cancel">{{ current.cancelLabel }}</button>
         <button ref="okButton" class="primary" :class="{ danger: current.danger }" @click="ok">
@@ -78,6 +85,16 @@ function onKeydown(event: KeyboardEvent): void {
 </template>
 
 <style scoped>
+.option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+.option input {
+  width: auto;
+  height: auto;
+}
 .backdrop {
   position: fixed;
   inset: 0;

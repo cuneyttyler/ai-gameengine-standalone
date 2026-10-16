@@ -13,7 +13,7 @@ import { bottomTab } from '../scenes'
 import { onHostMessage, sendToHost } from '../ipc'
 import { askMoveManyToFolder, askMoveToFolder, foldersOf, inFolder, moveItem, renameItem, type Root } from '../organize'
 import { clickItem, emptySelection, keepShown, renamed, selectAll, type Selection } from '../selection'
-import { confirmDialog } from '../dialogs'
+import { confirmDialog, confirmWithOption, promptDialog } from '../dialogs'
 
 interface Asset {
   path: string
@@ -249,6 +249,69 @@ function prefabMenu(prefab: (typeof editorState.prefabs)[number], event: MouseEv
   openContextMenu(event.clientX, event.clientY, items)
 }
 
+// Folder menus (5.6): rename, show, remove — keeping what's inside (it
+// moves up a level) or removing it too.
+function folderMenu(folder: string, which: Root, event: MouseEvent): void {
+  if (!folder) return
+  const full = `${which}/${folder}`
+  const parent = folder.includes('/') ? folder.slice(0, folder.lastIndexOf('/')) : ''
+  const paths = which === 'assets' ? assets.value.map((a) => a.path) : editorState.prefabs.map((p) => p.path)
+  const count = paths.filter((p) => p.startsWith(full + '/')).length
+  const noun = which === 'assets' ? (count === 1 ? 'asset' : 'assets') : count === 1 ? 'prefab' : 'prefabs'
+  const items: MenuItem[] = [
+    {
+      label: 'Rename folder…',
+      disabled: editorState.playing,
+      action: async () => {
+        const name = await promptDialog({
+          title: 'Rename folder',
+          message: `New name for ${full}. Everything in it moves, and every reference follows.`,
+          value: folderLabel(folder),
+          confirmLabel: 'Rename',
+        })
+        const clean = name?.trim().replace(/[\\/:*?"<>|]/g, '_')
+        if (!clean || clean === folderLabel(folder)) return
+        sendToHost({ type: 'folder:rename', folder: full, to: `${which}/${parent ? parent + '/' : ''}${clean}` })
+        if (which === 'assets' ? assetFolder.value === folder : prefabFolder.value === folder) {
+          if (which === 'assets') assetFolder.value = ''
+          else prefabFolder.value = ''
+        }
+      },
+    },
+    { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: full }) },
+    separator,
+    {
+      label: 'Remove folder…',
+      danger: true,
+      disabled: editorState.playing,
+      action: async () => {
+        const answer = await confirmWithOption({
+          title: 'Remove folder',
+          message: `Remove ${full}?`,
+          checkbox: `Also remove the ${count} ${noun} in it (otherwise they move up to ${parent ? `${which}/${parent}` : `${which}/`})`,
+          confirmLabel: 'Remove',
+          danger: true,
+        })
+        if (!answer.confirmed) return
+        sendToHost({ type: 'folder:remove', folder: full, deleteContents: answer.checked })
+        if (which === 'assets') assetFolder.value = ''
+        else prefabFolder.value = ''
+      },
+    },
+  ]
+  openContextMenu(event.clientX, event.clientY, items)
+}
+
+// Several picked images (5.6): one prefab each, named after its file.
+function createPrefabsForPicked(asTile: boolean): void {
+  for (const path of pickedAssets.value) {
+    const asset = assets.value.find((a) => a.path === path)
+    if (!asset || asset.type === 'audio') continue
+    const name = asset.name.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_-]/g, '_')
+    sendToHost({ type: 'prefab:createFromAsset', asset: path, tile: 0, asTile, solid: paintSolid.value, name, flat: artFlat.value })
+  }
+}
+
 function modifiers(event: MouseEvent | KeyboardEvent): { ctrl: boolean; shift: boolean } {
   return { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey }
 }
@@ -437,6 +500,7 @@ onMounted(() => {
           :class="{ active: prefabFolder === folder, drop: dropTarget === folder && dragging }"
           :style="{ paddingLeft: `${8 + (folder ? (folderDepth(folder) + 1) * 10 : 0)}px` }"
           @click="prefabFolder = folder"
+          @contextmenu.prevent="folderMenu(folder, 'prefabs', $event)"
           @dragover.prevent="dropTarget = folder"
           @dragleave="dropTarget = null"
           @drop.prevent="dropOn(folder, 'prefabs')"
@@ -502,6 +566,7 @@ onMounted(() => {
           :class="{ active: assetFolder === folder, drop: dropTarget === folder && dragging }"
           :style="{ paddingLeft: `${8 + (folder ? (folderDepth(folder) + 1) * 10 : 0)}px` }"
           @click="assetFolder = folder"
+          @contextmenu.prevent="folderMenu(folder, 'assets', $event)"
           @dragover.prevent="dropTarget = folder"
           @dragleave="dropTarget = null"
           @drop.prevent="dropOn(folder, 'assets')"
@@ -557,6 +622,25 @@ onMounted(() => {
           <button :disabled="editorState.playing" @click="deletePicked('assets')">Delete…</button>
         </div>
         <p class="muted small">Or drag any picked card onto a folder.</p>
+        <div class="section-label">Make a prefab from each</div>
+        <div class="row" title="Top-down art is laid onto the grid's diamond cells; isometric art is used as drawn">
+          <span>Drawn</span>
+          <select v-model="artFlat">
+            <option :value="true">Top-down (lies flat on the grid)</option>
+            <option :value="false">Isometric / upright</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button title="Ground tiles you paint onto cells, named after their files" @click="createPrefabsForPicked(true)">
+            New tile prefabs
+          </button>
+          <button title="Objects that stand in the world, named after their files" @click="createPrefabsForPicked(false)">
+            New prop prefabs
+          </button>
+          <label class="check" title="Tiles: block movement. Props: block their cell.">
+            <input v-model="paintSolid" type="checkbox" /> Solid
+          </label>
+        </div>
       </aside>
       <aside v-else-if="selected" class="details">
         <div class="title" :title="selected.path">{{ selected.path }}</div>

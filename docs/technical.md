@@ -234,7 +234,11 @@ generated field automatically gets the "Ask AI" affordance for free.
   - Performance (4.6): UI → host `view:stats` (toggles the F3 overlay).
   - Export (5.1): UI → host `game:export {name, zip}`, `game:reveal {path}`; host → UI
     `game:exported {ok, error, folder, zip, files, build}`.
-  - Editor refinements (5.5): UI → host `viewport:visible {on}` (Ctrl+M).
+  - Editor refinements (5.5): UI → host `viewport:visible {on}` (M since 5.6).
+  - Layout and keys (5.6): host → UI `viewport:key {combo}` (every key pressed in the viewport
+    but arrows and 1-9, run through the UI's keymap), `keys:map {overrides}`; UI → host
+    `keys:request`, `keys:set {overrides}`, `folder:rename {folder, to}`,
+    `folder:remove {folder, deleteContents}`. `ui:shortcut` is gone.
   - Welcome window (5.4, `apps/editor/Launcher`): UI → host `welcome:request`,
     `welcome:open {path}`, `welcome:openFolder`, `welcome:demo`, `welcome:new {name, starter}`,
     `welcome:forget {path}`, `prefs:openLast {on}`; host → UI `welcome:info {recent, openLast,

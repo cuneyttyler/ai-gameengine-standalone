@@ -1,5 +1,7 @@
 #include "editor/ViewportWindow.h"
 
+#include <cstdint>
+
 #include <stdexcept>
 
 namespace aige {
@@ -27,6 +29,56 @@ void EnsureClassRegistered(HINSTANCE hinstance) {
     if (!RegisterClassExW(&wc)) {
         throw std::runtime_error("Failed to register ViewportWindow class");
     }
+}
+
+// The eraser pointer: a tilted eraser block, its tip (the hotspot) at the
+// bottom left. Drawn in code, so there's no resource file to ship.
+HCURSOR CreateEraserCursor() {
+    constexpr int size = 32;
+    BITMAPV5HEADER header{};
+    header.bV5Size = sizeof(header);
+    header.bV5Width = size;
+    header.bV5Height = -size; // top-down
+    header.bV5Planes = 1;
+    header.bV5BitCount = 32;
+    header.bV5Compression = BI_BITFIELDS;
+    header.bV5RedMask = 0x00FF0000;
+    header.bV5GreenMask = 0x0000FF00;
+    header.bV5BlueMask = 0x000000FF;
+    header.bV5AlphaMask = 0xFF000000;
+    void* bits = nullptr;
+    HDC screen = GetDC(nullptr);
+    HBITMAP color = CreateDIBSection(screen, reinterpret_cast<BITMAPINFO*>(&header), DIB_RGB_COLORS, &bits, nullptr, 0);
+    ReleaseDC(nullptr, screen);
+    if (color == nullptr || bits == nullptr) {
+        return LoadCursorW(nullptr, IDC_ARROW);
+    }
+    auto* pixels = static_cast<uint32_t*>(bits);
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            // In a frame turned 45°: u along the eraser, v across it.
+            const float u = (static_cast<float>(x) - 4.0f + (27.0f - static_cast<float>(y))) * 0.7071f;
+            const float v = (static_cast<float>(x) - 4.0f - (27.0f - static_cast<float>(y))) * 0.7071f;
+            uint32_t pixel = 0;
+            if (u >= 0.0f && u <= 26.0f && v >= -6.0f && v <= 6.0f) {
+                const bool edge = u < 1.2f || u > 24.8f || v < -4.8f || v > 4.8f;
+                const bool rubber = u < 9.0f; // the pink end that erases
+                pixel = edge ? 0xFF1E1E28u : rubber ? 0xFFF08CA0u : 0xFFF0F0F5u;
+            }
+            pixels[y * size + x] = pixel;
+        }
+    }
+    HBITMAP mask = CreateBitmap(size, size, 1, 1, nullptr);
+    ICONINFO info{};
+    info.fIcon = FALSE;
+    info.xHotspot = 4;
+    info.yHotspot = 27;
+    info.hbmMask = mask;
+    info.hbmColor = color;
+    HCURSOR cursor = CreateIconIndirect(&info);
+    DeleteObject(color);
+    DeleteObject(mask);
+    return cursor != nullptr ? cursor : LoadCursorW(nullptr, IDC_ARROW);
 }
 
 int ToVirtualKey(Key key) {
@@ -117,6 +169,29 @@ void ViewportWindow::SetKeyDownCallback(std::function<void(int, bool, bool)> cal
 
 void ViewportWindow::SetCharCallback(std::function<void(wchar_t)> callback) {
     charCallback_ = std::move(callback);
+}
+
+void ViewportWindow::SetCursor(Cursor cursor) {
+    static const HCURSOR arrow = LoadCursorW(nullptr, IDC_ARROW);
+    static const HCURSOR move = LoadCursorW(nullptr, IDC_SIZEALL);
+    static const HCURSOR brush = LoadCursorW(nullptr, IDC_CROSS);
+    static const HCURSOR pan = LoadCursorW(nullptr, IDC_HAND);
+    static const HCURSOR eraser = CreateEraserCursor();
+    HCURSOR next = cursor == Cursor::Move    ? move
+                   : cursor == Cursor::Brush ? brush
+                   : cursor == Cursor::Erase ? eraser
+                   : cursor == Cursor::Pan   ? pan
+                                             : arrow;
+    if (next == cursor_) {
+        return;
+    }
+    cursor_ = next;
+    // Apply now if the pointer is over us (WM_SETCURSOR covers later moves).
+    POINT point{};
+    GetCursorPos(&point);
+    if (WindowFromPoint(point) == hwnd_) {
+        ::SetCursor(cursor_);
+    }
 }
 
 LRESULT CALLBACK ViewportWindow::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -222,6 +297,14 @@ LRESULT CALLBACK ViewportWindow::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPA
             }
             return 0;
         }
+        case WM_SYSKEYDOWN:
+            if (self != nullptr && wparam < self->keyDown_.size() && wparam != VK_MENU && wparam != VK_F4 &&
+                self->keyDownCallback_) {
+                bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+                bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+                self->keyDownCallback_(static_cast<int>(wparam), ctrl, shift);
+            }
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
         case WM_KEYDOWN:
         case WM_KEYUP:
             if (self != nullptr && wparam < self->keyDown_.size()) {
@@ -238,6 +321,12 @@ LRESULT CALLBACK ViewportWindow::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPA
                 self->charCallback_(static_cast<wchar_t>(wparam));
             }
             return 0;
+        case WM_SETCURSOR:
+            if (self != nullptr && self->cursor_ != nullptr && LOWORD(lparam) == HTCLIENT) {
+                ::SetCursor(self->cursor_);
+                return TRUE;
+            }
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
         case WM_KILLFOCUS:
             if (self != nullptr) {
                 self->keyDown_.fill(false);

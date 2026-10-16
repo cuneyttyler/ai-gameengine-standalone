@@ -159,3 +159,39 @@ TEST(ProjectMoveTest, TheOpenSceneAndItsUndoHistoryFollowWithIdsKept) {
         EXPECT_EQ(sprite.texture, "assets/props/crate.png"); // undo doesn't bring the old path back
     }
 }
+
+TEST(ProjectMoveTest, FoldersListMoveUpAndGoWhenEmpty) {
+    TempProject t;
+    const fs::path& root = t.project.root;
+    Write(root / "prefabs/enemies/skeleton.prefab", "x");
+    Write(root / "prefabs/enemies/undead/ghoul.prefab", "x");
+    Write(root / "prefabs/enemies/notes.txt", "not a prefab");
+    Write(root / "assets/props/barrel.png", "png");
+    Write(root / "assets/props/barrel.png.meta", "meta");
+    Write(root / "assets/props/barrel.png.gen.json", "{}");
+
+    EXPECT_EQ(aige::FolderContents(t.project, "prefabs/enemies"),
+              (std::vector<std::string>{"prefabs/enemies/skeleton.prefab", "prefabs/enemies/undead/ghoul.prefab"}));
+    EXPECT_EQ(aige::FolderContents(t.project, "assets/props"), (std::vector<std::string>{"assets/props/barrel.png"}));
+
+    // Removing a folder but keeping its items: they move up a level.
+    EXPECT_EQ(aige::PathAfterFolderChange("prefabs/enemies/undead/ghoul.prefab", "prefabs/enemies", ""),
+              "prefabs/undead/ghoul.prefab");
+    EXPECT_EQ(aige::PathAfterFolderChange("prefabs/enemies/skeleton.prefab", "prefabs/enemies", ""),
+              "prefabs/skeleton.prefab");
+    // Renaming it.
+    EXPECT_EQ(aige::PathAfterFolderChange("prefabs/enemies/skeleton.prefab", "prefabs/enemies", "prefabs/foes"),
+              "prefabs/foes/skeleton.prefab");
+    EXPECT_EQ(aige::PathAfterFolderChange("prefabs/other/x.prefab", "prefabs/enemies", ""), "prefabs/other/x.prefab");
+
+    // A folder with a file left in it stays; once empty, it goes, subfolders too.
+    for (const auto& item : aige::FolderContents(t.project, "prefabs/enemies")) {
+        ASSERT_EQ(aige::MoveProjectFile(t.project, item, aige::PathAfterFolderChange(item, "prefabs/enemies", "")).error, "");
+    }
+    EXPECT_TRUE(fs::exists(root / "prefabs/skeleton.prefab"));
+    EXPECT_TRUE(fs::exists(root / "prefabs/undead/ghoul.prefab"));
+    EXPECT_FALSE(aige::RemoveEmptyFolders(t.project, "prefabs/enemies")); // notes.txt is still there
+    fs::remove(root / "prefabs/enemies/notes.txt");
+    EXPECT_TRUE(aige::RemoveEmptyFolders(t.project, "prefabs/enemies"));
+    EXPECT_FALSE(fs::exists(root / "prefabs/enemies"));
+}

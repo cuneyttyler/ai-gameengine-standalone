@@ -5,9 +5,26 @@ import { projectState } from '../projects'
 // they're cut out of the viewport like any other overlay.
 import { computed, ref } from 'vue'
 import { closeContextMenu, menuState, openContextMenu, separator, type MenuItem } from '../contextMenu'
-import { editorState, runShortcut, setAiOpen } from '../editorState'
+import { editorState } from '../editorState'
 import { sendToHost } from '../ipc'
 import { menuExtensions } from '../menus'
+import { keyLabel, runAction } from '../keys'
+import { dockNames, layout, movePanel, panelIds, panelNames, togglePanel, toggleViewport, type Dock } from '../layout'
+
+// View ▸ <panel> ▸ Show / Left / Bottom / Right (5.6).
+function panelItems(): MenuItem[] {
+  return panelIds.map((id) => ({
+    label: `${layout.visible[id] ? '✓ ' : ''}${panelNames[id]} panel`,
+    submenu: [
+      { label: layout.visible[id] ? 'Hide' : 'Show', shortcut: keyLabel(`panel.${id}`), action: () => togglePanel(id) },
+      separator,
+      ...(['left', 'bottom', 'right'] as Dock[]).map((dock) => ({
+        label: `${layout.dock[id] === dock ? '✓ ' : ''}Dock ${dockNames[dock].toLowerCase()}`,
+        action: () => movePanel(id, dock),
+      })),
+    ],
+  }))
+}
 
 const open = ref<string | null>(null)
 
@@ -15,7 +32,7 @@ const menus = computed<Record<string, MenuItem[]>>(() => ({
   File: [
     ...menuExtensions.file.top,
     ...menuExtensions.file.scenes,
-    { label: 'Save', shortcut: 'Ctrl+S', disabled: editorState.playing, action: () => sendToHost({ type: 'scene:save' }) },
+    { label: 'Save', shortcut: keyLabel('file.save'), disabled: editorState.playing, action: () => sendToHost({ type: 'scene:save' }) },
     ...menuExtensions.file.afterSave,
     ...menuExtensions.file.export,
     separator,
@@ -25,44 +42,39 @@ const menus = computed<Record<string, MenuItem[]>>(() => ({
     { label: 'Exit', action: () => sendToHost({ type: 'app:quit' }) },
   ],
   Edit: [
-    { label: 'Undo', shortcut: 'Ctrl+Z', disabled: !editorState.canUndo, action: () => sendToHost({ type: 'edit:undo' }) },
-    { label: 'Redo', shortcut: 'Ctrl+Y', disabled: !editorState.canRedo, action: () => sendToHost({ type: 'edit:redo' }) },
+    { label: 'Undo', shortcut: keyLabel('edit.undo'), disabled: !editorState.canUndo, action: () => sendToHost({ type: 'edit:undo' }) },
+    { label: 'Redo', shortcut: keyLabel('edit.redo'), disabled: !editorState.canRedo, action: () => sendToHost({ type: 'edit:redo' }) },
     separator,
     ...menuExtensions.edit,
     {
       label: 'Duplicate',
-      shortcut: 'Ctrl+D',
+      shortcut: keyLabel('edit.duplicate'),
       disabled: editorState.selectedId === null,
       action: () => sendToHost({ type: 'edit:duplicate' }),
     },
     {
       label: 'Delete',
-      shortcut: 'Del',
+      shortcut: keyLabel('edit.delete'),
       disabled: editorState.selectedId === null,
       action: () => sendToHost({ type: 'edit:delete' }),
     },
   ],
   View: [
-    { label: `${editorState.panels.left ? '✓ ' : ''}Scene panel`, shortcut: 'Ctrl+B', action: () => runShortcut('toggleLeft') },
-    {
-      label: `${editorState.panels.bottom ? '✓ ' : ''}Bottom panel`,
-      shortcut: 'Ctrl+J',
-      action: () => runShortcut('toggleBottom'),
-    },
-    { label: `${editorState.aiOpen ? '✓ ' : ''}AI panel`, shortcut: 'Ctrl+I', action: () => setAiOpen(!editorState.aiOpen) },
+    ...panelItems(),
+    { label: `${layout.viewport ? '✓ ' : ''}Viewport`, shortcut: keyLabel('panel.viewport'), action: () => toggleViewport() },
     separator,
-    { label: 'Frame scene', shortcut: 'F', action: () => sendToHost({ type: 'view:frame' }) },
+    { label: 'Frame scene', shortcut: keyLabel('view.frame'), action: () => sendToHost({ type: 'view:frame' }) },
     ...menuExtensions.view,
   ],
   Play: [
     {
       label: editorState.playing ? 'Stop' : 'Play',
-      shortcut: 'F5',
+      shortcut: keyLabel('play.toggle'),
       action: () => sendToHost({ type: editorState.playing ? 'play:stop' : 'play:start' }),
     },
   ],
   Help: [
-    { label: 'Keyboard Shortcuts', shortcut: 'F1', action: () => runShortcut('help') },
+    { label: 'Keyboard Shortcuts…', shortcut: keyLabel('help.shortcuts'), action: () => runAction('help.shortcuts') },
     { label: 'Documentation', action: () => sendToHost({ type: 'help:docs' }) },
   ],
 }))

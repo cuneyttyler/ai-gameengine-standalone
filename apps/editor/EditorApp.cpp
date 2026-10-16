@@ -33,6 +33,7 @@
 #include <variant>
 #include <chrono>
 #include <ctime>
+#include <cwctype>
 #include <cstdio>
 #include <cmath>
 #include <cctype>
@@ -232,6 +233,14 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             MessageBoxW(mainWindow_, Utf8ToWide("The editor's interface failed to start:\n\n" + message.value("text", "")).c_str(),
                         L"Editor", MB_ICONERROR);
         }
+    } else if (type == "keys:request") {
+        // The user's own shortcuts (5.6), on top of the defaults in the UI.
+        post_({{"type", "keys:map"},
+               {"overrides", userPrefs_ ? userPrefs_->Get("keymap", nlohmann::json::object()) : nlohmann::json::object()}});
+    } else if (type == "keys:set") {
+        if (userPrefs_ && message.contains("overrides") && message["overrides"].is_object()) {
+            userPrefs_->Set("keymap", message["overrides"]);
+        }
     } else if (type == "viewport:visible") {
         // Ctrl+M (5.5): the UI lets the bottom panel take the space.
         ShowWindow(viewport_.Handle(), message.value("on", true) ? SW_SHOWNA : SW_HIDE);
@@ -288,6 +297,10 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     } else if (type == "game:reveal") {
         const std::wstring folder = Utf8ToWide(message.value("path", ""));
         ShellExecuteW(mainWindow_, nullptr, L"explorer.exe", (L"\"" + folder + L"\"").c_str(), nullptr, SW_SHOWNORMAL);
+    } else if (type == "folder:rename") {
+        RenameFolder(message.value("folder", ""), message.value("to", ""));
+    } else if (type == "folder:remove") {
+        RemoveFolder(message.value("folder", ""), message.value("deleteContents", false));
     } else if (type == "file:move") {
         MoveProjectItem(message.value("from", ""), message.value("to", ""));
     } else if (type == "prefab:remove") {
@@ -776,6 +789,73 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
 
 // --- Scene editing polish (development_plan.md 4.3) -------------------------
 
+void EditorApp::UpdatePreview() {
+    const PrefabInfo* prefab = tool_ == Tool::Prefab ? prefabs_.Find(brushPrefab_) : nullptr;
+    if (playing_ || !hasHover_ || dragging_ || prefab == nullptr || !prefab->error.empty()) {
+        if (!previewKey_.empty()) {
+            preview_.clear();
+            previewKey_.clear();
+        }
+        return;
+    }
+    int gx = 0, gy = 0;
+    CellAt(hoverX_, hoverY_, iso_, gx, gy);
+    const std::string key = prefab->path + "|" + std::to_string(gx) + "|" + std::to_string(gy) + "|" +
+                            std::to_string(brushScale_) + "|" + std::to_string(brushRotation_);
+    if (key == previewKey_) {
+        return;
+    }
+    previewKey_ = key;
+    preview_.clear();
+    auto ghost = prefabs_.Instantiate(preview_, prefab->path, static_cast<float>(gx) + 0.5f, static_cast<float>(gy) + 0.5f);
+    if (!ghost) {
+        return;
+    }
+    // As it would be placed: the brush's size and turn, then see-through.
+    if (std::abs(brushScale_ - 1.0f) > 1e-3f) {
+        ScaleEntity(EngineReflection(), preview_, *ghost, brushScale_);
+    }
+    if (auto* sprite = preview_.try_get<Sprite>(*ghost)) {
+        if (sprite->flat) {
+            sprite->rotation = (sprite->rotation + brushRotation_) % 4;
+        }
+        sprite->a *= 0.55f;
+    }
+    UpdateWorldToScreen(preview_, iso_);
+}
+
+void EditorApp::UpdateCursor() {
+    using Cursor = ViewportWindow::Cursor;
+    Cursor cursor = Cursor::Arrow;
+    if (panning_) {
+        cursor = Cursor::Pan;
+    } else if (!playing_) {
+        switch (tool_) {
+            case Tool::Prefab:
+                cursor = Cursor::Brush;
+                break;
+            case Tool::Erase:
+                cursor = Cursor::Erase;
+                break;
+            case Tool::Select:
+                // Over something that can be picked up and moved (not the
+                // ground itself): the move pointer.
+                if (dragging_) {
+                    cursor = Cursor::Move;
+                } else if (hasHover_) {
+                    for (auto [entity, t, s] : registry_.view<ScreenTransform2D, Sprite>(entt::exclude<Tile>).each()) {
+                        if (std::abs(hoverX_ - t.x) <= s.width * 0.5f && std::abs(hoverY_ - t.y) <= s.height * 0.5f) {
+                            cursor = Cursor::Move;
+                            break;
+                        }
+                    }
+                }
+                break;
+        }
+    }
+    viewport_.SetCursor(cursor);
+}
+
 void EditorApp::Rotate() {
     if (playing_) {
         return;
@@ -920,16 +1000,18 @@ void EditorApp::RemovePrefab(const std::string& path) {
            {"text", "Deleted " + path + " (" + std::to_string(std::get<int>(result)) + " copies kept as ordinary entities)"}});
 }
 
-void EditorApp::MoveProjectItem(const std::string& from, const std::string& to) {
+bool EditorApp::MoveProjectItem(const std::string& from, const std::string& to, bool report) {
     if (playing_) {
         post_({{"type", "notify"}, {"text", "Stop playing first"}});
-        return;
+        return false;
     }
     MoveResult result = MoveProjectFile(assets_.GetProject(), from, to);
     post_({{"type", "file:moved"}, {"from", from}, {"to", to}, {"error", result.error}});
     if (!result.error.empty()) {
-        post_({{"type", "notify"}, {"text", "Couldn't move " + from + ": " + result.error}});
-        return;
+        if (report) {
+            post_({{"type", "notify"}, {"text", "Couldn't move " + from + ": " + result.error}});
+        }
+        return false;
     }
     // The open scene and its undo history follow the file too; neither is
     // an undo step of its own (the file has moved for good).
@@ -948,6 +1030,17 @@ void EditorApp::MoveProjectItem(const std::string& from, const std::string& to) 
         ActiveSettings().game.startScene = to; // the file was rewritten; keep memory in step
     }
     renderer_.InvalidateTexture(from);
+    if (!report) {
+        return true;
+    }
+    RefreshAfterMoves();
+    post_({{"type", "notify"},
+           {"text", "Moved to " + to + " — " + std::to_string(result.references) + " reference(s) in " +
+                        std::to_string(result.rewritten.size()) + " file(s) updated"}});
+    return true;
+}
+
+void EditorApp::RefreshAfterMoves() {
     RefreshAssets();
     RefreshPrefabs();
     world_.Refresh();
@@ -956,9 +1049,89 @@ void EditorApp::MoveProjectItem(const std::string& from, const std::string& to) 
     sceneTreeStale_ = true;
     inspectorStale_ = true;
     editorStateStale_ = true;
+}
+
+namespace {
+
+bool IsOrganizedFolder(const std::string& folder) {
+    // Inside prefabs/ or assets/, never the roots themselves, no tricks.
+    return (folder.rfind("prefabs/", 0) == 0 || folder.rfind("assets/", 0) == 0) &&
+           folder.find("..") == std::string::npos && folder.back() != '/';
+}
+
+} // namespace
+
+void EditorApp::RenameFolder(const std::string& folder, const std::string& newFolder) {
+    if (playing_ || !IsOrganizedFolder(folder) || !IsOrganizedFolder(newFolder) || folder == newFolder) {
+        return;
+    }
+    const Project& project = assets_.GetProject();
+    int moved = 0;
+    std::vector<std::string> failed;
+    for (const std::string& item : FolderContents(project, folder)) {
+        if (MoveProjectItem(item, PathAfterFolderChange(item, folder, newFolder), false)) {
+            ++moved;
+        } else {
+            failed.push_back(item);
+        }
+    }
+    RemoveEmptyFolders(project, folder);
+    RefreshAfterMoves();
     post_({{"type", "notify"},
-           {"text", "Moved to " + to + " — " + std::to_string(result.references) + " reference(s) in " +
-                        std::to_string(result.rewritten.size()) + " file(s) updated"}});
+           {"text", "Renamed to " + newFolder + " (" + std::to_string(moved) + " moved, references updated" +
+                        (failed.empty() ? ")" : "; " + std::to_string(failed.size()) + " couldn't move: " + failed.front() + ")")}});
+}
+
+void EditorApp::RemoveFolder(const std::string& folder, bool deleteContents) {
+    if (playing_ || !IsOrganizedFolder(folder)) {
+        return;
+    }
+    const Project& project = assets_.GetProject();
+    const std::vector<std::string> items = FolderContents(project, folder);
+    int done = 0;
+    std::vector<std::string> failed;
+    if (deleteContents) {
+        const bool prefabs = folder.rfind("prefabs/", 0) == 0;
+        ApplyOneShotEdit([&] { // prefab copies in the scene are unlinked: one undo step
+            for (const std::string& item : items) {
+                if (prefabs) {
+                    if (std::holds_alternative<int>(prefabs_.Remove(registry_, item))) {
+                        ++done;
+                    } else {
+                        failed.push_back(item);
+                    }
+                    if (brushPrefab_ == item) brushPrefab_.clear();
+                } else {
+                    std::error_code ec;
+                    for (const char* suffix : {"", ".meta", ".gen.json"}) {
+                        std::filesystem::remove(project.Resolve(item + suffix), ec);
+                    }
+                    artHistory_.Discarded(item);
+                    ++done;
+                }
+            }
+            return prefabs && done > 0;
+        });
+    } else {
+        for (const std::string& item : items) {
+            if (MoveProjectItem(item, PathAfterFolderChange(item, folder, ""), false)) {
+                ++done;
+            } else {
+                failed.push_back(item);
+            }
+        }
+    }
+    const bool gone = RemoveEmptyFolders(project, folder);
+    RefreshAfterMoves();
+    std::string text = deleteContents ? "Removed " + folder + " and " + std::to_string(done) + " item(s) in it"
+                                      : "Removed " + folder + "; " + std::to_string(done) + " item(s) moved up a level";
+    if (!failed.empty()) {
+        text += "; " + std::to_string(failed.size()) + " couldn't (" + failed.front() + ")";
+    }
+    if (!gone) {
+        text += "; the folder still holds other files, so it stays";
+    }
+    post_({{"type", "notify"}, {"text", text}});
 }
 
 // --- Scenes (development_plan.md 5.3) -----------------------------------------
@@ -1303,138 +1476,94 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
     }
 }
 
+// Keys with the viewport focused (development_plan.md 5.6): the shortcuts are
+// the user's keymap, which lives in the UI (keys.ts), so the viewport
+// forwards each key as a combo ("Ctrl+S", "F5", "[") and the UI runs whatever
+// it's bound to — the same code as when the panels have focus. Only what
+// isn't rebindable stays here: arrows nudge, 1-9 pick a prefab, Esc stops
+// Play. In Play, keys are forwarded too (the UI only acts on Play-time
+// actions); the game itself reads the held keys (ViewportWindow::IsKeyDown).
+
 void EditorApp::OnViewportChar(wchar_t character) {
-    if (playing_) {
+    // Symbols, named by the character typed, so any layout works ('[' is
+    // AltGr+8 on some); letters, digits and controls come as keys instead.
+    if (character < 0x21 || character == 0x7F || std::iswalnum(character)) {
         return;
     }
-    // [ ] resize the selection (Shift: finer; with Shift, [ and ] type { }).
-    switch (character) {
-        case L'[':
-        case L'-':
-            ScaleSelected(1.0f / 1.1f);
-            return;
-        case L']':
-        case L'+':
-            ScaleSelected(1.1f);
-            return;
-        case L'{':
-            ScaleSelected(1.0f / 1.02f);
-            return;
-        case L'}':
-            ScaleSelected(1.02f);
-            return;
-        default:
-            return;
+    post_({{"type", "viewport:key"}, {"combo", WideToUtf8(std::wstring(1, character))}});
+}
+
+namespace {
+
+// The keymap's name for a key ("A", "F5", "Delete"); empty for symbols,
+// which arrive as characters (OnViewportChar).
+std::string KeyName(int virtualKey) {
+    if ((virtualKey >= 'A' && virtualKey <= 'Z') || (virtualKey >= '0' && virtualKey <= '9')) {
+        return std::string(1, static_cast<char>(virtualKey));
+    }
+    if (virtualKey >= VK_F1 && virtualKey <= VK_F24) {
+        return "F" + std::to_string(virtualKey - VK_F1 + 1);
+    }
+    switch (virtualKey) {
+        case VK_DELETE: return "Delete";
+        case VK_BACK: return "Backspace";
+        case VK_ESCAPE: return "Escape";
+        case VK_RETURN: return "Enter";
+        case VK_TAB: return "Tab";
+        case VK_SPACE: return "Space";
+        case VK_INSERT: return "Insert";
+        case VK_HOME: return "Home";
+        case VK_END: return "End";
+        case VK_PRIOR: return "PageUp";
+        case VK_NEXT: return "PageDown";
+        case VK_LEFT: return "ArrowLeft";
+        case VK_RIGHT: return "ArrowRight";
+        case VK_UP: return "ArrowUp";
+        case VK_DOWN: return "ArrowDown";
+        default: return {};
     }
 }
 
+} // namespace
+
 void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
+    const bool alt = (GetKeyState(VK_MENU) & 0x8000) != 0;
     if (playing_) {
-        if (virtualKey == VK_ESCAPE || virtualKey == VK_F5) {
+        if (virtualKey == VK_ESCAPE) {
             StopPlay();
-        } else if (virtualKey == VK_F3) {
-            showStats_ = !showStats_;
-        }
-        return; // every other key belongs to the game
-    }
-
-    if (ctrl) {
-        // Layout shortcuts belong to the UI; forward them when the viewport has focus.
-        if (virtualKey == 'N' || (virtualKey == 'S' && shift)) {
-            post_({{"type", "ui:shortcut"}, {"name", virtualKey == 'N' ? "newProject" : "saveAs"}});
             return;
         }
-        if (virtualKey == 'O') {
-            OnWebMessage({{"type", "project:open"}});
-            return;
-        }
-        if (virtualKey == 'B' || virtualKey == 'J' || virtualKey == 'I' || virtualKey == 'M') {
-            post_({{"type", "ui:shortcut"},
-                   {"name", virtualKey == 'B'   ? "toggleLeft"
-                            : virtualKey == 'J' ? "toggleBottom"
-                            : virtualKey == 'I' ? "toggleAi"
-                                                : "toggleViewport"}});
-            return;
-        }
+    } else if (!ctrl && !alt) {
         switch (virtualKey) {
-            case 'C':
-                CopySelected();
+            case VK_LEFT:
+            case VK_RIGHT:
+            case VK_UP:
+            case VK_DOWN: {
+                // Along the grid's axes; Shift: a tenth of a cell.
+                const float step = shift ? 0.1f : 1.0f;
+                NudgeSelected(virtualKey == VK_LEFT ? -step : virtualKey == VK_RIGHT ? step : 0.0f,
+                              virtualKey == VK_UP ? -step : virtualKey == VK_DOWN ? step : 0.0f);
                 return;
-            case 'V':
-                PasteAtCursor();
-                return;
-            case 'Z':
-                shift ? Redo() : Undo();
-                return;
-            case 'Y':
-                Redo();
-                return;
-            case 'S':
-                Save();
-                return;
-            case 'D':
-                DuplicateSelected();
-                return;
-            default:
-                return;
-        }
-    }
-
-    switch (virtualKey) {
-        case VK_F1:
-            post_({{"type", "ui:shortcut"}, {"name", "help"}});
-            return;
-        case VK_F5:
-            StartPlay();
-            return;
-        case VK_F3:
-            showStats_ = !showStats_;
-            return;
-        case VK_LEFT:
-        case VK_RIGHT:
-        case VK_UP:
-        case VK_DOWN: {
-            // Along the grid's axes; Shift: a tenth of a cell.
-            const float step = shift ? 0.1f : 1.0f;
-            NudgeSelected(virtualKey == VK_LEFT ? -step : virtualKey == VK_RIGHT ? step : 0.0f,
-                          virtualKey == VK_UP ? -step : virtualKey == VK_DOWN ? step : 0.0f);
-            return;
-        }
-        case 'G':
-            showGrid_ = !showGrid_;
-            editorStateStale_ = true;
-            return;
-        case 'R':
-            Rotate();
-            return;
-        case VK_DELETE:
-        case VK_BACK:
-            DeleteSelected();
-            return;
-        case VK_ESCAPE:
-            SetTool(Tool::Select);
-            Select(std::nullopt);
-            return;
-        case 'F':
-            FrameScene();
-            return;
-        case 'V':
-            SetTool(Tool::Select);
-            return;
-        case 'E':
-            SetTool(Tool::Erase);
-            return;
-        default:
-            // 1-9 arm the prefab brush with the palette's first nine prefabs.
-            if (virtualKey >= '1' && virtualKey <= '9') {
-                size_t index = static_cast<size_t>(virtualKey - '1');
-                if (index < prefabs_.Prefabs().size()) {
-                    brushPrefab_ = prefabs_.Prefabs()[index].path;
-                    SetTool(Tool::Prefab);
-                }
             }
-            return;
+            default:
+                // 1-9 arm the prefab brush with the palette's first nine prefabs.
+                if (virtualKey >= '1' && virtualKey <= '9' && !shift) {
+                    size_t index = static_cast<size_t>(virtualKey - '1');
+                    if (index < prefabs_.Prefabs().size()) {
+                        brushPrefab_ = prefabs_.Prefabs()[index].path;
+                        SetTool(Tool::Prefab);
+                    }
+                    return;
+                }
+        }
     }
+    const std::string key = KeyName(virtualKey);
+    if (key.empty()) {
+        return;
+    }
+    // AltGr reports Ctrl+Alt; with a letter that's still a real combo.
+    std::string combo = std::string(ctrl ? "Ctrl+" : "") + (alt ? "Alt+" : "") + (shift ? "Shift+" : "") + key;
+    post_({{"type", "viewport:key"}, {"combo", combo}});
 }
 
 void EditorApp::ToolStroke(float sceneX, float sceneY, bool first) {
@@ -1828,6 +1957,8 @@ void EditorApp::Tick(double frameSeconds) {
         // WorldTransform2D or Tile show up immediately.
         UpdateWorldToScreen(registry_, iso_);
     }
+    UpdatePreview();
+    UpdateCursor();
 
     if (sceneTreeStale_) {
         sceneTreeStale_ = false;

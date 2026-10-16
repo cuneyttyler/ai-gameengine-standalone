@@ -3,43 +3,39 @@
 // prefab card's Delete.
 import { watch } from 'vue'
 import { prefabMenuExtensions } from './assetMenus'
-import { editorState, runShortcut } from './editorState'
+import { editorState } from './editorState'
+import { keyLabel, keyState } from './keys'
 import { sendToHost } from './ipc'
 import { menuExtensions } from './menus'
 import { entityMenuExtensions, groundMenuExtensions } from './sceneMenus'
 
 function updateMenus(): void {
   menuExtensions.edit = [
-    { label: 'Copy', shortcut: 'Ctrl+C', disabled: editorState.selectedId === null, action: () => sendToHost({ type: 'edit:copy' }) },
-    { label: 'Paste at cursor', shortcut: 'Ctrl+V', action: () => sendToHost({ type: 'edit:paste' }) },
-    { label: 'Bigger', shortcut: ']', disabled: editorState.selectedId === null, action: () => sendToHost({ type: 'edit:scale', factor: 1.1 }) },
-    { label: 'Smaller', shortcut: '[', disabled: editorState.selectedId === null, action: () => sendToHost({ type: 'edit:scale', factor: 1 / 1.1 }) },
+    { label: 'Copy', shortcut: keyLabel('edit.copy'), disabled: editorState.selectedId === null, action: () => sendToHost({ type: 'edit:copy' }) },
+    { label: 'Paste at cursor', shortcut: keyLabel('edit.paste'), action: () => sendToHost({ type: 'edit:paste' }) },
+    { label: 'Bigger', shortcut: keyLabel('edit.bigger'), disabled: editorState.selectedId === null, action: () => sendToHost({ type: 'edit:scale', factor: 1.1 }) },
+    { label: 'Smaller', shortcut: keyLabel('edit.smaller'), disabled: editorState.selectedId === null, action: () => sendToHost({ type: 'edit:scale', factor: 1 / 1.1 }) },
   ]
   menuExtensions.view = [
-    { label: 'Frame stats', shortcut: 'F3', action: () => sendToHost({ type: 'view:stats' }) },
-    {
-      label: `${editorState.panels.viewport ? '✓ ' : ''}Viewport`,
-      shortcut: 'Ctrl+M',
-      action: () => runShortcut('toggleViewport'),
-    },
-    { label: `${editorState.grid ? '✓ ' : ''}Tile grid on empty ground`, shortcut: 'G', action: () => sendToHost({ type: 'view:grid' }) },
+    { label: 'Frame stats', shortcut: keyLabel('view.stats'), action: () => sendToHost({ type: 'view:stats' }) },
+    { label: `${editorState.grid ? '✓ ' : ''}Tile grid on empty ground`, shortcut: keyLabel('view.grid'), action: () => sendToHost({ type: 'view:grid' }) },
   ]
 }
 
-watch(() => [editorState.selectedId, editorState.grid, editorState.panels.viewport], updateMenus, { immediate: true })
+watch(() => [editorState.selectedId, editorState.grid, keyState.map], updateMenus, { immediate: true })
 
 entityMenuExtensions.push((entity) => [
   ...(entity.tile
     ? []
-    : [{ label: 'Copy', shortcut: 'Ctrl+C', action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:copy' })) }]),
+    : [{ label: 'Copy', shortcut: keyLabel('edit.copy'), action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:copy' })) }]),
   // Tiles too: the image resizes, the tile stays one cell (5.2).
-  { label: 'Bigger', shortcut: ']', action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:scale', factor: 1.1 })) },
-  { label: 'Smaller', shortcut: '[', action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:scale', factor: 1 / 1.1 })) },
-  { label: 'Turn a quarter', shortcut: 'R', action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:rotate' })) },
+  { label: 'Bigger', shortcut: keyLabel('edit.bigger'), action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:scale', factor: 1.1 })) },
+  { label: 'Smaller', shortcut: keyLabel('edit.smaller'), action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:scale', factor: 1 / 1.1 })) },
+  { label: 'Turn a quarter', shortcut: keyLabel('edit.rotate'), action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:rotate' })) },
 ])
 
 groundMenuExtensions.push((cell) => [
-  { label: 'Paste here', shortcut: 'Ctrl+V', action: () => sendToHost({ type: 'edit:paste', gx: cell[0], gy: cell[1] }) },
+  { label: 'Paste here', shortcut: keyLabel('edit.paste'), action: () => sendToHost({ type: 'edit:paste', gx: cell[0], gy: cell[1] }) },
 ])
 
 prefabMenuExtensions.push((prefab) => [

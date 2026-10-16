@@ -499,23 +499,38 @@ void Renderer2D::RegisterTexture(const std::string& name, const ImageData& image
 }
 
 void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D& camera,
-                        std::span<const OverlayLine> overlay, std::span<const UiQuad> ui) {
+                        std::span<const OverlayLine> overlay, std::span<const UiQuad> ui, Registry* extra) {
     struct Instance {
-        Entity entity;
+        const ScreenTransform2D* transform;
+        const Sprite* sprite;
         const Texture* texture;
     };
     std::vector<Instance> instances;
 
-    // Only what the camera sees, in painter's order (4.6).
+    // Only what the camera sees, in painter's order (4.6), the scene's and
+    // then `extra`'s, merged by depth (stable: extra stays in front at a tie).
     VkExtent2D target = rhi_.SwapchainExtent();
     size_t culled = 0;
-    auto view = registry.view<ScreenTransform2D, Sprite>();
-    const std::vector<Entity> visible = VisibleSprites(registry, camera, static_cast<float>(target.width),
-                                                       static_cast<float>(target.height), &culled);
-    instances.reserve(visible.size());
-    for (Entity entity : visible) {
-        // Resolve (and lazily load) textures before recording any draws.
-        instances.push_back({entity, &Resolve(view.get<Sprite>(entity).texture)});
+    for (Registry* source : {&registry, extra}) {
+        if (source == nullptr) {
+            continue;
+        }
+        size_t skipped = 0;
+        auto view = source->view<ScreenTransform2D, Sprite>();
+        for (Entity entity : VisibleSprites(*source, camera, static_cast<float>(target.width),
+                                            static_cast<float>(target.height), &skipped)) {
+            // Resolve (and lazily load) textures before recording any draws.
+            const auto& sprite = view.get<Sprite>(entity);
+            instances.push_back({&view.get<ScreenTransform2D>(entity), &sprite, &Resolve(sprite.texture)});
+        }
+        if (source == &registry) {
+            culled = skipped;
+        }
+    }
+    if (extra != nullptr) {
+        std::stable_sort(instances.begin(), instances.end(), [](const Instance& a, const Instance& b) {
+            return a.transform->depth < b.transform->depth;
+        });
     }
 
     // Painter's order must be kept, so consecutive sprites sharing a texture
@@ -546,8 +561,8 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
         if (vertexCount + kVerticesPerSprite > maxVertices) {
             break;
         }
-        const auto& t = view.get<ScreenTransform2D>(inst.entity);
-        const auto& s = view.get<Sprite>(inst.entity);
+        const auto& t = *inst.transform;
+        const auto& s = *inst.sprite;
 
         // Upright rectangle or flat diamond (5.2), as two triangles.
         const SpriteQuad corners = SpriteQuadOf(t, s);

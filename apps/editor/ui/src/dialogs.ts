@@ -13,6 +13,9 @@ interface DialogRequest {
   danger: boolean
   value: string
   placeholder: string
+  // A confirm can carry one option the user ticks (5.6: "Also remove the assets").
+  checkbox: string
+  checked: boolean
   resolve: (result: boolean | string | null) => void
 }
 
@@ -37,6 +40,8 @@ export function confirmDialog(options: Options): Promise<boolean> {
       danger: options.danger ?? false,
       value: '',
       placeholder: '',
+      checkbox: '',
+      checked: false,
       resolve: (r) => resolve(r === true),
     })
   })
@@ -53,6 +58,8 @@ export function promptDialog(options: Options & { value?: string; placeholder?: 
       danger: false,
       value: options.value ?? '',
       placeholder: options.placeholder ?? '',
+      checkbox: '',
+      checked: false,
       resolve: (r) => resolve(typeof r === 'string' ? r : null),
     })
   })
@@ -69,8 +76,32 @@ export function infoDialog(options: Options): Promise<void> {
       danger: false,
       value: '',
       placeholder: '',
+      checkbox: '',
+      checked: false,
       resolve: () => resolve(),
     })
+  })
+}
+
+// A confirmation with a checkbox: whether it was confirmed, and ticked.
+export function confirmWithOption(
+  options: Options & { checkbox: string; checked?: boolean },
+): Promise<{ confirmed: boolean; checked: boolean }> {
+  return new Promise((resolve) => {
+    const request: DialogRequest = {
+      kind: 'confirm',
+      title: options.title ?? 'Are you sure?',
+      message: options.message,
+      confirmLabel: options.confirmLabel ?? 'OK',
+      cancelLabel: options.cancelLabel ?? 'Cancel',
+      danger: options.danger ?? false,
+      value: '',
+      placeholder: '',
+      checkbox: options.checkbox,
+      checked: options.checked ?? false,
+      resolve: (r) => resolve({ confirmed: r === true, checked: request.checked }),
+    }
+    dialogState.queue.push(request)
   })
 }
 

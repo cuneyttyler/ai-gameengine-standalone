@@ -77,6 +77,7 @@ public:
     const Camera2D& Camera() const { return camera_; }
     std::vector<OverlayLine> BuildOverlay();
     std::vector<UiQuad> BuildUi(); // the game's own UI, in Play mode
+    Registry& Preview() { return preview_; } // drawn with the scene (Renderer2D extra)
 
     // True when the scene has unsaved edits (asked before closing).
     bool IsDirty() const { return dirty_ || settingsDirty_; }
@@ -181,6 +182,13 @@ private:
     bool showGrid_ = false;   // tile borders on empty ground
     float brushScale_ = 1.0f; // the prefab brush places copies at this size
     int brushRotation_ = 0;   // quarter turns given to flat things the brush places (5.2)
+    // A see-through copy of what the brush would put under the cursor (5.6),
+    // in its own registry: never part of the scene, its undo or its file.
+    Registry preview_;
+    std::string previewKey_;
+    void UpdatePreview();
+    // The pointer says what a click does (5.6).
+    void UpdateCursor();
     // R: turns the brush while painting, else the selection (flat sprites).
     void Rotate();
     // Prefab menu (5.2): top-down art made before 5.2, laid onto the grid.
@@ -193,7 +201,13 @@ private:
     void PasteAtCursor(std::optional<std::pair<int, int>> cell = std::nullopt);
     void RemovePrefab(const std::string& path);
     // Organizing (4.4): moves or renames a prefab or asset, following every reference.
-    void MoveProjectItem(const std::string& from, const std::string& to);
+    // `report` false: no refresh or notice (a folder's worth of moves, then one).
+    bool MoveProjectItem(const std::string& from, const std::string& to, bool report = true);
+    void RefreshAfterMoves();
+    // Folders (5.6): rename one, or remove it — its items moved up a level,
+    // or deleted with it.
+    void RenameFolder(const std::string& folder, const std::string& newFolder);
+    void RemoveFolder(const std::string& folder, bool deleteContents);
     // Scenes (5.3): the Scene Manager, and gateways during Play.
     nlohmann::json ScenesJson();
     std::string OpenSceneRelative() const; // "scenes/main.aige"

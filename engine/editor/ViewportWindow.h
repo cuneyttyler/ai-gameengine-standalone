@@ -75,6 +75,11 @@ public:
     // '[' is AltGr+8 on some keyboards.
     void SetCharCallback(std::function<void(wchar_t character)> callback);
 
+    // The mouse pointer over the viewport (development_plan.md 5.6), so it
+    // says what a click will do: select, move, paint or place, erase.
+    enum class Cursor { Arrow, Move, Brush, Erase, Pan };
+    void SetCursor(Cursor cursor);
+
     // Public so the free function registering the window class (which needs
     // a plain WNDPROC pointer) can reference it.
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
@@ -88,6 +93,7 @@ private:
     std::function<void(wchar_t)> charCallback_;
     std::array<bool, 256> keyDown_{}; // indexed by Win32 virtual-key code
     int buttonsHeld_ = 0;
+    HCURSOR cursor_ = nullptr;
     bool trackingLeave_ = false;
 };
 

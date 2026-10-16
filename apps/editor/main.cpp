@@ -315,7 +315,7 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
             VkCommandBuffer cmd = rhi.BeginFrame();
             if (cmd != VK_NULL_HANDLE) {
                 rhi.BeginSwapchainPass();
-                renderer.Render(cmd, registry, app.Camera(), app.BuildOverlay(), app.BuildUi());
+                renderer.Render(cmd, registry, app.Camera(), app.BuildOverlay(), app.BuildUi(), &app.Preview());
                 rhi.EndFrame();
             }
         }

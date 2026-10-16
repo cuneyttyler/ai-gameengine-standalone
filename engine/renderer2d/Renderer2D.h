@@ -70,8 +70,11 @@ public:
     // render pass this Renderer2D was constructed with (already begun,
     // viewport/scissor already set). Sprites are drawn through `camera`, then
     // `overlay` lines on top, then `ui` quads in viewport pixels (no camera).
+    // `extra` (optional) is drawn with the scene, in the same depth order and
+    // in front of it at equal depth: the editor's brush preview (5.6).
     void Render(VkCommandBuffer cmd, Registry& registry, const Camera2D& camera = {},
-                std::span<const OverlayLine> overlay = {}, std::span<const UiQuad> ui = {});
+                std::span<const OverlayLine> overlay = {}, std::span<const UiQuad> ui = {},
+                Registry* extra = nullptr);
 
     // What the last Render drew (the F3 stats overlay).
     const RenderStats& LastStats() const { return stats_; }

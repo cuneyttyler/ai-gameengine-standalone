@@ -29,6 +29,21 @@ MoveResult MoveProjectFile(const Project& project, const std::string& from, cons
 // can't move to `to`, or empty.
 std::string CheckMove(const Project& project, const std::string& from, const std::string& to);
 
+// Folders of prefabs and assets (development_plan.md 5.6).
+//
+// The prefabs or assets inside `folder` ("prefabs/enemies"), in its
+// subfolders too: project-relative paths of the items themselves (an
+// asset's .meta and .gen.json go with it, so they aren't listed).
+std::vector<std::string> FolderContents(const Project& project, const std::string& folder);
+
+// Where `path` goes when `folder` becomes `newFolder` ("" = its parent):
+// "prefabs/a/b/x.prefab" with "prefabs/a" -> "prefabs/b/x.prefab".
+std::string PathAfterFolderChange(const std::string& path, const std::string& folder, const std::string& newFolder);
+
+// Deletes `folder` and every empty folder under it; leaves anything that
+// still has files in it. True when the folder is gone.
+bool RemoveEmptyFolders(const Project& project, const std::string& folder);
+
 // Rewrites `key=value` values exactly equal to `from` in scene-format text
 // (quoted or not); the new value is quoted when it needs to be.
 std::string RewriteSceneText(const std::string& text, const std::string& from, const std::string& to,

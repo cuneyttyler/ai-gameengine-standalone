@@ -2,12 +2,13 @@
 // and Preferences. The host picks folders with the system dialog and
 // relaunches the editor on the chosen project (after asking about unsaved
 // changes).
-import { reactive } from 'vue'
+import { reactive, watch } from 'vue'
 import { separator, type MenuItem } from './contextMenu'
 import { confirmDialog, promptDialog } from './dialogs'
 import { editorState } from './editorState'
 import { onHostMessage, sendToHost } from './ipc'
 import { menuExtensions } from './menus'
+import { keyLabel, keyState, registerAction } from './keys'
 
 export const projectState = reactive({
   current: '',
@@ -66,13 +67,13 @@ function recentItems(): MenuItem[] {
 
 function updateMenus(): void {
   menuExtensions.file.top = [
-    { label: 'New Project…', shortcut: 'Ctrl+N', disabled: editorState.playing, action: newProject },
-    { label: 'Open Project…', shortcut: 'Ctrl+O', disabled: editorState.playing, action: () => sendToHost({ type: 'project:open' }) },
+    { label: 'New Project…', shortcut: keyLabel('file.new'), disabled: editorState.playing, action: newProject },
+    { label: 'Open Project…', shortcut: keyLabel('file.open'), disabled: editorState.playing, action: () => sendToHost({ type: 'project:open' }) },
     ...recentItems(),
     separator,
   ]
   menuExtensions.file.afterSave = [
-    { label: 'Save Project As…', shortcut: 'Ctrl+Shift+S', disabled: editorState.playing, action: saveAs },
+    { label: 'Save Project As…', shortcut: keyLabel('file.saveAs'), disabled: editorState.playing, action: saveAs },
     { label: 'Close Project', action: () => sendToHost({ type: 'project:close' }) },
   ]
   menuExtensions.file.settings = [
@@ -90,28 +91,14 @@ onHostMessage((message) => {
   }
 })
 
-window.addEventListener('keydown', (event) => {
-  if (!event.ctrlKey || editorState.playing) return
-  const key = event.key.toLowerCase()
-  if (key === 'n') {
-    event.preventDefault()
-    newProject()
-  } else if (key === 'o') {
-    event.preventDefault()
-    sendToHost({ type: 'project:open' })
-  } else if (key === 's' && event.shiftKey) {
-    event.preventDefault()
-    event.stopImmediatePropagation()
-    saveAs()
-  }
-}, true)
-
-// The viewport forwards these too (EditorApp::OnViewportKey).
-onHostMessage((message) => {
-  if (message.type !== 'ui:shortcut') return
-  if (message.name === 'newProject') newProject()
-  else if (message.name === 'saveAs') saveAs()
+// Ctrl+N / Ctrl+Shift+S by default; rebindable (keys.ts).
+registerAction('file.new', () => {
+  if (!editorState.playing) void newProject()
+})
+registerAction('file.saveAs', () => {
+  if (!editorState.playing) void saveAs()
 })
 
 updateMenus()
+watch(() => keyState.map, updateMenus) // rebound keys show in the menus
 sendToHost({ type: 'project:request' })
