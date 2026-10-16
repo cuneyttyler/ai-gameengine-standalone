@@ -30,6 +30,8 @@ public:
     Window& operator=(const Window&) = delete;
 
     bool ShouldClose() const;
+    // The title-bar and taskbar icon, from RGBA pixels (an exported game's icon).
+    void SetIcon(uint32_t width, uint32_t height, const uint8_t* rgba);
     void PollEvents();
     void WaitEvents();
 

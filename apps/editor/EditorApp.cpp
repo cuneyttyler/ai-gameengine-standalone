@@ -12,7 +12,9 @@
 #include "editing/Edits.h"
 #include "editing/LevelBuild.h"
 #include "editing/SceneTools.h"
+#include "assets/Export.h"
 #include "assets/ProjectMove.h"
+#include "rhi/ShaderUtil.h"
 #include "modules/Modules.h"
 #include "world/StoryReferences.h"
 #include "editing/SceneEditing.h"
@@ -217,6 +219,11 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         showStats_ = !showStats_;
     } else if (type == "play:toggle") {
         playing_ ? StopPlay() : StartPlay();
+    } else if (type == "game:export") {
+        ExportGameTo(message.value("name", ""), message.value("zip", false));
+    } else if (type == "game:reveal") {
+        const std::wstring folder = Utf8ToWide(message.value("path", ""));
+        ShellExecuteW(mainWindow_, nullptr, L"explorer.exe", (L"\"" + folder + L"\"").c_str(), nullptr, SW_SHOWNORMAL);
     } else if (type == "file:move") {
         MoveProjectItem(message.value("from", ""), message.value("to", ""));
     } else if (type == "prefab:remove") {
@@ -801,6 +808,68 @@ void EditorApp::MoveProjectItem(const std::string& from, const std::string& to) 
     post_({{"type", "notify"},
            {"text", "Moved to " + to + " — " + std::to_string(result.references) + " reference(s) in " +
                         std::to_string(result.rewritten.size()) + " file(s) updated"}});
+}
+
+// --- Build & Export (development_plan.md 5.1) --------------------------------
+
+namespace {
+
+#ifndef AIGE_PLAYER_DIR
+#define AIGE_PLAYER_DIR ""
+#endif
+
+// The player to ship: one installed next to the editor, else the build
+// tree's, preferring a Release build. Returns the folder and its build name.
+std::optional<std::pair<std::filesystem::path, std::string>> FindPlayerBuild() {
+    std::vector<std::pair<std::filesystem::path, std::string>> candidates = {{ExecutableDir() / "player", "installed"}};
+    const std::filesystem::path built = std::filesystem::u8path(AIGE_PLAYER_DIR);
+    if (!built.empty()) {
+        candidates.push_back({built.parent_path() / "Release", "Release"});
+        candidates.push_back({built, built.filename().string()});
+    }
+    for (const auto& candidate : candidates) {
+        std::error_code ec;
+        if (std::filesystem::exists(candidate.first / "sandbox.exe", ec)) return candidate;
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
+void EditorApp::ExportGameTo(const std::string& name, bool zip) {
+    auto fail = [&](const std::string& error) {
+        post_({{"type", "game:exported"}, {"ok", false}, {"error", error}});
+    };
+    if (playing_) {
+        return fail("Stop playing first.");
+    }
+    auto player = FindPlayerBuild();
+    if (!player) {
+        return fail("No built player found (build the sandbox target).");
+    }
+    if (dirty_ || settingsDirty_) {
+        Save(); // the export plays what's on screen
+    }
+    auto destination = ShowFolderDialog(mainWindow_, L"Export \"" + Utf8ToWide(name) + L"\" into…");
+    if (!destination) {
+        return; // cancelled
+    }
+    ExportOptions options;
+    options.project = assets_.GetProject().root;
+    options.playerDir = player->first;
+    options.destination = *destination;
+    options.name = name;
+    options.zip = zip;
+    ExportResult result = ExportGame(options);
+    if (!result.error.empty()) {
+        return fail(result.error);
+    }
+    post_({{"type", "game:exported"},
+           {"ok", true},
+           {"folder", WideToUtf8(result.folder.wstring())},
+           {"zip", result.zip.empty() ? "" : WideToUtf8(result.zip.wstring())},
+           {"files", result.files.size()},
+           {"build", player->second}});
 }
 
 // --- Projects (development_plan.md 4.2) -----------------------------------

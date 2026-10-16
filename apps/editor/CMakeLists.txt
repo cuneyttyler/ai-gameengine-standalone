@@ -17,7 +17,10 @@ target_compile_definitions(editor PRIVATE
     AIGE_EDITOR_UI_DIST_DIR="${CMAKE_CURRENT_SOURCE_DIR}/ui/dist"
     AIGE_EDITOR_DOCS_DIR="${CMAKE_SOURCE_DIR}/docs"
     AIGE_EDITOR_AI_SERVICE_DIR="${CMAKE_SOURCE_DIR}/ai_service"
+    # File > Export Game (development_plan.md 5.1) ships this player.
+    AIGE_PLAYER_DIR="$<TARGET_FILE_DIR:sandbox>"
 )
+add_dependencies(editor sandbox)
 
 # Vue/Vite frontend (apps/editor/ui) — rebuilt whenever its source or
 # package.json changes. `npm install` is safe to re-run every time (no-op

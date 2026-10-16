@@ -81,6 +81,11 @@ Window::~Window() {
     }
 }
 
+void Window::SetIcon(uint32_t width, uint32_t height, const uint8_t* rgba) {
+    GLFWimage image{static_cast<int>(width), static_cast<int>(height), const_cast<unsigned char*>(rgba)};
+    glfwSetWindowIcon(handle_, 1, &image);
+}
+
 bool Window::ShouldClose() const {
     return glfwWindowShouldClose(handle_) != 0;
 }

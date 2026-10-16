@@ -183,6 +183,8 @@ private:
     void RemovePrefab(const std::string& path);
     // Organizing (4.4): moves or renames a prefab or asset, following every reference.
     void MoveProjectItem(const std::string& from, const std::string& to);
+    // Build & Export (5.1): the game as a folder (and .zip) that runs on its own.
+    void ExportGameTo(const std::string& name, bool zip);
     // Projects (4.2): asks about unsaved changes, then reopens the editor on `root`.
     void SwitchProject(const std::filesystem::path& root, bool askAboutChanges = true);
     nlohmann::json ProjectInfoJson();

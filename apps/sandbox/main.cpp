@@ -1,5 +1,7 @@
 // Standalone runtime: plays a project's main scene without the editor.
-// `sandbox [--project] <dir>`; defaults to the repo's demo project.
+// `sandbox [--project] <dir>`. Without one it plays the game exported next
+// to it (game/, development_plan.md 5.1), else the repo's demo project.
+// `--headless [--exit-after s]` runs the game without a window (smoke tests).
 #include "assets/AssetDatabase.h"
 #include "assets/Prefab.h"
 #include "assets/Project.h"
@@ -18,10 +20,13 @@
 #include "renderer2d/Renderer2D.h"
 #include "ui/GameUi.h"
 #include "world/WorldBible.h"
+#include "rhi/ShaderUtil.h"
 #include "rhi/VulkanRHI.h"
 #include "scripting/LuaVM.h"
 
 #include <chrono>
+#include <fstream>
+#include <nlohmann/json.hpp>
 #include <cstdio>
 #include <iostream>
 #include <string>
@@ -30,16 +35,61 @@
 #define AIGE_DEFAULT_PROJECT "."
 #endif
 
+namespace {
+
+// The game without a window: load everything, run `seconds` of game time in
+// fixed steps with no input, report. Exit code 0 when nothing went wrong.
+int RunHeadless(const aige::Project& project, double seconds) {
+    aige::PrefabLibrary prefabs(project);
+    prefabs.Refresh();
+    aige::LuaVM lua;
+    aige::Registry registry;
+    if (!aige::LoadScene(registry, project.MainScenePath().string())) {
+        std::cerr << "headless: no scene at " << project.MainScenePath().string() << std::endl;
+        return 2;
+    }
+    prefabs.SyncAll(registry);
+    aige::GameSession session(registry, lua, aige::BootstrapIso(), project.root);
+    session.SetSpawner([&](const std::string& prefab, float x, float y) {
+        return prefabs.Instantiate(registry, prefab, x, y);
+    });
+    aige::StoryLibrary story(project.root);
+    story.Refresh();
+    session.SetStory(&story);
+    aige::ScheduleLibrary schedules(project.root);
+    schedules.Refresh();
+    session.SetSchedules(&schedules);
+    const int steps = static_cast<int>(seconds / aige::GameSession::kFixedDt);
+    auto noKeys = [](aige::Key) { return false; };
+    for (int i = 0; i < steps; ++i) {
+        session.Advance(aige::GameSession::kFixedDt, noKeys);
+    }
+    const size_t entities = registry.view<entt::entity>().size_hint();
+    for (const auto& error : session.ScriptErrors()) {
+        std::cerr << "headless: " << error.path << ": " << error.message << std::endl;
+    }
+    std::cout << "headless " << (session.ScriptErrors().empty() ? "ok" : "failed") << ": " << steps << " steps, "
+              << entities << " entities, " << session.ScriptErrors().size() << " script errors" << std::endl;
+    return session.ScriptErrors().empty() ? 0 : 3;
+}
+
+} // namespace
+
 int main(int argc, char** argv) {
     try {
         std::filesystem::path root = AIGE_DEFAULT_PROJECT;
         bool uiPreview = false;   // --ui-preview: sample game UI over the level (UI development)
         double exitAfter = -1.0;  // --exit-after <seconds>: quit by itself (smoke runs)
         bool bench = false;       // --bench: 10k tiles + 500 characters, stats on (development_plan.md 4.6)
+        bool headless = false;    // --headless: no window; run, report, exit
+        bool rootGiven = false;
         for (int i = 1; i < argc; ++i) {
             std::string arg = argv[i];
             if (arg == "--project" && i + 1 < argc) {
                 root = argv[++i];
+                rootGiven = true;
+            } else if (arg == "--headless") {
+                headless = true;
             } else if (arg == "--bench") {
                 bench = true;
             } else if (arg == "--ui-preview") {
@@ -48,6 +98,18 @@ int main(int argc, char** argv) {
                 exitAfter = std::stod(argv[++i]);
             } else if (!arg.empty() && arg[0] != '-') {
                 root = arg;
+                rootGiven = true;
+            }
+        }
+        // An exported game (5.1): its content sits in game/ next to the player.
+        std::string gameName;
+        if (!rootGiven) {
+            const std::filesystem::path exported = aige::ExecutableDir() / "game";
+            if (std::filesystem::exists(exported / "scenes" / "main.aige")) {
+                root = exported;
+                std::ifstream info(exported / "export.json");
+                nlohmann::json j = nlohmann::json::parse(info, nullptr, false);
+                gameName = j.is_object() ? j.value("name", "") : "";
             }
         }
         aige::Project project{std::filesystem::absolute(root)};
@@ -57,7 +119,14 @@ int main(int argc, char** argv) {
         }
         const aige::ProjectSettings& settings = aige::ActiveSettings();
 
+        if (headless) {
+            return RunHeadless(project, exitAfter >= 0.0 ? exitAfter : 2.0);
+        }
+
         aige::Window::Desc desc;
+        if (!gameName.empty()) {
+            desc.title = gameName;
+        }
         aige::Window window(desc);
         aige::VulkanRHI rhi(window);
         aige::Renderer2D renderer(rhi, rhi.RenderPass()); // draws straight to the swapchain pass
@@ -65,6 +134,12 @@ int main(int argc, char** argv) {
 
         aige::AssetDatabase assets(project);
         renderer.SetTextureLoader([&assets](const std::string& path) { return assets.LoadTexture(path); });
+        // The game's icon, when it has one.
+        if (std::filesystem::exists(project.Resolve("assets/icon.png"))) {
+            if (auto icon = assets.LoadTexture("assets/icon.png")) {
+                window.SetIcon(icon->width, icon->height, icon->rgba.data());
+            }
+        }
         aige::AudioEngine audio;
         aige::PrefabLibrary prefabs(project);
         prefabs.Refresh();

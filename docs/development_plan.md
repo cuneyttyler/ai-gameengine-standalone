@@ -1110,6 +1110,26 @@ ambition in `product.md` §6.
 - The player loads the exported folder.
 - Tests: the export has everything the game needs and nothing it doesn't; the exported
   player runs the scene headless for a few seconds (smoke).
+- ✅ Built:
+  - `assets/Export`: `ExportGame` writes `<Name>/<Name>.exe` (the player, renamed),
+    `shaders/`, and `game/` with the runtime content (`IsRuntimeContent`: settings,
+    scenes, prefabs, scripts, assets with their metas, dialogue, quests, schedules,
+    world, modules; never `.cache`, the AI log, `.gen.json`, hidden files or loose
+    top-level files) plus `export.json`. There's an optional `.zip` from a built-in
+    zip writer (stored, UTF-8 names, verified with Python's `zipfile`). It never
+    overwrites an earlier export.
+  - The player (`apps/sandbox`) plays `game/` next to itself when started with no
+    project. The window title is the game's name and the icon is `assets/icon.png`
+    when present. `--headless [--exit-after s]` runs the game without a window and
+    reports (exit 0 when no script errors).
+  - Editor: File ▸ Export Game… asks for the name and folder-or-zip, saves unsaved
+    changes, asks for the destination, exports, and offers Show in Explorer. It ships
+    a Release player when one is built, else the Debug one, and says so.
+  - Tests: `ExportTest` (3): what's shipped and what isn't, the layout and zip, the
+    refusals, and the smoke test, which exports the real demo with the real player
+    and runs the copy headless for 2 s (120 steps, no script errors).
+  - Note: on this machine Bitdefender blocks freshly built Release executables (see
+    4.6), so exports made here use the Debug player.
 
 **5.2 — Platform layer and mobile groundwork**
 - Input, windowing, file paths and the game loop go behind `platform/` interfaces,
@@ -1134,6 +1154,8 @@ ambition in `product.md` §6.
 - The editor's viewport renders 3D scenes, with orbit, pan and zoom and picking by
   ray. The Inspector and AI work on 3D entities unchanged, through reflection.
 - Tests: the ray-picking maths, plus the checklist.
+
+*5.2–5.4 are on hold (2026-10-16, at the user's request: only 5.1 for now).*
 
 **Phase 5 exit criteria:** a game can be exported and played outside the editor; a 3D
 scene can be built, edited and lit; mobile is ready to be finished when the toolchain
