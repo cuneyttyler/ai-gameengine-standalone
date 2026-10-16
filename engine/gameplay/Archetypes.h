@@ -61,4 +61,10 @@ Entity CreateEnemy(Registry& registry, float worldX, float worldY, Entity target
 // A health potion lying on the ground.
 Entity CreateHealthPickup(Registry& registry, float worldX, float worldY, float amount = 6.0f);
 
+// A gateway to another scene (development_plan.md 5.3): lies flat on its cell
+// (a glowing ring with `texture`, else a tinted placeholder); stepping in
+// during play goes to `scene`'s marker `marker`.
+Entity CreateGateway(Registry& registry, float worldX, float worldY, const std::string& scene = {},
+                     const std::string& marker = {}, const std::string& texture = {});
+
 } // namespace aige

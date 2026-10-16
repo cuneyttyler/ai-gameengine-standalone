@@ -123,6 +123,9 @@ class EditorContext(BaseModel):
     # Routines: the scene's named places ({name, x, y}) and schedules (each with "id").
     markers: list[dict[str, Any]] = []
     schedules: list[dict[str, Any]] = []
+    # Scenes (development_plan.md 5.3): every scene {path, start, markers}, and the open one.
+    scenes: list[dict[str, Any]] = []
+    scene: str | None = None
 
 
 # --- Proposals --------------------------------------------------------------------

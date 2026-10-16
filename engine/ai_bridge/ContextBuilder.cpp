@@ -1,5 +1,7 @@
 #include "ai_bridge/ContextBuilder.h"
 
+#include "assets/SceneFiles.h"
+
 #include "assets/AssetDatabase.h"
 #include "assets/Prefab.h"
 #include "assets/Project.h"
@@ -208,6 +210,12 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
         schedules.push_back(json);
     }
 
+    // The project's scenes and their markers (5.3), for gateways.
+    nlohmann::json scenes = nlohmann::json::array();
+    for (const std::string& scene : ListScenes(project)) {
+        scenes.push_back({{"path", scene}, {"start", scene == StartScene()}, {"markers", SceneMarkers(project, scene)}});
+    }
+
     nlohmann::json context = {{"entities", entities}, {"tiles", tiles},       {"prefabs", prefabList},
                               {"assets", assetList},  {"scripts", scripts},   {"scriptSources", scriptSources},
                               {"settings", settings}, {"world", worldList},   {"dialogues", dialogues},
@@ -217,6 +225,10 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
     }
     if (!options.focus.empty()) {
         context["focus"] = options.focus;
+    }
+    context["scenes"] = scenes;
+    if (!options.scene.empty()) {
+        context["scene"] = options.scene;
     }
     return context;
 }

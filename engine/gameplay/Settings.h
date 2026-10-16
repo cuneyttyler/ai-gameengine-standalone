@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 namespace aige {
 
 // Project-wide settings, registered with the reflection registry (so the
@@ -35,7 +37,12 @@ struct TimeSettings {
     bool showClock = false;        // always show the clock (it shows anyway when someone has a routine)
 };
 
+struct GameSettings {
+    std::string startScene = "scenes/main.aige"; // where play begins (5.3)
+};
+
 struct ProjectSettings {
+    GameSettings game;
     RendererSettings renderer;
     CameraSettings camera;
     CombatSettings combat;

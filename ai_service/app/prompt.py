@@ -122,6 +122,14 @@ ROUTINES (an NPC's day; file schedules/<id>.json)
   Time.startHour.
 """
 
+SCENES = """\
+SCENES: a game can have several scenes (context "scenes": each path, whether it's the start scene, and its
+  Markers; "scene" is the one open, which every edit applies to). A Gateway component {"scene": "<path>",
+  "marker": "<marker name>"} on an entity with a WorldTransform2D takes the player to that scene's marker
+  when they step into its cell. Use ONLY scenes and markers listed in the context; the marker must be in the
+  target scene (the open scene's markers can be added with scene.addMarker in the same proposal).
+"""
+
 LUA_API = """\
 Lua scripts (plain Lua 5.4; one environment per entity; `update(dt)` runs 60 times per
 second while playing). These are ALL the engine functions — there are no others:
@@ -204,6 +212,7 @@ def build_messages(
             OUTPUT_FORMAT,
             STORY,
             ROUTINES,
+            SCENES,
             LUA_API,
             "ENGINE SCHEMA (everything that can be changed)\n" + describe_schema(schema),
         ]

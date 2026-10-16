@@ -98,12 +98,16 @@ std::string CheckMove(const Project& project, const std::string& from, const std
             return "not a path inside the project: " + p;
         }
     }
-    const bool isPrefab = StartsWith(from, "prefabs/");
-    if (!isPrefab && !StartsWith(from, "assets/")) {
-        return "only prefabs and assets can be moved";
+    // Prefabs, assets and scenes (5.3) move within their own folder.
+    std::string folder;
+    for (const char* candidate : {"prefabs/", "assets/", "scenes/"}) {
+        if (StartsWith(from, candidate)) folder = candidate;
     }
-    if (!StartsWith(to, isPrefab ? "prefabs/" : "assets/")) {
-        return std::string(isPrefab ? "a prefab stays under prefabs/" : "an asset stays under assets/");
+    if (folder.empty()) {
+        return "only prefabs, assets and scenes can be moved";
+    }
+    if (!StartsWith(to, folder)) {
+        return "it stays under " + folder;
     }
     if (fs::path(from).extension() != fs::path(to).extension()) {
         return "the file type can't change (" + fs::path(from).extension().string() + ")";

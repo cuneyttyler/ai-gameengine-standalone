@@ -20,8 +20,8 @@ struct MoveResult {
 };
 
 // Moves `from` to `to` (both project-relative): a prefab stays under
-// prefabs/ with its .prefab extension; an asset stays under assets/ with
-// its extension, and its .meta and .gen.json move along. Refuses an
+// prefabs/, a scene under scenes/ (5.3), an asset under assets/ (its .meta
+// and .gen.json move along), each keeping its extension. Refuses an
 // existing destination.
 MoveResult MoveProjectFile(const Project& project, const std::string& from, const std::string& to);
 

@@ -7,6 +7,7 @@
 #include "assets/Project.h"
 #include "assets/SceneIO.h"
 #include "gameplay/EngineReflection.h"
+#include "assets/SceneFiles.h"
 #include "modules/Modules.h"
 #include "gameplay/Settings.h"
 #include "audio/Audio.h"
@@ -29,6 +30,7 @@
 #include <nlohmann/json.hpp>
 #include <cstdio>
 #include <iostream>
+#include <sstream>
 #include <string>
 
 #ifndef AIGE_DEFAULT_PROJECT
@@ -37,6 +39,32 @@
 
 namespace {
 
+// A gateway asked for another scene (development_plan.md 5.3): go there,
+// carrying the player. True when the scene changed.
+bool TravelIfAsked(const aige::Project& project, aige::Registry& registry, aige::PrefabLibrary& prefabs,
+                   aige::GameSession& session) {
+    auto travel = session.TakeTravel();
+    if (!travel) {
+        return false;
+    }
+    std::ifstream in(project.Resolve(travel->scene), std::ios::binary);
+    if (!in) {
+        std::cerr << "Gateway to a missing scene: " << travel->scene << std::endl;
+        session.OnSceneChanged();
+        return false;
+    }
+    std::ostringstream text;
+    text << in.rdbuf();
+    const std::string warning = aige::TravelToScene(registry, text.str(), travel->marker);
+    if (!warning.empty()) {
+        std::cerr << travel->scene << ": " << warning << std::endl;
+    }
+    prefabs.SyncAll(registry);
+    session.OnSceneChanged();
+    std::cout << "Now in " << travel->scene << std::endl;
+    return true;
+}
+
 // The game without a window: load everything, run `seconds` of game time in
 // fixed steps with no input, report. Exit code 0 when nothing went wrong.
 int RunHeadless(const aige::Project& project, double seconds) {
@@ -44,8 +72,8 @@ int RunHeadless(const aige::Project& project, double seconds) {
     prefabs.Refresh();
     aige::LuaVM lua;
     aige::Registry registry;
-    if (!aige::LoadScene(registry, project.MainScenePath().string())) {
-        std::cerr << "headless: no scene at " << project.MainScenePath().string() << std::endl;
+    if (!aige::LoadScene(registry, aige::StartScenePath(project).string())) {
+        std::cerr << "headless: no scene at " << aige::StartScenePath(project).string() << std::endl;
         return 2;
     }
     prefabs.SyncAll(registry);
@@ -61,15 +89,20 @@ int RunHeadless(const aige::Project& project, double seconds) {
     session.SetSchedules(&schedules);
     const int steps = static_cast<int>(seconds / aige::GameSession::kFixedDt);
     auto noKeys = [](aige::Key) { return false; };
+    int travels = 0;
     for (int i = 0; i < steps; ++i) {
         session.Advance(aige::GameSession::kFixedDt, noKeys);
+        if (TravelIfAsked(project, registry, prefabs, session)) {
+            ++travels;
+        }
     }
     const size_t entities = registry.view<entt::entity>().size_hint();
     for (const auto& error : session.ScriptErrors()) {
         std::cerr << "headless: " << error.path << ": " << error.message << std::endl;
     }
     std::cout << "headless " << (session.ScriptErrors().empty() ? "ok" : "failed") << ": " << steps << " steps, "
-              << entities << " entities, " << session.ScriptErrors().size() << " script errors" << std::endl;
+              << entities << " entities, " << session.ScriptErrors().size() << " script errors, " << travels
+              << " scene changes" << std::endl;
     return session.ScriptErrors().empty() ? 0 : 3;
 }
 
@@ -156,10 +189,10 @@ int main(int argc, char** argv) {
                 std::cout << "Benchmark scene: 10000 tiles, 500 characters" << std::endl;
                 return;
             }
-            if (aige::LoadScene(registry, project.MainScenePath().string())) {
-                std::cout << "Loaded " << project.MainScenePath().string() << std::endl;
+            if (aige::LoadScene(registry, aige::StartScenePath(project).string())) {
+                std::cout << "Loaded " << aige::StartScenePath(project).string() << std::endl;
             } else {
-                std::cout << "No scene at " << project.MainScenePath().string() << "; playing the bootstrap level"
+                std::cout << "No scene at " << aige::StartScenePath(project).string() << "; playing the bootstrap level"
                           << std::endl;
                 registry.clear();
                 aige::BuildBootstrapScene(registry, "scripts/npc_wander.lua");
@@ -230,6 +263,9 @@ int main(int argc, char** argv) {
             previousTime = currentTime;
             const auto updateStart = Clock::now();
             session.Advance(frameSeconds, isKeyDown);
+            if (TravelIfAsked(project, registry, prefabs, session)) {
+                snapCamera();
+            }
             const double stepMs = std::chrono::duration<double, std::milli>(Clock::now() - updateStart).count();
             frameMs = frameMs * 0.9 + frameSeconds * 1000.0 * 0.1;
             updateMs = updateMs * 0.9 + stepMs * 0.1;

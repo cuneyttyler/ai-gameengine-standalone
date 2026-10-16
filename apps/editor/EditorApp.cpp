@@ -13,6 +13,7 @@
 #include "editing/LevelBuild.h"
 #include "editing/SceneTools.h"
 #include "assets/Export.h"
+#include "assets/SceneFiles.h"
 #include "assets/ProjectMove.h"
 #include "rhi/ShaderUtil.h"
 #include "modules/Modules.h"
@@ -35,6 +36,7 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <limits>
 
 #include <shellapi.h>
@@ -164,7 +166,7 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
       artHistory_(assets.GetProject().CacheDir() / "art_history.json"),
       audio_(audio),
       renderer_(renderer),
-      scenePath_(assets.GetProject().MainScenePath().string()),
+      scenePath_(StartScenePath(assets.GetProject()).string()),
       post_(std::move(post)),
       iso_(BootstrapIso()),
       session_(registry, lua, iso_, assets.GetProject().root) {
@@ -227,6 +229,50 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         showStats_ = !showStats_;
     } else if (type == "play:toggle") {
         playing_ ? StopPlay() : StartPlay();
+    } else if (type == "scenes:request") {
+        post_(ScenesJson());
+    } else if (type == "scene:open") {
+        OpenScene(message.value("path", ""));
+    } else if (type == "scene:new") {
+        SceneResult created = CreateScene(assets_.GetProject(), message.value("name", ""));
+        if (!created.error.empty()) {
+            post_({{"type", "notify"}, {"text", "Couldn't create the scene: " + created.error}});
+        } else {
+            OpenScene(created.path);
+        }
+        post_(ScenesJson());
+    } else if (type == "scene:duplicate") {
+        const std::string from = message.value("path", "");
+        if (from == OpenSceneRelative() && dirty_) {
+            Save(); // the copy is of the scene as it is now
+        }
+        SceneResult copy = DuplicateScene(assets_.GetProject(), from, message.value("name", ""));
+        post_({{"type", "notify"},
+               {"text", copy.error.empty() ? "Copied to " + copy.path : "Couldn't copy: " + copy.error}});
+        post_(ScenesJson());
+    } else if (type == "scene:rename") {
+        const std::string to = ScenePathFor(message.value("name", ""));
+        if (to.empty()) {
+            post_({{"type", "notify"}, {"text", "A scene needs a name with letters or digits"}});
+        } else {
+            MoveProjectItem(message.value("path", ""), to);
+        }
+        post_(ScenesJson());
+    } else if (type == "scene:delete") {
+        const std::string scene = message.value("path", "");
+        const std::string error = scene == OpenSceneRelative() ? "it's open; open another scene first"
+                                                               : DeleteScene(assets_.GetProject(), scene);
+        post_({{"type", "notify"}, {"text", error.empty() ? "Deleted " + scene : "Couldn't delete " + scene + ": " + error}});
+        post_(ScenesJson());
+    } else if (type == "scene:setStart") {
+        const std::string scene = message.value("path", "");
+        if (auto error = EditSetting(EngineReflection(), "Game", "startScene", scene)) {
+            post_({{"type", "notify"}, {"text", *error}});
+        } else {
+            SaveSettings(EngineReflection(), assets_.GetProject().SettingsPath().string());
+            post_({{"type", "notify"}, {"text", scene + " is now where the game starts"}});
+        }
+        post_(ScenesJson());
     } else if (type == "game:export") {
         ExportGameTo(message.value("name", ""), message.value("zip", false));
     } else if (type == "game:reveal") {
@@ -869,6 +915,13 @@ void EditorApp::MoveProjectItem(const std::string& from, const std::string& to) 
         brushPrefab_ = to;
     }
     artHistory_.Moved(from, to);
+    if (OpenSceneRelative() == from) {
+        scenePath_ = assets_.GetProject().Resolve(to).string();
+        UpdateTitle();
+    }
+    if (ActiveSettings().game.startScene == from) {
+        ActiveSettings().game.startScene = to; // the file was rewritten; keep memory in step
+    }
     renderer_.InvalidateTexture(from);
     RefreshAssets();
     RefreshPrefabs();
@@ -881,6 +934,110 @@ void EditorApp::MoveProjectItem(const std::string& from, const std::string& to) 
     post_({{"type", "notify"},
            {"text", "Moved to " + to + " — " + std::to_string(result.references) + " reference(s) in " +
                         std::to_string(result.rewritten.size()) + " file(s) updated"}});
+}
+
+// --- Scenes (development_plan.md 5.3) -----------------------------------------
+
+std::string EditorApp::OpenSceneRelative() const {
+    return assets_.GetProject().Relative(std::filesystem::path(scenePath_));
+}
+
+nlohmann::json EditorApp::ScenesJson() {
+    const Project& project = assets_.GetProject();
+    nlohmann::json scenes = nlohmann::json::array();
+    for (const std::string& scene : ListScenes(project)) {
+        scenes.push_back({{"path", scene},
+                          {"name", std::filesystem::path(scene).stem().string()},
+                          {"start", scene == StartScene()},
+                          {"open", scene == OpenSceneRelative()},
+                          {"markers", SceneMarkers(project, scene)}});
+    }
+    return {{"type", "scenes:list"}, {"scenes", scenes}, {"problems", GatewayProblems(project)}};
+}
+
+bool EditorApp::AskToSaveChanges(const wchar_t* question) {
+    if (!IsDirty()) {
+        return true;
+    }
+    int answer = MessageBoxW(mainWindow_, question, L"Unsaved changes", MB_YESNOCANCEL | MB_ICONWARNING);
+    if (answer == IDCANCEL) {
+        return false;
+    }
+    if (answer == IDYES) {
+        Save();
+        return !IsDirty(); // the save failed: stay
+    }
+    return true;
+}
+
+void EditorApp::OpenScene(const std::string& scene) {
+    if (scene.empty() || scene == OpenSceneRelative()) {
+        return;
+    }
+    if (playing_) {
+        StopPlay();
+    }
+    if (!AskToSaveChanges(L"Save changes to this scene before opening another?")) {
+        return;
+    }
+    const std::string path = assets_.GetProject().Resolve(scene).string();
+    Registry loaded;
+    if (!LoadScene(loaded, path)) {
+        post_({{"type", "notify"}, {"text", "Couldn't open " + scene}});
+        return;
+    }
+    LoadScene(registry_, path);
+    scenePath_ = path;
+    prefabs_.SyncAll(registry_); // prefab edits since it was saved
+    history_.Clear();
+    Select(std::nullopt);
+    dirty_ = false;
+    UpdateTitle();
+    UpdateWorldToScreen(registry_, iso_);
+    FrameScene();
+    sceneTreeStale_ = true;
+    inspectorStale_ = true;
+    editorStateStale_ = true;
+    post_(ScenesJson());
+}
+
+void EditorApp::HandleTravel() {
+    auto travel = session_.TakeTravel();
+    if (!travel) {
+        return;
+    }
+    // The scene being edited plays as it is now; others as saved.
+    std::string text;
+    if (travel->scene == OpenSceneRelative()) {
+        text = playSnapshot_;
+    } else {
+        std::ifstream in(assets_.GetProject().Resolve(travel->scene), std::ios::binary);
+        if (in) {
+            std::ostringstream buffer;
+            buffer << in.rdbuf();
+            text = buffer.str();
+        }
+    }
+    if (text.empty()) {
+        post_({{"type", "notify"}, {"text", "The gateway leads to " + travel->scene + ", which doesn't exist"}});
+        session_.OnSceneChanged();
+        return;
+    }
+    Select(std::nullopt);
+    const std::string warning = TravelToScene(registry_, text, travel->marker);
+    prefabs_.SyncAll(registry_);
+    session_.OnSceneChanged();
+    UpdateWorldToScreen(registry_, iso_);
+    if (auto player = FindPlayer(registry_)) {
+        int width = 0, height = 0;
+        viewport_.GetFramebufferSize(width, height);
+        SnapCameraTo(camera_, registry_, *player, static_cast<float>(width), static_cast<float>(height));
+    }
+    sceneTreeStale_ = true;
+    inspectorStale_ = true;
+    post_({{"type", "notify"},
+           {"text", "Now in " + travel->scene + (warning.empty() ? "" : " (" + warning + ")") +
+                        " — Stop returns to the scene you're editing"}});
 }
 
 // --- Build & Export (development_plan.md 5.1) --------------------------------
@@ -1514,6 +1671,7 @@ void EditorApp::StartPlay() {
     playSnapshot_ = SerializeScene(registry_);
     selectionIndexAtPlay_ = selected_ ? IndexOfEntity(registry_, *selected_) : std::nullopt;
     session_.ResetClock();
+    session_.OnSceneChanged(); // no gateway fires under a player who starts on one
     // Dialogue and quests as they are on disk now; a fresh run each Play.
     story_.Refresh();
     world_.Refresh();
@@ -1620,6 +1778,7 @@ void EditorApp::Tick(double frameSeconds) {
     if (playing_) {
         const auto updateStart = std::chrono::steady_clock::now();
         session_.Advance(frameSeconds, [this](Key key) { return viewport_.IsKeyDown(key); });
+        HandleTravel();
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - updateStart).count();
         updateMs_ = updateMs_ * 0.9 + ms * 0.1;
         auto player = FindPlayer(registry_);
@@ -1857,6 +2016,7 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus) {
     ContextOptions options;
     options.selection = selected_;
     options.focus = focus;
+    options.scene = OpenSceneRelative();
     nlohmann::json context =
         BuildEditorContext(registry_, EngineReflection(), prefabs_, assets_, assets_.GetProject(), options);
 
@@ -2297,6 +2457,7 @@ void EditorApp::EnsureStarterPrefabs() {
     save(CreateNpc(scratch, 0.0f, 0.0f), "npc");
     save(CreateEnemy(scratch, 0.0f, 0.0f, entt::null), "enemy");
     save(CreateHealthPickup(scratch, 0.0f, 0.0f), "potion");
+    save(CreateGateway(scratch, 0.0f, 0.0f), "gateway");
 }
 
 // Saves a file from the Story tab; `originalId` set and different means a

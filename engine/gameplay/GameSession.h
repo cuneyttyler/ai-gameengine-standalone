@@ -116,6 +116,17 @@ public:
     float MinuteOfDay() const;
     int Day() const;
 
+    // Gateways (development_plan.md 5.3): stepping into a Gateway's cell
+    // stops the game where it is and asks the host to change scene. The host
+    // takes the request, replaces the scene (TravelToScene) and calls
+    // OnSceneChanged; story, flags and the clock carry on.
+    struct TravelRequest {
+        std::string scene;
+        std::string marker;
+    };
+    std::optional<TravelRequest> TakeTravel();
+    void OnSceneChanged();
+
     StoryState& Story() { return story_; }
     const StoryState& Story() const { return story_; }
     const DialogueRunner& Conversation() const { return conversation_; }
@@ -165,6 +176,11 @@ private:
     double clockMinutes_ = -1.0; // < 0: start at Time.startHour on the first Advance
     uint64_t routineRng_ = 0x5EED;
     double noticeSeconds_ = 0.0;
+    std::optional<TravelRequest> travel_;
+    // A gateway fires when the player steps in, not while standing on one
+    // (e.g. arriving on the way back): armed once off every gateway.
+    bool gatewayArmed_ = false;
+    bool CheckGateways();
 };
 
 } // namespace aige

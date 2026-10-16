@@ -1,0 +1,8 @@
+# AIGE Scene v1
+
+entity
+  Name value=Gateway
+  WorldTransform2D x=0 y=0
+  Gateway scene="" marker=""
+  ScreenTransform2D x=0 y=0 depth=0
+  Sprite texture=assets/textures/gateway.png width=64 height=32 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1 flat=1 rotation=0

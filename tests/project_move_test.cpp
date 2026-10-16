@@ -131,7 +131,7 @@ TEST(ProjectMoveTest, RefusesMovesThatWouldBreakTheProject) {
     EXPECT_NE(aige::CheckMove(t.project, "prefabs/a.prefab", "prefabs/a.txt"), "");     // type change
     EXPECT_NE(aige::CheckMove(t.project, "prefabs/a.prefab", "assets/a.prefab"), "");   // out of prefabs/
     EXPECT_NE(aige::CheckMove(t.project, "prefabs/a.prefab", "prefabs/../a.prefab"), "");
-    EXPECT_NE(aige::CheckMove(t.project, "scenes/main.aige", "scenes/other.aige"), ""); // not movable here
+    EXPECT_NE(aige::CheckMove(t.project, "scenes/main.aige", "prefabs/main.aige"), ""); // scenes stay in scenes/
     EXPECT_NE(aige::CheckMove(t.project, "prefabs/missing.prefab", "prefabs/x.prefab"), "");
     EXPECT_NE(aige::CheckMove(t.project, "assets/a.png", "assets/.png"), "");           // empty name
     EXPECT_EQ(aige::CheckMove(t.project, "assets/a.png", "assets/sub/a.png"), "");

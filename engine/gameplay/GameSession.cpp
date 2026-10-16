@@ -502,6 +502,47 @@ bool GameSession::Pressed(Key key, const KeyQueryFn& isKeyDown) {
     return down && !was;
 }
 
+bool GameSession::CheckGateways() {
+    auto player = FindPlayer(registry_);
+    if (!player || registry_.all_of<Dead>(*player)) {
+        return false;
+    }
+    const auto& at = registry_.get<WorldTransform2D>(*player);
+    const int gx = static_cast<int>(std::floor(at.x));
+    const int gy = static_cast<int>(std::floor(at.y));
+    for (auto [entity, gateway, world] : registry_.view<Gateway, WorldTransform2D>().each()) {
+        if (static_cast<int>(std::floor(world.x)) != gx || static_cast<int>(std::floor(world.y)) != gy) {
+            continue;
+        }
+        if (!gatewayArmed_ || gateway.scene.empty()) {
+            return false; // standing on one since arriving: step off first
+        }
+        travel_ = TravelRequest{gateway.scene, gateway.marker};
+        gatewayArmed_ = false;
+        return true;
+    }
+    gatewayArmed_ = true;
+    return false;
+}
+
+std::optional<GameSession::TravelRequest> GameSession::TakeTravel() {
+    auto request = std::move(travel_);
+    travel_.reset();
+    return request;
+}
+
+void GameSession::OnSceneChanged() {
+    // Nothing from the old scene is valid any more; the story, the clock and
+    // the player's own components carry on.
+    conversation_ = DialogueRunner{};
+    talkingTo_ = entt::null;
+    requestedAttack_.reset();
+    attackKeyWasDown_ = true; // a held Space doesn't swing on arrival
+    events_.clear();
+    gatewayArmed_ = false;
+    travel_.reset();
+}
+
 std::optional<Entity> GameSession::TalkTarget() {
     if (storyLibrary_ == nullptr || conversation_.Active()) {
         return std::nullopt;
@@ -675,6 +716,9 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         accumulator_ = std::fmod(accumulator_, kFixedDt);
         return 0;
     }
+    if (travel_) {
+        return 0; // waiting for the host to change scene
+    }
     if (accumulator_ < kFixedDt) {
         return 0;
     }
@@ -726,6 +770,10 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         }
         accumulator_ -= kFixedDt;
         ++steps;
+        if (CheckGateways()) {
+            accumulator_ = std::fmod(accumulator_, kFixedDt);
+            break; // the host changes scene before the next step
+        }
     }
     // While a quest is under way it's the goal: clearing every enemy isn't
     // the end of the game.

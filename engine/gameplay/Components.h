@@ -174,6 +174,15 @@ struct Marker {
     std::string name;
 };
 
+// A way into another scene (development_plan.md 5.3): when the player steps
+// into the gateway's cell during play, the game moves to `scene` (a
+// project-relative scenes/*.aige), with the player standing at that scene's
+// Marker `marker`.
+struct Gateway {
+    std::string scene;
+    std::string marker;
+};
+
 // Follows a daily schedule (schedules/<id>.json, gameplay/Schedule).
 struct Routine {
     std::string schedule; // schedules/<id>.json

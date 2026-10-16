@@ -234,6 +234,10 @@ generated field automatically gets the "Ask AI" affordance for free.
   - Performance (4.6): UI → host `view:stats` (toggles the F3 overlay).
   - Export (5.1): UI → host `game:export {name, zip}`, `game:reveal {path}`; host → UI
     `game:exported {ok, error, folder, zip, files, build}`.
+  - Scenes (5.3): UI → host `scenes:request`, `scene:open {path}`, `scene:new {name}`,
+    `scene:duplicate {path, name}`, `scene:rename {path, name}`, `scene:delete {path}`,
+    `scene:setStart {path}`; host → UI `scenes:list {scenes: [{path, name, start, open,
+    markers}], problems}`.
   - Flat art (5.2): UI → host `edit:rotate`, `prefab:setFlat {path, flat}`;
     `prefab:createFromAsset` takes `flat`; `editor:state` carries `brushRotation`;
     `prefabs:list` entries carry `flat`.

@@ -1196,6 +1196,42 @@ the Phase 4 testing (2026-10-16).
   the player starts in the start scene.
 - Tests: scene list operations and reference rewriting, a gateway round trip, play state
   carrying across a scene change (headless), and export with several scenes.
+- ✅ Built (build and tests at the end of the phase):
+  - `assets/SceneFiles`:
+    - `ListScenes`, `StartScene`/`StartScenePath` (the new `Game.startScene` setting,
+      default `scenes/main.aige`), `CreateScene`, `DuplicateScene` (never overwrites).
+    - `SceneReferences` and `DeleteScene`, which refuses the start scene and any scene a
+      gateway leads to.
+    - `GatewayProblems` (a missing scene or marker) and `SceneMarkers`.
+    - Renaming goes through 4.4's `MoveProjectFile`, now allowed under `scenes/`, so
+      gateways and the start setting follow.
+  - **Travel** (`TravelToScene`): the player entity is carried over whole, serialized
+    with every component (health, scripts, module data). This differs from the plan's
+    first idea of copying values onto the new scene's player, and is simpler and loses
+    nothing. The new scene's own player gives way, and references to it point at the
+    arrival. The player stands at the marker; a missing marker gives a warning and a
+    fallback spot.
+  - `Gateway` component (scene, marker) and `CreateGateway`, a flat glowing ring (5.2).
+    `GameSession` asks for travel when the player steps into a gateway's cell, never
+    while standing on one since arriving or starting. The host changes scene, and story,
+    flags and the clock carry on (`TakeTravel`, `OnSceneChanged`).
+  - Editor:
+    - A **Scenes** tab (Scene Manager): the list with start and open badges and marker
+      counts, New scene…, double-click to open, and right-click for Open, Set as start
+      scene, Rename…, Duplicate… and Delete…. Gateway problems are listed beside it.
+    - File ▸ New Scene… and Scenes…. Opening a scene asks about unsaved changes and
+      clears undo. The title shows the open scene.
+    - In Play, gateways work. The open scene plays as edited and others as saved, and
+      Stop returns to the scene being edited.
+  - The player (windowed and headless) starts in the start scene and follows gateways.
+    Export accepts any project with a scene and ships them all.
+  - AI: the context lists every scene with its markers plus the open one, and the
+    prompt explains gateways (only listed scenes and markers).
+  - Starter palette and demo: a `gateway` prefab (new projects get a placeholder ring;
+    the demo's uses `assets/textures/gateway.png`).
+  - Tests: `ScenesTest` (6): create, duplicate and list; delete refusals; a rename
+    rewriting gateways and settings; gateway problems; travel carrying the player and
+    retargeting a follower; a gateway firing only on the way in.
 
 **5.4 — Start window** *(testing)*
 - Launching the editor without a project opens a **welcome window**:

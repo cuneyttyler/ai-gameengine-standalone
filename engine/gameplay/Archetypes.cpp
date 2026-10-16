@@ -133,4 +133,20 @@ Entity CreateHealthPickup(Registry& registry, float worldX, float worldY, float 
     return entity;
 }
 
+Entity CreateGateway(Registry& registry, float worldX, float worldY, const std::string& scene,
+                     const std::string& marker, const std::string& texture) {
+    auto entity = registry.create();
+    registry.emplace<Name>(entity, "Gateway");
+    registry.emplace<WorldTransform2D>(entity, worldX, worldY);
+    registry.emplace<Gateway>(entity, scene, marker);
+    registry.emplace<ScreenTransform2D>(entity);
+    auto& sprite = texture.empty()
+                       ? registry.emplace<Sprite>(entity, 64.0f, 32.0f, kPlayerUV[0], kPlayerUV[1], kPlayerUV[2],
+                                                  kPlayerUV[3], 0.3f, 0.6f, 1.0f, 0.8f)
+                       : registry.emplace<Sprite>(entity, 64.0f, 32.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f);
+    sprite.texture = texture;
+    sprite.flat = true;
+    return entity;
+}
+
 } // namespace aige

@@ -8,6 +8,8 @@ import { prefabMenuExtensions } from '../assetMenus'
 import StoryPanel from './StoryPanel.vue'
 import LevelPanel from './LevelPanel.vue'
 import ArtPanel from './ArtPanel.vue'
+import ScenesPanel from './ScenesPanel.vue'
+import { bottomTab } from '../scenes'
 import { onHostMessage, sendToHost } from '../ipc'
 import { askMoveToFolder, foldersOf, inFolder, moveItem, renameItem, type Root } from '../organize'
 
@@ -248,7 +250,12 @@ function assetMenu(asset: Asset, event: MouseEvent): void {
 }
 
 // Prefabs tab: the project's palette.
-const tab = ref<'prefabs' | 'assets' | 'world' | 'story' | 'level' | 'art'>('prefabs')
+const tab = ref<'prefabs' | 'assets' | 'scenes' | 'world' | 'story' | 'level' | 'art'>('prefabs')
+// Menus can ask for a tab (File ▸ Scenes…).
+watch(
+  () => bottomTab.n,
+  () => (tab.value = bottomTab.request as typeof tab.value),
+)
 const visiblePrefabs = computed(() => {
   const query = filter.value.trim().toLowerCase()
   return editorState.prefabs.filter(
@@ -287,6 +294,9 @@ onMounted(() => {
       <div class="tabs">
         <button :class="{ active: tab === 'prefabs' }" @click="tab = 'prefabs'">Prefabs</button>
         <button :class="{ active: tab === 'assets' }" @click="tab = 'assets'">Assets</button>
+        <button :class="{ active: tab === 'scenes' }" title="The project's scenes and gateways" @click="tab = 'scenes'">
+          Scenes
+        </button>
         <button :class="{ active: tab === 'world' }" title="World Bible: the game's canon" @click="tab = 'world'">
           World
         </button>
@@ -317,6 +327,7 @@ onMounted(() => {
     </div>
 
     <WorldPanel v-if="tab === 'world'" class="body world-body" />
+    <ScenesPanel v-else-if="tab === 'scenes'" class="body" />
     <StoryPanel v-else-if="tab === 'story'" class="body" />
     <LevelPanel v-else-if="tab === 'level'" class="body" />
     <ArtPanel v-else-if="tab === 'art'" class="body" />

@@ -11,6 +11,7 @@
 #include "assets/SceneIO.h"
 #include "editing/Commands.h"
 #include "gameplay/EngineReflection.h"
+#include "assets/SceneFiles.h"
 #include "modules/Modules.h"
 
 #include <iostream>
@@ -175,7 +176,7 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
         // sol::environments referencing lua's state.
         aige::LuaVM lua;
         aige::Registry registry;
-        const std::filesystem::path scenePath = project.MainScenePath();
+        const std::filesystem::path scenePath = aige::StartScenePath(project); // Game.startScene (5.3)
         if (!aige::LoadScene(registry, scenePath.string())) {
             // A new project: start from the bootstrap level and save it, so
             // the project is complete on disk from the first launch.

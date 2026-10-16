@@ -17,6 +17,7 @@ struct Project;
 struct ContextOptions {
     std::optional<Entity> selection;
     std::string focus;             // "Skeleton.Health.max" when asked from an Inspector field
+    std::string scene;             // the open scene ("scenes/main.aige"); the others are listed too (5.3)
     size_t maxEntities = 200;      // keeps prompts bounded in big scenes
 };
 

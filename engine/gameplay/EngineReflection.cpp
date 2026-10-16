@@ -153,6 +153,11 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
     r.Component<Marker>("Marker", "A named place in the scene, for routines to send people to. Invisible in play.")
         .Field("name", &Marker::name, "The place's name, e.g. herb_garden.")
         .DependsOn({"WorldTransform2D"});
+    r.Component<Gateway>("Gateway",
+                         "A way into another scene: stepping into its cell during play takes the player there.")
+        .Field("scene", &Gateway::scene, "The scene it leads to, e.g. scenes/cave.aige.")
+        .Field("marker", &Gateway::marker, "The Marker in that scene the player arrives at.")
+        .DependsOn({"WorldTransform2D"});
     r.Component<Routine>("Routine", "Follows a daily schedule: where to be, and what to do there, through the day.")
         .Field("schedule", &Routine::schedule, "The schedule, schedules/<id>.json.")
         .Field("speed", &Routine::speed, "Walking speed, cells per second.").Range(0.1, 20)
@@ -253,6 +258,8 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Range(0, 10);
     r.Settings("Physics", "Movement and collision.", &settings.physics)
         .Field("playerCollides", &PhysicsSettings::playerCollides, "Off lets the player walk through walls.");
+    r.Settings("Game", "The game as a whole.", &settings.game)
+        .Field("startScene", &GameSettings::startScene, "The scene the game starts in (scenes/*.aige).");
     r.Settings("Time", "The game clock (routines follow it).", &settings.time)
         .Field("startHour", &TimeSettings::startHour, "Time of day when a game starts, in hours.").Range(0, 23.99)
         .Field("minutesPerSecond", &TimeSettings::minutesPerSecond,

@@ -85,8 +85,12 @@ ExportResult ExportGame(const ExportOptions& options) {
         return result;
     }
     std::error_code ec;
-    if (!fs::exists(options.project / "scenes" / "main.aige", ec)) {
-        result.error = "the project has no scenes/main.aige to play";
+    bool anyScene = false;
+    for (const auto& entry : fs::directory_iterator(options.project / "scenes", ec)) {
+        anyScene |= entry.path().extension() == ".aige";
+    }
+    if (!anyScene) {
+        result.error = "the project has no scene to play";
         return result;
     }
     const fs::path playerExe = options.playerDir / options.playerExe;
