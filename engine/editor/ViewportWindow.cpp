@@ -115,6 +115,10 @@ void ViewportWindow::SetKeyDownCallback(std::function<void(int, bool, bool)> cal
     keyDownCallback_ = std::move(callback);
 }
 
+void ViewportWindow::SetCharCallback(std::function<void(wchar_t)> callback) {
+    charCallback_ = std::move(callback);
+}
+
 LRESULT CALLBACK ViewportWindow::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     if (msg == WM_NCCREATE) {
         auto* createStruct = reinterpret_cast<CREATESTRUCTW*>(lparam);
@@ -227,6 +231,11 @@ LRESULT CALLBACK ViewportWindow::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPA
                     bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
                     self->keyDownCallback_(static_cast<int>(wparam), ctrl, shift);
                 }
+            }
+            return 0;
+        case WM_CHAR:
+            if (self != nullptr && self->charCallback_) {
+                self->charCallback_(static_cast<wchar_t>(wparam));
             }
             return 0;
         case WM_KILLFOCUS:

@@ -41,6 +41,7 @@ export interface Prefab {
   isTile: boolean
   isPlayer: boolean
   kind: 'tile' | 'character' | 'item' | 'other'
+  flat: boolean // top-down art lying on the grid (5.2)
   texture: string
   uv: [number, number, number, number]
   size: [number, number]
@@ -73,6 +74,7 @@ export const editorState = reactive({
   showShortcuts: false, // Help ▸ Keyboard Shortcuts
   grid: false, // tile borders on empty ground (G)
   brushScale: 1, // the prefab brush places copies at this size
+  brushRotation: 0, // quarter turns for flat things the brush places (R)
 })
 
 function savePanels(): void {
@@ -136,6 +138,7 @@ onHostMessage((message) => {
     editorState.sceneName = message.sceneName as string
     editorState.grid = (message.grid as boolean) ?? false
     editorState.brushScale = (message.brushScale as number) ?? 1
+    editorState.brushRotation = (message.brushRotation as number) ?? 0
   } else if (message.type === 'selection:changed') {
     editorState.selectedId = (message.id as number | null) ?? null
   } else if (message.type === 'ai:status') {
@@ -188,14 +191,21 @@ window.addEventListener('keydown', (event) => {
       sendToHost({ type: key === 'c' ? 'edit:copy' : 'edit:paste' })
       return
     }
-    if (!event.ctrlKey && (key === '[' || key === ']')) {
+    // Typed characters, so any layout works ('[' is AltGr+8 on some, which
+    // reports Ctrl+Alt). Plain Ctrl+- / Ctrl++ are left alone.
+    if (['[', ']', '{', '}', '+', '-'].includes(event.key) && !(event.ctrlKey && !event.altKey)) {
       event.preventDefault()
-      const step = event.shiftKey ? 1.02 : 1.1
-      sendToHost({ type: 'edit:scale', factor: key === ']' ? step : 1 / step })
+      const step = event.key === '{' || event.key === '}' ? 1.02 : 1.1
+      const bigger = event.key === ']' || event.key === '}' || event.key === '+'
+      sendToHost({ type: 'edit:scale', factor: bigger ? step : 1 / step })
       return
     }
     if (!event.ctrlKey && key === 'g') {
       sendToHost({ type: 'view:grid' })
+      return
+    }
+    if (!event.ctrlKey && !event.altKey && key === 'r') {
+      sendToHost({ type: 'edit:rotate' })
       return
     }
     const arrows: Record<string, [number, number]> = {

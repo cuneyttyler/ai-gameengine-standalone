@@ -1149,6 +1149,36 @@ the Phase 4 testing (2026-10-16).
   on a mapped tile, the projection and rotation round trip through scenes and prefabs,
   and old scenes loading unchanged. Checklist: import a top-down road and paint a
   straight road and a corner.
+- ✅ Built (tests run at the end of the phase):
+  - `Sprite.flat` and `Sprite.rotation` (0–3), both reflected so the Inspector, scenes,
+    prefab overrides and the AI see them. `SpriteQuadOf` gives the four corners and
+    texture coordinates: the upright rectangle, or the diamond with the image's corners
+    on the cell's corners, turned by quarter turns. The renderer draws every sprite
+    through it.
+  - Draw order: flat tiles go to a ground layer under everything (nothing can be behind
+    the ground). Flat props (rugs, shadows) lie centered on their point, above their
+    cell's tile and below whatever stands there. Isometric tiles keep their depth, so
+    the demo looks the same.
+  - Making a prefab from an asset asks how the art is drawn: **top-down** (laid onto
+    one cell's diamond, whatever the image's size) or **isometric/upright**. Square
+    images suggest top-down, 2:1 ones isometric. For prefabs made earlier, the
+    right-click item **Lay flat on the grid** (or Stand upright) rewrites the prefab
+    and every copy follows.
+  - **R** turns the brush while painting (shown in the toolbar as ↻ 90°), else the
+    selected flat sprite. It's one undo step and an override on prefab copies. The
+    entity menu has "Turn a quarter".
+  - Art tab: a **ground tile (top-down)** kind. It asks for a seamless top-down texture,
+    keeps it square and opaque (no cutout), and Make prefab turns it into a flat tile.
+  - Flat props outline as their diamond; tiles still pick and outline by cell.
+  - **Resizing fixed (from testing):** `[` / `]` and Alt+wheel did nothing on a tile
+    (tiles were refused) and nothing on keyboards where `[` needs AltGr. Tiles now
+    resize their image while staying in one cell, the brush size % applies to tiles
+    too, and the viewport reads the typed character (WM_CHAR), so `[` `]` (`{` `}`
+    finer) and `-` `+` work on any layout, in the viewport and the UI. Resizing with
+    nothing selected says so.
+  - Tests: `FlatSpritesTest` (5: the rectangle, the diamond and turns, neighbours
+    sharing edges, draw order, the scene round trip with old scenes upright), a tile
+    resizing in `SceneToolsTest`, and two pytest cases for tile generation.
 
 **5.3 — Multiple scenes and gateways** *(testing)*
 - A project has any number of scenes (`scenes/*.aige`). One is the **start scene**,

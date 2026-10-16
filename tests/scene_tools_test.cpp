@@ -58,9 +58,13 @@ TEST(SceneToolsTest, ScalingResizesSpriteAndCollisionTogetherAsAnOverride) {
     f.prefabs->Sync(f.registry, skeleton);
     EXPECT_FLOAT_EQ(f.registry.get<aige::Sprite>(skeleton).width, sprite.width * 2);
 
-    // Tiles are the grid; absurd sizes are clamped.
-    aige::Entity tile = aige::PaintTile(f.registry, 0, 0, aige::TileKind::Grass);
-    EXPECT_TRUE(aige::ScaleEntity(aige::EngineReflection(), f.registry, tile, 2.0f));
+    // A tile's image resizes; the tile stays in its one cell (5.2). Absurd sizes are clamped.
+    aige::Entity tile = aige::PaintTile(f.registry, 3, 4, aige::TileKind::Grass);
+    const float tileWidth = f.registry.get<aige::Sprite>(tile).width;
+    ASSERT_FALSE(aige::ScaleEntity(aige::EngineReflection(), f.registry, tile, 0.5f));
+    EXPECT_FLOAT_EQ(f.registry.get<aige::Sprite>(tile).width, tileWidth * 0.5f);
+    EXPECT_EQ(f.registry.get<aige::Tile>(tile).gx, 3);
+    EXPECT_EQ(f.registry.get<aige::Tile>(tile).gy, 4);
     ASSERT_FALSE(aige::ScaleEntity(aige::EngineReflection(), f.registry, skeleton, 1000.0f));
     EXPECT_LE(f.registry.get<aige::Sprite>(skeleton).height, 2048.0f);
 }

@@ -21,7 +21,14 @@ KINDS = {
     # background the pipeline can remove.
     "object": "a single {description}, isometric 3/4 view, centered, whole object visible",
     "character": "a single {description}, full body, standing, isometric 3/4 view facing the viewer, centered",
+    # Ground for the grid (development_plan.md 5.2): drawn top-down and laid
+    # flat onto the isometric cells by the engine, so it must fill the square.
+    "tile": "a seamless top-down ground texture of {description}, seen from directly above, flat, "
+            "filling the whole square image edge to edge, tileable",
 }
+# Tiles fill their image, so they get no cutout backdrop.
+TILE_BACKDROP = "no border, no frame, no text, no perspective, no shadows cast from outside"
+
 STYLE = {
     "pixel": "pixel art, clean outlines, limited palette",
     "smooth": "clean hand-painted game art",
@@ -113,7 +120,8 @@ def build_prompt(description: str, kind: str, style: str, variant: str = "") -> 
     subject = description.strip().rstrip(".")
     if variant:
         subject = f"{subject}, {variant.strip()}"
-    return f"{KINDS[kind].format(description=subject)}, {STYLE.get(style, STYLE['pixel'])}, {BACKDROP}"
+    backdrop = TILE_BACKDROP if kind == "tile" else BACKDROP
+    return f"{KINDS[kind].format(description=subject)}, {STYLE.get(style, STYLE['pixel'])}, {backdrop}"
 
 
 def generate_sprites(
@@ -146,7 +154,7 @@ def generate_sprites(
         prompt = build_prompt(description, kind, style, variant)
         started = time.time()
         image = generator.generate(prompt)
-        png, processing = make_sprite(image.data, SpriteOptions(height=height, style=style))
+        png, processing = make_sprite(image.data, SpriteOptions(height=height, style=style, tile=kind == "tile"))
         (folder / file_name).write_bytes(png)
         meta = {
             "description": description,

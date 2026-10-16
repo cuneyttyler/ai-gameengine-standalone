@@ -37,6 +37,9 @@ const filter = ref('')
 const selectedPath = ref<string | null>(null)
 const selectedTile = ref(0)
 const paintSolid = ref(false)
+// How the art is drawn (5.2): top-down art lies flat on the grid's diamonds;
+// isometric art (a diamond, or a block standing on one) stands as it is.
+const artFlat = ref(true)
 
 // Editable copies of the selected asset's import settings.
 const settingsType = ref<'texture' | 'tileset'>('texture')
@@ -188,6 +191,13 @@ const tiles = computed(() => {
 // by turning it into one: a tile (painted onto cells) or a prop (stands in
 // the world). The new prefab is armed as the brush right away.
 const newPrefabName = ref('')
+// A square image (or tile) is most likely top-down; a 2:1 one isometric.
+watch(selected, (asset) => {
+  if (!asset || asset.type === 'audio') return
+  const w = asset.type === 'tileset' ? asset.tileWidth ?? 1 : asset.width ?? 1
+  const h = asset.type === 'tileset' ? asset.tileHeight ?? 1 : asset.height ?? 1
+  artFlat.value = Math.abs(w / h - 1) < 0.25
+})
 watch([selectedPath, selectedTile], () => {
   const stem = (selected.value?.name ?? '').replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_-]/g, '_')
   newPrefabName.value = selected.value?.type === 'tileset' ? `${stem}_${selectedTile.value}` : stem
@@ -201,6 +211,7 @@ function createPrefab(asTile: boolean): void {
     asTile,
     solid: paintSolid.value,
     name: newPrefabName.value,
+    flat: artFlat.value,
   })
 }
 
@@ -490,6 +501,13 @@ onMounted(() => {
             <div class="row">
               <span>Name</span>
               <input v-model="newPrefabName" class="name-input" type="text" spellcheck="false" />
+            </div>
+            <div class="row" title="Top-down art is laid onto the grid's diamond cells; isometric art is used as drawn">
+              <span>Drawn</span>
+              <select v-model="artFlat">
+                <option :value="true">Top-down (lies flat on the grid)</option>
+                <option :value="false">Isometric / upright</option>
+              </select>
             </div>
             <div class="actions">
               <button title="A ground tile you paint onto cells" @click="createPrefab(true)">New tile prefab</button>

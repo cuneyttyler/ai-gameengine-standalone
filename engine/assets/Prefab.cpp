@@ -168,6 +168,7 @@ std::vector<std::string> PrefabLibrary::Refresh() {
                             : r.all_of<Pickup>(prefab->entity)   ? "item"
                                                                  : "other";
                 if (const auto* sprite = r.try_get<Sprite>(prefab->entity)) {
+                    info.flat = sprite->flat;
                     info.texture = sprite->texture;
                     info.u0 = sprite->u0;
                     info.v0 = sprite->v0;

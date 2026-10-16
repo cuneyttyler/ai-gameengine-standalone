@@ -17,6 +17,36 @@ bool SpriteOnScreen(const ScreenTransform2D& t, const Sprite& s, const Camera2D&
     return x1 >= 0.0f && y1 >= 0.0f && x0 <= viewportWidth && y0 <= viewportHeight;
 }
 
+SpriteQuad SpriteQuadOf(const ScreenTransform2D& t, const Sprite& s) {
+    SpriteQuad q{};
+    const float hw = s.width * 0.5f;
+    const float hh = s.height * 0.5f;
+    if (s.flat) {
+        // Top, right, bottom, left: the cell's corners at world (gx, gy),
+        // (gx+1, gy), (gx+1, gy+1), (gx, gy+1).
+        const float xs[4] = {t.x, t.x + hw, t.x, t.x - hw};
+        const float ys[4] = {t.y - hh, t.y, t.y + hh, t.y};
+        std::copy(xs, xs + 4, q.x);
+        std::copy(ys, ys + 4, q.y);
+    } else {
+        const float xs[4] = {t.x - hw, t.x + hw, t.x + hw, t.x - hw};
+        const float ys[4] = {t.y - hh, t.y - hh, t.y + hh, t.y + hh};
+        std::copy(xs, xs + 4, q.x);
+        std::copy(ys, ys + 4, q.y);
+    }
+    // The image's corners, clockwise from its top-left.
+    const float us[4] = {s.u0, s.u1, s.u1, s.u0};
+    const float vs[4] = {s.v0, s.v0, s.v1, s.v1};
+    const int turns = s.flat ? ((s.rotation % 4) + 4) % 4 : 0;
+    for (int i = 0; i < 4; ++i) {
+        // A clockwise turn moves the image's top-left to the next corner.
+        const int corner = (i - turns + 4) % 4;
+        q.u[i] = us[corner];
+        q.v[i] = vs[corner];
+    }
+    return q;
+}
+
 std::vector<Entity> VisibleSprites(Registry& registry, const Camera2D& camera, float viewportWidth,
                                    float viewportHeight, size_t* culled) {
     struct Item {

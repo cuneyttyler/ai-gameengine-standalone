@@ -549,18 +549,16 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
         const auto& t = view.get<ScreenTransform2D>(inst.entity);
         const auto& s = view.get<Sprite>(inst.entity);
 
-        float x0 = 0.0f;
-        float y0 = 0.0f;
-        float x1 = 0.0f;
-        float y1 = 0.0f;
-        camera.SceneToViewport(t.x - s.width * 0.5f, t.y - s.height * 0.5f, x0, y0);
-        camera.SceneToViewport(t.x + s.width * 0.5f, t.y + s.height * 0.5f, x1, y1);
-
-        SpriteVertex quad[kVerticesPerSprite] = {
-            {{x0, y0}, {s.u0, s.v0}, {s.r, s.g, s.b, s.a}}, {{x1, y0}, {s.u1, s.v0}, {s.r, s.g, s.b, s.a}},
-            {{x1, y1}, {s.u1, s.v1}, {s.r, s.g, s.b, s.a}}, {{x0, y0}, {s.u0, s.v0}, {s.r, s.g, s.b, s.a}},
-            {{x1, y1}, {s.u1, s.v1}, {s.r, s.g, s.b, s.a}}, {{x0, y1}, {s.u0, s.v1}, {s.r, s.g, s.b, s.a}},
-        };
+        // Upright rectangle or flat diamond (5.2), as two triangles.
+        const SpriteQuad corners = SpriteQuadOf(t, s);
+        SpriteVertex v[4];
+        for (int i = 0; i < 4; ++i) {
+            float vx = 0.0f;
+            float vy = 0.0f;
+            camera.SceneToViewport(corners.x[i], corners.y[i], vx, vy);
+            v[i] = {{vx, vy}, {corners.u[i], corners.v[i]}, {s.r, s.g, s.b, s.a}};
+        }
+        SpriteVertex quad[kVerticesPerSprite] = {v[0], v[1], v[2], v[0], v[2], v[3]};
         appendToBatch(inst.texture);
         std::memcpy(vertices + vertexCount, quad, sizeof(quad));
         vertexCount += kVerticesPerSprite;

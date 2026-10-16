@@ -234,6 +234,9 @@ generated field automatically gets the "Ask AI" affordance for free.
   - Performance (4.6): UI → host `view:stats` (toggles the F3 overlay).
   - Export (5.1): UI → host `game:export {name, zip}`, `game:reveal {path}`; host → UI
     `game:exported {ok, error, folder, zip, files, build}`.
+  - Flat art (5.2): UI → host `edit:rotate`, `prefab:setFlat {path, flat}`;
+    `prefab:createFromAsset` takes `flat`; `editor:state` carries `brushRotation`;
+    `prefabs:list` entries carry `flat`.
   - Story: UI → host `story:request`, `story:save {kind, id, originalId, content}`,
     `story:delete {file}`; host → UI `story:list {dialogues, quests, schedules, markers,
     problems, world, prefabs, usedBy}`, `story:saved {file, error}`. `story:save` kind

@@ -35,6 +35,14 @@ struct Sprite {
     float b = 1.0f;
     float a = 1.0f;
     std::string texture;
+    // Lies flat on the ground (development_plan.md 5.2): the image, drawn
+    // top-down, is mapped corner to corner onto the width x height diamond
+    // around the position (an isometric cell when they're the tile size)
+    // instead of standing upright.
+    bool flat = false;
+    // Quarter turns clockwise of a flat image (0-3), so one road piece can
+    // run either way along the grid. Upright sprites ignore it.
+    int rotation = 0;
 };
 
 } // namespace aige

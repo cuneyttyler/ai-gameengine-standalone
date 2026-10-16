@@ -114,6 +114,14 @@ void AddEntityOutline(std::vector<OverlayLine>& out, Registry& registry, Entity 
     }
     const auto* t = registry.try_get<ScreenTransform2D>(entity);
     const auto* s = registry.try_get<Sprite>(entity);
+    if (t != nullptr && s != nullptr && s->flat) {
+        const SpriteQuad quad = SpriteQuadOf(*t, *s); // the diamond it lies on (5.2)
+        for (int i = 0; i < 4; ++i) {
+            const int j = (i + 1) % 4;
+            out.push_back({quad.x[i], quad.y[i], quad.x[j], quad.y[j], thickness, rgb[0], rgb[1], rgb[2], alpha});
+        }
+        return;
+    }
     if (t != nullptr && s != nullptr) {
         AddRectOutline(out, t->x - s->width * 0.5f, t->y - s->height * 0.5f, t->x + s->width * 0.5f,
                        t->y + s->height * 0.5f, rgb, alpha, thickness);
@@ -631,7 +639,11 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         }
     } else if (type == "prefab:createFromAsset") {
         CreatePrefabFromAsset(message.value("asset", ""), message.value("tile", 0), message.value("asTile", false),
-                              message.value("solid", false), message.value("name", ""));
+                              message.value("solid", false), message.value("name", ""), message.value("flat", false));
+    } else if (type == "edit:rotate") {
+        Rotate();
+    } else if (type == "prefab:setFlat") {
+        SetPrefabFlat(message.value("path", ""), message.value("flat", true));
     } else if (type == "prefab:saveSelected") {
         SaveSelectedAsPrefab(message.value("name", ""));
     } else if (type == "prefab:applySelected") {
@@ -693,8 +705,69 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
 
 // --- Scene editing polish (development_plan.md 4.3) -------------------------
 
+void EditorApp::Rotate() {
+    if (playing_) {
+        return;
+    }
+    if (tool_ == Tool::Prefab) {
+        brushRotation_ = (brushRotation_ + 1) % 4;
+        editorStateStale_ = true;
+        post_({{"type", "notify"}, {"text", "Brush turned to " + std::to_string(brushRotation_ * 90) + "°"}});
+        return;
+    }
+    if (!selected_ || !registry_.valid(*selected_)) {
+        return;
+    }
+    const auto* sprite = registry_.try_get<Sprite>(*selected_);
+    if (sprite == nullptr || !sprite->flat) {
+        post_({{"type", "notify"}, {"text", "Only flat (top-down) images turn; this one stands upright"}});
+        return;
+    }
+    const int next = (sprite->rotation + 1) % 4;
+    ApplyOneShotEdit([&] {
+        return !EditField(EngineReflection(), registry_, *selected_, "Sprite", "rotation", next).has_value();
+    });
+    inspectorStale_ = true;
+}
+
+void EditorApp::SetPrefabFlat(const std::string& path, bool flat) {
+    if (playing_ || prefabs_.Find(path) == nullptr) {
+        return;
+    }
+    std::optional<std::string> error = prefabs_.SetTemplateField(path, "Sprite", "flat", flat);
+    if (!error && flat) {
+        // One cell's diamond; [ and ] still resize copies.
+        error = prefabs_.SetTemplateField(path, "Sprite", "width", iso_.tileWidth);
+        if (!error) error = prefabs_.SetTemplateField(path, "Sprite", "height", iso_.tileHeight);
+    }
+    if (error) {
+        post_({{"type", "notify"}, {"text", "Couldn't change " + path + ": " + *error}});
+        return;
+    }
+    RefreshPrefabs(); // every copy in the scene follows
+    dirty_ = true;
+    editorStateStale_ = true;
+    post_({{"type", "notify"},
+           {"text", path + (flat ? " now lies flat on the grid (R turns it)" : " now stands upright")}});
+}
+
+void EditorApp::ApplyBrushRotation(std::optional<Entity> placed) {
+    if (!placed || brushRotation_ == 0 || !registry_.valid(*placed)) {
+        return;
+    }
+    const auto* sprite = registry_.try_get<Sprite>(*placed);
+    if (sprite != nullptr && sprite->flat) {
+        // Through the edit path, so a prefab copy keeps it as an override.
+        EditField(EngineReflection(), registry_, *placed, "Sprite", "rotation", (sprite->rotation + brushRotation_) % 4);
+    }
+}
+
 void EditorApp::ScaleSelected(float factor) {
-    if (playing_ || !selected_ || !registry_.valid(*selected_)) {
+    if (playing_) {
+        return;
+    }
+    if (!selected_ || !registry_.valid(*selected_)) {
+        post_({{"type", "notify"}, {"text", "Select something to resize first"}});
         return;
     }
     std::optional<std::string> problem;
@@ -1056,6 +1129,31 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
     }
 }
 
+void EditorApp::OnViewportChar(wchar_t character) {
+    if (playing_) {
+        return;
+    }
+    // [ ] resize the selection (Shift: finer; with Shift, [ and ] type { }).
+    switch (character) {
+        case L'[':
+        case L'-':
+            ScaleSelected(1.0f / 1.1f);
+            return;
+        case L']':
+        case L'+':
+            ScaleSelected(1.1f);
+            return;
+        case L'{':
+            ScaleSelected(1.0f / 1.02f);
+            return;
+        case L'}':
+            ScaleSelected(1.02f);
+            return;
+        default:
+            return;
+    }
+}
+
 void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
     if (playing_) {
         if (virtualKey == VK_ESCAPE || virtualKey == VK_F5) {
@@ -1115,12 +1213,6 @@ void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
         case VK_F3:
             showStats_ = !showStats_;
             return;
-        case VK_OEM_4: // [
-            ScaleSelected(shift ? 1.0f / 1.02f : 1.0f / 1.1f);
-            return;
-        case VK_OEM_6: // ]
-            ScaleSelected(shift ? 1.02f : 1.1f);
-            return;
         case VK_LEFT:
         case VK_RIGHT:
         case VK_UP:
@@ -1134,6 +1226,9 @@ void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
         case 'G':
             showGrid_ = !showGrid_;
             editorStateStale_ = true;
+            return;
+        case 'R':
+            Rotate();
             return;
         case VK_DELETE:
         case VK_BACK:
@@ -1194,7 +1289,11 @@ void EditorApp::ToolStroke(float sceneX, float sceneY, bool first) {
                         Select(std::nullopt); // that tile is about to be replaced
                     }
                 }
-                prefabs_.Instantiate(registry_, prefab->path, cellX, cellY);
+                auto painted = prefabs_.Instantiate(registry_, prefab->path, cellX, cellY);
+                if (painted && std::abs(brushScale_ - 1.0f) > 1e-3f) {
+                    ScaleEntity(EngineReflection(), registry_, *painted, brushScale_);
+                }
+                ApplyBrushRotation(painted);
                 break;
             }
             if (!first) {
@@ -1214,6 +1313,7 @@ void EditorApp::ToolStroke(float sceneX, float sceneY, bool first) {
                 if (placed && std::abs(brushScale_ - 1.0f) > 1e-3f) {
                     ScaleEntity(EngineReflection(), registry_, *placed, brushScale_);
                 }
+                ApplyBrushRotation(placed);
                 Select(placed);
             }
             break;
@@ -2316,6 +2416,7 @@ nlohmann::json EditorApp::PrefabsJson() {
         list.push_back({{"path", prefab.path},
                         {"name", prefab.name},
                         {"kind", prefab.kind},
+                        {"flat", prefab.flat},
                         {"error", prefab.error},
                         {"isTile", prefab.isTile},
                         {"isPlayer", prefab.isPlayer},
@@ -2327,11 +2428,18 @@ nlohmann::json EditorApp::PrefabsJson() {
 }
 
 void EditorApp::CreatePrefabFromAsset(const std::string& asset, int tile, bool asTile, bool solid,
-                                      const std::string& requestedName) {
+                                      const std::string& requestedName, bool flat) {
     auto style = TilesetStyle(asset, tile, solid);
     if (!style) {
         post_({{"type", "notify"}, {"text", "Pick a texture (and tile) first"}});
         return;
+    }
+    if (flat) {
+        // Top-down art (5.2): mapped onto one cell's diamond, whatever the
+        // image's own size.
+        style->width = iso_.tileWidth;
+        style->height = iso_.tileHeight;
+        style->flat = true;
     }
     std::string name;
     for (char c : requestedName) {
@@ -2360,6 +2468,7 @@ void EditorApp::CreatePrefabFromAsset(const std::string& asset, int tile, bool a
         sprite.v0 = style->v0;
         sprite.u1 = style->u1;
         sprite.v1 = style->v1;
+        sprite.flat = style->flat;
         scratch.emplace<Name>(entity, name);
         if (solid) {
             scratch.emplace<Obstacle>(entity);
@@ -2733,7 +2842,8 @@ nlohmann::json EditorApp::EditorStateJson() {
             {"canRedo", history_.CanRedo() && !playing_},
             {"sceneName", std::filesystem::path(scenePath_).filename().string()},
             {"grid", showGrid_},
-            {"brushScale", brushScale_}};
+            {"brushScale", brushScale_},
+            {"brushRotation", brushRotation_}};
 }
 
 nlohmann::json EditorApp::InspectorJson(Entity entity) {

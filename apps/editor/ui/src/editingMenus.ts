@@ -23,21 +23,32 @@ function updateMenus(): void {
 
 watch(() => [editorState.selectedId, editorState.grid], updateMenus, { immediate: true })
 
-entityMenuExtensions.push((entity) =>
-  entity.tile
+entityMenuExtensions.push((entity) => [
+  ...(entity.tile
     ? []
-    : [
-        { label: 'Copy', shortcut: 'Ctrl+C', action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:copy' })) },
-        { label: 'Bigger', shortcut: ']', action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:scale', factor: 1.1 })) },
-        { label: 'Smaller', shortcut: '[', action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:scale', factor: 1 / 1.1 })) },
-      ],
-)
+    : [{ label: 'Copy', shortcut: 'Ctrl+C', action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:copy' })) }]),
+  // Tiles too: the image resizes, the tile stays one cell (5.2).
+  { label: 'Bigger', shortcut: ']', action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:scale', factor: 1.1 })) },
+  { label: 'Smaller', shortcut: '[', action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:scale', factor: 1 / 1.1 })) },
+  { label: 'Turn a quarter', shortcut: 'R', action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:rotate' })) },
+])
 
 groundMenuExtensions.push((cell) => [
   { label: 'Paste here', shortcut: 'Ctrl+V', action: () => sendToHost({ type: 'edit:paste', gx: cell[0], gy: cell[1] }) },
 ])
 
 prefabMenuExtensions.push((prefab) => [
+  prefab.flat
+    ? {
+        label: 'Stand upright (isometric art)',
+        disabled: editorState.playing,
+        action: () => sendToHost({ type: 'prefab:setFlat', path: prefab.path, flat: false }),
+      }
+    : {
+        label: 'Lay flat on the grid (top-down art)',
+        disabled: editorState.playing,
+        action: () => sendToHost({ type: 'prefab:setFlat', path: prefab.path, flat: true }),
+      },
   {
     label: 'Delete prefab…',
     danger: true,

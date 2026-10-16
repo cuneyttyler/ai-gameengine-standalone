@@ -46,7 +46,15 @@ function send(type: string): void {
         <span v-if="brush">{{ brush.isTile ? 'Paint' : 'Place' }} {{ brush.name }}</span>
         <span v-else class="muted">No prefab picked</span>
       </button>
-      <label v-if="brush && !brush.isTile" class="size" title="Size of what the brush places (% of the prefab)">
+      <button
+        v-if="brush && brush.flat"
+        class="turn"
+        :title="`Turn what the brush paints a quarter (R) — now ${editorState.brushRotation * 90}°`"
+        @click="sendToHost({ type: 'edit:rotate' })"
+      >
+        ↻ {{ editorState.brushRotation * 90 }}°
+      </button>
+      <label v-if="brush" class="size" title="Size of what the brush places (% of the prefab)">
         <input
           type="number"
           min="10"

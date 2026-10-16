@@ -197,6 +197,7 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
         viewportWindow.SetMouseCallback([&app](const aige::ViewportMouseEvent& event) { app.OnViewportMouse(event); });
         viewportWindow.SetKeyDownCallback(
             [&app](int virtualKey, bool ctrl, bool shift) { app.OnViewportKey(virtualKey, ctrl, shift); });
+        viewportWindow.SetCharCallback([&app](wchar_t character) { app.OnViewportChar(character); });
 
         webView.SetBounds(0, 0, clientWidth, clientHeight);
         webView.MapVirtualHostToFolder(kProjectHostName, project.root.wstring());

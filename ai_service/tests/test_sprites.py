@@ -124,3 +124,34 @@ def test_the_endpoint(tmp_path):
         answer = client.post("/assets/generate", json=bad).json()
         assert answer["ok"] is False and answer["errors"], bad
     assert not (tmp_path.parent / "escape.png").exists()
+
+
+def test_tiles_stay_square_and_opaque():
+    """Top-down ground tiles (development_plan.md 5.2) fill their cell: the
+    centre square of the picture, scaled, nothing cut out."""
+    import io as _io
+
+    from PIL import Image as _Image
+
+    from app.sprites import SpriteOptions as _Options, make_sprite as _make
+
+    picture = _Image.new("RGB", (300, 200), (255, 255, 255))  # white would be "background" for a sprite
+    for x in range(120, 180):
+        for y in range(0, 200):
+            picture.putpixel((x, y), (120, 90, 60))  # a road down the middle
+    data = _io.BytesIO()
+    picture.save(data, format="PNG")
+    png, info = _make(data.getvalue(), _Options(height=64, style="smooth", tile=True))
+    tile = _Image.open(_io.BytesIO(png))
+    assert tile.size == (64, 64)
+    assert info["tile"] is True and info["croppedSize"] == [200, 200]
+    assert tile.getchannel("A").getextrema() == (255, 255)  # opaque: the white wasn't removed
+    assert tile.getpixel((32, 32))[:3] == (120, 90, 60)     # the road stays in the middle
+
+
+def test_tile_prompts_ask_for_top_down_ground():
+    from app.images import build_prompt as _prompt
+
+    text = _prompt("cobblestone road", "tile", "pixel")
+    assert "top-down" in text and "seamless" in text
+    assert "white background" not in text

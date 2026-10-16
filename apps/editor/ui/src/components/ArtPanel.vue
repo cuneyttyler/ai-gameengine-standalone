@@ -31,7 +31,7 @@ interface Item {
 const form = reactive({
   description: '',
   name: '',
-  kind: 'object' as 'object' | 'character',
+  kind: 'object' as 'object' | 'character' | 'tile',
   height: 48,
   style: 'pixel' as 'pixel' | 'smooth',
   variants: '',
@@ -111,7 +111,7 @@ function regenerate(item: Item): void {
   request(m.variant ? [m.variant] : [], {
     name: m.family ?? '',
     description: m.description ?? '',
-    kind: (m.kind as 'object' | 'character') ?? 'object',
+    kind: (m.kind as 'object' | 'character' | 'tile') ?? 'object',
     height: m.processing?.size?.[1] ?? form.height,
     style: (m.processing?.style as 'pixel' | 'smooth') ?? form.style,
   })
@@ -122,7 +122,7 @@ function useAgain(entry: HistoryEntry): void {
   const r = entry.request
   form.description = r.description ?? ''
   form.name = r.name ?? ''
-  form.kind = (r.kind as 'object' | 'character') ?? 'object'
+  form.kind = (r.kind as 'object' | 'character' | 'tile') ?? 'object'
   form.height = r.height ?? 48
   form.style = (r.style as 'pixel' | 'smooth') ?? 'pixel'
   form.variants = (r.variants ?? []).join(', ')
@@ -151,7 +151,9 @@ function when(iso: string): string {
 
 function makePrefab(item: Item): void {
   const name = item.path.split('/').pop()!.replace(/\.png$/, '')
-  sendToHost({ type: 'prefab:createFromAsset', asset: item.path, tile: 0, asTile: false, solid: false, name })
+  // A generated ground tile becomes a flat tile on the grid (5.2).
+  const isTile = item.meta.kind === 'tile'
+  sendToHost({ type: 'prefab:createFromAsset', asset: item.path, tile: 0, asTile: isTile, solid: false, name, flat: isTile })
 }
 
 async function discard(item: Item): Promise<void> {
@@ -184,6 +186,7 @@ const aiReady = computed(() => editorState.ai.state === 'ready')
         <select v-model="form.kind">
           <option value="object">object</option>
           <option value="character">character</option>
+          <option value="tile">ground tile (top-down)</option>
         </select>
         <label class="inline">Height</label>
         <input v-model.number="form.height" type="number" min="8" max="512" class="num" />

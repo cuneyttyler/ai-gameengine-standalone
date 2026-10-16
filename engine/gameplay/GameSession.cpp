@@ -141,6 +141,14 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
         // no sprite, fall back to a half-tile lift. Drawn just in front of
         // the tile they stand on.
         const auto* sprite = registry.try_get<Sprite>(entity);
+        if (sprite && sprite->flat) {
+            // Lies on the ground (a rug, a shadow; 5.2): centered on the point,
+            // above the tile it's on, below anything standing there.
+            screen.x = pose.x;
+            screen.y = pose.y;
+            screen.depth = pose.depth + 0.25f;
+            continue;
+        }
         float lift = sprite ? sprite->height * 0.5f - iso.tileHeight * 0.25f : iso.tileHeight * 0.5f;
         screen.x = pose.x;
         screen.y = pose.y - lift;
@@ -155,6 +163,14 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
         // A tile sprite taller than the diamond (a wall block, a tree on a
         // tile) extends upward: its bottom diamond stays on the cell.
         const auto* sprite = registry.try_get<Sprite>(entity);
+        if (sprite && sprite->flat) {
+            // Top-down ground (5.2): exactly on the cell's diamond, and drawn
+            // before everything else, since nothing can be behind the ground.
+            screen.x = pose.x;
+            screen.y = pose.y;
+            screen.depth = kGroundLayerDepth + pose.depth;
+            continue;
+        }
         float extra = sprite ? std::max(0.0f, sprite->height - iso.tileHeight) : 0.0f;
         screen.x = pose.x;
         screen.y = pose.y - extra * 0.5f;

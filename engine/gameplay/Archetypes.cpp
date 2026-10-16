@@ -54,6 +54,8 @@ Entity CreateTile(Registry& registry, int gx, int gy, const TileStyle& style) {
     auto& sprite = registry.emplace<Sprite>(entity, style.width, style.height, style.u0, style.v0, style.u1, style.v1,
                                             style.tint, style.tint, style.tint, 1.0f);
     sprite.texture = style.texture;
+    sprite.flat = style.flat;
+    sprite.rotation = style.rotation;
     return entity;
 }
 

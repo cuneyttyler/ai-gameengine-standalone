@@ -29,6 +29,8 @@ struct TileStyle {
     float height = 32.0f;
     float tint = 1.0f;
     bool solid = false;
+    bool flat = false; // top-down art mapped onto the diamond (Sprite::flat)
+    int rotation = 0;
 };
 
 TileStyle StyleFor(TileKind kind);

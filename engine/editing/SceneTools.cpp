@@ -16,7 +16,6 @@ namespace aige {
 std::optional<std::string> ScaleEntity(const ReflectionRegistry& reflection, Registry& registry, Entity entity,
                                        float factor) {
     if (!registry.valid(entity)) return "that entity no longer exists";
-    if (registry.all_of<Tile>(entity)) return "tiles are the grid; they don't resize";
     if (factor <= 0.0f) return "the scale must be positive";
     const auto* sprite = registry.try_get<Sprite>(entity);
     if (sprite == nullptr) return "it has no sprite to resize";

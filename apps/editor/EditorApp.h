@@ -62,6 +62,9 @@ public:
     void OnWebMessage(const nlohmann::json& message);
     void OnViewportMouse(const ViewportMouseEvent& event);
     void OnViewportKey(int virtualKey, bool ctrl, bool shift);
+    // Shortcuts that are characters rather than keys ([ ] + -), so they work
+    // on any keyboard layout.
+    void OnViewportChar(wchar_t character);
 
     // The editor window regained focus: rescan assets so files edited in
     // other programs hot-reload.
@@ -117,7 +120,9 @@ private:
     void RefreshPrefabs();
     void EnsureStarterPrefabs();
     nlohmann::json PrefabsJson();
-    void CreatePrefabFromAsset(const std::string& asset, int tile, bool asTile, bool solid, const std::string& name);
+    // `flat`: the art is top-down; it's mapped onto the grid's diamond (5.2).
+    void CreatePrefabFromAsset(const std::string& asset, int tile, bool asTile, bool solid, const std::string& name,
+                               bool flat = false);
     void SaveSelectedAsPrefab(const std::string& name);
     void ApplySelectedToPrefab();
     void RevertOverride(const std::string& key);
@@ -175,6 +180,12 @@ private:
     // Scene editing polish (4.3).
     bool showGrid_ = false;   // tile borders on empty ground
     float brushScale_ = 1.0f; // the prefab brush places copies at this size
+    int brushRotation_ = 0;   // quarter turns given to flat things the brush places (5.2)
+    // R: turns the brush while painting, else the selection (flat sprites).
+    void Rotate();
+    // Prefab menu (5.2): top-down art made before 5.2, laid onto the grid.
+    void SetPrefabFlat(const std::string& path, bool flat);
+    void ApplyBrushRotation(std::optional<Entity> placed);
     std::string clipboard_;   // Ctrl+C: the selection as scene text
     void ScaleSelected(float factor);
     void NudgeSelected(float dx, float dy);

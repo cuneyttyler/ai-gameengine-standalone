@@ -71,6 +71,9 @@ public:
     // code — for editor shortcuts, as opposed to IsKeyDown's held-state
     // polling used by gameplay.
     void SetKeyDownCallback(std::function<void(int virtualKey, bool ctrl, bool shift)> callback);
+    // Every typed character (WM_CHAR), whatever keys the layout needs for it:
+    // '[' is AltGr+8 on some keyboards.
+    void SetCharCallback(std::function<void(wchar_t character)> callback);
 
     // Public so the free function registering the window class (which needs
     // a plain WNDPROC pointer) can reference it.
@@ -82,6 +85,7 @@ private:
     std::function<void(int, int)> resizeCallback_;
     std::function<void(const ViewportMouseEvent&)> mouseCallback_;
     std::function<void(int, bool, bool)> keyDownCallback_;
+    std::function<void(wchar_t)> charCallback_;
     std::array<bool, 256> keyDown_{}; // indexed by Win32 virtual-key code
     int buttonsHeld_ = 0;
     bool trackingLeave_ = false;

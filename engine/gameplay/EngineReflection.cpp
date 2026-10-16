@@ -191,6 +191,10 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("g", &Sprite::g, "Green tint (0-1).").Range(0, 1)
         .Field("b", &Sprite::b, "Blue tint (0-1).").Range(0, 1)
         .Field("a", &Sprite::a, "Opacity (0-1).").Range(0, 1)
+        .Field("flat", &Sprite::flat,
+               "Lies flat on the ground: for art drawn top-down. The image is mapped onto the cell's diamond "
+               "(width x height) instead of standing upright.")
+        .Field("rotation", &Sprite::rotation, "Quarter turns clockwise of a flat image (0-3).").Range(0, 3)
         .DependsOn({"ScreenTransform2D"});
 
     // --- Scripting -------------------------------------------------------------------

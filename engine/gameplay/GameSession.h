@@ -47,6 +47,9 @@ void UpdateFollowers(Registry& registry, const SolidQueryFn& isSolid, float dt);
 // right), so characters look the way they move.
 void UpdateSpriteFacing(Registry& registry);
 
+// Flat (top-down) tiles draw this far below everything else (5.2).
+constexpr float kGroundLayerDepth = -100000.0f;
+
 // Re-derives ScreenTransform2D from WorldTransform2D (characters) and from
 // Tile (ground cells) — the one place world space meets screen space.
 // Content with neither keeps whatever ScreenTransform2D it was given.

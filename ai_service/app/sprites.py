@@ -24,6 +24,7 @@ class SpriteOptions:
     colors: int = 32           # palette size for "pixel"
     tolerance: int = 40        # how far from the background colour still counts as background (0-255 per channel)
     padding: int = 1           # transparent pixels kept around the object
+    tile: bool = False         # a top-down ground tile (5.2): kept opaque and square, height x height
 
 
 def _distance(a: tuple[int, int, int], b: tuple[int, int, int]) -> int:
@@ -122,10 +123,21 @@ def make_sprite(data: bytes, options: SpriteOptions) -> tuple[bytes, dict]:
     """Generated picture (any format Pillow reads) -> PNG bytes, and what was done."""
     source = Image.open(io.BytesIO(data))
     source.load()
-    sprite = remove_background(source, options.tolerance)
-    sprite = crop_to_content(sprite, options.padding)
-    cropped = sprite.size
-    sprite = to_size(sprite, options.height, options.style)
+    if options.tile:
+        # Ground fills its cell: no background to remove; the centre square.
+        w, h = source.size
+        side = min(w, h)
+        left, top = (w - side) // 2, (h - side) // 2
+        sprite = source.convert("RGBA").crop((left, top, left + side, top + side))
+        cropped = sprite.size
+        resample = Image.Resampling.BOX if options.style == "pixel" else Image.Resampling.LANCZOS
+        sprite = sprite.resize((options.height, options.height), resample=resample)
+        sprite.putalpha(255)
+    else:
+        sprite = remove_background(source, options.tolerance)
+        sprite = crop_to_content(sprite, options.padding)
+        cropped = sprite.size
+        sprite = to_size(sprite, options.height, options.style)
     if options.style == "pixel":
         sprite = reduce_palette(sprite, options.colors)
     out = io.BytesIO()
@@ -137,5 +149,6 @@ def make_sprite(data: bytes, options: SpriteOptions) -> tuple[bytes, dict]:
         "style": options.style,
         "colors": options.colors if options.style == "pixel" else None,
         "tolerance": options.tolerance,
+        "tile": options.tile,
     }
     return out.getvalue(), info

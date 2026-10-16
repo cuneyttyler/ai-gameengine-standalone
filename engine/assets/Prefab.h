@@ -40,6 +40,7 @@ struct PrefabInfo {
     // For grouping in the palette (4.4): "tile", "character" (has Health),
     // "item" (a Pickup) or "other".
     std::string kind = "other";
+    bool flat = false; // top-down art lying on the grid (5.2): the brush can turn it
     // For palette thumbnails.
     std::string texture;
     float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
