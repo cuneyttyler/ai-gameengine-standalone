@@ -40,6 +40,7 @@ export interface Prefab {
   error: string
   isTile: boolean
   isPlayer: boolean
+  kind: 'tile' | 'character' | 'item' | 'other'
   texture: string
   uv: [number, number, number, number]
   size: [number, number]

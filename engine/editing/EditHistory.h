@@ -3,6 +3,7 @@
 #include "ecs/Registry.h"
 
 #include <cstddef>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,10 @@ public:
     bool CanUndo() const { return !undo_.empty(); }
     bool CanRedo() const { return !redo_.empty(); }
     void Clear();
+
+    // Rewrites every stored snapshot (a moved file's references, 4.4), so
+    // undo doesn't bring back a path that no longer exists.
+    void RewriteSnapshots(const std::function<std::string(const std::string&)>& rewrite);
 
 private:
     size_t maxDepth_;

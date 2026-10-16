@@ -163,6 +163,10 @@ std::vector<std::string> PrefabLibrary::Refresh() {
                 Registry& r = prefab->registry;
                 info.isTile = r.all_of<Tile>(prefab->entity);
                 info.isPlayer = r.all_of<Velocity2D, Collider2D>(prefab->entity);
+                info.kind = info.isTile                          ? "tile"
+                            : r.all_of<Health>(prefab->entity)   ? "character"
+                            : r.all_of<Pickup>(prefab->entity)   ? "item"
+                                                                 : "other";
                 if (const auto* sprite = r.try_get<Sprite>(prefab->entity)) {
                     info.texture = sprite->texture;
                     info.u0 = sprite->u0;

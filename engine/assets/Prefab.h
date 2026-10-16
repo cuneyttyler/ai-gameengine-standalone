@@ -37,6 +37,9 @@ struct PrefabInfo {
     std::string error;
     bool isTile = false;   // painted onto grid cells rather than placed
     bool isPlayer = false; // there's only ever one player
+    // For grouping in the palette (4.4): "tile", "character" (has Health),
+    // "item" (a Pickup) or "other".
+    std::string kind = "other";
     // For palette thumbnails.
     std::string texture;
     float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;

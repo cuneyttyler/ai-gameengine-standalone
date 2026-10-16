@@ -3,6 +3,7 @@
 #include "ecs/Registry.h"
 #include "reflection/Reflection.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,11 @@ bool LoadScene(Registry& registry, const std::string& path);
 // DeserializeScene clears `registry` first, like LoadScene.
 std::string SerializeScene(Registry& registry);
 void DeserializeScene(Registry& registry, const std::string& text);
+
+// Rewrites the scene through its text form, keeping every entity's id
+// (selection, references and the editor's state stay valid). `rewrite` must
+// keep the entities, only change values: used to follow a moved file (4.4).
+void RewriteScene(Registry& registry, const std::function<std::string(const std::string&)>& rewrite);
 
 // Copies the scene into `to` (cleared first) keeping every entity's
 // identifier, so references by id — like an AI proposal's — mean the same

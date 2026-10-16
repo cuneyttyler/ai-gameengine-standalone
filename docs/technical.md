@@ -225,6 +225,9 @@ generated field automatically gets the "Ask AI" affordance for free.
   - Scene editing (4.3): UI → host `edit:scale {factor}`, `edit:nudge {dx, dy}`, `edit:copy`,
     `edit:paste {gx?, gy?}`, `view:grid {on?}`, `play:toggle`, `prefab:remove {path}`;
     `tool:set` takes `scale` (the brush size). `editor:state` carries `grid` and `brushScale`.
+  - Organizing (4.4): UI → host `file:move {from, to}` (rename or move a prefab or asset;
+    every reference is rewritten, see `assets/ProjectMove`); host → UI
+    `file:moved {from, to, error}`. `prefabs:list` entries carry `kind`.
   - Story: UI → host `story:request`, `story:save {kind, id, originalId, content}`,
     `story:delete {file}`; host → UI `story:list {dialogues, quests, schedules, markers,
     problems, world, prefabs, usedBy}`, `story:saved {file, error}`. `story:save` kind

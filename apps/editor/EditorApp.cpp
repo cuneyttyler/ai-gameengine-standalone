@@ -12,6 +12,7 @@
 #include "editing/Edits.h"
 #include "editing/LevelBuild.h"
 #include "editing/SceneTools.h"
+#include "assets/ProjectMove.h"
 #include "world/StoryReferences.h"
 #include "editing/SceneEditing.h"
 #include "gameplay/BootstrapLevel.h"
@@ -199,6 +200,8 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         editorStateStale_ = true;
     } else if (type == "play:toggle") {
         playing_ ? StopPlay() : StartPlay();
+    } else if (type == "file:move") {
+        MoveProjectItem(message.value("from", ""), message.value("to", ""));
     } else if (type == "prefab:remove") {
         RemovePrefab(message.value("path", ""));
     } else if (type == "project:request") {
@@ -725,6 +728,39 @@ void EditorApp::RemovePrefab(const std::string& path) {
     inspectorStale_ = true;
     post_({{"type", "notify"},
            {"text", "Deleted " + path + " (" + std::to_string(std::get<int>(result)) + " copies kept as ordinary entities)"}});
+}
+
+void EditorApp::MoveProjectItem(const std::string& from, const std::string& to) {
+    if (playing_) {
+        post_({{"type", "notify"}, {"text", "Stop playing first"}});
+        return;
+    }
+    MoveResult result = MoveProjectFile(assets_.GetProject(), from, to);
+    post_({{"type", "file:moved"}, {"from", from}, {"to", to}, {"error", result.error}});
+    if (!result.error.empty()) {
+        post_({{"type", "notify"}, {"text", "Couldn't move " + from + ": " + result.error}});
+        return;
+    }
+    // The open scene and its undo history follow the file too; neither is
+    // an undo step of its own (the file has moved for good).
+    auto rewrite = [&](const std::string& text) { return RewriteSceneText(text, from, to); };
+    RewriteScene(registry_, rewrite);
+    history_.RewriteSnapshots(rewrite);
+    if (brushPrefab_ == from) {
+        brushPrefab_ = to;
+    }
+    renderer_.InvalidateTexture(from);
+    RefreshAssets();
+    RefreshPrefabs();
+    world_.Refresh();
+    post_(WorldJson());
+    post_(StoryJson());
+    sceneTreeStale_ = true;
+    inspectorStale_ = true;
+    editorStateStale_ = true;
+    post_({{"type", "notify"},
+           {"text", "Moved to " + to + " — " + std::to_string(result.references) + " reference(s) in " +
+                        std::to_string(result.rewritten.size()) + " file(s) updated"}});
 }
 
 // --- Projects (development_plan.md 4.2) -----------------------------------
@@ -2136,6 +2172,7 @@ nlohmann::json EditorApp::PrefabsJson() {
     for (const auto& prefab : prefabs_.Prefabs()) {
         list.push_back({{"path", prefab.path},
                         {"name", prefab.name},
+                        {"kind", prefab.kind},
                         {"error", prefab.error},
                         {"isTile", prefab.isTile},
                         {"isPlayer", prefab.isPlayer},

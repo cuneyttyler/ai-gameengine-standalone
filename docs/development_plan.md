@@ -978,6 +978,24 @@ runs into.
 - **Move to folder… / Rename…** from the right-click menu. Prefab moves rewrite every
   reference: scene copies, other prefabs, and story targets.
 - Tests: moving and renaming update every reference; grouping and filtering.
+- ✅ Built:
+  - `assets/ProjectMove`: `MoveProjectFile` moves a prefab (staying under `prefabs/`) or
+    an asset (staying under `assets/`, with its `.meta` and `.gen.json`) and rewrites
+    every exact reference in the project. That covers `key=value` values in scenes,
+    prefabs and settings (re-quoted when the new name has a space), string literals in
+    JSON (story, world, schedules), and quoted strings in Lua. `.cache` is left alone.
+    It refuses type changes, leaving the root, `..`, and existing destinations.
+  - The open scene follows the move with every entity id kept (`RewriteScene`), and so
+    does the undo history (`EditHistory::RewriteSnapshots`), so undo never brings back
+    a path that's gone. The brush follows too.
+  - Prefabs and Assets tabs: a folder column (subfolders, nested, with "All"), kind
+    chips (prefabs: tiles, characters, items, other, from the new `PrefabInfo::kind`;
+    assets: textures, tilesets, audio, generated), and search over the path.
+    Right-click offers Rename… and Move to folder…, and a card can be dragged onto a
+    folder. Number keys still pick from the whole palette.
+  - Tests: `ProjectMoveTest` (6): whole-value matching, quoting both ways, a prefab move
+    rewriting a scene, another prefab, a quest and a script but not `.cache`, an asset
+    move with its sidecars, the refusals, and the live scene plus undo keeping ids.
 
 **4.5 — Keeping AI work** *(notes)*
 - **Conversations persist per project**, so saving, quitting and reopening brings the

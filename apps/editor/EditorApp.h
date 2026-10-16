@@ -174,6 +174,8 @@ private:
     void CopySelected();
     void PasteAtCursor(std::optional<std::pair<int, int>> cell = std::nullopt);
     void RemovePrefab(const std::string& path);
+    // Organizing (4.4): moves or renames a prefab or asset, following every reference.
+    void MoveProjectItem(const std::string& from, const std::string& to);
     // Projects (4.2): asks about unsaved changes, then reopens the editor on `root`.
     void SwitchProject(const std::filesystem::path& root, bool askAboutChanges = true);
     nlohmann::json ProjectInfoJson();

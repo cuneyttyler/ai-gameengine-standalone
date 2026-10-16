@@ -219,6 +219,13 @@ void DeserializeScene(Registry& registry, const std::string& text) {
     ReadScene(registry, in);
 }
 
+void RewriteScene(Registry& registry, const std::function<std::string(const std::string&)>& rewrite) {
+    std::vector<Entity> order = EntitiesInOrder(registry);
+    std::istringstream in(rewrite(SerializeEntities(registry, order)));
+    registry.clear();
+    ReadScene(registry, in, &order);
+}
+
 void CloneScene(Registry& from, Registry& to) {
     std::vector<Entity> order = EntitiesInOrder(from);
     std::istringstream in(SerializeEntities(from, order));

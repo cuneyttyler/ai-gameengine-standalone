@@ -36,6 +36,14 @@ bool EditHistory::Redo(Registry& registry) {
     return true;
 }
 
+void EditHistory::RewriteSnapshots(const std::function<std::string(const std::string&)>& rewrite) {
+    for (auto* stack : {&undo_, &redo_}) {
+        for (std::string& snapshot : *stack) {
+            snapshot = rewrite(snapshot);
+        }
+    }
+}
+
 void EditHistory::Clear() {
     undo_.clear();
     redo_.clear();

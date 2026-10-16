@@ -9,6 +9,7 @@ import StoryPanel from './StoryPanel.vue'
 import LevelPanel from './LevelPanel.vue'
 import ArtPanel from './ArtPanel.vue'
 import { onHostMessage, sendToHost } from '../ipc'
+import { askMoveToFolder, foldersOf, inFolder, moveItem, renameItem, type Root } from '../organize'
 
 interface Asset {
   path: string
@@ -42,9 +43,60 @@ const settingsType = ref<'texture' | 'tileset'>('texture')
 const settingsTileWidth = ref(64)
 const settingsTileHeight = ref(32)
 
+// Organizing (development_plan.md 4.4): a folder, a kind and a search, per tab.
+const prefabFolder = ref('')
+const assetFolder = ref('')
+const prefabKind = ref<'all' | 'tile' | 'character' | 'item' | 'other'>('all')
+const assetKind = ref<'all' | 'texture' | 'tileset' | 'audio' | 'generated'>('all')
+const prefabKinds = [
+  ['all', 'All'],
+  ['tile', 'Tiles'],
+  ['character', 'Characters'],
+  ['item', 'Items'],
+  ['other', 'Other'],
+] as const
+const assetKinds = [
+  ['all', 'All'],
+  ['texture', 'Textures'],
+  ['tileset', 'Tilesets'],
+  ['audio', 'Audio'],
+  ['generated', 'Generated'],
+] as const
+
 const visible = computed(() => {
   const query = filter.value.trim().toLowerCase()
-  return query ? assets.value.filter((a) => a.path.toLowerCase().includes(query)) : assets.value
+  return assets.value.filter(
+    (a) =>
+      inFolder(a.path, 'assets', assetFolder.value) &&
+      (assetKind.value === 'all' ||
+        (assetKind.value === 'generated' ? !!a.generation : a.type === assetKind.value)) &&
+      (!query || a.path.toLowerCase().includes(query)),
+  )
+})
+const assetFolders = computed(() => foldersOf(assets.value.map((a) => a.path), 'assets'))
+const prefabFolders = computed(() => foldersOf(editorState.prefabs.map((p) => p.path), 'prefabs'))
+
+function folderDepth(folder: string): number {
+  return folder.split('/').length - 1
+}
+function folderLabel(folder: string): string {
+  return folder.slice(folder.lastIndexOf('/') + 1)
+}
+
+// Drag a card onto a folder to move it there.
+const dragging = ref<string | null>(null)
+const dropTarget = ref<string | null>(null)
+function dropOn(folder: string, root: Root): void {
+  if (dragging.value) moveItem(dragging.value, root, folder)
+  dragging.value = null
+  dropTarget.value = null
+}
+
+onHostMessage((message) => {
+  // A moved file keeps its selection.
+  if (message.type === 'file:moved' && !message.error && selectedPath.value === message.from) {
+    selectedPath.value = message.to as string
+  }
 })
 const selected = computed(() => assets.value.find((a) => a.path === selectedPath.value) ?? null)
 
@@ -156,9 +208,12 @@ function createPrefab(asTile: boolean): void {
 function prefabMenu(prefab: (typeof editorState.prefabs)[number], event: MouseEvent): void {
   const items: MenuItem[] = [
     { label: prefab.isTile ? 'Paint with it' : 'Place it', disabled: editorState.playing, action: () => armPrefab(prefab.path) },
-    ...prefabMenuExtensions.flatMap((extend) => extend(prefab)),
     separator,
+    { label: 'Rename…', disabled: editorState.playing, action: () => renameItem(prefab.path) },
+    { label: 'Move to folder…', disabled: editorState.playing, action: () => askMoveToFolder(prefab.path, 'prefabs') },
     { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: prefab.path }) },
+    separator,
+    ...prefabMenuExtensions.flatMap((extend) => extend(prefab)),
   ]
   openContextMenu(event.clientX, event.clientY, items)
 }
@@ -167,6 +222,8 @@ function assetMenu(asset: Asset, event: MouseEvent): void {
   selectedPath.value = asset.path
   const items: MenuItem[] = [
     { label: 'Details', action: () => (selectedPath.value = asset.path) },
+    { label: 'Rename…', disabled: editorState.playing, action: () => renameItem(asset.path) },
+    { label: 'Move to folder…', disabled: editorState.playing, action: () => askMoveToFolder(asset.path, 'assets') },
     { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: asset.path }) },
     separator,
     {
@@ -183,8 +240,17 @@ function assetMenu(asset: Asset, event: MouseEvent): void {
 const tab = ref<'prefabs' | 'assets' | 'world' | 'story' | 'level' | 'art'>('prefabs')
 const visiblePrefabs = computed(() => {
   const query = filter.value.trim().toLowerCase()
-  return query ? editorState.prefabs.filter((p) => p.name.toLowerCase().includes(query)) : editorState.prefabs
+  return editorState.prefabs.filter(
+    (p) =>
+      inFolder(p.path, 'prefabs', prefabFolder.value) &&
+      (prefabKind.value === 'all' || p.kind === prefabKind.value) &&
+      (!query || p.path.toLowerCase().includes(query)),
+  )
 })
+// Number keys 1-9 pick from the whole palette, so the hint uses that index.
+function paletteIndex(path: string): number {
+  return editorState.prefabs.findIndex((p) => p.path === path)
+}
 
 function applyToSelected(): void {
   sendToHost({ type: 'asset:apply', path: selectedPath.value, tile: selectedTile.value })
@@ -222,7 +288,7 @@ onMounted(() => {
         v-model="filter"
         class="filter"
         type="search"
-        placeholder="Filter"
+        placeholder="Search"
         spellcheck="false"
       />
       <button
@@ -244,60 +310,120 @@ onMounted(() => {
     <LevelPanel v-else-if="tab === 'level'" class="body" />
     <ArtPanel v-else-if="tab === 'art'" class="body" />
     <div v-else-if="tab === 'prefabs'" class="body">
-      <div class="grid">
-        <p v-if="editorState.prefabs.length === 0" class="placeholder">
-          No prefabs yet. Turn an asset into one from the Assets tab, or select an entity and use "Save as
-          prefab" in the Inspector.
-        </p>
+      <nav class="folders" title="Folders inside prefabs/ — drop a card on one to move it">
         <button
-          v-for="(prefab, index) in visiblePrefabs"
-          :key="prefab.path"
-          class="card"
-          :class="{
-            selected: editorState.tool === 'prefab' && editorState.brush === prefab.path,
-            broken: !!prefab.error,
-          }"
-          :title="
-            prefab.error ||
-            `${prefab.isTile ? 'Paint' : 'Place'} ${prefab.name}${index < 9 ? ` (${index + 1})` : ''} — ${prefab.path}`
-          "
-          :disabled="editorState.playing"
-          @click="armPrefab(prefab.path)"
-          @contextmenu.prevent="prefabMenu(prefab, $event)"
+          v-for="folder in ['', ...prefabFolders]"
+          :key="folder"
+          :class="{ active: prefabFolder === folder, drop: dropTarget === folder && dragging }"
+          :style="{ paddingLeft: `${8 + (folder ? (folderDepth(folder) + 1) * 10 : 0)}px` }"
+          @click="prefabFolder = folder"
+          @dragover.prevent="dropTarget = folder"
+          @dragleave="dropTarget = null"
+          @drop.prevent="dropOn(folder, 'prefabs')"
         >
-          <span class="thumb">
-            <PrefabThumb :prefab="prefab" :box="52" />
-          </span>
-          <span class="name">{{ prefab.name }}</span>
-          <span class="badge">
-            {{ prefab.isTile ? 'tile' : prefab.isPlayer ? 'player' : 'object' }}
-            <template v-if="index < 9 && !filter"> · {{ index + 1 }}</template>
-          </span>
+          {{ folder ? folderLabel(folder) : 'All prefabs' }}
         </button>
+      </nav>
+      <div class="column">
+        <div class="chips">
+          <button
+            v-for="[kind, label] in prefabKinds"
+            :key="kind"
+            :class="{ active: prefabKind === kind }"
+            @click="prefabKind = kind"
+          >
+            {{ label }}
+          </button>
+        </div>
+        <div class="grid">
+          <p v-if="editorState.prefabs.length === 0" class="placeholder">
+            No prefabs yet. Turn an asset into one from the Assets tab, or select an entity and use "Save as
+            prefab" in the Inspector.
+          </p>
+          <p v-else-if="visiblePrefabs.length === 0" class="placeholder">Nothing here matches.</p>
+          <button
+            v-for="prefab in visiblePrefabs"
+            :key="prefab.path"
+            class="card"
+            :class="{
+              selected: editorState.tool === 'prefab' && editorState.brush === prefab.path,
+              broken: !!prefab.error,
+            }"
+            :title="
+              prefab.error ||
+              `${prefab.isTile ? 'Paint' : 'Place'} ${prefab.name}${paletteIndex(prefab.path) < 9 ? ` (${paletteIndex(prefab.path) + 1})` : ''} — ${prefab.path}`
+            "
+            :disabled="editorState.playing"
+            draggable="true"
+            @click="armPrefab(prefab.path)"
+            @dragstart="dragging = prefab.path"
+            @dragend="dragging = null"
+            @contextmenu.prevent="prefabMenu(prefab, $event)"
+          >
+            <span class="thumb">
+              <PrefabThumb :prefab="prefab" :box="52" />
+            </span>
+            <span class="name">{{ prefab.name }}</span>
+            <span class="badge">
+              {{ prefab.isPlayer ? 'player' : prefab.kind }}
+              <template v-if="paletteIndex(prefab.path) < 9"> · {{ paletteIndex(prefab.path) + 1 }}</template>
+            </span>
+          </button>
+        </div>
       </div>
     </div>
 
     <div v-else class="body">
-      <div class="grid">
-        <p v-if="assets.length === 0" class="placeholder">
-          No assets yet. Import PNG/JPG images or WAV/MP3/FLAC audio.
-        </p>
+      <nav class="folders" title="Folders inside assets/ — drop a card on one to move it">
         <button
-          v-for="asset in visible"
-          :key="asset.path"
-          class="card"
-          :class="{ selected: asset.path === selectedPath, broken: !!asset.error }"
-          :title="asset.error || asset.path"
-          @click="selectedPath = asset.path"
-          @contextmenu.prevent="assetMenu(asset, $event)"
+          v-for="folder in ['', ...assetFolders]"
+          :key="folder"
+          :class="{ active: assetFolder === folder, drop: dropTarget === folder && dragging }"
+          :style="{ paddingLeft: `${8 + (folder ? (folderDepth(folder) + 1) * 10 : 0)}px` }"
+          @click="assetFolder = folder"
+          @dragover.prevent="dropTarget = folder"
+          @dragleave="dropTarget = null"
+          @drop.prevent="dropOn(folder, 'assets')"
         >
-          <span class="thumb">
-            <img v-if="asset.type !== 'audio' && !asset.error" :src="urlOf(asset)" alt="" draggable="false" />
-            <span v-else class="glyph">{{ asset.type === 'audio' ? '♪' : '!' }}</span>
-          </span>
-          <span class="name">{{ asset.name }}</span>
-          <span class="badge">{{ asset.type }}</span>
+          {{ folder ? folderLabel(folder) : 'All assets' }}
         </button>
+      </nav>
+      <div class="column">
+        <div class="chips">
+          <button
+            v-for="[kind, label] in assetKinds"
+            :key="kind"
+            :class="{ active: assetKind === kind }"
+            @click="assetKind = kind"
+          >
+            {{ label }}
+          </button>
+        </div>
+        <div class="grid">
+          <p v-if="assets.length === 0" class="placeholder">
+            No assets yet. Import PNG/JPG images or WAV/MP3/FLAC audio.
+          </p>
+          <p v-else-if="visible.length === 0" class="placeholder">Nothing here matches.</p>
+          <button
+            v-for="asset in visible"
+            :key="asset.path"
+            class="card"
+            :class="{ selected: asset.path === selectedPath, broken: !!asset.error }"
+            :title="asset.error || asset.path"
+            draggable="true"
+            @click="selectedPath = asset.path"
+            @dragstart="dragging = asset.path"
+            @dragend="dragging = null"
+            @contextmenu.prevent="assetMenu(asset, $event)"
+          >
+            <span class="thumb">
+              <img v-if="asset.type !== 'audio' && !asset.error" :src="urlOf(asset)" alt="" draggable="false" />
+              <span v-else class="glyph">{{ asset.type === 'audio' ? '♪' : '!' }}</span>
+            </span>
+            <span class="name">{{ asset.name }}</span>
+            <span class="badge">{{ asset.generation ? 'generated' : asset.type }}</span>
+          </button>
+        </div>
       </div>
 
       <aside v-if="selected" class="details">
@@ -459,6 +585,53 @@ button.primary {
   flex: 1;
   display: flex;
   min-height: 0;
+}
+.folders {
+  display: flex;
+  flex-direction: column;
+  width: 140px;
+  flex-shrink: 0;
+  overflow: auto;
+  border-right: 1px solid #333;
+  padding: 4px 0;
+}
+.folders button {
+  border: none;
+  border-left: 2px solid transparent;
+  background: transparent;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+.folders button.active {
+  border-left-color: #3b82f6;
+  background: #262637;
+}
+.folders button.drop {
+  background: #313148;
+  outline: 1px dashed #3b82f6;
+}
+.column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.chips {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px 0;
+  flex-wrap: wrap;
+}
+.chips button {
+  height: 20px;
+  font-size: 0.85em;
+  padding: 0 8px;
+}
+.chips button.active {
+  border-color: #3b82f6;
+  background: #313148;
 }
 .grid {
   flex: 1;

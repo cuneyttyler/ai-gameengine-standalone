@@ -13,6 +13,8 @@ add_library(aige_assets STATIC
     Prefab.cpp
     ProjectTemplate.h
     ProjectTemplate.cpp
+    ProjectMove.h
+    ProjectMove.cpp
 )
 target_include_directories(aige_assets PUBLIC ${CMAKE_SOURCE_DIR}/engine)
 target_include_directories(aige_assets PRIVATE ${stb_SOURCE_DIR})
