@@ -22,38 +22,74 @@
     },
     {
       "path": "assets/textures/crate.png",
+      "pixels": [
+        32,
+        32
+      ],
       "type": "texture"
     },
     {
       "path": "assets/textures/gateway.png",
+      "pixels": [
+        64,
+        64
+      ],
       "type": "texture"
     },
     {
       "path": "assets/textures/ground.png",
+      "pixels": [
+        256,
+        128
+      ],
       "type": "tileset"
     },
     {
       "path": "assets/textures/hero.png",
+      "pixels": [
+        32,
+        48
+      ],
       "type": "texture"
     },
     {
       "path": "assets/textures/potion.png",
+      "pixels": [
+        16,
+        20
+      ],
       "type": "texture"
     },
     {
       "path": "assets/textures/rock.png",
+      "pixels": [
+        32,
+        24
+      ],
       "type": "texture"
     },
     {
       "path": "assets/textures/skeleton.png",
+      "pixels": [
+        32,
+        48
+      ],
       "type": "texture"
     },
     {
       "path": "assets/textures/tree.png",
+      "pixels": [
+        64,
+        96
+      ],
       "type": "texture"
     },
     {
       "path": "assets/textures/villager.png",
+      "pixels": [
+        32,
+        48
+      ],
       "type": "texture"
     }
   ],
@@ -1538,6 +1574,9 @@
     },
     "Game": {
       "startScene": "scenes/main.aige"
+    },
+    "Grid": {
+      "style": "Isometric"
     },
     "Physics": {
       "playerCollides": true

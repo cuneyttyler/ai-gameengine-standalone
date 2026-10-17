@@ -104,9 +104,11 @@ TEST(TileEdgesTest, AnalysisIsKeptInTheMetaThroughSettingsChanges) {
     EXPECT_EQ(well->analysis.at("kind"), "building");
     EXPECT_EQ(well->analysis.at("description"), "A stone well. For water."); // one line in the meta
     EXPECT_FALSE(well->analysis.contains("cells"));
-    std::ifstream in(root / "assets" / "pack" / "well.png.meta");
     std::stringstream text;
-    text << in.rdbuf();
+    {
+        std::ifstream in(root / "assets" / "pack" / "well.png.meta");
+        text << in.rdbuf();
+    } // closed before the folder is removed
     EXPECT_NE(text.str().find("type=tileset"), std::string::npos);
     fs::remove_all(root);
 }

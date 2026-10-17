@@ -234,7 +234,7 @@ std::optional<VillageLayout> GenerateVillage(const VillageParams& p, std::string
         // The garden: a bush or a tree.
         const int gardenRow = plot.northOfRoad ? back + 1 : back - 1;
         const int gx = rng.Range(plot.x0 + 1, plot.x1 - 1);
-        if (rng.Unit() < 0.3f + 0.5f * p.nature && isFree(gx, gardenRow)) {
+        if (p.nature > 0.0f && rng.Unit() < 0.2f + 0.6f * p.nature && isFree(gx, gardenRow)) {
             VillageItem green = cellItem(rng.Unit() < 0.5f ? VillageRole::Bush : VillageRole::Tree, gx, gardenRow);
             green.mirror = rng.Unit() < 0.5f;
             place(green);

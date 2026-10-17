@@ -72,6 +72,35 @@
       ]
     },
     {
+      "description": "Turns an entity: a flat (top-down) image by quarter turns clockwise (negative: back), e.g. a road piece or a rug; an upright picture (a house, a cart) mirrors when turns is odd, since it has only one side to show. Recorded as an override on prefab copies.",
+      "name": "entity.turn",
+      "params": [
+        {
+          "description": "The entity to turn.",
+          "name": "entity",
+          "type": "entity"
+        },
+        {
+          "description": "Quarter turns clockwise; -1 turns back.",
+          "max": 3.0,
+          "min": -3.0,
+          "name": "turns",
+          "type": "int"
+        }
+      ]
+    },
+    {
+      "description": "Flips an entity's image left-right, so upright art (a house, a cart, a character) faces the other way. Use it to face doors and carts toward a road or for variety; mirroring twice undoes it.",
+      "name": "entity.mirror",
+      "params": [
+        {
+          "description": "The entity to mirror.",
+          "name": "entity",
+          "type": "entity"
+        }
+      ]
+    },
+    {
       "description": "Saves an entity as a new prefab (prefabs/<name>.prefab); the entity becomes its first copy.",
       "name": "prefab.createFromEntity",
       "params": [
@@ -84,6 +113,111 @@
           "description": "File name: letters, digits, - and _.",
           "name": "name",
           "type": "string"
+        }
+      ]
+    },
+    {
+      "description": "Makes a prefab from an image asset (development_plan.md 6.3): a ground tile (painted onto cells, lying flat) or a prop (placed, upright). Size props by the asset's analysis: \"cells\" is how many grid cells wide it should be; 0 sizes it by its pack's scale. Saved as prefabs/<name>.prefab.",
+      "name": "prefab.create",
+      "params": [
+        {
+          "description": "The image, e.g. assets/pack/well.png.",
+          "name": "asset",
+          "type": "texture"
+        },
+        {
+          "description": "Prefab path under prefabs/, without .prefab: letters, digits, - _ and /.",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "true: a ground tile; false: a prop.",
+          "name": "tile",
+          "type": "bool"
+        },
+        {
+          "description": "Tiles: blocks movement. Props: blocks its cell.",
+          "name": "solid",
+          "type": "bool"
+        },
+        {
+          "description": "Props: width in grid cells (0 = by the pack's scale).",
+          "max": 20.0,
+          "min": 0.0,
+          "name": "cells",
+          "type": "float"
+        }
+      ]
+    },
+    {
+      "description": "Paints a rectangle of cells with a terrain (e.g. dirt for a village square) and lets the engine pick every tile, edges and corners included, from the analyzed ground tiles. Use the terrain names in the assets' \"edges\".",
+      "name": "terrain.paintRect",
+      "params": [
+        {
+          "description": "The terrain to paint, e.g. dirt.",
+          "name": "terrain",
+          "type": "string"
+        },
+        {
+          "description": "What surrounds it, e.g. grass; empty for the usual.",
+          "name": "background",
+          "type": "string"
+        },
+        {
+          "description": "First column.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "x0",
+          "type": "int"
+        },
+        {
+          "description": "First row.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "y0",
+          "type": "int"
+        },
+        {
+          "description": "Last column.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "x1",
+          "type": "int"
+        },
+        {
+          "description": "Last row.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "y1",
+          "type": "int"
+        }
+      ]
+    },
+    {
+      "description": "Lays a road (or a river) through points, along the grid, and lets the engine pick every tile: straights, corners, ends and junctions match their neighbours. Use the terrain names in the assets' \"edges\".",
+      "name": "terrain.paintPath",
+      "params": [
+        {
+          "description": "The terrain to lay, e.g. dirt.",
+          "name": "terrain",
+          "type": "string"
+        },
+        {
+          "description": "What surrounds it, e.g. grass; empty for the usual.",
+          "name": "background",
+          "type": "string"
+        },
+        {
+          "description": "The cells it passes through, in order: \"x,y;x,y;...\".",
+          "name": "points",
+          "type": "string"
+        },
+        {
+          "description": "Cells wide.",
+          "max": 9.0,
+          "min": 1.0,
+          "name": "width",
+          "type": "int"
         }
       ]
     },
@@ -275,6 +409,86 @@
         },
         {
           "description": "Move the player to the start room.",
+          "name": "movePlayer",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "description": "Builds a whole village from the pack's analyzed prefabs: streets laid with fitted road tiles, a square with a well, houses on plots facing the streets (sized from the house art), fenced gardens, decorations by the doors, banners at the entrances, a landmark (tower, windmill), and trees, bushes and rocks around the edge. It grows right and down from (x0,y0); its size follows from the number of houses. Everything already in the area except the player is replaced. Deterministic: the same seed gives the same village. Use this for any village or town instead of placing pieces one by one.",
+      "name": "level.village",
+      "params": [
+        {
+          "description": "Top-left column.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "x0",
+          "type": "int"
+        },
+        {
+          "description": "Top-left row.",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "y0",
+          "type": "int"
+        },
+        {
+          "description": "How many houses: 4-8 a hamlet, 10-20 a village, 25+ a town.",
+          "max": 60.0,
+          "min": 1.0,
+          "name": "houses",
+          "type": "int"
+        },
+        {
+          "description": "Any number; change it for a different layout.",
+          "max": 1000000000.0,
+          "min": 0.0,
+          "name": "seed",
+          "type": "int"
+        },
+        {
+          "description": "Street width, cells.",
+          "max": 3.0,
+          "min": 1.0,
+          "name": "roadWidth",
+          "type": "int"
+        },
+        {
+          "description": "A house's footprint in cells; 0 = from the house art.",
+          "max": 6.0,
+          "min": 0.0,
+          "name": "houseCells",
+          "type": "int"
+        },
+        {
+          "description": "0-1: how many trees, bushes and rocks.",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "nature",
+          "type": "float"
+        },
+        {
+          "description": "Fence the gardens behind the houses.",
+          "name": "fences",
+          "type": "bool"
+        },
+        {
+          "description": "A square with a well where the main streets cross.",
+          "name": "square",
+          "type": "bool"
+        },
+        {
+          "description": "Ground terrain (from the tiles' edges), e.g. grass; empty = found.",
+          "name": "ground",
+          "type": "string"
+        },
+        {
+          "description": "Road terrain, e.g. dirt; empty = found.",
+          "name": "road",
+          "type": "string"
+        },
+        {
+          "description": "Move the player onto the main street.",
           "name": "movePlayer",
           "type": "bool"
         }
@@ -975,6 +1189,21 @@
         }
       ],
       "name": "Physics"
+    },
+    {
+      "description": "How the world is laid out: diamond cells seen at an angle, or square cells seen from above.",
+      "fields": [
+        {
+          "description": "Isometric (diamond cells) or TopDown (square cells, for art drawn from above). Changing it re-lays the whole scene.",
+          "name": "style",
+          "options": [
+            "Isometric",
+            "TopDown"
+          ],
+          "type": "enum"
+        }
+      ],
+      "name": "Grid"
     },
     {
       "description": "The game as a whole.",

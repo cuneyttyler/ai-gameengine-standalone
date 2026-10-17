@@ -214,24 +214,31 @@ std::vector<std::pair<int, int>> PathCells(const std::vector<std::pair<int, int>
     std::set<std::pair<int, int>> cells;
     width = std::clamp(width, 1, 9);
     const int before = (width - 1) / 2, after = width / 2;
-    auto stamp = [&](int x, int y) {
+    // Widened sideways only, so a road ends where it was told to; bends get
+    // the full square so the corner has no notch.
+    auto across = [&](int x, int y, bool alongX) {
+        for (int o = -before; o <= after; ++o) cells.insert(alongX ? std::pair{x, y + o} : std::pair{x + o, y});
+    };
+    auto square = [&](int x, int y) {
         for (int oy = -before; oy <= after; ++oy)
             for (int ox = -before; ox <= after; ++ox) cells.insert({x + ox, y + oy});
     };
-    for (size_t i = 0; i < points.size(); ++i) {
+    if (points.size() == 1) square(points[0].first, points[0].second);
+    for (size_t i = 0; i + 1 < points.size(); ++i) {
         auto [x, y] = points[i];
-        stamp(x, y);
-        if (i + 1 == points.size()) break;
         const auto [tx, ty] = points[i + 1];
         // Along x, then along y: roads follow the grid.
+        across(x, y, x != tx);
         while (x != tx) {
             x += x < tx ? 1 : -1;
-            stamp(x, y);
+            across(x, y, true);
         }
+        if (y != ty && x != points[i].first) square(x, y); // the bend
         while (y != ty) {
             y += y < ty ? 1 : -1;
-            stamp(x, y);
+            across(x, y, false);
         }
+        if (i + 2 < points.size()) square(x, y); // a bend between segments
     }
     return {cells.begin(), cells.end()};
 }

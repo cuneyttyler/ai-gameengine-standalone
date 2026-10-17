@@ -130,12 +130,12 @@ TEST(AutotileTest, PaintingFitsTheRoadAndLeavesTheFieldAlone) {
         at[{tile.gx, tile.gy}] = {link.path, registry.get<aige::Sprite>(e).rotation};
     }
     EXPECT_EQ(at.size(), 100u); // still one tile per cell
-    EXPECT_EQ(at[{2, 2}].first, "prefabs/end.prefab");
-    EXPECT_EQ(at[{2, 4}].first, "prefabs/path.prefab");
-    EXPECT_EQ(at[{4, 6}].first, "prefabs/path.prefab");
-    EXPECT_EQ(at[{4, 6}].second % 2, 1);
-    EXPECT_EQ(at[{2, 6}].first, "prefabs/bend.prefab"); // the corner where it turns east
-    EXPECT_EQ(at[{0, 0}].first, "prefabs/grass.prefab");
+    EXPECT_EQ((at[{2, 2}].first), "prefabs/end.prefab");
+    EXPECT_EQ((at[{2, 4}].first), "prefabs/path.prefab");
+    EXPECT_EQ((at[{4, 6}].first), "prefabs/path.prefab");
+    EXPECT_EQ((at[{4, 6}].second % 2), 1);
+    EXPECT_EQ((at[{2, 6}].first), "prefabs/bend.prefab"); // the corner where it turns east
+    EXPECT_EQ((at[{0, 0}].first), "prefabs/grass.prefab");
 
     // Painting the same again changes nothing.
     EXPECT_EQ(aige::PaintTerrain(registry, *s.prefabs, s.set, cells, "dirt", "grass"), 0);
