@@ -1625,6 +1625,133 @@ uses the pack's houses, well, fences and decorations, on the grid the art was dr
 
 ---
 
+## Phase 7 — AI-Generated Building
+
+**Status: proposed, for discussion (2026-10-17).** The full design, research and open
+questions are in `docs/ai-building.md`.
+
+**Goal:** a framework, not a recipe. An instruction ("build a large medieval town by a
+river") becomes a finished place at any size, fully automatically if wanted:
+1. the AI works out what is asked, including scale;
+2. it confirms with the user through an editable table;
+3. it plans the whole place, then each part;
+4. it builds step by step;
+5. it verifies each part and repairs what fails.
+
+The 6.5 village generator becomes one of the generators the framework uses.
+
+**Why:** 6.5 testing showed:
+- "large" meant 20–30 houses;
+- fences were wrong (an isometric grid with top-down art, and pieces at cell centres with
+  no corners);
+- some sizes were wrong because they were guessed;
+- there was a single layout recipe;
+- nothing checked the result.
+
+**Principles:**
+- plans are data (editable, regenerable);
+- the AI decides intent and relations, seeded algorithms place cells;
+- coarse to fine: site → districts → plots → dressing;
+- measure the art before using it;
+- verify every part (rules, then vision);
+- ask few but decisive questions.
+
+**7.0 — Big scenes (engine prerequisite)**
+- Tiles stored as **chunked layers** (arrays per chunk), not one entity per tile.
+- **Command-based undo** for bulk operations (a whole district is one cheap step).
+- Scenes saved and loaded in **regions**.
+- Culling and rendering stay fast at 100k+ sprites.
+- Tests: a 400×400 place builds, saves, loads and undoes within set time budgets.
+
+**7.1 — Asset catalog v2 (understanding the art)**
+- Per asset:
+  - **footprint** (from the alpha mask's base, not the image size) and **anchor**;
+  - **sprite size** from the footprint;
+  - **perspective** (top-down, ¾, isometric);
+  - **facing and variants**;
+  - **palette**, **layer**, **passability** and placement rules;
+  - for walls, fences and hedges, a **piece set** (straight, corner, end, T, gate).
+- A **perspective check** against the grid style, with the fix offered.
+- Catalog review in the Assets panel, so the user can confirm or correct entries.
+- Tests: footprints and anchors measured on sample art; piece sets classified;
+  mismatches flagged.
+
+**7.2 — The Brief and the questions**
+- A **Brief** schema:
+  - place type, scale (class plus numbers), theme;
+  - components with counts or densities;
+  - shape (organic, grid, radial, linear, walled, or described), features and placement;
+  - optional gameplay hooks.
+- Each field has a confidence score.
+- A **scale table** in project data, so "large village" means about 80 buildings.
+- **Round 1:** an editable Brief card in the AI panel: size, shape (with preview),
+  components (with the pack's assets as thumbnails, and gaps marked), style and location.
+  Buttons: *Continue*, *Just build it*, *Cancel*.
+- **Round 2:** categorical density per chosen component (none, rare, some, common,
+  abundant) and asset variants. Answers are remembered per project.
+- The AI asks only when a field's confidence is low and the answer matters.
+- Tests: Briefs extracted from vague and detailed instructions; the scale table applied;
+  questions skipped when confident.
+
+**7.3 — Plans as data: the site plan**
+- A typed **plan language**: bounds, terrain features, roads, districts with roles and
+  relations (near, around, outside, along), walls and gates, landmarks. It is validated
+  like proposals.
+- The AI writes the site plan from the Brief, using built-in design rules: Lynch's paths,
+  edges, districts, nodes and landmarks; road hierarchy; a focal centre; density
+  gradients; zoning.
+- Site generators turn relations into zones, route arterial roads over terrain, and place
+  wall rings and gates.
+- A **plan view** over the viewport, checkable and editable before anything is built.
+  Plans are saved in `places/`.
+
+**7.4 — Generators library**
+- Street networks: organic, grid and radial.
+- Parcel subdivision.
+- Relation-based placement with a constraint solver.
+- Density-map scatter (Poisson disk) with placement rules.
+- Linear features along cell edges, using piece sets.
+- Terrain regions: rivers, fields, forests.
+- Each one is a seeded engine command that can be re-run on one part.
+- The 6.5 village becomes a district preset.
+
+**7.5 — The builder**
+- Executes a plan level by level and part by part (bulk commands, one undo step each).
+- Large places are built chunk by chunk, with progress, resume and a budget.
+- **Regenerate a part** ("redo the crafts district with more workshops").
+- Review policy: auto-apply verified parts, or review each one.
+
+**7.6 — Verification and repair**
+- **Structural checks:** no overlaps, nothing on roads, footprints inside plots, doors
+  reachable, roads connected, autotile and fence continuity, terrain rules, size ranges.
+- **Brief conformity:** counts, densities, area and shape.
+- **Visual critique** (6.7 grown up): the part is rendered headless and a vision model
+  answers a checklist against the Brief.
+- Failures get local repair with the reason as a constraint, up to a limit, then a report.
+- Later: a play agent walks the place.
+
+**7.7 — Asset gaps: find or generate**
+- For a missing component, search in this order:
+  1. the catalog;
+  2. the user's indexed libraries;
+  3. **generation in the pack's style** (palette, perspective, reference image);
+  4. a labelled placeholder.
+- Generated art goes through the catalog analysis.
+
+**7.8 — More place types**
+- Dungeons: critical path, loops, locks and keys, depth difficulty.
+- Castles, camps, farmland and forests, all on the same Brief → plan → build → verify
+  framework.
+
+**Phase 7 exit criteria:**
+- "Build a large medieval town by a river" asks one short confirmation and produces
+  about 300 buildings in districts, with fitted roads, walls with gates, and the pack's
+  props at sensible sizes and densities.
+- Every part passes its checks, and a district can be regenerated on its own.
+- It is built in steps without the editor slowing down.
+
+---
+
 ## Later
 
 Phases after 5 are planned as development goes (2026-10-17): each new phase is written
