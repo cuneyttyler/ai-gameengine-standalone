@@ -47,6 +47,10 @@ interface ProposalEntry {
   consistency: { state: 'none' | 'checking' | 'done' | 'failed'; issues: ConsistencyIssue[]; errors: string[] }
   autoApplied: number[]
   autoState: 'applied' | 'undone'
+  // After Apply: whether the change is in effect (Ctrl+Z / Ctrl+Y follow it).
+  applyState?: 'applied' | 'undone' | 'settled'
+  canUndo?: boolean
+  canApply?: boolean
   autoNote: string // targets "Undo" left alone because they'd changed since
   // Review state, per item.
   accepted: Record<number, boolean>
@@ -164,6 +168,13 @@ function handle(message: Record<string, unknown>): void {
     if (entry) {
       entry.status = message.status as ProposalEntry['status']
       entry.applyErrors = (message.errors as string[]) ?? []
+    }
+  } else if (message.type === 'ai:applyState') {
+    const entry = entries.value.find((e) => e.kind === 'proposal' && e.id === message.id) as ProposalEntry | undefined
+    if (entry) {
+      entry.applyState = message.state as ProposalEntry['applyState']
+      entry.canUndo = message.canUndo as boolean
+      entry.canApply = message.canApply as boolean
     }
   } else if (message.type === 'ai:taskProgress') {
     let entry = entries.value.find((e) => e.kind === 'task' && e.id === message.id) as TaskEntry | undefined
@@ -647,6 +658,27 @@ const examples = [
                 Apply {{ acceptedCount(entry) }}
               </button>
               <button @click="reject(entry)">{{ entry.autoApplied.length ? 'Reject the rest' : 'Reject' }}</button>
+            </template>
+            <template v-else-if="entry.applyState === 'undone'">
+              <span class="decision">Undone</span>
+              <button
+                class="primary"
+                :disabled="!entry.canApply || editorState.playing"
+                :title="entry.canApply ? 'Apply this change again' : 'Can no longer be applied again'"
+                @click="sendToHost({ type: 'ai:reapply', id: entry.id })"
+              >
+                Apply
+              </button>
+            </template>
+            <template v-else-if="entry.applyState === 'applied'">
+              <span class="decision">{{ entry.status === 'partial' ? 'Partly applied' : 'Applied ✓' }}</span>
+              <button
+                :disabled="!entry.canUndo || editorState.playing"
+                :title="entry.canUndo ? 'Undo this change (Ctrl+Z)' : 'Undo the later changes first (Ctrl+Z)'"
+                @click="sendToHost({ type: 'ai:undoApplied', id: entry.id })"
+              >
+                Undo
+              </button>
             </template>
             <span v-else class="decision">
               {{

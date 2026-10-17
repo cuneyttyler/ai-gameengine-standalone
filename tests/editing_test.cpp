@@ -234,3 +234,33 @@ TEST(EditingTest, EntityIndexSurvivesSerializeRoundTrip) {
     ASSERT_TRUE(restored.has_value());
     EXPECT_EQ(*restored, *aige::FindPlayer(registry));
 }
+
+// An applied AI proposal is one undo step; the panel follows it through undo
+// and redo by its id (Undo while it's in effect, Apply once it's undone).
+TEST(EditingTest, UndoStepsCanBeFollowedByTheirIds) {
+    aige::Registry registry;
+    aige::EditHistory history;
+    const uint64_t first = history.Record(registry);
+    aige::PaintTile(registry, 1, 1, aige::TileKind::Grass);
+    const uint64_t second = history.Record(registry);
+    aige::PaintTile(registry, 2, 2, aige::TileKind::Grass);
+    EXPECT_NE(first, 0u);
+    EXPECT_NE(first, second);
+    EXPECT_EQ(history.NextUndo(), second);
+    EXPECT_TRUE(history.IsDone(second));
+
+    ASSERT_TRUE(history.Undo(registry));
+    EXPECT_TRUE(history.IsUndone(second));
+    EXPECT_FALSE(history.IsDone(second));
+    EXPECT_EQ(history.NextRedo(), second);
+    EXPECT_EQ(history.NextUndo(), first);
+
+    ASSERT_TRUE(history.Redo(registry));
+    EXPECT_TRUE(history.IsDone(second)); // the same step, back in effect
+    EXPECT_EQ(history.NextUndo(), second);
+
+    ASSERT_TRUE(history.Undo(registry));
+    history.Record(registry); // a new edit replaces the redo
+    EXPECT_FALSE(history.IsDone(second));
+    EXPECT_FALSE(history.IsUndone(second));
+}

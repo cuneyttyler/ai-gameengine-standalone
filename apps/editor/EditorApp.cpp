@@ -734,6 +734,10 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         StopTask(message.value("id", 0), "Stopped. Nothing was changed.");
     } else if (type == "ai:undoAuto") {
         UndoAutoApplied(message.value("id", 0));
+    } else if (type == "ai:undoApplied") {
+        UndoProposal(message.value("id", 0));
+    } else if (type == "ai:reapply") {
+        ReapplyProposal(message.value("id", 0));
     } else if (type == "ai:send") {
         SendToAi(message.value("text", ""), message.value("focus", ""));
     } else if (type == "ai:apply") {
@@ -1017,10 +1021,23 @@ void EditorApp::ScaleSelected(float factor) {
         return;
     }
     std::optional<std::string> problem;
-    ApplyOneShotEdit([&] {
-        problem = ScaleEntity(EngineReflection(), registry_, *selected_, factor);
-        return !problem.has_value();
-    });
+    const auto now = std::chrono::steady_clock::now();
+    const Entity entity = *selected_;
+    if (resizeRun_ == entity && now - resizeRunAt_ < std::chrono::milliseconds(800)) {
+        // Still the same gesture: the undo step taken at its start covers it.
+        problem = ScaleEntity(EngineReflection(), registry_, entity, factor);
+        if (!problem) {
+            dirty_ = true;
+            editorStateStale_ = true;
+        }
+    } else {
+        ApplyOneShotEdit([&] {
+            problem = ScaleEntity(EngineReflection(), registry_, entity, factor);
+            return !problem.has_value();
+        });
+        resizeRun_ = entity;
+    }
+    resizeRunAt_ = now;
     if (problem) {
         post_({{"type", "notify"}, {"text", *problem}});
     }
@@ -1469,6 +1486,12 @@ void EditorApp::OpenScene(const std::string& scene) {
     scenePath_ = path;
     prefabs_.SyncAll(registry_); // prefab edits since it was saved
     history_.Clear();
+    // Proposals applied to the scene we left can't be undone from here.
+    for (auto& [id, pending] : proposals_) {
+        if (pending.historyStep == 0) continue;
+        pending.historyStep = 0;
+        post_({{"type", "ai:applyState"}, {"id", id}, {"state", "settled"}, {"canUndo", false}, {"canApply", false}});
+    }
     Select(std::nullopt);
     dirty_ = false;
     UpdateTitle();
@@ -1952,6 +1975,7 @@ void EditorApp::ToolStroke(float sceneX, float sceneY, bool first) {
 // --- Edit transactions ------------------------------------------------------
 
 void EditorApp::BeginEdit() {
+    resizeRun_.reset(); // any other edit ends a run of resizes
     pendingSnapshot_ = SerializeScene(registry_);
     pendingPushed_ = false;
 }
@@ -2004,6 +2028,7 @@ void EditorApp::Undo() {
         return;
     }
     EndEdit();
+    resizeRun_.reset();
     auto index = selected_ ? IndexOfEntity(registry_, *selected_) : std::nullopt;
     if (history_.Undo(registry_)) {
         dirty_ = true;
@@ -2018,6 +2043,7 @@ void EditorApp::Redo() {
         return;
     }
     EndEdit();
+    resizeRun_.reset();
     auto index = selected_ ? IndexOfEntity(registry_, *selected_) : std::nullopt;
     if (history_.Redo(registry_)) {
         dirty_ = true;
@@ -2293,6 +2319,7 @@ void EditorApp::Tick(double frameSeconds) {
         editorStateStale_ = false;
         post_(EditorStateJson());
         UpdateTitle();
+        PostProposalStates(); // an undo or a new edit may have changed them
     }
 }
 
@@ -2795,6 +2822,55 @@ void EditorApp::FinishTask() {
                             {"history", task->History()}});
 }
 
+void EditorApp::PostProposalStates() {
+    for (auto& [id, pending] : proposals_) {
+        if (pending.historyStep == 0) continue;
+        const uint64_t step = pending.historyStep;
+        // Neither done nor undone: undone, then a new edit replaced its redo
+        // (it can still be applied afresh), or it fell off the end of the
+        // history (it stays, but can't be undone from here).
+        std::string state = history_.IsDone(step)                                    ? "applied"
+                            : history_.IsUndone(step) || pending.lastState.rfind("undone", 0) == 0 ? "undone"
+                                                                                                  : "settled";
+        const bool canUndo = history_.NextUndo() == step;
+        const bool canApply = history_.NextRedo() == step || (!history_.IsDone(step) && !pending.applied.empty());
+        const std::string key = state + (canUndo ? "u" : "") + (canApply ? "a" : "");
+        if (key == pending.lastState) continue;
+        pending.lastState = key;
+        post_({{"type", "ai:applyState"}, {"id", id}, {"state", state}, {"canUndo", canUndo}, {"canApply", canApply}});
+    }
+}
+
+void EditorApp::UndoProposal(int proposalId) {
+    auto it = proposals_.find(proposalId);
+    if (it == proposals_.end() || it->second.historyStep == 0 || history_.NextUndo() != it->second.historyStep) {
+        return; // later changes come first (Ctrl+Z them)
+    }
+    Undo();
+}
+
+void EditorApp::ReapplyProposal(int proposalId) {
+    auto it = proposals_.find(proposalId);
+    if (it == proposals_.end() || it->second.historyStep == 0 || playing_) {
+        return;
+    }
+    if (history_.NextRedo() == it->second.historyStep) {
+        Redo();
+        return;
+    }
+    if (history_.IsDone(it->second.historyStep) || it->second.applied.empty()) {
+        return;
+    }
+    // Undone, and edits since then replaced its redo: apply it again.
+    const uint64_t before = history_.NextUndo();
+    ApplyOutcome outcome = ApplyAccepted(it->second.applied);
+    if (history_.NextUndo() != before) it->second.historyStep = history_.NextUndo();
+    if (!outcome.errors.empty()) {
+        post_({{"type", "notify"}, {"text", "Applied again, with problems: " + outcome.errors.front()}});
+    }
+    editorStateStale_ = true;
+}
+
 // Stop: the working copy is discarded and nothing reaches the project.
 void EditorApp::StopTask(int id, const std::string& reason) {
     if (!task_ || id != taskId_) {
@@ -2870,9 +2946,17 @@ void EditorApp::ApplyProposal(int proposalId, const nlohmann::json& decisions) {
     }
 
     std::vector<size_t> indices = acceptedIndices.get<std::vector<size_t>>();
+    const uint64_t before = history_.NextUndo();
     ApplyOutcome outcome = ApplyAccepted(accepted, it->second.task.get(), indices); // one undo step (scene side)
     it->second.decided = true;
+    // A task's operations refer to its working copy's entities: only plain
+    // proposals can be applied afresh (a task's result comes back by redo).
+    if (!it->second.task) it->second.applied = accepted;
     it->second.task.reset(); // done with its working copy
+    if (history_.NextUndo() != before) {
+        it->second.historyStep = history_.NextUndo();
+        it->second.lastState = "applied";
+    }
 
     post_({{"type", "ai:decided"},
            {"id", proposalId},

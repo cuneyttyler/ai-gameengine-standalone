@@ -31,6 +31,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <chrono>
 #include <set>
 #include <optional>
 #include <string>
@@ -283,7 +284,18 @@ private:
         std::vector<AutoUndo> autoUndo;
         bool autoUndone = false;
         std::shared_ptr<TaskRunner> task; // set when this is a finished task's combined result
+        // Its undo step once applied (0: not applied, or nothing changed in
+        // the scene), and what was applied, to apply it again after an undo
+        // the redo can no longer bring back.
+        uint64_t historyStep = 0;
+        std::vector<nlohmann::json> applied;
+        std::string lastState; // as last sent to the panel
     };
+    // The AI panel's Undo / Apply after a proposal was applied: follows Ctrl+Z
+    // and Ctrl+Y (each applied proposal is one undo step).
+    void PostProposalStates();
+    void UndoProposal(int proposalId);
+    void ReapplyProposal(int proposalId);
     ApplyOutcome ApplyAccepted(const std::vector<nlohmann::json>& operations, const TaskRunner* task = nullptr,
                                const std::vector<size_t>& indices = {});
     // The multi-step task in progress, if any (development_plan.md 2.9).
@@ -329,6 +341,10 @@ private:
     bool settingsDirty_ = false; // project settings edited since the last save
     std::optional<std::string> pendingSnapshot_;
     bool pendingPushed_ = false;
+    // A run of quick resizes of one thing (Alt+wheel, [ ]) is one undo step:
+    // snapshotting the whole scene per notch made resizing lag in big scenes.
+    std::optional<Entity> resizeRun_;
+    std::chrono::steady_clock::time_point resizeRunAt_{};
 
     bool playing_ = false;
     std::string playSnapshot_;
