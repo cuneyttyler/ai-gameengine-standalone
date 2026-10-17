@@ -18,13 +18,20 @@ namespace aige {
 // the root with '/' separators, so projects are portable and diff cleanly.
 struct Project {
     std::filesystem::path root;
+    // Where assets/ lives when it isn't under root: an AI task's working copy
+    // (TaskRunner) reads the real project's art in place rather than copying
+    // a pack of hundreds of images. Empty: root.
+    std::filesystem::path assetsFrom;
 
     std::filesystem::path MainScenePath() const { return root / "scenes" / "main.aige"; }
     std::filesystem::path SettingsPath() const { return root / "settings.aige"; }
-    std::filesystem::path AssetsDir() const { return root / "assets"; }
+    std::filesystem::path AssetsDir() const { return (assetsFrom.empty() ? root : assetsFrom) / "assets"; }
     std::filesystem::path CacheDir() const { return root / ".cache"; }
 
-    std::filesystem::path Resolve(const std::string& relative) const { return root / relative; }
+    std::filesystem::path Resolve(const std::string& relative) const {
+        if (!assetsFrom.empty() && relative.rfind("assets/", 0) == 0) return assetsFrom / relative;
+        return root / relative;
+    }
 
     // Project-relative, '/'-separated form of a path inside the project.
     std::string Relative(const std::filesystem::path& absolute) const {

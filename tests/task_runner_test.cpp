@@ -5,6 +5,7 @@
 #include "assets/Prefab.h"
 #include "assets/Project.h"
 #include "assets/SceneIO.h"
+#include "assets/TextureCook.h"
 #include "editing/Commands.h"
 #include "gameplay/Archetypes.h"
 #include "gameplay/Components.h"
@@ -222,4 +223,28 @@ TEST_F(TaskRunnerTest, AnAnswerWithNothingLeftToDoFinishes) {
     task->OnAnswer({{"summary", "nothing more"}, {"scope", "task"}, {"operations", nlohmann::json::array()}});
     EXPECT_EQ(task->GetState(), aige::TaskRunner::State::Finished);
     EXPECT_EQ(task->CombinedProposal()["operations"].size(), 1u);
+}
+
+// Steps that read art (prefab.create, terrain commands, level.village) see the
+// project's assets: the working copy reads them in place instead of copying
+// them (2026-10-17: every village step failed with "can't read the image").
+TEST_F(TaskRunnerTest, StepsReadTheProjectsArtInPlace) {
+    fs::create_directories(root_ / "assets" / "pack");
+    aige::ImageData image;
+    image.width = image.height = 32;
+    image.rgba.assign(32 * 32 * 4, 200);
+    ASSERT_TRUE(aige::WritePng(root_ / "assets" / "pack" / "well.png", image));
+
+    auto task = Start();
+    task->OnAnswer(Answer({{{"op", "command"},
+                            {"name", "prefab.create"},
+                            {"args", {{"asset", "assets/pack/well.png"}, {"name", "well"}, {"tile", false},
+                                      {"solid", true}, {"cells", 1.0}}}}},
+                          false));
+    ASSERT_EQ(task->Steps().size(), 1u);
+    EXPECT_TRUE(task->Steps().front().applyErrors.empty())
+        << (task->Steps().front().applyErrors.empty() ? "" : task->Steps().front().applyErrors.front());
+    EXPECT_TRUE(fs::exists(task->WorkingCopy() / "prefabs" / "well.prefab"));
+    EXPECT_FALSE(fs::exists(task->WorkingCopy() / "assets")); // read in place, not copied
+    EXPECT_FALSE(fs::exists(root_ / "prefabs" / "well.prefab")); // the project is untouched until accepted
 }

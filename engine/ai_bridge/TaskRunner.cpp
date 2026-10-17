@@ -94,6 +94,10 @@ TaskRunner::TaskRunner(Registry& scene, const Project& project, const Reflection
                        std::string instruction, TaskLimits limits)
     : reflection_(reflection), instruction_(std::move(instruction)), limits_(limits) {
     scratch_.root = NewScratchFolder();
+    // Art is read from the project itself (prefab.create, terrain commands and
+    // level.village read images and their analysis); only what a step can
+    // change is copied.
+    scratch_.assetsFrom = project.assetsFrom.empty() ? project.root : project.assetsFrom;
     std::error_code ec;
     fs::create_directories(scratch_.root, ec);
     for (const char* dir : {"scripts", "prefabs", "world", "dialogue", "quests", "schedules"}) {
