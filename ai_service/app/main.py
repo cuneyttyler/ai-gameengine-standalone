@@ -9,6 +9,7 @@
   POST /world/search    {query, k?} -> the most related World Bible entries
   POST /consistency     {operations, exclude?} -> contradictions with the canon (a second, cheaper model)
   POST /assets/generate {name, description, kind, height, style, variants} -> sprites written to the project
+  POST /assets/describe {paths} -> what each image is: name, kind, tags, direction, size in cells (6.2)
 
 Run: uv run uvicorn app.main:app --port 8765
 """
@@ -25,6 +26,7 @@ from pydantic import BaseModel
 from .models import EditorContext, EngineSchema, Proposal, Usage
 from .consistency import check_consistency, writing_from_operations
 from .images import ImageGenerator, MistralImageGenerator, generate_sprites
+from .vision import describe_assets
 from .providers import MistralEmbedder, MistralProvider, Provider, ProviderError
 from .service import propose
 from .world import Embedder, WorldIndex, format_entry, load_entries
@@ -50,6 +52,10 @@ class SearchRequest(BaseModel):
 class ConsistencyRequest(BaseModel):
     operations: list[dict] = []
     exclude: list[str] = []  # canon keys not to compare against (an entry being re-checked)
+
+
+class DescribeAssetsRequest(BaseModel):
+    paths: list[str]
 
 
 class GenerateAssetRequest(BaseModel):
@@ -89,6 +95,16 @@ def default_checker() -> Provider | None:
     return MistralProvider(api_key=key, model=os.environ.get("MISTRAL_CHECK_MODEL", "mistral-medium-latest"))
 
 
+def default_vision() -> Provider | None:
+    """Looks at images (6.2): a vision-capable model; MISTRAL_VISION_MODEL picks another."""
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    key = os.environ.get("MISTRAL_API_KEY")
+    if not key:
+        return None
+    return MistralProvider(api_key=key, model=os.environ.get("MISTRAL_VISION_MODEL", "mistral-medium-latest"),
+                           timeout_s=180.0)
+
+
 def default_image_generator() -> ImageGenerator | None:
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     key = os.environ.get("MISTRAL_API_KEY")
@@ -107,6 +123,7 @@ def create_app(
     embedder: Embedder | None = None,
     checker: Provider | None = None,
     images: ImageGenerator | None = None,
+    vision: Provider | None = None,
 ) -> FastAPI:
     app = FastAPI(title="AIGE AI Orchestration Service", version="0.1.0")
     state = {
@@ -117,6 +134,7 @@ def create_app(
         "world": None,
         "checker": checker,
         "images": images,
+        "vision": vision,
         "root": None,
     }
 
@@ -196,6 +214,18 @@ def create_app(
         hits, method = index.search(request.query, max(1, min(request.k, 20)))
         return {"ok": True, "method": method, "hits": [hit.__dict__ for hit in hits]}
 
+    @app.post("/assets/describe")
+    def assets_describe(request: DescribeAssetsRequest) -> dict:
+        root: Path | None = state["root"]
+        vision: Provider | None = state["vision"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        if vision is None:
+            return {"ok": False, "errors": ["No vision model available (MISTRAL_API_KEY)"]}
+        if len(request.paths) > 400:
+            return {"ok": False, "errors": ["At most 400 images at a time"]}
+        return describe_assets(vision, root, request.paths)
+
     @app.post("/assets/generate")
     def assets_generate(request: GenerateAssetRequest) -> dict:
         root: Path | None = state["root"]
@@ -250,4 +280,5 @@ app = create_app(
     embedder=default_embedder(),
     checker=default_checker(),
     images=default_image_generator(),
+    vision=default_vision(),
 )

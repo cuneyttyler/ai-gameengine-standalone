@@ -30,6 +30,9 @@ interface Asset {
   duration?: number
   // Made in the Art tab (3.6): from its .gen.json.
   generation?: { description: string; variant: string | null; model: string; created: string }
+  // What the art is (6.2): description, kind, tags, direction, cells, blocks,
+  // name (suggested), edges (border terrains of a ground tile).
+  analysis?: Record<string, string>
 }
 
 // The host maps the open project folder to this virtual host
@@ -77,7 +80,11 @@ const visible = computed(() => {
       inFolder(a.path, 'assets', assetFolder.value) &&
       (assetKind.value === 'all' ||
         (assetKind.value === 'generated' ? !!a.generation : a.type === assetKind.value)) &&
-      (!query || a.path.toLowerCase().includes(query)),
+      (!query ||
+        a.path.toLowerCase().includes(query) ||
+        (a.analysis?.description ?? '').toLowerCase().includes(query) ||
+        (a.analysis?.tags ?? '').toLowerCase().includes(query) ||
+        (a.analysis?.kind ?? '') === query),
   )
 })
 const assetFolders = computed(() => foldersOf(assets.value.map((a) => a.path), 'assets'))
@@ -312,6 +319,39 @@ function createPrefabsForPicked(asTile: boolean): void {
   }
 }
 
+// Asset analysis (6.2): what each image is, from its pixels and a vision model.
+const analyzing = ref(0)
+onHostMessage((message) => {
+  if (message.type === 'assets:analyzing') analyzing.value = message.count as number
+  else if (message.type === 'assets:analyzed') analyzing.value = 0
+})
+
+function analyze(paths: string[]): void {
+  const images = paths.filter((p) => assets.value.find((a) => a.path === p)?.type !== 'audio')
+  if (images.length) sendToHost({ type: 'assets:analyze', paths: images })
+}
+
+function suggestedRenames(paths: string[]): number {
+  return paths.filter((p) => {
+    const name = assets.value.find((a) => a.path === p)?.analysis?.name
+    return !!name && !p.slice(p.lastIndexOf('/') + 1).startsWith(name + '.')
+  }).length
+}
+
+async function applyNames(paths: string[]): Promise<void> {
+  const count = suggestedRenames(paths)
+  if (
+    count &&
+    (await confirmDialog({
+      title: 'Rename to the suggested names',
+      message: `Rename ${count} file(s) to the names the analysis suggested? Prefabs, scenes and scripts that use them are updated.`,
+      confirmLabel: 'Rename',
+    }))
+  ) {
+    sendToHost({ type: 'assets:applyNames', paths })
+  }
+}
+
 function modifiers(event: MouseEvent | KeyboardEvent): { ctrl: boolean; shift: boolean } {
   return { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey }
 }
@@ -481,6 +521,14 @@ onMounted(() => {
         Import…
       </button>
       <button
+        v-if="tab === 'assets'"
+        :disabled="analyzing > 0 || visible.length === 0"
+        title="Work out what every image shown here is: ground tiles' border terrains from their pixels, and (with AI on) a description, kind, tags, direction, size and a better name"
+        @click="analyze(visible.map((a) => a.path))"
+      >
+        {{ analyzing ? `Analyzing ${analyzing}…` : `Analyze ${visible.length}` }}
+      </button>
+      <button
         v-if="tab === 'prefabs' || tab === 'assets'"
         title="Rescan the project folder" @click="sendToHost({ type: 'assets:refresh' })">
         Refresh
@@ -622,6 +670,19 @@ onMounted(() => {
           <button :disabled="editorState.playing" @click="deletePicked('assets')">Delete…</button>
         </div>
         <p class="muted small">Or drag any picked card onto a folder.</p>
+        <div class="actions">
+          <button :disabled="analyzing > 0" title="What each one is (6.2)" @click="analyze([...pickedAssets])">
+            {{ analyzing ? 'Analyzing…' : 'Analyze' }}
+          </button>
+          <button
+            v-if="suggestedRenames(pickedAssets) > 0"
+            :disabled="editorState.playing"
+            title="Rename to the names the analysis suggested; references follow"
+            @click="applyNames([...pickedAssets])"
+          >
+            Apply {{ suggestedRenames(pickedAssets) }} suggested name(s)
+          </button>
+        </div>
         <div class="section-label">Make a prefab from each</div>
         <div class="row" title="Top-down art is laid onto the grid's diamond cells; isometric art is used as drawn">
           <span>Drawn</span>
@@ -655,6 +716,41 @@ onMounted(() => {
 
         <template v-else>
           <div class="row"><span>Size</span><span>{{ selected.width }} × {{ selected.height }}</span></div>
+          <template v-if="selected.analysis">
+            <div v-if="selected.analysis.description" class="row analysis">
+              <span>What</span><span>{{ selected.analysis.description }}</span>
+            </div>
+            <div v-if="selected.analysis.kind" class="row">
+              <span>Kind</span>
+              <span>
+                {{ selected.analysis.kind }}
+                <template v-if="selected.analysis.direction && selected.analysis.direction !== 'none'">
+                  · runs {{ selected.analysis.direction === 'horizontal' ? 'left–right' : 'up–down' }}
+                </template>
+                <template v-if="selected.analysis.blocks === '1'"> · blocks the way</template>
+              </span>
+            </div>
+            <div v-if="selected.analysis.tags" class="row"><span>Tags</span><span>{{ selected.analysis.tags }}</span></div>
+            <div v-if="selected.analysis.cells" class="row">
+              <span>Game size</span><span>{{ selected.analysis.cells }} cells wide</span>
+            </div>
+            <div v-if="selected.analysis.edges" class="row" title="Terrain at each corner and edge, clockwise from the top-left">
+              <span>Borders</span><span class="edges">{{ selected.analysis.edges }}</span>
+            </div>
+          </template>
+          <div class="actions">
+            <button :disabled="analyzing > 0" title="What this image is (6.2)" @click="analyze([selected.path])">
+              {{ selected.analysis ? 'Analyze again' : 'Analyze' }}
+            </button>
+            <button
+              v-if="suggestedRenames([selected.path]) > 0"
+              :disabled="editorState.playing"
+              title="Rename to the suggested name; references follow"
+              @click="applyNames([selected.path])"
+            >
+              Rename to {{ selected.analysis?.name }}
+            </button>
+          </div>
           <div v-if="selected.generation" class="row" :title="'Generated ' + (selected.generation.created ?? '')">
             <span>Generated</span>
             <span>
@@ -884,6 +980,13 @@ button.primary {
 }
 .muted {
   opacity: 0.6;
+}
+.analysis span:last-child {
+  text-align: right;
+}
+.edges {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.85em;
 }
 .small {
   font-size: 0.85em;

@@ -114,7 +114,16 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
     nlohmann::json assetList = nlohmann::json::array();
     for (const auto& asset : assets.Assets()) {
         if (asset.error.empty()) {
-            assetList.push_back({{"path", asset.path}, {"type", AssetTypeName(asset.type)}});
+            nlohmann::json entry = {{"path", asset.path}, {"type", AssetTypeName(asset.type)}};
+            // What the art is (6.2): its description, kind, tags, direction,
+            // size in cells and border terrains, when it has been analyzed.
+            for (const auto& [key, value] : asset.analysis) {
+                entry[key] = value;
+            }
+            if (asset.width > 0) {
+                entry["pixels"] = {asset.width, asset.height};
+            }
+            assetList.push_back(entry);
         }
     }
 

@@ -4,6 +4,7 @@
 #include "renderer2d/ImageData.h"
 
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -34,6 +35,12 @@ struct AssetInfo {
 
     // Audio
     double durationSeconds = 0.0;
+
+    // What's known about the art (development_plan.md 6.2), kept in the meta:
+    // description, kind, tags, direction, cells, blocks, name (a suggested
+    // file name) from image analysis; edges (each corner and edge's terrain,
+    // clockwise from the top-left) from the tile-edge analysis.
+    std::map<std::string, std::string> analysis;
 
     uint32_t TileColumns() const { return tileWidth ? width / tileWidth : 0; }
     uint32_t TileRows() const { return tileHeight ? height / tileHeight : 0; }
@@ -71,6 +78,10 @@ public:
     // size); rewrites the meta.
     bool SetImageSettings(const std::string& path, AssetType type, uint32_t tileWidth, uint32_t tileHeight);
 
+    // Merges `fields` into the asset's analysis (an empty value removes a
+    // key) and rewrites the meta; import settings are kept.
+    bool SetAnalysis(const std::string& path, const std::map<std::string, std::string>& fields);
+
     // Cooked pixels for a Texture/Tileset asset, cooking first if stale.
     std::optional<ImageData> LoadTexture(const std::string& path);
 
@@ -79,6 +90,7 @@ private:
         AssetType type = AssetType::Texture;
         uint32_t tileWidth = 0;
         uint32_t tileHeight = 0;
+        std::map<std::string, std::string> analysis; // every other key=value line, kept as is
     };
 
     std::filesystem::path MetaPathFor(const std::filesystem::path& source) const;

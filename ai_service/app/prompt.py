@@ -130,6 +130,19 @@ SCENES: a game can have several scenes (context "scenes": each path, whether it'
   target scene (the open scene's markers can be added with scene.addMarker in the same proposal).
 """
 
+ART = """\
+ART (context "assets"): file names are often meaningless ("Ground 37"). When an asset has been analyzed it
+  carries "description", "kind" (ground, building, nature, decoration, item, character, effect, other),
+  "tags", "direction" (horizontal / vertical: which way a fence or bridge runs on screen), "cells" (how many
+  grid cells wide it should be), "blocks" (1: nothing walks through it) and, for ground tiles, "edges": the
+  terrain at each corner and edge, clockwise from the top-left (NW, N, NE, E, SE, S, SW, W). Choose art by
+  these, never by file name. A road tile must match its neighbours: where two tiles meet, the touching
+  corners and edges must have the same terrain (a straight dirt road running left-right has dirt at W and E
+  and grass at N and S). Size things by "cells": a sprite's width is cells x the cell width in pixels
+  (64), its height in proportion to "pixels". Use the variety a pack offers (wells, fences, banners, rocks,
+  trees, carts), not only its buildings.
+"""
+
 LUA_API = """\
 Lua scripts (plain Lua 5.4; one environment per entity; `update(dt)` runs 60 times per
 second while playing). These are ALL the engine functions — there are no others:
@@ -213,6 +226,7 @@ def build_messages(
             STORY,
             ROUTINES,
             SCENES,
+            ART,
             LUA_API,
             "ENGINE SCHEMA (everything that can be changed)\n" + describe_schema(schema),
         ]

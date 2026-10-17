@@ -19,6 +19,8 @@ add_library(aige_assets STATIC
     Export.cpp
     SceneFiles.h
     SceneFiles.cpp
+    TileEdges.h
+    TileEdges.cpp
 )
 target_include_directories(aige_assets PUBLIC ${CMAKE_SOURCE_DIR}/engine)
 target_include_directories(aige_assets PRIVATE ${stb_SOURCE_DIR})

@@ -14,6 +14,7 @@
 #include "editing/SceneTools.h"
 #include "ai_bridge/RecentProjects.h"
 #include "assets/Export.h"
+#include "assets/TileEdges.h"
 #include "assets/SceneFiles.h"
 #include "assets/ProjectMove.h"
 #include "rhi/ShaderUtil.h"
@@ -762,6 +763,10 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         }
     } else if (type == "assets:request") {
         post_(AssetsJson());
+    } else if (type == "assets:analyze") {
+        AnalyzeAssets(message.value("paths", std::vector<std::string>{}));
+    } else if (type == "assets:applyNames") {
+        ApplySuggestedNames(message.value("paths", std::vector<std::string>{}));
     } else if (type == "assets:refresh") {
         RefreshAssets();
         RefreshPrefabs();
@@ -1177,6 +1182,100 @@ void EditorApp::RemoveFolder(const std::string& folder, bool deleteContents) {
         text += "; the folder still holds other files, so it stays";
     }
     post_({{"type", "notify"}, {"text", text}});
+}
+
+// --- Asset analysis (development_plan.md 6.2) ---------------------------------
+
+void EditorApp::AnalyzeAssets(const std::vector<std::string>& paths) {
+    std::vector<std::string> images;
+    for (const std::string& path : paths) {
+        const AssetInfo* asset = assets_.Find(path);
+        if (asset != nullptr && asset->type != AssetType::Audio && asset->error.empty()) {
+            images.push_back(path);
+        }
+    }
+    if (images.empty()) {
+        post_({{"type", "notify"}, {"text", "Pick images to analyze"}});
+        return;
+    }
+    // Border terrains need no AI: right away.
+    AnalyzeTileEdges(images);
+    // Descriptions come from the AI service's vision model.
+    if (Ai() == nullptr || Ai()->GetState() != AiClient::State::Ready) {
+        post_({{"type", "notify"}, {"text", "Tile borders analyzed. Turn AI on to have the images described too."}});
+        post_(AssetsJson());
+        return;
+    }
+    if (analyzeRequest_ != 0) {
+        post_({{"type", "notify"}, {"text", "Still analyzing the previous images"}});
+        return;
+    }
+    analyzeRequest_ = Ai()->Request("POST", "/assets/describe", {{"paths", images}}, 900);
+    post_({{"type", "assets:analyzing"}, {"count", images.size()}});
+    post_({{"type", "notify"},
+           {"text", "Describing " + std::to_string(images.size()) + " image(s) — about a second each"}});
+}
+
+void EditorApp::AnalyzeTileEdges(const std::vector<std::string>& paths) {
+    // Ground tiles: square, fully opaque at the border. One terrain clustering
+    // per folder (an art pack's ground shares its terrains).
+    std::map<std::string, std::vector<std::pair<std::string, BorderSamples>>> byFolder;
+    for (const std::string& path : paths) {
+        const AssetInfo* asset = assets_.Find(path);
+        if (asset == nullptr || asset->type != AssetType::Texture || asset->width == 0 || asset->height == 0) continue;
+        const float aspect = static_cast<float>(asset->width) / static_cast<float>(asset->height);
+        if (aspect < 0.95f || aspect > 1.05f) continue;
+        auto image = assets_.LoadTexture(path);
+        if (!image) continue;
+        BorderSamples samples = SampleBorder(*image);
+        if (!samples.opaque) continue; // a prop with a transparent background
+        byFolder[std::filesystem::path(path).parent_path().generic_string()].push_back({path, samples});
+    }
+    for (const auto& [folder, tiles] : byFolder) {
+        std::vector<BorderSamples> samples;
+        for (const auto& tile : tiles) samples.push_back(tile.second);
+        const EdgeClassification result = ClassifyEdges(samples);
+        for (size_t i = 0; i < tiles.size(); ++i) {
+            std::map<std::string, std::string> fields{{"edges", FormatSignature(result.signatures[i])}};
+            const AssetInfo* asset = assets_.Find(tiles[i].first);
+            if (asset != nullptr && !asset->analysis.contains("kind")) fields["kind"] = "ground";
+            assets_.SetAnalysis(tiles[i].first, fields);
+        }
+    }
+}
+
+void EditorApp::ApplySuggestedNames(const std::vector<std::string>& paths) {
+    if (playing_) {
+        return;
+    }
+    int renamed = 0;
+    std::vector<std::string> failed;
+    std::set<std::string> taken;
+    for (const std::string& path : paths) {
+        const AssetInfo* asset = assets_.Find(path);
+        if (asset == nullptr || !asset->analysis.contains("name")) continue;
+        const std::filesystem::path from(path);
+        const std::string base = asset->analysis.at("name");
+        // Two images can suggest the same name: number the later ones.
+        std::string to;
+        for (int n = 1; n < 100; ++n) {
+            to = from.parent_path().generic_string() + "/" + base + (n > 1 ? "-" + std::to_string(n) : "") +
+                 from.extension().string();
+            std::error_code ec;
+            if (to == path || (!taken.contains(to) && !std::filesystem::exists(assets_.GetProject().Resolve(to), ec))) break;
+        }
+        if (to == path) continue;
+        taken.insert(to);
+        if (MoveProjectItem(path, to, false)) {
+            ++renamed;
+        } else {
+            failed.push_back(path);
+        }
+    }
+    RefreshAfterMoves();
+    post_({{"type", "notify"},
+           {"text", "Renamed " + std::to_string(renamed) + " asset(s), references updated" +
+                        (failed.empty() ? "" : "; " + std::to_string(failed.size()) + " couldn't be")}});
 }
 
 // --- Scenes (development_plan.md 5.3) -----------------------------------------
@@ -2191,6 +2290,34 @@ void EditorApp::PollAi() {
         } else if (result->kind == AiClient::Result::Kind::Response) {
             if (result->requestId == worldSearchRequest_) {
                 post_({{"type", "world:searchResults"}, {"result", result->body}});
+            } else if (result->requestId == analyzeRequest_) {
+                analyzeRequest_ = 0;
+                const nlohmann::json& body = result->body;
+                int described = 0;
+                for (const auto& a : body.value("assets", nlohmann::json::array())) {
+                    std::string tags;
+                    for (const auto& t : a.value("tags", nlohmann::json::array())) {
+                        if (t.is_string()) tags += (tags.empty() ? "" : ", ") + t.get<std::string>();
+                    }
+                    char cells[32];
+                    std::snprintf(cells, sizeof(cells), "%.2f", a.value("sizeCells", 1.0));
+                    if (assets_.SetAnalysis(a.value("path", ""), {{"description", a.value("description", "")},
+                                                                  {"kind", a.value("kind", "other")},
+                                                                  {"tags", tags},
+                                                                  {"direction", a.value("direction", "none")},
+                                                                  {"cells", cells},
+                                                                  {"blocks", a.value("blocks", false) ? "1" : "0"},
+                                                                  {"name", a.value("name", "")}})) {
+                        ++described;
+                    }
+                }
+                const auto errors = body.value("errors", nlohmann::json::array());
+                post_(AssetsJson());
+                post_({{"type", "assets:analyzed"}, {"described", described}, {"errors", errors}});
+                post_({{"type", "notify"},
+                       {"text", "Analyzed " + std::to_string(described) + " asset(s)" +
+                                    (errors.empty() ? "" : "; " + std::to_string(errors.size()) + " problem(s): " +
+                                                               errors.front().get<std::string>())}});
             } else if (result->requestId == artRequest_) {
                 artRequest_ = 0;
                 artHistory_.Finish(artHistoryId_, result->body);
@@ -3169,6 +3296,10 @@ nlohmann::json EditorApp::AssetsJson() {
                 entry["columns"] = asset.TileColumns();
                 entry["rows"] = asset.TileRows();
             }
+        }
+        // What the art is (6.2).
+        if (!asset.analysis.empty()) {
+            entry["analysis"] = asset.analysis;
         }
         // Generated art (3.6) says where it came from.
         std::ifstream sidecar(assets_.GetProject().Resolve(asset.path + ".gen.json"));

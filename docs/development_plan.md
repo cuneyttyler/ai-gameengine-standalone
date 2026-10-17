@@ -1441,6 +1441,35 @@ Decisions (2026-10-17, defaults the user can still change):
 - Tests: edge classification on generated tiles (corners, edges, inner corners, a 2×2
   curve), the `.meta` round trip, the analysis request and validation against
   recorded answers, renaming with references.
+- ✅ Built (build and tests at the end of the phase):
+  - **`.meta` keeps analysis**: any key besides the import settings is kept
+    (`AssetInfo::analysis`, `AssetDatabase::SetAnalysis`). Changing import settings no
+    longer wipes it.
+  - **Tile edges** (`assets/TileEdges`): eight border patches per image (corners and
+    edge midpoints, inset past outlines). The ground tiles of a folder are clustered
+    (deterministic k-means) into terrains named by colour (grass, dirt, sand, water,
+    stone…), giving `edges=grass,grass,dirt,…` per tile. Only square, opaque-bordered
+    images count as ground; props with transparent backgrounds are skipped.
+  - **Vision** (AI service `POST /assets/describe`, `app/vision.py`):
+    - Images are downsized to 256 px over a light checker and sent six to a request,
+      three requests at a time, to a vision model (`MISTRAL_VISION_MODEL`, default
+      `mistral-medium-latest`), with each file name and pixel size as hints only.
+    - The answers are validated: kind from a fixed list, direction
+      none/horizontal/vertical, size clamped to 0.1–20 cells, kebab-case names, tidy
+      tags. Images left undescribed are reported.
+  - **Editor**:
+    - Assets ▸ **Analyze N** (what's shown) and Analyze on one or several picked assets.
+      Edges are computed at once; descriptions arrive from the service.
+    - The details pane shows what an asset is: kind, direction, whether it blocks the
+      way, tags, size in cells, border terrains.
+    - **Rename to the suggested name / Apply N suggested names**: one confirmation,
+      duplicates numbered, references followed.
+    - Search also matches descriptions, tags and kinds.
+  - **The AI** gets every asset's analysis and pixel size in its context, and the prompt
+    tells it to choose by meaning, match road tiles by their edges, and size by cells.
+  - Tests: `TileEdgesTest` (4: classification of synthetic tiles, transparent props, the
+    signature format, the `.meta` round trip) and `test_vision.py` (4: batching and the
+    images sent, cleaning bad answers, only project images, the endpoint).
 
 **6.3 — Importing a pack**
 - **One scale per pack**: pixels per cell, taken from the pack's ground tiles (a 256 px

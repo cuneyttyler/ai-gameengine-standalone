@@ -106,6 +106,8 @@ std::optional<AssetDatabase::Meta> AssetDatabase::ReadMeta(const fs::path& metaP
                 meta.tileWidth = static_cast<uint32_t>(std::stoul(value));
             } else if (key == "tileHeight") {
                 meta.tileHeight = static_cast<uint32_t>(std::stoul(value));
+            } else if (!key.empty()) {
+                meta.analysis[key] = value; // analysis (6.2) and anything newer: kept
             }
         } catch (const std::exception&) {
             // A malformed number keeps the default rather than failing the asset.
@@ -124,6 +126,14 @@ bool AssetDatabase::WriteMeta(const fs::path& metaPath, const Meta& meta) const 
     if (meta.type == AssetType::Tileset) {
         out << "tileWidth=" << meta.tileWidth << "\n";
         out << "tileHeight=" << meta.tileHeight << "\n";
+    }
+    for (const auto& [key, value] : meta.analysis) {
+        if (key == "type" || key == "tileWidth" || key == "tileHeight" || value.empty()) continue;
+        std::string line = value;
+        for (char& c : line) {
+            if (c == '\n' || c == '\r') c = ' '; // one line per key
+        }
+        out << key << "=" << line << "\n";
     }
     return out.good();
 }
@@ -144,6 +154,7 @@ AssetInfo AssetDatabase::Process(const fs::path& source, bool* cooked) {
         WriteMeta(metaPath, *meta);
     }
     info.type = meta->type;
+    info.analysis = meta->analysis;
 
     if (info.type == AssetType::Audio) {
         if (auto audio = ProbeAudio(source)) {
@@ -265,16 +276,38 @@ bool AssetDatabase::SetImageSettings(const std::string& path, AssetType type, ui
     if (it == assets_.end() || it->type == AssetType::Audio) {
         return false;
     }
-    Meta meta;
+    fs::path source = project_.Resolve(path);
+    Meta meta = ReadMeta(MetaPathFor(source)).value_or(Meta{});
     meta.type = type;
     meta.tileWidth = tileWidth;
     meta.tileHeight = tileHeight;
-    fs::path source = project_.Resolve(path);
     if (!WriteMeta(MetaPathFor(source), meta)) {
         return false;
     }
     *it = Process(source, nullptr);
     return it->error.empty();
+}
+
+bool AssetDatabase::SetAnalysis(const std::string& path, const std::map<std::string, std::string>& fields) {
+    auto it = std::find_if(assets_.begin(), assets_.end(), [&](const AssetInfo& a) { return a.path == path; });
+    if (it == assets_.end()) {
+        return false;
+    }
+    const fs::path source = project_.Resolve(path);
+    Meta meta = ReadMeta(MetaPathFor(source)).value_or(Meta{});
+    meta.type = it->type;
+    for (const auto& [key, value] : fields) {
+        if (value.empty()) {
+            meta.analysis.erase(key);
+        } else {
+            meta.analysis[key] = value;
+        }
+    }
+    if (!WriteMeta(MetaPathFor(source), meta)) {
+        return false;
+    }
+    it->analysis = meta.analysis;
+    return true;
 }
 
 std::optional<ImageData> AssetDatabase::LoadTexture(const std::string& path) {

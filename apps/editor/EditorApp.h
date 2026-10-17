@@ -173,6 +173,11 @@ private:
     std::map<int, int> consistencyRequests_;
     int worldCheckRequest_ = 0;
     int artRequest_ = 0; // the Art tab's generation in flight (development_plan.md 3.6)
+    // Asset analysis (6.2): border terrains now, descriptions from the AI service.
+    int analyzeRequest_ = 0;
+    void AnalyzeAssets(const std::vector<std::string>& paths);
+    void AnalyzeTileEdges(const std::vector<std::string>& paths);
+    void ApplySuggestedNames(const std::vector<std::string>& paths);
     // Frame stats overlay (4.6, F3): smoothed frame and update times.
     bool showStats_ = false;
     double frameMs_ = 0.0;
