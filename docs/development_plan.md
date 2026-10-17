@@ -1551,6 +1551,36 @@ Decisions (2026-10-17, defaults the user can still change):
   It's also in the Level tab.
 - Tests: connectivity (every house reachable by road), no overlaps, plots facing roads,
   every role used when available, size scaling, determinism by seed.
+- ✅ Built (build and tests at the end of the phase):
+  - `gameplay/VillageGen`, pure and seeded:
+    - streets left–right (one per band of plots) and one cross street; the main
+      street and the cross street leave the village at all four sides;
+    - a square with a well where they cross, decorated at the corners;
+    - plots on both sides of every street: a front yard on the road, the house, a
+      two-row garden; houses go on the plots nearest the square first;
+    - fences around the gardens (one fence between neighbours, not two), something
+      by most doors, banners either side of each road out, one landmark by the west
+      entrance, and trees (never touching), bushes and rocks in the green edge and
+      empty plots;
+    - the number of streets is chosen to keep the village roughly square, so it
+      grows in both directions with the number of houses.
+  - `editing/VillageBuild`:
+    - `VillageRolesOf` reads the art's analysis (name, tags, kind, description; the
+      prefab name when unanalyzed). Wall pieces count as fences; a fence drawn one way
+      also stands in for the other until 6.6.
+    - `FindVillageRoles` also picks the ground and road terrains (grass-like and
+      dirt-like) and the house size from the house prefabs' widths.
+    - `PlanVillage` plans without changing anything (for review); `BuildVillage`
+      clears the area, fills the ground, paints streets and the square with autotiling
+      (6.4), places everything (upright art mirrored for variety) and moves the player
+      onto the main street.
+  - **`level.village`** for the AI. Review shows the counts, which prefabs fill each
+    role, what the pack lacks, and a map. The prompt says to use it for any settlement
+    ("relatively large" is 15–25 houses).
+  - **Level tab ▸ Village**, with a live preview.
+  - Tests: `VillageGenTest` (8: determinism, house counts and growth, no overlaps or
+    props on roads, connected streets and houses facing them, the whole kit used,
+    bad parameters, roles from analysis, building from a small pack).
 
 **6.6 — Rotation and facing** *(from Later)*
 - Like resizing: Shift+wheel, R and Shift+R turn the brush (and its preview) while one

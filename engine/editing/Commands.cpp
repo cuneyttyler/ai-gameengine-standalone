@@ -10,6 +10,7 @@
 #include "physics2d/Components.h"
 #include "editing/Autotile.h"
 #include "editing/LevelBuild.h"
+#include "editing/VillageBuild.h"
 #include "assets/AssetDatabase.h"
 #include "renderer2d/Components.h"
 #include "world/WorldBible.h"
@@ -395,6 +396,42 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
             LevelPrefabs use{ToString(args[10]), ToString(args[11]), ToString(args[12]), ToString(args[14]),
                              ToBool(args[16])};
             if (auto problem = BuildLevel(context.registry, *context.prefabs, params, *layout, use)) {
+                return Fail(*problem);
+            }
+            return {};
+        });
+
+    // Settlements (development_plan.md 6.5).
+    r.Command("level.village",
+              "Builds a whole village from the pack's analyzed prefabs: streets laid with fitted road tiles, a square "
+              "with a well, houses on plots facing the streets (sized from the house art), fenced gardens, "
+              "decorations by the doors, banners at the entrances, a landmark (tower, windmill), and trees, bushes "
+              "and rocks around the edge. It grows right and down from (x0,y0); its size follows from the number "
+              "of houses. Everything already in the area except the player is replaced. Deterministic: the same "
+              "seed gives the same village. Use this for any village or town instead of placing pieces one by one.")
+        .Param("x0", FieldType::Int, "Top-left column.").Range(-1000, 1000)
+        .Param("y0", FieldType::Int, "Top-left row.").Range(-1000, 1000)
+        .Param("houses", FieldType::Int, "How many houses: 4-8 a hamlet, 10-20 a village, 25+ a town.").Range(1, 60)
+        .Param("seed", FieldType::Int, "Any number; change it for a different layout.").Range(0, 1000000000)
+        .Param("roadWidth", FieldType::Int, "Street width, cells.").Range(1, 3)
+        .Param("houseCells", FieldType::Int, "A house's footprint in cells; 0 = from the house art.").Range(0, 6)
+        .Param("nature", FieldType::Float, "0-1: how many trees, bushes and rocks.").Range(0, 1)
+        .Param("fences", FieldType::Bool, "Fence the gardens behind the houses.")
+        .Param("square", FieldType::Bool, "A square with a well where the main streets cross.")
+        .Param("ground", FieldType::String, "Ground terrain (from the tiles' edges), e.g. grass; empty = found.")
+        .Param("road", FieldType::String, "Road terrain, e.g. dirt; empty = found.")
+        .Param("movePlayer", FieldType::Bool, "Move the player onto the main street.")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.prefabs == nullptr || context.project == nullptr) {
+                return Fail("prefabs aren't available here");
+            }
+            const VillageRequest request = VillageRequestFromArgs(args);
+            std::string error;
+            auto plan = PlanVillage(*context.prefabs, *context.project, request, &error);
+            if (!plan) {
+                return Fail(error);
+            }
+            if (auto problem = BuildVillage(context.registry, *context.prefabs, *plan, request.movePlayer)) {
                 return Fail(*problem);
             }
             return {};

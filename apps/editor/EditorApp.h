@@ -13,6 +13,7 @@
 #include "ecs/Registry.h"
 #include "ai_bridge/AiTranscript.h"
 #include "editing/Autotile.h"
+#include "editing/VillageBuild.h"
 #include "ai_bridge/ArtHistory.h"
 #include "editing/EditHistory.h"
 #include "editor/ViewportWindow.h"

@@ -652,6 +652,23 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         if (outcome.errors.empty()) {
             FrameScene();
         }
+    } else if (type == "village:preview") {
+        // The Level tab's Village (6.5): the plan as review would show it.
+        const VillageRequest request = VillageRequestFromJson(message.value("args", nlohmann::json::object()));
+        std::string error;
+        auto plan = PlanVillage(prefabs_, assets_.GetProject(), request, &error);
+        post_({{"type", "village:preview"}, {"text", plan ? DescribeVillage(*plan) : std::string()}, {"error", error}});
+    } else if (type == "village:generate") {
+        nlohmann::json op = {{"op", "command"}, {"name", "level.village"}, {"args", message.value("args", nlohmann::json::object())}};
+        if (playing_) {
+            return;
+        }
+        ApplyOutcome outcome = ApplyAccepted({op});
+        post_({{"type", "notify"},
+               {"text", outcome.errors.empty() ? "Village built (Ctrl+Z undoes it)" : outcome.errors.front()}});
+        if (outcome.errors.empty()) {
+            FrameScene();
+        }
     } else if (type == "story:request") {
         post_(StoryJson());
     } else if (type == "story:save") {

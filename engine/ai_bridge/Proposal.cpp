@@ -7,6 +7,7 @@
 #include "reflection/Reflection.h"
 #include "scripting/Components.h"
 #include "editing/LevelBuild.h"
+#include "editing/VillageBuild.h"
 #include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
 #include "world/WorldBible.h"
@@ -482,6 +483,18 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
                 return item;
             }
             item.detail = DescribeLevel(params, *layout);
+        } else if (name == "level.village") {
+            // Like level.generate: the real village, roles and map, before anything changes (6.5).
+            const VillageRequest request = VillageRequestFromJson(args);
+            item.target = "Build a village at (" + std::to_string(request.params.x0) + "," +
+                          std::to_string(request.params.y0) + ")";
+            std::string why;
+            auto plan = PlanVillage(prefabs, project, request, &why);
+            if (!plan) {
+                error = why;
+                return item;
+            }
+            item.detail = DescribeVillage(*plan);
         } else if (name == "world.delete") {
             item.target = "World Bible · delete " + args.value("key", std::string());
         } else if (name == "prefab.create") {

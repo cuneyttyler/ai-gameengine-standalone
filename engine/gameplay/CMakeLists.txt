@@ -19,6 +19,8 @@ add_library(aige_gameplay STATIC
     Story.cpp
     LevelGen.h
     LevelGen.cpp
+    VillageGen.h
+    VillageGen.cpp
     Pathfinding.h
     Pathfinding.cpp
     Schedule.h

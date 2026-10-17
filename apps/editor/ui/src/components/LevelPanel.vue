@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Dungeon generation by hand (development_plan.md 3.4): the same
 // level.generate command the AI proposes. Preview shows the layout as a map;
-// Generate builds it as one undo step.
+// Generate builds it as one undo step. Village (6.5) does the same with
+// level.village, from the pack's analyzed prefabs.
 import { onMounted, reactive, ref, watch } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
 
@@ -29,6 +30,24 @@ const things = ref<string[]>([])
 const preview = ref('')
 const error = ref('')
 
+const mode = ref<'dungeon' | 'village'>('dungeon')
+const village = reactive({
+  x0: 40,
+  y0: 0,
+  houses: 12,
+  seed: 1,
+  roadWidth: 1,
+  houseCells: 0,
+  nature: 0.5,
+  fences: true,
+  square: true,
+  ground: '',
+  road: '',
+  movePlayer: true,
+})
+const villagePreview = ref('')
+const villageError = ref('')
+
 onHostMessage((message) => {
   if (message.type === 'level:defaults') {
     tiles.value = message.tiles as string[]
@@ -44,7 +63,13 @@ onHostMessage((message) => {
     args.wall ||= pick(tiles.value, 'wall')
     args.enemy ||= pick(things.value, 'skeleton', 'enemy')
     args.pickup ||= pick(things.value, 'potion')
+    village.x0 = message.x0 as number
+    village.y0 = message.y0 as number
     requestPreview()
+    requestVillagePreview()
+  } else if (message.type === 'village:preview') {
+    villagePreview.value = message.text as string
+    villageError.value = message.error as string
   } else if (message.type === 'level:preview') {
     preview.value = message.text as string
     error.value = message.error as string
@@ -60,8 +85,21 @@ function requestPreview(): void {
 }
 watch(args, requestPreview, { deep: true })
 
+let villageTimer: number | undefined
+function requestVillagePreview(): void {
+  window.clearTimeout(villageTimer)
+  villageTimer = window.setTimeout(() => sendToHost({ type: 'village:preview', args: { ...village } }), 150)
+}
+watch(village, requestVillagePreview, { deep: true })
+watch(mode, (m) => (m === 'village' ? requestVillagePreview() : requestPreview()))
+
 function reroll(): void {
-  args.seed = Math.floor(Math.random() * 1_000_000)
+  if (mode.value === 'village') village.seed = Math.floor(Math.random() * 1_000_000)
+  else args.seed = Math.floor(Math.random() * 1_000_000)
+}
+
+function buildVillage(): void {
+  sendToHost({ type: 'village:generate', args: { ...village } })
 }
 
 function generate(): void {
@@ -72,6 +110,64 @@ function generate(): void {
 <template>
   <div class="level ed-form">
     <section class="form">
+      <div class="modes">
+        <button :class="{ on: mode === 'dungeon' }" @click="mode = 'dungeon'">Dungeon</button>
+        <button :class="{ on: mode === 'village' }" @click="mode = 'village'">Village</button>
+      </div>
+      <template v-if="mode === 'village'">
+        <div class="row">
+          <label>Top-left</label>
+          <input v-model.number="village.x0" type="number" title="Column" />
+          <input v-model.number="village.y0" type="number" title="Row" />
+          <span class="muted">grows right and down</span>
+        </div>
+        <div class="row">
+          <label>Seed</label>
+          <input v-model.number="village.seed" type="number" min="0" />
+          <button title="Another layout" @click="reroll">🎲</button>
+        </div>
+        <div class="row">
+          <label>Houses</label>
+          <input v-model.number="village.houses" type="number" min="1" max="60" />
+          <span class="muted">size</span>
+          <input
+            v-model.number="village.houseCells"
+            type="number"
+            min="0"
+            max="6"
+            title="A house's footprint in cells; 0 = from the house art"
+          />
+          <span class="muted">cells (0 = from the art)</span>
+        </div>
+        <div class="row">
+          <label>Streets</label>
+          <input v-model.number="village.roadWidth" type="number" min="1" max="3" title="Width in cells" />
+          <span class="muted">wide</span>
+          <label class="check"><input v-model="village.square" type="checkbox" /> Square with a well</label>
+        </div>
+        <div class="row">
+          <label>Nature</label>
+          <input v-model.number="village.nature" type="range" min="0" max="1" step="0.05" class="slider" />
+          <span class="muted">{{ village.nature.toFixed(2) }}</span>
+        </div>
+        <div class="row">
+          <label>Terrain</label>
+          <input v-model="village.road" placeholder="road (found)" title="Road terrain from the tiles' edges, e.g. dirt" />
+          <span class="muted">on</span>
+          <input v-model="village.ground" placeholder="ground (found)" title="Ground terrain, e.g. grass" />
+        </div>
+        <div class="row">
+          <label></label>
+          <label class="check"><input v-model="village.fences" type="checkbox" /> Fenced gardens</label>
+          <label class="check"><input v-model="village.movePlayer" type="checkbox" /> Move the player</label>
+        </div>
+        <div class="row">
+          <label></label>
+          <button class="primary" :disabled="!!villageError" @click="buildVillage">Build village</button>
+          <span class="muted">Replaces everything in the area (but the player). Ctrl+Z undoes it.</span>
+        </div>
+      </template>
+      <template v-else>
       <div class="row">
         <label>Area</label>
         <input v-model.number="args.x0" type="number" title="First column" />
@@ -133,8 +229,13 @@ function generate(): void {
         <button class="primary" :disabled="!!error || !args.floor || !args.wall" @click="generate">Generate</button>
         <span class="muted">Replaces everything in the area (but the player). Ctrl+Z undoes it.</span>
       </div>
+      </template>
     </section>
-    <section class="preview">
+    <section v-if="mode === 'village'" class="preview">
+      <div v-if="villageError" class="error">{{ villageError }}</div>
+      <pre v-else>{{ villagePreview }}</pre>
+    </section>
+    <section v-else class="preview">
       <div v-if="error" class="error">{{ error }}</div>
       <pre v-else>{{ preview }}</pre>
     </section>
@@ -156,6 +257,19 @@ function generate(): void {
   flex-direction: column;
   gap: 5px;
   border-right: 1px solid #2a2a3a;
+}
+.modes {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+.modes button {
+  flex: 1;
+  border-radius: 0;
+}
+.modes button.on {
+  background: #3b3b5c;
+  color: #fff;
 }
 .row {
   display: flex;

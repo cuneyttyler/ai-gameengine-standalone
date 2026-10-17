@@ -146,6 +146,11 @@ ART (context "assets"): file names are often meaningless ("Ground 37"). When an 
   terrain.paintRect; the engine picks every piece (straights, corners, ends, junctions) from the analyzed
   tiles. Terrain names are the ones in the assets' "edges" (e.g. dirt on grass). Fill the ground under a
   new area first (scene.paintRect with the plain background tile) so the road has neighbours to fit.
+  VILLAGES AND TOWNS: use the level.village command (one operation) for any settlement: it lays the
+  streets and square with fitted road tiles, sizes houses from their art, faces them onto the streets,
+  fences their gardens and uses the pack's wells, fences, walls, banners, decorations, trees and rocks.
+  "A relatively large village" is 15-25 houses; a town 30+. Put it outside the existing tiles' bounds.
+  Add or adjust single things afterwards, in a later step, if asked.
 """
 
 LUA_API = """\
