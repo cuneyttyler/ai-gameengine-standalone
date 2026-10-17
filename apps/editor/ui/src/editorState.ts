@@ -17,6 +17,7 @@ export interface Prefab {
   isPlayer: boolean
   kind: 'tile' | 'character' | 'item' | 'other'
   flat: boolean // top-down art lying on the grid (5.2)
+  terrain: string | null // an analyzed ground tile: which terrain it paints with Auto-fit (6.4)
   texture: string
   uv: [number, number, number, number]
   size: [number, number]
@@ -48,6 +49,7 @@ export const editorState = reactive({
   grid: false, // tile borders on empty ground (G)
   brushScale: 1, // the prefab brush places copies at this size
   brushRotation: 0, // quarter turns for flat things the brush places (R)
+  autotile: true, // Auto-fit: terrain tiles pick their pieces (6.4)
 })
 
 // The AI panel's ✕ and the AI rail (the panel itself lives in layout.ts).
@@ -83,6 +85,7 @@ onHostMessage((message) => {
     editorState.grid = (message.grid as boolean) ?? false
     editorState.brushScale = (message.brushScale as number) ?? 1
     editorState.brushRotation = (message.brushRotation as number) ?? 0
+    editorState.autotile = (message.autotile as boolean) ?? true
   } else if (message.type === 'selection:changed') {
     editorState.selectedId = (message.id as number | null) ?? null
   } else if (message.type === 'ai:status') {

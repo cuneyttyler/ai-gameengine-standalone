@@ -11,6 +11,8 @@ add_library(aige_editing STATIC
     LevelBuild.cpp
     SceneTools.h
     SceneTools.cpp
+    Autotile.h
+    Autotile.cpp
 )
 target_include_directories(aige_editing PUBLIC ${CMAKE_SOURCE_DIR}/engine)
 target_link_libraries(aige_editing PUBLIC aige_gameplay aige_assets aige_world)

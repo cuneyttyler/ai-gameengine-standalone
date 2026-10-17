@@ -200,7 +200,7 @@ const PrefabInfo* PrefabLibrary::Find(const std::string& path) const {
 }
 
 std::optional<Entity> PrefabLibrary::Instantiate(Registry& registry, const std::string& path, float worldX,
-                                                 float worldY) {
+                                                 float worldY, bool replaceTile) {
     Template* prefab = Load(path);
     if (prefab == nullptr || !prefab->error.empty()) {
         return std::nullopt;
@@ -209,7 +209,7 @@ std::optional<Entity> PrefabLibrary::Instantiate(Registry& registry, const std::
     const bool isTile = source.all_of<Tile>(prefab->entity);
     const int gx = static_cast<int>(std::floor(worldX));
     const int gy = static_cast<int>(std::floor(worldY));
-    if (isTile) {
+    if (isTile && replaceTile) {
         Entity existing = TileGrid::Build(registry).At(gx, gy);
         if (existing != entt::null) {
             registry.destroy(existing); // a cell holds one tile

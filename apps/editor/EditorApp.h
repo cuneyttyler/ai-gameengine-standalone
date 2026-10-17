@@ -12,6 +12,7 @@
 #include "audio/Audio.h"
 #include "ecs/Registry.h"
 #include "ai_bridge/AiTranscript.h"
+#include "editing/Autotile.h"
 #include "ai_bridge/ArtHistory.h"
 #include "editing/EditHistory.h"
 #include "editor/ViewportWindow.h"
@@ -191,6 +192,10 @@ private:
     bool showGrid_ = false;   // tile borders on empty ground
     float brushScale_ = 1.0f; // the prefab brush places copies at this size
     int brushRotation_ = 0;   // quarter turns given to flat things the brush places (5.2)
+    // Auto-fit (6.4): painting a ground tile lays its terrain and the engine
+    // picks the pieces; erasing turns it back into the background.
+    bool autotile_ = true;
+    TerrainSet TerrainTiles();
     // A see-through copy of what the brush would put under the cursor (5.6),
     // in its own registry: never part of the scene, its undo or its file.
     Registry preview_;

@@ -55,6 +55,21 @@ BorderSamples SampleBorder(const ImageData& image) {
         }
         for (int c = 0; c < 3; ++c) samples.rgb[p][c] = count > 0 ? sum[c] / static_cast<float>(count) : 0.0f;
     }
+    // The middle, for the cell's own terrain (a narrow path's tile is mostly
+    // grass at the border but road through the middle).
+    {
+        Rgb sum{0.0f, 0.0f, 0.0f};
+        int count = 0;
+        const int cx = static_cast<int>(w * 0.5f), cy = static_cast<int>(h * 0.5f);
+        for (int y = std::max(0, cy - half); y <= std::min(static_cast<int>(image.height) - 1, cy + half); ++y) {
+            for (int x = std::max(0, cx - half); x <= std::min(static_cast<int>(image.width) - 1, cx + half); ++x) {
+                const size_t i = (static_cast<size_t>(y) * image.width + x) * 4;
+                for (int c = 0; c < 3; ++c) sum[c] += image.rgba[i + c] / 255.0f;
+                ++count;
+            }
+        }
+        for (int c = 0; c < 3; ++c) samples.center[c] = count > 0 ? sum[c] / static_cast<float>(count) : 0.0f;
+    }
     samples.opaque = transparent == 0;
     return samples;
 }
@@ -141,6 +156,12 @@ EdgeClassification ClassifyEdges(const std::vector<BorderSamples>& tiles, int te
         EdgeSignature signature;
         for (int p = 0; p < kBorderPoints; ++p) signature[p] = out.terrains[label[t * kBorderPoints + p]];
         out.signatures.push_back(signature);
+        // The middle joins the nearest terrain (it wasn't part of the clustering).
+        size_t best = 0;
+        for (size_t c = 1; c < centres.size(); ++c) {
+            if (Distance2(tiles[t].center, centres[c]) < Distance2(tiles[t].center, centres[best])) best = c;
+        }
+        out.centers.push_back(out.terrains[best]);
     }
     return out;
 }

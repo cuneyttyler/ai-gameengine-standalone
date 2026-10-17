@@ -19,6 +19,7 @@ constexpr int kBorderPoints = 8;
 
 struct BorderSamples {
     std::array<std::array<float, 3>, kBorderPoints> rgb{}; // 0-1, averaged over a small patch
+    std::array<float, 3> center{};                         // the middle: the cell's own terrain (6.4)
     bool opaque = true; // false: the border is (partly) transparent, so not a ground tile
 };
 
@@ -32,6 +33,7 @@ struct EdgeClassification {
     std::vector<std::string> terrains;                // names, e.g. {"grass", "dirt"}
     std::vector<std::array<float, 3>> colors;          // each terrain's average colour
     std::vector<EdgeSignature> signatures;             // one per input, in order
+    std::vector<std::string> centers;                  // each tile's middle terrain, in order
 };
 
 // Clusters every sample of a set of tiles (one art pack's ground) into

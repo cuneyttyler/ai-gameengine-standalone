@@ -49,6 +49,22 @@ bool ParseType(const std::string& value, AssetType& type) {
 
 } // namespace
 
+std::map<std::string, std::string> ReadAssetAnalysis(const Project& project, const std::string& assetPath) {
+    std::map<std::string, std::string> fields;
+    std::ifstream in(project.Resolve(assetPath + ".meta"));
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        const size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string key = line.substr(0, eq);
+        std::string value = line.substr(eq + 1);
+        while (!value.empty() && (value.back() == '' || value.back() == ' ')) value.pop_back();
+        if (key != "type" && key != "tileWidth" && key != "tileHeight" && !key.empty()) fields[key] = value;
+    }
+    return fields;
+}
+
 const char* AssetTypeName(AssetType type) {
     switch (type) {
         case AssetType::Texture: return "texture";

@@ -1511,6 +1511,29 @@ Decisions (2026-10-17, defaults the user can still change):
 - `terrain.paint` for the AI: it says which cells are road, the engine picks the pieces.
 - Tests: the right piece for every corner pattern, neighbours re-fitted, missing
   pieces falling back gracefully.
+- ✅ Built (build and tests at the end of the phase):
+  - The edge analysis also records each tile's **middle** terrain (`center=`), the
+    cell's own terrain, so a narrow path's tile counts as road although its border is
+    mostly grass.
+  - `editing/Autotile`:
+    - `BuildTerrainSet`: every tile prefab whose texture has edges and a middle.
+    - `TargetSignature`, one rule for paths and areas alike:
+      - edges: the cell's terrain where the neighbour shares it;
+      - corners: the cell's terrain only where all four cells do;
+      - background cells: always plain, so roads stay as wide as painted.
+    - `ChooseTile`: fewest mismatches, edges weighted double; the middle must match;
+      quarter turns allowed (flat art), unturned preferred.
+    - `PaintTerrain` paints and re-fits the neighbours, without changing tiles that
+      already fit. `PathCells` lays grid-following roads of any width.
+  - **Auto-fit** on the brush (toolbar, for analyzed ground tiles, on by default):
+    painting lays that tile's terrain with fitted pieces. Erasing a fitted tile turns it
+    back into the background and re-fits around it.
+  - For the AI: **`terrain.paintPath`** (points, width) and **`terrain.paintRect`**, with
+    terrain names from the edges. The prompt says to lay roads this way, never tile by
+    tile, after filling the ground.
+  - Tests: `AutotileTest` (5: the set, straights in both directions, ends, bends and
+    areas, painting into a field and re-painting, path cells) and the centre in
+    `TileEdgesTest`.
 
 **6.5 — Settlement generator**
 - Like the dungeon generator (3.4): the AI or you choose the size (hamlet, village or

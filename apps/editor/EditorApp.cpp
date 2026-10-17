@@ -522,6 +522,10 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         if (message.contains("scale") && message["scale"].is_number()) {
             brushScale_ = std::clamp(message["scale"].get<float>(), 0.1f, 10.0f);
         }
+        if (message.contains("autotile") && message["autotile"].is_boolean()) {
+            autotile_ = message["autotile"].get<bool>();
+            editorStateStale_ = true;
+        }
         std::string id = message.value("tool", "");
         for (int i = 0; i < static_cast<int>(std::size(kToolIds)); ++i) {
             if (id == kToolIds[i]) {
@@ -889,6 +893,13 @@ void EditorApp::UpdateCursor() {
     viewport_.SetCursor(cursor);
 }
 
+TerrainSet EditorApp::TerrainTiles() {
+    return BuildTerrainSet(prefabs_, [this](const std::string& asset) {
+        const AssetInfo* info = assets_.Find(asset);
+        return info ? info->analysis : std::map<std::string, std::string>{};
+    });
+}
+
 void EditorApp::Rotate() {
     if (playing_) {
         return;
@@ -1247,7 +1258,8 @@ void EditorApp::AnalyzeTileEdges(const std::vector<std::string>& paths) {
         for (const auto& tile : tiles) samples.push_back(tile.second);
         const EdgeClassification result = ClassifyEdges(samples);
         for (size_t i = 0; i < tiles.size(); ++i) {
-            std::map<std::string, std::string> fields{{"edges", FormatSignature(result.signatures[i])}};
+            std::map<std::string, std::string> fields{{"edges", FormatSignature(result.signatures[i])},
+                                                      {"center", result.centers[i]}};
             const AssetInfo* asset = assets_.Find(tiles[i].first);
             if (asset != nullptr && !asset->analysis.contains("kind")) fields["kind"] = "ground";
             assets_.SetAnalysis(tiles[i].first, fields);
@@ -1818,6 +1830,13 @@ void EditorApp::ToolStroke(float sceneX, float sceneY, bool first) {
                         Select(std::nullopt); // that tile is about to be replaced
                     }
                 }
+                if (autotile_) {
+                    const TerrainSet set = TerrainTiles();
+                    if (auto terrain = set.TerrainOf(prefab->path)) {
+                        PaintTerrain(registry_, prefabs_, set, {{gx, gy}}, *terrain, DefaultBackground(set, *terrain));
+                        break;
+                    }
+                }
                 auto painted = prefabs_.Instantiate(registry_, prefab->path, cellX, cellY);
                 if (painted && std::abs(brushScale_ - 1.0f) > 1e-3f) {
                     ScaleEntity(EngineReflection(), registry_, *painted, brushScale_);
@@ -1854,6 +1873,17 @@ void EditorApp::ToolStroke(float sceneX, float sceneY, bool first) {
             }
             if (selected_ == picked) {
                 Select(std::nullopt);
+            }
+            if (autotile_ && registry_.all_of<Tile, PrefabInstance>(*picked)) {
+                const TerrainSet set = TerrainTiles();
+                if (auto terrain = set.TerrainOf(registry_.get<PrefabInstance>(*picked).path)) {
+                    const std::string background = DefaultBackground(set, *terrain);
+                    if (set.PlainTile(background)) {
+                        const auto& tile = registry_.get<Tile>(*picked);
+                        PaintTerrain(registry_, prefabs_, set, {{tile.gx, tile.gy}}, background, background);
+                        break;
+                    }
+                }
             }
             DeleteEntity(registry_, *picked);
             break;
@@ -2989,6 +3019,13 @@ nlohmann::json EditorApp::PrefabsJson() {
                         {"name", prefab.name},
                         {"kind", prefab.kind},
                         {"flat", prefab.flat},
+                        {"terrain", [&]() -> nlohmann::json {
+                             const AssetInfo* asset = prefab.isTile ? assets_.Find(prefab.texture) : nullptr;
+                             if (asset == nullptr || !asset->analysis.contains("center") || !asset->analysis.contains("edges")) {
+                                 return nullptr;
+                             }
+                             return asset->analysis.at("center");
+                         }()},
                         {"error", prefab.error},
                         {"isTile", prefab.isTile},
                         {"isPlayer", prefab.isPlayer},
@@ -3419,7 +3456,8 @@ nlohmann::json EditorApp::EditorStateJson() {
             {"sceneName", std::filesystem::path(scenePath_).filename().string()},
             {"grid", showGrid_},
             {"brushScale", brushScale_},
-            {"brushRotation", brushRotation_}};
+            {"brushRotation", brushRotation_},
+            {"autotile", autotile_}};
 }
 
 nlohmann::json EditorApp::InspectorJson(Entity entity) {

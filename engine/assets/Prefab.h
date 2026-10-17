@@ -62,7 +62,10 @@ public:
 
     // Places a copy at a world point: characters and props stand there;
     // tile prefabs snap to the cell under it, replacing that cell's tile.
-    std::optional<Entity> Instantiate(Registry& registry, const std::string& path, float worldX, float worldY);
+    // `replaceTile` false: the caller has already cleared the cell (painting
+    // many cells at once without a grid lookup each, 6.4).
+    std::optional<Entity> Instantiate(Registry& registry, const std::string& path, float worldX, float worldY,
+                                      bool replaceTile = true);
 
     // Copies the prefab's values into one instance / every instance (of
     // `path`, or of all prefabs if empty), respecting overrides.

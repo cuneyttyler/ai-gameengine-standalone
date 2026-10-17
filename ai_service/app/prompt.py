@@ -141,6 +141,11 @@ ART (context "assets"): file names are often meaningless ("Ground 37"). When an 
   and grass at N and S). Size things by "cells": a sprite's width is cells x the cell width in pixels
   (64), its height in proportion to "pixels". Use the variety a pack offers (wells, fences, banners, rocks,
   trees, carts), not only its buildings.
+  ROADS AND GROUND: never place road or transition tiles one by one. Lay roads with the terrain.paintPath
+  command (the cells it passes through, its width) and areas such as a village square with
+  terrain.paintRect; the engine picks every piece (straights, corners, ends, junctions) from the analyzed
+  tiles. Terrain names are the ones in the assets' "edges" (e.g. dirt on grass). Fill the ground under a
+  new area first (scene.paintRect with the plain background tile) so the road has neighbours to fit.
 """
 
 LUA_API = """\

@@ -8,10 +8,13 @@
 #include "gameplay/Components.h"
 #include "gameplay/GameSession.h"
 #include "physics2d/Components.h"
+#include "editing/Autotile.h"
 #include "editing/LevelBuild.h"
+#include "assets/AssetDatabase.h"
 #include "renderer2d/Components.h"
 #include "world/WorldBible.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <filesystem>
@@ -205,6 +208,70 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
                 return Fail(error);
             }
             return {};
+        });
+
+    // Autotiling (6.4): say where the terrain goes; the engine picks the pieces.
+    auto terrainCommand = [](CommandContext& context, const std::string& terrain, std::string background,
+                             const std::vector<std::pair<int, int>>& cells) -> CommandResult {
+        if (context.prefabs == nullptr || context.project == nullptr) {
+            return Fail("prefabs aren't available here");
+        }
+        const Project& project = *context.project;
+        const TerrainSet set = BuildTerrainSet(*context.prefabs, [&](const std::string& asset) {
+            return ReadAssetAnalysis(project, asset);
+        });
+        if (set.tiles.empty()) {
+            return Fail("no analyzed ground tile prefabs: analyze the pack's tiles (Assets ▸ Analyze) and import them first");
+        }
+        if (std::find(set.terrains.begin(), set.terrains.end(), terrain) == set.terrains.end()) {
+            std::string known;
+            for (const auto& t : set.terrains) known += (known.empty() ? "" : ", ") + t;
+            return Fail("no terrain " + terrain + " (the tiles have: " + known + ")");
+        }
+        if (background.empty()) background = DefaultBackground(set, terrain);
+        if (cells.empty()) {
+            return Fail("no cells to paint");
+        }
+        if (cells.size() > 20000) {
+            return Fail("too many cells at once (at most 20000)");
+        }
+        PaintTerrain(context.registry, *context.prefabs, set, cells, terrain, background);
+        return {};
+    };
+
+    r.Command("terrain.paintRect",
+              "Paints a rectangle of cells with a terrain (e.g. dirt for a village square) and lets the engine pick "
+              "every tile, edges and corners included, from the analyzed ground tiles. Use the terrain names in the "
+              "assets' \"edges\".")
+        .Param("terrain", FieldType::String, "The terrain to paint, e.g. dirt.")
+        .Param("background", FieldType::String, "What surrounds it, e.g. grass; empty for the usual.")
+        .Param("x0", FieldType::Int, "First column.").Range(-1000, 1000)
+        .Param("y0", FieldType::Int, "First row.").Range(-1000, 1000)
+        .Param("x1", FieldType::Int, "Last column.").Range(-1000, 1000)
+        .Param("y1", FieldType::Int, "Last row.").Range(-1000, 1000)
+        .Run([terrainCommand](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            const int x0 = std::min(ToInt(args[2]), ToInt(args[4])), x1 = std::max(ToInt(args[2]), ToInt(args[4]));
+            const int y0 = std::min(ToInt(args[3]), ToInt(args[5])), y1 = std::max(ToInt(args[3]), ToInt(args[5]));
+            std::vector<std::pair<int, int>> cells;
+            for (int y = y0; y <= y1; ++y)
+                for (int x = x0; x <= x1; ++x) cells.push_back({x, y});
+            return terrainCommand(context, ToString(args[0]), ToString(args[1]), cells);
+        });
+
+    r.Command("terrain.paintPath",
+              "Lays a road (or a river) through points, along the grid, and lets the engine pick every tile: "
+              "straights, corners, ends and junctions match their neighbours. Use the terrain names in the assets' "
+              "\"edges\".")
+        .Param("terrain", FieldType::String, "The terrain to lay, e.g. dirt.")
+        .Param("background", FieldType::String, "What surrounds it, e.g. grass; empty for the usual.")
+        .Param("points", FieldType::String, "The cells it passes through, in order: \"x,y;x,y;...\".")
+        .Param("width", FieldType::Int, "Cells wide.").Range(1, 9)
+        .Run([terrainCommand](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            const auto points = ParseCells(ToString(args[2]));
+            if (points.empty()) {
+                return Fail("points are \"x,y;x,y;...\"");
+            }
+            return terrainCommand(context, ToString(args[0]), ToString(args[1]), PathCells(points, ToInt(args[3])));
         });
 
     r.Command("script.write", "Creates or replaces a Lua script (see docs/scripting.md for the API scripts can "

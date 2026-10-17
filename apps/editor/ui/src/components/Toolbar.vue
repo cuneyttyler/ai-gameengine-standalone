@@ -54,6 +54,18 @@ function send(type: string): void {
       >
         ↻ {{ editorState.brushRotation * 90 }}°
       </button>
+      <label
+        v-if="brush && brush.terrain"
+        class="size"
+        :title="`Auto-fit: painting lays ${brush.terrain} and picks every piece (edges, corners, ends) to match its neighbours; erasing turns it back`"
+      >
+        <input
+          type="checkbox"
+          :checked="editorState.autotile"
+          @change="sendToHost({ type: 'tool:set', tool: editorState.tool, autotile: ($event.target as HTMLInputElement).checked })"
+        />
+        Auto-fit {{ brush.terrain }}
+      </label>
       <label v-if="brush" class="size" title="Brush size: what the brush places next, as a % of the prefab ([ ] and Alt+wheel too, while the brush is armed)">
         Size
         <input

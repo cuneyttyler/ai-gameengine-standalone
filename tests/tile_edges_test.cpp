@@ -59,6 +59,10 @@ TEST(TileEdgesTest, BordersAreClassifiedIntoNamedTerrains) {
     EXPECT_EQ(Signature(result, 2), "dirt,grass,grass,grass,grass,grass,dirt,dirt");
     EXPECT_EQ(Signature(result, 3), "dirt,dirt,dirt,dirt,grass,dirt,dirt,dirt");
     EXPECT_EQ(Signature(result, 4), "grass,grass,grass,dirt,grass,grass,grass,dirt");
+    // The middle: a road through grass is road in the middle.
+    EXPECT_EQ(result.centers[0], "grass");
+    EXPECT_EQ(result.centers[2], "grass"); // the dirt strip is down the left side only
+    EXPECT_EQ(result.centers[4], "dirt");
 }
 
 TEST(TileEdgesTest, TransparentBordersAreNotGround) {

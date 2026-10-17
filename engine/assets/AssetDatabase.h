@@ -19,6 +19,10 @@ enum class AssetType {
 
 const char* AssetTypeName(AssetType type);
 
+// An asset's analysis (6.2) straight from its .meta, without a database:
+// for commands and tools that only have the project.
+std::map<std::string, std::string> ReadAssetAnalysis(const Project& project, const std::string& assetPath);
+
 // Everything known about one imported asset. Identity is the project-
 // relative path of the source file ("assets/textures/hero.png"), which is
 // also what scenes store in Sprite::texture — readable and diffable.
