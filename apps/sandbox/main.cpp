@@ -354,6 +354,7 @@ int main(int argc, char** argv) {
                 }
             }
 
+            renderer.SetFlatDiamonds(settings.grid.style != aige::GridStyle::TopDown);
             rhi.SetClearColor(settings.renderer.clearR, settings.renderer.clearG, settings.renderer.clearB);
             VkCommandBuffer cmd = rhi.BeginFrame();
             if (cmd != VK_NULL_HANDLE) {

@@ -1,5 +1,7 @@
 #include "gameplay/Archetypes.h"
 
+#include "gameplay/Settings.h"
+
 #include "gameplay/Components.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
@@ -37,7 +39,7 @@ TileStyle StyleFor(TileKind kind) {
     style.u1 = uv[2];
     style.v1 = uv[3];
     style.width = kTileWidth;
-    style.height = kTileHeight;
+    style.height = ActiveSettings().grid.style == GridStyle::TopDown ? kTileWidth : kTileHeight;
     style.tint = kind == TileKind::Wall ? 0.55f : 1.0f;
     style.solid = kind == TileKind::Wall;
     return style;

@@ -76,6 +76,9 @@ public:
     // Play mode.
     void ResetClock();
 
+    // The projection changed (the Grid setting, 6.1).
+    void SetIso(const IsoParams& iso) { iso_ = iso; }
+
     // The player attacks toward a world point on the next step (mouse click).
     void RequestPlayerAttack(float worldX, float worldY);
 

@@ -120,7 +120,7 @@ void AddEntityOutline(std::vector<OverlayLine>& out, Registry& registry, Entity 
     const auto* t = registry.try_get<ScreenTransform2D>(entity);
     const auto* s = registry.try_get<Sprite>(entity);
     if (t != nullptr && s != nullptr && s->flat) {
-        const SpriteQuad quad = SpriteQuadOf(*t, *s); // the diamond it lies on (5.2)
+        const SpriteQuad quad = SpriteQuadOf(*t, *s, !iso.topDown); // the cell area it lies on (5.2)
         for (int i = 0; i < 4; ++i) {
             const int j = (i + 1) % 4;
             out.push_back({quad.x[i], quad.y[i], quad.x[j], quad.y[j], thickness, rgb[0], rgb[1], rgb[2], alpha});
@@ -332,7 +332,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         if (message.value("starter", false)) {
             starter = std::filesystem::path(AIGE_EDITOR_DEFAULT_PROJECT);
         }
-        if (auto error = CreateProject(root, starter)) {
+        if (auto error = CreateProject(root, starter, message.value("topDown", false))) {
             post_({{"type", "notify"}, {"text", *error}});
             return;
         }
@@ -1971,6 +1971,15 @@ void EditorApp::AddStatsOverlay(std::vector<UiQuad>& ui) {
 
 void EditorApp::Tick(double frameSeconds) {
     PollAi();
+    // The Grid setting changed (Project Settings, an AI proposal, undo): the
+    // whole scene re-lays on the other grid (6.1).
+    if (const IsoParams grid = BootstrapIso(); grid.topDown != iso_.topDown) {
+        iso_ = grid;
+        session_.SetIso(iso_);
+        previewKey_.clear();
+        UpdateWorldToScreen(registry_, iso_);
+        FrameScene();
+    }
     frameMs_ = frameMs_ * 0.9 + frameSeconds * 1000.0 * 0.1;
     if (playing_) {
         const auto updateStart = std::chrono::steady_clock::now();

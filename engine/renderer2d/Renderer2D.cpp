@@ -565,7 +565,7 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
         const auto& s = *inst.sprite;
 
         // Upright rectangle or flat diamond (5.2), as two triangles.
-        const SpriteQuad corners = SpriteQuadOf(t, s);
+        const SpriteQuad corners = SpriteQuadOf(t, s, flatDiamonds_);
         SpriteVertex v[4];
         for (int i = 0; i < 4; ++i) {
             float vx = 0.0f;

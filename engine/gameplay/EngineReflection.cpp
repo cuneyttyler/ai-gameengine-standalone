@@ -258,6 +258,12 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Range(0, 10);
     r.Settings("Physics", "Movement and collision.", &settings.physics)
         .Field("playerCollides", &PhysicsSettings::playerCollides, "Off lets the player walk through walls.");
+    r.Settings("Grid", "How the world is laid out: diamond cells seen at an angle, or square cells seen from above.",
+               &settings.grid)
+        .Field("style", &GridSettings::style,
+               "Isometric (diamond cells) or TopDown (square cells, for art drawn from above). Changing it re-lays "
+               "the whole scene.")
+        .Options({"Isometric", "TopDown"});
     r.Settings("Game", "The game as a whole.", &settings.game)
         .Field("startScene", &GameSettings::startScene, "The scene the game starts in (scenes/*.aige).");
     r.Settings("Time", "The game clock (routines follow it).", &settings.time)

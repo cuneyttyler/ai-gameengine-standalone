@@ -1,10 +1,15 @@
 #include "gameplay/BootstrapLevel.h"
 
+#include "gameplay/Settings.h"
+
 #include "gameplay/Archetypes.h"
 
 namespace aige {
 
 IsoParams BootstrapIso() {
+    if (ActiveSettings().grid.style == GridStyle::TopDown) {
+        return {64.0f, 64.0f, 0.0f, 0.0f, true}; // square cells (6.1)
+    }
     return {64.0f, 32.0f, 640.0f, 96.0f};
 }
 

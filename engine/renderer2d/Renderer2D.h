@@ -76,6 +76,10 @@ public:
                 std::span<const OverlayLine> overlay = {}, std::span<const UiQuad> ui = {},
                 Registry* extra = nullptr);
 
+    // Flat images as diamonds (an isometric grid, the default) or squares (a
+    // top-down one, 6.1). Hosts set it from the project's Grid setting.
+    void SetFlatDiamonds(bool diamonds) { flatDiamonds_ = diamonds; }
+
     // What the last Render drew (the F3 stats overlay).
     const RenderStats& LastStats() const { return stats_; }
 
@@ -133,6 +137,7 @@ private:
     static constexpr uint32_t kVerticesPerSprite = 6;
     std::vector<Buffer> vertexBuffers_; // one per frame-in-flight
     RenderStats stats_;
+    bool flatDiamonds_ = true;
 };
 
 } // namespace aige

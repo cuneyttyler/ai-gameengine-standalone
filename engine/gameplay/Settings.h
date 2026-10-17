@@ -37,12 +37,25 @@ struct TimeSettings {
     bool showClock = false;        // always show the clock (it shows anyway when someone has a routine)
 };
 
+// How the world is laid out on screen (development_plan.md 6.1): diamond
+// cells seen at an angle, or square cells seen from straight above (for art
+// drawn top-down, whose fences and bridges run along the screen's axes).
+enum class GridStyle {
+    Isometric,
+    TopDown,
+};
+
+struct GridSettings {
+    GridStyle style = GridStyle::Isometric;
+};
+
 struct GameSettings {
     std::string startScene = "scenes/main.aige"; // where play begins (5.3)
 };
 
 struct ProjectSettings {
     GameSettings game;
+    GridSettings grid;
     RendererSettings renderer;
     CameraSettings camera;
     CombatSettings combat;

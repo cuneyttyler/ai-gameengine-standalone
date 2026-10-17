@@ -55,8 +55,10 @@ void UpdatePlayer(Registry& registry, Entity player, const KeyQueryFn& isKeyDown
     // Rotated into world space, then normalized so every direction moves at
     // exactly moveSpeed cells/s (unnormalized, screen-cardinal input would
     // move √2 faster in world space than intended).
-    float dirX = inputRight + inputDown;
-    float dirY = inputDown - inputRight;
+    const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
+    // Top-down (6.1): the screen's axes are the world's.
+    float dirX = topDown ? inputRight : inputRight + inputDown;
+    float dirY = topDown ? inputDown : inputDown - inputRight;
     float length = std::sqrt(dirX * dirX + dirY * dirY);
     auto& velocity = registry.get<Velocity2D>(player);
     if (length > 1e-4f) {
@@ -117,7 +119,7 @@ void UpdateFollowers(Registry& registry, const SolidQueryFn& isSolid, float dt) 
 void UpdateSpriteFacing(Registry& registry) {
     for (auto [entity, facing, sprite] : registry.view<Facing, Sprite>().each()) {
         // Screen-horizontal component of the world-space facing direction.
-        float screenDx = facing.x - facing.y;
+        float screenDx = ActiveSettings().grid.style == GridStyle::TopDown ? facing.x : facing.x - facing.y;
         if (std::abs(screenDx) < 0.2f) {
             continue; // moving straight up/down screen: keep the current side
         }

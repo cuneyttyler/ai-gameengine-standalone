@@ -37,7 +37,14 @@ async function newProject(): Promise<void> {
     confirmLabel: 'Use the demo palette',
     cancelLabel: 'Start empty',
   })
-  sendToHost({ type: 'project:new', name: name.trim(), starter })
+  const topDown = await confirmDialog({
+    title: 'Grid',
+    message:
+      'How is your art drawn? Isometric art (diamond-shaped ground, buildings seen at an angle) or top-down art (square ground seen from above, fences and roads along the screen). You can change it later in Project Settings ▸ Grid.',
+    confirmLabel: 'Top-down (square cells)',
+    cancelLabel: 'Isometric (diamond cells)',
+  })
+  sendToHost({ type: 'project:new', name: name.trim(), starter, topDown })
 }
 
 async function saveAs(): Promise<void> {

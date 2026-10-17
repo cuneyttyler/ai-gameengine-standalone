@@ -310,6 +310,7 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
             app.Tick(std::chrono::duration<double>(currentTime - previousTime).count());
             previousTime = currentTime;
 
+            renderer.SetFlatDiamonds(aige::ActiveSettings().grid.style != aige::GridStyle::TopDown);
             const auto& background = aige::ActiveSettings().renderer;
             rhi.SetClearColor(background.clearR, background.clearG, background.clearB);
             VkCommandBuffer cmd = rhi.BeginFrame();

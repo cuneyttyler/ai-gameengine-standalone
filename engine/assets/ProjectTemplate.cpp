@@ -31,7 +31,8 @@ bool LooksLikeProject(const fs::path& root) {
            fs::is_directory(root / "prefabs", ec);
 }
 
-std::optional<std::string> CreateProject(const fs::path& root, const std::optional<fs::path>& contentFrom) {
+std::optional<std::string> CreateProject(const fs::path& root, const std::optional<fs::path>& contentFrom,
+                                         bool topDown) {
     if (auto problem = MustBeEmptyOrMissing(root)) return problem;
     std::error_code ec;
     for (const char* folder : kFolders) {
@@ -49,7 +50,7 @@ std::optional<std::string> CreateProject(const fs::path& root, const std::option
         // Generated art's history belongs to the project it was made in.
         fs::remove_all(root / "assets" / "textures" / "generated", ec);
     }
-    std::ofstream(root / "settings.aige") << "# AIGE Settings v1\n";
+    std::ofstream(root / "settings.aige") << "# AIGE Settings v1\n" << (topDown ? "Grid style=TopDown\n" : "");
     std::ofstream(root / "README.md")
         << "# " << root.filename().string() << "\n\n"
         << "An AIGE project. Open this folder in the editor (File > Open Project).\n\n"

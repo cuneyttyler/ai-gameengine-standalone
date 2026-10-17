@@ -32,7 +32,9 @@ struct SpriteQuad {
     float u[4];
     float v[4];
 };
-SpriteQuad SpriteQuadOf(const ScreenTransform2D& transform, const Sprite& sprite);
+// `diamond`: flat images lie in a diamond (isometric); false lays them as an
+// axis-aligned rectangle (a top-down grid, 6.1), still turned by `rotation`.
+SpriteQuad SpriteQuadOf(const ScreenTransform2D& transform, const Sprite& sprite, bool diamond = true);
 
 // The last frame, for the stats overlay (F3).
 struct RenderStats {

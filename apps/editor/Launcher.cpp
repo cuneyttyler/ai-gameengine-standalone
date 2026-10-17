@@ -66,7 +66,7 @@ void Launcher::OnWebMessage(const nlohmann::json& message) {
         if (message.value("starter", false)) {
             starter = demo_;
         }
-        if (auto error = CreateProject(root, starter)) {
+        if (auto error = CreateProject(root, starter, message.value("topDown", false))) {
             post_({{"type", "welcome:error"}, {"text", *error}});
             return;
         }

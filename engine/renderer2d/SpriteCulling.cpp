@@ -17,11 +17,11 @@ bool SpriteOnScreen(const ScreenTransform2D& t, const Sprite& s, const Camera2D&
     return x1 >= 0.0f && y1 >= 0.0f && x0 <= viewportWidth && y0 <= viewportHeight;
 }
 
-SpriteQuad SpriteQuadOf(const ScreenTransform2D& t, const Sprite& s) {
+SpriteQuad SpriteQuadOf(const ScreenTransform2D& t, const Sprite& s, bool diamond) {
     SpriteQuad q{};
     const float hw = s.width * 0.5f;
     const float hh = s.height * 0.5f;
-    if (s.flat) {
+    if (s.flat && diamond) {
         // Top, right, bottom, left: the cell's corners at world (gx, gy),
         // (gx+1, gy), (gx+1, gy+1), (gx, gy+1).
         const float xs[4] = {t.x, t.x + hw, t.x, t.x - hw};

@@ -16,8 +16,10 @@ namespace aige {
 // folders, a settings file and a README. With `contentFrom`, that project's
 // art, prefabs and scripts are copied in as a starting palette (no scene,
 // story or canon). The editor builds the starter scene on first open.
+// `topDown`: square cells for art drawn from above (Grid ▸ TopDown, 6.1).
 std::optional<std::string> CreateProject(const std::filesystem::path& root,
-                                         const std::optional<std::filesystem::path>& contentFrom = std::nullopt);
+                                         const std::optional<std::filesystem::path>& contentFrom = std::nullopt,
+                                         bool topDown = false);
 
 // Copies a whole project to `to` (which must not exist, or be empty), leaving
 // out .cache/ and ai_log.jsonl. For Save Project As.

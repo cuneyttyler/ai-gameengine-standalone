@@ -1407,6 +1407,20 @@ Decisions (2026-10-17, defaults the user can still change):
 - New projects choose a style. Existing projects stay isometric.
 - Tests: projection round trips for both styles, depth order, flat quads as squares,
   movement direction, and the setting round trip.
+- ✅ Built (build and tests at the end of the phase):
+  - Project Settings ▸ **Grid ▸ style** (Isometric / TopDown). `IsoParams.topDown`, set by
+    `BootstrapIso()` from the setting, switches `ProjectIso`/`UnprojectIso` to square
+    64×64 cells along the screen axes, with depth by row. Cells, picking, the grid
+    overlay, outlines, the camera, levels and everything else that goes through the
+    projection follow.
+  - Flat images lie as squares (`SpriteQuadOf(…, diamond)`, `Renderer2D::SetFlatDiamonds`).
+    The player walks along the screen axes, faces left or right by screen direction, and
+    the built-in starter tiles fill a square cell.
+  - Changing the setting re-lays the open scene on its next frame, however it was
+    changed (Project Settings, an AI proposal, undo).
+  - New Project (editor and welcome window) asks which grid; existing projects stay
+    isometric.
+  - Tests: `GridStyleTest` (6).
 
 **6.2 — Asset understanding**
 - **Image analysis** (AI service, a vision model):
