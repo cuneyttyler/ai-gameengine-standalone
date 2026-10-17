@@ -1,5 +1,8 @@
 #include "editing/Autotile.h"
 
+#include "assets/AssetDatabase.h"
+#include "assets/TextureCook.h"
+#include "assets/TileEdges.h"
 #include "editing/Edits.h"
 #include "gameplay/Components.h"
 #include "gameplay/EngineReflection.h"
@@ -7,6 +10,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
 #include <map>
 #include <set>
 
@@ -169,6 +173,46 @@ int PaintTerrain(Registry& registry, PrefabLibrary& prefabs, const TerrainSet& s
         ++changed;
     }
     return changed;
+}
+
+AssetAnalysis ProjectAnalysis(const PrefabLibrary& prefabs, const Project& project) {
+    AssetAnalysis analysis;
+    std::map<std::string, std::vector<std::pair<std::string, BorderSamples>>> byFolder;
+    for (const PrefabInfo& info : prefabs.Prefabs()) {
+        if (info.texture.empty() || analysis.contains(info.texture)) continue;
+        auto fields = ReadAssetAnalysis(project, info.texture);
+        const bool needsEdges = info.isTile && (!fields.contains("edges") || !fields.contains("center"));
+        analysis[info.texture] = std::move(fields);
+        if (!needsEdges) continue;
+        // A ground tile: square and opaque at the border (else it's a prop).
+        auto image = DecodeImage(project.Resolve(info.texture));
+        if (!image || image->width == 0 || image->height == 0) continue;
+        const float aspect = static_cast<float>(image->width) / static_cast<float>(image->height);
+        if (aspect < 0.95f || aspect > 1.05f) continue;
+        BorderSamples samples = SampleBorder(*image);
+        if (!samples.opaque) continue;
+        byFolder[std::filesystem::path(info.texture).parent_path().generic_string()].push_back({info.texture, samples});
+    }
+    for (const auto& [folder, tiles] : byFolder) {
+        std::vector<BorderSamples> samples;
+        for (const auto& tile : tiles) samples.push_back(tile.second);
+        const EdgeClassification result = ClassifyEdges(samples);
+        for (size_t i = 0; i < tiles.size(); ++i) {
+            auto& fields = analysis[tiles[i].first];
+            fields["edges"] = FormatSignature(result.signatures[i]);
+            fields["center"] = result.centers[i];
+            if (!fields.contains("kind")) fields["kind"] = "ground";
+        }
+    }
+    return analysis;
+}
+
+TerrainSet ProjectTerrainSet(const PrefabLibrary& prefabs, const Project& project) {
+    const AssetAnalysis analysis = ProjectAnalysis(prefabs, project);
+    return BuildTerrainSet(prefabs, [&](const std::string& asset) {
+        auto it = analysis.find(asset);
+        return it == analysis.end() ? std::map<std::string, std::string>{} : it->second;
+    });
 }
 
 std::string DefaultBackground(const TerrainSet& set, const std::string& terrain) {

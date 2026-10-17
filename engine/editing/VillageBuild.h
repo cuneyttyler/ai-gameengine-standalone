@@ -34,7 +34,12 @@ struct VillageRoles {
     std::string ground;     // background terrain (grass)
     std::string road;       // road and square terrain (dirt)
     std::string groundTile; // the plain ground tile prefab
-    int houseCells = 2;     // the houses' footprint side, from their art's size
+    int houseCells = 3;     // the houses' footprint side, from their art's size
+    // How wide each prefab is made in the village, in cells (fences: along
+    // their longest side), so art imported at any size fits its plot.
+    std::map<std::string, float> cells;
+    // Props (bushes, rocks) that were made as ground tiles, so can't be used.
+    std::vector<std::string> tilesNotProps;
     // Roles the layout uses but nothing fills, for the review ("no well").
     std::vector<std::string> Missing() const;
 };

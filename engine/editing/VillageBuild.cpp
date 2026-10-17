@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <cmath>
 #include <set>
 #include <sstream>
@@ -30,8 +31,9 @@ std::set<std::string> Words(const std::string& text) {
             word += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         } else if (!word.empty()) {
             words.insert(word);
-            // "trees" counts as "tree"
+            // "trees" counts as "tree", "bushes" as "bush"
             if (word.size() > 3 && word.back() == 's') words.insert(word.substr(0, word.size() - 1));
+            if (word.size() > 4 && word.ends_with("es")) words.insert(word.substr(0, word.size() - 2));
             word.clear();
         }
     }
@@ -50,6 +52,30 @@ std::string Field(const std::map<std::string, std::string>& analysis, const char
     return it == analysis.end() ? std::string() : it->second;
 }
 
+// How wide each role's things should be, in cells: {smallest, usual, largest}.
+// Fences are measured along their longest side: one piece spans one cell.
+struct RoleSize {
+    float min, usual, max;
+};
+RoleSize SizeOf(VillageRole role, int houseCells) {
+    const float h = static_cast<float>(houseCells);
+    switch (role) {
+    case VillageRole::House: return {1.0f, h * 0.9f, h};
+    case VillageRole::Landmark: return {1.5f, h, h + 0.5f};
+    case VillageRole::Well: return {0.8f, 1.1f, 1.5f};
+    case VillageRole::Tree: return {0.8f, 1.5f, 2.2f};
+    case VillageRole::Bush: return {0.4f, 0.8f, 1.2f};
+    case VillageRole::Rock: return {0.3f, 0.7f, 1.2f};
+    case VillageRole::Decoration: return {0.3f, 0.7f, 1.2f};
+    case VillageRole::Entrance: return {0.3f, 0.6f, 1.2f};
+    case VillageRole::FenceH:
+    case VillageRole::FenceV: return {1.0f, 1.0f, 1.0f};
+    }
+    return {1.0f, 1.0f, 1.0f};
+}
+
+bool IsFence(VillageRole role) { return role == VillageRole::FenceH || role == VillageRole::FenceV; }
+
 const std::vector<VillageRole> kUsedRoles = {VillageRole::House, VillageRole::Well,       VillageRole::FenceH,
                                              VillageRole::Tree,  VillageRole::Bush,       VillageRole::Rock,
                                              VillageRole::Decoration, VillageRole::Entrance, VillageRole::Landmark};
@@ -61,8 +87,9 @@ std::vector<VillageRole> VillageRolesOf(const std::map<std::string, std::string>
     if (kind == "ground" || kind == "character" || kind == "item" || kind == "effect") return {};
     // What it is, most telling first: the analysis' name and tags, then its
     // description; without any analysis, the prefab's own name.
+    const bool described = !Field(analysis, "name").empty() || !Field(analysis, "tags").empty();
     const std::set<std::string> name = Words(Field(analysis, "name") + " " + Field(analysis, "tags") +
-                                             (analysis.empty() ? " " + prefabName : std::string()));
+                                             (described ? std::string() : " " + prefabName));
     const std::set<std::string> all = [&] {
         auto words = name;
         words.merge(Words(Field(analysis, "description")));
@@ -72,8 +99,8 @@ std::vector<VillageRole> VillageRolesOf(const std::map<std::string, std::string>
     // Fences and wall pieces both close the gardens.
     if (AnyOf(name, {"fence", "fencing", "palisade", "railing", "hedge", "wall"})) {
         const std::string direction = Field(analysis, "direction");
-        if (direction == "horizontal") return {VillageRole::FenceH};
-        if (direction == "vertical") return {VillageRole::FenceV};
+        if (direction == "horizontal" || (direction.empty() && AnyOf(name, {"horizontal"}))) return {VillageRole::FenceH};
+        if (direction == "vertical" || (direction.empty() && AnyOf(name, {"vertical"}))) return {VillageRole::FenceV};
         return {VillageRole::FenceH, VillageRole::FenceV};
     }
     if (AnyOf(name, {"well"})) return {VillageRole::Well};
@@ -100,7 +127,7 @@ std::vector<VillageRole> VillageRolesOf(const std::map<std::string, std::string>
     }
     if (kind == "decoration" ||
         AnyOf(name, {"barrel", "crate", "cart", "wagon", "campfire", "chest", "bench", "sack", "hay", "haystack",
-                     "box", "pot", "statue", "trough", "woodpile", "anvil", "stall"})) {
+                     "box", "pot", "statue", "trough", "woodpile", "anvil", "stall", "tent"})) {
         return {VillageRole::Decoration};
     }
     return {};
@@ -121,26 +148,66 @@ VillageRoles FindVillageRoles(const PrefabLibrary& prefabs, const TerrainSet& se
                               const std::function<std::map<std::string, std::string>(const std::string& asset)>& analysisOf,
                               float tileWidth, const std::string& ground, const std::string& road) {
     VillageRoles roles;
-    std::vector<float> houseWidths;
+    // Each prefab's size as the art says ("cells" from the analysis) or, if
+    // it doesn't, as imported, which may be the image's pixel size.
+    struct Measured {
+        float cells;
+        bool fromAnalysis;
+    };
+    std::map<std::string, Measured> measured;
     for (const PrefabInfo& info : prefabs.Prefabs()) {
-        if (!info.error.empty() || info.isTile || info.isPlayer || info.kind == "character" || info.kind == "item") continue;
+        if (!info.error.empty() || info.isPlayer || info.kind == "character" || info.kind == "item") continue;
         const auto analysis = info.texture.empty() ? std::map<std::string, std::string>{} : analysisOf(info.texture);
-        for (VillageRole role : VillageRolesOf(analysis, info.name)) {
-            roles.prefabs[role].push_back(info.path);
-            if (role == VillageRole::House && info.width > 0.0f && tileWidth > 0.0f) {
-                houseWidths.push_back(info.width / tileWidth);
+        if (info.isTile) {
+            // A bush or a rock made into a ground tile: it would replace the
+            // ground under it. Named in the review so it can be re-made as a prop.
+            if (!analysis.contains("edges") && !VillageRolesOf(analysis, info.name).empty()) {
+                roles.tilesNotProps.push_back(info.path);
             }
+            continue;
         }
+        const auto found = VillageRolesOf(analysis, info.name);
+        for (VillageRole role : found) roles.prefabs[role].push_back(info.path);
+        if (found.empty() || tileWidth <= 0.0f) continue;
+        const float stated = static_cast<float>(std::atof(Field(analysis, "cells").c_str()));
+        const float longest = IsFence(found.front()) ? std::max(info.width, info.height) : info.width;
+        measured[info.path] = stated > 0.0f ? Measured{stated, true} : Measured{longest / tileWidth, false};
     }
     // Fences that only run one way stand in for the other way too (better a
     // fence than a gap; turning them is 6.6).
     if (roles.prefabs[VillageRole::FenceV].empty()) roles.prefabs[VillageRole::FenceV] = roles.prefabs[VillageRole::FenceH];
     if (roles.prefabs[VillageRole::FenceH].empty()) roles.prefabs[VillageRole::FenceH] = roles.prefabs[VillageRole::FenceV];
 
-    if (!houseWidths.empty()) {
-        std::sort(houseWidths.begin(), houseWidths.end());
-        const float median = houseWidths[houseWidths.size() / 2];
-        roles.houseCells = std::clamp(static_cast<int>(std::lround(median)), 1, 6);
+    // The houses' footprint: their usual size when it's believable, else
+    // three cells (art imported at its pixel size says nothing).
+    auto median = [](std::vector<float> values) {
+        std::sort(values.begin(), values.end());
+        return values.empty() ? 0.0f : values[values.size() / 2];
+    };
+    {
+        std::vector<float> houses;
+        for (const auto& path : roles.prefabs[VillageRole::House]) {
+            if (measured.contains(path)) houses.push_back(measured.at(path).cells);
+        }
+        const float usual = median(houses);
+        roles.houseCells = usual >= 1.5f && usual <= 4.5f ? std::clamp(static_cast<int>(std::lround(usual)), 2, 4) : 3;
+    }
+    // Every prefab's width in the village. Unanalyzed ones in a role are
+    // scaled together to the role's usual size, so a small tree stays smaller
+    // than a large one; then each is kept within the role's range.
+    for (const auto& [role, paths] : roles.prefabs) {
+        const RoleSize size = SizeOf(role, roles.houseCells);
+        std::vector<float> guessed;
+        for (const auto& path : paths) {
+            if (measured.contains(path) && !measured.at(path).fromAnalysis) guessed.push_back(measured.at(path).cells);
+        }
+        const float usual = median(guessed);
+        const float scale = usual > 0.0f && (usual < size.min || usual > size.max) ? size.usual / usual : 1.0f;
+        for (const auto& path : paths) {
+            if (!measured.contains(path) || roles.cells.contains(path)) continue;
+            const Measured m = measured.at(path);
+            roles.cells[path] = std::clamp(m.fromAnalysis ? m.cells : m.cells * scale, size.min, size.max);
+        }
     }
 
     // The ground: what's asked, else the grass, else the commonest middle.
@@ -211,17 +278,23 @@ std::optional<VillagePlan> PlanVillage(const PrefabLibrary& prefabs, const Proje
         return std::nullopt;
     };
     VillagePlan plan;
-    auto analysisOf = [&](const std::string& asset) { return ReadAssetAnalysis(project, asset); };
+    // Ground tiles never analyzed get their edges from their pixels here.
+    const AssetAnalysis analysis = ProjectAnalysis(prefabs, project);
+    auto analysisOf = [&](const std::string& asset) {
+        auto it = analysis.find(asset);
+        return it == analysis.end() ? std::map<std::string, std::string>{} : it->second;
+    };
     plan.set = BuildTerrainSet(prefabs, analysisOf);
     plan.roles = FindVillageRoles(prefabs, plan.set, analysisOf, BootstrapIso().tileWidth, request.ground, request.road);
     if (plan.roles.groundTile.empty() || plan.roles.road.empty()) {
         std::string known;
         for (const auto& t : plan.set.terrains) known += (known.empty() ? "" : ", ") + t;
-        return fail("a village needs analyzed ground tiles: a plain ground tile and a road terrain (have: " +
-                    (known.empty() ? std::string("none; analyze the pack's tiles and import them") : known) + ")");
+        return fail("a village needs ground tile prefabs for a plain ground and a road on it, with the pieces "
+                    "between them (have terrains: " +
+                    (known.empty() ? std::string("none; import the pack's ground tiles as tile prefabs") : known) + ")");
     }
     if (plan.roles.prefabs[VillageRole::House].empty()) {
-        return fail("no house prefabs: import the pack's buildings (Assets ▸ Import as prefabs) after analyzing them");
+        return fail("no house prefabs: import the pack's buildings as prefabs (Assets ▸ Import as prefabs)");
     }
     plan.params = request.params;
     if (request.autoHouseCells) plan.params.houseCells = plan.roles.houseCells;
@@ -266,6 +339,9 @@ std::optional<std::string> BuildVillage(Registry& registry, PrefabLibrary& prefa
     PaintTerrain(registry, prefabs, plan.set, paved, plan.roles.road, plan.roles.ground);
     built.roadTiles = static_cast<int>(paved.size());
 
+    const IsoParams iso = BootstrapIso();
+    const bool topDown = iso.topDown;
+    const float tileWidth = iso.tileWidth;
     // The things, back to front so the scene file reads top to bottom.
     std::vector<const VillageItem*> items;
     for (const auto& item : layout.items) items.push_back(&item);
@@ -278,9 +354,25 @@ std::optional<std::string> BuildVillage(Registry& registry, PrefabLibrary& prefa
             if (it == plan.roles.prefabs.end() || it->second.empty()) continue;
         }
         const std::string& path = it->second[static_cast<size_t>(item->pick) % it->second.size()];
-        auto placed = prefabs.Instantiate(registry, path, item->x, item->y);
+        // Upright art stands with its feet on its point: on a big footprint
+        // that's the front cell, so the picture covers the footprint instead
+        // of the plot behind it.
+        float x = item->x, y = item->y;
+        if (item->size > 1) {
+            const float toFront = (item->size - 1) / 2.0f;
+            if (!topDown) x += toFront;
+            y += toFront;
+        }
+        auto placed = prefabs.Instantiate(registry, path, x, y);
         if (!placed) continue;
         built.props++;
+        if (auto want = plan.roles.cells.find(path); want != plan.roles.cells.end()) {
+            if (const auto* sized = registry.try_get<Sprite>(*placed); sized != nullptr && sized->width > 0.0f) {
+                const float current = IsFence(it->first) ? std::max(sized->width, sized->height) : sized->width;
+                const float factor = want->second * tileWidth / current;
+                if (std::abs(factor - 1.0f) > 0.02f) ScaleEntity(EngineReflection(), registry, *placed, factor);
+            }
+        }
         const auto* sprite = registry.try_get<Sprite>(*placed);
         if (item->mirror && sprite && !sprite->flat) {
             MirrorEntity(EngineReflection(), registry, *placed);
@@ -335,6 +427,17 @@ std::string DescribeVillage(const VillagePlan& plan) {
     for (VillageRole role : kUsedRoles) {
         const std::string used = names(role);
         if (!used.empty()) out << "  " << VillageRoleName(role) << ": " << used << "\n";
+    }
+    if (!plan.roles.tilesNotProps.empty()) {
+        out << "  Not used, made as ground tiles instead of props: ";
+        for (size_t i = 0; i < plan.roles.tilesNotProps.size(); ++i) {
+            const std::string& path = plan.roles.tilesNotProps[i];
+            const size_t slash = path.find_last_of('/');
+            std::string stem = path.substr(slash == std::string::npos ? 0 : slash + 1);
+            if (stem.ends_with(".prefab")) stem.resize(stem.size() - 7);
+            out << (i ? ", " : "") << stem;
+        }
+        out << ". Re-import their images as props (Assets ▸ Import as prefabs) to use them.\n";
     }
     const auto missing = plan.roles.Missing();
     if (!missing.empty()) {

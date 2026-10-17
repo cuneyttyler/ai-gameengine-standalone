@@ -192,6 +192,7 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
     });
     EnsureStarterPrefabs();
     prefabs_.Refresh();
+    AnalyzeMissingTileEdges();
     // Scenes store full copies of every instance; syncing on open applies any
     // prefab edits made since the scene was saved.
     prefabs_.SyncAll(registry_);
@@ -1286,6 +1287,32 @@ void EditorApp::AnalyzeTileEdges(const std::vector<std::string>& paths) {
             if (asset != nullptr && !asset->analysis.contains("kind")) fields["kind"] = "ground";
             assets_.SetAnalysis(tiles[i].first, fields);
         }
+    }
+}
+
+void EditorApp::AnalyzeMissingTileEdges() {
+    // Every tile image of a folder is re-read together, so its terrains are
+    // named the same way across the folder (one clustering per folder).
+    std::map<std::string, std::vector<std::string>> byFolder;
+    std::set<std::string> missing;
+    for (const PrefabInfo& info : prefabs_.Prefabs()) {
+        if (!info.isTile || info.texture.empty()) continue;
+        const std::string folder = std::filesystem::path(info.texture).parent_path().generic_string();
+        auto& list = byFolder[folder];
+        if (std::find(list.begin(), list.end(), info.texture) == list.end()) list.push_back(info.texture);
+        const AssetInfo* asset = assets_.Find(info.texture);
+        if (asset != nullptr && (!asset->analysis.contains("edges") || !asset->analysis.contains("center"))) {
+            missing.insert(folder);
+        }
+    }
+    std::vector<std::string> paths;
+    for (const auto& folder : missing) {
+        if (!edgeFoldersTried_.insert(folder).second) continue;
+        paths.insert(paths.end(), byFolder[folder].begin(), byFolder[folder].end());
+    }
+    if (!paths.empty()) {
+        AnalyzeTileEdges(paths);
+        post_(AssetsJson());
     }
 }
 
@@ -2903,6 +2930,7 @@ void EditorApp::RefreshPrefabs() {
         sceneTreeStale_ = true;
         inspectorStale_ = true;
     }
+    AnalyzeMissingTileEdges();
     post_(PrefabsJson());
 }
 

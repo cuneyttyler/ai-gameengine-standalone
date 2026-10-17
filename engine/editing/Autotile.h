@@ -1,6 +1,7 @@
 #pragma once
 
 #include "assets/Prefab.h"
+#include "assets/Project.h"
 #include "assets/TileEdges.h"
 #include "ecs/Registry.h"
 
@@ -49,6 +50,17 @@ struct TerrainSet {
 // asset's analysis fields (ReadAssetAnalysis); in prefab order.
 TerrainSet BuildTerrainSet(const PrefabLibrary& prefabs,
                            const std::function<std::map<std::string, std::string>(const std::string& asset)>& analysisOf);
+
+// Every asset's analysis as the project's .meta files have it, with border
+// edges and middles read from the pixels for tile prefabs' images that were
+// never analyzed — the edge pass (6.2) needs no AI, so a pack works without
+// pressing Analyze first. One terrain clustering per folder, as Analyze does.
+// Keyed by asset path; assets nobody uses are left out.
+using AssetAnalysis = std::map<std::string, std::map<std::string, std::string>>;
+AssetAnalysis ProjectAnalysis(const PrefabLibrary& prefabs, const Project& project);
+
+// BuildTerrainSet over ProjectAnalysis: the terrain set the commands use.
+TerrainSet ProjectTerrainSet(const PrefabLibrary& prefabs, const Project& project);
 
 // What a cell needs, given every cell's terrain and the background's.
 EdgeSignature TargetSignature(const std::function<std::string(int, int)>& terrainAt, int gx, int gy,

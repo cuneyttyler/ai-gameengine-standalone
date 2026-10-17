@@ -151,6 +151,11 @@ ART (context "assets"): file names are often meaningless ("Ground 37"). When an 
   fences their gardens and uses the pack's wells, fences, walls, banners, decorations, trees and rocks.
   "A relatively large village" is 15-25 houses; a town 30+. Put it outside the existing tiles' bounds.
   Add or adjust single things afterwards, in a later step, if asked.
+  It sizes every piece itself; don't resize its houses or trees afterwards. Don't paint the ground
+  first: it fills its own area.
+  IF level.village OR terrain.paint* FAILS: do not build the village or roads by hand instead (single
+  tiles and props give a broken result). Finish (done: true) and say in the notes what is missing,
+  quoting the error, so the user can fix it.
   TURNING: entity.turn turns flat (top-down) images by quarter turns; upright pictures can only be
   mirrored (entity.mirror), e.g. to face a cart or a door toward the road. For a fence or wall running
   the other way, use the pack's piece drawn that way ("direction"), not a turn.

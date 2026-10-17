@@ -244,12 +244,9 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
         if (context.prefabs == nullptr || context.project == nullptr) {
             return Fail("prefabs aren't available here");
         }
-        const Project& project = *context.project;
-        const TerrainSet set = BuildTerrainSet(*context.prefabs, [&](const std::string& asset) {
-            return ReadAssetAnalysis(project, asset);
-        });
+        const TerrainSet set = ProjectTerrainSet(*context.prefabs, *context.project);
         if (set.tiles.empty()) {
-            return Fail("no analyzed ground tile prefabs: analyze the pack's tiles (Assets ▸ Analyze) and import them first");
+            return Fail("no ground tile prefabs with a road or edge pattern: import the pack's ground tiles as tile prefabs first");
         }
         if (std::find(set.terrains.begin(), set.terrains.end(), terrain) == set.terrains.end()) {
             std::string known;

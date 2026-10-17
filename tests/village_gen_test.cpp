@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include "assets/Prefab.h"
+#include "assets/TextureCook.h"
+#include "gameplay/BootstrapLevel.h"
 #include "editing/VillageBuild.h"
 #include "gameplay/Archetypes.h"
 #include "gameplay/Components.h"
@@ -9,7 +11,9 @@
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 
+#include <array>
 #include <deque>
+#include <tuple>
 #include <filesystem>
 #include <map>
 #include <set>
@@ -266,5 +270,79 @@ TEST(VillageGenTest, BuildsFromThePack) {
     const auto& at = registry.get<aige::WorldTransform2D>(player);
     EXPECT_TRUE(layout.road.contains({static_cast<int>(at.x), static_cast<int>(at.y)}));
     EXPECT_NE(aige::DescribeVillage(plan).find("6 houses"), std::string::npos);
+    fs::remove_all(root);
+}
+
+// The case from testing (2026-10-17): a pack never analyzed, its house
+// imported at its pixel size (480 px, 7.5 cells). The ground tiles' edges come
+// from their pixels, and every piece is sized to the village.
+TEST(VillageGenTest, UnanalyzedPackWithHugeHousesStillBuilds) {
+    const fs::path root = fs::temp_directory_path() / "aige_village_unanalyzed";
+    fs::remove_all(root);
+    fs::create_directories(root / "prefabs");
+    fs::create_directories(root / "assets" / "pack");
+    const std::array<uint8_t, 3> grass{60, 160, 60}, dirt{220, 170, 100};
+    // A 64 px tile: grass, dirt, or a dirt strip running top to bottom.
+    auto writeTile = [&](const std::string& name, int kind) {
+        aige::ImageData image;
+        image.width = image.height = 64;
+        image.rgba.resize(64 * 64 * 4);
+        for (uint32_t y = 0; y < 64; ++y)
+            for (uint32_t x = 0; x < 64; ++x) {
+                const bool isDirt = kind == 1 || (kind == 2 && x >= 22 && x < 42);
+                const auto& c = isDirt ? dirt : grass;
+                const size_t i = (y * 64 + x) * 4;
+                image.rgba[i] = c[0];
+                image.rgba[i + 1] = c[1];
+                image.rgba[i + 2] = c[2];
+                image.rgba[i + 3] = 255;
+            }
+        ASSERT_TRUE(aige::WritePng(root / "assets" / "pack" / (name + ".png"), image));
+    };
+    aige::PrefabLibrary prefabs{aige::Project{root}};
+    for (auto [name, kind] : {std::pair{"Ground_01", 0}, std::pair{"Ground_02", 1}, std::pair{"Ground_03", 2}}) {
+        writeTile(name, kind);
+        aige::Registry scratch;
+        aige::TileStyle style;
+        style.texture = std::string("assets/pack/") + name + ".png";
+        style.flat = true;
+        prefabs.SaveAsPrefab(scratch, aige::CreateTile(scratch, 0, 0, style), std::string("prefabs/") + name + ".prefab");
+    }
+    for (auto [name, width, height] : {std::tuple{"Prop_-_House", 480.0f, 640.0f}, std::tuple{"Prop_-_Well", 300.0f, 300.0f},
+                                       std::tuple{"Prop_-_Wooden_Fence_Horizontal", 400.0f, 100.0f}}) {
+        aige::Registry scratch;
+        prefabs.SaveAsPrefab(scratch, aige::CreateProp(scratch, 0, 0, std::string("assets/pack/") + name + ".png", width, height),
+                             std::string("prefabs/") + name + ".prefab");
+    }
+    prefabs.Refresh();
+
+    aige::VillageRequest request;
+    request.params.houses = 4;
+    std::string error;
+    auto plan = aige::PlanVillage(prefabs, aige::Project{root}, request, &error);
+    ASSERT_TRUE(plan.has_value()) << error;
+    EXPECT_EQ(plan->roles.ground, "grass");
+    EXPECT_EQ(plan->roles.road, "dirt");
+    EXPECT_EQ(plan->roles.houseCells, 3); // not 7.5
+    EXPECT_EQ(plan->params.houseCells, 3);
+    EXPECT_NEAR(plan->roles.cells.at("prefabs/Prop_-_House.prefab"), 2.7f, 0.01f);
+    EXPECT_LE(plan->roles.cells.at("prefabs/Prop_-_Well.prefab"), 1.5f);
+    EXPECT_FLOAT_EQ(plan->roles.cells.at("prefabs/Prop_-_Wooden_Fence_Horizontal.prefab"), 1.0f);
+    EXPECT_EQ(plan->roles.prefabs[aige::VillageRole::FenceH],
+              std::vector<std::string>{"prefabs/Prop_-_Wooden_Fence_Horizontal.prefab"}); // by its name
+
+    aige::Registry registry;
+    ASSERT_FALSE(aige::BuildVillage(registry, prefabs, *plan, false).has_value());
+    const float tileWidth = aige::BootstrapIso().tileWidth;
+    int houses = 0, paths = 0;
+    for (auto [e, link, sprite] : registry.view<aige::PrefabInstance, aige::Sprite>().each()) {
+        if (link.path == "prefabs/Prop_-_House.prefab") {
+            ++houses;
+            EXPECT_NEAR(sprite.width, 2.7f * tileWidth, 1.0f);
+            EXPECT_NEAR(sprite.height / sprite.width, 640.0f / 480.0f, 0.01f); // in proportion
+        }
+        if (link.path == "prefabs/Ground_03.prefab") ++paths; // the narrow path piece, somewhere
+    }
+    EXPECT_EQ(houses, 4);
     fs::remove_all(root);
 }

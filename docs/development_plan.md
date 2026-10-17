@@ -1578,6 +1578,18 @@ Decisions (2026-10-17, defaults the user can still change):
     role, what the pack lacks, and a map. The prompt says to use it for any settlement
     ("relatively large" is 15–25 houses).
   - **Level tab ▸ Village**, with a live preview.
+  - After the first user test (2026-10-17): the village failed on a pack that had never
+    been analyzed, and the AI then placed pieces by hand (huge houses on sand). Now:
+    - ground tiles without analysis get their edges from their pixels
+      (`ProjectAnalysis` / `ProjectTerrainSet`, used by the village and the terrain
+      commands; the editor also saves them when a project opens);
+    - every piece is sized for the village (`VillageRoles::cells`): houses fill a
+      footprint of 3 cells when their art's size says nothing, other roles have
+      ranges, and pieces of one role keep their relative sizes; upright pieces stand on
+      the front of their footprint;
+    - roles also come from prefab names (fence direction, "bushes"); props made as
+      ground tiles are named in the review so they can be re-imported as props;
+    - the prompt tells the AI not to build by hand when the generator fails.
   - Tests: `VillageGenTest` (8: determinism, house counts and growth, no overlaps or
     props on roads, connected streets and houses facing them, the whole kit used,
     bad parameters, roles from analysis, building from a small pack).

@@ -179,6 +179,11 @@ private:
     int analyzeRequest_ = 0;
     void AnalyzeAssets(const std::vector<std::string>& paths);
     void AnalyzeTileEdges(const std::vector<std::string>& paths);
+    // Tile prefabs whose images have no border edges yet get them from their
+    // pixels (no AI needed), so Auto-fit, terrain commands and villages work
+    // without pressing Analyze. Each folder is tried once per session.
+    void AnalyzeMissingTileEdges();
+    std::set<std::string> edgeFoldersTried_;
     void ApplySuggestedNames(const std::vector<std::string>& paths);
     // Importing a pack (6.3): the plan to review, then the prefabs.
     std::vector<std::string> packPaths_;
