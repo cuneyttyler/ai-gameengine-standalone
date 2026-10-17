@@ -21,6 +21,19 @@ class ReflectionRegistry;
 std::optional<std::string> ScaleEntity(const ReflectionRegistry& reflection, Registry& registry, Entity entity,
                                        float factor);
 
+// Turning (development_plan.md 6.6). A flat (top-down) image turns
+// `turns` quarter turns clockwise (negative: back). An upright picture has
+// only one side to show, so it mirrors instead, when `turns` is odd. Through
+// the shared edit path, so on a prefab copy it's an override. Returns why not.
+std::optional<std::string> TurnEntity(const ReflectionRegistry& reflection, Registry& registry, Entity entity, int turns);
+
+// Flips an entity's image left-right (upright art facing the other way; a
+// flat image's mirror image). Returns why not.
+std::optional<std::string> MirrorEntity(const ReflectionRegistry& reflection, Registry& registry, Entity entity);
+
+// Whether its image is shown flipped left-right.
+bool IsMirrored(Registry& registry, Entity entity);
+
 // Moves an entity by a world-space step: tiles by whole cells (rounded, and
 // not onto another tile), everything else exactly. Returns whether it moved.
 bool NudgeEntity(Registry& registry, Entity entity, float dx, float dy, const IsoParams& iso);

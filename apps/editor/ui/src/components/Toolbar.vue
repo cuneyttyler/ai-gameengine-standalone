@@ -47,12 +47,17 @@ function send(type: string): void {
         <span v-else class="muted">No prefab picked</span>
       </button>
       <button
-        v-if="brush && brush.flat"
+        v-if="brush"
         class="turn"
-        :title="`Turn what the brush paints a quarter (R) — now ${editorState.brushRotation * 90}°`"
-        @click="sendToHost({ type: 'edit:rotate' })"
+        :title="
+          brush.flat
+            ? `Turn what the brush places a quarter (R, Shift+R, Shift+wheel) — now ${editorState.brushRotation * 90}°`
+            : 'Mirror what the brush places (R, Shift+wheel): upright pictures face left or right'
+        "
+        @click="sendToHost({ type: 'edit:rotate', direction: 1 })"
       >
-        ↻ {{ editorState.brushRotation * 90 }}°
+        <template v-if="brush.flat">↻ {{ editorState.brushRotation * 90 }}°</template>
+        <template v-else>⇋ {{ editorState.brushRotation % 2 ? 'mirrored' : 'as drawn' }}</template>
       </button>
       <label
         v-if="brush && brush.terrain"

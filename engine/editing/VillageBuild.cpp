@@ -3,6 +3,7 @@
 #include "assets/AssetDatabase.h"
 #include "assets/Prefab.h"
 #include "editing/Edits.h"
+#include "editing/SceneTools.h"
 #include "gameplay/BootstrapLevel.h"
 #include "gameplay/Components.h"
 #include "gameplay/EngineReflection.h"
@@ -282,9 +283,7 @@ std::optional<std::string> BuildVillage(Registry& registry, PrefabLibrary& prefa
         built.props++;
         const auto* sprite = registry.try_get<Sprite>(*placed);
         if (item->mirror && sprite && !sprite->flat) {
-            const float u0 = sprite->u0, u1 = sprite->u1;
-            EditField(EngineReflection(), registry, *placed, "Sprite", "u0", u1);
-            EditField(EngineReflection(), registry, *placed, "Sprite", "u1", u0);
+            MirrorEntity(EngineReflection(), registry, *placed);
         }
     }
 

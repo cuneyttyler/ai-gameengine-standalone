@@ -3,6 +3,7 @@
 #include "assets/Prefab.h"
 #include "assets/Project.h"
 #include "assets/SceneIO.h"
+#include "editing/Commands.h"
 #include "editing/SceneEditing.h"
 #include "editing/SceneTools.h"
 #include "gameplay/Archetypes.h"
@@ -131,4 +132,44 @@ TEST(SceneToolsTest, RemovingAPrefabKeepsItsCopiesAsOrdinaryEntities) {
     }
     EXPECT_TRUE(f.registry.all_of<aige::PrefabInstance>(other));
     EXPECT_TRUE(std::holds_alternative<std::string>(f.prefabs->Remove(f.registry, "prefabs/skeleton.prefab")));
+}
+
+// development_plan.md 6.6: flat images turn a quarter, upright ones mirror.
+TEST(SceneToolsTest, TurningFlatImagesAndMirroringUprightOnes) {
+    Fixture f;
+    aige::Entity skeleton = *f.prefabs->Instantiate(f.registry, "prefabs/skeleton.prefab", 3.5f, 3.5f);
+    const auto drawn = f.registry.get<aige::Sprite>(skeleton);
+    EXPECT_FALSE(aige::IsMirrored(f.registry, skeleton));
+
+    // Upright: an odd turn mirrors, an even one leaves it; as an override.
+    ASSERT_FALSE(aige::TurnEntity(aige::EngineReflection(), f.registry, skeleton, 1));
+    EXPECT_TRUE(aige::IsMirrored(f.registry, skeleton));
+    EXPECT_FLOAT_EQ(f.registry.get<aige::Sprite>(skeleton).u0, drawn.u1);
+    EXPECT_FLOAT_EQ(f.registry.get<aige::Sprite>(skeleton).u1, drawn.u0);
+    EXPECT_EQ(f.registry.get<aige::Sprite>(skeleton).rotation, 0);
+    EXPECT_TRUE(aige::HasOverride(f.registry, skeleton, "Sprite.u0"));
+    f.prefabs->Sync(f.registry, skeleton);
+    EXPECT_TRUE(aige::IsMirrored(f.registry, skeleton)); // a prefab update keeps it
+    ASSERT_FALSE(aige::TurnEntity(aige::EngineReflection(), f.registry, skeleton, 2));
+    EXPECT_TRUE(aige::IsMirrored(f.registry, skeleton));
+    ASSERT_FALSE(aige::MirrorEntity(aige::EngineReflection(), f.registry, skeleton));
+    EXPECT_FALSE(aige::IsMirrored(f.registry, skeleton)); // twice: as drawn
+
+    // Flat: quarter turns, either way, wrapping.
+    aige::TileStyle style;
+    style.flat = true;
+    aige::Entity tile = aige::CreateTile(f.registry, 2, 2, style);
+    ASSERT_FALSE(aige::TurnEntity(aige::EngineReflection(), f.registry, tile, 1));
+    EXPECT_EQ(f.registry.get<aige::Sprite>(tile).rotation, 1);
+    ASSERT_FALSE(aige::TurnEntity(aige::EngineReflection(), f.registry, tile, -2));
+    EXPECT_EQ(f.registry.get<aige::Sprite>(tile).rotation, 3);
+    EXPECT_FALSE(aige::IsMirrored(f.registry, tile));
+
+    // The AI has them as commands.
+    aige::RegisterEditingCommands(aige::EngineReflection());
+    const aige::CommandInfo* turn = aige::EngineReflection().FindCommand("entity.turn");
+    const aige::CommandInfo* mirror = aige::EngineReflection().FindCommand("entity.mirror");
+    ASSERT_NE(turn, nullptr);
+    ASSERT_NE(mirror, nullptr);
+    EXPECT_TRUE(aige::TurnEntity(aige::EngineReflection(), f.registry, entt::null, 1).has_value());
 }

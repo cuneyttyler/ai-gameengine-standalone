@@ -41,6 +41,33 @@ std::optional<std::string> ScaleEntity(const ReflectionRegistry& reflection, Reg
     return std::nullopt;
 }
 
+std::optional<std::string> TurnEntity(const ReflectionRegistry& reflection, Registry& registry, Entity entity, int turns) {
+    if (!registry.valid(entity)) return "that entity no longer exists";
+    const auto* sprite = registry.try_get<Sprite>(entity);
+    if (sprite == nullptr) return "it has no image to turn";
+    if (sprite->flat) {
+        const int next = ((sprite->rotation + turns) % 4 + 4) % 4;
+        if (next == sprite->rotation) return std::nullopt;
+        return EditField(reflection, registry, entity, "Sprite", "rotation", next);
+    }
+    if (turns % 2 == 0) return std::nullopt;
+    return MirrorEntity(reflection, registry, entity);
+}
+
+std::optional<std::string> MirrorEntity(const ReflectionRegistry& reflection, Registry& registry, Entity entity) {
+    if (!registry.valid(entity)) return "that entity no longer exists";
+    const auto* sprite = registry.try_get<Sprite>(entity);
+    if (sprite == nullptr) return "it has no image to mirror";
+    const float u0 = sprite->u0, u1 = sprite->u1;
+    if (auto problem = EditField(reflection, registry, entity, "Sprite", "u0", u1)) return problem;
+    return EditField(reflection, registry, entity, "Sprite", "u1", u0);
+}
+
+bool IsMirrored(Registry& registry, Entity entity) {
+    const auto* sprite = registry.try_get<Sprite>(entity);
+    return sprite != nullptr && sprite->u0 > sprite->u1;
+}
+
 bool NudgeEntity(Registry& registry, Entity entity, float dx, float dy, const IsoParams& iso) {
     if (!registry.valid(entity)) return false;
     if (registry.all_of<Tile>(entity)) {

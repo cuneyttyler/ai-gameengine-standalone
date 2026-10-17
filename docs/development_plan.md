@@ -1589,6 +1589,18 @@ Decisions (2026-10-17, defaults the user can still change):
   (a proper `entity.mirror`, not field tricks), and the artist's variant for directional
   props.
 - Tests: rotation and mirroring as overrides, the brush preview, the AI operations.
+- ✅ Built (build and tests at the end of the phase):
+  - `editing/SceneTools`: `TurnEntity` (flat: quarter turns either way; upright:
+    mirrored on odd turns), `MirrorEntity` and `IsMirrored`, all through the edit path,
+    so prefab copies keep them as overrides.
+  - Editor: **R** turns, **Shift+R** turns back, **Shift+wheel** turns either way, the
+    brush (and its see-through preview) while one is armed, else the selection; both
+    keys can be rebound. Upright brushes toggle between "as drawn" and "mirrored"; the
+    toolbar button shows which (↻ 90° or ⇋ mirrored).
+  - For the AI: **`entity.turn`** and **`entity.mirror`**; the prompt says fences and
+    walls running the other way use the pack's piece drawn that way. The village
+    generator mirrors upright art for variety through the same `MirrorEntity`.
+  - Tests: `SceneToolsTest.TurningFlatImagesAndMirroringUprightOnes`.
 
 **6.7 — The AI checks its work** *(optional)*
 - After a big change (a generated village, a pack import), the editor renders the area

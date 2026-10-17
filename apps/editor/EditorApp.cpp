@@ -765,7 +765,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         CreatePrefabFromAsset(message.value("asset", ""), message.value("tile", 0), message.value("asTile", false),
                               message.value("solid", false), message.value("name", ""), message.value("flat", false));
     } else if (type == "edit:rotate") {
-        Rotate();
+        Rotate(message.value("direction", 1) < 0 ? -1 : 1);
     } else if (type == "prefab:setFlat") {
         SetPrefabFlat(message.value("path", ""), message.value("flat", true));
     } else if (type == "prefab:saveSelected") {
@@ -872,6 +872,8 @@ void EditorApp::UpdatePreview() {
     if (auto* sprite = preview_.try_get<Sprite>(*ghost)) {
         if (sprite->flat) {
             sprite->rotation = (sprite->rotation + brushRotation_) % 4;
+        } else if (brushRotation_ % 2 == 1) {
+            std::swap(sprite->u0, sprite->u1); // upright: mirrored
         }
         sprite->a *= 0.55f;
     }
@@ -917,28 +919,34 @@ TerrainSet EditorApp::TerrainTiles() {
     });
 }
 
-void EditorApp::Rotate() {
+void EditorApp::Rotate(int direction) {
     if (playing_) {
         return;
     }
     if (tool_ == Tool::Prefab) {
-        brushRotation_ = (brushRotation_ + 1) % 4;
+        const PrefabInfo* prefab = prefabs_.Find(brushPrefab_);
+        const bool flat = prefab != nullptr && prefab->flat;
+        // Upright brushes only have two states: as drawn and mirrored.
+        brushRotation_ = flat ? (brushRotation_ + direction + 4) % 4 : (brushRotation_ % 2 == 1 ? 0 : 1);
         editorStateStale_ = true;
-        post_({{"type", "notify"}, {"text", "Brush turned to " + std::to_string(brushRotation_ * 90) + "°"}});
+        post_({{"type", "notify"},
+               {"text", flat ? "Brush turned to " + std::to_string(brushRotation_ * 90) + "°"
+                             : std::string(brushRotation_ == 1 ? "Brush mirrored" : "Brush facing as drawn")}});
         return;
     }
     if (!selected_ || !registry_.valid(*selected_)) {
+        post_({{"type", "notify"}, {"text", "Select something to turn first"}});
         return;
     }
-    const auto* sprite = registry_.try_get<Sprite>(*selected_);
-    if (sprite == nullptr || !sprite->flat) {
-        post_({{"type", "notify"}, {"text", "Only flat (top-down) images turn; this one stands upright"}});
-        return;
-    }
-    const int next = (sprite->rotation + 1) % 4;
+    const Entity entity = *selected_;
+    std::optional<std::string> problem;
     ApplyOneShotEdit([&] {
-        return !EditField(EngineReflection(), registry_, *selected_, "Sprite", "rotation", next).has_value();
+        problem = TurnEntity(EngineReflection(), registry_, entity, direction);
+        return !problem.has_value();
     });
+    if (problem) {
+        post_({{"type", "notify"}, {"text", "Can't turn it: " + *problem}});
+    }
     inspectorStale_ = true;
 }
 
@@ -967,11 +975,8 @@ void EditorApp::ApplyBrushRotation(std::optional<Entity> placed) {
     if (!placed || brushRotation_ == 0 || !registry_.valid(*placed)) {
         return;
     }
-    const auto* sprite = registry_.try_get<Sprite>(*placed);
-    if (sprite != nullptr && sprite->flat) {
-        // Through the edit path, so a prefab copy keeps it as an override.
-        EditField(EngineReflection(), registry_, *placed, "Sprite", "rotation", (sprite->rotation + brushRotation_) % 4);
-    }
+    // Through the edit path, so a prefab copy keeps it as an override.
+    TurnEntity(EngineReflection(), registry_, *placed, brushRotation_);
 }
 
 std::optional<float> EditorApp::SizePercent(Entity entity) {
@@ -1620,6 +1625,11 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
             // window) had focus, which this thread's key state never sees.
             if ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0 && !playing_) {
                 Resize(event.wheelSteps > 0 ? 1.1f : 1.0f / 1.1f);
+                return;
+            }
+            // Shift held: turn (6.6), the same way.
+            if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 && !playing_) {
+                Rotate(event.wheelSteps > 0 ? 1 : -1);
                 return;
             }
             float zoom = std::clamp(camera_.zoom * std::pow(1.15f, event.wheelSteps), kMinZoom, kMaxZoom);

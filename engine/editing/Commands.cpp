@@ -10,7 +10,9 @@
 #include "physics2d/Components.h"
 #include "editing/Autotile.h"
 #include "editing/LevelBuild.h"
+#include "editing/SceneTools.h"
 #include "editing/VillageBuild.h"
+#include "gameplay/EngineReflection.h"
 #include "assets/AssetDatabase.h"
 #include "renderer2d/Components.h"
 #include "world/WorldBible.h"
@@ -125,6 +127,31 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
                 return Fail("no such entity");
             }
             context.registry.destroy(entity);
+            return {};
+        });
+
+    // Turning and facing (development_plan.md 6.6).
+    r.Command("entity.turn",
+              "Turns an entity: a flat (top-down) image by quarter turns clockwise (negative: back), e.g. a road "
+              "piece or a rug; an upright picture (a house, a cart) mirrors when turns is odd, since it has only "
+              "one side to show. Recorded as an override on prefab copies.")
+        .Param("entity", FieldType::EntityRef, "The entity to turn.")
+        .Param("turns", FieldType::Int, "Quarter turns clockwise; -1 turns back.").Range(-3, 3)
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (auto problem = TurnEntity(EngineReflection(), context.registry, ToEntity(args[0]), ToInt(args[1]))) {
+                return Fail(*problem);
+            }
+            return {};
+        });
+
+    r.Command("entity.mirror",
+              "Flips an entity's image left-right, so upright art (a house, a cart, a character) faces the other "
+              "way. Use it to face doors and carts toward a road or for variety; mirroring twice undoes it.")
+        .Param("entity", FieldType::EntityRef, "The entity to mirror.")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (auto problem = MirrorEntity(EngineReflection(), context.registry, ToEntity(args[0]))) {
+                return Fail(*problem);
+            }
             return {};
         });
 

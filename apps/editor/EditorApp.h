@@ -204,8 +204,10 @@ private:
     void UpdatePreview();
     // The pointer says what a click does (5.6).
     void UpdateCursor();
-    // R: turns the brush while painting, else the selection (flat sprites).
-    void Rotate();
+    // R / Shift+R / Shift+wheel (6.6): the brush (and its preview) while one
+    // is armed, else the selection. Flat images turn a quarter (`direction`
+    // +1 clockwise, -1 back); upright ones mirror (a picture has one side).
+    void Rotate(int direction = 1);
     // Prefab menu (5.2): top-down art made before 5.2, laid onto the grid.
     void SetPrefabFlat(const std::string& path, bool flat);
     void ApplyBrushRotation(std::optional<Entity> placed);
