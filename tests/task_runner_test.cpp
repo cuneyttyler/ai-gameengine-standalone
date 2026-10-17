@@ -248,3 +248,22 @@ TEST_F(TaskRunnerTest, StepsReadTheProjectsArtInPlace) {
     EXPECT_FALSE(fs::exists(task->WorkingCopy() / "assets")); // read in place, not copied
     EXPECT_FALSE(fs::exists(root_ / "prefabs" / "well.prefab")); // the project is untouched until accepted
 }
+
+// Operations the service left out go back to the model like failed ones; a
+// step that can't be had at all ends the task with what was done, not nothing.
+TEST_F(TaskRunnerTest, SkippedOperationsAreReportedAndAFailedStepKeepsTheWorkSoFar) {
+    auto task = Start();
+    nlohmann::json answer = Answer({{{"op", "set_field"}, {"entity", Id(skeleton_)}, {"component", "Health"},
+                                     {"field", "max"}, {"value", 20}}},
+                                   true);
+    answer["skipped"] = {"operation 2 (add_component): entity 2414 doesn't exist"};
+    EXPECT_EQ(task->OnAnswer(answer), aige::TaskRunner::State::Working); // not done: something to redo
+    ASSERT_EQ(task->Steps().size(), 1u);
+    ASSERT_EQ(task->Steps().front().applyErrors.size(), 1u);
+    EXPECT_NE(task->NextInstruction().find("entity 2414"), std::string::npos);
+
+    task->GiveUp("The AI couldn't produce the next step.");
+    EXPECT_EQ(task->GetState(), aige::TaskRunner::State::GaveUp);
+    EXPECT_EQ(task->CombinedProposal()["operations"].size(), 1u); // step 1 is still there to accept
+    EXPECT_EQ(task->StopReason(), "The AI couldn't produce the next step.");
+}

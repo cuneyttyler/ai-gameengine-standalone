@@ -115,3 +115,35 @@ def test_a_split_answer_comes_back_with_its_suggestions(schema, context):
     assert response["proposal"]["operations"] == []
     # The model was told how to size requests.
     assert '"scope": "small" | "task" | "split"' in provider.requests[0][0]["content"]
+
+
+SPAWN_AND_GUESS = json.dumps(
+    {
+        "summary": "villagers",
+        "scope": "task",
+        "operations": [
+            {"op": "set_prefab_field", "prefab": "prefabs/skeleton.prefab", "component": "Health", "field": "max",
+             "value": 12},
+            {"op": "set_field", "entity": 4242, "component": "Health", "field": "max", "value": 5},
+        ],
+    }
+)
+
+
+def test_a_task_step_keeps_its_valid_operations_after_the_repair(schema, context):
+    # 2026-10-17: a step spawned villagers and changed them by guessed ids, twice;
+    # the whole task (with its village) was lost over it.
+    client, provider = client_with([SPAWN_AND_GUESS, SPAWN_AND_GUESS], schema=schema)
+    response = client.post("/propose", json={"instruction": "x", "context": context.model_dump()}).json()
+    assert response["ok"] is True
+    assert [op["op"] for op in response["proposal"]["operations"]] == ["set_prefab_field"]
+    assert any("entity 4242 doesn't exist" in s for s in response["proposal"]["skipped"])
+    assert "no id yet" in provider.requests[1][-1]["content"]  # the repair said why
+
+
+def test_a_plain_proposal_still_fails_as_a_whole(schema, context):
+    small = json.loads(SPAWN_AND_GUESS)
+    small["scope"] = "small"
+    client, _ = client_with([json.dumps(small), json.dumps(small)], schema=schema)
+    response = client.post("/propose", json={"instruction": "x", "context": context.model_dump()}).json()
+    assert response["ok"] is False

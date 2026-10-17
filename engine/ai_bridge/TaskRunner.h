@@ -57,6 +57,12 @@ public:
     // whether another step is needed.
     State OnAnswer(const nlohmann::json& proposal, int inputTokens = 0);
     State GetState() const { return state_; }
+    // The next step couldn't be had (the model's answer never validated):
+    // ends the task with what the steps so far did, for review.
+    void GiveUp(const std::string& reason) {
+        state_ = State::GaveUp;
+        stopReason_ = reason;
+    }
 
     // For the next request while Working: the follow-up message (step
     // results, what to do next), the task's own conversation so far, and the

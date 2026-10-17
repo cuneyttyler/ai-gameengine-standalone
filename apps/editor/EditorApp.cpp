@@ -2747,7 +2747,15 @@ void EditorApp::FeedTask(const nlohmann::json& answer, int inputTokens) {
 
 void EditorApp::OnTaskAnswer(const nlohmann::json& body) {
     if (!body.value("ok", false) || !body.contains("proposal") || body["proposal"].is_null()) {
-        StopTask(taskId_, FailureText(body, "The AI couldn't produce the next step."));
+        const std::string reason = FailureText(body, "The AI couldn't produce the next step.");
+        if (task_ && !task_->Steps().empty()) {
+            // Keep what the earlier steps did (a whole village, say): it goes
+            // up for review with the reason the task ended there.
+            task_->GiveUp(reason);
+            FinishTask();
+            return;
+        }
+        StopTask(taskId_, reason);
         return;
     }
     FeedTask(body["proposal"], body.value("usage", nlohmann::json::object()).value("inputTokens", 0));

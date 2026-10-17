@@ -227,6 +227,10 @@ class Proposal(BaseModel):
     plan: list[str] = []
     done: bool = False
     split: list[str] = []
+    # Set by the service, not the model: operations of a task step that still
+    # didn't validate after the repair round and were left out, with why. The
+    # editor reports them back so the next step can do them properly.
+    skipped: list[str] = []
 
 
 class Usage(BaseModel):

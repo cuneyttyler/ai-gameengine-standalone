@@ -143,6 +143,12 @@ TaskRunner::State TaskRunner::OnAnswer(const nlohmann::json& proposal, int input
     step.summary = proposal.value("summary", "");
     const nlohmann::json operations = proposal.value("operations", nlohmann::json::array());
     ApplyStep(operations, step);
+    // Operations the service left out because they never validated (an id
+    // guessed for something spawned in the same answer): reported like
+    // failed ones, so the next step does them properly.
+    for (const auto& skipped : proposal.value("skipped", nlohmann::json::array())) {
+        if (skipped.is_string()) step.applyErrors.push_back(skipped.get<std::string>());
+    }
 
     // An answer with nothing left to do ends the task even if the model
     // forgot to say "done".

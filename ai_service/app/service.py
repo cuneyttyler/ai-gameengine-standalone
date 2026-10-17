@@ -4,6 +4,7 @@ model's first answer doesn't validate."""
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 
 from pydantic import ValidationError
@@ -107,4 +108,31 @@ def propose(
 
         result.proposal, result.errors = proposal, errors
         messages = messages + [{"role": "assistant", "content": completion.text}, repair_message(errors)]
+    salvaged = _salvage_step(result.proposal, result.errors)
+    if salvaged is not None:
+        result.proposal, result.errors = salvaged, []
     return result
+
+
+_OPERATION_ERROR = re.compile(r"^operation (\d+) \(")
+
+
+def _salvage_step(proposal: Proposal | None, errors: list[str]) -> Proposal | None:
+    """A task step whose remaining problems are all in particular operations
+    (typically changing something spawned in the same answer, which has no id
+    yet) keeps its valid operations: they go to the working copy, and the left-
+    out ones go back to the model as "skipped", to redo in the next step once
+    what they refer to exists. Losing a whole step, and with it the task, over
+    one bad operation helps nobody. Plain proposals still fail as a whole."""
+    if proposal is None or proposal.scope != "task" or not errors:
+        return None
+    bad: set[int] = set()
+    for error in errors:
+        match = _OPERATION_ERROR.match(error)
+        if match is None:
+            return None  # a problem with the answer as a whole
+        bad.add(int(match.group(1)))
+    kept = [op for index, op in enumerate(proposal.operations, start=1) if index not in bad]
+    if not kept:
+        return None
+    return proposal.model_copy(update={"operations": kept, "skipped": list(errors)})

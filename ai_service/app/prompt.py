@@ -269,9 +269,17 @@ def build_messages(
 
 
 def repair_message(errors: list[str]) -> dict:
+    hint = ""
+    if any("doesn't exist" in e and "entity" in e for e in errors):
+        hint = (
+            "\nEntity ids are only those in the project context. Something spawned in this answer has no id"
+            " yet: spawn it now and change it in the next step (scope \"task\"), when it appears in the context"
+            " with its id; or spawn a prefab that already has what it needs."
+        )
     return {
         "role": "user",
         "content": "That proposal can't be applied:\n- "
         + "\n- ".join(errors)
+        + hint
         + "\nAnswer again with a corrected JSON object only.",
     }
