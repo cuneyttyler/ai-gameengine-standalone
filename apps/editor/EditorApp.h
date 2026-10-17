@@ -178,6 +178,10 @@ private:
     void AnalyzeAssets(const std::vector<std::string>& paths);
     void AnalyzeTileEdges(const std::vector<std::string>& paths);
     void ApplySuggestedNames(const std::vector<std::string>& paths);
+    // Importing a pack (6.3): the plan to review, then the prefabs.
+    std::vector<std::string> packPaths_;
+    void PostPackPlan(const std::vector<std::string>& paths);
+    void ImportPack(const nlohmann::json& plans);
     // Frame stats overlay (4.6, F3): smoothed frame and update times.
     bool showStats_ = false;
     double frameMs_ = 0.0;

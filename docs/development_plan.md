@@ -1480,6 +1480,27 @@ Decisions (2026-10-17, defaults the user can still change):
   props, all sized by the pack scale and named from the analysis.
 - A `prefab.create` command so the AI can make prefabs in its proposals.
 - Tests: pack scale from tiles, the sizes of imported props, the command round trip.
+- ✅ Built (build and tests at the end of the phase):
+  - `assets/PackImport`:
+    - **Pack scale**: `PackScaleFor` gives pixels per cell for a folder. Set by hand
+      (`<folder>/pack.json`), else the median width of its ground tiles, else what the
+      analysis measured (image width ÷ "cells"), else one cell per tile width; it says
+      which.
+    - **Plan**: `PlanPackImport` makes ground tiles (analysis kind, or edges found)
+      flat one-cell tiles. Everything else becomes a prop sized image px ÷ scale × cell
+      width, keeping the image's proportions; solid when the analysis says it blocks or
+      it's a building. Names come from the analysis (else the file), at
+      `prefabs/<pack>/<name>.prefab`, never clashing with existing ones.
+    - `CreatePrefabFromPlan` makes the prefab.
+  - **Assets ▸ Import as prefabs…** (what's shown, or the picked assets) opens a review
+    window. Each folder's scale (with where it came from, editable, recomputing the
+    plan) and one row per image: include, thumbnail, name, kind, Tile/Prop, width in
+    cells, solid. Then Create N prefabs.
+  - **`prefab.create`** (asset, name, tile, solid, cells; 0 cells = the pack scale) so
+    the AI can make prefabs in a proposal. The review shows it as the prefab it will
+    make; it runs on Apply, before anything in the same proposal that uses it.
+  - Tests: `PackImportTest` (5: scale from tiles or set by hand, from the analysis,
+    plan sizes and proportions, making prefabs and unique names, the AI command).
 
 **6.4 — Autotiling**
 - **Terrain sets**: ground tiles grouped by their terrains (grass/dirt), with each

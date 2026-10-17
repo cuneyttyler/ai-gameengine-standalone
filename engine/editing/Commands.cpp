@@ -1,6 +1,9 @@
 #include "editing/Commands.h"
 
+#include "assets/PackImport.h"
 #include "assets/Prefab.h"
+#include "assets/TextureCook.h"
+#include "gameplay/BootstrapLevel.h"
 #include "assets/Project.h"
 #include "gameplay/Components.h"
 #include "gameplay/GameSession.h"
@@ -11,6 +14,7 @@
 
 #include <cctype>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 
 namespace aige {
@@ -142,6 +146,62 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
             }
             std::string error;
             if (!context.prefabs->SaveAsPrefab(context.registry, entity, path, &error)) {
+                return Fail(error);
+            }
+            return {};
+        });
+
+    r.Command("prefab.create",
+              "Makes a prefab from an image asset (development_plan.md 6.3): a ground tile (painted onto cells, "
+              "lying flat) or a prop (placed, upright). Size props by the asset's analysis: \"cells\" is how many "
+              "grid cells wide it should be; 0 sizes it by its pack's scale. Saved as prefabs/<name>.prefab.")
+        .Param("asset", FieldType::Texture, "The image, e.g. assets/pack/well.png.")
+        .Param("name", FieldType::String, "Prefab path under prefabs/, without .prefab: letters, digits, - _ and /.")
+        .Param("tile", FieldType::Bool, "true: a ground tile; false: a prop.")
+        .Param("solid", FieldType::Bool, "Tiles: blocks movement. Props: blocks its cell.")
+        .Param("cells", FieldType::Float, "Props: width in grid cells (0 = by the pack's scale).").Range(0, 20)
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.prefabs == nullptr || context.project == nullptr) {
+                return Fail("prefabs aren't available here");
+            }
+            const std::string asset = ToString(args[0]);
+            const std::string name = ToString(args[1]);
+            if (asset.rfind("assets/", 0) != 0 || asset.find("..") != std::string::npos) {
+                return Fail("not an asset path: " + asset);
+            }
+            for (char c : name) {
+                if (!std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_' && c != '/') {
+                    return Fail("prefab names can use letters, digits, -, _ and /");
+                }
+            }
+            if (name.empty() || name.find("..") != std::string::npos || name.front() == '/') {
+                return Fail("a prefab needs a name");
+            }
+            auto image = DecodeImage(context.project->Resolve(asset));
+            if (!image || image->width == 0) {
+                return Fail("can't read the image " + asset);
+            }
+            const IsoParams iso = BootstrapIso();
+            PrefabPlan plan;
+            plan.asset = asset;
+            plan.name = name.substr(name.find_last_of('/') + 1);
+            plan.path = "prefabs/" + name + ".prefab";
+            plan.tile = ToBool(args[2]);
+            plan.solid = ToBool(args[3]);
+            float cells = ToFloat(args[4]);
+            if (!plan.tile) {
+                if (cells <= 0.0f) {
+                    const std::string folder = std::filesystem::path(asset).parent_path().generic_string();
+                    const float ppc = ReadPackScale(*context.project, folder).value_or(static_cast<float>(image->width));
+                    cells = static_cast<float>(image->width) / ppc;
+                }
+                plan.width = cells * iso.tileWidth;
+                plan.height = plan.width * static_cast<float>(image->height) / static_cast<float>(image->width);
+            } else {
+                plan.width = iso.tileWidth;
+                plan.height = iso.tileHeight;
+            }
+            if (std::string error = CreatePrefabFromPlan(*context.prefabs, plan, iso); !error.empty()) {
                 return Fail(error);
             }
             return {};

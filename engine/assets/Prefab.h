@@ -57,6 +57,7 @@ public:
     std::vector<std::string> Refresh();
 
     const std::vector<PrefabInfo>& Prefabs() const { return infos_; }
+    const Project& GetProject() const { return project_; }
     const PrefabInfo* Find(const std::string& path) const;
 
     // Places a copy at a world point: characters and props stand there;

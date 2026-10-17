@@ -14,6 +14,7 @@ import { onHostMessage, sendToHost } from '../ipc'
 import { askMoveManyToFolder, askMoveToFolder, foldersOf, inFolder, moveItem, renameItem, type Root } from '../organize'
 import { clickItem, emptySelection, keepShown, renamed, selectAll, type Selection } from '../selection'
 import { confirmDialog, confirmWithOption, promptDialog } from '../dialogs'
+import { openPackImport } from '../packImport'
 
 interface Asset {
   path: string
@@ -529,6 +530,14 @@ onMounted(() => {
         {{ analyzing ? `Analyzing ${analyzing}…` : `Analyze ${visible.length}` }}
       </button>
       <button
+        v-if="tab === 'assets'"
+        :disabled="editorState.playing || visible.length === 0"
+        title="Make prefabs from every image shown here, sized by their pack's scale (you review the list first)"
+        @click="openPackImport(visible.filter((a) => a.type !== 'audio').map((a) => a.path))"
+      >
+        Import as prefabs…
+      </button>
+      <button
         v-if="tab === 'prefabs' || tab === 'assets'"
         title="Rescan the project folder" @click="sendToHost({ type: 'assets:refresh' })">
         Refresh
@@ -681,6 +690,16 @@ onMounted(() => {
             @click="applyNames([...pickedAssets])"
           >
             Apply {{ suggestedRenames(pickedAssets) }} suggested name(s)
+          </button>
+        </div>
+        <div class="actions">
+          <button
+            class="primary"
+            :disabled="editorState.playing"
+            title="Prefabs for all of them, sized by their pack's scale; you review the list first"
+            @click="openPackImport([...pickedAssets])"
+          >
+            Import {{ pickedAssets.length }} as prefabs…
           </button>
         </div>
         <div class="section-label">Make a prefab from each</div>

@@ -14,6 +14,7 @@
 #include "editing/SceneTools.h"
 #include "ai_bridge/RecentProjects.h"
 #include "assets/Export.h"
+#include "assets/PackImport.h"
 #include "assets/TileEdges.h"
 #include "assets/SceneFiles.h"
 #include "assets/ProjectMove.h"
@@ -765,6 +766,16 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         post_(AssetsJson());
     } else if (type == "assets:analyze") {
         AnalyzeAssets(message.value("paths", std::vector<std::string>{}));
+    } else if (type == "pack:plan") {
+        PostPackPlan(message.value("paths", std::vector<std::string>{}));
+    } else if (type == "pack:setScale") {
+        const std::string folder = message.value("folder", "");
+        if (folder.rfind("assets/", 0) == 0 && folder.find("..") == std::string::npos) {
+            WritePackScale(assets_.GetProject(), folder, message.value("pixelsPerCell", 0.0f));
+        }
+        PostPackPlan(packPaths_);
+    } else if (type == "pack:import") {
+        ImportPack(message.value("plans", nlohmann::json::array()));
     } else if (type == "assets:applyNames") {
         ApplySuggestedNames(message.value("paths", std::vector<std::string>{}));
     } else if (type == "assets:refresh") {
@@ -1242,6 +1253,71 @@ void EditorApp::AnalyzeTileEdges(const std::vector<std::string>& paths) {
             assets_.SetAnalysis(tiles[i].first, fields);
         }
     }
+}
+
+void EditorApp::PostPackPlan(const std::vector<std::string>& paths) {
+    packPaths_ = paths;
+    std::map<std::string, PackScale> scales;
+    auto scaleFor = [&](const std::string& folder) {
+        auto it = scales.find(folder);
+        if (it == scales.end()) {
+            it = scales.emplace(folder, PackScaleFor(assets_.GetProject(), assets_, folder, iso_)).first;
+        }
+        return it->second.pixelsPerCell;
+    };
+    const auto plans = PlanPackImport(assets_, paths, prefabs_, iso_, scaleFor);
+    nlohmann::json list = nlohmann::json::array();
+    for (const PrefabPlan& plan : plans) {
+        list.push_back({{"asset", plan.asset},
+                        {"path", plan.path},
+                        {"name", plan.name},
+                        {"kind", plan.kind},
+                        {"tile", plan.tile},
+                        {"solid", plan.solid},
+                        {"cells", std::round(plan.width / iso_.tileWidth * 100.0f) / 100.0f},
+                        {"aspect", plan.width > 0.0f ? plan.height / plan.width : 1.0f}});
+    }
+    nlohmann::json folders = nlohmann::json::array();
+    for (const auto& [folder, scale] : scales) {
+        folders.push_back({{"folder", folder}, {"pixelsPerCell", scale.pixelsPerCell}, {"source", scale.source}});
+    }
+    post_({{"type", "pack:plan"}, {"plans", list}, {"scales", folders}});
+}
+
+void EditorApp::ImportPack(const nlohmann::json& plans) {
+    if (playing_) {
+        return;
+    }
+    int made = 0;
+    std::vector<std::string> failed;
+    for (const auto& p : plans) {
+        if (!p.is_object() || !p.value("include", true)) continue;
+        PrefabPlan plan;
+        plan.asset = p.value("asset", "");
+        plan.tile = p.value("tile", false);
+        plan.solid = p.value("solid", false);
+        // The name may have been edited: same folder, the new name.
+        const std::string planned = p.value("path", "");
+        plan.name = PrefabSlug(p.value("name", ""));
+        if (plan.name.empty() || plan.asset.empty()) continue;
+        plan.path = std::filesystem::path(planned).parent_path().generic_string() + "/" + plan.name + ".prefab";
+        if (plan.tile) {
+            plan.width = iso_.tileWidth;
+            plan.height = iso_.tileHeight;
+        } else {
+            plan.width = std::clamp(p.value("cells", 1.0f), 0.05f, 40.0f) * iso_.tileWidth;
+            plan.height = plan.width * p.value("aspect", 1.0f);
+        }
+        if (std::string error = CreatePrefabFromPlan(prefabs_, plan, iso_); error.empty()) {
+            ++made;
+        } else {
+            failed.push_back(plan.name + ": " + error);
+        }
+    }
+    RefreshPrefabs();
+    post_({{"type", "notify"},
+           {"text", "Made " + std::to_string(made) + " prefab(s)" +
+                        (failed.empty() ? "" : "; " + std::to_string(failed.size()) + " failed (" + failed.front() + ")")}});
 }
 
 void EditorApp::ApplySuggestedNames(const std::vector<std::string>& paths) {

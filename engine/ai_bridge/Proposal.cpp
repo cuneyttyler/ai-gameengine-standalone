@@ -432,7 +432,7 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             return item;
         }
         item.touchesFiles = name == "script.write" || name == "prefab.createFromEntity" || name == "world.write" ||
-                            name == "world.delete";
+                            name == "world.delete" || name == "prefab.create";
         nlohmann::json args = op.value("args", nlohmann::json::object());
         std::vector<FieldValue> values;
         for (const auto& param : command->params) {
@@ -484,6 +484,14 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             item.detail = DescribeLevel(params, *layout);
         } else if (name == "world.delete") {
             item.target = "World Bible · delete " + args.value("key", std::string());
+        } else if (name == "prefab.create") {
+            // Shown as the prefab it will make (6.3).
+            item.target = "New prefab prefabs/" + args.value("name", std::string()) + ".prefab";
+            item.detail = std::string(args.value("tile", false) ? "Ground tile" : "Prop") + " from " +
+                          args.value("asset", std::string()) +
+                          (args.value("tile", false) ? std::string()
+                                                     : ", " + std::to_string(args.value("cells", 0.0)).substr(0, 4) + " cells wide") +
+                          (args.value("solid", false) ? ", solid" : "");
         } else {
             nlohmann::json shown = args;
             item.detail = shown.dump();
@@ -496,7 +504,7 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
                 error = result.error;
                 return item;
             }
-            if (name == "prefab.createFromEntity" && outcome) {
+            if ((name == "prefab.createFromEntity" || name == "prefab.create") && outcome) {
                 outcome->prefabsChanged = true;
             }
             if (result.created && outcome) {

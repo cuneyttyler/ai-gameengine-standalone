@@ -17,6 +17,7 @@ import ContextMenuHost from './components/ContextMenuHost.vue'
 import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import PreferencesDialog from './components/PreferencesDialog.vue'
 import ProjectSettingsDialog from './components/ProjectSettingsDialog.vue'
+import PackImportDialog from './components/PackImportDialog.vue'
 import PanelFrame from './components/PanelFrame.vue'
 import ScenePanel from './components/ScenePanel.vue'
 import { keyLabel } from './keys'
@@ -161,6 +162,7 @@ onMounted(() => {
   <ShortcutsDialog />
   <PreferencesDialog />
   <ProjectSettingsDialog />
+  <PackImportDialog />
   <DialogHost />
 </template>
 
