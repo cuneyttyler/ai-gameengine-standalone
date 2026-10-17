@@ -7,7 +7,7 @@ surviving a restart, culling, Lua modules, and an exported game run headless. Th
 is for what tests can't judge: whether it feels right, looks right and doesn't get in
 your way.
 
-Local models (was 4.7) and mobile/3D (was 5.2–5.4) moved to Phase 6.
+Local models (was 4.7) and mobile/3D (was 5.2–5.4) moved to Later.
 
 **Before you start**
 - **Rebuild:** close the editor, then run `cmake --build build --config Debug` (this also

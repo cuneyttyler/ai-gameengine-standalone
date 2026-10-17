@@ -1055,7 +1055,7 @@ runs into.
     look if Release misses the budget: shared environments, or spatial queries
     instead of `find_nearest`'s scan.
 
-**4.7 — Local models** → moved to Phase 6 (6.1), 2026-10-16.
+**4.7 — Local models** → moved to Later, 2026-10-16.
 
 **4.8 — Module groundwork**
 - **Lua modules**: a `modules/<name>/module.json` declares components (fields with
@@ -1084,7 +1084,7 @@ runs into.
     a Lua syntax error's result outlived its VM.
 
 **Phase 4 exit criteria:** the notes are resolved; big scenes stay smooth; a project
-can add its own components without C++. (Local models moved to Phase 6.)
+can add its own components without C++. (Local models moved to Later.)
 
 ---
 
@@ -1371,22 +1371,25 @@ scenes; the editor opens to a project picker; the Phase 4 testing notes are reso
 
 ---
 
-## Phase 6 — Engine Expansion
+## Later
 
-**Goal:** local models, mobile, and the first real 3D rendering path (`technical.md`
-§8's "path to 3D"), moving the engine from "isometric indie engine" toward the
-general-purpose ambition in `product.md` §6. Moved here from Phases 4 and 5 on
-2026-10-16.
+Phases after 5 are planned as development goes (2026-10-17): each new phase is written
+when we start it, pulling in what it needs from this list and from testing. Nothing here
+is scheduled or numbered.
 
-### Milestones
+### Engine expansion
 
-**6.1 — Local models** *(was 4.7)*
+The long-term direction: local models, mobile, and the first real 3D rendering path
+(`technical.md` §8's "path to 3D"), moving the engine from "isometric indie engine"
+toward the general-purpose ambition in `product.md` §6.
+
+**Local models** *(was 4.7)*
 - An OpenAI-compatible provider, which covers Ollama, llama.cpp server and LM Studio,
   chosen per pipeline: writing, checking and embeddings. Example: proposals on
   Mistral, contradiction checks on a local model.
 - Tests: the provider against a fake OpenAI-compatible server, and configuration.
 
-**6.2 — Platform layer and mobile groundwork** *(was 5.2)*
+**Platform layer and mobile groundwork** *(was 5.2)*
 - Input, windowing, file paths and the game loop go behind `platform/` interfaces,
   so a mobile front end can plug in. There's a touch-input mapping (virtual stick and
   buttons) usable on desktop for testing, and an Android CMake preset.
@@ -1395,7 +1398,7 @@ general-purpose ambition in `product.md` §6. Moved here from Phases 4 and 5 on
   groundwork and documents the setup steps; the export itself waits for the
   toolchains.
 
-**6.3 — 3D rendering path v1** *(was 5.3)*
+**3D rendering path v1** *(was 5.3)*
 - `renderer3d` on the same RHI: a mesh pipeline with depth, a perspective camera,
   directional and ambient light, and textured meshes from glTF 2.0 (cgltf).
 - `Transform3D`, `MeshRenderer`, `Camera3D` and `Light` components are registered
@@ -1405,13 +1408,29 @@ general-purpose ambition in `product.md` §6. Moved here from Phases 4 and 5 on
 - Tests: transform and camera maths, glTF loading (meshes, materials, a bad-file
   error), components in a scene round trip, and a headless render smoke test.
 
-**6.4 — 3D in the editor (first step)** *(was 5.4)*
+**3D in the editor (first step)** *(was 5.4)*
 - The editor's viewport renders 3D scenes, with orbit, pan and zoom and picking by
   ray. The Inspector and AI work on 3D entities unchanged, through reflection.
 - Tests: the ray-picking maths, plus the checklist.
 
-**Phase 6 exit criteria:** the AI can run on a local model; a 3D scene can be built,
-edited and lit; mobile is ready to be finished when the toolchain is available.
+Done when: the AI can run on a local model; a 3D scene can be built, edited and lit;
+mobile is ready to be finished when the toolchain is available.
+
+### Editor and content (from testing)
+
+**Rotating prefabs** *(deferred 2026-10-17)*
+- Like resizing: Shift+wheel, R and Shift+R turn the brush (and its preview) while one
+  is armed, else the selection.
+- Flat (top-down) images turn a quarter. Upright ones mirror, since an upright picture
+  only has one side.
+- Shown on the toolbar next to the brush size.
+
+**Multi-cell tiles and objects** *(proposed 2026-10-16, not decided)*
+- **Footprints:** a prefab covers W×H cells. Painting or placing claims them all, a flat
+  image stretches across the area, collision covers every cell, and erasing removes it
+  as one piece. The preview shows the whole footprint.
+- **Stamps:** "Slice into tiles" cuts an image into cell-sized tile prefabs, with a
+  stamp brush that paints all of them in one click.
 
 ---
 

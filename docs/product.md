@@ -226,7 +226,7 @@ decisions are made "general from day one" vs. "deferred but not designed away."
 | **3 — Content Depth** | World Bible/lore graph, contradiction checking, dungeon layout generation, NPC schedule/behavior generation, cozy-sim content generation. |
 | **4 — Polish & Ecosystem** | Editor shell and workflow, performance passes, plugin/module groundwork. |
 | **5 — Shipping & Workflow** | Desktop export, top-down art on the isometric grid, multiple connected scenes, a start window, editor refinements from testing. |
-| **6 — Engine Expansion** | Local-model support, mobile export hardening, full 3D rendering path, broader genre support — the "become a general-purpose engine" phase. |
+| **Later** | Phases after 5 are planned as development goes. On the list: local-model support, mobile export hardening, a full 3D rendering path, broader genre support — the "become a general-purpose engine" direction. |
 
 Phases 0-2 are the load-bearing ones: nothing AI-native is credible until there's a real
 engine under it, and nothing "AI-native by construction" (§3) is possible until the
