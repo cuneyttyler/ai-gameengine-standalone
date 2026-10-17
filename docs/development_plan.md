@@ -1371,6 +1371,119 @@ scenes; the editor opens to a project picker; the Phase 4 testing notes are reso
 
 ---
 
+## Phase 6 — AI that understands the art
+
+**Goal:** the AI builds good-looking places from an art pack it has never seen. It knows
+what each image is, how big it should be, which piece of a road set goes where and how
+to lay out a settlement, instead of guessing from file names.
+
+**Why (from testing, 2026-10-17):** asked to build "a relatively large village" from a
+free top-down medieval pack (56 tiles named "Ground 01–56" plus 33 props), the AI:
+- picked the wrong road tiles: the names say nothing, and the set is a grass/dirt
+  transition set with edges, corners and multi-cell curves;
+- built a small village: placing objects one at a time doesn't scale;
+- left the houses at their image size: nothing told it the pack's scale (a 480×640
+  house on a 64×32 cell);
+- placed houses poorly and left out the well, fences and decorations.
+
+Also, that pack is drawn for a **top-down square grid**. Its fences and bridges run along
+the screen axes, which an isometric grid never lines up with.
+
+Decisions (2026-10-17, defaults the user can still change):
+- The grid style is a per-project setting.
+- Analysis keeps what it learns in the asset's metadata and only *suggests* new file
+  names; renaming happens on request, with references following.
+- Rotation comes in from Later.
+- The AI checking its own result from a screenshot is optional, at the end.
+
+### Milestones
+
+**6.1 — Grid style: isometric or top-down**
+- A project setting, Grid ▸ style: Isometric (diamond cells, as now) or Top-down
+  (square cells, axis-aligned). Everything goes through one projection
+  (`ProjectIso`/`UnprojectIso`), so cells, picking, the grid overlay, depth order,
+  flat tiles (drawn as squares, not diamonds), the camera and player movement (WASD
+  along the screen axes) all follow.
+- New projects choose a style. Existing projects stay isometric.
+- Tests: projection round trips for both styles, depth order, flat quads as squares,
+  movement direction, and the setting round trip.
+
+**6.2 — Asset understanding**
+- **Image analysis** (AI service, a vision model):
+  - Each image gets a description, a kind (ground tile, building, nature, decoration,
+    item, character, other), tags (well, fence, road-edge…), a direction where one
+    applies (a fence or bridge that runs left–right or up–down), a rough size in cells,
+    whether it blocks movement, and a suggested name.
+  - Kept in the asset's `.meta`. Assets ▸ "Analyze" works on the picked assets or a
+    whole folder.
+- **Tile edges** (engine, no AI): every tile's border is read from its pixels and each
+  corner and edge classified by terrain (e.g. grass or dirt, clustered over the set).
+  That gives each tile a signature, the basis of autotiling (6.4). Exact where a vision
+  model would guess.
+- **Names**: the suggested names can be applied (one confirmation; references follow,
+  as in 4.4). Otherwise the files stay as they are.
+- The AI's context carries descriptions, kinds, tags, directions and sizes, so it
+  chooses by meaning, not file name.
+- Tests: edge classification on generated tiles (corners, edges, inner corners, a 2×2
+  curve), the `.meta` round trip, the analysis request and validation against
+  recorded answers, renaming with references.
+
+**6.3 — Importing a pack**
+- **One scale per pack**: pixels per cell, taken from the pack's ground tiles (a 256 px
+  tile = one cell) or set by hand. Every prop keeps the artist's proportions (a house
+  about 2 cells, a barrel half a cell) instead of each item being guessed separately.
+- **Import as prefabs** (picked assets or a folder): one reviewed proposal that makes
+  every prefab. Ground tiles become flat tiles, buildings and big props solid, the rest
+  props, all sized by the pack scale and named from the analysis.
+- A `prefab.create` command so the AI can make prefabs in its proposals.
+- Tests: pack scale from tiles, the sizes of imported props, the command round trip.
+
+**6.4 — Autotiling**
+- **Terrain sets**: ground tiles grouped by their terrains (grass/dirt), with each
+  tile's corner signature (6.2).
+- **Terrain brush**: paint "dirt" on grass (a road, a square) and the engine picks every
+  cell's piece, edges, corners and ends, re-fitting the neighbours. The same goes for
+  erasing.
+- `terrain.paint` for the AI: it says which cells are road, the engine picks the pieces.
+- Tests: the right piece for every corner pattern, neighbours re-fitted, missing
+  pieces falling back gracefully.
+
+**6.5 — Settlement generator**
+- Like the dungeon generator (3.4): the AI or you choose the size (hamlet, village or
+  town, or a number of houses), the style and which assets fill each role. The engine
+  lays out:
+  - a main road and side roads, autotiled (6.4), with a square in the middle;
+  - plots along the roads, with houses facing the road and kept apart;
+  - a well in the square, fenced gardens (fence variants by direction), trees and
+    bushes towards the edges;
+  - banners and a watchtower at the entrances, barrels, carts and a campfire as
+    decoration.
+- Roles come from the analysis (6.2): house, well, fence (left–right / up–down),
+  tree, bush, rock, decoration, landmark.
+- `level.village` for the AI: one command, any size, still a reviewed proposal.
+  It's also in the Level tab.
+- Tests: connectivity (every house reachable by road), no overlaps, plots facing roads,
+  every role used when available, size scaling, determinism by seed.
+
+**6.6 — Rotation and facing** *(from Later)*
+- Like resizing: Shift+wheel, R and Shift+R turn the brush (and its preview) while one
+  is armed, else the selection. Flat images turn a quarter; upright ones mirror.
+- For the AI, the same rules: quarter turns for flat images, mirroring for upright ones
+  (a proper `entity.mirror`, not field tricks), and the artist's variant for directional
+  props.
+- Tests: rotation and mirroring as overrides, the brush preview, the AI operations.
+
+**6.7 — The AI checks its work** *(optional)*
+- After a big change (a generated village, a pack import), the editor renders the area
+  and a vision model compares it with the request, suggesting fixes as a follow-up
+  proposal.
+
+**Phase 6 exit criteria:** from an unfamiliar pack, the AI imports everything at sensible
+sizes, lays roads with the right pieces, and builds a village of the requested size that
+uses the pack's houses, well, fences and decorations, on the grid the art was drawn for.
+
+---
+
 ## Later
 
 Phases after 5 are planned as development goes (2026-10-17): each new phase is written
@@ -1418,7 +1531,7 @@ mobile is ready to be finished when the toolchain is available.
 
 ### Editor and content (from testing)
 
-**Rotating prefabs** *(deferred 2026-10-17)*
+**Rotating prefabs** *(deferred 2026-10-17; now Phase 6.6)*
 - Like resizing: Shift+wheel, R and Shift+R turn the brush (and its preview) while one
   is armed, else the selection.
 - Flat (top-down) images turn a quarter. Upright ones mirror, since an upright picture
