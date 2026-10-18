@@ -136,17 +136,30 @@ bool LooksLikeBuildRequest(const Ontology& ontology, const std::string& text) {
         }
         if (const ModuleDef* root = ontology.Module(build.root)) places.insert(root->id);
     }
-    const auto words = Words(text);
+    // The request's first sentence says what it is: "Build a village by a river.
+    // Add gardens." is a build; "This part looks bad, can you revise it? ...the
+    // village builder..." is not, however often a place is named later on.
+    const size_t end = text.find_first_of(".?!\n");
+    const auto first = Words(end == std::string::npos ? text : text.substr(0, end));
+    const auto all = Words(text);
+    auto scan = [&](const std::vector<std::string>& words, bool& verb, bool& place, bool& edit) {
+        for (const auto& w : words) {
+            verb |= verbs.contains(w);
+            edit |= edits.contains(w);
+            std::string singular = w.size() > 3 && w.back() == 's' ? w.substr(0, w.size() - 1) : w;
+            place |= places.contains(w) || places.contains(singular);
+        }
+    };
     bool verb = false, place = false, edit = false;
-    for (const auto& w : words) {
-        verb |= verbs.contains(w);
-        edit |= edits.contains(w);
-        std::string singular = w.size() > 3 && w.back() == 's' ? w.substr(0, w.size() - 1) : w;
-        place |= places.contains(w) || places.contains(singular);
-    }
+    scan(first, verb, place, edit);
     // "a village by a river" (just the place) counts; "make the town's skeletons tougher" doesn't.
     if (edit) return false;
-    return place && (verb || words.size() <= 12);
+    if (place && (verb || first.size() <= 12)) return true;
+    // A short request may name the place after its first sentence ("Please. A village by a river").
+    if (all.size() > 25) return false;
+    verb = place = edit = false;
+    scan(all, verb, place, edit);
+    return !edit && place && verb;
 }
 
 json BriefValue(const json& brief, const std::string& path) {

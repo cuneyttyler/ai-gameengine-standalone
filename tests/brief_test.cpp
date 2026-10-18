@@ -77,6 +77,12 @@ TEST(BriefTest, BuildRequestsAreRecognised) {
     EXPECT_FALSE(LooksLikeBuildRequest(Library(), "make the skeletons tougher"));
     EXPECT_FALSE(LooksLikeBuildRequest(Library(), "move the village well two cells left"));
     EXPECT_FALSE(LooksLikeBuildRequest(Library(), "add a quest about the missing sheep"));
+    // A long message that only mentions places is not a build.
+    EXPECT_FALSE(LooksLikeBuildRequest(Library(), "This part looks bad, can you revise it?\n\nIII. METHOD Every build runs the same "
+                                                  "procedure. Use generated png for a big village layout and final generated "
+                                                  "content for a small village"));
+    EXPECT_TRUE(LooksLikeBuildRequest(Library(), "build a large village by river with several sections (marketplace, accodomations etc)"));
+    EXPECT_TRUE(LooksLikeBuildRequest(Library(), "Build a walled town. It should have a market, a temple and lots of gardens around the houses, and a river through the middle with two bridges."));
 }
 
 TEST(BriefTest, VagueQueryDraftsDisagreeAndAreMarked) {
