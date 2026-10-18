@@ -61,6 +61,12 @@ nlohmann::json CompleteBrief(const Ontology& ontology, nlohmann::json brief, con
 // class's; new numbers move the class to the one they fit.
 void FollowScale(const Ontology& ontology, nlohmann::json& brief, const std::string& changedPath);
 
+// When the AI can't read the request: a draft (as Interpret returns them) made
+// from the request's own words: its size class ("large village"), the
+// components and features it names ("gardens", "a river", "walled"), a few
+// usual components, every field marked as a guess, and an assumption saying so.
+nlohmann::json FallbackDraft(const Ontology& ontology, const std::string& query);
+
 // The project defaults a confirmed Brief leaves (per build type: component
 // sources and settings, style): the next build starts from them.
 nlohmann::json DefaultsAfter(const nlohmann::json& brief, nlohmann::json defaults);

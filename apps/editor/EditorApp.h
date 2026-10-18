@@ -152,6 +152,8 @@ private:
     // (7.4) unless `asChange`; anything else becomes a proposal.
     void SendToAi(const std::string& text, const std::string& focus, bool asChange = false);
     void StartBuild(const std::string& query);
+    void ResumeBuild(const std::string& id); // a build of the project, from places/<id>/
+    std::unique_ptr<PlaceBuild> MakeBuild();
     void PostBuild();
     void OnProposal(int requestId, const nlohmann::json& body);
     void ApplyProposal(int proposalId, const nlohmann::json& decisions);

@@ -82,6 +82,7 @@ interface BuildState {
   round: number
   status: string
   errors: string[]
+  notices?: string[] // what the build did on its own when something failed
   name?: string
   window?: BuildWindow
   progress?: { zones: number; done: number }
@@ -109,19 +110,35 @@ const STEPS = [
   { id: 'result', label: '⑤ Result' },
 ]
 
+interface BuildEntry {
+  id: string
+  query: string
+  name: string
+  stage: string
+  updated: number // seconds since the epoch
+}
+
 const state = ref<BuildState | null>(null)
+const builds = ref<BuildEntry[]>([])
+// The start screen shown over an open build (the header's Builds).
+const browsing = ref(false)
 const query = ref('')
 const showAll = ref(false)
 
 onHostMessage((message) => {
   if (message.type === 'build:state') {
     state.value = message.stage ? (message as unknown as BuildState) : null
+    if (!state.value || ['cancelled', 'failed'].includes(state.value.stage)) sendToHost({ type: 'build:list' })
+  } else if (message.type === 'build:list') {
+    builds.value = (message.builds as BuildEntry[]) ?? []
   } else if (message.type === 'build:open') {
+    browsing.value = false
     setPanelVisible('build', true)
     activatePanel('build')
   }
 })
 sendToHost({ type: 'build:request' })
+sendToHost({ type: 'build:list' })
 
 const win = computed(() => state.value?.window ?? null)
 const stage = computed(() => state.value?.stage ?? '')
@@ -134,7 +151,6 @@ const activeStep = computed(() =>
   stage.value === 'assets' ? 'assets' : ['planning', 'plan', 'planned'].includes(stage.value) ? 'plan' : 'request',
 )
 const ZONE_COLOURS = ['#a6e3a1', '#fab387', '#cba6f7', '#f9e2af', '#94e2d5', '#f38ba8']
-const planErrors = computed(() => (state.value?.problems ?? []).filter((p) => !p.warning))
 const selectedZone = ref<string | null>(null)
 const bigMap = ref(false)
 
@@ -163,6 +179,31 @@ function urlOf(path: string): string {
 }
 function start(): void {
   if (query.value.trim()) sendToHost({ type: 'build:start', query: query.value.trim() })
+}
+function browse(): void {
+  browsing.value = true
+  sendToHost({ type: 'build:list' })
+}
+function resume(id: string): void {
+  browsing.value = false
+  if (id !== state.value?.id || ['cancelled', 'failed'].includes(stage.value)) sendToHost({ type: 'build:resume', id })
+}
+const STAGE_NAMES: Record<string, string> = {
+  interpreting: 'reading the request',
+  request: '① Request',
+  assets: '② Assets',
+  planning: 'planning',
+  plan: '③ Plan',
+  planned: 'laid out',
+  cancelled: 'stopped',
+  failed: 'stopped',
+}
+function when(seconds: number): string {
+  const d = new Date(seconds * 1000)
+  const today = new Date()
+  return d.toDateString() === today.toDateString()
+    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString([], { day: 'numeric', month: 'short', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' })
 }
 function setBuildings(which: 0 | 1, text: string): void {
   const range = countRange(win.value?.size.buildings)
@@ -232,11 +273,17 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           {{ s.label }}
         </button>
       </div>
-      <span v-if="state" class="title">{{ state.name || state.query }}</span>
+      <span v-if="state && !browsing" class="title">{{ state.name || state.query }}</span>
+      <button v-if="state && !browsing && !['cancelled', 'failed'].includes(stage)" class="browse" title="Start another build or reopen an earlier one" @click="browse">Builds</button>
+      <button v-if="browsing" class="browse" @click="browsing = false">Back to {{ state?.name || 'the build' }}</button>
     </div>
 
+    <section v-if="state?.notices?.length && !browsing" class="note notices">
+      <div v-for="n in state.notices" :key="n">{{ n }}</div>
+    </section>
+
     <!-- No build yet, or the last one is over: ask for one. -->
-    <div v-if="!state || stage === 'cancelled' || stage === 'failed'" class="body start">
+    <div v-if="browsing || !state || stage === 'cancelled' || stage === 'failed'" class="body start">
       <p v-if="stage === 'failed'" class="error">{{ state?.errors.join(' · ') }}</p>
       <p v-else-if="stage === 'cancelled'" class="dim">The build was cancelled.</p>
       <p class="dim">Describe a place to build. You'll confirm the details before anything is made.</p>
@@ -244,6 +291,14 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <input v-model="query" placeholder="e.g. a large village by a river, with gardens and a market" @keydown.enter="start" />
         <button class="primary" :disabled="!query.trim()" @click="start">Start</button>
       </div>
+      <section v-if="builds.length" class="builds">
+        <h4>Your builds</h4>
+        <button v-for="b in builds" :key="b.id" class="build-row" :class="{ current: b.id === state?.id && !['cancelled', 'failed'].includes(stage) }" :title="b.query" @click="resume(b.id)">
+          <span class="name">{{ b.name || b.query }}</span>
+          <span class="dim">{{ STAGE_NAMES[b.stage] ?? b.stage }}</span>
+          <span class="dim when">{{ when(b.updated) }}</span>
+        </button>
+      </section>
     </div>
 
     <div v-else-if="stage === 'interpreting'" class="body start">
@@ -312,7 +367,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <div class="actions">
         <button @click="sendToHost({ type: 'build:cancel' })">Cancel</button>
         <button v-if="stage === 'plan'" @click="sendToHost({ type: 'build:step', step: 'assets' })">Back</button>
-        <button v-if="stage === 'plan'" class="primary" :disabled="planErrors.length > 0" @click="sendToHost({ type: 'build:approve' })">
+        <button v-if="stage === 'plan'" class="primary" @click="sendToHost({ type: 'build:approve' })">
           Approve plan
         </button>
         <span v-else class="dim">{{ state.status }}</span>
@@ -730,6 +785,45 @@ button.link {
   border-left: 3px solid #89b4fa;
   padding: 6px 10px;
   margin: 8px 0;
+}
+.notices {
+  margin: 8px 12px 0;
+  border-left-color: #f9e2af;
+}
+.builds {
+  margin-top: 16px;
+}
+.builds h4 {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+.build-row {
+  display: flex;
+  width: 100%;
+  gap: 12px;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid #313244;
+  padding: 5px 6px;
+}
+.build-row .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.build-row .when {
+  width: 70px;
+  text-align: right;
+}
+.build-row:hover {
+  background: #313244;
+}
+.build-row.current .name {
+  color: #89b4fa;
+}
+.browse {
+  margin-left: auto;
 }
 .note ul {
   margin: 4px 0 0 16px;

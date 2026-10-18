@@ -391,6 +391,59 @@ void FollowScale(const Ontology& ontology, json& brief, const std::string& chang
     }
 }
 
+json FallbackDraft(const Ontology& ontology, const std::string& query) {
+    if (ontology.Builds().empty()) return json();
+    const BuildType& build = ontology.Builds().begin()->second;
+    std::string text;
+    for (const auto& w : Words(query)) text += " " + w;
+    text += " ";
+    auto says = [&](const std::string& phrase) { return text.find(" " + phrase + " ") != std::string::npos; };
+    auto saysWord = [&](const std::string& word) { return says(word) || says(word + "s"); };
+    // The size class: the longest one named ("large village" before "village").
+    std::string cls;
+    for (const auto& s : build.scale) {
+        std::string words = s.id;
+        std::replace(words.begin(), words.end(), '-', ' ');
+        if (says(words) && words.size() > cls.size()) cls = s.id;
+    }
+    if (cls.empty()) {
+        if (saysWord("big") || saysWord("large")) cls = build.scale.size() > 2 ? build.scale[2].id : build.scale.back().id;
+        else cls = build.scale.size() > 1 ? build.scale[1].id : build.scale.front().id;
+    }
+    json components = json::object();
+    components["residential-ward"] = {{"enabled", true}};
+    if (cls != "hamlet") components["market-ward"] = {{"enabled", true}};
+    if (cls == "town" || cls == "city") components["craftsmen-ward"] = {{"enabled", true}};
+    // Components the request names, by their id or name ("gardens", "market", "docks").
+    for (const auto& id : build.components) {
+        const ModuleDef* m = ontology.Module(id);
+        if (m == nullptr) continue;
+        std::string name = m->name;
+        for (char& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        std::string spaced = id;
+        std::replace(spaced.begin(), spaced.end(), '-', ' ');
+        const std::string head = spaced.substr(0, spaced.find(' '));
+        if (says(spaced) || says(name) || (head.size() > 3 && saysWord(head) && (m->level == PlaceLevel::Feature || m->level == PlaceLevel::Zone))) {
+            components[id] = {{"enabled", true}};
+        }
+    }
+    json features = json::array();
+    for (const char* f : {"river", "lake"}) {
+        if (saysWord(f)) features.push_back({{"module", f}});
+    }
+    const bool walled = saysWord("wall") || says("walled");
+    json brief = {{"schema", "aige.brief/1"}, {"buildType", build.id}, {"name", "New " + build.name},
+                  {"scale", {{"class", cls}}}, {"walled", walled ? "stone" : "none"}, {"features", features},
+                  {"shape", {{"layout", "organic"}}}, {"components", components}};
+    json confidence = {{"scale.class", 0.3}, {"name", 0.2}, {"shape.layout", 0.3}, {"walled", 0.4}};
+    for (const auto& [id, c] : components.items()) confidence["components." + id + ".enabled"] = 0.4;
+    return {{"reading", "fallback"},
+            {"brief", brief},
+            {"confidence", confidence},
+            {"assumptions", json::array({"The AI couldn't read the request, so this Brief comes from its words alone: check each field."})},
+            {"questions", json::array()}};
+}
+
 json DefaultsAfter(const json& brief, json defaults) {
     if (!defaults.is_object()) defaults = json::object();
     const std::string type = brief.value("buildType", "");

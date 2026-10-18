@@ -222,15 +222,17 @@ TEST(PlanTest, ABuildIsPlannedAndABrokenNodeRepaired) {
     ASSERT_EQ(sent.back().first, "/places/plan-root");
     EXPECT_TRUE(sent.back().second["context"]["modules"].size() > 3);
 
-    // The root answer has a ward with a wealth that doesn't exist: repaired once.
+    // The root answer has a ward with a wealth that doesn't exist (dropped, no
+    // AI needed) and a market with too many plots: that one is repaired once.
     json answer = RootAnswer(2, 6400);
     answer["children"][1]["quality"]["wealth"] = "golden";
+    answer["children"][0]["quantity"]["plots"]["count"] = 5000;
     build.OnResponse(static_cast<int>(sent.size()), {{"ok", true}, {"answer", answer}, {"thinking", "two wards and a market"}});
     ASSERT_EQ(sent.back().first, "/places/repair-node");
-    EXPECT_EQ(sent.back().second["node"]["id"], "ward-1");
-    EXPECT_EQ(sent.back().second["problems"][0]["where"], "ward-1.wealth");
+    EXPECT_EQ(sent.back().second["node"]["id"], "market");
+    EXPECT_EQ(sent.back().second["problems"][0]["where"], "market.plots");
     EXPECT_FALSE(sent.back().second["node"].contains("children"));
-    build.OnResponse(static_cast<int>(sent.size()), {{"ok", true}, {"answer", {{"quality", {{"wealth", "rich"}}}}}});
+    build.OnResponse(static_cast<int>(sent.size()), {{"ok", true}, {"answer", {{"quantity", {{"plots", {{"count", 8}}}}}}}});
 
     // Then a step per zone.
     std::vector<std::pair<int, std::string>> zones;
@@ -244,7 +246,9 @@ TEST(PlanTest, ABuildIsPlannedAndABrokenNodeRepaired) {
         build.OnResponse(id, {{"ok", true}, {"answer", module == "market-ward" ? MarketAnswer() : WardAnswer(12)}});
     }
     ASSERT_EQ(build.Stage(), "plan") << build.State().dump();
-    EXPECT_EQ(BriefValue(*SpecNode(const_cast<json&>(build.Spec()), "ward-1"), "quality.wealth"), "rich");
+    json spec = build.Spec();
+    EXPECT_NE(BriefValue(*SpecNode(spec, "ward-1"), "quality.wealth"), "golden");
+    EXPECT_LT(BriefValue(*SpecNode(spec, "market"), "quantity.plots.count").get<int>(), 100);
     EXPECT_TRUE(Errors(build.PlanProblems()).empty()) << Describe(build.PlanProblems());
     const json state = build.State();
     EXPECT_TRUE(state.contains("plan"));

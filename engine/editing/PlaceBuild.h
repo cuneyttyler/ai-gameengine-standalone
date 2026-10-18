@@ -16,9 +16,9 @@
 
 namespace aige {
 
-// One build, from the request to the confirmed Brief (development_plan.md
-// 7.4; the Plan, Build and Result steps follow in 7.5-7.7). The editor's
-// Build panel shows its State(); the AI panel shows its Card().
+// One build, from the request to the solved layout (development_plan.md
+// 7.4-7.6; Build and Result follow in 7.7). The editor's Build panel shows
+// its State(); the AI panel shows its Card().
 //
 //   Start(query)  -> interpreting: the AI drafts Briefs from several readings
 //                 -> each draft is validated; one with errors is repaired once
@@ -26,15 +26,24 @@ namespace aige {
 //   request       ① Request: round 1 of the window; Edit() changes fields
 //   assets        ② Assets: round 2 and the asset plan
 //   Confirm()     -> the Brief is saved, its answers become the project's
-//                    defaults, and planning starts (7.5):
+//                    defaults, and planning starts:
 //   planning      the root step, then a step per zone (AI), each validated
 //                 and a broken node repaired once; then the expansion rules,
-//                 the building count rebalanced, the whole Spec validated
-//   plan          ③ Plan: the summary and the sketch; Approve() keeps it
-//   planned       places/<id>/spec.json waits for the compiler (7.6)
+//                 the fixes that need no AI, the building count rebalanced,
+//                 the whole Spec validated, what's still wrong repaired once
+//   plan          ③ Plan: the summary and the sketch; Approve() compiles
+//   planned       and solves it: layout.solved.json and layout.png
 //
-// Everything the AI was asked and answered (its thinking too) goes to
-// places/<id>/log.jsonl; the user never sees the thinking.
+// It handles its own failures: an AI call that fails is retried twice; if
+// the AI still can't answer, the step falls back on what needs no AI (the
+// request's words for the Brief, the Brief for the zones, the module rules
+// for a zone's parcels), says so, and carries on. A plan is never left
+// unapprovable: what can't be fixed is kept and reported as a warning.
+//
+// Everything is kept in places/<id>/ (session.json follows each change), so a
+// build can be reopened in a later session (Open). Everything the AI was
+// asked and answered, its thinking too, goes to places/<id>/log.jsonl; the
+// user never sees the thinking.
 class PlaceBuild {
 public:
     struct Host {
@@ -51,6 +60,9 @@ public:
 
     // Starts interpreting `query`. Returns why it can't, or "".
     std::string Start(const std::string& query);
+    // Reopens a build of the project (places/<id>/) where it was left; a step
+    // that was waiting on the AI starts again. Returns why it can't, or "".
+    std::string Open(const std::string& id);
     // Whether the AI answer `requestId` is this build's.
     bool Owns(int requestId) const { return pending_.contains(requestId); }
     void OnResponse(int requestId, const nlohmann::json& body);
@@ -61,7 +73,7 @@ public:
     std::string Step(const std::string& step);
     // The Assets step's Build: saves the Brief and starts planning. Returns why not, or "".
     std::string Confirm();
-    // ③ Plan's Approve: keeps the Spec. Returns why not, or "".
+    // ③ Plan's Approve: compiles and solves the plan. Returns why not, or "".
     std::string Approve();
     void Cancel();
 
@@ -72,6 +84,8 @@ public:
     // The solved layout (aige.solved/1) once the plan is approved (7.6).
     const nlohmann::json& Solved() const { return solved_; }
     const std::vector<PlaceProblem>& PlanProblems() const { return planProblems_; }
+    // What the build did on its own when something failed (shown to the user).
+    const std::vector<std::string>& Notices() const { return notices_; }
     // The site's side in cells (the Brief's area), for the plan view.
     int SiteSide() const;
     const BriefMerge& Merge() const { return merge_; }
@@ -88,9 +102,20 @@ private:
         std::string kind; // interpret, repair, plan-root, plan-zone, repair-node
         int draft = -1;
         std::string node; // plan-zone, repair-node
+        std::string path;
+        nlohmann::json body;
+        int timeout = 300;
+        int attempts = 1;
     };
+    // Sends a request, keeping what's needed to send it again. False: the AI isn't available.
+    bool Send(Pending what);
+    // A failed answer is sent again (twice at most). True: it was.
+    bool Retry(const Pending& what, const nlohmann::json& body);
     void Log(nlohmann::json entry) const;
+    void Save() const; // session.json
+    void Notice(const std::string& text);
     void FinishInterpreting();
+    void InterpretWithoutAi(const std::string& why);
     nlohmann::json Defaults() const;
     // Planning, step by step.
     void StartPlanning();
@@ -98,7 +123,7 @@ private:
     bool RepairNodes(const std::string& phase); // false: nothing to repair
     void PlanZones();
     void FinishPlanning();
-    void PlanFailed(const std::string& why);
+    void Solve();
 
     Host host_;
     std::string id_, query_, stage_, status_;
@@ -110,16 +135,22 @@ private:
     nlohmann::json brief_;
     BriefMerge merge_;
     std::vector<std::string> errors_;
+    std::vector<std::string> notices_;
     nlohmann::json spec_;
     nlohmann::json solved_;
-    int imageVersion_ = 0; // bumped on each new layout.png, so the panel reloads it
-    std::string planPhase_;                  // root, zones
+    int imageVersion_ = 0;                   // bumped on each new layout.png, so the panel reloads it
+    std::string planPhase_;                  // root, zones, final
     std::set<std::string> repaired_;         // nodes already given their one repair
-    std::vector<PlaceProblem> planProblems_; // what the final Spec still breaks
+    bool finalRepairAsked_ = false;
+    std::vector<PlaceProblem> planProblems_; // what the final Spec still breaks (warnings only, in the end)
+    std::vector<PlaceProblem> tidied_;       // what was fixed without the AI (warnings)
     int zonesTotal_ = 0, zonesDone_ = 0;
 };
 
 // "Build a large village by a river" -> "large-village-by-river", unique in places/.
 std::string PlaceIdFor(const std::filesystem::path& projectRoot, const std::string& query);
+
+// The project's builds, the latest first: [{id, query, name, stage, updated}].
+nlohmann::json ListBuilds(const std::filesystem::path& projectRoot);
 
 } // namespace aige

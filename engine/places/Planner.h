@@ -1,6 +1,7 @@
 #pragma once
 
 #include "places/Ontology.h"
+#include "places/PlaceValidate.h"
 
 #include <nlohmann/json.hpp>
 
@@ -40,6 +41,36 @@ void ApplyZoneAnswer(const Ontology& ontology, const nlohmann::json& brief, nloh
 
 // The lower levels, from the expansion rules.
 void ExpandSpec(const Ontology& ontology, const nlohmann::json& brief, nlohmann::json& spec);
+
+// Fixes that need no AI, before each validation: a mix's or set's values that
+// aren't in the vocabulary are matched by their synonyms ("onions") or dropped,
+// a mix's weights are rescaled to add up to 1, an unknown enum value falls
+// back to the default, and a child counted by a field ("piers") gets as many
+// as the field says. Returns what it changed, as warnings.
+std::vector<PlaceProblem> TidySpec(const Ontology& ontology, nlohmann::json& spec);
+
+// Fixes the structure and the fields so the Spec follows the module rules,
+// without the AI, and returns what it did (as warnings). Run after
+// TidySpec, before the final validation:
+// - nodes of unknown modules, children a parent can't hold, parts at an
+//   outer level, and parts that need something the place can't have (docks
+//   without water) or exclude something it has, are left out;
+// - numbers and sizes outside their range are clamped; fields that don't
+//   apply (their `when` is false) or can't be read are removed (the default
+//   applies);
+// - too many children of a rule are scaled down, shares adding up to more
+//   than 1 scaled to 1;
+// - a node breaking one of its module's constraints has the fields the
+//   constraint names reset to their defaults.
+std::vector<PlaceProblem> ResolveSpec(const Ontology& ontology, const nlohmann::json& brief, nlohmann::json& spec);
+
+// When the AI can't answer (it's off, unreachable, or answers nonsense twice):
+// the root step's answer from the Brief alone (each enabled zone component,
+// its count from the Brief, the buildings shared by the zones' weights, the
+// area by their plots), and a zone step's from its module's child rules (its
+// plots shared among its building parcels by their weights).
+nlohmann::json FallbackRootAnswer(const Ontology& ontology, const nlohmann::json& brief);
+nlohmann::json FallbackZoneAnswer(const Ontology& ontology, const nlohmann::json& zone);
 
 // The share of parents with a component, for a Brief density word
 // (common: 60% of house plots have a garden).

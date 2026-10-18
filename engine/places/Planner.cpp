@@ -143,6 +143,414 @@ bool Disabled(const json& brief, const std::string& module) {
 
 } // namespace
 
+std::vector<PlaceProblem> TidySpec(const Ontology& ontology, json& spec) {
+    std::vector<PlaceProblem> changed;
+    auto note = [&](const std::string& where, const std::string& message) { changed.push_back({where, message, true}); };
+    // A value of a field's vocabulary or list, as given or by a synonym.
+    auto known = [&](const FieldDef& f, const std::string& value) -> std::string {
+        if (!f.values.empty()) return std::find(f.values.begin(), f.values.end(), value) != f.values.end() ? value : "";
+        if (f.vocabulary.empty()) return value;
+        if (ontology.FindConcept(f.vocabulary, value)) return value;
+        for (const Concept* c : ontology.ConceptsNamed(value)) {
+            if (c->scheme == f.vocabulary) return c->id;
+        }
+        // Plurals: "onions" -> onion.
+        if (value.size() > 3 && value.back() == 's' && ontology.FindConcept(f.vocabulary, value.substr(0, value.size() - 1))) {
+            return value.substr(0, value.size() - 1);
+        }
+        return "";
+    };
+    std::function<void(json&)> walk = [&](json& node) {
+        const ModuleDef* m = ontology.Module(node.value("module", ""));
+        const std::string id = node.value("id", "");
+        if (m) {
+            for (const char* group : {"quantity", "quality"}) {
+                if (!node.contains(group) || !node[group].is_object()) continue;
+                std::vector<std::string> drop;
+                for (auto& [name, value] : node[group].items()) {
+                    const FieldDef* f = m->Field(name);
+                    if (f == nullptr) continue;
+                    const std::string where = id + "." + name;
+                    if (f->type == "mix" && !value.is_string()) {
+                        json& weights = value.is_object() && value.contains("mix") ? value["mix"] : value;
+                        if (!weights.is_object()) continue;
+                        json kept = json::object();
+                        double total = 0;
+                        for (const auto& [key, w] : weights.items()) {
+                            const std::string to = known(*f, key);
+                            if (to.empty() || !w.is_number() || w.get<double>() <= 0) {
+                                note(where, "left out '" + key + "': not a known " + (f->vocabulary.empty() ? "value" : f->vocabulary));
+                                continue;
+                            }
+                            if (to != key) note(where, "read '" + key + "' as " + to);
+                            kept[to] = kept.value(to, 0.0) + w.get<double>();
+                            total += w.get<double>();
+                        }
+                        if (kept.empty()) {
+                            drop.push_back(name);
+                            continue;
+                        }
+                        if (std::abs(total - 1.0) > 0.011) {
+                            for (auto& [key, w] : kept.items()) w = std::round(w.get<double>() / total * 100) / 100;
+                            note(where, "weights scaled to add up to 1");
+                        }
+                        weights = kept;
+                    } else if (f->type == "enumSet" && value.is_array()) {
+                        json kept = json::array();
+                        for (const auto& item : value) {
+                            const std::string to = item.is_string() ? known(*f, item.get<std::string>()) : "";
+                            if (to.empty()) note(where, "left out " + item.dump() + ": not a known value");
+                            else kept.push_back(to);
+                        }
+                        value = kept;
+                    } else if ((f->type == "enum" || (f->type == "mix" && value.is_string())) && value.is_string()) {
+                        const std::string to = known(*f, value.get<std::string>());
+                        if (to.empty()) {
+                            note(where, "'" + value.get<std::string>() + "' isn't a known value: the default is used");
+                            drop.push_back(name);
+                        } else if (to != value.get<std::string>()) {
+                            note(where, "read '" + value.get<std::string>() + "' as " + to);
+                            value = to;
+                        }
+                    }
+                }
+                for (const auto& name : drop) node[group].erase(name);
+            }
+            // Children counted by a field: as many as it says.
+            for (const ChildDef& rule : m->children) {
+                if (rule.count.empty() || !node.contains("children")) continue;
+                std::vector<json*> matching;
+                for (auto& c : node["children"]) {
+                    if (c.value("module", "") == rule.module && !c.contains("share")) matching.push_back(&c);
+                }
+                const FieldDef* f = m->Field(rule.count);
+                if (matching.size() != 1 || f == nullptr) continue;
+                const json given = (f->quantity ? node["quantity"] : node["quality"]).value(rule.count, json());
+                const places::Value v = FieldValueOf(*f, given);
+                if (v.kind != places::Value::Kind::Number) continue;
+                const int want = std::clamp(static_cast<int>(std::lround((v.number.lo + v.number.hi) / 2)), rule.min, rule.max);
+                const int has = matching[0]->value("repeat", 1);
+                if (has == want) continue;
+                if (want >= 2) (*matching[0])["repeat"] = want;
+                else matching[0]->erase("repeat");
+                note(id, "made " + std::to_string(want) + " " + rule.module + (want == 1 ? "" : "s") + ", as its " + rule.count + " says");
+            }
+        }
+        if (node.contains("children") && node["children"].is_array()) {
+            for (auto& c : node["children"]) walk(c);
+        }
+    };
+    if (spec.contains("root")) walk(spec["root"]);
+    return changed;
+}
+
+namespace {
+
+// A number field's value clamped into [min, max] (and whole, for a count), in the form it was given.
+json ClampNumber(const FieldDef& f, const json& value) {
+    auto clamp = [&](double v) {
+        if (f.min) v = std::max(v, *f.min);
+        if (f.max) v = std::min(v, *f.max);
+        if (f.type == "share") v = std::clamp(v, 0.0, 1.0);
+        if (f.type == "count") v = std::round(v);
+        return v;
+    };
+    auto one = [&](const json& v) -> json {
+        if (v.is_number()) {
+            const double c = clamp(v.get<double>());
+            return f.type == "count" ? json(static_cast<int>(c)) : json(c);
+        }
+        if (v.is_array() && v.size() == 2 && v[0].is_number() && v[1].is_number()) {
+            double lo = clamp(v[0].get<double>()), hi = clamp(v[1].get<double>());
+            if (lo > hi) std::swap(lo, hi);
+            if (f.type == "count") return json::array({static_cast<int>(lo), static_cast<int>(hi)});
+            return json::array({lo, hi});
+        }
+        return v;
+    };
+    if (value.is_object() && value.contains(f.type)) return {{f.type, one(value[f.type])}};
+    return one(value);
+}
+
+json ClampSize(const FieldDef& f, json value) {
+    if (!value.is_object()) return value;
+    for (const char* side : {"w", "h"}) {
+        if (!value.contains(side)) continue;
+        const double lo = f.minSize.is_object() && f.minSize.contains(side) ? f.minSize[side].get<double>() : 1.0;
+        const double hi = f.maxSize.is_object() && f.maxSize.contains(side) ? f.maxSize[side].get<double>() : 1e9;
+        json& v = value[side];
+        auto c = [&](double x) { return std::clamp(std::round(x), lo, hi); };
+        if (v.is_number()) v = static_cast<int>(c(v.get<double>()));
+        else if (v.is_array() && v.size() == 2 && v[0].is_number() && v[1].is_number()) {
+            double a = c(v[0].get<double>()), b = c(v[1].get<double>());
+            if (a > b) std::swap(a, b);
+            v = json::array({static_cast<int>(a), static_cast<int>(b)});
+        }
+    }
+    return value;
+}
+
+std::vector<std::string> NamesIn(const std::string& expression) {
+    std::vector<std::string> names;
+    std::string word;
+    for (const char c : expression + " ") {
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_') word += c;
+        else {
+            if (!word.empty()) names.push_back(word);
+            word.clear();
+        }
+    }
+    return names;
+}
+
+} // namespace
+
+std::vector<PlaceProblem> ResolveSpec(const Ontology& ontology, const json& brief, json& spec) {
+    std::vector<PlaceProblem> notes;
+    auto note = [&](const std::string& where, const std::string& message) { notes.push_back({where, message, true}); };
+    if (!spec.contains("root")) return notes;
+
+    // Fields and children, node by node.
+    std::function<void(json&)> fix = [&](json& node) {
+        const ModuleDef* m = ontology.Module(node.value("module", ""));
+        if (m == nullptr) return;
+        const std::string id = node.value("id", "");
+        EnsureGroups(node);
+        for (const char* group : {"quantity", "quality"}) {
+            std::vector<std::string> drop;
+            for (auto& [name, value] : node[group].items()) {
+                const FieldDef* f = m->Field(name);
+                if (f == nullptr || f->quantity != (std::string(group) == "quantity")) {
+                    note(id + "." + name, "left out: a " + m->id + " has no such field");
+                    drop.push_back(name);
+                    continue;
+                }
+                if (CheckFieldValue(ontology, *f, value).empty()) continue;
+                const json fixed = f->type == "size" ? ClampSize(*f, value) : ClampNumber(*f, value);
+                if (fixed != value && CheckFieldValue(ontology, *f, fixed).empty()) {
+                    note(id + "." + name, "brought into range: " + fixed.dump());
+                    value = fixed;
+                } else {
+                    note(id + "." + name, "couldn't be read (" + value.dump().substr(0, 60) + "): the default is used");
+                    drop.push_back(name);
+                }
+            }
+            for (const auto& name : drop) node[group].erase(name);
+        }
+        // Fields that don't apply here.
+        NodeScope scope(*m, node);
+        for (const char* group : {"quantity", "quality"}) {
+            std::vector<std::string> drop;
+            for (const auto& [name, value] : node[group].items()) {
+                const FieldDef* f = m->Field(name);
+                if (f && !f->when.empty()) {
+                    if (auto cond = places::Expr::Parse(f->when); cond && cond->Holds(scope) == places::Tri::False) drop.push_back(name);
+                }
+            }
+            for (const auto& name : drop) {
+                node[group].erase(name);
+                note(id + "." + name, "left out: it only applies when " + m->Field(name)->when);
+            }
+        }
+        if (!node.contains("children") || !node["children"].is_array()) return;
+        // Children it can't hold.
+        json kept = json::array();
+        for (auto& c : node["children"]) {
+            const ModuleDef* cm = ontology.Module(c.value("module", ""));
+            const bool outward = cm && static_cast<int>(cm->level) < static_cast<int>(m->level) && cm->level != PlaceLevel::Abstract &&
+                                 cm->level != PlaceLevel::Network;
+            if (cm == nullptr || !ontology.ChildRule(m->id, cm->id) || outward) {
+                note(c.value("id", "?"), "left out: a " + m->id + " can't hold a " + c.value("module", "?"));
+                continue;
+            }
+            kept.push_back(c);
+        }
+        node["children"] = kept;
+        // Too many of a rule; shares over 1.
+        for (const ChildDef& rule : m->children) {
+            double total = 0;
+            std::vector<json*> mine;
+            for (auto& c : node["children"]) {
+                if (ontology.ChildRule(m->id, c.value("module", "")) != &rule) continue;
+                mine.push_back(&c);
+                total += Mid(c.value("repeat", json()), 1) * (c.contains("share") ? Mid(c["share"], 1) : 1);
+            }
+            if (total > rule.max && total > 0) {
+                const double factor = rule.max / total;
+                for (json* c : mine) {
+                    const int repeat = std::max(1, static_cast<int>(std::floor(Mid(c->value("repeat", json()), 1) * factor)));
+                    if (repeat >= 2) (*c)["repeat"] = repeat;
+                    else c->erase("repeat");
+                }
+                note(id, "at most " + std::to_string(rule.max) + " " + rule.module + ": scaled down");
+            }
+        }
+        std::map<std::string, double> shares;
+        for (const auto& c : node["children"]) {
+            if (c.contains("share") && c["share"].is_number()) shares[c.value("module", "")] += c["share"].get<double>();
+        }
+        for (const auto& [module, sum] : shares) {
+            if (sum <= 1.0001) continue;
+            for (auto& c : node["children"]) {
+                if (c.value("module", "") == module && c.contains("share")) c["share"] = std::round(c["share"].get<double>() / sum * 100) / 100;
+            }
+            note(id, "the shares of its " + module + " children added up to more than 1: scaled to 1");
+        }
+        for (auto& c : node["children"]) fix(c);
+    };
+    fix(spec["root"]);
+
+    // What a part needs, or rules out, anywhere in the place.
+    for (int round = 0; round < 4; ++round) {
+        std::vector<std::string> modules;
+        std::function<void(const json&)> collect = [&](const json& n) {
+            modules.push_back(n.value("module", ""));
+            for (const auto& c : n.value("children", json::array())) collect(c);
+        };
+        collect(spec["root"]);
+        auto anywhere = [&](const std::string& target, const std::string& except) {
+            const std::string cls = target.rfind("class:", 0) == 0 ? target.substr(6) : target;
+            return std::any_of(modules.begin(), modules.end(), [&](const std::string& m) {
+                return m != except && (m == cls || ontology.IsA(m, cls));
+            });
+        };
+        bool removed = false;
+        std::function<void(json&)> prune = [&](json& n) {
+            if (!n.contains("children")) return;
+            json kept = json::array();
+            for (auto& c : n["children"]) {
+                const ModuleDef* cm = ontology.Module(c.value("module", ""));
+                std::string why;
+                if (cm) {
+                    for (const auto& t : cm->required) {
+                        if (!anywhere(t, "")) why = "a " + cm->id + " needs a " + (t.rfind("class:", 0) == 0 ? t.substr(6) : t) + ", which the place doesn't have";
+                    }
+                    for (const auto& t : cm->excludes) {
+                        if (anywhere(t, cm->id)) why = "a " + cm->id + " can't be in a place with a " + t;
+                    }
+                }
+                if (!why.empty()) {
+                    note(c.value("id", "?"), "left out: " + why);
+                    removed = true;
+                    continue;
+                }
+                prune(c);
+                kept.push_back(c);
+            }
+            n["children"] = kept;
+        };
+        prune(spec["root"]);
+        if (!removed) break;
+    }
+
+    // Constraints a node breaks: the fields they name go back to their defaults.
+    for (const auto& p : ValidateSpec(ontology, spec, SpecStage::Final, brief.value("buildType", ""))) {
+        if (p.warning || p.message.rfind("can't meet ", 0) != 0) continue;
+        json* node = SpecNode(spec, p.where);
+        const ModuleDef* m = node ? ontology.Module(node->value("module", "")) : nullptr;
+        if (m == nullptr) continue;
+        std::vector<std::string> reset;
+        for (const auto& name : NamesIn(p.message.substr(11))) {
+            const FieldDef* f = m->Field(name);
+            if (f == nullptr) continue;
+            const char* group = f->quantity ? "quantity" : "quality";
+            if ((*node)[group].contains(name)) {
+                (*node)[group].erase(name);
+                reset.push_back(name);
+            }
+        }
+        if (!reset.empty()) {
+            std::string list;
+            for (const auto& r : reset) list += (list.empty() ? "" : ", ") + r;
+            note(p.where, "broke " + p.message.substr(11) + ": " + list + " back to the module's defaults");
+        }
+    }
+    return notes;
+}
+
+json FallbackRootAnswer(const Ontology& ontology, const json& brief) {
+    const BuildType* build = ontology.Build(brief.value("buildType", ""));
+    json children = json::array();
+    if (build == nullptr) return {{"children", children}};
+    struct Zone {
+        std::string module;
+        int count;
+        double weight;
+    };
+    std::vector<Zone> zones;
+    const json components = brief.value("components", json::object());
+    for (const auto& [id, c] : components.items()) {
+        const ModuleDef* m = ontology.Module(id);
+        if (m == nullptr || m->level != PlaceLevel::Zone || !c.is_object() || !c.value("enabled", true) || !ontology.ChildRule(build->root, id)) continue;
+        const int count = std::max(1, static_cast<int>(std::lround(Mid(c.value("count", json()), 1))));
+        const double weight = ontology.IsA(id, "NatureArea") ? 0.0 : id == "residential-ward" ? 3.0 : id == "craftsmen-ward" ? 1.5 : 1.0;
+        zones.push_back({id, count, weight});
+    }
+    if (zones.empty()) {
+        if (ontology.ChildRule(build->root, "residential-ward")) zones.push_back({"residential-ward", 1, 3.0});
+        if (ontology.ChildRule(build->root, "market-ward")) zones.push_back({"market-ward", 1, 1.0});
+    }
+    const double buildings = Mid(BriefValue(brief, "scale.buildings"), 30);
+    const double area = Mid(BriefValue(brief, "scale.area"), 6400);
+    double totalWeight = 0;
+    for (const auto& z : zones) totalWeight += z.weight * z.count;
+    for (const auto& z : zones) {
+        for (int k = 0; k < z.count; ++k) {
+            const double share = totalWeight > 0 ? z.weight / totalWeight : 0;
+            const int plots = static_cast<int>(std::lround(buildings * share));
+            json node = {{"id", z.module + (z.count > 1 ? "-" + std::to_string(k + 1) : "")}, {"module", z.module},
+                         {"quantity", {{"area", {{"area", static_cast<int>(std::lround(share > 0 ? area * 0.7 * share : area * 0.08))}}}}},
+                         {"rationale", "planned from the Brief alone"}};
+            if (plots > 0 && ontology.Module(z.module)->Field("plots")) node["quantity"]["plots"] = {{"count", plots}};
+            children.push_back(node);
+        }
+    }
+    return {{"children", children}, {"rationale", "Planned from the Brief alone: the AI couldn't plan this place."}};
+}
+
+json FallbackZoneAnswer(const Ontology& ontology, const json& zone) {
+    const ModuleDef* m = ontology.Module(zone.value("module", ""));
+    json children = json::array();
+    if (m == nullptr) return {{"children", children}};
+    const json plotsField = zone.contains("quantity") ? zone["quantity"].value("plots", json()) : json();
+    int plots = static_cast<int>(std::lround(Mid(plotsField, -1)));
+    if (plots < 0) {
+        const FieldDef* f = m->Field("plots");
+        plots = f ? static_cast<int>(std::lround(Mid(f->defaultValue, 10))) : 0;
+    }
+    // Building parcels share the plots by their weights (largest remainder); required others once.
+    std::vector<std::pair<std::string, double>> weighted;
+    for (const ChildDef& rule : m->children) {
+        if (rule.module.rfind("class:", 0) == 0 || !ontology.Module(rule.module)) continue;
+        if (ontology.IsA(rule.module, "BuildingParcel")) {
+            weighted.push_back({rule.module, rule.weight});
+        } else if (rule.min >= 1) {
+            children.push_back({{"id", zone.value("id", "") + "/" + rule.module}, {"module", rule.module}, {"rationale", "the zone needs one"}});
+        }
+    }
+    double total = 0;
+    for (const auto& [module, w] : weighted) total += w;
+    std::vector<std::pair<int, double>> counts;
+    int given = 0;
+    for (const auto& [module, w] : weighted) {
+        const double exact = total > 0 ? plots * w / total : 0;
+        counts.push_back({static_cast<int>(std::floor(exact)), exact - std::floor(exact)});
+        given += static_cast<int>(std::floor(exact));
+    }
+    for (int left = plots - given; left > 0 && !counts.empty(); --left) {
+        auto best = std::max_element(counts.begin(), counts.end(), [](const auto& a, const auto& b) { return a.second < b.second; });
+        best->first += 1;
+        best->second = -1;
+    }
+    for (size_t i = 0; i < weighted.size(); ++i) {
+        if (counts[i].first <= 0) continue;
+        json child = {{"id", zone.value("id", "") + "/" + weighted[i].first}, {"module", weighted[i].first}, {"rationale", "from the zone's typical parcels"}};
+        if (counts[i].first >= 2) child["repeat"] = counts[i].first;
+        children.push_back(child);
+    }
+    return {{"children", children}, {"rationale", "Planned from the module rules: the AI couldn't plan this zone."}};
+}
+
 double DensityShare(const std::string& word) {
     if (word == "none") return 0.0;
     if (word == "rare") return 0.15;
@@ -247,23 +655,6 @@ json SpecFromRoot(const Ontology& ontology, const json& brief, const json& answe
         if (c.contains("rel") && c["rel"].is_array()) node["rel"] = c["rel"];
         children.push_back(node);
     }
-    // Relations name the final ids, and only ones that exist.
-    for (auto& node : children) {
-        if (!node.contains("rel")) continue;
-        json kept = json::array();
-        for (auto rel : node["rel"]) {
-            if (!rel.is_object() || !ontology.Relation(rel.value("type", ""))) continue;
-            bool ok = true;
-            for (const char* key : {"to", "of"}) {
-                if (!rel.contains(key)) continue;
-                auto it = renamed.find(rel.value(key, ""));
-                if (it == renamed.end()) ok = false;
-                else rel[key] = it->second;
-            }
-            if (ok) kept.push_back(rel);
-        }
-        node["rel"] = kept;
-    }
     // What the Brief asks for and the answer left out, and what the root needs.
     auto has = [&](const std::string& module) {
         return std::any_of(children.begin(), children.end(), [&](const json& n) { return n["module"] == module; });
@@ -289,6 +680,25 @@ json SpecFromRoot(const Ontology& ontology, const json& brief, const json& answe
             if (rule.min < 1 || rule.module.rfind("class:", 0) == 0) continue;
             if (!has(rule.module)) add(rule.module);
         }
+    }
+    // Relations name the final ids, and only ones that exist: a part the
+    // answer named, or one added above by its module ("along the river").
+    for (const auto& node : children) renamed.emplace(node.value("module", ""), node.value("id", ""));
+    for (auto& node : children) {
+        if (!node.contains("rel")) continue;
+        json kept = json::array();
+        for (auto rel : node["rel"]) {
+            if (!rel.is_object() || !ontology.Relation(rel.value("type", ""))) continue;
+            bool ok = true;
+            for (const char* key : {"to", "of"}) {
+                if (!rel.contains(key)) continue;
+                auto it = renamed.find(rel.value(key, ""));
+                if (it == renamed.end()) ok = false;
+                else rel[key] = it->second;
+            }
+            if (ok) kept.push_back(rel);
+        }
+        node["rel"] = kept;
     }
     root["children"] = children;
     spec["root"] = root;
@@ -360,8 +770,23 @@ void ExpandSpec(const Ontology& ontology, const json& brief, json& spec) {
             const ModuleDef* cm = ontology.Module(rule.module);
             if (cm == nullptr || present.contains(cm->id) || Disabled(brief, cm->id) || !Holds(rule.when, scope)) continue;
             if (cm->level == PlaceLevel::Dressing) continue; // dressing comes with the compile step
+            // Nor a part that can't be made: one that needs something the Brief turned
+            // off (a pasture needs its fence, and fences are off).
+            const bool needsDisabled = std::any_of(cm->children.begin(), cm->children.end(), [&](const ChildDef& r) {
+                return r.min >= 1 && r.when.empty() && r.module.rfind("class:", 0) != 0 && Disabled(brief, r.module);
+            });
+            if (needsDisabled) continue;
             json child = {{"id", ""}, {"module", cm->id}, {"quantity", json::object()}, {"quality", json::object()}};
-            if (rule.min >= 1) {
+            if (rule.min >= 1 && !rule.count.empty()) {
+                // As many as the parent's field says (a docks' piers), within the rule.
+                const FieldDef* f = m->Field(rule.count);
+                const places::Value v = f ? FieldValueOf(*f, (f->quantity ? node["quantity"] : node["quality"]).value(rule.count, json()))
+                                          : places::Value::Unknown();
+                int n = rule.min;
+                if (v.kind == places::Value::Kind::Number) n = static_cast<int>(std::lround((v.number.lo + v.number.hi) / 2));
+                n = std::clamp(n, rule.min, rule.max);
+                if (n >= 2) child["repeat"] = n;
+            } else if (rule.min >= 1) {
                 if (rule.min >= 2) child["repeat"] = rule.min; // the minimum, at least
             } else if (!rule.count.empty()) {
                 continue; // tied to a field: the compiler makes as many as it says

@@ -6401,6 +6401,76 @@ gbv:crop-kind.pumpkin
     skos:notation "pumpkin" ;
     skos:broader gbv:crop-kind.vegetable .
 
+gbv:crop-kind.onion
+    a skos:Concept ;
+    skos:inScheme gbv:crop-kind ;
+    skos:prefLabel "onion"@en ;
+    skos:altLabel "onions"@en ;
+    skos:notation "onion" ;
+    skos:broader gbv:crop-kind.vegetable .
+
+gbv:crop-kind.garlic
+    a skos:Concept ;
+    skos:inScheme gbv:crop-kind ;
+    skos:prefLabel "garlic"@en ;
+    skos:notation "garlic" ;
+    skos:broader gbv:crop-kind.vegetable .
+
+gbv:crop-kind.leek
+    a skos:Concept ;
+    skos:inScheme gbv:crop-kind ;
+    skos:prefLabel "leek"@en ;
+    skos:altLabel "leeks"@en ;
+    skos:notation "leek" ;
+    skos:broader gbv:crop-kind.vegetable .
+
+gbv:crop-kind.beans
+    a skos:Concept ;
+    skos:inScheme gbv:crop-kind ;
+    skos:prefLabel "beans"@en ;
+    skos:altLabel "bean"@en ;
+    skos:notation "beans" ;
+    skos:broader gbv:crop-kind.vegetable .
+
+gbv:crop-kind.peas
+    a skos:Concept ;
+    skos:inScheme gbv:crop-kind ;
+    skos:prefLabel "peas"@en ;
+    skos:altLabel "pea"@en ;
+    skos:notation "peas" ;
+    skos:broader gbv:crop-kind.vegetable .
+
+gbv:crop-kind.turnip
+    a skos:Concept ;
+    skos:inScheme gbv:crop-kind ;
+    skos:prefLabel "turnip"@en ;
+    skos:altLabel "turnips"@en ;
+    skos:notation "turnip" ;
+    skos:broader gbv:crop-kind.vegetable .
+
+gbv:crop-kind.lettuce
+    a skos:Concept ;
+    skos:inScheme gbv:crop-kind ;
+    skos:prefLabel "lettuce"@en ;
+    skos:notation "lettuce" ;
+    skos:broader gbv:crop-kind.vegetable .
+
+gbv:crop-kind.potato
+    a skos:Concept ;
+    skos:inScheme gbv:crop-kind ;
+    skos:prefLabel "potato"@en ;
+    skos:altLabel "potatoes"@en ;
+    skos:notation "potato" ;
+    skos:broader gbv:crop-kind.vegetable .
+
+gbv:crop-kind.beet
+    a skos:Concept ;
+    skos:inScheme gbv:crop-kind ;
+    skos:prefLabel "beet"@en ;
+    skos:altLabel "beets"@en, "beetroot"@en ;
+    skos:notation "beet" ;
+    skos:broader gbv:crop-kind.vegetable .
+
 gbv:crop-kind.flax
     a skos:Concept ;
     skos:inScheme gbv:crop-kind ;

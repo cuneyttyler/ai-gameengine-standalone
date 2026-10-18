@@ -761,6 +761,10 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         StartBuild(message.value("query", ""));
     } else if (type == "build:request") {
         PostBuild();
+    } else if (type == "build:list") {
+        post_({{"type", "build:list"}, {"builds", ListBuilds(assets_.GetProject().root)}});
+    } else if (type == "build:resume") {
+        ResumeBuild(message.value("id", ""));
     } else if (type == "build:edit") {
         if (build_) build_->Edit(message.value("path", ""), message.value("value", nlohmann::json()));
         PostBuild();
@@ -2766,6 +2770,26 @@ void EditorApp::StartBuild(const std::string& query) {
         post_({{"type", "notify"}, {"text", "A build is still reading its request"}});
         return;
     }
+    build_ = MakeBuild();
+    const std::string why = build_->Start(query);
+    if (!why.empty()) post_({{"type", "notify"}, {"text", "Can't build: " + why}});
+    post_({{"type", "build:open"}});
+    PostBuild();
+}
+
+void EditorApp::ResumeBuild(const std::string& id) {
+    auto build = MakeBuild();
+    const std::string why = build->Open(id);
+    if (!why.empty()) {
+        post_({{"type", "notify"}, {"text", "Can't open the build: " + why}});
+        return;
+    }
+    build_ = std::move(build);
+    post_({{"type", "build:open"}});
+    PostBuild();
+}
+
+std::unique_ptr<PlaceBuild> EditorApp::MakeBuild() {
     PlaceBuild::Host host;
     host.ontology = [this]() -> const Ontology& { return Places(); };
     host.catalog = [this] { return BuildCatalog(assets_, &Places(), CatalogOptionsNow()); };
@@ -2774,11 +2798,7 @@ void EditorApp::StartBuild(const std::string& query) {
         return Ai() && Ai()->GetState() == AiClient::State::Ready ? Ai()->Request("POST", path, body, timeout) : 0;
     };
     host.projectRoot = assets_.GetProject().root;
-    build_ = std::make_unique<PlaceBuild>(std::move(host));
-    const std::string why = build_->Start(query);
-    if (!why.empty()) post_({{"type", "notify"}, {"text", "Can't build: " + why}});
-    post_({{"type", "build:open"}});
-    PostBuild();
+    return std::make_unique<PlaceBuild>(std::move(host));
 }
 
 void EditorApp::PostBuild() {

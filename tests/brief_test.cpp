@@ -323,15 +323,19 @@ TEST(BriefTest, ABuildFromRequestToConfirmedBrief) {
     fs::remove_all(root);
 }
 
-TEST(BriefTest, NoAiNoBuild) {
+TEST(BriefTest, NoAiStillABrief) {
     PlaceBuild::Host host;
     host.ontology = []() -> const Ontology& { return Library(); };
     host.request = [](const std::string&, const json&, int) { return 0; };
     host.projectRoot = fs::temp_directory_path() / "aige_build_none";
+    fs::remove_all(host.projectRoot);
     PlaceBuild build(host);
-    EXPECT_NE(build.Start("a village"), "");
-    EXPECT_EQ(build.Stage(), "failed");
-    EXPECT_FALSE(build.Active());
+    EXPECT_EQ(build.Start("a village"), "");
+    EXPECT_EQ(build.Stage(), "request"); // from the request's words, and said so
+    EXPECT_EQ(BriefValue(build.Brief(), "scale.class"), "village");
+    EXPECT_FALSE(build.Notices().empty());
+    EXPECT_NE(build.Start("  "), "");
+    fs::remove_all(host.projectRoot);
 }
 
 

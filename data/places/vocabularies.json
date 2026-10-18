@@ -213,6 +213,64 @@
       "broader": "vegetable"
     },
     {
+      "id": "onion",
+      "alt": [
+        "onions"
+      ],
+      "broader": "vegetable"
+    },
+    {
+      "id": "garlic",
+      "broader": "vegetable"
+    },
+    {
+      "id": "leek",
+      "alt": [
+        "leeks"
+      ],
+      "broader": "vegetable"
+    },
+    {
+      "id": "beans",
+      "alt": [
+        "bean"
+      ],
+      "broader": "vegetable"
+    },
+    {
+      "id": "peas",
+      "alt": [
+        "pea"
+      ],
+      "broader": "vegetable"
+    },
+    {
+      "id": "turnip",
+      "alt": [
+        "turnips"
+      ],
+      "broader": "vegetable"
+    },
+    {
+      "id": "lettuce",
+      "broader": "vegetable"
+    },
+    {
+      "id": "potato",
+      "alt": [
+        "potatoes"
+      ],
+      "broader": "vegetable"
+    },
+    {
+      "id": "beet",
+      "alt": [
+        "beets",
+        "beetroot"
+      ],
+      "broader": "vegetable"
+    },
+    {
       "id": "flax"
     },
     {
