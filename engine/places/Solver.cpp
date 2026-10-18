@@ -152,6 +152,7 @@ private:
 
     // The document.
     std::vector<const json*> statements_;
+    std::deque<json> instanceStatements_; // instance statements' copies (x[*] run once per instance); a deque keeps them in place
     std::map<std::string, std::vector<const json*>> byContainer_;
     std::vector<const json*> relations_;
     std::map<std::string, std::vector<const json*>> relationsOf_; // by their first member
@@ -213,6 +214,13 @@ std::string Solver::ContainerOf(const json& s) const {
         if (s.contains(key) && s[key].is_string()) {
             std::string ref = s[key].get<std::string>();
             ref = ref.substr(0, ref.find_first_of(" |&"));
+            // An instance reference (x[*]) lives where the statement making x does.
+            if (const size_t bracket = ref.find('['); bracket != std::string::npos) {
+                const std::string maker = ref.substr(0, bracket);
+                for (const json* t : statements_) {
+                    if (t->value("id", "") == maker && t != &s) return ContainerOf(*t);
+                }
+            }
             // The region a reference names: the longest known prefix.
             while (!ref.empty()) {
                 if (std::any_of(statements_.begin(), statements_.end(), [&](const json* t) {
@@ -1504,19 +1512,45 @@ void Solver::SolveRegion(int index) {
         if (area(a) != area(b)) return area(a) > area(b);
         return a->value("id", "") < b->value("id", "");
     });
+    auto run = [&](const json& s) {
+        const std::string op = s.value("op", "");
+        if (op == "path") Path(s);
+        else if (op == "network") Network(s, index);
+        else if (op == "partition") Partition(s, index);
+        else if (op == "subdivide") Subdivide(s, index);
+        else if (op == "place") Place(s, index);
+        else if (op == "region") NestedRegion(s, index);
+        else if (op == "anchor") Anchor(s);
+        else if (op == "line") Line(s);
+        else if (op == "rows") Rows(s, index, false);
+        else if (op == "grid") Rows(s, index, true);
+        else if (op == "scatter") Scatter(s, index);
+    };
     for (const json* s : list) {
-        const std::string op = s->value("op", "");
-        if (op == "path") Path(*s);
-        else if (op == "network") Network(*s, index);
-        else if (op == "partition") Partition(*s, index);
-        else if (op == "subdivide") Subdivide(*s, index);
-        else if (op == "place") Place(*s, index);
-        else if (op == "region") NestedRegion(*s, index);
-        else if (op == "anchor") Anchor(*s);
-        else if (op == "line") Line(*s);
-        else if (op == "rows") Rows(*s, index, false);
-        else if (op == "grid") Rows(*s, index, true);
-        else if (op == "scatter") Scatter(*s, index);
+        const std::string in = s->value("in", "");
+        const size_t star = in.find("[*]");
+        if (star == std::string::npos) {
+            run(*s);
+            continue;
+        }
+        // An instance statement: once per instance there is (x[0], x[1], ...), as x[i].
+        const std::string prefix = in.substr(0, star) + "[", rest = in.substr(star + 3);
+        std::vector<std::string> instances;
+        for (const auto& r : regions_) {
+            if (r.id.rfind(prefix, 0) != 0) continue;
+            const size_t close = r.id.find(']', prefix.size());
+            if (close == std::string::npos || r.id.substr(close + 1) != rest) continue;
+            instances.push_back(r.id.substr(prefix.size(), close - prefix.size()));
+        }
+        for (const auto& k : instances) {
+            json copy = *s;
+            copy["in"] = prefix + k + "]" + rest;
+            std::string id = s->value("id", "");
+            if (const size_t at = id.find("[*]"); at != std::string::npos) id.replace(at, 3, "[" + k + "]");
+            copy["id"] = id;
+            instanceStatements_.push_back(std::move(copy));
+            run(instanceStatements_.back());
+        }
     }
     // Then its sub-regions, large first.
     std::vector<int> children;

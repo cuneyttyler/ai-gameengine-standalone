@@ -2,6 +2,8 @@
 
 #include "editing/BuildWindow.h"
 #include "places/PlaceValidate.h"
+#include "assets/LayoutImage.h"
+#include "assets/TextureCook.h"
 #include "places/Compile.h"
 #include "places/Planner.h"
 #include "places/Solver.h"
@@ -10,6 +12,8 @@
 #include <chrono>
 #include <cmath>
 #include <fstream>
+#include <functional>
+
 #include <set>
 
 namespace aige {
@@ -264,6 +268,32 @@ std::string PlaceBuild::Approve() {
     for (const auto& o : solved_.value("objects", json::array())) buildings += o.value("layer", "") == "building";
     int failed = 0;
     for (const auto& c : solved_.value("checks", json::array())) failed += !c.value("ok", true);
+    // The map of it, with its legend: places/<id>/layout.png.
+    {
+        LayoutImageOptions image;
+        std::map<std::string, int> seen, total;
+        for (const auto& c : spec_["root"].value("children", json::array())) total[c.value("module", "")]++;
+        for (const auto& c : spec_["root"].value("children", json::array())) {
+            const ModuleDef* m = host_.ontology().Module(c.value("module", ""));
+            if (m == nullptr) continue;
+            const int n = ++seen[m->id];
+            image.names[c.value("id", "")] = m->name + (total[m->id] > 1 ? " " + std::to_string(n) : "");
+        }
+        std::function<void(const json&)> walk = [&](const json& node) {
+            image.modules[node.value("id", "")] = node.value("module", "");
+            for (const auto& c : node.value("children", json::array())) walk(c);
+        };
+        walk(spec_["root"]);
+        for (const auto& [id, m] : host_.ontology().Modules()) image.moduleNames[id] = m.name;
+        int zones = 0;
+        for (const auto& [module, count] : seen) {
+            const ModuleDef* m = host_.ontology().Module(module);
+            if (m && m->level == PlaceLevel::Zone) zones += count;
+        }
+        image.title = brief_.value("name", id_) + ": " + std::to_string(buildings) + " buildings in " + std::to_string(zones) + " zones";
+        WritePng(Folder() / "layout.png", RenderLayoutImage(solved_, image));
+        ++imageVersion_;
+    }
     status_ = "Laid out " + std::to_string(buildings) + " buildings" +
               (failed ? " (" + std::to_string(failed) + " check(s) to look at)" : "") +
               ". Putting it into the scene comes next (milestone 7.7).";
@@ -427,6 +457,7 @@ json PlaceBuild::State() {
         state["sketch"] = PlanSketch(host_.ontology(), spec_, SiteSide());
         state["problems"] = ProblemsJson(planProblems_);
         if (solved_.is_object()) {
+            state["image"] = "places/" + id_ + "/layout.png?v=" + std::to_string(imageVersion_);
             state["solved"] = {{"stats", solved_.value("stats", json())}, {"checks", solved_.value("checks", json::array())},
                                {"problems", solved_.value("problems", json::array())}};
         }

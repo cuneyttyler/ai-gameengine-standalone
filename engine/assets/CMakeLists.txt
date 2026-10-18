@@ -27,6 +27,8 @@ add_library(aige_assets STATIC
     ArtAnalysis.cpp
     Catalog.h
     Catalog.cpp
+    LayoutImage.h
+    LayoutImage.cpp
     PackImport.h
     PackImport.cpp
 )

@@ -252,5 +252,9 @@ TEST(PlanTest, ABuildIsPlannedAndABrokenNodeRepaired) {
     EXPECT_TRUE(fs::exists(build.Folder() / "spec.json"));
     EXPECT_EQ(build.Approve(), "");
     EXPECT_EQ(build.Stage(), "planned");
+    // Solved, with its map.
+    EXPECT_TRUE(fs::exists(build.Folder() / "layout.solved.json"));
+    EXPECT_TRUE(fs::exists(build.Folder() / "layout.png"));
+    EXPECT_TRUE(build.State().contains("image"));
     fs::remove_all(root);
 }

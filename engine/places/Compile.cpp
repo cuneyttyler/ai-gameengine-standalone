@@ -1,5 +1,6 @@
 #include "places/Compile.h"
 
+#include "places/Expr.h"
 #include "places/PlaceValidate.h"
 
 #include <algorithm>
@@ -51,6 +52,31 @@ json SizeOf(const json& node, const ModuleDef& m, json fallback) {
 }
 
 std::string Text(const json& v, const std::string& fallback) { return v.is_string() ? v.get<std::string>() : fallback; }
+
+// Whether a module's condition holds for a node's fields (unknown: yes).
+class NodeFields : public places::Scope {
+public:
+    NodeFields(const ModuleDef& m, const json& node) : m_(m), node_(node) {}
+    std::optional<places::Value> Name(const std::string& name) override {
+        const FieldDef* f = m_.Field(name);
+        if (f == nullptr) return std::nullopt;
+        return FieldValueOf(*f, FieldOf(node_, m_, name));
+    }
+    places::Value NodeField(int, const std::string&) override { return places::Value::Unknown(); }
+    places::Value Below(int, bool, const std::string&, const std::string&) override { return places::Value::Unknown(); }
+    int SelfNode() override { return 0; }
+
+private:
+    const ModuleDef& m_;
+    const json& node_;
+};
+
+bool RuleHolds(const std::string& condition, const ModuleDef& m, const json& node) {
+    if (condition.empty()) return true;
+    auto expr = places::Expr::Parse(condition);
+    NodeFields scope(m, node);
+    return !expr || expr->Holds(scope) != places::Tri::False;
+}
 
 const SlotDef* PrimarySlot(const ModuleDef& m) {
     for (const auto& s : m.slots) {
@@ -470,17 +496,23 @@ void Compiler::Feature(const json& node, const ModuleDef& m, const std::string& 
             }
         }
         bool beds = false;
+        // Beds are counted by the garden's `beds` field: the compiler writes them out when
+        // the module's rule allows them here (a vegetable or mixed garden), or the plan lists them.
         for (const auto& c : node.value("children", json::array())) beds = beds || c.value("module", "") == "vegetable-bed";
+        for (const auto& rule : m.children) {
+            if (rule.module == "vegetable-bed" && !rule.count.empty() && RuleHolds(rule.when, m, node)) beds = true;
+        }
         const auto bedCount = Range(node, m, "beds");
         if (beds && bedCount) {
             Emit({{"op", "rows"}, {"id", self + "/beds"}, {"node", nodeId}, {"in", self}, {"regions", true}, {"module", "vegetable-bed"},
                   {"count", RangeJson(*bedCount)}, {"margin", 1}});
-            const ModuleDef* bed = ontology_.Module("vegetable-bed");
-            for (int k = 0; k < static_cast<int>(std::lround(bedCount->second)); ++k) {
-                Emit({{"op", "scatter"}, {"id", self + "/beds[" + std::to_string(k) + "]/crops"}, {"node", nodeId},
-                      {"in", self + "/beds[" + std::to_string(k) + "]"}, {"slot", "crop"}, {"density", bed ? 0.7 : 0.7},
-                      {"layer", "decal"}, {"mix", plantMix}});
+            // One statement for every bed the rows make (PLL instance statements, layout-ir.md §4.2).
+            double density = 0.7;
+            if (const ModuleDef* bed = ontology_.Module("vegetable-bed")) {
+                if (const auto plants = Range(json::object(), *bed, "plants")) density = (plants->first + plants->second) / 2;
             }
+            Emit({{"op", "scatter"}, {"id", self + "/beds[*]/crops"}, {"node", nodeId}, {"in", self + "/beds[*]"}, {"slot", "crop"},
+                  {"density", density}, {"layer", "decal"}, {"mix", plantMix}});
         }
         if (m.id == "orchard") {
             Emit({{"op", "grid"}, {"id", self + "/trees"}, {"node", nodeId}, {"in", self}, {"slot", "tree"},
@@ -508,7 +540,8 @@ void Compiler::Feature(const json& node, const ModuleDef& m, const std::string& 
         return;
     }
     // Anything else: its main object in its middle (a well, a bench, a stable).
-    if (primary) {
+    // A ground slot (a yard's path) is its surface, filled above: nothing to place.
+    if (primary && LayerForSlot(ontology_, *primary) != "ground") {
         Emit({{"op", "place"}, {"id", self + "/" + primary->name}, {"node", nodeId}, {"in", self}, {"slot", primary->name},
               {"footprint", {{"w", 1}, {"h", 1}}}, {"position", "center"}, {"layer", LayerForSlot(ontology_, *primary)}, {"essential", false}});
     }

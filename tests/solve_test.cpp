@@ -1,3 +1,5 @@
+#include "assets/LayoutImage.h"
+#include "assets/TextureCook.h"
 #include "places/Brief.h"
 #include "places/Compile.h"
 #include "places/PlaceValidate.h"
@@ -7,6 +9,8 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <filesystem>
+#include <functional>
 #include <cstdlib>
 #include <iostream>
 #include <map>
@@ -15,6 +19,7 @@
 // development_plan.md 7.6: compile and solve.
 using namespace aige;
 using json = nlohmann::json;
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -296,4 +301,27 @@ TEST(SolveTest, EveryScaleSolves) {
         for (const auto& p : solved.problems) problems += "  " + p.dump() + "\n";
         EXPECT_TRUE(solved.ok()) << cls << "\n" << problems;
     }
+}
+
+TEST(SolveTest, TheLayoutDrawsAsAMapWithALegend) {
+    const json brief = Brief("village", true, true);
+    const json spec = Village(2, 12, brief);
+    const json solved = SolveLayout(Library(), CompileSpec(Library(), spec, {.seed = 7, .side = 90})).document;
+    LayoutImageOptions options;
+    options.title = "Riverford: a walled village";
+    options.names = {{"market", "Market"}, {"ward-1", "Old ward"}, {"ward-2", "New ward"}};
+    for (const auto& [id, m] : Library().Modules()) options.moduleNames[id] = m.name;
+    std::function<void(const json&)> walk = [&](const json& node) {
+        options.modules[node.value("id", "")] = node.value("module", "");
+        for (const auto& c : node.value("children", json::array())) walk(c);
+    };
+    walk(spec["root"]);
+    const ImageData image = RenderLayoutImage(solved, options);
+    EXPECT_GT(image.width, 90u * 8); // the map and its legend
+    EXPECT_GT(image.height, 90u * 8);
+    // AIGE_LAYOUT_PNG=<path>: keep it to look at.
+    const char* path = std::getenv("AIGE_LAYOUT_PNG");
+    const fs::path out = path ? fs::path(path) : fs::temp_directory_path() / "aige_layout.png";
+    ASSERT_TRUE(WritePng(out, image));
+    EXPECT_TRUE(fs::exists(out));
 }

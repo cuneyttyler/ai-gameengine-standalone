@@ -727,7 +727,7 @@ std::vector<PlaceProblem> ValidateLayout(const Ontology& ontology, const json& i
         if (op == "line") need({"slot", "along"});
         if (op == "rows" || op == "grid") {
             need({"in"});
-            need({"slot", "mix"}, true);
+            if (!s.value("regions", false)) need({"slot", "mix"}, true); // rows of regions (beds) hold their own contents
         }
         if (op == "scatter") {
             need({"in", "density"});

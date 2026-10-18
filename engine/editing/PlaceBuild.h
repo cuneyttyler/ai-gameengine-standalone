@@ -112,6 +112,7 @@ private:
     std::vector<std::string> errors_;
     nlohmann::json spec_;
     nlohmann::json solved_;
+    int imageVersion_ = 0; // bumped on each new layout.png, so the panel reloads it
     std::string planPhase_;                  // root, zones
     std::set<std::string> repaired_;         // nodes already given their one repair
     std::vector<PlaceProblem> planProblems_; // what the final Spec still breaks

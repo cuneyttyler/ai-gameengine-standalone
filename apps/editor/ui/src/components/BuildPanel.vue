@@ -88,6 +88,7 @@ interface BuildState {
   plan?: { rows: PlanRow[]; totals: { buildings: number; zones: number; area: unknown }; rationale: string }
   sketch?: { side: number; rects: { id: string; module: string; name: string; x: number; y: number; w: number; h: number }[] }
   problems?: Problem[]
+  image?: string // places/<id>/layout.png: the solved layout as a map, with its legend
   solved?: { stats: Record<string, number>; checks: { id: string; predicate: string; ok: boolean; detail?: unknown }[] }
 }
 
@@ -135,6 +136,7 @@ const activeStep = computed(() =>
 const ZONE_COLOURS = ['#a6e3a1', '#fab387', '#cba6f7', '#f9e2af', '#94e2d5', '#f38ba8']
 const planErrors = computed(() => (state.value?.problems ?? []).filter((p) => !p.warning))
 const selectedZone = ref<string | null>(null)
+const bigMap = ref(false)
 
 function edit(path: string, value: unknown): void {
   sendToHost({ type: 'build:edit', path, value })
@@ -265,7 +267,14 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       </p>
       <p v-if="state.plan.rationale" class="dim">{{ state.plan.rationale }}</p>
       <div class="plan-split">
-        <svg v-if="state.sketch" class="sketch" :viewBox="`0 0 ${state.sketch.side} ${state.sketch.side}`">
+        <img
+          v-if="state.image"
+          :src="PROJECT_HOST + state.image"
+          :class="['map', { large: bigMap }]"
+          title="The solved layout, with what each colour means. Click to enlarge."
+          @click="bigMap = !bigMap"
+        />
+        <svg v-else-if="state.sketch" class="sketch" :viewBox="`0 0 ${state.sketch.side} ${state.sketch.side}`">
           <rect x="0" y="0" :width="state.sketch.side" :height="state.sketch.side" class="site" />
           <g v-for="(r, i) in state.sketch.rects" :key="r.id" @click="selectedZone = r.id">
             <rect :x="r.x" :y="r.y" :width="r.w" :height="r.h" :fill="ZONE_COLOURS[i % 6]" :class="{ picked: selectedZone === r.id }" />
@@ -756,6 +765,17 @@ button.link {
   display: flex;
   gap: 12px;
   align-items: flex-start;
+}
+.map {
+  width: 420px;
+  flex-shrink: 0;
+  cursor: zoom-in;
+  image-rendering: auto;
+}
+.map.large {
+  width: 100%;
+  max-width: none;
+  cursor: zoom-out;
 }
 .sketch {
   width: 260px;
