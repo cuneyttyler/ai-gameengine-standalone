@@ -243,6 +243,10 @@ so the same word means the same thing everywhere.
 
 ### 3.4 Layout IR (step 4): the building language
 
+The full definition of the language (PLL) is in **`docs/layout-ir.md`**:
+its space model, references, all statements, relation score functions, solving phases,
+objective, checks, errors and repair, and text form. This section is a summary.
+
 The IR is a flat list of typed **statements**. Each one carries the Spec node that
 caused it, so the result is always traceable:
 

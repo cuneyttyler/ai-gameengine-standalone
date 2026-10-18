@@ -1634,8 +1634,9 @@ uses the pack's houses, well, fences and decorations, on the grid the art was dr
 - `docs/place-modules.md`: **the modules per build type**, with their quantity and
   quality fields;
 - `docs/place-ontology.md`: **the place ontology**, a knowledge graph of modules,
-  fields, vocabularies, roles, relations and rules that every step consults. The Layout
-  IR is our own language, aligned with GLDL's terms.
+  fields, vocabularies, roles, relations and rules that every step consults;
+- `docs/layout-ir.md`: **PLL, the Place Layout Language**, the intermediate language
+  (our own, aligned with GLDL's terms).
 
 **Agreed (2026-10-18):**
 - **size:** very big, up to regions of several settlements;
