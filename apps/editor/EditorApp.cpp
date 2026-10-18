@@ -796,6 +796,17 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         }
     } else if (type == "assets:request") {
         post_(AssetsJson());
+    } else if (type == "catalog:request") {
+        post_(CatalogJson());
+    } else if (type == "catalog:set") {
+        std::map<std::string, std::string> fields;
+        for (const auto& [key, value] : message.value("fields", nlohmann::json::object()).items()) {
+            if (value.is_string()) fields[key] = value.get<std::string>();
+        }
+        if (SetCatalogFields(assets_, message.value("id", ""), fields)) {
+            post_(CatalogJson());
+            post_(AssetsJson());
+        }
     } else if (type == "assets:analyze") {
         AnalyzeAssets(message.value("paths", std::vector<std::string>{}));
     } else if (type == "pack:plan") {
@@ -1284,19 +1295,41 @@ void EditorApp::AnalyzeAssets(const std::vector<std::string>& paths) {
         post_({{"type", "notify"}, {"text", "Pick images to analyze"}});
         return;
     }
-    // Border terrains need no AI: right away.
+    // Border terrains and shapes (footprint, anchor, sheets cut into objects)
+    // need no AI: right away.
     AnalyzeTileEdges(images);
+    for (const auto& path : images) AnalyzeArtPixels(assets_, path);
     // Descriptions come from the AI service's vision model.
     if (Ai() == nullptr || Ai()->GetState() != AiClient::State::Ready) {
-        post_({{"type", "notify"}, {"text", "Tile borders analyzed. Turn AI on to have the images described too."}});
+        post_({{"type", "notify"}, {"text", "Shapes and tile borders analyzed. Turn AI on to have the images described too."}});
         post_(AssetsJson());
+        post_(CatalogJson());
         return;
     }
     if (analyzeRequest_ != 0) {
         post_({{"type", "notify"}, {"text", "Still analyzing the previous images"}});
         return;
     }
-    analyzeRequest_ = Ai()->Request("POST", "/assets/describe", {{"paths", images}}, 900);
+    // A sheet is described object by object; the model picks each one's role
+    // from the ontology's.
+    std::vector<std::string> whole;
+    nlohmann::json items = nlohmann::json::array();
+    for (const auto& path : images) {
+        const AssetInfo* asset = assets_.Find(path);
+        const auto objects = asset ? nlohmann::json::parse(asset->analysis.contains(kObjectsKey) ? asset->analysis.at(kObjectsKey) : "",
+                                                           nullptr, false)
+                                   : nlohmann::json();
+        if (objects.is_array() && !objects.empty()) {
+            for (size_t i = 0; i < objects.size(); ++i) {
+                items.push_back({{"id", path + "#" + std::to_string(i)}, {"path", path}, {"rect", objects[i].value("rect", nlohmann::json())}});
+            }
+        } else {
+            whole.push_back(path);
+        }
+    }
+    std::vector<std::string> roles;
+    for (const auto& [id, role] : Places().Roles()) roles.push_back(id);
+    analyzeRequest_ = Ai()->Request("POST", "/assets/describe", {{"paths", whole}, {"items", items}, {"roles", roles}}, 900);
     post_({{"type", "assets:analyzing"}, {"count", images.size()}});
     post_({{"type", "notify"},
            {"text", "Describing " + std::to_string(images.size()) + " image(s) — about a second each"}});
@@ -2608,13 +2641,22 @@ void EditorApp::PollAi() {
                     }
                     char cells[32];
                     std::snprintf(cells, sizeof(cells), "%.2f", a.value("sizeCells", 1.0));
-                    if (assets_.SetAnalysis(a.value("path", ""), {{"description", a.value("description", "")},
-                                                                  {"kind", a.value("kind", "other")},
-                                                                  {"tags", tags},
-                                                                  {"direction", a.value("direction", "none")},
-                                                                  {"cells", cells},
-                                                                  {"blocks", a.value("blocks", false) ? "1" : "0"},
-                                                                  {"name", a.value("name", "")}})) {
+                    std::map<std::string, std::string> fields{{"description", a.value("description", "")},
+                                                              {"kind", a.value("kind", "other")},
+                                                              {"tags", tags},
+                                                              {"direction", a.value("direction", "none")},
+                                                              {"cells", cells},
+                                                              {"blocks", a.value("blocks", false) ? "1" : "0"},
+                                                              {"name", a.value("name", "")},
+                                                              {"accessible", a.value("accessible", false) ? "1" : ""}};
+                    // Catalog v2 (7.3): what was understood; empty values leave the field unset.
+                    const std::string perspective = a.value("perspective", "unknown");
+                    fields["perspective"] = perspective == "unknown" ? "" : perspective;
+                    fields["roles"] = a.value("role", "");
+                    const auto anchors = a.value("anchors", nlohmann::json::object());
+                    fields["anchors"] = anchors.empty() ? "" : anchors.dump();
+                    const std::string id = a.value("id", "").empty() ? a.value("path", "") : a.value("id", "");
+                    if (SetCatalogFields(assets_, id, fields)) {
                         ++described;
                     }
                 }
@@ -3664,6 +3706,77 @@ nlohmann::json EditorApp::ArtJson() {
         list.push_back({{"path", path}, {"version", assetVersions_[path]}, {"meta", meta}});
     }
     return {{"type", "art:list"}, {"items", list}, {"busy", artRequest_ != 0}, {"history", artHistory_.Entries()}};
+}
+
+const Ontology& EditorApp::Places() {
+    if (!places_) {
+        places_.emplace();
+        places_->Load({EnginePlacesDir(), assets_.GetProject().root / "places"});
+    }
+    return *places_;
+}
+
+CatalogOptions EditorApp::CatalogOptionsNow() {
+    CatalogOptions options;
+    options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
+    options.pixelsPerCell = [this](const std::string& folder) {
+        const PackScale scale = PackScaleFor(assets_.GetProject(), assets_, folder, iso_);
+        return scale.source == "default" ? 0.0f : scale.pixelsPerCell;
+    };
+    return options;
+}
+
+nlohmann::json EditorApp::CatalogJson() {
+    const CatalogOptions options = CatalogOptionsNow();
+    const Catalog catalog = BuildCatalog(assets_, &Places(), options);
+    auto rect = [](const ImageRect& r) { return nlohmann::json::array({r.x, r.y, r.w, r.h}); };
+    nlohmann::json entries = nlohmann::json::array();
+    for (const CatalogEntry& e : catalog.entries) {
+        nlohmann::json anchors = nlohmann::json::object();
+        for (const auto& [name, uv] : e.anchors) anchors[name] = {uv[0], uv[1]};
+        entries.push_back({{"id", e.id},
+                           {"path", e.path},
+                           {"rect", rect(e.rect)},
+                           {"base", rect(e.shape.base)},
+                           {"opaque", rect(e.shape.opaque)},
+                           {"analysed", !e.shape.region.Empty()},
+                           {"name", e.name},
+                           {"kind", e.kind},
+                           {"roles", e.roles},
+                           {"concepts", e.concepts},
+                           {"affordance", e.affordance},
+                           {"perspective", e.perspective},
+                           {"flat", e.flat},
+                           {"tileType", e.tileType},
+                           {"layer", e.layer},
+                           {"footprint", {{"w", e.footprint.w}, {"h", e.footprint.h}, {"cellsW", e.footprint.cellsW}, {"cellsH", e.footprint.cellsH}}},
+                           {"anchor", {e.anchorU, e.anchorV}},
+                           {"sprite", {e.spriteW, e.spriteH}},
+                           {"pixelsPerCell", e.pixelsPerCell},
+                           {"facings", e.facings},
+                           {"variantOf", e.variantOf},
+                           {"anchors", anchors},
+                           {"passable", e.passable},
+                           {"accessible", e.accessible},
+                           {"pieceSet", e.pieceSet},
+                           {"piece", e.piece},
+                           {"pieceGrid", e.pieceGrid},
+                           {"palette", e.shape.palette},
+                           {"shadow", e.shape.shadow},
+                           {"source", e.source},
+                           {"problems", e.problems}});
+    }
+    nlohmann::json sets = nlohmann::json::array();
+    for (const PieceSet& s : catalog.pieceSets) {
+        sets.push_back({{"id", s.id}, {"role", s.role}, {"grid", s.grid}, {"pieces", s.pieces}, {"missing", s.missing}, {"usable", s.usable}});
+    }
+    std::vector<std::string> roles;
+    for (const auto& [id, role] : Places().Roles()) roles.push_back(id);
+    return {{"type", "catalog:state"},
+            {"grid", options.isoGrid ? "iso" : "square"},
+            {"entries", entries},
+            {"pieceSets", sets},
+            {"roles", roles}};
 }
 
 nlohmann::json EditorApp::AssetsJson() {

@@ -21,6 +21,8 @@
 #include "gameplay/GameSession.h"
 #include "gameplay/Isometric.h"
 #include "gameplay/TileLayer.h"
+#include "assets/Catalog.h"
+#include "places/Ontology.h"
 #include "renderer2d/Camera2D.h"
 #include "renderer2d/Renderer2D.h"
 #include "ui/GameUi.h"
@@ -163,6 +165,12 @@ private:
     // The style a tileset brush paints with (texture region, size, solidity).
     std::optional<TileStyle> TilesetStyle(const std::string& path, int tile, bool solid) const;
     nlohmann::json AssetsJson();
+    // The asset catalog v2 (7.3) for the Assets panel's review: every entry, its
+    // piece sets and problems.
+    nlohmann::json CatalogJson();
+    CatalogOptions CatalogOptionsNow();
+    // The place ontology: the engine's library and the project's places/ (loaded on first use).
+    const Ontology& Places();
     void UpdateTitle();
 
     nlohmann::json SceneJson();
@@ -363,6 +371,7 @@ private:
     bool playing_ = false;
     std::string playSnapshot_;
     TileLayers playLayers_; // the edited scene's tile layers while playing (7.2)
+    std::optional<Ontology> places_;
     // The selection when Play started, restored on Stop. Indices taken from
     // the live registry at Stop would be off once enemies die mid-play.
     std::optional<size_t> selectionIndexAtPlay_;

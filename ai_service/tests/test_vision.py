@@ -84,3 +84,53 @@ def test_the_endpoint(tmp_path):
     no_vision = TestClient(create_app())
     no_vision.put("/project", json={"root": str(tmp_path)})
     assert no_vision.post("/assets/describe", json={"paths": paths}).json()["ok"] is False
+
+
+# --- catalog v2 (7.3) ---------------------------------------------------------------
+
+def test_small_pixel_art_is_enlarged_and_objects_are_cropped(tmp_path):
+    import base64
+    import io
+
+    from app.vision import image_chunk
+    folder = tmp_path / "assets"
+    folder.mkdir()
+    Image.new("RGBA", (16, 16), (200, 0, 0, 255)).save(folder / "tiny.png")
+    chunk, size = image_chunk(folder / "tiny.png")
+    shown = Image.open(io.BytesIO(base64.b64decode(chunk["image_url"].split(",", 1)[1])))
+    assert size == (16, 16) and shown.size == (256, 256)  # x16, pixels kept sharp
+
+    sheet = Image.new("RGBA", (200, 100), (0, 0, 0, 0))
+    sheet.paste((0, 200, 0, 255), (120, 10, 160, 90))
+    sheet.save(folder / "sheet.png")
+    chunk, size = image_chunk(folder / "sheet.png", [120, 10, 40, 80])
+    assert size == (40, 80)
+
+
+def test_roles_perspective_and_anchors(tmp_path):
+    paths = make_images(tmp_path, ["house.png", "fence.png"])
+    roles = ["house", "fence-piece-set", "tree"]
+
+    def answer(messages):
+        text = messages[0]["content"][0]["text"]
+        assert "fence-piece-set" in text  # the ontology's roles are offered
+        assert sum(1 for c in messages[0]["content"] if "cut from a sheet" in c.get("text", "")) == 1
+        return json.dumps({"assets": [
+            {"index": 1, "name": "cottage", "kind": "building", "description": "A cottage.", "tags": ["house"],
+             "direction": "none", "sizeCells": 2.5, "blocks": True, "perspective": "3/4", "role": "house",
+             "anchors": {"Door": [0.5, 1.4], "bad": "x"}, "accessible": True},
+            {"index": 2, "name": "fence", "kind": "decoration", "description": "A fence.", "tags": ["fence"],
+             "direction": "horizontal", "sizeCells": 1, "blocks": True, "perspective": "sideways", "role": "spaceship"},
+        ]})
+
+    items = [{"id": "assets/pack/fence.png#0", "path": "assets/pack/fence.png", "rect": [0, 0, 100, 50]},
+             {"id": "bad", "path": "assets/pack/fence.png", "rect": [0, 0]}]
+    result = describe_assets(ScriptedProvider(answer), tmp_path, ["assets/pack/house.png"], workers=1,
+                             items=items, roles=roles)
+    house, fence = result["assets"]
+    assert house["id"] == "assets/pack/house.png" and house["perspective"] == "three-quarter"
+    assert house["role"] == "house" and house["accessible"] is True
+    assert house["anchors"] == {"door": [0.5, 1.0]}  # clamped; the bad one dropped
+    assert fence["id"] == "assets/pack/fence.png#0" and fence["path"] == "assets/pack/fence.png"
+    assert fence["perspective"] == "unknown" and fence["role"] == ""  # not one of the roles offered
+    assert any(e.startswith("bad:") for e in result["errors"])

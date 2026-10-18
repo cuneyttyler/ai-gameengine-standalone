@@ -1834,6 +1834,43 @@ build).
 - Tests: a 400×400 place builds, saves, loads and undoes within set time budgets.
 
 **7.3 — Asset catalog v2**
+
+**Done (2026-10-18):**
+- **From the pixels** (`assets/ArtAnalysis.h`):
+  - the solid bounds, with soft shadows left out;
+  - the **base** (the solid columns across the lowest rows) and the **anchor** (its
+    middle, at the lowest solid row);
+  - the tile type: texture (complete and seamless), complete or partial;
+  - the silhouette (square tile, diamond tile, upright, blob), which gives a
+    perspective cue;
+  - symmetry, the main axis, the palette, and where a piece touches its borders.
+- **Footprint:** upright art covers its base width (depth about half of it); flat art
+  covers its solid bounds; all at the pack's pixels per cell.
+- **Sheets cut into whole objects:** pieces closer than a gap join; on a tileset,
+  tiles join where their content runs across a border.
+- **The catalog** (`assets/Catalog.h`), kept in each asset's `.meta`:
+  - roles (from the vision model, else inferred from words through the ontology);
+  - concepts, affordance, perspective, flat, layer, footprint, anchor, sprite size,
+    facings, variant group, named anchors (door…), passability, entering;
+  - **piece sets** and their grid, from where the pieces join;
+  - provenance;
+  - **problems**: no role, a perspective that doesn't lie on the project's grid,
+    pieces made for the other grid, an incomplete piece set, a measured size far
+    from the described one, an unknown licence.
+- **Slot retrieval** (`RetrieveForSlot`):
+  - hard filters: role (or a narrower one), concept (or a narrower one), affordance,
+    perspective vs grid, footprint within the range after scaling by up to a third,
+    layer, licence, a usable piece set;
+  - then the fit score of `place-assets.md` §4 (semantic, style, size, quality),
+    graded good or usable, with every rejection's reason kept.
+- **Vision v2** (the AI service): role chosen from the ontology's, perspective, named
+  anchors and entering. Sheets are described object by object, and small pixel art is
+  enlarged before the model sees it.
+- **Review:** the Assets panel's **Catalog** tab. Each entry shows its art with the base
+  and anchor marked, the fields (editable), its problems and its piece set.
+- Tests: `tests/catalog_test.cpp` (footprints, anchors and shadows; tile types;
+  segmentation; piece kinds; piece sets and grids; perspective mismatches;
+  retrieval) and `ai_service/tests/test_vision.py`.
 - Per asset:
   - affordance (GameTileNet's five);
   - tile type (complete, partial, texture);

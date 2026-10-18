@@ -55,7 +55,9 @@ class ConsistencyRequest(BaseModel):
 
 
 class DescribeAssetsRequest(BaseModel):
-    paths: list[str]
+    paths: list[str] = []
+    items: list[dict] = []   # objects cut from sheets: {"id", "path", "rect": [x, y, w, h]} (7.3)
+    roles: list[str] = []    # the ontology roles to choose from
 
 
 class GenerateAssetRequest(BaseModel):
@@ -222,9 +224,9 @@ def create_app(
             return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
         if vision is None:
             return {"ok": False, "errors": ["No vision model available (MISTRAL_API_KEY)"]}
-        if len(request.paths) > 400:
+        if len(request.paths) + len(request.items) > 400:
             return {"ok": False, "errors": ["At most 400 images at a time"]}
-        return describe_assets(vision, root, request.paths)
+        return describe_assets(vision, root, request.paths, items=request.items, roles=request.roles or None)
 
     @app.post("/assets/generate")
     def assets_generate(request: GenerateAssetRequest) -> dict:

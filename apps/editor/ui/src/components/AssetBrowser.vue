@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { armPrefab, editorState } from '../editorState'
 import PrefabThumb from './PrefabThumb.vue'
+import CatalogReview from './CatalogReview.vue'
 import { openContextMenu, separator, type MenuItem } from '../contextMenu'
 import { prefabMenuExtensions } from '../assetMenus'
 import { panelTab } from '../paneltabs'
@@ -120,6 +121,9 @@ onHostMessage((message) => {
   }
 })
 const selected = computed(() => assets.value.find((a) => a.path === selectedPath.value) ?? null)
+
+// Each asset's version, for the catalog's thumbnails.
+const assetVersions = computed(() => Object.fromEntries(assets.value.map((a) => [a.path, a.version])))
 
 function urlOf(asset: Asset): string {
   return `${PROJECT_HOST}${asset.path.split('/').map(encodeURIComponent).join('/')}?v=${asset.version}`
@@ -491,9 +495,16 @@ onMounted(() => {
       <div class="tabs">
         <button :class="{ active: tab === 'prefabs' }" @click="tab = 'prefabs'">Prefabs</button>
         <button :class="{ active: tab === 'assets' }" @click="tab = 'assets'">Assets</button>
+        <button
+          :class="{ active: tab === 'catalog' }"
+          title="What the builder understood about each image: role, footprint, anchor, perspective, piece sets, and what looks wrong"
+          @click="tab = 'catalog'"
+        >
+          Catalog
+        </button>
       </div>
       <input
-        v-if="tab === 'prefabs' || tab === 'assets'"
+        v-if="tab === 'prefabs' || tab === 'assets' || tab === 'catalog'"
         v-model="filter"
         class="filter"
         type="search"
@@ -596,7 +607,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-else class="body">
+    <div v-else-if="tab === 'assets'" class="body">
       <nav class="folders" title="Folders inside assets/ — drop a card on one to move it">
         <button
           v-for="folder in ['', ...assetFolders]"
@@ -828,6 +839,7 @@ onMounted(() => {
         </template>
       </aside>
     </div>
+    <CatalogReview v-else class="body" :versions="assetVersions" :filter="filter" />
   </div>
 </template>
 
