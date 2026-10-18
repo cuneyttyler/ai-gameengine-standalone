@@ -290,8 +290,10 @@ Each field has a confidence score.
   (`place-assets.md` §6).
 
 Buttons: **Build**, **Back**, **Cancel**. Answers become per-project defaults. For large
-places, a **plan preview** in the viewport follows before building. Everything the user
-sees is defined in `place-interaction.md` Part A.
+places, a **plan preview** in the viewport follows before building. All of this happens
+in a dedicated, dockable **Build panel**, not the narrow AI chat panel, which keeps a
+compact card per build. Everything the user sees is defined in `place-interaction.md`
+Part A.
 
 ## 8. Verification and repair
 

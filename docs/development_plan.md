@@ -1739,7 +1739,12 @@ Query → Interpret (Brief drafts) → Confirm (Brief) → Plan (Spec: quantity 
 **7.4 — Interpret and Confirm**
 - The AI drafts **several Briefs** for the query. Fields where the drafts disagree, or
   with low confidence, are highlighted.
-- The **confirmation window** is generated from the build type's Brief schema:
+- The **Build panel** (`place-interaction.md` A2): a new dockable panel (bottom by
+  default) with the stepper Request · Assets · Plan · Build · Result. It opens when a
+  building query starts. The AI panel gets a compact build card that links to it; small,
+  non-build AI requests keep the existing proposal card.
+- The **confirmation window** (the Request and Assets steps) is generated from the
+  build type's Brief schema:
   - round 1: size with numbers, layout with sketches, components with thumbnails and a
     **source** (auto, project, library, web, generate), style, location;
   - round 2: densities, asked module fields, and the **asset plan** (needs, proposed
@@ -1791,9 +1796,9 @@ Query → Interpret (Brief drafts) → Confirm (Brief) → Plan (Spec: quantity 
 - **Repair:** move or remove *adaptable* slots, re-solve the node, or re-plan it with the
   reason. Then report.
 - Approved builds join the **verified examples** used in prompts.
-- The **progress view** and the **result card** (asked vs built, assets by source with
-  licences, checks, repairs, next steps), and **"Why?"** per part
-  (`place-interaction.md` Part A).
+- The Build panel's **Build** and **Result** steps: progress, then asked vs built,
+  assets by source with licences, checks, repairs and next steps. The Result stays as
+  the place's page. **"Why?"** per part (`place-interaction.md` Part A).
 - Tests: injected failures are repaired; reports are accurate.
 
 **7.8 — Edit after the build**

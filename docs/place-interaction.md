@@ -16,27 +16,83 @@ Status: **draft for review (2026-10-18)**. Part of the Phase 7 design.
 - **Numbers with words.** "Large village (60–150 buildings)", never just "large".
 - **Every claim is checkable.** A count in a report links to the parts it counts; a
   failed check links to the part that failed.
-- **One place per stage.** The AI panel shows the stage's card; the viewport shows the
-  plan or the build; the Inspector shows the selected part.
+- **One place per stage.** The **Build panel** (A2) shows the stage; the viewport shows
+  the location, the plan or the build; the Inspector shows the selected part; the AI panel
+  keeps the conversation and a compact card for the build.
 - **The user can stop at any time.** Nothing is applied to the scene until the build
   stage. Each built part is one undo step, and the whole build can be undone.
 
-### A2. The stages, as the user sees them
+### A2. Where builds are shown: the Build panel
+
+**Why not the AI panel.** The AI panel is a narrow (360 px) chat column. Its proposal
+card lists each change as *before → after* with a checkbox, plus Apply / Reject. That
+works for small edits, but not for a build:
+- The Brief and the asset plan are **wide, editable tables** with selects, sliders,
+  sketches and thumbnails. At chat width they would be cramped and scroll sideways.
+- Inside the chat history they **scroll away** while the user is still working on them.
+- The plan preview and the build happen **in the viewport**, not in a card.
+- A town is **thousands of objects**, so a per-change review list is meaningless. The
+  user reviews the Brief, the plan and the result instead.
+
+**The Build panel.** A dedicated panel, alongside Scene, Assets and AI, in the same
+docking system (5.6). It opens automatically when a building query starts.
+- **Docking:** bottom by default (wide, good for tables), or right or left.
+- **Not modal:** the viewport stays visible for the location outline, the plan preview
+  and the build itself. A modal window, like the pack import dialog, would hide them.
+- **A stepper:** ① Request · ② Assets · ③ Plan · ④ Build · ⑤ Result. Each step is one
+  view, not a scrolling history. Until something is built, the user can step back freely.
+- **One build at a time** is open in the panel. Earlier builds stay reachable from the
+  AI panel's cards and from the place's list (*places/*).
+- **The AI panel** keeps the conversation. For each build it shows one **build card**:
+  the stage, progress and, at the end, the headline, with *Open build panel*.
+  Follow-ups ("more trees in the east gardens") still go through the chat.
+
+```
+┌ AI (chat) ──────────────┐   ┌ Build — Riverford ─────────────────────────────────────────┐
+│ > build a large village │   │ ① Request  ② Assets  ③ Plan  ④ Build  ⑤ Result            │
+│   by a river            │   │────────────────────────────────────────────────────────────│
+│ ┌ Building Riverford ─┐ │   │ Size  [large village ▾]  buildings [70]–[90]  area 140×140 │
+│ │ ② Assets · 3 to     │ │   │ Layout (•organic)(grid)(radial)(along river)  [sketches]   │
+│ │   generate          │ │   │ ┌Component──────┬On─┬Amount────┬Assets──────┬Source──────┐ │
+│ │ [Open build panel]  │ │   │ │Residential    │ ☑ │ 3–5 wards│ ▣▣▣        │ auto ▾     │ │
+│ └─────────────────────┘ │   │ │Gardens        │ ☑ │ common ▾ │ ▣▣ ⚠ rose  │ generate ▾ │ │
+└─────────────────────────┘   │ │Walls          │ ☑ │ stone ▾  │ —          │ generate ▾ │ │
+                              │ └───────────────┴───┴──────────┴────────────┴────────────┘ │
+                              │ Assumptions: … (labelled)          [Back]  [Continue →]    │
+                              └────────────────────────────────────────────────────────────┘
+```
+
+**Reused from the editor:**
+- the multi-step task progress (2.9) becomes the Build step;
+- the applied / undone tracking of proposals becomes the result's *Undo all* and per-part
+  undo;
+- the panel framework and docking (5.6).
+
+The per-change review list remains only as an optional *Details* view of the commands a
+build ran.
+
+**Small AI changes are unchanged:** a request that isn't a build ("make skeletons
+tougher") still gets the AI panel's proposal card with Apply / Reject.
+
+### A3. The stages, as the user sees them
 
 | # | Stage | Where | What is shown | User actions |
 |---|---|---|---|---|
-| 1 | **Request received** | AI panel | the query, and "Reading your request…" | Stop |
-| 2 | **Confirm, round 1** | AI panel: **Brief card** | build type and name; **size** (class plus numbers); **layout** (choice plus small sketches); **components** (rows: on/off, count or density, thumbnails of matching assets); style; location (the area is outlined in the viewport); **assumptions** (labelled); **questions** highlighted where the AI's drafts disagreed | edit any field · Continue · Cancel |
-| 3 | **Confirm, round 2** | Brief card, step 2 | densities and asked module fields for the chosen components; the **asset plan** table (`place-assets.md` §6) with sources and a summary line | edit · change sources · Back · **Build** |
-| 4 | **Plan preview** | viewport overlay + AI panel | the **plan view** drawn over the area (zones in colour with labels, main roads, walls and gates, landmarks); a **plan summary** table (per zone: kind, plots, buildings, key qualities); any plan problems | Approve · Adjust (chat or edit a zone's fields) · Back. Shown for *large village* and above; for smaller places it is skipped unless the user turns it on (project setting) |
-| 5 | **Asset work** | AI panel: progress | needs being generated or fetched, with live thumbnails as they finish; failures and fallbacks | Stop · replace an asset |
-| 6 | **Build** | viewport + AI panel: progress | the current stage and part highlighted in the viewport; per-stage progress (*networks ✓, wards 3/5, plots 41/88…*); live counts; repairs as they happen | Pause · Stop (keeps what is built, as undo steps) |
-| 7 | **Result (the answer)** | AI panel: **Result card** | see A3 | Keep · Undo all · Regenerate a part · Open the plan |
+| 1 | **Request received** | AI panel (chat) → the Build panel opens on ① | the query, and "Reading your request…" | Stop |
+| 2 | **Confirm, round 1** | Build panel ① **Request** | build type and name; **size** (class plus numbers); **layout** (choice plus small sketches); **components** (rows: on/off, count or density, thumbnails of matching assets); style; location (the area is outlined in the viewport); **assumptions** (labelled); **questions** highlighted where the AI's drafts disagreed | edit any field · Continue · Cancel |
+| 3 | **Confirm, round 2** | Build panel ② **Assets** (with round-2 fields) | densities and asked module fields for the chosen components; the **asset plan** table (`place-assets.md` §6) with sources and a summary line | edit · change sources · Back · **Build** |
+| 4 | **Plan preview** | viewport overlay + Build panel ③ **Plan** | the **plan view** drawn over the area (zones in colour with labels, main roads, walls and gates, landmarks); a **plan summary** table (per zone: kind, plots, buildings, key qualities); any plan problems | Approve · Adjust (chat or edit a zone's fields) · Back. Shown for *large village* and above; for smaller places it is skipped unless the user turns it on (project setting) |
+| 5 | **Asset work** | Build panel ④ **Build** (first part) | needs being generated or fetched, with live thumbnails as they finish; failures and fallbacks | Stop · replace an asset |
+| 6 | **Build** | viewport + Build panel ④ **Build** | the current stage and part highlighted in the viewport; per-stage progress (*networks ✓, wards 3/5, plots 41/88…*); live counts; repairs as they happen | Pause · Stop (keeps what is built, as undo steps) |
+| 7 | **Result (the answer)** | Build panel ⑤ **Result**; the headline on the AI panel's build card | see A4 | Keep · Undo all · Regenerate a part · Open the plan |
 | — | **Afterwards** | Inspector | for any clicked entity: its part path (*Riverford › Old town › Plot 14 › Garden*), the part's fields (editable), **Why?**, Regenerate, Lock | edit · regenerate · lock |
 
-### A3. The result card (the final answer)
+During stages 2–7, the AI panel's **build card** mirrors the current stage in one or two
+lines.
 
-The answer to the user's query is a single card:
+### A4. The result (the final answer)
+
+The answer to the user's query is the Build panel's **Result** step:
 
 1. **Headline:** one sentence, e.g. *"Built Riverford: a large village of 84 buildings in
    4 wards, walled, on the river, in 6 min."*
@@ -58,18 +114,20 @@ The answer to the user's query is a single card:
 6. **What next:** suggested follow-ups as buttons ("Add villagers", "Build the tavern's
    interior", "More trees in the outskirts").
 
-The card stays in the AI panel's history. *Undo all* reverts the build; *Regenerate a
-part* asks which part, or uses the selection.
+The Result step stays open as the **place's page** after the build. Clicking a row
+selects its parts in the viewport and Inspector. The AI panel's build card keeps the
+headline and reopens the page. *Undo all* reverts the build; *Regenerate a part* asks
+which part, or uses the selection.
 
-### A4. "Why?"
+### A5. "Why?"
 
 Every part has a short **rationale**: one or two sentences written by the AI when it
 decided that part (Part B, the `rationale` field), plus the ontology facts it used. For
 example: *"Craftsmen ward downstream of the old town: tanneries pollute (rule:
 noisome-trades-downstream); on the main road for trade."* This is what is shown, never
-the raw thinking.
+the raw thinking (in the Inspector, and on rows of the Result step).
 
-### A5. Messages and tone
+### A6. Messages and tone
 
 - Short, plain and specific. No apologies, no filler.
 - Problems name the part, the reason and the fix that was tried.
