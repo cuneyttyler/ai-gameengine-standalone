@@ -1232,6 +1232,18 @@ the Phase 4 testing (2026-10-16).
   - Tests: `ScenesTest` (6): create, duplicate and list; delete refusals; a rename
     rewriting gateways and settings; gateway problems; travel carrying the player and
     retargeting a follower; a gateway firing only on the way in.
+- After testing (2026-10-18): a new scene looked like a separate file. The window title
+  showed only its file name, and the Scene panel showed an empty tree, while scenes
+  were listed only in Assets ▸ Scenes. Now:
+  - The **Scene panel lists the project's scenes** at the top of its tree. The open
+    scene is expanded into its entities (with a hint when it's empty), and the start
+    scene is starred. Clicking another scene opens it (offering to save first);
+    right-clicking gives open, set as start, rename, duplicate, new and delete; the **+**
+    button makes a new scene.
+  - The **window title** names the project, then the scene
+    (`MyGame — cellar* - …`).
+  - The scene list and its actions are one shared store (`ui/src/scenes.ts`), used by
+    the Scene panel, the Scene Manager tab and the File menu.
 
 **5.4 — Start window** *(testing)*
 - Launching the editor without a project opens a **welcome window**:

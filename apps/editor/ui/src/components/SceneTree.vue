@@ -1,9 +1,21 @@
 <script setup lang="ts">
+// The Scene tree: the project's scenes, the open one expanded into its
+// entities (development_plan.md 5.3). Clicking another scene opens it, in the
+// same project and window; the + button makes a new one.
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 import { openContextMenu } from '../contextMenu'
 import { entityMenu } from '../sceneMenus'
+import { newScene, openScene, sceneList, sceneMenu } from '../scenes'
+
+// Scenes before the open one, the open one, and those after, so the open
+// scene's entities sit right under its row.
+const openIndex = computed(() => sceneList.scenes.findIndex((s) => s.open))
+const before = computed(() => (openIndex.value < 0 ? sceneList.scenes : sceneList.scenes.slice(0, openIndex.value)))
+const current = computed(() => (openIndex.value < 0 ? null : sceneList.scenes[openIndex.value]!))
+const after = computed(() => (openIndex.value < 0 ? [] : sceneList.scenes.slice(openIndex.value + 1)))
+const openCollapsed = ref(false)
 
 function showMenu(entity: EntitySummary, event: MouseEvent): void {
   select(entity)
@@ -63,8 +75,38 @@ onMounted(() => {
 
 <template>
   <div class="panel">
-    <h2>Scene Tree</h2>
-    <p v-if="entities.length === 0" class="placeholder">No entities.</p>
+    <div class="head">
+      <h2>Scenes</h2>
+      <button class="add" :disabled="editorState.playing" title="New scene in this project" @click="newScene">+</button>
+    </div>
+    <button
+      v-for="scene in before"
+      :key="scene.path"
+      class="scene-row"
+      :title="`${scene.path} — click to open`"
+      :disabled="editorState.playing"
+      @click="openScene(scene)"
+      @contextmenu.prevent="sceneMenu(scene, $event)"
+    >
+      <span class="chevron">▸</span><span class="scene-name">{{ scene.name }}</span>
+      <span v-if="scene.start" class="star" title="The game starts here">★</span>
+    </button>
+    <button
+      v-if="current"
+      class="scene-row open"
+      :title="`${current.path} — open`"
+      @click="openCollapsed = !openCollapsed"
+      @contextmenu.prevent="sceneMenu(current, $event)"
+    >
+      <span class="chevron">{{ openCollapsed ? '▸' : '▾' }}</span><span class="scene-name">{{ current.name }}</span>
+      <span v-if="current.start" class="star" title="The game starts here">★</span>
+      <span class="count">{{ entities.length }}</span>
+    </button>
+    <div v-if="!openCollapsed" class="open-scene">
+    <p v-if="entities.length === 0" class="placeholder">
+      Empty scene. Paint its ground with a tile prefab from Assets ▸ Prefabs, place things, and connect it to other
+      scenes with a Marker and a Gateway.
+    </p>
     <div v-else ref="listEl">
       <template v-for="group in groups" :key="group.name">
         <div v-if="group.items.length > 0" class="group">
@@ -88,6 +130,19 @@ onMounted(() => {
         </div>
       </template>
     </div>
+    </div>
+    <button
+      v-for="scene in after"
+      :key="scene.path"
+      class="scene-row"
+      :title="`${scene.path} — click to open`"
+      :disabled="editorState.playing"
+      @click="openScene(scene)"
+      @contextmenu.prevent="sceneMenu(scene, $event)"
+    >
+      <span class="chevron">▸</span><span class="scene-name">{{ scene.name }}</span>
+      <span v-if="scene.start" class="star" title="The game starts here">★</span>
+    </button>
   </div>
 </template>
 
@@ -97,12 +152,72 @@ onMounted(() => {
   flex: 1;
   overflow: auto;
 }
+.head {
+  display: flex;
+  align-items: center;
+  margin: 0 0 6px;
+}
 h2 {
   font-size: 0.85em;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   opacity: 0.7;
-  margin: 0 0 8px;
+  margin: 0;
+  flex: 1;
+}
+.add {
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #333;
+  border-radius: 0;
+  background: #11111b;
+  color: #ddd;
+  font: inherit;
+  cursor: pointer;
+}
+.add:hover:not(:disabled) {
+  background: #262637;
+}
+.scene-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 4px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: #ccc;
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+  text-align: left;
+}
+.scene-row:hover:not(:disabled) {
+  background: #262637;
+}
+.scene-row:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.scene-row.open {
+  color: #fff;
+  font-weight: 600;
+}
+.scene-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.star {
+  color: #93c5fd;
+  font-size: 0.85em;
+}
+.open-scene {
+  padding-left: 10px;
+  border-left: 1px solid #2a2a3a;
+  margin: 0 0 4px 8px;
 }
 .placeholder {
   opacity: 0.5;

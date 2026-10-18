@@ -1,85 +1,18 @@
 <script setup lang="ts">
 // Scene Manager (development_plan.md 5.3): the project's scenes, which one is
-// open and which one the game starts in, and gateways that lead nowhere.
-import { onMounted, ref } from 'vue'
-import { openContextMenu, separator, type MenuItem } from '../contextMenu'
-import { confirmDialog, promptDialog } from '../dialogs'
+// open and which one the game starts in, and gateways that lead nowhere. The
+// same list heads the Scene panel's tree (scenes.ts).
+import { computed, ref } from 'vue'
 import { editorState } from '../editorState'
-import { onHostMessage, sendToHost } from '../ipc'
-import { newScene } from '../scenes'
+import { newScene, openScene as open, sceneList, sceneMenu, type SceneEntry } from '../scenes'
 
-interface SceneEntry {
-  path: string
-  name: string
-  start: boolean
-  open: boolean
-  markers: string[]
-}
-
-const scenes = ref<SceneEntry[]>([])
-const problems = ref<string[]>([])
+const scenes = computed(() => sceneList.scenes)
+const problems = computed(() => sceneList.problems)
 const selected = ref<string | null>(null)
-
-onHostMessage((message) => {
-  if (message.type === 'scenes:list') {
-    scenes.value = message.scenes as SceneEntry[]
-    problems.value = (message.problems as string[]) ?? []
-  } else if (message.type === 'scene:changed' || message.type === 'file:moved') {
-    sendToHost({ type: 'scenes:request' })
-  }
-})
-
-onMounted(() => sendToHost({ type: 'scenes:request' }))
-
-async function rename(scene: SceneEntry): Promise<void> {
-  const name = await promptDialog({
-    title: 'Rename scene',
-    message: `New name for ${scene.path}. Gateways that lead to it, and the start scene setting, follow.`,
-    value: scene.name,
-    confirmLabel: 'Rename',
-  })
-  if (name?.trim() && name.trim() !== scene.name) sendToHost({ type: 'scene:rename', path: scene.path, name: name.trim() })
-}
-
-async function duplicate(scene: SceneEntry): Promise<void> {
-  const name = await promptDialog({
-    title: 'Duplicate scene',
-    message: `A name for the copy of ${scene.path}.`,
-    value: `${scene.name}-copy`,
-    confirmLabel: 'Duplicate',
-  })
-  if (name?.trim()) sendToHost({ type: 'scene:duplicate', path: scene.path, name: name.trim() })
-}
-
-async function remove(scene: SceneEntry): Promise<void> {
-  if (
-    await confirmDialog({
-      title: 'Delete scene',
-      message: `Delete ${scene.path}? This deletes the file.`,
-      confirmLabel: 'Delete',
-      danger: true,
-    })
-  ) {
-    sendToHost({ type: 'scene:delete', path: scene.path })
-  }
-}
-
-function open(scene: SceneEntry): void {
-  if (!scene.open) sendToHost({ type: 'scene:open', path: scene.path })
-}
 
 function menu(scene: SceneEntry, event: MouseEvent): void {
   selected.value = scene.path
-  const items: MenuItem[] = [
-    { label: 'Open', disabled: scene.open || editorState.playing, action: () => open(scene) },
-    { label: 'Set as start scene', disabled: scene.start, action: () => sendToHost({ type: 'scene:setStart', path: scene.path }) },
-    separator,
-    { label: 'Rename…', disabled: editorState.playing, action: () => rename(scene) },
-    { label: 'Duplicate…', action: () => duplicate(scene) },
-    separator,
-    { label: 'Delete…', danger: true, disabled: scene.start || scene.open, action: () => remove(scene) },
-  ]
-  openContextMenu(event.clientX, event.clientY, items)
+  sceneMenu(scene, event)
 }
 </script>
 

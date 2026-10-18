@@ -2423,8 +2423,10 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
 }
 
 void EditorApp::UpdateTitle() {
-    std::wstring name = std::filesystem::path(scenePath_).filename().wstring();
-    std::wstring title = name + (dirty_ ? L"*" : L"") + L" - AI-Native Game Engine Editor";
+    // The project first: switching scenes stays in the same project and window.
+    const std::wstring project = assets_.GetProject().root.filename().wstring();
+    const std::wstring scene = std::filesystem::path(scenePath_).stem().wstring();
+    std::wstring title = project + L" — " + scene + (dirty_ ? L"*" : L"") + L" - AI-Native Game Engine Editor";
     SetWindowTextW(mainWindow_, title.c_str());
 }
 
