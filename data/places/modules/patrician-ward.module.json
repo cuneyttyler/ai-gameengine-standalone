@@ -1,0 +1,86 @@
+{
+  "schema": "aige.module/1",
+  "id": "patrician-ward",
+  "name": "Patrician ward",
+  "level": "zone",
+  "description": "Manors with formal gardens, on high ground near the castle.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "plots": {
+      "type": "count",
+      "default": [
+        3,
+        15
+      ],
+      "min": 0,
+      "max": 2000,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        800,
+        3000
+      ],
+      "min": 100,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "grandeur": {
+      "type": "enum",
+      "values": [
+        "modest",
+        "grand"
+      ],
+      "default": "modest",
+      "ask": true
+    }
+  },
+  "slots": {},
+  "children": {
+    "manor-plot": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 100
+    },
+    "formal-garden": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 20
+    },
+    "fountain-square": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 4
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "relations": [
+    {
+      "type": "near",
+      "members": [
+        "self",
+        "parent.castle-ward"
+      ],
+      "weight": 1.0,
+      "args": {
+        "d0": 0,
+        "d1": 30
+      }
+    }
+  ],
+  "prefersSite": {
+    "high-ground": 0.8,
+    "water": 0.2
+  }
+}

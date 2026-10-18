@@ -1,0 +1,107 @@
+{
+  "schema": "aige.module/1",
+  "id": "nature-scatter",
+  "name": "Nature scatter",
+  "level": "dressing",
+  "description": "Trees, bushes, rocks and flowers scattered in free cells.",
+  "quantity": {
+    "trees": {
+      "type": "density",
+      "levels": [
+        0,
+        0.05,
+        0.15,
+        0.3,
+        0.5
+      ],
+      "unit": "per free cell",
+      "default": "rare"
+    },
+    "bushes": {
+      "type": "density",
+      "levels": [
+        0,
+        0.05,
+        0.15,
+        0.3,
+        0.5
+      ],
+      "unit": "per free cell",
+      "default": "rare"
+    },
+    "rocks": {
+      "type": "density",
+      "levels": [
+        0,
+        0.05,
+        0.15,
+        0.3,
+        0.5
+      ],
+      "unit": "per free cell",
+      "default": "rare"
+    },
+    "flowers": {
+      "type": "density",
+      "levels": [
+        0,
+        0.05,
+        0.15,
+        0.3,
+        0.5
+      ],
+      "unit": "per free cell",
+      "default": "rare"
+    }
+  },
+  "quality": {
+    "biome": {
+      "type": "enum",
+      "vocabulary": "biome",
+      "default": "temperate"
+    }
+  },
+  "slots": {
+    "tree": {
+      "role": "tree",
+      "essential": false
+    },
+    "bush": {
+      "role": "bush",
+      "essential": false
+    },
+    "rock": {
+      "role": "rock",
+      "essential": false
+    },
+    "flower": {
+      "role": "flower",
+      "essential": false
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "away-from",
+      "members": [
+        "self",
+        "parent.road"
+      ],
+      "weight": 1.0,
+      "args": {
+        "d": 1
+      }
+    },
+    {
+      "type": "away-from",
+      "members": [
+        "self",
+        "parent.door"
+      ],
+      "weight": 1.0,
+      "args": {
+        "d": 2
+      }
+    }
+  ]
+}

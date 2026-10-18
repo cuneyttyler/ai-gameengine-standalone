@@ -1,0 +1,61 @@
+{
+  "schema": "aige.module/1",
+  "id": "rock-field",
+  "name": "Rock field",
+  "level": "zone",
+  "description": "Rough ground strewn with rocks.",
+  "classes": [
+    "NatureArea"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        40,
+        600
+      ],
+      "min": 10,
+      "unit": "cells²"
+    },
+    "rocks": {
+      "type": "density",
+      "levels": [
+        0,
+        0.05,
+        0.15,
+        0.3,
+        0.5
+      ],
+      "unit": "per free cell",
+      "default": "some"
+    }
+  },
+  "quality": {
+    "rock-kind": {
+      "type": "enum",
+      "values": [
+        "granite",
+        "limestone",
+        "sandstone",
+        "mossy"
+      ],
+      "default": "granite"
+    }
+  },
+  "slots": {
+    "rock": {
+      "role": "rock",
+      "essential": true,
+      "primary": true
+    },
+    "boulder": {
+      "role": "boulder",
+      "essential": false
+    },
+    "cliff": {
+      "role": "cliff-piece",
+      "essential": false
+    }
+  },
+  "children": {}
+}

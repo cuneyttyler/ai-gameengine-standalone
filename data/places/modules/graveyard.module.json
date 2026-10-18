@@ -1,0 +1,109 @@
+{
+  "schema": "aige.module/1",
+  "id": "graveyard",
+  "name": "Graveyard",
+  "level": "feature",
+  "description": "Graves and headstones, fenced, with a few trees.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          8,
+          14
+        ],
+        "h": [
+          8,
+          14
+        ]
+      },
+      "min": {
+        "w": 4,
+        "h": 4
+      },
+      "unit": "cells",
+      "max": {
+        "w": 50,
+        "h": 50
+      }
+    },
+    "graves": {
+      "type": "count",
+      "default": [
+        6,
+        30
+      ],
+      "min": 1,
+      "max": 400
+    }
+  },
+  "quality": {
+    "age": {
+      "type": "enum",
+      "values": [
+        "fresh",
+        "old"
+      ],
+      "default": "old"
+    },
+    "fenced": {
+      "type": "bool",
+      "default": true
+    }
+  },
+  "slots": {
+    "grave": {
+      "role": "grave",
+      "essential": true,
+      "primary": true
+    },
+    "headstone": {
+      "role": "headstone",
+      "essential": false
+    },
+    "crypt": {
+      "role": "crypt",
+      "essential": false
+    }
+  },
+  "children": {
+    "fence-line": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 1,
+      "when": "fenced"
+    },
+    "nature-scatter": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 1
+    }
+  },
+  "constraints": [
+    "graves * 2 <= size.w * size.h"
+  ],
+  "relations": [
+    {
+      "type": "behind",
+      "members": [
+        "self",
+        "parent.primary"
+      ],
+      "weight": 1.5
+    },
+    {
+      "type": "in-row",
+      "members": [
+        "self.grave",
+        "self.grave"
+      ],
+      "weight": 1.0,
+      "args": {
+        "axis": "x"
+      }
+    }
+  ]
+}

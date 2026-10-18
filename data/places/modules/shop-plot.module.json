@@ -1,0 +1,85 @@
+{
+  "schema": "aige.module/1",
+  "id": "shop-plot",
+  "name": "Shop plot",
+  "level": "parcel",
+  "description": "A shop with a stall on its front.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Workplace"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          5,
+          8
+        ],
+        "h": [
+          6,
+          9
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 4
+      },
+      "unit": "cells",
+      "max": {
+        "w": 16,
+        "h": 20
+      }
+    }
+  },
+  "quality": {
+    "goods": {
+      "type": "enum",
+      "vocabulary": "goods",
+      "default": "general"
+    }
+  },
+  "slots": {
+    "shop": {
+      "role": "shop",
+      "essential": true,
+      "primary": true,
+      "concepts": "goods"
+    },
+    "stall": {
+      "role": "stall",
+      "essential": false
+    }
+  },
+  "children": {
+    "shop-front": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 1
+    }
+  },
+  "relations": [
+    {
+      "type": "faces",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 3.0
+    },
+    {
+      "type": "adjacent",
+      "members": [
+        "self",
+        "parent.street"
+      ],
+      "weight": 2.0
+    }
+  ],
+  "prefersSite": {
+    "main-road": 0.5,
+    "centre": 0.5
+  }
+}

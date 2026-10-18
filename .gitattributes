@@ -1,0 +1,2 @@
+# The published ontology is compared byte for byte with what the engine generates.
+ontology/*.ttl text eol=lf

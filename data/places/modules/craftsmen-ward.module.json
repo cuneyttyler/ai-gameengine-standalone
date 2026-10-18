@@ -1,0 +1,100 @@
+{
+  "schema": "aige.module/1",
+  "id": "craftsmen-ward",
+  "name": "Craftsmen's ward",
+  "level": "zone",
+  "description": "Workshops and their houses, downstream and at the edge.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "plots": {
+      "type": "count",
+      "default": [
+        6,
+        30
+      ],
+      "min": 0,
+      "max": 2000,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        800,
+        3000
+      ],
+      "min": 100,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "trades": {
+      "type": "enumSet",
+      "vocabulary": "trade",
+      "default": [
+        "smith",
+        "carpenter"
+      ],
+      "ask": true
+    },
+    "wealth": {
+      "type": "enum",
+      "vocabulary": "wealth",
+      "default": "common"
+    }
+  },
+  "slots": {},
+  "children": {
+    "workshop-plot": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 400
+    },
+    "house-plot": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 400
+    },
+    "lumber-yard": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 4
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "constraints": [
+    "count(children(workshop-plot)) >= 1"
+  ],
+  "relations": [
+    {
+      "type": "away-from",
+      "members": [
+        "self",
+        "parent.patrician-ward"
+      ],
+      "weight": 1.5,
+      "args": {
+        "d": 20
+      }
+    },
+    {
+      "type": "edge",
+      "members": [
+        "self"
+      ],
+      "weight": 1.0
+    }
+  ],
+  "prefersSite": {
+    "downstream": 0.7,
+    "edge": 0.4
+  }
+}

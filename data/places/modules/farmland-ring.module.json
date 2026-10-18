@@ -1,0 +1,124 @@
+{
+  "schema": "aige.module/1",
+  "id": "farmland-ring",
+  "name": "Farmland ring",
+  "level": "zone",
+  "description": "Fields and farmsteads outside the settlement (a nested farmland place).",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "farmsteads": {
+      "type": "count",
+      "default": [
+        2,
+        10
+      ],
+      "min": 0,
+      "max": 200
+    },
+    "fields": {
+      "type": "count",
+      "default": [
+        4,
+        30
+      ],
+      "min": 0,
+      "max": 1000
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        2000,
+        20000
+      ],
+      "min": 400,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "crops": {
+      "type": "mix",
+      "vocabulary": "crop-kind",
+      "default": {
+        "wheat": 0.5,
+        "barley": 0.3,
+        "cabbage": 0.2
+      }
+    }
+  },
+  "slots": {},
+  "children": {
+    "farmstead": {
+      "min": 0,
+      "weight": 1.0,
+      "max": 200,
+      "count": "farmsteads"
+    },
+    "field": {
+      "min": 0,
+      "weight": 1.0,
+      "max": 1000,
+      "count": "fields"
+    },
+    "pasture": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 200
+    },
+    "orchard": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 40
+    },
+    "mill-plot": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 4
+    },
+    "hedge-line": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 400
+    },
+    "pond": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 10
+    },
+    "subplace": {
+      "min": 0,
+      "weight": 0.1,
+      "max": 1
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "relations": [
+    {
+      "type": "outside",
+      "members": [
+        "self",
+        "parent.wall"
+      ],
+      "weight": 2.0
+    },
+    {
+      "type": "edge",
+      "members": [
+        "self"
+      ],
+      "weight": 1.0
+    }
+  ],
+  "prefersSite": {
+    "flat": 0.6,
+    "water": 0.3
+  }
+}

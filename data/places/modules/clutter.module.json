@@ -1,0 +1,49 @@
+{
+  "schema": "aige.module/1",
+  "id": "clutter",
+  "name": "Clutter",
+  "level": "dressing",
+  "description": "Barrels, crates, sacks and carts near doors and walls.",
+  "quantity": {
+    "items": {
+      "type": "density",
+      "levels": [
+        0,
+        0.02,
+        0.06,
+        0.12,
+        0.2
+      ],
+      "unit": "per free cell",
+      "default": "some"
+    }
+  },
+  "quality": {
+    "theme": {
+      "type": "enum",
+      "vocabulary": "clutter-theme",
+      "default": "farm"
+    }
+  },
+  "slots": {
+    "item": {
+      "role": "barrel|crate|sack|cart|tool",
+      "essential": false
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "near",
+      "members": [
+        "self",
+        "parent.door"
+      ],
+      "weight": 1.0,
+      "args": {
+        "d0": 1,
+        "d1": 4
+      }
+    }
+  ]
+}

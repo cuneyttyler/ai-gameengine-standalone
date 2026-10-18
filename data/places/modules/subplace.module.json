@@ -1,0 +1,27 @@
+{
+  "schema": "aige.module/1",
+  "id": "subplace",
+  "name": "Nested place",
+  "level": "abstract",
+  "description": "A whole place built inside this one (a castle in a town, a farmland ring): its own Brief, Spec and layout, inside a region the parent solves.",
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        400,
+        4000
+      ],
+      "min": 16,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "buildType": {
+      "type": "enum",
+      "vocabulary": "build-type",
+      "default": "settlement"
+    }
+  },
+  "slots": {},
+  "children": {}
+}

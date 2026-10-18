@@ -1,0 +1,43 @@
+{
+  "schema": "aige.module/1",
+  "id": "ground-decals",
+  "name": "Ground decals",
+  "level": "dressing",
+  "description": "Puddles, dirt, leaves and flower patches on the ground.",
+  "quantity": {
+    "patches": {
+      "type": "density",
+      "levels": [
+        0,
+        0.05,
+        0.15,
+        0.3,
+        0.5
+      ],
+      "unit": "per free cell",
+      "default": "rare"
+    }
+  },
+  "quality": {
+    "kind": {
+      "type": "enumSet",
+      "values": [
+        "puddle",
+        "dirt",
+        "leaves",
+        "flowers"
+      ],
+      "default": [
+        "dirt",
+        "leaves"
+      ]
+    }
+  },
+  "slots": {
+    "decal": {
+      "role": "decal",
+      "essential": false
+    }
+  },
+  "children": {}
+}

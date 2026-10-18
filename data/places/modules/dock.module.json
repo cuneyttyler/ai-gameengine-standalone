@@ -1,0 +1,65 @@
+{
+  "schema": "aige.module/1",
+  "id": "dock",
+  "name": "Dock",
+  "level": "feature",
+  "description": "A pier with boats and crates.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "quantity": {
+    "length": {
+      "type": "length",
+      "default": [
+        4,
+        12
+      ],
+      "min": 2,
+      "unit": "cells",
+      "max": 60
+    },
+    "boats": {
+      "type": "count",
+      "default": [
+        0,
+        3
+      ],
+      "min": 0,
+      "max": 20
+    }
+  },
+  "quality": {},
+  "slots": {
+    "pier": {
+      "role": "pier-piece",
+      "essential": true,
+      "primary": true
+    },
+    "boat": {
+      "role": "boat",
+      "essential": false
+    },
+    "crate": {
+      "role": "crate",
+      "essential": false
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "along",
+      "members": [
+        "self",
+        "parent.water"
+      ],
+      "weight": 2.0,
+      "hard": true,
+      "args": {
+        "offset": 0
+      }
+    }
+  ],
+  "requires": [
+    "class:WaterBody"
+  ]
+}

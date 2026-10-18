@@ -1,0 +1,92 @@
+{
+  "schema": "aige.module/1",
+  "id": "wall",
+  "name": "Wall",
+  "level": "network",
+  "description": "A town wall or palisade with towers and gates, enclosing zones.",
+  "classes": [
+    "LinearFeature"
+  ],
+  "quantity": {
+    "length": {
+      "type": "length",
+      "default": [
+        40,
+        800
+      ],
+      "min": 4,
+      "unit": "cells"
+    },
+    "towers": {
+      "type": "count",
+      "default": [
+        0,
+        8
+      ],
+      "min": 0,
+      "max": 200
+    },
+    "gates": {
+      "type": "count",
+      "default": [
+        1,
+        4
+      ],
+      "min": 0,
+      "max": 20,
+      "ask": true
+    }
+  },
+  "quality": {
+    "material": {
+      "type": "enum",
+      "vocabulary": "material",
+      "default": "stone",
+      "ask": true
+    },
+    "height-look": {
+      "type": "enum",
+      "values": [
+        "low",
+        "high"
+      ],
+      "default": "high"
+    },
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "lived-in"
+    }
+  },
+  "slots": {
+    "wall": {
+      "role": "wall-piece-set",
+      "essential": true,
+      "primary": true,
+      "concepts": "material"
+    },
+    "tower": {
+      "role": "tower",
+      "essential": false
+    },
+    "gate": {
+      "role": "gate",
+      "essential": true
+    }
+  },
+  "children": {},
+  "constraints": [
+    "gates >= 1"
+  ],
+  "relations": [
+    {
+      "type": "encloses",
+      "members": [
+        "self",
+        "parent"
+      ],
+      "weight": 1.0,
+      "hard": true
+    }
+  ]
+}

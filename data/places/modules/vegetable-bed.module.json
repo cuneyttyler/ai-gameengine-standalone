@@ -1,0 +1,69 @@
+{
+  "schema": "aige.module/1",
+  "id": "vegetable-bed",
+  "name": "Vegetable bed",
+  "level": "feature",
+  "description": "A tilled bed of crops.",
+  "classes": [
+    "PlantedArea"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          1,
+          3
+        ],
+        "h": [
+          2,
+          4
+        ]
+      },
+      "min": {
+        "w": 1,
+        "h": 1
+      },
+      "unit": "cells",
+      "max": {
+        "w": 8,
+        "h": 8
+      }
+    },
+    "plants": {
+      "type": "density",
+      "levels": [
+        0,
+        0.2,
+        0.4,
+        0.7,
+        0.9
+      ],
+      "unit": "per free cell",
+      "default": "common"
+    }
+  },
+  "quality": {
+    "crop-mix": {
+      "type": "mix",
+      "vocabulary": "crop-kind",
+      "default": {
+        "cabbage": 0.5,
+        "carrot": 0.5
+      }
+    }
+  },
+  "slots": {
+    "crop": {
+      "role": "crop",
+      "essential": true,
+      "primary": true,
+      "concepts": "crop-mix"
+    },
+    "tilled": {
+      "role": "tilled-terrain",
+      "essential": false
+    }
+  },
+  "children": {}
+}

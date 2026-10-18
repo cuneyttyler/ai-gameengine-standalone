@@ -1,0 +1,75 @@
+{
+  "schema": "aige.module/1",
+  "id": "commons",
+  "name": "Commons",
+  "level": "zone",
+  "description": "A green, park or orchard open to all.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        200,
+        2000
+      ],
+      "min": 50,
+      "unit": "cells²"
+    },
+    "trees": {
+      "type": "density",
+      "levels": [
+        0,
+        0.05,
+        0.15,
+        0.3,
+        0.5
+      ],
+      "unit": "per free cell",
+      "default": "some"
+    }
+  },
+  "quality": {
+    "kind": {
+      "type": "enum",
+      "values": [
+        "green",
+        "park",
+        "orchard"
+      ],
+      "default": "green"
+    }
+  },
+  "slots": {},
+  "children": {
+    "meadow": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 2
+    },
+    "nature-scatter": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 1
+    },
+    "pond": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 2
+    },
+    "orchard": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 2
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  }
+}

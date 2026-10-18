@@ -1,0 +1,67 @@
+{
+  "schema": "aige.module/1",
+  "id": "mill-plot",
+  "name": "Mill plot",
+  "level": "parcel",
+  "description": "A wind or water mill with a yard. A water mill needs a river.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Workplace"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          8,
+          12
+        ],
+        "h": [
+          8,
+          12
+        ]
+      },
+      "min": {
+        "w": 5,
+        "h": 5
+      },
+      "unit": "cells",
+      "max": {
+        "w": 24,
+        "h": 24
+      }
+    }
+  },
+  "quality": {
+    "mill": {
+      "type": "enum",
+      "values": [
+        "wind",
+        "water"
+      ],
+      "default": "wind",
+      "ask": true
+    }
+  },
+  "slots": {
+    "mill": {
+      "role": "mill",
+      "essential": true,
+      "primary": true,
+      "concepts": "mill"
+    }
+  },
+  "children": {
+    "yard": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    }
+  },
+  "prefersSite": {
+    "high-ground": 0.3,
+    "water": 0.4
+  }
+}

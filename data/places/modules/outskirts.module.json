@@ -1,0 +1,79 @@
+{
+  "schema": "aige.module/1",
+  "id": "outskirts",
+  "name": "Outskirts",
+  "level": "zone",
+  "description": "Scattered farmsteads and houses beyond the centre.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "plots": {
+      "type": "count",
+      "default": [
+        4,
+        20
+      ],
+      "min": 0,
+      "max": 2000,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        1000,
+        6000
+      ],
+      "min": 100,
+      "unit": "cells²"
+    },
+    "buildings": {
+      "type": "density",
+      "levels": [
+        0,
+        0.5,
+        1,
+        2,
+        3
+      ],
+      "unit": "buildings per 100 cells",
+      "default": "rare"
+    }
+  },
+  "quality": {},
+  "slots": {},
+  "children": {
+    "farmstead": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 100
+    },
+    "house-plot": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 200
+    },
+    "nature-scatter": {
+      "min": 0,
+      "weight": 0.9,
+      "max": 1
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "relations": [
+    {
+      "type": "edge",
+      "members": [
+        "self"
+      ],
+      "weight": 1.5
+    }
+  ]
+}

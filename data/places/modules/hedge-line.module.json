@@ -1,0 +1,52 @@
+{
+  "schema": "aige.module/1",
+  "id": "hedge-line",
+  "name": "Hedge",
+  "level": "feature",
+  "description": "A hedge along an edge (pieces, or bushes in a line).",
+  "classes": [
+    "LinearFeature"
+  ],
+  "quantity": {
+    "length": {
+      "type": "length",
+      "default": [
+        4,
+        60
+      ],
+      "min": 1,
+      "unit": "cells"
+    }
+  },
+  "quality": {
+    "kind": {
+      "type": "enum",
+      "values": [
+        "box",
+        "wild"
+      ],
+      "default": "wild"
+    }
+  },
+  "slots": {
+    "hedge": {
+      "role": "hedge-piece-set|bush",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "along",
+      "members": [
+        "self",
+        "parent"
+      ],
+      "weight": 1.0,
+      "args": {
+        "offset": 0
+      }
+    }
+  ]
+}

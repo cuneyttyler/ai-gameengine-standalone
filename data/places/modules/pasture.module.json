@@ -1,0 +1,80 @@
+{
+  "schema": "aige.module/1",
+  "id": "pasture",
+  "name": "Pasture",
+  "level": "feature",
+  "description": "Fenced grazing with animals and a trough.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          10,
+          20
+        ],
+        "h": [
+          10,
+          20
+        ]
+      },
+      "min": {
+        "w": 4,
+        "h": 4
+      },
+      "unit": "cells",
+      "max": {
+        "w": 80,
+        "h": 80
+      }
+    },
+    "animals": {
+      "type": "count",
+      "default": [
+        3,
+        12
+      ],
+      "min": 0,
+      "max": 200
+    }
+  },
+  "quality": {
+    "livestock-mix": {
+      "type": "mix",
+      "vocabulary": "livestock",
+      "default": {
+        "sheep": 0.6,
+        "cow": 0.4
+      }
+    }
+  },
+  "slots": {
+    "fence": {
+      "role": "fence-piece-set",
+      "essential": true,
+      "primary": true
+    },
+    "animal": {
+      "role": "animal",
+      "essential": false,
+      "concepts": "livestock-mix"
+    }
+  },
+  "children": {
+    "fence-line": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    },
+    "trough": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 2
+    }
+  },
+  "constraints": [
+    "animals * 6 <= size.w * size.h"
+  ]
+}

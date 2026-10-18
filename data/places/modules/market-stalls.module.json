@@ -1,0 +1,62 @@
+{
+  "schema": "aige.module/1",
+  "id": "market-stalls",
+  "name": "Market stalls",
+  "level": "feature",
+  "description": "Stalls in rows facing each other, or around the edge.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "quantity": {
+    "stalls": {
+      "type": "count",
+      "default": [
+        4,
+        10
+      ],
+      "min": 1,
+      "max": 100
+    }
+  },
+  "quality": {
+    "goods-mix": {
+      "type": "mix",
+      "vocabulary": "goods",
+      "default": {
+        "general": 0.4,
+        "food": 0.4,
+        "cloth": 0.2
+      }
+    }
+  },
+  "slots": {
+    "stall": {
+      "role": "stall",
+      "essential": true,
+      "primary": true,
+      "concepts": "goods-mix"
+    },
+    "crate": {
+      "role": "crate",
+      "essential": false
+    },
+    "awning": {
+      "role": "awning",
+      "essential": false
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "in-row",
+      "members": [
+        "self.stall",
+        "self.stall"
+      ],
+      "weight": 2.0,
+      "args": {
+        "axis": "x"
+      }
+    }
+  ]
+}

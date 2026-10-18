@@ -1,0 +1,119 @@
+{
+  "schema": "aige.module/1",
+  "id": "farmstead",
+  "name": "Farmstead",
+  "level": "parcel",
+  "description": "A farmhouse and barn with a farmyard, fields, pasture and garden.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Dwelling",
+    "Workplace"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          14,
+          24
+        ],
+        "h": [
+          14,
+          24
+        ]
+      },
+      "min": {
+        "w": 8,
+        "h": 8
+      },
+      "unit": "cells",
+      "max": {
+        "w": 60,
+        "h": 60
+      }
+    },
+    "fields": {
+      "type": "count",
+      "default": [
+        1,
+        4
+      ],
+      "min": 0,
+      "max": 20
+    }
+  },
+  "quality": {
+    "farm-kind": {
+      "type": "enum",
+      "values": [
+        "arable",
+        "livestock",
+        "mixed"
+      ],
+      "default": "mixed",
+      "ask": true
+    }
+  },
+  "slots": {
+    "farmhouse": {
+      "role": "farmhouse",
+      "essential": true,
+      "primary": true
+    },
+    "barn": {
+      "role": "barn",
+      "essential": true
+    },
+    "shed": {
+      "role": "shed",
+      "essential": false
+    }
+  },
+  "children": {
+    "farmyard": {
+      "min": 0,
+      "weight": 0.9,
+      "max": 1
+    },
+    "field": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 20,
+      "count": "fields"
+    },
+    "pasture": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 4
+    },
+    "garden": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 2
+    },
+    "fence-line": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 8
+    }
+  },
+  "relations": [
+    {
+      "type": "near",
+      "members": [
+        "self.barn",
+        "self.primary"
+      ],
+      "weight": 2.0,
+      "args": {
+        "d0": 1,
+        "d1": 6
+      }
+    }
+  ],
+  "prefersSite": {
+    "flat": 0.5
+  }
+}

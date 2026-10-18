@@ -1,0 +1,93 @@
+{
+  "schema": "aige.module/1",
+  "id": "forest",
+  "name": "Forest",
+  "level": "zone",
+  "description": "Woodland, denser in the middle than at its edges.",
+  "classes": [
+    "NatureArea"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        200,
+        2000
+      ],
+      "min": 20,
+      "unit": "cells²"
+    },
+    "trees": {
+      "type": "density",
+      "levels": [
+        0,
+        0.08,
+        0.2,
+        0.35,
+        0.55
+      ],
+      "unit": "per free cell",
+      "default": "common"
+    },
+    "clearings": {
+      "type": "count",
+      "default": [
+        0,
+        2
+      ],
+      "min": 0,
+      "max": 20
+    }
+  },
+  "quality": {
+    "kind": {
+      "type": "enum",
+      "values": [
+        "deciduous",
+        "conifer",
+        "mixed"
+      ],
+      "default": "mixed"
+    },
+    "age": {
+      "type": "enum",
+      "values": [
+        "young",
+        "old"
+      ],
+      "default": "old"
+    }
+  },
+  "slots": {
+    "tree": {
+      "role": "tree",
+      "essential": true,
+      "primary": true
+    },
+    "bush": {
+      "role": "bush",
+      "essential": false
+    },
+    "log": {
+      "role": "log",
+      "essential": false
+    },
+    "mushroom": {
+      "role": "mushroom",
+      "essential": false
+    }
+  },
+  "children": {
+    "clearing": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 20,
+      "count": "clearings"
+    },
+    "nature-scatter": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 1
+    }
+  }
+}

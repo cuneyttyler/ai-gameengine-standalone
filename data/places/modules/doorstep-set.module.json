@@ -1,0 +1,39 @@
+{
+  "schema": "aige.module/1",
+  "id": "doorstep-set",
+  "name": "Doorstep",
+  "level": "feature",
+  "description": "Barrels, pots, a bench, a sign or a lamp by the door.",
+  "quantity": {
+    "items": {
+      "type": "density",
+      "levels": [
+        0,
+        0.5,
+        1,
+        2,
+        3
+      ],
+      "unit": "per door",
+      "default": "some"
+    }
+  },
+  "quality": {},
+  "slots": {
+    "item": {
+      "role": "barrel|pot|bench|sign|lamp",
+      "essential": false
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "beside",
+      "members": [
+        "self",
+        "parent.door"
+      ],
+      "weight": 2.0
+    }
+  ]
+}

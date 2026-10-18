@@ -1,0 +1,65 @@
+{
+  "schema": "aige.module/1",
+  "id": "farmyard",
+  "name": "Farmyard",
+  "level": "feature",
+  "description": "An open farmyard with farm clutter.",
+  "classes": [
+    "Yard"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          4,
+          8
+        ],
+        "h": [
+          4,
+          8
+        ]
+      },
+      "min": {
+        "w": 2,
+        "h": 2
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    }
+  },
+  "quality": {
+    "surface": {
+      "type": "enum",
+      "vocabulary": "surface",
+      "default": "dirt"
+    }
+  },
+  "slots": {
+    "ground": {
+      "role": "path-tile",
+      "essential": false,
+      "concepts": "surface"
+    }
+  },
+  "children": {
+    "clutter": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 1
+    }
+  },
+  "relations": [
+    {
+      "type": "behind",
+      "members": [
+        "self",
+        "parent.primary"
+      ],
+      "weight": 1.0
+    }
+  ]
+}

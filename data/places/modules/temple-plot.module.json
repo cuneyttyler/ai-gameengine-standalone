@@ -1,0 +1,92 @@
+{
+  "schema": "aige.module/1",
+  "id": "temple-plot",
+  "name": "Temple plot",
+  "level": "parcel",
+  "description": "A temple, church or shrine with its graveyard or garden.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Civic"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          12,
+          20
+        ],
+        "h": [
+          14,
+          24
+        ]
+      },
+      "min": {
+        "w": 6,
+        "h": 6
+      },
+      "unit": "cells",
+      "max": {
+        "w": 50,
+        "h": 50
+      }
+    }
+  },
+  "quality": {
+    "faith": {
+      "type": "enum",
+      "vocabulary": "faith",
+      "default": "old-faith"
+    }
+  },
+  "slots": {
+    "temple": {
+      "role": "temple",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "graveyard": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 1
+    },
+    "garden": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 1
+    }
+  },
+  "relations": [
+    {
+      "type": "faces",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 3.0
+    },
+    {
+      "type": "adjacent",
+      "members": [
+        "self",
+        "parent.street"
+      ],
+      "weight": 2.0
+    },
+    {
+      "type": "focus",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 1.0
+    }
+  ],
+  "prefersSite": {
+    "high-ground": 0.6
+  }
+}

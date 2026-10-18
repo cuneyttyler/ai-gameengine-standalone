@@ -1,0 +1,99 @@
+{
+  "schema": "aige.module/1",
+  "id": "river",
+  "name": "River",
+  "level": "site",
+  "description": "A river crossing the place, with banks and crossings.",
+  "classes": [
+    "WaterBody"
+  ],
+  "quantity": {
+    "width": {
+      "type": "width",
+      "default": 3,
+      "min": 1,
+      "unit": "cells",
+      "max": 12
+    },
+    "length": {
+      "type": "length",
+      "default": [
+        40,
+        200
+      ],
+      "min": 1,
+      "unit": "cells"
+    },
+    "bends": {
+      "type": "count",
+      "default": [
+        1,
+        3
+      ],
+      "min": 0,
+      "max": 12
+    },
+    "crossings": {
+      "type": "count",
+      "default": [
+        1,
+        2
+      ],
+      "min": 0,
+      "max": 20
+    }
+  },
+  "quality": {
+    "flow": {
+      "type": "enum",
+      "values": [
+        "calm",
+        "fast"
+      ],
+      "default": "calm"
+    },
+    "banks": {
+      "type": "enum",
+      "values": [
+        "natural",
+        "stone"
+      ],
+      "default": "natural"
+    }
+  },
+  "slots": {
+    "water": {
+      "role": "water-terrain",
+      "essential": true,
+      "primary": true
+    },
+    "bank": {
+      "role": "bank-piece",
+      "essential": false
+    },
+    "reeds": {
+      "role": "reed",
+      "essential": false
+    }
+  },
+  "children": {
+    "bridge": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 20
+    }
+  },
+  "constraints": [
+    "crossings <= bends + 4"
+  ],
+  "relations": [
+    {
+      "type": "crosses",
+      "members": [
+        "self",
+        "parent"
+      ],
+      "weight": 1.0
+    }
+  ]
+}

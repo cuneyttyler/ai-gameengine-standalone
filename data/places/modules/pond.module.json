@@ -1,0 +1,45 @@
+{
+  "schema": "aige.module/1",
+  "id": "pond",
+  "name": "Pond",
+  "level": "feature",
+  "description": "A small pond.",
+  "classes": [
+    "WaterBody"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        6,
+        30
+      ],
+      "min": 2,
+      "unit": "cells²",
+      "max": 80
+    }
+  },
+  "quality": {
+    "shore": {
+      "type": "enum",
+      "values": [
+        "sand",
+        "reeds",
+        "rocks"
+      ],
+      "default": "reeds"
+    }
+  },
+  "slots": {
+    "water": {
+      "role": "water-terrain",
+      "essential": true,
+      "primary": true
+    },
+    "shore": {
+      "role": "shore-prop",
+      "essential": false
+    }
+  },
+  "children": {}
+}

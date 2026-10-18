@@ -1,0 +1,121 @@
+{
+  "schema": "aige.module/1",
+  "id": "residential-ward",
+  "name": "Residential ward",
+  "level": "zone",
+  "description": "Houses with their yards and gardens; denser near the centre.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "plots": {
+      "type": "count",
+      "default": [
+        10,
+        40
+      ],
+      "min": 0,
+      "max": 2000,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        1200,
+        4000
+      ],
+      "min": 100,
+      "unit": "cells²"
+    },
+    "footprint-density": {
+      "type": "ratio",
+      "default": [
+        0.35,
+        0.65
+      ],
+      "min": 0,
+      "max": 1,
+      "description": "built cells / ward cells"
+    }
+  },
+  "quality": {
+    "wealth": {
+      "type": "enum",
+      "vocabulary": "wealth",
+      "default": "common",
+      "ask": true
+    },
+    "density": {
+      "type": "enum",
+      "values": [
+        "sparse",
+        "medium",
+        "dense"
+      ],
+      "default": "medium",
+      "ask": true
+    },
+    "street-style": {
+      "type": "enum",
+      "values": [
+        "organic",
+        "grid",
+        "linear"
+      ],
+      "default": "organic"
+    }
+  },
+  "slots": {},
+  "children": {
+    "house-plot": {
+      "min": 0,
+      "weight": 1.0,
+      "max": 2000
+    },
+    "terraced-row": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 200
+    },
+    "townhouse-block": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 200
+    },
+    "well-plaza": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 6
+    },
+    "garden": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 50
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "constraints": [
+    "count(children(class: BuildingParcel)) >= 1"
+  ],
+  "relations": [
+    {
+      "type": "near",
+      "members": [
+        "self",
+        "parent.market-ward"
+      ],
+      "weight": 1.0,
+      "args": {
+        "d0": 0,
+        "d1": 30
+      }
+    }
+  ]
+}

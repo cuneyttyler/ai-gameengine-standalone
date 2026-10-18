@@ -1,0 +1,75 @@
+{
+  "schema": "aige.module/1",
+  "id": "slum",
+  "name": "Slum",
+  "level": "zone",
+  "description": "Shacks and clutter, outside the walls or at the edge.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "plots": {
+      "type": "count",
+      "default": [
+        5,
+        40
+      ],
+      "min": 0,
+      "max": 2000,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        400,
+        2000
+      ],
+      "min": 100,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "squalor": {
+      "type": "enum",
+      "values": [
+        "poor",
+        "wretched"
+      ],
+      "default": "poor"
+    }
+  },
+  "slots": {},
+  "children": {
+    "shack-cluster": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 200
+    },
+    "clutter": {
+      "min": 0,
+      "weight": 1.0,
+      "max": 1
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "relations": [
+    {
+      "type": "edge",
+      "members": [
+        "self"
+      ],
+      "weight": 1.5
+    }
+  ],
+  "prefersSite": {
+    "edge": 0.8,
+    "high-ground": -0.5
+  }
+}

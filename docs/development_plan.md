@@ -1709,7 +1709,7 @@ uses the pack's houses, well, fences and decorations, on the grid the art was dr
 
 ## Phase 7 — AI-Generated Building
 
-**Status: design reviewed (2026-10-18); awaiting approval before 7.1.** Documents (the
+**Status: design reviewed and approved (2026-10-18); 7.1 in progress.** Documents (the
 authority for each subject is listed at the top of `place-schema.md`):
 - `docs/ai-building.md`: why, the research, and what each source contributes;
 - `docs/place-schema.md`: **the procedure, its documents, the intermediate language and
@@ -1767,6 +1767,15 @@ Query → Interpret (Brief drafts) → Confirm (Brief) → Plan (Spec: quantity 
   disagree.
 
 **7.1 — Ontology, schemas and validators (first; nothing else starts before it)**
+
+**Progress (2026-10-18):** `engine/places/` (`aige_places`): the ontology loader and
+consistency check, subgraph retrieval, the expression language (interval / three-valued
+semantics), the Brief, Spec and PLL validators; the first library in `data/places/`
+(72 shared and settlement modules, 13 module classes, vocabularies, roles, 26 relation
+types, sourced design rules, tolerances); the **published ontology** in `ontology/`
+(Turtle: hand-written OWL core, generated OWL + SKOS library and SHACL shapes, kept
+current by a test); `tests/places_test.cpp`. Compile templates come with the compiler (7.6).
+
 - The **place ontology** (`docs/place-ontology.md`):
   - classes, properties and rules in the engine's JSON graph format, loaded in memory,
     with subgraph retrieval for prompts;

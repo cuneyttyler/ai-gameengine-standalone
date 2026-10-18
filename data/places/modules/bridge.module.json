@@ -1,0 +1,48 @@
+{
+  "schema": "aige.module/1",
+  "id": "bridge",
+  "name": "Bridge",
+  "level": "feature",
+  "description": "Carries a road over a river where the two cross.",
+  "classes": [
+    "Crossing"
+  ],
+  "quantity": {
+    "length": {
+      "type": "length",
+      "default": [
+        3,
+        8
+      ],
+      "min": 1,
+      "unit": "cells",
+      "max": 30
+    },
+    "width": {
+      "type": "width",
+      "default": 2,
+      "min": 1,
+      "unit": "cells",
+      "max": 5
+    }
+  },
+  "quality": {
+    "material": {
+      "type": "enum",
+      "vocabulary": "material",
+      "default": "wood"
+    }
+  },
+  "slots": {
+    "bridge": {
+      "role": "bridge",
+      "essential": true,
+      "primary": true,
+      "concepts": "material"
+    }
+  },
+  "children": {},
+  "requires": [
+    "class:WaterBody"
+  ]
+}

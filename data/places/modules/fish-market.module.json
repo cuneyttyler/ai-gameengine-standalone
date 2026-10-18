@@ -1,0 +1,47 @@
+{
+  "schema": "aige.module/1",
+  "id": "fish-market",
+  "name": "Fish market",
+  "level": "feature",
+  "description": "Fish stalls by the water.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "quantity": {
+    "stalls": {
+      "type": "count",
+      "default": [
+        2,
+        6
+      ],
+      "min": 1,
+      "max": 40
+    }
+  },
+  "quality": {},
+  "slots": {
+    "stall": {
+      "role": "stall",
+      "essential": true,
+      "primary": true,
+      "concepts": [
+        "fish"
+      ]
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "near",
+      "members": [
+        "self",
+        "parent.dock"
+      ],
+      "weight": 2.0,
+      "args": {
+        "d0": 0,
+        "d1": 6
+      }
+    }
+  ]
+}

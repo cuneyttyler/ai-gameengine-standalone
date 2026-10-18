@@ -1,0 +1,96 @@
+{
+  "schema": "aige.module/1",
+  "id": "manor-plot",
+  "name": "Manor plot",
+  "level": "parcel",
+  "description": "A manor behind a wall, with a formal garden, courtyard and fountain.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Dwelling"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          16,
+          28
+        ],
+        "h": [
+          16,
+          28
+        ]
+      },
+      "min": {
+        "w": 10,
+        "h": 10
+      },
+      "unit": "cells",
+      "max": {
+        "w": 60,
+        "h": 60
+      }
+    }
+  },
+  "quality": {
+    "grandeur": {
+      "type": "enum",
+      "values": [
+        "modest",
+        "grand"
+      ],
+      "default": "modest"
+    }
+  },
+  "slots": {
+    "manor": {
+      "role": "manor",
+      "essential": true,
+      "primary": true
+    },
+    "wall": {
+      "role": "wall-piece-set",
+      "essential": false
+    }
+  },
+  "children": {
+    "formal-garden": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 2
+    },
+    "courtyard": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 1
+    },
+    "fountain": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 1
+    }
+  },
+  "relations": [
+    {
+      "type": "faces",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 3.0
+    },
+    {
+      "type": "adjacent",
+      "members": [
+        "self",
+        "parent.street"
+      ],
+      "weight": 2.0
+    }
+  ],
+  "prefersSite": {
+    "high-ground": 0.8
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "schema": "aige.module/1",
+  "id": "gate-ward",
+  "name": "Gate ward",
+  "level": "zone",
+  "description": "Inns, stables and a guard post at a gate.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "plots": {
+      "type": "count",
+      "default": [
+        3,
+        12
+      ],
+      "min": 0,
+      "max": 2000,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        400,
+        1500
+      ],
+      "min": 100,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "traffic": {
+      "type": "enum",
+      "values": [
+        "quiet",
+        "busy"
+      ],
+      "default": "busy"
+    }
+  },
+  "slots": {},
+  "children": {
+    "inn-plot": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 6
+    },
+    "stable-yard": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 6
+    },
+    "guard-post": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 2
+    },
+    "market-stalls": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 4
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "relations": [
+    {
+      "type": "near",
+      "members": [
+        "self",
+        "parent.wall.gate"
+      ],
+      "weight": 3.0,
+      "args": {
+        "d0": 0,
+        "d1": 6
+      }
+    }
+  ],
+  "requires": [
+    "wall"
+  ]
+}

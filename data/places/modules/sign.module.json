@@ -1,0 +1,31 @@
+{
+  "schema": "aige.module/1",
+  "id": "sign",
+  "name": "Sign",
+  "level": "feature",
+  "description": "A sign at the door.",
+  "quantity": {},
+  "quality": {
+    "text": {
+      "type": "description"
+    }
+  },
+  "slots": {
+    "sign": {
+      "role": "sign",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "beside",
+      "members": [
+        "self",
+        "parent.door"
+      ],
+      "weight": 2.0
+    }
+  ]
+}

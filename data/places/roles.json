@@ -1,0 +1,381 @@
+{
+  "terrain": {
+    "label": "terrain",
+    "affordance": "terrain"
+  },
+  "ground-tile": {
+    "label": "ground tile",
+    "affordance": "terrain",
+    "broader": "terrain"
+  },
+  "water-terrain": {
+    "label": "water terrain",
+    "affordance": "terrain",
+    "broader": "terrain"
+  },
+  "road-terrain": {
+    "label": "road terrain",
+    "affordance": "terrain",
+    "broader": "terrain"
+  },
+  "square-terrain": {
+    "label": "square terrain",
+    "affordance": "terrain",
+    "broader": "terrain"
+  },
+  "tilled-terrain": {
+    "label": "tilled terrain",
+    "affordance": "terrain",
+    "broader": "terrain"
+  },
+  "path-tile": {
+    "label": "path tile",
+    "affordance": "terrain",
+    "broader": "terrain"
+  },
+  "building": {
+    "label": "building",
+    "affordance": "environmental-object"
+  },
+  "house": {
+    "label": "house",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "townhouse": {
+    "label": "townhouse",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "shack": {
+    "label": "shack",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "farmhouse": {
+    "label": "farmhouse",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "manor": {
+    "label": "manor",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "outbuilding": {
+    "label": "outbuilding",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "barn": {
+    "label": "barn",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "shed": {
+    "label": "shed",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "workshop": {
+    "label": "workshop",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "inn": {
+    "label": "inn",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "stable": {
+    "label": "stable",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "shop": {
+    "label": "shop",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "warehouse": {
+    "label": "warehouse",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "temple": {
+    "label": "temple",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "mill": {
+    "label": "mill",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "guard-tower": {
+    "label": "guard tower",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "plant": {
+    "label": "plant",
+    "affordance": "environmental-object"
+  },
+  "tree": {
+    "label": "tree",
+    "affordance": "environmental-object",
+    "broader": "plant"
+  },
+  "bush": {
+    "label": "bush",
+    "affordance": "environmental-object",
+    "broader": "plant"
+  },
+  "flower": {
+    "label": "flower",
+    "affordance": "environmental-object",
+    "broader": "plant"
+  },
+  "crop": {
+    "label": "crop",
+    "affordance": "environmental-object",
+    "broader": "plant"
+  },
+  "herb": {
+    "label": "herb",
+    "affordance": "environmental-object",
+    "broader": "plant"
+  },
+  "grass": {
+    "label": "grass",
+    "affordance": "environmental-object",
+    "broader": "plant"
+  },
+  "hedge": {
+    "label": "hedge",
+    "affordance": "environmental-object",
+    "broader": "plant"
+  },
+  "fruit-tree": {
+    "label": "fruit tree",
+    "affordance": "environmental-object",
+    "broader": "tree"
+  },
+  "piece-set": {
+    "label": "piece set",
+    "affordance": "environmental-object"
+  },
+  "wall-piece-set": {
+    "label": "wall piece set",
+    "affordance": "environmental-object",
+    "broader": "piece-set"
+  },
+  "fence-piece-set": {
+    "label": "fence piece set",
+    "affordance": "environmental-object",
+    "broader": "piece-set"
+  },
+  "hedge-piece-set": {
+    "label": "hedge piece set",
+    "affordance": "environmental-object",
+    "broader": "piece-set"
+  },
+  "pier-piece": {
+    "label": "pier piece",
+    "affordance": "environmental-object",
+    "broader": "piece-set"
+  },
+  "bank-piece": {
+    "label": "bank piece",
+    "affordance": "environmental-object",
+    "broader": "piece-set"
+  },
+  "cliff-piece": {
+    "label": "cliff piece",
+    "affordance": "environmental-object",
+    "broader": "piece-set"
+  },
+  "prop": {
+    "label": "prop",
+    "affordance": "environmental-object"
+  },
+  "reed": {
+    "label": "reed",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "log": {
+    "label": "log",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "mushroom": {
+    "label": "mushroom",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "rock": {
+    "label": "rock",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "boulder": {
+    "label": "boulder",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "bridge": {
+    "label": "bridge",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "tower": {
+    "label": "tower",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "gate": {
+    "label": "gate",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "light-prop": {
+    "label": "light prop",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "decal": {
+    "label": "decal",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "well": {
+    "label": "well",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "fountain": {
+    "label": "fountain",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "statue": {
+    "label": "statue",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "garden-bed": {
+    "label": "garden bed",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "garden-prop": {
+    "label": "garden prop",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "grave": {
+    "label": "grave",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "headstone": {
+    "label": "headstone",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "crypt": {
+    "label": "crypt",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "awning": {
+    "label": "awning",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "log-pile": {
+    "label": "log pile",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "saw": {
+    "label": "saw",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "boat": {
+    "label": "boat",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "trough": {
+    "label": "trough",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "hay": {
+    "label": "hay",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "shore-prop": {
+    "label": "shore prop",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "stall": {
+    "label": "stall",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "sign": {
+    "label": "sign",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "lamp": {
+    "label": "lamp",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "barrel": {
+    "label": "barrel",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "crate": {
+    "label": "crate",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "sack": {
+    "label": "sack",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "cart": {
+    "label": "cart",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "tool": {
+    "label": "tool",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "pot": {
+    "label": "pot",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "bench": {
+    "label": "bench",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "animal": {
+    "label": "animal",
+    "affordance": "character"
+  }
+}

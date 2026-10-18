@@ -1,0 +1,59 @@
+{
+  "schema": "aige.module/1",
+  "id": "lumber-yard",
+  "name": "Lumber yard",
+  "level": "feature",
+  "description": "Log piles and a saw.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Yard"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          10
+        ],
+        "h": [
+          6,
+          10
+        ]
+      },
+      "min": {
+        "w": 4,
+        "h": 4
+      },
+      "unit": "cells",
+      "max": {
+        "w": 30,
+        "h": 30
+      }
+    },
+    "piles": {
+      "type": "count",
+      "default": [
+        2,
+        6
+      ],
+      "min": 1,
+      "max": 30
+    }
+  },
+  "quality": {},
+  "slots": {
+    "pile": {
+      "role": "log-pile",
+      "essential": true,
+      "primary": true
+    },
+    "saw": {
+      "role": "saw",
+      "essential": false
+    }
+  },
+  "children": {}
+}

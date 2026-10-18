@@ -1,0 +1,97 @@
+{
+  "schema": "aige.module/1",
+  "id": "field",
+  "name": "Field",
+  "level": "feature",
+  "description": "A field of one crop in rows.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "PlantedArea"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          10,
+          24
+        ],
+        "h": [
+          8,
+          20
+        ]
+      },
+      "min": {
+        "w": 4,
+        "h": 4
+      },
+      "unit": "cells",
+      "max": {
+        "w": 80,
+        "h": 80
+      }
+    },
+    "rows": {
+      "type": "count",
+      "default": [
+        4,
+        12
+      ],
+      "min": 1,
+      "max": 80
+    }
+  },
+  "quality": {
+    "crop": {
+      "type": "enum",
+      "values": [
+        "wheat",
+        "barley",
+        "vegetables",
+        "flax"
+      ],
+      "default": "wheat"
+    },
+    "season": {
+      "type": "enum",
+      "values": [
+        "spring",
+        "summer",
+        "harvest"
+      ],
+      "default": "summer"
+    }
+  },
+  "slots": {
+    "crop": {
+      "role": "crop",
+      "essential": true,
+      "primary": true,
+      "concepts": "crop"
+    },
+    "tilled": {
+      "role": "tilled-terrain",
+      "essential": true
+    }
+  },
+  "children": {},
+  "constraints": [
+    "rows <= size.h"
+  ],
+  "relations": [
+    {
+      "type": "near",
+      "members": [
+        "self",
+        "parent.road"
+      ],
+      "weight": 1.0,
+      "args": {
+        "d0": 0,
+        "d1": 6
+      }
+    }
+  ]
+}

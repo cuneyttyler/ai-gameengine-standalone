@@ -1,0 +1,217 @@
+{
+  "inside": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": true,
+    "description": "every cell of a is in b"
+  },
+  "outside": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": true,
+    "description": "no cell of a is in b"
+  },
+  "center": {
+    "minMembers": 1,
+    "maxMembers": 1,
+    "args": [],
+    "hard": false,
+    "description": "a sits at its parent's centre"
+  },
+  "edge": {
+    "minMembers": 1,
+    "maxMembers": 1,
+    "args": [
+      "side"
+    ],
+    "hard": false,
+    "description": "a touches its parent's border"
+  },
+  "corner": {
+    "minMembers": 1,
+    "maxMembers": 1,
+    "args": [
+      "corner"
+    ],
+    "hard": false,
+    "description": "a sits in a corner of its parent"
+  },
+  "adjacent": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a and b share an edge without overlapping"
+  },
+  "near": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [
+      "d0",
+      "d1"
+    ],
+    "hard": false,
+    "description": "a is within d0 of b (score falls to 0 at d1)"
+  },
+  "far": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [
+      "d"
+    ],
+    "hard": false,
+    "description": "a is at least d from b"
+  },
+  "away-from": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [
+      "d"
+    ],
+    "hard": false,
+    "description": "a keeps at least d from b"
+  },
+  "in-front-of": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [
+      "gap"
+    ],
+    "hard": false,
+    "description": "a is in front of b, in b's facing frame"
+  },
+  "behind": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [
+      "gap"
+    ],
+    "hard": false,
+    "description": "a is behind b, in b's facing frame"
+  },
+  "beside": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a is to the side of b"
+  },
+  "between": {
+    "minMembers": 3,
+    "maxMembers": 3,
+    "args": [],
+    "hard": false,
+    "description": "a lies on the segment between b and c"
+  },
+  "faces": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a's facing points toward b"
+  },
+  "aligned": {
+    "minMembers": 2,
+    "maxMembers": -1,
+    "args": [
+      "axis"
+    ],
+    "hard": false,
+    "description": "the members' centres line up on an axis"
+  },
+  "in-row": {
+    "minMembers": 2,
+    "maxMembers": -1,
+    "args": [
+      "axis",
+      "spacing"
+    ],
+    "hard": false,
+    "description": "aligned, with even gaps"
+  },
+  "symmetric": {
+    "minMembers": 2,
+    "maxMembers": -1,
+    "args": [
+      "axis"
+    ],
+    "hard": false,
+    "description": "members are mirrored across the parent's axis"
+  },
+  "repeat": {
+    "minMembers": 2,
+    "maxMembers": -1,
+    "args": [
+      "spacing"
+    ],
+    "hard": false,
+    "description": "members repeat at a spacing"
+  },
+  "along": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [
+      "offset"
+    ],
+    "hard": false,
+    "description": "a runs along path or line b at an offset"
+  },
+  "encloses": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": true,
+    "description": "line a closes a loop around region b (gaps only at gates)"
+  },
+  "crosses": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "path a passes through b"
+  },
+  "path-between": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [
+      "layer"
+    ],
+    "hard": true,
+    "description": "a walkable route exists between a and b"
+  },
+  "visible-from": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [
+      "radius"
+    ],
+    "hard": false,
+    "description": "a straight line from anchor b to a crosses no blocking cell"
+  },
+  "focus": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a closes the view along a straight path run leaving b"
+  },
+  "on": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": true,
+    "description": "a stands on b's top surface"
+  },
+  "interest": {
+    "minMembers": 1,
+    "maxMembers": 1,
+    "args": [
+      "criterion",
+      "weight"
+    ],
+    "hard": false,
+    "description": "the site's interest for a criterion at a's cells (-1 vetoes)"
+  }
+}

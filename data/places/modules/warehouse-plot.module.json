@@ -1,0 +1,76 @@
+{
+  "schema": "aige.module/1",
+  "id": "warehouse-plot",
+  "name": "Warehouse plot",
+  "level": "parcel",
+  "description": "A warehouse with goods stacked around it.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Workplace"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          8,
+          14
+        ],
+        "h": [
+          8,
+          14
+        ]
+      },
+      "min": {
+        "w": 5,
+        "h": 5
+      },
+      "unit": "cells",
+      "max": {
+        "w": 30,
+        "h": 30
+      }
+    }
+  },
+  "quality": {
+    "goods": {
+      "type": "enum",
+      "vocabulary": "goods",
+      "default": "general"
+    }
+  },
+  "slots": {
+    "warehouse": {
+      "role": "warehouse",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "clutter": {
+      "min": 0,
+      "weight": 0.9,
+      "max": 1
+    }
+  },
+  "relations": [
+    {
+      "type": "faces",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 3.0
+    },
+    {
+      "type": "adjacent",
+      "members": [
+        "self",
+        "parent.street"
+      ],
+      "weight": 2.0
+    }
+  ]
+}

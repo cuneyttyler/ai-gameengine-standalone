@@ -1,0 +1,58 @@
+{
+  "schema": "aige.module/1",
+  "id": "road",
+  "name": "Road",
+  "level": "network",
+  "description": "A road, street, lane or trail; connects anchors and reuses roads already there.",
+  "quantity": {
+    "width": {
+      "type": "width",
+      "default": 2,
+      "min": 1,
+      "unit": "cells",
+      "max": 6
+    },
+    "length": {
+      "type": "length",
+      "default": [
+        10,
+        300
+      ],
+      "min": 1,
+      "unit": "cells"
+    }
+  },
+  "quality": {
+    "class": {
+      "type": "enum",
+      "vocabulary": "road-class",
+      "default": "street",
+      "ask": true
+    },
+    "surface": {
+      "type": "enum",
+      "vocabulary": "surface",
+      "default": "dirt",
+      "ask": true
+    }
+  },
+  "slots": {
+    "terrain": {
+      "role": "road-terrain",
+      "essential": true,
+      "primary": true,
+      "concepts": "surface"
+    }
+  },
+  "children": {
+    "bridge": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 10
+    }
+  },
+  "constraints": [
+    "class == 'main' implies width >= 2",
+    "class == 'trail' implies width <= 2"
+  ]
+}

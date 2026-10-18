@@ -71,14 +71,24 @@ manor plot?"* and get the inherited set.
 
 ## 3. Representation
 
-- **Inside the engine:** a typed property graph loaded into memory, in a simple JSON
-  format (`places/ontology/*.json`), with stable ids. No triple store is needed at run
-  time. The graph is a few thousand nodes.
-- **Exchange:** export and import as standard Semantic Web formats: **OWL** for classes
-  and properties, **SKOS** for the vocabularies (labels, synonyms, broader / narrower),
-  and **SHACL** for field constraints. The aggregate arithmetic of §4.3 goes beyond SHACL
-  core and stays in our expression language. Standard formats let others reuse the
-  ontology and let us cite it.
+- **Inside the engine:** a typed property graph loaded into memory from JSON with
+  stable ids: `data/places/*.json` and `data/places/modules/*.module.json`, plus a
+  project's own `<project>/places/`. No triple store is needed at run time. The graph
+  is a few thousand nodes (`engine/places/Ontology.h`).
+- **Published:** the ontology is published as Turtle in `ontology/`
+  (see `ontology/README.md`). Namespace `https://w3id.org/aige/gbo#`, CC BY 4.0,
+  versioned:
+  - `gbo.ttl`: the core vocabulary in **OWL 2**, written by hand;
+  - `gbo-library.ttl`: the library in **OWL 2 + SKOS**; modules are punned as
+    classes under their level, with child cardinalities as OWL restrictions;
+    vocabularies and roles are SKOS concept schemes;
+  - `gbo-shapes.ttl`: **SHACL** shapes for the library itself and for built places.
+
+  The last two are generated from the JSON by `engine/places/OntologyExport.cpp`, and a
+  test fails when the published files fall behind, so there is still one source. The
+  aggregate arithmetic of `place-schema.md` §4.3 and the `when` conditions go beyond
+  SHACL Core; they are carried as `gbo:Expression` strings and evaluated by the engine.
+  Standard formats let others reuse the ontology and let us cite it.
 - **For the AI:** the builder never pastes the whole graph into a prompt. Each step
   retrieves the **relevant subgraph**: the node's module, its allowed children with
   weights, its rules, its relations, and the matching concepts and roles. This keeps

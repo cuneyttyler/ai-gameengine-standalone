@@ -1,0 +1,7 @@
+{
+  "schema": "aige.tolerance/1",
+  "countFraction": 0.05,
+  "exactBelow": 10,
+  "areaFraction": 0.1,
+  "densityLevels": 1
+}

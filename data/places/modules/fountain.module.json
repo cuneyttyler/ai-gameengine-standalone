@@ -1,0 +1,29 @@
+{
+  "schema": "aige.module/1",
+  "id": "fountain",
+  "name": "Fountain",
+  "level": "feature",
+  "description": "A fountain.",
+  "classes": [
+    "WaterSource"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "fountain": {
+      "role": "fountain",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "center",
+      "members": [
+        "self"
+      ],
+      "weight": 2.0
+    }
+  ]
+}

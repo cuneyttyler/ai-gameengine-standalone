@@ -1,0 +1,31 @@
+{
+  "schema": "aige.module/1",
+  "id": "shop-front",
+  "name": "Shop front",
+  "level": "feature",
+  "description": "A stall and goods on display before a shop.",
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "stall": {
+      "role": "stall",
+      "essential": true,
+      "primary": true
+    },
+    "crate": {
+      "role": "crate",
+      "essential": false
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "in-front-of",
+      "members": [
+        "self",
+        "parent.primary"
+      ],
+      "weight": 3.0
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schema": "aige.module/1",
+  "id": "hay",
+  "name": "Hay",
+  "level": "feature",
+  "description": "A hay pile or stack of bales.",
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "hay": {
+      "role": "hay",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {}
+}

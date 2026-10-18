@@ -1,0 +1,70 @@
+{
+  "schema": "aige.module/1",
+  "id": "guard-post",
+  "name": "Guard post",
+  "level": "parcel",
+  "description": "A guard tower or post with military clutter.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Civic"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          5,
+          8
+        ],
+        "h": [
+          5,
+          8
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 16,
+        "h": 16
+      }
+    }
+  },
+  "quality": {},
+  "slots": {
+    "tower": {
+      "role": "guard-tower",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "clutter": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    }
+  },
+  "relations": [
+    {
+      "type": "faces",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 3.0
+    },
+    {
+      "type": "adjacent",
+      "members": [
+        "self",
+        "parent.street"
+      ],
+      "weight": 2.0
+    }
+  ]
+}

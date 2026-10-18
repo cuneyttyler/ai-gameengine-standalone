@@ -1,0 +1,50 @@
+{
+  "schema": "aige.module/1",
+  "id": "lights",
+  "name": "Lights",
+  "level": "dressing",
+  "description": "Torches, lanterns and lamp posts along paths and at doors.",
+  "quantity": {
+    "lights": {
+      "type": "density",
+      "levels": [
+        0,
+        0.02,
+        0.05,
+        0.1,
+        0.2
+      ],
+      "unit": "per path cell",
+      "default": "rare"
+    }
+  },
+  "quality": {
+    "kind": {
+      "type": "enum",
+      "vocabulary": "light-kind",
+      "default": "lantern"
+    }
+  },
+  "slots": {
+    "light": {
+      "role": "light-prop",
+      "essential": true,
+      "concepts": "kind"
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "near",
+      "members": [
+        "self",
+        "parent.door"
+      ],
+      "weight": 1.0,
+      "args": {
+        "d0": 1,
+        "d1": 3
+      }
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "schema": "aige.module/1",
+  "id": "well-plaza",
+  "name": "Well plaza",
+  "level": "parcel",
+  "description": "A small open space around a well.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "OpenSpace",
+    "WaterSource"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          4,
+          6
+        ],
+        "h": [
+          4,
+          6
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 12,
+        "h": 12
+      }
+    }
+  },
+  "quality": {
+    "well-kind": {
+      "type": "enum",
+      "values": [
+        "open",
+        "roofed",
+        "pump"
+      ],
+      "default": "roofed"
+    }
+  },
+  "slots": {
+    "well": {
+      "role": "well",
+      "essential": true,
+      "primary": true,
+      "concepts": "well-kind"
+    }
+  },
+  "children": {
+    "bench": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 4
+    },
+    "clutter": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 1
+    }
+  },
+  "relations": [
+    {
+      "type": "center",
+      "members": [
+        "self.primary"
+      ],
+      "weight": 2.0
+    }
+  ]
+}

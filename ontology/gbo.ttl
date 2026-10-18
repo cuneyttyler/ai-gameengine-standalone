@@ -1,0 +1,331 @@
+# GBO — the GenBuilding Ontology: core vocabulary
+#
+# The terms the place library (gbo-library.ttl) and its shapes (gbo-shapes.ttl)
+# are written in: build types, modules at levels, fields, slots and roles,
+# child rules (consistsOf with weights), relation types, site preferences and
+# design rules with their sources.
+#
+# This file is written by hand. The library and the shapes are generated from
+# the engine's JSON files (data/places/) by the engine; see ontology/README.md.
+
+@prefix gbo:     <https://w3id.org/aige/gbo#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix vann:    <http://purl.org/vocab/vann/> .
+@prefix prov:    <http://www.w3.org/ns/prov#> .
+
+<https://w3id.org/aige/gbo>
+    a owl:Ontology ;
+    owl:versionIRI <https://w3id.org/aige/gbo/0.1.0> ;
+    owl:versionInfo "0.1.0" ;
+    dcterms:title "GBO: the GenBuilding Ontology"@en ;
+    dcterms:description """Knowledge for generating game places — settlements, interiors,
+dungeons, regions — from a request: the parts a place is made of (modules, at levels from
+site to dressing), their quantity and quality fields, what each part may contain and how
+typically, the spatial relations between parts, the asset roles their art must fill, the
+vocabularies their qualities use, and design rules with the sources they come from."""@en ;
+    dcterms:creator "AIGE project" ;
+    dcterms:created "2026-10-18"^^xsd:date ;
+    dcterms:modified "2026-10-18"^^xsd:date ;
+    dcterms:license <https://creativecommons.org/licenses/by/4.0/> ;
+    vann:preferredNamespacePrefix "gbo" ;
+    vann:preferredNamespaceUri "https://w3id.org/aige/gbo#" ;
+    rdfs:seeAlso <https://w3id.org/aige/gbo/library>, <https://w3id.org/aige/gbo/shapes> .
+
+# --- Places and their levels ------------------------------------------------------------
+
+gbo:Place a owl:Class ;
+    rdfs:label "Place"@en ;
+    rdfs:comment "Any part of a built place: a settlement, a ward, a plot, a garden, a scatter of flowers. Every module is a subclass of exactly one level."@en .
+
+gbo:Site a owl:Class ; rdfs:subClassOf gbo:Place ; rdfs:label "Site"@en ;
+    rdfs:comment "The whole place and what spans it: the ground, rivers, lakes."@en .
+gbo:Network a owl:Class ; rdfs:subClassOf gbo:Place ; rdfs:label "Network"@en ;
+    rdfs:comment "Linear structures that connect or enclose zones: roads, walls."@en .
+gbo:Zone a owl:Class ; rdfs:subClassOf gbo:Place ; rdfs:label "Zone"@en ;
+    rdfs:comment "A large area with one character: a ward, a forest."@en .
+gbo:Parcel a owl:Class ; rdfs:subClassOf gbo:Place ; rdfs:label "Parcel"@en ;
+    rdfs:comment "A plot with a primary object: a house plot, a market square."@en .
+gbo:Feature a owl:Class ; rdfs:subClassOf gbo:Place ; rdfs:label "Feature"@en ;
+    rdfs:comment "A part of a parcel: a garden, a yard, a fence."@en .
+gbo:Dressing a owl:Class ; rdfs:subClassOf gbo:Place ; rdfs:label "Dressing"@en ;
+    rdfs:comment "Small objects scattered over what is already built: clutter, lights, flowers."@en .
+gbo:AbstractPart a owl:Class ; rdfs:subClassOf gbo:Place ; rdfs:label "Abstract part"@en ;
+    rdfs:comment "A part with no area of its own, or a whole nested place: a mission graph, a subplace."@en .
+
+[] a owl:AllDisjointClasses ;
+    owl:members ( gbo:Site gbo:Network gbo:Zone gbo:Parcel gbo:Feature gbo:Dressing gbo:AbstractPart ) .
+
+gbo:hasPart a owl:ObjectProperty ;
+    rdfs:label "has part"@en ;
+    rdfs:comment "A built place contains this part directly. Parts are never at an outer level than their whole, except networks (a ward has its own streets) and abstract parts."@en ;
+    rdfs:domain gbo:Place ; rdfs:range gbo:Place ;
+    rdfs:subPropertyOf dcterms:hasPart .
+
+gbo:contains a owl:ObjectProperty, owl:TransitiveProperty ;
+    rdfs:label "contains"@en ;
+    rdfs:comment "A part, directly or within a part of a part."@en ;
+    rdfs:domain gbo:Place ; rdfs:range gbo:Place .
+gbo:hasPart rdfs:subPropertyOf gbo:contains .
+
+# --- Modules -----------------------------------------------------------------------------
+
+gbo:Module a owl:Class ;
+    rdfs:label "Module"@en ;
+    rdfs:comment """A kind of part a place can be made of (Garden, HousePlot, ResidentialWard). Each
+module is at the same time an owl:Class of the places built from it (punning, OWL 2): as a
+class it sits under its level and its module classes; as an individual it carries its
+definition — fields, slots, child rules, constraints, relations."""@en .
+
+gbo:ModuleClass a owl:Class ;
+    rdfs:label "Module class"@en ;
+    rdfs:comment "A grouping of modules used by rules and constraints (BuildingParcel, Ward, WaterBody). Like modules, punned as an owl:Class."@en .
+
+gbo:moduleId a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "module id"@en ;
+    rdfs:comment "The id used in Specs, Briefs and module files (house-plot). Never renamed."@en ;
+    rdfs:range xsd:string .
+
+gbo:level a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "level"@en ;
+    rdfs:comment "The level class a module's places belong to."@en ;
+    rdfs:domain gbo:Module .
+
+gbo:allowedIn a owl:ObjectProperty ;
+    rdfs:label "allowed in"@en ;
+    rdfs:comment "The build types a module may be used in. A module with none is shared by all."@en ;
+    rdfs:domain gbo:Module ; rdfs:range gbo:BuildType .
+
+gbo:requires a owl:ObjectProperty ;
+    rdfs:label "requires"@en ;
+    rdfs:comment "A place with this module must also have that module or a member of that class somewhere (docks require water)."@en ;
+    rdfs:domain gbo:Module .
+
+gbo:excludes a owl:ObjectProperty, owl:SymmetricProperty ;
+    rdfs:label "excludes"@en ;
+    rdfs:comment "A place can't have both."@en ;
+    rdfs:domain gbo:Module .
+
+gbo:constraint a owl:DatatypeProperty ;
+    rdfs:label "constraint"@en ;
+    rdfs:comment "An aggregate constraint over a node and its subtree, in the GBO expression language (docs/place-schema.md §4.3). Evaluated on intervals: an error only when no choice within the ranges meets it."@en ;
+    rdfs:domain gbo:Module ; rdfs:range gbo:Expression .
+
+gbo:Expression a rdfs:Datatype ;
+    rdfs:label "expression"@en ;
+    rdfs:comment "A string in the GBO constraint expression language: paths (self.size.w), aggregates (count, sum, min, max, avg), arithmetic, comparisons, and / or / not / implies, in [...], within(a, b, tol: name)."@en ;
+    owl:equivalentClass xsd:string .
+
+# --- Children: consistsOf with weights (a Hierarchical-WFC style DAG) ----------------------
+
+gbo:ChildRule a owl:Class ;
+    rdfs:label "Child rule"@en ;
+    rdfs:comment "What a module may contain: one child module or module class, how many per parent (min, max, or a count field), and how typical it is (weight)."@en .
+
+gbo:hasChildRule a owl:ObjectProperty ;
+    rdfs:label "has child rule"@en ;
+    rdfs:domain gbo:Module ; rdfs:range gbo:ChildRule .
+
+gbo:consistsOf a owl:ObjectProperty ;
+    rdfs:label "consists of"@en ;
+    rdfs:comment "Shortcut: the module may contain this module or class (the child of one of its child rules)."@en ;
+    owl:propertyChainAxiom ( gbo:hasChildRule gbo:child ) .
+
+gbo:child a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "child"@en ;
+    rdfs:domain gbo:ChildRule .
+
+gbo:minCount a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "minimum count"@en ; rdfs:range xsd:nonNegativeInteger .
+gbo:maxCount a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "maximum count"@en ; rdfs:range xsd:nonNegativeInteger .
+gbo:countField a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "count field"@en ;
+    rdfs:comment "A field of the parent that says how many of this child there are (a garden's beds)."@en ;
+    rdfs:domain gbo:ChildRule ; rdfs:range gbo:Field .
+gbo:weight a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "weight"@en ;
+    rdfs:comment "How typical: for a child rule, how often parents have this child; for a relation, how much its score counts; for a site preference, its strength in [-1, 1]."@en ;
+    rdfs:range xsd:decimal .
+gbo:when a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "when"@en ;
+    rdfs:comment "The condition under which this holds (a field exists, a child is allowed, a slot is needed)."@en ;
+    rdfs:range gbo:Expression .
+
+# --- Fields --------------------------------------------------------------------------------
+
+gbo:Field a owl:Class ;
+    rdfs:label "Field"@en ;
+    rdfs:comment "A quantity or quality a module's places have. Each field is also an owl:DatatypeProperty of the module's places (punning); its shape in gbo-shapes.ttl constrains its values."@en .
+gbo:QuantityField a owl:Class ; rdfs:subClassOf gbo:Field ; rdfs:label "Quantity field"@en ;
+    rdfs:comment "How many, how much, how big: count, density, share, area, size, length, spacing, width, ratio."@en .
+gbo:QualityField a owl:Class ; rdfs:subClassOf gbo:Field ; rdfs:label "Quality field"@en ;
+    rdfs:comment "What kind: enum, enumSet, mix, tags, description, bool, assetChoice. Only closed types (enum, enumSet, mix, bool) may drive layout."@en .
+[] a owl:AllDisjointClasses ; owl:members ( gbo:QuantityField gbo:QualityField ) .
+
+gbo:hasField a owl:ObjectProperty ;
+    rdfs:label "has field"@en ;
+    rdfs:domain gbo:Module ; rdfs:range gbo:Field .
+
+gbo:fieldName a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "field name"@en ; rdfs:domain gbo:Field ; rdfs:range xsd:string .
+
+gbo:FieldType a owl:Class ;
+    rdfs:label "Field type"@en ;
+    owl:oneOf ( gbo:count gbo:density gbo:share gbo:area gbo:size gbo:length gbo:spacing gbo:width gbo:ratio
+                gbo:enum gbo:enumSet gbo:mix gbo:tags gbo:description gbo:bool gbo:assetChoice ) .
+
+gbo:fieldType a owl:ObjectProperty, owl:FunctionalProperty ;
+    rdfs:label "field type"@en ; rdfs:domain gbo:Field ; rdfs:range gbo:FieldType .
+
+gbo:count a gbo:FieldType ; rdfs:label "count"@en ; rdfs:comment "A whole number of items, or a range [lo, hi]."@en .
+gbo:density a gbo:FieldType ; rdfs:label "density"@en ;
+    rdfs:comment "One of none, rare, some, common, abundant; each field maps the five levels to numbers (gbo:densityLevels)."@en .
+gbo:share a gbo:FieldType ; rdfs:label "share"@en ; rdfs:comment "A fraction (0–1) of the parent's quantity."@en .
+gbo:area a gbo:FieldType ; rdfs:label "area"@en ; rdfs:comment "Cells²."@en .
+gbo:size a gbo:FieldType ; rdfs:label "size"@en ; rdfs:comment "Width and height in cells, each a number or range."@en .
+gbo:length a gbo:FieldType ; rdfs:label "length"@en ; rdfs:comment "Cells."@en .
+gbo:spacing a gbo:FieldType ; rdfs:label "spacing"@en ; rdfs:comment "Cells between items, min and max."@en .
+gbo:width a gbo:FieldType ; rdfs:label "width"@en ; rdfs:comment "Cells."@en .
+gbo:ratio a gbo:FieldType ; rdfs:label "ratio"@en ; rdfs:comment "A proportion (w : h, built / total)."@en .
+gbo:enum a gbo:FieldType ; rdfs:label "enum"@en ; rdfs:comment "One value of a closed list or a concept scheme."@en .
+gbo:enumSet a gbo:FieldType ; rdfs:label "enum set"@en ; rdfs:comment "Several values of a closed list or a concept scheme."@en .
+gbo:mix a gbo:FieldType ; rdfs:label "mix"@en ; rdfs:comment "Weighted values of a concept scheme; the weights add up to 1."@en .
+gbo:tags a gbo:FieldType ; rdfs:label "tags"@en ; rdfs:comment "Open words, for asset retrieval and generation only; never logic."@en .
+gbo:description a gbo:FieldType ; rdfs:label "description"@en ; rdfs:comment "Free text, for retrieval, generation and the critic only; never logic."@en .
+gbo:bool a gbo:FieldType ; rdfs:label "bool"@en .
+gbo:assetChoice a gbo:FieldType ; rdfs:label "asset choice"@en ;
+    rdfs:comment "Where a component's art comes from: auto, project, library, web or generate."@en .
+
+gbo:minValue a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "minimum"@en ; rdfs:domain gbo:Field ; rdfs:range xsd:decimal .
+gbo:maxValue a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "maximum"@en ; rdfs:domain gbo:Field ; rdfs:range xsd:decimal .
+gbo:minWidth a owl:DatatypeProperty ; rdfs:label "minimum width"@en ; rdfs:domain gbo:Field ; rdfs:range xsd:decimal .
+gbo:minHeight a owl:DatatypeProperty ; rdfs:label "minimum height"@en ; rdfs:domain gbo:Field ; rdfs:range xsd:decimal .
+gbo:maxWidth a owl:DatatypeProperty ; rdfs:label "maximum width"@en ; rdfs:domain gbo:Field ; rdfs:range xsd:decimal .
+gbo:maxHeight a owl:DatatypeProperty ; rdfs:label "maximum height"@en ; rdfs:domain gbo:Field ; rdfs:range xsd:decimal .
+gbo:sizeW a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "width"@en ;
+    rdfs:comment "Of a size value in a built place: its width in cells."@en ; rdfs:range xsd:decimal .
+gbo:sizeH a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "height"@en ;
+    rdfs:comment "Of a size value in a built place: its height in cells."@en ; rdfs:range xsd:decimal .
+gbo:defaultValue a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "default"@en ; rdfs:comment "The field's default, as JSON in the module-file form."@en ;
+    rdfs:domain gbo:Field ; rdfs:range rdf:JSON .
+gbo:unit a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "unit"@en ; rdfs:domain gbo:Field ; rdfs:range xsd:string .
+gbo:densityLevels a owl:DatatypeProperty, owl:FunctionalProperty ;
+    rdfs:label "density levels"@en ;
+    rdfs:comment "The numbers for none, rare, some, common, abundant, as a JSON array of five."@en ;
+    rdfs:domain gbo:Field ; rdfs:range rdf:JSON .
+gbo:allowedValue a owl:DatatypeProperty ; rdfs:label "allowed value"@en ;
+    rdfs:comment "A value of a closed enum given by the field itself."@en ; rdfs:domain gbo:Field ; rdfs:range xsd:string .
+gbo:vocabulary a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "vocabulary"@en ;
+    rdfs:comment "The concept scheme whose concepts are the field's values."@en ;
+    rdfs:domain gbo:Field ; rdfs:range skos:ConceptScheme .
+gbo:askedInConfirmation a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "asked in confirmation"@en ;
+    rdfs:comment "The confirmation window shows this field."@en ; rdfs:domain gbo:Field ; rdfs:range xsd:boolean .
+
+# --- Slots and asset roles -------------------------------------------------------------------
+
+gbo:Slot a owl:Class ;
+    rdfs:label "Slot"@en ;
+    rdfs:comment "A place in a module for art: the role an asset must fill, essential or adaptable."@en .
+gbo:hasSlot a owl:ObjectProperty ; rdfs:label "has slot"@en ; rdfs:domain gbo:Module ; rdfs:range gbo:Slot .
+gbo:slotName a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "slot name"@en ; rdfs:domain gbo:Slot ; rdfs:range xsd:string .
+gbo:needsRole a owl:ObjectProperty ; rdfs:label "needs role"@en ;
+    rdfs:comment "A role an asset in this slot may fill (several: any of them)."@en ; rdfs:domain gbo:Slot ; rdfs:range gbo:Role .
+gbo:essential a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "essential"@en ;
+    rdfs:comment "The place isn't complete without it; adaptable slots may be left out or fall back."@en ;
+    rdfs:domain gbo:Slot ; rdfs:range xsd:boolean .
+gbo:primary a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "primary"@en ;
+    rdfs:comment "The area's main object (its house, its well), placed before its sub-regions."@en ;
+    rdfs:domain gbo:Slot ; rdfs:range xsd:boolean .
+gbo:conceptsFrom a owl:ObjectProperty ; rdfs:label "concepts from"@en ;
+    rdfs:comment "A quality field whose values say which concepts the art must show."@en ;
+    rdfs:domain gbo:Slot ; rdfs:range gbo:Field .
+gbo:showsConcept a owl:ObjectProperty ; rdfs:label "shows concept"@en ; rdfs:domain gbo:Slot ; rdfs:range skos:Concept .
+
+gbo:Role a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Role"@en ;
+    rdfs:comment "What an asset is used as in a place (house, fence piece set, flower). Roles form a SKOS hierarchy in the scheme gbo:roles."@en .
+gbo:roles a skos:ConceptScheme ; skos:prefLabel "Asset roles"@en .
+gbo:affordance a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "affordance"@en ;
+    rdfs:comment "GameTileNet's affordance class of what fills the role (terrain, environmental object, ...)."@en ;
+    rdfs:domain gbo:Role ; rdfs:range skos:Concept .
+
+gbo:Asset a owl:Class ; rdfs:label "Asset"@en ;
+    rdfs:comment "A catalogued piece of art (a sprite, a tile set, a prefab). Instances come from a project's catalogue, not from this ontology."@en .
+gbo:canFill a owl:ObjectProperty ; rdfs:label "can fill"@en ; rdfs:domain gbo:Asset ; rdfs:range gbo:Role .
+
+# --- Relations ---------------------------------------------------------------------------------
+
+gbo:RelationType a owl:Class ;
+    rdfs:label "Relation type"@en ;
+    rdfs:comment "A spatial relation with a score function over solved results (docs/layout-ir.md §6)."@en .
+gbo:minMembers a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "minimum members"@en ;
+    rdfs:domain gbo:RelationType ; rdfs:range xsd:nonNegativeInteger .
+gbo:maxMembers a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "maximum members"@en ;
+    rdfs:comment "Absent: any number."@en ; rdfs:domain gbo:RelationType ; rdfs:range xsd:nonNegativeInteger .
+gbo:argument a owl:DatatypeProperty ; rdfs:label "argument"@en ; rdfs:domain gbo:RelationType ; rdfs:range xsd:string .
+gbo:hardByDefault a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "hard by default"@en ;
+    rdfs:domain gbo:RelationType ; rdfs:range xsd:boolean .
+
+gbo:RelationUse a owl:Class ;
+    rdfs:label "Relation use"@en ;
+    rdfs:comment "A relation a module's places typically have: its type, its members (self, parent.primary, ...), arguments and weight."@en .
+gbo:typicallyRelated a owl:ObjectProperty ; rdfs:label "typically related"@en ; rdfs:domain gbo:Module ; rdfs:range gbo:RelationUse .
+gbo:relationType a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "relation type"@en ; rdfs:range gbo:RelationType .
+gbo:members a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "members"@en ;
+    rdfs:comment "The members, as a JSON array of references (\"self\", \"parent.primary\")."@en ; rdfs:range rdf:JSON .
+gbo:arguments a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "arguments"@en ; rdfs:range rdf:JSON .
+gbo:hard a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "hard"@en ; rdfs:range xsd:boolean .
+
+gbo:SitePreference a owl:Class ;
+    rdfs:label "Site preference"@en ;
+    rdfs:comment "How much a module's places want a kind of site (high ground +0.8): an interest function in Emilien et al.'s sense."@en .
+gbo:prefersSite a owl:ObjectProperty ; rdfs:label "prefers site"@en ; rdfs:domain gbo:Module ; rdfs:range gbo:SitePreference .
+gbo:criterion a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "criterion"@en ;
+    rdfs:domain gbo:SitePreference ; rdfs:range xsd:string .
+
+# --- Build types and scale ------------------------------------------------------------------
+
+gbo:BuildType a owl:Class ;
+    rdfs:label "Build type"@en ;
+    rdfs:comment "A kind of place that can be requested (Settlement, Interior, Dungeon, Region): its root module, stages, Brief components and scale table."@en .
+gbo:rootModule a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "root module"@en ; rdfs:domain gbo:BuildType ; rdfs:range gbo:Module .
+gbo:component a owl:ObjectProperty ; rdfs:label "component"@en ;
+    rdfs:comment "A module the Brief may switch on and size."@en ; rdfs:domain gbo:BuildType ; rdfs:range gbo:Module .
+gbo:stages a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "stages"@en ;
+    rdfs:comment "The build stages in order, as a JSON array."@en ; rdfs:domain gbo:BuildType ; rdfs:range rdf:JSON .
+gbo:briefFields a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "brief fields"@en ; rdfs:domain gbo:BuildType ; rdfs:range rdf:JSON .
+
+gbo:ScaleClass a owl:Class ;
+    rdfs:label "Scale class"@en ;
+    rdfs:comment "A size word with numbers: a large village has 60–150 buildings. A size word never stays a bare word."@en .
+gbo:hasScale a owl:ObjectProperty ; rdfs:label "has scale"@en ; rdfs:domain gbo:BuildType ; rdfs:range gbo:ScaleClass .
+gbo:minBuildings a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:domain gbo:ScaleClass ; rdfs:range xsd:nonNegativeInteger .
+gbo:maxBuildings a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:domain gbo:ScaleClass ; rdfs:range xsd:nonNegativeInteger .
+gbo:minSide a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:comment "Cells."@en ; rdfs:domain gbo:ScaleClass ; rdfs:range xsd:nonNegativeInteger .
+gbo:maxSide a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:comment "Cells."@en ; rdfs:domain gbo:ScaleClass ; rdfs:range xsd:nonNegativeInteger .
+gbo:minZones a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:domain gbo:ScaleClass ; rdfs:range xsd:nonNegativeInteger .
+gbo:maxZones a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:domain gbo:ScaleClass ; rdfs:range xsd:nonNegativeInteger .
+
+# --- Design rules and provenance --------------------------------------------------------------
+
+gbo:DesignRule a owl:Class ;
+    rdfs:subClassOf prov:Entity ;
+    rdfs:label "Design rule"@en ;
+    rdfs:comment "A rule of thumb about places (\"density falls from the centre outward\"), with the source it comes from."@en .
+gbo:appliesTo a owl:ObjectProperty ; rdfs:label "applies to"@en ;
+    rdfs:comment "The module or module class (and so its subclasses) the rule is about."@en ; rdfs:domain gbo:DesignRule .
+gbo:ruleText a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "rule text"@en ; rdfs:domain gbo:DesignRule ; rdfs:range xsd:string .
+gbo:impliesRelation a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "implies relation"@en ;
+    rdfs:comment "The relation the rule turns into, as JSON."@en ; rdfs:domain gbo:DesignRule ; rdfs:range rdf:JSON .
+gbo:source a owl:DatatypeProperty ; rdfs:label "source"@en ;
+    rdfs:comment "Where a fact comes from: a publication, a design rule, a user, or learned from verified builds."@en ;
+    rdfs:subPropertyOf dcterms:source ; rdfs:range xsd:string .
+gbo:origin a owl:DatatypeProperty, owl:FunctionalProperty ; rdfs:label "origin"@en ;
+    rdfs:comment "Which library a definition comes from: engine, a project, or learned."@en ; rdfs:range xsd:string .

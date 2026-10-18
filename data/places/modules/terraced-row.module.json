@@ -1,0 +1,79 @@
+{
+  "schema": "aige.module/1",
+  "id": "terraced-row",
+  "name": "Terraced row",
+  "level": "parcel",
+  "description": "A row of joined houses along a street.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Dwelling"
+  ],
+  "quantity": {
+    "houses": {
+      "type": "count",
+      "default": [
+        3,
+        8
+      ],
+      "min": 2,
+      "max": 30
+    },
+    "length": {
+      "type": "length",
+      "default": [
+        9,
+        30
+      ],
+      "min": 4,
+      "unit": "cells"
+    }
+  },
+  "quality": {
+    "house-kind": {
+      "type": "enum",
+      "vocabulary": "house-kind",
+      "default": "townhouse"
+    }
+  },
+  "slots": {
+    "house": {
+      "role": "house",
+      "essential": true,
+      "primary": true,
+      "concepts": "house-kind"
+    }
+  },
+  "children": {
+    "doorstep-set": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 30
+    }
+  },
+  "constraints": [
+    "houses * 3 <= length"
+  ],
+  "relations": [
+    {
+      "type": "in-row",
+      "members": [
+        "self.house",
+        "self.house"
+      ],
+      "weight": 3.0,
+      "args": {
+        "axis": "street"
+      }
+    },
+    {
+      "type": "faces",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 3.0
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "schema": "aige.module/1",
+  "id": "lake",
+  "name": "Lake",
+  "level": "site",
+  "description": "A lake or large pond with a shore.",
+  "classes": [
+    "WaterBody"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        80,
+        600
+      ],
+      "min": 20,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "shore": {
+      "type": "enum",
+      "values": [
+        "sand",
+        "reeds",
+        "rocks"
+      ],
+      "default": "reeds"
+    }
+  },
+  "slots": {
+    "water": {
+      "role": "water-terrain",
+      "essential": true,
+      "primary": true
+    },
+    "shore": {
+      "role": "shore-prop",
+      "essential": false
+    }
+  },
+  "children": {
+    "dock": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 4
+    }
+  },
+  "relations": [
+    {
+      "type": "away-from",
+      "members": [
+        "self",
+        "parent.road"
+      ],
+      "weight": 1.0,
+      "args": {
+        "d": 2
+      }
+    }
+  ]
+}

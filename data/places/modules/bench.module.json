@@ -1,0 +1,17 @@
+{
+  "schema": "aige.module/1",
+  "id": "bench",
+  "name": "Bench",
+  "level": "feature",
+  "description": "A bench.",
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "bench": {
+      "role": "bench",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {}
+}

@@ -1,0 +1,53 @@
+{
+  "schema": "aige.module/1",
+  "id": "front-yard",
+  "name": "Front yard",
+  "level": "feature",
+  "description": "The strip between the house and the street.",
+  "classes": [
+    "Yard"
+  ],
+  "quantity": {
+    "depth": {
+      "type": "length",
+      "default": [
+        1,
+        2
+      ],
+      "min": 0,
+      "unit": "cells",
+      "max": 6
+    }
+  },
+  "quality": {
+    "surface": {
+      "type": "enum",
+      "vocabulary": "surface",
+      "default": "dirt"
+    }
+  },
+  "slots": {
+    "path": {
+      "role": "path-tile",
+      "essential": false,
+      "concepts": "surface"
+    }
+  },
+  "children": {
+    "doorstep-set": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 1
+    }
+  },
+  "relations": [
+    {
+      "type": "in-front-of",
+      "members": [
+        "self",
+        "parent.primary"
+      ],
+      "weight": 3.0
+    }
+  ]
+}

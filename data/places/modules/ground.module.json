@@ -1,0 +1,48 @@
+{
+  "schema": "aige.module/1",
+  "id": "ground",
+  "name": "Ground",
+  "level": "site",
+  "description": "The base terrain under everything else.",
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        400,
+        400
+      ],
+      "min": 1,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "terrain": {
+      "type": "enum",
+      "vocabulary": "terrain-kind",
+      "default": "grass",
+      "ask": true
+    },
+    "variation": {
+      "type": "enum",
+      "values": [
+        "none",
+        "low",
+        "high"
+      ],
+      "default": "low"
+    }
+  },
+  "slots": {
+    "tile": {
+      "role": "ground-tile",
+      "essential": true,
+      "primary": true,
+      "concepts": "terrain"
+    },
+    "variant": {
+      "role": "ground-tile",
+      "essential": false
+    }
+  },
+  "children": {}
+}

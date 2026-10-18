@@ -1,0 +1,102 @@
+[
+  {
+    "id": "market-at-centre",
+    "text": "The market sits at the centre, on the main road.",
+    "source": "Watabou, Medieval Fantasy City Generator (2016)",
+    "appliesTo": "market-ward",
+    "relation": {
+      "type": "center",
+      "members": [
+        "self"
+      ]
+    }
+  },
+  {
+    "id": "residential-around-centre",
+    "text": "Residential wards sit around the centre.",
+    "source": "Watabou, Medieval Fantasy City Generator (2016)",
+    "appliesTo": "residential-ward"
+  },
+  {
+    "id": "craftsmen-downstream",
+    "text": "Noisy and smelly trades (tanners, smiths) sit downstream or at the edge, away from patricians.",
+    "source": "Watabou, Medieval Fantasy City Generator (2016)",
+    "appliesTo": "craftsmen-ward"
+  },
+  {
+    "id": "patricians-high-ground",
+    "text": "Patricians live on high ground, near the castle.",
+    "source": "Emilien et al., Procedural Generation of Villages on Arbitrary Terrains, The Visual Computer 28 (2012)",
+    "appliesTo": "patrician-ward",
+    "relation": {
+      "type": "interest",
+      "members": [
+        "self"
+      ],
+      "args": {
+        "criterion": "high-ground",
+        "weight": 0.8
+      }
+    }
+  },
+  {
+    "id": "slum-outside",
+    "text": "The slum lies outside the walls or at the edge.",
+    "source": "Watabou, Medieval Fantasy City Generator (2016)",
+    "appliesTo": "slum"
+  },
+  {
+    "id": "gate-ward-at-gates",
+    "text": "A gate ward forms at each gate.",
+    "source": "Watabou, Medieval Fantasy City Generator (2016)",
+    "appliesTo": "gate-ward"
+  },
+  {
+    "id": "docks-along-water",
+    "text": "Docks lie along the water.",
+    "source": "Watabou, Medieval Fantasy City Generator (2016)",
+    "appliesTo": "docks"
+  },
+  {
+    "id": "farmland-outside",
+    "text": "Farmland lies outside the built area.",
+    "source": "Emilien et al., Procedural Generation of Villages on Arbitrary Terrains, The Visual Computer 28 (2012)",
+    "appliesTo": "farmland-ring"
+  },
+  {
+    "id": "density-falls-outward",
+    "text": "Building density falls from the centre outward.",
+    "source": "Lynch, The Image of the City (1960); Watabou, Medieval Fantasy City Generator (2016)",
+    "appliesTo": "class:Ward"
+  },
+  {
+    "id": "plots-street-access",
+    "text": "Every plot has access to a street.",
+    "source": "Emilien et al., Procedural Generation of Villages on Arbitrary Terrains, The Visual Computer 28 (2012)",
+    "appliesTo": "class:BuildingParcel"
+  },
+  {
+    "id": "building-faces-street",
+    "text": "A building faces its street and sits at the front setback; outbuildings go behind.",
+    "source": "Alexander et al., A Pattern Language (1977) (pattern 105, South-facing outdoors; 140, Private terrace on the street)",
+    "appliesTo": "class:BuildingParcel"
+  },
+  {
+    "id": "garden-behind-house",
+    "text": "A garden lies behind or beside its house, away from the street.",
+    "source": "Alexander et al., A Pattern Language (1977) (pattern 173, Garden wall)",
+    "appliesTo": "garden"
+  },
+  {
+    "id": "centrepiece-at-centre",
+    "text": "A square's centrepiece stands at its centre.",
+    "source": "Lynch, The Image of the City (1960) (landmarks and nodes)",
+    "appliesTo": "class:OpenSpace"
+  },
+  {
+    "id": "landmark-closes-view",
+    "text": "A temple closes the view at the end of a street.",
+    "source": "Lynch, The Image of the City (1960)",
+    "appliesTo": "temple-plot"
+  }
+]

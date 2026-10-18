@@ -1,0 +1,62 @@
+{
+  "schema": "aige.module/1",
+  "id": "fountain-square",
+  "name": "Fountain square",
+  "level": "parcel",
+  "description": "A square with a fountain and a formal garden.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "OpenSpace",
+    "WaterSource"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          8,
+          12
+        ],
+        "h": [
+          8,
+          12
+        ]
+      },
+      "min": {
+        "w": 5,
+        "h": 5
+      },
+      "unit": "cells",
+      "max": {
+        "w": 30,
+        "h": 30
+      }
+    }
+  },
+  "quality": {},
+  "slots": {
+    "fountain": {
+      "role": "fountain",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "formal-garden": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 2
+    }
+  },
+  "relations": [
+    {
+      "type": "center",
+      "members": [
+        "self.primary"
+      ],
+      "weight": 3.0
+    }
+  ]
+}

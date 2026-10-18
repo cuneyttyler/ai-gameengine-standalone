@@ -1,0 +1,128 @@
+{
+  "schema": "aige.module/1",
+  "id": "market-square",
+  "name": "Market square",
+  "level": "parcel",
+  "description": "An open square with stalls and a centrepiece.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "OpenSpace"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          10,
+          14
+        ],
+        "h": [
+          8,
+          12
+        ]
+      },
+      "min": {
+        "w": 6,
+        "h": 6
+      },
+      "unit": "cells",
+      "max": {
+        "w": 60,
+        "h": 60
+      }
+    },
+    "stalls": {
+      "type": "count",
+      "default": [
+        6,
+        10
+      ],
+      "min": 0,
+      "max": 200,
+      "ask": true
+    },
+    "crowd": {
+      "type": "density",
+      "levels": [
+        0,
+        0.05,
+        0.15,
+        0.3,
+        0.5
+      ],
+      "unit": "per free cell",
+      "default": "some"
+    }
+  },
+  "quality": {
+    "centrepiece": {
+      "type": "enum",
+      "values": [
+        "well",
+        "fountain",
+        "statue",
+        "cross",
+        "none"
+      ],
+      "default": "well",
+      "ask": true
+    },
+    "surface": {
+      "type": "enum",
+      "vocabulary": "surface",
+      "default": "cobble"
+    }
+  },
+  "slots": {
+    "ground": {
+      "role": "square-terrain",
+      "essential": true,
+      "primary": true,
+      "concepts": "surface"
+    },
+    "stall": {
+      "role": "stall",
+      "essential": true
+    },
+    "centrepiece": {
+      "role": "well|fountain|statue",
+      "essential": false,
+      "when": "centrepiece != 'none'"
+    }
+  },
+  "children": {
+    "market-stalls": {
+      "min": 0,
+      "weight": 1.0,
+      "max": 4
+    },
+    "well-plaza": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 1
+    },
+    "clutter": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 1
+    }
+  },
+  "constraints": [
+    "stalls * 6 <= size.w * size.h"
+  ],
+  "relations": [
+    {
+      "type": "center",
+      "members": [
+        "self.centrepiece"
+      ],
+      "weight": 2.0
+    }
+  ],
+  "prefersSite": {
+    "centre": 1.0,
+    "main-road": 0.8
+  }
+}

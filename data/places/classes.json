@@ -1,0 +1,63 @@
+{
+  "Ward": {
+    "label": "Ward",
+    "description": "A zone of a settlement with its own character."
+  },
+  "BuildingParcel": {
+    "label": "Building parcel",
+    "description": "A parcel whose primary object is a building."
+  },
+  "Dwelling": {
+    "subClassOf": [
+      "BuildingParcel"
+    ],
+    "label": "Dwelling",
+    "description": "A parcel people live on."
+  },
+  "Workplace": {
+    "subClassOf": [
+      "BuildingParcel"
+    ],
+    "label": "Workplace",
+    "description": "A parcel people work on."
+  },
+  "Civic": {
+    "subClassOf": [
+      "BuildingParcel"
+    ],
+    "label": "Civic building",
+    "description": "A temple, guard post or other public building."
+  },
+  "OpenSpace": {
+    "label": "Open space",
+    "description": "A square or plaza: open ground with a centrepiece."
+  },
+  "Yard": {
+    "label": "Yard",
+    "description": "Open ground belonging to a parcel."
+  },
+  "PlantedArea": {
+    "label": "Planted area",
+    "description": "Ground given to plants: gardens, beds, fields, orchards, meadows."
+  },
+  "LinearFeature": {
+    "label": "Linear feature",
+    "description": "Something built along a line of cells: walls, fences, hedges."
+  },
+  "WaterBody": {
+    "label": "Body of water",
+    "description": "A river, lake or pond."
+  },
+  "WaterSource": {
+    "label": "Water source",
+    "description": "Where people draw water: a well or fountain."
+  },
+  "NatureArea": {
+    "label": "Nature area",
+    "description": "A forest, meadow or rock field."
+  },
+  "Crossing": {
+    "label": "Crossing",
+    "description": "Carries a path over an obstacle."
+  }
+}

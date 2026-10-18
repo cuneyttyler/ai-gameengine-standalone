@@ -1,0 +1,73 @@
+{
+  "schema": "aige.module/1",
+  "id": "stable-yard",
+  "name": "Stable yard",
+  "level": "feature",
+  "description": "Stables with horses, a trough and hay.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Yard"
+  ],
+  "quantity": {
+    "stalls": {
+      "type": "count",
+      "default": [
+        2,
+        6
+      ],
+      "min": 1,
+      "max": 40
+    },
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          10
+        ],
+        "h": [
+          6,
+          10
+        ]
+      },
+      "min": {
+        "w": 4,
+        "h": 4
+      },
+      "unit": "cells",
+      "max": {
+        "w": 30,
+        "h": 30
+      }
+    }
+  },
+  "quality": {},
+  "slots": {
+    "stable": {
+      "role": "stable",
+      "essential": true,
+      "primary": true
+    },
+    "horse": {
+      "role": "animal",
+      "essential": false,
+      "concepts": [
+        "horse"
+      ]
+    }
+  },
+  "children": {
+    "trough": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 2
+    },
+    "hay": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 4
+    }
+  }
+}

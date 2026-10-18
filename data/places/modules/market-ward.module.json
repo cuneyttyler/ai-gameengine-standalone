@@ -1,0 +1,101 @@
+{
+  "schema": "aige.module/1",
+  "id": "market-ward",
+  "name": "Market ward",
+  "level": "zone",
+  "description": "The centre: the market square, shops, inns and a well.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "plots": {
+      "type": "count",
+      "default": [
+        6,
+        20
+      ],
+      "min": 0,
+      "max": 2000,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        600,
+        2500
+      ],
+      "min": 100,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "wealth": {
+      "type": "enum",
+      "vocabulary": "wealth",
+      "default": "common"
+    },
+    "bustle": {
+      "type": "enum",
+      "values": [
+        "quiet",
+        "busy"
+      ],
+      "default": "busy"
+    }
+  },
+  "slots": {},
+  "children": {
+    "market-square": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 2
+    },
+    "shop-plot": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 200
+    },
+    "inn-plot": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 20
+    },
+    "well-plaza": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 4
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "relations": [
+    {
+      "type": "center",
+      "members": [
+        "self"
+      ],
+      "weight": 3.0
+    },
+    {
+      "type": "along",
+      "members": [
+        "self",
+        "parent.main-road"
+      ],
+      "weight": 2.0,
+      "args": {
+        "offset": 0
+      }
+    }
+  ],
+  "prefersSite": {
+    "centre": 0.9,
+    "main-road": 0.8
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "schema": "aige.module/1",
+  "id": "docks",
+  "name": "Docks",
+  "level": "zone",
+  "description": "Piers, warehouses and a fish market along water.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "plots": {
+      "type": "count",
+      "default": [
+        3,
+        15
+      ],
+      "min": 0,
+      "max": 2000,
+      "ask": true
+    },
+    "piers": {
+      "type": "count",
+      "default": [
+        1,
+        4
+      ],
+      "min": 0,
+      "max": 40
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        400,
+        2500
+      ],
+      "min": 100,
+      "unit": "cells²"
+    }
+  },
+  "quality": {},
+  "slots": {},
+  "children": {
+    "dock": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 40,
+      "count": "piers"
+    },
+    "warehouse-plot": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 40
+    },
+    "fish-market": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 2
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "relations": [
+    {
+      "type": "along",
+      "members": [
+        "self",
+        "parent.water"
+      ],
+      "weight": 3.0,
+      "hard": true,
+      "args": {
+        "offset": 0
+      }
+    }
+  ],
+  "requires": [
+    "class:WaterBody"
+  ],
+  "prefersSite": {
+    "water": 1.0
+  }
+}

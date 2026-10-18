@@ -1,0 +1,549 @@
+{
+  "wealth": [
+    {
+      "id": "poor",
+      "alt": [
+        "humble",
+        "modest"
+      ]
+    },
+    {
+      "id": "common",
+      "alt": [
+        "ordinary",
+        "middling"
+      ]
+    },
+    {
+      "id": "rich",
+      "alt": [
+        "wealthy",
+        "affluent",
+        "noble"
+      ]
+    }
+  ],
+  "condition": [
+    {
+      "id": "new",
+      "alt": [
+        "pristine",
+        "fresh"
+      ]
+    },
+    {
+      "id": "lived-in",
+      "alt": [
+        "used"
+      ]
+    },
+    {
+      "id": "worn",
+      "alt": [
+        "weathered",
+        "old"
+      ]
+    },
+    {
+      "id": "ruined",
+      "alt": [
+        "derelict",
+        "abandoned"
+      ]
+    }
+  ],
+  "density-level": [
+    "none",
+    "rare",
+    "some",
+    "common",
+    "abundant"
+  ],
+  "material": [
+    {
+      "id": "wood",
+      "alt": [
+        "timber",
+        "wooden"
+      ]
+    },
+    {
+      "id": "wicker",
+      "broader": "wood"
+    },
+    {
+      "id": "thatch"
+    },
+    {
+      "id": "stone",
+      "alt": [
+        "stony"
+      ]
+    },
+    {
+      "id": "brick"
+    },
+    {
+      "id": "plaster"
+    },
+    {
+      "id": "iron",
+      "alt": [
+        "metal"
+      ]
+    }
+  ],
+  "house-kind": [
+    {
+      "id": "hut"
+    },
+    {
+      "id": "cottage",
+      "alt": [
+        "house",
+        "home"
+      ]
+    },
+    {
+      "id": "longhouse"
+    },
+    {
+      "id": "townhouse"
+    },
+    {
+      "id": "manor",
+      "alt": [
+        "mansion"
+      ]
+    }
+  ],
+  "flower-kind": [
+    {
+      "id": "flower",
+      "alt": [
+        "flowers",
+        "bloom"
+      ]
+    },
+    {
+      "id": "rose",
+      "alt": [
+        "roses"
+      ],
+      "broader": "flower"
+    },
+    {
+      "id": "tulip",
+      "alt": [
+        "tulips"
+      ],
+      "broader": "flower"
+    },
+    {
+      "id": "daisy",
+      "alt": [
+        "daisies"
+      ],
+      "broader": "flower"
+    },
+    {
+      "id": "sunflower",
+      "alt": [
+        "sunflowers"
+      ],
+      "broader": "flower"
+    },
+    {
+      "id": "lavender",
+      "broader": "flower"
+    },
+    {
+      "id": "poppy",
+      "alt": [
+        "poppies"
+      ],
+      "broader": "flower"
+    },
+    {
+      "id": "wildflower",
+      "alt": [
+        "wildflowers"
+      ],
+      "broader": "flower"
+    }
+  ],
+  "crop-kind": [
+    {
+      "id": "grain"
+    },
+    {
+      "id": "vegetable",
+      "alt": [
+        "vegetables",
+        "veg"
+      ]
+    },
+    {
+      "id": "wheat",
+      "broader": "grain"
+    },
+    {
+      "id": "barley",
+      "broader": "grain"
+    },
+    {
+      "id": "cabbage",
+      "alt": [
+        "cabbages"
+      ],
+      "broader": "vegetable"
+    },
+    {
+      "id": "carrot",
+      "alt": [
+        "carrots"
+      ],
+      "broader": "vegetable"
+    },
+    {
+      "id": "pumpkin",
+      "alt": [
+        "pumpkins"
+      ],
+      "broader": "vegetable"
+    },
+    {
+      "id": "flax"
+    },
+    {
+      "id": "vines",
+      "alt": [
+        "grapes",
+        "vineyard"
+      ]
+    }
+  ],
+  "fruit-kind": [
+    {
+      "id": "apple",
+      "alt": [
+        "apples"
+      ]
+    },
+    {
+      "id": "pear",
+      "alt": [
+        "pears"
+      ]
+    },
+    {
+      "id": "cherry",
+      "alt": [
+        "cherries"
+      ]
+    },
+    {
+      "id": "plum",
+      "alt": [
+        "plums"
+      ]
+    }
+  ],
+  "livestock": [
+    {
+      "id": "sheep"
+    },
+    {
+      "id": "cow",
+      "alt": [
+        "cows",
+        "cattle"
+      ]
+    },
+    {
+      "id": "pig",
+      "alt": [
+        "pigs"
+      ]
+    },
+    {
+      "id": "horse",
+      "alt": [
+        "horses"
+      ]
+    },
+    {
+      "id": "goat",
+      "alt": [
+        "goats"
+      ]
+    },
+    {
+      "id": "chicken",
+      "alt": [
+        "chickens",
+        "hens"
+      ]
+    }
+  ],
+  "trade": [
+    {
+      "id": "smith",
+      "alt": [
+        "blacksmith",
+        "smithy",
+        "forge"
+      ]
+    },
+    {
+      "id": "carpenter",
+      "alt": [
+        "joiner"
+      ]
+    },
+    {
+      "id": "tanner",
+      "alt": [
+        "tannery"
+      ]
+    },
+    {
+      "id": "potter",
+      "alt": [
+        "pottery"
+      ]
+    },
+    {
+      "id": "weaver"
+    },
+    {
+      "id": "mason",
+      "alt": [
+        "stonemason"
+      ]
+    },
+    {
+      "id": "baker",
+      "alt": [
+        "bakery"
+      ]
+    },
+    {
+      "id": "brewer",
+      "alt": [
+        "brewery"
+      ]
+    }
+  ],
+  "surface": [
+    {
+      "id": "grass"
+    },
+    {
+      "id": "dirt",
+      "alt": [
+        "earth",
+        "mud track"
+      ]
+    },
+    {
+      "id": "gravel"
+    },
+    {
+      "id": "paved"
+    },
+    {
+      "id": "cobble",
+      "alt": [
+        "cobblestone",
+        "cobbled"
+      ],
+      "broader": "paved"
+    },
+    {
+      "id": "plank",
+      "alt": [
+        "boardwalk",
+        "wooden"
+      ]
+    }
+  ],
+  "terrain-kind": [
+    {
+      "id": "grass"
+    },
+    {
+      "id": "dirt"
+    },
+    {
+      "id": "sand"
+    },
+    {
+      "id": "snow"
+    },
+    {
+      "id": "stone"
+    },
+    {
+      "id": "mud"
+    }
+  ],
+  "road-class": [
+    {
+      "id": "main",
+      "alt": [
+        "high street",
+        "highway"
+      ]
+    },
+    {
+      "id": "street"
+    },
+    {
+      "id": "lane",
+      "alt": [
+        "alley"
+      ]
+    },
+    {
+      "id": "trail",
+      "alt": [
+        "path",
+        "track"
+      ]
+    }
+  ],
+  "biome": [
+    {
+      "id": "temperate"
+    },
+    {
+      "id": "conifer",
+      "alt": [
+        "taiga"
+      ]
+    },
+    {
+      "id": "plains",
+      "alt": [
+        "grassland"
+      ]
+    },
+    {
+      "id": "hills"
+    },
+    {
+      "id": "swamp",
+      "alt": [
+        "marsh"
+      ]
+    },
+    {
+      "id": "desert"
+    },
+    {
+      "id": "tundra"
+    },
+    {
+      "id": "coast",
+      "alt": [
+        "coastal",
+        "seaside"
+      ]
+    }
+  ],
+  "goods": [
+    {
+      "id": "general"
+    },
+    {
+      "id": "food",
+      "alt": [
+        "produce"
+      ]
+    },
+    {
+      "id": "cloth",
+      "alt": [
+        "textiles"
+      ]
+    },
+    {
+      "id": "tools"
+    },
+    {
+      "id": "pottery"
+    },
+    {
+      "id": "fish"
+    }
+  ],
+  "faith": [
+    {
+      "id": "old-faith",
+      "label": "old faith"
+    },
+    {
+      "id": "new-faith",
+      "label": "new faith"
+    },
+    {
+      "id": "nature-cult",
+      "label": "nature cult"
+    }
+  ],
+  "light-kind": [
+    {
+      "id": "torch"
+    },
+    {
+      "id": "lantern"
+    },
+    {
+      "id": "lamp-post",
+      "label": "lamp post"
+    },
+    {
+      "id": "brazier"
+    }
+  ],
+  "clutter-theme": [
+    {
+      "id": "farm"
+    },
+    {
+      "id": "market"
+    },
+    {
+      "id": "workshop"
+    },
+    {
+      "id": "dock"
+    },
+    {
+      "id": "military"
+    }
+  ],
+  "affordance": [
+    {
+      "id": "terrain"
+    },
+    {
+      "id": "environmental-object"
+    },
+    {
+      "id": "interactive-object"
+    },
+    {
+      "id": "item"
+    },
+    {
+      "id": "character"
+    }
+  ],
+  "build-type": [
+    {
+      "id": "settlement"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schema": "aige.module/1",
+  "id": "trough",
+  "name": "Trough",
+  "level": "feature",
+  "description": "A water trough for animals.",
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "trough": {
+      "role": "trough",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {}
+}

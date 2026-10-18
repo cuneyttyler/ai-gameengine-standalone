@@ -1,0 +1,105 @@
+{
+  "schema": "aige.module/1",
+  "id": "inn-plot",
+  "name": "Inn plot",
+  "level": "parcel",
+  "description": "An inn with its stable and yard, and a sign at the door.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Workplace"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          10,
+          16
+        ],
+        "h": [
+          10,
+          16
+        ]
+      },
+      "min": {
+        "w": 6,
+        "h": 6
+      },
+      "unit": "cells",
+      "max": {
+        "w": 30,
+        "h": 30
+      }
+    },
+    "rooms": {
+      "type": "count",
+      "default": [
+        4,
+        10
+      ],
+      "min": 1,
+      "max": 40
+    }
+  },
+  "quality": {
+    "standing": {
+      "type": "enum",
+      "values": [
+        "humble",
+        "fine"
+      ],
+      "default": "humble"
+    }
+  },
+  "slots": {
+    "inn": {
+      "role": "inn",
+      "essential": true,
+      "primary": true
+    },
+    "stable": {
+      "role": "stable",
+      "essential": false
+    }
+  },
+  "children": {
+    "yard": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 1
+    },
+    "stable-yard": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 1
+    },
+    "sign": {
+      "min": 0,
+      "weight": 0.9,
+      "max": 1
+    }
+  },
+  "relations": [
+    {
+      "type": "faces",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 3.0
+    },
+    {
+      "type": "adjacent",
+      "members": [
+        "self",
+        "parent.street"
+      ],
+      "weight": 2.0
+    }
+  ],
+  "prefersSite": {
+    "main-road": 0.8
+  }
+}

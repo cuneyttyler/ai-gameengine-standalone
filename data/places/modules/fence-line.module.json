@@ -1,0 +1,59 @@
+{
+  "schema": "aige.module/1",
+  "id": "fence-line",
+  "name": "Fence",
+  "level": "feature",
+  "description": "A fence run along a region's edge, with gaps for gates.",
+  "classes": [
+    "LinearFeature"
+  ],
+  "quantity": {
+    "length": {
+      "type": "length",
+      "default": [
+        4,
+        60
+      ],
+      "min": 1,
+      "unit": "cells"
+    },
+    "gaps": {
+      "type": "count",
+      "default": [
+        1,
+        2
+      ],
+      "min": 0,
+      "max": 10
+    }
+  },
+  "quality": {
+    "material": {
+      "type": "enum",
+      "vocabulary": "material",
+      "default": "wood"
+    }
+  },
+  "slots": {
+    "fence": {
+      "role": "fence-piece-set",
+      "essential": true,
+      "primary": true,
+      "concepts": "material"
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "along",
+      "members": [
+        "self",
+        "parent"
+      ],
+      "weight": 1.0,
+      "args": {
+        "offset": 0
+      }
+    }
+  ]
+}

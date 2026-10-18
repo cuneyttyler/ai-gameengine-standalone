@@ -1,0 +1,56 @@
+{
+  "schema": "aige.module/1",
+  "id": "meadow",
+  "name": "Meadow",
+  "level": "zone",
+  "description": "Open grassland with flowers.",
+  "classes": [
+    "NatureArea",
+    "PlantedArea"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        60,
+        1000
+      ],
+      "min": 10,
+      "unit": "cells²"
+    },
+    "flowers": {
+      "type": "density",
+      "levels": [
+        0,
+        0.05,
+        0.15,
+        0.3,
+        0.5
+      ],
+      "unit": "per free cell",
+      "default": "some"
+    }
+  },
+  "quality": {
+    "flower-mix": {
+      "type": "mix",
+      "vocabulary": "flower-kind",
+      "default": {
+        "wildflower": 1.0
+      }
+    }
+  },
+  "slots": {
+    "grass": {
+      "role": "grass",
+      "essential": false
+    },
+    "flower": {
+      "role": "flower",
+      "essential": true,
+      "primary": true,
+      "concepts": "flower-mix"
+    }
+  },
+  "children": {}
+}

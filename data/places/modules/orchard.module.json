@@ -1,0 +1,90 @@
+{
+  "schema": "aige.module/1",
+  "id": "orchard",
+  "name": "Orchard",
+  "level": "feature",
+  "description": "Fruit trees in grid rows.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "PlantedArea"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          8,
+          16
+        ],
+        "h": [
+          8,
+          16
+        ]
+      },
+      "min": {
+        "w": 4,
+        "h": 4
+      },
+      "unit": "cells",
+      "max": {
+        "w": 60,
+        "h": 60
+      }
+    },
+    "trees": {
+      "type": "count",
+      "default": [
+        6,
+        30
+      ],
+      "min": 1,
+      "max": 1000
+    },
+    "spacing": {
+      "type": "spacing",
+      "default": {
+        "min": 2,
+        "max": 3
+      },
+      "min": 0,
+      "unit": "cells"
+    }
+  },
+  "quality": {
+    "fruit-mix": {
+      "type": "mix",
+      "vocabulary": "fruit-kind",
+      "default": {
+        "apple": 0.7,
+        "pear": 0.3
+      }
+    }
+  },
+  "slots": {
+    "tree": {
+      "role": "fruit-tree",
+      "essential": true,
+      "primary": true,
+      "concepts": "fruit-mix"
+    }
+  },
+  "children": {},
+  "constraints": [
+    "trees * 4 <= size.w * size.h"
+  ],
+  "relations": [
+    {
+      "type": "in-row",
+      "members": [
+        "self.tree",
+        "self.tree"
+      ],
+      "weight": 2.0,
+      "args": {
+        "axis": "x"
+      }
+    }
+  ]
+}

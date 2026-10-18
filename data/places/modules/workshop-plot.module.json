@@ -1,0 +1,87 @@
+{
+  "schema": "aige.module/1",
+  "id": "workshop-plot",
+  "name": "Workshop plot",
+  "level": "parcel",
+  "description": "A craftsman's workshop, maybe with a house, and a work yard.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Workplace"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          9
+        ],
+        "h": [
+          7,
+          11
+        ]
+      },
+      "min": {
+        "w": 4,
+        "h": 4
+      },
+      "unit": "cells",
+      "max": {
+        "w": 20,
+        "h": 24
+      }
+    }
+  },
+  "quality": {
+    "trade": {
+      "type": "enum",
+      "vocabulary": "trade",
+      "default": "smith",
+      "ask": true
+    }
+  },
+  "slots": {
+    "workshop": {
+      "role": "workshop",
+      "essential": true,
+      "primary": true,
+      "concepts": "trade"
+    },
+    "house": {
+      "role": "house",
+      "essential": false
+    }
+  },
+  "children": {
+    "work-yard": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 1
+    },
+    "clutter": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 1
+    }
+  },
+  "relations": [
+    {
+      "type": "faces",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 3.0
+    },
+    {
+      "type": "adjacent",
+      "members": [
+        "self",
+        "parent.street"
+      ],
+      "weight": 2.0
+    }
+  ]
+}

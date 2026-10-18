@@ -1,0 +1,41 @@
+{
+  "schema": "aige.module/1",
+  "id": "castle-ward",
+  "name": "Castle ward",
+  "level": "zone",
+  "description": "Holds a castle, built as its own nested place.",
+  "buildTypes": [
+    "settlement"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        1600,
+        10000
+      ],
+      "min": 400,
+      "unit": "cells²"
+    }
+  },
+  "quality": {},
+  "slots": {},
+  "children": {
+    "subplace": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "prefersSite": {
+    "high-ground": 0.9
+  }
+}
