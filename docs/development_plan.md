@@ -1627,128 +1627,179 @@ uses the pack's houses, well, fences and decorations, on the grid the art was dr
 
 ## Phase 7 — AI-Generated Building
 
-**Status: proposed, for discussion (2026-10-17).** The full design, research and open
-questions are in `docs/ai-building.md`.
+**Status: design under review (2026-10-18).** Documents:
+- `docs/ai-building.md`: why, the research, and what each source contributes;
+- `docs/place-schema.md`: **the procedure, its documents, the intermediate language and
+  the constraints**;
+- `docs/place-modules.md`: **the modules per build type**, with their quantity and
+  quality fields.
 
-**Goal:** a framework, not a recipe. An instruction ("build a large medieval town by a
-river") becomes a finished place at any size, fully automatically if wanted:
-1. the AI works out what is asked, including scale;
-2. it confirms with the user through an editable table;
-3. it plans the whole place, then each part;
-4. it builds step by step;
-5. it verifies each part and repairs what fails.
+**Agreed (2026-10-18):**
+- **size:** very big, up to regions of several settlements;
+- **confirmation:** the window opens for every build;
+- **editing:** after the build, per part;
+- **perspective:** top-down and ¾ / isometric art both, mixed where compatible;
+- **assets:** the pack's or generated, chosen per component in the window;
+- **model budget:** no limit.
 
-The 6.5 village generator becomes one of the generators the framework uses.
+**Goal:** a framework, not a recipe. Any build follows one structured procedure, and every
+part of it is described by well-defined, constrained schemas:
+
+```
+Query → Interpret (Brief drafts) → Confirm (Brief) → Plan (Spec: quantity + quality per part)
+      → Compile (Layout IR) → Solve & build → Verify → (edit any part → regenerate it)
+```
 
 **Why:** 6.5 testing showed:
 - "large" meant 20–30 houses;
-- fences were wrong (an isometric grid with top-down art, and pieces at cell centres with
-  no corners);
-- some sizes were wrong because they were guessed;
-- there was a single layout recipe;
+- fences were wrong (an isometric grid with top-down art, and pieces at cell centres);
+- sizes were guessed;
+- there was one layout recipe;
 - nothing checked the result.
 
-**Principles:**
-- plans are data (editable, regenerable);
-- the AI decides intent and relations, seeded algorithms place cells;
-- coarse to fine: site → districts → plots → dressing;
-- measure the art before using it;
-- verify every part (rules, then vision);
-- ask few but decisive questions.
+**Built on the research:**
+- **Holodeck:** stages as modules, relations instead of coordinates, an anchor-first
+  solver, asset retrieval with a size check;
+- **SceneCraft:** n-ary relation graph with scoring functions; render-critique loop;
+- **GLDL / Constraint Is All You Need:** fixed vs placed facilities, anchors, a penalty
+  objective with clustering and sparsity terms, agent-tested reachability;
+- **database-driven levels:** a module library authored offline, few AI calls at scale,
+  essential vs adaptable repair;
+- **Hierarchical WFC:** a weighted "consists-of" tree, semantic selection and regeneration;
+- **Emilien and Vanegas:** interest maps, organic growth, parcel styles, persistence
+  across edits;
+- **Dormans / Unexplored:** mission → space, cycles, lock–key;
+- **GameTileNet:** the affordance taxonomy;
+- **ClarEval / Active Disambiguation:** batched questions, asked where interpretations
+  disagree.
 
-**7.0 — Big scenes (engine prerequisite)**
-- Tiles stored as **chunked layers** (arrays per chunk), not one entity per tile.
-- **Command-based undo** for bulk operations (a whole district is one cheap step).
-- Scenes saved and loaded in **regions**.
-- Culling and rendering stay fast at 100k+ sprites.
+**7.1 — Schemas and validators (first; nothing else starts before it)**
+- The documents and schemas:
+  - `aige.brief/1`, `aige.spec/1` (the plan tree with quantity and quality fields);
+  - `aige.module/1` (a module's fields, slots, children, constraints, relations, compile
+    rules and checks);
+  - `aige.ir/1` (the Layout IR statements);
+  - `aige.tolerance/1`;
+  - the shared **vocabularies**;
+  - the **scale tables** per build type.
+- The **constraint expression language** (paths, aggregates, arithmetic, logic) with a
+  parser and evaluator.
+- Validators for each document:
+  - field types and ranges;
+  - structure (parents and children, cardinality, levels, references);
+  - aggregate constraints;
+  - IR references and feasibility pre-checks (areas fit their parents).
+- The **first module library**: shared modules and the settlement build type, from
+  `place-modules.md`, as module files with density maps and expansion defaults.
+- Tests: valid and invalid documents of every kind; constraint evaluation; the example
+  village Spec validating; a broken aggregate reported against the right node.
+
+**7.2 — Big scenes (engine prerequisite)**
+- Tiles stored as **chunked layers**, not one entity per tile.
+- **Command-based undo** for bulk operations.
+- Scenes stored and loaded in **regions**.
+- Rendering and culling fast at 100k+ sprites.
+- `PlaceNode {place, node, statement}` on built entities.
 - Tests: a 400×400 place builds, saves, loads and undoes within set time budgets.
 
-**7.1 — Asset catalog v2 (understanding the art)**
+**7.3 — Asset catalog v2**
 - Per asset:
-  - **footprint** (from the alpha mask's base, not the image size) and **anchor**;
-  - **sprite size** from the footprint;
-  - **perspective** (top-down, ¾, isometric);
-  - **facing and variants**;
-  - **palette**, **layer**, **passability** and placement rules;
-  - for walls, fences and hedges, a **piece set** (straight, corner, end, T, gate).
-- A **perspective check** against the grid style, with the fix offered.
-- Catalog review in the Assets panel, so the user can confirm or correct entries.
-- Tests: footprints and anchors measured on sample art; piece sets classified;
-  mismatches flagged.
+  - affordance (GameTileNet's five);
+  - tile type (complete, partial, texture);
+  - **footprint** from the alpha base, and **anchor**;
+  - sprite size from the footprint;
+  - **perspective**;
+  - facing and variants;
+  - palette and layer;
+  - passability and accessibility;
+  - **piece sets** for walls, fences and hedges.
+- Tilesheets are segmented into whole objects first; images are upscaled before the
+  vision model sees them.
+- **Slot retrieval:** hard filters (role, affordance, perspective compatible with the
+  grid, footprint fits), then ranking.
+- Catalog review in the Assets panel.
+- Tests: footprints and anchors on sample art; piece sets; perspective mismatches flagged.
 
-**7.2 — The Brief and the questions**
-- A **Brief** schema:
-  - place type, scale (class plus numbers), theme;
-  - components with counts or densities;
-  - shape (organic, grid, radial, linear, walled, or described), features and placement;
-  - optional gameplay hooks.
-- Each field has a confidence score.
-- A **scale table** in project data, so "large village" means about 80 buildings.
-- **Round 1:** an editable Brief card in the AI panel: size, shape (with preview),
-  components (with the pack's assets as thumbnails, and gaps marked), style and location.
-  Buttons: *Continue*, *Just build it*, *Cancel*.
-- **Round 2:** categorical density per chosen component (none, rare, some, common,
-  abundant) and asset variants. Answers are remembered per project.
-- The AI asks only when a field's confidence is low and the answer matters.
-- Tests: Briefs extracted from vague and detailed instructions; the scale table applied;
-  questions skipped when confident.
+**7.4 — Interpret and Confirm**
+- The AI drafts **several Briefs** for the query. Fields where the drafts disagree, or
+  with low confidence, are highlighted.
+- The **confirmation window** is generated from the build type's Brief schema:
+  - round 1: size with numbers, layout with sketches, components with thumbnails and
+    **pack / generate / auto**, style, location;
+  - round 2: densities and asked module fields for the chosen components.
+- **Every build** shows it. Answers become project defaults.
+- Tests: Briefs from vague and detailed queries; disagreement highlighting; window
+  output validating as a Brief.
 
-**7.3 — Plans as data: the site plan**
-- A typed **plan language**: bounds, terrain features, roads, districts with roles and
-  relations (near, around, outside, along), walls and gates, landmarks. It is validated
-  like proposals.
-- The AI writes the site plan from the Brief, using built-in design rules: Lynch's paths,
-  edges, districts, nodes and landmarks; road hierarchy; a focal centre; density
-  gradients; zoning.
-- Site generators turn relations into zones, route arterial roads over terrain, and place
-  wall rings and gates.
-- A **plan view** over the viewport, checkable and editable before anything is built.
-  Plans are saved in `places/`.
+**7.5 — Plan (the Spec)**
+- The AI expands the Brief level by level: the root, then zones, then per-zone totals and
+  qualities. Each step's output is validated against the module schemas and constraints,
+  and failures go back with the violated expression.
+- **Lower levels come from the module's expansion rules** (the encyclopedia), so a city
+  takes tens of AI calls, not thousands.
+- `repeat` and `share` keep large Specs compact.
+- Tests: Specs for every settlement scale validate; aggregates hold (Σ houses =
+  buildings); repair of a broken node.
 
-**7.4 — Generators library**
-- Street networks: organic, grid and radial.
-- Parcel subdivision.
-- Relation-based placement with a constraint solver.
-- Density-map scatter (Poisson disk) with placement rules.
-- Linear features along cell edges, using piece sets.
-- Terrain regions: rivers, fields, forests.
-- Each one is a seeded engine command that can be re-run on one part.
-- The 6.5 village becomes a district preset.
+**7.6 — Compile and solve (the generators)**
+- Each module's **compile rules** turn Spec nodes into **Layout IR**. The AI adds
+  relations at the upper levels.
+- Solvers run in the IR's fixed order:
+  - `partition` (relations + interest maps with vetoes);
+  - `path` and `network` (least-cost with road reuse; grid, radial, organic, growth);
+  - `subdivide` (skeleton, split, mixed);
+  - `place` (anchor first, large first, then annealing over scored relations, with
+    clustering and sparsity terms);
+  - `line` (edge-joined piece sets);
+  - `rows`, `scatter` (Poisson disk, density maps) and `fill` (autotiling).
+- The 6.5 village becomes a set of modules on this framework.
+- Tests: each solver on fixtures; hard rules never broken; seeded determinism.
 
-**7.5 — The builder**
-- Executes a plan level by level and part by part (bulk commands, one undo step each).
-- Large places are built chunk by chunk, with progress, resume and a budget.
-- **Regenerate a part** ("redo the crafts district with more workshops").
-- Review policy: auto-apply verified parts, or review each one.
+**7.7 — Build, verify, repair**
+- Bulk commands per node, with progress and resume; nodes are independent where
+  possible.
+- **Verification** after each level:
+  - hard rules (overlap, terrain, **reachability**, accessibility, continuity, autotile,
+    perspective);
+  - module checks;
+  - **conformity** against the Spec within tolerances (density bands included);
+  - **visual critique** of the rendered part *and* of the plan view.
+- **Repair:** move or remove *adaptable* slots, re-solve the node, or re-plan it with the
+  reason. Then report.
+- Approved builds join the **verified examples** used in prompts.
+- Tests: injected failures are repaired; reports are accurate.
 
-**7.6 — Verification and repair**
-- **Structural checks:** no overlaps, nothing on roads, footprints inside plots, doors
-  reachable, roads connected, autotile and fence continuity, terrain rules, size ranges.
-- **Brief conformity:** counts, densities, area and shape.
-- **Visual critique** (6.7 grown up): the part is rendered headless and a vision model
-  answers a checklist against the Brief.
-- Failures get local repair with the reason as a constraint, up to a limit, then a report.
-- Later: a play agent walks the place.
+**7.8 — Edit after the build**
+- Click any part to select its node (garden, plot, ward). The Inspector shows its Spec
+  fields; changing one recompiles and regenerates that subtree, with siblings `fixed`.
+- Hand edits lock a node.
+- Regenerating a parent **matches** children to their previous selves, so edits and
+  locks survive.
+- A **module brush** paints a new node of any module over an area.
+- Chat edits are routed to the right node.
+- Tests: an edit regenerates only its subtree; locks and customisations survive a
+  parent's regeneration.
 
-**7.7 — Asset gaps: find or generate**
-- For a missing component, search in this order:
-  1. the catalog;
-  2. the user's indexed libraries;
-  3. **generation in the pack's style** (palette, perspective, reference image);
-  4. a labelled placeholder.
-- Generated art goes through the catalog analysis.
+**7.9 — Asset gaps**
+- For each slot, follow the user's choice:
+  1. use the pack's asset;
+  2. **generate** in the pack's style (palette, perspective, reference), then analyze it
+     like any asset;
+  3. **auto** (pack first, else generate);
+  4. a labelled placeholder, reported.
 
-**7.8 — More place types**
-- Dungeons: critical path, loops, locks and keys, depth difficulty.
-- Castles, camps, farmland and forests, all on the same Brief → plan → build → verify
-  framework.
+**7.10 — More build types**
+- Region, castle, interior (multi-floor), dungeon and cave, farmland, wilderness and
+  camp, each with its module set from `place-modules.md`, on the same procedure.
 
 **Phase 7 exit criteria:**
-- "Build a large medieval town by a river" asks one short confirmation and produces
-  about 300 buildings in districts, with fitted roads, walls with gates, and the pack's
-  props at sensible sizes and densities.
-- Every part passes its checks, and a district can be regenerated on its own.
-- It is built in steps without the editor slowing down.
+- A query for a town or city opens the confirmation window with the scale in numbers,
+  then produces a validated Spec and IR.
+- It builds hundreds of buildings in wards, with fitted roads, walls with gates, and the
+  pack's (or generated) props at the specified quantities and qualities.
+- Every part passes its checks.
+- Any part can be edited and regenerated alone.
+- The editor stays responsive throughout.
 
 ---
 

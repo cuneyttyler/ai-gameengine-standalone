@@ -1,305 +1,304 @@
 # AI-Generated Building — design (Phase 7)
 
-Status: **proposal for discussion** (2026-10-17). Milestones are in
-`development_plan.md`, Phase 7.
+Status: **design, revised after discussion (2026-10-18)**. The module catalogue is in
+`docs/place-modules.md`; the milestones are in `development_plan.md`, Phase 7.
 
 ## 1. Goal
 
-One instruction — *"build a large medieval town by a river"* — becomes a finished,
-playable place, fully automatically if wanted, at any size: a hamlet of 10 houses or
-a town of 400, a three-room cave or a 12-level dungeon. The engine must:
+One instruction — *"build a large medieval town by a river"*, *"a three-floor tavern"*, *"a
+dungeon under the castle"* — becomes a finished, playable place, fully automatically if
+wanted. Places can be small (a hut) or **very big** (a region of towns joined by roads).
+The engine must:
 
-1. understand **what was asked**, including how big, and ask when it matters;
+1. understand **what was asked**, including how big, and **confirm it** with the user;
 2. understand **its art**: what each asset is, how big, how it faces, how it joins;
-3. **plan** in a structured, repeatable way: the whole place first, then the parts;
+3. **plan** with a fixed, well-defined methodology: the whole place first, then the parts;
 4. **build** step by step, big places included;
-5. **test and verify** every part, and repair what fails.
+5. **test and verify** every part, and repair what fails;
+6. let the user **edit any part after the build** and regenerate it.
 
-## 2. What we learned from 6.5
+## 2. Decisions (2026-10-18)
 
-The village generator was a single fixed recipe (streets in bands, plots, a square).
-Testing showed its limits:
-
-| Problem | Cause |
+| Question | Decision |
 |---|---|
-| "Large" gave 20–30 houses | No notion of scale: the AI picked a number. |
-| Fences wrong | Two causes. (a) The project is **isometric** but the pack is drawn **top-down**: its fences run left–right and up–down *on screen*, while isometric grid edges are diagonals, so no piece can line up. (b) One piece per cell at its centre, with no corners, ends or gates. |
-| Some props mis-sized | Sizes were guessed from pixels when the art had no analysis; nothing checked the result. |
-| No variety in shape | One layout recipe; no way to say "along the river", "walled", "radial". |
-| Failures discovered by the user | Nothing looked at the result. |
+| Target size | **Very big**: up to regions of several settlements. Big scenes (§9) are a prerequisite, not an afterthought. |
+| Confirmation | **Every build** shows the confirmation window. |
+| Editing | **After the build**: every built part stays selectable as its module, with its parameters, and can be regenerated. |
+| Perspective | **Both** top-down and ¾ / isometric art, mixed in one project where they're compatible (§6). |
+| Assets | Per component, **use the pack's or generate**, as the user chooses in the confirmation window. |
+| Model budget | **No limit**. Quality first; calls are still made per module, not per entity. |
 
-The research points the same way.
+## 3. What we take from existing work
 
-## 3. What exists (research)
-
-- **The LLM decides intent, a solver decides geometry.** In Holodeck, the LLM proposes
-  spatial *relations* and an optimizer places objects to satisfy them. SceneCraft turns a
-  scene graph into constraints and refines it from rendered images. "Constraint Is All You
-  Need" (FDG 2025) turns narrative into a level description language, solved as
-  facility-layout optimization, and checks navigability by simulation. LLMs are weak at
-  raw coordinates and good at relations and counts.
-- **Hierarchical, program-like plans.** CityGenAgent (2026) splits a city into a *Block
-  Program* and a *Building Program*: interpretable and editable in natural language after
-  generation. Text-to-3D City uses a planner that writes a structured plan and a
-  procedural implementer.
-- **Classic settlement generation.** Emilien et al. (*Procedural Generation of Villages on
-  Arbitrary Terrains*, 2012) work from interest maps, growing settlement seeds and the
-  roads that join them, then parcels and buildings. Vanegas et al. (2012) subdivide blocks
-  into parcels. CityEngine uses L-systems for roads and grammars for blocks.
-- **Large tile maps.** Hierarchical Semantic WFC (FDG 2023) sketches big areas with
-  abstract tiles and resolves each into concrete ones. Layered generators go region →
-  block → tile. At scale, *local repair* replaces global backtracking.
-- **2D asset semantics.** GameTileNet (AIIDE 2025) and *Narrative-to-Scene* (2025) label
-  low-resolution game art and map relations (above, left-of, on-top-of) to placements.
-  They report that small pixel art is hard for vision models, so pixel analysis must back
-  the model up.
-- **Clarifying questions.** Work on ambiguous instructions (ClarEval, Active Task
-  Disambiguation, Learning to Ask) finds models usually guess silently. Asking pays off
-  only when the question narrows the result, and the agent must also know when to stop
-  asking.
-
-## 4. Principles
-
-1. **Plans are data.** Every level of the plan is a document the user can read, edit and
-   regenerate from, not a chat message.
-2. **The AI decides; algorithms place.** The model writes intent: zones, relations,
-   counts, styles. Deterministic, seeded generators turn it into cells. Same plan and
-   seed, same place.
-3. **Coarse to fine.** Site → districts → blocks and plots → buildings → dressing. Each
-   level is fixed and checked before the next is built inside it.
-4. **Understand the art before using it.** Footprint, anchor, perspective, facing,
-   variants and joints are measured, not assumed.
-5. **Verify everything that can be measured; look at the rest.** Rules check structure;
-   a vision model checks what rules can't.
-6. **Ask little, but ask the right things.** One confirmation card with good defaults, a
-   second only when the choice of components opens new questions, and "just build it"
-   always available.
-
-## 5. The pipeline
-
-```
- instruction ──► 1 Brief ──► 2 Confirm ──► 3 Site plan ──► 4 Part plans ──► 5 Build ──► 6 Verify
-                   ▲            (user)         │                 │              │            │
-                   │                           └──── edit / regenerate a part ◄─┴── repair ◄─┘
-             0 Asset catalog (always available)
-```
-
-### 0. Asset catalog: understanding the art
-
-The 6.2 analysis becomes a full catalog entry per asset, from pixels first, then a vision
-model, confirmable by the user:
-
-| Field | How it's found | Used for |
+| Source | What it does | What we take |
 |---|---|---|
-| category, function, tags | vision model | roles: house, well, market stall |
+| **Holodeck** (CVPR 2024) | A fixed chain of modules: floor & walls → doors & windows → object selection → constraint-based layout. One LLM query per module (task, output format, one-shot example). The LLM writes **relations**, not coordinates; a DFS solver on a grid places objects, anchor first and large objects first, with hard rules (no collisions, inside the room) and soft relations. Assets were annotated by a vision model and retrieved by visual + text similarity − size mismatch. | **Pipeline stages as fixed modules** per build type, each one query with a schema and an example. **The relation vocabulary** (global, distance, position, alignment, facing), hard vs soft. **Anchor-first, large-first grid solver**. **The retrieval score**, with perspective and footprint as hard filters. |
+| **Infinigen Indoors** (CVPR 2024) | A declarative constraint language over **abstract classes** ("furniture", "storage"): quantity, relations, symmetry, accessibility ("free space in front of appliances"); a solver maximises satisfaction. | Constraints on **roles, not assets** ("seating near the hearth"); **accessibility** as a constraint (free cells in front of doors, stalls, chests). |
+| **WorldCraft** (2025) | A coordinator agent splits a big request into **sub-spaces** and delegates to specialists (object creation, arrangement). Layout is a hierarchical object tree solved per sub-tree. A critic renders the result and approves it; approved (request, program) pairs grow a **manual** of verified examples. | **Coordinator + specialist stages**; **hierarchical decomposition** keeps solving tractable; the **verified-examples manual**: every approved module build becomes an example for later prompts. |
+| **3D-GPT** (3DV 2025) | The LLM drives a library of procedural generator functions, each given documentation, inputs and a usage example; output becomes an editable configuration. | Every generator is a **documented tool** with a schema and examples; outputs are **editable parameters**, not baked results. |
+| **Unexplored** (Dormans) | An abstract **graph skeleton first** (start, goal, loop with two arcs, one of 24 cycle types), refined by ~50 rule modules; **non-terminal placeholders** ("Obstacle") resolved late; the **biome chosen early** so every system agrees; lock–key relations kept to the end for validation and repair. | **Skeleton first, details late**; **placeholders** resolved by later modules; a **style/biome set at the start**; **relations kept in the result** so checks and repairs can use them. |
+| **Dormans: missions and spaces** (2010) | A level is two structures: the **mission** (what the player does) and the **space** (where), generated in two steps. | Dungeons and gameplay places plan **mission graph → space graph → geometry**. |
+| **Watabou's city generator** | A city of 12–40 Voronoi "patches" grouped into **wards**: gate, craftsmen, market, merchant, patriciate, slum. Walls and gates. Streets thin out toward the outskirts while buildings stay dense along them. | **Wards as district modules**; **density falling outward**; walls and gates as a network module. |
+| **CityGenAgent** (2026) | City = **block program** + **building program**, both editable by language after generation. | Two-level programs: a **district plan** and **parcel plans**, editable after the build. |
+| **Emilien et al.** (2012) | Villages grow from **interest maps** (slope, water, roads): seeds, roads between them, then parcels. | **Interest maps** for siting districts and landmarks on terrain. |
+| **ProcTHOR** | Houses from a room specification (types, adjacency) → floor plan → doors → objects. | The **interior pipeline** from a room programme. |
+| **Hierarchical WFC** (2023) | Sketch with abstract tiles, resolve each area into concrete tiles; at scale, repair locally instead of backtracking. | **Local repair**; abstract-to-concrete resolution for ground and decoration. |
+| **Clarification research** (ClarEval, Active Disambiguation, 2025–26) | Models usually guess silently; a question pays off only when it narrows the result. | The confirmation window asks what changes the result; everything else has visible defaults. |
+
+A closer reading of each source (2026-10-18) adds these specifics:
+
+| Source | Finding | What we do with it |
+|---|---|---|
+| **SceneCraft** (ICML 2024) | The scene is a **bipartite graph**: asset nodes and relation nodes, each relation linking any *subset* of assets ("these houses in a row", "a lamp by each house"). Each relation type has a **scoring function in [0, 1]** (proximity is 1 below a minimum, 0 beyond a maximum, linear between); the layout maximises the sum. Relation types: proximity, direction, alignment, symmetry, overlap, parallelism, perpendicularity, hierarchy, rotation, **repetition**, scaling. The inner loop (render → vision critique → revise) gave the biggest gain; removing the graph was the most damaging ablation (constraint score 88.9 → 3.2). An outer loop merged improved relation functions across scenes into a library. | Relations are **n-ary nodes** with **scoring functions**, including group relations (`in-row`, `repeat`, `symmetric`). The **render-critique loop is not optional**. Relation functions improve from failures over time. |
+| **Constraint Is All You Need** (FDG 2025) | GLDL has **definition sentences**: *PredefinedFacility* (fixed; not a variable), *NewFacility* (placed by the optimiser), *Points* (anchors). It also has **constraint sentences**: *basic* (PlaceAroundPosition, PlaceInRange, PlaceByWall) and *relationship* (Near/Far, CanSee, Focus, Alignment/Orientation). The objective is weighted penalties (overlap and bounds weight 30, so they act as guardrails) + **cluster degree** (Σ 1/distance) + **sparsity** (the largest distance from any cell to any object, so no big empty voids). Simulated annealing beat greedy and genetic search. Agent simulation still found 9.5% unreachable keys, 88% valid in all. | Everything already in the scene, and every **locked or hand-edited** part, is **predefined**: fixed, but constraining. **Anchor points** (gates, the player start, a quest spot) are first-class. The solver objective includes **clustering and sparsity terms**. **Annealing** refines after a greedy anchor-first start. **Reachability is tested, not assumed.** |
+| **Database-driven 3D levels** (AIIDE 2025) | The LLM builds **databases offline**, reviewed by experts:<ul><li>*facilities*: size, fixed/variable, constraints, instance-count guideline, tags;</li><li>*rooms*: default size, characteristic facilities, instance limit, AdjacentTo/SeparateFrom;</li><li>*mechanics*: topological Precedes/Near/Far.</li></ul>Generation is then optimisation with **no LLM calls**. A two-phase repair (flood-fill and nudge *adaptable* facilities, then an agent walk that removes blockers) validated 95% of 6,000 levels. | The **module library is our database**. The AI may **author new modules offline** (reviewed, versioned), and big places need few AI calls: the **AI decides the upper levels and the solvers fill the lower ones**. Every slot is marked **essential or adaptable**, so repair knows what it may move or remove. |
+| **CityGenAgent** (2026) | A block program is a list of {id, type, polygon, floors, facade description}; a building program is {component type, description}. Rewards include **overlap** and a **footprint-density band (0.5–0.8)**, plus a VLM scoring *semantic alignment* and *global plausibility* **from a rendered 2D layout**. Edits go to the program at the right level. | A **density band per zone** is a check. The **visual critique also looks at the plan view**, not only the built art. Edits are **routed to the right node**. |
+| **Narrative-to-Scene** (2025) | Layers: terrain, environment, interactive, item and character, each kept as a **numeric matrix** that is the source of truth for checks. A cellular-automata walkable region comes first. Without conflict resolution, only **72% of relations held**, and affordance matching by text embedding alone was **0.42**. | Each place keeps a **semantic grid per layer** for checks. A **real solver** resolves conflicts. **Retrieval needs more than text similarity**: role, affordance, perspective and footprint filters first. |
+| **GameTileNet** (AIIDE 2025) | 2,142 objects from 32-px top-down tiles, each labelled: name → group → supercategory → **affordance** (multi-label: *terrain, environmental object, interactive object, item, character*); **tile type** (complete, partial, texture, tileable texture); 8-direction connectivity. Objects in tilesheets span several tiles: region-growing segmentation recovered 56.8% usable objects. Detectors with real-world classes fail on fantasy art; captioning works better **after upscaling**. | The catalog adopts the **affordance taxonomy** and **tile type**. Tilesheets are **segmented into whole objects** before analysis. Images are **upscaled before the vision model** looks at them. |
+| **Villages on arbitrary terrains** (Emilien et al. 2012) | A **village type** (defensive, farming, fishing…) and a **building type** select parameters from a **"building encyclopedia"**. Buildings are seeded stochastically where an **interest function** accepts them: Σ weights × criteria in [−1, 1], **any −1 vetoes**. Criteria: sociability (attraction–repulsion at preferred distances per pair of types), worship, road access, slope, water, fortification, high ground. Each new building is joined by a **least-cost road** with **reuse of existing roads nearly free** (w ≪ 1), plus **cycles** toward nearby roads. Parcels come from **road conquest → corner conquest → anisotropic conquest** (houses grow into quads, farms into fields), then simplification. A **growth scenario** changes the village type over time (defensive, then prosperous). | An **organic growth** street generator next to the planned ones: villages that grow along roads and terrain. **Interest maps with vetoes** site wards and buildings. Module parameters per settlement type form our **encyclopedia**. **Growth scenarios** ("an old walled core, newer farms outside") are a shape option. |
+| **Procedural parcels** (Vanegas et al. 2012) | Blocks split into parcels with attributes: area range, width range, **split irregularity**. **Straight-skeleton** subdivision gives every parcel street access (with an optional central courtyard). **OBB recursive split** gives perimeter and interior parcels reached by alleys; the two can be mixed. Parcels are **mapped from before to after an edit**, so customisations survive changes to the roads around them. | `subdivide` offers **skeleton / split / mixed** with those attributes. **Persistence**: when a parent is regenerated, children are **matched to their previous selves** and keep their customisations and locks. |
+| **Hierarchical Semantic WFC** (FDG 2023) | A **"consists-of" DAG** with **weights** (what fraction of x is y). Cells collapse level by level from the root. Constraints set on a meta-tile apply to its whole subtree. A weight of 0 forbids a child except as filler. The designer **brushes a meta-tile** ("village") at any level of detail. **Collapse paths are stored**, so "all houses" can be selected and regenerated as houses. | The module tree **is** this DAG. **Densities are edge weights**; constraints written at a parent apply to its subtree. A **module brush** paints a module over an area after the build ("forest here", "a market here"). The stored module path on each entity enables **semantic selection and regeneration**. |
+| **ClarEval** (2026) | Ambiguity comes as a **missing goal**, **missing premises** or **ambiguous terminology**; vague terms ("large", "organize") are the hardest. Good agents **batch questions into few turns** and flag vague descriptors. Failures: silent guessing, generic questions, invented constraints, fragmented asking. | The window **batches** everything into one or two rounds. **Vague size words are always shown with their numbers.** Questions are specific (the field, options, a default), never "tell me more". Assumptions are labelled as assumptions. |
+| **Active Task Disambiguation** (ICLR 2025) | **Sample several diverse interpretations**, then pick the questions whose answers **split them most evenly** (highest answer entropy). Answers become requirements. No principled stopping rule; fixed budgets were used. | Before the window opens, the AI drafts **several Briefs** for the instruction. Fields where the drafts **disagree** are highlighted as the questions; fields where they agree are pre-filled. Shape choices can show **alternative sketches** to pick from. |
+
+What none of them do, and we must: **2D sprite packs** in two perspectives, **linear pieces**
+(fences, walls) that join, **very large** 2D places, and **edit-after-build** in a game editor.
+
+## 4. Two kinds of modules
+
+The word *module* covers two things; both are fixed per build type.
+
+1. **Stages** (Holodeck's modules): the pipeline steps a build type always runs, in
+   order, e.g. *site → networks → districts → parcels → dressing*. Each stage is one
+   kind of decision, made by one LLM query per node with its own schema and example.
+2. **Place modules**: the reusable **parts** a place is made of: a *garden*, a
+   *market square*, a *house plot*, a *tavern hall*, a *guard room*. A place is a
+   **tree of module instances**: town → old-town ward → house plot → garden → vegetable
+   bed.
+
+Each stage decides which modules go where in its level of the tree; each module's
+generator lays itself out. The catalogue of modules per build type is
+`docs/place-modules.md`.
+
+## 5. The place module contract
+
+A module is **data** (`places/modules/<id>.module.json`; the engine ships a library and a
+project can add or override). It defines:
+
+| Part | Meaning | Example (garden) |
+|---|---|---|
+| `id`, `name`, `buildTypes` | identity; where it can appear | `garden`; settlement, farmstead, castle |
+| `level` | site, zone, parcel, feature or dressing | feature |
+| `size` | footprint range and shape | 3×2 to 8×6 cells, rectangle |
+| `params` | typed, with defaults; shown in the confirmation window and the Inspector | `kind`: vegetable / flower / herb; `fenced`: yes / no; `density`: none–abundant |
+| `slots` | asset roles it needs: required or optional, with counts | fence pieces (if fenced), crop or flower plants (required), path tiles, scarecrow (optional) |
+| `children` | modules it may contain, with counts or densities | vegetable bed ×1–4, small shed (rare) |
+| `relations` | to its parent and siblings, from the shared vocabulary | *behind* the house, *adjacent* to the back door, *away from* the street |
+| `generator` | which engine algorithm lays it out, and with what | `rows` (beds), then `edge-line` (fence), then `scatter` (plants) |
+| `checks` | its own verification rules | fence closed except a gate; ≥ 1 path from the gate to the door |
+| `questions` | what the confirmation window asks about it, if anything | kind, fenced |
+| `examples` | approved builds (the verified manual), used as few-shot examples | added automatically |
+
+Missing assets for a slot follow the user's choice for that component: use the closest
+pack asset, generate one in the pack's style, or leave the slot empty and report it.
+
+### The relation vocabulary (2D, from Holodeck's)
+
+| Kind | Relations |
+|---|---|
+| global (in the parent) | `center`, `edge`, `corner`, `along-edge(side)`, `anywhere` |
+| distance | `adjacent`, `near`, `far`, `away-from` |
+| position (relative to facing) | `in-front-of`, `behind`, `beside`, `between` |
+| alignment | `aligned-with`, `in-row`, `in-grid`, `symmetric-about` |
+| facing | `faces(target)`: street, square, object |
+| linear | `along(road / river / wall)`, `encloses`, `crosses` |
+| containment | `inside`, `outside`, `on` (small things on large ones: a pot on a table) |
+| quantity | `count(n)`, `density(level)`, `cluster` vs `spread` |
+
+**Hard** (never broken): inside the parent, no overlapping footprints, allowed terrain,
+passability kept (doors, gates and entrances reachable), accessibility cells kept free.
+**Soft** (weighted, best effort): everything else. Where no solution satisfies every soft
+relation, the solver keeps the best and the checks report what was dropped.
+
+### Generators (the tool library)
+
+Each is a seeded engine command with a documented schema and examples, so the LLM uses it
+like a tool (3D-GPT):
+
+| Generator | Lays out | Used by |
+|---|---|---|
+| `partition` | zones from relations and an interest map (Voronoi / weighted growth) | site → districts |
+| `route` | roads, rivers and walls as least-cost paths over terrain | networks |
+| `street-network` | organic, grid or radial streets inside a zone | districts |
+| `subdivide` | blocks into plots along streets | districts → parcels |
+| `place` | relational grid solver, anchor first, large first (Holodeck's DFS) | parcels, features, rooms |
+| `rows` / `grid` | crops, beds, pews, market stalls, shelves | features |
+| `scatter` | Poisson disk with density maps and rules | dressing, nature |
+| `edge-line` | fences, walls and hedges along cell edges, with piece sets | features, networks |
+| `terrain` | autotiled regions: water, fields, sand, paths (6.4) | all |
+| `floorplan` | rooms from a programme (types, sizes, adjacency) | interiors |
+| `graph` | mission and space graphs, cycles, lock–key | dungeons |
+| `cave` | cellular automata areas | dungeons, wilderness |
+
+## 6. Understanding the art (asset catalog v2)
+
+| Field | Found by | Used for |
+|---|---|---|
+| category, function, tags | vision model | slot matching |
 | **footprint** (cells w×h) | alpha mask: the opaque base, not the image size | plots, collision, spacing |
-| **anchor** (base point) | lowest opaque row / shadow | standing on the right cell |
-| **sprite size** | footprint + aspect | correct scale, never guessed |
-| **perspective** (top-down, ¾, isometric) | vision + shape cues | matching the grid; warning on mismatch |
-| **facing / variants** | name groups, mirrored-image detection, vision | doors toward streets |
-| **joint pieces** (linear features) | edge analysis, like tiles | fences, walls, hedges: straight, corner, end, T, gate |
-| **colors / palette** | dominant colours, clustering | coherent style; matching generated art |
-| **layer** (ground, decal, prop, building, overhead) | kind + transparency | draw order, what can overlap |
-| **passability**, placement rules | vision + defaults per category | "on grass", "by water", "against a wall" |
+| **anchor** | lowest opaque row and shadow | standing on the right cell |
+| **sprite size** | from footprint and aspect, never guessed | scale |
+| **perspective**: top-down, ¾ front, isometric | vision model + shape cues | compatibility (below) |
+| **facing and variants** | name groups, mirror detection, vision | doors toward streets |
+| **piece sets** for linear features | edge analysis like tiles | fences, walls, hedges |
+| palette | dominant colours | coherent style; generated art matches |
+| layer: ground, decal, prop, building, overhead | kind + transparency | draw order |
+| passability, accessibility, placement rules | vision + per-category defaults | constraints |
 
-Linear features get their own model. A fence or wall is a **piece set**, and it is laid
-along cell *edges* with corners, ends and gates chosen like autotiles. A pack with only
-straight pieces gets posts at the corners, or a warning that names what's missing.
+**Both perspectives** are supported:
+- **Top-down** art lies flat: ground, rugs, roads, crops.
+- **¾ and isometric** art stands upright on its anchor: houses, trees, characters.
 
-**Perspective check.** Art drawn top-down on an isometric grid (or the reverse) is
-flagged before building, with the fix: switch the grid style or use another pack.
+A project may mix them, as most packs do: a top-down ground with ¾ buildings. What must
+match is the **grid**. Top-down linear pieces (fences drawn straight across the screen)
+join only on a **square** grid; isometric pieces only on an **isometric** grid. The
+catalog checks this when a module needs joined pieces. If they don't match, it offers to
+generate matching pieces or to use the other grid.
 
-### 1. Brief: understanding the request
+Retrieval for a slot works in two steps:
+1. Hard filters: role, perspective compatible, footprint fits.
+2. Ranking by text and visual similarity, closeness to the size the slot wants, palette
+   fit, and variety (not the same asset next door).
 
-The AI turns the instruction into a **Brief** with a confidence score for every field:
+## 7. The methodology: stages per build type
 
-| Field | Example | Notes |
-|---|---|---|
-| place type | village, town, city, castle, dungeon, cave, camp, farmstead | picks the methodology |
-| **scale** | class + numbers: *large village ≈ 80 buildings, ~120×120 cells* | from a scale table, below |
-| theme / style | medieval, desert, ruined | picks assets |
-| **components** | houses, market, well, church, farms, walls, river, forest | each with a count or density |
-| **shape** | organic, grid, radial, linear (along a road or river), walled, terraced | or a free description |
-| features | river through the middle, hill, lake, existing gate to connect | terrain and anchors |
-| placement | where in the scene; what to keep away from | |
-| gameplay | player start, entrances, NPCs, quest spots | optional |
+Every build runs the same procedure. Its documents, the intermediate language and the
+constraints are defined in `docs/place-schema.md`:
 
-**Scale table** (project data, editable). This is what makes "large" mean large:
-
-| Class | Buildings | Area (cells, about) | Built by |
-|---|---|---|---|
-| hamlet | 5–15 | 40×40 | one step |
-| village | 15–60 | 80×80 | one step |
-| large village | 60–150 | 140×140 | districts |
-| town | 150–500 | 250×250 | districts, chunked |
-| city | 500+ | 400×400+ | districts, chunked, over several sessions |
-
-Dungeons use their own measures: rooms, levels, critical-path length.
-
-### 2. Confirm: the questions
-
-**Round 1, the Brief card** (an editable table in the AI panel):
-
-- Size: class (select) plus building count and area (numbers).
-- Shape: select plus a description field. A small preview diagram per shape.
-- Components: rows with checkboxes, each showing the assets found for it as thumbnails
-  ("none in the pack" in red, with *find* / *generate*).
-- Style and location.
-- Buttons: **Continue**, **Just build it** (all defaults), **Cancel**.
-
-**Round 2, densities** (only for the chosen components): a categorical select per
-component (*none / rare / some / common / abundant*), plus asset variants to include or
-exclude. Defaults come from the place type and are remembered per project.
-
-The AI asks only about fields whose confidence is low **and** whose answer changes the
-result. A detailed instruction can skip straight to the plan.
-
-### 3. Site plan: the whole place
-
-The AI writes the site plan in a small, typed **plan language**, which a validator checks
-like proposals are checked today:
-
-```json
-{
-  "bounds": [0, 0, 250, 250], "seed": 7,
-  "terrain": [{"river": {"through": [[0,120],[250,140]], "width": 4}},
-              {"forest": {"area": "edge", "density": "some"}}],
-  "roads": [{"main": {"from": "west-gate", "to": "east-gate", "via": "market"}},
-            {"ring": {"around": "old-town"}}],
-  "districts": [
-    {"id": "market", "role": "center", "near": "river", "size": "small", "contains": ["market-square", "well", "church"]},
-    {"id": "old-town", "role": "residential", "around": "market", "density": "dense"},
-    {"id": "crafts", "role": "workshops", "downstream-of": "old-town"},
-    {"id": "farms", "role": "fields", "outside": "walls", "along": "river"}],
-  "walls": {"around": ["market", "old-town", "crafts"], "gates": ["west-gate", "east-gate"]},
-  "landmarks": [{"castle": {"on": "highest", "view-from": "main"}}]
-}
+```
+ Query → Interpret (Brief drafts) → Confirm (Brief) → Plan (Spec: quantity + quality per part)
+       → Compile (Layout IR) → Solve & build → Verify        (any part, any time after: edit → regenerate)
 ```
 
-The site generators turn this into geometry:
-- zone partitioning from relations (near, around, outside, along, downstream-of);
-- arterial roads routed by cost over terrain;
-- wall rings with gates where roads cross.
+The stages below are how **Plan** and **Compile** proceed through the levels of each
+build type.
 
-The **plan view** draws the result over the viewport (zones, roads, walls, labels) so it
-can be checked and edited *before anything is built*.
+Each stage makes one kind of decision for every node at its level:
+1. The LLM receives the node, its parent, the Brief, the module manual and verified
+   examples.
+2. It answers in the stage's schema: which child modules, their parameters and their
+   relations.
+3. Generators turn that into cells.
+4. The checks run; failures are repaired locally (§8).
 
-The design knowledge lives in the prompt **and** in the critics. Kevin Lynch's five
-elements (paths, edges, districts, nodes, landmarks) are the vocabulary, with these rules
-of thumb:
-- a road hierarchy (main → street → lane);
-- a focal point at the heart, and landmarks at the ends of main views;
-- density falling from the centre to the edge;
-- buildings facing streets;
-- noisy or smelly trades downstream or outside;
-- natural edges (rivers, hills) as boundaries;
-- variety without chaos: no identical neighbours, mirrored and alternate variants;
-- readable navigation for the player.
+| Build type | Stages (in order) |
+|---|---|
+| **Settlement** (hamlet → city) | site & terrain → networks (main roads, river, walls & gates) → wards / districts → streets & plots → parcels (buildings, yards, features) → dressing → population (later) |
+| **Region** (very big) | region terrain & biomes → settlements and landmarks (each a nested build) → roads between them → wilderness fill |
+| **Interior** (house, tavern, shop, temple, castle hall) | room programme → floor plan → doors & windows → furniture groups (anchor first) → small things on surfaces → wall decor & lights |
+| **Dungeon / cave** | mission graph (start, goal, keys, locks, boss, rewards) → space graph (cycles, branches) → geometry (rooms, corridors, caves) → room modules by type → encounters & loot → dressing |
+| **Castle / fortress** | site & terrain → curtain wall, towers & gatehouse → baileys → buildings (keep, barracks, chapel) → features → dressing |
+| **Wilderness** | biome & terrain → water & relief → trails → points of interest → vegetation |
+| **Camp / outpost** | site → enclosure → tent and building clusters → features → dressing |
+| **Farmland** | parcels (fields, pastures) → farmsteads → hedges, fences & tracks → dressing |
 
-For dungeons, the same roles map to:
-- a critical path with side branches;
-- loops (cyclic generation);
-- locks and keys;
-- difficulty rising with depth;
-- landmark rooms.
+The style (biome, era, culture, mood) is set in the Brief **before** any stage, so every
+module and asset choice agrees (Unexplored).
 
-### 4. Part plans: the districts, then the plots
+Design knowledge lives in two places: the stage prompts and the checks.
+- **Settlements:** Lynch's paths, edges, districts, nodes and landmarks; a road hierarchy;
+  a focal centre; landmarks at the ends of views; density falling outward; buildings
+  facing streets; trades zoned by nuisance; natural boundaries; variety without chaos.
+- **Interiors:** functional groups; circulation paths kept clear; furniture against walls;
+  light by the work.
+- **Dungeons:** the critical path; loops; pacing; landmark rooms; rising difficulty.
 
-Each district is planned by itself, inside its fixed borders and road entries:
-1. **streets** (organic, grid or radial generator);
-2. **blocks → plots** (parcel subdivision);
-3. **buildings on plots**, facing the street, with gardens and fences;
-4. **open spaces** (squares, yards).
+### The Brief and the confirmation window (every build)
 
-Then **dressing**: Poisson-disk scatter with density maps and placement rules (barrels by
-doors, carts by the market, trees thicker toward the forest edge, flowers in gardens).
-Every generator is a seeded engine command, so a part can be **regenerated alone**:
-*"redo the crafts district with more workshops"*.
+The Brief holds:
+- the build type and **scale**: a class plus numbers, from a scale table in project
+  data, so *large village ≈ 80 buildings*, *town 150–500*, *city 500+*;
+- the style;
+- **components**: the top modules, with counts or densities;
+- the shape or layout description, terrain features, location and gameplay hooks.
 
-### 5. Build: step by step, at any size
+Each field has a confidence score.
 
-- Built level by level and district by district. Each part is one **command** (bulk, one
-  undo step), never thousands of single operations.
-- Large places go chunk by chunk with progress, can be resumed, and keep the plan
-  document in the project (`places/<name>.place.json`).
-- Review policy: auto-apply each verified part, or review each one. The plan view shows
-  what is done.
+**Round 1** (an editable table):
+- size;
+- shape (with a preview);
+- components (rows for the build type's modules, each with a checkbox, the matching
+  pack assets as thumbnails, and **source: pack / generate / auto**);
+- style and location.
 
-**Engine prerequisites for big places** (an honest list):
-- At 250×250 cells, one entity per tile is 62,500 entities before any props.
-- Whole-scene snapshot undo was already slow for resizing (fixed by grouping, but still
-  O(scene) per step).
-- Needed:
-  - **chunked tile layers** (tiles as arrays per chunk, not entities);
-  - **command-based undo** for bulk operations;
-  - scene **regions** loaded and saved in parts;
-  - culling that stays fast at 100k sprites.
+**Round 2**, for the chosen components:
+- density (*none / rare / some / common / abundant*);
+- module parameters marked as questions (e.g. garden kind);
+- variants to include or exclude.
 
-### 6. Verify: test every part
+Buttons: **Build**, **Back**, **Cancel**. Answers become per-project defaults.
 
-Each part passes its checks before the next is built on it:
+## 8. Verification and repair
 
-- **Structure** (exact):
-  - footprints inside plots, nothing overlapping, nothing standing on roads;
-  - every door reachable from an entrance (pathfinding);
+Each stage's output is checked before the next stage builds inside it:
+
+- **Hard rules, exact:**
+  - footprints inside parents, no overlaps, allowed terrain;
+  - every door, gate and entrance reachable (pathfinding);
   - roads connected;
-  - zero autotile mismatches;
-  - fence and wall lines continuous, with the right pieces;
-  - assets only on allowed terrain;
-  - sizes within each role's range.
-- **Brief** (measured): counts, densities, area and shape within tolerance. "Large" is
-  checked against the scale table.
-- **Visual** (vision model; this is 6.7 grown up): the part is rendered headless, and the
-  image is checked against the Brief plus a checklist:
-  - Does anything look floating, giant or tiny?
-  - Do houses face the streets?
-  - Is it varied?
-  - Does it read as a market square?
-  Any findings come back as targeted fixes.
-- **Play** (later): an agent walks entrance → landmarks → every district and reports
-  dead ends, chokepoints and travel times.
+  - zero autotile mismatches; linear features continuous with the right pieces;
+  - accessibility cells free;
+  - sizes within each slot's range.
+- **Module checks:** each module's own (§5).
+- **Brief conformity, measured:** counts, densities, area and shape within tolerance.
+- **Visual critique:** the part is rendered headless, and a vision model answers the
+  module's checklist (*floating, giant or tiny things? houses facing streets? varied?
+  does it read as a market?*).
+- **Gameplay (dungeons, later everything):** completability via lock–key relations; a
+  walk-through agent.
 
-Failures trigger **local repair** (regenerate that part with the reason as a
-constraint), up to a limit, then a report to the user.
+Failures go back to the stage that made the part, with the reason as a constraint, for
+**local repair** (that node only). After N tries, the part is kept with a report. Every
+approved module build is stored as a **verified example** for future prompts
+(WorldCraft's manual).
 
-### 7. Assets: find or generate
+## 9. Building very big places
 
-For each needed component:
-1. the project catalog;
-2. the user's indexed libraries (other packs on disk);
-3. generation in the pack's style, using the art pipeline with the palette, perspective
-   and a reference image from the catalog;
-4. a labelled placeholder, reported.
+- **Chunked tile layers** (arrays per chunk, not one entity per tile).
+- **Command-based undo** for bulk operations: a whole district is one cheap step.
+- Scenes stored and loaded in **regions**; culling and rendering fast at 100k+ sprites.
+- The **place document** (`places/<name>.place.json`) holds the module tree, parameters,
+  seeds and relations. It is the source of truth for regeneration and editing.
+- Stages run node by node with progress, resume after a restart, and parallel requests
+  where nodes are independent (districts of one town).
 
-Generated assets go through the same catalog analysis, so they are sized and joined
-correctly.
+## 10. Editing after the build
 
-## 8. Open questions for discussion
-
-1. **Target scale for 7.x.** Is a town (~250×250, ~300 buildings) the goal, or a city?
-   This decides how much of the engine work in §5 comes first.
-2. **Questions:** always show the Brief card, or only when the instruction is vague? (The
-   proposal: always for new places, with *Just build it*.)
-3. **Plan editing:** is editing the plan view by hand (drag zones, reroute roads) needed in
-   7, or is editing through chat enough at first?
-4. **Grid and perspective:** should a project be able to mix perspectives (top-down
-   ground with ¾ buildings, common in packs), or is one style per project enough?
-5. **Asset sourcing:** which libraries may be searched (local folders only, or online free
-   packs), and is generation allowed by default?
-6. **Model budget:** a town is dozens of model calls (planning, critique). What's an
-   acceptable time and cost per place?
+Every built entity carries its module instance (`PlaceNode {place, node}`):
+1. **Click** something: the Inspector offers *select its garden / plot / ward*.
+2. The module shows its **parameters**; change them (e.g. *density: abundant*) and
+   **Regenerate** that node alone, keeping its parent and siblings.
+3. **Lock** a node so later regenerations leave it alone; **hand edits** inside a node
+   mark it locked.
+4. Ask the AI: *"more trees in the east gardens"* → the right nodes, the right parameter,
+   a regeneration, a check.
 
 ## Sources
 
-- Holodeck: Language Guided Generation of 3D Embodied AI Environments — https://arxiv.org/pdf/2312.09067
-- SceneCraft: An LLM Agent for Synthesizing 3D Scenes as Blender Code — https://arxiv.org/pdf/2403.01248
-- Constraint Is All You Need: Optimization-Based 3D Level Generation with LLMs — https://www.pcgworkshop.com/archive/xu2025constraint.pdf
-- A Database-Driven Framework for 3D Level Generation with LLMs — https://arxiv.org/html/2508.18533v1
-- Imagine a City: CityGenAgent for Procedural 3D City Generation — https://arxiv.org/pdf/2602.05362
-- Narrative-to-Scene Generation: An LLM-Driven Pipeline for 2D Game Environments — https://arxiv.org/pdf/2509.04481
-- GameTileNet: A Semantic Dataset for Low-Resolution Game Art in PCG — https://arxiv.org/pdf/2507.02941
-- Procedural Generation of Villages on Arbitrary Terrains (Emilien et al.) — https://perso.liris.cnrs.fr/egalin/Articles/2012-villages.pdf
-- Procedural Generation of Parcels in Urban Modeling (Vanegas et al.) — https://www.cs.purdue.edu/cgvlab/papers/aliaga/eg2012.pdf
-- Hierarchical Semantic Wave Function Collapse — https://pcgworkshop.com/archive/alaka2023hierarchical.pdf
-- ClarEval: clarification under ambiguous instructions — https://arxiv.org/pdf/2603.00187
+- Holodeck — https://arxiv.org/html/2312.09067
+- Infinigen Indoors — https://arxiv.org/pdf/2406.11824
+- WorldCraft — https://arxiv.org/html/2502.15601v1
+- 3D-GPT — https://arxiv.org/pdf/2310.12945
+- Dungeon generation in Unexplored (Boris the Brave) — https://www.boristhebrave.com/2021/04/10/dungeon-generation-in-unexplored/
+- Dormans, Adventures in Level Design — https://www.pcgworkshop.com/archive/dormans2010adventures.pdf
+- Medieval Fantasy City Generator (Watabou) — https://watabou.itch.io/medieval-fantasy-city-generator
+- CityGenAgent — https://arxiv.org/pdf/2602.05362
+- Constraint Is All You Need — https://www.pcgworkshop.com/archive/xu2025constraint.pdf
+- SceneCraft — https://arxiv.org/pdf/2403.01248
+- Narrative-to-Scene Generation — https://arxiv.org/pdf/2509.04481
+- GameTileNet — https://arxiv.org/pdf/2507.02941
+- Procedural Generation of Villages on Arbitrary Terrains — https://perso.liris.cnrs.fr/egalin/Articles/2012-villages.pdf
+- Procedural Generation of Parcels in Urban Modeling — https://www.cs.purdue.edu/cgvlab/papers/aliaga/eg2012.pdf
+- Hierarchical Semantic WFC — https://pcgworkshop.com/archive/alaka2023hierarchical.pdf
+- ClarEval — https://arxiv.org/pdf/2603.00187
 - Active Task Disambiguation with LLMs — https://arxiv.org/pdf/2502.04485
