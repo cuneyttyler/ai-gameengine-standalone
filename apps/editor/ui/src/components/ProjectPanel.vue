@@ -46,6 +46,7 @@ const tabs: { id: ProjectTab; label: string; title: string }[] = [
 .header {
   display: flex;
   align-items: center;
+  gap: 6px;
   height: 32px;
   padding: 0 8px;
   border-bottom: 1px solid #333;
@@ -53,9 +54,23 @@ const tabs: { id: ProjectTab; label: string; title: string }[] = [
 }
 .tabs {
   display: flex;
+  margin-right: 8px;
 }
+/* The same tab buttons as the Assets panel's (AssetBrowser). */
 .tabs button {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #333;
   border-bottom-width: 2px;
+  border-radius: 0;
+  background: #11111b;
+  color: #eee;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tabs button:hover {
+  background: #262637;
 }
 .tabs button.active {
   border-bottom-color: #3b82f6;
