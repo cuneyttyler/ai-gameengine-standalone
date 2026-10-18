@@ -45,7 +45,7 @@ Every document is JSON, kept in the project under `places/<place>/`:
 | `spec.json` | Plan | Compile, Verify, editing |
 | `layout.ir.json` | Compile | Solve |
 | `layout.solved.json` | Solve | Build, Verify, editing (instance matching) |
-| `report.json` | Verify | the result card, editing |
+| `report.json` | Verify | the Build panel's Result step, editing |
 | `log.jsonl` | every AI call (inputs, thinking, answer, validation) | debugging, replay, tests |
 
 Each step reads only documents written before it, so any step can be re-run alone, and
