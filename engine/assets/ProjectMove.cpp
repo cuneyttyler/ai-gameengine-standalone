@@ -1,5 +1,7 @@
 #include "assets/ProjectMove.h"
 
+#include "assets/TileLayerIO.h"
+
 #include "reflection/Reflection.h"
 
 #include <algorithm>
@@ -221,6 +223,10 @@ MoveResult MoveProjectFile(const Project& project, const std::string& from, cons
         if (fs::exists(project.Resolve(from + sidecar), ec)) {
             fs::rename(project.Resolve(from + sidecar), project.Resolve(to + sidecar), ec);
         }
+    }
+    // A scene's tile layers (scenes/<name>.tiles/, 7.2).
+    if (fs::path(from).extension() == ".aige" && fs::is_directory(TileLayersDir(project.Resolve(from)), ec)) {
+        fs::rename(TileLayersDir(project.Resolve(from)), TileLayersDir(project.Resolve(to)), ec);
     }
 
     // Every text file that can refer to it.

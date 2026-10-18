@@ -13,6 +13,10 @@ add_library(aige_gameplay STATIC
     BootstrapLevel.cpp
     TileGrid.h
     TileGrid.cpp
+    TileLayer.h
+    TileLayer.cpp
+    TileLayerView.h
+    TileLayerView.cpp
     GameSession.h
     GameSession.cpp
     Story.h

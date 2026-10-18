@@ -238,6 +238,11 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("overrides", &PrefabInstance::overrides, "Fields changed on this copy.")
         .Hidden();
 
+    r.Component<PlaceNode>("PlaceNode", "Made by a place build: the build, its plan node and its layout statement.")
+        .Field("place", &PlaceNode::place, "The build that made it.")
+        .Field("node", &PlaceNode::node, "The plan (Spec) node it belongs to.")
+        .Field("statement", &PlaceNode::statement, "The layout (PLL) statement that placed it.");
+
     // --- Project settings -------------------------------------------------------------
 
     ProjectSettings& settings = ActiveSettings();

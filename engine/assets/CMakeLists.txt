@@ -21,6 +21,8 @@ add_library(aige_assets STATIC
     SceneFiles.cpp
     TileEdges.h
     TileEdges.cpp
+    TileLayerIO.h
+    TileLayerIO.cpp
     PackImport.h
     PackImport.cpp
 )

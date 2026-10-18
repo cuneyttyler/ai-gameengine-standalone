@@ -2,6 +2,8 @@
 
 #include "assets/ProjectMove.h"
 #include "assets/SceneIO.h"
+#include "assets/TileLayerIO.h"
+#include "gameplay/TileLayer.h"
 #include "gameplay/Components.h"
 #include "gameplay/EngineReflection.h"
 #include "gameplay/GameSession.h"
@@ -85,6 +87,10 @@ SceneResult DuplicateScene(const Project& project, const std::string& scene, con
     std::error_code ec;
     fs::copy_file(project.Resolve(scene), project.Resolve(path), ec);
     if (ec) return {"", "couldn't copy " + scene + ": " + ec.message()};
+    // Its tile layers (7.2) go with it.
+    if (fs::is_directory(TileLayersDir(project.Resolve(scene)), ec)) {
+        fs::copy(TileLayersDir(project.Resolve(scene)), TileLayersDir(project.Resolve(path)), fs::copy_options::recursive, ec);
+    }
     return {path, ""};
 }
 
@@ -113,6 +119,7 @@ std::string DeleteScene(const Project& project, const std::string& scene) {
         return "gateways lead to it from " + list + "; change or remove them first";
     }
     std::error_code ec;
+    fs::remove_all(TileLayersDir(project.Resolve(scene)), ec);
     fs::remove(project.Resolve(scene), ec);
     return ec ? "couldn't delete " + scene + ": " + ec.message() : "";
 }
@@ -153,10 +160,13 @@ std::vector<std::string> GatewayProblems(const Project& project) {
     return problems;
 }
 
-std::string TravelToScene(Registry& registry, const std::string& sceneText, const std::string& marker) {
+std::string TravelToScene(Registry& registry, const std::string& sceneText, const std::string& marker,
+                          const std::filesystem::path& scenePath) {
     const auto traveller = FindPlayer(registry);
     const std::string carried = traveller ? SerializeEntities(registry, {*traveller}) : std::string();
     DeserializeScene(registry, sceneText);
+    if (scenePath.empty()) ResetLayers(registry);
+    else LoadTileLayers(registry, scenePath);
 
     // Where to stand.
     std::optional<std::pair<float, float>> at;

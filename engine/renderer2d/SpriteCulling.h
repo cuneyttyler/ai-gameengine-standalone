@@ -2,14 +2,13 @@
 
 #include "ecs/Registry.h"
 #include "renderer2d/Camera2D.h"
+#include "renderer2d/Components.h"
 
 #include <cstddef>
 #include <vector>
 
 namespace aige {
 
-struct ScreenTransform2D;
-struct Sprite;
 
 // What Renderer2D draws (development_plan.md 4.6), without a GPU so it's
 // testable: every (ScreenTransform2D, Sprite) whose quad overlaps the
@@ -35,6 +34,13 @@ struct SpriteQuad {
 // `diamond`: flat images lie in a diamond (isometric); false lays them as an
 // axis-aligned rectangle (a top-down grid, 6.1), still turned by `rotation`.
 SpriteQuad SpriteQuadOf(const ScreenTransform2D& transform, const Sprite& sprite, bool diamond = true);
+
+// A sprite drawn without an entity: a tile layer's cell (7.2). `sprite` points
+// into the layer's palette, so it lives as long as the layer is unchanged.
+struct SpriteItem {
+    ScreenTransform2D transform;
+    const Sprite* sprite = nullptr;
+};
 
 // The last frame, for the stats overlay (F3).
 struct RenderStats {

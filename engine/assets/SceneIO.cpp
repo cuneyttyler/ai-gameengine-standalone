@@ -1,5 +1,7 @@
 #include "assets/SceneIO.h"
 
+#include "assets/TileLayerIO.h"
+
 #include "gameplay/EngineReflection.h"
 #include "scripting/Components.h"
 
@@ -197,6 +199,8 @@ void SaveScene(Registry& registry, const std::string& path) {
         throw std::runtime_error("Failed to open scene file for writing: " + path);
     }
     WriteScene(registry, out, EntitiesInOrder(registry));
+    out.close();
+    SaveTileLayers(registry, path); // scenes/<name>.tiles/ (7.2)
 }
 
 bool LoadScene(Registry& registry, const std::string& path) {
@@ -206,6 +210,7 @@ bool LoadScene(Registry& registry, const std::string& path) {
     }
     registry.clear();
     ReadScene(registry, in);
+    LoadTileLayers(registry, path);
     return true;
 }
 
@@ -231,6 +236,7 @@ void CloneScene(Registry& from, Registry& to) {
     std::istringstream in(SerializeEntities(from, order));
     to.clear();
     ReadScene(to, in, &order);
+    CopyTileLayers(from, to);
 }
 
 std::string SerializeEntities(Registry& registry, const std::vector<Entity>& entities) {

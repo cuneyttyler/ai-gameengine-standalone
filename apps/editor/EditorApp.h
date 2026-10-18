@@ -20,6 +20,7 @@
 #include "gameplay/Archetypes.h"
 #include "gameplay/GameSession.h"
 #include "gameplay/Isometric.h"
+#include "gameplay/TileLayer.h"
 #include "renderer2d/Camera2D.h"
 #include "renderer2d/Renderer2D.h"
 #include "ui/GameUi.h"
@@ -78,6 +79,7 @@ public:
     void Tick(double frameSeconds);
 
     const Camera2D& Camera() const { return camera_; }
+    const IsoParams& Iso() const { return iso_; }
     std::vector<OverlayLine> BuildOverlay();
     std::vector<UiQuad> BuildUi(); // the game's own UI, in Play mode
     Registry& Preview() { return preview_; } // drawn with the scene (Renderer2D extra)
@@ -253,6 +255,8 @@ private:
     void OpenScene(const std::string& scene);
     bool AskToSaveChanges(const wchar_t* question); // false: cancelled (or the save failed)
     void HandleTravel();
+    // While playing: the tile layers of `scene` (the edited one as it was at Play, others as saved).
+    void PlayLayersFor(const std::string& scene);
     // Build & Export (5.1): the game as a folder (and .zip) that runs on its own.
     void ExportGameTo(const std::string& name, bool zip);
     // Projects (4.2): asks about unsaved changes, then reopens the editor on `root`.
@@ -358,6 +362,7 @@ private:
 
     bool playing_ = false;
     std::string playSnapshot_;
+    TileLayers playLayers_; // the edited scene's tile layers while playing (7.2)
     // The selection when Play started, restored on Stop. Indices taken from
     // the live registry at Stop would be off once enemies die mid-play.
     std::optional<size_t> selectionIndexAtPlay_;

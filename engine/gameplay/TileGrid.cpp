@@ -1,6 +1,7 @@
 #include "gameplay/TileGrid.h"
 
 #include "gameplay/Components.h"
+#include "gameplay/TileLayer.h"
 #include "physics2d/Components.h"
 
 #include <cmath>
@@ -14,12 +15,19 @@ TileGrid TileGrid::Build(Registry& registry) {
         const auto& tile = view.get<Tile>(entity);
         grid.cells_[Key(tile.gx, tile.gy)] = {entity, tile.solid};
     }
+    // Layer cells are read in place, not copied: a built place has far more
+    // of them than hand-painted tiles.
+    if (const TileLayers* layers = FindLayers(registry)) grid.layers_ = layers->Ordered();
     // Obstacles make the cell they stand in solid (the tile entity stays
     // what At() reports).
     for (auto [entity, world] : registry.view<Obstacle, WorldTransform2D>().each()) {
-        auto it = grid.cells_.find(Key(static_cast<int>(std::floor(world.x)), static_cast<int>(std::floor(world.y))));
+        const int gx = static_cast<int>(std::floor(world.x));
+        const int gy = static_cast<int>(std::floor(world.y));
+        auto it = grid.cells_.find(Key(gx, gy));
         if (it != grid.cells_.end()) {
             it->second.solid = true;
+        } else {
+            grid.blocked_.insert(Key(gx, gy));
         }
     }
     return grid;
@@ -27,7 +35,11 @@ TileGrid TileGrid::Build(Registry& registry) {
 
 bool TileGrid::IsSolid(int gx, int gy) const {
     auto it = cells_.find(Key(gx, gy));
-    return it == cells_.end() || it->second.solid;
+    if (it != cells_.end()) return it->second.solid; // a painted tile wins over layers
+    for (auto layer = layers_.rbegin(); layer != layers_.rend(); ++layer) {
+        if (const TileDef* def = (*layer)->Def((*layer)->Get(gx, gy))) return def->solid || blocked_.contains(Key(gx, gy));
+    }
+    return true;
 }
 
 Entity TileGrid::At(int gx, int gy) const {

@@ -52,6 +52,8 @@ std::vector<std::string> SceneMarkers(const Project& project, const std::string&
 // way (references to it point at the arrival). Returns a warning when the
 // marker isn't there (the player then stands where that scene's player
 // was, or at its first marker, or at 0.5, 0.5); empty when all went well.
-std::string TravelToScene(Registry& registry, const std::string& sceneText, const std::string& marker);
+// `scenePath` (optional): where the scene lives, for its tile layers (7.2).
+std::string TravelToScene(Registry& registry, const std::string& sceneText, const std::string& marker,
+                          const std::filesystem::path& scenePath = {});
 
 } // namespace aige

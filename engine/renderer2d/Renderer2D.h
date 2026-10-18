@@ -72,9 +72,12 @@ public:
     // `overlay` lines on top, then `ui` quads in viewport pixels (no camera).
     // `extra` (optional) is drawn with the scene, in the same depth order and
     // in front of it at equal depth: the editor's brush preview (5.6).
+    // `items` are sprites without entities (tile layer cells, 7.2), already
+    // culled (CollectLayerSprites), merged with the scene by depth; at a tie
+    // they draw behind the scene's sprites, in the order given.
     void Render(VkCommandBuffer cmd, Registry& registry, const Camera2D& camera = {},
                 std::span<const OverlayLine> overlay = {}, std::span<const UiQuad> ui = {},
-                Registry* extra = nullptr);
+                Registry* extra = nullptr, std::span<const SpriteItem> items = {});
 
     // Flat images as diamonds (an isometric grid, the default) or squares (a
     // top-down one, 6.1). Hosts set it from the project's Grid setting.

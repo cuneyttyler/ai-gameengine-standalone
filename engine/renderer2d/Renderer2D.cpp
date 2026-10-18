@@ -499,13 +499,18 @@ void Renderer2D::RegisterTexture(const std::string& name, const ImageData& image
 }
 
 void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D& camera,
-                        std::span<const OverlayLine> overlay, std::span<const UiQuad> ui, Registry* extra) {
+                        std::span<const OverlayLine> overlay, std::span<const UiQuad> ui, Registry* extra,
+                        std::span<const SpriteItem> items) {
     struct Instance {
         const ScreenTransform2D* transform;
         const Sprite* sprite;
         const Texture* texture;
     };
     std::vector<Instance> instances;
+    instances.reserve(items.size());
+    for (const auto& item : items) {
+        if (item.sprite) instances.push_back({&item.transform, item.sprite, &Resolve(item.sprite->texture)});
+    }
 
     // Only what the camera sees, in painter's order (4.6), the scene's and
     // then `extra`'s, merged by depth (stable: extra stays in front at a tie).
@@ -527,7 +532,7 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
             culled = skipped;
         }
     }
-    if (extra != nullptr) {
+    if (extra != nullptr || !items.empty()) {
         std::stable_sort(instances.begin(), instances.end(), [](const Instance& a, const Instance& b) {
             return a.transform->depth < b.transform->depth;
         });

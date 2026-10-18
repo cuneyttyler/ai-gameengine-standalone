@@ -1802,6 +1802,30 @@ current by a test); `tests/places_test.cpp`. Compile templates come with the com
   village Spec validating; a broken aggregate reported against the right node.
 
 **7.2 — Big scenes (engine prerequisite)**
+
+**Done (2026-10-18):**
+- **Tile layers** (`gameplay/TileLayer.h`): a palette of tile kinds and, per 32×32
+  chunk, one 16-bit index per cell; held in the registry's context, not as entities.
+  Hand-painted tiles stay entities (the editor's tile tools are unchanged); builds
+  write layers. Collision (`TileGrid`) reads the layers in place: a painted tile wins,
+  then the top layer.
+- **Drawing:** `CollectLayerSprites` visits only the chunks near the view and hands
+  the visible cells to `Renderer2D::Render`, merged with entity sprites by depth.
+- **Regions on disk** (`assets/TileLayerIO.h`): `scenes/<name>.tiles/` holds
+  `layers.json` (names, order, palettes) and one run-length-encoded file per
+  128×128-cell region. Saving rewrites only changed regions. Duplicating, deleting
+  and moving a scene carry its layers; travel and Play / Stop keep them right.
+- **Command undo** (`EditHistory::PushCommand`): `TileLayerCommand` (changed cells),
+  `PlaceEntitiesCommand` (a build's entities, found by `PlaceNode`) and
+  `CompoundCommand`, mixed with whole-scene snapshots, which skip the layers.
+- **`PlaceNode {place, node, statement}`** on built entities.
+- Tests: `tests/big_scene_test.cpp`. A 400×400 place (160k ground cells, a road grid,
+  6000 built objects) in Release: build 85 ms, save 214 ms, load 105 ms, undo 153 ms,
+  redo 97 ms, one frame's culling 0.2 ms; culling 100k entity sprites 1.5 ms.
+
+Not in this milestone: streaming regions in and out by camera (everything loads at
+once), and editing layer cells with the editor's tile tools (7.8, editing after the
+build).
 - Tiles stored as **chunked layers**, not one entity per tile.
 - **Command-based undo** for bulk operations.
 - Scenes stored and loaded in **regions**.

@@ -8,6 +8,7 @@
 
 #include "gameplay/EngineReflection.h"
 #include "assets/SceneIO.h"
+#include "assets/TileLayerIO.h"
 #include "assets/ProjectTemplate.h"
 #include "editing/Edits.h"
 #include "editing/LevelBuild.h"
@@ -1533,6 +1534,14 @@ void EditorApp::OpenScene(const std::string& scene) {
     post_(ScenesJson());
 }
 
+void EditorApp::PlayLayersFor(const std::string& scene) {
+    if (scene == OpenSceneRelative()) {
+        LayersOf(registry_) = playLayers_;
+    } else {
+        LoadTileLayers(registry_, assets_.GetProject().Resolve(scene));
+    }
+}
+
 void EditorApp::HandleTravel() {
     auto travel = session_.TakeTravel();
     if (!travel) {
@@ -1557,6 +1566,7 @@ void EditorApp::HandleTravel() {
     }
     Select(std::nullopt);
     const std::string warning = TravelToScene(registry_, text, travel->marker);
+    PlayLayersFor(travel->scene);
     prefabs_.SyncAll(registry_);
     session_.OnSceneChanged();
     session_.SetScene(travel->scene);
@@ -2225,6 +2235,7 @@ void EditorApp::LoadGame() {
     }
     Select(std::nullopt);
     DeserializeScene(registry_, text);
+    PlayLayersFor(scene);
     prefabs_.SyncAll(registry_);
     session_.OnSceneChanged();
     session_.ApplySave(save);
@@ -2292,6 +2303,8 @@ void EditorApp::StopPlay() {
         return;
     }
     DeserializeScene(registry_, playSnapshot_);
+    LayersOf(registry_) = std::move(playLayers_);
+    playLayers_ = {};
     playSnapshot_.clear();
     playing_ = false;
     banner_ = {};

@@ -22,6 +22,7 @@
 #include "editor/ViewportWindow.h"
 #include "editor/WebViewHost.h"
 #include "gameplay/BootstrapLevel.h"
+#include "gameplay/TileLayerView.h"
 #include "renderer2d/Renderer2D.h"
 #include "ui/GameUi.h"
 #include "rhi/VulkanRHI.h"
@@ -316,7 +317,13 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
             VkCommandBuffer cmd = rhi.BeginFrame();
             if (cmd != VK_NULL_HANDLE) {
                 rhi.BeginSwapchainPass();
-                renderer.Render(cmd, registry, app.Camera(), app.BuildOverlay(), app.BuildUi(), &app.Preview());
+                // Tile layers (7.2): only the cells in view.
+                static std::vector<aige::SpriteItem> layerSprites; // reused frame to frame
+                layerSprites.clear();
+                const VkExtent2D extent = rhi.SwapchainExtent();
+                aige::CollectLayerSprites(registry, app.Iso(), app.Camera(), static_cast<float>(extent.width),
+                                          static_cast<float>(extent.height), layerSprites);
+                renderer.Render(cmd, registry, app.Camera(), app.BuildOverlay(), app.BuildUi(), &app.Preview(), layerSprites);
                 rhi.EndFrame();
             }
         }

@@ -1108,6 +1108,29 @@
       ],
       "name": "LuaScript",
       "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "Made by a place build: the build, its plan node and its layout statement.",
+      "fields": [
+        {
+          "description": "The build that made it.",
+          "name": "place",
+          "type": "string"
+        },
+        {
+          "description": "The plan (Spec) node it belongs to.",
+          "name": "node",
+          "type": "string"
+        },
+        {
+          "description": "The layout (PLL) statement that placed it.",
+          "name": "statement",
+          "type": "string"
+        }
+      ],
+      "name": "PlaceNode",
+      "userEditable": true
     }
   ],
   "settings": [

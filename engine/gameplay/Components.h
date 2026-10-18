@@ -158,6 +158,15 @@ struct PrefabInstance {
     std::string overrides;
 };
 
+// Made by a place build (development_plan.md 7.2): which build, which Spec
+// node and which PLL statement. Lets a built part be found, explained
+// ("Why?") and regenerated or removed as a unit.
+struct PlaceNode {
+    std::string place;     // the build's id (places/<id>/)
+    std::string node;      // Spec node id ("w-old/plots#14")
+    std::string statement; // PLL statement id ("plots[14].house")
+};
+
 // Walks toward another entity (with collision) until within stopDistance.
 // The simplest useful "AI": an enemy that chases the player needs nothing
 // but this and a target. Distances in world grid units, speed in cells/s.

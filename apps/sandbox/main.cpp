@@ -14,6 +14,7 @@
 #include "ecs/Registry.h"
 #include "gameplay/Benchmark.h"
 #include "gameplay/BootstrapLevel.h"
+#include "gameplay/TileLayerView.h"
 #include "gameplay/CameraFollow.h"
 #include "gameplay/GameSession.h"
 #include "platform/Input.h"
@@ -58,7 +59,7 @@ bool TravelIfAsked(const aige::Project& project, aige::Registry& registry, aige:
     }
     std::ostringstream text;
     text << in.rdbuf();
-    const std::string warning = aige::TravelToScene(registry, text.str(), travel->marker);
+    const std::string warning = aige::TravelToScene(registry, text.str(), travel->marker, project.Resolve(travel->scene));
     if (!warning.empty()) {
         std::cerr << travel->scene << ": " << warning << std::endl;
     }
@@ -405,7 +406,12 @@ int main(int argc, char** argv) {
             VkCommandBuffer cmd = rhi.BeginFrame();
             if (cmd != VK_NULL_HANDLE) {
                 rhi.BeginSwapchainPass();
-                renderer.Render(cmd, registry, camera, overlay, ui);
+                static std::vector<aige::SpriteItem> layerSprites; // reused frame to frame
+                layerSprites.clear();
+                const VkExtent2D extent = rhi.SwapchainExtent();
+                aige::CollectLayerSprites(registry, aige::BootstrapIso(), camera, static_cast<float>(extent.width),
+                                          static_cast<float>(extent.height), layerSprites);
+                renderer.Render(cmd, registry, camera, overlay, ui, nullptr, layerSprites);
                 rhi.EndFrame();
             }
         }
