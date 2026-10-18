@@ -113,3 +113,46 @@ def test_the_endpoints():
     assert response["ok"] and len(response["drafts"]) == 2
     assert client.post("/places/interpret", json={"query": " ", "context": CONTEXT}).json()["ok"] is False
     assert TestClient(create_app()).post("/places/interpret", json={"query": "x", "context": {}}).json()["ok"] is False
+
+
+# --- Plan (7.5) ------------------------------------------------------------------------
+
+from app.places import plan_root, plan_zone, repair_node  # noqa: E402
+
+ROOT = {"quantity": {"buildings": {"count": 30}}, "quality": "not an object",
+        "children": [{"id": "market", "module": "market-ward"}, "junk", {"id": "x"}], "rationale": "r"}
+
+
+def test_plan_root_thinks_and_cleans_the_answer():
+    provider = ScriptedProvider(lambda messages: "two wards" if len(provider.requests) - 1 in provider.text_requests
+                                else json.dumps(ROOT))
+    result = plan_root(provider, {"buildType": "settlement"}, {"root": {}, "modules": []})
+    assert result["ok"] and result["mode"] == "two-pass" and result["thinking"] == "two wards"
+    answer = result["answer"]
+    assert answer["quality"] == {}  # not an object: emptied
+    assert [c["id"] for c in answer["children"]] == ["market"]  # junk and module-less children dropped
+    assert "85%" in provider.requests[0][0]["content"]  # the self-check is in the task
+
+
+def test_plan_zone_and_repair_node():
+    zone_answer = {"children": [{"id": "w/cottages", "module": "house-plot", "repeat": 20}]}
+    provider = ScriptedProvider([json.dumps(zone_answer)])
+    result = plan_zone(provider, {}, {"id": "w", "module": "residential-ward"}, [{"id": "m"}], {}, mode="one-pass")
+    assert result["ok"] and result["answer"]["children"][0]["repeat"] == 20
+    assert "The other zones" in provider.requests[0][-1]["content"]
+
+    fixer = ScriptedProvider([json.dumps({"quality": {"wealth": "rich"}})])
+    fixed = repair_node(fixer, {"id": "w", "quality": {"wealth": "golden"}},
+                        [{"where": "w.wealth", "message": "'golden' isn't one of poor, common, rich"}], {})
+    assert fixed["ok"] and fixed["answer"]["quality"]["wealth"] == "rich"
+    assert fixer.text_requests == []
+    assert "w.wealth: 'golden'" in fixer.requests[0][-1]["content"]
+
+
+def test_plan_endpoints():
+    provider = ScriptedProvider(lambda messages: json.dumps(ROOT))
+    client = TestClient(create_app(provider=provider))
+    assert client.post("/places/plan-root", json={"brief": {}, "context": {}, "mode": "one-pass"}).json()["ok"]
+    assert client.post("/places/plan-zone", json={"brief": {}, "zone": {}, "context": {}, "mode": "one-pass"}).json()["ok"]
+    assert client.post("/places/repair-node", json={"node": {}, "problems": [], "context": {}}).json()["ok"]
+    assert TestClient(create_app()).post("/places/plan-root", json={"brief": {}, "context": {}}).json()["ok"] is False

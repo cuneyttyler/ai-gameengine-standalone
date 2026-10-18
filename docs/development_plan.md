@@ -1951,6 +1951,37 @@ Moved to 7.5: the plan preview needs the plan.
   output validating as a Brief.
 
 **7.5 — Plan (the Spec)**
+
+**Done (2026-10-18):**
+- **The steps** (`places/Planner.h`, run by `editing/PlaceBuild`):
+  1. **Root (AI):** the zones, networks and ground, with their fields, relations and a
+     rationale each. The Brief's numbers and choices win. Unknown or disabled modules
+     are dropped, and requested components the answer left out are added (walls when
+     walled, the ground and the main road the root needs). Ids are made unique, and
+     relations follow them.
+  2. **A zone step per zone (AI, in parallel):** its parcels as templates (`repeat`,
+     `share`), told about the other zones for balance.
+  3. **Expansion rules (no AI):**
+     - each node's required children;
+     - each parcel's typical children, two levels down, by their rule weights, with
+       the Brief's density for a component (common: 60% of plots) and its settings
+       (a flower garden has no vegetable beds);
+     - dressing is left to the compile step, and children counted by a field are left
+       to the compiler.
+  4. **Rebalance (no AI):** building-parcel repeats are scaled to the Brief's range;
+     the zones' plots and the root's buildings follow.
+- **Checks:** each AI step's nodes are validated (Draft), and a broken node goes back
+  once with its violations (`/places/repair-node`). The final Spec is validated (Final)
+  and saved to `places/<id>/spec.json`. Every call is logged.
+- **③ Plan:**
+  - the headline (buildings in zones, area);
+  - a table per part (buildings, area, what it holds, its character, its rationale);
+  - a **sketch**: a squarified treemap of the zones' areas, sizes only;
+  - the site and the sketch outlined over the viewport;
+  - problems, then Back or **Approve plan**.
+- Tests: `tests/plan_test.cpp` (all five settlement scales validate; buildings add up;
+  expansion rules; the root answer checked and completed; the sketch; the whole flow
+  with a repair) and `test_places.py`.
 - The AI expands the Brief level by level: the root, then zones, then per-zone totals and
   qualities. Each step's output is validated against the module schemas and constraints,
   and failures go back with the violated expression.

@@ -2,9 +2,11 @@
 
 #include "editing/BuildWindow.h"
 #include "places/PlaceValidate.h"
+#include "places/Planner.h"
 
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <set>
 
@@ -109,6 +111,10 @@ void PlaceBuild::OnResponse(int requestId, const json& body) {
     if (it == pending_.end()) return;
     const Pending what = it->second;
     pending_.erase(it);
+    if (stage_ == "planning") {
+        OnPlanAnswer(what, body);
+        return;
+    }
     if (stage_ != "interpreting") return; // cancelled meanwhile
 
     const Ontology& ontology = host_.ontology();
@@ -193,6 +199,12 @@ void PlaceBuild::Edit(const std::string& path, const json& value) {
 }
 
 std::string PlaceBuild::Step(const std::string& step) {
+    if (stage_ == "plan" && (step == "request" || step == "assets")) {
+        // Back from the plan: it's made again after the next Build.
+        spec_ = json();
+        planProblems_.clear();
+        stage_ = "assets";
+    }
     if (stage_ != "request" && stage_ != "assets") return "nothing to confirm yet";
     if (step == "request") {
         stage_ = "request";
@@ -215,10 +227,159 @@ std::string PlaceBuild::Confirm() {
     if (!errors.empty()) return errors.front().where + ": " + errors.front().message;
     WriteJson(Folder() / "brief.json", brief_);
     WriteJson(host_.projectRoot / "places" / "defaults.json", DefaultsAfter(brief_, Defaults()));
-    stage_ = "planning";
-    status_ = "Brief confirmed. Planning comes next (milestone 7.5).";
     Log({{"step", "confirmed"}, {"brief", brief_}});
+    StartPlanning();
     return {};
+}
+
+std::string PlaceBuild::Approve() {
+    if (stage_ != "plan") return "there's no plan to approve";
+    const auto errors = ErrorsOf(planProblems_);
+    if (!errors.empty()) return errors.front().where + ": " + errors.front().message;
+    stage_ = "planned";
+    status_ = "Plan approved. Building it comes next (milestone 7.6).";
+    Log({{"step", "approved"}});
+    return {};
+}
+
+int PlaceBuild::SiteSide() const {
+    const json area = BriefValue(brief_, "scale.area.area");
+    double a = 0;
+    if (area.is_number()) a = area.get<double>();
+    if (area.is_array() && area.size() == 2) a = (area[0].get<double>() + area[1].get<double>()) / 2;
+    return a > 0 ? static_cast<int>(std::lround(std::sqrt(a))) : 80;
+}
+
+// --- Planning -----------------------------------------------------------------------------
+
+void PlaceBuild::PlanFailed(const std::string& why) {
+    stage_ = "failed";
+    errors_.push_back("planning: " + why);
+    Log({{"step", "plan-failed"}, {"why", why}});
+}
+
+void PlaceBuild::StartPlanning() {
+    stage_ = "planning";
+    planPhase_ = "root";
+    repaired_.clear();
+    planProblems_.clear();
+    zonesTotal_ = zonesDone_ = 0;
+    spec_ = json();
+    const int id = host_.request("/places/plan-root", {{"brief", brief_}, {"context", PlanRootContext(host_.ontology(), brief_)}}, 600);
+    if (id == 0) return PlanFailed("the AI isn't available");
+    pending_[id] = {"plan-root", -1, ""};
+    status_ = "Planning the zones, roads and walls…";
+}
+
+void PlaceBuild::OnPlanAnswer(const Pending& what, const json& body) {
+    const Ontology& ontology = host_.ontology();
+    Log({{"step", what.kind}, {"node", what.node}, {"mode", body.value("mode", "")}, {"thinking", body.value("thinking", "")},
+         {"answer", body.value("answer", json())}, {"errors", body.value("errors", json::array())}});
+    const bool ok = body.value("ok", false) && body.contains("answer");
+    if (what.kind == "plan-root") {
+        if (!ok) {
+            const json errors = body.value("errors", json::array());
+            return PlanFailed(errors.empty() || !errors[0].is_string() ? "no answer" : errors[0].get<std::string>());
+        }
+        spec_ = SpecFromRoot(ontology, brief_, body["answer"], id_);
+        if (!RepairNodes("root")) PlanZones();
+        return;
+    }
+    if (what.kind == "plan-zone") {
+        if (ok) ApplyZoneAnswer(ontology, brief_, spec_, what.node, body["answer"]);
+        ++zonesDone_;
+        status_ = "Planned " + std::to_string(zonesDone_) + " of " + std::to_string(zonesTotal_) + " zones…";
+    } else if (what.kind == "repair-node" && ok) {
+        const json& answer = body["answer"];
+        if (json* node = SpecNode(spec_, what.node)) {
+            if (planPhase_ == "zones") {
+                ApplyZoneAnswer(ontology, brief_, spec_, what.node, answer);
+            } else {
+                for (const char* key : {"quantity", "quality"}) {
+                    if (answer.contains(key) && answer[key].is_object()) (*node)[key] = answer[key];
+                }
+            }
+        }
+    }
+    if (!pending_.empty()) return;
+    // A phase is done when its answers (and repairs) are all in.
+    if (what.kind == "plan-zone" && RepairNodes("zones")) return;
+    if (planPhase_ == "root") PlanZones();
+    else FinishPlanning();
+}
+
+bool PlaceBuild::RepairNodes(const std::string& phase) {
+    planPhase_ = phase;
+    const Ontology& ontology = host_.ontology();
+    const auto problems = ErrorsOf(ValidateSpec(ontology, spec_, SpecStage::Draft, brief_.value("buildType", "")));
+    // Each node's problems, for nodes of this phase that haven't had their repair yet.
+    std::map<std::string, std::vector<PlaceProblem>> byNode;
+    const auto zones = ZoneIds(ontology, spec_);
+    for (const auto& p : problems) {
+        const std::string node = p.where.substr(0, p.where.find('.'));
+        // The root step wrote the root and its children's own fields; a zone
+        // step its zone's fields again and everything inside the zone.
+        const bool inside = node.find('/') != std::string::npos;
+        const bool zone = std::find(zones.begin(), zones.end(), node) != zones.end();
+        if (phase == "root" ? inside : !(inside || zone)) continue;
+        // A zone's parcel problems go to the zone: its step wrote them.
+        const std::string owner = phase == "zones" && node.find('/') != std::string::npos ? node.substr(0, node.find('/')) : node;
+        if (!repaired_.contains(owner)) byNode[owner].push_back(p);
+    }
+    for (const auto& [nodeId, list] : byNode) {
+        json* node = SpecNode(spec_, nodeId);
+        if (node == nullptr) continue;
+        json given = *node;
+        if (phase == "root") given.erase("children");
+        json listed = json::array();
+        for (const auto& p : list) listed.push_back({{"where", p.where}, {"message", p.message}});
+        const json context = phase == "root" ? ontology.Subgraph(node->value("module", ""))
+                                             : PlanZoneContext(ontology, brief_, node->value("module", ""));
+        const int id = host_.request("/places/repair-node", {{"node", given}, {"problems", listed}, {"context", context}}, 300);
+        if (id == 0) continue;
+        pending_[id] = {"repair-node", -1, nodeId};
+        repaired_.insert(nodeId);
+    }
+    if (!pending_.empty()) status_ = "Fixing " + std::to_string(pending_.size()) + " part(s) of the plan…";
+    return !pending_.empty();
+}
+
+void PlaceBuild::PlanZones() {
+    planPhase_ = "zones";
+    const Ontology& ontology = host_.ontology();
+    const auto zones = ZoneIds(ontology, spec_);
+    json siblings = json::array();
+    for (const auto& c : spec_["root"].value("children", json::array())) {
+        siblings.push_back({{"id", c.value("id", "")}, {"module", c.value("module", "")}, {"quantity", c.value("quantity", json())},
+                            {"quality", c.value("quality", json())}});
+    }
+    zonesTotal_ = static_cast<int>(zones.size());
+    zonesDone_ = 0;
+    for (const auto& zoneId : zones) {
+        json zone = *SpecNode(spec_, zoneId);
+        zone.erase("children");
+        const int id = host_.request("/places/plan-zone",
+                                     {{"brief", brief_}, {"zone", zone}, {"siblings", siblings},
+                                      {"context", PlanZoneContext(ontology, brief_, zone.value("module", ""))}},
+                                     600);
+        if (id != 0) pending_[id] = {"plan-zone", -1, zoneId};
+    }
+    if (pending_.empty()) {
+        FinishPlanning();
+        return;
+    }
+    status_ = "Planning " + std::to_string(zonesTotal_) + " zones…";
+}
+
+void PlaceBuild::FinishPlanning() {
+    const Ontology& ontology = host_.ontology();
+    ExpandSpec(ontology, brief_, spec_);
+    const int buildings = RebalanceBuildings(ontology, brief_, spec_);
+    planProblems_ = ValidateSpec(ontology, spec_, SpecStage::Final, brief_.value("buildType", ""));
+    WriteJson(Folder() / "spec.json", spec_);
+    stage_ = "plan";
+    status_.clear();
+    Log({{"step", "planned"}, {"buildings", buildings}, {"problems", ProblemsJson(planProblems_)}});
 }
 
 void PlaceBuild::Cancel() {
@@ -231,7 +392,14 @@ void PlaceBuild::Cancel() {
 json PlaceBuild::State() {
     json state = {{"type", "build:state"}, {"id", id_}, {"query", query_}, {"stage", stage_}, {"round", round_},
                   {"status", status_}, {"errors", errors_}, {"drafts", drafts_.size()}};
-    if (stage_ == "request" || stage_ == "assets" || stage_ == "planning") {
+    if (stage_ == "plan" || stage_ == "planned") {
+        state["plan"] = PlanSummary(host_.ontology(), spec_);
+        state["sketch"] = PlanSketch(host_.ontology(), spec_, SiteSide());
+        state["problems"] = ProblemsJson(planProblems_);
+        state["name"] = brief_.value("name", id_);
+    }
+    if (stage_ == "planning") state["progress"] = {{"zones", zonesTotal_}, {"done", zonesDone_}};
+    if (stage_ == "request" || stage_ == "assets") {
         const Catalog catalog = host_.catalog ? host_.catalog() : Catalog{};
         const bool iso = host_.isoGrid ? host_.isoGrid() : true;
         state["window"] = BriefWindow(host_.ontology(), brief_, &merge_, &catalog, iso, round_);
@@ -245,7 +413,9 @@ json PlaceBuild::Card() const {
     if (stage_ == "interpreting") text = status_.empty() ? "Reading your request…" : status_;
     else if (stage_ == "request") text = "① Request: confirm what to build";
     else if (stage_ == "assets") text = "② Assets: choose where the art comes from";
-    else if (stage_ == "planning") text = "Brief confirmed; planning is next";
+    else if (stage_ == "planning") text = status_.empty() ? "Planning…" : status_;
+    else if (stage_ == "plan") text = "③ Plan: review the zones before building";
+    else if (stage_ == "planned") text = "Plan approved; building comes next";
     else if (stage_ == "cancelled") text = "Cancelled";
     else if (stage_ == "failed") text = errors_.empty() ? "Failed" : errors_.front();
     return {{"type", "build:card"}, {"buildId", id_}, {"name", brief_.is_object() ? brief_.value("name", "") : ""},

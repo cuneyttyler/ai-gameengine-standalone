@@ -9,6 +9,7 @@
 #include "gameplay/EngineReflection.h"
 #include "assets/SceneIO.h"
 #include "assets/TileLayerIO.h"
+#include "places/Planner.h"
 #include "assets/ProjectTemplate.h"
 #include "editing/Edits.h"
 #include "editing/LevelBuild.h"
@@ -112,6 +113,16 @@ void AddCellOutline(std::vector<OverlayLine>& out, int gx, int gy, const IsoPara
     line(b, c);
     line(c, d);
     line(d, a);
+}
+
+// A rectangle of cells [x, x + w) x [y, y + h), outlined.
+void AddGridRect(std::vector<OverlayLine>& out, float x, float y, float w, float h, const IsoParams& iso, const float* rgb,
+                 float alpha, float thickness) {
+    const ScreenPose a = ProjectIso(x, y, iso), b = ProjectIso(x + w, y, iso), c = ProjectIso(x + w, y + h, iso),
+                     d = ProjectIso(x, y + h, iso);
+    for (const auto& [p, q] : {std::pair{a, b}, std::pair{b, c}, std::pair{c, d}, std::pair{d, a}}) {
+        out.push_back({p.x, p.y, q.x, q.y, thickness, rgb[0], rgb[1], rgb[2], alpha});
+    }
 }
 
 void AddEntityOutline(std::vector<OverlayLine>& out, Registry& registry, Entity entity, const IsoParams& iso,
@@ -756,6 +767,12 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     } else if (type == "build:step" || type == "build:confirm") {
         if (build_) {
             const std::string why = type == "build:confirm" ? build_->Confirm() : build_->Step(message.value("step", ""));
+            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not yet: " + why}});
+        }
+        PostBuild();
+    } else if (type == "build:approve") {
+        if (build_) {
+            const std::string why = build_->Approve();
             if (!why.empty()) post_({{"type", "notify"}, {"text", "Not yet: " + why}});
         }
         PostBuild();
@@ -2496,6 +2513,20 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
     AppendHealthBars(registry_, overlay);
     if (playing_) {
         return overlay;
+    }
+    // The plan view (7.5): the site and a sketch of its zones, before anything is built.
+    if (build_ && (build_->Stage() == "plan" || build_->Stage() == "planned")) {
+        static const float kSite[3] = {0.54f, 0.71f, 0.98f};
+        static const float kZones[6][3] = {{0.65f, 0.89f, 0.63f}, {0.98f, 0.70f, 0.53f}, {0.80f, 0.65f, 0.97f},
+                                           {0.98f, 0.89f, 0.69f}, {0.58f, 0.89f, 0.84f}, {0.95f, 0.55f, 0.66f}};
+        const nlohmann::json sketch = PlanSketch(Places(), build_->Spec(), build_->SiteSide());
+        const float side = static_cast<float>(build_->SiteSide());
+        AddGridRect(overlay, 0, 0, side, side, iso_, kSite, 0.9f, 2.0f);
+        int n = 0;
+        for (const auto& r : sketch.value("rects", nlohmann::json::array())) {
+            AddGridRect(overlay, r.value("x", 0.0f), r.value("y", 0.0f), r.value("w", 0.0f), r.value("h", 0.0f), iso_,
+                        kZones[n++ % 6], 0.85f, 1.5f);
+        }
     }
     if (showGrid_) {
         // Tile borders on empty ground (4.3), over the visible part of the scene.

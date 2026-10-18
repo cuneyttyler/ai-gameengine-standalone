@@ -63,6 +63,18 @@ interface BuildWindow {
   problems: Problem[]
   assetPlan?: { rows: PlanRow[]; summary: { project: number; generate: number } }
 }
+interface PlanRow {
+  id: string
+  module: string
+  name: string
+  level: string
+  plots: unknown
+  buildings: number
+  area: unknown
+  qualities: Record<string, unknown>
+  parcels: { id: string; module: string; name: string; count: number }[]
+  rationale: string
+}
 interface BuildState {
   id: string
   query: string
@@ -72,6 +84,10 @@ interface BuildState {
   errors: string[]
   name?: string
   window?: BuildWindow
+  progress?: { zones: number; done: number }
+  plan?: { rows: PlanRow[]; totals: { buildings: number; zones: number; area: unknown }; rationale: string }
+  sketch?: { side: number; rects: { id: string; module: string; name: string; x: number; y: number; w: number; h: number }[] }
+  problems?: Problem[]
 }
 
 const PROJECT_HOST = 'https://aige-project.local/'
@@ -112,7 +128,12 @@ const warnings = computed(() => (win.value?.problems ?? []).filter((p) => p.warn
 const shownComponents = computed(() =>
   (win.value?.components ?? []).filter((c) => showAll.value || c.inBrief),
 )
-const activeStep = computed(() => (stage.value === 'assets' ? 'assets' : stage.value === 'planning' ? 'plan' : 'request'))
+const activeStep = computed(() =>
+  stage.value === 'assets' ? 'assets' : ['planning', 'plan', 'planned'].includes(stage.value) ? 'plan' : 'request',
+)
+const ZONE_COLOURS = ['#a6e3a1', '#fab387', '#cba6f7', '#f9e2af', '#94e2d5', '#f38ba8']
+const planErrors = computed(() => (state.value?.problems ?? []).filter((p) => !p.warning))
+const selectedZone = ref<string | null>(null)
 
 function edit(path: string, value: unknown): void {
   sendToHost({ type: 'build:edit', path, value })
@@ -201,7 +222,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           v-for="s in STEPS"
           :key="s.id"
           :class="{ active: activeStep === s.id }"
-          :disabled="!win || (s.id !== 'request' && s.id !== 'assets') || (s.id === 'assets' && stage === 'request' && errors.length > 0)"
+          :disabled="s.id === 'plan' ? !['planning', 'plan', 'planned'].includes(stage) : !win || (s.id !== 'request' && s.id !== 'assets') || (s.id === 'assets' && stage === 'request' && errors.length > 0)"
           :title="s.id === 'plan' || s.id === 'build' || s.id === 'result' ? 'Comes with the next milestones (7.5–7.7)' : ''"
           @click="sendToHost({ type: 'build:step', step: s.id })"
         >
@@ -230,7 +251,52 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
 
     <div v-else-if="stage === 'planning'" class="body start">
       <p>{{ state?.status }}</p>
-      <p class="dim">The Brief is saved in places/{{ state?.id }}/brief.json.</p>
+      <div v-if="state?.progress?.zones" class="bar"><i :style="{ width: `${(100 * state.progress.done) / state.progress.zones}%` }" /></div>
+      <p class="dim">The zones are planned first, then each zone's parcels; gardens, yards and the like follow from the module rules.</p>
+      <button @click="sendToHost({ type: 'build:cancel' })">Stop</button>
+    </div>
+
+    <!-- ③ Plan: what will be built, before anything is. -->
+    <div v-else-if="(stage === 'plan' || stage === 'planned') && state?.plan" class="body plan-view">
+      <p class="headline">
+        {{ state.plan.totals.buildings }} buildings in {{ state.plan.totals.zones }} zones
+        <span class="dim">· {{ amountText(state.plan.totals.area) }} cells²</span>
+      </p>
+      <p v-if="state.plan.rationale" class="dim">{{ state.plan.rationale }}</p>
+      <div class="plan-split">
+        <svg v-if="state.sketch" class="sketch" :viewBox="`0 0 ${state.sketch.side} ${state.sketch.side}`">
+          <rect x="0" y="0" :width="state.sketch.side" :height="state.sketch.side" class="site" />
+          <g v-for="(r, i) in state.sketch.rects" :key="r.id" @click="selectedZone = r.id">
+            <rect :x="r.x" :y="r.y" :width="r.w" :height="r.h" :fill="ZONE_COLOURS[i % 6]" :class="{ picked: selectedZone === r.id }" />
+            <text :x="r.x + r.w / 2" :y="r.y + r.h / 2" :font-size="state.sketch.side / 28">{{ r.name }}</text>
+          </g>
+        </svg>
+        <table class="components">
+          <thead><tr><th>Part</th><th>Buildings</th><th>Area</th><th>Holds</th><th>Character</th></tr></thead>
+          <tbody>
+            <tr v-for="row in state.plan.rows" :key="row.id" :class="{ picked: selectedZone === row.id }" @click="selectedZone = row.id">
+              <td :title="row.rationale">{{ row.name }} <span class="dim">{{ row.id }}</span></td>
+              <td>{{ row.buildings || '—' }}</td>
+              <td>{{ amountText(row.area) }}</td>
+              <td class="small">{{ row.parcels.map((p) => `${p.count} ${p.name.toLowerCase()}`).join(', ') || '—' }}</td>
+              <td class="small">{{ Object.entries(row.qualities).map(([k, v]) => `${k} ${show(v)}`).join(' · ') }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-if="selectedZone" class="dim why">{{ state.plan.rows.find((r) => r.id === selectedZone)?.rationale }}</p>
+      <p class="dim">The sketch shows sizes only; where each part goes is worked out when it's built. The site is outlined in the viewport.</p>
+      <section v-if="state.problems?.length" class="problems">
+        <div v-for="p in state.problems" :key="p.where + p.message" :class="p.warning ? 'warning' : 'error'">{{ p.where }}: {{ p.message }}</div>
+      </section>
+      <div class="actions">
+        <button @click="sendToHost({ type: 'build:cancel' })">Cancel</button>
+        <button v-if="stage === 'plan'" @click="sendToHost({ type: 'build:step', step: 'assets' })">Back</button>
+        <button v-if="stage === 'plan'" class="primary" :disabled="planErrors.length > 0" @click="sendToHost({ type: 'build:approve' })">
+          Approve plan
+        </button>
+        <span v-else class="dim">{{ state.status }}</span>
+      </div>
     </div>
 
     <!-- ① Request and ② Assets: the confirmation window. -->
@@ -659,6 +725,57 @@ button.link {
 }
 .mix span {
   margin-right: 8px;
+}
+.bar {
+  height: 4px;
+  background: #313244;
+  margin: 6px 0 10px;
+}
+.bar i {
+  display: block;
+  height: 100%;
+  background: #89b4fa;
+}
+.headline {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+.plan-split {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.sketch {
+  width: 260px;
+  height: 260px;
+  flex-shrink: 0;
+}
+.sketch .site {
+  fill: #11111b;
+  stroke: #89b4fa;
+  stroke-width: 0.6;
+}
+.sketch rect:not(.site) {
+  fill-opacity: 0.35;
+  stroke: #11111b;
+  stroke-width: 0.4;
+  cursor: pointer;
+}
+.sketch rect.picked {
+  fill-opacity: 0.7;
+}
+.sketch text {
+  fill: #cdd6f4;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+.components tr.picked td {
+  background: #313244;
+}
+.why {
+  margin: 6px 0;
 }
 .actions {
   display: flex;

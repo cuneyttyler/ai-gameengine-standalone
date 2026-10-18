@@ -224,3 +224,91 @@ def repair_brief(provider: Provider, query: str, context: dict, brief: dict, pro
             out.update(cleaned)
             out["ok"] = True
     return out
+
+
+# --- Plan (the Spec), 7.5 -------------------------------------------------------------
+
+ROOT_SHAPE = """The top of the plan, as JSON:
+{
+  "quantity": {"buildings": {"count": <n>}, "area": {"area": <cells>}},
+  "quality": {"layout": <as the Brief>, "condition": "...", "walled": "..."},
+  "children": [
+    {"id": "<short kebab-case id, unique>", "module": "<a zone, network or site module>",
+     "quantity": {"<field>": <value of its type>}, "quality": {"<field>": <value>},
+     "rel": [{"type": "<relation>", "to": "<another child's id>"}],
+     "rationale": "<one or two sentences: why this zone, here, this size>"}
+  ],
+  "rationale": "<one or two sentences>"
+}
+Zones (wards) get "plots" (a count) and "area"; a residential ward also its "street-style" (one pattern of the
+Brief's layout mix, so that the zones' shares follow the mix). Include the ground, the main road(s), the river and
+walls when the Brief has them."""
+
+ZONE_SHAPE = """One zone's parcels, as JSON:
+{
+  "quantity": {"plots": {"count": <n>}, ...the zone's other quantity fields},
+  "quality": {...the zone's quality fields},
+  "children": [
+    {"id": "<zone id>/<short name>", "module": "<a parcel or feature module this zone may contain>",
+     "repeat": <how many parcels this template stands for>,
+     "quantity": {"<field>": <value or [low, high]>}, "quality": {"<field>": <value, or a mix for variety>},
+     "rationale": "<one sentence>"}
+  ],
+  "rationale": "<one or two sentences>"
+}
+Group alike parcels into one template with "repeat" (28 cottages are one child, not 28). The repeats of the
+building parcels add up to the zone's plots."""
+
+PLAN_CHECK = """Before answering, check while thinking:
+- do the children's areas fit within 85% of the parent's area?
+- do the counts add up to the Brief's numbers (buildings, plots)?
+- is every enabled component placed somewhere?
+- does each zone follow its module's site preferences and the design rules?"""
+
+
+def plan_root(provider: Provider, brief: dict, context: dict, mode: str = "auto") -> dict:
+    """The root and its zones, networks and ground (place-interaction.md B4: thinks)."""
+    task = ("You plan a game place from its confirmed Brief: its zones (wards), networks (roads, river, walls) and "
+            "ground, each with its quantity and quality fields. " + PLAN_CHECK)
+    inputs = (f"The Brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n"
+              f"The modules and rules (the ontology's relevant part):\n{json.dumps(context, ensure_ascii=False)}")
+    return _plan_result(think_then_answer(provider, task, inputs, ROOT_SHAPE, mode))
+
+
+def plan_zone(provider: Provider, brief: dict, zone: dict, siblings: list[dict], context: dict, mode: str = "auto") -> dict:
+    """One zone's parcels (thinks: per-zone totals and qualities)."""
+    task = ("You plan one zone of a game place: which parcels it holds, how many of each (as templates with "
+            "\"repeat\"), and their fields, following the zone's own fields and the Brief. " + PLAN_CHECK)
+    inputs = (f"The Brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n"
+              f"The zone:\n{json.dumps(zone, ensure_ascii=False)}\n\n"
+              f"The other zones (for balance):\n{json.dumps(siblings, ensure_ascii=False)}\n\n"
+              f"What this zone may contain (the ontology's relevant part):\n{json.dumps(context, ensure_ascii=False)}")
+    return _plan_result(think_then_answer(provider, task, inputs, ZONE_SHAPE, mode))
+
+
+def repair_node(provider: Provider, node: dict, problems: list[dict], context: dict) -> dict:
+    """The one repair round for a plan node: its violated rules, back once."""
+    listed = "\n".join(f"- {p.get('where', '?')}: {p.get('message', '')}" for p in problems if isinstance(p, dict))
+    task = "You correct one node of a game place's plan so that it follows its module's rules."
+    inputs = (f"The node:\n{json.dumps(node, ensure_ascii=False)}\n\nIt breaks these rules:\n{listed}\n\n"
+              f"Fix exactly these and keep everything else.\n\nIts module and rules:\n{json.dumps(context, ensure_ascii=False)}")
+    shape = "The corrected node, as JSON, in the same form as given (its quantity, quality and children)."
+    return _plan_result(think_then_answer(provider, task, inputs, shape, think=False))
+
+
+def _plan_result(step: StepResult) -> dict:
+    out = {"ok": False, "mode": step.mode, "thinking": step.thinking, "errors": list(step.errors),
+           "usage": step.usage.model_dump()}
+    answer = step.answer
+    if answer is None:
+        return out
+    if not isinstance(answer.get("children", []), list):
+        out["errors"].append("children is a list of nodes")
+        return out
+    for key in ("quantity", "quality"):
+        if key in answer and not isinstance(answer[key], dict):
+            answer[key] = {}
+    answer["children"] = [c for c in answer.get("children", []) if isinstance(c, dict) and c.get("module")]
+    out["answer"] = answer
+    out["ok"] = True
+    return out

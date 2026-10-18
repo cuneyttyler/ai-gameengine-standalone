@@ -26,7 +26,7 @@ from pydantic import BaseModel
 from .models import EditorContext, EngineSchema, Proposal, Usage
 from .consistency import check_consistency, writing_from_operations
 from .images import ImageGenerator, MistralImageGenerator, generate_sprites
-from .places import interpret, repair_brief
+from .places import interpret, plan_root, plan_zone, repair_brief, repair_node
 from .vision import describe_assets
 from .providers import MistralEmbedder, MistralProvider, Provider, ProviderError
 from .service import propose
@@ -73,6 +73,26 @@ class RepairBriefRequest(BaseModel):
     context: dict
     brief: dict
     problems: list[dict]   # {"where", "message"} from the validator
+
+
+class PlanRootRequest(BaseModel):
+    brief: dict
+    context: dict          # the root's subgraph and its possible children (engine/places Planner)
+    mode: str = "auto"
+
+
+class PlanZoneRequest(BaseModel):
+    brief: dict
+    zone: dict             # the zone's Spec node as planned at the root step
+    siblings: list[dict] = []
+    context: dict
+    mode: str = "auto"
+
+
+class RepairNodeRequest(BaseModel):
+    node: dict
+    problems: list[dict]
+    context: dict
 
 
 class GenerateAssetRequest(BaseModel):
@@ -262,6 +282,26 @@ def create_app(
         result = repair_brief(provider, request.query, request.context, request.brief, request.problems)
         state["usage"].add(Usage(**result["usage"]))
         return result
+
+    def _planning(call) -> dict:
+        provider: Provider | None = state["provider"]
+        if provider is None:
+            return {"ok": False, "errors": ["No AI provider configured"]}
+        result = call(provider)
+        state["usage"].add(Usage(**result["usage"]))
+        return result
+
+    @app.post("/places/plan-root")
+    def places_plan_root(request: PlanRootRequest) -> dict:
+        return _planning(lambda p: plan_root(p, request.brief, request.context, request.mode))
+
+    @app.post("/places/plan-zone")
+    def places_plan_zone(request: PlanZoneRequest) -> dict:
+        return _planning(lambda p: plan_zone(p, request.brief, request.zone, request.siblings, request.context, request.mode))
+
+    @app.post("/places/repair-node")
+    def places_repair_node(request: RepairNodeRequest) -> dict:
+        return _planning(lambda p: repair_node(p, request.node, request.problems, request.context))
 
     @app.post("/assets/generate")
     def assets_generate(request: GenerateAssetRequest) -> dict:
