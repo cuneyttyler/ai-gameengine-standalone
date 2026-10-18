@@ -103,7 +103,7 @@ The engine must:
 | Confirmation | **Every build** shows the confirmation window. |
 | Editing | **After the build**: every built part stays selectable as its module, with its parameters, and can be regenerated. |
 | Perspective | **Both** top-down and ¾ / isometric art, mixed in one project where they're compatible (§6). |
-| Assets | Per component, **use the pack's or generate**, as the user chooses in the confirmation window. |
+| Assets | Per component, the source is chosen in the confirmation window: **auto**, the **project**, the **AIGE library** (planned), the **web**, or **generate** with the Art tool. `auto` follows a fixed decision procedure (`place-assets.md`). |
 | Model budget | **No limit**. Quality first; calls are still made per module, not per entity. |
 
 ## 3. What we take from existing work
@@ -158,65 +158,35 @@ Each stage decides which modules go where in its level of the tree; each module'
 generator lays itself out. The catalogue of modules per build type is
 `docs/place-modules.md`.
 
-## 5. The place module contract
+## 5. Modules, relations and generators, in brief
 
-A module is **data** (`places/modules/<id>.module.json`; the engine ships a library and a
-project can add or override). It defines:
+The definitions live elsewhere; this is the overview.
+- **A place module** is data: its quantity and quality fields, asset **slots** bound to
+  ontology roles, allowed children with typical weights, aggregate constraints, default
+  relations, and a **compile template** written in PLL. It is defined in
+  `place-schema.md` §3.3; the catalogue is `place-modules.md`; the files are part of the
+  ontology (`place-ontology.md`).
+- **Relations** are n-ary, each with a score function in [0, 1], hard or weighted. The
+  vocabulary covers global position, distance, relative position, alignment and groups,
+  facing, linear features, containment, visibility, and interest maps. It is defined in
+  `layout-ir.md` §6.
+- **Generators** are the PLL statements, each one a seeded solver:
 
-| Part | Meaning | Example (garden) |
+| What it lays out | PLL statement | Used by |
 |---|---|---|
-| `id`, `name`, `buildTypes` | identity; where it can appear | `garden`; settlement, farmstead, castle |
-| `level` | site, zone, parcel, feature or dressing | feature |
-| `size` | footprint range and shape | 3×2 to 8×6 cells, rectangle |
-| `params` | typed, with defaults; shown in the confirmation window and the Inspector | `kind`: vegetable / flower / herb; `fenced`: yes / no; `density`: none–abundant |
-| `slots` | asset roles it needs: required or optional, with counts | fence pieces (if fenced), crop or flower plants (required), path tiles, scarecrow (optional) |
-| `children` | modules it may contain, with counts or densities | vegetable bed ×1–4, small shed (rare) |
-| `relations` | to its parent and siblings, from the shared vocabulary | *behind* the house, *adjacent* to the back door, *away from* the street |
-| `generator` | which engine algorithm lays it out, and with what | `rows` (beds), then `edge-line` (fence), then `scatter` (plants) |
-| `checks` | its own verification rules | fence closed except a gate; ≥ 1 path from the gate to the door |
-| `questions` | what the confirmation window asks about it, if anything | kind, fenced |
-| `examples` | approved builds (the verified manual), used as few-shot examples | added automatically |
-
-Missing assets for a slot follow the user's choice for that component: use the closest
-pack asset, generate one in the pack's style, or leave the slot empty and report it.
-
-### The relation vocabulary (2D, from Holodeck's)
-
-| Kind | Relations |
-|---|---|
-| global (in the parent) | `center`, `edge`, `corner`, `along-edge(side)`, `anywhere` |
-| distance | `adjacent`, `near`, `far`, `away-from` |
-| position (relative to facing) | `in-front-of`, `behind`, `beside`, `between` |
-| alignment | `aligned-with`, `in-row`, `in-grid`, `symmetric-about` |
-| facing | `faces(target)`: street, square, object |
-| linear | `along(road / river / wall)`, `encloses`, `crosses` |
-| containment | `inside`, `outside`, `on` (small things on large ones: a pot on a table) |
-| quantity | `count(n)`, `density(level)`, `cluster` vs `spread` |
-
-**Hard** (never broken): inside the parent, no overlapping footprints, allowed terrain,
-passability kept (doors, gates and entrances reachable), accessibility cells kept free.
-**Soft** (weighted, best effort): everything else. Where no solution satisfies every soft
-relation, the solver keeps the best and the checks report what was dropped.
-
-### Generators (the tool library)
-
-Each is a seeded engine command with a documented schema and examples, so the LLM uses it
-like a tool (3D-GPT):
-
-| Generator | Lays out | Used by |
-|---|---|---|
-| `partition` | zones from relations and an interest map (Voronoi / weighted growth) | site → districts |
-| `route` | roads, rivers and walls as least-cost paths over terrain | networks |
-| `street-network` | organic, grid or radial streets inside a zone | districts |
-| `subdivide` | blocks into plots along streets | districts → parcels |
-| `place` | relational grid solver, anchor first, large first (Holodeck's DFS) | parcels, features, rooms |
-| `rows` / `grid` | crops, beds, pews, market stalls, shelves | features |
-| `scatter` | Poisson disk with density maps and rules | dressing, nature |
-| `edge-line` | fences, walls and hedges along cell edges, with piece sets | features, networks |
-| `terrain` | autotiled regions: water, fields, sand, paths (6.4) | all |
-| `floorplan` | rooms from a programme (types, sizes, adjacency) | interiors |
-| `graph` | mission and space graphs, cycles, lock–key | dungeons |
-| `cave` | cellular automata areas | dungeons, wilderness |
+| zones from relations and interest maps | `partition` | site → districts |
+| roads, rivers (least-cost, road reuse) | `path` | networks |
+| street networks (grid, radial, organic, growth) | `network` | districts |
+| blocks into plots with street access | `subdivide` | districts → parcels |
+| rooms from a programme | `floorplan` | interiors |
+| mission and space graphs, lock–key | `graph` | dungeons |
+| cave-shaped areas | `region` with `shape: cave` | dungeons, wilderness |
+| doors and openings between areas | `connect` | interiors, dungeons, castles |
+| objects by relations (anchor first, large first, then annealing) | `place` | parcels, features, rooms |
+| beds, crops, pews, stalls; orchards, graves | `rows`, `grid` | features |
+| plants, rocks, clutter by density | `scatter` | dressing, nature |
+| fences, walls, hedges on cell edges | `line` | features, networks |
+| autotiled terrain | `fill` | all |
 
 ## 6. Understanding the art (asset catalog v2)
 
@@ -227,11 +197,14 @@ like a tool (3D-GPT):
 | **anchor** | lowest opaque row and shadow | standing on the right cell |
 | **sprite size** | from footprint and aspect, never guessed | scale |
 | **perspective**: top-down, ¾ front, isometric | vision model + shape cues | compatibility (below) |
-| **facing and variants** | name groups, mirror detection, vision | doors toward streets |
+| **facing and variants** (`facings`: which sides the art can face: flat art any, upright art drawn + mirrored, plus directional variants) | name groups, mirror detection, vision | doors toward streets |
+| **anchors** on the art: door, gate, seat, counter front | vision model on the upscaled image, then confirmed | `x.door` references; doors face streets; paths to back doors |
 | **piece sets** for linear features | edge analysis like tiles | fences, walls, hedges |
 | palette | dominant colours | coherent style; generated art matches |
 | layer: ground, decal, prop, building, overhead | kind + transparency | draw order |
 | passability, accessibility, placement rules | vision + per-category defaults | constraints |
+| affordance (GameTileNet's five), tile type (complete, partial, texture) | vision + segmentation | retrieval filters |
+| licence, author, source, url | the source (project, library, web, generated) | the licence check; CREDITS |
 
 **Both perspectives** are supported:
 - **Top-down** art lies flat: ground, rugs, roads, crops.
@@ -243,10 +216,9 @@ join only on a **square** grid; isometric pieces only on an **isometric** grid. 
 catalog checks this when a module needs joined pieces. If they don't match, it offers to
 generate matching pieces or to use the other grid.
 
-Retrieval for a slot works in two steps:
-1. Hard filters: role, perspective compatible, footprint fits.
-2. Ranking by text and visual similarity, closeness to the size the slot wants, palette
-   fit, and variety (not the same asset next door).
+Where each needed asset comes from (the project, the AIGE library, the web or
+generation), how candidates are filtered and scored, and what happens when nothing fits:
+all of this is defined in `place-assets.md`.
 
 ## 7. The methodology: stages per build type
 
@@ -262,10 +234,11 @@ The stages below are how **Plan** and **Compile** proceed through the levels of 
 build type.
 
 Each stage makes one kind of decision for every node at its level:
-1. The LLM receives the node, its parent, the Brief, the module manual and verified
-   examples.
-2. It answers in the stage's schema: which child modules, their parameters and their
-   relations.
+1. The LLM receives the node, its parent, the Brief, the relevant ontology subgraph and
+   verified examples.
+2. It **thinks** in free text, then answers in the stage's schema: which child modules,
+   their fields, their relations, and a short rationale. How each call is made is defined
+   in `place-interaction.md` Part B.
 3. Generators turn that into cells.
 4. The checks run; failures are repaired locally (§8).
 
@@ -306,15 +279,19 @@ Each field has a confidence score.
 - size;
 - shape (with a preview);
 - components (rows for the build type's modules, each with a checkbox, the matching
-  pack assets as thumbnails, and **source: pack / generate / auto**);
+  assets as thumbnails, and a **source**: auto / project / library / web / generate);
 - style and location.
 
 **Round 2**, for the chosen components:
 - density (*none / rare / some / common / abundant*);
 - module parameters marked as questions (e.g. garden kind);
-- variants to include or exclude.
+- variants to include or exclude;
+- the **asset plan**: every needed asset, its proposed source and alternatives
+  (`place-assets.md` §6).
 
-Buttons: **Build**, **Back**, **Cancel**. Answers become per-project defaults.
+Buttons: **Build**, **Back**, **Cancel**. Answers become per-project defaults. For large
+places, a **plan preview** in the viewport follows before building. Everything the user
+sees is defined in `place-interaction.md` Part A.
 
 ## 8. Verification and repair
 
@@ -327,7 +304,7 @@ Each stage's output is checked before the next stage builds inside it:
   - zero autotile mismatches; linear features continuous with the right pieces;
   - accessibility cells free;
   - sizes within each slot's range.
-- **Module checks:** each module's own (§5).
+- **Module checks:** the `check` statements of each module's compile template.
 - **Brief conformity, measured:** counts, densities, area and shape within tolerance.
 - **Visual critique:** the part is rendered headless, and a vision model answers the
   module's checklist (*floating, giant or tiny things? houses facing streets? varied?
@@ -345,8 +322,9 @@ approved module build is stored as a **verified example** for future prompts
 - **Chunked tile layers** (arrays per chunk, not one entity per tile).
 - **Command-based undo** for bulk operations: a whole district is one cheap step.
 - Scenes stored and loaded in **regions**; culling and rendering fast at 100k+ sprites.
-- The **place document** (`places/<name>.place.json`) holds the module tree, parameters,
-  seeds and relations. It is the source of truth for regeneration and editing.
+- The **place documents** (`places/<place>/`: Brief, assets, Spec, PLL, solved layout,
+  report, log; `place-schema.md` §1) are the source of truth for regeneration and
+  editing. Nested places (a region's towns, a town's castle) each have their own folder.
 - Stages run node by node with progress, resume after a restart, and parallel requests
   where nodes are independent (districts of one town).
 
@@ -360,6 +338,30 @@ Every built entity carries its module instance (`PlaceNode {place, node}`):
    mark it locked.
 4. Ask the AI: *"more trees in the east gardens"* → the right nodes, the right parameter,
    a regeneration, a check.
+
+## 11. Design review (2026-10-18)
+
+Before development, the design documents were reviewed together. These changes came out
+of it:
+
+| Finding | Change |
+|---|---|
+| **Solving-order bug:** a garden (a region) had to be solved before the house it sits behind (a placement), so global phases could not express "behind the house" | PLL now solves **top-down through the region tree**, with a fixed order of steps inside each region. Each region's **primary** object (house, well, anchor furniture) comes before its sub-regions (`layout-ir.md` §7). |
+| Constraints over **ranges** had no defined meaning | Interval semantics: satisfiable if some choice within the ranges meets it; the compiler picks and records the values (`place-schema.md` §4.3). |
+| A plan constraint used a value known only after solving (footprint density) | Plan-time constraints use Spec values only. Solve-time conditions are PLL `check`s emitted by compile templates. |
+| Interiors and dungeons had no statements for rooms, doors, graphs or caves | Added `floorplan`, `graph`, `connect` (with locks and keys, and lock-aware reachability), and `shape: cave`. |
+| The module contract, relation list and generators were **duplicated** across documents, with drifting names | One authority per subject (the table at the top of `place-schema.md`); the others summarise and point to it. |
+| Slots named roles informally ("crop or flower by kind") | Slots **bind** to ontology roles, with concepts drawn from quality fields and conditional bindings. |
+| Compile rules had no format | **Compile templates**: PLL with placeholders, `when` and `each`. |
+| A module listed both its parents and its children | Children are authoritative; parents are derived. |
+| Module files and the ontology were two possible sources | Module files **are part of** the ontology. |
+| The Spec example's garden mix didn't match its Brief | Two garden nodes with shares 0.36 and 0.24 (60% of plots, 60 / 40 mix). |
+| Doors were referenced (`p14.door`) but the catalog had no door positions | The catalog records **anchors** on the art and the **facings** each asset supports. |
+| Asset sources were only "pack / generate / auto" | Project, AIGE library, web and generate, with a decision procedure (`place-assets.md`). |
+| No licence rule | An allowed licence is a hard rule, with CREDITS written automatically. |
+| Nested places were not defined | `subplace` regions and child place folders (`place-schema.md` §3.5). |
+| When the confirmation window opens was unclear | Every new build, and any regeneration that changes Brief fields; single-node edits don't open it. |
+| What the user is shown, and how the AI is asked, were not defined | `place-interaction.md`: the stages, the result card and "Why?"; thinking before a strict answer. |
 
 ## Sources
 

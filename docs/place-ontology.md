@@ -28,8 +28,9 @@ In a graph this is one queryable structure. The builder consults it at every ste
 | Verify | Which rules apply to this node and its subtree? |
 | Explain | Why was this placed here? (Each decision cites the facts it used.) |
 
-**The module files are generated from the ontology** (or validated against it), so there
-is one source of truth.
+**The module files are part of the ontology:** the loader reads them as `Module` classes,
+alongside the vocabulary, role, relation and rule files, into one graph. There is one
+source of truth, not a copy.
 
 ## 2. What it contains
 

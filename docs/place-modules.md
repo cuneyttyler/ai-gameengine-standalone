@@ -10,6 +10,9 @@ How to read an entry:
 - **K** lists the quality fields; enums use the shared vocabularies (§9).
 - **Slots** are the asset roles: **bold** means essential, plain means adaptable.
 - **Contains** lists the child modules. **Rel** lists the default relations.
+- A parcel's or feature's first essential slot (its building, its well, its anchor piece
+  of furniture) is its **primary** object. PLL places it before the area's sub-regions
+  (`layout-ir.md` §7), and children refer to it as `parent.primary`.
 
 Levels, from outer to inner: **site → zone → parcel → feature → dressing**.
 

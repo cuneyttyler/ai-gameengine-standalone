@@ -1,6 +1,6 @@
 # PLL — the Place Layout Language
 
-Status: **draft specification, v1 (2026-10-18)**. Schema id `aige.ir/1`. *PLL* is a
+Status: **draft specification, v1 (2026-10-18; reviewed the same day)**. Schema id `aige.ir/1`. *PLL* is a
 working name.
 
 PLL is the intermediate language between the **Spec** (the plan tree: *what and how much*)
@@ -25,7 +25,7 @@ from the place ontology (`docs/place-ontology.md`) and stay aligned with GLDL (�
    everything outside it is held fixed.
 6. **2D-grid native.** Cells, cell edges, sides, layers, perspective-aware facing, linear
    pieces, terrain.
-7. **Small.** Fifteen statement kinds and one relation vocabulary. Anything else is
+7. **Small.** Nineteen statement kinds and one relation vocabulary. Anything else is
    added through the ontology (§11).
 
 ## 2. Space and units
@@ -60,7 +60,7 @@ field type (§4).
 ```
 
 - `statements` is a flat list. **Order does not matter**; solving order is fixed by
-  phases (§7).
+  the solving order (§7).
 - Every statement has `op`, an `id` (unique in the document; generated as
   `<node>/<local>` when omitted), and `node`: the Spec node id it came from.
 - The canonical form is JSON. The **text form** (§10) is for reading and review.
@@ -103,11 +103,17 @@ A reference names a statement's **solved result**, optionally narrowed by select
 | `x[i]`, `x[*]` | place with `count`, scatter, subdivide | one instance, or all instances |
 | `parent` | inside a statement | the `in` region of this statement |
 
+**Instance statements.** A statement whose `in` is `x[*]` is **replicated once per
+instance** of `x`, and its id becomes `x[i].<name>`. In `place p[*].house in p[*]`, every
+parcel gets its own house, referred to as `p[3].house`. Inside such a statement, `p[*]`
+means *this* instance.
+
 **Region expressions** combine cell sets: `a | b` (union), `a & b` (intersection), `a - b`
 (difference), for example `"g14.inner - g14.beds"`.
 
-References may point only to statements solved in an **earlier or the same phase** (§7).
-A reference to a later phase is a static error.
+References may point only to results that are solved **before** the referring statement
+in the solving order (§7), or at the same step (relations between members solved
+together). A reference to a later result is a static error.
 
 ## 5. Statements
 
@@ -126,8 +132,10 @@ Every statement also accepts `node` (required), `id`, `tags` (free words, never 
 
 | op | Fields | Meaning |
 |---|---|---|
-| **`region`** | `in` (parent ref; omitted only for the root), `shape`: `rect` · `poly` · `cells` · `any`, `size` and/or `area`, `ratio`, `cells` (for `cells`), `layer` (default `ground`) | An area the solver must find inside its parent. Regions are the hierarchy: plots, gardens, rooms. Sibling regions never overlap. |
+| **`region`** | `in` (parent ref; omitted only for the root), `shape`: `rect` · `poly` · `cells` · `any` · `cave` (cellular automata: `fill`, `steps`), `size` and/or `area`, `ratio`, `cells` (for `cells`), `layer` (default `ground`), `subplace` (a child place's id; `place-schema.md` §3.5) | An area the solver must find inside its parent. Regions are the hierarchy: plots, gardens, rooms. Sibling regions never overlap. A region with `subplace` is solved by the child place, inside the boundary and anchors found here. |
 | **`partition`** | `in`, `into`: a list of `{id, area or share, prefers: [criterion: weight]}`, `method`: `voronoi` · `growth`, `interest`: interest map names | Splits a region into zones. Each zone's `prefers` uses interest criteria from the ontology (`center`, `high-ground`, `water`, `road`, `away-from:<ref>`), each in [−1, 1]; −1 vetoes a cell (Emilien et al.). Each zone becomes a region named by its `id`. |
+| **`floorplan`** | `in` (a building's interior region), `rooms`: a list of `{id, kind, area, size?, adjacent: [ids], entrance: bool}`, `corridors` (bool), `wall` (slot: wall piece set) | Lays out rooms inside a footprint from a room programme (ProcTHOR-style), with walls on the shared edges. Each room becomes a region `id`. Doors are added with `connect`. |
+| **`graph`** | `in`, `nodes`: a list of `{id, kind, size}`, `edges`: a list of `{from, to, kind, lock?: key-id}`, `keys`: a list of `{id, in: node}`, `layout`: `grid` · `organic` · `cave` | An abstract mission/space graph (Dormans; Unexplored's cycles) embedded in the region. Each node becomes a region and each edge a `connect`. Lock–key pairs are kept for checks. |
 | **`subdivide`** | `in`, `style`: `skeleton` · `split` · `mixed`, `area`, `width`, `irregularity` (0–1), `access`: `street` · `any`, `count` (optional) | Splits a block into parcels (Vanegas et al.). With `access: street`, every parcel touches a path. Instances: `id[i]`. |
 
 ### 5.3 Networks
@@ -137,11 +145,17 @@ Every statement also accepts `node` (required), `id`, `tags` (free words, never 
 | **`path`** | `from`, `to`, `via` (refs), `width`, `class`: `main` · `street` · `lane` · `trail` · `river`, `terrain`, `reuse` (cost factor for existing paths, default 0.1), `avoid` (refs), `cost` (criterion weights) | A least-cost route over the grid between anchors. Existing paths are almost free to reuse, so networks join instead of running in parallel. |
 | **`network`** | `in`, `style`: `grid` · `radial` · `organic` · `growth`, `spacing`, `width`, `class`, `connect` (anchor refs), `loops` (0–1) | A street network filling a region. `growth` grows streets toward seeded buildings. Every result counts as a `path`. |
 
+### 5.3b Openings
+
+| op | Fields | Meaning |
+|---|---|---|
+| **`connect`** | `between`: two adjacent regions, `kind`: `door` · `archway` · `opening` · `locked-door` · `secret` · `portcullis` · `stairs`, `width` (cells), `lock` (a key id), `slot` (door art), `at` (optional side or anchor) | An opening in the shared boundary of two regions (rooms, dungeon cells, a bailey and its keep). It creates anchors on both sides, keeps its cells free, and counts for reachability: a `lock` opens only once its key is reachable. |
+
 ### 5.4 Objects
 
 | op | Fields | Meaning |
 |---|---|---|
-| **`place`** | `in`, `slot` (or `asset`), `count` (int or range; default 1), `footprint` (override; default from the catalog), `facing` (side, `any`, or `toward:<ref>`), `layer` (default from the asset), `size` (sprite cells, default from the slot), `keepFree` (selectors such as `"front"`: cells kept walkable) | One or more objects placed by the solver. Assets are chosen per instance from the slot by catalog retrieval (role, perspective, footprint, variety). GLDL's *NewFacility*. |
+| **`place`** | `in`, `slot` (or `asset`), `count` (int or range; default 1), `primary` (bool), `footprint` (override; default from the catalog), `facing` (side, `any`, or `toward:<ref>`), `layer` (default from the asset), `size` (sprite cells, default from the slot), `keepFree` (selectors such as `"front"`: cells kept walkable) | One or more objects placed by the solver. Assets come from the asset plan (`place-assets.md`), chosen per instance (variety). GLDL's *NewFacility*. **`primary`** marks the region's main object: the house of a plot, the well of a plaza, the table of a dining set, Holodeck's *anchor*. It is placed before the region's sub-regions, so they can relate to it (`parent.primary`). **Facing** is limited to what the asset offers (its catalog `facings`): flat art turns to any side; upright art has its drawn facing and, mirrored, the opposite side; directional variants add theirs. |
 | **`line`** | `slot` (a piece set), `along` (region `.edge`, path, or an edge list), `gaps` (anchor refs; each leaves a gate or opening), `closed` (bool) | A linear feature on cell **edges**: fence, wall, hedge. Pieces (straight, corner, end, T, cross, gate) are chosen per edge from the piece set, like autotiling. |
 | **`rows`** | `in`, `slot` or `mix`, `count` or `spacing`, `orientation`: `long-axis` · `short-axis` · side, `margin` | Parallel rows: beds, crops, pews, stalls. |
 | **`grid`** | `in`, `slot` or `mix`, `spacing` (x, y), `jitter` (0–1) | A regular grid: orchards, graves. |
@@ -203,28 +217,38 @@ met makes the solve **unsatisfied** (§9).
 New relation types are registered in the ontology with their arity, arguments and score
 function (§11).
 
-## 7. Solving order (phases)
+## 7. Solving order
 
-The solver runs these phases in order. Within a phase, statements are taken by depth
-(outer first), then by footprint size (large first), then by id, so the order is
-deterministic.
+The solver works **top-down through the region tree**: a region is completed before
+anything inside its sub-regions is solved. Inside each region it takes the statements
+whose `in` is that region in a **fixed order of steps**:
 
-| Phase | Statements | Notes |
+| Step | Statements in the region | Notes |
 |---|---|---|
-| 0 | `fixed`, `anchor` (absolute) | givens occupy their cells |
-| 1 | `region` (root), `partition` | zones; interest maps evaluated |
-| 2 | `path`, `network` | main roads first (`main` → `street` → `lane` → `trail`); rivers before roads |
-| 3 | `subdivide` | parcels with street access |
-| 4 | `region` (nested), `anchor` (relative) | plots' gardens, rooms; anchors on solved regions |
-| 5 | `place` | anchor objects first (most relations), large before small; greedy placement, then simulated annealing over the soft objective |
-| 6 | `line` | fences and walls on solved edges; gates at gap anchors |
-| 7 | `rows`, `grid` | |
-| 8 | `scatter` | free cells only; densities applied to free area |
-| 9 | `fill` | terrain painted and fitted last, around everything |
-| 10 | `check` | verification (§8.3) |
+| a | `fixed`, `anchor` (absolute) | givens occupy their cells (whole document, once, before the root) |
+| b | `path`, `network` | rivers, then `main` → `street` → `lane` → `trail` |
+| c | `partition`, `subdivide`, `floorplan`, `graph` | the region's areas, zones, parcels, rooms, graph nodes |
+| d | `place` with `primary: true` | each area's main object (house, well, anchor furniture), large before small |
+| e | `region` (nested), `anchor` (relative), `connect` | sub-regions can now relate to the primary objects; openings between areas |
+| f | `place` (others) | greedy, anchor-first and large-first placement, then simulated annealing over the soft objective (§8.2) |
+| g | `line` | fences and walls on solved edges; gates at gap anchors |
+| h | `rows`, `grid` | |
+| i | `scatter` | free cells only; density applies to the free area |
 
-A phase's results are **frozen** when the next phase starts. Repair re-opens only the
-failing statement's subtree (§9).
+Then the solver recurses into each area produced in steps c and e, in order of size
+(large first), and repeats steps b–i inside it. Areas produced by `partition`,
+`subdivide`, `floorplan`, `graph` and `region` all count. When the whole tree is done:
+
+| Final step | Statements | |
+|---|---|---|
+| j | `fill` | terrain painted and fitted around everything (whole document) |
+| k | `check` | verification (§8.3) |
+
+Within a step, statements are taken by depth (outer first), then by footprint size (large
+first), then by id, so the order is deterministic. A **relation** is evaluated when its
+last member is solved; members solved earlier are treated as fixed. A finished region is
+**frozen** while its sub-regions are solved. Repair re-opens only the failing statement's
+region and its sub-regions (§9).
 
 **Determinism.** Each statement's random stream is seeded with `hash(document seed,
 statement id)`, so adding or removing one statement doesn't change the others' results.
@@ -238,9 +262,11 @@ statement id)`, so adding or removing one statement doesn't change the others' r
 3. Objects stand only on terrain their asset allows (from the catalog).
 4. `keepFree` cells stay walkable.
 5. Every `anchor` of kind `entrance`, `gate` or `door` is reachable from the place's main
-   entrance on walkable cells.
+   entrance on walkable cells. Locked `connect`s open only once their key is reachable
+   (lock–key completability; secrets may be exempt).
 6. `line`s are continuous along their edges, with valid joins; openings only at `gaps`.
 7. Every asset chosen is perspective-compatible with `grid.style`.
+8. Every asset chosen has an allowed licence (`place-assets.md` §7).
 
 ### 8.2 Objective (soft), per region
 
@@ -285,7 +311,7 @@ matched across re-solves.
 | Code | When | Typical repair |
 |---|---|---|
 | `E-SCHEMA` | invalid field or type | compile error (a bug) |
-| `E-REF` | unresolved reference, or a reference to a later phase | compile error |
+| `E-REF` | unresolved reference, or a reference to a result solved later | compile error |
 | `E-AREA` | static: the children's minimum areas exceed the parent's area | re-plan the node (fewer or smaller children) |
 | `E-CONFLICT` | static: contradictory hard relations (`inside a` and `outside a`) | re-plan |
 | `S-UNSAT` | a hard rule or hard relation can't be met | re-solve with a new seed, relax adaptable items, then re-plan |
@@ -355,7 +381,7 @@ network   w-old.streets in w-old style organic spacing [8, 12] width 1 class str
           connect [market.gate-n, walls-1.gate-w] loops 0.3
 subdivide p in w-old - w-old.streets style mixed area [35, 70] width [5, 9]
           irregularity 0.3 access street count 28
-place     p[*].house in p[*] slot house facing toward: p[*].street count 1
+place     p[*].house in p[*] slot house primary true facing toward: p[*].street
           keepFree [front]
 relation  in-front-of(p[*].street, p[*].house) weight 3
 objective in w-old cluster 0.2 sparsity 0.5 coverage 2
@@ -367,7 +393,7 @@ check     count(p, [26, 30])
 
 - **Statement kinds** and **relation types** are registered in the place ontology (as
   `Generator` and `Relation` classes). Each entry gives its fields with types and
-  defaults, its phase, and (for relations) its arity, arguments, score function and
+  defaults, its step in the solving order, and (for relations) its arity, arguments, score function and
   default hardness. The validator and the solver both read the registry, so adding one
   never changes the parser.
 - **Interest criteria** (`high-ground`, `water`, `road`, `away-from`…) are ontology
@@ -391,7 +417,10 @@ check     count(p, [26, 30])
 | agent simulation of navigability | `path-between`, `reachable`, and the walk-through agent in Verify |
 
 PLL adds:
-- **hierarchy** (`region` in `region`) and **provenance** (`node`);
+- **hierarchy** (`region` in `region`), **nested places** (`subplace`) and
+  **provenance** (`node`);
+- **rooms, graphs and openings** (`floorplan`, `graph`, `connect`, with lock–key
+  reachability);
 - **networks**, **subdivision**, **linear features**, **rows, grids and scatter**, and
   **terrain**;
 - **n-ary group relations** (`in-row`, `symmetric`, `repeat`);

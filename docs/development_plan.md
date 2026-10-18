@@ -1627,7 +1627,8 @@ uses the pack's houses, well, fences and decorations, on the grid the art was dr
 
 ## Phase 7 — AI-Generated Building
 
-**Status: design under review (2026-10-18).** Documents:
+**Status: design reviewed (2026-10-18); awaiting approval before 7.1.** Documents (the
+authority for each subject is listed at the top of `place-schema.md`):
 - `docs/ai-building.md`: why, the research, and what each source contributes;
 - `docs/place-schema.md`: **the procedure, its documents, the intermediate language and
   the constraints**;
@@ -1636,14 +1637,20 @@ uses the pack's houses, well, fences and decorations, on the grid the art was dr
 - `docs/place-ontology.md`: **the place ontology**, a knowledge graph of modules,
   fields, vocabularies, roles, relations and rules that every step consults;
 - `docs/layout-ir.md`: **PLL, the Place Layout Language**, the intermediate language
-  (our own, aligned with GLDL's terms).
+  (our own, aligned with GLDL's terms);
+- `docs/place-assets.md`: **where each asset comes from**: the project, the AIGE
+  library, the web, or the Art tool, by a fixed decision procedure, with licences;
+- `docs/place-interaction.md`: **what the user sees** (every stage, the result card,
+  "Why?") and **how each AI call is made** (thinking, then a strict answer, then
+  validation).
 
 **Agreed (2026-10-18):**
 - **size:** very big, up to regions of several settlements;
 - **confirmation:** the window opens for every build;
 - **editing:** after the build, per part;
 - **perspective:** top-down and ¾ / isometric art both, mixed where compatible;
-- **assets:** the pack's or generated, chosen per component in the window;
+- **assets:** per component in the window: auto, project, AIGE library, web or
+  generate (`auto` follows `place-assets.md`);
 - **model budget:** no limit.
 
 **Goal:** a framework, not a recipe. Any build follows one structured procedure, and every
@@ -1682,7 +1689,7 @@ Query → Interpret (Brief drafts) → Confirm (Brief) → Plan (Spec: quantity 
   - classes, properties and rules in the engine's JSON graph format, loaded in memory,
     with subgraph retrieval for prompts;
   - export to OWL, SKOS and SHACL;
-  - module files generated from it, or validated against it.
+  - the module files are part of it (one source).
 - The documents and schemas:
   - `aige.brief/1`, `aige.spec/1` (the plan tree with quantity and quality fields);
   - `aige.module/1` (a module's fields, slots, children, constraints, relations, compile
@@ -1733,10 +1740,17 @@ Query → Interpret (Brief drafts) → Confirm (Brief) → Plan (Spec: quantity 
 - The AI drafts **several Briefs** for the query. Fields where the drafts disagree, or
   with low confidence, are highlighted.
 - The **confirmation window** is generated from the build type's Brief schema:
-  - round 1: size with numbers, layout with sketches, components with thumbnails and
-    **pack / generate / auto**, style, location;
-  - round 2: densities and asked module fields for the chosen components.
-- **Every build** shows it. Answers become project defaults.
+  - round 1: size with numbers, layout with sketches, components with thumbnails and a
+    **source** (auto, project, library, web, generate), style, location;
+  - round 2: densities, asked module fields, and the **asset plan** (needs, proposed
+    sources, alternatives).
+- **Every new build** shows it, as does any regeneration that changes Brief fields.
+  Answers become project defaults.
+- The AI-call protocol (`place-interaction.md` Part B): **think in free text, then
+  answer in the strict schema** (native reasoning, two-pass or one-pass, by provider),
+  then validate, with one repair round. Everything is logged per place.
+- The **plan preview** (the plan view over the viewport) for large places, before
+  building.
 - Tests: Briefs from vague and detailed queries; disagreement highlighting; window
   output validating as a Brief.
 
@@ -1751,12 +1765,13 @@ Query → Interpret (Brief drafts) → Confirm (Brief) → Plan (Spec: quantity 
   buildings); repair of a broken node.
 
 **7.6 — Compile and solve (the generators)**
-- Each module's **compile rules** turn Spec nodes into **Layout IR**. The AI adds
+- Each module's **compile template** turns Spec nodes into **PLL**. The AI adds
   relations at the upper levels.
-- Solvers run in the IR's fixed order:
+- The solver goes **top-down through the region tree**, in a fixed order of steps inside
+  each region (primary objects before sub-regions; `layout-ir.md` §7):
   - `partition` (relations + interest maps with vetoes);
   - `path` and `network` (least-cost with road reuse; grid, radial, organic, growth);
-  - `subdivide` (skeleton, split, mixed);
+  - `subdivide` (skeleton, split, mixed), `floorplan`, `graph`, `connect` (lock–key);
   - `place` (anchor first, large first, then annealing over scored relations, with
     clustering and sparsity terms);
   - `line` (edge-joined piece sets);
@@ -1776,6 +1791,9 @@ Query → Interpret (Brief drafts) → Confirm (Brief) → Plan (Spec: quantity 
 - **Repair:** move or remove *adaptable* slots, re-solve the node, or re-plan it with the
   reason. Then report.
 - Approved builds join the **verified examples** used in prompts.
+- The **progress view** and the **result card** (asked vs built, assets by source with
+  licences, checks, repairs, next steps), and **"Why?"** per part
+  (`place-interaction.md` Part A).
 - Tests: injected failures are repaired; reports are accurate.
 
 **7.8 — Edit after the build**
@@ -1789,13 +1807,28 @@ Query → Interpret (Brief drafts) → Confirm (Brief) → Plan (Spec: quantity 
 - Tests: an edit regenerates only its subtree; locks and customisations survive a
   parent's regeneration.
 
-**7.9 — Asset gaps**
-- For each slot, follow the user's choice:
-  1. use the pack's asset;
-  2. **generate** in the pack's style (palette, perspective, reference), then analyze it
-     like any asset;
-  3. **auto** (pack first, else generate);
-  4. a labelled placeholder, reported.
+**7.9 — Asset sourcing** (`place-assets.md`)
+- The **asset plan**: needs from the Brief's components and their slots, merged, with an
+  importance and a style-critical flag.
+- **Fit**: hard filters (role and concept, perspective, footprint, layer, licence, piece
+  completeness), then a weighted score (semantic, style profile, size, quality) with
+  good and usable thresholds.
+- **The decision procedure** per policy:
+  - `auto`: the project, then the library, then generation for style-critical needs, the
+    web for others, then generation, then the best usable candidate, then dropping or a
+    placeholder;
+  - `project`, `library`, `web` and `generate` narrow that order.
+- **Sources:**
+  - the **project** catalog;
+  - the **AIGE library** interface (returns nothing until the library exists);
+  - the **web tool**: search approved sites, download into isolation, read the licence,
+    segment, analyse;
+  - the **Art tool**: generation with the style profile and references; missing pieces
+    of a set generated from an existing piece; critic-checked, 3 attempts.
+- **Licences and provenance** in `.meta`; an allowed-licence hard rule; `CREDITS.md`
+  written and exported.
+- Tests: the decision table, licence filtering, piece-set completion, `assets.json`
+  round-trip.
 
 **7.10 — More build types**
 - Region, castle, interior (multi-floor), dungeon and cave, farmland, wilderness and
@@ -1817,6 +1850,13 @@ Query → Interpret (Brief drafts) → Confirm (Brief) → Plan (Spec: quantity 
 Phases after 5 are planned as development goes (2026-10-17): each new phase is written
 when we start it, pulling in what it needs from this list and from testing. Nothing here
 is scheduled or numbered.
+
+### AIGE asset library
+
+A curated, pre-analysed asset collection, organised in style families, with catalog v2
+metadata, ontology links (roles, concepts), licences and retrieval embeddings, installable
+per project. Phase 7 defines its interface (`place-assets.md` §2); building the library
+itself is separate work.
 
 ### Engine expansion
 
