@@ -15,6 +15,7 @@ class Completion:
     text: str
     usage: Usage = field(default_factory=Usage)
     model: str = ""
+    thinking: str = ""  # a reasoning model's thinking, returned apart from the answer (native mode)
 
 
 class Provider(Protocol):
@@ -22,6 +23,10 @@ class Provider(Protocol):
     model: str
 
     def complete(self, messages: list[dict]) -> Completion: ...
+
+    # Optional (place building, 7.4): `complete_text(messages)` answers in free
+    # text, not JSON (the thinking pass); `reasoning = True` marks a model that
+    # returns its thinking apart from its answer.
 
 
 class ProviderError(Exception):
@@ -37,26 +42,50 @@ class MistralProvider:
         self.model = model
         self._client = Mistral(api_key=api_key)
         self._timeout_ms = int(timeout_s * 1000)
+        # Magistral models think apart from their answer (place-interaction.md B3, native mode).
+        self.reasoning = "magistral" in model
 
     def complete(self, messages: list[dict]) -> Completion:
+        return self._call(messages, json_mode=True)
+
+    def complete_text(self, messages: list[dict]) -> Completion:
+        """Free text: the thinking pass of a two-pass call."""
+        return self._call(messages, json_mode=False)
+
+    def _call(self, messages: list[dict], json_mode: bool) -> Completion:
         try:
+            options = {"response_format": {"type": "json_object"}} if json_mode else {}  # the prompt spells out the shape
             response = self._client.chat.complete(
                 model=self.model,
                 messages=messages,
-                response_format={"type": "json_object"},  # JSON mode; the prompt spells out the shape
                 temperature=0.2,
                 timeout_ms=self._timeout_ms,
+                **options,
             )
         except Exception as error:  # the SDK raises several types; all mean "no answer"
             raise ProviderError(f"Mistral request failed: {error}") from error
         choice = response.choices[0]
-        text = choice.message.content if isinstance(choice.message.content, str) else str(choice.message.content)
+        content = choice.message.content
+        thinking = ""
+        if isinstance(content, str):
+            text = content
+        else:
+            # Reasoning models answer in chunks: thinking chunks, then text.
+            parts, thoughts = [], []
+            for chunk in content or []:
+                kind = getattr(chunk, "type", "")
+                if kind == "thinking":
+                    for inner in getattr(chunk, "thinking", []) or []:
+                        thoughts.append(getattr(inner, "text", "") or "")
+                elif hasattr(chunk, "text"):
+                    parts.append(chunk.text or "")
+            text, thinking = "".join(parts), "\n".join(thoughts)
         usage = Usage(
             inputTokens=getattr(response.usage, "prompt_tokens", 0) or 0,
             outputTokens=getattr(response.usage, "completion_tokens", 0) or 0,
             requests=1,
         )
-        return Completion(text=text, usage=usage, model=response.model or self.model)
+        return Completion(text=text, usage=usage, model=response.model or self.model, thinking=thinking)
 
 
 class ScriptedProvider:
@@ -69,6 +98,11 @@ class ScriptedProvider:
     def __init__(self, answers: list[str] | Callable[[list[dict]], str]):
         self._answers = answers
         self.requests: list[list[dict]] = []
+        self.text_requests: list[int] = []
+
+    def complete_text(self, messages: list[dict]) -> Completion:
+        self.text_requests.append(len(self.requests))  # which request was free text
+        return self.complete(messages)
 
     def complete(self, messages: list[dict]) -> Completion:
         self.requests.append(messages)

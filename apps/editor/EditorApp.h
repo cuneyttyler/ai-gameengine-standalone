@@ -23,6 +23,7 @@
 #include "gameplay/TileLayer.h"
 #include "assets/Catalog.h"
 #include "places/Ontology.h"
+#include "editing/PlaceBuild.h"
 #include "renderer2d/Camera2D.h"
 #include "renderer2d/Renderer2D.h"
 #include "ui/GameUi.h"
@@ -147,7 +148,11 @@ private:
 
     nlohmann::json AiStatusJson();
     void PollAi();
-    void SendToAi(const std::string& text, const std::string& focus);
+    // A request to build a place ("a village by a river") starts a build
+    // (7.4) unless `asChange`; anything else becomes a proposal.
+    void SendToAi(const std::string& text, const std::string& focus, bool asChange = false);
+    void StartBuild(const std::string& query);
+    void PostBuild();
     void OnProposal(int requestId, const nlohmann::json& body);
     void ApplyProposal(int proposalId, const nlohmann::json& decisions);
     void RejectProposal(int proposalId);
@@ -372,6 +377,7 @@ private:
     std::string playSnapshot_;
     TileLayers playLayers_; // the edited scene's tile layers while playing (7.2)
     std::optional<Ontology> places_;
+    std::unique_ptr<PlaceBuild> build_; // the build open in the Build panel (7.4)
     // The selection when Play started, restored on Stop. Indices taken from
     // the live registry at Stop would be off once enemies die mid-play.
     std::optional<size_t> selectionIndexAtPlay_;

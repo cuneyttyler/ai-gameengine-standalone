@@ -42,7 +42,7 @@ bool InVocabulary(const Ontology& ontology, const FieldDef& field, const std::st
 
 // --- fields -----------------------------------------------------------------------
 
-Value FieldValue(const FieldDef& field, const json& given) {
+Value FieldValueOf(const FieldDef& field, const json& given) {
     const json& value = given.is_null() ? field.defaultValue : given;
     if (value.is_null()) return Value::Unknown();
     const std::string& t = field.type;
@@ -218,7 +218,7 @@ public:
         const FieldDef* f = n.module->Field(field);
         if (f == nullptr) return Value::Unknown();
         const json& group = (*n.data).value(f->quantity ? "quantity" : "quality", json::object());
-        return FieldValue(*f, group.is_object() && group.contains(field) ? group[field] : json());
+        return FieldValueOf(*f, group.is_object() && group.contains(field) ? group[field] : json());
     }
 
     Value Below(int node, bool descendants, const std::string& module, const std::string& cls) override {

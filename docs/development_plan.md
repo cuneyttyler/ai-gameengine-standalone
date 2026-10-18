@@ -1889,6 +1889,40 @@ build).
 - Tests: footprints and anchors on sample art; piece sets; perspective mismatches flagged.
 
 **7.4 — Interpret and Confirm**
+
+**Done (2026-10-18):**
+- **The AI-call protocol** (`ai_service/app/places.py`): think in free text, then answer
+  in the strict schema. Native (a reasoning model's own thinking), two-pass (the
+  default) or one-pass, chosen per provider. Answers wrapped in prose are still read.
+  One repair round lists the exact violations (`/places/repair-brief`).
+- **Interpret** (`/places/interpret`): three drafts from three readings (literal,
+  typical, generous) drawn up in parallel, each with confidences, assumptions,
+  questions and a rationale.
+- **In the engine** (`places/Brief.h`):
+  - what can be built, for the prompt;
+  - recognising a build request (anything else stays a proposal);
+  - merging drafts: the majority value per field, a tie going to the typical
+    reading; a component is on by majority; disputed and guessed fields are marked,
+    with the other readings' values;
+  - completing a Brief from the scale table (the numbers win over the class word)
+    and from the project's earlier answers (`places/defaults.json`).
+- **The window** (`editing/BuildWindow.h`), generated from the build type's Brief
+  schema:
+  - round 1: size with numbers, layout with sketches, walls, features, style, and
+    every component with on, amount, thumbnails and source;
+  - round 2: the asked module fields, and the **asset plan**. Each slot's needs come
+    from what the components contain; the project's candidates are found by catalog
+    retrieval, and the proposed source has a reason.
+- **The build** (`editing/PlaceBuild.h`): request → drafts → validation → repair once
+  → merge → ① Request → ② Assets → the confirmed Brief in `places/<id>/brief.json`.
+  Every call (its thinking too) goes to `places/<id>/log.jsonl`.
+- **The Build panel**: a dockable panel with the stepper. It opens when a build starts
+  and docks at the bottom by default. The AI panel shows a compact **build card**,
+  with "Open build panel" and "Ask as a change instead".
+- Tests: `tests/brief_test.cpp`, `ai_service/tests/test_places.py`,
+  `ui/tests/buildwindow.test.ts`.
+
+Moved to 7.5: the plan preview needs the plan.
 - The AI drafts **several Briefs** for the query. Fields where the drafts disagree, or
   with low confidence, are highlighted.
 - The **Build panel** (`place-interaction.md` A2): a new dockable panel (bottom by
@@ -1918,6 +1952,8 @@ build).
 - **Lower levels come from the module's expansion rules** (the encyclopedia), so a city
   takes tens of AI calls, not thousands.
 - `repeat` and `share` keep large Specs compact.
+- The **plan preview** (the Build panel's ③ Plan step and a plan view over the
+  viewport) for large places, before building (moved here from 7.4).
 - Tests: Specs for every settlement scale validate; aggregates hold (Σ houses =
   buildings); repair of a broken node.
 

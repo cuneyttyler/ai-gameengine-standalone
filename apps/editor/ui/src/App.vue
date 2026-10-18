@@ -23,6 +23,7 @@ import ScenePanel from './components/ScenePanel.vue'
 import ViewportPanel from './components/ViewportPanel.vue'
 import ProjectPanel from './components/ProjectPanel.vue'
 import GeneratePanel from './components/GeneratePanel.vue'
+import BuildPanel from './components/BuildPanel.vue'
 import { keyLabel } from './keys'
 import {
   dockView,
@@ -118,6 +119,7 @@ onBeforeUnmount(() => setShell(null))
         <div class="panel-host" :style="hostStyle('project')"><ProjectPanel /></div>
         <div class="panel-host" :style="hostStyle('generate')"><GeneratePanel /></div>
         <div class="panel-host" :style="hostStyle('ai')"><AiPanel /></div>
+        <div class="panel-host" :style="hostStyle('build')"><BuildPanel /></div>
 
         <!-- While dragging: where the panel will land, and its name under the pointer. -->
         <template v-if="dockView.dragging">

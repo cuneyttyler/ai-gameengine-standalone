@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from .models import EditorContext, EngineSchema, Proposal, Usage
 from .consistency import check_consistency, writing_from_operations
 from .images import ImageGenerator, MistralImageGenerator, generate_sprites
+from .places import interpret, repair_brief
 from .vision import describe_assets
 from .providers import MistralEmbedder, MistralProvider, Provider, ProviderError
 from .service import propose
@@ -58,6 +59,20 @@ class DescribeAssetsRequest(BaseModel):
     paths: list[str] = []
     items: list[dict] = []   # objects cut from sheets: {"id", "path", "rect": [x, y, w, h]} (7.3)
     roles: list[str] = []    # the ontology roles to choose from
+
+
+class InterpretRequest(BaseModel):
+    query: str
+    context: dict          # what can be built (engine/places InterpretContext)
+    drafts: int = 3
+    mode: str = "auto"     # auto, native, two-pass, one-pass (place-interaction.md B3)
+
+
+class RepairBriefRequest(BaseModel):
+    query: str
+    context: dict
+    brief: dict
+    problems: list[dict]   # {"where", "message"} from the validator
 
 
 class GenerateAssetRequest(BaseModel):
@@ -227,6 +242,26 @@ def create_app(
         if len(request.paths) + len(request.items) > 400:
             return {"ok": False, "errors": ["At most 400 images at a time"]}
         return describe_assets(vision, root, request.paths, items=request.items, roles=request.roles or None)
+
+    @app.post("/places/interpret")
+    def places_interpret(request: InterpretRequest) -> dict:
+        provider: Provider | None = state["provider"]
+        if provider is None:
+            return {"ok": False, "errors": ["No AI provider configured: set MISTRAL_API_KEY in ai_service/.env"]}
+        if not request.query.strip():
+            return {"ok": False, "errors": ["Say what to build"]}
+        result = interpret(provider, request.query, request.context, request.drafts, request.mode)
+        state["usage"].add(Usage(**result["usage"]))
+        return result
+
+    @app.post("/places/repair-brief")
+    def places_repair_brief(request: RepairBriefRequest) -> dict:
+        provider: Provider | None = state["provider"]
+        if provider is None:
+            return {"ok": False, "errors": ["No AI provider configured"]}
+        result = repair_brief(provider, request.query, request.context, request.brief, request.problems)
+        state["usage"].add(Usage(**result["usage"]))
+        return result
 
     @app.post("/assets/generate")
     def assets_generate(request: GenerateAssetRequest) -> dict:

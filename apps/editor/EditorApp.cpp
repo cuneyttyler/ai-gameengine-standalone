@@ -745,7 +745,23 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     } else if (type == "ai:reapply") {
         ReapplyProposal(message.value("id", 0));
     } else if (type == "ai:send") {
-        SendToAi(message.value("text", ""), message.value("focus", ""));
+        SendToAi(message.value("text", ""), message.value("focus", ""), message.value("asChange", false));
+    } else if (type == "build:start") {
+        StartBuild(message.value("query", ""));
+    } else if (type == "build:request") {
+        PostBuild();
+    } else if (type == "build:edit") {
+        if (build_) build_->Edit(message.value("path", ""), message.value("value", nlohmann::json()));
+        PostBuild();
+    } else if (type == "build:step" || type == "build:confirm") {
+        if (build_) {
+            const std::string why = type == "build:confirm" ? build_->Confirm() : build_->Step(message.value("step", ""));
+            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not yet: " + why}});
+        }
+        PostBuild();
+    } else if (type == "build:cancel") {
+        if (build_) build_->Cancel();
+        PostBuild();
     } else if (type == "ai:apply") {
         ApplyProposal(message.value("id", 0), message.value("items", nlohmann::json::array()));
     } else if (type == "ai:reject") {
@@ -800,7 +816,8 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         post_(CatalogJson());
     } else if (type == "catalog:set") {
         std::map<std::string, std::string> fields;
-        for (const auto& [key, value] : message.value("fields", nlohmann::json::object()).items()) {
+        const auto fieldsSent = message.value("fields", nlohmann::json::object());
+        for (const auto& [key, value] : fieldsSent.items()) {
             if (value.is_string()) fields[key] = value.get<std::string>();
         }
         if (SetCatalogFields(assets_, message.value("id", ""), fields)) {
@@ -2628,7 +2645,10 @@ void EditorApp::PollAi() {
         if (result->kind == AiClient::Result::Kind::Status) {
             post_(AiStatusJson());
         } else if (result->kind == AiClient::Result::Kind::Response) {
-            if (result->requestId == worldSearchRequest_) {
+            if (build_ && build_->Owns(result->requestId)) {
+                build_->OnResponse(result->requestId, result->body);
+                PostBuild();
+            } else if (result->requestId == worldSearchRequest_) {
                 post_({{"type", "world:searchResults"}, {"result", result->body}});
             } else if (result->requestId == analyzeRequest_) {
                 analyzeRequest_ = 0;
@@ -2683,18 +2703,57 @@ void EditorApp::PollAi() {
                 }
                 consistencyRequests_.erase(it);
             }
+        } else if (build_ && build_->Owns(result->requestId)) {
+            build_->OnResponse(result->requestId, result->body.is_object() ? result->body : nlohmann::json{{"ok", false}});
+            PostBuild();
         } else {
             OnProposal(result->requestId, result->body);
         }
     }
 }
 
-void EditorApp::SendToAi(const std::string& text, const std::string& focus) {
+void EditorApp::StartBuild(const std::string& query) {
+    if (build_ && build_->Stage() == "interpreting") {
+        post_({{"type", "notify"}, {"text", "A build is still reading its request"}});
+        return;
+    }
+    PlaceBuild::Host host;
+    host.ontology = [this]() -> const Ontology& { return Places(); };
+    host.catalog = [this] { return BuildCatalog(assets_, &Places(), CatalogOptionsNow()); };
+    host.isoGrid = [] { return ActiveSettings().grid.style != GridStyle::TopDown; };
+    host.request = [this](const std::string& path, const nlohmann::json& body, int timeout) {
+        return Ai() && Ai()->GetState() == AiClient::State::Ready ? Ai()->Request("POST", path, body, timeout) : 0;
+    };
+    host.projectRoot = assets_.GetProject().root;
+    build_ = std::make_unique<PlaceBuild>(std::move(host));
+    const std::string why = build_->Start(query);
+    if (!why.empty()) post_({{"type", "notify"}, {"text", "Can't build: " + why}});
+    post_({{"type", "build:open"}});
+    PostBuild();
+}
+
+void EditorApp::PostBuild() {
+    if (!build_) {
+        post_({{"type", "build:state"}, {"stage", ""}});
+        return;
+    }
+    post_(build_->State());
+    post_(build_->Card());
+}
+
+void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool asChange) {
     if (!Ai() || text.empty()) {
         return;
     }
     if (playing_) {
         post_({{"type", "ai:message"}, {"role", "error"}, {"text", "Stop Play mode before asking for changes."}});
+        return;
+    }
+    // Building a place goes to the Build panel, not a proposal card.
+    if (!asChange && LooksLikeBuildRequest(Places(), text)) {
+        conversation_.emplace_back("user", text);
+        post_({{"type", "ai:message"}, {"role", "user"}, {"text", text}});
+        StartBuild(text);
         return;
     }
     ContextOptions options;

@@ -9,6 +9,8 @@ add_library(aige_places STATIC
     Expr.cpp
     PlaceValidate.h
     PlaceValidate.cpp
+    Brief.h
+    Brief.cpp
 )
 target_include_directories(aige_places PUBLIC ${CMAKE_SOURCE_DIR}/engine)
 target_link_libraries(aige_places PUBLIC nlohmann_json::nlohmann_json)

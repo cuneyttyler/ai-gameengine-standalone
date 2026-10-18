@@ -1867,7 +1867,8 @@ gbl:Garden.crop-mix
     gbo:fieldName "crop-mix" ;
     gbo:fieldType gbo:mix ;
     gbo:vocabulary gbv:crop-kind ;
-    gbo:when "kind in [vegetable, mixed]"^^gbo:Expression .
+    gbo:when "kind in [vegetable, mixed]"^^gbo:Expression ;
+    gbo:askedInConfirmation true .
 
 gbl:Garden.fenced
     a gbo:QualityField, owl:DatatypeProperty ;
@@ -1885,7 +1886,8 @@ gbl:Garden.flower-mix
     gbo:fieldName "flower-mix" ;
     gbo:fieldType gbo:mix ;
     gbo:vocabulary gbv:flower-kind ;
-    gbo:when "kind in [flower, mixed]"^^gbo:Expression .
+    gbo:when "kind in [flower, mixed]"^^gbo:Expression ;
+    gbo:askedInConfirmation true .
 
 gbl:Garden.kind
     a gbo:QualityField, owl:DatatypeProperty ;
@@ -1947,7 +1949,8 @@ gbl:Garden.child.vegetable-bed
     gbo:minCount 0 ;
     gbo:maxCount 12 ;
     gbo:countField gbl:Garden.beds ;
-    gbo:weight 1.0 .
+    gbo:weight 1.0 ;
+    gbo:when "kind in [vegetable, mixed]"^^gbo:Expression .
 
 gbl:GateWard
     a owl:Class, gbo:Module ;

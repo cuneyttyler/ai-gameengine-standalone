@@ -40,6 +40,7 @@ export const panelNames: Record<PanelId, string> = {
   project: 'Project',
   generate: 'Generate',
   ai: 'AI',
+  build: 'Build',
 }
 export const sideNames: Record<Side, string> = { left: 'Left', top: 'Top', right: 'Right', bottom: 'Bottom' }
 
@@ -120,11 +121,15 @@ function migrate(): LayoutState | null {
 // A panel that didn't exist when a layout was saved (Project and Generate,
 // split out of Assets in 6.8) joins Assets' group as a tab, so it's where its
 // tabs used to be.
+// Panels that stay hidden until they have something to show (the Build panel
+// opens when a build starts, 7.4).
+const startsHidden: PanelId[] = ['build']
+
 function addNewPanels(root: DockNode | null, known: PanelId[] | undefined): DockNode | null {
   const before = known ?? (['viewport', 'scene', 'assets', 'ai'] as PanelId[])
   let next = root
   for (const id of panelIds) {
-    if (before.includes(id) || panelsIn(next).includes(id)) continue
+    if (before.includes(id) || panelsIn(next).includes(id) || startsHidden.includes(id)) continue
     const assets = groupOf(next, 'assets')
     const active = assets?.active
     next = dropPanel(next, id, assets ? { kind: 'tab', group: assets.id } : { kind: 'edge', side: homeSide[id] })

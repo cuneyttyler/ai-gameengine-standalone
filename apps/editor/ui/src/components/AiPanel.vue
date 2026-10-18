@@ -7,6 +7,7 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { confirmDialog } from '../dialogs'
 import { editorState, setAiEnabled, setAiOpen } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
+import { setPanelVisible, activatePanel } from '../layout'
 import FieldEditor, { type FieldData } from './FieldEditor.vue'
 
 interface ChangeItem {
@@ -85,7 +86,17 @@ interface SplitEntry {
   parts: string[]
 }
 
-type Entry = ProposalEntry | MessageEntry | TaskEntry | SplitEntry
+// A place build (7.4): its stage in a line or two; the build itself is in the Build panel.
+interface BuildEntry {
+  kind: 'build'
+  id: string
+  name: string
+  stage: string
+  text: string
+  query: string
+}
+
+type Entry = ProposalEntry | MessageEntry | TaskEntry | SplitEntry | BuildEntry
 
 const entries = ref<Entry[]>([])
 const input = ref('')
@@ -138,6 +149,13 @@ async function clearConversation(): Promise<void> {
 function handle(message: Record<string, unknown>): void {
   if (message.type === 'ai:message') {
     entries.value.push({ kind: 'message', role: message.role as 'user' | 'error', text: message.text as string })
+  } else if (message.type === 'build:card') {
+    if (!message.buildId) return
+    const card = entries.value.find((e) => e.kind === 'build' && e.id === message.buildId) as BuildEntry | undefined
+    const fields = { name: String(message.name ?? ''), stage: String(message.stage ?? ''), text: String(message.text ?? ''),
+      query: String(message.query ?? '') }
+    if (card) Object.assign(card, fields)
+    else entries.value.push(reactive({ kind: 'build', id: String(message.buildId), ...fields }) as BuildEntry)
   } else if (message.type === 'ai:proposal') {
     const items = message.items as ChangeItem[]
     const entry: ProposalEntry = reactive({
@@ -331,6 +349,16 @@ function stopTask(entry: TaskEntry): void {
   sendToHost({ type: 'ai:taskStop', id: entry.id })
 }
 
+function showPanel(id: 'build'): void {
+  setPanelVisible(id, true)
+  activatePanel(id)
+}
+
+function askAsChange(entry: BuildEntry): void {
+  sendToHost({ type: 'build:cancel' })
+  sendToHost({ type: 'ai:send', text: entry.query, asChange: true })
+}
+
 function useSplitPart(part: string): void {
   input.value = part
   nextTick(() => inputEl.value?.focus())
@@ -518,6 +546,21 @@ const examples = [
             Changes go to a working copy; nothing reaches your project until you review the result.
           </div>
           <div v-if="entry.reason" class="task-note">{{ entry.reason }}</div>
+        </div>
+
+        <div v-else-if="entry.kind === 'build'" class="build-card" :class="entry.stage">
+          <div class="build-title">Building {{ entry.name || entry.query }}</div>
+          <div class="build-text">{{ entry.text }}</div>
+          <div class="build-buttons">
+            <button class="primary" @click="showPanel('build')">Open build panel</button>
+            <button
+              v-if="entry.stage === 'interpreting' || entry.stage === 'request'"
+              title="Not a place to build: treat it as a change to the scene instead"
+              @click="askAsChange(entry)"
+            >
+              Ask as a change instead
+            </button>
+          </div>
         </div>
 
         <div v-else-if="entry.kind === 'split'" class="split">
@@ -821,6 +864,29 @@ h2 {
   margin-top: 4px;
 }
 .task,
+.build-card {
+  border: 1px solid #45475a;
+  border-left: 3px solid #89b4fa;
+  background: #1e1e2e;
+  padding: 8px 10px;
+  margin: 6px 0;
+}
+.build-card.failed,
+.build-card.cancelled {
+  border-left-color: #6c7086;
+}
+.build-title {
+  font-weight: 600;
+}
+.build-text {
+  color: #a6adc8;
+  margin: 4px 0 8px;
+}
+.build-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 .split {
   margin: 8px 0;
   padding: 10px;

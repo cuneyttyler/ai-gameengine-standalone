@@ -70,12 +70,14 @@
     "flower-mix": {
       "type": "mix",
       "vocabulary": "flower-kind",
-      "when": "kind in [flower, mixed]"
+      "when": "kind in [flower, mixed]",
+      "ask": true
     },
     "crop-mix": {
       "type": "mix",
       "vocabulary": "crop-kind",
-      "when": "kind in [vegetable, mixed]"
+      "when": "kind in [vegetable, mixed]",
+      "ask": true
     },
     "fenced": {
       "type": "bool",
@@ -146,7 +148,8 @@
       "min": 0,
       "weight": 1.0,
       "max": 12,
-      "count": "beds"
+      "count": "beds",
+      "when": "kind in [vegetable, mixed]"
     },
     "fence-line": {
       "min": 0,

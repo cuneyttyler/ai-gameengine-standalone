@@ -11,7 +11,7 @@
 // Pure functions over plain data: no Vue, no DOM, so tests/docktree.test.ts
 // can run them directly. Each returns a new tree; inputs are never changed.
 
-export type PanelId = 'viewport' | 'scene' | 'assets' | 'project' | 'generate' | 'ai'
+export type PanelId = 'viewport' | 'scene' | 'assets' | 'project' | 'generate' | 'ai' | 'build'
 export type Side = 'left' | 'right' | 'top' | 'bottom'
 export type Direction = 'row' | 'column'
 
@@ -39,7 +39,7 @@ export type DropTarget =
   | { kind: 'side'; group: string; side: Side } // beside a group, splitting it
   | { kind: 'edge'; side: Side } // along a whole edge of the window
 
-export const allPanels: PanelId[] = ['viewport', 'scene', 'assets', 'project', 'generate', 'ai']
+export const allPanels: PanelId[] = ['viewport', 'scene', 'assets', 'project', 'generate', 'ai', 'build']
 
 const EDGE_SHARE = 0.22 // a panel docked on a window edge
 const SIDE_SHARE = 0.4 // a panel docked beside a group: its part of that group's space
@@ -360,6 +360,7 @@ export const homeSide: Record<PanelId, Side> = {
   project: 'bottom',
   generate: 'bottom',
   ai: 'right',
+  build: 'bottom',
 }
 
 // A saved tree, checked: unknown panels are dropped, duplicates removed, and

@@ -29,7 +29,7 @@ struct PlaceProblem {
 // intervals, a density word its number (the field's own scale), a size an
 // object {w, h}, an enum a string, an enumSet a list, a mix an object of
 // weights, a bool a truth value. Missing: the field's default, else Unknown.
-places::Value FieldValue(const FieldDef& field, const nlohmann::json& value);
+places::Value FieldValueOf(const FieldDef& field, const nlohmann::json& value);
 
 // Why `value` isn't valid for `field` (type, unit, range, vocabulary,
 // mix weights), or empty.
