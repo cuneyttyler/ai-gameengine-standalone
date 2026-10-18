@@ -2,14 +2,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { armPrefab, editorState } from '../editorState'
 import PrefabThumb from './PrefabThumb.vue'
-import WorldPanel from './WorldPanel.vue'
 import { openContextMenu, separator, type MenuItem } from '../contextMenu'
 import { prefabMenuExtensions } from '../assetMenus'
-import StoryPanel from './StoryPanel.vue'
-import LevelPanel from './LevelPanel.vue'
-import ArtPanel from './ArtPanel.vue'
-import ScenesPanel from './ScenesPanel.vue'
-import { bottomTab } from '../scenes'
+import { panelTab } from '../paneltabs'
 import { onHostMessage, sendToHost } from '../ipc'
 import { askMoveManyToFolder, askMoveToFolder, foldersOf, inFolder, moveItem, renameItem, type Root } from '../organize'
 import { clickItem, emptySelection, keepShown, renamed, selectAll, type Selection } from '../selection'
@@ -449,12 +444,12 @@ function assetMenu(asset: Asset, event: MouseEvent): void {
 }
 
 // Prefabs tab: the project's palette.
-const tab = ref<'prefabs' | 'assets' | 'scenes' | 'world' | 'story' | 'level' | 'art'>('prefabs')
-// Menus can ask for a tab (File ▸ Scenes…).
-watch(
-  () => bottomTab.n,
-  () => (tab.value = bottomTab.request as typeof tab.value),
-)
+// Prefabs or Assets; Scenes, World and Story are the Project panel, Level and
+// Art the Generate panel (6.8).
+const tab = computed({
+  get: () => panelTab.assets,
+  set: (value) => (panelTab.assets = value),
+})
 const visiblePrefabs = computed(() => {
   const query = filter.value.trim().toLowerCase()
   return editorState.prefabs.filter(
@@ -496,15 +491,6 @@ onMounted(() => {
       <div class="tabs">
         <button :class="{ active: tab === 'prefabs' }" @click="tab = 'prefabs'">Prefabs</button>
         <button :class="{ active: tab === 'assets' }" @click="tab = 'assets'">Assets</button>
-        <button :class="{ active: tab === 'scenes' }" title="The project's scenes and gateways" @click="tab = 'scenes'">
-          Scenes
-        </button>
-        <button :class="{ active: tab === 'world' }" title="World Bible: the game's canon" @click="tab = 'world'">
-          World
-        </button>
-        <button :class="{ active: tab === 'story' }" title="Dialogue and quests" @click="tab = 'story'">Story</button>
-        <button :class="{ active: tab === 'level' }" title="Generate a dungeon" @click="tab = 'level'">Level</button>
-        <button :class="{ active: tab === 'art' }" title="Generate sprites from a description" @click="tab = 'art'">Art</button>
       </div>
       <input
         v-if="tab === 'prefabs' || tab === 'assets'"
@@ -544,12 +530,7 @@ onMounted(() => {
       </button>
     </div>
 
-    <WorldPanel v-if="tab === 'world'" class="body world-body" />
-    <ScenesPanel v-else-if="tab === 'scenes'" class="body" />
-    <StoryPanel v-else-if="tab === 'story'" class="body" />
-    <LevelPanel v-else-if="tab === 'level'" class="body" />
-    <ArtPanel v-else-if="tab === 'art'" class="body" />
-    <div v-else-if="tab === 'prefabs'" class="body">
+    <div v-if="tab === 'prefabs'" class="body">
       <nav class="folders" title="Folders inside prefabs/ — drop a card on one to move it">
         <button
           v-for="folder in ['', ...prefabFolders]"

@@ -33,7 +33,14 @@ import { onHostMessage, sendToHost } from './ipc'
 export type { PanelId, Side, DropTarget } from './docktree'
 
 export const panelIds: PanelId[] = allPanels
-export const panelNames: Record<PanelId, string> = { viewport: 'Viewport', scene: 'Scene', assets: 'Assets', ai: 'AI' }
+export const panelNames: Record<PanelId, string> = {
+  viewport: 'Viewport',
+  scene: 'Scene',
+  assets: 'Assets',
+  project: 'Project',
+  generate: 'Generate',
+  ai: 'AI',
+}
 export const sideNames: Record<Side, string> = { left: 'Left', top: 'Top', right: 'Right', bottom: 'Bottom' }
 
 export interface Rect {
@@ -44,6 +51,7 @@ export interface Rect {
 }
 
 interface LayoutState {
+  known?: PanelId[] // the panels there were when this was saved
   root: DockNode | null
   lastGroup: Partial<Record<PanelId, string>> // where a hidden panel was
   treeFraction: number // the Scene panel: the tree's share, the Inspector below or beside it
@@ -103,16 +111,32 @@ function migrate(): LayoutState | null {
     sizes: sizes.filter((_, i) => row[i]),
   })
   return {
-    root: root ?? defaultTree(),
+    root: addNewPanels(root ?? defaultTree(), undefined),
     lastGroup: {},
     treeFraction: typeof old.treeFraction === 'number' ? Math.min(0.9, Math.max(0.1, old.treeFraction)) : 0.45,
   }
 }
 
+// A panel that didn't exist when a layout was saved (Project and Generate,
+// split out of Assets in 6.8) joins Assets' group as a tab, so it's where its
+// tabs used to be.
+function addNewPanels(root: DockNode | null, known: PanelId[] | undefined): DockNode | null {
+  const before = known ?? (['viewport', 'scene', 'assets', 'ai'] as PanelId[])
+  let next = root
+  for (const id of panelIds) {
+    if (before.includes(id) || panelsIn(next).includes(id)) continue
+    const assets = groupOf(next, 'assets')
+    const active = assets?.active
+    next = dropPanel(next, id, assets ? { kind: 'tab', group: assets.id } : { kind: 'edge', side: homeSide[id] })
+    if (active) next = activate(next, active)
+  }
+  return next
+}
+
 function load(): LayoutState {
   const saved = read(KEY) as Partial<LayoutState> | null
   if (saved && typeof saved === 'object' && 'root' in saved) {
-    const root = saved.root === null ? null : parseTree(saved.root)
+    const root = saved.root === null ? null : addNewPanels(parseTree(saved.root), saved.known)
     return {
       root: saved.root === null ? null : (root ?? defaultTree()),
       lastGroup: saved.lastGroup && typeof saved.lastGroup === 'object' ? saved.lastGroup : {},
@@ -138,8 +162,8 @@ export function toggleMaximize(id: PanelId): void {
   dockView.maximized = dockView.maximized === id || !isOpen(id) ? null : id
 }
 
-function snapshot(): { root: DockNode | null; lastGroup: LayoutState['lastGroup']; treeFraction: number } {
-  return { root: layout.root, lastGroup: layout.lastGroup, treeFraction: layout.treeFraction }
+function snapshot(): LayoutState {
+  return { known: [...panelIds], root: layout.root, lastGroup: layout.lastGroup, treeFraction: layout.treeFraction }
 }
 
 export function saveLayout(): void {
@@ -156,7 +180,7 @@ export function saveLayout(): void {
 function applySaved(saved: unknown): void {
   if (!saved || typeof saved !== 'object' || !('root' in saved)) return
   const s = saved as Partial<LayoutState>
-  const root = s.root === null ? null : parseTree(s.root)
+  const root = s.root === null ? null : addNewPanels(parseTree(s.root), s.known)
   if (s.root !== null && !root) return
   layout.root = root
   layout.lastGroup = s.lastGroup && typeof s.lastGroup === 'object' ? s.lastGroup : {}

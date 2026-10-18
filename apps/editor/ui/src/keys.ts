@@ -55,6 +55,8 @@ const handlers: Record<string, () => void> = {
   'play.toggle': send('play:toggle'),
   'panel.scene': () => togglePanel('scene'),
   'panel.assets': () => togglePanel('assets'),
+  'panel.project': () => togglePanel('project'),
+  'panel.generate': () => togglePanel('generate'),
   'panel.ai': () => togglePanel('ai'),
   'panel.viewport': () => toggleViewport(),
   'help.shortcuts': () => (editorState.showShortcuts = true),

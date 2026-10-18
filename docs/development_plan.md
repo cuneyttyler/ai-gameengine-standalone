@@ -1669,6 +1669,13 @@ Decisions (2026-10-17, defaults the user can still change):
       from the last layout used.
     - **Double-click a tab** to fill the window with that panel; double-click again
       to bring the others back (the tab's menu has *Maximize* too).
+    - **The Assets panel is split in three** (dockable like the rest):
+      - **Assets**: Prefabs and Assets, the files a scene is made from;
+      - **Project** (P): Scenes, World and Story, the game's project-wide content;
+      - **Generate** (K): Level and Art.
+      They start as tabs in the bottom group. Layouts saved before the split get the
+      new panels as tabs beside Assets. File ▸ Scenes… opens the Project panel on
+      Scenes.
 
 **6.9 — The story across scenes** *(added 2026-10-18, before Phase 7)*
 - Quests, dialogue, schedules and the World Bible were already project-level (files in

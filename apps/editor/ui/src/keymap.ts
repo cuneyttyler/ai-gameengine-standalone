@@ -40,6 +40,8 @@ export const actions: ActionDef[] = [
   { id: 'view.stats', label: 'Frame stats', group: 'View', keys: ['F3'], inPlay: true },
   { id: 'panel.scene', label: 'Show / hide the Scene panel', group: 'Panels', keys: ['B'] },
   { id: 'panel.assets', label: 'Show / hide the Assets panel', group: 'Panels', keys: ['J'] },
+  { id: 'panel.project', label: 'Show / hide the Project panel (scenes, World Bible, story)', group: 'Panels', keys: ['P'] },
+  { id: 'panel.generate', label: 'Show / hide the Generate panel (level, art)', group: 'Panels', keys: ['K'] },
   { id: 'panel.ai', label: 'Show / hide the AI panel', group: 'Panels', keys: ['I'] },
   { id: 'panel.viewport', label: 'Show / hide the viewport', group: 'Panels', keys: ['M'] },
   { id: 'play.toggle', label: 'Play / stop', group: 'Play', keys: ['F5'], inPlay: true },

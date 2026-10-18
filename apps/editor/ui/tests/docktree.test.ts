@@ -18,6 +18,12 @@ import {
   type SplitNode,
 } from '../src/docktree.ts'
 
+// The default layout with only its four original panels (Project and Generate,
+// tabs beside Assets since 6.8, left out), so these tests read as before.
+function baseTree(): DockNode {
+  return removePanel(removePanel(defaultTree(), 'project'), 'generate')!
+}
+
 function sizesValid(node: DockNode | null): boolean {
   if (!node || node.kind === 'tabs') return true
   const sum = node.sizes.reduce((a, b) => a + b, 0)
@@ -26,12 +32,13 @@ function sizesValid(node: DockNode | null): boolean {
 
 test('the default layout has every panel once', () => {
   const tree = defaultTree()
-  assert.deepEqual(panelsIn(tree).sort(), ['ai', 'assets', 'scene', 'viewport'])
+  assert.deepEqual(panelsIn(tree).sort(), ['ai', 'assets', 'generate', 'project', 'scene', 'viewport'])
+  assert.deepEqual(groupOf(tree, 'assets')!.tabs, ['assets', 'project', 'generate']) // tabs at the bottom
   assert.ok(sizesValid(tree))
 })
 
 test('dropping AI onto the viewport makes them tabs, AI in front', () => {
-  const tree = dropPanel(defaultTree(), 'ai', { kind: 'tab', group: 'g2' })
+  const tree = dropPanel(baseTree(), 'ai', { kind: 'tab', group: 'g2' })
   const group = groupOf(tree, 'viewport')!
   assert.deepEqual(group.tabs, ['viewport', 'ai'])
   assert.equal(group.active, 'ai')
@@ -42,7 +49,7 @@ test('dropping AI onto the viewport makes them tabs, AI in front', () => {
 })
 
 test('dropping beside a group splits it the right way', () => {
-  const tree = dropPanel(defaultTree(), 'scene', { kind: 'side', group: 'g3', side: 'right' }) // beside Assets
+  const tree = dropPanel(baseTree(), 'scene', { kind: 'side', group: 'g3', side: 'right' }) // beside Assets
   const assets = groupOf(tree, 'assets')!
   const scene = groupOf(tree, 'scene')!
   assert.notEqual(assets.id, scene.id)
@@ -64,7 +71,7 @@ test('dropping beside a group splits it the right way', () => {
 
 test('a side drop into a split running the same way joins it instead of nesting', () => {
   // The viewport column runs top to bottom; dropping AI below Assets adds a third row to it.
-  const tree = dropPanel(defaultTree(), 'ai', { kind: 'side', group: 'g3', side: 'bottom' })
+  const tree = dropPanel(baseTree(), 'ai', { kind: 'side', group: 'g3', side: 'bottom' })
   const column = groups(tree).map((g) => g.tabs[0])
   assert.deepEqual(column, ['scene', 'viewport', 'assets', 'ai'])
   const root = tree as SplitNode
@@ -75,7 +82,7 @@ test('a side drop into a split running the same way joins it instead of nesting'
 })
 
 test('docking on a window edge spans the whole edge', () => {
-  const tree = dropPanel(defaultTree(), 'assets', { kind: 'edge', side: 'top' }) as SplitNode
+  const tree = dropPanel(baseTree(), 'assets', { kind: 'edge', side: 'top' }) as SplitNode
   assert.equal(tree.dir, 'column')
   assert.deepEqual((tree.children[0] as { tabs: string[] }).tabs, ['assets'])
   assert.ok(tree.sizes[0]! < 0.5)
@@ -86,7 +93,7 @@ test('docking on a window edge spans the whole edge', () => {
 
 test('docking on an edge that has an area puts the panel next to what is there', () => {
   // The default layout has Scene docked left: AI joins it, below it, in one left area.
-  const tree = dropPanel(defaultTree(), 'ai', { kind: 'edge', side: 'left' }) as SplitNode
+  const tree = dropPanel(baseTree(), 'ai', { kind: 'edge', side: 'left' }) as SplitNode
   const area = edgeArea(tree, 'left') as SplitNode
   assert.equal(area.kind, 'split')
   assert.equal(area.dir, 'column')
@@ -96,7 +103,7 @@ test('docking on an edge that has an area puts the panel next to what is there',
 })
 
 test('every panel on the top edge makes one top row, not stacked strips', () => {
-  let tree: DockNode | null = defaultTree()
+  let tree: DockNode | null = baseTree()
   for (const id of ['scene', 'assets', 'ai'] as const) tree = dropPanel(tree, id, { kind: 'edge', side: 'top' })
   const area = edgeArea(tree, 'top') as SplitNode
   assert.equal(area.dir, 'row')
@@ -113,7 +120,7 @@ test('every panel on the top edge makes one top row, not stacked strips', () => 
 })
 
 test('the edge tag follows the area when panels leave it or it is split', () => {
-  let tree = dropPanel(defaultTree(), 'ai', { kind: 'edge', side: 'left' }) // left area: scene + ai
+  let tree = dropPanel(baseTree(), 'ai', { kind: 'edge', side: 'left' }) // left area: scene + ai
   tree = removePanel(tree, 'scene') // the area is just AI now
   assert.deepEqual((edgeArea(tree, 'left') as { tabs: string[] }).tabs, ['ai'])
   // Splitting the bottom area's group from its side: the area grows to hold both.
@@ -128,7 +135,7 @@ test('the edge tag follows the area when panels leave it or it is split', () => 
 })
 
 test('reordering tabs within a group', () => {
-  let tree = dropPanel(defaultTree(), 'ai', { kind: 'tab', group: 'g2' })
+  let tree = dropPanel(baseTree(), 'ai', { kind: 'tab', group: 'g2' })
   tree = dropPanel(tree, 'scene', { kind: 'tab', group: 'g2' })
   assert.deepEqual(groupOf(tree, 'viewport')!.tabs, ['viewport', 'ai', 'scene'])
   tree = dropPanel(tree, 'scene', { kind: 'tab', group: 'g2', index: 0 })
@@ -138,14 +145,14 @@ test('reordering tabs within a group', () => {
 })
 
 test('no-op drops change nothing', () => {
-  const tree = defaultTree()
+  const tree = baseTree()
   assert.deepEqual(dropPanel(tree, 'ai', { kind: 'tab', group: 'g4' }), tree)
   assert.deepEqual(dropPanel(tree, 'ai', { kind: 'side', group: 'g4', side: 'left' }), tree)
   assert.deepEqual(dropPanel(tree, 'ai', { kind: 'tab', group: 'nope' }), tree)
 })
 
 test('a panel can split its own group when it has company', () => {
-  let tree = dropPanel(defaultTree(), 'ai', { kind: 'tab', group: 'g2' })
+  let tree = dropPanel(baseTree(), 'ai', { kind: 'tab', group: 'g2' })
   tree = dropPanel(tree, 'ai', { kind: 'side', group: 'g2', side: 'right' })
   assert.notEqual(groupOf(tree, 'ai')!.id, groupOf(tree, 'viewport')!.id)
   assert.equal(isShown(tree, 'viewport'), true)
@@ -153,7 +160,7 @@ test('a panel can split its own group when it has company', () => {
 })
 
 test('removing every panel empties the tree; showing one again works', () => {
-  let tree: DockNode | null = defaultTree()
+  let tree: DockNode | null = baseTree()
   for (const id of ['scene', 'assets', 'ai', 'viewport'] as const) tree = removePanel(tree, id)
   assert.equal(tree, null)
   tree = dropPanel(tree, 'ai', { kind: 'edge', side: 'right' })
@@ -161,7 +168,7 @@ test('removing every panel empties the tree; showing one again works', () => {
 })
 
 test('inputs are never changed', () => {
-  const tree = defaultTree()
+  const tree = baseTree()
   const copy = JSON.stringify(tree)
   dropPanel(tree, 'ai', { kind: 'tab', group: 'g2' })
   removePanel(tree, 'scene')
@@ -170,7 +177,7 @@ test('inputs are never changed', () => {
 })
 
 test('resizing a pair keeps the rest of the split', () => {
-  const tree = resizePair(defaultTree(), 's1', 0, 0.5) as SplitNode
+  const tree = resizePair(baseTree(), 's1', 0, 0.5) as SplitNode
   assert.ok(Math.abs(tree.sizes[0]! - tree.sizes[1]!) < 1e-9)
   assert.ok(Math.abs(tree.sizes[2]! - 0.22) < 1e-9)
 })

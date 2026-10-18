@@ -11,7 +11,7 @@
 // Pure functions over plain data: no Vue, no DOM, so tests/docktree.test.ts
 // can run them directly. Each returns a new tree; inputs are never changed.
 
-export type PanelId = 'viewport' | 'scene' | 'assets' | 'ai'
+export type PanelId = 'viewport' | 'scene' | 'assets' | 'project' | 'generate' | 'ai'
 export type Side = 'left' | 'right' | 'top' | 'bottom'
 export type Direction = 'row' | 'column'
 
@@ -39,7 +39,7 @@ export type DropTarget =
   | { kind: 'side'; group: string; side: Side } // beside a group, splitting it
   | { kind: 'edge'; side: Side } // along a whole edge of the window
 
-export const allPanels: PanelId[] = ['viewport', 'scene', 'assets', 'ai']
+export const allPanels: PanelId[] = ['viewport', 'scene', 'assets', 'project', 'generate', 'ai']
 
 const EDGE_SHARE = 0.22 // a panel docked on a window edge
 const SIDE_SHARE = 0.4 // a panel docked beside a group: its part of that group's space
@@ -344,7 +344,7 @@ export function defaultTree(): DockNode {
         sizes: [0.72, 0.28],
         children: [
           { kind: 'tabs', id: 'g2', tabs: ['viewport'], active: 'viewport' },
-          { kind: 'tabs', id: 'g3', tabs: ['assets'], active: 'assets', edge: 'bottom' },
+          { kind: 'tabs', id: 'g3', tabs: ['assets', 'project', 'generate'], active: 'assets', edge: 'bottom' },
         ],
       },
       { kind: 'tabs', id: 'g4', tabs: ['ai'], active: 'ai', edge: 'right' },
@@ -353,7 +353,14 @@ export function defaultTree(): DockNode {
 }
 
 // Where a hidden panel goes back when shown and its old group is gone.
-export const homeSide: Record<PanelId, Side> = { viewport: 'top', scene: 'left', assets: 'bottom', ai: 'right' }
+export const homeSide: Record<PanelId, Side> = {
+  viewport: 'top',
+  scene: 'left',
+  assets: 'bottom',
+  project: 'bottom',
+  generate: 'bottom',
+  ai: 'right',
+}
 
 // A saved tree, checked: unknown panels are dropped, duplicates removed, and
 // anything malformed gives null (the caller falls back to the default).

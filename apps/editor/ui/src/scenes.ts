@@ -8,6 +8,7 @@ import { confirmDialog, promptDialog } from './dialogs'
 import { editorState } from './editorState'
 import { onHostMessage, sendToHost } from './ipc'
 import { menuExtensions } from './menus'
+import { showTab } from './paneltabs'
 
 export interface SceneEntry {
   path: string
@@ -33,13 +34,7 @@ onHostMessage((message) => {
 })
 sendToHost({ type: 'scenes:request' })
 
-// Lets menus switch the bottom panel to a tab (AssetBrowser watches it).
-export const bottomTab = reactive({ request: '', n: 0 })
-
-export function showTab(tab: string): void {
-  bottomTab.request = tab
-  bottomTab.n++
-}
+export { showTab } from './paneltabs'
 
 export async function newScene(): Promise<void> {
   const name = await promptDialog({
