@@ -1,40 +1,50 @@
-// Where the panels are (development_plan.md 5.6): the Scene, Assets and AI
-// panels each dock left, right or bottom, show or hide, and the viewport can
-// hide too. Per-user, so localStorage; every access is guarded and the
-// defaults always work. Replaces the fixed left/bottom/right layout of 4.1.
-import { reactive } from 'vue'
+// Where the panels are (development_plan.md 5.6, 6.8). The layout is a tree
+// (docktree.ts): splits whose leaves are tab groups, holding the Scene, Assets
+// and AI panels and the viewport, each of which can be dragged anywhere: onto
+// another group as a tab, beside it, or along a window edge. Hidden panels
+// leave the tree and come back where they were. Per-user, so localStorage;
+// every access is guarded and the default always works.
+import { reactive, watch } from 'vue'
+import {
+  activate,
+  allPanels,
+  defaultTree,
+  dropPanel,
+  findGroup,
+  groupOf,
+  homeSide,
+  isShown,
+  panelsIn,
+  parseTree,
+  removePanel,
+  resizePair,
+  type DockNode,
+  type DropTarget,
+  type PanelId,
+  type Side,
+} from './docktree'
 import { sendToHost } from './ipc'
 
-export type PanelId = 'scene' | 'assets' | 'ai'
-export type Dock = 'left' | 'right' | 'bottom'
+export type { PanelId, Side, DropTarget } from './docktree'
 
-export const panelIds: PanelId[] = ['scene', 'assets', 'ai']
-export const panelNames: Record<PanelId, string> = { scene: 'Scene', assets: 'Assets', ai: 'AI' }
-export const dockNames: Record<Dock, string> = { left: 'Left', bottom: 'Bottom', right: 'Right' }
+export const panelIds: PanelId[] = allPanels
+export const panelNames: Record<PanelId, string> = { viewport: 'Viewport', scene: 'Scene', assets: 'Assets', ai: 'AI' }
+export const sideNames: Record<Side, string> = { left: 'Left', top: 'Top', right: 'Right', bottom: 'Bottom' }
+
+export interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 interface LayoutState {
-  dock: Record<PanelId, Dock>
-  visible: Record<PanelId, boolean>
-  viewport: boolean
-  size: Record<Dock, number> // width of a side dock, height of the bottom one
-  weight: Record<PanelId, number> // share of its dock when it has company
-  order: PanelId[] // within a dock: earlier is first (top / left)
+  root: DockNode | null
+  lastGroup: Partial<Record<PanelId, string>> // where a hidden panel was
   treeFraction: number // the Scene panel: the tree's share, the Inspector below or beside it
 }
 
-const KEY = 'aige.editor.docks'
-
-function defaults(): LayoutState {
-  return {
-    dock: { scene: 'left', assets: 'bottom', ai: 'right' },
-    visible: { scene: true, assets: true, ai: true },
-    viewport: true,
-    size: { left: 320, right: 360, bottom: 240 },
-    weight: { scene: 1, assets: 1, ai: 1 },
-    order: ['scene', 'assets', 'ai'],
-    treeFraction: 0.45,
-  }
-}
+const KEY = 'aige.editor.layout2'
 
 function read(key: string): unknown {
   try {
@@ -44,91 +54,168 @@ function read(key: string): unknown {
   }
 }
 
+// From the 5.6 layout (three docks around the viewport): the same panels in
+// the same places, now as a tree.
+function migrate(): LayoutState | null {
+  const old = read('aige.editor.docks') as {
+    dock?: Record<string, string>
+    visible?: Record<string, boolean>
+    viewport?: boolean
+    size?: Record<string, number>
+    order?: string[]
+    treeFraction?: number
+  } | null
+  if (!old || typeof old !== 'object' || !old.dock) return null
+  const order = (Array.isArray(old.order) ? old.order : ['scene', 'assets', 'ai']).filter((id) =>
+    ['scene', 'assets', 'ai'].includes(id),
+  ) as PanelId[]
+  const inDock = (dock: string) => order.filter((id) => old.dock?.[id] === dock && old.visible?.[id] !== false)
+  let n = 0
+  const group = (id: PanelId): DockNode => ({ kind: 'tabs', id: `g${++n}`, tabs: [id], active: id })
+  const stack = (ids: PanelId[], dir: 'row' | 'column'): DockNode | null =>
+    ids.length === 0 ? null : ids.length === 1 ? group(ids[0]!) : { kind: 'split', id: `s${++n}`, dir, children: ids.map(group), sizes: ids.map(() => 1 / ids.length) }
+  const width = Math.max(800, window.innerWidth)
+  const height = Math.max(600, window.innerHeight)
+  const left = stack(inDock('left'), 'column')
+  const right = stack(inDock('right'), 'column')
+  const bottom = stack(inDock('bottom'), 'row')
+  const view = old.viewport === false ? null : group('viewport')
+  const centerParts = [view, bottom].filter(Boolean) as DockNode[]
+  const bottomShare = Math.min(0.6, Math.max(0.15, (old.size?.bottom ?? 240) / height))
+  const center: DockNode | null =
+    centerParts.length === 2
+      ? { kind: 'split', id: `s${++n}`, dir: 'column', children: centerParts, sizes: [1 - bottomShare, bottomShare] }
+      : (centerParts[0] ?? null)
+  const leftShare = Math.min(0.4, (old.size?.left ?? 320) / width)
+  const rightShare = Math.min(0.4, (old.size?.right ?? 360) / width)
+  const row = [left, center, right]
+  const sizes = [leftShare, 1 - leftShare - rightShare, rightShare]
+  const root = parseTree({
+    kind: 'split',
+    id: `s${++n}`,
+    dir: 'row',
+    children: row.filter(Boolean),
+    sizes: sizes.filter((_, i) => row[i]),
+  })
+  return {
+    root: root ?? defaultTree(),
+    lastGroup: {},
+    treeFraction: typeof old.treeFraction === 'number' ? Math.min(0.9, Math.max(0.1, old.treeFraction)) : 0.45,
+  }
+}
+
 function load(): LayoutState {
-  const state = defaults()
   const saved = read(KEY) as Partial<LayoutState> | null
-  if (saved && typeof saved === 'object') {
-    for (const id of panelIds) {
-      const dock = saved.dock?.[id]
-      if (dock === 'left' || dock === 'right' || dock === 'bottom') state.dock[id] = dock
-      if (typeof saved.visible?.[id] === 'boolean') state.visible[id] = saved.visible[id]!
-      if (typeof saved.weight?.[id] === 'number' && saved.weight[id]! > 0) state.weight[id] = saved.weight[id]!
+  if (saved && typeof saved === 'object' && 'root' in saved) {
+    const root = saved.root === null ? null : parseTree(saved.root)
+    return {
+      root: saved.root === null ? null : (root ?? defaultTree()),
+      lastGroup: saved.lastGroup && typeof saved.lastGroup === 'object' ? saved.lastGroup : {},
+      treeFraction: typeof saved.treeFraction === 'number' ? Math.min(0.9, Math.max(0.1, saved.treeFraction)) : 0.45,
     }
-    for (const dock of ['left', 'right', 'bottom'] as Dock[]) {
-      if (typeof saved.size?.[dock] === 'number') state.size[dock] = saved.size[dock]!
-    }
-    if (typeof saved.viewport === 'boolean') state.viewport = saved.viewport
-    if (Array.isArray(saved.order) && saved.order.length === 3 && panelIds.every((id) => saved.order!.includes(id))) {
-      state.order = saved.order as PanelId[]
-    }
-    if (typeof saved.treeFraction === 'number') state.treeFraction = Math.min(0.9, Math.max(0.1, saved.treeFraction))
-    return state
   }
-  // From the 4.1 layout: which panels were open, and their sizes.
-  const panels = read('aige.editor.panels') as { left?: boolean; bottom?: boolean; viewport?: boolean } | null
-  if (panels) {
-    state.visible.scene = panels.left !== false
-    state.visible.assets = panels.bottom !== false
-    state.viewport = panels.viewport !== false
-  }
-  try {
-    state.visible.ai = localStorage.getItem('aige.editor.aiOpen') !== 'false'
-  } catch {
-    // keep the default
-  }
-  const sizes = read('aige.editor.layout') as Record<string, number> | null
-  if (sizes) {
-    if (typeof sizes.sidebarWidth === 'number') state.size.left = sizes.sidebarWidth
-    if (typeof sizes.aiPanelWidth === 'number') state.size.right = sizes.aiPanelWidth
-    if (typeof sizes.assetPanelHeight === 'number') state.size.bottom = sizes.assetPanelHeight
-    if (typeof sizes.treeFraction === 'number') state.treeFraction = sizes.treeFraction
-  }
-  return state
+  return migrate() ?? { root: defaultTree(), lastGroup: {}, treeFraction: 0.45 }
 }
 
 export const layout = reactive(load())
 
+// What the editor measures and drags (App.vue fills these in).
+export const dockView = reactive({
+  groupRects: {} as Record<string, Rect>, // each tab group's whole box, in the shell's coordinates
+  dragging: null as PanelId | null,
+})
+
 export function saveLayout(): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(layout))
+    localStorage.setItem(KEY, JSON.stringify({ root: layout.root, lastGroup: layout.lastGroup, treeFraction: layout.treeFraction }))
   } catch {
     // Not persisting is fine; the layout resets next launch.
   }
 }
 
-// The panels docked at `dock`, in order (shown or not).
-export function panelsIn(dock: Dock): PanelId[] {
-  return layout.order.filter((id) => layout.dock[id] === dock)
+function setRoot(root: DockNode | null): void {
+  layout.root = root
+  saveLayout()
 }
 
-export function visibleIn(dock: Dock): PanelId[] {
-  return panelsIn(dock).filter((id) => layout.visible[id])
+// In the layout at all (possibly as a background tab).
+export function isOpen(id: PanelId): boolean {
+  return panelsIn(layout.root).includes(id)
 }
 
+// On screen: open and its group's front tab.
+export function isFront(id: PanelId): boolean {
+  return isShown(layout.root, id)
+}
+
+export function hiddenPanels(): PanelId[] {
+  return panelIds.filter((id) => !isOpen(id))
+}
+
+// Showing brings a panel to the front, back where it was if that group still
+// exists, else along its usual window edge. Hiding takes it out of the layout.
 export function setPanelVisible(id: PanelId, on: boolean): void {
-  layout.visible[id] = on
-  saveLayout()
+  if (on) {
+    if (isOpen(id)) {
+      setRoot(activate(layout.root, id))
+      return
+    }
+    const back = layout.lastGroup[id]
+    const target: DropTarget = back && findGroup(layout.root, back) ? { kind: 'tab', group: back } : { kind: 'edge', side: homeSide[id] }
+    setRoot(dropPanel(layout.root, id, target))
+    return
+  }
+  const group = groupOf(layout.root, id)
+  if (!group) return
+  layout.lastGroup[id] = group.id
+  setRoot(removePanel(layout.root, id))
 }
 
+// The panel shortcuts (B, J, I, M): a panel on screen hides; one behind
+// another tab comes to the front; a hidden one comes back.
 export function togglePanel(id: PanelId): void {
-  setPanelVisible(id, !layout.visible[id])
-}
-
-// Moves a panel to another dock, last there, and shows it.
-export function movePanel(id: PanelId, dock: Dock): void {
-  layout.dock[id] = dock
-  layout.order = [...layout.order.filter((p) => p !== id), id]
-  layout.visible[id] = true
-  saveLayout()
-}
-
-// M (5.5): the bottom dock (if it has anything) takes the viewport's space.
-export function showViewport(on: boolean): void {
-  layout.viewport = on
-  sendToHost({ type: 'viewport:visible', on })
-  saveLayout()
+  setPanelVisible(id, !isFront(id))
 }
 
 export function toggleViewport(): void {
-  showViewport(!layout.viewport)
+  togglePanel('viewport')
 }
+
+export function showViewport(on: boolean): void {
+  setPanelVisible('viewport', on)
+}
+
+export function movePanel(id: PanelId, side: Side): void {
+  setRoot(dropPanel(layout.root, id, { kind: 'edge', side }))
+}
+
+export function applyDrop(id: PanelId, target: DropTarget): void {
+  setRoot(dropPanel(layout.root, id, target))
+}
+
+export function activatePanel(id: PanelId): void {
+  setRoot(activate(layout.root, id))
+}
+
+// During a splitter drag (saved when it ends, App.vue).
+export function resizeSplit(splitId: string, index: number, first: number): void {
+  layout.root = resizePair(layout.root, splitId, index, first)
+}
+
+export function resetLayout(): void {
+  layout.lastGroup = {}
+  setRoot(defaultTree())
+}
+
+// The native viewport window floats above the page, so it is hidden whenever
+// its tab isn't in front, and while a panel is dragged (the drop markers must
+// show over its area).
+let lastSent: boolean | null = null
+export function syncViewportWindow(): void {
+  const on = isFront('viewport') && dockView.dragging === null
+  if (on !== lastSent) {
+    lastSent = on
+    sendToHost({ type: 'viewport:visible', on })
+  }
+}
+watch(() => [layout.root, dockView.dragging], syncViewportWindow, { deep: true })

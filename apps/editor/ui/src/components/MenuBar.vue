@@ -9,18 +9,19 @@ import { editorState } from '../editorState'
 import { sendToHost } from '../ipc'
 import { menuExtensions } from '../menus'
 import { keyLabel, runAction } from '../keys'
-import { dockNames, layout, movePanel, panelIds, panelNames, togglePanel, toggleViewport, type Dock } from '../layout'
+import { isOpen, movePanel, panelIds, panelNames, resetLayout, setPanelVisible, sideNames, type Side } from '../layout'
 
-// View ▸ <panel> ▸ Show / Left / Bottom / Right (5.6).
+// View ▸ <panel> ▸ Show / Hide, and docking on a window edge (5.6, 6.8).
+// Dragging a panel's tab does the rest: tabs, splits, anywhere.
 function panelItems(): MenuItem[] {
   return panelIds.map((id) => ({
-    label: `${layout.visible[id] ? '✓ ' : ''}${panelNames[id]} panel`,
+    label: `${isOpen(id) ? '✓ ' : ''}${panelNames[id]}`,
     submenu: [
-      { label: layout.visible[id] ? 'Hide' : 'Show', shortcut: keyLabel(`panel.${id}`), action: () => togglePanel(id) },
+      { label: isOpen(id) ? 'Hide' : 'Show', shortcut: keyLabel(`panel.${id}`), action: () => setPanelVisible(id, !isOpen(id)) },
       separator,
-      ...(['left', 'bottom', 'right'] as Dock[]).map((dock) => ({
-        label: `${layout.dock[id] === dock ? '✓ ' : ''}Dock ${dockNames[dock].toLowerCase()}`,
-        action: () => movePanel(id, dock),
+      ...(['left', 'top', 'right', 'bottom'] as Side[]).map((side) => ({
+        label: `Dock ${sideNames[side].toLowerCase()} edge`,
+        action: () => movePanel(id, side),
       })),
     ],
   }))
@@ -61,7 +62,7 @@ const menus = computed<Record<string, MenuItem[]>>(() => ({
   ],
   View: [
     ...panelItems(),
-    { label: `${layout.viewport ? '✓ ' : ''}Viewport`, shortcut: keyLabel('panel.viewport'), action: () => toggleViewport() },
+    { label: 'Reset layout', action: () => resetLayout() },
     separator,
     { label: 'Frame scene', shortcut: keyLabel('view.frame'), action: () => sendToHost({ type: 'view:frame' }) },
     ...menuExtensions.view,

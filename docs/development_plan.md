@@ -1619,6 +1619,32 @@ Decisions (2026-10-17, defaults the user can still change):
   and a vision model compares it with the request, suggesting fixes as a follow-up
   proposal.
 
+**6.8 — Panels anywhere** *(added 2026-10-18, before Phase 7)*
+- Every panel can be dragged by its tab to anywhere in the editor:
+  - **onto another panel**, to make tabs (e.g. AI as a tab next to the viewport);
+  - **onto a side of a panel**, to split it;
+  - **onto a window edge**, to dock along the whole edge (left, top, right or bottom).
+- The **viewport is a panel** like the others.
+- ✅ Built:
+  - The layout is a tree (`ui/src/docktree.ts`) of splits whose leaves are tab groups.
+    It is pure and tested (13 tests: tabs, sides, edges, same-direction joins,
+    reordering, no-op drops, emptying, saved-tree checking).
+  - Panels are mounted once in a single layer and laid over their group's body, so
+    moving never resets them (the AI conversation, drafts, scroll).
+  - Dragging shows a marker where the panel will land and its name under the pointer.
+    Escape cancels.
+  - The native viewport window hides while a panel is dragged (the markers must show
+    over it) and whenever its tab isn't in front.
+  - The panel shortcuts (B, J, I, M): a panel behind another tab comes to the front, one
+    in front hides, and a hidden one comes back to the group it left (else its usual
+    edge). Hidden panels appear on a rail on the left.
+  - The tab's right-click menu and View ▸ *panel*: dock on an edge, hide. View and the
+    tab menu also have **Reset layout**.
+  - The Scene panel lays out side by side when it's wide and stacked when it's tall.
+  - The 5.6 layout is migrated on first launch.
+  - Checked in headless Chrome: drags to tabs, edges and sides; Escape; reload keeps the
+    layout; shortcuts.
+
 **Phase 6 exit criteria:** from an unfamiliar pack, the AI imports everything at sensible
 sizes, lays roads with the right pieces, and builds a village of the requested size that
 uses the pack's houses, well, fences and decorations, on the grid the art was drawn for.

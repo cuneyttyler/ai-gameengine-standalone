@@ -1,13 +1,13 @@
 <script setup lang="ts">
-// The editor's frame (development_plan.md 4.1, 5.6): the menu bar, three
-// docks (left, right, bottom) around the viewport, and the dialogs. Panels
-// are teleported into whichever dock they're in (layout.ts), so moving one
-// keeps its state — drafts, the AI conversation.
-import { computed, onMounted, ref } from 'vue'
+// The editor's frame (development_plan.md 4.1, 5.6, 6.8): the menu bar, the
+// layout tree of tab groups (DockNode), and the dialogs. Every panel, the
+// viewport included, is mounted once in the panel layer below and laid over
+// the body of the group it's in, so dragging it to another group, a side or
+// a window edge never resets it (drafts, the AI conversation, scroll).
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { editorState } from './editorState'
-import ViewportHole from './components/ViewportHole.vue'
-import Toolbar from './components/Toolbar.vue'
-import Splitter from './components/Splitter.vue'
+import { bodyRect, dragView, scheduleMeasure, setShell } from './dockdrag'
+import { groupOf } from './docktree'
 import StatusBar from './components/StatusBar.vue'
 import AssetBrowser from './components/AssetBrowser.vue'
 import AiPanel from './components/AiPanel.vue'
@@ -18,125 +18,61 @@ import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import PreferencesDialog from './components/PreferencesDialog.vue'
 import ProjectSettingsDialog from './components/ProjectSettingsDialog.vue'
 import PackImportDialog from './components/PackImportDialog.vue'
-import PanelFrame from './components/PanelFrame.vue'
+import DockNode from './components/DockNode.vue'
 import ScenePanel from './components/ScenePanel.vue'
+import ViewportPanel from './components/ViewportPanel.vue'
 import { keyLabel } from './keys'
 import {
+  dockView,
+  hiddenPanels,
+  isFront,
   layout,
+  panelIds,
   panelNames,
-  panelsIn,
-  saveLayout,
+  resetLayout,
   setPanelVisible,
-  showViewport,
-  visibleIn,
-  type Dock,
+  syncViewportWindow,
   type PanelId,
 } from './layout'
 
-const MIN_SIDE = 200
-const MIN_BOTTOM = 120
-const MIN_VIEWPORT = 320
+const shell = ref<HTMLElement | null>(null)
 
-const shown = computed(() => ({
-  left: visibleIn('left').length > 0,
-  right: visibleIn('right').length > 0,
-  bottom: visibleIn('bottom').length > 0,
-}))
-function hiddenIn(dock: Dock): PanelId[] {
-  return panelsIn(dock).filter((id) => !layout.visible[id])
-}
-
-const leftDock = ref<HTMLElement | null>(null)
-const rightDock = ref<HTMLElement | null>(null)
-const center = ref<HTMLElement | null>(null)
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), Math.max(min, max))
+// Where each panel is drawn: its group's body, or nowhere.
+function hostStyle(id: PanelId): Record<string, string> {
+  const group = groupOf(layout.root, id)
+  const body = group ? bodyRect(group.id) : null
+  if (!group || !body || !isFront(id)) return { display: 'none' }
+  return {
+    left: `${body.x}px`,
+    top: `${body.y}px`,
+    width: `${body.width}px`,
+    height: `${body.height}px`,
+  }
 }
 
-function onLeftDrag(x: number): void {
-  const start = leftDock.value?.getBoundingClientRect().left ?? 0
-  layout.size.left = clamp(x - start, MIN_SIDE, window.innerWidth - layout.size.right - MIN_VIEWPORT)
-}
-function onRightDrag(x: number): void {
-  const end = rightDock.value?.getBoundingClientRect().right ?? window.innerWidth
-  layout.size.right = clamp(end - x, MIN_SIDE, window.innerWidth - layout.size.left - MIN_VIEWPORT)
-}
-function onBottomDrag(y: number): void {
-  // The status bar (24px) sits below the bottom dock.
-  const end = (center.value?.getBoundingClientRect().bottom ?? window.innerHeight) - 24
-  layout.size.bottom = clamp(end - y, MIN_BOTTOM, window.innerHeight - 140)
-}
+const hidden = computed(() => hiddenPanels())
+
+// The tree changed shape: the groups' boxes have to be measured again once
+// the DOM has caught up.
+watch(() => layout.root, scheduleMeasure, { deep: true, flush: 'post' })
 
 onMounted(() => {
-  if (!layout.viewport) showViewport(false) // tell the host to hide the native window
-  layout.size.left = clamp(layout.size.left, MIN_SIDE, window.innerWidth / 2)
-  layout.size.right = clamp(layout.size.right, MIN_SIDE, window.innerWidth / 2)
-  layout.size.bottom = clamp(layout.size.bottom, MIN_BOTTOM, window.innerHeight / 2)
+  setShell(shell.value)
+  syncViewportWindow()
 })
+onBeforeUnmount(() => setShell(null))
 </script>
 
 <template>
   <div class="app-frame">
     <MenuBar />
     <div class="app-shell">
-      <div v-if="hiddenIn('left').length" class="rails side">
+      <div v-if="hidden.length" class="rails">
         <button
-          v-for="id in hiddenIn('left')"
+          v-for="id in hidden"
           :key="id"
           class="rail"
-          :title="`Show the ${panelNames[id]} panel (${keyLabel(`panel.${id}`)})`"
-          @click="setPanelVisible(id, true)"
-        >
-          <span v-if="id === 'ai'" class="rail-mark" :class="{ off: editorState.ai.choice === 'off' }">✦</span>
-          <span class="rail-label">{{ panelNames[id] }}</span>
-        </button>
-      </div>
-      <aside v-show="shown.left" id="dock-left" ref="leftDock" class="dock side" :style="{ width: `${layout.size.left}px` }"></aside>
-      <Splitter v-show="shown.left" direction="horizontal" @drag="onLeftDrag" @end="saveLayout" />
-
-      <main ref="center" class="viewport-region">
-        <Toolbar />
-        <!-- v-show: the hole keeps reporting (0 x 0 while hidden; the host hides the native window). -->
-        <div v-show="layout.viewport" class="viewport-slot">
-          <ViewportHole />
-        </div>
-        <button v-if="!layout.viewport" class="strip" :title="`Show the viewport (${keyLabel('panel.viewport')})`" @click="showViewport(true)">
-          ▾ Viewport
-        </button>
-        <p v-if="!layout.viewport && !shown.bottom" class="empty-center">
-          The viewport is hidden. Panels docked at the bottom take its place here.
-        </p>
-        <Splitter v-show="shown.bottom && layout.viewport" direction="vertical" @drag="onBottomDrag" @end="saveLayout" />
-        <div
-          v-show="shown.bottom"
-          id="dock-bottom"
-          class="dock bottom"
-          :class="{ fill: !layout.viewport }"
-          :style="layout.viewport ? { height: `${layout.size.bottom}px` } : {}"
-        ></div>
-        <div v-if="hiddenIn('bottom').length" class="strips">
-          <button
-            v-for="id in hiddenIn('bottom')"
-            :key="id"
-            class="strip"
-            :title="`Show the ${panelNames[id]} panel (${keyLabel(`panel.${id}`)})`"
-            @click="setPanelVisible(id, true)"
-          >
-            ▴ {{ panelNames[id] }}
-          </button>
-        </div>
-        <StatusBar />
-      </main>
-
-      <Splitter v-show="shown.right" direction="horizontal" @drag="onRightDrag" @end="saveLayout" />
-      <aside v-show="shown.right" id="dock-right" ref="rightDock" class="dock side" :style="{ width: `${layout.size.right}px` }"></aside>
-      <div v-if="hiddenIn('right').length" class="rails side right">
-        <button
-          v-for="id in hiddenIn('right')"
-          :key="id"
-          class="rail"
-          :title="`Show the ${panelNames[id]} panel (${keyLabel(`panel.${id}`)})`"
+          :title="`Show the ${panelNames[id]} ${id === 'viewport' ? '' : 'panel '}(${keyLabel(`panel.${id}`)})`"
           @click="setPanelVisible(id, true)"
         >
           <span v-if="id === 'ai'" class="rail-mark" :class="{ off: editorState.ai.choice === 'off' }">✦</span>
@@ -144,19 +80,44 @@ onMounted(() => {
           <span v-if="id === 'ai' && editorState.ai.busy" class="rail-busy"></span>
         </button>
       </div>
-    </div>
-  </div>
 
-  <!-- The panels, wherever they're docked. -->
-  <Teleport defer :to="`#dock-${layout.dock.scene}`">
-    <PanelFrame id="scene"><ScenePanel /></PanelFrame>
-  </Teleport>
-  <Teleport defer :to="`#dock-${layout.dock.assets}`">
-    <PanelFrame id="assets"><AssetBrowser /></PanelFrame>
-  </Teleport>
-  <Teleport defer :to="`#dock-${layout.dock.ai}`">
-    <PanelFrame id="ai"><AiPanel /></PanelFrame>
-  </Teleport>
+      <div ref="shell" class="dock-shell">
+        <DockNode v-if="layout.root" :node="layout.root" />
+        <div v-else class="empty">
+          <p>Every panel is hidden.</p>
+          <div class="empty-buttons">
+            <button v-for="id in panelIds" :key="id" @click="setPanelVisible(id, true)">Show {{ panelNames[id] }}</button>
+            <button class="primary" @click="resetLayout()">Reset layout</button>
+          </div>
+        </div>
+
+        <!-- The panels, each over its group's body. Always mounted: hiding or moving keeps their state. -->
+        <div class="panel-host" :style="hostStyle('viewport')"><ViewportPanel /></div>
+        <div class="panel-host" :style="hostStyle('scene')"><ScenePanel /></div>
+        <div class="panel-host" :style="hostStyle('assets')"><AssetBrowser /></div>
+        <div class="panel-host" :style="hostStyle('ai')"><AiPanel /></div>
+
+        <!-- While dragging: where the panel will land, and its name under the pointer. -->
+        <template v-if="dockView.dragging">
+          <div class="drag-catcher"></div>
+          <div
+            v-if="dragView.marker"
+            class="drop-marker"
+            :style="{
+              left: `${dragView.marker.x}px`,
+              top: `${dragView.marker.y}px`,
+              width: `${dragView.marker.width}px`,
+              height: `${dragView.marker.height}px`,
+            }"
+          ></div>
+          <div class="drag-label" :style="{ left: `${dragView.x + 14}px`, top: `${dragView.y + 12}px` }">
+            {{ panelNames[dockView.dragging] }}
+          </div>
+        </template>
+      </div>
+    </div>
+    <StatusBar />
+  </div>
 
   <ContextMenuHost />
   <ShortcutsDialog />
@@ -178,32 +139,61 @@ onMounted(() => {
   flex: 1;
   min-height: 0;
 }
-.dock {
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  background: #181825;
-}
-.dock.side {
-  flex-shrink: 0;
-  flex-direction: column;
-}
-.dock.bottom {
-  flex-shrink: 0;
-  flex-direction: row;
-}
-.dock.bottom.fill {
-  flex: 1;
-}
-.viewport-region {
+.dock-shell {
+  position: relative;
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  background: #11111a;
+}
+.panel-host {
+  position: absolute;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
 }
-.viewport-slot {
+.panel-host > :deep(*) {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+}
+.drag-catcher {
+  position: absolute;
+  inset: 0;
+  cursor: grabbing;
+  z-index: 10;
+}
+.drop-marker {
+  box-sizing: border-box;
+  position: absolute;
+  z-index: 11;
+  background: rgba(59, 130, 246, 0.25);
+  border: 2px solid #3b82f6;
+  pointer-events: none;
+  transition: left 60ms, top 60ms, width 60ms, height 60ms;
+}
+.drag-label {
+  position: absolute;
+  z-index: 12;
+  padding: 3px 8px;
+  background: #3b82f6;
+  color: #fff;
+  font-size: 0.8em;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.empty {
+  margin: auto;
+  text-align: center;
+  opacity: 0.8;
+}
+.empty-buttons {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
 }
 .rails {
   flex-shrink: 0;
@@ -211,10 +201,6 @@ onMounted(() => {
   flex-direction: column;
   background: #181825;
   border-right: 1px solid #333;
-}
-.rails.right {
-  border-right: none;
-  border-left: 1px solid #333;
 }
 .rail {
   width: 30px;
@@ -231,8 +217,7 @@ onMounted(() => {
   font: inherit;
   cursor: pointer;
 }
-.rail:hover,
-.strip:hover {
+.rail:hover {
   background: #262637;
 }
 .rail-mark {
@@ -251,34 +236,5 @@ onMounted(() => {
   width: 6px;
   height: 6px;
   background: #3b82f6;
-}
-.strips {
-  display: flex;
-  flex-shrink: 0;
-  border-top: 1px solid #333;
-}
-.strip {
-  flex-shrink: 0;
-  height: 22px;
-  border: none;
-  border-top: 1px solid #333;
-  border-radius: 0;
-  background: #181825;
-  color: #aaa;
-  font: inherit;
-  font-size: 0.8em;
-  cursor: pointer;
-  text-align: left;
-  padding: 0 10px;
-}
-.strips .strip {
-  border-top: none;
-  border-right: 1px solid #333;
-}
-.empty-center {
-  flex: 1;
-  margin: 0;
-  padding: 24px;
-  opacity: 0.5;
 }
 </style>

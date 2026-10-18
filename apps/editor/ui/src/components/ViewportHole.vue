@@ -14,6 +14,7 @@ function reportBounds() {
     return
   }
   const rect = holeEl.value.getBoundingClientRect()
+  if (rect.width === 0 || rect.height === 0) return // hidden; the host keeps its last place
   sendToHost({
     type: 'viewport:bounds',
     x: Math.round(rect.left),
@@ -30,11 +31,14 @@ onMounted(() => {
     observer.observe(holeEl.value)
   }
   window.addEventListener('resize', reportBounds)
+  // The layout can move the viewport without resizing it (6.8).
+  window.addEventListener('aige:layout', reportBounds)
 })
 
 onBeforeUnmount(() => {
   observer?.disconnect()
   window.removeEventListener('resize', reportBounds)
+  window.removeEventListener('aige:layout', reportBounds)
 })
 </script>
 

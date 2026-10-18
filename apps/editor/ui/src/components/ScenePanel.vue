@@ -1,14 +1,20 @@
 <script setup lang="ts">
-// The Scene panel: the Scene Tree and the Inspector, one above the other in
-// a side dock and side by side at the bottom (development_plan.md 5.6).
+// The Scene panel: the Scene Tree and the Inspector, one above the other when
+// the panel is tall and side by side when it's wide (development_plan.md 5.6, 6.8).
 import { computed, ref } from 'vue'
+import { bodyRect } from '../dockdrag'
+import { groupOf } from '../docktree'
 import { layout, saveLayout } from '../layout'
 import Inspector from './Inspector.vue'
 import SceneTree from './SceneTree.vue'
 import Splitter from './Splitter.vue'
 
 const el = ref<HTMLElement | null>(null)
-const across = computed(() => layout.dock.scene === 'bottom')
+const across = computed(() => {
+  const group = groupOf(layout.root, 'scene')
+  const r = group ? bodyRect(group.id) : null
+  return !!r && r.width > r.height * 1.3
+})
 
 function onDrag(position: number): void {
   if (!el.value) return
