@@ -30,16 +30,13 @@
   },
   "quality": {
     "layout": {
-      "type": "enum",
-      "values": [
-        "organic",
-        "grid",
-        "radial",
-        "linear-along-road",
-        "linear-along-river"
-      ],
-      "default": "organic",
-      "ask": true
+      "type": "mix",
+      "vocabulary": "layout",
+      "default": {
+        "organic": 1.0
+      },
+      "ask": true,
+      "description": "street patterns and their shares; the plan gives each ward one of them"
     },
     "condition": {
       "type": "enum",

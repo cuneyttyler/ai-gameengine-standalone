@@ -86,6 +86,12 @@ Value FieldValueOf(const FieldDef& field, const json& given) {
         return list;
     }
     if (t == "mix") {
+        if (value.is_string()) {
+            Value v;
+            v.kind = Value::Kind::Object;
+            v.object.push_back({value.get<std::string>(), Value::Num(1.0)});
+            return v;
+        }
         const json& weights = value.is_object() && value.contains("mix") ? value["mix"] : value;
         if (!weights.is_object()) return Value::Unknown();
         Value v;
@@ -160,6 +166,11 @@ std::string CheckFieldValue(const Ontology& ontology, const FieldDef& f, const j
         return {};
     }
     if (t == "mix") {
+        // One value alone is a mix of one ("organic" = {"organic": 1}).
+        if (value.is_string()) {
+            return InVocabulary(ontology, f, value.get<std::string>()) ? std::string()
+                                                                      : "'" + value.get<std::string>() + "' isn't in " + (f.values.empty() ? "the " + f.vocabulary + " vocabulary" : Join(f.values));
+        }
         const json& weights = value.is_object() && value.contains("mix") ? value["mix"] : value;
         if (!weights.is_object() || weights.empty()) return "needs {\"value\": weight, ...}";
         double total = 0.0;
@@ -492,6 +503,14 @@ std::vector<PlaceProblem> ValidateBrief(const Ontology& ontology, const json& br
                     true);
         }
     }
+    // The layout: one street pattern, or a mix of them ({"mix": {"grid": 0.4, "organic": 0.6}}).
+    const ModuleDef* root = ontology.Module(build->root);
+    const FieldDef* layoutField = root ? root->Field("layout") : nullptr;
+    const json layout = brief.contains("shape") && brief["shape"].is_object() ? brief["shape"].value("layout", json()) : json();
+    if (layoutField && !layout.is_null()) {
+        if (std::string error = CheckFieldValue(ontology, *layoutField, layout); !error.empty()) problem("shape.layout", error);
+    }
+
     const json& components = brief.value("components", json::object());
     if (!components.is_object()) {
         problem("components", "is an object: module -> its settings");

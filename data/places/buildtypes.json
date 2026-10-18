@@ -145,8 +145,7 @@
         "grid",
         "radial",
         "linear-along-road",
-        "linear-along-river",
-        "growth"
+        "linear-along-river"
       ],
       "walled": [
         "none",
@@ -159,6 +158,12 @@
         "hill",
         "coast",
         "crossroads"
+      ],
+      "growth": [
+        "walled-core",
+        "farms-outside",
+        "along-road",
+        "river-crossing"
       ]
     }
   }

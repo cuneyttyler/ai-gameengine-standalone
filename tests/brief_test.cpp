@@ -328,3 +328,26 @@ TEST(BriefTest, NoAiNoBuild) {
     EXPECT_FALSE(build.Active());
 }
 
+
+TEST(BriefTest, LayoutCanCombinePatterns) {
+    json brief = CompleteBrief(Library(), {{"buildType", "settlement"}, {"scale", {{"class", "village"}}},
+                                           {"shape", {{"layout", "organic"}}}, {"components", json::object()}});
+    EXPECT_FALSE(HasError(ValidateBrief(Library(), brief)));
+    EXPECT_EQ(BriefWindow(Library(), brief, nullptr, nullptr, true, 1)["layout"]["value"], json({{"organic", 1.0}}));
+
+    // A grid core with organic outskirts, as the window sends it.
+    ApplyWindowEdit(Library(), brief, "shape.layout", {{"grid", 0.4}, {"organic", 0.6}});
+    EXPECT_EQ(BriefValue(brief, "shape.layout"), json({{"mix", {{"grid", 0.4}, {"organic", 0.6}}}}));
+    EXPECT_FALSE(HasError(ValidateBrief(Library(), brief)));
+    // Back to one pattern: stored as just its name.
+    ApplyWindowEdit(Library(), brief, "shape.layout", {{"grid", 1.0}, {"organic", 0.0}});
+    EXPECT_EQ(BriefValue(brief, "shape.layout"), "grid");
+
+    SetBriefValue(brief, "shape.layout", json{{"mix", {{"grid", 0.4}, {"organic", 0.4}}}});
+    auto problems = ValidateBrief(Library(), brief);
+    ASSERT_TRUE(HasError(problems));
+    EXPECT_EQ(problems.front().where, "shape.layout");
+    EXPECT_NE(problems.front().message.find("add up to 1"), std::string::npos);
+    SetBriefValue(brief, "shape.layout", "spiral");
+    EXPECT_TRUE(HasError(ValidateBrief(Library(), brief)));
+}

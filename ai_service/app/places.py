@@ -50,7 +50,9 @@ BRIEF_SHAPE = """The Brief (schema aige.brief/1), as JSON:
     "name": "<a short place name>",
     "scale": {"class": "<a class of the build type's scale table>", "buildings": {"count": [low, high]}},
     "style": {"era": "...", "culture": "...", "biome": "<biome>", "condition": "<condition>", "tags": ["..."]},
-    "shape": {"layout": "<a layout>", "description": "<one sentence, optional>"},
+    "shape": {"layout": "<one street pattern>" or {"mix": {"<pattern>": <share>, ...}} (shares add up to 1; a mix
+              when the place combines patterns, e.g. a grid core with organic outskirts),
+              "description": "<one sentence: where each pattern goes, if the request says>"},
     "walled": "<none|palisade|stone>",
     "features": [{"module": "<e.g. river>"}],
     "components": {

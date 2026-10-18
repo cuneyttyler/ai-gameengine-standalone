@@ -2251,7 +2251,7 @@ gbs:ResidentialWardShape
     ], [
         sh:path gbl:ResidentialWard.street-style ;
         sh:maxCount 1 ;
-        sh:in ( "organic" "grid" "linear" )
+        sh:in ( gbv:layout.organic gbv:layout.grid gbv:layout.radial gbv:layout.linear-along-road gbv:layout.linear-along-river )
     ], [
         sh:path gbl:ResidentialWard.wealth ;
         sh:maxCount 1 ;
@@ -2433,7 +2433,7 @@ gbs:SettlementShape
     ], [
         sh:path gbl:Settlement.layout ;
         sh:maxCount 1 ;
-        sh:in ( "organic" "grid" "radial" "linear-along-road" "linear-along-river" )
+        sh:datatype rdf:JSON
     ], [
         sh:path gbl:Settlement.notes ;
         sh:maxCount 1 ;

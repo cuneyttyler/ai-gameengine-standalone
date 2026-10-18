@@ -234,7 +234,12 @@ json BriefWindow(const Ontology& ontology, const json& brief, const BriefMerge* 
                       {"classes", classes}};
     // Layout, walls, features, style: the build type's Brief fields.
     const json& fields = build->briefFields;
-    window["layout"] = {{"value", BriefValue(brief, "shape.layout")}, {"options", fields.value("layout", json::array())},
+    // One pattern or a mix: always shown as shares.
+    json shares = json::object();
+    const json layout = BriefValue(brief, "shape.layout");
+    if (layout.is_string()) shares[layout.get<std::string>()] = 1.0;
+    else if (layout.is_object()) shares = layout.contains("mix") ? layout["mix"] : layout;
+    window["layout"] = {{"value", shares}, {"options", fields.value("layout", json::array())},
                         {"description", BriefValue(brief, "shape.description")}};
     window["walled"] = {{"value", BriefValue(brief, "walled")}, {"options", fields.value("walled", json::array())}};
     json features = json::array();
@@ -334,6 +339,17 @@ json BriefWindow(const Ontology& ontology, const json& brief, const BriefMerge* 
 }
 
 void ApplyWindowEdit(const Ontology& ontology, json& brief, const std::string& path, const json& value) {
+    if (path == "shape.layout" && value.is_object()) {
+        // Shares from the window: one pattern is stored as just its name.
+        const json& shares = value.contains("mix") ? value["mix"] : value;
+        json kept = json::object();
+        for (const auto& [pattern, share] : shares.items()) {
+            if (share.is_number() && share.get<double>() > 0) kept[pattern] = share;
+        }
+        if (kept.size() == 1) SetBriefValue(brief, path, kept.begin().key());
+        else if (!kept.empty()) SetBriefValue(brief, path, json{{"mix", kept}});
+        return;
+    }
     if (path == "features") {
         json list = json::array();
         if (value.is_array()) {

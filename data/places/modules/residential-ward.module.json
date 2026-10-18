@@ -60,12 +60,9 @@
     },
     "street-style": {
       "type": "enum",
-      "values": [
-        "organic",
-        "grid",
-        "linear"
-      ],
-      "default": "organic"
+      "vocabulary": "layout",
+      "default": "organic",
+      "description": "this ward's street pattern, one of the settlement's layout mix"
     }
   },
   "slots": {},

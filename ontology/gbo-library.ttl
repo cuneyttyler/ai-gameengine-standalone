@@ -4202,13 +4202,14 @@ gbl:ResidentialWard.density
     gbo:askedInConfirmation true .
 
 gbl:ResidentialWard.street-style
-    a gbo:QualityField, owl:DatatypeProperty ;
+    a gbo:QualityField, owl:ObjectProperty ;
     rdfs:label "street-style"@en ;
+    rdfs:comment "this ward's street pattern, one of the settlement's layout mix"@en ;
     rdfs:domain gbl:ResidentialWard ;
     gbo:fieldName "street-style" ;
     gbo:fieldType gbo:enum ;
     gbo:defaultValue "\"organic\""^^rdf:JSON ;
-    gbo:allowedValue "organic", "grid", "linear" .
+    gbo:vocabulary gbv:layout .
 
 gbl:ResidentialWard.wealth
     a gbo:QualityField, owl:ObjectProperty ;
@@ -4630,11 +4631,12 @@ gbl:Settlement.condition
 gbl:Settlement.layout
     a gbo:QualityField, owl:DatatypeProperty ;
     rdfs:label "layout"@en ;
+    rdfs:comment "street patterns and their shares; the plan gives each ward one of them"@en ;
     rdfs:domain gbl:Settlement ;
     gbo:fieldName "layout" ;
-    gbo:fieldType gbo:enum ;
-    gbo:defaultValue "\"organic\""^^rdf:JSON ;
-    gbo:allowedValue "organic", "grid", "radial", "linear-along-road", "linear-along-river" ;
+    gbo:fieldType gbo:mix ;
+    gbo:defaultValue "{\"organic\":1.0}"^^rdf:JSON ;
+    gbo:vocabulary gbv:layout ;
     gbo:askedInConfirmation true .
 
 gbl:Settlement.notes
@@ -6092,7 +6094,7 @@ gbb:settlement
     gbo:rootModule gbl:Settlement ;
     gbo:component gbl:ResidentialWard, gbl:MarketWard, gbl:CraftsmenWard, gbl:MerchantWard, gbl:PatricianWard, gbl:Slum, gbl:TempleWard, gbl:CastleWard, gbl:GateWard, gbl:Docks, gbl:Commons, gbl:FarmlandRing, gbl:Outskirts, gbl:MarketSquare, gbl:WellPlaza, gbl:HousePlot, gbl:Farmstead, gbl:Garden, gbl:Orchard, gbl:Field, gbl:Graveyard, gbl:Wall, gbl:Road, gbl:River, gbl:Lake, gbl:Pond, gbl:Forest, gbl:Meadow, gbl:FenceLine, gbl:HedgeLine, gbl:NatureScatter, gbl:Clutter, gbl:Lights, gbl:GroundDecals ;
     gbo:stages "[\"site & terrain\",\"networks\",\"zones\",\"streets & parcels\",\"parcel contents\",\"dressing\"]"^^rdf:JSON ;
-    gbo:briefFields "{\"features\":[\"river\",\"lake\",\"hill\",\"coast\",\"crossroads\"],\"layout\":[\"organic\",\"grid\",\"radial\",\"linear-along-road\",\"linear-along-river\",\"growth\"],\"style\":{\"biome\":\"biome\",\"condition\":\"condition\",\"culture\":[\"western\",\"northern\",\"eastern\",\"southern\"],\"era\":[\"ancient\",\"medieval\",\"renaissance\"]},\"walled\":[\"none\",\"palisade\",\"stone\"]}"^^rdf:JSON ;
+    gbo:briefFields "{\"features\":[\"river\",\"lake\",\"hill\",\"coast\",\"crossroads\"],\"growth\":[\"walled-core\",\"farms-outside\",\"along-road\",\"river-crossing\"],\"layout\":[\"organic\",\"grid\",\"radial\",\"linear-along-road\",\"linear-along-river\"],\"style\":{\"biome\":\"biome\",\"condition\":\"condition\",\"culture\":[\"western\",\"northern\",\"eastern\",\"southern\"],\"era\":[\"ancient\",\"medieval\",\"renaissance\"]},\"walled\":[\"none\",\"palisade\",\"stone\"]}"^^rdf:JSON ;
     gbo:hasScale gbb:settlement.hamlet, gbb:settlement.village, gbb:settlement.large-village, gbb:settlement.town, gbb:settlement.city .
 
 gbb:settlement.hamlet
@@ -6675,6 +6677,51 @@ gbv:house-kind.manor
     skos:altLabel "mansion"@en ;
     skos:notation "manor" ;
     skos:topConceptOf gbv:house-kind .
+
+gbv:layout
+    a skos:ConceptScheme ;
+    skos:prefLabel "layout"@en ;
+    skos:hasTopConcept gbv:layout.organic, gbv:layout.grid, gbv:layout.radial, gbv:layout.linear-along-road, gbv:layout.linear-along-river .
+
+gbv:layout.organic
+    a skos:Concept ;
+    skos:inScheme gbv:layout ;
+    skos:prefLabel "organic"@en ;
+    skos:altLabel "irregular"@en, "winding"@en, "medieval"@en ;
+    skos:notation "organic" ;
+    skos:topConceptOf gbv:layout .
+
+gbv:layout.grid
+    a skos:Concept ;
+    skos:inScheme gbv:layout ;
+    skos:prefLabel "grid"@en ;
+    skos:altLabel "planned"@en, "chequerboard"@en, "checkerboard"@en, "orthogonal"@en ;
+    skos:notation "grid" ;
+    skos:topConceptOf gbv:layout .
+
+gbv:layout.radial
+    a skos:Concept ;
+    skos:inScheme gbv:layout ;
+    skos:prefLabel "radial"@en ;
+    skos:altLabel "concentric"@en, "ring"@en, "star"@en ;
+    skos:notation "radial" ;
+    skos:topConceptOf gbv:layout .
+
+gbv:layout.linear-along-road
+    a skos:Concept ;
+    skos:inScheme gbv:layout ;
+    skos:prefLabel "along a road"@en ;
+    skos:altLabel "street village"@en, "linear"@en ;
+    skos:notation "linear-along-road" ;
+    skos:topConceptOf gbv:layout .
+
+gbv:layout.linear-along-river
+    a skos:Concept ;
+    skos:inScheme gbv:layout ;
+    skos:prefLabel "along a river"@en ;
+    skos:altLabel "riverside"@en ;
+    skos:notation "linear-along-river" ;
+    skos:topConceptOf gbv:layout .
 
 gbv:light-kind
     a skos:ConceptScheme ;

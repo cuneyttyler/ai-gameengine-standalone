@@ -413,6 +413,48 @@
       ]
     }
   ],
+  "layout": [
+    {
+      "id": "organic",
+      "alt": [
+        "irregular",
+        "winding",
+        "medieval"
+      ]
+    },
+    {
+      "id": "grid",
+      "alt": [
+        "planned",
+        "chequerboard",
+        "checkerboard",
+        "orthogonal"
+      ]
+    },
+    {
+      "id": "radial",
+      "alt": [
+        "concentric",
+        "ring",
+        "star"
+      ]
+    },
+    {
+      "id": "linear-along-road",
+      "label": "along a road",
+      "alt": [
+        "street village",
+        "linear"
+      ]
+    },
+    {
+      "id": "linear-along-river",
+      "label": "along a river",
+      "alt": [
+        "riverside"
+      ]
+    }
+  ],
   "biome": [
     {
       "id": "temperate"

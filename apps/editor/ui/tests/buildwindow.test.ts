@@ -28,3 +28,17 @@ test('areas and sketches', () => {
     assert.match(layoutSketch(layout), /^<(path|circle|rect)/)
   }
 })
+
+test('a layout is a mix of patterns', async () => {
+  const { toggleShare, setShare } = await import('../src/buildwindow.ts')
+  let mix = toggleShare({ organic: 1 }, 'grid')
+  assert.deepEqual(mix, { organic: 0.5, grid: 0.5 })
+  mix = setShare(mix, 'grid', 0.3)
+  assert.deepEqual(mix, { grid: 0.3, organic: 0.7 })
+  mix = toggleShare(mix, 'linear-along-road')
+  assert.equal(Math.round(Object.values(mix).reduce((a, b) => a + b, 0) * 100), 100)
+  assert.equal(mix['linear-along-road'], 0.33)
+  assert.deepEqual(toggleShare({ grid: 0.3, organic: 0.7 }, 'grid'), { organic: 1 })
+  assert.deepEqual(toggleShare({ organic: 1 }, 'organic'), { organic: 1 }) // the last one stays
+  assert.deepEqual(setShare({ grid: 0.5, organic: 0.5 }, 'grid', 1), { grid: 1 })
+})

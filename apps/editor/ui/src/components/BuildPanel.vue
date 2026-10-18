@@ -7,7 +7,7 @@ import { computed, ref } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
 import { activatePanel, setPanelVisible } from '../layout'
 import CatalogThumb from './CatalogThumb.vue'
-import { amountText, countRange, layoutSketch, parseRange } from '../buildwindow'
+import { amountText, countRange, layoutSketch, parseRange, setShare, toggleShare, type Shares } from '../buildwindow'
 
 type Rect = [number, number, number, number]
 interface Thumb { id: string; path: string; rect: Rect }
@@ -52,7 +52,7 @@ interface BuildWindow {
   buildTypeName: string
   name: string
   size: { class: string | null; buildings: unknown; area: unknown; classes: { id: string; buildings: [number, number]; side: [number, number] }[] }
-  layout: { value: string | null; options: string[]; description: string | null }
+  layout: { value: Shares; options: string[]; description: string | null }
   walled: { value: string | null; options: string[] }
   features: { value: string[]; options: string[] }
   style: Record<string, { value: unknown; options?: string[] }>
@@ -272,18 +272,29 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             </div>
           </div>
 
-          <label>Layout</label>
-          <div class="layouts" :class="markClass('shape.layout')">
-            <button
-              v-for="l in win.layout.options"
-              :key="l"
-              :class="{ active: win.layout.value === l }"
-              :title="l"
-              @click="edit('shape.layout', l)"
-            >
-              <svg viewBox="0 0 40 28" width="40" height="28" v-html="layoutSketch(l)" />
-              <span>{{ l.replace(/-/g, ' ') }}</span>
-            </button>
+          <label title="One street pattern or several; the plan gives each ward one of them">Layout</label>
+          <div :class="markClass('shape.layout')">
+            <div class="layouts">
+              <div v-for="l in win.layout.options" :key="l" class="layout" :class="{ active: l in win.layout.value }">
+                <button :title="l in win.layout.value ? 'Leave this pattern out' : 'Add this pattern'" @click="edit('shape.layout', toggleShare(win.layout.value, l))">
+                  <svg viewBox="0 0 40 28" width="40" height="28" v-html="layoutSketch(l)" />
+                  <span>{{ l.replace(/-/g, ' ') }}</span>
+                </button>
+                <span v-if="l in win.layout.value && Object.keys(win.layout.value).length > 1" class="share">
+                  <input
+                    class="num"
+                    :value="Math.round((win.layout.value[l] ?? 0) * 100)"
+                    @change="edit('shape.layout', setShare(win.layout.value, l, Number(($event.target as HTMLInputElement).value) / 100))"
+                  />%
+                </span>
+              </div>
+            </div>
+            <input
+              class="wide"
+              :value="win.layout.description ?? ''"
+              placeholder="Where each goes, if it matters: e.g. a grid core inside the walls, organic lanes outside"
+              @change="edit('shape.description', ($event.target as HTMLInputElement).value)"
+            />
           </div>
 
           <label>Walls</label>
@@ -570,6 +581,19 @@ button.link {
   flex-wrap: wrap;
   gap: 4px;
 }
+.layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.share .num {
+  width: 40px;
+}
+.wide {
+  width: 100%;
+  margin-top: 6px;
+}
 .layouts button {
   display: flex;
   flex-direction: column;
@@ -578,7 +602,7 @@ button.link {
   padding: 4px 6px;
   min-width: 70px;
 }
-.layouts button.active,
+.layout.active button,
 .chips button.active {
   border-color: #89b4fa;
   background: #313244;

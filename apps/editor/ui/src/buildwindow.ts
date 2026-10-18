@@ -44,3 +44,48 @@ export function layoutSketch(layout: string): string {
       return '<path d="M4 20C10 12 14 18 20 10S30 8 36 14"/><path d="M12 25C14 18 20 20 22 13"/><rect x="7" y="8" width="4" height="4"/><rect x="25" y="17" width="5" height="4"/><rect x="15" y="3" width="4" height="4"/>'
   }
 }
+
+// A layout mix, shares adding up to 1 (rounded to hundredths).
+export type Shares = Record<string, number>
+
+function normalized(shares: Shares): Shares {
+  const total = Object.values(shares).reduce((s, v) => s + v, 0)
+  const out: Shares = {}
+  const keys = Object.keys(shares)
+  if (total <= 0) return out
+  let left = 1
+  keys.forEach((k, i) => {
+    const v = i === keys.length - 1 ? Math.round(left * 100) / 100 : Math.round(((shares[k] ?? 0) / total) * 100) / 100
+    out[k] = v
+    left -= v
+  })
+  return out
+}
+
+// Turns a pattern on (an equal share, the others making room) or off (the
+// others growing back to 1). The last pattern can't be turned off.
+export function toggleShare(shares: Shares, key: string): Shares {
+  const keys = Object.keys(shares)
+  if (key in shares) {
+    if (keys.length === 1) return { ...shares }
+    const rest = { ...shares }
+    delete rest[key]
+    return normalized(rest)
+  }
+  const n = keys.length + 1
+  const out: Shares = {}
+  for (const k of keys) out[k] = (shares[k] ?? 0) * (1 - 1 / n)
+  out[key] = 1 / n
+  return normalized(out)
+}
+
+// Sets one pattern's share (0-1); the others share what's left in proportion.
+export function setShare(shares: Shares, key: string, share: number): Shares {
+  const s = Math.min(1, Math.max(0, share))
+  const others = Object.keys(shares).filter((k) => k !== key)
+  if (others.length === 0) return { [key]: 1 }
+  const total = others.reduce((sum, k) => sum + (shares[k] ?? 0), 0)
+  const out: Shares = { [key]: s }
+  for (const k of others) out[k] = total > 0 ? ((shares[k] ?? 0) / total) * (1 - s) : (1 - s) / others.length
+  return normalized(Object.fromEntries(Object.entries(out).filter(([, v]) => v > 0)))
+}
