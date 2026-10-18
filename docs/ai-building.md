@@ -3,6 +3,84 @@
 Status: **design, revised after discussion (2026-10-18)**. The module catalogue is in
 `docs/place-modules.md`; the milestones are in `development_plan.md`, Phase 7.
 
+## 0. Approach (article form)
+
+Recent work on language-driven scene and level generation agrees on a central point:
+large language models should decide *what* a place contains and how its parts relate,
+while numerical solvers decide *where* things go. Holodeck asks an LLM for spatial
+relations, which a constraint solver then satisfies [1]. SceneCraft represents a scene as
+a relation graph with differentiable scores and revises it from rendered images [2].
+GLDL turns narrative into definition and constraint sentences that are solved as a
+facility-layout problem [3]. The database-driven framework moves the LLM's knowledge into
+reviewed databases, so assembly needs no model calls [4]. CityGenAgent splits a city into
+editable block and building programs [5]. In parallel, procedural modelling has developed
+strong algorithms for the geometric layer: villages grown from interest maps [6], parcel
+subdivision with street access [7], hierarchical tile synthesis [8], and mission-and-space
+graphs for dungeons [9]. Semantic approaches to game worlds attach classes and placement
+rules to objects [10, 11].
+
+We combine these strands in a single procedure for 2D sprite-based worlds of any scale:
+*query → interpret → confirm → plan → compile → solve → verify*. Each step writes a typed,
+constrained document, as follows.
+- **Brief.** The confirmed request. The user confirms it in a window generated from its
+  schema. Questions are batched and placed where several sampled interpretations
+  disagree [12, 13].
+- **Spec.** A plan tree whose nodes carry quantity fields (counts, densities with numeric
+  meaning, areas) and quality fields (closed vocabularies). Aggregate constraints are
+  checked across the tree.
+- **Layout IR.** A constraint language that keeps GLDL's core terms [3] and extends them
+  with hierarchy, n-ary group relations [2], linear features, networks, subdivision,
+  scatter and terrain.
+
+The main contribution is an explicit **place ontology**: a knowledge graph of build types,
+modules, fields, vocabularies, asset roles, spatial relations and design rules, each fact
+with its source. Every step queries the ontology:
+- the interpreter maps words to concepts;
+- the planner draws allowed children, typical weights, requirements and interest
+  preferences from it;
+- the compiler takes the meaning of relations from it;
+- asset retrieval matches catalogued sprites (with measured footprint, anchor and
+  perspective) to roles;
+- verification applies the rules the ontology attaches to each class.
+
+Earlier semantic libraries guided layout solvers [10, 11], and LLM systems used ad-hoc
+prompts or learned programs [1–5]. To our knowledge, no prior system uses a shared
+ontology both to **ground the LLM's planning** and to **define the constraints that are
+compiled and checked**. Because the ontology is explicit, the system can explain its
+decisions. It can also grow by reviewed, AI-proposed extensions and by weights learned
+from verified builds.
+
+The approach adds three further elements:
+- **Scale:** the LLM plans only the upper levels, and ontology-driven expansion rules fill
+  the rest, so a city needs tens of model calls rather than thousands.
+- **Verification:** each level is verified (hard rules, conformity tolerances, rendered
+  critique [2, 5]) and repaired locally before the next is built inside it.
+- **Editing after generation:** every built entity keeps its link to its plan node. An
+  edited or regenerated subtree preserves locked work, by matching children across
+  regenerations as in parcel persistence [7].
+
+**References**
+
+1. Y. Yang et al. *Holodeck: Language Guided Generation of 3D Embodied AI Environments.* CVPR 2024.
+2. Z. Hu et al. *SceneCraft: An LLM Agent for Synthesizing 3D Scenes as Blender Code.* ICML 2024.
+3. K. Xu, C. Verbrugge. *Constraint Is All You Need: Optimization-Based 3D Level Generation with LLMs.* FDG 2025.
+4. *A Database-Driven Framework for 3D Level Generation with LLMs.* AIIDE 2025.
+5. Z. Liu et al. *Imagine a City: CityGenAgent for Procedural 3D City Generation.* arXiv:2602.05362, 2026.
+6. A. Emilien, A. Bernhardt, A. Peytavie, M.-P. Cani, E. Galin. *Procedural Generation of Villages on Arbitrary Terrains.* The Visual Computer, 2012.
+7. C. Vanegas, T. Kelly, B. Weber, J. Halatsch, D. Aliaga, P. Müller. *Procedural Generation of Parcels in Urban Modeling.* Eurographics 2012.
+8. S. Alaka, R. Bidarra. *Hierarchical Semantic Wave Function Collapse.* FDG 2023.
+9. J. Dormans. *Adventures in Level Design: Generating Missions and Spaces for Action Adventure Games.* PCG Workshop 2010.
+10. T. Tutenel, R. M. Smelik, R. Bidarra, K. J. de Kraker. *Using Semantics to Improve the Design of Game Worlds.* AIIDE 2009.
+11. R. M. Smelik, T. Tutenel, K. J. de Kraker, R. Bidarra. *A Declarative Approach to Procedural Modeling of Virtual Worlds.* Computers & Graphics 35, 2011.
+12. *ClarEval: A Benchmark for Evaluating Clarification Skills of Code Agents under Ambiguous Instructions.* arXiv:2603.00187, 2026.
+13. *Active Task Disambiguation with LLMs.* arXiv:2502.04485, 2025.
+
+Also used in the design: Infinigen Indoors (Raistrick et al., CVPR 2024), WorldCraft
+(arXiv:2502.15601), 3D-GPT (Sun et al.), Narrative-to-Scene Generation (Chen & Jhala,
+2025), GameTileNet (AIIDE 2025), Unexplored's cyclic generation (Dormans), Watabou's
+Medieval Fantasy City Generator, Parish & Müller (SIGGRAPH 2001), Lynch, *The Image of
+the City* (1960).
+
 ## 1. Goal
 
 One instruction — *"build a large medieval town by a river"*, *"a three-floor tavern"*, *"a

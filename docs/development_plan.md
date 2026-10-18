@@ -1632,7 +1632,10 @@ uses the pack's houses, well, fences and decorations, on the grid the art was dr
 - `docs/place-schema.md`: **the procedure, its documents, the intermediate language and
   the constraints**;
 - `docs/place-modules.md`: **the modules per build type**, with their quantity and
-  quality fields.
+  quality fields;
+- `docs/place-ontology.md`: **the place ontology**, a knowledge graph of modules,
+  fields, vocabularies, roles, relations and rules that every step consults. The Layout
+  IR is our own language, aligned with GLDL's terms.
 
 **Agreed (2026-10-18):**
 - **size:** very big, up to regions of several settlements;
@@ -1673,7 +1676,12 @@ Query → Interpret (Brief drafts) → Confirm (Brief) → Plan (Spec: quantity 
 - **ClarEval / Active Disambiguation:** batched questions, asked where interpretations
   disagree.
 
-**7.1 — Schemas and validators (first; nothing else starts before it)**
+**7.1 — Ontology, schemas and validators (first; nothing else starts before it)**
+- The **place ontology** (`docs/place-ontology.md`):
+  - classes, properties and rules in the engine's JSON graph format, loaded in memory,
+    with subgraph retrieval for prompts;
+  - export to OWL, SKOS and SHACL;
+  - module files generated from it, or validated against it.
 - The documents and schemas:
   - `aige.brief/1`, `aige.spec/1` (the plan tree with quantity and quality fields);
   - `aige.module/1` (a module's fields, slots, children, constraints, relations, compile

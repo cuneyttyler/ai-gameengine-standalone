@@ -387,8 +387,11 @@ score reported. Missing art is reported per slot. Tolerances are part of the sch
 1. The **vocabularies**: the first set for settlements (house kinds, wealth, condition,
    materials, flower and crop kinds…).
 2. The **scale tables** per build type (numbers per class).
-3. **Density maps** per field: one shared five-level scale, or per field (proposed: per
-   field, with shared defaults).
-4. **Tolerances**: the defaults in §4.6.
+3. ~~Density maps~~, decided (2026-10-18; left to us): **per field**, starting from
+   one shared default scale (0, 0.05, 0.15, 0.3, 0.5 per free cell). A field overrides it
+   only where its unit differs (trees per 10 cells, stalls per side). Values are tuned
+   from verified builds.
+4. ~~Tolerances~~, decided (2026-10-18; left to us): the defaults in §4.6, kept in
+   `aige.tolerance/1` and tuned during 7.7 testing.
 5. The exact **text form** of the IR for humans (JSON is the canonical form; a readable
    rendering is shown in review).
