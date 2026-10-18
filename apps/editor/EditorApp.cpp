@@ -837,6 +837,24 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         DuplicateSelected();
     } else if (type == "scene:save") {
         Save();
+    } else if (type == "layout:request") {
+        // The project's saved panel layout, or null for a project that has none
+        // (the UI then keeps the layout last used anywhere).
+        nlohmann::json saved = nullptr;
+        std::ifstream in(LayoutPath());
+        if (in) {
+            saved = nlohmann::json::parse(in, nullptr, false);
+            if (saved.is_discarded()) saved = nullptr;
+        }
+        layout_ = saved;
+        savedLayout_ = saved;
+        post_({{"type", "layout:state"}, {"layout", saved}});
+    } else if (type == "layout:set") {
+        layout_ = message.value("layout", nlohmann::json(nullptr));
+        if (!layout_.is_null() && layout_ != savedLayout_ && !dirty_) {
+            dirty_ = true; // a moved panel is an unsaved change, kept by Save
+            editorStateStale_ = true;
+        }
     } else if (type == "view:frame") {
         FrameScene();
     } else if (type == "play:start") {
@@ -2129,6 +2147,13 @@ void EditorApp::Save() {
             SaveSettings(EngineReflection(), assets_.GetProject().SettingsPath().string());
             settingsDirty_ = false;
         }
+        if (!layout_.is_null()) {
+            std::ofstream out(LayoutPath(), std::ios::trunc | std::ios::binary);
+            if (out) {
+                out << layout_.dump(2) << "\n";
+                savedLayout_ = layout_;
+            }
+        }
     } catch (const std::exception& e) {
         post_({{"type", "notify"}, {"text", std::string("Save failed: ") + e.what()}});
         return;
@@ -2136,6 +2161,10 @@ void EditorApp::Save() {
     dirty_ = false;
     editorStateStale_ = true;
     post_({{"type", "notify"}, {"text", "Saved " + std::filesystem::path(scenePath_).filename().string()}});
+}
+
+std::filesystem::path EditorApp::LayoutPath() const {
+    return assets_.GetProject().root / "editor-layout.json";
 }
 
 // --- Play mode --------------------------------------------------------------

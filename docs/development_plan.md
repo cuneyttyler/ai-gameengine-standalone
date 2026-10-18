@@ -1644,6 +1644,19 @@ Decisions (2026-10-17, defaults the user can still change):
   - The 5.6 layout is migrated on first launch.
   - Checked in headless Chrome: drags to tabs, edges and sides; Escape; reload keeps the
     layout; shortcuts.
+  - After the first test (2026-10-18):
+    - **One area per window edge.** Docking on an edge that already has panels puts
+      the new one next to them, along the edge, instead of adding another strip. All
+      four panels docked on top make one top row.
+    - **Fixed:** with every panel as tabs of one group, the content disappeared. The
+      root element was reused when the tree collapsed to a single group, and never
+      re-measured.
+    - **Saved per project:** File ▸ Save writes the layout to
+      `<project>/editor-layout.json`, which is restored when the project opens. Moving
+      a panel counts as an unsaved change. A project without a saved layout starts
+      from the last layout used.
+    - **Double-click a tab** to fill the window with that panel; double-click again
+      to bring the others back (the tab's menu has *Maximize* too).
 
 **Phase 6 exit criteria:** from an unfamiliar pack, the AI imports everything at sensible
 sizes, lays roads with the right pieces, and builds a village of the requested size that

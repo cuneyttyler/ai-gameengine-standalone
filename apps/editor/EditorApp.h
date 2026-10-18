@@ -85,6 +85,11 @@ public:
     // True when the scene has unsaved edits (asked before closing).
     bool IsDirty() const { return dirty_ || settingsDirty_; }
     void Save();
+    // The panel layout (6.8), per project: the UI sends every change; Save
+    // writes it to <project>/editor-layout.json, which is sent back on open.
+    nlohmann::json layout_;
+    nlohmann::json savedLayout_;
+    std::filesystem::path LayoutPath() const;
 
 private:
     // Everything placeable is a prefab, so there are only three tools: pick,

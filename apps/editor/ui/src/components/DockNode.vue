@@ -9,7 +9,19 @@ import { openContextMenu, separator, type MenuItem } from '../contextMenu'
 import type { DockNode } from '../docktree'
 import { pressTab, registerGroup, unregisterGroup } from '../dockdrag'
 import { keyLabel } from '../keys'
-import { dockView, movePanel, panelNames, resetLayout, resizeSplit, saveLayout, setPanelVisible, sideNames, type PanelId, type Side } from '../layout'
+import {
+  dockView,
+  movePanel,
+  panelNames,
+  resetLayout,
+  resizeSplit,
+  saveLayout,
+  setPanelVisible,
+  sideNames,
+  toggleMaximize,
+  type PanelId,
+  type Side,
+} from '../layout'
 import Splitter from './Splitter.vue'
 
 const props = defineProps<{ node: DockNode }>()
@@ -47,7 +59,7 @@ function register(): void {
   }
 }
 onMounted(register)
-watch(() => props.node.id, register)
+watch(() => props.node.id, register, { flush: 'post' })
 onBeforeUnmount(() => {
   if (registered && groupEl.value) unregisterGroup(registered, groupEl.value)
 })
@@ -61,6 +73,7 @@ function tabMenu(panel: PanelId, event: MouseEvent): void {
     })),
     separator,
     { label: 'Hide', shortcut: keyLabel(`panel.${panel}`), action: () => setPanelVisible(panel, false) },
+    { label: 'Maximize (double-click the tab)', action: () => toggleMaximize(panel) },
     separator,
     { label: 'Reset layout', action: () => resetLayout() },
   ]
@@ -95,8 +108,9 @@ function tabMenu(panel: PanelId, event: MouseEvent): void {
         :data-tab="panel"
         class="tab"
         :class="{ active: panel === node.active, moving: dockView.dragging === panel }"
-        :title="`${panelNames[panel]} — drag to move it: onto a panel to make tabs, to a side to split, to the window's edge to dock`"
+        :title="`${panelNames[panel]} — drag to move it: onto a panel to make tabs, to a side to split, to the window's edge to dock. Double-click to fill the window.`"
         @pointerdown="pressTab(panel, $event)"
+        @dblclick="toggleMaximize(panel)"
         @contextmenu="tabMenu(panel, $event)"
       >
         {{ panelNames[panel] }}

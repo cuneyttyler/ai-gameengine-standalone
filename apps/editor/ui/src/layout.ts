@@ -2,8 +2,13 @@
 // (docktree.ts): splits whose leaves are tab groups, holding the Scene, Assets
 // and AI panels and the viewport, each of which can be dragged anywhere: onto
 // another group as a tab, beside it, or along a window edge. Hidden panels
-// leave the tree and come back where they were. Per-user, so localStorage;
-// every access is guarded and the default always works.
+// leave the tree and come back where they were.
+//
+// Saved **per project**: every change goes to the host, and File ▸ Save writes
+// it to <project>/editor-layout.json, restored when the project opens. The
+// layout last used anywhere is also kept in localStorage, as the start for a
+// project that has no saved layout yet. Every access is guarded and the
+// default always works.
 import { reactive, watch } from 'vue'
 import {
   activate,
@@ -23,7 +28,7 @@ import {
   type PanelId,
   type Side,
 } from './docktree'
-import { sendToHost } from './ipc'
+import { onHostMessage, sendToHost } from './ipc'
 
 export type { PanelId, Side, DropTarget } from './docktree'
 
@@ -122,16 +127,51 @@ export const layout = reactive(load())
 // What the editor measures and drags (App.vue fills these in).
 export const dockView = reactive({
   groupRects: {} as Record<string, Rect>, // each tab group's whole box, in the shell's coordinates
+  shell: { width: 0, height: 0 }, // the area the layout fills
   dragging: null as PanelId | null,
+  // Double-clicking a tab: that panel covers the whole layout, the others are
+  // out of sight (still mounted); double-clicking again brings them back.
+  maximized: null as PanelId | null,
 })
 
+export function toggleMaximize(id: PanelId): void {
+  dockView.maximized = dockView.maximized === id || !isOpen(id) ? null : id
+}
+
+function snapshot(): { root: DockNode | null; lastGroup: LayoutState['lastGroup']; treeFraction: number } {
+  return { root: layout.root, lastGroup: layout.lastGroup, treeFraction: layout.treeFraction }
+}
+
 export function saveLayout(): void {
+  const state = snapshot()
   try {
-    localStorage.setItem(KEY, JSON.stringify({ root: layout.root, lastGroup: layout.lastGroup, treeFraction: layout.treeFraction }))
+    localStorage.setItem(KEY, JSON.stringify(state))
   } catch {
-    // Not persisting is fine; the layout resets next launch.
+    // Not persisting here is fine: the project keeps its own copy.
+  }
+  sendToHost({ type: 'layout:set', layout: JSON.parse(JSON.stringify(state)) })
+}
+
+// The project's own layout, when it has one, replaces the starting one.
+function applySaved(saved: unknown): void {
+  if (!saved || typeof saved !== 'object' || !('root' in saved)) return
+  const s = saved as Partial<LayoutState>
+  const root = s.root === null ? null : parseTree(s.root)
+  if (s.root !== null && !root) return
+  layout.root = root
+  layout.lastGroup = s.lastGroup && typeof s.lastGroup === 'object' ? s.lastGroup : {}
+  if (typeof s.treeFraction === 'number') layout.treeFraction = Math.min(0.9, Math.max(0.1, s.treeFraction))
+  try {
+    localStorage.setItem(KEY, JSON.stringify(snapshot()))
+  } catch {
+    // fine
   }
 }
+
+onHostMessage((message) => {
+  if (message.type === 'layout:state') applySaved(message.layout)
+})
+sendToHost({ type: 'layout:request' })
 
 function setRoot(root: DockNode | null): void {
   layout.root = root
@@ -155,6 +195,7 @@ export function hiddenPanels(): PanelId[] {
 // Showing brings a panel to the front, back where it was if that group still
 // exists, else along its usual window edge. Hiding takes it out of the layout.
 export function setPanelVisible(id: PanelId, on: boolean): void {
+  dockView.maximized = null // showing or hiding panels brings the whole layout back
   if (on) {
     if (isOpen(id)) {
       setRoot(activate(layout.root, id))
@@ -190,6 +231,7 @@ export function movePanel(id: PanelId, side: Side): void {
 }
 
 export function applyDrop(id: PanelId, target: DropTarget): void {
+  dockView.maximized = null
   setRoot(dropPanel(layout.root, id, target))
 }
 
@@ -203,6 +245,7 @@ export function resizeSplit(splitId: string, index: number, first: number): void
 }
 
 export function resetLayout(): void {
+  dockView.maximized = null
   layout.lastGroup = {}
   setRoot(defaultTree())
 }
@@ -212,10 +255,11 @@ export function resetLayout(): void {
 // show over its area).
 let lastSent: boolean | null = null
 export function syncViewportWindow(): void {
-  const on = isFront('viewport') && dockView.dragging === null
+  const max = dockView.maximized
+  const on = (max ? max === 'viewport' : isFront('viewport')) && dockView.dragging === null
   if (on !== lastSent) {
     lastSent = on
     sendToHost({ type: 'viewport:visible', on })
   }
 }
-watch(() => [layout.root, dockView.dragging], syncViewportWindow, { deep: true })
+watch(() => [layout.root, dockView.dragging, dockView.maximized], syncViewportWindow, { deep: true })

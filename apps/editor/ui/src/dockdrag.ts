@@ -57,6 +57,7 @@ function measure(): void {
     rects[id] = { x: r.left - shell.left, y: r.top - shell.top, width: r.width, height: r.height }
   }
   dockView.groupRects = rects
+  dockView.shell = { width: shell.width, height: shell.height }
   // Things positioned over the page (the native viewport window) follow even
   // when their size didn't change.
   window.dispatchEvent(new Event('aige:layout'))

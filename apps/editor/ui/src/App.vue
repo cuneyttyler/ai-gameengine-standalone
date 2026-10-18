@@ -6,7 +6,7 @@
 // a window edge never resets it (drafts, the AI conversation, scroll).
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { editorState } from './editorState'
-import { bodyRect, dragView, scheduleMeasure, setShell } from './dockdrag'
+import { bodyRect, dragView, scheduleMeasure, setShell, TAB_HEIGHT } from './dockdrag'
 import { groupOf } from './docktree'
 import StatusBar from './components/StatusBar.vue'
 import AssetBrowser from './components/AssetBrowser.vue'
@@ -32,13 +32,24 @@ import {
   resetLayout,
   setPanelVisible,
   syncViewportWindow,
+  toggleMaximize,
   type PanelId,
 } from './layout'
 
 const shell = ref<HTMLElement | null>(null)
 
-// Where each panel is drawn: its group's body, or nowhere.
+// Where each panel is drawn: its group's body, or nowhere; a maximized panel
+// fills the whole layout under its own tab.
 function hostStyle(id: PanelId): Record<string, string> {
+  if (dockView.maximized) {
+    if (id !== dockView.maximized) return { display: 'none' }
+    return {
+      left: '0px',
+      top: `${TAB_HEIGHT}px`,
+      width: `${dockView.shell.width}px`,
+      height: `${Math.max(0, dockView.shell.height - TAB_HEIGHT)}px`,
+    }
+  }
   const group = groupOf(layout.root, id)
   const body = group ? bodyRect(group.id) : null
   if (!group || !body || !isFront(id)) return { display: 'none' }
@@ -82,8 +93,15 @@ onBeforeUnmount(() => setShell(null))
       </div>
 
       <div ref="shell" class="dock-shell">
-        <DockNode v-if="layout.root" :node="layout.root" />
-        <div v-else class="empty">
+        <!-- Keyed: when the tree collapses to a different root (a lone group, a new split), its element is rebuilt and re-measured. -->
+        <DockNode v-if="layout.root" v-show="!dockView.maximized" :key="layout.root.id" :node="layout.root" />
+        <div v-if="dockView.maximized" class="max-strip">
+          <button class="max-tab" title="Double-click to bring the other panels back" @dblclick="toggleMaximize(dockView.maximized)">
+            {{ panelNames[dockView.maximized] }}
+          </button>
+          <span class="max-hint">Double-click the tab to bring the other panels back</span>
+        </div>
+        <div v-if="!layout.root" class="empty">
           <p>Every panel is hidden.</p>
           <div class="empty-buttons">
             <button v-for="id in panelIds" :key="id" @click="setPanelVisible(id, true)">Show {{ panelNames[id] }}</button>
@@ -184,6 +202,36 @@ onBeforeUnmount(() => setShell(null))
   font-size: 0.8em;
   pointer-events: none;
   white-space: nowrap;
+}
+.max-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 26px;
+  display: flex;
+  align-items: stretch;
+  background: #14141f;
+  border-bottom: 1px solid #2a2a3a;
+}
+.max-tab {
+  padding: 0 12px;
+  border: none;
+  border-right: 1px solid #2a2a3a;
+  border-radius: 0;
+  background: #181825;
+  color: #fff;
+  font: inherit;
+  font-size: 0.8em;
+  box-shadow: inset 0 2px 0 #3b82f6;
+  cursor: pointer;
+  user-select: none;
+}
+.max-hint {
+  align-self: center;
+  margin-left: 10px;
+  font-size: 0.75em;
+  opacity: 0.45;
 }
 .empty {
   margin: auto;
