@@ -3,6 +3,7 @@
 // factions, places, items, events, lore and the tone guide. Each entry is a
 // file in the project (world/<kind>/<id>.md, engine/world); the host reads and
 // writes them, this panel lists, searches and edits them.
+import { sceneList } from '../scenes'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
@@ -21,6 +22,7 @@ interface Entry {
   summary: string
   tags: string[]
   relations: Relation[]
+  scene: string // locations: the scene that shows this place (6.9)
   body: string
 }
 
@@ -50,6 +52,7 @@ const draft = reactive({
   summary: '',
   tags: '',
   relations: [] as Relation[],
+  scene: '',
   body: '',
 })
 const idEdited = ref(false)
@@ -161,6 +164,7 @@ async function select(key: string): Promise<void> {
     summary: entry.summary,
     tags: entry.tags.join(', '),
     relations: entry.relations.map((r) => ({ ...r })),
+    scene: entry.scene ?? '',
     body: entry.body,
   })
   idEdited.value = true
@@ -173,7 +177,7 @@ async function startNew(kind: string): Promise<void> {
     return
   }
   selectedKey.value = ''
-  Object.assign(draft, { originalKey: '', kind, id: '', name: '', summary: '', tags: '', relations: [], body: '' })
+  Object.assign(draft, { originalKey: '', kind, id: '', name: '', summary: '', tags: '', relations: [], scene: '', body: '' })
   idEdited.value = false
   saveError.value = ''
   savedSnapshot.value = ''
@@ -207,6 +211,7 @@ function save(): void {
         .map((t) => t.trim())
         .filter(Boolean),
       relations: draft.relations.filter((r) => r.type.trim() && r.target),
+      scene: draft.kind === 'location' ? draft.scene : '',
       body: draft.body,
     },
   })
@@ -371,6 +376,16 @@ const backlinks = computed(() =>
       <div class="form-row">
         <label>Tags</label>
         <input v-model="draft.tags" class="wide" placeholder="comma, separated" />
+      </div>
+      <div v-if="draft.kind === 'location'" class="form-row">
+        <label>Scene</label>
+        <select v-model="draft.scene" class="wide" title="The scene that shows this place: building or editing it follows this entry">
+          <option value="">— no scene —</option>
+          <option v-for="s in sceneList.scenes" :key="s.path" :value="s.path">{{ s.name }} ({{ s.path }})</option>
+          <option v-if="draft.scene && !sceneList.scenes.some((s) => s.path === draft.scene)" :value="draft.scene">
+            {{ draft.scene }} (missing)
+          </option>
+        </select>
       </div>
       <div class="form-row top">
         <label>Relations</label>

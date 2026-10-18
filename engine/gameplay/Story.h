@@ -71,9 +71,13 @@ struct Dialogue {
 struct QuestObjective {
     std::string id;
     std::string text;   // shown on screen: "Defeat the skeletons in the courtyard"
-    std::string type;   // defeat | talk | collect
-    std::string target; // defeat/collect: a prefab path or a team (Enemy); talk: a World Bible key
+    std::string type;   // defeat | talk | collect | reach
+    // defeat/collect: a prefab path or a team (Enemy); talk: a World Bible key;
+    // reach: a Marker's name (empty with a scene: just arrive there).
+    std::string target;
     int count = 1;
+    // Only counts in this scene ("scenes/cellar.aige"); empty: in any scene.
+    std::string scene;
 };
 
 struct Quest {
@@ -162,6 +166,19 @@ public:
     void OnDefeated(const std::string& prefab, const std::string& team, const StoryLibrary& library);
     void OnCollected(const std::string& prefab, const StoryLibrary& library);
     void OnTalkedTo(const std::string& character, const StoryLibrary& library);
+    // The player is at a Marker (reach objectives).
+    void OnReached(const std::string& marker, const StoryLibrary& library);
+
+    // The scene the player is in ("scenes/cellar.aige"). Objectives tied to a
+    // scene count only there; arriving completes a "reach" objective that
+    // names the scene but no marker.
+    void SetScene(const std::string& scene, const StoryLibrary& library);
+    const std::string& Scene() const { return scene_; }
+
+    // Saving and loading a run's progress (development_plan.md 6.9): flags,
+    // quest states and the order they started. Notices are not saved.
+    nlohmann::json ToJson() const;
+    static StoryState FromJson(const nlohmann::json& json);
 
     // The objective to show: the first active quest's current one.
     struct Shown {
@@ -178,11 +195,13 @@ private:
     void Advance(const std::string& id, const StoryLibrary& library);
     void Count(const std::string& type, const std::function<bool(const std::string&)>& matches,
                const StoryLibrary& library);
+    void CheckArrival(const StoryLibrary& library);
 
     std::set<std::string> flags_;
     std::map<std::string, Progress> quests_;
     std::vector<std::string> startedOrder_; // which active quest is shown first
     std::vector<Notice> notices_;
+    std::string scene_;
 };
 
 // One conversation in progress.

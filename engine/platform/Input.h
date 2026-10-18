@@ -17,6 +17,8 @@ enum class Key {
     Escape,
     F3, // frame stats
     F5,
+    F6, // save the game
+    F9, // load the saved game
     Space,
     E,     // talk / interact
     Enter, // confirm a dialogue choice

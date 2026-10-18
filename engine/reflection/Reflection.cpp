@@ -25,6 +25,9 @@ nlohmann::json MetaToJson(const FieldMeta& meta) {
     if (meta.max) {
         json["max"] = *meta.max;
     }
+    if (meta.optional) {
+        json["optional"] = true;
+    }
     return json;
 }
 

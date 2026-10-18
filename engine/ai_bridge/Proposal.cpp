@@ -6,6 +6,7 @@
 #include "gameplay/Components.h"
 #include "reflection/Reflection.h"
 #include "scripting/Components.h"
+#include "assets/SceneFiles.h"
 #include "editing/LevelBuild.h"
 #include "editing/VillageBuild.h"
 #include "gameplay/Schedule.h"
@@ -332,9 +333,15 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
         if (!schedule->name.empty()) item.target += " (" + schedule->name + ")";
         item.detail = ScheduleToJson(*schedule).dump(2);
         auto markers = MarkerPositions(registry);
-        auto problems = ValidateSchedule(*schedule, [&](const std::string& name) {
-            return scope.markers.contains(name) ||
-                   std::any_of(markers.begin(), markers.end(), [&](const auto& m) { return m.first == name; });
+        auto problems = ValidateSchedule(*schedule, [&](const std::string& scene, const std::string& name) {
+            // Markers proposed here, in the open scene, or saved in the named scene.
+            if (scope.markers.contains(name) ||
+                std::any_of(markers.begin(), markers.end(), [&](const auto& m) { return m.first == name; })) {
+                return true;
+            }
+            if (scene.empty()) return false;
+            const auto saved = SceneMarkers(project, scene);
+            return std::find(saved.begin(), saved.end(), name) != saved.end();
         });
         if (!problems.empty()) {
             error = JoinProblems(problems);
@@ -437,6 +444,16 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
         nlohmann::json args = op.value("args", nlohmann::json::object());
         std::vector<FieldValue> values;
         for (const auto& param : command->params) {
+            if (!args.contains(param.name) && param.optional) {
+                // Left out: its type's empty value.
+                switch (param.type) {
+                    case FieldType::Float: values.push_back(0.0f); break;
+                    case FieldType::Int: values.push_back(0); break;
+                    case FieldType::Bool: values.push_back(false); break;
+                    default: values.push_back(std::string()); break;
+                }
+                continue;
+            }
             if (!args.contains(param.name)) {
                 error = "needs " + param.name;
                 return item;

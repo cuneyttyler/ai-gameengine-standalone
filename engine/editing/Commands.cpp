@@ -334,6 +334,9 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
                "Links to other entries, '; '-separated, each '<type> <kind>/<id>', e.g. "
                "'lives_in location/brookvale; member_of faction/iron-guild' (may be empty).")
         .Param("body", FieldType::String, "The full description, Markdown.")
+        .Param("scene", FieldType::String,
+               "Locations only: the scene that shows this place, scenes/<name>.aige (optional).")
+        .Optional()
         .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
             if (context.project == nullptr) {
                 return Fail("no project is open");
@@ -346,6 +349,10 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
             entry.tags = ParseTagList(ToString(args[4]));
             entry.relations = ParseRelationList(ToString(args[5]));
             entry.body = ToString(args[6]);
+            entry.scene = args.size() > 7 ? ToString(args[7]) : std::string();
+            if (!entry.scene.empty() && entry.kind != "location") {
+                return Fail("only locations name a scene");
+            }
             WorldBible world(*context.project);
             world.Refresh();
             if (const WorldEntry* existing = world.Find(entry.Key())) {

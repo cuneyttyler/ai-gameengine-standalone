@@ -135,6 +135,9 @@ std::string FormatWorldEntry(const WorldEntry& entry) {
     for (const auto& relation : entry.relations) {
         out << "rel: " << RelationType(relation.type) << " " << OneLine(relation.target) << "\n";
     }
+    if (!entry.scene.empty()) {
+        out << "scene: " << OneLine(entry.scene) << "\n";
+    }
     for (const auto& [key, value] : entry.extra) {
         out << key << ": " << OneLine(value) << "\n";
     }
@@ -189,6 +192,8 @@ std::optional<WorldEntry> ParseWorldEntry(const std::string& text, const std::st
         } else if (key == "rel") {
             auto relations = ParseRelationList(value);
             entry.relations.insert(entry.relations.end(), relations.begin(), relations.end());
+        } else if (key == "scene") {
+            entry.scene = value;
         } else if (key != "kind") { // the folder decides the kind
             entry.extra.emplace_back(key, value);
         }
@@ -265,8 +270,26 @@ std::vector<WorldBible::Problem> WorldBible::Validate() const {
                                                      ", which doesn't exist"});
             }
         }
+        if (!entry.scene.empty()) {
+            std::error_code ec;
+            if (entry.kind != "location") {
+                problems.push_back({entry.Key(), "only locations name a scene"});
+            } else if (entry.scene.rfind("scenes/", 0) != 0 || !std::filesystem::exists(project_.Resolve(entry.scene), ec)) {
+                problems.push_back({entry.Key(), "scene " + entry.scene + " doesn't exist"});
+            } else if (const WorldEntry* first = LocationOf(entry.scene); first && first != &entry) {
+                problems.push_back({entry.Key(), entry.scene + " is already " + first->Key()});
+            }
+        }
     }
     return problems;
+}
+
+const WorldEntry* WorldBible::LocationOf(const std::string& scene) const {
+    if (scene.empty()) return nullptr;
+    for (const auto& entry : entries_) {
+        if (entry.kind == "location" && entry.scene == scene) return &entry;
+    }
+    return nullptr;
 }
 
 std::optional<std::string> WorldBible::Save(const WorldEntry& entry) {

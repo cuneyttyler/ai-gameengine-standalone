@@ -130,6 +130,23 @@ public:
     std::optional<TravelRequest> TakeTravel();
     void OnSceneChanged();
 
+    // The scene being played ("scenes/cellar.aige"), set by the host when
+    // play starts and after each travel. Quest objectives and schedule
+    // entries tied to a scene use it.
+    void SetScene(const std::string& scene);
+    const std::string& Scene() const { return scene_; }
+
+    // A saved game (development_plan.md 6.9): the scene, where the player
+    // stands, the clock and the story's progress. The host loads the scene,
+    // then ApplySave puts back the rest.
+    nlohmann::json MakeSave() const;
+    void ApplySave(const nlohmann::json& save);
+    // A short message over the game ("Game saved").
+    void Toast(const std::string& text) {
+        notice_ = text;
+        noticeSeconds_ = 2.0;
+    }
+
     StoryState& Story() { return story_; }
     const StoryState& Story() const { return story_; }
     const DialogueRunner& Conversation() const { return conversation_; }
@@ -177,6 +194,7 @@ private:
     std::string notice_;        // "New quest: ...", shown for a moment
     const ScheduleLibrary* schedules_ = nullptr;
     double clockMinutes_ = -1.0; // < 0: start at Time.startHour on the first Advance
+    std::string scene_;
     uint64_t routineRng_ = 0x5EED;
     double noticeSeconds_ = 0.0;
     std::optional<TravelRequest> travel_;

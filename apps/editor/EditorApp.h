@@ -90,6 +90,11 @@ public:
     nlohmann::json layout_;
     nlohmann::json savedLayout_;
     std::filesystem::path LayoutPath() const;
+    // Saved games while playing (6.9): F6 saves, F9 (or Play ▸ Continue from
+    // save) loads. Kept in the project's .cache, apart from players' saves.
+    std::filesystem::path SaveGamePath() const;
+    void SaveGame();
+    void LoadGame();
 
 private:
     // Everything placeable is a prefab, so there are only three tools: pick,

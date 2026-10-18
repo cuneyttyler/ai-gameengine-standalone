@@ -15,6 +15,7 @@ export interface SceneEntry {
   start: boolean // the game starts here
   open: boolean // open in the editor
   markers: string[]
+  location: { key: string; name: string; summary: string } | null // the World Bible place it shows (6.9)
 }
 
 export const sceneList = reactive({

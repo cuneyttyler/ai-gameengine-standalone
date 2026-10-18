@@ -5,7 +5,8 @@
 namespace aige {
 
 std::vector<StoryLibrary::Problem> ValidateStoryReferences(const StoryLibrary& story, const WorldBible& world,
-                                                           const std::vector<std::string>& prefabPaths) {
+                                                           const std::vector<std::string>& prefabPaths,
+                                                           const SceneMarkerMap* sceneMarkers) {
     std::vector<StoryLibrary::Problem> problems;
     // A key is "<kind>/<id>"; plain names have no slash.
     auto checkCharacter = [&](const std::string& file, const std::string& where, const std::string& who) {
@@ -31,6 +32,23 @@ std::vector<StoryLibrary::Problem> ValidateStoryReferences(const StoryLibrary& s
         checkCharacter(file, "giver", quest.giver);
         for (const auto& objective : quest.objectives) {
             const std::string where = "objective '" + objective.id + "'";
+            if (sceneMarkers != nullptr) {
+                if (!objective.scene.empty() && !sceneMarkers->contains(objective.scene)) {
+                    problems.push_back({file, where + ": scene " + objective.scene + " doesn't exist"});
+                } else if (objective.type == "reach" && !objective.target.empty()) {
+                    auto has = [&](const std::vector<std::string>& markers) {
+                        return std::find(markers.begin(), markers.end(), objective.target) != markers.end();
+                    };
+                    const bool found = objective.scene.empty()
+                                           ? std::any_of(sceneMarkers->begin(), sceneMarkers->end(),
+                                                         [&](const auto& entry) { return has(entry.second); })
+                                           : has(sceneMarkers->at(objective.scene));
+                    if (!found) {
+                        problems.push_back({file, where + ": no marker called '" + objective.target + "' in " +
+                                                      (objective.scene.empty() ? std::string("any scene") : objective.scene)});
+                    }
+                }
+            }
             if (objective.type == "talk") {
                 if (world.Find(objective.target) == nullptr) {
                     problems.push_back({file, where + ": " + objective.target + " isn't in the World Bible"});

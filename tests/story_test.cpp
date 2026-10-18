@@ -202,7 +202,7 @@ TEST(StoryTest, ValidationFindsBrokenStories) {
     EXPECT_TRUE(has("node 'orphan' can't be reached"));
     EXPECT_TRUE(has("no quest 'no-such-quest'"));
     EXPECT_TRUE(has("more than 4 choices"));
-    EXPECT_TRUE(has("quests/bad.json: objective 'pelt': type should be defeat, talk or collect"));
+    EXPECT_TRUE(has("quests/bad.json: objective 'pelt': type should be defeat, talk, collect or reach"));
 
     // References to the World Bible and prefabs are checked with the rest of the project.
     aige::WorldBible world(aige::Project{f.root});

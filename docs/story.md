@@ -5,6 +5,10 @@ engine reads them in `engine/gameplay/Story` (`development_plan.md` 3.2b). Chara
 are referred to by their World Bible key (`character/villager`, see `world/`), so the
 game shows the canon name, "Old Tamsin", and quests can say "talk to her".
 
+Dialogue, quests, schedules and the World Bible belong to the **project**, not to a
+scene. Quest progress, flags and the clock carry on when a Gateway takes the player to
+another scene. Where something only makes sense in one place, it names the scene (below).
+
 ## Talking
 
 An entity with a **Talk** component can be talked to:
@@ -89,6 +93,12 @@ shown top-left, with progress ("(1/3)").
 | `defeat` | a prefab path, or a team (`Enemy`) | `count` of them die |
 | `collect` | a prefab path | `count` of them are picked up |
 | `talk` | a World Bible key | the player talks to an entity whose Talk `character` is that key |
+| `reach` | a Marker's name, or nothing (with a `scene`) | the player stands at that marker; with only a `scene`, arriving there |
+
+Any objective can add `"scene": "scenes/<name>.aige"`: it then only counts in that
+scene ("Clear the rats" with `"scene": "scenes/cellar.aige"` ignores rats elsewhere).
+A `reach` objective with a `scene` and no target ("Go down to the cellar") is done as
+soon as the player is there, including when they already are when it comes up.
 
 When the last objective is done, the quest completes and `onComplete` runs. While any
 quest is active, defeating every enemy no longer ends the game: the quest is the goal.
@@ -122,6 +132,37 @@ Places are **Markers**: entities with a Marker component (`name`). They're invis
 play and labelled in the editor. Give an NPC a **Routine** component (`schedule`,
 `speed`) to follow a schedule. They find their way around walls (A* pathfinding).
 
+An entry can say which scene it happens in: `"scene": "scenes/tavern.aige"` (its `place`
+is then a marker of that scene). While someone's day puts them in another scene than the
+one being played, they're **away**: hidden, with nobody to talk to. Place the NPC, with
+the same Routine, in every scene their day visits.
+
+## Places and scenes
+
+A World Bible **location** can name the scene that shows it, in its header:
+
+```
+---
+name: The inn's cellar
+summary: Damp, and full of rats.
+scene: scenes/cellar.aige
+---
+```
+
+The Scene panel shows each scene's place, and the AI gets the open scene's location
+entry in full, so what it builds or changes there follows the canon. One scene has at
+most one location. Renaming a scene updates its location, and the quests and schedules
+that name it.
+
+## Saved games
+
+**F6** saves the game while playing, and **F9** loads it. A save holds the scene, where
+the player stands and their health, the clock, and the story: flags and every quest's
+progress. The scene itself loads as it is on disk, so enemies come back.
+- In the editor, **Play ▸ Continue from save** starts Play from the save. Editor saves
+  are kept in the project's `.cache/saves/`, apart from players' saves.
+- In the game, saves go to `%LOCALAPPDATA%\AIGE\saves\<game>\quicksave.json`.
+
 The game clock starts at **Time.startHour** and runs at **Time.minutesPerSecond** game
 minutes per real second (Project Settings). It shows top-right in play when anyone has a
 routine. Scripts read it with `time_of_day()` and `day()`.
@@ -142,4 +183,6 @@ The editor reports, and the tests enforce for the demo:
 - **Broken links:** links to nodes that don't exist, nodes that can't be reached, more
   than 4 choices, and unknown quests, objectives, effects or objective types.
 - **References:** World Bible keys that don't exist, and defeat/collect targets that
-  aren't prefabs.
+  aren't prefabs. Objective and schedule scenes that don't exist, reach markers missing
+  from their scene (or from every scene), schedule places missing from their entry's
+  scene, and location scenes that don't exist or are claimed twice.

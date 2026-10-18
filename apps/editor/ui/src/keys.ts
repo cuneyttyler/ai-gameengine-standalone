@@ -30,6 +30,8 @@ const handlers: Record<string, () => void> = {
   'file.save': send('scene:save'),
   'file.open': send('project:open'),
   'edit.undo': send('edit:undo'),
+  'play.save': send('play:save'),
+  'play.load': send('play:load'),
   'edit.redo': send('edit:redo'),
   'edit.copy': send('edit:copy'),
   'edit.paste': send('edit:paste'),

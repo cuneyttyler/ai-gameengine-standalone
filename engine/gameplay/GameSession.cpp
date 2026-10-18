@@ -533,6 +533,40 @@ std::optional<GameSession::TravelRequest> GameSession::TakeTravel() {
     return request;
 }
 
+void GameSession::SetScene(const std::string& scene) {
+    scene_ = scene;
+    if (storyLibrary_ != nullptr) story_.SetScene(scene, *storyLibrary_);
+}
+
+nlohmann::json GameSession::MakeSave() const {
+    nlohmann::json save = {{"version", 1}, {"scene", scene_}, {"clock", clockMinutes_}, {"story", story_.ToJson()}};
+    if (auto player = FindPlayer(const_cast<Registry&>(registry_))) {
+        const auto& at = registry_.get<WorldTransform2D>(*player);
+        save["player"] = {{"x", at.x}, {"y", at.y}};
+        if (const auto* health = registry_.try_get<Health>(*player)) save["player"]["health"] = health->current;
+    }
+    return save;
+}
+
+void GameSession::ApplySave(const nlohmann::json& save) {
+    if (!save.is_object()) return;
+    story_ = StoryState::FromJson(save.value("story", nlohmann::json::object()));
+    if (save.contains("clock") && save["clock"].is_number()) clockMinutes_ = save["clock"].get<double>();
+    scene_ = save.value("scene", scene_);
+    if (auto player = FindPlayer(registry_); player && save.contains("player") && save["player"].is_object()) {
+        auto& at = registry_.get<WorldTransform2D>(*player);
+        at.x = save["player"].value("x", at.x);
+        at.y = save["player"].value("y", at.y);
+        if (auto* health = registry_.try_get<Health>(*player); health && save["player"].contains("health")) {
+            health->current = save["player"].value("health", health->current);
+        }
+    }
+    conversation_ = DialogueRunner{};
+    talkingTo_ = entt::null;
+    notice_ = "Game loaded";
+    noticeSeconds_ = 2.0;
+}
+
 void GameSession::OnSceneChanged() {
     // Nothing from the old scene is valid any more; the story, the clock and
     // the player's own components carry on.
@@ -752,7 +786,18 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         UpdateFollowers(registry_, isSolid, dt);
         clockMinutes_ += dt * ActiveSettings().time.minutesPerSecond;
         if (schedules_ != nullptr) {
-            UpdateRoutines(registry_, *schedules_, MinuteOfDay(), isSolid, dt, routineRng_);
+            UpdateRoutines(registry_, *schedules_, MinuteOfDay(), isSolid, dt, routineRng_, scene_);
+        }
+        // Reach objectives: the player standing at a Marker.
+        if (storyLibrary_ != nullptr && story_.AnyQuestActive()) {
+            if (auto player = FindPlayer(registry_)) {
+                const auto& at = registry_.get<WorldTransform2D>(*player);
+                for (auto [entity, marker, world] : registry_.view<Marker, WorldTransform2D>().each()) {
+                    if (std::abs(world.x - at.x) <= 0.9f && std::abs(world.y - at.y) <= 0.9f) {
+                        story_.OnReached(marker.name, *storyLibrary_);
+                    }
+                }
+            }
         }
         UpdateScripts(registry_, lua_, dt, binder_, scriptRoot_, [this](Entity entity, const std::string& path, const std::string& message) {
             if (scriptErrors_.size() < 64) {

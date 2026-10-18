@@ -54,7 +54,7 @@ TEST(ScheduleTest, ClockTimesAndWhichEntryIsActive) {
         {"from": "06:00", "activity": "dance", "place": "garden"},
         {"from": "06:00", "activity": "stay", "place": "nowhere"},
         {"from": "09:00", "activity": "wander", "place": "garden", "radius": 0}]})"), "x", &error),
-        [](const std::string& name) { return name == "garden"; });
+        [](const std::string&, const std::string& name) { return name == "garden"; });
     ASSERT_EQ(problems.size(), 4u);
     EXPECT_NE(problems[0].find("activity should be stay, wander or sleep"), std::string::npos);
     EXPECT_NE(problems[1].find("no marker called 'nowhere'"), std::string::npos);

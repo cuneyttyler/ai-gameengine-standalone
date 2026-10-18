@@ -9,7 +9,7 @@ import re
 from typing import Any
 
 EFFECT_OPS = {"set_flag", "clear_flag", "start_quest", "complete_quest", "complete_objective"}
-OBJECTIVE_TYPES = {"defeat", "talk", "collect"}
+OBJECTIVE_TYPES = {"defeat", "talk", "collect", "reach"}
 QUEST_STATES = {"inactive", "active", "completed"}
 TEAMS = {"Enemy", "Neutral"}
 SAFE_ID = re.compile(r"^[a-z0-9_-]+$")
@@ -19,10 +19,14 @@ class StoryScope:
     """What a check can refer to: the project's quests and World Bible, plus
     what the same proposal adds (quests it writes, entries it writes)."""
 
-    def __init__(self, quests: dict[str, dict], world_keys: set[str], prefabs: set[str]):
+    def __init__(self, quests: dict[str, dict], world_keys: set[str], prefabs: set[str],
+                 scene_markers: dict[str, set[str]] | None = None):
         self.quests = quests          # id -> quest JSON
         self.world_keys = world_keys  # "<kind>/<id>"
         self.prefabs = prefabs
+        # Each scene of the project -> its markers (the open one with any added
+        # in this proposal); None: scenes aren't checked.
+        self.scene_markers = scene_markers
 
     def objectives_of(self, quest: str) -> list[str] | None:
         q = self.quests.get(quest)
@@ -149,8 +153,10 @@ ACTIVITIES = {"stay", "wander", "sleep"}
 CLOCK = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
 
 
-def check_schedule(schedule_id: str, s: dict[str, Any], markers: set[str], where: str) -> list[str]:
-    """Mirror of engine ValidateSchedule (engine/gameplay/Schedule)."""
+def check_schedule(schedule_id: str, s: dict[str, Any], markers: set[str], where: str,
+                   scene_markers: dict[str, set[str]] | None = None) -> list[str]:
+    """Mirror of engine ValidateSchedule (engine/gameplay/Schedule). `markers`
+    are the open scene's; an entry naming another scene uses that scene's."""
     errors: list[str] = []
     if not SAFE_ID.match(schedule_id or ""):
         errors.append(f"{where}: id must be lowercase letters, digits, - and _")
@@ -170,8 +176,14 @@ def check_schedule(schedule_id: str, s: dict[str, Any], markers: set[str], where
         starts.append(start.zfill(5))
         if e.get("activity") not in ACTIVITIES:
             errors.append(f"{at}: activity must be stay, wander or sleep")
-        if e.get("place") not in markers:
-            errors.append(f"{at}: no marker called {e.get('place')!r} (add it with scene.addMarker)")
+        scene = e.get("scene", "")
+        if scene and scene_markers is not None and scene not in scene_markers:
+            errors.append(f"{at}: no scene {scene!r}")
+        else:
+            known = scene_markers[scene] if scene and scene_markers is not None else markers
+            if e.get("place") not in known:
+                errors.append(f"{at}: no marker called {e.get('place')!r}" + (f" in {scene}" if scene else "")
+                              + " (add it with scene.addMarker)")
         if e.get("activity") == "wander":
             radius = e.get("radius", 2)
             if not isinstance(radius, (int, float)) or isinstance(radius, bool) or not 0 < radius <= 20:
@@ -201,9 +213,22 @@ def check_quest(quest_id: str, q: dict[str, Any], scope: StoryScope, where: str)
         ids.append(o.get("id"))
         if not o.get("text"):
             errors.append(f"{at} needs \"text\" (shown on screen)")
-        kind, target = o.get("type"), o.get("target", "")
+        kind, target, scene = o.get("type"), o.get("target", ""), o.get("scene", "")
+        scenes = scope.scene_markers
+        if scene and scenes is not None and scene not in scenes:
+            errors.append(f"{at}: no scene {scene!r} (the context's \"scenes\" lists them)")
         if kind not in OBJECTIVE_TYPES:
-            errors.append(f"{at}: type must be defeat, talk or collect")
+            errors.append(f"{at}: type must be defeat, talk, collect or reach")
+        elif kind == "reach":
+            if not target and not scene:
+                errors.append(f"{at}: a reach objective needs a marker (\"target\") or a \"scene\" to arrive in")
+            elif target and scenes is not None:
+                if scene:
+                    known = scenes.get(scene, set())
+                else:
+                    known = set().union(*scenes.values()) if scenes else set()
+                if target not in known:
+                    errors.append(f"{at}: no marker called {target!r} in " + (scene or "any scene"))
         elif kind == "talk" and target not in scope.world_keys:
             errors.append(f"{at}: {target!r} isn't in the World Bible")
         elif kind in ("defeat", "collect") and target not in scope.prefabs and not (kind == "defeat" and target in TEAMS):

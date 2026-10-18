@@ -43,6 +43,8 @@ export const actions: ActionDef[] = [
   { id: 'panel.ai', label: 'Show / hide the AI panel', group: 'Panels', keys: ['I'] },
   { id: 'panel.viewport', label: 'Show / hide the viewport', group: 'Panels', keys: ['M'] },
   { id: 'play.toggle', label: 'Play / stop', group: 'Play', keys: ['F5'], inPlay: true },
+  { id: 'play.save', label: 'Save the game (while playing)', group: 'Play', keys: ['F6'], inPlay: true },
+  { id: 'play.load', label: 'Load the saved game (or continue from it)', group: 'Play', keys: ['F9'], inPlay: true },
   { id: 'help.shortcuts', label: 'Shortcuts', group: 'Help', keys: ['F1'], inPlay: true },
 ]
 

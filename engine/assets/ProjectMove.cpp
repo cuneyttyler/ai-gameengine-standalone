@@ -68,6 +68,36 @@ std::string RewriteSceneText(const std::string& text, const std::string& from, c
     return out;
 }
 
+std::string RewriteHeaderValue(const std::string& text, const std::string& key, const std::string& from,
+                               const std::string& to, int* count) {
+    // "key: value" lines whose value is exactly `from` (World Bible headers).
+    std::string out;
+    size_t start = 0;
+    while (start <= text.size()) {
+        size_t end = text.find('\n', start);
+        std::string line = text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        const bool cr = !line.empty() && line.back() == '\r';
+        if (cr) line.pop_back();
+        const std::string prefix = key + ":";
+        if (line.rfind(prefix, 0) == 0) {
+            std::string value = line.substr(prefix.size());
+            const size_t first = value.find_first_not_of(" \t");
+            value = first == std::string::npos ? std::string() : value.substr(first);
+            while (!value.empty() && (value.back() == ' ' || value.back() == '\t')) value.pop_back();
+            if (value == from) {
+                line = prefix + " " + to;
+                if (count) ++*count;
+            }
+        }
+        out += line;
+        if (cr) out += '\r';
+        if (end == std::string::npos) break;
+        out += '\n';
+        start = end + 1;
+    }
+    return out;
+}
+
 std::string RewriteQuotedText(const std::string& text, const std::string& from, const std::string& to,
                               bool singleQuotes, int* count) {
     std::string out = text;
@@ -211,13 +241,16 @@ MoveResult MoveProjectFile(const Project& project, const std::string& from, cons
         const bool scene = ext == ".aige" || ext == ".prefab";
         const bool json = ext == ".json";
         const bool lua = ext == ".lua";
-        if (!scene && !json && !lua) {
+        // World Bible entries: a location's `scene:` header line (6.9).
+        const bool world = ext == ".md" && project.Relative(path).rfind("world/", 0) == 0;
+        if (!scene && !json && !lua && !world) {
             continue;
         }
         const std::string text = ReadAll(path);
         int count = 0;
         std::string rewritten = scene ? RewriteSceneText(text, from, to, &count)
-                                      : RewriteQuotedText(text, from, to, lua, &count);
+                                : world ? RewriteHeaderValue(text, "scene", from, to, &count)
+                                        : RewriteQuotedText(text, from, to, lua, &count);
         if (count == 0) {
             continue;
         }

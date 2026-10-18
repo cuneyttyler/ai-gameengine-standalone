@@ -222,7 +222,10 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
     // The project's scenes and their markers (5.3), for gateways.
     nlohmann::json scenes = nlohmann::json::array();
     for (const std::string& scene : ListScenes(project)) {
-        scenes.push_back({{"path", scene}, {"start", scene == StartScene()}, {"markers", SceneMarkers(project, scene)}});
+        nlohmann::json entry = {{"path", scene}, {"start", scene == StartScene()}, {"markers", SceneMarkers(project, scene)}};
+        // The World Bible place each scene shows (6.9): canon for building it.
+        if (const WorldEntry* place = world.LocationOf(scene)) entry["location"] = place->Key();
+        scenes.push_back(entry);
     }
 
     nlohmann::json context = {{"entities", entities}, {"tiles", tiles},       {"prefabs", prefabList},
@@ -238,6 +241,11 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
     context["scenes"] = scenes;
     if (!options.scene.empty()) {
         context["scene"] = options.scene;
+        // The open scene's place, in full: what it is, for anything built or changed in it.
+        if (const WorldEntry* place = world.LocationOf(options.scene)) {
+            context["sceneLocation"] = {{"key", place->Key()}, {"name", place->name}, {"summary", place->summary},
+                                        {"body", place->body}};
+        }
     }
     return context;
 }

@@ -25,7 +25,10 @@ namespace aige {
 //                {"from": "21:00", "activity": "sleep",  "place": "tamsin_home"}]}
 //
 // Each entry lasts until the next one starts; the last runs past midnight
-// into the first. Format documented in docs/story.md.
+// into the first. An entry can name the scene it happens in ("scene":
+// "scenes/tavern.aige"): while the NPC's day puts it in another scene than
+// the one being played, it is away (hidden, nobody to talk to). Place the NPC
+// in each scene it visits. Format documented in docs/story.md.
 
 constexpr int kMinutesPerDay = 24 * 60;
 
@@ -38,6 +41,7 @@ struct ScheduleEntry {
     std::string activity; // stay | wander | sleep
     std::string place;    // a Marker's name
     float radius = 2.0f;  // wander: how far from the place, in cells
+    std::string scene;    // where this happens; empty: wherever the NPC is
 };
 
 struct Schedule {
@@ -53,9 +57,10 @@ struct Schedule {
 std::optional<Schedule> ScheduleFromJson(const nlohmann::json& json, const std::string& id, std::string* error);
 nlohmann::json ScheduleToJson(const Schedule& schedule);
 // Problems with a schedule: unknown activities, places that aren't markers
-// (`markerExists`), two entries starting at the same time.
-std::vector<std::string> ValidateSchedule(const Schedule& schedule,
-                                          const std::function<bool(const std::string&)>& markerExists);
+// (`markerExists(scene, name)`, scene empty for the entry without one), two
+// entries starting at the same time.
+using MarkerExistsFn = std::function<bool(const std::string& scene, const std::string& name)>;
+std::vector<std::string> ValidateSchedule(const Schedule& schedule, const MarkerExistsFn& markerExists);
 std::optional<std::string> WriteScheduleFile(const std::filesystem::path& projectRoot, const std::string& id,
                                              const nlohmann::json& content);
 
@@ -80,8 +85,9 @@ std::vector<std::pair<std::string, std::pair<float, float>>> MarkerPositions(Reg
 // Moves every Routine entity through its day: on a new entry it plans a path
 // (A*) to the entry's place and walks it; `wander` then roams within the
 // radius, `sleep` hides the entity (and makes it unavailable to talk to) until
-// the next entry. `rng` is advanced for wandering.
+// the next entry. `rng` is advanced for wandering. `scene` is the scene being
+// played: an entry set in another scene keeps the NPC away (hidden) here.
 void UpdateRoutines(Registry& registry, const ScheduleLibrary& schedules, float minuteOfDay, const SolidQueryFn& isSolid,
-                    float dt, uint64_t& rng);
+                    float dt, uint64_t& rng, const std::string& scene = {});
 
 } // namespace aige

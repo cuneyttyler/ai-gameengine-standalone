@@ -249,6 +249,10 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         ShowWindow(viewport_.Handle(), message.value("on", true) ? SW_SHOWNA : SW_HIDE);
     } else if (type == "view:stats") {
         showStats_ = !showStats_;
+    } else if (type == "play:save") {
+        SaveGame();
+    } else if (type == "play:load") {
+        LoadGame();
     } else if (type == "play:toggle") {
         playing_ ? StopPlay() : StartPlay();
     } else if (type == "scenes:request") {
@@ -561,6 +565,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         for (const auto& relation : in.value("relations", nlohmann::json::array())) {
             entry.relations.push_back({relation.value("type", ""), relation.value("target", "")});
         }
+        if (entry.kind == "location") entry.scene = in.value("scene", "");
         world_.Refresh();
         const std::string original = message.value("originalKey", "");
         std::optional<std::string> error;
@@ -1459,12 +1464,19 @@ std::string EditorApp::OpenSceneRelative() const {
 nlohmann::json EditorApp::ScenesJson() {
     const Project& project = assets_.GetProject();
     nlohmann::json scenes = nlohmann::json::array();
+    world_.Refresh();
     for (const std::string& scene : ListScenes(project)) {
-        scenes.push_back({{"path", scene},
-                          {"name", std::filesystem::path(scene).stem().string()},
-                          {"start", scene == StartScene()},
-                          {"open", scene == OpenSceneRelative()},
-                          {"markers", SceneMarkers(project, scene)}});
+        nlohmann::json entry = {{"path", scene},
+                                {"name", std::filesystem::path(scene).stem().string()},
+                                {"start", scene == StartScene()},
+                                {"open", scene == OpenSceneRelative()},
+                                {"markers", SceneMarkers(project, scene)},
+                                {"location", nullptr}};
+        // The World Bible place this scene shows (6.9).
+        if (const WorldEntry* place = world_.LocationOf(scene)) {
+            entry["location"] = {{"key", place->Key()}, {"name", place->name}, {"summary", place->summary}};
+        }
+        scenes.push_back(entry);
     }
     return {{"type", "scenes:list"}, {"scenes", scenes}, {"problems", GatewayProblems(project)}};
 }
@@ -1547,6 +1559,7 @@ void EditorApp::HandleTravel() {
     const std::string warning = TravelToScene(registry_, text, travel->marker);
     prefabs_.SyncAll(registry_);
     session_.OnSceneChanged();
+    session_.SetScene(travel->scene);
     UpdateWorldToScreen(registry_, iso_);
     if (auto player = FindPlayer(registry_)) {
         int width = 0, height = 0;
@@ -2163,6 +2176,68 @@ void EditorApp::Save() {
     post_({{"type", "notify"}, {"text", "Saved " + std::filesystem::path(scenePath_).filename().string()}});
 }
 
+std::filesystem::path EditorApp::SaveGamePath() const {
+    return assets_.GetProject().CacheDir() / "saves" / "quicksave.json";
+}
+
+void EditorApp::SaveGame() {
+    if (!playing_) {
+        post_({{"type", "notify"}, {"text", "Saving the game works while playing (F5, then F6)"}});
+        return;
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(SaveGamePath().parent_path(), ec);
+    std::ofstream out(SaveGamePath(), std::ios::trunc | std::ios::binary);
+    if (!out) {
+        post_({{"type", "notify"}, {"text", "Couldn't write the saved game"}});
+        return;
+    }
+    out << session_.MakeSave().dump(2) << "\n";
+    session_.Toast("Game saved");
+    editorStateStale_ = true;
+}
+
+void EditorApp::LoadGame() {
+    std::ifstream in(SaveGamePath(), std::ios::binary);
+    nlohmann::json save = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+    if (!in || save.is_discarded() || !save.is_object()) {
+        post_({{"type", "notify"}, {"text", "No saved game yet: press F6 while playing to save one"}});
+        return;
+    }
+    if (!playing_) {
+        StartPlay(); // Play ▸ Continue from save
+    }
+    // The saved scene as it is on disk (the one being edited: as it is now),
+    // then the player, the clock and the story as they were saved.
+    const std::string scene = save.value("scene", OpenSceneRelative());
+    std::string text;
+    if (scene == OpenSceneRelative()) {
+        text = playSnapshot_;
+    } else {
+        std::ifstream sceneIn(assets_.GetProject().Resolve(scene), std::ios::binary);
+        std::ostringstream buffer;
+        buffer << sceneIn.rdbuf();
+        text = buffer.str();
+    }
+    if (text.empty()) {
+        post_({{"type", "notify"}, {"text", "The saved game is in " + scene + ", which doesn't exist any more"}});
+        return;
+    }
+    Select(std::nullopt);
+    DeserializeScene(registry_, text);
+    prefabs_.SyncAll(registry_);
+    session_.OnSceneChanged();
+    session_.ApplySave(save);
+    session_.SetScene(scene);
+    UpdateWorldToScreen(registry_, iso_);
+    if (auto player = FindPlayer(registry_)) {
+        int width = 0, height = 0;
+        viewport_.GetFramebufferSize(width, height);
+        SnapCameraTo(camera_, registry_, *player, static_cast<float>(width), static_cast<float>(height));
+    }
+    sceneTreeStale_ = true;
+}
+
 std::filesystem::path EditorApp::LayoutPath() const {
     return assets_.GetProject().root / "editor-layout.json";
 }
@@ -2187,6 +2262,7 @@ void EditorApp::StartPlay() {
     story_.Refresh();
     world_.Refresh();
     session_.SetStory(&story_);
+    session_.SetScene(OpenSceneRelative());
     schedules_.Refresh();
     session_.SetSchedules(&schedules_);
     session_.SetClockMinutes(-1.0); // each Play starts the day at Time.startHour
@@ -3117,18 +3193,28 @@ nlohmann::json EditorApp::StoryJson() {
     for (const auto& problem : story_.Validate()) {
         problems.push_back({{"file", problem.file}, {"message", problem.message}});
     }
-    for (const auto& problem : ValidateStoryReferences(story_, world_, prefabPaths)) {
+    // Every scene's markers; the open scene's as they are now (maybe unsaved).
+    auto markerPositions = MarkerPositions(registry_);
+    SceneMarkerMap sceneMarkers;
+    for (const std::string& scene : ListScenes(assets_.GetProject())) {
+        sceneMarkers[scene] = SceneMarkers(assets_.GetProject(), scene);
+    }
+    {
+        std::vector<std::string> open;
+        for (const auto& [name, pos] : markerPositions) open.push_back(name);
+        sceneMarkers[OpenSceneRelative()] = open;
+    }
+    for (const auto& problem : ValidateStoryReferences(story_, world_, prefabPaths, &sceneMarkers)) {
         problems.push_back({{"file", problem.file}, {"message", problem.message}});
     }
     schedules_.Refresh();
     nlohmann::json schedules = nlohmann::json::array();
-    auto markerPositions = MarkerPositions(registry_);
     for (const auto& schedule : schedules_.Schedules()) {
         const std::string file = "schedules/" + schedule.id + ".json";
         schedules.push_back({{"id", schedule.id}, {"file", file}, {"content", ScheduleToJson(schedule)}});
-        for (const auto& message : ValidateSchedule(schedule, [&](const std::string& name) {
-                 return std::any_of(markerPositions.begin(), markerPositions.end(),
-                                    [&](const auto& m) { return m.first == name; });
+        for (const auto& message : ValidateSchedule(schedule, [&](const std::string& scene, const std::string& name) {
+                 const auto it = sceneMarkers.find(scene.empty() ? OpenSceneRelative() : scene);
+                 return it != sceneMarkers.end() && std::find(it->second.begin(), it->second.end(), name) != it->second.end();
              })) {
             problems.push_back({{"file", file}, {"message", message}});
         }
@@ -3181,6 +3267,7 @@ nlohmann::json EditorApp::WorldJson() {
                            {"summary", entry.summary},
                            {"tags", entry.tags},
                            {"relations", relations},
+                           {"scene", entry.scene},
                            {"body", entry.body}});
     }
     nlohmann::json problems = nlohmann::json::array();
@@ -3635,7 +3722,8 @@ nlohmann::json EditorApp::EditorStateJson() {
             {"grid", showGrid_},
             {"brushScale", brushScale_},
             {"brushRotation", brushRotation_},
-            {"autotile", autotile_}};
+            {"autotile", autotile_},
+            {"hasSave", std::filesystem::exists(SaveGamePath())}};
 }
 
 nlohmann::json EditorApp::InspectorJson(Entity entity) {

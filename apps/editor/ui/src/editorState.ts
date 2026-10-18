@@ -50,6 +50,7 @@ export const editorState = reactive({
   brushScale: 1, // the prefab brush places copies at this size
   brushRotation: 0, // quarter turns for flat things the brush places (R)
   autotile: true, // Auto-fit: terrain tiles pick their pieces (6.4)
+  hasSave: false, // a saved game exists (Play ▸ Continue from save, 6.9)
 })
 
 // The AI panel's ✕ and the AI rail (the panel itself lives in layout.ts).
@@ -86,6 +87,7 @@ onHostMessage((message) => {
     editorState.brushScale = (message.brushScale as number) ?? 1
     editorState.brushRotation = (message.brushRotation as number) ?? 0
     editorState.autotile = (message.autotile as boolean) ?? true
+    editorState.hasSave = (message.hasSave as boolean) ?? false
   } else if (message.type === 'selection:changed') {
     editorState.selectedId = (message.id as number | null) ?? null
   } else if (message.type === 'ai:status') {

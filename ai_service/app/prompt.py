@@ -96,9 +96,14 @@ Conditions: {"flag": "name"} | {"flag": "name", "is": false} | {"quest": "<id>",
 Effects: {"op": "set_flag"|"clear_flag", "flag": "..."} | {"op": "start_quest"|"complete_quest", "quest": "<id>"}
          | {"op": "complete_objective", "quest": "<id>", "objective": "<objective id>"}
 Quest: {"name": "...", "description": "...", "giver": "<World Bible key>",
-  "objectives": [{"id": "...", "text": "shown on screen", "type": "defeat"|"collect"|"talk",
-                  "target": "<prefab path, or 'Enemy' for defeat; World Bible key for talk>", "count": 1}],
+  "objectives": [{"id": "...", "text": "shown on screen", "type": "defeat"|"collect"|"talk"|"reach",
+                  "target": "<prefab path, or 'Enemy' for defeat; World Bible key for talk; marker name for reach>",
+                  "count": 1, "scene": "<optional: scenes/<name>.aige, only counts there>"}],
   "onComplete": [<effect>]}
+  Quests, dialogue and the World Bible belong to the whole project, not to a scene: progress carries across
+  gateways. "reach" completes when the player stands at that Marker; with a "scene" and no target it
+  completes on arriving in that scene ("Go down to the cellar"). Give "scene" to an objective that only
+  makes sense in one place ("defeat the rats in the cellar"). Use only scenes and markers in context "scenes".
   Objectives are done in order. A "talk" objective completes when the player talks to an entity whose
   Talk.character is that key — usually the giver, as the last objective ("Return to ...").
 To make someone talkable: add_component Talk {"dialogue": "dialogue/<id>.json", "character": "<World Bible key>"}
@@ -120,6 +125,9 @@ ROUTINES (an NPC's day; file schedules/<id>.json)
   floor cells, in the same proposal as the schedule that uses it. Make someone follow it: add_component Routine
   {"schedule": "schedules/<id>.json"} (or set_prefab_field on their prefab). The clock starts at
   Time.startHour.
+  An entry can name its scene ("scene": "scenes/tavern.aige"; its place must be a marker of that scene):
+  while the NPC's day puts it in another scene than the one being played, it's away (hidden). Place the NPC
+  in every scene its day visits, with the same Routine.
 """
 
 SCENES = """\
@@ -128,6 +136,9 @@ SCENES: a game can have several scenes (context "scenes": each path, whether it'
   "marker": "<marker name>"} on an entity with a WorldTransform2D takes the player to that scene's marker
   when they step into its cell. Use ONLY scenes and markers listed in the context; the marker must be in the
   target scene (the open scene's markers can be added with scene.addMarker in the same proposal).
+  A scene can show a World Bible location (its "location" key; for the open scene, "sceneLocation" holds the
+  whole entry): build and change it to match that canon. A new location for a scene: world.write with
+  kind "location" and "scene": "<scene path>".
 """
 
 ART = """\
@@ -203,6 +214,8 @@ def _field_line(spec: FieldSpec) -> str:
         low = "" if spec.min is None else f"{spec.min:g}"
         high = "" if spec.max is None else f"{spec.max:g}"
         parts.append(f"[{low}..{high}]")
+    if spec.optional:
+        parts.append("(optional)")
     line = " ".join(parts)
     return f"{line} — {spec.description}" if spec.description else line
 

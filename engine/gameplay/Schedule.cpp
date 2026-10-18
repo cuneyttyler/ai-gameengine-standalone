@@ -90,6 +90,7 @@ std::optional<Schedule> ScheduleFromJson(const nlohmann::json& json, const std::
         entry.activity = item.value("activity", "");
         entry.place = item.value("place", "");
         entry.radius = item.value("radius", 2.0f);
+        entry.scene = item.value("scene", "");
         schedule.entries.push_back(entry);
     }
     std::stable_sort(schedule.entries.begin(), schedule.entries.end(),
@@ -102,13 +103,13 @@ nlohmann::json ScheduleToJson(const Schedule& schedule) {
     for (const auto& e : schedule.entries) {
         nlohmann::json item = {{"from", FormatClockTime(e.minute)}, {"activity", e.activity}, {"place", e.place}};
         if (e.activity == "wander") item["radius"] = e.radius;
+        if (!e.scene.empty()) item["scene"] = e.scene;
         entries.push_back(item);
     }
     return {{"name", schedule.name}, {"entries", entries}};
 }
 
-std::vector<std::string> ValidateSchedule(const Schedule& schedule,
-                                          const std::function<bool(const std::string&)>& markerExists) {
+std::vector<std::string> ValidateSchedule(const Schedule& schedule, const MarkerExistsFn& markerExists) {
     std::vector<std::string> problems;
     if (schedule.entries.empty()) problems.push_back("has no entries");
     std::set<int> starts;
@@ -116,7 +117,9 @@ std::vector<std::string> ValidateSchedule(const Schedule& schedule,
         const std::string where = "the " + FormatClockTime(e.minute) + " entry";
         if (!kActivities.contains(e.activity)) problems.push_back(where + ": activity should be stay, wander or sleep");
         if (e.place.empty()) problems.push_back(where + " has no place");
-        else if (!markerExists(e.place)) problems.push_back(where + ": no marker called '" + e.place + "' in the scene");
+        else if (!markerExists(e.scene, e.place))
+            problems.push_back(where + ": no marker called '" + e.place + "' in " +
+                               (e.scene.empty() ? std::string("the scene") : e.scene));
         if (e.activity == "wander" && (e.radius <= 0.0f || e.radius > 20.0f))
             problems.push_back(where + ": wander radius should be between 0 and 20 cells");
         if (!starts.insert(e.minute).second) problems.push_back("two entries start at " + FormatClockTime(e.minute));
@@ -183,7 +186,7 @@ std::vector<std::pair<std::string, std::pair<float, float>>> MarkerPositions(Reg
 }
 
 void UpdateRoutines(Registry& registry, const ScheduleLibrary& schedules, float minuteOfDay, const SolidQueryFn& isSolid,
-                    float dt, uint64_t& rng) {
+                    float dt, uint64_t& rng, const std::string& scene) {
     auto markers = MarkerPositions(registry);
     auto markerAt = [&](const std::string& name) -> std::optional<std::pair<float, float>> {
         for (const auto& [n, pos] : markers)
@@ -199,6 +202,21 @@ void UpdateRoutines(Registry& registry, const ScheduleLibrary& schedules, float 
         auto& world = view.get<WorldTransform2D>(entity);
         const int index = static_cast<int>(schedule->IndexAt(minuteOfDay));
         const ScheduleEntry& entry = schedule->entries[static_cast<size_t>(index)];
+
+        // Elsewhere at this time of day: away from this scene, out of sight.
+        if (!entry.scene.empty() && !scene.empty() && entry.scene != scene) {
+            if (!registry.all_of<Sleeping>(entity)) {
+                float alpha = 1.0f;
+                if (auto* sprite = registry.try_get<Sprite>(entity)) {
+                    alpha = sprite->a;
+                    sprite->a = 0.0f;
+                }
+                registry.emplace<Sleeping>(entity, alpha);
+            }
+            state.path.clear();
+            state.entry = -1; // when the day brings it back here, it heads for its place
+            continue;
+        }
         auto place = markerAt(entry.place);
 
         auto planTo = [&](std::pair<int, int> goal) {

@@ -89,6 +89,7 @@ onMounted(() => {
       @contextmenu.prevent="sceneMenu(scene, $event)"
     >
       <span class="chevron">▸</span><span class="scene-name">{{ scene.name }}</span>
+      <span v-if="scene.location" class="loc" :title="scene.location.summary">{{ scene.location.name }}</span>
       <span v-if="scene.start" class="star" title="The game starts here">★</span>
     </button>
     <button
@@ -102,6 +103,9 @@ onMounted(() => {
       <span v-if="current.start" class="star" title="The game starts here">★</span>
       <span class="count">{{ entities.length }}</span>
     </button>
+    <p v-if="current?.location && !openCollapsed" class="place" :title="current.location.summary">
+      {{ current.location.name }} <span class="muted">— {{ current.location.summary || current.location.key }}</span>
+    </p>
     <div v-if="!openCollapsed" class="open-scene">
     <p v-if="entities.length === 0" class="placeholder">
       Empty scene. Paint its ground with a tile prefab from Assets ▸ Prefabs, place things, and connect it to other
@@ -141,6 +145,7 @@ onMounted(() => {
       @contextmenu.prevent="sceneMenu(scene, $event)"
     >
       <span class="chevron">▸</span><span class="scene-name">{{ scene.name }}</span>
+      <span v-if="scene.location" class="loc" :title="scene.location.summary">{{ scene.location.name }}</span>
       <span v-if="scene.start" class="star" title="The game starts here">★</span>
     </button>
   </div>
@@ -213,6 +218,24 @@ h2 {
 .star {
   color: #93c5fd;
   font-size: 0.85em;
+}
+.loc {
+  font-size: 0.85em;
+  opacity: 0.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.place {
+  margin: 0 0 4px 22px;
+  font-size: 0.78em;
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.place .muted {
+  opacity: 0.6;
 }
 .open-scene {
   padding-left: 10px;

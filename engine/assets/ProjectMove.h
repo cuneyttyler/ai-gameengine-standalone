@@ -49,6 +49,11 @@ bool RemoveEmptyFolders(const Project& project, const std::string& folder);
 std::string RewriteSceneText(const std::string& text, const std::string& from, const std::string& to,
                              int* count = nullptr);
 
+// Rewrites `key: value` header lines whose value is exactly `from` (World
+// Bible entries' `scene:`).
+std::string RewriteHeaderValue(const std::string& text, const std::string& key, const std::string& from,
+                               const std::string& to, int* count = nullptr);
+
 // Rewrites "from" (and 'from' when `singleQuotes`) string literals.
 std::string RewriteQuotedText(const std::string& text, const std::string& from, const std::string& to,
                               bool singleQuotes, int* count = nullptr);

@@ -12,7 +12,7 @@ namespace {
 
 const std::set<std::string> kEffectOps = {"set_flag", "clear_flag", "start_quest", "complete_quest",
                                           "complete_objective"};
-const std::set<std::string> kObjectiveTypes = {"defeat", "talk", "collect"};
+const std::set<std::string> kObjectiveTypes = {"defeat", "talk", "collect", "reach"};
 const std::set<std::string> kQuestStates = {"inactive", "active", "completed"};
 
 std::vector<StoryCondition> ConditionsFromJson(const nlohmann::json& list) {
@@ -182,6 +182,7 @@ std::optional<Quest> QuestFromJson(const nlohmann::json& json, const std::string
         objective.type = item.value("type", "");
         objective.target = item.value("target", "");
         objective.count = std::max(1, item.value("count", 1));
+        objective.scene = item.value("scene", "");
         quest.objectives.push_back(std::move(objective));
     }
     quest.onComplete = EffectsFromJson(json.value("onComplete", nlohmann::json::array()));
@@ -193,6 +194,7 @@ nlohmann::json QuestToJson(const Quest& quest) {
     for (const auto& o : quest.objectives) {
         nlohmann::json item = {{"id", o.id}, {"text", o.text}, {"type", o.type}, {"target", o.target}};
         if (o.count != 1) item["count"] = o.count;
+        if (!o.scene.empty()) item["scene"] = o.scene;
         objectives.push_back(item);
     }
     nlohmann::json json = {{"name", quest.name},
@@ -385,10 +387,14 @@ std::vector<std::string> ValidateQuest(const Quest& q, const QuestLookup& findQu
             problems.push_back("objective ids must be present and unique");
         }
         if (!kObjectiveTypes.contains(o.type)) {
-            problems.push_back(where + ": type should be defeat, talk or collect");
+            problems.push_back(where + ": type should be defeat, talk, collect or reach");
         }
-        if (o.target.empty()) {
-            problems.push_back(where + " has no target");
+        if (o.target.empty() && !(o.type == "reach" && !o.scene.empty())) {
+            problems.push_back(where + (o.type == "reach" ? " needs a marker or a scene to reach" : " has no target"));
+        }
+        if (!o.scene.empty() && (o.scene.rfind("scenes/", 0) != 0 || o.scene.size() < 13 ||
+                                 o.scene.substr(o.scene.size() - 5) != ".aige")) {
+            problems.push_back(where + ": scene should be a scene file, scenes/<name>.aige");
         }
         if (o.text.empty()) {
             problems.push_back(where + " has no text to show");
@@ -501,7 +507,9 @@ void StoryState::StartQuest(const std::string& id, const StoryLibrary& library) 
     notices_.push_back({Notice::Kind::QuestStarted, id, quest->name});
     if (quest->objectives.empty()) {
         CompleteQuest(id, library);
+        return;
     }
+    CheckArrival(library); // "go to the cellar" while already in it
 }
 
 void StoryState::CompleteQuest(const std::string& id, const StoryLibrary& library) {
@@ -518,18 +526,22 @@ void StoryState::CompleteQuest(const std::string& id, const StoryLibrary& librar
 void StoryState::Advance(const std::string& id, const StoryLibrary& library) {
     const aige::Quest* quest = library.FindQuest(id);
     auto& progress = quests_[id];
+    if (quest == nullptr || progress.objective >= quest->objectives.size()) return;
     notices_.push_back({Notice::Kind::ObjectiveDone, id, quest->objectives[progress.objective].text});
     progress.objective += 1;
     progress.count = 0;
     if (progress.objective >= quest->objectives.size()) {
         CompleteQuest(id, library);
+        return;
     }
+    CheckArrival(library);
 }
 
 void StoryState::CompleteObjective(const std::string& id, const std::string& objective, const StoryLibrary& library) {
     const aige::Quest* quest = library.FindQuest(id);
     auto it = quests_.find(id);
-    if (quest == nullptr || it == quests_.end() || it->second.state != QuestState::Active) {
+    if (quest == nullptr || it == quests_.end() || it->second.state != QuestState::Active ||
+        it->second.objective >= quest->objectives.size()) {
         return;
     }
     // Only the current objective (they're done in order).
@@ -544,16 +556,82 @@ void StoryState::Count(const std::string& type, const std::function<bool(const s
     for (const auto& id : active) {
         const aige::Quest* quest = library.FindQuest(id);
         auto& progress = quests_[id];
-        if (quest == nullptr || progress.state != QuestState::Active) {
+        // (A loaded save may point past a quest that was edited since.)
+        if (quest == nullptr || progress.state != QuestState::Active || progress.objective >= quest->objectives.size()) {
             continue;
         }
         const QuestObjective& objective = quest->objectives[progress.objective];
-        if (objective.type == type && matches(objective.target)) {
+        const bool here = objective.scene.empty() || objective.scene == scene_;
+        if (objective.type == type && here && matches(objective.target)) {
             if (++progress.count >= objective.count) {
                 Advance(id, library);
             }
         }
     }
+}
+
+void StoryState::OnReached(const std::string& marker, const StoryLibrary& library) {
+    Count("reach", [&](const std::string& target) { return !target.empty() && target == marker; }, library);
+}
+
+void StoryState::SetScene(const std::string& scene, const StoryLibrary& library) {
+    scene_ = scene;
+    CheckArrival(library);
+}
+
+// A current "reach" objective that names this scene and no marker is done on arrival.
+void StoryState::CheckArrival(const StoryLibrary& library) {
+    if (scene_.empty()) return;
+    std::vector<std::string> active = startedOrder_;
+    for (const auto& id : active) {
+        const aige::Quest* quest = library.FindQuest(id);
+        auto it = quests_.find(id);
+        if (quest == nullptr || it == quests_.end() || it->second.state != QuestState::Active ||
+            it->second.objective >= quest->objectives.size()) {
+            continue;
+        }
+        const QuestObjective& objective = quest->objectives[it->second.objective];
+        if (objective.type == "reach" && objective.target.empty() && objective.scene == scene_) {
+            Advance(id, library); // checks the next objective in turn
+        }
+    }
+}
+
+nlohmann::json StoryState::ToJson() const {
+    nlohmann::json quests = nlohmann::json::object();
+    for (const auto& [id, progress] : quests_) {
+        if (progress.state == QuestState::Inactive) continue;
+        quests[id] = {{"state", StateName(progress.state)}, {"objective", progress.objective}, {"count", progress.count}};
+    }
+    return {{"flags", std::vector<std::string>(flags_.begin(), flags_.end())},
+            {"quests", quests},
+            {"order", startedOrder_},
+            {"scene", scene_}};
+}
+
+StoryState StoryState::FromJson(const nlohmann::json& json) {
+    StoryState state;
+    if (!json.is_object()) return state;
+    for (const auto& flag : json.value("flags", nlohmann::json::array())) {
+        if (flag.is_string()) state.flags_.insert(flag.get<std::string>());
+    }
+    const auto quests = json.value("quests", nlohmann::json::object());
+    if (quests.is_object()) {
+        for (const auto& [id, entry] : quests.items()) {
+            if (!entry.is_object()) continue;
+            const std::string name = entry.value("state", "inactive");
+            Progress progress;
+            progress.state = name == "active" ? QuestState::Active : name == "completed" ? QuestState::Completed : QuestState::Inactive;
+            progress.objective = entry.value("objective", static_cast<size_t>(0));
+            progress.count = entry.value("count", 0);
+            state.quests_[id] = progress;
+        }
+    }
+    for (const auto& id : json.value("order", nlohmann::json::array())) {
+        if (id.is_string() && state.quests_.contains(id.get<std::string>())) state.startedOrder_.push_back(id.get<std::string>());
+    }
+    state.scene_ = json.value("scene", "");
+    return state;
 }
 
 void StoryState::OnDefeated(const std::string& prefab, const std::string& team, const StoryLibrary& library) {

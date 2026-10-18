@@ -80,7 +80,7 @@ def test_story_problems_are_reported_precisely(schema, demo_context):
         "no quest 'ghost-quest'",
         "node 'orphan' can't be reached",
         "giver 'character/ghost' isn't in the World Bible",
-        "type must be defeat, talk or collect",
+        "type must be defeat, talk, collect or reach",
         "'prefabs/dragon.prefab' isn't a prefab",
         "'character/ghost' isn't in the World Bible",
         "dialogue 'dialogue/missing.json' doesn't exist",
@@ -150,3 +150,46 @@ def test_schedules_are_checked_against_the_scene_and_the_proposal(schema, demo_c
                      "radius must be between 0 and 20", "two entries start at the same time",
                      "schedule 'schedules/missing.json' doesn't exist"]:
         assert expected in text, (expected, text)
+
+
+def _with_scenes(context):
+    """The demo context with two scenes: main (open, no markers of its own) and a cellar with one."""
+    c = context.model_copy(deep=True)
+    c.scene = "scenes/main.aige"
+    c.scenes = [{"path": "scenes/main.aige", "start": True, "markers": []},
+                {"path": "scenes/cellar.aige", "start": False, "markers": ["cellar_door"]}]
+    return c
+
+
+def test_objectives_can_be_tied_to_scenes_and_reach_markers(schema, demo_context):
+    # Quests belong to the project; an objective can still say where it counts (6.9).
+    context = _with_scenes(demo_context)
+    good = quest(objectives=[
+        {"id": "down", "text": "Go down to the cellar", "type": "reach", "scene": "scenes/cellar.aige"},
+        {"id": "door", "text": "Find the old door", "type": "reach", "target": "cellar_door", "scene": "scenes/cellar.aige"},
+        {"id": "rats", "text": "Clear the rats", "type": "defeat", "target": "Enemy", "count": 3,
+         "scene": "scenes/cellar.aige"},
+    ])
+    assert validate_proposal(proposal({"op": "write_quest", "id": "cellar", "quest": good}), schema, context) == []
+
+    bad = quest(objectives=[
+        {"id": "a", "text": "Go nowhere", "type": "reach"},
+        {"id": "b", "text": "Find it", "type": "reach", "target": "cellar_door", "scene": "scenes/main.aige"},
+        {"id": "c", "text": "Somewhere", "type": "defeat", "target": "Enemy", "scene": "scenes/attic.aige"},
+    ])
+    text = "\n".join(validate_proposal(proposal({"op": "write_quest", "id": "cellar", "quest": bad}), schema, context))
+    for expected in ["needs a marker", "no marker called 'cellar_door' in scenes/main.aige", "no scene 'scenes/attic.aige'"]:
+        assert expected in text, (expected, text)
+
+
+def test_schedule_entries_can_happen_in_other_scenes(schema, demo_context):
+    context = _with_scenes(demo_context)
+    marker = {"op": "command", "name": "scene.addMarker", "args": {"name": "home", "x": 4.5, "y": 1.5}}
+    day = {"name": "Tamsin", "entries": [
+        {"from": "06:00", "activity": "stay", "place": "home"},                                   # here, added now
+        {"from": "20:00", "activity": "stay", "place": "cellar_door", "scene": "scenes/cellar.aige"}]}
+    assert validate_proposal(proposal(marker, {"op": "write_schedule", "id": "tamsin", "schedule": day}),
+                             schema, context) == []
+    day["entries"][1]["place"] = "home"  # a marker of the open scene, not of the cellar
+    errors = validate_proposal(proposal(marker, {"op": "write_schedule", "id": "tamsin", "schedule": day}), schema, context)
+    assert any("no marker called 'home' in scenes/cellar.aige" in e for e in errors), errors

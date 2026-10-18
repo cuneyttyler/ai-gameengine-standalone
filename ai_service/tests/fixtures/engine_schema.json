@@ -275,6 +275,12 @@
           "description": "The full description, Markdown.",
           "name": "body",
           "type": "string"
+        },
+        {
+          "description": "Locations only: the scene that shows this place, scenes/<name>.aige (optional).",
+          "name": "scene",
+          "optional": true,
+          "type": "string"
         }
       ]
     },

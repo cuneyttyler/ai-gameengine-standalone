@@ -26,6 +26,7 @@ class FieldSpec(BaseModel):
     options: list[str] | None = None
     min: float | None = None
     max: float | None = None
+    optional: bool = False  # command parameters: may be left out
 
 
 class ComponentSpec(BaseModel):

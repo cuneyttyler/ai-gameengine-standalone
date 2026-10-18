@@ -57,6 +57,9 @@ struct FieldMeta {
     std::vector<std::string> options; // Enum
     std::optional<double> min;        // Float/Int
     std::optional<double> max;
+    // Command parameters only: may be left out (it then takes its type's
+    // empty value: "", 0, false), so adding one keeps older proposals valid.
+    bool optional = false;
 };
 
 // A value that breaks `meta`'s type or constraints, as a message; nullopt
@@ -273,6 +276,10 @@ public:
     }
     Derived& Options(std::vector<std::string> options) {
         Last().options = std::move(options);
+        return Self();
+    }
+    Derived& Optional() {
+        Last().optional = true;
         return Self();
     }
     // Presents the field as a richer type than its C++ type implies

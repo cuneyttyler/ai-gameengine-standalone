@@ -29,6 +29,9 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -61,8 +64,17 @@ bool TravelIfAsked(const aige::Project& project, aige::Registry& registry, aige:
     }
     prefabs.SyncAll(registry);
     session.OnSceneChanged();
+    session.SetScene(travel->scene);
     std::cout << "Now in " << travel->scene << std::endl;
     return true;
+}
+
+// Where a player's saved game goes (6.9): per user, per game, outside the
+// game's own folder (which may be read-only once installed).
+std::filesystem::path SaveGamePath(const aige::Project& project) {
+    const char* base = std::getenv("LOCALAPPDATA");
+    std::filesystem::path dir = base ? std::filesystem::path(base) / "AIGE" / "saves" : project.root / "saves";
+    return dir / project.root.filename() / "quicksave.json";
 }
 
 // The game without a window: load everything, run `seconds` of game time in
@@ -84,6 +96,7 @@ int RunHeadless(const aige::Project& project, double seconds) {
     aige::StoryLibrary story(project.root);
     story.Refresh();
     session.SetStory(&story);
+    session.SetScene(project.Relative(aige::StartScenePath(project)));
     aige::ScheduleLibrary schedules(project.root);
     schedules.Refresh();
     session.SetSchedules(&schedules);
@@ -212,6 +225,7 @@ int main(int argc, char** argv) {
         aige::WorldBible world(project);
         world.Refresh();
         session.SetStory(&story);
+        session.SetScene(project.Relative(aige::StartScenePath(project)));
         aige::ScheduleLibrary schedules(project.root);
         schedules.Refresh();
         session.SetSchedules(&schedules);
@@ -246,6 +260,8 @@ int main(int argc, char** argv) {
         // F3: frame stats (smoothed), on from the start in --bench.
         bool showStats = bench;
         bool f3WasDown = false;
+        bool f6WasDown = false;
+        bool f9WasDown = false;
         double frameMs = 0.0, updateMs = 0.0, benchFrames = 0.0, benchFrameMs = 0.0, benchUpdateMs = 0.0;
 
         const auto startTime = Clock::now();
@@ -280,6 +296,35 @@ int main(int argc, char** argv) {
             }
             f3WasDown = f3Down;
 
+            // F6 saves the game, F9 loads it (6.9).
+            const bool f6Down = window.IsKeyDown(aige::Key::F6);
+            if (f6Down && !f6WasDown && !bench) {
+                std::error_code ec;
+                std::filesystem::create_directories(SaveGamePath(project).parent_path(), ec);
+                std::ofstream out(SaveGamePath(project), std::ios::trunc | std::ios::binary);
+                if (out) {
+                    out << session.MakeSave().dump(2) << "\n";
+                    session.Toast("Game saved");
+                }
+            }
+            f6WasDown = f6Down;
+            const bool f9Down = window.IsKeyDown(aige::Key::F9);
+            if (f9Down && !f9WasDown && !bench) {
+                std::ifstream in(SaveGamePath(project), std::ios::binary);
+                nlohmann::json save = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+                const std::string scene = save.is_object() ? save.value("scene", std::string()) : std::string();
+                if (!scene.empty() && aige::LoadScene(registry, project.Resolve(scene).string())) {
+                    prefabs.SyncAll(registry);
+                    session.OnSceneChanged();
+                    session.ApplySave(save);
+                    session.SetScene(scene);
+                    snapCamera();
+                } else {
+                    session.Toast("No saved game");
+                }
+            }
+            f9WasDown = f9Down;
+
             // Player death: a short pause, then restart the level.
             for (const auto& event : session.Events()) {
                 auto player = aige::FindPlayer(registry);
@@ -299,6 +344,7 @@ int main(int argc, char** argv) {
                     banner = {};
                     loadLevel();
                     session.SetStory(&story); // a fresh run: quests and flags start over
+                    session.SetScene(project.Relative(aige::StartScenePath(project)));
                     session.SetClockMinutes(-1.0); // and the day starts again
                     session.ResetClock();
                     snapCamera();

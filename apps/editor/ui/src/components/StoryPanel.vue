@@ -4,6 +4,7 @@
 // can be referenced (World Bible entries, prefabs); this panel edits one file
 // at a time as a draft and saves it back through the engine's own reader and
 // writer.
+import { sceneList } from '../scenes'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
 import { confirmDialog } from '../dialogs'
@@ -36,6 +37,7 @@ interface Objective {
   type: string
   target: string
   count?: number
+  scene?: string // only counts in this scene (6.9)
 }
 interface QuestContent {
   name: string
@@ -49,6 +51,7 @@ interface ScheduleEntry {
   activity: string
   place: string
   radius?: number
+  scene?: string // where this happens (6.9)
 }
 interface ScheduleContent {
   name: string
@@ -293,8 +296,20 @@ function goTo(id: string): void {
 
 // --- Quest helpers -----------------------------------------------------------
 
-function targetsFor(type: string): { value: string; label: string }[] {
+// A scene's markers: the open scene's as they are now, others' as saved.
+function markersOf(scene: string | undefined): string[] {
+  if (!scene) return markers.value
+  const entry = sceneList.scenes.find((s) => s.path === scene)
+  if (entry?.open) return markers.value
+  return entry?.markers ?? []
+}
+
+function targetsFor(type: string, scene?: string): { value: string; label: string }[] {
   if (type === 'talk') return world.value.filter((e) => e.kind === 'character').map((e) => ({ value: e.key, label: e.name }))
+  if (type === 'reach') {
+    const names = scene ? markersOf(scene) : [...new Set(sceneList.scenes.flatMap((s) => (s.open ? markers.value : s.markers)))]
+    return [...(scene ? [{ value: '', label: '(arrive in the scene)' }] : []), ...names.map((m) => ({ value: m, label: m }))]
+  }
   const list = prefabs.value.map((p) => ({ value: p, label: p }))
   return type === 'defeat' ? [{ value: 'Enemy', label: 'Any enemy' }, ...list] : list
 }
@@ -471,9 +486,13 @@ function targetsFor(type: string): { value: string; label: string }[] {
             <option value="wander">wander around</option>
             <option value="sleep">sleep at</option>
           </select>
+          <select v-model="e.scene" class="scene-pick" title="Where this part of the day happens (empty: wherever they are)">
+            <option :value="undefined">here</option>
+            <option v-for="s in sceneList.scenes" :key="s.path" :value="s.path">in {{ s.name }}</option>
+          </select>
           <select v-model="e.place">
-            <option v-for="m in markers" :key="m" :value="m">{{ m }}</option>
-            <option v-if="e.place && !markers.includes(e.place)" :value="e.place">{{ e.place }} (missing)</option>
+            <option v-for="m in markersOf(e.scene)" :key="m" :value="m">{{ m }}</option>
+            <option v-if="e.place && !markersOf(e.scene).includes(e.place)" :value="e.place">{{ e.place }} (missing)</option>
           </select>
           <template v-if="e.activity === 'wander'">
             <span class="muted">within</span>
@@ -518,14 +537,19 @@ function targetsFor(type: string): { value: string; label: string }[] {
             <option value="defeat">defeat</option>
             <option value="collect">collect</option>
             <option value="talk">talk to</option>
+            <option value="reach">reach</option>
           </select>
           <select v-model="o.target">
-            <option v-for="t in targetsFor(o.type)" :key="t.value" :value="t.value">{{ t.label }}</option>
-            <option v-if="o.target && !targetsFor(o.type).some((t) => t.value === o.target)" :value="o.target">
+            <option v-for="t in targetsFor(o.type, o.scene)" :key="t.value" :value="t.value">{{ t.label }}</option>
+            <option v-if="o.target && !targetsFor(o.type, o.scene).some((t) => t.value === o.target)" :value="o.target">
               {{ o.target }} (missing)
             </option>
           </select>
-          <input v-if="o.type !== 'talk'" v-model.number="o.count" type="number" min="1" class="count" title="How many" />
+          <select v-model="o.scene" class="scene-pick" title="Only counts in this scene (empty: anywhere)">
+            <option :value="undefined">anywhere</option>
+            <option v-for="s in sceneList.scenes" :key="s.path" :value="s.path">in {{ s.name }}</option>
+          </select>
+          <input v-if="o.type !== 'talk' && o.type !== 'reach'" v-model.number="o.count" type="number" min="1" class="count" title="How many" />
           <button title="Remove" @click="quest.objectives.splice(i, 1)">×</button>
         </div>
         <button
@@ -617,6 +641,9 @@ function targetsFor(type: string): { value: string; label: string }[] {
 .form-row,
 .next-row,
 .choice-row,
+.scene-pick {
+  max-width: 130px;
+}
 .objective,
 .node-head,
 .start-row {

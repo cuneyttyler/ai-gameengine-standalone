@@ -21,6 +21,10 @@ namespace aige {
 //   rel: lives_in location/brookvale
 //   rel: member_of faction/iron-guild
 //   ---
+//
+// A location can name the scene that shows it (`scene: scenes/brookvale.aige`),
+// so building or editing that scene follows its canon, and the Scene panel
+// shows which place each scene is.
 //   Free Markdown text...
 //
 // The files are the source of truth (they diff in git and stay editable
@@ -40,6 +44,7 @@ struct WorldEntry {
     std::string summary;
     std::vector<std::string> tags;
     std::vector<WorldRelation> relations;
+    std::string scene; // locations: the scene that shows this place, "scenes/<name>.aige"
     std::string body;
     // Header keys this version doesn't know, kept so hand-written ones survive a save.
     std::vector<std::pair<std::string, std::string>> extra;
@@ -76,8 +81,12 @@ public:
         std::string key;
         std::string message;
     };
-    // Missing names, relations to entries that don't exist, files that don't parse.
+    // Missing names, relations to entries that don't exist, files that don't
+    // parse, scenes that don't exist, two places claiming one scene.
     std::vector<Problem> Validate() const;
+
+    // The location entry that names this scene, if any.
+    const WorldEntry* LocationOf(const std::string& scene) const;
 
     // Writes the entry's file (creating world/<kind>/), then refreshes. Fails
     // on an unknown kind, a missing name or an invalid id.

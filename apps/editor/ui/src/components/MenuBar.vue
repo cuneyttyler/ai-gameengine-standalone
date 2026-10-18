@@ -73,6 +73,14 @@ const menus = computed<Record<string, MenuItem[]>>(() => ({
       shortcut: keyLabel('play.toggle'),
       action: () => sendToHost({ type: editorState.playing ? 'play:stop' : 'play:start' }),
     },
+    separator,
+    { label: 'Save game', shortcut: keyLabel('play.save'), disabled: !editorState.playing, action: () => sendToHost({ type: 'play:save' }) },
+    {
+      label: editorState.playing ? 'Load saved game' : 'Continue from save',
+      shortcut: keyLabel('play.load'),
+      disabled: !editorState.hasSave,
+      action: () => sendToHost({ type: 'play:load' }),
+    },
   ],
   Help: [
     { label: 'Keyboard Shortcuts…', shortcut: keyLabel('help.shortcuts'), action: () => runAction('help.shortcuts') },

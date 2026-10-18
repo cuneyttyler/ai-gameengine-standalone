@@ -149,7 +149,8 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
                 continue
             for param in command.params:
                 if param.name not in op.args:
-                    errors.append(f"{where}: {op.name} needs {param.name!r}")
+                    if not param.optional:
+                        errors.append(f"{where}: {op.name} needs {param.name!r}")
                     continue
                 errors += check_value(param, op.args[param.name], context, where)
             extra = set(op.args) - {p.name for p in command.params}
@@ -172,7 +173,14 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
         elif isinstance(op, RunCommand) and op.name == "world.write":
             entry_id = op.args.get("id") or re.sub(r"[^a-z0-9_]+", "-", str(op.args.get("name", "")).lower()).strip("-")
             world_keys.add(f"{op.args.get('kind', '')}/{entry_id}")
-    scope = StoryScope(quests, world_keys, {p.path for p in context.prefabs})
+    # Every scene's markers; the open one's with those this proposal adds.
+    added_markers = {str(op.args.get("name", "")) for op in proposal.operations
+                     if isinstance(op, RunCommand) and op.name == "scene.addMarker"}
+    open_markers = {m.get("name", "") for m in context.markers} | added_markers
+    scene_markers = {str(s.get("path", "")): set(s.get("markers", [])) for s in context.scenes}
+    if context.scene:
+        scene_markers[context.scene] = scene_markers.get(context.scene, set()) | open_markers
+    scope = StoryScope(quests, world_keys, {p.path for p in context.prefabs}, scene_markers if context.scenes else None)
     for index, op in enumerate(proposal.operations, start=1):
         if isinstance(op, WriteDialogue):
             errors += check_dialogue(op.id, op.dialogue, scope, f"operation {index} (write_dialogue {op.id})")
@@ -187,7 +195,8 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
     schedules = {f"schedules/{s.get('id', '')}.json" for s in context.schedules}
     for index, op in enumerate(proposal.operations, start=1):
         if isinstance(op, WriteSchedule):
-            errors += check_schedule(op.id, op.schedule, markers, f"operation {index} (write_schedule {op.id})")
+            errors += check_schedule(op.id, op.schedule, markers, f"operation {index} (write_schedule {op.id})",
+                                     scene_markers if context.scenes else None)
             schedules.add(f"schedules/{op.id}.json")
     for index, op in enumerate(proposal.operations, start=1):
         value = None

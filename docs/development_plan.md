@@ -1670,6 +1670,30 @@ Decisions (2026-10-17, defaults the user can still change):
     - **Double-click a tab** to fill the window with that panel; double-click again
       to bring the others back (the tab's menu has *Maximize* too).
 
+**6.9 — The story across scenes** *(added 2026-10-18, before Phase 7)*
+- Quests, dialogue, schedules and the World Bible were already project-level (files in
+  the project root; progress carried across gateways). Four gaps are closed:
+  1. **Objectives can name a scene** (they count only there), and a new **reach**
+     objective is done at a Marker or, with only a scene, on arriving there.
+  2. **Schedule entries can name a scene.** While an NPC's day puts them in another
+     scene, they're away (hidden) in this one; places are checked against that scene's
+     markers.
+  3. **World Bible locations name their scene** (`scene:`). The Scene panel shows each
+     scene's place, and the AI context carries every scene's location and the open
+     scene's entry in full. `world.write` takes an optional `scene`. Renaming a scene
+     rewrites it, along with the quests and schedules that name it.
+  4. **Saved games:** F6 saves and F9 loads (the scene, the player's place and health,
+     the clock, flags and quest progress), in the game and in Play mode. Play ▸ Continue
+     from save.
+- ✅ Built, with:
+  - command parameters that can be **optional** (in the engine, the schema and the AI
+    service), so adding one keeps older proposals valid;
+  - the editors: reach, a scene per objective and per part of the day, and a location's
+    scene;
+  - AI checks mirroring the engine;
+  - `docs/story.md` updated;
+  - tests: `ProjectStoryTest` (8) and two AI validation tests.
+
 **Phase 6 exit criteria:** from an unfamiliar pack, the AI imports everything at sensible
 sizes, lays roads with the right pieces, and builds a village of the requested size that
 uses the pack's houses, well, fences and decorations, on the grid the art was drawn for.
