@@ -47,8 +47,10 @@ Levels, from outer to inner: **site → zone → parcel → feature → dressing
 → streets & parcels → parcel contents (buildings, yards, features) → dressing →
 population *(later)*.
 
-**Brief fields:** scale; style (era, culture, biome, condition); layout (organic, grid,
-radial, linear-along-road, linear-along-river, growth); walled (none, palisade, stone);
+**Brief fields:** scale; style (era, culture, biome, condition); layout (a **mix** of street
+patterns: organic, grid, radial, linear-along-road, linear-along-river, e.g. a grid core with
+organic outskirts; the plan gives each ward one of them); growth (phases); walled (none,
+palisade, stone);
 features (river, lake, hill, coast, crossroads); components (the zone modules below, each
 with an on/off switch, count or density, and asset source); gameplay (entrances, player
 start).

@@ -1922,6 +1922,11 @@ build).
 - Tests: `tests/brief_test.cpp`, `ai_service/tests/test_places.py`,
   `ui/tests/buildwindow.test.ts`.
 
+- **Layout is a mix** of street patterns (`{"mix": {"grid": 0.4, "organic": 0.6}}`, or one
+  pattern by name). The window toggles patterns and sets their shares, and
+  `shape.description` says where each goes. The plan (7.5) gives each ward one pattern,
+  by the design rules. Any `mix` field accepts a single value as a mix of one.
+
 Moved to 7.5: the plan preview needs the plan.
 - The AI drafts **several Briefs** for the query. Fields where the drafts disagree, or
   with low confidence, are highlighted.
