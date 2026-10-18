@@ -1994,6 +1994,53 @@ Moved to 7.5: the plan preview needs the plan.
   buildings); repair of a broken node.
 
 **7.6 — Compile and solve (the generators)**
+
+**Done (2026-10-18), for the settlement build type:**
+- **Compile** (`places/Compile.h`), Spec → PLL:
+  - every `repeat` is written out as instances, and each `share` child goes to exactly
+    that share of its parent's instances, by a seeded hash;
+  - templates by level and class (module files may override): the site with its
+    ground, entrances, main road (a crossroads from town size), river, walls with
+    gates where roads cross, and the partition into zones by their site preferences;
+  - zones: a street network in the zone's street style (or the layout mix), and
+    parcels by frontage subdivision. A zone too small for its parcels is enlarged to
+    about 1.9 times their area;
+  - parcels: the primary object at the front, facing the street, and the features as
+    regions related to it;
+  - features: fences and hedges along edges, beds and fields in rows, orchards and
+    graves on a grid, plants scattered with the plan's mixes;
+  - relations from the modules; checks (parcels placed, fences closed, doors
+    reachable, footprint density).
+  - The zones' relations come from the plan's root step, which already reasoned about
+    them, so there is no separate AI call here.
+- **Solve** (`places/Solver.h`): a cell grid, top-down through the region tree, steps
+  b–i inside each region, then fill and checks. Per step:
+  - **paths:** least-cost A\* with road reuse; rivers meander;
+  - **networks:** grid, radial, linear, and organic (a main street along the zone,
+    then lanes from the cells furthest from any street);
+  - **partition:** seeds by interest (Emilien et al.) and compact growth that reaches
+    across roads;
+  - **subdivide:** frontage plots packed along streets;
+  - **place:** primaries at their setback; others by relation scores;
+  - **line:** cell edges, gates at gaps, no fence across a street;
+  - **rows, grid, scatter:** Poisson-disk with density;
+  - **fill:** terrain per cell, roads by class, water, bridges;
+  - **checks:** count, closed, reachable, footprint-density.
+
+  Every statement has its own seeded random stream. The result is written to
+  `places/<id>/layout.solved.json`; Approve plan runs compile and solve, and the
+  viewport shows the solved buildings.
+- **Not yet:** floorplan, graph and connect (interiors and dungeons, 7.10), annealing
+  over the soft objective (placement is greedy best-score), and the 6.5 village
+  command rebuilt on modules (7.7, together with putting the result into the scene).
+- Tests: `tests/solve_test.cpp`:
+  - a village compiles to a valid layout and solves within the hard rules (no
+    overlaps, regions inside their parents, every plot on a street and its house
+    facing it, every door reachable, fences and wall closed with gates);
+  - the same seed gives the same layout;
+  - paths join existing roads, zones follow their preferences, scatter keeps density
+    and spacing;
+  - hamlet, village and large village place at least 80% of their buildings.
 - Each module's **compile template** turns Spec nodes into **PLL**. The AI adds
   relations at the upper levels.
 - The solver goes **top-down through the region tree**, in a fixed order of steps inside

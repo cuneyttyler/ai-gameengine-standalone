@@ -2519,13 +2519,31 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
         static const float kSite[3] = {0.54f, 0.71f, 0.98f};
         static const float kZones[6][3] = {{0.65f, 0.89f, 0.63f}, {0.98f, 0.70f, 0.53f}, {0.80f, 0.65f, 0.97f},
                                            {0.98f, 0.89f, 0.69f}, {0.58f, 0.89f, 0.84f}, {0.95f, 0.55f, 0.66f}};
-        const nlohmann::json sketch = PlanSketch(Places(), build_->Spec(), build_->SiteSide());
         const float side = static_cast<float>(build_->SiteSide());
         AddGridRect(overlay, 0, 0, side, side, iso_, kSite, 0.9f, 2.0f);
-        int n = 0;
-        for (const auto& r : sketch.value("rects", nlohmann::json::array())) {
-            AddGridRect(overlay, r.value("x", 0.0f), r.value("y", 0.0f), r.value("w", 0.0f), r.value("h", 0.0f), iso_,
-                        kZones[n++ % 6], 0.85f, 1.5f);
+        const nlohmann::json& solved = build_->Solved();
+        if (solved.is_object() && solved.contains("objects")) {
+            // Solved (7.6): the zones' bounds and every building's footprint.
+            static const float kBuilding[3] = {0.95f, 0.85f, 0.60f};
+            int n = 0;
+            for (const auto& r : solved.value("regions", nlohmann::json::array())) {
+                if (r.value("statement", "") != "site/zones") continue;
+                const auto& b = r["bounds"];
+                AddGridRect(overlay, b[0].get<float>(), b[1].get<float>(), b[2].get<float>(), b[3].get<float>(), iso_,
+                            kZones[n++ % 6], 0.6f, 1.0f);
+            }
+            for (const auto& o : solved["objects"]) {
+                if (o.value("layer", "") != "building") continue;
+                AddGridRect(overlay, o["x"].get<float>(), o["y"].get<float>(), o["w"].get<float>(), o["h"].get<float>(), iso_,
+                            kBuilding, 0.95f, 1.5f);
+            }
+        } else {
+            const nlohmann::json sketch = PlanSketch(Places(), build_->Spec(), build_->SiteSide());
+            int n = 0;
+            for (const auto& r : sketch.value("rects", nlohmann::json::array())) {
+                AddGridRect(overlay, r.value("x", 0.0f), r.value("y", 0.0f), r.value("w", 0.0f), r.value("h", 0.0f), iso_,
+                            kZones[n++ % 6], 0.85f, 1.5f);
+            }
         }
     }
     if (showGrid_) {

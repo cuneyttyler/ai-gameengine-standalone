@@ -88,6 +88,7 @@ interface BuildState {
   plan?: { rows: PlanRow[]; totals: { buildings: number; zones: number; area: unknown }; rationale: string }
   sketch?: { side: number; rects: { id: string; module: string; name: string; x: number; y: number; w: number; h: number }[] }
   problems?: Problem[]
+  solved?: { stats: Record<string, number>; checks: { id: string; predicate: string; ok: boolean; detail?: unknown }[] }
 }
 
 const PROJECT_HOST = 'https://aige-project.local/'
@@ -285,7 +286,17 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         </table>
       </div>
       <p v-if="selectedZone" class="dim why">{{ state.plan.rows.find((r) => r.id === selectedZone)?.rationale }}</p>
-      <p class="dim">The sketch shows sizes only; where each part goes is worked out when it's built. The site is outlined in the viewport.</p>
+      <p v-if="!state.solved" class="dim">The sketch shows sizes only; where each part goes is worked out when it's built. The site is outlined in the viewport.</p>
+      <section v-else class="note">
+        <strong>Laid out:</strong> {{ state.solved.stats.regions }} areas, {{ state.solved.stats.objects }} objects,
+        {{ state.solved.stats.paths }} roads, {{ state.solved.stats.lines }} fences and walls; the buildings are outlined in the viewport.
+        <ul>
+          <li v-for="c in state.solved.checks" :key="c.id" :class="c.ok ? 'ok' : 'error'">
+            {{ c.ok ? '✓' : '✗' }} {{ c.predicate }} <span class="dim">{{ c.id }}</span>
+            <span v-if="c.detail !== undefined" class="dim">· {{ show(c.detail) }}</span>
+          </li>
+        </ul>
+      </section>
       <section v-if="state.problems?.length" class="problems">
         <div v-for="p in state.problems" :key="p.where + p.message" :class="p.warning ? 'warning' : 'error'">{{ p.where }}: {{ p.message }}</div>
       </section>
@@ -773,6 +784,9 @@ button.link {
 }
 .components tr.picked td {
   background: #313244;
+}
+.ok {
+  color: #a6e3a1;
 }
 .why {
   margin: 6px 0;

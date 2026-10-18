@@ -2,7 +2,9 @@
 
 #include "editing/BuildWindow.h"
 #include "places/PlaceValidate.h"
+#include "places/Compile.h"
 #include "places/Planner.h"
+#include "places/Solver.h"
 
 #include <cctype>
 #include <chrono>
@@ -19,6 +21,15 @@ namespace {
 
 const std::set<std::string> kSkipWords = {"a", "an", "the", "build", "make", "create", "generate", "me", "please",
                                           "with", "and", "of", "for", "some", "design", "us", "i", "want", "to"};
+
+uint64_t Fnv1a(const std::string& text) {
+    uint64_t h = 1469598103934665603ull;
+    for (const unsigned char c : text) {
+        h ^= c;
+        h *= 1099511628211ull;
+    }
+    return h;
+}
 
 std::vector<PlaceProblem> ErrorsOf(const std::vector<PlaceProblem>& problems) {
     std::vector<PlaceProblem> out;
@@ -237,8 +248,27 @@ std::string PlaceBuild::Approve() {
     const auto errors = ErrorsOf(planProblems_);
     if (!errors.empty()) return errors.front().where + ": " + errors.front().message;
     stage_ = "planned";
-    status_ = "Plan approved. Building it comes next (milestone 7.6).";
     Log({{"step", "approved"}});
+    // Compile and solve (7.6): the layout, cell by cell.
+    CompileOptions options;
+    options.seed = Fnv1a(id_);
+    options.side = SiteSide();
+    options.isoGrid = host_.isoGrid ? host_.isoGrid() : true;
+    const json ir = CompileSpec(host_.ontology(), spec_, options);
+    const auto irProblems = ValidateLayout(host_.ontology(), ir);
+    WriteJson(Folder() / "layout.ir.json", ir);
+    const SolvedLayout solved = SolveLayout(host_.ontology(), ir);
+    solved_ = solved.document;
+    WriteJson(Folder() / "layout.solved.json", solved_);
+    int buildings = 0;
+    for (const auto& o : solved_.value("objects", json::array())) buildings += o.value("layer", "") == "building";
+    int failed = 0;
+    for (const auto& c : solved_.value("checks", json::array())) failed += !c.value("ok", true);
+    status_ = "Laid out " + std::to_string(buildings) + " buildings" +
+              (failed ? " (" + std::to_string(failed) + " check(s) to look at)" : "") +
+              ". Putting it into the scene comes next (milestone 7.7).";
+    Log({{"step", "solved"}, {"irProblems", ProblemsJson(irProblems)}, {"problems", solved.problems},
+         {"stats", solved_.value("stats", json())}});
     return {};
 }
 
@@ -396,6 +426,10 @@ json PlaceBuild::State() {
         state["plan"] = PlanSummary(host_.ontology(), spec_);
         state["sketch"] = PlanSketch(host_.ontology(), spec_, SiteSide());
         state["problems"] = ProblemsJson(planProblems_);
+        if (solved_.is_object()) {
+            state["solved"] = {{"stats", solved_.value("stats", json())}, {"checks", solved_.value("checks", json::array())},
+                               {"problems", solved_.value("problems", json::array())}};
+        }
         state["name"] = brief_.value("name", id_);
     }
     if (stage_ == "planning") state["progress"] = {{"zones", zonesTotal_}, {"done", zonesDone_}};

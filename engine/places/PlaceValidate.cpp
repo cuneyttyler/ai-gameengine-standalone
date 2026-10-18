@@ -797,7 +797,14 @@ std::vector<PlaceProblem> ValidateLayout(const Ontology& ontology, const json& i
         if (s.contains("at") && s["at"].is_string()) checkRef(s["at"].get<std::string>(), ordered);
         for (const char* key : {"gaps", "via", "between", "members", "avoid", "connect"}) {
             for (const auto& item : s.value(key, json::array())) {
-                if (item.is_string()) checkRef(item.get<std::string>(), ordered);
+                if (!item.is_string()) continue;
+                std::string ref = item.get<std::string>();
+                // Gaps may also name a side of the line's region: front, side:<s>, toward:<ref>.
+                if (std::string(key) == "gaps") {
+                    if (ref == "front" || ref.rfind("side:", 0) == 0) continue;
+                    if (ref.rfind("toward:", 0) == 0) ref = ref.substr(7);
+                }
+                checkRef(ref, ordered);
             }
         }
         if (s.contains("in") && s["in"].is_string()) {

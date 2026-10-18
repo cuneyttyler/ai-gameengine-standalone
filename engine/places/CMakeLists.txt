@@ -13,6 +13,10 @@ add_library(aige_places STATIC
     Brief.cpp
     Planner.h
     Planner.cpp
+    Solver.h
+    Solver.cpp
+    Compile.h
+    Compile.cpp
 )
 target_include_directories(aige_places PUBLIC ${CMAKE_SOURCE_DIR}/engine)
 target_link_libraries(aige_places PUBLIC nlohmann_json::nlohmann_json)

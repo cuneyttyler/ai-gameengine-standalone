@@ -69,6 +69,8 @@ public:
     const std::string& Stage() const { return stage_; }
     const nlohmann::json& Brief() const { return brief_; }
     const nlohmann::json& Spec() const { return spec_; }
+    // The solved layout (aige.solved/1) once the plan is approved (7.6).
+    const nlohmann::json& Solved() const { return solved_; }
     const std::vector<PlaceProblem>& PlanProblems() const { return planProblems_; }
     // The site's side in cells (the Brief's area), for the plan view.
     int SiteSide() const;
@@ -109,6 +111,7 @@ private:
     BriefMerge merge_;
     std::vector<std::string> errors_;
     nlohmann::json spec_;
+    nlohmann::json solved_;
     std::string planPhase_;                  // root, zones
     std::set<std::string> repaired_;         // nodes already given their one repair
     std::vector<PlaceProblem> planProblems_; // what the final Spec still breaks
