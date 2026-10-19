@@ -156,3 +156,55 @@ def test_plan_endpoints():
     assert client.post("/places/plan-zone", json={"brief": {}, "zone": {}, "context": {}, "mode": "one-pass"}).json()["ok"]
     assert client.post("/places/repair-node", json={"node": {}, "problems": [], "context": {}}).json()["ok"]
     assert TestClient(create_app()).post("/places/plan-root", json={"brief": {}, "context": {}}).json()["ok"] is False
+
+
+from app.places import revise_plan  # noqa: E402
+
+
+def test_revise_plan_keeps_known_changes():
+    answer = {"summary": " Houses around the green. ", "brief": "junk",
+              "changes": [{"op": "zone", "node": "commons", "children": []}, {"op": "explode"}, "junk",
+                          {"op": "set", "node": "merchant-ward", "quantity": {"plots": {"count": 10}}}]}
+    provider = ScriptedProvider([json.dumps(answer)])
+    result = revise_plan(provider, {}, {"zones": []}, {}, "put houses in the commons", {}, mode="one-pass")
+    assert result["ok"]
+    assert [c["op"] for c in result["answer"]["changes"]] == ["zone", "set"]
+    assert result["answer"]["brief"] == {} and result["answer"]["summary"] == "Houses around the green."
+    assert "put houses in the commons" in provider.requests[0][-1]["content"]
+
+
+def test_revise_endpoint():
+    provider = ScriptedProvider(lambda messages: json.dumps({"summary": "ok", "changes": []}))
+    client = TestClient(create_app(provider=provider))
+    body = {"brief": {}, "plan": {}, "instruction": "more trees", "context": {}, "mode": "one-pass"}
+    assert client.post("/places/revise-plan", json=body).json()["ok"]
+    assert client.post("/places/revise-plan", json={**body, "instruction": " "}).json()["errors"] == ["Say what to change"]
+
+
+from app.places import review_layout  # noqa: E402
+
+
+def test_review_looks_at_the_map_and_proposes_changes():
+    answer = {"thinking": "the temple ward has cottages only", "issues": ["no temple in the temple ward", ""],
+              "summary": "Adds the temple.", "changes": [{"op": "zone", "node": "temple-ward", "children": []}]}
+    provider = ScriptedProvider([json.dumps(answer)])
+    image = {"type": "image_url", "image_url": "data:image/png;base64,AAAA"}
+    result = review_layout(provider, image, {}, {}, {}, [{"what": "temple", "built": 0}], {})
+    assert result["ok"] and result["thinking"] == "the temple ward has cottages only"
+    assert result["answer"]["issues"] == ["no temple in the temple ward"]
+    assert result["answer"]["changes"][0]["op"] == "zone"
+    content = provider.requests[0][-1]["content"]
+    assert content[-1] == image and "asked, planned, built" in content[0]["text"]
+
+
+def test_review_endpoint(tmp_path):
+    from PIL import Image
+    (tmp_path / "places" / "v").mkdir(parents=True)
+    Image.new("RGB", (40, 30), (90, 160, 90)).save(tmp_path / "places" / "v" / "layout.png")
+    vision = ScriptedProvider(lambda messages: json.dumps({"issues": [], "summary": "Looks right.", "changes": []}))
+    client = TestClient(create_app(provider=vision, vision=vision))
+    client.put("/project", json={"root": str(tmp_path)})
+    body = {"image": "places/v/layout.png", "brief": {}, "plan": {}, "context": {}}
+    reply = client.post("/places/review-layout", json=body).json()
+    assert reply["ok"] and reply["answer"]["summary"] == "Looks right."
+    assert client.post("/places/review-layout", json={**body, "image": "../outside.png"}).json()["ok"] is False

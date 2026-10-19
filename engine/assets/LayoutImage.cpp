@@ -258,11 +258,14 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
             if (areas.contains(yard)) add(Swatch::Fill, Mix(Hex(0x86b25f), Hex(0xd2bf8e), 0.35f), "Yard");
         }
         // Things.
-        std::set<std::string> slots, flowers;
+        std::set<std::string> slots, flowers, animals;
         for (const auto& o : solved.value("objects", json::array())) {
             if (o.value("layer", "") == "building") continue;
-            slots.insert(o.value("slot", ""));
-            if (!o.value("shows", "").empty()) flowers.insert(o.value("shows", ""));
+            const std::string slot = o.value("slot", ""), shows = o.value("shows", "");
+            slots.insert(slot);
+            if (shows.empty()) continue;
+            if (slot == "animal") animals.insert(shows);
+            else if (slot == "plant" || slot == "flower") flowers.insert(shows);
         }
         std::set<std::string> lines;
         for (const auto& l : solved.value("lines", json::array())) lines.insert(l.value("slot", ""));
@@ -288,6 +291,13 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
             else if (slot == "well" || slot == "centrepiece" || slot == "fountain") add(Swatch::Well, Hex(0x3f7fb7), "Well or fountain");
             else if (slot == "stall") add(Swatch::Stall, Hex(0xc0392b), "Market stall");
             else if (slot == "grave") add(Swatch::Grave, Hex(0x9b9b96), "Grave");
+            else if (slot == "item") add(Swatch::Prop, Hex(0x8b6b45), "Doorstep things (pots, barrels, a bench)");
+            else if (slot == "sign") add(Swatch::Prop, Hex(0x8b6b45), "Sign");
+            else if (slot == "animal") {
+                std::string kinds;
+                for (const auto& a : animals) kinds += (kinds.empty() ? "" : ", ") + a;
+                add(Swatch::Prop, Hex(0x8b6b45), kinds.empty() ? "Animal" : "Animals (" + kinds + ")");
+            }
             else add(Swatch::Prop, Hex(0x8b6b45), "Other prop (" + (slot.empty() ? std::string("object") : slot) + ")");
         }
         for (const auto& slot : lines) {

@@ -400,6 +400,35 @@ std::vector<PlaceProblem> ResolveSpec(const Ontology& ontology, const json& brie
     };
     fix(spec["root"]);
 
+    // A ward left without parcels (its step gave none): its module's typical ones.
+    std::set<std::string> used;
+    CollectIds(spec["root"], used);
+    for (auto& zone : spec["root"]["children"]) {
+        const ModuleDef* zm = ontology.Module(zone.value("module", ""));
+        if (zm == nullptr || zm->level != PlaceLevel::Zone || zm->Field("plots") == nullptr) continue;
+        if (!zone.contains("children") || !zone["children"].is_array()) zone["children"] = json::array();
+        const bool hasParcels = std::any_of(zone["children"].begin(), zone["children"].end(), [&](const json& c) {
+            return ontology.IsA(c.value("module", ""), "BuildingParcel");
+        });
+        if (hasParcels) continue;
+        const json fallback = FallbackZoneAnswer(ontology, zone);
+        int added = 0;
+        for (const auto& c : fallback["children"]) {
+            const std::string module = c.value("module", "");
+            if (Disabled(brief, module)) continue;
+            const bool present = std::any_of(zone["children"].begin(), zone["children"].end(),
+                                             [&](const json& k) { return k.value("module", "") == module; });
+            if (present) continue;
+            json node = {{"id", UniqueId(zone.value("id", "") + "/" + module, used)}, {"module", module},
+                         {"quantity", json::object()}, {"quality", json::object()}, {"rationale", c.value("rationale", "")}};
+            if (c.contains("repeat")) node["repeat"] = c["repeat"];
+            ApplyBriefSettings(ontology, brief, node);
+            zone["children"].push_back(node);
+            added += ontology.IsA(module, "BuildingParcel") ? static_cast<int>(Mid(c.value("repeat", json()), 1)) : 0;
+        }
+        if (added > 0) note(zone.value("id", ""), "had no parcels: given " + std::to_string(added) + " from its module's typical ones");
+    }
+
     // What a part needs, or rules out, anywhere in the place.
     for (int round = 0; round < 4; ++round) {
         std::vector<std::string> modules;
@@ -728,6 +757,8 @@ void ApplyZoneAnswer(const Ontology& ontology, const json& brief, json& spec, co
     ApplyBriefSettings(ontology, brief, *zone);
     KeepKnownFields(*zm, *zone);
     if (answer.contains("rationale")) (*zone)["rationale"] = answer["rationale"];
+    // Its parcels are replaced: their ids are free again (a kept parcel keeps its id).
+    (*zone)["children"] = json::array();
     std::set<std::string> used;
     CollectIds(spec["root"], used);
     json children = json::array();
@@ -961,6 +992,298 @@ json PlanSketch(const Ontology& ontology, const json& spec, int side) {
         if (w <= 0 || h <= 0) break;
     }
     return {{"side", side}, {"rects", rects}};
+}
+
+} // namespace aige
+
+namespace aige {
+
+json RevisionInput(const Ontology& ontology, const json& spec, const json& solved) {
+    json zones = json::array();
+    if (spec.contains("root")) {
+        for (const auto& c : spec["root"].value("children", json::array())) {
+            json zone = {{"id", c.value("id", "")}, {"module", c.value("module", "")}, {"quantity", c.value("quantity", json::object())},
+                         {"quality", c.value("quality", json::object())}};
+            if (c.contains("rel")) zone["rel"] = c["rel"];
+            json parcels = json::array();
+            for (const auto& p : c.value("children", json::array())) {
+                json one = {{"id", p.value("id", "")}, {"module", p.value("module", "")}};
+                for (const char* key : {"repeat", "share", "quantity", "quality"}) {
+                    if (p.contains(key) && !(p[key].is_object() && p[key].empty())) one[key] = p[key];
+                }
+                parcels.push_back(one);
+            }
+            if (!parcels.empty()) zone["parcels"] = parcels;
+            zones.push_back(zone);
+        }
+    }
+    json result = json::object();
+    if (solved.is_object()) {
+        std::map<std::string, int> buildings;
+        for (const auto& o : solved.value("objects", json::array())) {
+            if (o.value("layer", "") != "building") continue;
+            const std::string node = o.value("node", "");
+            buildings[node.substr(0, node.find('/'))]++;
+        }
+        json problems = json::array();
+        for (const auto& p : solved.value("problems", json::array())) {
+            problems.push_back(p.value("node", "") + ": " + p.value("message", ""));
+        }
+        result = {{"buildings", buildings}, {"problems", problems}};
+    }
+    return {{"plan", {{"zones", zones}, {"buildings", CountBuildings(ontology, spec)}}}, {"result", result}};
+}
+
+json RevisionContext(const Ontology& ontology, const json& brief, const json& spec) {
+    std::set<std::string> modules;
+    if (spec.contains("root")) {
+        for (const auto& c : spec["root"].value("children", json::array())) modules.insert(c.value("module", ""));
+    }
+    if (const BuildType* build = ontology.Build(brief.value("buildType", ""))) {
+        if (const ModuleDef* root = ontology.Module(build->root)) {
+            for (const ChildDef& rule : root->children) {
+                for (const auto& id : RuleModules(ontology, rule)) modules.insert(id);
+            }
+        }
+    }
+    json zones = json::object();
+    for (const auto& id : modules) {
+        const ModuleDef* m = ontology.Module(id);
+        if (m == nullptr || m->level != PlaceLevel::Zone) continue;
+        json holds = json::array();
+        for (const ChildDef& rule : m->children) {
+            for (const auto& c : RuleModules(ontology, rule)) {
+                const ModuleDef* cm = ontology.Module(c);
+                if (cm && cm->level != PlaceLevel::Dressing && !Disabled(brief, c)) holds.push_back(c);
+            }
+        }
+        zones[id] = holds;
+    }
+    return {{"root", PlanRootContext(ontology, brief)}, {"what each zone can hold", zones}};
+}
+
+std::vector<PlaceProblem> ApplyRevision(const Ontology& ontology, const json& brief, json& spec, const json& changes) {
+    std::vector<PlaceProblem> notes;
+    auto note = [&](const std::string& where, const std::string& message) { notes.push_back({where, message, true}); };
+    if (!spec.contains("root") || !changes.is_array()) return notes;
+    const BuildType* build = ontology.Build(brief.value("buildType", ""));
+    // A relation may name a part by its id or, at the top, by its module ("the river").
+    auto relations = [&](const json& rel) {
+        json kept = json::array();
+        if (!rel.is_array()) return kept;
+        for (auto r : rel) {
+            if (!r.is_object() || !ontology.Relation(r.value("type", ""))) continue;
+            bool ok = true;
+            for (const char* key : {"to", "of"}) {
+                if (!r.contains(key) || !r[key].is_string()) continue;
+                const std::string to = r[key];
+                if (SpecNode(spec, to)) continue;
+                ok = false;
+                for (const auto& c : spec["root"]["children"]) {
+                    if (c.value("module", "") == to) {
+                        r[key] = c.value("id", "");
+                        ok = true;
+                        break;
+                    }
+                }
+            }
+            if (ok) kept.push_back(r);
+        }
+        return kept;
+    };
+    for (const auto& change : changes) {
+        if (!change.is_object()) continue;
+        const std::string op = change.value("op", "");
+        const std::string id = change.contains("node") && change["node"].is_string() ? change["node"].get<std::string>() : "";
+        if (op == "set") {
+            json* node = SpecNode(spec, id);
+            if (node == nullptr) {
+                note(id, "not changed: the plan has no such part");
+                continue;
+            }
+            EnsureGroups(*node);
+            for (const char* key : {"quantity", "quality"}) {
+                const json fields = change.value(key, json::object());
+                if (!fields.is_object()) continue;
+                for (const auto& [name, value] : fields.items()) {
+                    if (value.is_null()) (*node)[key].erase(name);
+                    else (*node)[key][name] = value;
+                }
+            }
+            if (change.contains("repeat")) {
+                const double repeat = Mid(change["repeat"], 1);
+                if (repeat >= 2) (*node)["repeat"] = static_cast<int>(std::round(repeat));
+                else node->erase("repeat");
+            }
+            if (change.contains("rel")) (*node)["rel"] = relations(change["rel"]);
+        } else if (op == "zone") {
+            json* node = SpecNode(spec, id);
+            const ModuleDef* m = node ? ontology.Module(node->value("module", "")) : nullptr;
+            if (m == nullptr || m->level != PlaceLevel::Zone) {
+                note(id, "not re-planned: it isn't a zone of the plan");
+                continue;
+            }
+            ApplyZoneAnswer(ontology, brief, spec, id,
+                            {{"quantity", change.value("quantity", json::object())}, {"quality", change.value("quality", json::object())},
+                             {"children", change.value("children", json::array())}});
+        } else if (op == "add") {
+            const json given = change.value("node", json::object());
+            const std::string module = given.is_object() ? given.value("module", "") : "";
+            const ModuleDef* m = ontology.Module(module);
+            if (m == nullptr || build == nullptr || !ontology.ChildRule(build->root, module)) {
+                note(module.empty() ? "?" : module, "not added: a " + (build ? build->root : std::string("place")) + " can't hold it");
+                continue;
+            }
+            if (Disabled(brief, module)) {
+                note(module, "not added: it's turned off in the Brief");
+                continue;
+            }
+            std::set<std::string> used;
+            CollectIds(spec["root"], used);
+            const std::string wanted = Slug(given.value("id", module));
+            json node = {{"id", UniqueId(wanted.empty() ? module : wanted, used)}, {"module", module},
+                         {"quantity", given.value("quantity", json::object())}, {"quality", given.value("quality", json::object())},
+                         {"rationale", given.value("rationale", "added at the user's request")}, {"children", json::array()}};
+            EnsureGroups(node);
+            ApplyBriefSettings(ontology, brief, node);
+            KeepKnownFields(*m, node);
+            if (given.contains("rel")) node["rel"] = relations(given["rel"]);
+            const std::string newId = node["id"];
+            spec["root"]["children"].push_back(node);
+            if (m->level == PlaceLevel::Zone && given.contains("children")) {
+                ApplyZoneAnswer(ontology, brief, spec, newId, {{"children", given["children"]}});
+            }
+        } else if (op == "remove") {
+            bool removed = false;
+            std::function<void(json&)> drop = [&](json& n) {
+                if (!n.contains("children") || !n["children"].is_array()) return;
+                json& kids = n["children"];
+                for (size_t i = 0; i < kids.size() && !removed; ++i) {
+                    if (kids[i].value("id", "") == id) {
+                        kids.erase(i);
+                        removed = true;
+                        return;
+                    }
+                    drop(kids[i]);
+                }
+            };
+            if (id != spec["root"].value("id", "")) drop(spec["root"]);
+            if (!removed) note(id, "not removed: the plan has no such part");
+        }
+    }
+    return notes;
+}
+
+} // namespace aige
+
+namespace aige {
+
+namespace {
+
+// How many of `module` the Spec stands for (repeat x share down the tree).
+double CountModule(const json& spec, const std::string& module) {
+    double total = 0;
+    std::function<void(const json&, double)> walk = [&](const json& node, double times) {
+        const double here = times * Mid(node.value("repeat", json()), 1) * (node.contains("share") ? Mid(node["share"], 1) : 1);
+        if (node.value("module", "") == module) total += here;
+        for (const auto& c : node.value("children", json::array())) walk(c, here);
+    };
+    if (spec.contains("root")) walk(spec["root"], 1);
+    return total;
+}
+
+std::string Status(double planned, int built) {
+    if (planned >= 0.5 && built == 0) return "missing";
+    if (built < 0.8 * planned - 0.01) return "short";
+    return "ok";
+}
+
+} // namespace
+
+json VerifyLayout(const Ontology& ontology, const json& brief, const json& spec, const json& solved) {
+    json rows = json::array();
+    if (!spec.contains("root") || !solved.is_object()) return rows;
+    const json objects = solved.value("objects", json::array());
+    const json regions = solved.value("regions", json::array());
+    auto builtUnder = [&](const std::string& prefix) {
+        int n = 0;
+        for (const auto& o : objects) {
+            const std::string node = o.value("node", "");
+            if (o.value("layer", "") == "building" && o.value("primary", false) && (node == prefix || node.rfind(prefix + "/", 0) == 0)) ++n;
+        }
+        return n;
+    };
+    auto builtOf = [&](const std::string& module) {
+        int n = 0;
+        for (const auto& r : regions) n += r.value("module", "") == module;
+        if (n > 0) return n;
+        for (const auto& o : objects) n += o.value("shows", "") == module;
+        return n;
+    };
+    // The whole place: the Brief's buildings.
+    {
+        const auto [lo, hi] = Bounds(BriefValue(brief, "scale.buildings"));
+        const int planned = CountBuildings(ontology, spec);
+        const int built = builtUnder(spec["root"].value("id", ""));
+        int total = 0;
+        for (const auto& o : objects) total += o.value("layer", "") == "building" && o.value("primary", false);
+        json row = {{"id", "buildings"}, {"what", "Buildings"}, {"planned", planned}, {"built", total}};
+        if (lo >= 0) row["asked"] = lo == hi ? std::to_string(static_cast<int>(lo))
+                                             : std::to_string(static_cast<int>(lo)) + "–" + std::to_string(static_cast<int>(hi));
+        row["status"] = total < lo * 0.9 ? "short" : Status(planned, total);
+        (void)built;
+        rows.push_back(row);
+    }
+    // Each zone, and its parcels: a ward without its temple shows here.
+    for (const auto& zone : spec["root"].value("children", json::array())) {
+        const ModuleDef* zm = ontology.Module(zone.value("module", ""));
+        if (zm == nullptr || zm->level != PlaceLevel::Zone) continue;
+        const std::string zoneId = zone.value("id", "");
+        json one = {{"spec", "x"}, {"root", zone}};
+        const int planned = CountBuildings(ontology, one);
+        const int built = builtUnder(zoneId);
+        json parts = json::array();
+        for (const auto& p : zone.value("children", json::array())) {
+            const ModuleDef* pm = ontology.Module(p.value("module", ""));
+            if (pm == nullptr || !ontology.IsA(pm->id, "BuildingParcel")) continue;
+            const double want = Mid(p.value("repeat", json()), 1);
+            const int got = builtUnder(p.value("id", ""));
+            parts.push_back({{"id", p.value("id", "")}, {"what", pm->name}, {"planned", static_cast<int>(std::lround(want))},
+                             {"built", got}, {"status", Status(want, got)}});
+        }
+        json row = {{"id", zoneId}, {"what", zm->name}, {"zone", true}, {"planned", planned}, {"built", built}, {"parts", parts}};
+        std::string status = planned == 0 && zm->Field("plots") ? "missing" : Status(planned, built);
+        for (const auto& p : parts) {
+            if (status == "ok" && p["status"] != "ok") status = "short";
+        }
+        if (planned == 0 && zm->Field("plots")) row["note"] = "no buildings planned";
+        row["status"] = status;
+        rows.push_back(row);
+    }
+    // What else the Brief asked for: each enabled component that isn't a zone.
+    const json components = brief.value("components", json::object());
+    for (const auto& [id, c] : components.items()) {
+        const ModuleDef* m = ontology.Module(id);
+        if (m == nullptr || !c.is_object() || !c.value("enabled", true)) continue;
+        if (m->level == PlaceLevel::Zone || m->level == PlaceLevel::Network || m->level == PlaceLevel::Dressing ||
+            ontology.IsA(id, "BuildingParcel") || ontology.IsA(id, "LinearFeature")) {
+            continue;
+        }
+        const double planned = CountModule(spec, id);
+        const int built = builtOf(id);
+        json row = {{"id", "components." + id}, {"what", m->name}, {"asked", c.contains("density") ? c["density"] : json("yes")},
+                    {"planned", static_cast<int>(std::lround(planned))}, {"built", built}};
+        row["status"] = planned < 0.5 ? "missing" : Status(planned, built);
+        if (planned < 0.5) row["note"] = "not in the plan";
+        rows.push_back(row);
+    }
+    // What the solver couldn't place, by name.
+    for (const auto& p : solved.value("problems", json::array())) {
+        if (p.value("code", "") != "S-UNSAT") continue;
+        rows.push_back({{"id", "problem." + p.value("statement", "")}, {"what", p.value("node", "")}, {"note", p.value("message", "")},
+                        {"status", "missing"}});
+    }
+    return rows;
 }
 
 } // namespace aige

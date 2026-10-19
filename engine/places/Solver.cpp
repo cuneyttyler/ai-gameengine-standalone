@@ -223,11 +223,17 @@ std::string Solver::ContainerOf(const json& s) const {
             }
             // The region a reference names: the longest known prefix.
             while (!ref.empty()) {
-                if (std::any_of(statements_.begin(), statements_.end(), [&](const json* t) {
-                        return t->value("id", "") == ref;
-                    }) ||
-                    regionById_.contains(ref)) {
-                    return ref;
+                if (regionById_.contains(ref)) return ref;
+                const auto maker = std::find_if(statements_.begin(), statements_.end(), [&](const json* t) {
+                    return t->value("id", "") == ref;
+                });
+                if (maker != statements_.end()) {
+                    // Next to an object (a house's front): where the object stands,
+                    // after it (scatters come after places in a region).
+                    const std::string op = (*maker)->value("op", "");
+                    const bool object = op == "place" || op == "scatter" || op == "line" || op == "grid" ||
+                                        (op == "rows" && !(*maker)->value("regions", false));
+                    return object && *maker != &s ? ContainerOf(**maker) : ref;
                 }
                 const size_t cut = ref.find_last_of('.');
                 if (cut == std::string::npos) break;
@@ -666,100 +672,12 @@ void Solver::Network(const json& s, int region) {
             return inZone(c) ? 1.0 + 0.5 * rng.Unit() : 4.0;
         });
     };
-    if (style == "grid") {
-        const int ox = r.x0 + rng.Range(0, spacing / 2), oy = r.y0 + rng.Range(0, spacing / 2);
-        for (int c : r.cells) {
-            const int x = c % W, y = c / W;
-            if ((x - ox) % spacing == 0 || (y - oy) % spacing == 0) streets.push_back(c);
-        }
-        MarkRoad(streets, 1, rank, region);
-        if (!streets.empty()) {
-            auto link = connectToRoads(streets[streets.size() / 2]);
-            MarkRoad(link, 1, rank, -1);
-            streets.insert(streets.end(), link.begin(), link.end());
-        }
-    } else if (style == "radial") {
-        const double cx = (r.x0 + r.x1) / 2.0, cy = (r.y0 + r.y1) / 2.0;
-        const double radius = std::max(r.x1 - r.x0, r.y1 - r.y0);
-        const int spokes = 6;
-        const double turn = rng.Unit();
-        for (int k = 0; k < spokes; ++k) {
-            const double a = (k + turn) * 2 * 3.14159265 / spokes;
-            for (double t = 0; t < radius; t += 0.5) {
-                const int x = static_cast<int>(cx + std::cos(a) * t), y = static_cast<int>(cy + std::sin(a) * t);
-                if (In(x, y) && inZone(Cell(x, y))) streets.push_back(Cell(x, y));
-            }
-        }
-        const double ring = std::sqrt(r.cells.size() / 3.14159265) * 0.55;
-        for (double a = 0; a < 2 * 3.14159265; a += 0.5 / std::max(1.0, ring)) {
-            const int x = static_cast<int>(cx + std::cos(a) * ring), y = static_cast<int>(cy + std::sin(a) * ring);
-            if (In(x, y) && inZone(Cell(x, y))) streets.push_back(Cell(x, y));
-        }
-        MarkRoad(streets, 1, rank, region);
-        if (!streets.empty()) {
-            auto link = connectToRoads(streets.front());
-            MarkRoad(link, 1, rank, -1);
-        }
-    } else if (style == "linear-along-road" || style == "linear-along-river" || style == "linear") {
-        // Lanes off the main roads crossing the zone, every `spacing` cells.
-        std::vector<int> mains;
-        for (int c : r.cells) {
-            if (road_[c] >= 3) mains.push_back(c);
-        }
-        for (int y = r.y0; y < r.y1; ++y) {
-            for (int x = r.x0; x < r.x1; ++x) {
-                const int c = Cell(x, y);
-                if (!inZone(c) || road_[c]) continue;
-                bool nearMain = false;
-                for (int k = 1; k <= spacing / 2 && !nearMain; ++k) {
-                    for (const auto& [dx, dy] : {std::pair{k, 0}, std::pair{-k, 0}, std::pair{0, k}, std::pair{0, -k}}) {
-                        if (In(x + dx, y + dy) && road_[Cell(x + dx, y + dy)] >= 3) nearMain = true;
-                    }
-                }
-                if (nearMain && ((x + y) % (spacing * 2) == 0)) streets.push_back(c);
-            }
-        }
-        MarkRoad(streets, 1, rank, region);
-        if (mains.empty() && !r.cells.empty()) MarkRoad(connectToRoads(r.cells[r.cells.size() / 2]), 1, rank, -1);
-    } else {
-        // Organic: a winding main street along the zone's long axis, joined to
-        // the roads, then lanes grown toward it from points spread over the zone.
-        const bool wide = (r.x1 - r.x0) >= (r.y1 - r.y0);
-        auto nearestInZone = [&](double tx, double ty) {
-            int best = -1;
-            double bestD = 1e18;
-            for (int c : r.cells) {
-                if (!inZone(c)) continue;
-                const double d = std::hypot(c % W - tx, c / W - ty);
-                if (d < bestD) {
-                    bestD = d;
-                    best = c;
-                }
-            }
-            return best;
-        };
-        const double my = (r.y0 + r.y1) / 2.0, mx = (r.x0 + r.x1) / 2.0;
-        const int a = wide ? nearestInZone(r.x0, my) : nearestInZone(mx, r.y0);
-        const int b = wide ? nearestInZone(r.x1 - 1, my) : nearestInZone(mx, r.y1 - 1);
-        if (a >= 0 && b >= 0 && a != b) {
-            std::vector<float> noise(W * H);
-            for (auto& n : noise) n = static_cast<float>(rng.Unit());
-            auto spine = AStar(a, b, [&](int c) -> double {
-                if (water_[c] || occ_[kBuilding][c]) return std::numeric_limits<double>::infinity();
-                if (road_[c]) return 0.2;
-                return inZone(c) ? 1.0 + 1.5 * noise[c] : std::numeric_limits<double>::infinity();
-            });
-            MarkRoad(spine, 1, rank, region);
-            streets.insert(streets.end(), spine.begin(), spine.end());
-            if (!spine.empty()) {
-                auto link = connectToRoads(spine[spine.size() / 2], true);
-                MarkRoad(link, 1, rank, -1);
-            }
-        }
-        // Lanes start where the zone is furthest from any street, one at a time,
-        // until every cell is within half a block of one. Each heads for the
-        // nearest street, but running alongside one costs: lanes meet streets,
-        // they don't shadow them (the land between is for plots).
+    // Lanes start where the zone is furthest from any street, one at a time,
+    // until every cell is within half a block of one. Each heads for the
+    // nearest street, but running alongside one costs: lanes meet streets,
+    // they don't shadow them (the land between is for plots). Every style but
+    // the grid ends with it: a linear ward far from the main road still gets lanes.
+    auto serveEveryCell = [&] {
         const int half = std::max(2, spacing / 2);
         const int maxLanes = std::max(1, static_cast<int>(4 * r.cells.size() / (spacing * spacing)));
         std::vector<float> tie(W * H);
@@ -810,6 +728,100 @@ void Solver::Network(const json& s, int region) {
             MarkRoad(lane, 1, rank, -1);
             streets.insert(streets.end(), lane.begin(), lane.end());
         }
+    };
+    if (style == "grid") {
+        const int ox = r.x0 + rng.Range(0, spacing / 2), oy = r.y0 + rng.Range(0, spacing / 2);
+        for (int c : r.cells) {
+            const int x = c % W, y = c / W;
+            if ((x - ox) % spacing == 0 || (y - oy) % spacing == 0) streets.push_back(c);
+        }
+        MarkRoad(streets, 1, rank, region);
+        if (!streets.empty()) {
+            auto link = connectToRoads(streets[streets.size() / 2]);
+            MarkRoad(link, 1, rank, -1);
+            streets.insert(streets.end(), link.begin(), link.end());
+        }
+    } else if (style == "radial") {
+        const double cx = (r.x0 + r.x1) / 2.0, cy = (r.y0 + r.y1) / 2.0;
+        const double radius = std::max(r.x1 - r.x0, r.y1 - r.y0);
+        const int spokes = 6;
+        const double turn = rng.Unit();
+        for (int k = 0; k < spokes; ++k) {
+            const double a = (k + turn) * 2 * 3.14159265 / spokes;
+            for (double t = 0; t < radius; t += 0.5) {
+                const int x = static_cast<int>(cx + std::cos(a) * t), y = static_cast<int>(cy + std::sin(a) * t);
+                if (In(x, y) && inZone(Cell(x, y))) streets.push_back(Cell(x, y));
+            }
+        }
+        const double ring = std::sqrt(r.cells.size() / 3.14159265) * 0.55;
+        for (double a = 0; a < 2 * 3.14159265; a += 0.5 / std::max(1.0, ring)) {
+            const int x = static_cast<int>(cx + std::cos(a) * ring), y = static_cast<int>(cy + std::sin(a) * ring);
+            if (In(x, y) && inZone(Cell(x, y))) streets.push_back(Cell(x, y));
+        }
+        MarkRoad(streets, 1, rank, region);
+        if (!streets.empty()) {
+            auto link = connectToRoads(streets.front());
+            MarkRoad(link, 1, rank, -1);
+        }
+        serveEveryCell();
+    } else if (style == "linear-along-road" || style == "linear-along-river" || style == "linear") {
+        // Lanes off the main roads crossing the zone, every `spacing` cells.
+        std::vector<int> mains;
+        for (int c : r.cells) {
+            if (road_[c] >= 3) mains.push_back(c);
+        }
+        for (int y = r.y0; y < r.y1; ++y) {
+            for (int x = r.x0; x < r.x1; ++x) {
+                const int c = Cell(x, y);
+                if (!inZone(c) || road_[c]) continue;
+                bool nearMain = false;
+                for (int k = 1; k <= spacing / 2 && !nearMain; ++k) {
+                    for (const auto& [dx, dy] : {std::pair{k, 0}, std::pair{-k, 0}, std::pair{0, k}, std::pair{0, -k}}) {
+                        if (In(x + dx, y + dy) && road_[Cell(x + dx, y + dy)] >= 3) nearMain = true;
+                    }
+                }
+                if (nearMain && ((x + y) % (spacing * 2) == 0)) streets.push_back(c);
+            }
+        }
+        MarkRoad(streets, 1, rank, region);
+        if (mains.empty() && !r.cells.empty()) MarkRoad(connectToRoads(r.cells[r.cells.size() / 2]), 1, rank, -1);
+        serveEveryCell();
+    } else {
+        // Organic: a winding main street along the zone's long axis, joined to
+        // the roads, then lanes grown toward it from points spread over the zone.
+        const bool wide = (r.x1 - r.x0) >= (r.y1 - r.y0);
+        auto nearestInZone = [&](double tx, double ty) {
+            int best = -1;
+            double bestD = 1e18;
+            for (int c : r.cells) {
+                if (!inZone(c)) continue;
+                const double d = std::hypot(c % W - tx, c / W - ty);
+                if (d < bestD) {
+                    bestD = d;
+                    best = c;
+                }
+            }
+            return best;
+        };
+        const double my = (r.y0 + r.y1) / 2.0, mx = (r.x0 + r.x1) / 2.0;
+        const int a = wide ? nearestInZone(r.x0, my) : nearestInZone(mx, r.y0);
+        const int b = wide ? nearestInZone(r.x1 - 1, my) : nearestInZone(mx, r.y1 - 1);
+        if (a >= 0 && b >= 0 && a != b) {
+            std::vector<float> noise(W * H);
+            for (auto& n : noise) n = static_cast<float>(rng.Unit());
+            auto spine = AStar(a, b, [&](int c) -> double {
+                if (water_[c] || occ_[kBuilding][c]) return std::numeric_limits<double>::infinity();
+                if (road_[c]) return 0.2;
+                return inZone(c) ? 1.0 + 1.5 * noise[c] : std::numeric_limits<double>::infinity();
+            });
+            MarkRoad(spine, 1, rank, region);
+            streets.insert(streets.end(), spine.begin(), spine.end());
+            if (!spine.empty()) {
+                auto link = connectToRoads(spine[spine.size() / 2], true);
+                MarkRoad(link, 1, rank, -1);
+            }
+        }
+        serveEveryCell();
     }
     PathResult result;
     result.id = s.value("id", "");
@@ -1019,47 +1031,65 @@ void Solver::Subdivide(const json& s, int region) {
     for (const auto& item : s.value("into", json::array())) {
         const IntRange fw = RangeOf(item.value("size", json::object()).value("w", json()), 5);
         const IntRange fh = RangeOf(item.value("size", json::object()).value("h", json()), 6);
-        const int w = rng.Range(fw.lo, fw.hi), h = rng.Range(fh.lo, fh.hi); // frontage, depth
+        const int w0 = rng.Range(fw.lo, fw.hi), h0 = rng.Range(fh.lo, fh.hi); // frontage, depth
         struct Best {
             double score = -1e18;
             int x = 0, y = 0, rw = 0, rh = 0;
             char facing = 's';
         } best;
-        for (const auto& [c, side] : fronts) {
-            if (!free[c]) continue;
-            const int fx = c % W, fy = c / W;
-            const bool across = side == 'n' || side == 's';
-            const int rw = across ? w : h, rh = across ? h : w;
-            // The parcel's front row touches the street; slide it along the front.
-            for (int shift = 0; shift < (across ? rw : rh); ++shift) {
-                int x = across ? fx - shift : (side == 'w' ? fx : fx - rw + 1);
-                int y = across ? (side == 'n' ? fy : fy - rh + 1) : fy - shift;
-                if (sum(sat, x, y, rw, rh) != rw * rh) continue;
-                // At least 60% of the front faces street.
-                int frontRoad = 0;
-                if (side == 'n') frontRoad = sum(roadSat, x, y - 1, rw, 1);
-                if (side == 's') frontRoad = sum(roadSat, x, y + rh, rw, 1);
-                if (side == 'w') frontRoad = sum(roadSat, x - 1, y, 1, rh);
-                if (side == 'e') frontRoad = sum(roadSat, x + rw, y, 1, rh);
-                const int frontage = across ? rw : rh;
-                if (frontRoad * 10 < frontage * 6) continue;
-                // Pack tightly: sides touching built or taken cells score; central first (density falls outward).
-                int contact = 0;
-                for (int k = 0; k < rw; ++k) {
-                    contact += (!In(x + k, y - 1) || !free[Cell(x + k, y - 1)]);
-                    contact += (!In(x + k, y + rh) || !free[Cell(x + k, y + rh)]);
+        // The lot as planned; if no street has room for it, smaller (to two thirds
+        // of each side), and at the smallest with less of its front on the street.
+        const int minW = std::min(w0, std::max(4, (2 * w0 + 2) / 3)), minH = std::min(h0, std::max(4, (2 * h0 + 2) / 3));
+        auto search = [&](int w, int h, int frontPercent) {
+            for (const auto& [c, side] : fronts) {
+                if (!free[c]) continue;
+                const int fx = c % W, fy = c / W;
+                const bool across = side == 'n' || side == 's';
+                const int rw = across ? w : h, rh = across ? h : w;
+                // The parcel's front row touches the street; slide it along the front.
+                for (int shift = 0; shift < (across ? rw : rh); ++shift) {
+                    int x = across ? fx - shift : (side == 'w' ? fx : fx - rw + 1);
+                    int y = across ? (side == 'n' ? fy : fy - rh + 1) : fy - shift;
+                    if (sum(sat, x, y, rw, rh) != rw * rh) continue;
+                    // At least 60% of the front faces street.
+                    int frontRoad = 0;
+                    if (side == 'n') frontRoad = sum(roadSat, x, y - 1, rw, 1);
+                    if (side == 's') frontRoad = sum(roadSat, x, y + rh, rw, 1);
+                    if (side == 'w') frontRoad = sum(roadSat, x - 1, y, 1, rh);
+                    if (side == 'e') frontRoad = sum(roadSat, x + rw, y, 1, rh);
+                    const int frontage = across ? rw : rh;
+                    if (frontRoad * 100 < frontage * frontPercent) continue;
+                    // Pack tightly: sides touching built or taken cells score; central first (density falls outward).
+                    int contact = 0;
+                    for (int k = 0; k < rw; ++k) {
+                        contact += (!In(x + k, y - 1) || !free[Cell(x + k, y - 1)]);
+                        contact += (!In(x + k, y + rh) || !free[Cell(x + k, y + rh)]);
+                    }
+                    for (int k = 0; k < rh; ++k) {
+                        contact += (!In(x - 1, y + k) || !free[Cell(x - 1, y + k)]);
+                        contact += (!In(x + rw, y + k) || !free[Cell(x + rw, y + k)]);
+                    }
+                    const double centre = std::hypot(x + rw / 2.0 - cx, y + rh / 2.0 - cy);
+                    const double score = contact - 0.15 * centre + 0.01 * rng.Unit();
+                    if (score > best.score) best = {score, x, y, rw, rh, side};
                 }
-                for (int k = 0; k < rh; ++k) {
-                    contact += (!In(x - 1, y + k) || !free[Cell(x - 1, y + k)]);
-                    contact += (!In(x + rw, y + k) || !free[Cell(x + rw, y + k)]);
-                }
-                const double centre = std::hypot(x + rw / 2.0 - cx, y + rh / 2.0 - cy);
-                const double score = contact - 0.15 * centre + 0.01 * rng.Unit();
-                if (score > best.score) best = {score, x, y, rw, rh, side};
             }
+        };
+        search(w0, h0, 60);
+        for (int step = 1; best.rw == 0 && (w0 - step >= minW || h0 - step >= minH); ++step) {
+            search(std::max(minW, w0 - step), std::max(minH, h0 - step), 60);
         }
+        if (best.rw == 0) search(minW, minH, 30);
         if (best.rw == 0) {
-            continue; // no room left: reported by the count check
+            // No room left. Many alike lots are reported by the count check; a
+            // single one (the temple, the inn) by name.
+            const std::string lot = item.value("id", "");
+            if (lot.find('#') == std::string::npos) {
+                Problem("S-UNSAT", {{"id", lot}, {"node", item.value("node", "")}},
+                        "no room for the " + item.value("module", "lot") + " (" + std::to_string(w0) + "×" + std::to_string(h0) +
+                            ") along " + parent.id + "'s streets");
+            }
+            continue;
         }
         std::vector<int> cells;
         for (int y = best.y; y < best.y + best.rh; ++y) {
@@ -1161,22 +1191,41 @@ void Solver::Place(const json& s, int container) {
         if (facing == 'e' || facing == 'w') std::swap(w, h);
         const std::string objectId = n == 1 ? id : id + "[" + std::to_string(k) + "]";
         std::optional<std::pair<int, int>> at;
-        // A primary object in a parcel stands at the front, centred, at its setback.
+        // A primary object in a parcel stands at the front, at its setback, centred
+        // or as near the centre as puts its door on the street (a lot whose front
+        // is only partly on the street).
         if (s.value("primary", false) && parent.facing) {
             const int setback = s.value("setback", 1);
-            for (int back = std::min(setback, std::max(0, (parent.facing == 'n' || parent.facing == 's' ? parent.y1 - parent.y0 : parent.x1 - parent.x0) - (facing == 'n' || facing == 's' ? h : w)));
+            const bool across = parent.facing == 'n' || parent.facing == 's';
+            const int along = across ? parent.x1 - parent.x0 - w : parent.y1 - parent.y0 - h; // room to slide
+            std::optional<std::pair<int, int>> offStreet;
+            for (int back = std::min(setback, std::max(0, (across ? parent.y1 - parent.y0 : parent.x1 - parent.x0) - (facing == 'n' || facing == 's' ? h : w)));
                  back >= 0 && !at; --back) {
-                int x = (parent.x0 + parent.x1 - w) / 2, y = (parent.y0 + parent.y1 - h) / 2;
-                if (parent.facing == 'n') y = parent.y0 + back;
-                if (parent.facing == 's') y = parent.y1 - h - back;
-                if (parent.facing == 'w') x = parent.x0 + back;
-                if (parent.facing == 'e') x = parent.x1 - w - back;
-                bool fits = x >= parent.x0 && y >= parent.y0 && x + w <= parent.x1 && y + h <= parent.y1;
-                for (int yy = y; fits && yy < y + h; ++yy) {
-                    for (int xx = x; fits && xx < x + w; ++xx) fits = Free(Cell(xx, yy), container, solid);
+                for (int step = 0; step <= 2 * std::max(0, along) && !at; ++step) {
+                    const int shift = (step % 2 ? 1 : -1) * ((step + 1) / 2);
+                    int x = (parent.x0 + parent.x1 - w) / 2, y = (parent.y0 + parent.y1 - h) / 2;
+                    if (across) x += shift;
+                    else y += shift;
+                    if (parent.facing == 'n') y = parent.y0 + back;
+                    if (parent.facing == 's') y = parent.y1 - h - back;
+                    if (parent.facing == 'w') x = parent.x0 + back;
+                    if (parent.facing == 'e') x = parent.x1 - w - back;
+                    bool fits = x >= parent.x0 && y >= parent.y0 && x + w <= parent.x1 && y + h <= parent.y1;
+                    for (int yy = y; fits && yy < y + h; ++yy) {
+                        for (int xx = x; fits && xx < x + w; ++xx) fits = Free(Cell(xx, yy), container, solid);
+                    }
+                    if (!fits) continue;
+                    // The street just outside the lot, in front of the door.
+                    int dx = x + w / 2, dy = y + h / 2;
+                    if (parent.facing == 'n') dy = parent.y0 - 1;
+                    if (parent.facing == 's') dy = parent.y1;
+                    if (parent.facing == 'w') dx = parent.x0 - 1;
+                    if (parent.facing == 'e') dx = parent.x1;
+                    if (In(dx, dy) && road_[Cell(dx, dy)]) at = std::pair{x, y};
+                    else if (!offStreet) offStreet = std::pair{x, y};
                 }
-                if (fits) at = std::pair{x, y};
             }
+            if (!at) at = offStreet;
         }
         if (!at) {
             // Anywhere it fits, by the relations' scores (or the centre, if asked).
@@ -1378,7 +1427,9 @@ void Solver::Rows(const json& s, int container, bool grid) {
         }
         ++made;
     };
-    const int margin = s.value("margin", grid ? 0 : 1);
+    int margin = s.value("margin", grid ? 0 : 1);
+    // A small area keeps its rows, without the margin.
+    if (parent.x1 - parent.x0 - 2 * margin < 2 || parent.y1 - parent.y0 - 2 * margin < 2) margin = 0;
     const int x0 = parent.x0 + margin, y0 = parent.y0 + margin, x1 = parent.x1 - margin, y1 = parent.y1 - margin;
     if (x1 <= x0 || y1 <= y0) {
         instancesOf_[id] = 0;
@@ -1426,12 +1477,25 @@ void Solver::Scatter(const json& s, int container) {
     const int layer = LayerOf(s.value("layer", "prop"));
     const bool solid = Solid(layer);
     std::vector<int> area = Cells(s.value("in", ""));
+    // Solid things keep off the doors (a doorstep's pots beside the door, not on it).
+    std::set<int> doors;
+    if (solid) {
+        for (const auto& o : objects_) {
+            if (!o.primary || o.layer != kBuilding) continue;
+            for (int c : Cells(o.id + ".door")) doors.insert(c);
+        }
+    }
     std::vector<int> free;
     for (int c : area) {
+        if (doors.contains(c)) continue;
         if (Free(c, -1, true) && !occ_[layer][c] && (!solid || (!occ_[kProp][c] && !occ_[kBuilding][c]))) free.push_back(c);
     }
     const double density = std::clamp(s.value("density", 0.1), 0.0, 1.0);
-    const int target = static_cast<int>(std::lround(density * free.size()));
+    int target = static_cast<int>(std::lround(density * free.size()));
+    if (s.contains("count")) {
+        const IntRange count = RangeOf(s["count"], 1);
+        target = std::min(static_cast<int>(free.size()), rng.Range(count.lo, count.hi)); // so many, not a share
+    }
     const int spacing = std::max(0, RangeOf(s.value("spacing", json::object()).value("min", json()), solid ? 1 : 0).lo);
     for (size_t i = free.size(); i > 1; --i) std::swap(free[i - 1], free[rng.Next() % i]);
     std::vector<int> placed;

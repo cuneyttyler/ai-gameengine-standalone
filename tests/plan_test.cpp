@@ -255,6 +255,9 @@ TEST(PlanTest, ABuildIsPlannedAndABrokenNodeRepaired) {
     EXPECT_TRUE(state.contains("sketch"));
     EXPECT_TRUE(fs::exists(build.Folder() / "spec.json"));
     EXPECT_EQ(build.Approve(), "");
+    // Solved, then the AI looks at the map.
+    ASSERT_EQ(sent.back().first, "/places/review-layout");
+    build.OnResponse(static_cast<int>(sent.size()), {{"ok", true}, {"answer", {{"summary", "Looks right."}, {"changes", json::array()}}}});
     EXPECT_EQ(build.Stage(), "planned");
     // Solved, with its map.
     EXPECT_TRUE(fs::exists(build.Folder() / "layout.solved.json"));

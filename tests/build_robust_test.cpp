@@ -223,7 +223,9 @@ TEST(BuildRobustTest, ABrokenPlanIsFixedOrKeptAndCanBeApproved) {
     ASSERT_NE(g, nullptr) << spec.dump().substr(0, 4000);
     EXPECT_TRUE((*g)["quality"]["crop-mix"].contains("onion")) << g->dump();
     ASSERT_EQ(build.Approve(), "");
-    EXPECT_EQ(build.Stage(), "planned");
+    EXPECT_EQ(build.Stage(), "revising"); // the AI's review of the map
+    f.AnswerAll(build, {{"ok", false}, {"errors", json::array({"No AI provider configured"})}});
+    EXPECT_EQ(build.Stage(), "planned"); // without it, the layout stands
 }
 
 TEST(BuildRobustTest, ABuildIsReopenedWhereItWasLeft) {
@@ -294,4 +296,91 @@ TEST(BuildRobustTest, AStepThatWasWaitingOnTheAiStartsAgain) {
     EXPECT_EQ(build.Stage(), "interpreting");
     EXPECT_EQ(f.Count("/places/interpret"), 2);
     EXPECT_TRUE(build.Owns(2));
+}
+
+TEST(BuildRobustTest, VerifyShowsAWardWithoutItsTemple) {
+    const json brief = CompleteBrief(Library(), {{"buildType", "settlement"}, {"scale", {{"class", "village"}}},
+                                                 {"components", {{"temple-ward", {{"enabled", true}}}, {"garden", {{"enabled", true}}}}}});
+    json spec = {{"root", {{"id", "v"}, {"module", "settlement"},
+                           {"children", json::array({{{"id", "temple-ward"}, {"module", "temple-ward"},
+                                                      {"children", json::array({{{"id", "temple-ward/temple"}, {"module", "temple-plot"}},
+                                                                                {{"id", "temple-ward/cottage"}, {"module", "house-plot"}, {"repeat", 6}}})}}})}}}};
+    json solved = {{"objects", json::array()}, {"regions", json::array()}};
+    for (int k = 0; k < 6; ++k) {
+        solved["objects"].push_back({{"layer", "building"}, {"primary", true}, {"node", "temple-ward/cottage"}, {"shows", "house-plot"}});
+    }
+    const json rows = VerifyLayout(Library(), brief, spec, solved);
+    const json* ward = nullptr;
+    for (const auto& r : rows) {
+        if (r["id"] == "temple-ward") ward = &r;
+    }
+    ASSERT_NE(ward, nullptr) << rows.dump();
+    EXPECT_EQ((*ward)["status"], "short");
+    bool templeMissing = false;
+    for (const auto& p : (*ward)["parts"]) templeMissing = templeMissing || (p["id"] == "temple-ward/temple" && p["status"] == "missing");
+    EXPECT_TRUE(templeMissing) << ward->dump();
+    // The garden the Brief asked for isn't in the plan.
+    bool garden = false;
+    for (const auto& r : rows) garden = garden || (r["id"] == "components.garden" && r["status"] == "missing");
+    EXPECT_TRUE(garden) << rows.dump();
+}
+
+TEST(BuildRobustTest, APlanIsRevisedReviewedAndUndone) {
+    Fixture f("aige_build_revise");
+    PlaceBuild build(f.Host());
+    const json off = {{"ok", false}, {"errors", json::array({"No AI provider configured"})}};
+    ASSERT_EQ(build.Start("a large village by a river"), "");
+    f.AnswerAll(build, off); // the Brief from the words
+    ASSERT_EQ(build.Step("assets"), "");
+    ASSERT_EQ(build.Confirm(), "");
+    f.AnswerAll(build, off); // the plan from the rules
+    ASSERT_EQ(build.Stage(), "plan") << build.State().dump();
+    ASSERT_EQ(build.Approve(), "");
+    // Laid out, then the AI looks at the map.
+    ASSERT_EQ(f.sent.back().first, "/places/review-layout");
+    EXPECT_EQ(f.sent.back().second["image"], "places/" + build.Id() + "/layout.png");
+    EXPECT_TRUE(f.sent.back().second["verify"].size() > 2);
+    EXPECT_EQ(build.Stage(), "revising");
+    f.answered.insert(static_cast<int>(f.sent.size()));
+    build.OnResponse(static_cast<int>(f.sent.size()), {{"ok", true}, {"answer", {{"summary", "Looks right."}, {"changes", json::array()}}}});
+    ASSERT_EQ(build.Stage(), "planned");
+    ASSERT_EQ(build.Revisions().size(), 1u);
+    EXPECT_TRUE(build.State().contains("verify"));
+
+    // The user asks for a temple ward.
+    ASSERT_EQ(build.Revise("add a temple ward with its temple and a few cottages"), "");
+    ASSERT_EQ(f.sent.back().first, "/places/revise-plan");
+    EXPECT_FALSE(f.sent.back().second["plan"]["zones"].empty());
+    EXPECT_TRUE(f.sent.back().second["context"].contains("what each zone can hold"));
+    const json changes = json::array({{{"op", "add"},
+                                       {"node", {{"id", "temple-ward"}, {"module", "temple-ward"},
+                                                 {"children", json::array({{{"id", "temple"}, {"module", "temple-plot"}},
+                                                                           {{"id", "cottages"}, {"module", "house-plot"}, {"repeat", 4}}})}}}},
+                                      {{"op", "remove"}, {"node", "no-such-zone"}}});
+    f.answered.insert(static_cast<int>(f.sent.size()));
+    build.OnResponse(static_cast<int>(f.sent.size()),
+                     {{"ok", true}, {"answer", {{"summary", "Added a temple ward."}, {"changes", changes}}}});
+    f.AnswerAll(build, off); // a final repair, if any
+    ASSERT_EQ(build.Stage(), "planned") << build.State()["status"];
+    json spec = build.Spec();
+    ASSERT_NE(SpecNode(spec, "temple-ward"), nullptr);
+    ASSERT_NE(SpecNode(spec, "temple-ward/temple"), nullptr);
+    const json& last = build.Revisions().back();
+    EXPECT_EQ(last["summary"], "Added a temple ward.");
+    EXPECT_NE(last["notes"].dump().find("no-such-zone"), std::string::npos); // what it couldn't do, said
+    bool templeBuilt = false;
+    for (const auto& o : build.Solved()["objects"]) templeBuilt = templeBuilt || o.value("node", "") == "temple-ward/temple";
+    EXPECT_TRUE(templeBuilt);
+
+    // Undo: back to the plan before it, laid out again.
+    ASSERT_EQ(build.Undo(), "");
+    spec = build.Spec();
+    EXPECT_EQ(SpecNode(spec, "temple-ward"), nullptr);
+    EXPECT_EQ(build.Stage(), "planned");
+    EXPECT_TRUE(build.Revisions().back()["undone"].get<bool>());
+
+    // Kept across sessions.
+    PlaceBuild again(f.Host());
+    ASSERT_EQ(again.Open(build.Id()), "");
+    EXPECT_EQ(again.Revisions().size(), 2u);
 }

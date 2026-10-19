@@ -72,6 +72,27 @@ std::vector<PlaceProblem> ResolveSpec(const Ontology& ontology, const nlohmann::
 nlohmann::json FallbackRootAnswer(const Ontology& ontology, const nlohmann::json& brief);
 nlohmann::json FallbackZoneAnswer(const Ontology& ontology, const nlohmann::json& zone);
 
+// Revising a plan the user has seen (③ Plan's Revise, and the AI's review of
+// the map). What the AI is shown: the zones with their parcels, and how the
+// layout came out ({"plan", "result"}); what it may use: the root's options
+// and what each zone can hold.
+nlohmann::json RevisionInput(const Ontology& ontology, const nlohmann::json& spec, const nlohmann::json& solved);
+nlohmann::json RevisionContext(const Ontology& ontology, const nlohmann::json& brief, const nlohmann::json& spec);
+// Applies its changes: "set" (fields of a part), "zone" (a zone's parcels,
+// all of them), "add" (a zone, network or site at the top), "remove". Returns
+// the changes it couldn't make, as warnings. The fixes and the expansion
+// follow, as after planning.
+std::vector<PlaceProblem> ApplyRevision(const Ontology& ontology, const nlohmann::json& brief, nlohmann::json& spec,
+                                        const nlohmann::json& changes);
+
+// Verify (③ Plan, once laid out): what the Brief asked for, the plan has, and
+// the layout placed, row by row: [{id, what, asked?, planned, built, status:
+// ok|short|missing, note?, zone?, parts?}]. The buildings in all; each zone
+// and its kinds of parcel (a temple ward without its temple); each other
+// component the Brief turned on; and what the solver had no room for.
+nlohmann::json VerifyLayout(const Ontology& ontology, const nlohmann::json& brief, const nlohmann::json& spec,
+                            const nlohmann::json& solved);
+
 // The share of parents with a component, for a Brief density word
 // (common: 60% of house plots have a garden).
 double DensityShare(const std::string& word);

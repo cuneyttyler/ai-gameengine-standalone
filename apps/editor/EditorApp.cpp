@@ -780,6 +780,14 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             if (!why.empty()) post_({{"type", "notify"}, {"text", "Not yet: " + why}});
         }
         PostBuild();
+    } else if (type == "build:revise" || type == "build:review" || type == "build:undo") {
+        if (build_) {
+            const std::string why = type == "build:revise" ? build_->Revise(message.value("text", ""))
+                                    : type == "build:review" ? build_->Review()
+                                                             : build_->Undo();
+            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not now: " + why}});
+        }
+        PostBuild();
     } else if (type == "build:cancel") {
         if (build_) build_->Cancel();
         PostBuild();

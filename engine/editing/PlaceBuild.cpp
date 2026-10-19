@@ -182,7 +182,8 @@ void PlaceBuild::Save() const {
                                           {"brief", brief_},
                                           {"errors", errors_},
                                           {"notices", notices_},
-                                          {"planProblems", ProblemsJson(planProblems_)}});
+                                          {"planProblems", ProblemsJson(planProblems_)},
+                                          {"revisions", revisions_}});
 }
 
 json PlaceBuild::Defaults() const { return ReadJson(host_.projectRoot / "places" / "defaults.json"); }
@@ -198,6 +199,7 @@ std::string PlaceBuild::Start(const std::string& query) {
     draftProblems_.clear();
     errors_.clear();
     notices_.clear();
+    revisions_ = json::array();
     brief_ = json::object();
     merge_ = {};
     spec_ = solved_ = json();
@@ -226,6 +228,11 @@ void PlaceBuild::OnResponse(int requestId, const json& body) {
     if (it == pending_.end()) return;
     const Pending what = it->second;
     pending_.erase(it);
+    if (what.kind == "revise" || what.kind == "review") {
+        if (stage_ == "revising") OnRevision(what, body);
+        Save();
+        return;
+    }
     if (stage_ == "planning") {
         OnPlanAnswer(what, body);
         Save();
@@ -548,6 +555,10 @@ void PlaceBuild::FinishPlanning() {
     stage_ = "plan";
     status_.clear();
     Log({{"step", "planned"}, {"buildings", buildings}, {"problems", ProblemsJson(planProblems_)}});
+    if (solveAfter_) {
+        solveAfter_ = false;
+        Solve();
+    }
 }
 
 // --- Solve ----------------------------------------------------------------------------------
@@ -556,6 +567,7 @@ std::string PlaceBuild::Approve() {
     if (stage_ != "plan") return "there's no plan to approve";
     Log({{"step", "approved"}});
     Solve();
+    Review(); // the AI checks the map; without the AI, the layout stands as solved
     Save();
     return {};
 }
@@ -613,6 +625,124 @@ int PlaceBuild::SiteSide() const {
     return a > 0 ? static_cast<int>(std::lround(std::sqrt(a))) : 80;
 }
 
+// --- Revising --------------------------------------------------------------------------------
+
+json PlaceBuild::RevisionBody() const {
+    const json input = RevisionInput(host_.ontology(), spec_, solved_);
+    return {{"brief", brief_}, {"plan", input["plan"]}, {"result", input["result"]},
+            {"context", RevisionContext(host_.ontology(), brief_, spec_)}};
+}
+
+std::string PlaceBuild::Revise(const std::string& request) {
+    if (stage_ != "plan" && stage_ != "planned") return "there's no plan to revise yet";
+    if (request.find_first_not_of(" \t\r\n") == std::string::npos) return "say what to change";
+    json body = RevisionBody();
+    body["instruction"] = request;
+    if (!Send({"revise", -1, request, "/places/revise-plan", body, 600})) return "the AI is off, and revising by request needs it";
+    beforeRevision_ = stage_;
+    stage_ = "revising";
+    status_ = "Revising the plan: “" + request + "”…";
+    Log({{"step", "revise"}, {"request", request}});
+    Save();
+    return {};
+}
+
+std::string PlaceBuild::Review() {
+    if (stage_ != "planned" || !fs::exists(Folder() / "layout.png")) return "there's no map to review yet";
+    json body = RevisionBody();
+    body["image"] = "places/" + id_ + "/layout.png";
+    body["verify"] = VerifyLayout(host_.ontology(), brief_, spec_, solved_);
+    if (!Send({"review", -1, "", "/places/review-layout", body, 600})) return "the AI is off";
+    beforeRevision_ = stage_;
+    stage_ = "revising";
+    status_ = "The AI is checking the map…";
+    Log({{"step", "review"}});
+    Save();
+    return {};
+}
+
+void PlaceBuild::OnRevision(const Pending& what, const json& body) {
+    const Ontology& ontology = host_.ontology();
+    const bool review = what.kind == "review";
+    Log({{"step", what.kind}, {"attempt", what.attempts}, {"thinking", body.value("thinking", "")}, {"answer", body.value("answer", json())},
+         {"errors", body.value("errors", json::array())}});
+    const bool ok = body.value("ok", false) && body.contains("answer") && body["answer"].is_object();
+    if (!ok && Retry(what, body)) return;
+    json entry = {{"by", review ? "review" : "you"}, {"text", what.node}};
+    if (!ok) {
+        entry["summary"] = std::string(review ? "The AI couldn't check the map" : "The AI couldn't revise the plan") + " (" + FirstError(body) +
+                           "). Nothing was changed.";
+        revisions_.push_back(entry);
+        stage_ = beforeRevision_;
+        status_.clear();
+        return;
+    }
+    const json& answer = body["answer"];
+    entry["summary"] = answer.value("summary", "");
+    entry["issues"] = answer.value("issues", json::array());
+    const json changes = answer.value("changes", json::array());
+    const json briefChanges = answer.value("brief", json::object());
+    if (changes.empty() && briefChanges.empty()) {
+        if (entry["summary"] == "") entry["summary"] = review ? "The map looks right." : "Nothing to change.";
+        revisions_.push_back(entry);
+        stage_ = beforeRevision_;
+        status_.clear();
+        return;
+    }
+    // What it was, so Undo can go back.
+    const int n = static_cast<int>(revisions_.size()) + 1;
+    WriteJson(Folder() / "revisions" / (std::to_string(n) + ".json"), {{"brief", brief_}, {"spec", spec_}, {"stage", beforeRevision_}});
+    entry["undo"] = n;
+    json notes = json::array();
+    // The Brief's totals, if the change needs them; kept only if the Brief still follows the rules.
+    if (!briefChanges.empty()) {
+        json changed = brief_;
+        for (const auto& [path, value] : briefChanges.items()) SetBriefValue(changed, path, value);
+        changed = CompleteBrief(ontology, changed, Defaults());
+        const auto errors = ErrorsOf(ValidateBrief(ontology, changed));
+        if (errors.empty()) {
+            brief_ = changed;
+            WriteJson(Folder() / "brief.json", brief_);
+        } else {
+            notes.push_back("Kept the Brief as it was: " + errors.front().where + " " + errors.front().message);
+        }
+    }
+    for (const auto& p : ApplyRevision(ontology, brief_, spec_, changes)) notes.push_back(p.where + ": " + p.message);
+    entry["notes"] = notes;
+    revisions_.push_back(entry);
+    // The rest as after planning: the expansion, the fixes, the checks; then laid out again.
+    solveAfter_ = beforeRevision_ == "planned";
+    finalRepairAsked_ = false;
+    tidied_.clear();
+    stage_ = "planning";
+    planPhase_ = "final";
+    status_ = "Applying the changes…";
+    FinishPlanning();
+}
+
+std::string PlaceBuild::Undo() {
+    if (stage_ != "plan" && stage_ != "planned") return "nothing to undo now";
+    for (auto it = revisions_.rbegin(); it != revisions_.rend(); ++it) {
+        if (!it->contains("undo") || it->value("undone", false)) continue;
+        const json saved = ReadJson(Folder() / "revisions" / (std::to_string((*it)["undo"].get<int>()) + ".json"));
+        if (!saved.is_object()) return "the saved plan is missing";
+        brief_ = saved["brief"];
+        spec_ = saved["spec"];
+        (*it)["undone"] = true;
+        WriteJson(Folder() / "brief.json", brief_);
+        WriteJson(Folder() / "spec.json", spec_);
+        planProblems_.clear();
+        for (const auto& p : ValidateSpec(host_.ontology(), spec_, SpecStage::Final, brief_.value("buildType", ""))) {
+            planProblems_.push_back({p.where, p.warning ? p.message : "kept as planned, though " + p.message, true});
+        }
+        Log({{"step", "undo"}, {"revision", (*it)["undo"]}});
+        if (stage_ == "planned") Solve();
+        Save();
+        return {};
+    }
+    return "no revision to undo";
+}
+
 // --- Reopening a build ------------------------------------------------------------------
 
 std::string PlaceBuild::Open(const std::string& id) {
@@ -624,6 +754,7 @@ std::string PlaceBuild::Open(const std::string& id) {
     pending_.clear();
     errors_.clear();
     notices_.clear();
+    revisions_ = json::array();
     round_ = 1;
     const Ontology& ontology = host_.ontology();
     context_ = InterpretContext(ontology);
@@ -647,12 +778,17 @@ std::string PlaceBuild::Open(const std::string& id) {
             if (n.is_string()) notices_.push_back(n.get<std::string>());
         }
         planProblems_ = ProblemsFrom(session.value("planProblems", json::array()));
+        revisions_ = session.value("revisions", json::array());
     } else {
         brief_ = ReadJson(folder / "brief.json");
         if (!brief_.is_object() && !drafts_.empty()) brief_ = CompleteBrief(ontology, merge_.brief, Defaults());
     }
     spec_ = ReadJson(folder / "spec.json");
     solved_ = ReadJson(folder / "layout.solved.json");
+    if (stage == "revising") {
+        Notice("A revision was still running when the build was closed; ask for it again.");
+        stage.clear();
+    }
     if (stage.empty() || stage == "cancelled" || stage == "failed") {
         stage = solved_.is_object()  ? "planned"
                 : spec_.is_object()   ? "plan"
@@ -693,6 +829,14 @@ std::string PlaceBuild::Open(const std::string& id) {
 
 void PlaceBuild::Cancel() {
     if (!Active()) return;
+    if (stage_ == "revising") {
+        pending_.clear();
+        stage_ = beforeRevision_;
+        status_.clear();
+        Log({{"step", "revision stopped"}});
+        Save();
+        return;
+    }
     pending_.clear();
     stage_ = "cancelled";
     Log({{"step", "cancelled"}});
@@ -715,6 +859,17 @@ json PlaceBuild::State() {
         }
         state["name"] = brief_.value("name", id_);
     }
+    if (stage_ == "plan" || stage_ == "planned" || stage_ == "revising") {
+        state["revisions"] = revisions_;
+        if (solved_.is_object()) state["verify"] = VerifyLayout(host_.ontology(), brief_, spec_, solved_);
+    }
+    if (stage_ == "revising") {
+        state["plan"] = PlanSummary(host_.ontology(), spec_);
+        state["sketch"] = PlanSketch(host_.ontology(), spec_, SiteSide());
+        state["problems"] = ProblemsJson(planProblems_);
+        if (solved_.is_object()) state["image"] = "places/" + id_ + "/layout.png?v=" + std::to_string(imageVersion_);
+        state["name"] = brief_.value("name", id_);
+    }
     if (stage_ == "planning") state["progress"] = {{"zones", zonesTotal_}, {"done", zonesDone_}};
     if (stage_ == "request" || stage_ == "assets") {
         const Catalog catalog = host_.catalog ? host_.catalog() : Catalog{};
@@ -733,6 +888,7 @@ json PlaceBuild::Card() const {
     else if (stage_ == "planning") text = status_.empty() ? "Planning…" : status_;
     else if (stage_ == "plan") text = "③ Plan: review the zones before building";
     else if (stage_ == "planned") text = "Laid out; putting it into the scene comes next";
+    else if (stage_ == "revising") text = status_.empty() ? "Revising the plan…" : status_;
     else if (stage_ == "cancelled") text = "Cancelled";
     else if (stage_ == "failed") text = errors_.empty() ? "Failed" : errors_.front();
     return {{"type", "build:card"}, {"buildId", id_}, {"name", brief_.is_object() ? brief_.value("name", "") : ""},

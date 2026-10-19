@@ -26,8 +26,8 @@ from pydantic import BaseModel
 from .models import EditorContext, EngineSchema, Proposal, Usage
 from .consistency import check_consistency, writing_from_operations
 from .images import ImageGenerator, MistralImageGenerator, generate_sprites
-from .places import interpret, plan_root, plan_zone, repair_brief, repair_node
-from .vision import describe_assets
+from .places import interpret, plan_root, plan_zone, repair_brief, repair_node, review_layout, revise_plan
+from .vision import describe_assets, map_chunk
 from .providers import MistralEmbedder, MistralProvider, Provider, ProviderError
 from .service import propose
 from .world import Embedder, WorldIndex, format_entry, load_entries
@@ -92,6 +92,24 @@ class PlanZoneRequest(BaseModel):
 class RepairNodeRequest(BaseModel):
     node: dict
     problems: list[dict]
+    context: dict
+
+
+class RevisePlanRequest(BaseModel):
+    brief: dict
+    plan: dict             # the Spec's zones and their parcels (engine/places Planner PlanForRevision)
+    result: dict = {}      # how it was laid out: buildings per zone, what didn't fit
+    instruction: str
+    context: dict
+    mode: str = "auto"
+
+
+class ReviewLayoutRequest(BaseModel):
+    image: str             # the map, relative to the project root (places/<id>/layout.png)
+    brief: dict
+    plan: dict
+    result: dict = {}
+    verify: list = []      # the Verify rows: asked, planned, built
     context: dict
 
 
@@ -302,6 +320,29 @@ def create_app(
     @app.post("/places/repair-node")
     def places_repair_node(request: RepairNodeRequest) -> dict:
         return _planning(lambda p: repair_node(p, request.node, request.problems, request.context))
+
+    @app.post("/places/revise-plan")
+    def places_revise_plan(request: RevisePlanRequest) -> dict:
+        if not request.instruction.strip():
+            return {"ok": False, "errors": ["Say what to change"]}
+        return _planning(lambda p: revise_plan(p, request.brief, request.plan, request.result, request.instruction,
+                                               request.context, request.mode))
+
+    @app.post("/places/review-layout")
+    def places_review_layout(request: ReviewLayoutRequest) -> dict:
+        root: Path | None = state["root"]
+        vision: Provider | None = state["vision"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        if vision is None:
+            return {"ok": False, "errors": ["No AI provider configured (a vision model, MISTRAL_API_KEY)"]}
+        path = (root / request.image).resolve()
+        if root.resolve() not in path.parents or not path.is_file():
+            return {"ok": False, "errors": [f"No map at {request.image}"]}
+        result = review_layout(vision, map_chunk(path), request.brief, request.plan, request.result, request.verify,
+                               request.context)
+        state["usage"].add(Usage(**result["usage"]))
+        return result
 
     @app.post("/assets/generate")
     def assets_generate(request: GenerateAssetRequest) -> dict:

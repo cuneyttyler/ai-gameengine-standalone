@@ -91,6 +91,8 @@ interface BuildState {
   problems?: Problem[]
   image?: string // places/<id>/layout.png: the solved layout as a map, with its legend
   solved?: { stats: Record<string, number>; checks: { id: string; predicate: string; ok: boolean; detail?: unknown }[] }
+  verify?: VerifyRow[] // asked, planned, built
+  revisions?: Revision[]
 }
 
 const PROJECT_HOST = 'https://aige-project.local/'
@@ -110,6 +112,26 @@ const STEPS = [
   { id: 'result', label: '⑤ Result' },
 ]
 
+interface VerifyRow {
+  id: string
+  what: string
+  asked?: unknown
+  planned?: number
+  built?: number
+  status: 'ok' | 'short' | 'missing'
+  note?: string
+  zone?: boolean
+  parts?: VerifyRow[]
+}
+interface Revision {
+  by: 'you' | 'review'
+  text: string
+  summary: string
+  issues?: string[]
+  notes?: string[]
+  undo?: number
+  undone?: boolean
+}
 interface BuildEntry {
   id: string
   query: string
@@ -148,10 +170,35 @@ const shownComponents = computed(() =>
   (win.value?.components ?? []).filter((c) => showAll.value || c.inBrief),
 )
 const activeStep = computed(() =>
-  stage.value === 'assets' ? 'assets' : ['planning', 'plan', 'planned'].includes(stage.value) ? 'plan' : 'request',
+  stage.value === 'assets' ? 'assets' : ['planning', 'plan', 'planned', 'revising'].includes(stage.value) ? 'plan' : 'request',
 )
 const ZONE_COLOURS = ['#a6e3a1', '#fab387', '#cba6f7', '#f9e2af', '#94e2d5', '#f38ba8']
 const selectedZone = ref<string | null>(null)
+const MARKS: Record<string, string> = { ok: '✓', short: '!', missing: '✗' }
+const revision = ref('')
+const verifyIssues = computed(() => {
+  const out: VerifyRow[] = []
+  for (const row of state.value?.verify ?? []) {
+    if (row.status !== 'ok' && !(row.parts ?? []).some((p) => p.status !== 'ok')) out.push(row)
+    for (const p of row.parts ?? []) if (p.status !== 'ok') out.push(p)
+  }
+  return out
+})
+// What Verify found, as a request to the AI.
+const fixText = computed(
+  () =>
+    'Fix what the layout is missing: ' +
+    verifyIssues.value
+      .map((r) => `${r.what} (${r.id})${r.note ? `: ${r.note}` : ''}, planned ${r.planned ?? '?'}, built ${r.built ?? 0}`)
+      .join('; '),
+)
+const canUndo = computed(() => (state.value?.revisions ?? []).some((r) => r.undo !== undefined && !r.undone))
+function revise(text?: string): void {
+  const request = (text ?? revision.value).trim()
+  if (!request) return
+  sendToHost({ type: 'build:revise', text: request })
+  if (text === undefined) revision.value = ''
+}
 const bigMap = ref(false)
 
 function edit(path: string, value: unknown): void {
@@ -315,7 +362,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
     </div>
 
     <!-- ③ Plan: what will be built, before anything is. -->
-    <div v-else-if="(stage === 'plan' || stage === 'planned') && state?.plan" class="body plan-view">
+    <div v-else-if="['plan', 'planned', 'revising'].includes(stage) && state?.plan" class="body plan-view">
       <p class="headline">
         {{ state.plan.totals.buildings }} buildings in {{ state.plan.totals.zones }} zones
         <span class="dim">· {{ amountText(state.plan.totals.area) }} cells²</span>
@@ -351,15 +398,77 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       </div>
       <p v-if="selectedZone" class="dim why">{{ state.plan.rows.find((r) => r.id === selectedZone)?.rationale }}</p>
       <p v-if="!state.solved" class="dim">The sketch shows sizes only; where each part goes is worked out when it's built. The site is outlined in the viewport.</p>
-      <section v-else class="note">
-        <strong>Laid out:</strong> {{ state.solved.stats.regions }} areas, {{ state.solved.stats.objects }} objects,
-        {{ state.solved.stats.paths }} roads, {{ state.solved.stats.lines }} fences and walls; the buildings are outlined in the viewport.
-        <ul>
-          <li v-for="c in state.solved.checks" :key="c.id" :class="c.ok ? 'ok' : 'error'">
-            {{ c.ok ? '✓' : '✗' }} {{ c.predicate }} <span class="dim">{{ c.id }}</span>
-            <span v-if="c.detail !== undefined" class="dim">· {{ show(c.detail) }}</span>
-          </li>
-        </ul>
+      <!-- Verify: does the layout hold what the Brief asked for and the plan has? -->
+      <section v-if="state.verify?.length" class="verify">
+        <h4>
+          Verify
+          <span :class="verifyIssues.length ? 'warning' : 'ok'">
+            {{ verifyIssues.length ? `${verifyIssues.length} to look at` : 'everything asked for is there' }}
+          </span>
+        </h4>
+        <table>
+          <thead><tr><th></th><th>What</th><th>Asked</th><th>Planned</th><th>Built</th></tr></thead>
+          <tbody>
+            <template v-for="row in state.verify" :key="row.id">
+              <tr :class="row.status">
+                <td class="mark">{{ MARKS[row.status] }}</td>
+                <td>{{ row.what }} <span v-if="row.zone" class="dim">{{ row.id }}</span><span v-if="row.note" class="dim"> · {{ row.note }}</span></td>
+                <td>{{ row.asked === undefined ? '' : show(row.asked) }}</td>
+                <td>{{ row.planned ?? '' }}</td>
+                <td>{{ row.built ?? '' }}</td>
+              </tr>
+              <tr v-for="part in (row.parts ?? []).filter((p) => p.status !== 'ok')" :key="part.id" :class="['part', part.status]">
+                <td class="mark">{{ MARKS[part.status] }}</td>
+                <td>{{ part.what }} <span class="dim">{{ part.id }}</span></td>
+                <td></td>
+                <td>{{ part.planned }}</td>
+                <td>{{ part.built }}</td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <details class="dim">
+          <summary>Layout checks and counts</summary>
+          {{ state.solved?.stats.regions }} areas, {{ state.solved?.stats.objects }} objects, {{ state.solved?.stats.paths }} roads,
+          {{ state.solved?.stats.lines }} fences and walls.
+          <ul>
+            <li v-for="c in state.solved?.checks ?? []" :key="c.id" :class="c.ok ? 'ok' : 'error'">
+              {{ c.ok ? '✓' : '✗' }} {{ c.predicate }} <span class="dim">{{ c.id }}</span>
+              <span v-if="c.detail !== undefined" class="dim">· {{ show(c.detail) }}</span>
+            </li>
+          </ul>
+        </details>
+      </section>
+
+      <!-- Revise: say what to change; the AI changes the plan and it's laid out again. -->
+      <section class="revise">
+        <h4>Revise</h4>
+        <div v-for="(r, i) in state.revisions ?? []" :key="i" :class="['revision', { undone: r.undone }]">
+          <div v-if="r.by === 'you'"><span class="who">You:</span> {{ r.text }}</div>
+          <div v-else><span class="who">AI review of the map:</span></div>
+          <ul v-if="r.issues?.length" class="dim">
+            <li v-for="issue in r.issues" :key="issue">{{ issue }}</li>
+          </ul>
+          <div><span class="who">AI:</span> {{ r.summary }}<span v-if="r.undone" class="dim"> (undone)</span></div>
+          <div v-for="n in r.notes ?? []" :key="n" class="dim small">{{ n }}</div>
+        </div>
+        <p v-if="stage === 'revising'">{{ state.status }} <button @click="sendToHost({ type: 'build:cancel' })">Stop</button></p>
+        <template v-else>
+          <textarea
+            v-model="revision"
+            rows="2"
+            placeholder="e.g. put houses around the commons; the merchant ward needs townhouses; a bigger market"
+            @keydown.enter.exact.prevent="revise()"
+          />
+          <div class="actions left">
+            <button class="primary" :disabled="!revision.trim()" @click="revise()">Revise</button>
+            <button v-if="verifyIssues.length" :title="fixText" @click="revise(fixText)">Fix what Verify found</button>
+            <button v-if="stage === 'planned'" title="The AI looks at the map and fixes what looks wrong" @click="sendToHost({ type: 'build:review' })">
+              Check the map
+            </button>
+            <button v-if="canUndo" @click="sendToHost({ type: 'build:undo' })">Undo last revision</button>
+          </div>
+        </template>
       </section>
       <section v-if="state.problems?.length" class="problems">
         <div v-for="p in state.problems" :key="p.where + p.message" :class="p.warning ? 'warning' : 'error'">{{ p.where }}: {{ p.message }}</div>
@@ -370,7 +479,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <button v-if="stage === 'plan'" class="primary" @click="sendToHost({ type: 'build:approve' })">
           Approve plan
         </button>
-        <span v-else class="dim">{{ state.status }}</span>
+        <span v-else-if="stage === 'planned'" class="dim">{{ state.status }}</span>
       </div>
     </div>
 
@@ -785,6 +894,78 @@ button.link {
   border-left: 3px solid #89b4fa;
   padding: 6px 10px;
   margin: 8px 0;
+}
+.verify h4,
+.revise h4 {
+  margin: 14px 0 6px;
+  font-weight: 600;
+}
+.verify h4 span {
+  font-weight: normal;
+  margin-left: 8px;
+}
+.verify table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.verify th,
+.verify td {
+  text-align: left;
+  padding: 2px 8px 2px 0;
+  border-bottom: 1px solid #313244;
+}
+.verify th {
+  color: #7f849c;
+  font-weight: normal;
+}
+.verify .mark {
+  width: 14px;
+}
+.verify tr.ok .mark,
+.ok {
+  color: #a6e3a1;
+}
+.verify tr.short .mark {
+  color: #f9e2af;
+}
+.verify tr.missing .mark {
+  color: #f38ba8;
+}
+.verify tr.part td:nth-child(2) {
+  padding-left: 16px;
+}
+.verify details {
+  margin-top: 6px;
+}
+.revise textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border: 1px solid #45475a;
+  border-radius: 0;
+  font: inherit;
+  padding: 4px 6px;
+  resize: vertical;
+}
+.revision {
+  border-left: 3px solid #45475a;
+  padding: 4px 8px;
+  margin: 6px 0;
+}
+.revision.undone {
+  opacity: 0.55;
+}
+.revision ul {
+  margin: 2px 0 2px 16px;
+  padding: 0;
+}
+.who {
+  color: #89b4fa;
+}
+.actions.left {
+  justify-content: flex-start;
+  margin-top: 6px;
 }
 .notices {
   margin: 8px 12px 0;

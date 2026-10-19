@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <cstdlib>
 #include <iostream>
@@ -324,4 +325,48 @@ TEST(SolveTest, TheLayoutDrawsAsAMapWithALegend) {
     const fs::path out = path ? fs::path(path) : fs::temp_directory_path() / "aige_layout.png";
     ASSERT_TRUE(WritePng(out, image));
     EXPECT_TRUE(fs::exists(out));
+}
+
+// AIGE_SOLVE_BUILD=<places/<id> folder>: plans (the fixes that need no AI),
+// compiles and solves a build again, prints what went wrong and writes the
+// map to AIGE_LAYOUT_PNG (a diagnostic for a user's build; skipped otherwise).
+TEST(SolveTest, SolvesAGivenBuild) {
+    const char* path = std::getenv("AIGE_SOLVE_BUILD");
+    if (path == nullptr) GTEST_SKIP() << "set AIGE_SOLVE_BUILD";
+    const fs::path folder(path);
+    json brief = json::parse(std::ifstream(folder / "brief.json", std::ios::binary));
+    json spec = json::parse(std::ifstream(folder / "spec.json", std::ios::binary));
+    ExpandSpec(Library(), brief, spec);
+    TidySpec(Library(), spec);
+    RebalanceBuildings(Library(), brief, spec);
+    for (const auto& p : ResolveSpec(Library(), brief, spec)) std::cout << "  fixed: " << p.where << ": " << p.message << "\n";
+    ExpandSpec(Library(), brief, spec);
+    RebalanceBuildings(Library(), brief, spec);
+    CompileOptions options;
+    options.seed = 7;
+    const json ir = CompileSpec(Library(), spec, options);
+    const SolvedLayout solved = SolveLayout(Library(), ir);
+    if (const char* png = std::getenv("AIGE_LAYOUT_PNG")) WritePng(png, RenderLayoutImage(solved.document, {}));
+    std::map<std::string, int> slots;
+    for (const auto& o : solved.document["objects"]) slots[o.value("layer", "") + " " + o.value("slot", "")]++;
+    for (const auto& [k, n] : slots) std::cout << "  " << n << "  " << k << "\n";
+    std::map<std::string, int> buildings;
+    for (const auto& o : solved.document["objects"]) {
+        if (o.value("layer", "") == "building") buildings[o.value("node", "")]++;
+    }
+    for (const auto& [node, n] : buildings) std::cout << "  " << n << "  " << node << "\n";
+    for (const auto& p : solved.problems) std::cout << "  problem: " << p.dump() << "\n";
+    // Statements that made nothing.
+    std::map<std::string, int> made;
+    for (const auto& o : solved.document["objects"]) made[o.value("statement", "")]++;
+    std::map<std::string, int> idle;
+    for (const auto& s : ir["statements"]) {
+        const std::string op = s.value("op", "");
+        if (op != "scatter" && op != "grid" && op != "rows" && op != "place") continue;
+        const std::string id = s.value("id", "");
+        bool any = made.contains(id);
+        for (const auto& [k, n] : made) any = any || k.rfind(id + "[", 0) == 0 || k.rfind(id + "#", 0) == 0;
+        if (!any && idle[op + " " + s.value("slot", "") ]++ < 2) std::cout << "  idle: " << s.dump().substr(0, 260) << "\n";
+    }
+    for (const auto& [k, n] : idle) std::cout << "  idle " << n << "  " << k << "\n";
 }

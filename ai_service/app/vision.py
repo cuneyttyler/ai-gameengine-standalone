@@ -158,6 +158,16 @@ def image_chunk(path: Path, rect: list[int] | None = None) -> tuple[dict, tuple[
     return {"type": "image_url", "image_url": f"data:image/png;base64,{data}"}, size
 
 
+def map_chunk(path: Path, longest: int = 1400) -> dict:
+    """A whole map (a solved layout's PNG) as a data URI chunk, at most `longest` pixels on a side."""
+    with Image.open(path) as source:
+        image = source.convert("RGB")
+    image.thumbnail((longest, longest))
+    out = io.BytesIO()
+    image.save(out, format="PNG")
+    return {"type": "image_url", "image_url": f"data:image/png;base64,{base64.b64encode(out.getvalue()).decode('ascii')}"}
+
+
 def _describe_batch(provider: Provider, root: Path, items: list[dict],
                     roles: list[str] | None = None) -> tuple[list[dict], list[str]]:
     content: list[dict] = [{"type": "text", "text": prompt_for(roles)}]

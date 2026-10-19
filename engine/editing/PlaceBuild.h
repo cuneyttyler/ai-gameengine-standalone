@@ -32,7 +32,11 @@ namespace aige {
 //                 the fixes that need no AI, the building count rebalanced,
 //                 the whole Spec validated, what's still wrong repaired once
 //   plan          ③ Plan: the summary and the sketch; Approve() compiles
-//   planned       and solves it: layout.solved.json and layout.png
+//   planned       and solves it: layout.solved.json and layout.png, Verify
+//                 (asked, planned, built), and the AI's review of the map
+//   revising      Revise(request) or Review(): the AI's changes are applied,
+//                 the plan finished again and, if it was laid out, solved
+//                 again; Undo() goes back one revision
 //
 // It handles its own failures: an AI call that fails is retried twice; if
 // the AI still can't answer, the step falls back on what needs no AI (the
@@ -73,8 +77,17 @@ public:
     std::string Step(const std::string& step);
     // The Assets step's Build: saves the Brief and starts planning. Returns why not, or "".
     std::string Confirm();
-    // ③ Plan's Approve: compiles and solves the plan. Returns why not, or "".
+    // ③ Plan's Approve: compiles and solves the plan, then has the AI review
+    // the map. Returns why not, or "".
     std::string Approve();
+    // The user's change to the plan, in words ("houses around the commons").
+    std::string Revise(const std::string& request);
+    // The AI looks at the laid-out map and fixes what looks wrong.
+    std::string Review();
+    // Back to the plan before the last revision.
+    std::string Undo();
+    // [{by: you|review, text, summary, issues, notes, undo?, undone?}]
+    const nlohmann::json& Revisions() const { return revisions_; }
     void Cancel();
 
     const std::string& Id() const { return id_; }
@@ -124,6 +137,8 @@ private:
     void PlanZones();
     void FinishPlanning();
     void Solve();
+    void OnRevision(const Pending& what, const nlohmann::json& body);
+    nlohmann::json RevisionBody() const;
 
     Host host_;
     std::string id_, query_, stage_, status_;
@@ -145,6 +160,9 @@ private:
     std::vector<PlaceProblem> planProblems_; // what the final Spec still breaks (warnings only, in the end)
     std::vector<PlaceProblem> tidied_;       // what was fixed without the AI (warnings)
     int zonesTotal_ = 0, zonesDone_ = 0;
+    nlohmann::json revisions_ = nlohmann::json::array();
+    std::string beforeRevision_; // the stage a revision returns to
+    bool solveAfter_ = false;    // a revision of a laid-out plan: solve again once planned
 };
 
 // "Build a large village by a river" -> "large-village-by-river", unique in places/.

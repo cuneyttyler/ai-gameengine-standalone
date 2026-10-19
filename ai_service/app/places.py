@@ -296,6 +296,105 @@ def repair_node(provider: Provider, node: dict, problems: list[dict], context: d
     return _plan_result(think_then_answer(provider, task, inputs, shape, think=False))
 
 
+REVISE_SHAPE = """The changes, as JSON:
+{
+  "summary": "<one or two sentences to the user: what you changed, or why it can't be done>",
+  "brief": {"<a Brief path, e.g. scale.buildings.count>": <its new value>},
+  "changes": [
+    {"op": "set", "node": "<id>", "quantity": {"<field>": <value>}, "quality": {"<field>": <value>}, "rel": [...]},
+    {"op": "zone", "node": "<zone id>", "quantity": {...}, "quality": {...},
+     "children": [<all of the zone's parcels afterwards, as in the plan: id, module, repeat, quantity, quality>]},
+    {"op": "add", "node": {"id": "<new id>", "module": "<a zone, network or site module>", "quantity": {...},
+                           "quality": {...}, "rel": [...], "children": [<its parcels, for a zone>]}},
+    {"op": "remove", "node": "<id>"}
+  ]
+}
+"set" changes only the fields given. "zone" re-plans a zone's parcels: list all of them, kept ones too. Leave out
+"brief" unless the request changes the place's totals. An empty "changes" list, with the reason in "summary",
+when the request can't be met with these modules."""
+
+
+def revise_plan(provider: Provider, brief: dict, plan: dict, result: dict, instruction: str, context: dict,
+                mode: str = "auto") -> dict:
+    """The user's change to a plan they've seen (place-interaction.md A3: revise before building)."""
+    task = ("You revise a game place's plan as its user asks. Change only what the request is about; everything "
+            "else stays as planned. Use only the modules, fields and values the rules allow (a zone may hold only "
+            "the parcels its rules list): when the request asks for something a module can't hold, do the nearest "
+            "thing that is allowed and say so in the summary. The Brief's building count bounds the total: when "
+            "adding buildings, take them from elsewhere or raise scale.buildings.count. " + PLAN_CHECK)
+    inputs = (f"The user asks:\n{instruction}\n\n"
+              f"The Brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n"
+              f"The plan (each zone with its parcels; id: what to name in a change):\n{json.dumps(plan, ensure_ascii=False)}\n\n"
+              f"How it was laid out (buildings placed per zone, and what didn't fit):\n{json.dumps(result, ensure_ascii=False)}\n\n"
+              f"The modules and rules (the ontology's relevant part):\n{json.dumps(context, ensure_ascii=False)}")
+    step = think_then_answer(provider, task, inputs, REVISE_SHAPE, mode)
+    return _revision_result(step)
+
+
+def _revision_result(step: StepResult) -> dict:
+    out = {"ok": False, "mode": step.mode, "thinking": step.thinking, "errors": list(step.errors),
+           "usage": step.usage.model_dump()}
+    answer = step.answer
+    if answer is None:
+        return out
+    changes = answer.get("changes", [])
+    if not isinstance(changes, list):
+        out["errors"].append("changes is a list")
+        return out
+    answer["changes"] = [c for c in changes if isinstance(c, dict) and c.get("op") in ("set", "zone", "add", "remove")]
+    if not isinstance(answer.get("brief", {}), dict):
+        answer["brief"] = {}
+    answer["summary"] = str(answer.get("summary", "")).strip()
+    issues = answer.get("issues", [])
+    answer["issues"] = [str(i).strip() for i in issues if str(i).strip()] if isinstance(issues, list) else []
+    out["answer"] = answer
+    out["ok"] = True
+    return out
+
+
+REVIEW_SHAPE = """Your review, as JSON:
+{
+  "thinking": "<what you see on the map, zone by zone, against the plan and the checks>",
+  "issues": ["<one thing that looks wrong or missing, in a short sentence>", ...],
+  "summary": "<one or two sentences to the user: what you'd change, or that it looks right>",
+  "brief": {...as for a revision, usually empty},
+  "changes": [...the revision's changes, as below; empty when it looks right]
+}
+""" + REVISE_SHAPE.split("\n", 1)[1]
+
+
+def review_layout(provider: Provider, image: dict, brief: dict, plan: dict, result: dict, verify: list,
+                  context: dict) -> dict:
+    """The AI looks at the solved map and proposes changes (7.6: a review before building)."""
+    task = ("You check a game place's layout, drawn as a map with a legend, against its Brief and its plan. Look "
+            "for what a player would notice: a zone without buildings, a ward whose main building is missing (a "
+            "temple ward without its temple), empty stretches, things in odd places, a part the Brief asked for "
+            "that isn't there. The checks below say what the layout placed against what was planned. Propose "
+            "only changes the rules allow, and only for real problems; when it looks right, say so and change "
+            "nothing.")
+    inputs = (f"The Brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n"
+              f"The plan:\n{json.dumps(plan, ensure_ascii=False)}\n\n"
+              f"How it was laid out:\n{json.dumps(result, ensure_ascii=False)}\n\n"
+              f"The checks (asked, planned, built):\n{json.dumps(verify, ensure_ascii=False)}\n\n"
+              f"The modules and rules:\n{json.dumps(context, ensure_ascii=False)}")
+    step = StepResult(answer=None, mode="vision")
+    try:
+        reply = provider.complete([
+            {"role": "system", "content": f"{task}\n\n{REVIEW_SHAPE}\n\nAnswer with the JSON object only."},
+            {"role": "user", "content": [{"type": "text", "text": inputs}, {"type": "text", "text": "The map:"}, image]}])
+    except ProviderError as error:
+        step.errors.append(str(error))
+        return _revision_result(step)
+    step.usage.add(reply.usage)
+    answer, problem = _parse(reply.text)
+    if answer is None:
+        step.errors.append(problem)
+    else:
+        step.thinking = str(answer.pop("thinking", "")) or reply.thinking
+        step.answer = answer
+    return _revision_result(step)
+
+
 def _plan_result(step: StepResult) -> dict:
     out = {"ok": False, "mode": step.mode, "thinking": step.thinking, "errors": list(step.errors),
            "usage": step.usage.model_dump()}
