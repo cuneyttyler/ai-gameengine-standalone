@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -402,4 +403,63 @@ TEST(SolveTest, RelaysOutAGivenBuild) {
         }
     }
     if (const char* png = std::getenv("AIGE_LAYOUT_PNG")) fs::copy_file(build.Folder() / "layout.png", png, fs::copy_options::overwrite_existing);
+}
+
+namespace {
+
+// The things of a layout outside `prefix` (and the ones inside it, apart).
+json Outside(const json& doc, const std::string& prefix, bool inside = false) {
+    json out = json::object();
+    for (const char* list : {"regions", "objects", "lines", "paths"}) {
+        out[list] = json::array();
+        for (const auto& t : doc.value(list, json::array())) {
+            bool in = false;
+            for (const char* key : {"node", "id"}) {
+                const std::string v = t.value(key, "");
+                in = in || v == prefix || v.rfind(prefix + "/", 0) == 0 || v.rfind(prefix + "#", 0) == 0;
+            }
+            if (in == inside) out[list].push_back(t);
+        }
+        std::sort(out[list].begin(), out[list].end(), [](const json& a, const json& b) { return a.value("id", "") < b.value("id", ""); });
+    }
+    return out;
+}
+
+} // namespace
+
+// 7.8: a part laid out again leaves everything else as it was; a locked part
+// inside it stays too.
+TEST(SolveTest, APartialSolveRedoesOnlyItsSubtree) {
+    const json brief = Brief("village", false, true);
+    const json spec = Village(2, 10, brief);
+    const json ir = CompileSpec(Library(), spec, {.seed = 5, .side = 90});
+    const json full = SolveLayout(Library(), ir).document;
+    ASSERT_FALSE(Outside(full, "ward-1", true)["objects"].empty());
+
+    // The first ward again (another seed for it: its lots come out otherwise), the second cottage locked.
+    json changed = ir;
+    changed["seed"] = 77;
+    SolveOptions options;
+    options.previous = &full;
+    options.resolve = {"ward-1"};
+    options.locked = {"ward-1/cottages#1"};
+    const SolvedLayout partial = SolveLayout(Library(), changed, options);
+    const json& doc = partial.document;
+    // Outside the ward: exactly as it was.
+    const json before = Outside(full, "ward-1"), after = Outside(doc, "ward-1");
+    for (const char* list : {"regions", "objects", "lines", "paths"}) {
+        EXPECT_EQ(after[list].size(), before[list].size()) << list;
+        EXPECT_EQ(after[list], before[list]) << list;
+    }
+    // The locked cottage: as it was.
+    EXPECT_EQ(Outside(doc, "ward-1/cottages#1", true), Outside(full, "ward-1/cottages#1", true));
+    // The ward still holds its parcels.
+    int houses = 0;
+    for (const auto& o : doc["objects"]) houses += o.value("primary", false) && o.value("node", "").rfind("ward-1/", 0) == 0;
+    EXPECT_GE(houses, 8) << partial.problems.size();
+    // A partial solve of nothing redoes nothing.
+    SolveOptions none;
+    none.previous = &full;
+    const json same = SolveLayout(Library(), ir, none).document;
+    EXPECT_EQ(Outside(same, "nothing")["objects"], Outside(full, "nothing")["objects"]);
 }

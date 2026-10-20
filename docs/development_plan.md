@@ -2112,6 +2112,31 @@ The plan as first written:
 - Tests: injected failures are repaired; reports are accurate.
 
 **7.8 — Edit after the build**
+
+**Done (2026-10-20):**
+- **A partial solve** (`places/Solver.h`, `SolveOptions::previous/resolve/locked`): the
+  previous layout is restored (regions, objects, lines, paths, roads and water), only the
+  statements of the parts to redo run, and locked parts stay even inside them (a locked
+  instance keeps its lot when its ward is re-cut).
+- **Click a part** in the viewport: the Build panel shows it (its place in the tree, its
+  fields as editors, whether it's locked). Changing a field lays that part out again
+  with everything else as it was (`PlaceBuild::EditNode`); "Lay out again" redoes its
+  subtree; each edit is a revision Undo can take back.
+- **Hand edits lock**: moving or changing a built entity locks its part; a locked part is
+  kept by the solver and its entities by the scene build, so the edit survives the
+  parent being laid out or built again.
+- **The module brush**: pick a module the zones can hold and drag an area in the
+  viewport; a new part goes where it was drawn (`at`), and only it is laid out.
+- **The scene follows**: an edit replaces only its parts' entities and the ground cells
+  that changed (`PlaceSceneOptions::only/locked`), as one undo step.
+- **Chat edits** in the AI panel that name a part of the open place go to it as a
+  revision.
+- Tests: `tests/solve_test.cpp` (a partial solve redoes only its subtree, a lock holds),
+  `tests/build_robust_test.cpp` (an edit changes only its part, a lock survives the
+  ward, the brush paints where drawn, chat routing), `tests/place_scene_test.cpp` (an
+  edit replaces only its parts, a hand-moved house stays).
+
+The plan as first written:
 - Click any part to select its node (garden, plot, ward). The Inspector shows its Spec
   fields; changing one recompiles and regenerates that subtree, with siblings `fixed`.
 - Hand edits lock a node.

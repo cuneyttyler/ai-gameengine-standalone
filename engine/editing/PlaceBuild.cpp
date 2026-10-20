@@ -259,6 +259,7 @@ void PlaceBuild::Save() const {
                                           {"planProblems", ProblemsJson(planProblems_)},
                                           {"revisions", revisions_},
                                           {"fit", {{"scale", fitScale_}, {"side", fitSide_}}},
+                                          {"locks", locks_},
                                           {"origin", hasOrigin_ ? json::array({originX_, originY_}) : json()}});
 }
 
@@ -1165,6 +1166,186 @@ std::string PlaceBuild::Relayout() {
     return {};
 }
 
+// --- Editing after the build (7.8) -----------------------------------------------------
+
+json PlaceBuild::NodeInfo(const std::string& node) const {
+    if (!spec_.contains("root")) return json();
+    const Ontology& ontology = host_.ontology();
+    // One instance of a template ("ward/cottages#2"): the template's fields.
+    const std::string base = node.substr(0, node.find('#'));
+    json spec = spec_;
+    const json* n = SpecNode(spec, base);
+    if (n == nullptr) return json();
+    const ModuleDef* m = ontology.Module(n->value("module", ""));
+    if (m == nullptr) return json();
+    json path = json::array();
+    for (size_t at = base.find('/'); at != std::string::npos; at = base.find('/', at + 1)) path.push_back(base.substr(0, at));
+    json fields = json::array();
+    for (const auto* defs : {&m->quantity, &m->quality}) for (const auto& [fieldName, f] : *defs) {
+        const char* group = defs == &m->quantity ? "quantity" : "quality";
+        json one = {{"name", fieldName}, {"group", group}, {"type", f.type}, {"value", n->contains(group) ? (*n)[group].value(fieldName, json()) : json()},
+                    {"default", f.defaultValue}};
+        if (!f.values.empty()) one["values"] = f.values;
+        if (!f.vocabulary.empty()) {
+            json values = json::array();
+            if (const auto* scheme = ontology.Scheme(f.vocabulary)) {
+                for (const auto& c : *scheme) values.push_back(c.id);
+            }
+            one["values"] = values;
+        }
+        if (f.min) one["min"] = *f.min;
+        if (f.max) one["max"] = *f.max;
+        if (!f.unit.empty()) one["unit"] = f.unit;
+        fields.push_back(one);
+    }
+    json parts = json::array();
+    for (const auto& c : n->value("children", json::array())) {
+        parts.push_back({{"id", c.value("id", "")}, {"module", c.value("module", "")}, {"repeat", c.value("repeat", 1)}});
+    }
+    bool locked = false;
+    for (const auto& l : locks_) locked = locked || node == l || node.rfind(l + "/", 0) == 0 || node.rfind(l + "#", 0) == 0;
+    return {{"id", node}, {"base", base}, {"module", m->id}, {"name", m->name}, {"level", PlaceLevelName(m->level)},
+            {"path", path}, {"fields", fields}, {"parts", parts}, {"rationale", n->value("rationale", "")},
+            {"rel", n->value("rel", json::array())}, {"locked", locked}, {"repeat", n->value("repeat", 1)}};
+}
+
+void PlaceBuild::SolveParts(const std::set<std::string>& parts, const std::string& why) {
+    const Ontology& ontology = host_.ontology();
+    // Undo goes back to before this edit.
+    const int n = static_cast<int>(revisions_.size()) + 1;
+    WriteJson(Folder() / "revisions" / (std::to_string(n) + ".json"), {{"brief", brief_}, {"spec", spec_}, {"stage", stage_}, {"solved", solved_}});
+    ExpandSpec(ontology, brief_, spec_); // a new part's own parts
+    RebalanceBuildings(ontology, brief_, spec_, false);
+    CompileOptions options;
+    options.seed = Fnv1a(id_);
+    options.side = SiteSide();
+    options.fixedSide = true;
+    options.isoGrid = host_.isoGrid ? host_.isoGrid() : true;
+    options.zoneScale = fitScale_;
+    const json ir = CompileSpec(ontology, spec_, options);
+    SolveOptions solve;
+    solve.previous = &solved_;
+    solve.resolve = parts;
+    solve.locked = locks_;
+    const json previous = solved_;
+    const SolvedLayout layout = SolveLayout(ontology, ir, solve);
+    solved_ = layout.document;
+    WriteJson(Folder() / "layout.ir.json", ir);
+    WriteJson(Folder() / "layout.solved.json", solved_);
+    WriteJson(Folder() / "spec.json", spec_);
+    RenderMap();
+    changed_.insert(parts.begin(), parts.end());
+    json list = json::array();
+    for (const auto& p : parts) list.push_back(p);
+    revisions_.push_back({{"by", "edit"}, {"text", why}, {"summary", "Laid out again: " + list.dump() + "; the rest as it was."}, {"undo", n},
+                          {"parts", list}, {"local", true}});
+    Log({{"step", "edit"}, {"why", why}, {"parts", list}, {"problems", layout.problems}});
+    if (stage_ == "plan") stage_ = "plan";
+    Save();
+}
+
+std::string PlaceBuild::EditNode(const std::string& node, const std::string& field, const json& value) {
+    if (stage_ != "plan" && stage_ != "planned" && stage_ != "built") return "there's no plan to edit";
+    const std::string base = node.substr(0, node.find('#'));
+    json* n = SpecNode(spec_, base);
+    if (n == nullptr) return "no part " + node;
+    const ModuleDef* m = host_.ontology().Module(n->value("module", ""));
+    const FieldDef* f = m ? m->Field(field) : nullptr;
+    if (f == nullptr) return "a " + (m ? m->name : std::string("part")) + " has no field " + field;
+    if (!value.is_null()) {
+        if (const std::string error = CheckFieldValue(host_.ontology(), *f, value); !error.empty()) return field + ": " + error;
+    }
+    const char* group = f->quantity ? "quantity" : "quality";
+    if (!n->contains(group)) (*n)[group] = json::object();
+    if (value.is_null()) (*n)[group].erase(field);
+    else (*n)[group][field] = value;
+    SolveParts({base}, base + "." + field + " = " + value.dump());
+    return {};
+}
+
+std::string PlaceBuild::Regenerate(const std::string& node) {
+    if (!solved_.is_object()) return "the plan isn't laid out";
+    json spec = spec_;
+    if (!SpecNode(spec, node.substr(0, node.find('#')))) return "no part " + node;
+    SolveParts({node}, "lay " + node + " out again");
+    return {};
+}
+
+void PlaceBuild::Lock(const std::string& node, bool locked) {
+    if (node.empty()) return;
+    if (locked ? locks_.insert(node).second : locks_.erase(node) > 0) {
+        Log({{"step", locked ? "lock" : "unlock"}, {"node", node}});
+        Save();
+    }
+}
+
+std::string PlaceBuild::Paint(const std::string& module, int x0, int y0, int x1, int y1) {
+    if (!solved_.is_object()) return "the plan isn't laid out";
+    const Ontology& ontology = host_.ontology();
+    const ModuleDef* m = ontology.Module(module);
+    if (m == nullptr) return "no module " + module;
+    if (x1 <= x0 || y1 <= y0) return "draw an area";
+    // The zone under the area's middle.
+    const int cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    std::string zone;
+    for (const auto& r : solved_.value("regions", json::array())) {
+        if (r.value("statement", "") != "site/zones") continue;
+        for (int c : DecodeCells(r.value("cells", json::array()), SiteSide())) {
+            if (c % SiteSide() == cx && c / SiteSide() == cy) zone = r.value("id", "");
+        }
+    }
+    if (zone.empty()) return "draw it inside a zone";
+    json* z = SpecNode(spec_, zone);
+    const ModuleDef* zm = z ? ontology.Module(z->value("module", "")) : nullptr;
+    if (zm == nullptr || !ontology.ChildRule(zm->id, module)) return "a " + (zm ? zm->name : zone) + " can't hold a " + m->name;
+    std::set<std::string> used;
+    std::function<void(const json&)> collect = [&](const json& n) {
+        used.insert(n.value("id", ""));
+        for (const auto& c : n.value("children", json::array())) collect(c);
+    };
+    collect(spec_["root"]);
+    std::string id = zone + "/" + module + "-painted";
+    for (int k = 2; used.contains(id); ++k) id = zone + "/" + module + "-painted-" + std::to_string(k);
+    json node = {{"id", id}, {"module", module}, {"quantity", json::object()}, {"quality", json::object()},
+                 {"rationale", "painted with the module brush"}, {"children", json::array()},
+                 {"at", {{"x", x0}, {"y", y0}, {"w", x1 - x0}, {"h", y1 - y0}}}};
+    if (!z->contains("children")) (*z)["children"] = json::array();
+    (*z)["children"].push_back(node);
+    SolveParts({id}, "paint a " + m->name + " in " + zone);
+    return {};
+}
+
+json PlaceBuild::BrushModules() const {
+    json out = json::array();
+    std::set<std::string> seen;
+    for (const auto& c : spec_.contains("root") ? spec_["root"].value("children", json::array()) : json::array()) {
+        const ModuleDef* zm = host_.ontology().Module(c.value("module", ""));
+        if (zm == nullptr || zm->level != PlaceLevel::Zone) continue;
+        for (const auto& rule : zm->children) {
+            const ModuleDef* cm = host_.ontology().Module(rule.module);
+            if (cm == nullptr || (cm->level != PlaceLevel::Feature && cm->level != PlaceLevel::Parcel) || !seen.insert(cm->id).second) continue;
+            if (host_.ontology().IsA(cm->id, "LinearFeature")) continue;
+            out.push_back({{"id", cm->id}, {"name", cm->name}, {"level", PlaceLevelName(cm->level)}});
+        }
+    }
+    return out;
+}
+
+std::set<std::string> PlaceBuild::TakeChanged() {
+    std::set<std::string> out;
+    out.swap(changed_);
+    return out;
+}
+
+bool PlaceBuild::AboutThisPlace(const std::string& request) const {
+    if (!spec_.contains("root") || !solved_.is_object()) return false;
+    for (const auto& c : spec_["root"].value("children", json::array())) {
+        const ModuleDef* m = host_.ontology().Module(c.value("module", ""));
+        if (m && m->level == PlaceLevel::Zone && Mentions(request, c.value("id", ""))) return true;
+    }
+    return false;
+}
+
 std::string PlaceBuild::StartBuilding() {
     if (stage_ != "planned" && stage_ != "built") return "approve the plan first";
     if (!solved_.is_object()) return "the plan isn't laid out";
@@ -1293,6 +1474,10 @@ std::string PlaceBuild::Open(const std::string& id) {
             if (f.is_number()) fitScale_[id] = f.get<double>();
         }
         fitSide_ = session.value("fit", json::object()).value("side", 0);
+        locks_.clear();
+        for (const auto& l : session.value("locks", json::array())) {
+            if (l.is_string()) locks_.insert(l.get<std::string>());
+        }
         if (const json o = session.value("origin", json()); o.is_array() && o.size() == 2) {
             hasOrigin_ = true;
             originX_ = o[0].get<int>();
@@ -1401,6 +1586,10 @@ json PlaceBuild::State() {
         state["result"] = shown;
     }
     if (hasOrigin_) state["origin"] = {originX_, originY_};
+    if (solved_.is_object()) {
+        state["brushModules"] = BrushModules();
+        state["locks"] = locks_;
+    }
     if (stage_ == "plan" || stage_ == "planned" || stage_ == "revising" || stage_ == "built") {
         state["revisions"] = revisions_;
         if (solved_.is_object()) state["verify"] = VerifyLayout(host_.ontology(), brief_, spec_, solved_);

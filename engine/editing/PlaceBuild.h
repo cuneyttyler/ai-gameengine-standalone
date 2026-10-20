@@ -94,6 +94,27 @@ public:
     // The plan laid out again: the fixes that need no AI, then the fitting
     // rounds (a plan from before a solver change gets its benefit). The stage stays.
     std::string Relayout();
+    // --- Editing after the build (7.8) ---------------------------------------
+    // A part of the plan (a zone, a parcel, one instance "ward/cottages#2"): its
+    // module, where it is in the tree, its fields with their values, its parts,
+    // whether it's locked. Null if there's no such part.
+    nlohmann::json NodeInfo(const std::string& node) const;
+    // Changes one of a part's fields and lays that part out again, the rest as it was.
+    std::string EditNode(const std::string& node, const std::string& field, const nlohmann::json& value);
+    // Lays a part out again (its subtree), everything else kept.
+    std::string Regenerate(const std::string& node);
+    // A locked part stays as it is when what holds it is laid out again (a hand edit locks it).
+    void Lock(const std::string& node, bool locked);
+    const std::set<std::string>& Locks() const { return locks_; }
+    // The module brush: a new part of `module` over the cells [x0, x1) x [y0, y1)
+    // (site cells), in the zone there. Returns why not, or "".
+    std::string Paint(const std::string& module, int x0, int y0, int x1, int y1);
+    // The modules the brush can paint (features and parcels the zones can hold).
+    nlohmann::json BrushModules() const;
+    // The parts the last edit laid out again (for the scene to follow), then cleared.
+    std::set<std::string> TakeChanged();
+    // Whether a request (in the AI panel) is about this place: it names a part of it.
+    bool AboutThisPlace(const std::string& request) const;
     // ④ Build: from a laid-out plan. Returns why not, or "".
     std::string StartBuilding();
     // The editor's scene build is done: {assets, report, verify, repairs, after}.
@@ -201,6 +222,10 @@ private:
     nlohmann::json expect_;                                       // the revision's spatial facts, to check
     std::map<std::string, std::pair<int, int>> revisionKeep_;     // its kept seeds, for the retries
     // Where the last fitting ended (zone scales, the site's side): the next layout starts there.
+    std::set<std::string> locks_;   // parts kept as they are (7.8)
+    std::set<std::string> changed_; // parts laid out again by the last edit
+    // Lays these parts out again from the plan, everything else as it was (a partial solve).
+    void SolveParts(const std::set<std::string>& parts, const std::string& why);
     std::map<std::string, double> fitScale_;
     int fitSide_ = 0;
     nlohmann::json result_;      // the last scene build's (⑤ Result)

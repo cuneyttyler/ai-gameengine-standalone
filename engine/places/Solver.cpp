@@ -180,6 +180,12 @@ private:
 
     // Steps.
     void SolveRegion(int index);
+    // The partial solve: whether a node is laid out again, and the previous layout restored.
+    bool Redo(const std::string& node) const;
+    bool Locked(const std::string& node) const;
+    bool StatementRedone(const std::string& statementId, const std::string& node) const;
+    void Restore(const json& previous);
+    std::map<std::string, const json*> statementById_;
     void Path(const json& s);
     void Network(const json& s, int region);
     void Partition(const json& s, int region);
@@ -1189,6 +1195,11 @@ void Solver::Subdivide(const json& s, int region) {
     const double cx = (parent.x0 + parent.x1) / 2.0, cy = (parent.y0 + parent.y1) / 2.0;
     int placed = 0;
     for (const auto& item : s.value("into", json::array())) {
+        // Kept from the previous layout (a locked part's lot): already there.
+        if (options_.previous && regionById_.contains(item.value("id", ""))) {
+            ++placed;
+            continue;
+        }
         const IntRange fw = RangeOf(item.value("size", json::object()).value("w", json()), 5);
         const IntRange fh = RangeOf(item.value("size", json::object()).value("h", json()), 6);
         const int w0 = rng.Range(fw.lo, fw.hi), h0 = rng.Range(fh.lo, fh.hi); // frontage, depth
@@ -1280,6 +1291,24 @@ void Solver::NestedRegion(const json& s, int container) {
     scoreCache_.clear();
     Rng rng = StreamFor(s);
     const Region parent = regions_[container];
+    // Painted (7.8): where it was drawn, the container's own cells of that rectangle.
+    if (const json at = s.value("at", json()); at.is_array() && at.size() == 2) {
+        const IntRange fw = RangeOf(s.value("size", json::object()).value("w", json()), 4);
+        const IntRange fh = RangeOf(s.value("size", json::object()).value("h", json()), 4);
+        std::vector<int> cells;
+        for (int y = at[1].get<int>(); y < at[1].get<int>() + fh.hi; ++y) {
+            for (int x = at[0].get<int>(); x < at[0].get<int>() + fw.hi; ++x) {
+                if (In(x, y) && owner_[Cell(x, y)] == container && !road_[Cell(x, y)] && !water_[Cell(x, y)]) cells.push_back(Cell(x, y));
+            }
+        }
+        if (cells.empty()) {
+            if (s.value("essential", true)) Problem("S-UNSAT", s, "nothing free where it was drawn, in " + parent.id);
+            return;
+        }
+        AddRegion(s.value("id", ""), s.value("node", ""), s.value("id", ""), container, cells, s.value("module", ""));
+        instancesOf_[s.value("id", "")] = 1;
+        return;
+    }
     // The root region: placed where it says.
     const IntRange fw = RangeOf(s.value("size", json::object()).value("w", json()), 4);
     const IntRange fh = RangeOf(s.value("size", json::object()).value("h", json()), 4);
@@ -1738,6 +1767,11 @@ void Solver::SolveRegion(int index) {
     });
     auto run = [&](const json& s) {
         const std::string op = s.value("op", "");
+        // A partial solve: what was kept (a locked part) isn't made again.
+        if (options_.previous && ((op == "region" && regionById_.contains(s.value("id", ""))) ||
+                                  (op == "place" && (objectById_.contains(s.value("id", "")) || objectsByStatement_.contains(s.value("id", "")))))) {
+            return;
+        }
         if (op == "path") Path(s);
         else if (op == "network") Network(s, index);
         else if (op == "partition") Partition(s, index);
@@ -1916,6 +1950,128 @@ void Solver::Checks() {
     }
 }
 
+namespace {
+bool Under(const std::set<std::string>& roots, const std::string& node) {
+    for (const auto& r : roots) {
+        if (node == r || node.rfind(r + "/", 0) == 0 || node.rfind(r + "#", 0) == 0) return true;
+    }
+    return false;
+}
+} // namespace
+
+bool Solver::Redo(const std::string& node) const { return Under(options_.resolve, node); }
+bool Solver::Locked(const std::string& node) const { return Under(options_.locked, node); }
+
+bool Solver::StatementRedone(const std::string& statementId, const std::string& node) const {
+    if (!options_.previous) return true;
+    std::string n = node;
+    if (n.empty()) {
+        // An instance's statement (x[3]/crops): the one it was made from (x[*]/crops).
+        std::string id = statementId;
+        for (size_t open = id.find('['); open != std::string::npos; open = id.find('[', open + 1)) {
+            const size_t close = id.find(']', open);
+            if (close == std::string::npos) break;
+            id.replace(open, close - open + 1, "[*]");
+            open += 2;
+        }
+        auto it = statementById_.find(statementId);
+        if (it == statementById_.end()) it = statementById_.find(id);
+        n = it != statementById_.end() ? it->second->value("node", "") : "";
+    }
+    // Not under a lock by its node (a template) nor by its own id (one locked instance's).
+    return Redo(n) && !Locked(n) && !Locked(statementId);
+}
+
+void Solver::Restore(const json& previous) {
+    // Everything a statement that isn't redone made, as it was: paths, regions, objects, lines.
+    auto made = [&](const json& thing) {
+        const std::string statement = thing.value("statement", thing.value("id", ""));
+        const std::string node = thing.value("node", "");
+        // A locked part stays, even where its maker is redone (a whole template, or one instance).
+        if (Locked(node) || Locked(thing.value("id", ""))) return true;
+        auto it = statementById_.find(statement);
+        const std::string maker = it != statementById_.end() ? it->second->value("node", "") : node;
+        return !StatementRedone(statement, maker) && !(Redo(node) && !Locked(node) && it == statementById_.end());
+    };
+    for (const auto& p : previous.value("paths", json::array())) {
+        if (!made(p)) continue;
+        PathResult r;
+        r.id = p.value("id", "");
+        r.node = p.value("node", "");
+        r.cls = p.value("class", "street");
+        r.terrain = p.value("terrain", "dirt");
+        r.width = p.value("width", 1);
+        for (const auto& c : p.value("cells", json::array())) {
+            const int x = c[0].get<int>(), y = c[1].get<int>();
+            if (!In(x, y)) continue;
+            r.cells.push_back(Cell(x, y));
+        }
+        instancesOf_[r.id] = 1;
+        paths_.push_back(std::move(r));
+    }
+    // The roads and the water as they were (the cells, with their ranks).
+    for (const auto& c : previous.value("roads", json::array())) {
+        const int x = c[0].get<int>(), y = c[1].get<int>();
+        if (In(x, y)) road_[Cell(x, y)] = static_cast<uint8_t>(c[2].get<int>());
+    }
+    for (const auto& p : paths_) {
+        if (p.cls == "river") {
+            for (int c : p.cells) water_[c] = 1, road_[c] = 0;
+        }
+    }
+    for (const auto& r : previous.value("regions", json::array())) {
+        const std::string id = r.value("id", "");
+        if (regionById_.contains(id) || !made(r)) continue;
+        const json parentId = r.value("parent", json());
+        const int parent = parentId.is_string() ? RegionIndex(parentId.get<std::string>()) : -1;
+        if (parentId.is_string() && parent < 0) continue; // its container is redone
+        const int index = AddRegion(id, r.value("node", ""), r.value("statement", ""), parent, DecodeCells(r.value("cells", json::array()), W),
+                                    r.value("module", ""));
+        Region& g = regions_[index];
+        const std::string facing = r.value("facing", "");
+        g.facing = facing.empty() ? 0 : facing[0];
+        if (g.facing) {
+            // Its street: the road cells just outside its front.
+            for (int c : g.cells) {
+                const int x = c % W, y = c / W;
+                const int fx = g.facing == 'e' ? x + 1 : g.facing == 'w' ? x - 1 : x;
+                const int fy = g.facing == 's' ? y + 1 : g.facing == 'n' ? y - 1 : y;
+                if (In(fx, fy) && road_[Cell(fx, fy)] && owner_[Cell(fx, fy)] != index) g.street.push_back(Cell(fx, fy));
+            }
+        }
+        if (const json seed = r.value("seed", json()); seed.is_array() && seed.size() == 2) zoneSeeds_[id] = Cell(seed[0].get<int>(), seed[1].get<int>());
+        instancesOf_[g.statement]++;
+    }
+    for (const auto& o : previous.value("objects", json::array())) {
+        if (!made(o)) continue;
+        Object b;
+        b.id = o.value("id", "");
+        b.statement = o.value("statement", "");
+        b.node = o.value("node", "");
+        b.slot = o.value("slot", "");
+        b.module = o.value("shows", "");
+        b.x = o.value("x", 0), b.y = o.value("y", 0), b.w = o.value("w", 1), b.h = o.value("h", 1);
+        b.layer = LayerOf(o.value("layer", "prop"));
+        b.primary = o.value("primary", false);
+        const std::string facing = o.value("facing", "s");
+        b.facing = facing.empty() ? 's' : facing[0];
+        AddObject(b);
+        instancesOf_[b.statement]++;
+    }
+    for (const auto& l : previous.value("lines", json::array())) {
+        if (!made(l)) continue;
+        LineResult r;
+        r.id = l.value("id", "");
+        r.node = l.value("node", "");
+        r.slot = l.value("slot", "");
+        r.closed = l.value("closed", true);
+        for (const auto& e : l.value("edges", json::array())) r.edges.push_back({e[0].get<int>(), e[1].get<int>(), e[2] == "n" ? 0 : 1});
+        for (const auto& e : l.value("gaps", json::array())) r.gaps.push_back({e[0].get<int>(), e[1].get<int>(), e[2] == "n" ? 0 : 1});
+        instancesOf_[r.id] = 1;
+        lines_.push_back(std::move(r));
+    }
+}
+
 SolvedLayout Solver::Run() {
     SolvedLayout out;
     if (!ir_.is_object() || ir_.value("schema", "") != "aige.ir/1") {
@@ -1955,9 +2111,13 @@ SolvedLayout Solver::Run() {
             if (!members.empty() && members[0].is_string()) relationsOf_[members[0].get<std::string>()].push_back(s);
         }
     }
+    for (const json* s : statements_) statementById_[s->value("id", "")] = s;
+    if (options_.previous) Restore(*options_.previous);
     for (const json* s : statements_) {
         const std::string op = s->value("op", "");
         if ((op == "region" && !s->contains("in")) || op == "relation" || op == "check" || op == "fill" || op == "objective") continue;
+        // A partial solve runs only what it redoes (anchors are placed again anyway: they're givens).
+        if (options_.previous && op != "anchor" && !StatementRedone(s->value("id", ""), s->value("node", ""))) continue;
         if (op == "anchor" && s->contains("at") && s->at("at").is_array()) {
             Anchor(*s);
             continue;

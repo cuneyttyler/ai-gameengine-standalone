@@ -436,7 +436,7 @@ void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json&
     int depth = 6;
     for (const auto& c : children) {
         const ModuleDef* cm = ontology_.Module(c.value("module", ""));
-        if (cm == nullptr || cm->level != PlaceLevel::Parcel) continue;
+        if (cm == nullptr || cm->level != PlaceLevel::Parcel || c.contains("at")) continue;
         const int repeat = std::max(1, c.value("repeat", 1));
         for (int k = 0; k < repeat; ++k) {
             const std::string instance = repeat == 1 ? c.value("id", "") : c.value("id", "") + "#" + std::to_string(k);
@@ -496,6 +496,16 @@ void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json&
               {"args", {{"ref", zoneId}, {"band", {band->first * 0.3, band->second}}}}});
     }
     for (const auto& [node, cm, instance, k] : parcels) Parcel(*node, *cm, instance, k);
+    // Parcels drawn with the module brush: a lot where drawn.
+    for (const auto& c : children) {
+        const ModuleDef* cm = ontology_.Module(c.value("module", ""));
+        const json at = c.value("at", json());
+        if (cm == nullptr || cm->level != PlaceLevel::Parcel || !at.is_object()) continue;
+        Emit({{"op", "region"}, {"id", c.value("id", "")}, {"node", c.value("id", "")}, {"in", zoneId}, {"shape", "rect"},
+              {"size", {{"w", at.value("w", 6)}, {"h", at.value("h", 6)}}}, {"at", {at.value("x", 0), at.value("y", 0)}},
+              {"module", cm->id}, {"essential", true}});
+        Parcel(c, *cm, c.value("id", ""), 0);
+    }
     // The zone's own features (a ward's gardens, a temple ward's graveyard): in
     // its land between the lots.
     for (const auto& c : children) {
@@ -590,6 +600,15 @@ void Compiler::Feature(const json& node, const ModuleDef& m, const std::string& 
     if (const auto depth = Range(node, m, "depth"); depth && !m.Field("size")) {
         size = {{"w", 4}, {"h", std::max(1, static_cast<int>(std::lround(depth->first)))}};
     }
+    json painted = json();
+    if (const json at = node.value("at", json()); at.is_object()) {
+        painted = json::array({at.value("x", 0), at.value("y", 0)});
+        size = {{"w", at.value("w", 3)}, {"h", at.value("h", 3)}};
+    }
+    if (painted.is_array()) {
+        Emit({{"op", "region"}, {"id", self}, {"node", nodeId}, {"in", parentInstance}, {"shape", "rect"}, {"size", size}, {"module", m.id},
+              {"at", painted}, {"essential", true}});
+    } else
     Emit({{"op", "region"}, {"id", self}, {"node", nodeId}, {"in", parentInstance}, {"shape", "rect"}, {"size", size}, {"module", m.id},
           {"essential", false}});
     Relations(m, nodeId, self, parentInstance, parentPrimary, "");

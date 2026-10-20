@@ -156,6 +156,15 @@ private:
     void StartBuild(const std::string& query);
     void ResumeBuild(const std::string& id); // a build of the project, from places/<id>/
     void BuildIntoScene();                   // ④ Build: the solved layout into the scene (7.7)
+    // Editing after the build (7.8): the scene follows the parts an edit laid out again.
+    void UpdateBuiltParts();
+    // The part of the open build an entity belongs to ("ward/cottages#2"), or "".
+    std::string PartOf(Entity entity) const;
+    void PostSelectedPart();
+    std::string placeBrush_;           // the module brush's module ("" = off)
+    bool brushing_ = false;
+    int brushFromX_ = 0, brushFromY_ = 0, brushToX_ = 0, brushToY_ = 0;
+    std::string editingPart_;          // the built part a hand edit is changing (it gets locked)
     std::unique_ptr<PlaceBuild> MakeBuild();
     void PostBuild();
     void OnProposal(int requestId, const nlohmann::json& body);

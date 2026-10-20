@@ -94,6 +94,8 @@ interface BuildState {
   image?: string // places/<id>/layout.png: the solved layout as a map, with its legend
   solved?: { stats: Record<string, number>; checks: { id: string; predicate: string; ok: boolean; detail?: unknown }[] }
   verify?: VerifyRow[] // asked, planned, built
+  brushModules?: { id: string; name: string; level: string }[] // what the module brush paints (7.8)
+  locks?: string[]
   result?: BuildResult // ⑤ Result: the scene build
   origin?: [number, number]
   revisions?: Revision[]
@@ -168,6 +170,28 @@ interface Revision {
   undo?: number
   undone?: boolean
 }
+interface PartField {
+  name: string
+  group: string
+  type: string
+  value?: unknown
+  default?: unknown
+  values?: string[]
+  unit?: string
+}
+interface PartInfo {
+  id: string
+  base: string
+  module: string
+  name: string
+  level: string
+  path: string[]
+  fields: PartField[]
+  parts: { id: string; module: string; repeat: number }[]
+  rationale: string
+  locked: boolean
+  repeat: number
+}
 interface BuildEntry {
   id: string
   query: string
@@ -177,6 +201,36 @@ interface BuildEntry {
 }
 
 const state = ref<BuildState | null>(null)
+// Editing after the build (7.8): the part selected in the viewport, and the module brush.
+const selectedPart = ref<PartInfo | null>(null)
+const brush = ref('')
+function setBrush(module: string): void {
+  brush.value = module
+  sendToHost({ type: 'build:brush', module })
+}
+function editField(f: PartField, raw: string | boolean): void {
+  if (!selectedPart.value) return
+  let value: unknown = raw
+  if (typeof raw === 'string') {
+    if (raw === '') value = null
+    else if (f.type === 'count' || f.type === 'number' || f.type === 'area' || f.type === 'length' || f.type === 'share') {
+      value = raw.includes('-') ? raw.split('-').map((x) => Number(x.trim())) : Number(raw)
+    } else if (f.type === 'size' || f.type === 'mix' || f.type === 'enumSet') {
+      try {
+        value = JSON.parse(raw)
+      } catch {
+        return
+      }
+    }
+  }
+  sendToHost({ type: 'build:editNode', node: selectedPart.value.id, field: f.name, value })
+}
+function fieldText(f: PartField): string {
+  const v = f.value ?? null
+  if (v === null) return ''
+  if (Array.isArray(v) && v.length === 2 && typeof v[0] === 'number') return `${v[0]}-${v[1]}`
+  return typeof v === 'object' ? JSON.stringify(v) : String(v)
+}
 const builds = ref<BuildEntry[]>([])
 // The start screen shown over an open build (the header's Builds).
 const browsing = ref(false)
@@ -187,6 +241,9 @@ onHostMessage((message) => {
   if (message.type === 'build:state') {
     state.value = message.stage ? (message as unknown as BuildState) : null
     if (!state.value || ['cancelled', 'failed'].includes(state.value.stage)) sendToHost({ type: 'build:list' })
+  } else if (message.type === 'build:part') {
+    selectedPart.value = (message.part as PartInfo | null) ?? null
+    brush.value = (message.brush as string) ?? ''
   } else if (message.type === 'build:list') {
     builds.value = (message.builds as BuildEntry[]) ?? []
   } else if (message.type === 'build:open') {
@@ -593,6 +650,50 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         </details>
       </section>
 
+      <!-- Edit after the build (7.8): the part clicked in the viewport, and the module brush. -->
+      <section v-if="selectedPart" class="part">
+        <h4>
+          {{ selectedPart.name }} <span class="dim">{{ selectedPart.id }}</span>
+          <span v-if="selectedPart.locked" class="warning"> · locked</span>
+        </h4>
+        <div class="dim small">
+          {{ selectedPart.path.join(' › ') }}<template v-if="selectedPart.path.length"> › </template>{{ selectedPart.base }}
+          <template v-if="selectedPart.repeat > 1"> · one of {{ selectedPart.repeat }} (a change applies to all of them)</template>
+        </div>
+        <div class="fields">
+          <template v-for="f in selectedPart.fields" :key="f.name">
+            <label :title="f.unit ?? ''">{{ f.name }}</label>
+            <select v-if="f.values?.length && f.type === 'enum'" :value="f.value ?? ''" @change="editField(f, ($event.target as HTMLSelectElement).value)">
+              <option value="">(default)</option>
+              <option v-for="v in f.values" :key="v" :value="v">{{ v }}</option>
+            </select>
+            <input v-else-if="f.type === 'bool'" type="checkbox" :checked="Boolean(f.value ?? f.default)" @change="editField(f, ($event.target as HTMLInputElement).checked)" />
+            <input
+              v-else
+              :value="fieldText(f)"
+              :placeholder="JSON.stringify(f.default ?? '')"
+              @change="editField(f, ($event.target as HTMLInputElement).value)"
+            />
+          </template>
+        </div>
+        <div class="actions left">
+          <button title="Lays this part out again; the rest stays as it is" @click="sendToHost({ type: 'build:regenerate', node: selectedPart.id })">
+            Lay out again
+          </button>
+          <label class="row">
+            <input type="checkbox" :checked="selectedPart.locked" @change="sendToHost({ type: 'build:lock', node: selectedPart.id, locked: ($event.target as HTMLInputElement).checked })" />
+            Locked (kept as it is when what holds it is laid out again)
+          </label>
+        </div>
+      </section>
+      <div v-if="state.brushModules?.length && (stage === 'plan' || stage === 'planned' || stage === 'built')" class="brush">
+        <span>Module brush</span>
+        <select :value="brush" @change="setBrush(($event.target as HTMLSelectElement).value)">
+          <option value="">off</option>
+          <option v-for="m in state.brushModules" :key="m.id" :value="m.id">{{ m.name }}</option>
+        </select>
+        <span v-if="brush" class="dim">drag an area in the viewport to paint a {{ state.brushModules.find((m) => m.id === brush)?.name }}</span>
+      </div>
       <!-- Revise: say what to change; the AI changes the plan and it's laid out again. -->
       <section class="revise">
         <h4>Revise</h4>
@@ -1094,6 +1195,29 @@ button.link {
 }
 .result .placeholder td:first-child {
   color: #f9e2af;
+}
+.part {
+  border-left: 3px solid #fab387;
+  padding: 6px 10px;
+  margin: 8px 0;
+  background: #1e1e2e;
+}
+.part h4 {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+.part .fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 10px;
+  align-items: center;
+  margin: 6px 0;
+}
+.brush {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 8px 0;
 }
 .verify h4,
 .revise h4 {

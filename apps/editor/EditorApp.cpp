@@ -806,6 +806,19 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             if (!why.empty()) post_({{"type", "notify"}, {"text", "Not now: " + why}});
         }
         PostBuild();
+    } else if (type == "build:editNode" || type == "build:regenerate" || type == "build:lock" || type == "build:brush") {
+        if (build_) {
+            std::string why;
+            const std::string node = message.value("node", "");
+            if (type == "build:editNode") why = build_->EditNode(node, message.value("field", ""), message.value("value", nlohmann::json()));
+            else if (type == "build:regenerate") why = build_->Regenerate(node);
+            else if (type == "build:lock") build_->Lock(node, message.value("locked", true));
+            else placeBrush_ = message.value("module", "");
+            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not now: " + why}});
+            UpdateBuiltParts();
+            PostSelectedPart();
+        }
+        PostBuild();
     } else if (type == "build:build") {
         BuildIntoScene();
         PostBuild();
@@ -1853,6 +1866,12 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                 session_.RequestPlayerAttack(worldX, worldY);
                 return;
             }
+            if (!placeBrush_.empty() && build_) {
+                CellAt(sceneX, sceneY, iso_, brushFromX_, brushFromY_);
+                brushToX_ = brushFromX_, brushToY_ = brushFromY_;
+                brushing_ = true;
+                return;
+            }
             if (tool_ == Tool::Select) {
                 auto picked = PickEntity(registry_, sceneX, sceneY, iso_);
                 Select(picked);
@@ -1895,6 +1914,20 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
             if (event.button == Button::Right || event.button == Button::Middle || event.button == Button::None) {
                 panning_ = false;
             }
+            if (brushing_ && (event.button == Button::Left || event.button == Button::None)) {
+                brushing_ = false;
+                const auto [ox, oy] = build_ ? build_->Origin() : std::pair{0, 0};
+                const int x0 = std::min(brushFromX_, brushToX_) - ox, y0 = std::min(brushFromY_, brushToY_) - oy;
+                const int x1 = std::max(brushFromX_, brushToX_) + 1 - ox, y1 = std::max(brushFromY_, brushToY_) + 1 - oy;
+                if (build_) {
+                    if (const std::string why = build_->Paint(placeBrush_, x0, y0, x1, y1); !why.empty()) {
+                        post_({{"type", "notify"}, {"text", "Can't paint here: " + why}});
+                    }
+                    UpdateBuiltParts();
+                    PostBuild();
+                }
+                return;
+            }
             if (event.button == Button::Left || event.button == Button::None) {
                 if (dragging_ || stroking_) {
                     EndEdit();
@@ -1925,6 +1958,7 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
             if (stroking_) {
                 ToolStroke(sceneX, sceneY, false);
             }
+            if (brushing_) CellAt(sceneX, sceneY, iso_, brushToX_, brushToY_);
             return;
     }
 }
@@ -2117,6 +2151,7 @@ void EditorApp::ToolStroke(float sceneX, float sceneY, bool first) {
 
 void EditorApp::BeginEdit() {
     resizeRun_.reset(); // any other edit ends a run of resizes
+    editingPart_ = selected_ ? PartOf(*selected_) : std::string();
     pendingSnapshot_ = SerializeScene(registry_);
     pendingPushed_ = false;
 }
@@ -2128,6 +2163,12 @@ void EditorApp::MarkChanged() {
     }
     dirty_ = true;
     editorStateStale_ = true;
+    // A built part changed by hand keeps the change: it's locked (7.8).
+    if (!editingPart_.empty() && build_) {
+        build_->Lock(editingPart_, true);
+        editingPart_.clear();
+        PostSelectedPart();
+    }
 }
 
 void EditorApp::EndEdit() {
@@ -2157,6 +2198,48 @@ void EditorApp::Select(std::optional<Entity> entity) {
     } else {
         post_({{"type", "inspector:clear"}});
     }
+    PostSelectedPart();
+}
+
+std::string EditorApp::PartOf(Entity entity) const {
+    if (!build_ || !registry_.valid(entity)) return {};
+    const auto* node = registry_.try_get<PlaceNode>(entity);
+    if (node == nullptr || node->place != build_->Id()) return {};
+    // One instance of a template: up to its "#k" ("ward/cottages#2/house" -> "ward/cottages#2").
+    const std::string& s = node->statement;
+    if (const size_t hash = s.find('#'); hash != std::string::npos) return s.substr(0, s.find('/', hash));
+    return node->node;
+}
+
+void EditorApp::PostSelectedPart() {
+    const std::string part = selected_ ? PartOf(*selected_) : std::string();
+    nlohmann::json info = part.empty() || !build_ ? nlohmann::json() : build_->NodeInfo(part);
+    post_({{"type", "build:part"}, {"part", info}, {"brush", placeBrush_}});
+}
+
+void EditorApp::UpdateBuiltParts() {
+    if (!build_) return;
+    const std::set<std::string> changed = build_->TakeChanged();
+    if (changed.empty() || build_->Stage() != "built" || !build_->Result().is_object()) return;
+    // The scene follows: only those parts are replaced; locked ones stay as edited.
+    PlaceSceneOptions options;
+    options.place = build_->Id();
+    std::tie(options.originX, options.originY) = build_->Origin();
+    options.iso = iso_;
+    options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
+    options.only = changed;
+    options.locked = build_->Locks();
+    const TerrainSet terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
+    const Catalog catalog = BuildCatalog(assets_, &Places(), CatalogOptionsNow());
+    const nlohmann::json assets = PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), catalog, prefabs_, assets_, terrains, options);
+    nlohmann::json report;
+    auto command = BuildPlaceScene(registry_, prefabs_, build_->Solved(), assets, terrains, options, &report);
+    history_.PushCommand(std::move(command));
+    prefabs_.SyncAll(registry_);
+    UpdateWorldToScreen(registry_, iso_);
+    dirty_ = true;
+    editorStateStale_ = true;
+    sceneTreeStale_ = true;
 }
 
 void EditorApp::SetTool(Tool tool) {
@@ -2581,6 +2664,13 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
             }
         }
     }
+    if (brushing_) {
+        static const float kBrush[3] = {0.98f, 0.89f, 0.69f};
+        const int x0 = std::min(brushFromX_, brushToX_), y0 = std::min(brushFromY_, brushToY_);
+        const int x1 = std::max(brushFromX_, brushToX_) + 1, y1 = std::max(brushFromY_, brushToY_) + 1;
+        AddGridRect(overlay, static_cast<float>(x0), static_cast<float>(y0), static_cast<float>(x1 - x0), static_cast<float>(y1 - y0), iso_,
+                    kBrush, 0.95f, 2.0f);
+    }
     if (showGrid_) {
         // Tile borders on empty ground (4.3), over the visible part of the scene.
         int width = 0, height = 0;
@@ -2938,6 +3028,20 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool
     }
     if (playing_) {
         post_({{"type", "ai:message"}, {"role", "error"}, {"text", "Stop Play mode before asking for changes."}});
+        return;
+    }
+    // A change to the place the Build panel has open goes there, as a revision (7.8).
+    if (!asChange && build_ && (build_->Stage() == "plan" || build_->Stage() == "planned" || build_->Stage() == "built") &&
+        build_->AboutThisPlace(text)) {
+        conversation_.emplace_back("user", text);
+        post_({{"type", "ai:message"}, {"role", "user"}, {"text", text}});
+        const std::string why = build_->Revise(text);
+        post_({{"type", "ai:message"}, {"role", "assistant"},
+               {"text", why.empty() ? "That's about " + build_->Brief().value("name", build_->Id()) +
+                                          ", so it went to the Build panel as a revision (see Revise there)."
+                                    : "Couldn't revise the place: " + why}});
+        post_({{"type", "build:open"}});
+        PostBuild();
         return;
     }
     // Building a place goes to the Build panel, not a proposal card.

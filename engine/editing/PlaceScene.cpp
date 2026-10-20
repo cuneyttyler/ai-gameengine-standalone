@@ -332,6 +332,20 @@ Stand StandOf(const json& o, const PlaceSceneOptions& options) {
     return s;
 }
 
+bool UnderAny(const std::set<std::string>& roots, const std::string& v) {
+    for (const auto& r : roots) {
+        if (v == r || v.rfind(r + "/", 0) == 0 || v.rfind(r + "#", 0) == 0) return true;
+    }
+    return false;
+}
+
+// Whether a thing of the place is left as it is in the scene: it's locked, or
+// the edit is about other parts.
+bool Kept(const PlaceSceneOptions& options, const std::string& node, const std::string& id) {
+    if (UnderAny(options.locked, node) || UnderAny(options.locked, id)) return true;
+    return !options.only.empty() && !UnderAny(options.only, node) && !UnderAny(options.only, id);
+}
+
 std::vector<Entity> PlaceEntities(Registry& registry, const std::string& place) {
     std::vector<Entity> out;
     for (auto entity : EntitiesInOrder(registry)) {
@@ -528,10 +542,16 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
 std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& prefabs, const json& solved, const json& assetPlan,
                                              const TerrainSet& terrains, const PlaceSceneOptions& options, json* report) {
     json out = {{"cells", json::object()}, {"objects", json::object()}, {"missing", json::array()}, {"pieces", 0}};
-    // The previous build of this place goes (kept for undo); nothing else does.
+    // The previous build of this place goes (kept for undo); nothing else does. An
+    // edit replaces only its parts; locked parts stay as they were edited by hand.
     const auto previous = PlaceEntities(registry, options.place);
     std::string previousText = SerializeEntities(registry, previous);
-    registry.destroy(previous.begin(), previous.end());
+    std::vector<Entity> replaced;
+    for (Entity e : previous) {
+        const auto& n = registry.get<PlaceNode>(e);
+        if (!Kept(options, n.node, n.statement)) replaced.push_back(e);
+    }
+    registry.destroy(replaced.begin(), replaced.end());
 
     // The ground: a layer of its own, fitted by the autotiler.
     const TerrainGrid grid = ReadTerrain(solved);
@@ -573,7 +593,7 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
             }
             if (id == TileLayer::kEmpty && row.contains("prefab")) id = defFor(row["prefab"], 0, water);
             if (id == TileLayer::kEmpty) continue;
-            edit.Set(layer, gx, gy, id);
+            if (layer.Get(gx, gy) != id) edit.Set(layer, gx, gy, id); // only what changed
             painted.insert({gx, gy});
             out["cells"][name] = out["cells"].value(name, 0) + 1;
         }
@@ -598,6 +618,7 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
     const json byObject = assetPlan.value("byObject", json::object());
     for (const json* o : objects) {
         const std::string id = o->value("id", "");
+        if (Kept(options, o->value("node", ""), id)) continue; // not this edit's, or locked: as it is
         const std::string key = byObject.value(id, "");
         auto it = choices.find(key);
         if (it == choices.end() || !PlaceObject(registry, prefabs, *o, it->second, options)) {
@@ -610,6 +631,7 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
     // Fences, walls and hedges: a piece on every edge (gates left open).
     const json pieces = assetPlan.value("pieces", json::object());
     for (const auto& line : solved.value("lines", json::array())) {
+        if (Kept(options, line.value("node", ""), line.value("id", ""))) continue;
         const json row = pieces.value(line.value("slot", "fence"), json::object());
         const json kinds = row.value("pieces", json::object());
         std::set<std::tuple<int, int, std::string>> gaps;

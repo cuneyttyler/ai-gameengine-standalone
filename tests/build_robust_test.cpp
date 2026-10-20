@@ -2,10 +2,12 @@
 #include "places/Brief.h"
 #include "places/PlaceValidate.h"
 #include "places/Planner.h"
+#include "places/Solver.h"
 #include "places/Where.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -744,4 +746,129 @@ TEST(BuildRobustTest, ABuiltPlaceIsKeptAndReviewedAsRendered) {
     f.AnswerAll(next, off);
     const json rows = next.State()["plan"]["rows"];
     EXPECT_FALSE(rows.empty());
+}
+
+namespace {
+
+// The layout's things outside `prefix`, or (inside = true) within it.
+json Part(const json& doc, const std::string& prefix, bool inside) {
+    json out = json::object();
+    for (const char* list : {"regions", "objects", "lines", "paths"}) {
+        out[list] = json::array();
+        for (const auto& t : doc.value(list, json::array())) {
+            bool in = false;
+            for (const char* key : {"node", "id"}) {
+                const std::string v = t.value(key, "");
+                in = in || v == prefix || v.rfind(prefix + "/", 0) == 0 || v.rfind(prefix + "#", 0) == 0;
+            }
+            if (in == inside) out[list].push_back(t);
+        }
+        std::sort(out[list].begin(), out[list].end(), [](const json& a, const json& b) { return a.value("id", "") < b.value("id", ""); });
+    }
+    return out;
+}
+
+// An offline village, laid out: its residential ward's house template.
+std::string PlannedVillage(Fixture& f, PlaceBuild& build) {
+    const json off = {{"ok", false}, {"errors", json::array({"No AI provider configured"})}};
+    EXPECT_EQ(build.Start("a village by a river"), "");
+    f.AnswerAll(build, off);
+    EXPECT_EQ(build.Step("assets"), "");
+    EXPECT_EQ(build.Confirm(), "");
+    f.AnswerAll(build, off);
+    json spec = build.Spec();
+    const json* ward = SpecNode(spec, "residential-ward");
+    if (ward == nullptr) return "";
+    for (const auto& c : (*ward)["children"]) {
+        if (c.value("module", "") == "house-plot" && c.value("repeat", 1) >= 3) return c["id"];
+    }
+    return "";
+}
+
+} // namespace
+
+// 7.8: editing a part lays out that part only; a locked part stays when what
+// holds it is laid out again; the module brush paints a part where it's drawn.
+TEST(BuildRobustTest, EditingAPartAfterTheBuildChangesOnlyIt) {
+    Fixture f("aige_build_edit");
+    PlaceBuild build(f.Host());
+    const std::string houses = PlannedVillage(f, build);
+    ASSERT_FALSE(houses.empty()) << build.Spec().dump().substr(0, 600);
+    ASSERT_EQ(build.Stage(), "plan");
+
+    // What the panel shows of a part.
+    const json info = build.NodeInfo(houses + "#1");
+    ASSERT_TRUE(info.is_object());
+    EXPECT_EQ(info["module"], "house-plot");
+    EXPECT_EQ(info["path"][0], "residential-ward");
+    bool hasFenced = false;
+    for (const auto& field : info["fields"]) hasFenced = hasFenced || field["name"] == "fenced";
+    ASSERT_TRUE(hasFenced) << info.dump();
+
+    // A field changed: that part laid out again, the rest as it was.
+    const json before = build.Solved();
+    ASSERT_EQ(build.EditNode(houses, "fenced", true), "");
+    EXPECT_EQ(Part(build.Solved(), houses, false), Part(before, houses, false));
+    EXPECT_EQ(build.TakeChanged(), (std::set<std::string>{houses}));
+    EXPECT_NE(build.EditNode(houses, "fenced", "maybe"), ""); // checked against the module
+
+    // A locked house stays when its whole ward is laid out again.
+    build.Lock(houses + "#1", true);
+    const json locked = Part(build.Solved(), houses + "#1", true);
+    ASSERT_FALSE(locked["objects"].empty());
+    const json beforeWard = build.Solved();
+    ASSERT_EQ(build.Regenerate("residential-ward"), "");
+    EXPECT_EQ(Part(build.Solved(), houses + "#1", true), locked);
+    EXPECT_EQ(Part(build.Solved(), "residential-ward", false), Part(beforeWard, "residential-ward", false));
+    EXPECT_TRUE(build.NodeInfo(houses + "#1")["locked"].get<bool>());
+
+    // The module brush: a garden painted in the ward, where it was drawn.
+    json ward;
+    for (const auto& r : build.Solved()["regions"]) {
+        if (r["id"] == "residential-ward") ward = r;
+    }
+    ASSERT_TRUE(ward.is_object());
+    // A free spot in the ward: a cell of it that nothing else holds, and around it.
+    std::set<int> taken;
+    const int side = build.SiteSide();
+    for (const auto& r : build.Solved()["regions"]) {
+        if (r["id"] == "residential-ward" || r.value("parent", json()) == json()) continue;
+        for (int c : DecodeCells(r["cells"], side)) taken.insert(c);
+    }
+    std::set<int> cells;
+    for (int c : DecodeCells(ward["cells"], side)) cells.insert(c);
+    int px = -1, py = -1;
+    for (int c : cells) {
+        const int x = c % side, y = c / side;
+        bool ok = true;
+        for (int dy = 0; dy < 3 && ok; ++dy)
+            for (int dx = 0; dx < 3 && ok; ++dx) ok = cells.contains((y + dy) * side + x + dx) && !taken.contains((y + dy) * side + x + dx);
+        if (ok) {
+            px = x, py = y;
+            break;
+        }
+    }
+    ASSERT_GE(px, 0) << "no free 3x3 in the ward";
+    const json beforePaint = build.Solved();
+    ASSERT_EQ(build.Paint("garden", px, py, px + 3, py + 3), "");
+    json spec = build.Spec();
+    std::string painted;
+    for (const auto& c : (*SpecNode(spec, "residential-ward"))["children"]) {
+        if (c.contains("at")) painted = c["id"];
+    }
+    ASSERT_FALSE(painted.empty());
+    bool there = false;
+    for (const auto& r : build.Solved()["regions"]) {
+        if (r["id"] != painted) continue;
+        for (int c : DecodeCells(r["cells"], side)) there = there || (c % side >= px && c % side < px + 3 && c / side >= py && c / side < py + 3);
+    }
+    EXPECT_TRUE(there);
+    EXPECT_EQ(Part(build.Solved(), painted, false)["objects"], Part(beforePaint, painted, false)["objects"]);
+    EXPECT_NE(build.Paint("market-square", px, py, px + 3, py + 3), ""); // a ward can't hold a market square
+
+    // Chat edits about the place go to it.
+    EXPECT_TRUE(build.AboutThisPlace("make the residential ward's houses fenced"));
+    EXPECT_FALSE(build.AboutThisPlace("make the player faster"));
+    // Undo goes back through the edits.
+    ASSERT_EQ(build.Undo(), "");
 }

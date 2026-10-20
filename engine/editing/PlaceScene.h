@@ -12,6 +12,7 @@
 #include <nlohmann/json.hpp>
 
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -43,6 +44,10 @@ struct PlaceSceneOptions {
     int originX = 0, originY = 0; // the site's corner in the world, in cells
     IsoParams iso;
     bool isoGrid = true;
+    // Editing after the build (7.8): only these parts are replaced (empty: all of
+    // the place), and locked parts never are: a hand-edited house stays as edited.
+    std::set<std::string> only;
+    std::set<std::string> locked;
 };
 
 // Where a site of `side` cells can go without covering what's in the scene:

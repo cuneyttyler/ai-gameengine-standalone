@@ -22,6 +22,7 @@
 #include <iostream>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <set>
 
 // development_plan.md 7.7: the solved layout into the scene, verified and repaired.
@@ -298,6 +299,59 @@ TEST(PlaceSceneTest, ObstaclesBlockTheirFootprint) {
     EXPECT_FALSE(grid.IsSolid(10, 11));
 }
 
+
+// 7.8: an edit replaces only its parts in the scene; a part edited by hand
+// (and so locked) keeps the edit when what holds it is built again.
+TEST(PlaceSceneTest, AnEditReplacesOnlyItsPartsAndKeepsHandEdits) {
+    Village v;
+    Registry registry;
+    const json plan = PlanPlaceAssets(Library(), v.spec, v.solved, Catalog{}, *v.prefabs, *v.assets, v.terrains, v.options);
+    json report;
+    EditHistory history;
+    history.PushCommand(BuildPlaceScene(registry, *v.prefabs, v.solved, plan, v.terrains, v.options, &report));
+    // A house of the residential ward, moved by hand: its part is locked.
+    Entity moved = entt::null;
+    std::string part;
+    for (auto [e, node] : registry.view<PlaceNode>().each()) {
+        if (node.statement.rfind("residential-ward/", 0) == 0 && node.statement.find('#') != std::string::npos &&
+            registry.all_of<Obstacle>(e)) {
+            moved = e;
+            part = node.statement.substr(0, node.statement.find('/', node.statement.find('#')));
+            break;
+        }
+    }
+    ASSERT_TRUE(moved != entt::null);
+    auto& world = registry.get<WorldTransform2D>(moved);
+    world.x += 1.0f;
+    const float movedX = world.x, movedY = world.y;
+    const std::string movedStatement = registry.get<PlaceNode>(moved).statement;
+    // Everything outside the ward, as it stands.
+    std::map<std::string, std::pair<float, float>> outside;
+    for (auto [e, node, w] : registry.view<PlaceNode, WorldTransform2D>().each()) {
+        if (node.statement.rfind("residential-ward", 0) != 0) outside[node.statement] = {w.x, w.y};
+    }
+    // The ward built again, the moved house locked.
+    PlaceSceneOptions edit = v.options;
+    edit.only = {"residential-ward"};
+    edit.locked = {part};
+    history.PushCommand(BuildPlaceScene(registry, *v.prefabs, v.solved, plan, v.terrains, edit, &report));
+    bool kept = false;
+    for (auto [e, node, w] : registry.view<PlaceNode, WorldTransform2D>().each()) {
+        if (node.statement == movedStatement) kept = w.x == movedX && w.y == movedY;
+    }
+    EXPECT_TRUE(kept) << "the hand-moved house went back";
+    for (auto [e, node, w] : registry.view<PlaceNode, WorldTransform2D>().each()) {
+        if (auto it = outside.find(node.statement); it != outside.end()) {
+            EXPECT_EQ(std::pair(w.x, w.y), it->second) << node.statement;
+        }
+    }
+    size_t count = 0;
+    for (auto [e, node] : registry.view<PlaceNode>().each()) count += node.statement.rfind(movedStatement, 0) == 0 && node.statement == movedStatement;
+    EXPECT_EQ(count, 1u); // not built twice
+    // The edit is one undo step: back to the first build, with the hand move.
+    ASSERT_TRUE(history.Undo(registry));
+    EXPECT_GT(v.Built(registry), 0u);
+}
 
 // AIGE_SCENE_BUILD=<project root>|<build id>: a COPY of the project (never the
 // project itself), the build put into an empty scene with the project's own

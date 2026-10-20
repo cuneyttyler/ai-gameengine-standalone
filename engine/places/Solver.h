@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,13 @@ namespace aige {
 
 struct SolveOptions {
     int maxCandidates = 4000; // placement positions tried per object, at most
+    // A partial solve (development_plan.md 7.8, editing after the build): the
+    // previous layout stays as it was, and only the statements of these Spec
+    // nodes (and their parts) are laid out again. `locked` nodes are kept even
+    // inside them: a hand-edited house keeps its lot when its ward is re-cut.
+    const nlohmann::json* previous = nullptr;
+    std::set<std::string> resolve;
+    std::set<std::string> locked;
 };
 
 struct SolvedLayout {
