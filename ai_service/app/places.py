@@ -298,7 +298,9 @@ def repair_node(provider: Provider, node: dict, problems: list[dict], context: d
 
 REVISE_SHAPE = """The changes, as JSON:
 {
+  "now": "<where the parts the request is about are now, from WHERE (not from the plan's relations)>",
   "summary": "<one or two sentences to the user: what you changed, or why it can't be done>",
+  "expect": [{"node": "<a zone id>", "type": "<relation>", "to": "<a zone id, or river / a road's id>"}],
   "brief": {"<a Brief path, e.g. scale.buildings.count>": <its new value>},
   "changes": [
     {"op": "move", "node": "<id>", "rel": [{"type": "<relation>", "to": "<a part's id, or river / road>"}]},
@@ -313,20 +315,38 @@ REVISE_SHAPE = """The changes, as JSON:
 "move" says where a part goes, and nothing else: use it when the request is about place ("put X south of Y", "near
 the river"); relations: near, adjacent, along, far, north-of, south-of, east-of, west-of ("below" on the map is
 south-of, "above" north-of). "set" changes only the fields given. "zone" re-plans a zone's parcels: list all of them,
-kept ones too, and only when the request is about what that zone holds. Leave out
+kept ones too, and only when the request is about what that zone holds.
+"expect" lists every spatial fact the request asks for, one relation each ("the residential ward along the river on
+its left side, the farmland to its left" is: residential-ward along river, residential-ward west-of river,
+farmland-ring west-of residential-ward). They are checked on the new layout; one that doesn't hold is reported. Leave out
 "brief" unless the request changes the place's totals. An empty "changes" list, with the reason in "summary",
 when the request can't be met with these modules."""
 
 
+WHERE_GUIDE = """WHERE says how the place is laid out now: each zone's area, centre and extent in cells, its
+river bank and how many rows of it meet the river, where each other zone lies from it (north, south-west...), and
+whether they touch; and a map, a character per few cells: a letter per zone (the legend), ~ the river, = a road,
+. open land. x grows east (right), y grows south (down): "left" is west, "right" east, "above"/"up" north,
+"below"/"down" south. "Along the river" is a strip beside it over the zone's length; "on the left side" of the river
+is its west bank. Read the request against WHERE: a placement the request asks for that WHERE doesn't show isn't
+there yet, whatever the plan's relations say."""
+
+
 def revise_plan(provider: Provider, brief: dict, plan: dict, result: dict, instruction: str, context: dict,
-                mode: str = "auto") -> dict:
+                mode: str = "auto", where: dict | None = None) -> dict:
     """The user's change to a plan they've seen (place-interaction.md A3: revise before building)."""
     task = ("You revise a game place's plan as its user asks. Change only what the request is about; everything "
             "else stays as planned: never re-plan, resize or move a zone the request doesn't name. Use only the modules, fields and values the rules allow (a zone may hold only "
             "the parcels its rules list): when the request asks for something a module can't hold, do the nearest "
             "thing that is allowed and say so in the summary. The Brief's building count bounds the total: when "
-            "adding buildings, take them from elsewhere or raise scale.buildings.count. " + PLAN_CHECK)
-    inputs = (f"The user asks:\n{instruction}\n\n"
+            "adding buildings, take them from elsewhere or raise scale.buildings.count. " + PLAN_CHECK +
+            "\n\n" + WHERE_GUIDE)
+    where_text = ""
+    if where:
+        layout_map = "\n".join(where.get("map", []))
+        rest = {k: v for k, v in where.items() if k != "map"}
+        where_text = f"WHERE (the layout now):\n{json.dumps(rest, ensure_ascii=False)}\n\nThe map:\n{layout_map}\n\n"
+    inputs = (f"The user asks:\n{instruction}\n\n" + where_text +
               f"The Brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n"
               f"The plan (each zone with its parcels; id: what to name in a change):\n{json.dumps(plan, ensure_ascii=False)}\n\n"
               f"How it was laid out (buildings placed per zone, and what didn't fit):\n{json.dumps(result, ensure_ascii=False)}\n\n"
@@ -346,6 +366,8 @@ def _revision_result(step: StepResult) -> dict:
         out["errors"].append("changes is a list")
         return out
     answer["changes"] = [c for c in changes if isinstance(c, dict) and c.get("op") in ("move", "set", "zone", "add", "remove")]
+    expect = answer.get("expect", [])
+    answer["expect"] = [e for e in expect if isinstance(e, dict) and e.get("node") and e.get("type") and e.get("to")] if isinstance(expect, list) else []
     if not isinstance(answer.get("brief", {}), dict):
         answer["brief"] = {}
     answer["summary"] = str(answer.get("summary", "")).strip()

@@ -107,6 +107,7 @@ class RevisePlanRequest(BaseModel):
     instruction: str
     context: dict
     mode: str = "auto"
+    where: dict = {}       # the layout now (engine/places Where): areas, banks, directions, a map
 
 
 class ReviewLayoutRequest(BaseModel):
@@ -375,7 +376,7 @@ def create_app(
         if not request.instruction.strip():
             return {"ok": False, "errors": ["Say what to change"]}
         return _planning(lambda p: revise_plan(p, request.brief, request.plan, request.result, request.instruction,
-                                               request.context, request.mode))
+                                               request.context, request.mode, where=request.where))
 
     @app.post("/places/review-layout")
     def places_review_layout(request: ReviewLayoutRequest) -> dict:

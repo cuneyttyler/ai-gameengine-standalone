@@ -950,6 +950,31 @@ void Solver::Partition(const json& s, int region) {
         auto& stored = pathDistance[name] = std::move(field);
         return stored.empty() ? nullptr : &stored;
     };
+    std::map<std::string, std::pair<std::map<int, double>, std::map<int, double>>> pathAxes; // name -> (x by row, y by column)
+    auto axesOf = [&](const std::string& name) -> const std::pair<std::map<int, double>, std::map<int, double>>& {
+        if (auto it = pathAxes.find(name); it != pathAxes.end()) return it->second;
+        std::map<int, std::pair<double, int>> rows, cols;
+        for (const auto& p : paths_) {
+            if (!(p.id == name || p.node == name || (name == "river" && p.cls == "river"))) continue;
+            for (int pc : p.cells) {
+                rows[pc / W].first += pc % W, rows[pc / W].second++;
+                cols[pc % W].first += pc / W, cols[pc % W].second++;
+            }
+        }
+        auto& axes = pathAxes[name];
+        for (const auto& [row, sum] : rows) axes.first[row] = sum.first / sum.second;
+        for (const auto& [col, sum] : cols) axes.second[col] = sum.first / sum.second;
+        return axes;
+    };
+    // The nearest entry of an axis map (a path's x at the nearest row it crosses).
+    auto nearestOf = [](const std::map<int, double>& axis, int at, double fallback) {
+        if (axis.empty()) return fallback;
+        auto it = axis.lower_bound(at);
+        if (it == axis.end()) return std::prev(it)->second;
+        if (it == axis.begin() || it->first == at) return it->second;
+        auto before = std::prev(it);
+        return at - before->first <= it->first - at ? before->second : it->second;
+    };
     auto interest = [&](const Zone& z, int c) {
         const double x = c % W + 0.5, y = c / W + 0.5;
         double score = 0;
@@ -957,7 +982,8 @@ void Solver::Partition(const json& s, int region) {
         for (const auto& r : z.rel) {
             const std::string type = r.value("type", "near"), to = r.value("to", "");
             double tx = 0, ty = 0, distance = 0;
-            bool known = false;
+            bool known = false, path = false;
+            const double weight = std::max(0.1, r.value("weight", 1.0));
             if (auto it = zoneIndex.find(to); it != zoneIndex.end() && zones[it->second].seed >= 0 && it->second != static_cast<size_t>(&z - &zones[0])) {
                 const int seed = zones[it->second].seed;
                 tx = seed % W + 0.5, ty = seed / W + 0.5;
@@ -974,12 +1000,19 @@ void Solver::Partition(const json& s, int region) {
                     }
                 }
                 tx = n ? sx / n : x, ty = n ? sy / n : y;
+                // A bank: west or east of the river where this cell is, not of its middle.
+                const auto& axes = axesOf(to);
+                tx = nearestOf(axes.first, c / W, tx) + 0.5;
+                ty = nearestOf(axes.second, c % W, ty) + 0.5;
                 known = true;
+                path = true;
             }
             if (!known) continue;
             double v = 0;
             const double reach = std::max(4.0, half * 0.35);
-            if (type == "near" || type == "adjacent" || type == "along" || type == "beside") v = 1 - std::min(2.0, distance / reach);
+            // Along a path is a strip beside it: a few cells, not the zone's reach.
+            if (type == "along" || (path && type == "adjacent")) v = 1 - std::min(2.0, distance / 5.0);
+            else if (type == "near" || type == "adjacent" || type == "along" || type == "beside") v = 1 - std::min(2.0, distance / reach);
             else if (type == "far" || type == "away-from") v = std::min(1.0, distance / half) * 2 - 1;
             else if (type == "south-of") v = std::clamp((y - ty) / reach, -1.0, 1.0);
             else if (type == "north-of") v = std::clamp((ty - y) / reach, -1.0, 1.0);
@@ -991,10 +1024,10 @@ void Solver::Partition(const json& s, int region) {
             if (type.ends_with("-of")) {
                 const double side = v;
                 v = 0.7 * v + 0.3 * (1 - std::min(2.0, distance / (2 * reach)));
-                score += 3.0 * v - (side < 0 ? 3.0 : 0.0);
+                score += weight * (3.0 * v - (side < 0 ? 3.0 : 0.0));
                 continue;
             }
-            score += 2.0 * v;
+            score += weight * 2.0 * v;
         }
         for (const auto& [criterion, weightJson] : z.prefers.items()) {
             const double weight = weightJson.is_number() ? weightJson.get<double>() : 0;
@@ -1102,8 +1135,10 @@ void Solver::Partition(const json& s, int region) {
             const int n = Cell(nx, ny);
             if (!usable[n] || taken[n] >= 0) continue;
             // Compact zones: closeness to the seed matters most; interest breaks ties.
+            // A zone with relations grows by them too (along the river: a strip).
             const double distance = std::hypot(nx - z.seed % W, ny - z.seed / W);
-            queue.push({-distance + 0.5 * interest(z, n), n});
+            const bool related = !z.rel.empty();
+            queue.push({-(related ? 0.45 : 1.0) * distance + (related ? 1.5 : 0.5) * interest(z, n), n});
         }
     }
     for (const auto& z : zones) {

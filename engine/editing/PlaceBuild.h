@@ -156,6 +156,9 @@ private:
     void FinishPlanning();
     void Solve();
     void OnRevision(const Pending& what, const nlohmann::json& body);
+    // After a revision is laid out: the spatial facts it asked for, checked; a
+    // miss strengthens its relation and lays out again; what's still missed is said.
+    void MeetExpectations();
     // Whether a request names a zone (its id, or its module's name).
     bool Mentions(const std::string& request, const std::string& zoneId) const;
     // Directions a request gives a zone, as relations: "below the docks" -> {south-of, docks}.
@@ -187,6 +190,8 @@ private:
     bool solveAfter_ = false;    // a revision of a laid-out plan: solve again once planned
     // The next layout keeps these zones' seeds (a revision moves only what it's about).
     std::map<std::string, std::pair<int, int>> keepSeeds_;
+    nlohmann::json expect_;                                       // the revision's spatial facts, to check
+    std::map<std::string, std::pair<int, int>> revisionKeep_;     // its kept seeds, for the retries
     // Where the last fitting ended (zone scales, the site's side): the next layout starts there.
     std::map<std::string, double> fitScale_;
     int fitSide_ = 0;

@@ -143,7 +143,8 @@ TEST(LiveTest, PlanAndReviseAVillage) {
 
     // 1. Interpret the request (the Test1 village).
     phase("interpret", [&] {
-        ASSERT_EQ(build.Start("Build a village by a river with docks and several districts"), "");
+        const char* place = std::getenv("AIGE_LIVE_PLACE");
+        ASSERT_EQ(build.Start(place ? place : "Build a village by a river with docks and several districts"), "");
         drive(900);
     });
     ASSERT_EQ(build.Stage(), "request") << build.State().dump().substr(0, 2000);
@@ -174,8 +175,9 @@ TEST(LiveTest, PlanAndReviseAVillage) {
     fs::copy_file(build.Folder() / "layout.png", root / "planned.png", fs::copy_options::overwrite_existing);
 
     // 3. The user's revision.
-    const std::string request = "Put the residential ward below the docks near the river";
-    if (wardId.empty() || docksId.empty() || !seeds.contains(wardId) || !seeds.contains(docksId)) {
+    const char* reviseEnv = std::getenv("AIGE_LIVE_REVISE");
+    const std::string request = reviseEnv ? reviseEnv : "Put the residential ward below the docks near the river";
+    if (wardId.empty() || !seeds.contains(wardId) || (!reviseEnv && (docksId.empty() || !seeds.contains(docksId)))) {
         report["revise"] = {{"skipped", "the plan has no residential ward or no docks"}};
     } else {
         phase("revise", [&] {
@@ -190,11 +192,14 @@ TEST(LiveTest, PlanAndReviseAVillage) {
             ++others;
             kept += moved.contains(id) && moved.at(id) == seed;
         }
-        const auto ward = moved.at(wardId), docks = moved.at(docksId);
+        const auto ward = moved.at(wardId);
+        const auto docks = moved.contains(docksId) ? moved.at(docksId) : ward;
         const json& revision = build.Revisions().back();
         report["revise"]["request"] = request;
         report["revise"]["summary"] = revision.value("summary", "");
         report["revise"]["notes"] = revision.value("notes", json::array());
+        report["revise"]["now"] = revision.value("now", "");
+        report["revise"]["checks"] = revision.value("checks", json::array());
         report["revise"]["southOfDocks"] = ward.second > docks.second;
         report["revise"]["riverDistance"] = {{"before", ToRiver(before, seeds.at(wardId))}, {"after", ToRiver(after, ward)}};
         report["revise"]["othersKept"] = std::to_string(kept) + " of " + std::to_string(others);

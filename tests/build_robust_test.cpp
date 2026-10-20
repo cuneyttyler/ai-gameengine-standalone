@@ -2,10 +2,12 @@
 #include "places/Brief.h"
 #include "places/PlaceValidate.h"
 #include "places/Planner.h"
+#include "places/Where.h"
 
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <iostream>
 #include <set>
 
 // A build handles its own failures (retries, fallbacks, fixes that need no
@@ -527,4 +529,61 @@ TEST(BuildRobustTest, ARevisionMovesWhatItsAskedToAndKeepsTheRest) {
     // Undo: back where it was.
     ASSERT_EQ(build.Undo(), "");
     EXPECT_EQ(ZoneSeeds(build.Solved()).at("residential-ward"), seeds.at("residential-ward"));
+}
+
+// "Make the residential ward lie along the river on the left side and put
+// farmland to the left of it" (a user's request, October 2026). The AI said it
+// was already so and changed nothing. Now: the AI is shown where things are,
+// the facts it lists are checked on the layout, the zones they're about are
+// placed anew with those relations, and what still doesn't hold is said.
+TEST(BuildRobustTest, ARevisionsSpatialFactsAreCheckedOnTheLayout) {
+    Fixture f("aige_build_where");
+    PlaceBuild build(f.Host());
+    const json off = {{"ok", false}, {"errors", json::array({"No AI provider configured"})}};
+    ASSERT_EQ(build.Start("a village by a river"), "");
+    json brief = {{"buildType", "settlement"}, {"name", "Riverside"}, {"features", json::array({{{"module", "river"}}})},
+                  {"scale", {{"class", "village"}}}, {"walled", "none"},
+                  {"components", {{"residential-ward", {{"enabled", true}}}, {"market-ward", {{"enabled", true}}},
+                                  {"farmland-ring", {{"enabled", true}}}, {"house-plot", {{"enabled", true}}}, {"road", {{"enabled", true}}}}}};
+    f.answered.insert(1);
+    build.OnResponse(1, {{"ok", true}, {"drafts", json::array({{{"reading", "typical"}, {"brief", brief}}})}});
+    f.AnswerAll(build, off);
+    ASSERT_EQ(build.Step("assets"), "");
+    ASSERT_EQ(build.Confirm(), "");
+    f.AnswerAll(build, off); // the plan from the rules
+    ASSERT_EQ(build.Stage(), "plan") << build.State()["status"];
+    json spec = build.Spec();
+    ASSERT_NE(SpecNode(spec, "farmland-ring"), nullptr) << spec.dump().substr(0, 800);
+
+    ASSERT_EQ(build.Revise("make the residential ward lie along the river on the left side and put farmland to the left of it"), "");
+    // The AI was shown the layout as it is.
+    ASSERT_EQ(f.sent.back().first, "/places/revise-plan");
+    const json where = f.sent.back().second["where"];
+    EXPECT_FALSE(where["map"].empty());
+    EXPECT_NE(where["zones"].dump().find("residential-ward"), std::string::npos);
+    // It answers that it's so already, and lists the facts.
+    const json answer = {{"summary", "Both placements were already in the plan."},
+                         {"changes", json::array()},
+                         {"expect", json::array({{{"node", "residential-ward"}, {"type", "along"}, {"to", "river"}},
+                                                 {{"node", "residential-ward"}, {"type", "west-of"}, {"to", "river"}},
+                                                 {{"node", "farmland-ring"}, {"type", "west-of"}, {"to", "residential-ward"}}})}};
+    f.answered.insert(static_cast<int>(f.sent.size()));
+    build.OnResponse(static_cast<int>(f.sent.size()), {{"ok", true}, {"answer", answer}});
+    f.AnswerAll(build, off);
+    ASSERT_EQ(build.Stage(), "plan");
+    const json& revision = build.Revisions().back();
+    ASSERT_TRUE(revision.contains("checks")) << revision.dump();
+    ASSERT_EQ(revision["checks"].size(), 3u);
+    // The report is the layout's truth, and says what wasn't achieved.
+    const json truth = CheckExpectations(build.Solved(), answer["expect"]);
+    bool allOk = true;
+    for (size_t i = 0; i < truth.size(); ++i) {
+        EXPECT_EQ(revision["checks"][i]["ok"], truth[i]["ok"]) << revision["checks"][i].dump();
+        allOk = allOk && truth[i]["ok"].get<bool>();
+    }
+    EXPECT_EQ(revision["summary"].get<std::string>().find("Not achieved") == std::string::npos, allOk) << revision.dump();
+    // Along the river on its west bank: the solver can do that much.
+    EXPECT_TRUE(truth[0]["ok"].get<bool>()) << truth[0].dump();
+    EXPECT_TRUE(truth[1]["ok"].get<bool>()) << truth[1].dump();
+    std::cout << "  checks: " << truth.dump() << "\n";
 }

@@ -7,6 +7,7 @@
 #include "places/PlaceValidate.h"
 #include "places/Planner.h"
 #include "places/Solver.h"
+#include "places/Where.h"
 
 #include <algorithm>
 #include <cctype>
@@ -646,6 +647,7 @@ void PlaceBuild::FinishPlanning() {
     stage_ = solveAfter_ ? "planned" : "plan";
     solveAfter_ = false;
     Solve();
+    MeetExpectations();
     WriteJson(Folder() / "spec.json", spec_);
 }
 
@@ -789,8 +791,17 @@ int PlaceBuild::BriefSide() const {
 
 json PlaceBuild::RevisionBody() const {
     const json input = RevisionInput(host_.ontology(), spec_, solved_);
-    return {{"brief", brief_}, {"plan", input["plan"]}, {"result", input["result"]},
-            {"context", RevisionContext(host_.ontology(), brief_, spec_)}};
+    json body = {{"brief", brief_}, {"plan", input["plan"]}, {"result", input["result"]},
+                 {"context", RevisionContext(host_.ontology(), brief_, spec_)}};
+    if (solved_.is_object()) {
+        // Where everything is now: what a request about place is checked against.
+        std::map<std::string, std::string> names;
+        for (const auto& c : spec_["root"].value("children", json::array())) {
+            if (const ModuleDef* m = host_.ontology().Module(c.value("module", ""))) names[c.value("id", "")] = m->name;
+        }
+        body["where"] = LayoutWhere(solved_, names);
+    }
+    return body;
 }
 
 std::string PlaceBuild::Revise(const std::string& request) {
@@ -840,13 +851,44 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
     const json& answer = body["answer"];
     entry["summary"] = answer.value("summary", "");
     entry["issues"] = answer.value("issues", json::array());
+    if (answer.contains("now") && answer["now"].is_string()) entry["now"] = answer["now"]; // where it read things are
     const json changes = answer.value("changes", json::array());
     const json briefChanges = answer.value("brief", json::object());
-    if (changes.empty() && briefChanges.empty()) {
+    // The spatial facts asked for ("the farmland west of the ward"): the AI's,
+    // and the request's own direction words. They're checked on the layout.
+    expect_ = json::array();
+    {
+        std::set<std::string> seen;
+        auto expectOne = [&](const std::string& node, const std::string& type, const std::string& to) {
+            if (node.empty() || to.empty() || type.empty() || !seen.insert(node + "|" + type + "|" + to).second) return;
+            json probe = spec_;
+            if (!SpecNode(probe, node)) return;
+            expect_.push_back({{"node", node}, {"type", type}, {"to", to}});
+        };
+        for (const auto& e : answer.value("expect", json::array())) {
+            if (!e.is_object()) continue;
+            const std::string node = e.value("node", "");
+            if (!review && !Mentions(what.node, node)) continue;
+            expectOne(node, e.value("type", ""), e.value("to", ""));
+        }
+        if (!review) {
+            for (const auto& r : solved_.value("regions", json::array())) {
+                const std::string zone = r.value("id", "");
+                if (r.value("statement", "") != "site/zones" || !Mentions(what.node, zone)) continue;
+                for (const auto& [type, to] : DirectionsIn(what.node, zone)) expectOne(zone, type, to);
+            }
+        }
+    }
+    const json already = expect_.empty() ? json::array() : CheckExpectations(solved_, expect_);
+    bool allHold = true;
+    for (const auto& c : already) allHold = allHold && c.value("ok", false);
+    if (changes.empty() && briefChanges.empty() && allHold) {
         if (entry["summary"] == "") entry["summary"] = review ? "The map looks right." : "Nothing to change.";
+        if (!already.empty()) entry["checks"] = already;
         revisions_.push_back(entry);
         stage_ = beforeRevision_;
         status_.clear();
+        expect_ = json();
         return;
     }
     // What it was, so Undo can go back.
@@ -905,12 +947,23 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
         }
     }
     for (const auto& p : ApplyRevision(ontology, brief_, spec_, kept)) notes.push_back(p.where + ": " + p.message);
-    // The zones it changed are placed anew; the others keep their place.
+    // Each fact is the request's: a relation of its zone, so the first layout tries it too.
+    for (const auto& e : expect_) {
+        json* node = SpecNode(spec_, e.value("node", ""));
+        if (node == nullptr) continue;
+        if (!node->contains("rel") || !(*node)["rel"].is_array()) (*node)["rel"] = json::array();
+        bool has = false;
+        for (const auto& r : (*node)["rel"]) has = has || (r.value("type", "") == e.value("type", "") && r.value("to", "") == e.value("to", ""));
+        if (!has) (*node)["rel"].push_back({{"type", e["type"]}, {"to", e["to"]}});
+        moving.insert(e.value("node", ""));
+    }
+    // The zones it changed or moves are placed anew; the others keep their place.
     keepSeeds_.clear();
     for (const auto& r : solved_.value("regions", json::array())) {
         if (r.value("statement", "") != "site/zones" || !r.contains("seed") || moving.contains(r.value("id", ""))) continue;
         keepSeeds_[r.value("id", "")] = {r["seed"][0].get<int>(), r["seed"][1].get<int>()};
     }
+    revisionKeep_ = keepSeeds_;
     entry["notes"] = notes;
     revisions_.push_back(entry);
     // The rest as after planning: the expansion, the fixes, the checks; then laid out again.
@@ -921,6 +974,51 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
     planPhase_ = "final";
     status_ = "Applying the changes…";
     FinishPlanning();
+}
+
+void PlaceBuild::MeetExpectations() {
+    if (!expect_.is_array() || expect_.empty()) return;
+    auto failing = [](const json& checks) {
+        json out = json::array();
+        for (const auto& c : checks) {
+            if (!c.value("ok", false)) out.push_back(c);
+        }
+        return out;
+    };
+    json checks = CheckExpectations(solved_, expect_);
+    // Not there yet: those relations count for more, and it's laid out again (twice at most).
+    for (int round = 0; round < 2 && !failing(checks).empty(); ++round) {
+        for (const auto& c : failing(checks)) {
+            json* node = SpecNode(spec_, c.value("node", ""));
+            if (node == nullptr) continue;
+            if (!node->contains("rel") || !(*node)["rel"].is_array()) (*node)["rel"] = json::array();
+            bool found = false;
+            for (auto& r : (*node)["rel"]) {
+                if (r.value("type", "") == c.value("type", "") && r.value("to", "") == c.value("to", "")) {
+                    r["weight"] = r.value("weight", 1.0) * 2.5;
+                    found = true;
+                }
+            }
+            if (!found) (*node)["rel"].push_back({{"type", c["type"]}, {"to", c["to"]}, {"weight", 2.5}});
+        }
+        Log({{"step", "expect"}, {"round", round + 1}, {"failing", failing(checks)}});
+        keepSeeds_ = revisionKeep_;
+        Solve();
+        checks = CheckExpectations(solved_, expect_);
+    }
+    if (!revisions_.empty()) {
+        json& entry = revisions_.back();
+        entry["checks"] = checks;
+        const json missed = failing(checks);
+        if (!missed.empty()) {
+            std::string list;
+            for (const auto& m : missed) list += (list.empty() ? "" : "; ") + m.value("node", "") + " " + m.value("type", "") + " " + m.value("to", "") + " (now: " + m.value("detail", "") + ")";
+            entry["summary"] = entry.value("summary", "") + " Not achieved on the layout: " + list + ".";
+        }
+    }
+    Log({{"step", "expect"}, {"checks", checks}});
+    expect_ = json();
+    revisionKeep_.clear();
 }
 
 std::string PlaceBuild::Undo() {

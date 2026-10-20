@@ -157,6 +157,8 @@ interface Revision {
   by: 'you' | 'review'
   text: string
   summary: string
+  now?: string
+  checks?: { node: string; type: string; to: string; ok: boolean; detail: string }[]
   issues?: string[]
   notes?: string[]
   undo?: number
@@ -565,6 +567,9 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             <li v-for="issue in r.issues" :key="issue">{{ issue }}</li>
           </ul>
           <div><span class="who">AI:</span> {{ r.summary }}<span v-if="r.undone" class="dim"> (undone)</span></div>
+          <div v-for="(c, k) in r.checks ?? []" :key="'c' + k" :class="['small', c.ok ? 'ok' : 'error']">
+            {{ c.ok ? '✓' : '✗' }} {{ c.node }} {{ c.type }} {{ c.to }} <span class="dim">· {{ c.detail }}</span>
+          </div>
           <div v-for="n in r.notes ?? []" :key="n" class="dim small">{{ n }}</div>
         </div>
         <p v-if="stage === 'revising'">{{ state.status }} <button @click="sendToHost({ type: 'build:cancel' })">Stop</button></p>

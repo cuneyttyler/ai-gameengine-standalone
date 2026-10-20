@@ -208,3 +208,17 @@ def test_review_endpoint(tmp_path):
     reply = client.post("/places/review-layout", json=body).json()
     assert reply["ok"] and reply["answer"]["summary"] == "Looks right."
     assert client.post("/places/review-layout", json={**body, "image": "../outside.png"}).json()["ok"] is False
+
+
+def test_revise_sees_where_things_are_and_lists_the_facts():
+    answer = {"now": "the farmland is south of the ward", "summary": "Moved the farmland west.",
+              "changes": [{"op": "move", "node": "farmland-ring", "rel": [{"type": "west-of", "to": "residential-ward"}]}],
+              "expect": [{"node": "farmland-ring", "type": "west-of", "to": "residential-ward"}, {"node": "x"}, "junk"]}
+    provider = ScriptedProvider([json.dumps(answer)])
+    where = {"zones": [{"id": "residential-ward", "river": {"bank": "west"}}], "map": ["AA~~BB", "AA~~BB"], "legend": {"A": "residential-ward"}}
+    result = revise_plan(provider, {}, {}, {}, "put farmland to the left of the ward", {}, mode="one-pass", where=where)
+    assert result["ok"]
+    assert result["answer"]["expect"] == [{"node": "farmland-ring", "type": "west-of", "to": "residential-ward"}]
+    prompt = provider.requests[0][-1]["content"]
+    assert "AA~~BB" in prompt and "WHERE (the layout now)" in prompt
+    assert "left\" is west" in provider.requests[0][0]["content"]

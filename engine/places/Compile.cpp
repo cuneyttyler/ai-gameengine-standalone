@@ -382,7 +382,10 @@ void Compiler::Root(const json& root) {
         // Where it goes among the others: its relations (near the river, south of the docks).
         json rel = json::array();
         for (const auto& r : c.value("rel", json::array())) {
-            if (r.is_object() && r.contains("to") && r["to"].is_string()) rel.push_back({{"type", r.value("type", "near")}, {"to", r["to"]}});
+            if (!r.is_object() || !r.contains("to") || !r["to"].is_string()) continue;
+            json one = {{"type", r.value("type", "near")}, {"to", r["to"]}};
+            if (r.contains("weight") && r["weight"].is_number()) one["weight"] = r["weight"]; // raised when a check failed
+            rel.push_back(one);
         }
         if (!rel.empty()) zone["rel"] = rel;
         if (auto it = options_.keepSeeds.find(c.value("id", "")); it != options_.keepSeeds.end()) {
