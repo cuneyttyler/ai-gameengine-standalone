@@ -1,0 +1,91 @@
+{
+  "schema": "aige.module/1",
+  "id": "biome-zone",
+  "name": "Biome",
+  "level": "zone",
+  "description": "A stretch of one kind of land: forest, plains, hills, swamp, desert or tundra.",
+  "buildTypes": [
+    "region"
+  ],
+  "classes": [
+    "NatureArea"
+  ],
+  "quantity": {
+    "area": {
+      "type": "area",
+      "default": [
+        4000,
+        40000
+      ],
+      "min": 400,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "biome": {
+      "type": "enum",
+      "vocabulary": "biome-kind",
+      "default": "forest",
+      "ask": true
+    }
+  },
+  "slots": {
+    "tree": {
+      "role": "tree",
+      "essential": true,
+      "primary": true
+    },
+    "rock": {
+      "role": "rock",
+      "essential": false
+    },
+    "bush": {
+      "role": "bush",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "fill": {
+      "field": "biome",
+      "values": {
+        "forest": "grass",
+        "plains": "grass",
+        "hills": "grass",
+        "swamp": "mud",
+        "desert": "sand",
+        "tundra": "snow"
+      }
+    },
+    "background": [
+      {
+        "slot": "tree",
+        "density": {
+          "field": "biome",
+          "values": {
+            "forest": 0.18,
+            "plains": 0.01,
+            "hills": 0.03,
+            "swamp": 0.05,
+            "desert": 0.0,
+            "tundra": 0.01
+          }
+        }
+      },
+      {
+        "slot": "rock",
+        "density": {
+          "field": "biome",
+          "values": {
+            "forest": 0.005,
+            "plains": 0.003,
+            "hills": 0.04,
+            "swamp": 0.0,
+            "desert": 0.02,
+            "tundra": 0.02
+          }
+        }
+      }
+    ]
+  }
+}

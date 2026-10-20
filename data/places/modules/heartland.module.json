@@ -1,0 +1,83 @@
+{
+  "schema": "aige.module/1",
+  "id": "heartland",
+  "name": "Heartland",
+  "level": "zone",
+  "description": "The settled land: the region's sites and landmarks, and the roads between them.",
+  "buildTypes": [
+    "region"
+  ],
+  "classes": [
+    "NatureArea"
+  ],
+  "quantity": {
+    "sites": {
+      "type": "count",
+      "default": [
+        3,
+        8
+      ],
+      "min": 0,
+      "max": 80,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        10000,
+        80000
+      ],
+      "min": 400,
+      "unit": "cells²"
+    },
+    "trees": {
+      "type": "density",
+      "levels": [
+        0,
+        0.005,
+        0.015,
+        0.04,
+        0.08
+      ],
+      "unit": "per free cell",
+      "default": "rare"
+    }
+  },
+  "quality": {},
+  "slots": {
+    "tree": {
+      "role": "tree",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "site": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 80,
+      "count": "sites"
+    },
+    "landmark": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 20
+    }
+  },
+  "compile": {
+    "placement": "scattered",
+    "spread": 18,
+    "connect": {
+      "class": "main",
+      "width": 2,
+      "terrain": "dirt",
+      "between": true
+    },
+    "background": [
+      {
+        "slot": "tree",
+        "density": "trees"
+      }
+    ]
+  }
+}

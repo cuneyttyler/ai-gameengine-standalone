@@ -1,0 +1,37 @@
+{
+  "schema": "aige.module/1",
+  "id": "lookout",
+  "name": "Lookout",
+  "level": "feature",
+  "description": "A raised lookout over the camp.",
+  "buildTypes": [
+    "camp"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": 2,
+        "h": 2
+      },
+      "min": {
+        "w": 1,
+        "h": 1
+      },
+      "unit": "cells",
+      "max": {
+        "w": 4,
+        "h": 4
+      }
+    }
+  },
+  "quality": {},
+  "slots": {
+    "lookout": {
+      "role": "lookout",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {}
+}

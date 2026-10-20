@@ -59,5 +59,43 @@
   "Crossing": {
     "label": "Crossing",
     "description": "Carries a path over an obstacle."
+  },
+  "Room": {
+    "label": "Room",
+    "description": "A room of an interior or a dungeon: the unit they are counted in."
+  },
+  "InteriorRoom": {
+    "subClassOf": [
+      "Room"
+    ],
+    "label": "Interior room",
+    "description": "A room of a building."
+  },
+  "DungeonRoom": {
+    "subClassOf": [
+      "Room"
+    ],
+    "label": "Dungeon room",
+    "description": "A room or chamber of a dungeon or cave."
+  },
+  "Level": {
+    "label": "Level",
+    "description": "A floor of a building or a level of a dungeon: laid out on its own, linked by stairs."
+  },
+  "FurnitureGroup": {
+    "label": "Furniture group",
+    "description": "An anchor piece and the pieces around it (a table and its chairs)."
+  },
+  "PointOfInterest": {
+    "label": "Point of interest",
+    "description": "Something worth walking to in the wild: a ruin, a shrine, a cave mouth."
+  },
+  "Site": {
+    "label": "Site",
+    "description": "A place within a region, built later as a place of its own."
+  },
+  "Fortification": {
+    "label": "Fortification",
+    "description": "Walls, towers and gates that defend a place."
   }
 }

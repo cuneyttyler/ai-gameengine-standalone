@@ -1,0 +1,82 @@
+{
+  "schema": "aige.module/1",
+  "id": "ruin-site",
+  "name": "Ruin",
+  "level": "parcel",
+  "description": "Tumbled walls of something old, overgrown.",
+  "buildTypes": [
+    "wilderness",
+    "region"
+  ],
+  "classes": [
+    "PointOfInterest"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          10
+        ],
+        "h": [
+          6,
+          10
+        ]
+      },
+      "min": {
+        "w": 4,
+        "h": 4
+      },
+      "unit": "cells",
+      "max": {
+        "w": 24,
+        "h": 24
+      }
+    }
+  },
+  "quality": {
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "ruined"
+    }
+  },
+  "slots": {
+    "ruin": {
+      "role": "ruin",
+      "essential": true,
+      "primary": true
+    },
+    "rubble": {
+      "role": "rock",
+      "essential": false
+    },
+    "pillar": {
+      "role": "pillar",
+      "essential": false
+    }
+  },
+  "children": {
+    "nature-scatter": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 1
+    }
+  },
+  "compile": {
+    "contents": [
+      {
+        "slot": "rubble",
+        "density": 0.08
+      },
+      {
+        "slot": "pillar",
+        "count": [
+          1,
+          3
+        ]
+      }
+    ]
+  }
+}

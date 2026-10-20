@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <deque>
 #include <limits>
@@ -133,6 +134,18 @@ private:
     std::array<std::vector<int>, kLayers> occ_;   // object index + 1 per layer
     std::vector<uint8_t> road_;                   // street class rank: 0 none, 1 trail, 2 lane, 3 street, 4 main
     std::vector<uint8_t> water_;
+    // Spaces (7.10): rock between a dungeon's rooms, cells kept clear (doorways,
+    // windows), walls on cell edges (interiors), stairs linking cells of two levels.
+    std::vector<uint8_t> solid_;
+    std::vector<uint8_t> keepFree_;
+    std::set<long> wallEdges_;
+    std::vector<std::pair<int, int>> links_;
+    std::map<std::string, std::vector<int>> doorsOf_; // a room's cells at its doors
+    std::map<std::string, int> stairsOf_;             // a floorplan's stairs cell
+    std::vector<json> graphs_;                        // each dungeon level's rooms, edges, keys
+    json connectors_ = json::array();
+    std::map<std::string, std::vector<int>> spreadGroups_; // regions spread apart, by group
+    std::map<std::string, double> msByOp_;                 // time spent per op (stats)
     int Cell(int x, int y) const { return y * W + x; }
     bool In(int x, int y) const { return x >= 0 && y >= 0 && x < W && y < H; }
 
@@ -196,8 +209,21 @@ private:
     void Line(const json& s);
     void Rows(const json& s, int region, bool grid);
     void Scatter(const json& s, int region);
+    void Rooms(const json& s, int region);
+    void Floorplan(const json& s, int region);
+    void Connect(const json& s, int region);
+    void Flood(const json& s, int region);
     json Terrain();
     void Checks();
+    void SpaceChecks(const json& s, json& result);
+    json SpacesJson() const;
+    void RestoreSpaces(const json& previous);
+    void MarkWall(int x, int y, int side);
+    bool Crosses(int a, int b) const;
+    std::vector<uint8_t> Reached(bool throughProps);
+    // Whether a solid thing on these cells leaves a room's floor joined to its doors.
+    bool KeepsWay(int container, int x, int y, int w, int h) const;
+    std::vector<int> Blob(int x, int y, int w, int h, Rng& rng);
 
     // Helpers.
     int AddRegion(const std::string& id, const std::string& node, const std::string& statement, int parent, std::vector<int> cells,
@@ -205,6 +231,7 @@ private:
     int AddObject(Object o);
     bool Free(int cell, int container, bool solid) const;
     std::vector<int> AStar(int from, int to, const std::function<double(int)>& cost);
+    std::vector<int> AStarIn(int from, int to, const std::function<double(int)>& cost, int x0, int y0, int x1, int y1);
     void MarkRoad(const std::vector<int>& cells, int width, uint8_t rank, int container);
     double Score(const std::string& memberId, int x, int y, int w, int h, int container, char facing);
     // A relation member's cells while one object or region is being placed (the other members stay put).
@@ -224,17 +251,15 @@ std::string Solver::ContainerOf(const json& s) const {
             // An instance reference (x[*]) lives where the statement making x does.
             if (const size_t bracket = ref.find('['); bracket != std::string::npos) {
                 const std::string maker = ref.substr(0, bracket);
-                for (const json* t : statements_) {
-                    if (t->value("id", "") == maker && t != &s) return ContainerOf(*t);
-                }
+                if (auto it = statementById_.find(maker); it != statementById_.end() && it->second != &s) return ContainerOf(*it->second);
             }
             // The region a reference names: the longest known prefix.
             while (!ref.empty()) {
                 if (regionById_.contains(ref)) return ref;
-                const auto maker = std::find_if(statements_.begin(), statements_.end(), [&](const json* t) {
-                    return t->value("id", "") == ref;
-                });
-                if (maker != statements_.end()) {
+                // By id (a map: a city has many thousands of statements).
+                const auto found = statementById_.find(ref);
+                const json* const* maker = found != statementById_.end() ? &found->second : nullptr;
+                if (maker != nullptr) {
                     // Next to an object (a house's front): where the object stands,
                     // after it (scatters come after places in a region).
                     const std::string op = (*maker)->value("op", "");
@@ -293,7 +318,8 @@ int Solver::AddObject(Object o) {
 
 bool Solver::Free(int cell, int container, bool solid) const {
     if (container >= 0 && owner_[cell] != container) return false;
-    if (water_[cell]) return false;
+    if (water_[cell] || solid_[cell]) return false;
+    if (solid && keepFree_[cell]) return false;
     if (solid) {
         if (road_[cell] || occ_[kProp][cell] || occ_[kBuilding][cell]) return false;
     }
@@ -528,6 +554,48 @@ double Solver::Score(const std::string& memberId, int x, int y, int w, int h, in
 
 // --- Paths ------------------------------------------------------------------------------------
 
+std::vector<int> Solver::AStarIn(int from, int to, const std::function<double(int)>& cost, int x0, int y0, int x1, int y1) {
+    // Within the window [x0, x1) x [y0, y1) only: arrays of the window's size (a ward's lanes in a city).
+    x0 = std::max(0, x0), y0 = std::max(0, y0), x1 = std::min(W, x1), y1 = std::min(H, y1);
+    const int ww = x1 - x0, wh = y1 - y0;
+    auto local = [&](int c) { return (c / W - y0) * ww + (c % W - x0); };
+    auto inside = [&](int x, int y) { return x >= x0 && y >= y0 && x < x1 && y < y1; };
+    if (ww <= 0 || wh <= 0 || !inside(from % W, from / W) || !inside(to % W, to / W)) return {};
+    std::vector<double> dist(static_cast<size_t>(ww) * wh, std::numeric_limits<double>::infinity());
+    std::vector<int> prev(static_cast<size_t>(ww) * wh, -1);
+    using Item = std::pair<double, int>;
+    std::priority_queue<Item, std::vector<Item>, std::greater<>> open;
+    const int tx = to % W, ty = to / W;
+    dist[local(from)] = 0;
+    open.push({0, from});
+    while (!open.empty()) {
+        const auto [f, c] = open.top();
+        open.pop();
+        if (c == to) break;
+        const int x = c % W, y = c / W;
+        const double g = dist[local(c)];
+        if (f - (std::abs(x - tx) + std::abs(y - ty)) * 0.1 > g + 1e-9) continue;
+        static const int dx[4] = {1, -1, 0, 0}, dy[4] = {0, 0, 1, -1};
+        for (int k = 0; k < 4; ++k) {
+            const int nx = x + dx[k], ny = y + dy[k];
+            if (!inside(nx, ny)) continue;
+            const int n = Cell(nx, ny);
+            const double step = cost(n);
+            if (!std::isfinite(step)) continue;
+            if (g + step < dist[local(n)]) {
+                dist[local(n)] = g + step;
+                prev[local(n)] = c;
+                open.push({dist[local(n)] + (std::abs(nx - tx) + std::abs(ny - ty)) * 0.1, n});
+            }
+        }
+    }
+    std::vector<int> path;
+    if (!std::isfinite(dist[local(to)])) return path;
+    for (int c = to; c != -1; c = prev[local(c)]) path.push_back(c);
+    std::reverse(path.begin(), path.end());
+    return path;
+}
+
 std::vector<int> Solver::AStar(int from, int to, const std::function<double(int)>& cost) {
     std::vector<double> dist(W * H, std::numeric_limits<double>::infinity());
     std::vector<int> prev(W * H, -1);
@@ -687,28 +755,39 @@ void Solver::Network(const json& s, int region) {
     auto serveEveryCell = [&] {
         const int half = std::max(2, spacing / 2);
         const int maxLanes = std::max(1, static_cast<int>(4 * r.cells.size() / (spacing * spacing)));
-        std::vector<float> tie(W * H);
-        for (auto& t : tie) t = static_cast<float>(rng.Unit());
-        for (int laneCount = 0; laneCount < maxLanes; ++laneCount) {
-            std::vector<int> near(W * H, 1 << 20);
-            std::deque<int> todo;
-            for (int c = 0; c < W * H; ++c) {
-                if (road_[c]) {
-                    near[c] = 0;
-                    todo.push_back(c);
-                }
-            }
-            int target = -1;
+        // The zone's window (a margin for the roads round it): the distance field and the lanes' search stay in it.
+        const int wx0 = std::max(0, r.x0 - 2 * spacing), wy0 = std::max(0, r.y0 - 2 * spacing);
+        const int wx1 = std::min(W, r.x1 + 2 * spacing), wy1 = std::min(H, r.y1 + 2 * spacing);
+        auto inWindow = [&](int x, int y) { return x >= wx0 && y >= wy0 && x < wx1 && y < wy1; };
+        std::vector<float> tie(W * H, 0.0f);
+        for (int c : r.cells) tie[c] = static_cast<float>(rng.Unit());
+        // Each cell's distance to the nearest road: from the roads there are, then from each new lane
+        // (distances only ever shrink, so a lane's cells are relaxed from, not the whole field again).
+        std::vector<int> near(W * H, 1 << 20);
+        std::deque<int> todo;
+        auto relax = [&] {
             while (!todo.empty()) {
                 const int c = todo.front();
                 todo.pop_front();
                 for (const auto& [ddx, ddy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
                     const int nx = c % W + ddx, ny = c / W + ddy;
-                    if (!In(nx, ny) || near[Cell(nx, ny)] <= near[c] + 1) continue;
+                    if (!inWindow(nx, ny) || near[Cell(nx, ny)] <= near[c] + 1) continue;
                     near[Cell(nx, ny)] = near[c] + 1;
                     todo.push_back(Cell(nx, ny));
                 }
             }
+        };
+        for (int y = wy0; y < wy1; ++y) {
+            for (int x = wx0; x < wx1; ++x) {
+                if (road_[Cell(x, y)]) {
+                    near[Cell(x, y)] = 0;
+                    todo.push_back(Cell(x, y));
+                }
+            }
+        }
+        relax();
+        for (int laneCount = 0; laneCount < maxLanes; ++laneCount) {
+            int target = -1;
             int p = -1;
             for (int c : r.cells) {
                 if (!inZone(c) || road_[c]) continue;
@@ -726,14 +805,30 @@ void Solver::Network(const json& s, int region) {
                 if (next == target) break;
                 target = next;
             }
-            auto lane = AStar(p, target, [&](int c) -> double {
+            auto lane = AStarIn(p, target, [&](int c) -> double {
                 if (water_[c] || occ_[kBuilding][c]) return std::numeric_limits<double>::infinity();
                 if (road_[c]) return 0.1;
                 const double alongside = near[c] < half ? 3.0 * (half - near[c]) / half : 0.0;
                 return (inZone(c) ? 1.0 : 4.0) + 0.6 * rng.Unit() + alongside;
-            });
+            }, wx0, wy0, wx1, wy1);
+            if (lane.empty()) break;
             MarkRoad(lane, 1, rank, -1);
             streets.insert(streets.end(), lane.begin(), lane.end());
+            for (int c = 0; c < static_cast<int>(lane.size()); ++c) {
+                // The lane's cells (and what MarkRoad widened round them) are roads now.
+                const int x = lane[c] % W, y = lane[c] / W;
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        if (!inWindow(x + dx, y + dy)) continue;
+                        const int n = Cell(x + dx, y + dy);
+                        if (road_[n] && near[n] != 0) {
+                            near[n] = 0;
+                            todo.push_back(n);
+                        }
+                    }
+                }
+            }
+            relax();
         }
     };
     if (style == "grid") {
@@ -1298,7 +1393,9 @@ void Solver::NestedRegion(const json& s, int container) {
         std::vector<int> cells;
         for (int y = at[1].get<int>(); y < at[1].get<int>() + fh.hi; ++y) {
             for (int x = at[0].get<int>(); x < at[0].get<int>() + fw.hi; ++x) {
-                if (In(x, y) && owner_[Cell(x, y)] == container && !road_[Cell(x, y)] && !water_[Cell(x, y)]) cells.push_back(Cell(x, y));
+                // Roads stay out of a drawn part, unless it's laid over them (a castle's moat and ward).
+                const bool overRoads = s.value("overRoads", false);
+                if (In(x, y) && owner_[Cell(x, y)] == container && (overRoads || !road_[Cell(x, y)]) && !water_[Cell(x, y)]) cells.push_back(Cell(x, y));
             }
         }
         if (cells.empty()) {
@@ -1314,6 +1411,8 @@ void Solver::NestedRegion(const json& s, int container) {
     const IntRange fh = RangeOf(s.value("size", json::object()).value("h", json()), 4);
     int w = rng.Range(fw.lo, fw.hi), h = rng.Range(fh.lo, fh.hi);
     const std::string id = s.value("id", "");
+    const double spread = s.value("spread", 0.0);
+    const std::string group = s.value("group", "");
     // Shrink until it fits, within its own minimum (the plot may be smaller than the module's default).
     for (int attempt = 0; attempt < 6; ++attempt) {
         std::vector<int> sat((W + 1) * (H + 1), 0);
@@ -1332,7 +1431,18 @@ void Solver::NestedRegion(const json& s, int container) {
                 const int free = sat[(y + h) * (W + 1) + x + w] - sat[y * (W + 1) + x + w] - sat[(y + h) * (W + 1) + x] + sat[y * (W + 1) + x];
                 if (free != w * h) continue;
                 if (++tried > options_.maxCandidates) break;
-                const double score = Score(id, x, y, w, h, container, 's') + 0.001 * rng.Unit();
+                double score = Score(id, x, y, w, h, container, 's') + 0.001 * rng.Unit();
+                if (spread > 0) {
+                    // Away from the group's others (and the container's edge), up to `spread` cells.
+                    double nearest = spread;
+                    for (int other : spreadGroups_[group]) {
+                        const Region& g = regions_[other];
+                        const double dx = std::max({0, g.x0 - (x + w), x - g.x1}), dy = std::max({0, g.y0 - (y + h), y - g.y1});
+                        nearest = std::min(nearest, std::max(dx, dy));
+                    }
+                    const double edge = std::min({x - parent.x0, y - parent.y0, parent.x1 - (x + w), parent.y1 - (y + h)});
+                    score += 2.0 * nearest / spread + 0.5 * std::min(1.0, edge / std::max(1.0, spread / 2));
+                }
                 if (score > best) {
                     best = score;
                     bx = x;
@@ -1348,6 +1458,7 @@ void Solver::NestedRegion(const json& s, int container) {
             const int index = AddRegion(id, s.value("node", ""), id, container, cells, s.value("module", ""));
             regions_[index].facing = regions_[container].facing;
             instancesOf_[id] = 1;
+            if (!group.empty()) spreadGroups_[group].push_back(index);
             return;
         }
         w = std::max(1, w - 1);
@@ -1420,7 +1531,18 @@ void Solver::Place(const json& s, int container) {
             // Anywhere it fits, by the relations' scores (or the centre, if asked).
             double best = -1e18;
             int tried = 0;
-            const bool centre = s.value("position", "") == "center";
+            const std::string position = s.value("position", "");
+            const bool centre = position == "center";
+            std::vector<std::tuple<double, int, int>> candidates;
+            // The cells a "gate" stands by: the road where it crosses the container's border.
+            std::vector<int> gateCells;
+            if (position == "gate") {
+                for (int c : parent.cells) {
+                    const int px = c % W, py = c / W;
+                    if (road_[c] && (px == parent.x0 || py == parent.y0 || px == parent.x1 - 1 || py == parent.y1 - 1)) gateCells.push_back(c);
+                }
+            }
+            const auto doorIt = doorsOf_.find(parent.id);
             for (int y = parent.y0; y + h <= parent.y1; ++y) {
                 for (int x = parent.x0; x + w <= parent.x1; ++x) {
                     bool fits = true;
@@ -1437,12 +1559,45 @@ void Solver::Place(const json& s, int container) {
                     if (centre) {
                         score -= std::hypot(x + w / 2.0 - (parent.x0 + parent.x1) / 2.0, y + h / 2.0 - (parent.y0 + parent.y1) / 2.0);
                     }
-                    score += 0.001 * rng.Unit();
-                    if (score > best) {
-                        best = score;
-                        at = std::pair{x, y};
+                    const int toEdge = std::min({x - parent.x0, y - parent.y0, parent.x1 - (x + w), parent.y1 - (y + h)});
+                    double fromDoor = 0;
+                    if (doorIt != doorsOf_.end()) {
+                        fromDoor = 1e9;
+                        for (int c : doorIt->second) fromDoor = std::min(fromDoor, std::hypot(c % W - (x + w / 2.0), c / W - (y + h / 2.0)));
                     }
+                    if (position == "corners") {
+                        // Object k at corner k: the container's corners in turn.
+                        const int corner = k % 4;
+                        const double tx = corner == 1 || corner == 2 ? parent.x1 - w : parent.x0, ty = corner >= 2 ? parent.y1 - h : parent.y0;
+                        score -= std::hypot(x - tx, y - ty);
+                    } else if (position == "gate" && !gateCells.empty()) {
+                        double d = 1e9;
+                        for (int c : gateCells) d = std::min(d, std::hypot(c % W - (x + w / 2.0), c / W - (y + h / 2.0)));
+                        score -= d;
+                    } else if (position == "wall") {
+                        score -= toEdge * 2.0;
+                    } else if (position == "far-wall") {
+                        score -= toEdge * 2.0;
+                        score += 0.5 * std::min(fromDoor, 12.0);
+                    } else if (position == "corner") {
+                        const int toX = std::min(x - parent.x0, parent.x1 - (x + w)), toY = std::min(y - parent.y0, parent.y1 - (y + h));
+                        score -= (toX + toY) * 1.5;
+                    } else if (position == "facing-door") {
+                        score -= std::abs(std::min(fromDoor, 12.0) - 2.0) + toEdge * 0.2;
+                    }
+                    score += 0.001 * rng.Unit();
+                    candidates.push_back({score, x, y});
                 }
+            }
+            // The best that leaves the room's floor joined to its doors (a room's own rule).
+            std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) { return std::get<0>(a) > std::get<0>(b); });
+            int checked = 0;
+            for (const auto& [score, cx, cy] : candidates) {
+                if (solid && ++checked <= 60 && !KeepsWay(container, cx, cy, w, h)) continue;
+                if (solid && checked > 60) break;
+                best = score;
+                at = std::pair{cx, cy};
+                break;
             }
         }
         if (!at) {
@@ -1675,8 +1830,18 @@ void Solver::Scatter(const json& s, int container) {
         }
     }
     std::vector<int> free;
+    const bool own = s.value("own", false);
+    std::vector<int> near;
+    if (s.contains("near") && s["near"].is_string()) near = Cells(s["near"].get<std::string>());
+    const int radius = s.value("radius", 2);
     for (int c : area) {
         if (doors.contains(c)) continue;
+        if (own && owner_[c] != container) continue;
+        if (!near.empty()) {
+            bool close = false;
+            for (int n : near) close = close || (std::abs(n % W - c % W) <= radius && std::abs(n / W - c / W) <= radius);
+            if (!close) continue;
+        }
         if (Free(c, -1, true) && !occ_[layer][c] && (!solid || (!occ_[kProp][c] && !occ_[kBuilding][c]))) free.push_back(c);
     }
     const double density = std::clamp(s.value("density", 0.1), 0.0, 1.0);
@@ -1685,6 +1850,7 @@ void Solver::Scatter(const json& s, int container) {
         const IntRange count = RangeOf(s["count"], 1);
         target = std::min(static_cast<int>(free.size()), rng.Range(count.lo, count.hi)); // so many, not a share
     }
+    target = std::max(target, std::min(static_cast<int>(free.size()), s.value("min", 0)));
     const int spacing = std::max(0, RangeOf(s.value("spacing", json::object()).value("min", json()), solid ? 1 : 0).lo);
     for (size_t i = free.size(); i > 1; --i) std::swap(free[i - 1], free[rng.Next() % i]);
     std::vector<int> placed;
@@ -1700,6 +1866,7 @@ void Solver::Scatter(const json& s, int container) {
     for (int c : free) {
         if (made >= target) break;
         if (blocked[c]) continue;
+        if (solid && owner_[c] >= 0 && !KeepsWay(owner_[c], c % W, c / W, 1, 1)) continue;
         Object o;
         o.id = id + "[" + std::to_string(made) + "]";
         o.statement = id;
@@ -1731,18 +1898,1005 @@ void Solver::Scatter(const json& s, int container) {
     instancesOf_[id] = made;
 }
 
+// --- Spaces: dungeons, caves and interiors (7.10) ------------------------------------------------
+
+long EdgeKey(int x, int y, int side) { return (static_cast<long>(y) * 65536L + x) * 2 + side; }
+
+void Solver::MarkWall(int x, int y, int side) { wallEdges_.insert(EdgeKey(x, y, side)); }
+
+bool Solver::KeepsWay(int container, int x, int y, int w, int h) const {
+    if (container < 0) return true;
+    const Region& r = regions_[container];
+    const auto doors = doorsOf_.find(r.id);
+    if (doors == doorsOf_.end() || doors->second.empty() || !ontology_.IsA(r.module, "Room")) return true;
+    auto open = [&](int c) {
+        const int cx = c % W, cy = c / W;
+        if (cx >= x && cy >= y && cx < x + w && cy < y + h) return false;
+        return owner_[c] == container && !occ_[kProp][c] && !occ_[kBuilding][c] && !solid_[c];
+    };
+    int total = 0;
+    for (int c : r.cells) total += open(c);
+    std::vector<int> todo;
+    std::set<int> seen;
+    for (int d : doors->second) {
+        if (open(d) && seen.insert(d).second) todo.push_back(d);
+    }
+    if (todo.empty()) return false; // it would stand in the doorway
+    for (size_t k = 0; k < todo.size(); ++k) {
+        const int c = todo[k];
+        for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+            if (!In(c % W + dx, c / W + dy)) continue;
+            const int n = Cell(c % W + dx, c / W + dy);
+            if (seen.contains(n) || !open(n) || Crosses(c, n)) continue;
+            seen.insert(n);
+            todo.push_back(n);
+        }
+    }
+    // Every door joined to the others, and no floor cut off.
+    bool doorsJoined = true;
+    for (int d : doors->second) doorsJoined = doorsJoined && (seen.contains(d) || !open(d));
+    return doorsJoined && static_cast<int>(seen.size()) == total;
+}
+
+bool Solver::Crosses(int a, int b) const {
+    if (wallEdges_.empty()) return false;
+    const int ax = a % W, ay = a / W, bx = b % W, by = b / W;
+    if (ay == by) return wallEdges_.contains(EdgeKey(std::max(ax, bx), ay, 1)); // the west edge of the right one
+    return wallEdges_.contains(EdgeKey(ax, std::max(ay, by), 0));              // the north edge of the lower one
+}
+
+std::vector<uint8_t> Solver::Reached(bool throughProps) {
+    std::vector<uint8_t> walk(W * H, 0), seen(W * H, 0);
+    for (int c = 0; c < W * H; ++c) {
+        walk[c] = (!water_[c] || road_[c]) && !solid_[c] && !occ_[kBuilding][c] && (throughProps || !occ_[kProp][c]);
+    }
+    std::deque<int> todo;
+    for (const auto& [id, a] : anchors_) {
+        if ((a.kind == "entrance" || a.kind == "gate") && a.cell >= 0) {
+            seen[a.cell] = 1;
+            todo.push_back(a.cell);
+        }
+    }
+    std::multimap<int, int> links;
+    for (const auto& [a, b] : links_) {
+        links.insert({a, b});
+        links.insert({b, a});
+    }
+    while (!todo.empty()) {
+        const int c = todo.front();
+        todo.pop_front();
+        for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+            const int nx = c % W + dx, ny = c / W + dy;
+            if (!In(nx, ny)) continue;
+            const int n = Cell(nx, ny);
+            if (seen[n] || !walk[n] || Crosses(c, n)) continue;
+            seen[n] = 1;
+            todo.push_back(n);
+        }
+        auto [lo, hi] = links.equal_range(c);
+        for (auto it = lo; it != hi; ++it) {
+            if (!seen[it->second]) {
+                seen[it->second] = 1;
+                todo.push_back(it->second);
+            }
+        }
+    }
+    return seen;
+}
+
+// A room of a dungeon level: a rectangle, or a cave's blob inside one.
+std::vector<int> Solver::Blob(int x, int y, int w, int h, Rng& rng) {
+    std::vector<uint8_t> on(static_cast<size_t>(w) * h, 0);
+    const double cx = (w - 1) / 2.0, cy = (h - 1) / 2.0;
+    for (int j = 0; j < h; ++j) {
+        for (int i = 0; i < w; ++i) {
+            const double dx = (i - cx) / std::max(1.0, w / 2.0), dy = (j - cy) / std::max(1.0, h / 2.0);
+            on[j * w + i] = dx * dx + dy * dy <= 0.75 + 0.45 * rng.Unit();
+        }
+    }
+    // Two rounds of smoothing (cellular automata): a cell with 5 or more open neighbours opens.
+    for (int round = 0; round < 2; ++round) {
+        std::vector<uint8_t> next = on;
+        for (int j = 0; j < h; ++j) {
+            for (int i = 0; i < w; ++i) {
+                int n = 0;
+                for (int dj = -1; dj <= 1; ++dj) {
+                    for (int di = -1; di <= 1; ++di) {
+                        if ((di || dj) && i + di >= 0 && j + dj >= 0 && i + di < w && j + dj < h) n += on[(j + dj) * w + i + di];
+                    }
+                }
+                next[j * w + i] = n >= 5 || (on[j * w + i] && n >= 4);
+            }
+        }
+        on = next;
+    }
+    // The largest connected piece.
+    std::vector<int> best, label(on.size(), -1);
+    for (size_t start = 0; start < on.size(); ++start) {
+        if (!on[start] || label[start] >= 0) continue;
+        std::vector<int> piece;
+        std::deque<int> todo = {static_cast<int>(start)};
+        label[start] = static_cast<int>(start);
+        while (!todo.empty()) {
+            const int k = todo.front();
+            todo.pop_front();
+            piece.push_back(k);
+            const int i = k % w, j = k / w;
+            for (const auto& [di, dj] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                if (i + di < 0 || j + dj < 0 || i + di >= w || j + dj >= h) continue;
+                const int n = (j + dj) * w + i + di;
+                if (on[n] && label[n] < 0) {
+                    label[n] = static_cast<int>(start);
+                    todo.push_back(n);
+                }
+            }
+        }
+        if (piece.size() > best.size()) best = piece;
+    }
+    std::vector<int> cells;
+    if (static_cast<int>(best.size()) * 2 < w * h) { // too ragged: the rectangle
+        for (int j = 0; j < h; ++j) {
+            for (int i = 0; i < w; ++i) cells.push_back(Cell(x + i, y + j));
+        }
+        return cells;
+    }
+    for (int k : best) cells.push_back(Cell(x + k % w, y + k / w));
+    return cells;
+}
+
+void Solver::Rooms(const json& s, int container) {
+    Rng rng = StreamFor(s);
+    const Region parent = regions_[container];
+    const std::string id = s.value("id", "");
+    const bool cave = s.value("style", "rooms") == "cave";
+    const std::string start = s.value("start", ""), goal = s.value("goal", "");
+    struct Room {
+        std::string id, node, module;
+        int x = 0, y = 0, w = 0, h = 0, region = -1;
+        bool secret = false, cave = false;
+        double cx() const { return x + w / 2.0; }
+        double cy() const { return y + h / 2.0; }
+    };
+    std::vector<Room> rooms;
+    for (const auto& r : s.value("into", json::array())) {
+        Room room;
+        room.id = r.value("id", "");
+        room.node = r.value("node", "");
+        room.module = r.value("module", "");
+        room.secret = r.value("secret", false) && room.id != start && room.id != goal;
+        room.cave = cave || r.value("cave", false);
+        const IntRange w = RangeOf(r.value("size", json::object()).value("w", json()), 5);
+        const IntRange h = RangeOf(r.value("size", json::object()).value("h", json()), 5);
+        room.w = rng.Range(w.lo, w.hi);
+        room.h = rng.Range(h.lo, h.hi);
+        rooms.push_back(room);
+    }
+    // The start first (near the west side), the goal next (far from it), then the largest.
+    std::stable_sort(rooms.begin(), rooms.end(), [&](const Room& a, const Room& b) {
+        auto rank = [&](const Room& r) { return r.id == start ? 0 : r.id == goal ? 1 : r.secret ? 3 : 2; };
+        if (rank(a) != rank(b)) return rank(a) < rank(b);
+        return a.w * a.h > b.w * b.h;
+    });
+    std::vector<uint8_t> taken(W * H, 0); // rooms and their margins
+    const int margin = cave ? 1 : 2;
+    int made = 0;
+    for (auto& room : rooms) {
+        bool placed = false;
+        for (int shrink = 0; shrink < 4 && !placed; ++shrink) {
+            const int w = std::max(3, room.w - shrink), h = std::max(3, room.h - shrink);
+            double best = -1e18;
+            int bx = -1, by = -1, tried = 0;
+            for (int y = parent.y0 + 1; y + h <= parent.y1 - 1; ++y) {
+                for (int x = parent.x0 + 1; x + w <= parent.x1 - 1; ++x) {
+                    bool fits = true;
+                    for (int yy = y; fits && yy < y + h; ++yy) {
+                        for (int xx = x; fits && xx < x + w; ++xx) fits = !taken[Cell(xx, yy)] && owner_[Cell(xx, yy)] == container;
+                    }
+                    if (!fits) continue;
+                    if (++tried > options_.maxCandidates) break;
+                    double score = 0.01 * rng.Unit();
+                    const double cx = x + w / 2.0, cy = y + h / 2.0;
+                    if (room.id == start) {
+                        score -= cx - parent.x0 + std::abs(cy - (parent.y0 + parent.y1) / 2.0) * 0.3;
+                    } else {
+                        // Near the rooms so far, but not on top of them: a compact level.
+                        double nearest = 1e9;
+                        for (const auto& other : rooms) {
+                            if (other.region < 0) continue;
+                            nearest = std::min(nearest, std::hypot(other.cx() - cx, other.cy() - cy));
+                        }
+                        score -= std::abs(nearest - (w + h) * 0.9);
+                        if (room.id == goal && !rooms.empty() && rooms.front().region >= 0) {
+                            score += 0.6 * std::hypot(rooms.front().cx() - cx, rooms.front().cy() - cy); // far from the start
+                        }
+                    }
+                    if (score > best) best = score, bx = x, by = y;
+                }
+            }
+            if (bx < 0) continue;
+            room.x = bx, room.y = by, room.w = w, room.h = h;
+            std::vector<int> cells = room.cave ? Blob(bx, by, w, h, rng) : std::vector<int>{};
+            if (!room.cave) {
+                for (int yy = by; yy < by + h; ++yy) {
+                    for (int xx = bx; xx < bx + w; ++xx) cells.push_back(Cell(xx, yy));
+                }
+            }
+            for (int yy = by - margin; yy < by + h + margin; ++yy) {
+                for (int xx = bx - margin; xx < bx + w + margin; ++xx) {
+                    if (In(xx, yy)) taken[Cell(xx, yy)] = 1;
+                }
+            }
+            room.region = AddRegion(room.id, room.node, id, container, cells, room.module);
+            placed = true;
+            ++made;
+        }
+        if (!placed) Problem("S-UNSAT", s, "no room for " + room.id + " in " + parent.id);
+    }
+    std::vector<int> placedRooms;
+    for (int k = 0; k < static_cast<int>(rooms.size()); ++k) {
+        if (rooms[k].region >= 0) placedRooms.push_back(k);
+    }
+    instancesOf_[id] = made;
+    if (placedRooms.empty()) return;
+
+    // The space graph: a spanning tree from the start (Prim), loops, secrets last as leaves.
+    struct Edge {
+        int a, b;
+        double length;
+    };
+    std::vector<Edge> edges;
+    auto dist = [&](int a, int b) { return std::hypot(rooms[a].cx() - rooms[b].cx(), rooms[a].cy() - rooms[b].cy()); };
+    std::vector<uint8_t> inTree(rooms.size(), 0);
+    inTree[placedRooms.front()] = 1;
+    double treeLength = 0;
+    for (bool grew = true; grew;) {
+        grew = false;
+        double best = 1e18;
+        int ba = -1, bb = -1;
+        for (int a : placedRooms) {
+            if (!inTree[a] || rooms[a].secret) continue;
+            for (int b : placedRooms) {
+                if (inTree[b] || rooms[b].secret) continue;
+                if (dist(a, b) < best) best = dist(a, b), ba = a, bb = b;
+            }
+        }
+        if (ba >= 0) {
+            inTree[bb] = 1;
+            edges.push_back({ba, bb, best});
+            treeLength += best;
+            grew = true;
+        }
+    }
+    const int treeEdges = static_cast<int>(edges.size());
+    // Loops: the shortest edges not in the tree, not much longer than the tree's own.
+    {
+        std::vector<Edge> extra;
+        for (size_t i = 0; i < placedRooms.size(); ++i) {
+            for (size_t j = i + 1; j < placedRooms.size(); ++j) {
+                const int a = placedRooms[i], b = placedRooms[j];
+                if (rooms[a].secret || rooms[b].secret) continue;
+                const bool there = std::any_of(edges.begin(), edges.end(), [&](const Edge& e) { return (e.a == a && e.b == b) || (e.a == b && e.b == a); });
+                if (!there) extra.push_back({a, b, dist(a, b)});
+            }
+        }
+        std::sort(extra.begin(), extra.end(), [](const Edge& x, const Edge& y) { return x.length < y.length; });
+        const double average = treeEdges > 0 ? treeLength / treeEdges : 1e9;
+        int loops = s.value("loops", 1);
+        for (const auto& e : extra) {
+            if (loops <= 0) break;
+            if (e.length > average * 1.6) break;
+            edges.push_back(e);
+            --loops;
+        }
+    }
+    for (int k : placedRooms) {
+        if (!rooms[k].secret) continue;
+        int nearest = -1;
+        for (int other : placedRooms) {
+            if (other != k && !rooms[other].secret && (nearest < 0 || dist(k, other) < dist(k, nearest))) nearest = other;
+        }
+        if (nearest >= 0) edges.push_back({nearest, k, dist(nearest, k)});
+    }
+
+    // The corridors: from a door cell just outside one room to one just outside the other.
+    std::vector<uint8_t> corridor(W * H, 0);
+    std::vector<float> noise(W * H);
+    for (auto& n : noise) n = static_cast<float>(rng.Unit());
+    auto roomAt = [&](int c) {
+        const int o = owner_[c];
+        for (int k : placedRooms) {
+            if (rooms[k].region == o) return k;
+        }
+        return -1;
+    };
+    // The cell outside room a's border nearest to point (px, py), with the border cell inside it.
+    auto doorOf = [&](int a, double px, double py) -> std::pair<int, int> {
+        double best = 1e18;
+        std::pair<int, int> out{-1, -1};
+        for (int c : regions_[rooms[a].region].cells) {
+            const int x = c % W, y = c / W;
+            for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                if (!In(x + dx, y + dy)) continue;
+                const int n = Cell(x + dx, y + dy);
+                if (owner_[n] != container || roomAt(n) >= 0) continue;
+                if (x + dx <= parent.x0 || y + dy <= parent.y0 || x + dx >= parent.x1 - 1 || y + dy >= parent.y1 - 1) continue;
+                const double d = std::hypot(x + dx + 0.5 - px, y + dy + 0.5 - py);
+                if (d < best) best = d, out = {n, c};
+            }
+        }
+        return out;
+    };
+    json graph = {{"statement", id}, {"node", s.value("node", "")}, {"start", start}, {"goal", goal}, {"rooms", json::array()}, {"edges", json::array()}};
+    for (int k : placedRooms) graph["rooms"].push_back({{"id", rooms[k].id}, {"secret", rooms[k].secret}});
+    int connectorIndex = 0;
+    for (size_t e = 0; e < edges.size(); ++e) {
+        const int a = edges[e].a, b = edges[e].b;
+        const auto [outA, inA] = doorOf(a, rooms[b].cx(), rooms[b].cy());
+        const auto [outB, inB] = doorOf(b, rooms[a].cx(), rooms[a].cy());
+        if (outA < 0 || outB < 0) continue;
+        auto cost = [&](int c) -> double {
+            if (owner_[c] != container) return std::numeric_limits<double>::infinity();
+            const int x = c % W, y = c / W;
+            if (x <= parent.x0 || y <= parent.y0 || x >= parent.x1 - 1 || y >= parent.y1 - 1) return std::numeric_limits<double>::infinity();
+            if (corridor[c]) return 0.4;
+            // Beside a room that isn't one of the two: a corridor skirts it.
+            for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                if (!In(x + dx, y + dy)) continue;
+                const int k = roomAt(Cell(x + dx, y + dy));
+                if (k >= 0 && k != a && k != b) return 6.0;
+            }
+            return 1.0 + (cave ? 2.5 : 0.25) * noise[c];
+        };
+        const auto path = AStar(outA, outB, cost);
+        if (path.empty()) {
+            Problem("S-UNSAT", s, "no way between " + rooms[a].id + " and " + rooms[b].id);
+            continue;
+        }
+        for (int c : path) corridor[c] = 1;
+        // The doors: at each end, where the corridor meets the room.
+        const bool secret = rooms[a].secret || rooms[b].secret;
+        const std::string kind = secret ? "secret-passage" : cave ? "opening" : "door";
+        int k = 0;
+        for (const auto& [out, in] : {std::pair{outA, inA}, std::pair{outB, inB}}) {
+            const std::string connector = id + "/c" + std::to_string(connectorIndex++);
+            connectors_.push_back({{"id", connector}, {"statement", id}, {"node", s.value("node", "")}, {"kind", kind},
+                                   {"from", rooms[k == 0 ? a : b].id}, {"to", rooms[k == 0 ? b : a].id}, {"edge", static_cast<int>(e)},
+                                   {"cell", {out % W, out / W}}, {"inside", {in % W, in / W}}});
+            keepFree_[out] = keepFree_[in] = 1;
+            doorsOf_[rooms[k == 0 ? a : b].id].push_back(in);
+            ++k;
+        }
+        graph["edges"].push_back({{"a", rooms[a].id}, {"b", rooms[b].id}, {"kind", kind}, {"tree", static_cast<int>(e) < treeEdges}});
+    }
+    std::vector<int> corridorCells;
+    for (int c = 0; c < W * H; ++c) {
+        if (corridor[c]) corridorCells.push_back(c);
+    }
+    if (!corridorCells.empty()) AddRegion(id + "/corridors", s.value("node", ""), id, container, corridorCells);
+    // Everything else in the level is rock.
+    for (int c : parent.cells) {
+        if (owner_[c] == container) solid_[c] = 1;
+    }
+
+    // The mission: locks on the way from the start to the goal, each key before its lock.
+    std::map<std::string, std::vector<std::pair<std::string, int>>> adjacent; // room -> (room, edge)
+    for (size_t e = 0; e < graph["edges"].size(); ++e) {
+        const json& edge = graph["edges"][e];
+        if (edge["kind"] == "secret-passage") continue;
+        adjacent[edge["a"]].push_back({edge["b"], static_cast<int>(e)});
+        adjacent[edge["b"]].push_back({edge["a"], static_cast<int>(e)});
+    }
+    auto bfs = [&](const std::set<int>& closed) {
+        std::map<std::string, int> depth;
+        std::map<std::string, std::pair<std::string, int>> prev;
+        std::deque<std::string> todo;
+        if (start.empty() || !regionById_.contains(start)) return std::pair{depth, prev};
+        depth[start] = 0;
+        todo.push_back(start);
+        while (!todo.empty()) {
+            const std::string r = todo.front();
+            todo.pop_front();
+            for (const auto& [n, e] : adjacent[r]) {
+                if (closed.contains(e) || depth.contains(n)) continue;
+                depth[n] = depth[r] + 1;
+                prev[n] = {r, e};
+                todo.push_back(n);
+            }
+        }
+        return std::pair{depth, prev};
+    };
+    const int locks = std::max(0, s.value("locks", 0));
+    json keys = json::array();
+    if (locks > 0 && !goal.empty()) {
+        const auto [depth, prev] = bfs({});
+        std::vector<int> pathEdges;
+        std::set<std::string> onPath;
+        for (std::string r = goal; prev.contains(r); r = prev.at(r).first) {
+            pathEdges.push_back(prev.at(r).second);
+            onPath.insert(r);
+        }
+        onPath.insert(start);
+        std::reverse(pathEdges.begin(), pathEdges.end());
+        // Evenly along the way, never the first step out of the start.
+        std::vector<int> lockEdges;
+        const int n = static_cast<int>(pathEdges.size());
+        for (int k = 0; k < locks && n >= 2; ++k) {
+            const int at = std::clamp((k + 1) * n / (locks + 1), 1, n - 1);
+            if (std::find(lockEdges.begin(), lockEdges.end(), pathEdges[at]) == lockEdges.end()) lockEdges.push_back(pathEdges[at]);
+        }
+        std::set<std::string> holding;
+        for (size_t k = 0; k < lockEdges.size(); ++k) {
+            std::set<int> closed(lockEdges.begin() + static_cast<long>(k), lockEdges.end());
+            const auto [reach, unused] = bfs(closed);
+            (void)unused;
+            // The key: the deepest room reachable before this lock, off the main way if there's one.
+            std::string best;
+            double bestScore = -1;
+            for (const auto& [r, d] : reach) {
+                if (holding.contains(r)) continue;
+                const double score = d + (onPath.contains(r) ? 0 : 100) + (r == start ? -50 : 0);
+                if (score > bestScore) bestScore = score, best = r;
+            }
+            if (best.empty()) best = start;
+            holding.insert(best);
+            const int e = lockEdges[k];
+            graph["edges"][e]["kind"] = "locked-door";
+            graph["edges"][e]["key"] = id + "/key" + std::to_string(k);
+            for (auto& c : connectors_) {
+                if (c.value("statement", "") == id && c.value("edge", -1) == e) {
+                    c["kind"] = "locked-door";
+                    c["key"] = id + "/key" + std::to_string(k);
+                }
+            }
+            keys.push_back({{"id", id + "/key" + std::to_string(k)}, {"room", best}, {"edge", e}});
+        }
+    }
+    graph["keys"] = keys;
+    // The doors, keys and the way in, as objects and anchors.
+    const std::string node = s.value("node", "");
+    for (const auto& c : connectors_) {
+        if (c.value("statement", "") != id || c.value("kind", "") == "opening") continue;
+        const std::string kind = c.value("kind", "door");
+        const std::string slot = s.value(kind == "locked-door" ? "lockedSlot" : kind == "secret-passage" ? "secretSlot" : "doorSlot", "door");
+        Object o;
+        o.id = c.value("id", "");
+        o.statement = id;
+        o.node = node;
+        o.slot = slot;
+        o.x = c["cell"][0].get<int>();
+        o.y = c["cell"][1].get<int>();
+        const int dx = c["inside"][0].get<int>() - o.x, dy = c["inside"][1].get<int>() - o.y;
+        o.facing = dx > 0 ? 'e' : dx < 0 ? 'w' : dy > 0 ? 's' : 'n';
+        o.layer = kDecal;
+        AddObject(o);
+    }
+    for (const auto& k : keys) {
+        const int r = RegionIndex(k.value("room", ""));
+        if (r < 0) continue;
+        // The free cell nearest the room's middle.
+        const double mx = (regions_[r].x0 + regions_[r].x1) / 2.0, my = (regions_[r].y0 + regions_[r].y1) / 2.0;
+        int best = -1;
+        double bestD = 1e18;
+        for (int c : regions_[r].cells) {
+            if (keepFree_[c] || occ_[kDecal][c]) continue;
+            const double d = std::hypot(c % W + 0.5 - mx, c / W + 0.5 - my) + 0.5; // off the very middle, where the room's own thing goes
+            if (std::abs(d - 2.0) < bestD) bestD = std::abs(d - 2.0), best = c;
+        }
+        if (best < 0) continue;
+        Object o;
+        o.id = k.value("id", "");
+        o.statement = id;
+        o.node = node;
+        o.slot = s.value("keySlot", "key");
+        o.x = best % W;
+        o.y = best / W;
+        o.layer = kDecal;
+        AddObject(o);
+        keepFree_[best] = 1;
+    }
+    // The way in: the dungeon's mouth on the first level, the stairs from the level above on the others.
+    auto centreOf = [&](const std::string& room) {
+        const int r = RegionIndex(room);
+        if (r < 0) return -1;
+        const Region& g = regions_[r];
+        int best = g.cells.empty() ? -1 : g.cells.front();
+        double bestD = 1e18;
+        for (int c : g.cells) {
+            const double d = std::hypot(c % W + 0.5 - (g.x0 + g.x1) / 2.0, c / W + 0.5 - (g.y0 + g.y1) / 2.0);
+            if (d < bestD) bestD = d, best = c;
+        }
+        return best;
+    };
+    const std::string from = s.value("stairsFrom", "");
+    if (!from.empty() && regionById_.contains(from) && regionById_.contains(start)) {
+        const int a = centreOf(from), b = centreOf(start);
+        if (a >= 0 && b >= 0) {
+            links_.push_back({a, b});
+            connectors_.push_back({{"id", id + "/stairs"}, {"statement", id}, {"node", node}, {"kind", "stairs"}, {"from", from}, {"to", start},
+                                   {"cell", {a % W, a / W}}, {"inside", {b % W, b / W}}});
+            graph["stairsFrom"] = from;
+        }
+    } else if (!start.empty() && regionById_.contains(start)) {
+        const int c = centreOf(start);
+        if (c >= 0) anchors_[id + "/way-in"] = {id + "/way-in", node, "entrance", c};
+    }
+    graphs_.push_back(graph);
+}
+
+void Solver::Floorplan(const json& s, int container) {
+    Rng rng = StreamFor(s);
+    const Region parent = regions_[container];
+    const std::string id = s.value("id", ""), node = s.value("node", "");
+    const int x0 = parent.x0, y0 = parent.y0, x1 = parent.x1, y1 = parent.y1;
+    const int fw = x1 - x0, fh = y1 - y0;
+    struct Room {
+        std::string id, node, module;
+        double area = 9;
+        bool pub = false;
+        int x = 0, y = 0, w = 0, h = 0;
+    };
+    std::vector<Room> rooms;
+    for (const auto& r : s.value("into", json::array())) {
+        Room room;
+        room.id = r.value("id", "");
+        room.node = r.value("node", "");
+        room.module = r.value("module", "");
+        const IntRange w = RangeOf(r.value("size", json::object()).value("w", json()), 3);
+        const IntRange h = RangeOf(r.value("size", json::object()).value("h", json()), 3);
+        room.area = std::max(4.0, ((w.lo + w.hi) / 2.0) * ((h.lo + h.hi) / 2.0));
+        room.pub = r.value("public", false);
+        rooms.push_back(room);
+    }
+    if (rooms.empty() || fw < 3 || fh < 3) {
+        instancesOf_[id] = 0;
+        return;
+    }
+    const bool horizontal = fw >= fh; // the hall runs along the long side
+    const bool hall = rooms.size() >= 3 && (horizontal ? fh : fw) >= 5;
+    // A strip [a, b) of the long axis cut among rooms by their areas (each at least 2 cells).
+    auto cut = [&](std::vector<Room*>& list, int a, int b, int cross0, int cross1) {
+        double total = 0;
+        for (auto* r : list) total += r->area;
+        int at = a;
+        for (size_t k = 0; k < list.size(); ++k) {
+            const int left = static_cast<int>(list.size() - k - 1);
+            int len = k + 1 == list.size() ? b - at : static_cast<int>(std::lround((b - a) * list[k]->area / std::max(1.0, total)));
+            len = std::clamp(len, 2, std::max(2, b - at - 2 * left));
+            Room& r = *list[k];
+            if (horizontal) r.x = at, r.w = len, r.y = cross0, r.h = cross1 - cross0;
+            else r.y = at, r.h = len, r.x = cross0, r.w = cross1 - cross0;
+            at += len;
+        }
+    };
+    const int longA = horizontal ? x0 : y0, longB = horizontal ? x1 : y1;
+    const int crossA = horizontal ? y0 : x0, crossB = horizontal ? y1 : x1;
+    int hallLine = -1; // the row (or column) of the hall
+    std::vector<int> hallCells;
+    if (hall) {
+        hallLine = crossA + (crossB - crossA) / 2;
+        // Two bands either side; public rooms on the side the front door is on (the near band).
+        std::vector<Room*> nearBand, farBand;
+        double nearArea = 0, farArea = 0;
+        std::vector<Room*> order;
+        for (auto& r : rooms) order.push_back(&r);
+        std::stable_sort(order.begin(), order.end(), [](const Room* a, const Room* b) {
+            if (a->pub != b->pub) return a->pub;
+            return a->area > b->area;
+        });
+        for (auto* r : order) {
+            const bool toNear = nearArea * (crossB - hallLine - 1) <= farArea * (hallLine - crossA);
+            (toNear ? nearBand : farBand).push_back(r);
+            (toNear ? nearArea : farArea) += r->area;
+        }
+        if (farBand.empty() && nearBand.size() > 1) {
+            farBand.push_back(nearBand.back());
+            nearBand.pop_back();
+        }
+        cut(nearBand, longA, longB, hallLine + 1, crossB);
+        if (!farBand.empty()) cut(farBand, longA, longB, crossA, hallLine);
+        for (int t = longA; t < longB; ++t) hallCells.push_back(horizontal ? Cell(t, hallLine) : Cell(hallLine, t));
+    } else {
+        std::vector<Room*> all;
+        for (auto& r : rooms) all.push_back(&r);
+        cut(all, longA, longB, crossA, crossB);
+    }
+    // The regions: the hall, then each room.
+    int hallRegion = -1;
+    if (!hallCells.empty()) hallRegion = AddRegion(id + "/hall", node, id, container, hallCells, "");
+    int made = 0;
+    for (auto& r : rooms) {
+        std::vector<int> cells;
+        for (int y = r.y; y < r.y + r.h; ++y) {
+            for (int x = r.x; x < r.x + r.w; ++x) {
+                if (In(x, y) && owner_[Cell(x, y)] == container) cells.push_back(Cell(x, y));
+            }
+        }
+        if (cells.size() < 4) {
+            Problem("S-UNSAT", s, "no room for " + r.id + " on " + parent.id);
+            continue;
+        }
+        AddRegion(r.id, r.node, id, container, cells, r.module);
+        ++made;
+    }
+    instancesOf_[id] = made;
+    // Walls: every edge between two different spaces, and round the outside.
+    auto spaceOf = [&](int x, int y) { return In(x, y) && owner_[Cell(x, y)] >= 0 && (owner_[Cell(x, y)] == container || regions_[owner_[Cell(x, y)]].parent == container) ? owner_[Cell(x, y)] : -1; };
+    std::set<std::array<int, 3>> walls;
+    for (int y = y0; y <= y1; ++y) {
+        for (int x = x0; x <= x1; ++x) {
+            const int here = (x < x1 && y < y1) ? spaceOf(x, y) : -1;
+            if (x < x1 && here != ((y - 1 >= y0) ? spaceOf(x, y - 1) : -1)) walls.insert({x, y, 0});
+            if (y < y1 && here != ((x - 1 >= x0) ? spaceOf(x - 1, y) : -1)) walls.insert({x, y, 1});
+        }
+    }
+    // Doors: each room onto the hall (its middle), or onto the next room; the front door outside.
+    std::vector<std::array<int, 3>> doors;
+    auto door = [&](int ax, int ay, int bx, int by) {
+        // The edge between cell a and the neighbour b.
+        std::array<int, 3> e = ay == by ? std::array<int, 3>{std::max(ax, bx), ay, 1} : std::array<int, 3>{ax, std::max(ay, by), 0};
+        if (walls.erase(e)) doors.push_back(e);
+        for (const auto& [cx, cy] : {std::pair{ax, ay}, std::pair{bx, by}}) {
+            if (In(cx, cy)) keepFree_[Cell(cx, cy)] = 1;
+        }
+        if (In(ax, ay) && owner_[Cell(ax, ay)] >= 0) doorsOf_[regions_[owner_[Cell(ax, ay)]].id].push_back(Cell(ax, ay));
+        if (In(bx, by) && owner_[Cell(bx, by)] >= 0) doorsOf_[regions_[owner_[Cell(bx, by)]].id].push_back(Cell(bx, by));
+    };
+    if (hall) {
+        for (const auto& r : rooms) {
+            const int mid = horizontal ? r.x + r.w / 2 : r.y + r.h / 2;
+            if (horizontal) {
+                const bool above = r.y < hallLine;
+                door(mid, above ? r.y + r.h - 1 : r.y, mid, hallLine);
+            } else {
+                const bool left = r.x < hallLine;
+                door(left ? r.x + r.w - 1 : r.x, mid, hallLine, mid);
+            }
+        }
+    } else {
+        for (size_t k = 0; k + 1 < rooms.size(); ++k) {
+            const Room& a = rooms[k];
+            if (horizontal) door(a.x + a.w - 1, a.y + a.h / 2, a.x + a.w, a.y + a.h / 2);
+            else door(a.x + a.w / 2, a.y + a.h - 1, a.x + a.w / 2, a.y + a.h);
+        }
+    }
+    // The front door: at the hall's near end (or the first room's), onto the way in outside.
+    int stairsCell = -1;
+    if (!s.value("entrance", "").empty()) {
+        int ix = x0, iy = hall && horizontal ? hallLine : y0 + fh / 2;
+        if (hall && !horizontal) ix = hallLine, iy = y1 - 1;
+        if (!hall) ix = rooms.front().x, iy = rooms.front().y + rooms.front().h / 2;
+        const int ox = hall && !horizontal ? ix : ix - 1, oy = hall && !horizontal ? iy + 1 : iy;
+        door(ix, iy, ox, oy);
+        if (In(ox, oy)) anchors_[id + "/front"] = {id + "/front", node, "entrance", Cell(ox, oy)};
+        Object o;
+        o.id = id + "/front-door";
+        o.statement = id;
+        o.node = node;
+        o.slot = s.value("doorSlot", "door");
+        o.x = ix, o.y = iy;
+        o.facing = ox < ix ? 'w' : ox > ix ? 'e' : oy > iy ? 's' : 'n';
+        o.layer = kDecal;
+        AddObject(o);
+    }
+    for (const auto& e : doors) {
+        if (e == doors.back() && !s.value("entrance", "").empty()) break; // the front door is placed above
+        Object o;
+        o.id = id + "/door" + std::to_string(&e - doors.data());
+        o.statement = id;
+        o.node = node;
+        o.slot = s.value("doorSlot", "door");
+        o.x = e[0], o.y = e[1];
+        o.facing = e[2] == 0 ? 'n' : 'w';
+        o.layer = kDecal;
+        AddObject(o);
+    }
+    // The stairs: at the far end of the hall (the same place on every floor), linked to the floor below.
+    if (s.value("stairs", false)) {
+        const int sx = hall ? (horizontal ? x1 - 1 : hallLine) : x1 - 1, sy = hall ? (horizontal ? hallLine : y0) : y0;
+        if (In(sx, sy)) {
+            stairsCell = Cell(sx, sy);
+            Object o;
+            o.id = id + "/stairs";
+            o.statement = id;
+            o.node = node;
+            o.slot = s.value("stairsSlot", "stairs");
+            o.x = sx, o.y = sy;
+            o.layer = kDecal;
+            AddObject(o);
+            keepFree_[stairsCell] = 1;
+            stairsOf_[id] = stairsCell;
+            const std::string below = s.value("stairsFrom", "");
+            if (auto it = stairsOf_.find(below); it != stairsOf_.end()) {
+                links_.push_back({it->second, stairsCell});
+                connectors_.push_back({{"id", id + "/stairs"}, {"statement", id}, {"node", node}, {"kind", "stairs"}, {"from", below}, {"to", id},
+                                       {"cell", {it->second % W, it->second / W}}, {"inside", {sx, sy}}});
+            }
+        }
+    }
+    // Windows: along the outside walls of the rooms, every few cells, kept clear inside.
+    for (const auto& r : rooms) {
+        int k = 0;
+        for (int t = 1; t + 1 < (horizontal ? r.w : r.h); ++t) {
+            const bool outside = horizontal ? (r.y == y0 || r.y + r.h == y1) : (r.x == x0 || r.x + r.w == x1);
+            if (!outside || ++k % 3 != 0) continue;
+            const int wx = horizontal ? r.x + t : (r.x == x0 ? r.x : r.x + r.w - 1);
+            const int wy = horizontal ? (r.y == y0 ? r.y : r.y + r.h - 1) : r.y + t;
+            if (!In(wx, wy) || keepFree_[Cell(wx, wy)]) continue;
+            Object o;
+            o.id = id + "/window" + std::to_string(objectsByStatement_[id].size());
+            o.statement = id;
+            o.node = s.value("wallNode", node);
+            o.slot = s.value("windowSlot", "window");
+            o.x = wx, o.y = wy;
+            o.facing = horizontal ? (r.y == y0 ? 'n' : 's') : (r.x == x0 ? 'w' : 'e');
+            o.layer = kDecal;
+            AddObject(o);
+            keepFree_[Cell(wx, wy)] = 1;
+        }
+    }
+    LineResult line;
+    line.id = id + "/walls";
+    line.node = s.value("wallNode", node);
+    line.slot = s.value("wallSlot", "wall");
+    for (const auto& e : walls) {
+        line.edges.push_back(e);
+        MarkWall(e[0], e[1], e[2]);
+    }
+    for (const auto& e : doors) line.gaps.push_back(e);
+    std::sort(line.edges.begin(), line.edges.end());
+    lines_.push_back(line);
+    instancesOf_[line.id] = 1;
+    (void)rng;
+    (void)hallRegion;
+}
+
+void Solver::Connect(const json& s, int container) {
+    // A network between places (trails to points of interest, roads between a
+    // region's sites): a tree from the entrances by Prim, each leg an A* path.
+    std::vector<std::string> members;
+    for (const auto& m : s.value("members", json::array())) {
+        if (m.is_string() && regionById_.contains(m.get<std::string>())) members.push_back(m.get<std::string>());
+    }
+    if (members.empty()) {
+        instancesOf_[s.value("id", "")] = 0;
+        return;
+    }
+    std::vector<int> joined; // cells already on the network
+    for (const auto& f : s.value("from", json::array())) {
+        for (int c : Cells(f.get<std::string>())) joined.push_back(c);
+    }
+    const std::string cls = s.value("class", "trail");
+    const int width = std::max(1, s.value("width", 1));
+    const std::string terrain = s.value("terrain", "dirt");
+    Rng rng = StreamFor(s);
+    std::vector<float> noise(W * H);
+    for (auto& n : noise) n = static_cast<float>(rng.Unit());
+    std::set<std::string> left(members.begin(), members.end());
+    int legs = 0;
+    auto entry = [&](const std::string& m) {
+        // The middle of its side facing the network so far.
+        const Region& g = regions_[RegionIndex(m)];
+        return Cell((g.x0 + g.x1) / 2, std::min(H - 1, g.y1));
+    };
+    if (joined.empty()) {
+        joined.push_back(entry(*left.begin()));
+    }
+    while (!left.empty()) {
+        // The nearest member to the network.
+        std::string best;
+        double bestD = 1e18;
+        int bestFrom = -1;
+        for (const auto& m : left) {
+            const Region& g = regions_[RegionIndex(m)];
+            const double mx = (g.x0 + g.x1) / 2.0, my = (g.y0 + g.y1) / 2.0;
+            for (size_t k = 0; k < joined.size(); k += std::max<size_t>(1, joined.size() / 400)) {
+                const double d = std::hypot(joined[k] % W - mx, joined[k] / W - my);
+                if (d < bestD) bestD = d, best = m, bestFrom = joined[k];
+            }
+        }
+        left.erase(best);
+        const int target = RegionIndex(best);
+        auto cost = [&](int c) -> double {
+            if (occ_[kBuilding][c] || solid_[c]) return std::numeric_limits<double>::infinity();
+            const int o = owner_[c];
+            if (o >= 0 && o != target && regions_[o].parent >= 0 && std::find(members.begin(), members.end(), regions_[o].id) != members.end()) return 12.0;
+            if (water_[c]) return 8.0;
+            if (road_[c]) return 0.2;
+            return 1.0 + 0.6 * noise[c];
+        };
+        // To the member's nearest border cell.
+        const Region& g = regions_[target];
+        int goal = g.cells.front();
+        double goalD = 1e18;
+        for (int c : g.cells) {
+            const double d = std::hypot(c % W - bestFrom % W, c / W - bestFrom / W);
+            if (d < goalD) goalD = d, goal = c;
+        }
+        auto path = AStar(bestFrom, goal, cost);
+        if (path.empty()) {
+            Problem("S-UNSAT", s, "no way to " + best);
+            continue;
+        }
+        PathResult p;
+        p.id = s.value("id", "") + "/" + std::to_string(legs++);
+        p.node = s.value("node", "");
+        p.cls = cls;
+        p.terrain = terrain;
+        p.width = width;
+        // Up to its edge: the member keeps its own ground.
+        while (!path.empty() && owner_[path.back()] == target) path.pop_back();
+        p.cells = path;
+        MarkRoad(path, width, RankOf(cls), -1);
+        joined.insert(joined.end(), path.begin(), path.end());
+        // Its front faces the way it's reached.
+        if (!path.empty()) {
+            const int last = path.back(), lx = last % W, ly = last / W;
+            Region& r = regions_[target];
+            r.facing = ly < r.y0 ? 'n' : ly >= r.y1 ? 's' : lx < r.x0 ? 'w' : 'e';
+            r.street.push_back(last);
+        }
+        paths_.push_back(p);
+    }
+    instancesOf_[s.value("id", "")] = legs;
+}
+
+void Solver::Flood(const json& s, int container) {
+    // A moat: the container's own cells (not its sub-regions) become water; a road over it is its bridge.
+    for (int c : regions_[container].cells) {
+        if (owner_[c] == container) water_[c] = 1;
+    }
+    instancesOf_[s.value("id", "")] = 1;
+}
+
+void Solver::SpaceChecks(const json& s, json& result) {
+    const std::string predicate = s.value("predicate", "");
+    if (predicate == "completable") {
+        // Start at the first way in; collect keys; open what they open; reach the goal.
+        std::map<std::string, std::vector<std::tuple<std::string, std::string, std::string>>> adjacent; // room -> (room, kind, key)
+        std::map<std::string, std::vector<std::string>> keysIn;                                           // room -> keys
+        std::string start, goal;
+        for (const auto& g : graphs_) {
+            if (start.empty() && !g.contains("stairsFrom")) start = g.value("start", "");
+            goal = g.value("goal", "").empty() ? goal : g.value("goal", "");
+            for (const auto& e : g["edges"]) {
+                const std::string kind = e.value("kind", "door");
+                if (kind == "secret-passage") continue;
+                adjacent[e["a"]].push_back({e["b"], kind, e.value("key", "")});
+                adjacent[e["b"]].push_back({e["a"], kind, e.value("key", "")});
+            }
+            for (const auto& k : g["keys"]) keysIn[k.value("room", "")].push_back(k.value("id", ""));
+            if (g.contains("stairsFrom")) {
+                adjacent[g["stairsFrom"]].push_back({g["start"], "stairs", ""});
+                adjacent[g["start"]].push_back({g["stairsFrom"], "stairs", ""});
+            }
+        }
+        const json args = s.value("args", json::object());
+        if (args.contains("goal") && args["goal"].is_string()) goal = args["goal"];
+        std::set<std::string> reached, keys;
+        bool grew = !start.empty();
+        if (grew) reached.insert(start);
+        while (grew) {
+            grew = false;
+            for (const auto& r : std::vector<std::string>(reached.begin(), reached.end())) {
+                for (const auto& k : keysIn[r]) grew = keys.insert(k).second || grew; // a key found opens its lock on the next pass
+                for (const auto& [n, kind, key] : adjacent[r]) {
+                    if (reached.contains(n) || (kind == "locked-door" && !keys.contains(key))) continue;
+                    reached.insert(n);
+                    grew = true;
+                }
+            }
+        }
+        result["ok"] = !goal.empty() && reached.contains(goal);
+        result["detail"] = (reached.contains(goal) ? "the goal is reached" : "the goal can't be reached") + std::string(" with ") +
+                           std::to_string(keys.size()) + " key(s) found";
+    } else if (predicate == "rooms-reachable") {
+        // Every room but the secret ones has a cell a walker reaches (doors, stairs, round the furniture).
+        const auto seen = Reached(false);
+        std::set<std::string> secret;
+        for (const auto& g : graphs_) {
+            for (const auto& r : g["rooms"]) {
+                if (r.value("secret", false)) secret.insert(r.value("id", ""));
+            }
+        }
+        const json args = s.value("args", json::object());
+        const std::string cls = args.value("class", "Room");
+        int rooms = 0, reached = 0;
+        json missing = json::array();
+        for (const auto& r : regions_) {
+            if (!ontology_.IsA(r.module, cls) || secret.contains(r.id)) continue;
+            ++rooms;
+            const bool hit = std::any_of(r.cells.begin(), r.cells.end(), [&](int c) { return seen[c] != 0; });
+            reached += hit;
+            if (!hit && missing.size() < 20) missing.push_back(r.id);
+        }
+        result["ok"] = rooms > 0 && reached == rooms;
+        result["detail"] = std::to_string(reached) + " of " + std::to_string(rooms) + " rooms reachable";
+        if (!missing.empty()) result["unreached"] = missing;
+    } else if (predicate == "groups-reachable") {
+        // Each furniture group's anchor can be walked up to.
+        const auto seen = Reached(false);
+        int groups = 0, reached = 0;
+        json missing = json::array();
+        for (const auto& statement : s.value("args", json::object()).value("anchors", json::array())) {
+            auto it = objectsByStatement_.find(statement.get<std::string>());
+            if (it == objectsByStatement_.end()) continue;
+            for (int index : it->second) {
+                const Object& o = objects_[index];
+                ++groups;
+                bool hit = false;
+                for (int y = o.y - 1; y <= o.y + o.h && !hit; ++y) {
+                    for (int x = o.x - 1; x <= o.x + o.w && !hit; ++x) {
+                        if (In(x, y) && (x < o.x || y < o.y || x >= o.x + o.w || y >= o.y + o.h)) hit = seen[Cell(x, y)] != 0;
+                    }
+                }
+                reached += hit;
+                if (!hit && missing.size() < 20) missing.push_back(o.id);
+            }
+        }
+        result["ok"] = reached == groups;
+        result["detail"] = std::to_string(reached) + " of " + std::to_string(groups) + " furniture groups can be walked to";
+        if (!missing.empty()) result["unreached"] = missing;
+    } else if (predicate == "doors-free") {
+        int blocked = 0;
+        for (int c = 0; c < W * H; ++c) blocked += keepFree_[c] && (occ_[kProp][c] || occ_[kBuilding][c]);
+        result["ok"] = blocked == 0;
+        result["detail"] = std::to_string(blocked) + " doorway or window cells blocked";
+    }
+}
+
+json Solver::SpacesJson() const {
+    json solid = json::array(), free = json::array();
+    std::vector<int> solidCells, freeCells;
+    for (int c = 0; c < W * H; ++c) {
+        if (solid_[c]) solidCells.push_back(c);
+        if (keepFree_[c]) freeCells.push_back(c);
+    }
+    json walls = json::array();
+    for (long k : wallEdges_) walls.push_back({static_cast<int>((k / 2) % 65536), static_cast<int>((k / 2) / 65536), static_cast<int>(k % 2)});
+    json links = json::array();
+    for (const auto& [a, b] : links_) links.push_back({{a % W, a / W}, {b % W, b / W}});
+    json doors = json::object();
+    for (const auto& [r, cells] : doorsOf_) {
+        for (int c : cells) doors[r].push_back({c % W, c / W});
+    }
+    json stairs = json::object();
+    for (const auto& [st, c] : stairsOf_) stairs[st] = {c % W, c / W};
+    return {{"solid", EncodeCells(solidCells, W)}, {"keepFree", EncodeCells(freeCells, W)}, {"walls", walls}, {"links", links},
+            {"doors", doors}, {"stairs", stairs}, {"graphs", graphs_}};
+}
+
+void Solver::RestoreSpaces(const json& previous) {
+    const json spaces = previous.value("spaces", json::object());
+    if (spaces.empty()) return;
+    // What a rooms or floorplan statement made stays when the statement isn't redone.
+    for (int c : DecodeCells(spaces.value("solid", json::array()), W)) solid_[c] = 1;
+    for (int c : DecodeCells(spaces.value("keepFree", json::array()), W)) keepFree_[c] = 1;
+    for (const auto& e : spaces.value("walls", json::array())) MarkWall(e[0].get<int>(), e[1].get<int>(), e[2].get<int>());
+    for (const auto& l : spaces.value("links", json::array())) {
+        links_.push_back({Cell(l[0][0].get<int>(), l[0][1].get<int>()), Cell(l[1][0].get<int>(), l[1][1].get<int>())});
+    }
+    const json doors = spaces.value("doors", json::object()), stairs = spaces.value("stairs", json::object());
+    for (const auto& [r, cells] : doors.items()) {
+        for (const auto& c : cells) doorsOf_[r].push_back(Cell(c[0].get<int>(), c[1].get<int>()));
+    }
+    for (const auto& [st, c] : stairs.items()) stairsOf_[st] = Cell(c[0].get<int>(), c[1].get<int>());
+    for (const auto& g : spaces.value("graphs", json::array())) graphs_.push_back(g);
+    for (const auto& c : previous.value("connectors", json::array())) connectors_.push_back(c);
+}
+
 // --- The region tree ----------------------------------------------------------------------------
 
 int StepOf(const json& s) {
     const std::string op = s.value("op", "");
     if (op == "path" || op == "network") return 1;
-    if (op == "partition" || op == "subdivide") return 2;
+    if (op == "partition" || op == "subdivide" || op == "rooms" || op == "floorplan") return 2;
     if (op == "place" && s.value("primary", false)) return 3;
     if (op == "region" || op == "anchor") return 4;
-    if (op == "place") return 5;
-    if (op == "line") return 6;
-    if (op == "rows" || op == "grid") return 7;
-    if (op == "scatter") return 8;
+    if (op == "connect" || op == "flood") return 5;
+    if (op == "place") return 6;
+    if (op == "line") return 7;
+    if (op == "rows" || op == "grid") return 8;
+    if (op == "scatter") return 9;
     return 99;
 }
 
@@ -1767,6 +2921,13 @@ void Solver::SolveRegion(int index) {
     });
     auto run = [&](const json& s) {
         const std::string op = s.value("op", "");
+        const auto began = std::chrono::steady_clock::now();
+        struct Timed {
+            std::map<std::string, double>& into;
+            std::string op;
+            std::chrono::steady_clock::time_point began;
+            ~Timed() { into[op] += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - began).count(); }
+        } timed{msByOp_, op, began};
         // A partial solve: what was kept (a locked part) isn't made again.
         if (options_.previous && ((op == "region" && regionById_.contains(s.value("id", ""))) ||
                                   (op == "place" && (objectById_.contains(s.value("id", "")) || objectsByStatement_.contains(s.value("id", "")))))) {
@@ -1783,6 +2944,10 @@ void Solver::SolveRegion(int index) {
         else if (op == "rows") Rows(s, index, false);
         else if (op == "grid") Rows(s, index, true);
         else if (op == "scatter") Scatter(s, index);
+        else if (op == "rooms") Rooms(s, index);
+        else if (op == "floorplan") Floorplan(s, index);
+        else if (op == "connect") Connect(s, index);
+        else if (op == "flood") Flood(s, index);
     };
     for (const json* s : list) {
         const std::string in = s->value("in", "");
@@ -1881,7 +3046,7 @@ json Solver::Terrain() {
 void Solver::Checks() {
     // Walkable: not water (bridges are), not under a building or a solid prop.
     std::vector<uint8_t> walk(W * H, 0);
-    for (int c = 0; c < W * H; ++c) walk[c] = (!water_[c] || road_[c]) && !occ_[kBuilding][c] && !occ_[kProp][c];
+    for (int c = 0; c < W * H; ++c) walk[c] = (!water_[c] || road_[c]) && !solid_[c] && !occ_[kBuilding][c] && !occ_[kProp][c];
     for (const json* s : statements_) {
         if (s->value("op", "") != "check") continue;
         const std::string predicate = s->value("predicate", "");
@@ -1941,6 +3106,8 @@ void Solver::Checks() {
             result["detail"] = density;
         } else if (predicate == "filled") {
             result["ok"] = true; // assets are chosen when building (7.7)
+        } else {
+            SpaceChecks(*s, result);
         }
         if (!result["ok"].get<bool>()) {
             problems_.push_back({{"code", "C-FAIL"}, {"statement", result["id"]}, {"node", result["node"]},
@@ -2086,6 +3253,8 @@ SolvedLayout Solver::Run() {
     for (auto& layer : occ_) layer.assign(W * H, 0);
     road_.assign(W * H, 0);
     water_.assign(W * H, 0);
+    solid_.assign(W * H, 0);
+    keepFree_.assign(W * H, 0);
     // Pointers into the document itself (not a copy): they're kept for the whole solve.
     if (ir_.contains("statements") && ir_["statements"].is_array()) {
         for (const auto& s : ir_["statements"]) {
@@ -2112,7 +3281,10 @@ SolvedLayout Solver::Run() {
         }
     }
     for (const json* s : statements_) statementById_[s->value("id", "")] = s;
-    if (options_.previous) Restore(*options_.previous);
+    if (options_.previous) {
+        Restore(*options_.previous);
+        RestoreSpaces(*options_.previous);
+    }
     for (const json* s : statements_) {
         const std::string op = s->value("op", "");
         if ((op == "region" && !s->contains("in")) || op == "relation" || op == "check" || op == "fill" || op == "objective") continue;
@@ -2209,8 +3381,15 @@ SolvedLayout Solver::Run() {
                     {"terrain", terrain},
                     {"relations", relationScores_},
                     {"checks", checks_},
+                    {"connectors", connectors_},
+                    {"spaces", SpacesJson()},
                     {"problems", problems_},
-                    {"stats", {{"regions", regions_.size()}, {"objects", objects_.size()}, {"paths", paths_.size()}, {"lines", lines_.size()}}}};
+                    {"stats", {{"regions", regions_.size()}, {"objects", objects_.size()}, {"paths", paths_.size()}, {"lines", lines_.size()},
+                               {"ms", [&] {
+                                    json ms = json::object();
+                                    for (const auto& [op, t] : msByOp_) ms[op] = std::lround(t);
+                                    return ms;
+                                }()}}}};
     out.problems = problems_;
     return out;
 }

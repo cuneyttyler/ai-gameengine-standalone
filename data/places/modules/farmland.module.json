@@ -1,0 +1,107 @@
+{
+  "schema": "aige.module/1",
+  "id": "farmland",
+  "name": "Farmland",
+  "level": "site",
+  "description": "Countryside: farmsteads among fields, pastures and orchards, tracks between them.",
+  "buildTypes": [
+    "farmland"
+  ],
+  "quantity": {
+    "farmsteads": {
+      "type": "count",
+      "default": [
+        3,
+        8
+      ],
+      "min": 1,
+      "max": 200,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        6400,
+        22500
+      ],
+      "min": 400,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "crop-mix": {
+      "type": "mix",
+      "vocabulary": "crop-kind",
+      "default": {
+        "wheat": 0.5,
+        "barley": 0.3,
+        "cabbage": 0.2
+      },
+      "ask": true
+    },
+    "livestock-mix": {
+      "type": "mix",
+      "vocabulary": "livestock",
+      "default": {
+        "sheep": 0.4,
+        "cow": 0.4,
+        "pig": 0.2
+      }
+    },
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "lived-in",
+      "ask": true
+    },
+    "notes": {
+      "type": "description"
+    }
+  },
+  "slots": {},
+  "children": {
+    "farmland-ring": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 12
+    },
+    "pasture-land": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 6
+    },
+    "road": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 40
+    },
+    "river": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 2
+    },
+    "lake": {
+      "min": 0,
+      "weight": 0.1,
+      "max": 1
+    },
+    "ground": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    },
+    "forest": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 6
+    },
+    "meadow": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 6
+    }
+  },
+  "constraints": [
+    "within(self.farmsteads, count(descendants(class: BuildingParcel)), tol: 'count')"
+  ]
+}

@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "A field of one crop in rows.",
   "buildTypes": [
-    "settlement"
+    "settlement",
+    "farmland"
   ],
   "classes": [
     "PlantedArea"

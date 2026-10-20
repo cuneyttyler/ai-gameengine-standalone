@@ -1,0 +1,29 @@
+{
+  "schema": "aige.module/1",
+  "id": "wardrobe-set",
+  "name": "Wardrobe",
+  "level": "feature",
+  "description": "A wardrobe against a wall.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "wardrobe": {
+      "role": "wardrobe",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "wall",
+      "members": []
+    }
+  }
+}

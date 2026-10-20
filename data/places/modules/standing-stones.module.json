@@ -1,0 +1,66 @@
+{
+  "schema": "aige.module/1",
+  "id": "standing-stones",
+  "name": "Standing stones",
+  "level": "parcel",
+  "description": "A ring of old standing stones.",
+  "buildTypes": [
+    "wilderness",
+    "region"
+  ],
+  "classes": [
+    "PointOfInterest"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          7,
+          9
+        ],
+        "h": [
+          7,
+          9
+        ]
+      },
+      "min": {
+        "w": 5,
+        "h": 5
+      },
+      "unit": "cells",
+      "max": {
+        "w": 16,
+        "h": 16
+      }
+    },
+    "stones": {
+      "type": "count",
+      "default": [
+        5,
+        9
+      ],
+      "min": 3,
+      "max": 20
+    }
+  },
+  "quality": {},
+  "slots": {
+    "stone": {
+      "role": "standing-stone",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "stone",
+        "count": "stones",
+        "where": "border"
+      }
+    ],
+    "noPrimary": true
+  }
+}

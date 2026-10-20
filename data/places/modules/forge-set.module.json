@@ -1,0 +1,54 @@
+{
+  "schema": "aige.module/1",
+  "id": "forge-set",
+  "name": "Forge",
+  "level": "feature",
+  "description": "An anvil by the hearth.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "anvil": {
+      "role": "anvil",
+      "essential": true,
+      "primary": true
+    },
+    "hearth": {
+      "role": "fireplace",
+      "essential": false
+    },
+    "rack": {
+      "role": "weapon-rack",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "center",
+      "members": [
+        {
+          "slot": "hearth",
+          "count": [
+            1,
+            1
+          ],
+          "near": 2
+        },
+        {
+          "slot": "rack",
+          "count": [
+            0,
+            1
+          ],
+          "near": 2
+        }
+      ]
+    }
+  }
+}

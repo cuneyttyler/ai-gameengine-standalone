@@ -2205,6 +2205,70 @@ The plan as first written:
 - Region, castle, interior (multi-floor), dungeon and cave, farmland, wilderness and
   camp, each with its module set from `place-modules.md`, on the same procedure.
 
+**Done (2026-10-20):**
+- **Seven build types more** in `data/places/buildtypes.json`, about 75 new modules
+  (written by a generator from `place-modules.md` §3–§8), with their roles, classes
+  (Room, Level, FurnitureGroup, PointOfInterest, Site, Fortification) and vocabularies
+  (dungeon themes and goals, connectors, points of interest, camp and castle kinds,
+  building kinds, floors, enemies, rarity, traps).
+- **Each counts in its own unit** (`unit`: field, class, label): buildings, farm
+  buildings, points of interest, tents, sites, rooms. The Brief's `scale.buildings`
+  counts it; the plan, the rebalancing, Verify, the map's title and the panel use it.
+  Each type has `words` that name it ("cave", "crypt", "fortress") and a `rank` for a
+  request naming several kinds of place ("a kingdom with towns and castles" is a
+  region). The settlement stays the default.
+- **The same procedure**: Brief → plan → layout → Verify → map → scene, with and
+  without the AI. The offline fallbacks plan every type (zones from the root's rules,
+  levels and floors as many as their fields say, an interior's rooms from a programme
+  by building kind: an inn's tavern hall and kitchen below, guest rooms above).
+- **Layouts** (compile hints on the modules, `compile`):
+  - **site** (settlement, farmland, camp, castle, region, wilderness): zones partitioned
+    as before. Zones may scatter their parcels apart (`placement: scattered`), joined by
+    trails or roads (`connect`: a tree by Prim, each leg A*). Background plants by a
+    field (a biome's trees). Ground by a field (a swamp's mud). A castle's enclosure:
+    a moat (`flood`) with a bridge where the road crosses, the curtain wall with its
+    gate, towers at the corners, the gatehouse at the road.
+  - **dungeon**: levels side by side; `rooms` places rooms apart, joins them by a
+    spanning tree of corridors from the entrance with a few loops, secret rooms as
+    leaves; locks on the way to the goal with each key before its lock; caves as
+    smoothed blobs with winding tunnels; rock everywhere else; stairs link the levels.
+  - **interior**: floors side by side; `floorplan` cuts each into rooms along a hall
+    (walls on cell edges, a door per room, the front door, windows, stairs linked to the
+    floor below); furniture groups place their anchor (centre, wall, far wall, corner,
+    facing the door) and members near it.
+- **Room rules**: nothing solid stands in a doorway or a window, and nothing solid cuts a
+  room's floor off from its doors (checked as each thing is placed).
+- **Checks**: completable (start to goal, collecting keys), rooms-reachable,
+  groups-reachable, doors-free, beside count, closed and reachable.
+- **A region's sites** are listed in the panel, each built as a place of its own where
+  the region put it ("Build this site").
+- **City scale**: the lanes' search stays in its ward's window with a distance field
+  updated lane by lane (69 s to under 1 s for a city's networks). Statements are found by
+  id. The share children are ranked once. Big zones are split into wards of about 90
+  plots. Streets are spaced by the depth most lots have. The fitting rounds keep the
+  first round's site and zone seeds, and may run to six while they improve. A walled
+  city from its request: about 1,600 buildings in about 30 s.
+- **Responsive**: the build's heavy steps (planning, laying out, partial solves) run off
+  the editor's UI thread, one at a time; the panel shows it's working; the build's AI
+  answers wait until the job is done.
+- Tests: `tests/buildtypes_test.cpp`: every type loads; a request names its type; each
+  runs offline to a layout whose checks pass; a dungeon's keys come before their locks,
+  across levels too; a cave's chambers are ragged; an inn has rooms, doors, stairs,
+  windows and furniture that can be reached; a castle has its moat, bridge, wall, gate,
+  towers and gatehouse; a region's sites are joined by roads; a walled city.
+
+**Phase 7 exit (2026-10-20):**
+- A query for a town or city opens the confirmation window with the scale in numbers
+  and gives a validated Spec and IR. **Met.**
+- It builds hundreds of buildings in wards (about 1,600 for a city), with fitted roads
+  and walls with gates. The props are the project's, or placeholders and generated art
+  (7.9). **Met.**
+- Every part passes its hard checks. Soft checks are shown in Verify; a city's
+  residential wards come out sparser than their module's density band. **Met, with
+  that noted.**
+- Any part can be edited and regenerated alone (7.8). **Met.**
+- The editor stays responsive: laying out runs off the UI thread. **Met.**
+
 **Phase 7 exit criteria:**
 - A query for a town or city opens the confirmation window with the scale in numbers,
   then produces a validated Spec and IR.

@@ -234,6 +234,16 @@ std::vector<std::string> Ontology::Load(const std::vector<fs::path>& dirs) {
                 build.stages = Strings(b.value("stages", json::array()));
                 build.components = Strings(b.value("components", json::array()));
                 build.briefFields = b.value("briefFields", json::object());
+                const json unit = b.value("unit", json::object());
+                if (unit.is_object()) {
+                    build.unit.field = unit.value("field", build.unit.field);
+                    build.unit.cls = unit.value("class", build.unit.cls);
+                    build.unit.label = unit.value("label", build.unit.label);
+                }
+                build.layout = b.value("layout", "site");
+                build.words = Strings(b.value("words", json::array()));
+                build.isDefault = b.value("default", false);
+                build.rank = b.value("rank", 0);
                 for (const auto& s : b.value("scale", json::array())) {
                     if (!s.is_object()) continue;
                     ScaleClass scale;
@@ -467,6 +477,20 @@ std::vector<std::string> Ontology::Check() const {
 const ModuleDef* Ontology::Module(const std::string& id) const {
     auto it = modules_.find(id);
     return it == modules_.end() ? nullptr : &it->second;
+}
+
+const BuildType* Ontology::BuildOfRoot(const std::string& rootModule) const {
+    for (const auto& [id, b] : builds_) {
+        if (b.root == rootModule) return &b;
+    }
+    return nullptr;
+}
+
+const BuildType* Ontology::DefaultBuild() const {
+    for (const auto& [id, b] : builds_) {
+        if (b.isDefault) return &b;
+    }
+    return builds_.empty() ? nullptr : &builds_.begin()->second;
 }
 
 const BuildType* Ontology::Build(const std::string& id) const {

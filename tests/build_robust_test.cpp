@@ -458,7 +458,11 @@ TEST(BuildRobustTest, ThePlanIsLaidOutAsPlanned) {
     const json* ring = SpecNode(spec, "farmland-ring");
     ASSERT_NE(ring, nullptr);
     bool farmsteads = false;
-    for (const auto& c : (*ring)["children"]) farmsteads = farmsteads || (c["module"] == "farmstead" && c.value("repeat", 1) == 3);
+    // As many as its field says (rebalanced with the rest to the Brief's buildings: the field follows).
+    const int counted = (*ring)["quantity"]["farmsteads"].is_object() ? (*ring)["quantity"]["farmsteads"].value("count", 0)
+                                                                      : (*ring)["quantity"].value("farmsteads", 0);
+    EXPECT_GE(counted, 3);
+    for (const auto& c : (*ring)["children"]) farmsteads = farmsteads || (c["module"] == "farmstead" && c.value("repeat", 1) == counted);
     EXPECT_TRUE(farmsteads) << ring->dump();
     // The plan's areas are the layout's.
     for (const auto& r : build.Solved()["regions"]) {

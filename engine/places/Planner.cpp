@@ -143,6 +143,20 @@ bool Disabled(const json& brief, const std::string& module) {
 
 } // namespace
 
+BuildType::Unit UnitOf(const Ontology& ontology, const json& spec) {
+    const std::string root = spec.contains("root") ? spec["root"].value("module", "") : "";
+    if (const BuildType* build = ontology.BuildOfRoot(root)) return build->unit;
+    return {};
+}
+
+std::string CountField(const ModuleDef& zone) {
+    for (const char* name : {"plots", "rooms", "tents", "farmsteads", "sites", "pois"}) {
+        const FieldDef* f = zone.Field(name);
+        if (f && f->type == "count") return name;
+    }
+    return {};
+}
+
 std::vector<PlaceProblem> TidySpec(const Ontology& ontology, json& spec) {
     std::vector<PlaceProblem> changed;
     auto note = [&](const std::string& where, const std::string& message) { changed.push_back({where, message, true}); };
@@ -414,15 +428,19 @@ std::vector<PlaceProblem> ResolveSpec(const Ontology& ontology, const json& brie
     // A ward left without parcels (its step gave none): its module's typical ones.
     std::set<std::string> used;
     CollectIds(spec["root"], used);
+    const BuildType::Unit unit = UnitOf(ontology, spec);
     for (auto& zone : spec["root"]["children"]) {
         const ModuleDef* zm = ontology.Module(zone.value("module", ""));
-        if (zm == nullptr || zm->level != PlaceLevel::Zone || zm->Field("plots") == nullptr) continue;
+        if (zm == nullptr || zm->level != PlaceLevel::Zone || CountField(*zm).empty()) continue;
+        // Parts tied to the zone's own count (a farmland ring's farmsteads): the expansion makes them, as many as it says.
+        const std::string countField = CountField(*zm);
+        if (std::any_of(zm->children.begin(), zm->children.end(), [&](const ChildDef& r) { return r.count == countField; })) continue;
         if (!zone.contains("children") || !zone["children"].is_array()) zone["children"] = json::array();
         const bool hasParcels = std::any_of(zone["children"].begin(), zone["children"].end(), [&](const json& c) {
-            return ontology.IsA(c.value("module", ""), "BuildingParcel");
+            return ontology.IsA(c.value("module", ""), unit.cls);
         });
         if (hasParcels) continue;
-        const json fallback = FallbackZoneAnswer(ontology, zone);
+        const json fallback = FallbackZoneAnswer(ontology, zone, spec["root"]);
         int added = 0;
         for (const auto& c : fallback["children"]) {
             const std::string module = c.value("module", "");
@@ -435,7 +453,7 @@ std::vector<PlaceProblem> ResolveSpec(const Ontology& ontology, const json& brie
             if (c.contains("repeat")) node["repeat"] = c["repeat"];
             ApplyBriefSettings(ontology, brief, node);
             zone["children"].push_back(node);
-            added += ontology.IsA(module, "BuildingParcel") ? static_cast<int>(Mid(c.value("repeat", json()), 1)) : 0;
+            added += ontology.IsA(module, unit.cls) ? static_cast<int>(Mid(c.value("repeat", json()), 1)) : 0;
         }
         if (added > 0) note(zone.value("id", ""), "had no parcels: given " + std::to_string(added) + " from its module's typical ones");
     }
@@ -580,51 +598,138 @@ json FallbackRootAnswer(const Ontology& ontology, const json& brief) {
         const ModuleDef* m = ontology.Module(id);
         if (m == nullptr || m->level != PlaceLevel::Zone || !c.is_object() || !c.value("enabled", true) || !ontology.ChildRule(build->root, id)) continue;
         const int count = std::max(1, static_cast<int>(std::lround(Mid(c.value("count", json()), 1))));
-        const double weight = ontology.IsA(id, "NatureArea") ? 0.0 : id == "residential-ward" ? 3.0 : id == "craftsmen-ward" ? 1.5 : 1.0;
-        zones.push_back({id, count, weight});
+        zones.push_back({id, count, 0.0});
+    }
+    const ModuleDef* rootModule = ontology.Module(build->root);
+    if (zones.empty() && rootModule) {
+        // The zones the root needs (a dungeon's level, a camp's ground).
+        for (const ChildDef& rule : rootModule->children) {
+            const ModuleDef* m = ontology.Module(rule.module);
+            if (m && m->level == PlaceLevel::Zone && rule.min >= 1) zones.push_back({m->id, rule.min, 0.0});
+        }
     }
     if (zones.empty()) {
-        if (ontology.ChildRule(build->root, "residential-ward")) zones.push_back({"residential-ward", 1, 3.0});
-        if (ontology.ChildRule(build->root, "market-ward")) zones.push_back({"market-ward", 1, 1.0});
+        if (ontology.ChildRule(build->root, "residential-ward")) zones.push_back({"residential-ward", 1, 0.0});
+        if (ontology.ChildRule(build->root, "market-ward")) zones.push_back({"market-ward", 1, 0.0});
+    }
+    // Each zone's share of the units: none for nature without them; the root's rule weight else.
+    for (auto& z : zones) {
+        const ModuleDef* m = ontology.Module(z.module);
+        if (m == nullptr || CountField(*m).empty()) continue;
+        const ChildDef* rule = ontology.ChildRule(build->root, z.module);
+        z.weight = z.module == "residential-ward" ? 3.0 : z.module == "craftsmen-ward" ? 1.5 : rule ? std::max(0.1, rule->weight) : 1.0;
     }
     const double buildings = Mid(BriefValue(brief, "scale.buildings"), 30);
     const double area = Mid(BriefValue(brief, "scale.area"), 6400);
     double totalWeight = 0;
     for (const auto& z : zones) totalWeight += z.weight * z.count;
+    // A big place has many wards, not a few huge ones: a zone of more than about 90
+    // plots is split (within the scale's number of zones), the plots shared among them.
+    {
+        const json cls = BriefValue(brief, "scale.class");
+        const ScaleClass* scale = build->Scale(cls.is_string() ? cls.get<std::string>() : "");
+        int count = 0;
+        for (const auto& z : zones) count += z.count;
+        const int most = scale ? std::max(scale->zones.second, count) : count;
+        for (bool split = true; split && count < most;) {
+            split = false;
+            Zone* biggest = nullptr;
+            double biggestPlots = 0;
+            for (auto& z : zones) {
+                const double each = totalWeight > 0 ? buildings * z.weight / totalWeight : 0;
+                if (const ModuleDef* m = ontology.Module(z.module); m && !CountField(*m).empty() && each > biggestPlots && each > 90) {
+                    biggest = &z;
+                    biggestPlots = each;
+                }
+            }
+            if (biggest == nullptr) break;
+            // One zone more of its kind: its share of the weight is spread over one more.
+            const double weight = biggest->weight * biggest->count;
+            ++biggest->count;
+            biggest->weight = weight / biggest->count;
+            ++count;
+            split = true;
+        }
+    }
     for (const auto& z : zones) {
         for (int k = 0; k < z.count; ++k) {
             const double share = totalWeight > 0 ? z.weight / totalWeight : 0;
             const int plots = static_cast<int>(std::lround(buildings * share));
+            const std::string field = CountField(*ontology.Module(z.module));
+            // A ward's land by its plots (a lot and its share of the streets), not a share of the
+            // whole site: what's left over stays open land between the wards.
+            const double land = plots > 0 && !field.empty() ? std::min(area * 0.7 * share, plots * 110.0) : share > 0 ? area * 0.7 * share : area * 0.08;
             json node = {{"id", z.module + (z.count > 1 ? "-" + std::to_string(k + 1) : "")}, {"module", z.module},
-                         {"quantity", {{"area", {{"area", static_cast<int>(std::lround(share > 0 ? area * 0.7 * share : area * 0.08))}}}}},
+                         {"quantity", {{"area", {{"area", static_cast<int>(std::lround(land))}}}}},
                          {"rationale", "planned from the Brief alone"}};
-            if (plots > 0 && ontology.Module(z.module)->Field("plots")) node["quantity"]["plots"] = {{"count", plots}};
+            if (plots > 0 && !field.empty()) node["quantity"][field] = {{"count", plots}};
             children.push_back(node);
         }
     }
     return {{"children", children}, {"rationale", "Planned from the Brief alone: the AI couldn't plan this place."}};
 }
 
-json FallbackZoneAnswer(const Ontology& ontology, const json& zone) {
+json FallbackZoneAnswer(const Ontology& ontology, const json& zone, const json& root) {
     const ModuleDef* m = ontology.Module(zone.value("module", ""));
     json children = json::array();
     if (m == nullptr) return {{"children", children}};
-    const json plotsField = zone.contains("quantity") ? zone["quantity"].value("plots", json()) : json();
+    const std::string countField = CountField(*m);
+    const json plotsField = zone.contains("quantity") && !countField.empty() ? zone["quantity"].value(countField, json()) : json();
     int plots = static_cast<int>(std::lround(Mid(plotsField, -1)));
     if (plots < 0) {
-        const FieldDef* f = m->Field("plots");
+        const FieldDef* f = countField.empty() ? nullptr : m->Field(countField);
         plots = f ? static_cast<int>(std::lround(Mid(f->defaultValue, 10))) : 0;
     }
-    // Building parcels share the plots by their weights (largest remainder); required others once.
-    std::vector<std::pair<std::string, double>> weighted;
-    for (const ChildDef& rule : m->children) {
-        if (rule.module.rfind("class:", 0) == 0 || !ontology.Module(rule.module)) continue;
-        if (ontology.IsA(rule.module, "BuildingParcel")) {
-            weighted.push_back({rule.module, rule.weight});
-        } else if (rule.min >= 1) {
-            children.push_back({{"id", zone.value("id", "") + "/" + rule.module}, {"module", rule.module}, {"rationale", "the zone needs one"}});
+    const BuildType* build = ontology.BuildOfRoot(root.is_object() ? root.value("module", "") : "");
+    const std::string unit = build ? build->unit.cls : "BuildingParcel";
+    // A room programme (a house's floor: a living room, a kitchen, bedrooms), by the root's field and the zone's level.
+    if (m->compile.is_object() && m->compile.contains("programme")) {
+        const json& programme = m->compile["programme"];
+        const std::string field = programme.value("field", "kind");
+        const json rootFields = root.is_object() ? root.value("quality", json::object()) : json::object();
+        const ModuleDef* rm = root.is_object() ? ontology.Module(root.value("module", "")) : nullptr;
+        std::string kind = rootFields.value(field, json()).is_string() ? rootFields[field].get<std::string>() : "";
+        if (kind.empty() && rm && rm->Field(field) && rm->Field(field)->defaultValue.is_string()) kind = rm->Field(field)->defaultValue;
+        const json zoneFields = zone.value("quality", json::object());
+        std::string level = zoneFields.value("level", json()).is_string() ? zoneFields["level"].get<std::string>() : "ground";
+        const json byKind = programme.value("values", json::object()).value(kind, json::object());
+        json rooms = byKind.value(level, json());
+        if (!rooms.is_array()) rooms = byKind.value("ground", json::array());
+        std::map<std::string, int> counts;
+        std::vector<std::string> order;
+        for (int k = 0; k < plots && !rooms.empty(); ++k) {
+            const std::string room = rooms[k % rooms.size()].get<std::string>();
+            if (!ontology.Module(room)) continue;
+            if (counts[room]++ == 0) order.push_back(room);
+        }
+        if (!order.empty()) {
+            for (const auto& room : order) {
+                json child = {{"id", zone.value("id", "") + "/" + room}, {"module", room}, {"rationale", "the " + kind + "'s usual rooms"}};
+                if (counts[room] >= 2) child["repeat"] = counts[room];
+                children.push_back(child);
+            }
+            return {{"children", children}, {"rationale", "Planned from the building's usual rooms: the AI couldn't plan this floor."}};
         }
     }
+    // The unit's parcels share the count by their weights (largest remainder); required ones once, first.
+    std::vector<std::pair<std::string, double>> weighted;
+    for (const ChildDef& rule : m->children) {
+        // Tied to the zone's own count (a farmland ring's farmsteads): the expansion makes them.
+        if (!rule.count.empty() && rule.count == countField) {
+            plots = 0;
+            continue;
+        }
+        for (const auto& id : RuleModules(ontology, rule)) {
+            if (!ontology.Module(id)) continue;
+            if (rule.min >= 1 && rule.module.rfind("class:", 0) != 0) {
+                children.push_back({{"id", zone.value("id", "") + "/" + id}, {"module", id}, {"rationale", "the zone needs one"}});
+                if (ontology.IsA(id, unit)) --plots;
+            } else if (ontology.IsA(id, unit)) {
+                weighted.push_back({id, rule.weight});
+            }
+        }
+    }
+    plots = std::max(0, plots);
     double total = 0;
     for (const auto& [module, w] : weighted) total += w;
     std::vector<std::pair<int, double>> counts;
@@ -721,9 +826,17 @@ json SpecFromRoot(const Ontology& ontology, const json& brief, const json& answe
     // The Brief's numbers and choices win.
     const auto [lo, hi] = Bounds(BriefValue(brief, "scale.buildings"));
     if (lo >= 0) {
-        const double given = Mid(root["quantity"].value("buildings", json()), -1);
+        const std::string field = build->unit.field;
+        const double given = Mid(root["quantity"].value(field, json()), -1);
         const double buildings = given >= lo && given <= hi ? given : std::round((lo + hi) / 2);
-        root["quantity"]["buildings"] = {{"count", static_cast<int>(buildings)}};
+        root["quantity"][field] = {{"count", static_cast<int>(buildings)}};
+    }
+    // The root's own Brief fields (a dungeon's theme, a camp's kind): from the Brief's style.
+    if (rootModule) {
+        for (const auto& [name, f] : rootModule->quality) {
+            if (root["quality"].contains(name)) continue;
+            if (const json v = BriefValue(brief, "style." + name); !v.is_null()) root["quality"][name] = v;
+        }
     }
     if (BriefValue(brief, "scale.area").is_object()) {
         root["quantity"]["area"] = {{"area", static_cast<int>(Mid(BriefValue(brief, "scale.area"), 3600))}};
@@ -776,6 +889,25 @@ json SpecFromRoot(const Ontology& ontology, const json& brief, const json& answe
         for (const ChildDef& rule : rootModule->children) {
             if (rule.min < 1 || rule.module.rfind("class:", 0) == 0) continue;
             if (!has(rule.module)) add(rule.module);
+            // Tied to a root field (a dungeon's levels, a building's floors): as many as it says.
+            if (rule.count.empty()) continue;
+            const FieldDef* f = rootModule->Field(rule.count);
+            const places::Value v = f ? FieldValueOf(*f, (f->quantity ? root["quantity"] : root["quality"]).value(rule.count, json()))
+                                      : places::Value::Unknown();
+            if (v.kind != places::Value::Kind::Number) continue;
+            const int want = std::clamp(static_cast<int>(std::lround((v.number.lo + v.number.hi) / 2)), rule.min, rule.max);
+            int have = 0;
+            for (const auto& n : children) have += n["module"] == rule.module ? std::max(1, n.value("repeat", 1)) : 0;
+            for (; have < want; ++have) {
+                add(rule.module);
+                // A floor above the first is an upper floor.
+                const ModuleDef* cm = ontology.Module(rule.module);
+                const FieldDef* level = cm ? cm->Field("level") : nullptr;
+                if (have >= 1 && level && level->values.size() > 1 &&
+                    std::find(level->values.begin(), level->values.end(), "upper") != level->values.end()) {
+                    children.back()["quality"]["level"] = "upper";
+                }
+            }
         }
     }
     // Relations name the final ids, and only ones that exist: a part the
@@ -924,11 +1056,12 @@ void ExpandSpec(const Ontology& ontology, const json& brief, json& spec) {
     expand(spec["root"], 0);
 }
 
-int CountBuildings(const Ontology& ontology, const json& spec) {
+int CountBuildings(const Ontology& ontology, const json& spec, const std::string& unitClass) {
+    const std::string cls = unitClass.empty() ? UnitOf(ontology, spec).cls : unitClass;
     double total = 0;
     std::function<void(const json&, double)> walk = [&](const json& node, double times) {
         double here = times * Mid(node.value("repeat", json()), 1) * (node.contains("share") ? Mid(node["share"], 1) : 1);
-        if (ontology.IsA(node.value("module", ""), "BuildingParcel")) total += here;
+        if (ontology.IsA(node.value("module", ""), cls)) total += here;
         for (const auto& c : node.value("children", json::array())) walk(c, here);
     };
     if (spec.contains("root")) walk(spec["root"], 1);
@@ -936,16 +1069,20 @@ int CountBuildings(const Ontology& ontology, const json& spec) {
 }
 
 int RebalanceBuildings(const Ontology& ontology, const json& brief, json& spec, bool scale) {
+    const BuildType::Unit unit = UnitOf(ontology, spec);
     int count = CountBuildings(ontology, spec);
     const auto [lo, hi] = Bounds(BriefValue(brief, "scale.buildings"));
     // `scale` false: the counts are only written down (a small edit leaves the other zones alone).
     if (scale && lo >= 0 && count > 0 && (count < lo || count > hi)) {
         const double factor = ((lo + hi) / 2.0) / count;
         for (auto& zone : spec["root"]["children"]) {
+            const ModuleDef* zm = ontology.Module(zone.value("module", ""));
             for (auto& c : zone["children"]) {
-                if (!ontology.IsA(c.value("module", ""), "BuildingParcel")) continue;
+                if (!ontology.IsA(c.value("module", ""), unit.cls)) continue;
                 const double repeat = Mid(c.value("repeat", json()), 1);
-                const int scaled = std::max(1, static_cast<int>(std::lround(repeat * factor)));
+                int scaled = std::max(1, static_cast<int>(std::lround(repeat * factor)));
+                // No more than the zone's rule allows (a dungeon level has one entrance).
+                if (const ChildDef* rule = zm ? ontology.ChildRule(zm->id, c.value("module", "")) : nullptr) scaled = std::min(scaled, std::max(1, rule->max));
                 if (scaled >= 2) c["repeat"] = scaled;
                 else c.erase("repeat");
             }
@@ -955,16 +1092,17 @@ int RebalanceBuildings(const Ontology& ontology, const json& brief, json& spec, 
     // The zones' plots and the root's buildings say what's there.
     for (auto& zone : spec["root"]["children"]) {
         const ModuleDef* zm = ontology.Module(zone.value("module", ""));
-        if (zm == nullptr || zm->Field("plots") == nullptr || !zone.contains("children")) continue;
+        const std::string field = zm ? CountField(*zm) : "";
+        if (field.empty() || !zone.contains("children")) continue;
         double plots = 0;
         for (const auto& c : zone["children"]) {
-            if (ontology.IsA(c.value("module", ""), "BuildingParcel")) {
+            if (ontology.IsA(c.value("module", ""), unit.cls)) {
                 plots += Mid(c.value("repeat", json()), 1) * (c.contains("share") ? Mid(c["share"], 1) : 1);
             }
         }
-        if (plots > 0) zone["quantity"]["plots"] = {{"count", static_cast<int>(std::lround(plots))}};
+        if (plots > 0) zone["quantity"][field] = {{"count", static_cast<int>(std::lround(plots))}};
     }
-    spec["root"]["quantity"]["buildings"] = {{"count", count}};
+    spec["root"]["quantity"][unit.field] = {{"count", count}};
     return count;
 }
 
@@ -997,7 +1135,7 @@ json PlanSummary(const Ontology& ontology, const json& spec) {
                         {"qualities", qualities}, {"parcels", parcels}, {"rationale", c.value("rationale", "")}});
     }
     return {{"rows", rows},
-            {"totals", {{"buildings", CountBuildings(ontology, spec)}, {"zones", zones},
+            {"totals", {{"buildings", CountBuildings(ontology, spec)}, {"unit", UnitOf(ontology, spec).label}, {"zones", zones},
                         {"area", spec["root"].contains("quantity") ? spec["root"]["quantity"].value("area", json()) : json()}}},
             {"rationale", spec["root"].value("rationale", "")}};
 }
@@ -1296,11 +1434,22 @@ json VerifyLayout(const Ontology& ontology, const json& brief, const json& spec,
     if (!spec.contains("root") || !solved.is_object()) return rows;
     const json objects = solved.value("objects", json::array());
     const json regions = solved.value("regions", json::array());
+    const BuildType::Unit unit = UnitOf(ontology, spec);
+    const bool buildings = unit.cls == "BuildingParcel";
+    std::string label = unit.label;
+    if (!label.empty()) label[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(label[0])));
     auto builtUnder = [&](const std::string& prefix) {
         int n = 0;
-        for (const auto& o : objects) {
-            const std::string node = o.value("node", "");
-            if (o.value("layer", "") == "building" && o.value("primary", false) && (node == prefix || node.rfind(prefix + "/", 0) == 0)) ++n;
+        auto under = [&](const std::string& node) { return node == prefix || node.rfind(prefix + "/", 0) == 0; };
+        if (buildings) {
+            for (const auto& o : objects) {
+                if (o.value("layer", "") == "building" && o.value("primary", false) && under(o.value("node", ""))) ++n;
+            }
+        } else {
+            // Rooms, sites, points of interest: their regions.
+            for (const auto& r : regions) {
+                if (ontology.IsA(r.value("module", ""), unit.cls) && under(r.value("node", ""))) ++n;
+            }
         }
         return n;
     };
@@ -1323,8 +1472,12 @@ json VerifyLayout(const Ontology& ontology, const json& brief, const json& spec,
         const int planned = CountBuildings(ontology, spec);
         const int built = builtUnder(spec["root"].value("id", ""));
         int total = 0;
-        for (const auto& o : objects) total += o.value("layer", "") == "building" && o.value("primary", false);
-        json row = {{"id", "buildings"}, {"what", "Buildings"}, {"planned", planned}, {"built", total}};
+        if (buildings) {
+            for (const auto& o : objects) total += o.value("layer", "") == "building" && o.value("primary", false);
+        } else {
+            total = built;
+        }
+        json row = {{"id", "buildings"}, {"what", label}, {"planned", planned}, {"built", total}};
         if (lo >= 0) row["asked"] = lo == hi ? std::to_string(static_cast<int>(lo))
                                              : std::to_string(static_cast<int>(lo)) + "–" + std::to_string(static_cast<int>(hi));
         row["status"] = total < lo * 0.9 ? "short" : Status(planned, total);
@@ -1350,23 +1503,24 @@ json VerifyLayout(const Ontology& ontology, const json& brief, const json& spec,
         if (zm == nullptr || zm->level != PlaceLevel::Zone) continue;
         const std::string zoneId = zone.value("id", "");
         json one = {{"spec", "x"}, {"root", zone}};
-        const int planned = CountBuildings(ontology, one);
+        const int planned = CountBuildings(ontology, one, unit.cls);
         const int built = builtUnder(zoneId);
         json parts = json::array();
         for (const auto& p : zone.value("children", json::array())) {
             const ModuleDef* pm = ontology.Module(p.value("module", ""));
-            if (pm == nullptr || !ontology.IsA(pm->id, "BuildingParcel")) continue;
+            if (pm == nullptr || !ontology.IsA(pm->id, unit.cls)) continue;
             const double want = Mid(p.value("repeat", json()), 1);
             const int got = builtUnder(p.value("id", ""));
             parts.push_back({{"id", p.value("id", "")}, {"what", pm->name}, {"planned", static_cast<int>(std::lround(want))},
                              {"built", got}, {"status", Status(want, got)}});
         }
         json row = {{"id", zoneId}, {"what", zm->name}, {"zone", true}, {"planned", planned}, {"built", built}, {"parts", parts}};
-        std::string status = planned == 0 && zm->Field("plots") ? "missing" : Status(planned, built);
+        const bool counted = !CountField(*zm).empty();
+        std::string status = planned == 0 && counted ? "missing" : Status(planned, built);
         for (const auto& p : parts) {
             if (status == "ok" && p["status"] != "ok") status = "short";
         }
-        if (planned == 0 && zm->Field("plots")) row["note"] = "no buildings planned";
+        if (planned == 0 && counted) row["note"] = "no " + unit.label + " planned";
         row["status"] = status;
         rows.push_back(row);
     }
@@ -1376,7 +1530,7 @@ json VerifyLayout(const Ontology& ontology, const json& brief, const json& spec,
         const ModuleDef* m = ontology.Module(id);
         if (m == nullptr || !c.is_object() || !c.value("enabled", true)) continue;
         if (m->level == PlaceLevel::Zone || m->level == PlaceLevel::Network || m->level == PlaceLevel::Dressing ||
-            ontology.IsA(id, "BuildingParcel") || ontology.IsA(id, "LinearFeature")) {
+            ontology.IsA(id, "BuildingParcel") || ontology.IsA(id, unit.cls) || ontology.IsA(id, "LinearFeature")) {
             continue;
         }
         const double planned = CountModule(spec, id);

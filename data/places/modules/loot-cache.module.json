@@ -1,0 +1,46 @@
+{
+  "schema": "aige.module/1",
+  "id": "loot-cache",
+  "name": "Loot",
+  "level": "feature",
+  "description": "Something worth taking.",
+  "buildTypes": [
+    "dungeon"
+  ],
+  "quantity": {
+    "items": {
+      "type": "count",
+      "default": [
+        1,
+        2
+      ],
+      "min": 0,
+      "max": 12
+    }
+  },
+  "quality": {
+    "rarity": {
+      "type": "enum",
+      "vocabulary": "rarity",
+      "default": "common"
+    }
+  },
+  "slots": {
+    "loot": {
+      "role": "loot",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "loot",
+        "count": "items",
+        "where": "border"
+      }
+    ],
+    "noPrimary": true
+  }
+}

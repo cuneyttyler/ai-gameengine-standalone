@@ -1,0 +1,58 @@
+{
+  "schema": "aige.module/1",
+  "id": "entrance-room",
+  "name": "Entrance",
+  "level": "parcel",
+  "description": "Where the way in arrives: the dungeon's mouth, or the stairs from the level above.",
+  "buildTypes": [
+    "dungeon"
+  ],
+  "classes": [
+    "DungeonRoom"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          5,
+          7
+        ],
+        "h": [
+          5,
+          7
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    },
+    "danger": {
+      "type": "count",
+      "default": 0,
+      "min": 0,
+      "max": 5
+    }
+  },
+  "quality": {},
+  "slots": {
+    "stairs": {
+      "role": "stairs",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "ambience": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    }
+  }
+}

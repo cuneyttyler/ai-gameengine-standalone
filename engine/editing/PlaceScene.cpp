@@ -79,6 +79,9 @@ TerrainGrid ReadTerrain(const json& solved) {
     return grid;
 }
 
+// Terrain nothing walks on: water, and a dungeon's rock between its rooms.
+bool SolidTerrain(const std::string& t) { return t == "water" || t == "rock-wall"; }
+
 // The project terrain a layout terrain is painted with: by name, then by kin.
 std::string MatchTerrain(const TerrainSet& set, const std::string& wanted) {
     static const std::map<std::string, std::vector<std::string>> kin = {
@@ -86,6 +89,11 @@ std::string MatchTerrain(const TerrainSet& set, const std::string& wanted) {
         {"dirt", {"dirt", "road", "path", "earth", "mud", "sand", "soil"}},
         {"cobble", {"cobble", "stone", "paving", "pave", "brick", "gravel", "rock"}},
         {"water", {"water", "river", "lake", "sea", "pond"}},
+        {"water-shallow", {"shallow", "water", "puddle"}},
+        {"rock-wall", {"rock wall", "cave wall", "cliff", "wall", "rock"}},
+        {"stone-floor", {"stone floor", "flagstone", "dungeon floor", "floor", "stone", "cobble"}},
+        {"cave-floor", {"cave floor", "cave", "rock floor", "dirt", "earth"}},
+        {"wood-floor", {"wood floor", "plank", "wooden floor", "floorboard", "wood", "floor"}},
     };
     auto it = kin.find(wanted);
     const std::vector<std::string> words = it == kin.end() ? std::vector<std::string>{wanted} : it->second;
@@ -135,7 +143,10 @@ ImageData PlaceholderImage(const std::string& kind, const std::string& key) {
     if (kind == "tile") {
         make(32, 32);
         static const std::map<std::string, Rgb> ground = {
-            {"grass", {104, 158, 84}}, {"dirt", {176, 146, 102}}, {"cobble", {150, 150, 146}}, {"water", {72, 128, 186}}};
+            {"grass", {104, 158, 84}}, {"dirt", {176, 146, 102}}, {"cobble", {150, 150, 146}}, {"water", {72, 128, 186}},
+            {"water-shallow", {104, 150, 186}}, {"rock-wall", {58, 56, 54}}, {"stone-floor", {143, 139, 132}},
+            {"cave-floor", {125, 111, 95}}, {"wood-floor", {176, 138, 94}}, {"mud", {138, 111, 78}}, {"sand", {228, 210, 154}},
+            {"snow", {238, 242, 245}}};
         auto it = ground.find(key);
         const Rgb g = it == ground.end() ? c : it->second;
         Fill(image, 0, 0, 32, 32, g);
@@ -623,13 +634,14 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
     const TerrainGrid grid = ReadTerrain(solved);
     std::set<std::string> used(grid.cells.begin(), grid.cells.end());
     if (!grid.bridges.empty()) used.insert("dirt");
+    used.erase("void"); // outside a building: left as it is
     for (const auto& t : used) {
         const std::string mine = MatchTerrain(terrains, t);
         if (!mine.empty()) {
             out["terrains"][t] = {{"terrain", mine}, {"source", "project"}};
         } else {
             out["terrains"][t] = {{"prefab", PlaceholderPrefab(prefabs, "tile", t, options.iso.tileWidth, options.iso.tileHeight,
-                                                               t == "water", options.iso)},
+                                                               SolidTerrain(t), options.iso)},
                                   {"source", "placeholder"}, {"why", "no " + t + " ground tiles in the project"}};
         }
     }
@@ -683,7 +695,8 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
             const int gx = x + options.originX, gy = y + options.originY;
             const std::string name = grid.bridges.contains({x, y}) ? "dirt" : grid.At(x, y);
             const json row = terrainsUsed.value(name, json::object());
-            const bool water = name == "water";
+            if (name == "void") continue; // outside a building: nothing
+            const bool water = SolidTerrain(name);
             uint16_t id = TileLayer::kEmpty;
             if (row.contains("terrain")) {
                 const std::string center = terrainAt(gx, gy);

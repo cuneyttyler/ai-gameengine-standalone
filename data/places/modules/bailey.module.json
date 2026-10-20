@@ -1,0 +1,110 @@
+{
+  "schema": "aige.module/1",
+  "id": "bailey",
+  "name": "Bailey",
+  "level": "zone",
+  "description": "A courtyard inside the wall and the buildings round it.",
+  "buildTypes": [
+    "castle"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "plots": {
+      "type": "count",
+      "default": [
+        3,
+        10
+      ],
+      "min": 0,
+      "max": 120,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        900,
+        6400
+      ],
+      "min": 100,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "role": {
+      "type": "enum",
+      "values": [
+        "inner",
+        "outer"
+      ],
+      "default": "inner",
+      "ask": true
+    },
+    "street-style": {
+      "type": "enum",
+      "vocabulary": "layout",
+      "default": "organic"
+    }
+  },
+  "slots": {},
+  "children": {
+    "keep-plot": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 1
+    },
+    "barracks-plot": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 4
+    },
+    "chapel-plot": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 1
+    },
+    "smithy-plot": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 2
+    },
+    "storehouse-plot": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 4
+    },
+    "stables-plot": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 2
+    },
+    "training-yard": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 2
+    },
+    "well-plaza": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 2
+    },
+    "garden": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 2
+    },
+    "clutter": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 1
+    }
+  },
+  "compile": {
+    "network": {
+      "class": "lane",
+      "terrain": "cobble",
+      "spacing": 14
+    }
+  }
+}

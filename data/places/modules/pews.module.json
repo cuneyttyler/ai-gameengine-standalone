@@ -1,0 +1,49 @@
+{
+  "schema": "aige.module/1",
+  "id": "pews",
+  "name": "Pews",
+  "level": "feature",
+  "description": "Rows of benches facing the altar.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {
+    "rows": {
+      "type": "count",
+      "default": [
+        3,
+        6
+      ],
+      "min": 1,
+      "max": 20
+    }
+  },
+  "quality": {},
+  "slots": {
+    "pew": {
+      "role": "pew",
+      "essential": true,
+      "primary": true
+    },
+    "pew2": {
+      "role": "pew",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "center",
+      "members": [
+        {
+          "slot": "pew2",
+          "count": "rows",
+          "near": 3
+        }
+      ]
+    }
+  }
+}

@@ -129,6 +129,9 @@ public:
     void ClearSourcingDone() { sourcingDone_ = false; }
     // The new assets' descriptions and provenance, for their .meta: [{path, fields}], then cleared.
     nlohmann::json TakeNewAssets();
+    // A region's sites (7.10), each built later as a place of its own:
+    // [{id, node, name, buildType, scale, bounds: [x, y, w, h]}] from the layout.
+    nlohmann::json Sites() const;
     // ④ Build: from a laid-out plan. Returns why not, or "".
     std::string StartBuilding();
     // The editor's scene build is done: {assets, report, verify, repairs, after}.

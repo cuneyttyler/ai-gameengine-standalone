@@ -1,0 +1,72 @@
+{
+  "schema": "aige.module/1",
+  "id": "cells",
+  "name": "Cells",
+  "level": "parcel",
+  "description": "Small cells behind bars.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "InteriorRoom"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          4,
+          6
+        ],
+        "h": [
+          3,
+          5
+        ]
+      },
+      "min": {
+        "w": 2,
+        "h": 2
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    }
+  },
+  "quality": {
+    "surface": {
+      "type": "enum",
+      "vocabulary": "floor-surface",
+      "default": "stone-floor"
+    }
+  },
+  "slots": {
+    "floor": {
+      "role": "floor-tile",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "storage-set": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 1
+    },
+    "room-lights": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    },
+    "wall-decor": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 1
+    }
+  },
+  "compile": {
+    "room": true,
+    "surface": "stone-floor"
+  }
+}

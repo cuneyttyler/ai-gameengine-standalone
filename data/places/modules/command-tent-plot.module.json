@@ -1,0 +1,62 @@
+{
+  "schema": "aige.module/1",
+  "id": "command-tent-plot",
+  "name": "Command tent",
+  "level": "parcel",
+  "description": "The large tent where the camp is led from.",
+  "buildTypes": [
+    "camp"
+  ],
+  "classes": [
+    "Civic"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          8
+        ],
+        "h": [
+          6,
+          8
+        ]
+      },
+      "min": {
+        "w": 4,
+        "h": 4
+      },
+      "unit": "cells",
+      "max": {
+        "w": 14,
+        "h": 14
+      }
+    }
+  },
+  "quality": {},
+  "slots": {
+    "tent": {
+      "role": "command-tent",
+      "essential": true,
+      "primary": true
+    },
+    "banner": {
+      "role": "banner",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "banner",
+        "count": [
+          1,
+          2
+        ],
+        "near": "primary"
+      }
+    ]
+  }
+}

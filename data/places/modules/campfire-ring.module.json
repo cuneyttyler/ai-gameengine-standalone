@@ -1,0 +1,60 @@
+{
+  "schema": "aige.module/1",
+  "id": "campfire-ring",
+  "name": "Campfire",
+  "level": "feature",
+  "description": "A ring of stones round a fire, logs to sit on.",
+  "buildTypes": [
+    "camp",
+    "wilderness"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          3,
+          4
+        ],
+        "h": [
+          3,
+          4
+        ]
+      },
+      "min": {
+        "w": 2,
+        "h": 2
+      },
+      "unit": "cells",
+      "max": {
+        "w": 8,
+        "h": 8
+      }
+    }
+  },
+  "quality": {},
+  "slots": {
+    "campfire": {
+      "role": "campfire",
+      "essential": true,
+      "primary": true
+    },
+    "log": {
+      "role": "log",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "log",
+        "count": [
+          1,
+          3
+        ],
+        "near": "primary"
+      }
+    ]
+  }
+}

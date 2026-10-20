@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "Fenced grazing with animals and a trough.",
   "buildTypes": [
-    "settlement"
+    "settlement",
+    "farmland"
   ],
   "quantity": {
     "size": {

@@ -532,7 +532,7 @@ void PlaceBuild::OnPlanAnswer(const Pending& what, const json& body) {
             ApplyZoneAnswer(ontology, brief_, spec_, what.node, body["answer"]);
         } else if (json* zone = SpecNode(spec_, what.node)) {
             Notice("The AI couldn't plan " + what.node + " (" + FirstError(body) + "), so its parcels come from the module rules.");
-            ApplyZoneAnswer(ontology, brief_, spec_, what.node, FallbackZoneAnswer(ontology, *zone));
+            ApplyZoneAnswer(ontology, brief_, spec_, what.node, FallbackZoneAnswer(ontology, *zone, spec_["root"]));
         }
         ++zonesDone_;
         status_ = "Planned " + std::to_string(zonesDone_) + " of " + std::to_string(zonesTotal_) + " zones…";
@@ -610,7 +610,7 @@ void PlaceBuild::PlanZones() {
         if (!Send({"plan-zone", -1, zoneId, "/places/plan-zone",
                    {{"brief", brief_}, {"zone", zone}, {"siblings", siblings}, {"context", PlanZoneContext(ontology, brief_, zone.value("module", ""))}},
                    600})) {
-            ApplyZoneAnswer(ontology, brief_, spec_, zoneId, FallbackZoneAnswer(ontology, zone));
+            ApplyZoneAnswer(ontology, brief_, spec_, zoneId, FallbackZoneAnswer(ontology, zone, spec_["root"]));
             ++zonesDone_;
             offline = true;
         }
@@ -712,12 +712,20 @@ void PlaceBuild::Solve() {
     json bestProblems = json::array();
     double bestScore = -1e18;
     int rounds = 0;
-    for (int round = 0; round < 4; ++round) {
+    // Four rounds, and up to six while the last one still got better (a city's many wards).
+    bool improving = true;
+    for (int round = 0; round < 4 || (round < 6 && improving); ++round) {
         ++rounds;
         const auto roundScale = options.zoneScale;
+        const auto t0 = std::chrono::steady_clock::now();
         ir = CompileSpec(ontology, spec_, options);
+        const auto t1 = std::chrono::steady_clock::now();
         const SolvedLayout solved = SolveLayout(ontology, ir);
+        const auto t2 = std::chrono::steady_clock::now();
         const json rows = VerifyLayout(ontology, brief_, spec_, solved.document);
+        const auto t3 = std::chrono::steady_clock::now();
+        auto ms = [](auto a, auto b) { return std::lround(std::chrono::duration<double, std::milli>(b - a).count()); };
+        const json took = {{"compile", ms(t0, t1)}, {"solve", ms(t1, t2)}, {"verify", ms(t2, t3)}};
         double score = 0;
         int shortZones = 0;
         json grown = json::object();
@@ -735,7 +743,8 @@ void PlaceBuild::Solve() {
                 ++shortZones;
             }
         }
-        Log({{"step", "fit"}, {"round", round + 1}, {"score", score}, {"short", shortZones}, {"scale", grown}});
+        Log({{"step", "fit"}, {"round", round + 1}, {"score", score}, {"short", shortZones}, {"scale", grown}, {"ms", took}});
+        improving = score > bestScore;
         if (score > bestScore) {
             bestScore = score;
             best = solved.document;
@@ -744,6 +753,20 @@ void PlaceBuild::Solve() {
             bestScale = roundScale;
         }
         if (shortZones == 0) break;
+        // The next rounds keep this one's site and where its zones are (their seeds):
+        // only the short zones grow, the rest of the place stays as it is.
+        if (round == 0 && solved.document.contains("grid")) {
+            const json b = solved.document["grid"].value("bounds", json());
+            if (b.is_array() && b.size() == 4 && b[2].is_number()) {
+                options.side = b[2].get<int>();
+                options.fixedSide = true;
+            }
+            for (const auto& r : solved.document.value("regions", json::array())) {
+                if (r.value("statement", "") == "site/zones" && r.contains("seed") && !options.keepSeeds.contains(r.value("id", ""))) {
+                    options.keepSeeds[r.value("id", "")] = {r["seed"][0].get<int>(), r["seed"][1].get<int>()};
+                }
+            }
+        }
     }
     fitScale_ = bestScale;
     irProblems = ValidateLayout(ontology, bestIr);
@@ -753,7 +776,8 @@ void PlaceBuild::Solve() {
     // The plan says what the layout is: each zone's area as laid out, the site's side.
     const int side = SiteSide();
     fitSide_ = side;
-    if (spec_.contains("root")) {
+    const ModuleDef* rootModule = spec_.contains("root") ? ontology.Module(spec_["root"].value("module", "")) : nullptr;
+    if (spec_.contains("root") && rootModule && rootModule->Field("area")) {
         spec_["root"]["quantity"]["area"] = {{"area", side * side}};
         for (const auto& r : solved_.value("regions", json::array())) {
             if (r.value("statement", "") != "site/zones") continue;
@@ -767,8 +791,14 @@ void PlaceBuild::Solve() {
 }
 
 void PlaceBuild::RenderMap() {
+    // What it's counted in: buildings, or a dungeon's rooms, a region's sites.
+    const BuildType::Unit unit = UnitOf(host_.ontology(), spec_);
     int buildings = 0;
-    for (const auto& o : solved_.value("objects", json::array())) buildings += o.value("layer", "") == "building";
+    if (unit.cls == "BuildingParcel") {
+        for (const auto& o : solved_.value("objects", json::array())) buildings += o.value("layer", "") == "building";
+    } else {
+        for (const auto& r : solved_.value("regions", json::array())) buildings += host_.ontology().IsA(r.value("module", ""), unit.cls);
+    }
     int failed = 0;
     for (const auto& c : solved_.value("checks", json::array())) failed += !c.value("ok", true);
     // The map of it, with its legend: places/<id>/layout.png.
@@ -792,10 +822,10 @@ void PlaceBuild::RenderMap() {
         const ModuleDef* m = host_.ontology().Module(module);
         if (m && m->level == PlaceLevel::Zone) zones += count;
     }
-    image.title = brief_.value("name", id_) + ": " + std::to_string(buildings) + " buildings in " + std::to_string(zones) + " zones";
+    image.title = brief_.value("name", id_) + ": " + std::to_string(buildings) + " " + unit.label + " in " + std::to_string(zones) + " zones";
     WritePng(Folder() / "layout.png", RenderLayoutImage(solved_, image));
     ++imageVersion_;
-    status_ = "Laid out " + std::to_string(buildings) + " buildings" + (failed ? " (" + std::to_string(failed) + " check(s) to look at)" : "") +
+    status_ = "Laid out " + std::to_string(buildings) + " " + unit.label + (failed ? " (" + std::to_string(failed) + " check(s) to look at)" : "") +
               ". Build puts it into the scene.";
 }
 
@@ -1507,6 +1537,28 @@ json PlaceBuild::TakeNewAssets() {
     return out;
 }
 
+json PlaceBuild::Sites() const {
+    json out = json::array();
+    if (!solved_.is_object()) return out;
+    const Ontology& ontology = host_.ontology();
+    json spec = spec_;
+    for (const auto& r : solved_.value("regions", json::array())) {
+        const ModuleDef* m = ontology.Module(r.value("module", ""));
+        if (m == nullptr || !(m->compile.is_object() && m->compile.value("nested", false))) continue;
+        const json* node = SpecNode(spec, r.value("node", ""));
+        const json fields = node ? node->value("quality", json::object()) : json::object();
+        auto field = [&](const std::string& name) {
+            const json v = fields.value(name, json());
+            if (v.is_string()) return v.get<std::string>();
+            const FieldDef* f = m->Field(name);
+            return f && f->defaultValue.is_string() ? f->defaultValue.get<std::string>() : std::string();
+        };
+        out.push_back({{"id", r.value("id", "")}, {"node", r.value("node", "")}, {"name", field("name")}, {"buildType", field("build-type")},
+                       {"scale", field("scale-class")}, {"bounds", r.value("bounds", json())}});
+    }
+    return out;
+}
+
 std::string PlaceBuild::StartBuilding() {
     if (stage_ != "planned" && stage_ != "built" && stage_ != "building") return "approve the plan first";
     if (!solved_.is_object()) return "the plan isn't laid out";
@@ -1753,6 +1805,7 @@ json PlaceBuild::State() {
     if (solved_.is_object()) {
         state["brushModules"] = BrushModules();
         state["locks"] = locks_;
+        if (const json sites = Sites(); !sites.empty()) state["sites"] = sites;
     }
     if (stage_ == "plan" || stage_ == "planned" || stage_ == "revising" || stage_ == "built") {
         state["revisions"] = revisions_;

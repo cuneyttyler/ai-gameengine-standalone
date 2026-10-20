@@ -1,0 +1,54 @@
+{
+  "schema": "aige.module/1",
+  "id": "bunk-set",
+  "name": "Bunks",
+  "level": "feature",
+  "description": "Beds in a row for the garrison or the guests.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "bed": {
+      "role": "bed",
+      "essential": true,
+      "primary": true
+    },
+    "bed2": {
+      "role": "bed",
+      "essential": false
+    },
+    "chest": {
+      "role": "chest",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "wall",
+      "members": [
+        {
+          "slot": "bed2",
+          "count": [
+            1,
+            4
+          ],
+          "near": 3
+        },
+        {
+          "slot": "chest",
+          "count": [
+            0,
+            2
+          ],
+          "near": 3
+        }
+      ]
+    }
+  }
+}

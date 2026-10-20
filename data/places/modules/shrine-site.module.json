@@ -1,0 +1,68 @@
+{
+  "schema": "aige.module/1",
+  "id": "shrine-site",
+  "name": "Shrine",
+  "level": "parcel",
+  "description": "A small wayside shrine.",
+  "buildTypes": [
+    "wilderness",
+    "region"
+  ],
+  "classes": [
+    "PointOfInterest"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          4,
+          6
+        ],
+        "h": [
+          4,
+          6
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 12,
+        "h": 12
+      }
+    }
+  },
+  "quality": {
+    "faith": {
+      "type": "enum",
+      "vocabulary": "faith",
+      "default": "old-faith"
+    }
+  },
+  "slots": {
+    "shrine": {
+      "role": "shrine",
+      "essential": true,
+      "primary": true
+    },
+    "candle": {
+      "role": "candle",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "candle",
+        "count": [
+          1,
+          3
+        ]
+      }
+    ]
+  }
+}

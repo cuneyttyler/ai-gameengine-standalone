@@ -1,0 +1,58 @@
+{
+  "schema": "aige.module/1",
+  "id": "smithy-plot",
+  "name": "Smithy",
+  "level": "parcel",
+  "description": "The castle forge.",
+  "buildTypes": [
+    "castle"
+  ],
+  "classes": [
+    "Workplace"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          8
+        ],
+        "h": [
+          6,
+          8
+        ]
+      },
+      "min": {
+        "w": 4,
+        "h": 4
+      },
+      "unit": "cells",
+      "max": {
+        "w": 30,
+        "h": 30
+      }
+    }
+  },
+  "quality": {
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "lived-in"
+    }
+  },
+  "slots": {
+    "smithy": {
+      "role": "smithy",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "clutter": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 1
+    }
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "schema": "aige.module/1",
+  "id": "hearth-set",
+  "name": "Hearth",
+  "level": "feature",
+  "description": "A fireplace on the wall, chairs and a rug before it.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "fireplace": {
+      "role": "fireplace",
+      "essential": true,
+      "primary": true
+    },
+    "chair": {
+      "role": "chair",
+      "essential": false
+    },
+    "rug": {
+      "role": "rug",
+      "essential": false
+    },
+    "woodpile": {
+      "role": "log-pile",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "wall",
+      "members": [
+        {
+          "slot": "chair",
+          "count": [
+            1,
+            2
+          ],
+          "near": 2
+        },
+        {
+          "slot": "rug",
+          "count": [
+            0,
+            1
+          ],
+          "near": 1
+        },
+        {
+          "slot": "woodpile",
+          "count": [
+            0,
+            1
+          ],
+          "near": 1
+        }
+      ]
+    }
+  }
+}

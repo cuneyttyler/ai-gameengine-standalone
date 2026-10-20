@@ -1,0 +1,72 @@
+{
+  "schema": "aige.module/1",
+  "id": "guard-room",
+  "name": "Guard room",
+  "level": "parcel",
+  "description": "Guards at a table, weapons on the wall.",
+  "buildTypes": [
+    "dungeon"
+  ],
+  "classes": [
+    "DungeonRoom"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          5,
+          8
+        ],
+        "h": [
+          5,
+          7
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    },
+    "danger": {
+      "type": "count",
+      "default": 2,
+      "min": 0,
+      "max": 5
+    }
+  },
+  "quality": {},
+  "slots": {
+    "table": {
+      "role": "table",
+      "essential": true,
+      "primary": true
+    },
+    "rack": {
+      "role": "weapon-rack",
+      "essential": false
+    }
+  },
+  "children": {
+    "ambience": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    },
+    "encounter": {
+      "min": 0,
+      "weight": 0.9,
+      "max": 1
+    },
+    "loot-cache": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 1
+    }
+  }
+}

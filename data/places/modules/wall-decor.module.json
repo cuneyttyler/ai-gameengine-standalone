@@ -1,0 +1,41 @@
+{
+  "schema": "aige.module/1",
+  "id": "wall-decor",
+  "name": "Wall decor",
+  "level": "feature",
+  "description": "Paintings, banners and trophies on the walls.",
+  "buildTypes": [
+    "interior"
+  ],
+  "quantity": {
+    "items": {
+      "type": "count",
+      "default": [
+        1,
+        2
+      ],
+      "min": 0,
+      "max": 10
+    }
+  },
+  "quality": {},
+  "slots": {
+    "decor": {
+      "role": "wall-decor",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "decor",
+        "count": "items",
+        "where": "border",
+        "layer": "decal"
+      }
+    ],
+    "noPrimary": true
+  }
+}

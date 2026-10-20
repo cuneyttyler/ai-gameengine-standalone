@@ -5,7 +5,8 @@
   "level": "zone",
   "description": "Fields and farmsteads outside the settlement (a nested farmland place).",
   "buildTypes": [
-    "settlement"
+    "settlement",
+    "farmland"
   ],
   "classes": [
     "Ward"

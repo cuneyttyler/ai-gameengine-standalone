@@ -377,5 +377,338 @@
   "animal": {
     "label": "animal",
     "affordance": "character"
+  },
+  "tent": {
+    "label": "tent",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "command-tent": {
+    "label": "command tent",
+    "affordance": "environmental-object",
+    "broader": "tent"
+  },
+  "keep": {
+    "label": "keep",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "barracks": {
+    "label": "barracks",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "chapel": {
+    "label": "chapel",
+    "affordance": "environmental-object",
+    "broader": "temple"
+  },
+  "storehouse": {
+    "label": "storehouse",
+    "affordance": "environmental-object",
+    "broader": "warehouse"
+  },
+  "gatehouse": {
+    "label": "gatehouse",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "smithy": {
+    "label": "smithy",
+    "affordance": "environmental-object",
+    "broader": "workshop"
+  },
+  "ruin": {
+    "label": "ruin",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "site-marker": {
+    "label": "site marker",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "landmark": {
+    "label": "landmark",
+    "affordance": "environmental-object",
+    "broader": "building"
+  },
+  "campfire": {
+    "label": "campfire",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "hitching-post": {
+    "label": "hitching post",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "lookout": {
+    "label": "lookout",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "training-dummy": {
+    "label": "training dummy",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "weapon-rack": {
+    "label": "weapon rack",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "drawbridge": {
+    "label": "drawbridge",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "standing-stone": {
+    "label": "standing stone",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "shrine": {
+    "label": "shrine",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "cave-mouth": {
+    "label": "cave mouth",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "door": {
+    "label": "door",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "stairs": {
+    "label": "stairs",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "chest": {
+    "label": "chest",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "altar": {
+    "label": "altar",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "trap": {
+    "label": "trap",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "pillar": {
+    "label": "pillar",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "cage": {
+    "label": "cage",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "sarcophagus": {
+    "label": "sarcophagus",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "bookshelf": {
+    "label": "bookshelf",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "lever": {
+    "label": "lever",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "bed": {
+    "label": "bed",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "table": {
+    "label": "table",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "chair": {
+    "label": "chair",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "nightstand": {
+    "label": "nightstand",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "fireplace": {
+    "label": "fireplace",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "counter": {
+    "label": "counter",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "stool": {
+    "label": "stool",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "shelf": {
+    "label": "shelf",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "workbench": {
+    "label": "workbench",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "anvil": {
+    "label": "anvil",
+    "affordance": "interactive-object",
+    "broader": "prop"
+  },
+  "display-stand": {
+    "label": "display stand",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "lectern": {
+    "label": "lectern",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "throne": {
+    "label": "throne",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "banner": {
+    "label": "banner",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "pew": {
+    "label": "pew",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "cupboard": {
+    "label": "cupboard",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "stove": {
+    "label": "stove",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "wardrobe": {
+    "label": "wardrobe",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "desk": {
+    "label": "desk",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "wall-decor": {
+    "label": "wall decor",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "candle": {
+    "label": "candle",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "stand": {
+    "label": "stand",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
+  "locked-door": {
+    "label": "locked door",
+    "affordance": "interactive-object",
+    "broader": "door"
+  },
+  "secret-door": {
+    "label": "secret door",
+    "affordance": "interactive-object",
+    "broader": "door"
+  },
+  "portcullis": {
+    "label": "portcullis",
+    "affordance": "interactive-object",
+    "broader": "door"
+  },
+  "key": {
+    "label": "key",
+    "affordance": "item",
+    "broader": "prop"
+  },
+  "loot": {
+    "label": "loot",
+    "affordance": "item",
+    "broader": "prop"
+  },
+  "enemy": {
+    "label": "enemy",
+    "affordance": "character"
+  },
+  "boss": {
+    "label": "boss",
+    "affordance": "character",
+    "broader": "enemy"
+  },
+  "prisoner": {
+    "label": "prisoner",
+    "affordance": "character"
+  },
+  "horse": {
+    "label": "horse",
+    "affordance": "character",
+    "broader": "animal"
+  },
+  "rug": {
+    "label": "rug",
+    "affordance": "environmental-object",
+    "broader": "decal"
+  },
+  "debris": {
+    "label": "debris",
+    "affordance": "environmental-object",
+    "broader": "decal"
+  },
+  "bones": {
+    "label": "bones",
+    "affordance": "environmental-object",
+    "broader": "decal"
+  },
+  "floor-tile": {
+    "label": "floor tile",
+    "affordance": "terrain",
+    "broader": "terrain"
+  },
+  "wall-terrain": {
+    "label": "wall terrain",
+    "affordance": "terrain",
+    "broader": "terrain"
+  },
+  "window": {
+    "label": "window",
+    "affordance": "environmental-object",
+    "broader": "prop"
   }
 }

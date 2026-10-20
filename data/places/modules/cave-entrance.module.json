@@ -1,0 +1,68 @@
+{
+  "schema": "aige.module/1",
+  "id": "cave-entrance",
+  "name": "Cave entrance",
+  "level": "parcel",
+  "description": "A cave mouth in the rock: the way into a dungeon, built as its own place.",
+  "buildTypes": [
+    "wilderness",
+    "region"
+  ],
+  "classes": [
+    "PointOfInterest"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          5,
+          7
+        ],
+        "h": [
+          4,
+          6
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 14,
+        "h": 14
+      }
+    }
+  },
+  "quality": {
+    "leads-to": {
+      "type": "enum",
+      "values": [
+        "dungeon",
+        "none"
+      ],
+      "default": "dungeon"
+    }
+  },
+  "slots": {
+    "mouth": {
+      "role": "cave-mouth",
+      "essential": true,
+      "primary": true
+    },
+    "rock": {
+      "role": "rock",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "rock",
+        "density": 0.15
+      }
+    ]
+  }
+}

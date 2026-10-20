@@ -312,12 +312,613 @@ gbs:ConceptShape
 
 # --- Built places, per module ---
 
+gbs:AbandonedCartShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:AbandonedCart ;
+    sh:property [
+        sh:path gbl:AbandonedCart.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 8.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 8.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:AltarSetShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:AltarSet ;
+    sh:property [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:AmbienceShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Ambience ;
+    sh:property [
+        sh:path gbl:Ambience.debris ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "rare" "some" "common" "abundant" )
+    ], [
+        sh:path gbl:Ambience.lights ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "rare" "some" "common" "abundant" )
+    ], [
+        sh:path gbl:Ambience.mood ;
+        sh:maxCount 1 ;
+        sh:in ( "gloomy" "eerie" "grand" )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:ArmouryShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Armoury ;
+    sh:property [
+        sh:path gbl:Armoury.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Armoury.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:ShelfWall
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:StorageSet
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:ShelfWall
+        ] [
+            sh:class gbl:StorageSet
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:BackStoreShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:BackStore ;
+    sh:property [
+        sh:path gbl:BackStore.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:BackStore.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:StorageSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:StorageSet
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:BaileyShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Bailey ;
+    sh:property [
+        sh:path gbl:Bailey.area ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 100.0
+    ], [
+        sh:path gbl:Bailey.plots ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 120
+    ], [
+        sh:path gbl:Bailey.role ;
+        sh:maxCount 1 ;
+        sh:in ( "inner" "outer" )
+    ], [
+        sh:path gbl:Bailey.street-style ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:layout.organic gbv:layout.grid gbv:layout.radial gbv:layout.linear-along-road gbv:layout.linear-along-river )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:BarracksPlot
+        ] ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:ChapelPlot
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Clutter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Garden
+        ] ;
+        sh:qualifiedMaxCount 2
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:KeepPlot
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:SmithyPlot
+        ] ;
+        sh:qualifiedMaxCount 2
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:StablesPlot
+        ] ;
+        sh:qualifiedMaxCount 2
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:StorehousePlot
+        ] ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:TrainingYard
+        ] ;
+        sh:qualifiedMaxCount 2
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WellPlaza
+        ] ;
+        sh:qualifiedMaxCount 2
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:BarracksPlot
+        ] [
+            sh:class gbl:ChapelPlot
+        ] [
+            sh:class gbl:Clutter
+        ] [
+            sh:class gbl:Garden
+        ] [
+            sh:class gbl:KeepPlot
+        ] [
+            sh:class gbl:SmithyPlot
+        ] [
+            sh:class gbl:StablesPlot
+        ] [
+            sh:class gbl:StorehousePlot
+        ] [
+            sh:class gbl:TrainingYard
+        ] [
+            sh:class gbl:WellPlaza
+        ] )
+    ] .
+
+gbs:BarSetShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:BarSet ;
+    sh:property [
+        sh:path gbl:BarSet.stools ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 10
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:BarracksDormShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:BarracksDorm ;
+    sh:property [
+        sh:path gbl:BarracksDorm.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:BarracksDorm.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:BunkSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:BunkSet
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:BarracksPlotShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:BarracksPlot ;
+    sh:property [
+        sh:path gbl:BarracksPlot.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 30.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 30.0
+            ]
+        ]
+    ], [
+        sh:path gbl:BarracksPlot.condition ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Clutter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Clutter
+        ] )
+    ] .
+
+gbs:BarracksRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:BarracksRoom ;
+    sh:property [
+        sh:path gbl:BarracksRoom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:BarracksRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Encounter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:LootCache
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] [
+            sh:class gbl:Encounter
+        ] [
+            sh:class gbl:LootCache
+        ] )
+    ] .
+
+gbs:BedSetShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:BedSet ;
+    sh:property [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:BedroomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Bedroom ;
+    sh:property [
+        sh:path gbl:Bedroom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Bedroom.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:BedSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WardrobeSet
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:BedSet
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:WallDecor
+        ] [
+            sh:class gbl:WardrobeSet
+        ] )
+    ] .
+
 gbs:BenchShape
     a sh:NodeShape ;
     sh:targetClass gbl:Bench ;
     sh:property [
         sh:path gbo:hasPart ;
         sh:maxCount 0
+    ] .
+
+gbs:BiomeZoneShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:BiomeZone ;
+    sh:property [
+        sh:path gbl:BiomeZone.area ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 400.0
+    ], [
+        sh:path gbl:BiomeZone.biome ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:biome-kind.forest gbv:biome-kind.plains gbv:biome-kind.hills gbv:biome-kind.swamp gbv:biome-kind.desert gbv:biome-kind.tundra )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:BossArenaShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:BossArena ;
+    sh:property [
+        sh:path gbl:BossArena.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:BossArena.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:LootCache
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] [
+            sh:class gbl:LootCache
+        ] )
     ] .
 
 gbs:BridgeShape
@@ -342,6 +943,422 @@ gbs:BridgeShape
     ], [
         sh:path gbo:hasPart ;
         sh:maxCount 0
+    ] .
+
+gbs:BuildingInteriorShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:BuildingInterior ;
+    sh:property [
+        sh:path gbl:BuildingInterior.floors ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 6
+    ], [
+        sh:path gbl:BuildingInterior.rooms ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 200
+    ], [
+        sh:path gbl:BuildingInterior.condition ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
+    ], [
+        sh:path gbl:BuildingInterior.floor ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbl:BuildingInterior.kind ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:building-kind.house gbv:building-kind.inn gbv:building-kind.shop gbv:building-kind.temple gbv:building-kind.castle-hall gbv:building-kind.workshop )
+    ], [
+        sh:path gbl:BuildingInterior.notes ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ], [
+        sh:path gbl:BuildingInterior.wealth ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:wealth.poor gbv:wealth.common gbv:wealth.rich )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:FloorLevel
+        ] ;
+        sh:qualifiedMinCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:FloorLevel
+        ] )
+    ] .
+
+gbs:BunkSetShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:BunkSet ;
+    sh:property [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:CampShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Camp ;
+    sh:property [
+        sh:path gbl:Camp.area ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 100.0
+    ], [
+        sh:path gbl:Camp.tents ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 400
+    ], [
+        sh:path gbl:Camp.condition ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
+    ], [
+        sh:path gbl:Camp.kind ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:camp-kind.military gbv:camp-kind.nomad gbv:camp-kind.bandit gbv:camp-kind.hunters )
+    ], [
+        sh:path gbl:Camp.notes ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ], [
+        sh:path gbl:Camp.walled ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "palisade" )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:CampGround
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 6
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Forest
+        ] ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ground
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Lake
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Meadow
+        ] ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:River
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Road
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 10
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Wall
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:CampGround
+        ] [
+            sh:class gbl:Forest
+        ] [
+            sh:class gbl:Ground
+        ] [
+            sh:class gbl:Lake
+        ] [
+            sh:class gbl:Meadow
+        ] [
+            sh:class gbl:River
+        ] [
+            sh:class gbl:Road
+        ] [
+            sh:class gbl:Wall
+        ] )
+    ] .
+
+gbs:CampGroundShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:CampGround ;
+    sh:property [
+        sh:path gbl:CampGround.area ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 100.0
+    ], [
+        sh:path gbl:CampGround.tents ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 400
+    ], [
+        sh:path gbl:CampGround.street-style ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:layout.organic gbv:layout.grid gbv:layout.radial gbv:layout.linear-along-road gbv:layout.linear-along-river )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:CampfireRing
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 8
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Clutter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:CommandTentPlot
+        ] ;
+        sh:qualifiedMaxCount 2
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:HorseLine
+        ] ;
+        sh:qualifiedMaxCount 3
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Lookout
+        ] ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:SupplyArea
+        ] ;
+        sh:qualifiedMaxCount 3
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:TentPlot
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 400
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:CampfireRing
+        ] [
+            sh:class gbl:Clutter
+        ] [
+            sh:class gbl:CommandTentPlot
+        ] [
+            sh:class gbl:HorseLine
+        ] [
+            sh:class gbl:Lookout
+        ] [
+            sh:class gbl:SupplyArea
+        ] [
+            sh:class gbl:TentPlot
+        ] )
+    ] .
+
+gbs:CampfireRingShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:CampfireRing ;
+    sh:property [
+        sh:path gbl:CampfireRing.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 8.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 8.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:CampsiteShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Campsite ;
+    sh:property [
+        sh:path gbl:Campsite.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 14.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 14.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Campsite.tents ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 6
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:CastleShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Castle ;
+    sh:property [
+        sh:path gbl:Castle.area ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 400.0
+    ], [
+        sh:path gbl:Castle.buildings ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 120
+    ], [
+        sh:path gbl:Castle.rings ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 3
+    ], [
+        sh:path gbl:Castle.condition ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
+    ], [
+        sh:path gbl:Castle.kind ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:castle-kind.motte-and-bailey gbv:castle-kind.concentric gbv:castle-kind.keep-and-wall )
+    ], [
+        sh:path gbl:Castle.notes ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Bailey
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 3
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:CurtainWall
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Forest
+        ] ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ground
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Lake
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Meadow
+        ] ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Moat
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:River
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Road
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 6
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Bailey
+        ] [
+            sh:class gbl:CurtainWall
+        ] [
+            sh:class gbl:Forest
+        ] [
+            sh:class gbl:Ground
+        ] [
+            sh:class gbl:Lake
+        ] [
+            sh:class gbl:Meadow
+        ] [
+            sh:class gbl:Moat
+        ] [
+            sh:class gbl:River
+        ] [
+            sh:class gbl:Road
+        ] )
     ] .
 
 gbs:CastleWardShape
@@ -374,6 +1391,289 @@ gbs:CastleWardShape
         ] )
     ] .
 
+gbs:CaveChamberShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:CaveChamber ;
+    sh:property [
+        sh:path gbl:CaveChamber.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:CaveChamber.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Encounter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] [
+            sh:class gbl:Encounter
+        ] )
+    ] .
+
+gbs:CaveEntranceShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:CaveEntrance ;
+    sh:property [
+        sh:path gbl:CaveEntrance.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 14.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 14.0
+            ]
+        ]
+    ], [
+        sh:path gbl:CaveEntrance.leads-to ;
+        sh:maxCount 1 ;
+        sh:in ( "dungeon" "none" )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:CellarShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Cellar ;
+    sh:property [
+        sh:path gbl:Cellar.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Cellar.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:StorageSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:StorageSet
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:CellsShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Cells ;
+    sh:property [
+        sh:path gbl:Cells.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Cells.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:StorageSet
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:StorageSet
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:ChapelPlotShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:ChapelPlot ;
+    sh:property [
+        sh:path gbl:ChapelPlot.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 30.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 30.0
+            ]
+        ]
+    ], [
+        sh:path gbl:ChapelPlot.condition ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Clutter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Clutter
+        ] )
+    ] .
+
+gbs:ChasmRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:ChasmRoom ;
+    sh:property [
+        sh:path gbl:ChasmRoom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:ChasmRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] )
+    ] .
+
 gbs:ClearingShape
     a sh:NodeShape ;
     sh:targetClass gbl:Clearing ;
@@ -401,12 +1701,20 @@ gbs:ClearingShape
     ], [
         sh:path gbo:hasPart ;
         sh:qualifiedValueShape [
+            sh:class gbl:CampfireRing
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
             sh:class gbl:NatureScatter
         ] ;
         sh:qualifiedMaxCount 1
     ], [
         sh:path gbo:hasPart ;
         sh:or ( [
+            sh:class gbl:CampfireRing
+        ] [
             sh:class gbl:NatureScatter
         ] )
     ] .
@@ -422,6 +1730,35 @@ gbs:ClutterShape
         sh:path gbl:Clutter.theme ;
         sh:maxCount 1 ;
         sh:in ( gbv:clutter-theme.farm gbv:clutter-theme.market gbv:clutter-theme.workshop gbv:clutter-theme.dock gbv:clutter-theme.military )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:CommandTentPlotShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:CommandTentPlot ;
+    sh:property [
+        sh:path gbl:CommandTentPlot.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 14.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 14.0
+            ]
+        ]
     ], [
         sh:path gbo:hasPart ;
         sh:maxCount 0
@@ -485,6 +1822,57 @@ gbs:CommonsShape
             sh:class gbl:Pond
         ] [
             sh:class gbl:Road
+        ] )
+    ] .
+
+gbs:CorridorRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:CorridorRoom ;
+    sh:property [
+        sh:path gbl:CorridorRoom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:CorridorRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Encounter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] [
+            sh:class gbl:Encounter
         ] )
     ] .
 
@@ -588,6 +1976,189 @@ gbs:CraftsmenWardShape
         ] )
     ] .
 
+gbs:CryptRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:CryptRoom ;
+    sh:property [
+        sh:path gbl:CryptRoom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:CryptRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Encounter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:LootCache
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] [
+            sh:class gbl:Encounter
+        ] [
+            sh:class gbl:LootCache
+        ] )
+    ] .
+
+gbs:CurtainWallShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:CurtainWall ;
+    sh:property [
+        sh:path gbl:CurtainWall.gatehouses ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 4
+    ], [
+        sh:path gbl:CurtainWall.towers ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 24
+    ], [
+        sh:path gbl:CurtainWall.material ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:material.wood gbv:material.wicker gbv:material.thatch gbv:material.stone gbv:material.brick gbv:material.plaster gbv:material.iron )
+    ], [
+        sh:path gbl:CurtainWall.shape ;
+        sh:maxCount 1 ;
+        sh:in ( "square" "round" "polygon" )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:DeskSetShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:DeskSet ;
+    sh:property [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:DiningRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:DiningRoom ;
+    sh:property [
+        sh:path gbl:DiningRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:DiningRoom.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:DiningSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:ShelfWall
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:DiningSet
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:ShelfWall
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:DiningSetShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:DiningSet ;
+    sh:property [
+        sh:path gbl:DiningSet.seats ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 12
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:DisplaySetShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:DisplaySet ;
+    sh:property [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
 gbs:DockShape
     a sh:NodeShape ;
     sh:targetClass gbl:Dock ;
@@ -675,6 +2246,420 @@ gbs:DoorstepSetShape
     ], [
         sh:path gbo:hasPart ;
         sh:maxCount 0
+    ] .
+
+gbs:DungeonShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Dungeon ;
+    sh:property [
+        sh:path gbl:Dungeon.levels ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 8
+    ], [
+        sh:path gbl:Dungeon.locks ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 12
+    ], [
+        sh:path gbl:Dungeon.loops ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 12
+    ], [
+        sh:path gbl:Dungeon.rooms ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 2 ;
+        sh:maxInclusive 400
+    ], [
+        sh:path gbl:Dungeon.secrets ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 12
+    ], [
+        sh:path gbl:Dungeon.boss ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ], [
+        sh:path gbl:Dungeon.condition ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
+    ], [
+        sh:path gbl:Dungeon.difficulty-curve ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:difficulty-curve.flat gbv:difficulty-curve.rising gbv:difficulty-curve.spiky )
+    ], [
+        sh:path gbl:Dungeon.goal ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:dungeon-goal.treasure gbv:dungeon-goal.boss gbv:dungeon-goal.rescue gbv:dungeon-goal.escape )
+    ], [
+        sh:path gbl:Dungeon.notes ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ], [
+        sh:path gbl:Dungeon.theme ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:dungeon-theme.crypt gbv:dungeon-theme.mine gbv:dungeon-theme.cave gbv:dungeon-theme.ruin gbv:dungeon-theme.sewer gbv:dungeon-theme.lair )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:DungeonLevel
+        ] ;
+        sh:qualifiedMinCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:DungeonLevel
+        ] )
+    ] .
+
+gbs:DungeonLevelShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:DungeonLevel ;
+    sh:property [
+        sh:path gbl:DungeonLevel.rooms ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 200
+    ], [
+        sh:path gbl:DungeonLevel.floor ;
+        sh:maxCount 1 ;
+        sh:in ( "stone-floor" "cave-floor" "dirt" )
+    ], [
+        sh:path gbl:DungeonLevel.theme ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:dungeon-theme.crypt gbv:dungeon-theme.mine gbv:dungeon-theme.cave gbv:dungeon-theme.ruin gbv:dungeon-theme.sewer gbv:dungeon-theme.lair )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:BarracksRoom
+        ] ;
+        sh:qualifiedMaxCount 10
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:BossArena
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:CaveChamber
+        ] ;
+        sh:qualifiedMaxCount 30
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:ChasmRoom
+        ] ;
+        sh:qualifiedMaxCount 3
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:CorridorRoom
+        ] ;
+        sh:qualifiedMaxCount 20
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:CryptRoom
+        ] ;
+        sh:qualifiedMaxCount 10
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:EntranceRoom
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:FloodedRoom
+        ] ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:GuardRoom
+        ] ;
+        sh:qualifiedMaxCount 20
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Junction
+        ] ;
+        sh:qualifiedMaxCount 10
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:LibraryRoom
+        ] ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Prison
+        ] ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:PuzzleRoom
+        ] ;
+        sh:qualifiedMaxCount 6
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:SecretRoom
+        ] ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:ShrineRoom
+        ] ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:StairsRoom
+        ] ;
+        sh:qualifiedMaxCount 2
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Storeroom
+        ] ;
+        sh:qualifiedMaxCount 10
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:TrapRoom
+        ] ;
+        sh:qualifiedMaxCount 10
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:TreasureRoom
+        ] ;
+        sh:qualifiedMaxCount 6
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:BarracksRoom
+        ] [
+            sh:class gbl:BossArena
+        ] [
+            sh:class gbl:CaveChamber
+        ] [
+            sh:class gbl:ChasmRoom
+        ] [
+            sh:class gbl:CorridorRoom
+        ] [
+            sh:class gbl:CryptRoom
+        ] [
+            sh:class gbl:EntranceRoom
+        ] [
+            sh:class gbl:FloodedRoom
+        ] [
+            sh:class gbl:GuardRoom
+        ] [
+            sh:class gbl:Junction
+        ] [
+            sh:class gbl:LibraryRoom
+        ] [
+            sh:class gbl:Prison
+        ] [
+            sh:class gbl:PuzzleRoom
+        ] [
+            sh:class gbl:SecretRoom
+        ] [
+            sh:class gbl:ShrineRoom
+        ] [
+            sh:class gbl:StairsRoom
+        ] [
+            sh:class gbl:Storeroom
+        ] [
+            sh:class gbl:TrapRoom
+        ] [
+            sh:class gbl:TreasureRoom
+        ] )
+    ] .
+
+gbs:EncounterShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Encounter ;
+    sh:property [
+        sh:path gbl:Encounter.difficulty ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:Encounter.enemies ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 20
+    ], [
+        sh:path gbl:Encounter.enemy-mix ;
+        sh:maxCount 1 ;
+        sh:datatype rdf:JSON
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:EntranceRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:EntranceRoom ;
+    sh:property [
+        sh:path gbl:EntranceRoom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:EntranceRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] )
+    ] .
+
+gbs:FarmlandShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Farmland ;
+    sh:property [
+        sh:path gbl:Farmland.area ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 400.0
+    ], [
+        sh:path gbl:Farmland.farmsteads ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 200
+    ], [
+        sh:path gbl:Farmland.condition ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
+    ], [
+        sh:path gbl:Farmland.crop-mix ;
+        sh:maxCount 1 ;
+        sh:datatype rdf:JSON
+    ], [
+        sh:path gbl:Farmland.livestock-mix ;
+        sh:maxCount 1 ;
+        sh:datatype rdf:JSON
+    ], [
+        sh:path gbl:Farmland.notes ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:FarmlandRing
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 12
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Forest
+        ] ;
+        sh:qualifiedMaxCount 6
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ground
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Lake
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Meadow
+        ] ;
+        sh:qualifiedMaxCount 6
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:PastureLand
+        ] ;
+        sh:qualifiedMaxCount 6
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:River
+        ] ;
+        sh:qualifiedMaxCount 2
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Road
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 40
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:FarmlandRing
+        ] [
+            sh:class gbl:Forest
+        ] [
+            sh:class gbl:Ground
+        ] [
+            sh:class gbl:Lake
+        ] [
+            sh:class gbl:Meadow
+        ] [
+            sh:class gbl:PastureLand
+        ] [
+            sh:class gbl:River
+        ] [
+            sh:class gbl:Road
+        ] )
     ] .
 
 gbs:FarmlandRingShape
@@ -960,6 +2945,88 @@ gbs:FishMarketShape
         sh:maxCount 0
     ] .
 
+gbs:FloodedRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:FloodedRoom ;
+    sh:property [
+        sh:path gbl:FloodedRoom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:FloodedRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] )
+    ] .
+
+gbs:FloorClutterShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:FloorClutter ;
+    sh:property [
+        sh:path gbl:FloorClutter.items ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "rare" "some" "common" "abundant" )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:FloorLevelShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:FloorLevel ;
+    sh:property [
+        sh:path gbl:FloorLevel.rooms ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 60
+    ], [
+        sh:path gbl:FloorLevel.level ;
+        sh:maxCount 1 ;
+        sh:in ( "ground" "upper" "cellar" )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:InteriorRoom
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 60
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:InteriorRoom
+        ] )
+    ] .
+
 gbs:ForestShape
     a sh:NodeShape ;
     sh:targetClass gbl:Forest ;
@@ -999,6 +3066,72 @@ gbs:ForestShape
         ] [
             sh:class gbl:NatureScatter
         ] )
+    ] .
+
+gbs:ForgeShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Forge ;
+    sh:property [
+        sh:path gbl:Forge.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Forge.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:ForgeSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:ForgeSet
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:ForgeSetShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:ForgeSet ;
+    sh:property [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
     ] .
 
 gbs:FormalGardenShape
@@ -1316,6 +3449,80 @@ gbs:GraveyardShape
         ] )
     ] .
 
+gbs:GreatHallShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:GreatHall ;
+    sh:property [
+        sh:path gbl:GreatHall.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:GreatHall.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:DiningSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:HearthSet
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:ThroneSet
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:DiningSet
+        ] [
+            sh:class gbl:HearthSet
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:ThroneSet
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
 gbs:GroundShape
     a sh:NodeShape ;
     sh:targetClass gbl:Ground ;
@@ -1389,12 +3596,233 @@ gbs:GuardPostShape
         ] )
     ] .
 
+gbs:GuardRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:GuardRoom ;
+    sh:property [
+        sh:path gbl:GuardRoom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:GuardRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Encounter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:LootCache
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] [
+            sh:class gbl:Encounter
+        ] [
+            sh:class gbl:LootCache
+        ] )
+    ] .
+
+gbs:GuestRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:GuestRoom ;
+    sh:property [
+        sh:path gbl:GuestRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:GuestRoom.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:BedSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:BedSet
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:HallShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Hall ;
+    sh:property [
+        sh:path gbl:Hall.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Hall.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:StorageSet
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:StorageSet
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
 gbs:HayShape
     a sh:NodeShape ;
     sh:targetClass gbl:Hay ;
     sh:property [
         sh:path gbo:hasPart ;
         sh:maxCount 0
+    ] .
+
+gbs:HearthSetShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:HearthSet ;
+    sh:property [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:HeartlandShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Heartland ;
+    sh:property [
+        sh:path gbl:Heartland.area ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 400.0
+    ], [
+        sh:path gbl:Heartland.sites ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 80
+    ], [
+        sh:path gbl:Heartland.trees ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "rare" "some" "common" "abundant" )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Landmark
+        ] ;
+        sh:qualifiedMaxCount 20
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Site
+        ] ;
+        sh:qualifiedMinCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Landmark
+        ] [
+            sh:class gbl:Site
+        ] )
     ] .
 
 gbs:HedgeLineShape
@@ -1409,6 +3837,41 @@ gbs:HedgeLineShape
         sh:path gbl:HedgeLine.kind ;
         sh:maxCount 1 ;
         sh:in ( "box" "wild" )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:HorseLineShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:HorseLine ;
+    sh:property [
+        sh:path gbl:HorseLine.horses ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 20
+    ], [
+        sh:path gbl:HorseLine.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 16.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 6.0
+            ]
+        ]
     ], [
         sh:path gbo:hasPart ;
         sh:maxCount 0
@@ -1560,6 +4023,164 @@ gbs:InnPlotShape
         ] )
     ] .
 
+gbs:JunctionShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Junction ;
+    sh:property [
+        sh:path gbl:Junction.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:Junction.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] )
+    ] .
+
+gbs:KeepPlotShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:KeepPlot ;
+    sh:property [
+        sh:path gbl:KeepPlot.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 30.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 30.0
+            ]
+        ]
+    ], [
+        sh:path gbl:KeepPlot.condition ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Clutter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Clutter
+        ] )
+    ] .
+
+gbs:KitchenShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Kitchen ;
+    sh:property [
+        sh:path gbl:Kitchen.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Kitchen.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:KitchenSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:ShelfWall
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:KitchenSet
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:ShelfWall
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:KitchenSetShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:KitchenSet ;
+    sh:property [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
 gbs:LakeShape
     a sh:NodeShape ;
     sh:targetClass gbl:Lake ;
@@ -1585,6 +4206,149 @@ gbs:LakeShape
         ] )
     ] .
 
+gbs:LandmarkShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Landmark ;
+    sh:property [
+        sh:path gbl:Landmark.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 30.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 30.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Landmark.kind ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:landmark-kind.ruin gbv:landmark-kind.tower gbv:landmark-kind.standing-stones gbv:landmark-kind.shrine gbv:landmark-kind.giant-tree )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:LibraryShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Library ;
+    sh:property [
+        sh:path gbl:Library.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Library.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:DeskSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:ShelfWall
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:DeskSet
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:ShelfWall
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:LibraryRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:LibraryRoom ;
+    sh:property [
+        sh:path gbl:LibraryRoom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:LibraryRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] )
+    ] .
+
 gbs:LightsShape
     a sh:NodeShape ;
     sh:targetClass gbl:Lights ;
@@ -1596,6 +4360,119 @@ gbs:LightsShape
         sh:path gbl:Lights.kind ;
         sh:maxCount 1 ;
         sh:in ( gbv:light-kind.torch gbv:light-kind.lantern gbv:light-kind.lamp-post gbv:light-kind.brazier )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:LivingRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:LivingRoom ;
+    sh:property [
+        sh:path gbl:LivingRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:LivingRoom.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:HearthSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:ShelfWall
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:HearthSet
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:ShelfWall
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:LookoutShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Lookout ;
+    sh:property [
+        sh:path gbl:Lookout.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 1.0 ;
+                sh:maxInclusive 4.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 1.0 ;
+                sh:maxInclusive 4.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:LootCacheShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:LootCache ;
+    sh:property [
+        sh:path gbl:LootCache.items ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 12
+    ], [
+        sh:path gbl:LootCache.rarity ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:rarity.common gbv:rarity.uncommon gbv:rarity.rare gbv:rarity.legendary )
     ], [
         sh:path gbo:hasPart ;
         sh:maxCount 0
@@ -1967,6 +4844,24 @@ gbs:MillPlotShape
         ] )
     ] .
 
+gbs:MoatShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Moat ;
+    sh:property [
+        sh:path gbl:Moat.width ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 1.0 ;
+        sh:maxInclusive 6.0
+    ], [
+        sh:path gbl:Moat.kind ;
+        sh:maxCount 1 ;
+        sh:in ( "wet" "dry" )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
 gbs:NatureScatterShape
     a sh:NodeShape ;
     sh:targetClass gbl:NatureScatter ;
@@ -1993,6 +4888,73 @@ gbs:NatureScatterShape
     ], [
         sh:path gbo:hasPart ;
         sh:maxCount 0
+    ] .
+
+gbs:NaveShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Nave ;
+    sh:property [
+        sh:path gbl:Nave.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Nave.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:AltarSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Pews
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:AltarSet
+        ] [
+            sh:class gbl:Pews
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:WallDecor
+        ] )
     ] .
 
 gbs:OrchardShape
@@ -2150,6 +5112,64 @@ gbs:PastureShape
         ] )
     ] .
 
+gbs:PastureLandShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:PastureLand ;
+    sh:property [
+        sh:path gbl:PastureLand.area ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 100.0
+    ], [
+        sh:path gbl:PastureLand.farmsteads ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 100
+    ], [
+        sh:path gbl:PastureLand.livestock-mix ;
+        sh:maxCount 1 ;
+        sh:datatype rdf:JSON
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:HedgeLine
+        ] ;
+        sh:qualifiedMaxCount 8
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Pasture
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 20
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Pond
+        ] ;
+        sh:qualifiedMaxCount 2
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:StableYard
+        ] ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Farmstead
+        ] [
+            sh:class gbl:HedgeLine
+        ] [
+            sh:class gbl:Pasture
+        ] [
+            sh:class gbl:Pond
+        ] [
+            sh:class gbl:StableYard
+        ] )
+    ] .
+
 gbs:PatricianWardShape
     a sh:NodeShape ;
     sh:targetClass gbl:PatricianWard ;
@@ -2206,6 +5226,20 @@ gbs:PatricianWardShape
         ] )
     ] .
 
+gbs:PewsShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Pews ;
+    sh:property [
+        sh:path gbl:Pews.rows ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 20
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
 gbs:PondShape
     a sh:NodeShape ;
     sh:targetClass gbl:Pond ;
@@ -2222,6 +5256,183 @@ gbs:PondShape
     ], [
         sh:path gbo:hasPart ;
         sh:maxCount 0
+    ] .
+
+gbs:PrisonShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Prison ;
+    sh:property [
+        sh:path gbl:Prison.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:Prison.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Encounter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] [
+            sh:class gbl:Encounter
+        ] )
+    ] .
+
+gbs:PuzzleRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:PuzzleRoom ;
+    sh:property [
+        sh:path gbl:PuzzleRoom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:PuzzleRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] )
+    ] .
+
+gbs:RegionShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Region ;
+    sh:property [
+        sh:path gbl:Region.area ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 2500.0
+    ], [
+        sh:path gbl:Region.sites ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 80
+    ], [
+        sh:path gbl:Region.biome-mix ;
+        sh:maxCount 1 ;
+        sh:datatype rdf:JSON
+    ], [
+        sh:path gbl:Region.climate ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:climate.temperate gbv:climate.cold gbv:climate.warm gbv:climate.arid )
+    ], [
+        sh:path gbl:Region.notes ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:BiomeZone
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 16
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ground
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Heartland
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Lake
+        ] ;
+        sh:qualifiedMaxCount 3
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:River
+        ] ;
+        sh:qualifiedMaxCount 3
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Road
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:BiomeZone
+        ] [
+            sh:class gbl:Ground
+        ] [
+            sh:class gbl:Heartland
+        ] [
+            sh:class gbl:Lake
+        ] [
+            sh:class gbl:River
+        ] [
+            sh:class gbl:Road
+        ] )
     ] .
 
 gbs:ResidentialWardShape
@@ -2412,6 +5623,168 @@ gbs:RockFieldShape
         sh:maxCount 0
     ] .
 
+gbs:RoomLightsShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:RoomLights ;
+    sh:property [
+        sh:path gbl:RoomLights.lights ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "rare" "some" "common" "abundant" )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:RuinSiteShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:RuinSite ;
+    sh:property [
+        sh:path gbl:RuinSite.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 24.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 24.0
+            ]
+        ]
+    ], [
+        sh:path gbl:RuinSite.condition ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:NatureScatter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:NatureScatter
+        ] )
+    ] .
+
+gbs:SanctuaryShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Sanctuary ;
+    sh:property [
+        sh:path gbl:Sanctuary.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Sanctuary.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:AltarSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:AltarSet
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:SecretRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:SecretRoom ;
+    sh:property [
+        sh:path gbl:SecretRoom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:SecretRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:LootCache
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] [
+            sh:class gbl:LootCache
+        ] )
+    ] .
+
 gbs:SettlementShape
     a sh:NodeShape ;
     sh:targetClass gbl:Settlement ;
@@ -2568,6 +5941,80 @@ gbs:ShackClusterShape
         ] )
     ] .
 
+gbs:ShelfWallShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:ShelfWall ;
+    sh:property [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:ShopFloorShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:ShopFloor ;
+    sh:property [
+        sh:path gbl:ShopFloor.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:ShopFloor.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:DisplaySet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:ShelfWall
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:DisplaySet
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:ShelfWall
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
 gbs:ShopFrontShape
     a sh:NodeShape ;
     sh:targetClass gbl:ShopFront ;
@@ -2617,6 +6064,82 @@ gbs:ShopPlotShape
         ] )
     ] .
 
+gbs:ShrineRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:ShrineRoom ;
+    sh:property [
+        sh:path gbl:ShrineRoom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:ShrineRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] )
+    ] .
+
+gbs:ShrineSiteShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:ShrineSite ;
+    sh:property [
+        sh:path gbl:ShrineSite.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 12.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 12.0
+            ]
+        ]
+    ], [
+        sh:path gbl:ShrineSite.faith ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:faith.old-faith gbv:faith.new-faith gbv:faith.nature-cult )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
 gbs:SignShape
     a sh:NodeShape ;
     sh:targetClass gbl:Sign ;
@@ -2624,6 +6147,47 @@ gbs:SignShape
         sh:path gbl:Sign.text ;
         sh:maxCount 1 ;
         sh:datatype xsd:string
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:SiteShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Site ;
+    sh:property [
+        sh:path gbl:Site.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 8.0 ;
+                sh:maxInclusive 120.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 8.0 ;
+                sh:maxInclusive 120.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Site.build-type ;
+        sh:maxCount 1 ;
+        sh:in ( "settlement" "castle" "camp" "farmland" "dungeon" "wilderness" )
+    ], [
+        sh:path gbl:Site.name ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ], [
+        sh:path gbl:Site.scale-class ;
+        sh:maxCount 1 ;
+        sh:in ( "hamlet" "village" "large-village" "town" "city" "small" "medium" "large" )
     ], [
         sh:path gbo:hasPart ;
         sh:maxCount 0
@@ -2674,6 +6238,47 @@ gbs:SlumShape
             sh:class gbl:Road
         ] [
             sh:class gbl:ShackCluster
+        ] )
+    ] .
+
+gbs:SmithyPlotShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:SmithyPlot ;
+    sh:property [
+        sh:path gbl:SmithyPlot.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 30.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 30.0
+            ]
+        ]
+    ], [
+        sh:path gbl:SmithyPlot.condition ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Clutter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Clutter
         ] )
     ] .
 
@@ -2728,6 +6333,398 @@ gbs:StableYardShape
         ] )
     ] .
 
+gbs:StablesPlotShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:StablesPlot ;
+    sh:property [
+        sh:path gbl:StablesPlot.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 30.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 30.0
+            ]
+        ]
+    ], [
+        sh:path gbl:StablesPlot.condition ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Clutter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Clutter
+        ] )
+    ] .
+
+gbs:StairsRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:StairsRoom ;
+    sh:property [
+        sh:path gbl:StairsRoom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:StairsRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] )
+    ] .
+
+gbs:StairwellShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Stairwell ;
+    sh:property [
+        sh:path gbl:Stairwell.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Stairwell.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:StandingStonesShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:StandingStones ;
+    sh:property [
+        sh:path gbl:StandingStones.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 5.0 ;
+                sh:maxInclusive 16.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 5.0 ;
+                sh:maxInclusive 16.0
+            ]
+        ]
+    ], [
+        sh:path gbl:StandingStones.stones ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 3 ;
+        sh:maxInclusive 20
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:StorageShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Storage ;
+    sh:property [
+        sh:path gbl:Storage.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Storage.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:ShelfWall
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:StorageSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:ShelfWall
+        ] [
+            sh:class gbl:StorageSet
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:StorageSetShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:StorageSet ;
+    sh:property [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:StorehousePlotShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:StorehousePlot ;
+    sh:property [
+        sh:path gbl:StorehousePlot.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 30.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 30.0
+            ]
+        ]
+    ], [
+        sh:path gbl:StorehousePlot.condition ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Clutter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Clutter
+        ] )
+    ] .
+
+gbs:StoreroomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Storeroom ;
+    sh:property [
+        sh:path gbl:Storeroom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:Storeroom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:LootCache
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] [
+            sh:class gbl:LootCache
+        ] )
+    ] .
+
+gbs:StudyShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Study ;
+    sh:property [
+        sh:path gbl:Study.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Study.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:DeskSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:DeskSet
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
 gbs:SubplaceShape
     a sh:NodeShape ;
     sh:targetClass gbl:Subplace ;
@@ -2739,10 +6736,114 @@ gbs:SubplaceShape
     ], [
         sh:path gbl:Subplace.buildType ;
         sh:maxCount 1 ;
-        sh:in ( gbv:build-type.settlement )
+        sh:in ( gbv:build-type.settlement gbv:build-type.farmland gbv:build-type.wilderness gbv:build-type.camp gbv:build-type.castle gbv:build-type.region gbv:build-type.dungeon gbv:build-type.interior )
     ], [
         sh:path gbo:hasPart ;
         sh:maxCount 0
+    ] .
+
+gbs:SupplyAreaShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:SupplyArea ;
+    sh:property [
+        sh:path gbl:SupplyArea.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 12.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 12.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:TavernHallShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:TavernHall ;
+    sh:property [
+        sh:path gbl:TavernHall.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:TavernHall.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:BarSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:DiningSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:HearthSet
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:BarSet
+        ] [
+            sh:class gbl:DiningSet
+        ] [
+            sh:class gbl:HearthSet
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:WallDecor
+        ] )
     ] .
 
 gbs:TemplePlotShape
@@ -2854,6 +6955,47 @@ gbs:TempleWardShape
         ] )
     ] .
 
+gbs:TentPlotShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:TentPlot ;
+    sh:property [
+        sh:path gbl:TentPlot.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 8.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 8.0
+            ]
+        ]
+    ], [
+        sh:path gbl:TentPlot.condition ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Clutter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Clutter
+        ] )
+    ] .
+
 gbs:TerracedRowShape
     a sh:NodeShape ;
     sh:targetClass gbl:TerracedRow ;
@@ -2883,6 +7025,72 @@ gbs:TerracedRowShape
         sh:or ( [
             sh:class gbl:DoorstepSet
         ] )
+    ] .
+
+gbs:ThroneRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:ThroneRoom ;
+    sh:property [
+        sh:path gbl:ThroneRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:ThroneRoom.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:ThroneSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:ThroneSet
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
+gbs:ThroneSetShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:ThroneSet ;
+    sh:property [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
     ] .
 
 gbs:TownhouseBlockShape
@@ -2936,6 +7144,249 @@ gbs:TownhouseBlockShape
         ] )
     ] .
 
+gbs:TrailNetworkShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:TrailNetwork ;
+    sh:property [
+        sh:path gbl:TrailNetwork.width ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 1.0 ;
+        sh:maxInclusive 3.0
+    ], [
+        sh:path gbl:TrailNetwork.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:surface.grass gbv:surface.dirt gbv:surface.gravel gbv:surface.paved gbv:surface.cobble gbv:surface.plank )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:TrainingYardShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:TrainingYard ;
+    sh:property [
+        sh:path gbl:TrainingYard.dummies ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 12
+    ], [
+        sh:path gbl:TrainingYard.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 20.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 4.0 ;
+                sh:maxInclusive 20.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:TrapShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Trap ;
+    sh:property [
+        sh:path gbl:Trap.kind ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:trap-kind.spikes gbv:trap-kind.pit gbv:trap-kind.darts gbv:trap-kind.rune )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:TrapRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:TrapRoom ;
+    sh:property [
+        sh:path gbl:TrapRoom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:TrapRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Trap
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] [
+            sh:class gbl:Trap
+        ] )
+    ] .
+
+gbs:TreasureRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:TreasureRoom ;
+    sh:property [
+        sh:path gbl:TreasureRoom.danger ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 5
+    ], [
+        sh:path gbl:TreasureRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 3.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ambience
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Encounter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:LootCache
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Trap
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Ambience
+        ] [
+            sh:class gbl:Encounter
+        ] [
+            sh:class gbl:LootCache
+        ] [
+            sh:class gbl:Trap
+        ] )
+    ] .
+
+gbs:TreasuryShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Treasury ;
+    sh:property [
+        sh:path gbl:Treasury.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Treasury.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:StorageSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:StorageSet
+        ] [
+            sh:class gbl:WallDecor
+        ] )
+    ] .
+
 gbs:TroughShape
     a sh:NodeShape ;
     sh:targetClass gbl:Trough ;
@@ -2981,6 +7432,72 @@ gbs:VegetableBedShape
         sh:maxCount 0
     ] .
 
+gbs:VestryShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Vestry ;
+    sh:property [
+        sh:path gbl:Vestry.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:Vestry.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:DeskSet
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WardrobeSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:DeskSet
+        ] [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:WallDecor
+        ] [
+            sh:class gbl:WardrobeSet
+        ] )
+    ] .
+
 gbs:WallShape
     a sh:NodeShape ;
     sh:targetClass gbl:Wall ;
@@ -3014,6 +7531,28 @@ gbs:WallShape
         sh:maxCount 1 ;
         sh:in ( gbv:material.wood gbv:material.wicker gbv:material.thatch gbv:material.stone gbv:material.brick gbv:material.plaster gbv:material.iron )
     ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:WallDecorShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:WallDecor ;
+    sh:property [
+        sh:path gbl:WallDecor.items ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 10
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
+gbs:WardrobeSetShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:WardrobeSet ;
+    sh:property [
         sh:path gbo:hasPart ;
         sh:maxCount 0
     ] .
@@ -3108,6 +7647,160 @@ gbs:WellPlazaShape
         ] )
     ] .
 
+gbs:WildernessShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Wilderness ;
+    sh:property [
+        sh:path gbl:Wilderness.area ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 400.0
+    ], [
+        sh:path gbl:Wilderness.pois ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 60
+    ], [
+        sh:path gbl:Wilderness.biome ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:biome.temperate gbv:biome.conifer gbv:biome.plains gbv:biome.hills gbv:biome.swamp gbv:biome.desert gbv:biome.tundra gbv:biome.coast )
+    ], [
+        sh:path gbl:Wilderness.notes ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Forest
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 10
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ground
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Lake
+        ] ;
+        sh:qualifiedMaxCount 2
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Meadow
+        ] ;
+        sh:qualifiedMaxCount 6
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:River
+        ] ;
+        sh:qualifiedMaxCount 2
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RockField
+        ] ;
+        sh:qualifiedMaxCount 4
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:TrailNetwork
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Wilds
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 8
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Forest
+        ] [
+            sh:class gbl:Ground
+        ] [
+            sh:class gbl:Lake
+        ] [
+            sh:class gbl:Meadow
+        ] [
+            sh:class gbl:River
+        ] [
+            sh:class gbl:RockField
+        ] [
+            sh:class gbl:TrailNetwork
+        ] [
+            sh:class gbl:Wilds
+        ] )
+    ] .
+
+gbs:WildsShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Wilds ;
+    sh:property [
+        sh:path gbl:Wilds.area ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 200.0
+    ], [
+        sh:path gbl:Wilds.pois ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxInclusive 60
+    ], [
+        sh:path gbl:Wilds.trees ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "rare" "some" "common" "abundant" )
+    ], [
+        sh:path gbl:Wilds.biome ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:biome.temperate gbv:biome.conifer gbv:biome.plains gbv:biome.hills gbv:biome.swamp gbv:biome.desert gbv:biome.tundra gbv:biome.coast )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:PointOfInterest
+        ] ;
+        sh:qualifiedMaxCount 60
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Clearing
+        ] ;
+        sh:qualifiedMaxCount 6
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:NatureScatter
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:PointOfInterest
+        ] [
+            sh:class gbl:Clearing
+        ] [
+            sh:class gbl:NatureScatter
+        ] )
+    ] .
+
+gbs:WorkSetShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:WorkSet ;
+    sh:property [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
 gbs:WorkYardShape
     a sh:NodeShape ;
     sh:targetClass gbl:WorkYard ;
@@ -3195,6 +7888,72 @@ gbs:WorkshopPlotShape
             sh:class gbl:Clutter
         ] [
             sh:class gbl:WorkYard
+        ] )
+    ] .
+
+gbs:WorkshopRoomShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:WorkshopRoom ;
+    sh:property [
+        sh:path gbl:WorkshopRoom.size ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:path gbo:sizeW ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ] ;
+            sh:property [
+                sh:path gbo:sizeH ;
+                sh:minCount 1 ;
+                sh:maxCount 1 ;
+                sh:datatype xsd:decimal ;
+                sh:minInclusive 2.0 ;
+                sh:maxInclusive 40.0
+            ]
+        ]
+    ], [
+        sh:path gbl:WorkshopRoom.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:floor-surface.wood-floor gbv:floor-surface.stone-floor gbv:floor-surface.dirt )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:RoomLights
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:StorageSet
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WallDecor
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:WorkSet
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:RoomLights
+        ] [
+            sh:class gbl:StorageSet
+        ] [
+            sh:class gbl:WallDecor
+        ] [
+            sh:class gbl:WorkSet
         ] )
     ] .
 

@@ -1,0 +1,54 @@
+{
+  "schema": "aige.module/1",
+  "id": "storage-set",
+  "name": "Storage",
+  "level": "feature",
+  "description": "Crates, barrels and sacks along the walls.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "crate": {
+      "role": "crate",
+      "essential": true,
+      "primary": true
+    },
+    "barrel": {
+      "role": "barrel",
+      "essential": false
+    },
+    "sack": {
+      "role": "sack",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "corner",
+      "members": [
+        {
+          "slot": "barrel",
+          "count": [
+            1,
+            3
+          ],
+          "near": 3
+        },
+        {
+          "slot": "sack",
+          "count": [
+            0,
+            2
+          ],
+          "near": 3
+        }
+      ]
+    }
+  }
+}

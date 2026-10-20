@@ -644,6 +644,330 @@
   "build-type": [
     {
       "id": "settlement"
+    },
+    {
+      "id": "farmland"
+    },
+    {
+      "id": "wilderness"
+    },
+    {
+      "id": "camp"
+    },
+    {
+      "id": "castle"
+    },
+    {
+      "id": "region"
+    },
+    {
+      "id": "dungeon"
+    },
+    {
+      "id": "interior"
+    }
+  ],
+  "dungeon-theme": [
+    {
+      "id": "crypt",
+      "alt": [
+        "tomb",
+        "catacomb"
+      ]
+    },
+    {
+      "id": "mine"
+    },
+    {
+      "id": "cave",
+      "alt": [
+        "cavern",
+        "grotto"
+      ]
+    },
+    {
+      "id": "ruin",
+      "alt": [
+        "ruins"
+      ]
+    },
+    {
+      "id": "sewer",
+      "alt": [
+        "sewers"
+      ]
+    },
+    {
+      "id": "lair",
+      "alt": [
+        "den"
+      ]
+    }
+  ],
+  "dungeon-goal": [
+    {
+      "id": "treasure"
+    },
+    {
+      "id": "boss"
+    },
+    {
+      "id": "rescue"
+    },
+    {
+      "id": "escape"
+    }
+  ],
+  "difficulty-curve": [
+    {
+      "id": "flat"
+    },
+    {
+      "id": "rising"
+    },
+    {
+      "id": "spiky"
+    }
+  ],
+  "connector-kind": [
+    {
+      "id": "door"
+    },
+    {
+      "id": "locked-door"
+    },
+    {
+      "id": "secret-passage"
+    },
+    {
+      "id": "portcullis"
+    },
+    {
+      "id": "stairs"
+    },
+    {
+      "id": "collapsed-tunnel"
+    }
+  ],
+  "poi-kind": [
+    {
+      "id": "ruin"
+    },
+    {
+      "id": "shrine"
+    },
+    {
+      "id": "cave-entrance"
+    },
+    {
+      "id": "abandoned-cart"
+    },
+    {
+      "id": "standing-stones"
+    },
+    {
+      "id": "campsite"
+    }
+  ],
+  "landmark-kind": [
+    {
+      "id": "ruin"
+    },
+    {
+      "id": "tower"
+    },
+    {
+      "id": "standing-stones"
+    },
+    {
+      "id": "shrine"
+    },
+    {
+      "id": "giant-tree"
+    }
+  ],
+  "camp-kind": [
+    {
+      "id": "military"
+    },
+    {
+      "id": "nomad"
+    },
+    {
+      "id": "bandit"
+    },
+    {
+      "id": "hunters"
+    }
+  ],
+  "castle-kind": [
+    {
+      "id": "motte-and-bailey",
+      "alt": [
+        "motte"
+      ]
+    },
+    {
+      "id": "concentric"
+    },
+    {
+      "id": "keep-and-wall",
+      "alt": [
+        "keep"
+      ]
+    }
+  ],
+  "building-kind": [
+    {
+      "id": "house",
+      "alt": [
+        "home",
+        "cottage"
+      ]
+    },
+    {
+      "id": "inn",
+      "alt": [
+        "tavern",
+        "pub"
+      ]
+    },
+    {
+      "id": "shop",
+      "alt": [
+        "store"
+      ]
+    },
+    {
+      "id": "temple",
+      "alt": [
+        "church",
+        "chapel"
+      ]
+    },
+    {
+      "id": "castle-hall",
+      "alt": [
+        "hall",
+        "keep"
+      ]
+    },
+    {
+      "id": "workshop",
+      "alt": [
+        "smithy",
+        "forge"
+      ]
+    }
+  ],
+  "biome-kind": [
+    {
+      "id": "forest"
+    },
+    {
+      "id": "plains"
+    },
+    {
+      "id": "hills"
+    },
+    {
+      "id": "swamp"
+    },
+    {
+      "id": "desert"
+    },
+    {
+      "id": "tundra"
+    }
+  ],
+  "climate": [
+    {
+      "id": "temperate"
+    },
+    {
+      "id": "cold"
+    },
+    {
+      "id": "warm"
+    },
+    {
+      "id": "arid"
+    }
+  ],
+  "floor-surface": [
+    {
+      "id": "wood-floor",
+      "alt": [
+        "wood",
+        "planks"
+      ]
+    },
+    {
+      "id": "stone-floor",
+      "alt": [
+        "stone",
+        "flagstone"
+      ]
+    },
+    {
+      "id": "dirt",
+      "alt": [
+        "earth"
+      ]
+    }
+  ],
+  "enemy-kind": [
+    {
+      "id": "skeleton"
+    },
+    {
+      "id": "goblin"
+    },
+    {
+      "id": "rat"
+    },
+    {
+      "id": "spider"
+    },
+    {
+      "id": "bandit"
+    },
+    {
+      "id": "cultist"
+    },
+    {
+      "id": "slime"
+    },
+    {
+      "id": "bat"
+    }
+  ],
+  "rarity": [
+    {
+      "id": "common"
+    },
+    {
+      "id": "uncommon"
+    },
+    {
+      "id": "rare"
+    },
+    {
+      "id": "legendary"
+    }
+  ],
+  "trap-kind": [
+    {
+      "id": "spikes"
+    },
+    {
+      "id": "pit"
+    },
+    {
+      "id": "darts"
+    },
+    {
+      "id": "rune"
     }
   ]
 }

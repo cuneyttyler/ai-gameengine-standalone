@@ -165,6 +165,815 @@
         "along-road",
         "river-crossing"
       ]
+    },
+    "default": true,
+    "unit": {
+      "field": "buildings",
+      "class": "BuildingParcel",
+      "label": "buildings"
+    },
+    "words": [
+      "village",
+      "town",
+      "city",
+      "hamlet",
+      "settlement"
+    ],
+    "rank": 1
+  },
+  {
+    "id": "farmland",
+    "name": "Farmland",
+    "root": "farmland",
+    "words": [
+      "farmland",
+      "farms",
+      "countryside",
+      "farm",
+      "fields"
+    ],
+    "unit": {
+      "field": "farmsteads",
+      "class": "BuildingParcel",
+      "label": "farm buildings"
+    },
+    "stages": [
+      "site & terrain",
+      "tracks",
+      "zones",
+      "farmsteads",
+      "fields & pastures",
+      "dressing"
+    ],
+    "components": [
+      "farmland-ring",
+      "pasture-land",
+      "farmstead",
+      "mill-plot",
+      "field",
+      "pasture",
+      "orchard",
+      "garden",
+      "stable-yard",
+      "hedge-line",
+      "fence-line",
+      "road",
+      "clutter",
+      "forest",
+      "meadow",
+      "rock-field",
+      "river",
+      "lake",
+      "pond",
+      "nature-scatter"
+    ],
+    "scale": [
+      {
+        "class": "farm",
+        "buildings": [
+          1,
+          3
+        ],
+        "side": [
+          50,
+          80
+        ],
+        "zones": [
+          1,
+          1
+        ]
+      },
+      {
+        "class": "countryside",
+        "buildings": [
+          3,
+          10
+        ],
+        "side": [
+          80,
+          150
+        ],
+        "zones": [
+          1,
+          3
+        ]
+      },
+      {
+        "class": "large-countryside",
+        "buildings": [
+          10,
+          30
+        ],
+        "side": [
+          150,
+          260
+        ],
+        "zones": [
+          2,
+          6
+        ]
+      }
+    ],
+    "briefFields": {
+      "style": {
+        "biome": "biome",
+        "condition": "condition"
+      },
+      "features": [
+        "river",
+        "lake",
+        "hill",
+        "crossroads"
+      ]
+    }
+  },
+  {
+    "id": "wilderness",
+    "name": "Wilderness",
+    "root": "wilderness",
+    "words": [
+      "wilderness",
+      "wild",
+      "wilds",
+      "woods",
+      "woodland",
+      "forest",
+      "nature"
+    ],
+    "unit": {
+      "field": "pois",
+      "class": "PointOfInterest",
+      "label": "points of interest"
+    },
+    "stages": [
+      "site & terrain",
+      "biomes",
+      "points of interest",
+      "trails",
+      "dressing"
+    ],
+    "components": [
+      "wilds",
+      "ruin-site",
+      "shrine-site",
+      "cave-entrance",
+      "standing-stones",
+      "abandoned-cart",
+      "campsite",
+      "clearing",
+      "campfire-ring",
+      "trail-network",
+      "forest",
+      "meadow",
+      "rock-field",
+      "river",
+      "lake",
+      "pond",
+      "nature-scatter"
+    ],
+    "scale": [
+      {
+        "class": "glade",
+        "buildings": [
+          1,
+          2
+        ],
+        "side": [
+          50,
+          80
+        ],
+        "zones": [
+          1,
+          2
+        ]
+      },
+      {
+        "class": "woods",
+        "buildings": [
+          2,
+          6
+        ],
+        "side": [
+          80,
+          160
+        ],
+        "zones": [
+          2,
+          5
+        ]
+      },
+      {
+        "class": "wild-land",
+        "buildings": [
+          6,
+          16
+        ],
+        "side": [
+          160,
+          300
+        ],
+        "zones": [
+          4,
+          10
+        ]
+      }
+    ],
+    "briefFields": {
+      "style": {
+        "biome": "biome"
+      },
+      "features": [
+        "river",
+        "lake",
+        "hill",
+        "coast"
+      ]
+    }
+  },
+  {
+    "id": "camp",
+    "name": "Camp",
+    "root": "camp",
+    "words": [
+      "camp",
+      "encampment",
+      "tents",
+      "bivouac"
+    ],
+    "unit": {
+      "field": "tents",
+      "class": "BuildingParcel",
+      "label": "tents"
+    },
+    "stages": [
+      "site & terrain",
+      "lanes",
+      "tents",
+      "fires & stores",
+      "enclosure",
+      "dressing"
+    ],
+    "components": [
+      "camp-ground",
+      "tent-plot",
+      "command-tent-plot",
+      "campfire-ring",
+      "supply-area",
+      "horse-line",
+      "lookout",
+      "training-yard",
+      "wall",
+      "road",
+      "clutter",
+      "forest",
+      "meadow",
+      "rock-field",
+      "river",
+      "lake",
+      "pond",
+      "nature-scatter"
+    ],
+    "scale": [
+      {
+        "class": "small-camp",
+        "buildings": [
+          3,
+          8
+        ],
+        "side": [
+          30,
+          50
+        ],
+        "zones": [
+          1,
+          1
+        ]
+      },
+      {
+        "class": "camp",
+        "buildings": [
+          8,
+          24
+        ],
+        "side": [
+          50,
+          80
+        ],
+        "zones": [
+          1,
+          2
+        ]
+      },
+      {
+        "class": "war-camp",
+        "buildings": [
+          24,
+          80
+        ],
+        "side": [
+          80,
+          140
+        ],
+        "zones": [
+          2,
+          4
+        ]
+      }
+    ],
+    "briefFields": {
+      "style": {
+        "biome": "biome",
+        "condition": "condition"
+      },
+      "walled": [
+        "none",
+        "palisade"
+      ],
+      "features": [
+        "river",
+        "lake",
+        "hill"
+      ]
+    }
+  },
+  {
+    "id": "castle",
+    "name": "Castle",
+    "root": "castle",
+    "words": [
+      "castle",
+      "fortress",
+      "fort",
+      "stronghold",
+      "citadel",
+      "keep"
+    ],
+    "unit": {
+      "field": "buildings",
+      "class": "BuildingParcel",
+      "label": "buildings"
+    },
+    "stages": [
+      "site & terrain",
+      "curtain wall, towers & gatehouse",
+      "baileys",
+      "buildings",
+      "features",
+      "dressing"
+    ],
+    "components": [
+      "bailey",
+      "keep-plot",
+      "barracks-plot",
+      "chapel-plot",
+      "smithy-plot",
+      "storehouse-plot",
+      "stables-plot",
+      "training-yard",
+      "well-plaza",
+      "garden",
+      "curtain-wall",
+      "moat",
+      "road",
+      "clutter",
+      "forest",
+      "meadow",
+      "rock-field",
+      "river",
+      "lake",
+      "pond",
+      "nature-scatter"
+    ],
+    "scale": [
+      {
+        "class": "tower-house",
+        "buildings": [
+          2,
+          4
+        ],
+        "side": [
+          40,
+          60
+        ],
+        "zones": [
+          1,
+          1
+        ]
+      },
+      {
+        "class": "castle",
+        "buildings": [
+          4,
+          12
+        ],
+        "side": [
+          60,
+          120
+        ],
+        "zones": [
+          1,
+          2
+        ]
+      },
+      {
+        "class": "fortress",
+        "buildings": [
+          12,
+          40
+        ],
+        "side": [
+          120,
+          200
+        ],
+        "zones": [
+          2,
+          3
+        ]
+      }
+    ],
+    "briefFields": {
+      "style": {
+        "era": [
+          "ancient",
+          "medieval",
+          "renaissance"
+        ],
+        "biome": "biome",
+        "condition": "condition"
+      },
+      "features": [
+        "river",
+        "lake",
+        "hill",
+        "coast"
+      ]
+    }
+  },
+  {
+    "id": "region",
+    "name": "Region",
+    "root": "region",
+    "rank": 2,
+    "words": [
+      "region",
+      "kingdom",
+      "province",
+      "realm",
+      "overworld"
+    ],
+    "unit": {
+      "field": "sites",
+      "class": "Site",
+      "label": "sites"
+    },
+    "stages": [
+      "region terrain & biomes",
+      "sites",
+      "roads between them",
+      "wilderness fill",
+      "each site as its own place"
+    ],
+    "components": [
+      "heartland",
+      "biome-zone",
+      "site",
+      "landmark",
+      "river",
+      "lake",
+      "road",
+      "forest"
+    ],
+    "scale": [
+      {
+        "class": "valley",
+        "buildings": [
+          2,
+          5
+        ],
+        "side": [
+          200,
+          320
+        ],
+        "zones": [
+          2,
+          5
+        ]
+      },
+      {
+        "class": "region",
+        "buildings": [
+          5,
+          12
+        ],
+        "side": [
+          320,
+          500
+        ],
+        "zones": [
+          4,
+          10
+        ]
+      },
+      {
+        "class": "kingdom",
+        "buildings": [
+          12,
+          40
+        ],
+        "side": [
+          500,
+          900
+        ],
+        "zones": [
+          8,
+          20
+        ]
+      }
+    ],
+    "briefFields": {
+      "style": {
+        "climate": "climate"
+      },
+      "features": [
+        "river",
+        "lake",
+        "coast",
+        "mountains"
+      ]
+    }
+  },
+  {
+    "id": "dungeon",
+    "name": "Dungeon",
+    "root": "dungeon",
+    "layout": "dungeon",
+    "words": [
+      "dungeon",
+      "cave",
+      "cavern",
+      "crypt",
+      "catacomb",
+      "catacombs",
+      "mine",
+      "sewer",
+      "sewers",
+      "lair",
+      "tomb",
+      "labyrinth"
+    ],
+    "unit": {
+      "field": "rooms",
+      "class": "Room",
+      "label": "rooms"
+    },
+    "stages": [
+      "mission graph",
+      "space graph",
+      "geometry",
+      "room contents",
+      "encounters & loot",
+      "dressing"
+    ],
+    "components": [
+      "dungeon-level",
+      "entrance-room",
+      "stairs-room",
+      "corridor-room",
+      "junction",
+      "guard-room",
+      "barracks-room",
+      "treasure-room",
+      "trap-room",
+      "puzzle-room",
+      "boss-arena",
+      "shrine-room",
+      "prison",
+      "crypt-room",
+      "library-room",
+      "storeroom",
+      "flooded-room",
+      "cave-chamber",
+      "chasm-room",
+      "secret-room",
+      "encounter",
+      "loot-cache",
+      "trap",
+      "ambience"
+    ],
+    "scale": [
+      {
+        "class": "small",
+        "buildings": [
+          4,
+          8
+        ],
+        "side": [
+          30,
+          45
+        ],
+        "zones": [
+          1,
+          1
+        ]
+      },
+      {
+        "class": "medium",
+        "buildings": [
+          8,
+          16
+        ],
+        "side": [
+          45,
+          70
+        ],
+        "zones": [
+          1,
+          2
+        ]
+      },
+      {
+        "class": "large",
+        "buildings": [
+          16,
+          32
+        ],
+        "side": [
+          70,
+          100
+        ],
+        "zones": [
+          2,
+          3
+        ]
+      },
+      {
+        "class": "huge",
+        "buildings": [
+          32,
+          80
+        ],
+        "side": [
+          100,
+          150
+        ],
+        "zones": [
+          3,
+          6
+        ]
+      }
+    ],
+    "briefFields": {
+      "style": {
+        "theme": "dungeon-theme",
+        "condition": "condition"
+      },
+      "features": []
+    }
+  },
+  {
+    "id": "interior",
+    "name": "Interior",
+    "root": "building-interior",
+    "layout": "interior",
+    "rank": 1,
+    "words": [
+      "interior",
+      "interiors",
+      "floor plan",
+      "floorplan",
+      "house interior",
+      "tavern interior",
+      "inn interior",
+      "inside of"
+    ],
+    "unit": {
+      "field": "rooms",
+      "class": "Room",
+      "label": "rooms"
+    },
+    "stages": [
+      "room programme",
+      "floor plan",
+      "doors & windows",
+      "furniture groups",
+      "small objects",
+      "wall decor & lights"
+    ],
+    "components": [
+      "floor-level",
+      "hall",
+      "stairwell",
+      "storage",
+      "cellar",
+      "living-room",
+      "kitchen",
+      "bedroom",
+      "dining-room",
+      "tavern-hall",
+      "guest-room",
+      "shop-floor",
+      "back-store",
+      "workshop-room",
+      "forge",
+      "nave",
+      "sanctuary",
+      "vestry",
+      "great-hall",
+      "throne-room",
+      "armoury",
+      "barracks-dorm",
+      "library",
+      "study",
+      "treasury",
+      "cells",
+      "dining-set",
+      "bed-set",
+      "hearth-set",
+      "bar-set",
+      "work-set",
+      "forge-set",
+      "shelf-wall",
+      "display-set",
+      "altar-set",
+      "throne-set",
+      "storage-set",
+      "pews",
+      "bunk-set",
+      "kitchen-set",
+      "desk-set",
+      "wardrobe-set",
+      "room-lights",
+      "wall-decor",
+      "floor-clutter"
+    ],
+    "scale": [
+      {
+        "class": "cottage",
+        "buildings": [
+          2,
+          4
+        ],
+        "side": [
+          8,
+          11
+        ],
+        "zones": [
+          1,
+          1
+        ]
+      },
+      {
+        "class": "house",
+        "buildings": [
+          4,
+          8
+        ],
+        "side": [
+          11,
+          15
+        ],
+        "zones": [
+          1,
+          2
+        ]
+      },
+      {
+        "class": "hall",
+        "buildings": [
+          8,
+          16
+        ],
+        "side": [
+          15,
+          22
+        ],
+        "zones": [
+          1,
+          3
+        ]
+      },
+      {
+        "class": "large-building",
+        "buildings": [
+          16,
+          40
+        ],
+        "side": [
+          22,
+          32
+        ],
+        "zones": [
+          2,
+          4
+        ]
+      }
+    ],
+    "briefFields": {
+      "style": {
+        "wealth": "wealth",
+        "condition": "condition"
+      },
+      "features": []
     }
   }
 ]

@@ -56,8 +56,13 @@ std::string Describe(const std::vector<PlaceProblem>& problems) {
 
 TEST(BriefTest, InterpretContextDescribesWhatCanBeBuilt) {
     const json context = InterpretContext(Library());
-    ASSERT_EQ(context["buildTypes"].size(), 1u);
-    const json& settlement = context["buildTypes"][0];
+    // The settlement, and the other build types (7.10): region, castle, interior, dungeon, farmland, wilderness, camp.
+    ASSERT_EQ(context["buildTypes"].size(), 8u);
+    json settlement;
+    for (const auto& b : context["buildTypes"]) {
+        if (b["id"] == "settlement") settlement = b;
+    }
+    ASSERT_TRUE(settlement.is_object());
     EXPECT_EQ(settlement["id"], "settlement");
     EXPECT_EQ(settlement["scale"].size(), 5u);
     const auto ward = std::find_if(settlement["components"].begin(), settlement["components"].end(),

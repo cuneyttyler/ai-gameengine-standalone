@@ -1,0 +1,74 @@
+{
+  "schema": "aige.module/1",
+  "id": "ambience",
+  "name": "Ambience",
+  "level": "feature",
+  "description": "Torches on the walls, debris on the floor.",
+  "buildTypes": [
+    "dungeon"
+  ],
+  "quantity": {
+    "lights": {
+      "type": "density",
+      "levels": [
+        0,
+        0.02,
+        0.05,
+        0.1,
+        0.16
+      ],
+      "unit": "per free cell",
+      "default": "some"
+    },
+    "debris": {
+      "type": "density",
+      "levels": [
+        0,
+        0.02,
+        0.05,
+        0.1,
+        0.16
+      ],
+      "unit": "per free cell",
+      "default": "some"
+    }
+  },
+  "quality": {
+    "mood": {
+      "type": "enum",
+      "values": [
+        "gloomy",
+        "eerie",
+        "grand"
+      ],
+      "default": "gloomy"
+    }
+  },
+  "slots": {
+    "light": {
+      "role": "light-prop",
+      "essential": true,
+      "primary": true
+    },
+    "debris": {
+      "role": "debris",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "light",
+        "density": "lights",
+        "where": "border"
+      },
+      {
+        "slot": "debris",
+        "density": "debris",
+        "layer": "decal"
+      }
+    ],
+    "noPrimary": true
+  }
+}

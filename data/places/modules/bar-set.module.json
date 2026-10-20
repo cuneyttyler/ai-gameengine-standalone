@@ -1,0 +1,73 @@
+{
+  "schema": "aige.module/1",
+  "id": "bar-set",
+  "name": "Bar",
+  "level": "feature",
+  "description": "The counter, stools before it, barrels and a shelf behind.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {
+    "stools": {
+      "type": "count",
+      "default": [
+        2,
+        4
+      ],
+      "min": 0,
+      "max": 10
+    }
+  },
+  "quality": {},
+  "slots": {
+    "counter": {
+      "role": "counter",
+      "essential": true,
+      "primary": true
+    },
+    "stool": {
+      "role": "stool",
+      "essential": false
+    },
+    "barrel": {
+      "role": "barrel",
+      "essential": false
+    },
+    "shelf": {
+      "role": "shelf",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "wall",
+      "members": [
+        {
+          "slot": "stool",
+          "count": "stools",
+          "near": 1
+        },
+        {
+          "slot": "barrel",
+          "count": [
+            1,
+            3
+          ],
+          "near": 2
+        },
+        {
+          "slot": "shelf",
+          "count": [
+            0,
+            1
+          ],
+          "near": 2
+        }
+      ]
+    }
+  }
+}

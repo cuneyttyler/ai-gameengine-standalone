@@ -231,6 +231,7 @@ json BriefWindow(const Ontology& ontology, const json& brief, const BriefMerge* 
     window["size"] = {{"class", BriefValue(brief, "scale.class")},
                       {"buildings", BriefValue(brief, "scale.buildings.count")},
                       {"area", BriefValue(brief, "scale.area.area")},
+                      {"unit", build->unit.label},
                       {"classes", classes}};
     // Layout, walls, features, style: the build type's Brief fields.
     const json& fields = build->briefFields;

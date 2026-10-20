@@ -1,0 +1,69 @@
+{
+  "schema": "aige.module/1",
+  "id": "supply-area",
+  "name": "Supply area",
+  "level": "feature",
+  "description": "Crates, barrels and sacks of the camp's stores.",
+  "buildTypes": [
+    "camp"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          4,
+          6
+        ],
+        "h": [
+          3,
+          5
+        ]
+      },
+      "min": {
+        "w": 2,
+        "h": 2
+      },
+      "unit": "cells",
+      "max": {
+        "w": 12,
+        "h": 12
+      }
+    }
+  },
+  "quality": {},
+  "slots": {
+    "crate": {
+      "role": "crate",
+      "essential": true,
+      "primary": true
+    },
+    "barrel": {
+      "role": "barrel",
+      "essential": false
+    },
+    "sack": {
+      "role": "sack",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "barrel",
+        "count": [
+          1,
+          3
+        ]
+      },
+      {
+        "slot": "sack",
+        "count": [
+          1,
+          3
+        ]
+      }
+    ]
+  }
+}

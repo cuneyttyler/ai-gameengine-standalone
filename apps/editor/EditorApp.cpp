@@ -217,6 +217,12 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
 
 // The Build panel's messages (7.4-7.9), apart: one chain of them all is too deep for the compiler.
 bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json& message) {
+    // While the build works off the UI thread, only what doesn't touch it.
+    if (buildJob_ && type != "build:request" && type != "build:list" && type != "build:sourcingRequest" && type != "build:sourcing") {
+        post_({{"type", "notify"}, {"text", "The build is still working: a moment"}});
+        PostBuild();
+        return true;
+    }
     if (type == "build:start") {
         StartBuild(message.value("query", ""));
     } else if (type == "build:request") {
@@ -224,6 +230,25 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
     } else if (type == "build:sourcingRequest") {
         const SourcingSettings settings = ReadSourcingSettings(assets_.GetProject().root);
         post_({{"type", "build:sourcing"}, {"webSearch", settings.webSearch}, {"shareAlike", settings.licences.shareAlike}});
+    } else if (type == "build:nested") {
+        // A region's site, built as a place of its own where the region put it.
+        if (!build_) return true;
+        nlohmann::json site;
+        for (const auto& s : build_->Sites()) {
+            if (s.value("id", "") == message.value("id", "")) site = s;
+        }
+        if (site.is_null()) return true;
+        const auto [ox, oy] = build_->Origin();
+        const nlohmann::json bounds = site.value("bounds", nlohmann::json::array({0, 0, 0, 0}));
+        std::string scale = site.value("scale", "");
+        std::replace(scale.begin(), scale.end(), '-', ' ');
+        std::string kind = site.value("buildType", "settlement");
+        if (kind == "settlement") kind = scale.empty() ? "village" : scale;
+        else if (!scale.empty() && scale != "village" && scale != "town" && scale != "city" && scale != "hamlet") kind = scale + " " + kind;
+        const std::string name = site.value("name", "");
+        StartBuild("Build a " + kind + (name.empty() ? "" : " called " + name));
+        if (build_ && bounds.is_array() && bounds.size() == 4) build_->SetOrigin(ox + bounds[0].get<int>(), oy + bounds[1].get<int>());
+        PostBuild();
     } else if (type == "build:list") {
         post_({{"type", "build:list"}, {"builds", ListBuilds(assets_.GetProject().root)}});
     } else if (type == "build:resume") {
@@ -232,40 +257,33 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         if (build_) build_->Edit(message.value("path", ""), message.value("value", nlohmann::json()));
         PostBuild();
     } else if (type == "build:step" || type == "build:confirm") {
-        if (build_) {
-            const std::string why = type == "build:confirm" ? build_->Confirm() : build_->Step(message.value("step", ""));
-            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not yet: " + why}});
-        }
-        PostBuild();
+        // Planning (without the AI, all of it here) and laying out: off the UI thread.
+        const std::string step = message.value("step", "");
+        const bool confirm = type == "build:confirm";
+        RunBuildJob([confirm, step](PlaceBuild& build) { return confirm ? build.Confirm() : build.Step(step); }, "Not yet: ");
     } else if (type == "build:approve") {
-        if (build_) {
-            const std::string why = build_->Approve();
-            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not yet: " + why}});
-        }
-        PostBuild();
+        RunBuildJob([](PlaceBuild& build) { return build.Approve(); }, "Not yet: ");
     } else if (type == "build:revise" || type == "build:review" || type == "build:undo") {
-        if (build_) {
-            const std::string why = type == "build:revise" ? build_->Revise(message.value("text", ""))
-                                    : type == "build:review" ? build_->Review()
-                                                             : build_->Undo();
-            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not now: " + why}});
-        }
-        PostBuild();
+        const std::string text = message.value("text", "");
+        RunBuildJob([type, text](PlaceBuild& build) {
+            return type == "build:revise" ? build.Revise(text) : type == "build:review" ? build.Review() : build.Undo();
+        }, "Not now: ");
     } else if (type == "build:relayout") {
+        RunBuildJob([](PlaceBuild& build) { return build.Relayout(); }, "Not now: ");
+    } else if (type == "build:editNode" || type == "build:regenerate") {
+        // A part laid out again (a partial solve), then the scene follows, on the UI thread.
+        const std::string node = message.value("node", ""), field = message.value("field", "");
+        const nlohmann::json value = message.value("value", nlohmann::json());
+        RunBuildJob([type, node, field, value](PlaceBuild& build) {
+            return type == "build:editNode" ? build.EditNode(node, field, value) : build.Regenerate(node);
+        }, "Not now: ", [this] {
+            UpdateBuiltParts();
+            PostSelectedPart();
+        });
+    } else if (type == "build:lock" || type == "build:brush") {
         if (build_) {
-            const std::string why = build_->Relayout();
-            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not now: " + why}});
-        }
-        PostBuild();
-    } else if (type == "build:editNode" || type == "build:regenerate" || type == "build:lock" || type == "build:brush") {
-        if (build_) {
-            std::string why;
-            const std::string node = message.value("node", "");
-            if (type == "build:editNode") why = build_->EditNode(node, message.value("field", ""), message.value("value", nlohmann::json()));
-            else if (type == "build:regenerate") why = build_->Regenerate(node);
-            else if (type == "build:lock") build_->Lock(node, message.value("locked", true));
+            if (type == "build:lock") build_->Lock(message.value("node", ""), message.value("locked", true));
             else placeBrush_ = message.value("module", "");
-            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not now: " + why}});
             UpdateBuiltParts();
             PostSelectedPart();
         }
@@ -1884,7 +1902,7 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                 session_.RequestPlayerAttack(worldX, worldY);
                 return;
             }
-            if (!placeBrush_.empty() && build_) {
+            if (!placeBrush_.empty() && build_ && !buildJob_) {
                 CellAt(sceneX, sceneY, iso_, brushFromX_, brushFromY_);
                 brushToX_ = brushFromX_, brushToY_ = brushFromY_;
                 brushing_ = true;
@@ -1934,15 +1952,14 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
             }
             if (brushing_ && (event.button == Button::Left || event.button == Button::None)) {
                 brushing_ = false;
-                const auto [ox, oy] = build_ ? build_->Origin() : std::pair{0, 0};
-                const int x0 = std::min(brushFromX_, brushToX_) - ox, y0 = std::min(brushFromY_, brushToY_) - oy;
-                const int x1 = std::max(brushFromX_, brushToX_) + 1 - ox, y1 = std::max(brushFromY_, brushToY_) + 1 - oy;
-                if (build_) {
-                    if (const std::string why = build_->Paint(placeBrush_, x0, y0, x1, y1); !why.empty()) {
-                        post_({{"type", "notify"}, {"text", "Can't paint here: " + why}});
-                    }
-                    UpdateBuiltParts();
-                    PostBuild();
+                if (build_ && !buildJob_) {
+                    const auto [ox, oy] = build_->Origin();
+                    const int x0 = std::min(brushFromX_, brushToX_) - ox, y0 = std::min(brushFromY_, brushToY_) - oy;
+                    const int x1 = std::max(brushFromX_, brushToX_) + 1 - ox, y1 = std::max(brushFromY_, brushToY_) + 1 - oy;
+                    const std::string module = placeBrush_;
+                    // Laid out again where it was painted: off the UI thread, then the scene follows.
+                    RunBuildJob([module, x0, y0, x1, y1](PlaceBuild& build) { return build.Paint(module, x0, y0, x1, y1); },
+                                "Can't paint here: ", [this] { UpdateBuiltParts(); });
                 }
                 return;
             }
@@ -2182,7 +2199,7 @@ void EditorApp::MarkChanged() {
     dirty_ = true;
     editorStateStale_ = true;
     // A built part changed by hand keeps the change: it's locked (7.8).
-    if (!editingPart_.empty() && build_) {
+    if (!editingPart_.empty() && build_ && !buildJob_) {
         build_->Lock(editingPart_, true);
         editingPart_.clear();
         PostSelectedPart();
@@ -2220,7 +2237,7 @@ void EditorApp::Select(std::optional<Entity> entity) {
 }
 
 std::string EditorApp::PartOf(Entity entity) const {
-    if (!build_ || !registry_.valid(entity)) return {};
+    if (!build_ || buildJob_ || !registry_.valid(entity)) return {};
     const auto* node = registry_.try_get<PlaceNode>(entity);
     if (node == nullptr || node->place != build_->Id()) return {};
     // One instance of a template: up to its "#k" ("ward/cottages#2/house" -> "ward/cottages#2").
@@ -2231,12 +2248,12 @@ std::string EditorApp::PartOf(Entity entity) const {
 
 void EditorApp::PostSelectedPart() {
     const std::string part = selected_ ? PartOf(*selected_) : std::string();
-    nlohmann::json info = part.empty() || !build_ ? nlohmann::json() : build_->NodeInfo(part);
+    nlohmann::json info = part.empty() || !build_ || buildJob_ ? nlohmann::json() : build_->NodeInfo(part);
     post_({{"type", "build:part"}, {"part", info}, {"brush", placeBrush_}});
 }
 
 void EditorApp::UpdateBuiltParts() {
-    if (!build_) return;
+    if (!build_ || buildJob_) return;
     const std::set<std::string> changed = build_->TakeChanged();
     if (changed.empty() || build_->Stage() != "built" || !build_->Result().is_object()) return;
     // The scene follows: only those parts are replaced; locked ones stay as edited.
@@ -2575,6 +2592,7 @@ void EditorApp::AddStatsOverlay(std::vector<UiQuad>& ui) {
 
 void EditorApp::Tick(double frameSeconds) {
     PollAi();
+    FinishBuildJob();
     // The Grid setting changed (Project Settings, an AI proposal, undo): the
     // whole scene re-lays on the other grid (6.1).
     if (const IsoParams grid = BootstrapIso(); grid.topDown != iso_.topDown) {
@@ -2649,7 +2667,7 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
         return overlay;
     }
     // The plan view (7.5): the site and a sketch of its zones, before anything is built.
-    if (build_ && (build_->Stage() == "plan" || build_->Stage() == "planned")) {
+    if (build_ && !buildJob_ && (build_->Stage() == "plan" || build_->Stage() == "planned")) {
         static const float kSite[3] = {0.54f, 0.71f, 0.98f};
         static const float kZones[6][3] = {{0.65f, 0.89f, 0.63f}, {0.98f, 0.70f, 0.53f}, {0.80f, 0.65f, 0.97f},
                                            {0.98f, 0.89f, 0.69f}, {0.58f, 0.89f, 0.84f}, {0.95f, 0.55f, 0.66f}};
@@ -2860,32 +2878,14 @@ void EditorApp::PollAi() {
             if (Ai()->GetState() == AiClient::State::Ready) SendProvider();
             post_(AiStatusJson());
         } else if (result->kind == AiClient::Result::Kind::Response) {
-            if (build_ && build_->Owns(result->requestId) && build_->Stage() == "sourcing") {
-                build_->OnResponse(result->requestId, result->body);
-                if (build_->SourcingDone()) {
-                    build_->ClearSourcingDone();
-                    RefreshAssets();
-                    int added = 0;
-                    for (const auto& a : build_->TakeNewAssets()) {
-                        std::map<std::string, std::string> fields;
-                        const nlohmann::json given = a.value("fields", nlohmann::json::object());
-                        for (const auto& [k, v] : given.items()) {
-                            if (v.is_string()) fields[k] = v.get<std::string>();
-                        }
-                        added += SetCatalogFields(assets_, a.value("path", ""), fields) ? 1 : 0;
-                    }
-                    post_(AssetsJson());
-                    post_({{"type", "notify"}, {"text", "Added " + std::to_string(added) + " new asset(s) for the build"}});
-                    BuildIntoScene();
-                }
-                PostBuild();
-            } else if (result->requestId != 0 && result->requestId == providerRequest_) {
+            if (result->requestId != 0 && result->requestId == providerRequest_) {
                 providerRequest_ = 0;
                 providerStatus_ = result->body.is_object() ? result->body : nlohmann::json{{"ok", false}};
                 post_(AiStatusJson());
+            } else if (buildJob_ && !KnownRequest(result->requestId)) {
+                buildDeferred_.push_back({result->requestId, result->body, true}); // the build is busy: after its job
             } else if (build_ && build_->Owns(result->requestId)) {
-                build_->OnResponse(result->requestId, result->body);
-                PostBuild();
+                OnBuildResult(result->requestId, result->body);
             } else if (result->requestId == worldSearchRequest_) {
                 post_({{"type", "world:searchResults"}, {"result", result->body}});
             } else if (result->requestId == analyzeRequest_) {
@@ -2941,16 +2941,99 @@ void EditorApp::PollAi() {
                 }
                 consistencyRequests_.erase(it);
             }
+        } else if (buildJob_) {
+            buildDeferred_.push_back({result->requestId, result->body, false});
         } else if (build_ && build_->Owns(result->requestId)) {
-            build_->OnResponse(result->requestId, result->body.is_object() ? result->body : nlohmann::json{{"ok", false}});
-            PostBuild();
+            OnBuildResult(result->requestId, result->body.is_object() ? result->body : nlohmann::json{{"ok", false}});
         } else {
             OnProposal(result->requestId, result->body);
         }
     }
 }
 
+bool EditorApp::KnownRequest(int requestId) const {
+    return requestId == worldSearchRequest_ || requestId == analyzeRequest_ || requestId == artRequest_ ||
+           requestId == worldCheckRequest_ || consistencyRequests_.contains(requestId);
+}
+
+void EditorApp::OnBuildResult(int requestId, const nlohmann::json& body) {
+    if (build_->Stage() == "sourcing") {
+        // The art as it comes (light): then, when it's all there, the build goes on into the scene.
+        build_->OnResponse(requestId, body);
+        if (build_->SourcingDone()) {
+            build_->ClearSourcingDone();
+            RefreshAssets();
+            int added = 0;
+            for (const auto& a : build_->TakeNewAssets()) {
+                std::map<std::string, std::string> fields;
+                const nlohmann::json given = a.value("fields", nlohmann::json::object());
+                for (const auto& [k, v] : given.items()) {
+                    if (v.is_string()) fields[k] = v.get<std::string>();
+                }
+                added += SetCatalogFields(assets_, a.value("path", ""), fields) ? 1 : 0;
+            }
+            post_(AssetsJson());
+            post_({{"type", "notify"}, {"text", "Added " + std::to_string(added) + " new asset(s) for the build"}});
+            BuildIntoScene();
+        }
+        PostBuild();
+        return;
+    }
+    // An answer may finish the plan and lay it out: off the UI thread.
+    RunBuildJob([requestId, body](PlaceBuild& build) {
+        build.OnResponse(requestId, body);
+        return std::string();
+    });
+}
+
+void EditorApp::RunBuildJob(std::function<std::string(PlaceBuild&)> job, const std::string& prefix, std::function<void()> after) {
+    if (!build_) return;
+    if (buildJob_) {
+        post_({{"type", "notify"}, {"text", "The build is still working: a moment"}});
+        return;
+    }
+    PostBuild(); // its state before, then shown as busy
+    buildJob_ = std::make_unique<BuildJob>();
+    buildJob_->prefix = prefix;
+    buildJob_->after = std::move(after);
+    BuildJob* running = buildJob_.get();
+    PlaceBuild* build = build_.get();
+    PostBuild();
+    running->thread = std::thread([running, build, job = std::move(job)] {
+        try {
+            running->why = job(*build);
+        } catch (const std::exception& e) {
+            running->why = std::string("it failed: ") + e.what();
+        }
+        running->done = true;
+    });
+}
+
+void EditorApp::FinishBuildJob() {
+    if (buildJob_ && buildJob_->done) {
+        buildJob_->thread.join();
+        const std::unique_ptr<BuildJob> finished = std::move(buildJob_);
+        if (!finished->why.empty()) post_({{"type", "notify"}, {"text", finished->prefix + finished->why}});
+        if (finished->after) finished->after();
+        PostBuild();
+    }
+    // What came for the build while it worked, in order (one may start the next job).
+    while (!buildJob_ && !buildDeferred_.empty()) {
+        const DeferredResult next = buildDeferred_.front();
+        buildDeferred_.pop_front();
+        if (build_ && build_->Owns(next.id)) {
+            OnBuildResult(next.id, next.response || next.body.is_object() ? next.body : nlohmann::json{{"ok", false}});
+        } else if (!next.response) {
+            OnProposal(next.id, next.body);
+        }
+    }
+}
+
 void EditorApp::StartBuild(const std::string& query) {
+    if (buildJob_) {
+        post_({{"type", "notify"}, {"text", "The build is still working: a moment"}});
+        return;
+    }
     if (build_ && build_->Stage() == "interpreting") {
         post_({{"type", "notify"}, {"text", "A build is still reading its request"}});
         return;
@@ -2963,6 +3046,10 @@ void EditorApp::StartBuild(const std::string& query) {
 }
 
 void EditorApp::ResumeBuild(const std::string& id) {
+    if (buildJob_) {
+        post_({{"type", "notify"}, {"text", "The build is still working: a moment"}});
+        return;
+    }
     auto build = MakeBuild();
     const std::string why = build->Open(id);
     if (!why.empty()) {
@@ -2991,17 +3078,26 @@ void EditorApp::PostBuild() {
         post_({{"type", "build:state"}, {"stage", ""}});
         return;
     }
+    if (buildJob_) {
+        // Working (off the UI thread): what it was, marked busy; the build itself isn't touched.
+        nlohmann::json shown = buildShown_.is_object() ? buildShown_ : nlohmann::json{{"type", "build:state"}};
+        shown["busy"] = true;
+        shown["status"] = "Working: planning and laying the place out…";
+        post_(shown);
+        return;
+    }
     const std::string stage = build_->Stage();
     if (!build_->HasOrigin() && (stage == "plan" || stage == "planned" || stage == "built")) {
         const auto [x, y] = FreeOrigin(registry_, build_->Id(), build_->SiteSide());
         build_->SetOrigin(x, y);
     }
-    post_(build_->State());
+    buildShown_ = build_->State();
+    post_(buildShown_);
     post_(build_->Card());
 }
 
 void EditorApp::BuildIntoScene() {
-    if (!build_) return;
+    if (!build_ || buildJob_) return;
     if (playing_) {
         post_({{"type", "notify"}, {"text", "Stop Play mode before building."}});
         return;
@@ -3099,7 +3195,7 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool
         return;
     }
     // A change to the place the Build panel has open goes there, as a revision (7.8).
-    if (!asChange && build_ && (build_->Stage() == "plan" || build_->Stage() == "planned" || build_->Stage() == "built") &&
+    if (!asChange && build_ && !buildJob_ && (build_->Stage() == "plan" || build_->Stage() == "planned" || build_->Stage() == "built") &&
         build_->AboutThisPlace(text)) {
         conversation_.emplace_back("user", text);
         post_({{"type", "ai:message"}, {"role", "user"}, {"text", text}});

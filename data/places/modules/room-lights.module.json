@@ -1,0 +1,44 @@
+{
+  "schema": "aige.module/1",
+  "id": "room-lights",
+  "name": "Lights",
+  "level": "feature",
+  "description": "Candles, lamps and a chandelier.",
+  "buildTypes": [
+    "interior"
+  ],
+  "quantity": {
+    "lights": {
+      "type": "density",
+      "levels": [
+        0,
+        0.02,
+        0.04,
+        0.08,
+        0.12
+      ],
+      "unit": "per free cell",
+      "default": "some"
+    }
+  },
+  "quality": {},
+  "slots": {
+    "light": {
+      "role": "light-prop",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "light",
+        "density": "lights",
+        "where": "border",
+        "min": 1
+      }
+    ],
+    "noPrimary": true
+  }
+}

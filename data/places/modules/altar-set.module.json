@@ -1,0 +1,54 @@
+{
+  "schema": "aige.module/1",
+  "id": "altar-set",
+  "name": "Altar",
+  "level": "feature",
+  "description": "An altar at the far end, candles and a lectern.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "altar": {
+      "role": "altar",
+      "essential": true,
+      "primary": true
+    },
+    "candle": {
+      "role": "candle",
+      "essential": false
+    },
+    "lectern": {
+      "role": "lectern",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "far-wall",
+      "members": [
+        {
+          "slot": "candle",
+          "count": [
+            2,
+            4
+          ],
+          "near": 1
+        },
+        {
+          "slot": "lectern",
+          "count": [
+            0,
+            1
+          ],
+          "near": 2
+        }
+      ]
+    }
+  }
+}

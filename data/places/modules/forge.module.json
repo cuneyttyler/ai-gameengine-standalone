@@ -1,0 +1,73 @@
+{
+  "schema": "aige.module/1",
+  "id": "forge",
+  "name": "Forge",
+  "level": "parcel",
+  "description": "The anvil and the hearth.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "InteriorRoom"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          4,
+          6
+        ],
+        "h": [
+          4,
+          6
+        ]
+      },
+      "min": {
+        "w": 2,
+        "h": 2
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    }
+  },
+  "quality": {
+    "surface": {
+      "type": "enum",
+      "vocabulary": "floor-surface",
+      "default": "stone-floor"
+    }
+  },
+  "slots": {
+    "floor": {
+      "role": "floor-tile",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "forge-set": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    },
+    "room-lights": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    },
+    "wall-decor": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 1
+    }
+  },
+  "compile": {
+    "room": true,
+    "public": true,
+    "surface": "stone-floor"
+  }
+}

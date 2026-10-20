@@ -1,0 +1,81 @@
+{
+  "schema": "aige.module/1",
+  "id": "building-interior",
+  "name": "Building interior",
+  "level": "site",
+  "description": "The inside of a building: its floors, rooms, doors, stairs and furniture.",
+  "buildTypes": [
+    "interior"
+  ],
+  "quantity": {
+    "rooms": {
+      "type": "count",
+      "default": [
+        4,
+        8
+      ],
+      "min": 1,
+      "max": 200,
+      "ask": true
+    },
+    "floors": {
+      "type": "count",
+      "default": 1,
+      "min": 1,
+      "max": 6,
+      "ask": true
+    }
+  },
+  "quality": {
+    "kind": {
+      "type": "enum",
+      "vocabulary": "building-kind",
+      "default": "house",
+      "ask": true
+    },
+    "wealth": {
+      "type": "enum",
+      "vocabulary": "wealth",
+      "default": "common",
+      "ask": true
+    },
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "lived-in"
+    },
+    "floor": {
+      "type": "enum",
+      "vocabulary": "floor-surface",
+      "default": "wood-floor"
+    },
+    "notes": {
+      "type": "description"
+    }
+  },
+  "slots": {
+    "wall": {
+      "role": "wall-piece-set",
+      "essential": true
+    },
+    "door": {
+      "role": "door",
+      "essential": true
+    },
+    "window": {
+      "role": "window",
+      "essential": false
+    }
+  },
+  "children": {
+    "floor-level": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 6,
+      "count": "floors"
+    }
+  },
+  "constraints": [
+    "within(self.rooms, count(descendants(class: Room)), tol: 'count')"
+  ]
+}

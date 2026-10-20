@@ -51,7 +51,7 @@ interface BuildWindow {
   round: number
   buildTypeName: string
   name: string
-  size: { class: string | null; buildings: unknown; area: unknown; classes: { id: string; buildings: [number, number]; side: [number, number] }[] }
+  size: { class: string | null; buildings: unknown; area: unknown; unit?: string; classes: { id: string; buildings: [number, number]; side: [number, number] }[] }
   layout: { value: Shares; options: string[]; description: string | null }
   walled: { value: string | null; options: string[] }
   features: { value: string[]; options: string[] }
@@ -78,6 +78,7 @@ interface PlanRow {
   notes?: string[] // what the fixes did to it
 }
 interface BuildState {
+  busy?: boolean // working off the UI thread (planning, laying out)
   id: string
   query: string
   stage: string
@@ -88,13 +89,14 @@ interface BuildState {
   name?: string
   window?: BuildWindow
   progress?: { zones: number; done: number }
-  plan?: { rows: PlanRow[]; totals: { buildings: number; zones: number; area: unknown }; rationale: string }
+  plan?: { rows: PlanRow[]; totals: { buildings: number; unit?: string; zones: number; area: unknown }; rationale: string }
   sketch?: { side: number; rects: { id: string; module: string; name: string; x: number; y: number; w: number; h: number }[] }
   problems?: Problem[]
   image?: string // places/<id>/layout.png: the solved layout as a map, with its legend
   solved?: { stats: Record<string, number>; checks: { id: string; predicate: string; ok: boolean; detail?: unknown }[] }
   verify?: VerifyRow[] // asked, planned, built
   brushModules?: { id: string; name: string; level: string }[] // what the module brush paints (7.8)
+  sites?: { id: string; node: string; name: string; buildType: string; scale: string; bounds: number[] }[] // a region's (7.10)
   locks?: string[]
   result?: BuildResult // ⑤ Result: the scene build
   origin?: [number, number]
@@ -454,6 +456,8 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
 
 <template>
   <div class="build">
+    <!-- Working off the UI thread (7.10): the editor stays usable; the build's own buttons wait. -->
+    <div v-if="state?.busy" class="busy">{{ state.status }}</div>
     <div class="header">
       <div class="steps">
         <button
@@ -579,7 +583,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         </ul>
       </section>
       <p class="headline">
-        {{ state.plan.totals.buildings }} buildings in {{ state.plan.totals.zones }} zones
+        {{ state.plan.totals.buildings }} {{ state.plan.totals.unit ?? 'buildings' }} in {{ state.plan.totals.zones }} zones
         <span class="dim">· {{ amountText(state.plan.totals.area) }} cells²</span>
       </p>
       <p v-if="state.plan.rationale" class="dim">{{ state.plan.rationale }}</p>
@@ -599,7 +603,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           </g>
         </svg>
         <table class="components">
-          <thead><tr><th>Part</th><th>Buildings</th><th>Area</th><th>Holds</th><th>Character</th></tr></thead>
+          <thead><tr><th>Part</th><th>{{ state.plan.totals.unit ?? 'buildings' }}</th><th>Area</th><th>Holds</th><th>Character</th></tr></thead>
           <tbody>
             <tr v-for="row in state.plan.rows" :key="row.id" :class="{ picked: selectedZone === row.id }" @click="selectedZone = row.id">
               <td :title="row.rationale">{{ row.name }} <span class="dim">{{ row.id }}</span></td>
@@ -698,6 +702,21 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           </label>
         </div>
       </section>
+      <section v-if="state.sites?.length && (stage === 'planned' || stage === 'built')" class="plan">
+        <h4>Sites</h4>
+        <p class="dim">Each site of the region is built as a place of its own, where the region put it.</p>
+        <table>
+          <thead><tr><th>Site</th><th>Kind</th><th>Where</th><th></th></tr></thead>
+          <tbody>
+            <tr v-for="s in state.sites" :key="s.id">
+              <td>{{ s.name || s.id }}</td>
+              <td>{{ s.scale.replace('-', ' ') }} {{ s.buildType }}</td>
+              <td class="dim">{{ s.bounds[0] }}, {{ s.bounds[1] }} · {{ s.bounds[2] }}×{{ s.bounds[3] }}</td>
+              <td><button @click="sendToHost({ type: 'build:nested', id: s.id })">Build this site</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
       <div v-if="state.brushModules?.length && (stage === 'plan' || stage === 'planned' || stage === 'built')" class="brush">
         <span>Module brush</span>
         <select :value="brush" @change="setBrush(($event.target as HTMLSelectElement).value)">
@@ -786,10 +805,10 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           <div :class="markClass('scale.class')">
             <select :value="win.size.class" @change="edit('scale.class', ($event.target as HTMLSelectElement).value)">
               <option v-for="c in win.size.classes" :key="c.id" :value="c.id">
-                {{ c.id.replace('-', ' ') }} ({{ c.buildings[0] }}–{{ c.buildings[1] }} buildings)
+                {{ c.id.replace('-', ' ') }} ({{ c.buildings[0] }}–{{ c.buildings[1] }} {{ win.size.unit ?? 'buildings' }})
               </option>
             </select>
-            buildings
+            {{ win.size.unit ?? 'buildings' }}
             <input class="num" :value="countRange(win.size.buildings)[0]" @change="setBuildings(0, ($event.target as HTMLInputElement).value)" />
             –
             <input class="num" :value="countRange(win.size.buildings)[1]" @change="setBuildings(1, ($event.target as HTMLInputElement).value)" />
@@ -800,7 +819,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
                 {{ mark('scale.class')?.readings[i] }}: {{ show(alt) }}
               </button>
               <button v-for="(alt, i) in mark('scale.buildings.count')?.alternatives ?? []" :key="'b' + i" @click="edit('scale.buildings', { count: alt })">
-                {{ mark('scale.buildings.count')?.readings[i] }}: {{ show(alt) }} buildings
+                {{ mark('scale.buildings.count')?.readings[i] }}: {{ show(alt) }} {{ win.size.unit ?? 'buildings' }}
               </button>
             </div>
           </div>
@@ -1439,5 +1458,11 @@ button.link {
   margin-top: 10px;
   padding-top: 8px;
   border-top: 1px solid #333;
+}
+.busy {
+  padding: 6px 10px;
+  background: var(--accent, #3b82f6);
+  color: #fff;
+  font-size: 12px;
 }
 </style>

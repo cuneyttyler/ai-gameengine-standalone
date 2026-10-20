@@ -5,7 +5,8 @@
   "level": "parcel",
   "description": "A farmhouse and barn with a farmyard, fields, pasture and garden.",
   "buildTypes": [
-    "settlement"
+    "settlement",
+    "farmland"
   ],
   "classes": [
     "Dwelling",

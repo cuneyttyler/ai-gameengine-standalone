@@ -1,0 +1,81 @@
+{
+  "schema": "aige.module/1",
+  "id": "campsite",
+  "name": "Campsite",
+  "level": "parcel",
+  "description": "A traveller's camp: a tent or two round a fire.",
+  "buildTypes": [
+    "wilderness"
+  ],
+  "classes": [
+    "PointOfInterest"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          8
+        ],
+        "h": [
+          6,
+          8
+        ]
+      },
+      "min": {
+        "w": 4,
+        "h": 4
+      },
+      "unit": "cells",
+      "max": {
+        "w": 14,
+        "h": 14
+      }
+    },
+    "tents": {
+      "type": "count",
+      "default": [
+        1,
+        2
+      ],
+      "min": 0,
+      "max": 6
+    }
+  },
+  "quality": {},
+  "slots": {
+    "campfire": {
+      "role": "campfire",
+      "essential": true,
+      "primary": true
+    },
+    "tent": {
+      "role": "tent",
+      "essential": false
+    },
+    "log": {
+      "role": "log",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "tent",
+        "count": "tents",
+        "near": "primary",
+        "solid": true
+      },
+      {
+        "slot": "log",
+        "count": [
+          1,
+          2
+        ],
+        "near": "primary"
+      }
+    ]
+  }
+}

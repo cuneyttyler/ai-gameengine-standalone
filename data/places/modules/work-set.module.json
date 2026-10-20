@@ -1,0 +1,54 @@
+{
+  "schema": "aige.module/1",
+  "id": "work-set",
+  "name": "Workbench",
+  "level": "feature",
+  "description": "A workbench with its tools and a stool.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "workbench": {
+      "role": "workbench",
+      "essential": true,
+      "primary": true
+    },
+    "tools": {
+      "role": "tool",
+      "essential": false
+    },
+    "stool": {
+      "role": "stool",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "wall",
+      "members": [
+        {
+          "slot": "tools",
+          "count": [
+            1,
+            2
+          ],
+          "near": 1
+        },
+        {
+          "slot": "stool",
+          "count": [
+            0,
+            1
+          ],
+          "near": 1
+        }
+      ]
+    }
+  }
+}

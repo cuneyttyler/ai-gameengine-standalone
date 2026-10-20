@@ -1,0 +1,54 @@
+{
+  "schema": "aige.module/1",
+  "id": "throne-set",
+  "name": "Throne",
+  "level": "feature",
+  "description": "A throne at the far end, banners either side.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "throne": {
+      "role": "throne",
+      "essential": true,
+      "primary": true
+    },
+    "banner": {
+      "role": "banner",
+      "essential": false
+    },
+    "carpet": {
+      "role": "rug",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "far-wall",
+      "members": [
+        {
+          "slot": "banner",
+          "count": [
+            2,
+            2
+          ],
+          "near": 2
+        },
+        {
+          "slot": "carpet",
+          "count": [
+            1,
+            1
+          ],
+          "near": 2
+        }
+      ]
+    }
+  }
+}

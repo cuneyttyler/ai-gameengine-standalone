@@ -65,6 +65,8 @@ BRIEF_SHAPE = """The Brief (schema aige.brief/1), as JSON:
   "questions": ["<what the user should decide, if anything>"],
   "rationale": "<one or two sentences: why this reading>"
 }
+"scale.buildings" counts the build type's unit (its "counts": buildings, rooms, tents, sites...). Pick the build
+type by what the request names (its "words": a cave or crypt is a dungeon, the inside of an inn an interior).
 Only components listed for the build type. A disabled component is {"enabled": false} and nothing else.
 "params" only uses the component's fields, with values of their type. Give confidence below 0.6 for anything
 you guessed."""
@@ -242,7 +244,11 @@ ROOT_SHAPE = """The top of the plan, as JSON:
 }
 Zones (wards) get "plots" (a count) and "area"; a residential ward also its "street-style" (one pattern of the
 Brief's layout mix, so that the zones' shares follow the mix). Include the ground, the main road(s), the river and
-walls when the Brief has them."""
+walls when the Brief has them.
+Other build types count in their own unit (the root's "counts" in the rules; its field replaces "buildings"): a
+dungeon's zones are its levels and its parcels rooms ("rooms" on each level); an interior's zones are its floors
+("level": ground, upper or cellar) and its parcels rooms; a region's are its biomes and the heartland holding its
+sites; a camp counts tents, a wilderness its points of interest. Give each zone its count in its own count field."""
 
 ZONE_SHAPE = """One zone's parcels, as JSON:
 {
@@ -257,11 +263,14 @@ ZONE_SHAPE = """One zone's parcels, as JSON:
   "rationale": "<one or two sentences>"
 }
 Group alike parcels into one template with "repeat" (28 cottages are one child, not 28). The repeats of the
-building parcels add up to the zone's plots."""
+building parcels add up to the zone's plots (or, for other build types, the parcels of their unit, rooms or tents,
+add up to the zone's own count field). A dungeon level has one entrance room; the last level holds the goal (a
+boss arena, a treasure room); a floor of a building gets the rooms its kind needs (an inn: a tavern hall and a
+kitchen below, guest rooms above)."""
 
 PLAN_CHECK = """Before answering, check while thinking:
 - do the children's areas fit within 85% of the parent's area?
-- do the counts add up to the Brief's numbers (buildings, plots)?
+- do the counts add up to the Brief's numbers (buildings, plots; rooms, tents or sites for other build types)?
 - is every enabled component placed somewhere?
 - does each zone follow its module's site preferences and the design rules?"""
 
@@ -269,8 +278,9 @@ PLAN_CHECK = """Before answering, check while thinking:
 def plan_root(provider: Provider, brief: dict, context: dict, mode: str = "auto", examples: list | None = None) -> dict:
     """The root and its zones, networks and ground (place-interaction.md B4: thinks). `examples`: places this
     project built and the user kept (7.7, verified examples), for its style."""
-    task = ("You plan a game place from its confirmed Brief: its zones (wards), networks (roads, river, walls) and "
-            "ground, each with its quantity and quality fields. " + PLAN_CHECK)
+    task = ("You plan a game place from its confirmed Brief: its zones (wards of a settlement, levels of a dungeon, "
+            "floors of a building), networks (roads, river, walls) and ground, each with its quantity and quality "
+            "fields. " + PLAN_CHECK)
     shown = ""
     if examples:
         shown = ("Places this project built before and the user kept (follow their choices where this Brief is "

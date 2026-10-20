@@ -53,6 +53,14 @@ json SizeOf(const json& node, const ModuleDef& m, json fallback) {
 
 std::string Text(const json& v, const std::string& fallback) { return v.is_string() ? v.get<std::string>() : fallback; }
 
+// A node's children by reference (pointers into them are kept): never `value()`'s copy.
+const json& ChildrenOf(const json& node) {
+    static const json none = json::array();
+    if (!node.is_object()) return none;
+    const auto it = node.find("children");
+    return it != node.end() && it->is_array() ? *it : none;
+}
+
 // Whether a module's condition holds for a node's fields (unknown: yes).
 class NodeFields : public places::Scope {
 public:
@@ -102,7 +110,7 @@ std::string LayerForSlot(const Ontology& ontology, const SlotDef& slot) {
     const std::string role = slot.binds.empty() ? "" : slot.binds.front().role;
     if (RoleIs(ontology, role, "building")) return "building";
     if (RoleIs(ontology, role, "terrain")) return "ground";
-    for (const char* low : {"flower", "crop", "herb", "grass"}) {
+    for (const char* low : {"flower", "crop", "herb", "grass", "decal"}) {
         if (RoleIs(ontology, role, low)) return "decal";
     }
     return "prop";
@@ -122,7 +130,9 @@ private:
     json statements_ = json::array();
     std::set<std::string> ids_;
     int side_ = 64;
+    int width_ = 0, height_ = 0; // a dungeon's or a building's grid (its levels side by side); 0: the square site
     std::vector<std::string> doors_;
+    std::vector<std::string> groupAnchors_; // furniture groups' anchor statements, for their check
 
     void Emit(json s) {
         const std::string id = s.value("id", "");
@@ -130,6 +140,19 @@ private:
         statements_.push_back(std::move(s));
     }
     void Root(const json& root);
+    // The other layouts (7.10): levels of rooms and corridors; floors of rooms.
+    void DungeonRoot(const json& root, const ModuleDef& m);
+    void InteriorRoot(const json& root, const ModuleDef& m);
+    // A zone whose parcels stand apart (points of interest, a region's sites), joined by trails or roads.
+    void ScatteredZone(const json& zone, const ModuleDef& m, const json& hints);
+    // The module's contents hints ({slot, count|density, where, near, layer, mix}), as scatters in `in`.
+    void Contents(const json& list, const json& node, const ModuleDef& m, const std::string& self, const std::string& in,
+                  const std::string& primaryId);
+    // A furniture group: its anchor where the hint says, its members near it.
+    void Group(const json& node, const ModuleDef& m, const std::string& self, const std::string& parentInstance);
+    // A hint's number: a number, a field's middle, or {field, values} by the field's value.
+    std::optional<double> HintNumber(const json& hint, const json& node, const ModuleDef& m) const;
+    json HintCount(const json& hint, const json& node, const ModuleDef& m) const;
     void Zone(const json& zone, const ModuleDef& m, int index, const json& layoutMix);
     void Parcel(const json& templateNode, const ModuleDef& m, const std::string& instance, int index);
     void Feature(const json& node, const ModuleDef& m, const std::string& self, const std::string& parentInstance,
@@ -139,6 +162,8 @@ private:
     std::pair<int, int> Footprint(const ModuleDef& m, const SlotDef& slot, const json& parentSize);
     // The share children a parent's instance gets: exactly round(share x n) of n, by hash.
     bool Gets(const std::string& childId, double share, int instance, int instances) const;
+    // Which instances get a share child, ranked once per (child, share, instances): a city's plots are many.
+    mutable std::map<std::tuple<std::string, double, int>, std::vector<char>> gets_;
     // What instance `index` of a parcel needs beyond its house: the area of the
     // gardens and yards it gets, and whether it has dressing at its front (a doorstep).
     std::pair<int, bool> Extras(const json& parcel, int index, int instances) const;
@@ -222,14 +247,16 @@ std::pair<int, bool> Compiler::Extras(const json& parcel, int index, int instanc
 bool Compiler::Gets(const std::string& childId, double share, int instance, int instances) const {
     if (share >= 0.999) return true;
     const int wanted = static_cast<int>(std::lround(share * instances));
-    // Rank this instance among all, by hash: the first `wanted` get it.
-    const uint64_t mine = Hash(childId + "#" + std::to_string(instance), options_.seed);
-    int below = 0;
-    for (int k = 0; k < instances; ++k) {
-        const uint64_t other = Hash(childId + "#" + std::to_string(k), options_.seed);
-        if (other < mine || (other == mine && k < instance)) ++below;
+    // Rank the instances by hash: the first `wanted` get it.
+    auto& gets = gets_[{childId, share, instances}];
+    if (gets.empty()) {
+        std::vector<std::pair<uint64_t, int>> ranked;
+        for (int k = 0; k < instances; ++k) ranked.push_back({Hash(childId + "#" + std::to_string(k), options_.seed), k});
+        std::sort(ranked.begin(), ranked.end());
+        gets.assign(instances, 0);
+        for (int k = 0; k < wanted && k < instances; ++k) gets[ranked[k].second] = 1;
     }
-    return below < wanted;
+    return instance >= 0 && instance < instances && gets[instance];
 }
 
 std::pair<int, int> Compiler::Footprint(const ModuleDef& m, const SlotDef& slot, const json& parentSize) {
@@ -281,9 +308,145 @@ void Compiler::Relations(const ModuleDef& m, const std::string& node, const std:
     }
 }
 
+std::optional<double> Compiler::HintNumber(const json& hint, const json& node, const ModuleDef& m) const {
+    if (hint.is_number()) return hint.get<double>();
+    if (hint.is_string()) {
+        if (const auto r = Range(node, m, hint.get<std::string>())) return (r->first + r->second) / 2;
+        return std::nullopt;
+    }
+    if (hint.is_object() && hint.contains("field")) {
+        const json v = FieldOf(node, m, hint.value("field", ""));
+        const json values = hint.value("values", json::object());
+        if (v.is_string() && values.contains(v.get<std::string>()) && values[v.get<std::string>()].is_number()) return values[v.get<std::string>()].get<double>();
+    }
+    return std::nullopt;
+}
+
+json Compiler::HintCount(const json& hint, const json& node, const ModuleDef& m) const {
+    if (hint.is_number_integer() || hint.is_array()) return hint;
+    if (hint.is_string()) {
+        if (const auto r = Range(node, m, hint.get<std::string>())) return RangeJson(*r);
+    }
+    return json();
+}
+
+void Compiler::Contents(const json& list, const json& node, const ModuleDef& m, const std::string& self, const std::string& in,
+                        const std::string& primaryId) {
+    if (!list.is_array()) return;
+    const std::string nodeId = node.value("id", "");
+    const SlotDef* primary = PrimarySlot(m);
+    int k = 0;
+    for (const auto& item : list) {
+        std::string slotName = item.value("slot", "");
+        if (slotName == "primary" && primary) slotName = primary->name;
+        const SlotDef* slot = nullptr;
+        for (const auto& sd : m.slots) {
+            if (sd.name == slotName) slot = &sd;
+        }
+        if (slot == nullptr) continue;
+        const std::string where = item.value("where", "");
+        json s = {{"op", "scatter"}, {"id", self + "/more-" + slotName + (k ? "-" + std::to_string(k) : "")}, {"node", nodeId},
+                  {"in", in + (where == "border" ? ".border" : where == "inner" ? ".inner" : "")}, {"slot", slotName},
+                  {"layer", item.value("layer", LayerForSlot(ontology_, *slot))}};
+        const json count = HintCount(item.value("count", json()), node, m);
+        const auto density = HintNumber(item.value("density", json()), node, m);
+        if (!count.is_null()) s["count"] = count;
+        else if (density) s["density"] = *density;
+        else s["count"] = 1;
+        if (item.value("near", "") == "primary" && !primaryId.empty()) {
+            s["near"] = primaryId;
+            s["radius"] = item.value("radius", 2);
+        }
+        if (item.contains("min")) s["min"] = item["min"];
+        if (item.value("solid", false) || s["layer"] == "prop") s["spacing"] = {{"min", 1}};
+        if (item.contains("mix")) {
+            const json v = FieldOf(node, m, item.value("mix", ""));
+            if (v.is_object()) s["mix"] = v.contains("mix") ? v["mix"] : v;
+        }
+        Emit(s);
+        ++k;
+    }
+}
+
+void Compiler::Group(const json& node, const ModuleDef& m, const std::string& self, const std::string& parentInstance) {
+    const std::string nodeId = node.value("id", "");
+    const SlotDef* anchor = PrimarySlot(m);
+    if (anchor == nullptr) return;
+    const json hint = m.compile.value("group", json::object());
+    const std::string anchorId = self + "/" + anchor->name;
+    const auto [fw, fh] = Footprint(m, *anchor, json::object());
+    Emit({{"op", "place"}, {"id", anchorId}, {"node", nodeId}, {"in", parentInstance}, {"slot", anchor->name}, {"footprint", {{"w", fw}, {"h", fh}}},
+          {"position", hint.value("position", "")}, {"layer", LayerForSlot(ontology_, *anchor)}, {"essential", false}});
+    groupAnchors_.push_back(anchorId);
+    for (const auto& member : hint.value("members", json::array())) {
+        const std::string slotName = member.value("slot", "");
+        const SlotDef* slot = nullptr;
+        for (const auto& sd : m.slots) {
+            if (sd.name == slotName) slot = &sd;
+        }
+        if (slot == nullptr) continue;
+        json count = HintCount(member.value("count", json()), node, m);
+        if (count.is_null()) count = 1;
+        if ((count.is_number() && count.get<int>() <= 0) || (count.is_array() && count[1].get<int>() <= 0)) continue;
+        const std::string memberId = self + "/" + slotName;
+        Emit({{"op", "place"}, {"id", memberId}, {"node", nodeId}, {"in", parentInstance}, {"slot", slotName}, {"count", count},
+              {"footprint", {{"w", 1}, {"h", 1}}}, {"layer", LayerForSlot(ontology_, *slot)}, {"essential", false}});
+        Emit({{"op", "relation"}, {"id", memberId + "/near"}, {"node", nodeId}, {"type", "near"}, {"members", {memberId, anchorId}},
+              {"weight", 3.0}, {"args", {{"d0", 1}, {"d1", member.value("near", 1) + 1}}}});
+    }
+}
+
+void Compiler::ScatteredZone(const json& zone, const ModuleDef& m, const json& hints) {
+    const std::string zoneId = zone.value("id", "");
+    json members = json::array();
+    for (const auto& c : zone.value("children", json::array())) {
+        const ModuleDef* cm = ontology_.Module(c.value("module", ""));
+        if (cm == nullptr || cm->level != PlaceLevel::Parcel) continue;
+        const int repeat = std::max(1, c.value("repeat", 1));
+        for (int k = 0; k < repeat; ++k) {
+            const std::string instance = repeat == 1 ? c.value("id", "") : c.value("id", "") + "#" + std::to_string(k);
+            Emit({{"op", "region"}, {"id", instance}, {"node", c.value("id", "")}, {"in", zoneId}, {"shape", "rect"},
+                  {"size", SizeOf(c, *cm, json{{"w", 6}, {"h", 6}})}, {"module", cm->id}, {"spread", hints.value("spread", 12)},
+                  {"group", zoneId}, {"essential", true}});
+            Relations(*cm, c.value("id", ""), instance, zoneId, "", "");
+            Parcel(c, *cm, instance, k);
+            members.push_back(instance);
+        }
+    }
+    // The trails (or roads) to them, from the site's entrances.
+    const json connect = hints.value("connect", json::object());
+    std::string terrain = connect.value("terrain", "dirt");
+    for (const auto& c : spec_["root"].value("children", json::array())) {
+        const ModuleDef* cm = ontology_.Module(c.value("module", ""));
+        if (cm && cm->id == "trail-network") terrain = Text(FieldOf(c, *cm, "surface"), terrain);
+    }
+    if (!members.empty()) {
+        Emit({{"op", "connect"}, {"id", zoneId + "/trails"}, {"node", zoneId}, {"in", zoneId}, {"members", members},
+              {"from", json::array({"site/entrance-w", "site/entrance-e"})}, {"class", connect.value("class", "trail")},
+              {"width", connect.value("width", 1)}, {"terrain", terrain}});
+    }
+    Emit({{"op", "check"}, {"id", zoneId + "/placed"}, {"node", zoneId}, {"predicate", "count"},
+          {"args", {{"ref", zoneId + "/trails"}, {"range", {static_cast<int>(members.size()), static_cast<int>(members.size())}}}}});
+}
+
 void Compiler::Root(const json& root) {
     const ModuleDef* m = ontology_.Module(root.value("module", ""));
     const std::string id = root.value("id", "site");
+    if (const BuildType* build = m ? ontology_.BuildOfRoot(m->id) : nullptr) {
+        if (build->layout == "dungeon") return DungeonRoot(root, *m);
+        if (build->layout == "interior") return InteriorRoot(root, *m);
+    }
+    // A wall round an inner ward (a castle): its margin, for the moat and the ground outside.
+    const json enclosure = m && m->compile.is_object() ? m->compile.value("enclosure", json()) : json();
+    const json* wallNode = nullptr;
+    const json* moatNode = nullptr;
+    if (enclosure.is_object()) {
+        for (const auto& c : ChildrenOf(root)) {
+            if (c.value("module", "") == enclosure.value("wall", "")) wallNode = &c;
+            if (c.value("module", "") == enclosure.value("moat", "")) moatNode = &c;
+        }
+    }
+    const int margin = wallNode ? enclosure.value("margin", 5) : 0;
     if (options_.side > 0) {
         side_ = options_.side;
     } else if (m) {
@@ -299,7 +462,7 @@ void Compiler::Root(const json& root) {
             if (auto it = options_.zoneScale.find(c.value("id", "")); it != options_.zoneScale.end()) scale = it->second;
             required += ParcelArea(c) * 1.9 * scale;
         }
-        if (!options_.fixedSide) side_ = std::max(side_, static_cast<int>(std::ceil(std::sqrt(required / 0.6))));
+        if (!options_.fixedSide) side_ = std::max(side_, static_cast<int>(std::ceil(std::sqrt(required / 0.6))) + 2 * margin);
     }
     const int s = side_;
     Emit({{"op", "region"}, {"id", "site"}, {"node", id}, {"shape", "rect"}, {"at", {0, 0}}, {"size", {{"w", s}, {"h", s}}}});
@@ -357,6 +520,47 @@ void Compiler::Root(const json& root) {
               {"via", json::array({"site.center"})}, {"class", "main"}, {"width", 2}, {"terrain", "dirt"}});
     }
 
+    // The enclosure: a moat round the inner ward, the curtain wall on its edge, towers at
+    // its corners and the gatehouse where the road comes in. The zones go inside it.
+    std::string zonesIn = "site";
+    if (wallNode) {
+        const int moatWidth = moatNode ? [&] {
+            const ModuleDef* mm = ontology_.Module(moatNode->value("module", ""));
+            const auto w = mm ? Range(*moatNode, *mm, "width") : std::nullopt;
+            return w ? std::max(1, static_cast<int>(std::lround(w->first))) : 2;
+        }() : 0;
+        const int inner = s - 2 * margin;
+        if (moatNode) {
+            const std::string moatId = moatNode->value("id", "moat");
+            const int at = std::max(1, margin - moatWidth);
+            Emit({{"op", "region"}, {"id", "site/moat"}, {"node", moatId}, {"in", "site"}, {"shape", "rect"}, {"at", {at, at}},
+                  {"size", {{"w", s - 2 * at}, {"h", s - 2 * at}}}, {"overRoads", true}});
+            Emit({{"op", "region"}, {"id", "site/inner"}, {"node", id}, {"in", "site/moat"}, {"shape", "rect"}, {"at", {margin, margin}},
+                  {"size", {{"w", inner}, {"h", inner}}}, {"overRoads", true}});
+            Emit({{"op", "flood"}, {"id", moatId + "/water"}, {"node", moatId}, {"in", "site/moat"}});
+        } else {
+            Emit({{"op", "region"}, {"id", "site/inner"}, {"node", id}, {"in", "site"}, {"shape", "rect"}, {"at", {margin, margin}},
+                  {"size", {{"w", inner}, {"h", inner}}}, {"overRoads", true}});
+        }
+        zonesIn = "site/inner";
+        const std::string wallId = wallNode->value("id", "curtain-wall");
+        const ModuleDef* wm = ontology_.Module(wallNode->value("module", ""));
+        json gaps = json::array({"site/main-road"});
+        if (ids_.contains("site/cross-road")) gaps.push_back("site/cross-road");
+        Emit({{"op", "line"}, {"id", wallId}, {"node", wallId}, {"slot", "wall"}, {"along", "site/inner.edge"}, {"gaps", gaps}, {"closed", true}});
+        Emit({{"op", "check"}, {"id", wallId + "/closed"}, {"node", wallId}, {"predicate", "closed"}, {"args", {{"ref", wallId}}}});
+        const auto towers = wm ? Range(*wallNode, *wm, "towers") : std::nullopt;
+        const int towerCount = towers ? static_cast<int>(std::lround(towers->first)) : 4;
+        if (towerCount > 0) {
+            Emit({{"op", "place"}, {"id", wallId + "/towers"}, {"node", wallId}, {"in", "site/inner"}, {"slot", "tower"}, {"count", towerCount},
+                  {"footprint", {{"w", 2}, {"h", 2}}}, {"position", "corners"}, {"layer", "prop"}, {"essential", false}});
+        }
+        const auto gatehouses = wm ? Range(*wallNode, *wm, "gatehouses") : std::nullopt;
+        Emit({{"op", "place"}, {"id", wallId + "/gatehouse"}, {"node", wallId}, {"in", "site/inner"}, {"slot", "gatehouse"},
+              {"count", gatehouses ? static_cast<int>(std::lround(gatehouses->first)) : 1}, {"footprint", {{"w", 3}, {"h", 2}}},
+              {"position", "gate"}, {"layer", "prop"}, {"essential", false}});
+    }
+
     // Zones, partitioned by their site preferences.
     double builtNeed = 0;
     json into = json::array();
@@ -396,7 +600,7 @@ void Compiler::Root(const json& root) {
         zones.push_back({&c, cm});
     }
     if (!into.empty()) {
-        Emit({{"op", "partition"}, {"id", "site/zones"}, {"node", id}, {"in", "site"}, {"into", into}, {"method", "growth"}});
+        Emit({{"op", "partition"}, {"id", "site/zones"}, {"node", id}, {"in", zonesIn}, {"into", into}, {"method", "growth"}});
     }
     const json layout = m ? FieldOf(root, *m, "layout") : json();
     for (size_t i = 0; i < zones.size(); ++i) Zone(*zones[i].first, *zones[i].second, static_cast<int>(i), layout);
@@ -415,6 +619,44 @@ void Compiler::Root(const json& root) {
 
 void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json& layoutMix) {
     const std::string zoneId = zone.value("id", "");
+    const json hints = m.compile.is_object() ? m.compile : json::object();
+    if (const json fill = hints.value("fill", json()); fill.is_object()) {
+        const json v = FieldOf(zone, m, fill.value("field", ""));
+        const json values = fill.value("values", json::object());
+        if (v.is_string() && values.contains(v.get<std::string>())) {
+            Emit({{"op", "fill"}, {"id", zoneId + "/ground"}, {"node", zoneId}, {"in", zoneId}, {"terrain", values[v.get<std::string>()]}});
+        }
+    }
+    auto background = [&] {
+        int k = 0;
+        for (const auto& b : hints.value("background", json::array())) {
+            const std::string slotName = b.value("slot", "");
+            const SlotDef* slot = nullptr;
+            for (const auto& sd : m.slots) {
+                if (sd.name == slotName) slot = &sd;
+            }
+            const auto density = HintNumber(b.value("density", json()), zone, m);
+            if (slot == nullptr || !density || *density <= 0) continue;
+            Emit({{"op", "scatter"}, {"id", zoneId + "/" + slotName + (k++ ? "-" + std::to_string(k) : "")}, {"node", zoneId}, {"in", zoneId},
+                  {"slot", slotName}, {"density", *density}, {"own", true}, {"spacing", {{"min", 1}}}, {"layer", LayerForSlot(ontology_, *slot)}});
+        }
+        return k > 0;
+    };
+    if (hints.value("placement", "") == "scattered") {
+        ScatteredZone(zone, m, hints);
+        background();
+        for (const auto& c : zone.value("children", json::array())) {
+            const ModuleDef* cm = ontology_.Module(c.value("module", ""));
+            if (cm == nullptr || cm->level != PlaceLevel::Feature || ontology_.IsA(cm->id, "LinearFeature")) continue;
+            const int repeat = std::max(1, c.value("repeat", 1));
+            for (int k = 0; k < repeat; ++k) Feature(c, *cm, repeat == 1 ? c.value("id", "") : c.value("id", "") + "#" + std::to_string(k), zoneId, "");
+        }
+        return;
+    }
+    if (ontology_.IsA(m.id, "NatureArea") && hints.contains("background")) {
+        background();
+        return;
+    }
     // Nature zones: their plants, scattered.
     if (ontology_.IsA(m.id, "NatureArea")) {
         const SlotDef* slot = PrimarySlot(m);
@@ -434,6 +676,7 @@ void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json&
     json into = json::array();
     std::vector<std::tuple<const json*, const ModuleDef*, std::string, int>> parcels;
     int depth = 6;
+    std::vector<int> depths;
     for (const auto& c : children) {
         const ModuleDef* cm = ontology_.Module(c.value("module", ""));
         if (cm == nullptr || cm->level != PlaceLevel::Parcel || c.contains("at")) continue;
@@ -441,11 +684,17 @@ void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json&
         for (int k = 0; k < repeat; ++k) {
             const std::string instance = repeat == 1 ? c.value("id", "") : c.value("id", "") + "#" + std::to_string(k);
             const json lot = LotSize(c, *cm, k, repeat);
-            if (lot["h"].is_number()) depth = std::max(depth, lot["h"].get<int>());
-            if (lot["h"].is_array()) depth = std::max(depth, lot["h"][1].get<int>());
+            if (lot["h"].is_number()) depths.push_back(lot["h"].get<int>());
+            if (lot["h"].is_array()) depths.push_back(lot["h"][1].get<int>());
             into.push_back({{"id", instance}, {"node", c.value("id", "")}, {"module", cm->id}, {"size", lot}});
             parcels.push_back({&c, cm, instance, k});
         }
+    }
+    // The streets' spacing follows the depth most lots have (not the deepest one: a
+    // temple's deep lot would spread a whole ward's streets, and its houses lose their fronts).
+    if (!depths.empty()) {
+        std::sort(depths.begin(), depths.end());
+        depth = std::max(depth, depths[std::min(depths.size() - 1, depths.size() * 4 / 5)]);
     }
     // Mix the kinds of parcel along the streets, by a seeded shuffle (bigger ones first).
     std::vector<size_t> order(into.size());
@@ -484,8 +733,10 @@ void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json&
         }
     }
     if (style.empty()) style = index == 0 ? "organic" : "organic";
-    Emit({{"op", "network"}, {"id", zoneId + "/streets"}, {"node", zoneId}, {"in", zoneId}, {"style", style},
-          {"spacing", 2 * depth + 2}, {"width", 1}, {"class", "street"}, {"terrain", "dirt"}});
+    const json network = hints.value("network", json::object());
+    Emit({{"op", "network"}, {"id", zoneId + "/streets"}, {"node", zoneId}, {"in", zoneId}, {"style", network.value("style", style)},
+          {"spacing", std::max(network.value("spacing", 0), 2 * depth + 2)}, {"width", network.value("width", 1)},
+          {"class", network.value("class", "street")}, {"terrain", network.value("terrain", "dirt")}});
     Emit({{"op", "subdivide"}, {"id", zoneId + "/plots"}, {"node", zoneId}, {"in", zoneId}, {"style", "frontage"},
           {"access", "street"}, {"into", ordered}});
     Emit({{"op", "check"}, {"id", zoneId + "/plots-placed"}, {"node", zoneId}, {"predicate", "count"},
@@ -522,9 +773,13 @@ void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json&
 void Compiler::Parcel(const json& node, const ModuleDef& m, const std::string& instance, int index) {
     const std::string nodeId = node.value("id", "");
     const int instances = std::max(1, node.value("repeat", 1));
-    const SlotDef* primary = PrimarySlot(m);
+    const json hints = m.compile.is_object() ? m.compile : json::object();
+    const SlotDef* primary = hints.value("noPrimary", false) ? nullptr : PrimarySlot(m);
     std::string primaryId;
     const json size = SizeOf(node, m, json{{"w", 5}, {"h", 6}});
+    if (const json surface = hints.value("surface", json()); surface.is_string()) {
+        Emit({{"op", "fill"}, {"id", instance + "/surface"}, {"node", nodeId}, {"in", instance}, {"terrain", surface}});
+    }
     if (primary) {
         primaryId = instance + "/" + primary->name;
         const auto [fw, fh] = Footprint(m, *primary, size);
@@ -535,6 +790,8 @@ void Compiler::Parcel(const json& node, const ModuleDef& m, const std::string& i
         if (const auto r = Range(node, m, "setback")) setback = static_cast<int>(std::lround(r->first));
         if (Extras(node, index, instances).second) setback = std::max(1, setback); // its doorstep, sign or stall goes there
         s["setback"] = setback;
+        // A room's main thing (a dungeon's altar, its stairs) stands in its middle.
+        if (hints.value("centre", false) || ontology_.IsA(m.id, "DungeonRoom")) s["position"] = "center";
         if (layer == "ground") {
             // A square: its terrain is the primary "object".
             Emit({{"op", "fill"}, {"id", primaryId}, {"node", nodeId}, {"in", instance}, {"terrain", Text(FieldOf(node, m, "surface"), "cobble")}});
@@ -557,6 +814,7 @@ void Compiler::Parcel(const json& node, const ModuleDef& m, const std::string& i
         }
     }
     Relations(m, nodeId, instance, instance.substr(0, instance.find('/')), "", primaryId);
+    Contents(hints.value("contents", json()), node, m, instance, instance, primaryId);
     // Its features, as this instance's share of them.
     for (const auto& c : node.value("children", json::array())) {
         const ModuleDef* cm = ontology_.Module(c.value("module", ""));
@@ -571,7 +829,9 @@ void Compiler::Parcel(const json& node, const ModuleDef& m, const std::string& i
 void Compiler::Feature(const json& node, const ModuleDef& m, const std::string& self, const std::string& parentInstance,
                        const std::string& parentPrimary) {
     const std::string nodeId = node.value("id", "");
-    const SlotDef* primary = PrimarySlot(m);
+    const json hints = m.compile.is_object() ? m.compile : json::object();
+    if (hints.contains("group")) return Group(node, m, self, parentInstance);
+    const SlotDef* primary = hints.value("noPrimary", false) ? nullptr : PrimarySlot(m);
     // Lines: along the parent's edge, a gate at its front.
     if (ontology_.IsA(m.id, "LinearFeature")) {
         if (primary) {
@@ -583,6 +843,11 @@ void Compiler::Feature(const json& node, const ModuleDef& m, const std::string& 
     }
     // Dressing-like features without a size (a doorstep, a sign): by the door.
     const bool sized = m.Field("size") != nullptr || m.Field("depth") != nullptr;
+    if (!sized && hints.contains("contents")) {
+        // What it puts in its room (enemies, loot, lights): there.
+        Contents(hints["contents"], node, m, self, parentInstance, parentPrimary);
+        return;
+    }
     if (!sized) {
         if (primary && !parentPrimary.empty()) {
             double density = 0.5;
@@ -695,12 +960,221 @@ void Compiler::Feature(const json& node, const ModuleDef& m, const std::string& 
         }
         return;
     }
+    Contents(hints.value("contents", json()), node, m, self, self, primary ? self + "/" + primary->name : "");
     // Anything else: its main object in its middle (a well, a bench, a stable).
     // A ground slot (a yard's path) is its surface, filled above: nothing to place.
     if (primary && LayerForSlot(ontology_, *primary) != "ground") {
         Emit({{"op", "place"}, {"id", self + "/" + primary->name}, {"node", nodeId}, {"in", self}, {"slot", primary->name},
               {"footprint", {{"w", 1}, {"h", 1}}}, {"position", "center"}, {"layer", LayerForSlot(ontology_, *primary)}, {"essential", false}});
     }
+}
+
+void Compiler::DungeonRoot(const json& root, const ModuleDef& m) {
+    const std::string id = root.value("id", "dungeon");
+    struct RoomRef {
+        const json* node;
+        const ModuleDef* module;
+        std::string instance;
+        int index;
+    };
+    struct Level {
+        const json* node;
+        const ModuleDef* module;
+        std::string instance;
+        std::vector<RoomRef> rooms;
+        double area = 0;
+    };
+    std::vector<Level> levels;
+    for (const auto& c : ChildrenOf(root)) {
+        const ModuleDef* lm = ontology_.Module(c.value("module", ""));
+        if (lm == nullptr || lm->level != PlaceLevel::Zone) continue;
+        const int repeat = std::max(1, c.value("repeat", 1));
+        for (int k = 0; k < repeat; ++k) {
+            Level level{&c, lm, repeat == 1 ? c.value("id", "") : c.value("id", "") + "#" + std::to_string(k), {}, 0};
+            for (const auto& r : ChildrenOf(c)) {
+                const ModuleDef* rm = ontology_.Module(r.value("module", ""));
+                if (rm == nullptr || rm->level != PlaceLevel::Parcel) continue;
+                const int n = std::max(1, r.value("repeat", 1));
+                for (int j = 0; j < n; ++j) {
+                    std::string instance = n == 1 ? r.value("id", "") : r.value("id", "") + "#" + std::to_string(j);
+                    if (repeat > 1) instance += "@" + std::to_string(k); // one level's room, apart from the next's
+                    level.rooms.push_back({&r, rm, instance, j});
+                    const json size = SizeOf(r, *rm, json{{"w", 5}, {"h", 5}});
+                    auto mid = [](const json& v) { return v.is_array() ? (v[0].get<double>() + v[1].get<double>()) / 2 : v.is_number() ? v.get<double>() : 5.0; };
+                    level.area += mid(size["w"]) * mid(size["h"]);
+                }
+            }
+            levels.push_back(level);
+        }
+    }
+    // Each level a square big enough for its rooms and the rock and corridors between
+    // (more, when a fitting round found it short).
+    int side = 24;
+    for (const auto& l : levels) {
+        double scale = 1.0;
+        if (auto it = options_.zoneScale.find(l.node->value("id", "")); it != options_.zoneScale.end()) scale = it->second;
+        side = std::max(side, static_cast<int>(std::ceil(std::sqrt(l.area * 3.4 * scale))));
+    }
+    const int n = std::max<int>(1, static_cast<int>(levels.size()));
+    width_ = n * side + 2 * (n - 1) + 2;
+    height_ = side + 2;
+    side_ = std::max(width_, height_);
+    Emit({{"op", "region"}, {"id", "site"}, {"node", id}, {"shape", "rect"}, {"at", {0, 0}}, {"size", {{"w", width_}, {"h", height_}}}});
+    Emit({{"op", "fill"}, {"id", "site/rock"}, {"node", id}, {"in", "site"}, {"terrain", "rock-wall"}});
+    const std::string theme = Text(FieldOf(root, m, "theme"), "crypt");
+    const bool cave = theme == "cave";
+    const std::string goalKind = Text(FieldOf(root, m, "goal"), "treasure");
+    const bool boss = FieldOf(root, m, "boss").is_boolean() ? FieldOf(root, m, "boss").get<bool>() : false;
+    const auto locks = Range(root, m, "locks");
+    const auto loops = Range(root, m, "loops");
+    const int totalLocks = locks ? static_cast<int>(std::lround((locks->first + locks->second) / 2)) : 0;
+    std::string previousGoal;
+    std::string goal;
+    for (int k = 0; k < static_cast<int>(levels.size()); ++k) {
+        const Level& level = levels[k];
+        const bool last = k + 1 == static_cast<int>(levels.size());
+        auto find = [&](std::initializer_list<const char*> kinds) -> std::string {
+            for (const char* kind : kinds) {
+                for (const auto& r : level.rooms) {
+                    if (r.module->id == kind) return r.instance;
+                }
+            }
+            return {};
+        };
+        std::string start = find({"entrance-room"});
+        if (start.empty() && !level.rooms.empty()) start = level.rooms.front().instance;
+        goal = last ? (boss || goalKind == "boss" ? find({"boss-arena", "treasure-room"})
+                       : goalKind == "rescue"     ? find({"prison", "treasure-room", "boss-arena"})
+                       : goalKind == "escape"     ? find({"stairs-room", "treasure-room"})
+                                                  : find({"treasure-room", "boss-arena"}))
+                    : find({"stairs-room"});
+        if (goal.empty() || goal == start) {
+            for (auto it = level.rooms.rbegin(); it != level.rooms.rend(); ++it) {
+                if (it->instance != start && !(it->module->compile.is_object() && it->module->compile.value("secret", false))) {
+                    goal = it->instance;
+                    break;
+                }
+            }
+        }
+        const std::string levelId = level.instance;
+        const std::string floor = cave ? "cave-floor" : Text(FieldOf(*level.node, *level.module, "floor"), "stone-floor");
+        Emit({{"op", "region"}, {"id", levelId}, {"node", level.node->value("id", "")}, {"in", "site"}, {"shape", "rect"},
+              {"at", {1 + k * (side + 2), 1}}, {"size", {{"w", side}, {"h", side}}}, {"module", level.module->id}});
+        json into = json::array();
+        for (const auto& r : level.rooms) {
+            const json hints = r.module->compile.is_object() ? r.module->compile : json::object();
+            into.push_back({{"id", r.instance}, {"node", r.node->value("id", "")}, {"module", r.module->id},
+                            {"size", SizeOf(*r.node, *r.module, json{{"w", 5}, {"h", 5}})}, {"secret", hints.value("secret", false)},
+                            {"cave", hints.value("cave", false)}});
+        }
+        const int levelLocks = totalLocks * (k + 1) / n - totalLocks * k / n;
+        json rooms = {{"op", "rooms"}, {"id", levelId + "/rooms"}, {"node", level.node->value("id", "")}, {"in", levelId}, {"into", into},
+                      {"style", cave ? "cave" : "rooms"}, {"start", start}, {"goal", goal}, {"locks", levelLocks},
+                      {"loops", loops ? static_cast<int>(std::lround(loops->first)) : 1}, {"doorSlot", "door"}, {"lockedSlot", "locked-door"},
+                      {"secretSlot", "secret-door"}, {"keySlot", "key"}};
+        if (!previousGoal.empty()) rooms["stairsFrom"] = previousGoal;
+        Emit(rooms);
+        Emit({{"op", "fill"}, {"id", levelId + "/floor"}, {"node", level.node->value("id", "")}, {"in", levelId + "/rooms/corridors"}, {"terrain", floor}});
+        for (const auto& r : level.rooms) {
+            Emit({{"op", "fill"}, {"id", r.instance + "/floor"}, {"node", r.node->value("id", "")}, {"in", r.instance}, {"terrain", floor}});
+            Parcel(*r.node, *r.module, r.instance, r.index);
+        }
+        Emit({{"op", "check"}, {"id", levelId + "/rooms-placed"}, {"node", level.node->value("id", "")}, {"predicate", "count"},
+              {"args", {{"ref", levelId + "/rooms"}, {"range", {static_cast<int>(level.rooms.size()), static_cast<int>(level.rooms.size())}}}}});
+        previousGoal = goal;
+    }
+    Emit({{"op", "check"}, {"id", "site/completable"}, {"node", id}, {"predicate", "completable"}, {"args", {{"goal", goal}}}});
+    Emit({{"op", "check"}, {"id", "site/rooms-reachable"}, {"node", id}, {"predicate", "rooms-reachable"}, {"args", {{"class", "Room"}}}});
+    Emit({{"op", "check"}, {"id", "site/doors-free"}, {"node", id}, {"predicate", "doors-free"}});
+}
+
+void Compiler::InteriorRoot(const json& root, const ModuleDef& m) {
+    const std::string id = root.value("id", "interior");
+    struct Floor {
+        const json* node;
+        const ModuleDef* module;
+        std::string instance;
+        std::string level;
+        std::vector<std::tuple<const json*, const ModuleDef*, std::string, int>> rooms;
+        double area = 0;
+    };
+    std::vector<Floor> floors;
+    for (const auto& c : ChildrenOf(root)) {
+        const ModuleDef* fm = ontology_.Module(c.value("module", ""));
+        if (fm == nullptr || fm->level != PlaceLevel::Zone) continue;
+        const int repeat = std::max(1, c.value("repeat", 1));
+        for (int k = 0; k < repeat; ++k) {
+            Floor floor{&c, fm, repeat == 1 ? c.value("id", "") : c.value("id", "") + "#" + std::to_string(k), Text(FieldOf(c, *fm, "level"), "ground"), {}, 0};
+            for (const auto& r : ChildrenOf(c)) {
+                const ModuleDef* rm = ontology_.Module(r.value("module", ""));
+                if (rm == nullptr || rm->level != PlaceLevel::Parcel) continue;
+                const int n = std::max(1, r.value("repeat", 1));
+                for (int j = 0; j < n; ++j) {
+                    std::string instance = n == 1 ? r.value("id", "") : r.value("id", "") + "#" + std::to_string(j);
+                    if (repeat > 1) instance += "@" + std::to_string(k);
+                    floor.rooms.push_back({&r, rm, instance, j});
+                    const json size = SizeOf(r, *rm, json{{"w", 3}, {"h", 3}});
+                    auto mid = [](const json& v) { return v.is_array() ? (v[0].get<double>() + v[1].get<double>()) / 2 : v.is_number() ? v.get<double>() : 3.0; };
+                    floor.area += mid(size["w"]) * mid(size["h"]);
+                }
+            }
+            floors.push_back(floor);
+        }
+    }
+    // The ground floor first, the floors above, the cellar last.
+    std::stable_sort(floors.begin(), floors.end(), [](const Floor& a, const Floor& b) {
+        auto rank = [](const std::string& l) { return l == "ground" ? 0 : l == "upper" ? 1 : 2; };
+        return rank(a.level) < rank(b.level);
+    });
+    // The footprint: given, or the busiest floor's rooms with a hall, about 4:3.
+    int fw = 0, fh = 0;
+    if (root.contains("quantity") && root["quantity"].contains("footprint")) {
+        const json size = SizeOf(root, m, json{{"w", 12}, {"h", 9}});
+        auto lo = [](const json& v, int f) { return v.is_number() ? v.get<int>() : v.is_array() ? v[0].get<int>() : f; };
+        fw = lo(size["w"], 12), fh = lo(size["h"], 9);
+    } else {
+        double area = 16;
+        for (const auto& f : floors) {
+            double scale = 1.0;
+            if (auto it = options_.zoneScale.find(f.node->value("id", "")); it != options_.zoneScale.end()) scale = it->second;
+            area = std::max(area, f.area * (f.rooms.size() >= 3 ? 1.3 : 1.05) * scale);
+        }
+        fw = std::max(4, static_cast<int>(std::ceil(std::sqrt(area * 4.0 / 3.0))));
+        fh = std::max(4, static_cast<int>(std::ceil(area / fw)));
+    }
+    const int n = std::max<int>(1, static_cast<int>(floors.size()));
+    width_ = n * fw + 3 * (n - 1) + 2;
+    height_ = fh + 2;
+    side_ = std::max(width_, height_);
+    Emit({{"op", "region"}, {"id", "site"}, {"node", id}, {"shape", "rect"}, {"at", {0, 0}}, {"size", {{"w", width_}, {"h", height_}}}});
+    Emit({{"op", "fill"}, {"id", "site/outside"}, {"node", id}, {"in", "site"}, {"terrain", "void"}});
+    const std::string floorSurface = Text(FieldOf(root, m, "floor"), "wood-floor");
+    std::string below;
+    for (int k = 0; k < static_cast<int>(floors.size()); ++k) {
+        const Floor& f = floors[k];
+        const std::string floorId = f.instance;
+        Emit({{"op", "region"}, {"id", floorId}, {"node", f.node->value("id", "")}, {"in", "site"}, {"shape", "rect"},
+              {"at", {1 + k * (fw + 3), 1}}, {"size", {{"w", fw}, {"h", fh}}}, {"module", f.module->id}});
+        Emit({{"op", "fill"}, {"id", floorId + "/floor"}, {"node", f.node->value("id", "")}, {"in", floorId}, {"terrain", floorSurface}});
+        json into = json::array();
+        for (const auto& [node, rm, instance, j] : f.rooms) {
+            const json hints = rm->compile.is_object() ? rm->compile : json::object();
+            into.push_back({{"id", instance}, {"node", node->value("id", "")}, {"module", rm->id}, {"size", SizeOf(*node, *rm, json{{"w", 3}, {"h", 3}})},
+                            {"public", hints.value("public", false)}});
+        }
+        json plan = {{"op", "floorplan"}, {"id", floorId + "/rooms"}, {"node", f.node->value("id", "")}, {"in", floorId}, {"into", into},
+                     {"entrance", k == 0 ? "w" : ""}, {"stairs", n > 1}, {"wallSlot", "wall"}, {"wallNode", id}, {"doorSlot", "door"},
+                     {"windowSlot", "window"}, {"stairsSlot", "stairs"}};
+        if (!below.empty()) plan["stairsFrom"] = below;
+        Emit(plan);
+        for (const auto& [node, rm, instance, j] : f.rooms) Parcel(*node, *rm, instance, j);
+        Emit({{"op", "check"}, {"id", floorId + "/rooms-placed"}, {"node", f.node->value("id", "")}, {"predicate", "count"},
+              {"args", {{"ref", floorId + "/rooms"}, {"range", {static_cast<int>(f.rooms.size()), static_cast<int>(f.rooms.size())}}}}});
+        below = floorId + "/rooms";
+    }
+    Emit({{"op", "check"}, {"id", "site/rooms-reachable"}, {"node", id}, {"predicate", "rooms-reachable"}, {"args", {{"class", "Room"}}}});
+    Emit({{"op", "check"}, {"id", "site/groups-reachable"}, {"node", id}, {"predicate", "groups-reachable"}, {"args", {{"anchors", groupAnchors_}}}});
+    Emit({{"op", "check"}, {"id", "site/doors-free"}, {"node", id}, {"predicate", "doors-free"}});
 }
 
 json Compiler::Run() {
@@ -710,7 +1184,7 @@ json Compiler::Run() {
             {"place", spec_["root"].value("id", "")},
             {"spec", "spec.json"},
             {"seed", options_.seed},
-            {"grid", {{"style", options_.isoGrid ? "isometric" : "topdown"}, {"bounds", {0, 0, side_, side_}}}},
+            {"grid", {{"style", options_.isoGrid ? "isometric" : "topdown"}, {"bounds", {0, 0, width_ ? width_ : side_, height_ ? height_ : side_}}}},
             {"statements", statements_}};
 }
 

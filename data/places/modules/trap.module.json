@@ -1,0 +1,40 @@
+{
+  "schema": "aige.module/1",
+  "id": "trap",
+  "name": "Trap",
+  "level": "feature",
+  "description": "A hidden danger on the floor.",
+  "buildTypes": [
+    "dungeon"
+  ],
+  "quantity": {},
+  "quality": {
+    "kind": {
+      "type": "enum",
+      "vocabulary": "trap-kind",
+      "default": "spikes"
+    }
+  },
+  "slots": {
+    "trap": {
+      "role": "trap",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "trap",
+        "count": [
+          1,
+          2
+        ],
+        "where": "inner",
+        "layer": "decal"
+      }
+    ],
+    "noPrimary": true
+  }
+}

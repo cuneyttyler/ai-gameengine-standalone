@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "Graves and headstones, fenced, with a few trees.",
   "buildTypes": [
-    "settlement"
+    "settlement",
+    "castle"
   ],
   "quantity": {
     "size": {

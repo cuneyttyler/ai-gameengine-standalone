@@ -1,0 +1,86 @@
+{
+  "schema": "aige.module/1",
+  "id": "prison",
+  "name": "Prison",
+  "level": "parcel",
+  "description": "Cells, and someone in one.",
+  "buildTypes": [
+    "dungeon"
+  ],
+  "classes": [
+    "DungeonRoom"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          8
+        ],
+        "h": [
+          5,
+          7
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    },
+    "danger": {
+      "type": "count",
+      "default": 2,
+      "min": 0,
+      "max": 5
+    }
+  },
+  "quality": {},
+  "slots": {
+    "cage": {
+      "role": "cage",
+      "essential": true,
+      "primary": true
+    },
+    "prisoner": {
+      "role": "prisoner",
+      "essential": false
+    }
+  },
+  "children": {
+    "ambience": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    },
+    "encounter": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 1
+    }
+  },
+  "compile": {
+    "contents": [
+      {
+        "slot": "primary",
+        "count": [
+          2,
+          4
+        ],
+        "where": "border"
+      },
+      {
+        "slot": "prisoner",
+        "count": [
+          0,
+          1
+        ]
+      }
+    ]
+  }
+}

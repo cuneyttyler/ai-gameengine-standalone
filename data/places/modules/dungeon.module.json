@@ -1,0 +1,102 @@
+{
+  "schema": "aige.module/1",
+  "id": "dungeon",
+  "name": "Dungeon",
+  "level": "site",
+  "description": "A dungeon or cave: rooms on one or more levels, locks and their keys, encounters and loot.",
+  "buildTypes": [
+    "dungeon"
+  ],
+  "quantity": {
+    "rooms": {
+      "type": "count",
+      "default": [
+        8,
+        16
+      ],
+      "min": 2,
+      "max": 400,
+      "ask": true
+    },
+    "levels": {
+      "type": "count",
+      "default": 1,
+      "min": 1,
+      "max": 8,
+      "ask": true
+    },
+    "locks": {
+      "type": "count",
+      "default": [
+        1,
+        2
+      ],
+      "min": 0,
+      "max": 12,
+      "ask": true
+    },
+    "secrets": {
+      "type": "count",
+      "default": [
+        0,
+        1
+      ],
+      "min": 0,
+      "max": 12
+    },
+    "loops": {
+      "type": "count",
+      "default": [
+        1,
+        2
+      ],
+      "min": 0,
+      "max": 12,
+      "description": "extra corridors that make cycles"
+    }
+  },
+  "quality": {
+    "theme": {
+      "type": "enum",
+      "vocabulary": "dungeon-theme",
+      "default": "crypt",
+      "ask": true
+    },
+    "goal": {
+      "type": "enum",
+      "vocabulary": "dungeon-goal",
+      "default": "treasure",
+      "ask": true
+    },
+    "difficulty-curve": {
+      "type": "enum",
+      "vocabulary": "difficulty-curve",
+      "default": "rising"
+    },
+    "boss": {
+      "type": "bool",
+      "default": true,
+      "ask": true
+    },
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "worn"
+    },
+    "notes": {
+      "type": "description"
+    }
+  },
+  "slots": {},
+  "children": {
+    "dungeon-level": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 8,
+      "count": "levels"
+    }
+  },
+  "constraints": [
+    "within(self.rooms, count(descendants(class: Room)), tol: 'count')"
+  ]
+}

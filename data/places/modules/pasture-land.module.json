@@ -1,0 +1,78 @@
+{
+  "schema": "aige.module/1",
+  "id": "pasture-land",
+  "name": "Pasture land",
+  "level": "zone",
+  "description": "Grazing land: fenced pastures, a farmstead or two and their stables.",
+  "buildTypes": [
+    "farmland"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "farmsteads": {
+      "type": "count",
+      "default": [
+        1,
+        3
+      ],
+      "min": 0,
+      "max": 100,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        900,
+        4000
+      ],
+      "min": 100,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "livestock-mix": {
+      "type": "mix",
+      "vocabulary": "livestock",
+      "default": {
+        "sheep": 0.5,
+        "cow": 0.4,
+        "horse": 0.1
+      },
+      "ask": true
+    }
+  },
+  "slots": {},
+  "children": {
+    "farmstead": {
+      "min": 0,
+      "weight": 1.0,
+      "max": 100,
+      "count": "farmsteads"
+    },
+    "pasture": {
+      "min": 1,
+      "weight": 0.9,
+      "max": 20
+    },
+    "stable-yard": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 4
+    },
+    "hedge-line": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 8
+    },
+    "pond": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 2
+    }
+  },
+  "prefersSite": {
+    "flat": 0.4
+  }
+}

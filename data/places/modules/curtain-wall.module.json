@@ -1,0 +1,60 @@
+{
+  "schema": "aige.module/1",
+  "id": "curtain-wall",
+  "name": "Curtain wall",
+  "level": "network",
+  "description": "The castle's wall: towers at its corners, a gatehouse where the road comes in.",
+  "buildTypes": [
+    "castle"
+  ],
+  "classes": [
+    "LinearFeature",
+    "Fortification"
+  ],
+  "quantity": {
+    "towers": {
+      "type": "count",
+      "default": 4,
+      "min": 0,
+      "max": 24
+    },
+    "gatehouses": {
+      "type": "count",
+      "default": 1,
+      "min": 1,
+      "max": 4
+    }
+  },
+  "quality": {
+    "material": {
+      "type": "enum",
+      "vocabulary": "material",
+      "default": "stone"
+    },
+    "shape": {
+      "type": "enum",
+      "values": [
+        "square",
+        "round",
+        "polygon"
+      ],
+      "default": "square"
+    }
+  },
+  "slots": {
+    "wall": {
+      "role": "wall-piece-set",
+      "essential": true,
+      "primary": true
+    },
+    "tower": {
+      "role": "tower",
+      "essential": true
+    },
+    "gatehouse": {
+      "role": "gatehouse",
+      "essential": true
+    }
+  },
+  "children": {}
+}

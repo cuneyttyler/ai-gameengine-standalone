@@ -5,7 +5,9 @@
   "level": "feature",
   "description": "Stables with horses, a trough and hay.",
   "buildTypes": [
-    "settlement"
+    "settlement",
+    "farmland",
+    "castle"
   ],
   "classes": [
     "Yard"

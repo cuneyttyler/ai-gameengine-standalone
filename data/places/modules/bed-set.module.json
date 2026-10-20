@@ -1,0 +1,66 @@
+{
+  "schema": "aige.module/1",
+  "id": "bed-set",
+  "name": "Bed set",
+  "level": "feature",
+  "description": "A bed against the wall, a chest at its foot.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "bed": {
+      "role": "bed",
+      "essential": true,
+      "primary": true
+    },
+    "chest": {
+      "role": "chest",
+      "essential": false
+    },
+    "nightstand": {
+      "role": "nightstand",
+      "essential": false
+    },
+    "rug": {
+      "role": "rug",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "far-wall",
+      "members": [
+        {
+          "slot": "chest",
+          "count": [
+            0,
+            1
+          ],
+          "near": 1
+        },
+        {
+          "slot": "nightstand",
+          "count": [
+            0,
+            1
+          ],
+          "near": 1
+        },
+        {
+          "slot": "rug",
+          "count": [
+            0,
+            1
+          ],
+          "near": 1
+        }
+      ]
+    }
+  }
+}

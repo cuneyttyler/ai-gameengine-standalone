@@ -1,0 +1,82 @@
+{
+  "schema": "aige.module/1",
+  "id": "training-yard",
+  "name": "Training yard",
+  "level": "parcel",
+  "description": "Open ground with dummies and weapon racks.",
+  "buildTypes": [
+    "castle",
+    "camp"
+  ],
+  "classes": [
+    "OpenSpace"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          7,
+          10
+        ],
+        "h": [
+          6,
+          8
+        ]
+      },
+      "min": {
+        "w": 4,
+        "h": 4
+      },
+      "unit": "cells",
+      "max": {
+        "w": 20,
+        "h": 20
+      }
+    },
+    "dummies": {
+      "type": "count",
+      "default": [
+        2,
+        4
+      ],
+      "min": 0,
+      "max": 12
+    }
+  },
+  "quality": {},
+  "slots": {
+    "ground": {
+      "role": "square-terrain",
+      "essential": true,
+      "primary": true
+    },
+    "dummy": {
+      "role": "training-dummy",
+      "essential": false
+    },
+    "rack": {
+      "role": "weapon-rack",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "surface": "dirt",
+    "contents": [
+      {
+        "slot": "dummy",
+        "count": "dummies",
+        "solid": true
+      },
+      {
+        "slot": "rack",
+        "count": [
+          1,
+          2
+        ],
+        "where": "border"
+      }
+    ]
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "schema": "aige.module/1",
+  "id": "castle",
+  "name": "Castle",
+  "level": "site",
+  "description": "A castle: curtain wall with towers and a gatehouse, a moat, baileys, the keep.",
+  "buildTypes": [
+    "castle"
+  ],
+  "quantity": {
+    "buildings": {
+      "type": "count",
+      "default": [
+        4,
+        12
+      ],
+      "min": 1,
+      "max": 120,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        3600,
+        14400
+      ],
+      "min": 400,
+      "unit": "cells²"
+    },
+    "rings": {
+      "type": "count",
+      "default": 1,
+      "min": 1,
+      "max": 3
+    }
+  },
+  "quality": {
+    "kind": {
+      "type": "enum",
+      "vocabulary": "castle-kind",
+      "default": "keep-and-wall",
+      "ask": true
+    },
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "lived-in",
+      "ask": true
+    },
+    "notes": {
+      "type": "description"
+    }
+  },
+  "slots": {},
+  "children": {
+    "bailey": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 3
+    },
+    "curtain-wall": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    },
+    "moat": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 1
+    },
+    "road": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 6
+    },
+    "ground": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    },
+    "forest": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 4
+    },
+    "meadow": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 4
+    },
+    "river": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 1
+    },
+    "lake": {
+      "min": 0,
+      "weight": 0.1,
+      "max": 1
+    }
+  },
+  "constraints": [
+    "within(self.buildings, count(descendants(class: BuildingParcel)), tol: 'count')"
+  ],
+  "compile": {
+    "enclosure": {
+      "wall": "curtain-wall",
+      "moat": "moat",
+      "margin": 5
+    }
+  }
+}

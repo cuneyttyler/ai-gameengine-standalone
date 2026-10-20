@@ -34,8 +34,11 @@
 
 #include <windows.h>
 
+#include <atomic>
+#include <deque>
 #include <functional>
 #include <map>
+#include <thread>
 #include <memory>
 #include <chrono>
 #include <set>
@@ -397,6 +400,31 @@ private:
     TileLayers playLayers_; // the edited scene's tile layers while playing (7.2)
     std::optional<Ontology> places_;
     std::unique_ptr<PlaceBuild> build_; // the build open in the Build panel (7.4)
+    // The build's heavy steps (planning, laying out: half a minute for a city) run off
+    // the UI thread, one at a time (7.10). Nothing else touches build_ meanwhile: its
+    // AI answers wait in buildDeferred_, the panel shows the last state as busy.
+    // Declared after build_, so a running job is joined before the build goes.
+    struct BuildJob {
+        std::thread thread;
+        std::atomic<bool> done{false};
+        std::string why, prefix;
+        std::function<void()> after;
+        ~BuildJob() {
+            if (thread.joinable()) thread.join();
+        }
+    };
+    std::unique_ptr<BuildJob> buildJob_;
+    struct DeferredResult {
+        int id;
+        nlohmann::json body;
+        bool response;
+    };
+    std::deque<DeferredResult> buildDeferred_;
+    nlohmann::json buildShown_; // the state last posted, shown while a job runs
+    void RunBuildJob(std::function<std::string(PlaceBuild&)> job, const std::string& prefix = {}, std::function<void()> after = {});
+    void FinishBuildJob();
+    void OnBuildResult(int requestId, const nlohmann::json& body);
+    bool KnownRequest(int requestId) const;
     // The selection when Play started, restored on Stop. Indices taken from
     // the live registry at Stop would be off once enemies die mid-play.
     std::optional<size_t> selectionIndexAtPlay_;

@@ -28,9 +28,17 @@ namespace aige {
 // hash(seed, id), so results are reproducible and one statement more doesn't
 // shift the others.
 //
-// Not yet: floorplan, graph and connect (interiors and dungeons, 7.10), and
-// annealing over the soft objective (placement is greedy best-score with
-// seeded tie-breaks).
+// Spaces (7.10): `rooms` lays out a dungeon level (rooms placed apart, a
+// spanning tree of corridors from the start with a few loops, secret rooms as
+// leaves, locks on the way to the goal with each key before its lock, caves as
+// smoothed blobs, the rest rock); `floorplan` cuts a building's floor into
+// rooms along a hall (walls on cell edges, doors, windows, stairs linked to the
+// floor below); `connect` joins scattered places by trails or roads (a tree by
+// Prim, each leg A*); `flood` makes a moat. Their checks: completable,
+// rooms-reachable, groups-reachable, doors-free.
+//
+// Not yet: annealing over the soft objective (placement is greedy best-score
+// with seeded tie-breaks).
 
 struct SolveOptions {
     int maxCandidates = 4000; // placement positions tried per object, at most

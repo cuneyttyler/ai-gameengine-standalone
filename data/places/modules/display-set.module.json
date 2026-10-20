@@ -1,0 +1,42 @@
+{
+  "schema": "aige.module/1",
+  "id": "display-set",
+  "name": "Display",
+  "level": "feature",
+  "description": "A counter facing the door, display stands round it.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "counter": {
+      "role": "counter",
+      "essential": true,
+      "primary": true
+    },
+    "stand": {
+      "role": "display-stand",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "facing-door",
+      "members": [
+        {
+          "slot": "stand",
+          "count": [
+            1,
+            3
+          ],
+          "near": 2
+        }
+      ]
+    }
+  }
+}

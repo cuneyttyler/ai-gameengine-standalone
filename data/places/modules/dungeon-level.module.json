@@ -1,0 +1,164 @@
+{
+  "schema": "aige.module/1",
+  "id": "dungeon-level",
+  "name": "Dungeon level",
+  "level": "zone",
+  "description": "One level of the dungeon: its rooms and the corridors and doors between them.",
+  "buildTypes": [
+    "dungeon"
+  ],
+  "classes": [
+    "Level"
+  ],
+  "quantity": {
+    "rooms": {
+      "type": "count",
+      "default": [
+        6,
+        14
+      ],
+      "min": 1,
+      "max": 200,
+      "ask": true
+    }
+  },
+  "quality": {
+    "theme": {
+      "type": "enum",
+      "vocabulary": "dungeon-theme",
+      "default": "crypt"
+    },
+    "floor": {
+      "type": "enum",
+      "values": [
+        "stone-floor",
+        "cave-floor",
+        "dirt"
+      ],
+      "default": "stone-floor"
+    }
+  },
+  "slots": {
+    "door": {
+      "role": "door",
+      "essential": true
+    },
+    "locked-door": {
+      "role": "locked-door",
+      "essential": false
+    },
+    "secret-door": {
+      "role": "secret-door",
+      "essential": false
+    },
+    "stairs": {
+      "role": "stairs",
+      "essential": false
+    },
+    "key": {
+      "role": "key",
+      "essential": false
+    },
+    "torch": {
+      "role": "light-prop",
+      "essential": false
+    }
+  },
+  "children": {
+    "entrance-room": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    },
+    "corridor-room": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 20
+    },
+    "junction": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 10
+    },
+    "guard-room": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 20
+    },
+    "barracks-room": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 10
+    },
+    "treasure-room": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 6
+    },
+    "trap-room": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 10
+    },
+    "puzzle-room": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 6
+    },
+    "boss-arena": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 1
+    },
+    "shrine-room": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 4
+    },
+    "prison": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 4
+    },
+    "crypt-room": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 10
+    },
+    "library-room": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 4
+    },
+    "storeroom": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 10
+    },
+    "flooded-room": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 4
+    },
+    "cave-chamber": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 30
+    },
+    "chasm-room": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 3
+    },
+    "secret-room": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 4
+    },
+    "stairs-room": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 2
+    }
+  }
+}

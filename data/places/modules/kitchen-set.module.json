@@ -1,0 +1,66 @@
+{
+  "schema": "aige.module/1",
+  "id": "kitchen-set",
+  "name": "Kitchen fittings",
+  "level": "feature",
+  "description": "A stove, a table to work at, a cupboard.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "stove": {
+      "role": "stove",
+      "essential": true,
+      "primary": true
+    },
+    "table": {
+      "role": "table",
+      "essential": false
+    },
+    "cupboard": {
+      "role": "cupboard",
+      "essential": false
+    },
+    "barrel": {
+      "role": "barrel",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "wall",
+      "members": [
+        {
+          "slot": "table",
+          "count": [
+            0,
+            1
+          ],
+          "near": 2
+        },
+        {
+          "slot": "cupboard",
+          "count": [
+            0,
+            1
+          ],
+          "near": 3
+        },
+        {
+          "slot": "barrel",
+          "count": [
+            0,
+            2
+          ],
+          "near": 3
+        }
+      ]
+    }
+  }
+}

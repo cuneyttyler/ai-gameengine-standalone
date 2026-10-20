@@ -1,0 +1,54 @@
+{
+  "schema": "aige.module/1",
+  "id": "desk-set",
+  "name": "Desk",
+  "level": "feature",
+  "description": "A desk and its chair, a bookcase near.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "desk": {
+      "role": "desk",
+      "essential": true,
+      "primary": true
+    },
+    "chair": {
+      "role": "chair",
+      "essential": false
+    },
+    "bookshelf": {
+      "role": "bookshelf",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "wall",
+      "members": [
+        {
+          "slot": "chair",
+          "count": [
+            1,
+            1
+          ],
+          "near": 1
+        },
+        {
+          "slot": "bookshelf",
+          "count": [
+            0,
+            2
+          ],
+          "near": 3
+        }
+      ]
+    }
+  }
+}

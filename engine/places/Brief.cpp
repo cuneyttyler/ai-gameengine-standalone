@@ -106,6 +106,7 @@ json InterpretContext(const Ontology& ontology, const std::string& only) {
             }
         }
         types.push_back({{"id", id}, {"name", build.name}, {"root", build.root}, {"rootFields", root},
+                         {"counts", build.unit.label + " (scale.buildings counts these)"}, {"words", build.words},
                          {"scale", scale}, {"briefFields", build.briefFields}, {"components", components}});
     }
     json vocab = json::object();
@@ -135,6 +136,9 @@ bool LooksLikeBuildRequest(const Ontology& ontology, const std::string& text) {
             }
         }
         if (const ModuleDef* root = ontology.Module(build.root)) places.insert(root->id);
+        for (const auto& w : build.words) {
+            if (w.find(' ') == std::string::npos) places.insert(w);
+        }
     }
     // The request's first sentence says what it is: "Build a village by a river.
     // Add gardens." is a build; "This part looks bad, can you revise it? ...the
@@ -314,7 +318,7 @@ BriefMerge MergeBriefs(const std::vector<json>& drafts) {
 json CompleteBrief(const Ontology& ontology, json brief, const json& defaults) {
     if (!brief.is_object()) brief = json::object();
     brief["schema"] = "aige.brief/1";
-    if (!brief.contains("buildType") && !ontology.Builds().empty()) brief["buildType"] = ontology.Builds().begin()->first;
+    if (!brief.contains("buildType") && ontology.DefaultBuild()) brief["buildType"] = ontology.DefaultBuild()->id;
     const BuildType* build = ontology.Build(brief.value("buildType", ""));
     if (build == nullptr) return brief;
     const json mine = defaults.is_object() ? defaults.value(build->id, json::object()) : json::object();
@@ -393,12 +397,33 @@ void FollowScale(const Ontology& ontology, json& brief, const std::string& chang
 
 json FallbackDraft(const Ontology& ontology, const std::string& query) {
     if (ontology.Builds().empty()) return json();
-    const BuildType& build = ontology.Builds().begin()->second;
     std::string text;
     for (const auto& w : Words(query)) text += " " + w;
     text += " ";
     auto says = [&](const std::string& phrase) { return text.find(" " + phrase + " ") != std::string::npos; };
     auto saysWord = [&](const std::string& word) { return says(word) || says(word + "s"); };
+    // The build type: the one the request names most (its id, its words, its size classes); else the default.
+    const BuildType* chosen = ontology.DefaultBuild();
+    int best = 0;
+    for (const auto& [id, b] : ontology.Builds()) {
+        int score = saysWord(id) ? 3 : 0;
+        for (const auto& w : b.words) {
+            std::string spaced = w;
+            std::replace(spaced.begin(), spaced.end(), '-', ' ');
+            score += saysWord(spaced) ? 2 : 0;
+        }
+        for (const auto& s : b.scale) {
+            std::string words = s.id;
+            std::replace(words.begin(), words.end(), '-', ' ');
+            score += says(words) ? 1 : 0;
+        }
+        if (score > 0) score += 10 * b.rank;
+        if (score > best || (score == best && score > 0 && b.isDefault)) {
+            best = score;
+            chosen = &b;
+        }
+    }
+    const BuildType& build = *chosen;
     // The size class: the longest one named ("large village" before "village").
     std::string cls;
     for (const auto& s : build.scale) {
@@ -411,9 +436,18 @@ json FallbackDraft(const Ontology& ontology, const std::string& query) {
         else cls = build.scale.size() > 1 ? build.scale[1].id : build.scale.front().id;
     }
     json components = json::object();
-    components["residential-ward"] = {{"enabled", true}};
-    if (cls != "hamlet") components["market-ward"] = {{"enabled", true}};
-    if (cls == "town" || cls == "city") components["craftsmen-ward"] = {{"enabled", true}};
+    if (std::find(build.components.begin(), build.components.end(), "residential-ward") != build.components.end()) {
+        components["residential-ward"] = {{"enabled", true}};
+        if (cls != "hamlet") components["market-ward"] = {{"enabled", true}};
+        if (cls == "town" || cls == "city") components["craftsmen-ward"] = {{"enabled", true}};
+    } else if (const ModuleDef* root = ontology.Module(build.root)) {
+        // The zones the root needs (a dungeon's level, a camp's ground).
+        for (const ChildDef& rule : root->children) {
+            const ModuleDef* m = ontology.Module(rule.module);
+            const bool component = std::find(build.components.begin(), build.components.end(), rule.module) != build.components.end();
+            if (m && component && m->level == PlaceLevel::Zone && rule.min >= 1) components[rule.module] = {{"enabled", true}};
+        }
+    }
     // Components the request names, by their id or name ("gardens", "market", "docks").
     for (const auto& id : build.components) {
         const ModuleDef* m = ontology.Module(id);
@@ -428,12 +462,14 @@ json FallbackDraft(const Ontology& ontology, const std::string& query) {
         }
     }
     json features = json::array();
+    const json allowed = build.briefFields.value("features", json::array());
     for (const char* f : {"river", "lake"}) {
-        if (saysWord(f)) features.push_back({{"module", f}});
+        if (saysWord(f) && std::find(allowed.begin(), allowed.end(), f) != allowed.end()) features.push_back({{"module", f}});
     }
-    const bool walled = saysWord("wall") || says("walled");
+    const bool walled = (saysWord("wall") || says("walled") || saysWord("palisade")) && build.briefFields.contains("walled");
     json brief = {{"schema", "aige.brief/1"}, {"buildType", build.id}, {"name", "New " + build.name},
-                  {"scale", {{"class", cls}}}, {"walled", walled ? "stone" : "none"}, {"features", features},
+                  {"scale", {{"class", cls}}}, {"walled", walled ? (saysWord("palisade") || build.id == "camp" ? "palisade" : "stone") : "none"},
+                  {"features", features},
                   {"shape", {{"layout", "organic"}}}, {"components", components}};
     json confidence = {{"scale.class", 0.3}, {"name", 0.2}, {"shape.layout", 0.3}, {"walled", 0.4}};
     for (const auto& [id, c] : components.items()) confidence["components." + id + ".enabled"] = 0.4;

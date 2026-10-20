@@ -1,0 +1,73 @@
+{
+  "schema": "aige.module/1",
+  "id": "throne-room",
+  "name": "Throne room",
+  "level": "parcel",
+  "description": "The throne at the far end.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "InteriorRoom"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          7,
+          10
+        ],
+        "h": [
+          7,
+          10
+        ]
+      },
+      "min": {
+        "w": 2,
+        "h": 2
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    }
+  },
+  "quality": {
+    "surface": {
+      "type": "enum",
+      "vocabulary": "floor-surface",
+      "default": "stone-floor"
+    }
+  },
+  "slots": {
+    "floor": {
+      "role": "floor-tile",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "throne-set": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    },
+    "room-lights": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    },
+    "wall-decor": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 1
+    }
+  },
+  "compile": {
+    "room": true,
+    "public": true,
+    "surface": "stone-floor"
+  }
+}

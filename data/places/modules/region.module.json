@@ -1,0 +1,87 @@
+{
+  "schema": "aige.module/1",
+  "id": "region",
+  "name": "Region",
+  "level": "site",
+  "description": "A whole region: biomes, its sites (settlements, castles, dungeons), landmarks and the roads between.",
+  "buildTypes": [
+    "region"
+  ],
+  "quantity": {
+    "sites": {
+      "type": "count",
+      "default": [
+        3,
+        8
+      ],
+      "min": 1,
+      "max": 80,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        40000,
+        160000
+      ],
+      "min": 2500,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "biome-mix": {
+      "type": "mix",
+      "vocabulary": "biome-kind",
+      "default": {
+        "forest": 0.4,
+        "plains": 0.4,
+        "hills": 0.2
+      },
+      "ask": true
+    },
+    "climate": {
+      "type": "enum",
+      "vocabulary": "climate",
+      "default": "temperate"
+    },
+    "notes": {
+      "type": "description"
+    }
+  },
+  "slots": {},
+  "children": {
+    "heartland": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 4
+    },
+    "biome-zone": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 16
+    },
+    "river": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 3
+    },
+    "lake": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 3
+    },
+    "road": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    },
+    "ground": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    }
+  },
+  "constraints": [
+    "within(self.sites, count(descendants(class: Site)), tol: 'count')"
+  ]
+}

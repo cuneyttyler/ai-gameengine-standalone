@@ -1,0 +1,66 @@
+{
+  "schema": "aige.module/1",
+  "id": "stairwell",
+  "name": "Stairwell",
+  "level": "parcel",
+  "description": "Stairs to the floor above or below.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "InteriorRoom"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          3,
+          3
+        ],
+        "h": [
+          3,
+          3
+        ]
+      },
+      "min": {
+        "w": 2,
+        "h": 2
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    }
+  },
+  "quality": {
+    "surface": {
+      "type": "enum",
+      "vocabulary": "floor-surface",
+      "default": "wood-floor"
+    }
+  },
+  "slots": {
+    "floor": {
+      "role": "floor-tile",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "room-lights": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    },
+    "wall-decor": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 1
+    }
+  },
+  "compile": {
+    "room": true
+  }
+}

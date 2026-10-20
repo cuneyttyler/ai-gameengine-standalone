@@ -1,0 +1,96 @@
+{
+  "schema": "aige.module/1",
+  "id": "site",
+  "name": "Site",
+  "level": "parcel",
+  "description": "A place of the region: a settlement, castle, camp or dungeon, built later as a place of its own.",
+  "buildTypes": [
+    "region"
+  ],
+  "classes": [
+    "Site"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          16,
+          30
+        ],
+        "h": [
+          16,
+          30
+        ]
+      },
+      "min": {
+        "w": 8,
+        "h": 8
+      },
+      "unit": "cells",
+      "max": {
+        "w": 120,
+        "h": 120
+      }
+    }
+  },
+  "quality": {
+    "build-type": {
+      "type": "enum",
+      "values": [
+        "settlement",
+        "castle",
+        "camp",
+        "farmland",
+        "dungeon",
+        "wilderness"
+      ],
+      "default": "settlement",
+      "ask": true
+    },
+    "scale-class": {
+      "type": "enum",
+      "values": [
+        "hamlet",
+        "village",
+        "large-village",
+        "town",
+        "city",
+        "small",
+        "medium",
+        "large"
+      ],
+      "default": "village",
+      "ask": true
+    },
+    "name": {
+      "type": "description"
+    }
+  },
+  "slots": {
+    "marker": {
+      "role": "site-marker",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "near",
+      "members": [
+        "self",
+        "parent.road"
+      ],
+      "weight": 0.5,
+      "args": {
+        "d0": 0,
+        "d1": 12
+      }
+    }
+  ],
+  "compile": {
+    "nested": true,
+    "surface": "dirt"
+  }
+}

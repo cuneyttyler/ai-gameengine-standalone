@@ -1,0 +1,88 @@
+{
+  "schema": "aige.module/1",
+  "id": "crypt-room",
+  "name": "Crypt",
+  "level": "parcel",
+  "description": "Tombs in rows.",
+  "buildTypes": [
+    "dungeon"
+  ],
+  "classes": [
+    "DungeonRoom"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          9
+        ],
+        "h": [
+          6,
+          9
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    },
+    "danger": {
+      "type": "count",
+      "default": 2,
+      "min": 0,
+      "max": 5
+    }
+  },
+  "quality": {},
+  "slots": {
+    "sarcophagus": {
+      "role": "sarcophagus",
+      "essential": true,
+      "primary": true
+    },
+    "bones": {
+      "role": "bones",
+      "essential": false
+    }
+  },
+  "children": {
+    "ambience": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    },
+    "encounter": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 1
+    },
+    "loot-cache": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 1
+    }
+  },
+  "compile": {
+    "contents": [
+      {
+        "slot": "primary",
+        "count": [
+          2,
+          4
+        ]
+      },
+      {
+        "slot": "bones",
+        "density": 0.06,
+        "layer": "decal"
+      }
+    ]
+  }
+}

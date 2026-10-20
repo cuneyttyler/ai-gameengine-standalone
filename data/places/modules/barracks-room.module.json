@@ -1,0 +1,80 @@
+{
+  "schema": "aige.module/1",
+  "id": "barracks-room",
+  "name": "Barracks",
+  "level": "parcel",
+  "description": "Bunks for the dungeon's garrison.",
+  "buildTypes": [
+    "dungeon"
+  ],
+  "classes": [
+    "DungeonRoom"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          9
+        ],
+        "h": [
+          5,
+          7
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    },
+    "danger": {
+      "type": "count",
+      "default": 2,
+      "min": 0,
+      "max": 5
+    }
+  },
+  "quality": {},
+  "slots": {
+    "bed": {
+      "role": "bed",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "ambience": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    },
+    "encounter": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    },
+    "loot-cache": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 1
+    }
+  },
+  "compile": {
+    "contents": [
+      {
+        "slot": "primary",
+        "count": [
+          2,
+          4
+        ],
+        "where": "border"
+      }
+    ]
+  }
+}

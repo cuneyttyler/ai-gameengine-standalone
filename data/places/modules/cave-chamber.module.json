@@ -1,0 +1,72 @@
+{
+  "schema": "aige.module/1",
+  "id": "cave-chamber",
+  "name": "Cave chamber",
+  "level": "parcel",
+  "description": "A natural chamber, its walls irregular.",
+  "buildTypes": [
+    "dungeon"
+  ],
+  "classes": [
+    "DungeonRoom"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          10
+        ],
+        "h": [
+          6,
+          10
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    },
+    "danger": {
+      "type": "count",
+      "default": 1,
+      "min": 0,
+      "max": 5
+    }
+  },
+  "quality": {},
+  "slots": {
+    "rock": {
+      "role": "rock",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "ambience": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    },
+    "encounter": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 1
+    }
+  },
+  "compile": {
+    "contents": [
+      {
+        "slot": "primary",
+        "density": 0.04
+      }
+    ],
+    "cave": true
+  }
+}

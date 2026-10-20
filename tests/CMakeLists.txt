@@ -60,6 +60,7 @@ add_executable(aige_tests
     brief_test.cpp
     plan_test.cpp
     build_robust_test.cpp
+    buildtypes_test.cpp
     place_scene_test.cpp
     live_plan_test.cpp
     source_rules_test.cpp

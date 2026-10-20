@@ -1,0 +1,65 @@
+{
+  "schema": "aige.module/1",
+  "id": "horse-line",
+  "name": "Horse line",
+  "level": "feature",
+  "description": "Horses tethered in a row.",
+  "buildTypes": [
+    "camp"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          8
+        ],
+        "h": [
+          2,
+          3
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 2
+      },
+      "unit": "cells",
+      "max": {
+        "w": 16,
+        "h": 6
+      }
+    },
+    "horses": {
+      "type": "count",
+      "default": [
+        2,
+        5
+      ],
+      "min": 0,
+      "max": 20
+    }
+  },
+  "quality": {},
+  "slots": {
+    "post": {
+      "role": "hitching-post",
+      "essential": true,
+      "primary": true
+    },
+    "horse": {
+      "role": "horse",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "horse",
+        "count": "horses",
+        "solid": true
+      }
+    ]
+  }
+}

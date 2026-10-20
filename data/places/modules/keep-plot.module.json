@@ -1,0 +1,58 @@
+{
+  "schema": "aige.module/1",
+  "id": "keep-plot",
+  "name": "Keep",
+  "level": "parcel",
+  "description": "The great tower at the castle's heart.",
+  "buildTypes": [
+    "castle"
+  ],
+  "classes": [
+    "Civic"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          10,
+          14
+        ],
+        "h": [
+          10,
+          14
+        ]
+      },
+      "min": {
+        "w": 4,
+        "h": 4
+      },
+      "unit": "cells",
+      "max": {
+        "w": 30,
+        "h": 30
+      }
+    }
+  },
+  "quality": {
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "lived-in"
+    }
+  },
+  "slots": {
+    "keep": {
+      "role": "keep",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "clutter": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 1
+    }
+  }
+}

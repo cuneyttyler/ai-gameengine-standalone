@@ -154,6 +154,20 @@ struct BuildType {
     std::vector<std::string> components; // modules allowed as Brief components
     std::vector<ScaleClass> scale;
     nlohmann::json briefFields;          // build-type-specific Brief fields (shape options, ...)
+    // What its size is counted in (7.10): the Brief's scale.buildings counts this
+    // unit, the root's `field` holds it, and it's the parts of `cls` below the root
+    // (buildings of a settlement, rooms of a dungeon, sites of a region).
+    struct Unit {
+        std::string field = "buildings";
+        std::string cls = "BuildingParcel";
+        std::string label = "buildings";
+    } unit;
+    // How it's laid out: "site" (zones partitioned, parcels along streets),
+    // "dungeon" (levels of rooms and corridors) or "interior" (floors of rooms).
+    std::string layout = "site";
+    std::vector<std::string> words;      // words a request names it by ("cave", "fortress")
+    bool isDefault = false;              // the one a request that names none gets
+    int rank = 0;                        // a request naming several: the one holding the others wins (a region's towns)
 
     const ScaleClass* Scale(const std::string& id) const;
 };
@@ -188,6 +202,10 @@ public:
 
     const ModuleDef* Module(const std::string& id) const;
     const BuildType* Build(const std::string& id) const;
+    // The build type whose root is this module (a Spec's), or nullptr.
+    const BuildType* BuildOfRoot(const std::string& rootModule) const;
+    // The build type a request gets when it names none (the settlement).
+    const BuildType* DefaultBuild() const;
     const RelationType* Relation(const std::string& id) const;
     const Role* FindRole(const std::string& id) const;
     const Concept* FindConcept(const std::string& scheme, const std::string& id) const;

@@ -1,0 +1,42 @@
+{
+  "schema": "aige.module/1",
+  "id": "shelf-wall",
+  "name": "Shelves",
+  "level": "feature",
+  "description": "Shelves along a wall.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "shelf": {
+      "role": "shelf",
+      "essential": true,
+      "primary": true
+    },
+    "shelf2": {
+      "role": "shelf",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "wall",
+      "members": [
+        {
+          "slot": "shelf2",
+          "count": [
+            0,
+            2
+          ],
+          "near": 2
+        }
+      ]
+    }
+  }
+}

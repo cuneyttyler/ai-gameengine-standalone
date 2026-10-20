@@ -1,0 +1,44 @@
+{
+  "schema": "aige.module/1",
+  "id": "moat",
+  "name": "Moat",
+  "level": "network",
+  "description": "A ditch round the wall, wet or dry, crossed by a drawbridge.",
+  "buildTypes": [
+    "castle"
+  ],
+  "classes": [
+    "WaterBody"
+  ],
+  "quantity": {
+    "width": {
+      "type": "width",
+      "default": 2,
+      "min": 1,
+      "unit": "cells",
+      "max": 6
+    }
+  },
+  "quality": {
+    "kind": {
+      "type": "enum",
+      "values": [
+        "wet",
+        "dry"
+      ],
+      "default": "wet"
+    }
+  },
+  "slots": {
+    "water": {
+      "role": "water-terrain",
+      "essential": true,
+      "primary": true
+    },
+    "drawbridge": {
+      "role": "drawbridge",
+      "essential": false
+    }
+  },
+  "children": {}
+}

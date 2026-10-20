@@ -1,0 +1,72 @@
+{
+  "schema": "aige.module/1",
+  "id": "abandoned-cart",
+  "name": "Abandoned cart",
+  "level": "parcel",
+  "description": "A broken cart by the trail, its load spilled.",
+  "buildTypes": [
+    "wilderness"
+  ],
+  "classes": [
+    "PointOfInterest"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          4,
+          5
+        ],
+        "h": [
+          3,
+          4
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 8,
+        "h": 8
+      }
+    }
+  },
+  "quality": {},
+  "slots": {
+    "cart": {
+      "role": "cart",
+      "essential": true,
+      "primary": true
+    },
+    "crate": {
+      "role": "crate",
+      "essential": false
+    },
+    "sack": {
+      "role": "sack",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "crate",
+        "count": [
+          1,
+          2
+        ]
+      },
+      {
+        "slot": "sack",
+        "count": [
+          0,
+          2
+        ]
+      }
+    ]
+  }
+}

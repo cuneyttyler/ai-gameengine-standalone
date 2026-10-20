@@ -42,6 +42,12 @@ Rgb TerrainColor(const std::string& t) {
     if (t == "stone") return Hex(0x9a9a96);
     if (t == "mud") return Hex(0x8a6f4e);
     if (t == "tilled") return Hex(0x8c6a47);
+    if (t == "rock-wall") return Hex(0x3b3a38);
+    if (t == "stone-floor") return Hex(0x8f8b84);
+    if (t == "cave-floor") return Hex(0x7d6f5f);
+    if (t == "wood-floor") return Hex(0xb08a5e);
+    if (t == "water-shallow") return Hex(0x6f9fc0);
+    if (t == "void") return Hex(0x1e1f22);
     const uint32_t h = Hash(static_cast<int>(t.size()), static_cast<int>(t[0]));
     return Mix(Hex(0x86b25f), Hex(h & 0xFFFFFF), 0.3f);
 }

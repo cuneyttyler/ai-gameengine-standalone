@@ -1,0 +1,31 @@
+{
+  "schema": "aige.module/1",
+  "id": "trail-network",
+  "name": "Trail network",
+  "level": "network",
+  "description": "Trails linking the entrances and every point of interest.",
+  "quantity": {
+    "width": {
+      "type": "width",
+      "default": 1,
+      "min": 1,
+      "unit": "cells",
+      "max": 3
+    }
+  },
+  "quality": {
+    "surface": {
+      "type": "enum",
+      "vocabulary": "surface",
+      "default": "dirt"
+    }
+  },
+  "slots": {
+    "trail": {
+      "role": "road-terrain",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {}
+}

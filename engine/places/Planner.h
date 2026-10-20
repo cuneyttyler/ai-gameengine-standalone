@@ -69,8 +69,17 @@ std::vector<PlaceProblem> ResolveSpec(const Ontology& ontology, const nlohmann::
 // its count from the Brief, the buildings shared by the zones' weights, the
 // area by their plots), and a zone step's from its module's child rules (its
 // plots shared among its building parcels by their weights).
+// `root` (the Spec's root, if there is one yet) picks a room programme by its
+// fields: a house's floor gets a living room, a kitchen and bedrooms.
 nlohmann::json FallbackRootAnswer(const Ontology& ontology, const nlohmann::json& brief);
-nlohmann::json FallbackZoneAnswer(const Ontology& ontology, const nlohmann::json& zone);
+nlohmann::json FallbackZoneAnswer(const Ontology& ontology, const nlohmann::json& zone, const nlohmann::json& root = {});
+
+// What a place is counted in (7.10): its build type's unit, found by the Spec's
+// root module (buildings of a settlement, rooms of a dungeon, sites of a region).
+BuildType::Unit UnitOf(const Ontology& ontology, const nlohmann::json& spec);
+// A zone's count of that unit: its "plots", or the count field of its kind
+// ("rooms", "tents", "farmsteads"); "" if it has none.
+std::string CountField(const ModuleDef& zone);
 
 // Revising a plan the user has seen (③ Plan's Revise, and the AI's review of
 // the map). What the AI is shown: the zones with their parcels, and how the
@@ -103,7 +112,8 @@ double DensityShare(const std::string& word);
 // repeats to its middle; the root's buildings and the zones' plots follow.
 // Returns the count after.
 int RebalanceBuildings(const Ontology& ontology, const nlohmann::json& brief, nlohmann::json& spec, bool scale = true);
-int CountBuildings(const Ontology& ontology, const nlohmann::json& spec);
+// `cls` empty: the Spec's unit class.
+int CountBuildings(const Ontology& ontology, const nlohmann::json& spec, const std::string& cls = {});
 
 // A node by id (nullptr if none), and its JSON path for patching.
 nlohmann::json* SpecNode(nlohmann::json& spec, const std::string& id);

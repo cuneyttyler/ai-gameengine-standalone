@@ -1,0 +1,80 @@
+{
+  "schema": "aige.module/1",
+  "id": "boss-arena",
+  "name": "Boss arena",
+  "level": "parcel",
+  "description": "A great hall where the boss waits.",
+  "buildTypes": [
+    "dungeon"
+  ],
+  "classes": [
+    "DungeonRoom"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          9,
+          13
+        ],
+        "h": [
+          9,
+          13
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    },
+    "danger": {
+      "type": "count",
+      "default": 5,
+      "min": 0,
+      "max": 5
+    }
+  },
+  "quality": {},
+  "slots": {
+    "boss": {
+      "role": "boss",
+      "essential": true,
+      "primary": true
+    },
+    "pillar": {
+      "role": "pillar",
+      "essential": false
+    }
+  },
+  "children": {
+    "ambience": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    },
+    "loot-cache": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 1
+    }
+  },
+  "compile": {
+    "contents": [
+      {
+        "slot": "pillar",
+        "count": [
+          2,
+          4
+        ],
+        "where": "inner"
+      }
+    ],
+    "centre": true
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "schema": "aige.module/1",
+  "id": "floor-clutter",
+  "name": "Clutter",
+  "level": "feature",
+  "description": "Things left lying about.",
+  "buildTypes": [
+    "interior"
+  ],
+  "quantity": {
+    "items": {
+      "type": "density",
+      "levels": [
+        0,
+        0.01,
+        0.03,
+        0.06,
+        0.1
+      ],
+      "unit": "per free cell",
+      "default": "rare"
+    }
+  },
+  "quality": {},
+  "slots": {
+    "item": {
+      "role": "prop",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "item",
+        "density": "items",
+        "layer": "decal"
+      }
+    ],
+    "noPrimary": true
+  }
+}

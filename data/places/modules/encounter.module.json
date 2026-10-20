@@ -1,0 +1,57 @@
+{
+  "schema": "aige.module/1",
+  "id": "encounter",
+  "name": "Encounter",
+  "level": "feature",
+  "description": "Enemies waiting in the room.",
+  "buildTypes": [
+    "dungeon"
+  ],
+  "quantity": {
+    "enemies": {
+      "type": "count",
+      "default": [
+        1,
+        3
+      ],
+      "min": 0,
+      "max": 20
+    },
+    "difficulty": {
+      "type": "count",
+      "default": 2,
+      "min": 0,
+      "max": 5
+    }
+  },
+  "quality": {
+    "enemy-mix": {
+      "type": "mix",
+      "vocabulary": "enemy-kind",
+      "default": {
+        "skeleton": 0.6,
+        "rat": 0.4
+      }
+    }
+  },
+  "slots": {
+    "enemy": {
+      "role": "enemy",
+      "essential": true,
+      "primary": true,
+      "concepts": "enemy-mix"
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "enemy",
+        "count": "enemies",
+        "where": "inner",
+        "mix": "enemy-mix"
+      }
+    ],
+    "noPrimary": true
+  }
+}

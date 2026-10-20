@@ -1,0 +1,162 @@
+{
+  "schema": "aige.module/1",
+  "id": "floor-level",
+  "name": "Floor",
+  "level": "zone",
+  "description": "One floor of the building: its rooms, the hall between them, the stairs.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "Level"
+  ],
+  "quantity": {
+    "rooms": {
+      "type": "count",
+      "default": [
+        3,
+        6
+      ],
+      "min": 1,
+      "max": 60,
+      "ask": true
+    }
+  },
+  "quality": {
+    "level": {
+      "type": "enum",
+      "values": [
+        "ground",
+        "upper",
+        "cellar"
+      ],
+      "default": "ground"
+    }
+  },
+  "slots": {
+    "door": {
+      "role": "door",
+      "essential": true
+    },
+    "stairs": {
+      "role": "stairs",
+      "essential": false
+    },
+    "window": {
+      "role": "window",
+      "essential": false
+    }
+  },
+  "children": {
+    "class:InteriorRoom": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 60
+    }
+  },
+  "compile": {
+    "programme": {
+      "field": "kind",
+      "values": {
+        "house": {
+          "ground": [
+            "living-room",
+            "kitchen",
+            "storage",
+            "bedroom"
+          ],
+          "upper": [
+            "bedroom",
+            "bedroom",
+            "study"
+          ],
+          "cellar": [
+            "cellar",
+            "storage"
+          ]
+        },
+        "inn": {
+          "ground": [
+            "tavern-hall",
+            "kitchen",
+            "storage",
+            "back-store"
+          ],
+          "upper": [
+            "guest-room",
+            "guest-room",
+            "guest-room",
+            "bedroom",
+            "guest-room"
+          ],
+          "cellar": [
+            "cellar",
+            "storage"
+          ]
+        },
+        "shop": {
+          "ground": [
+            "shop-floor",
+            "back-store",
+            "kitchen"
+          ],
+          "upper": [
+            "living-room",
+            "bedroom",
+            "bedroom"
+          ],
+          "cellar": [
+            "cellar"
+          ]
+        },
+        "temple": {
+          "ground": [
+            "nave",
+            "sanctuary",
+            "vestry"
+          ],
+          "upper": [
+            "library",
+            "study"
+          ],
+          "cellar": [
+            "storage",
+            "cells"
+          ]
+        },
+        "castle-hall": {
+          "ground": [
+            "great-hall",
+            "kitchen",
+            "armoury",
+            "storage"
+          ],
+          "upper": [
+            "throne-room",
+            "bedroom",
+            "library",
+            "treasury"
+          ],
+          "cellar": [
+            "cellar",
+            "cells"
+          ]
+        },
+        "workshop": {
+          "ground": [
+            "workshop-room",
+            "storage",
+            "kitchen"
+          ],
+          "upper": [
+            "bedroom",
+            "living-room"
+          ],
+          "cellar": [
+            "cellar"
+          ]
+        }
+      }
+    }
+  }
+}

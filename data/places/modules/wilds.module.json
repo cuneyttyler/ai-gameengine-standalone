@@ -1,0 +1,103 @@
+{
+  "schema": "aige.module/1",
+  "id": "wilds",
+  "name": "Wilds",
+  "level": "zone",
+  "description": "Wild land between the trails, with its points of interest along them.",
+  "buildTypes": [
+    "wilderness"
+  ],
+  "classes": [
+    "NatureArea"
+  ],
+  "quantity": {
+    "pois": {
+      "type": "count",
+      "default": [
+        2,
+        6
+      ],
+      "min": 0,
+      "max": 60,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        2000,
+        20000
+      ],
+      "min": 200,
+      "unit": "cells²"
+    },
+    "trees": {
+      "type": "density",
+      "levels": [
+        0,
+        0.04,
+        0.1,
+        0.2,
+        0.35
+      ],
+      "unit": "per free cell",
+      "default": "some"
+    }
+  },
+  "quality": {
+    "biome": {
+      "type": "enum",
+      "vocabulary": "biome",
+      "default": "temperate"
+    }
+  },
+  "slots": {
+    "tree": {
+      "role": "tree",
+      "essential": true,
+      "primary": true
+    },
+    "bush": {
+      "role": "bush",
+      "essential": false
+    },
+    "rock": {
+      "role": "rock",
+      "essential": false
+    }
+  },
+  "children": {
+    "class:PointOfInterest": {
+      "min": 0,
+      "weight": 1.0,
+      "max": 60
+    },
+    "clearing": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 6
+    },
+    "nature-scatter": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 1
+    }
+  },
+  "compile": {
+    "placement": "scattered",
+    "connect": {
+      "class": "trail",
+      "width": 1,
+      "terrain": "dirt"
+    },
+    "background": [
+      {
+        "slot": "tree",
+        "density": "trees"
+      },
+      {
+        "slot": "bush",
+        "density": 0.03
+      }
+    ]
+  }
+}

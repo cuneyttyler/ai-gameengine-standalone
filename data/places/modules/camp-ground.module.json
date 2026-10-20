@@ -1,0 +1,86 @@
+{
+  "schema": "aige.module/1",
+  "id": "camp-ground",
+  "name": "Camp ground",
+  "level": "zone",
+  "description": "Tents in rows or rings round their fires, with the camp's stores and horses.",
+  "buildTypes": [
+    "camp"
+  ],
+  "classes": [
+    "Ward"
+  ],
+  "quantity": {
+    "tents": {
+      "type": "count",
+      "default": [
+        6,
+        20
+      ],
+      "min": 0,
+      "max": 400,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        600,
+        4000
+      ],
+      "min": 100,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "street-style": {
+      "type": "enum",
+      "vocabulary": "layout",
+      "default": "grid"
+    }
+  },
+  "slots": {},
+  "children": {
+    "tent-plot": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 400
+    },
+    "command-tent-plot": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 2
+    },
+    "campfire-ring": {
+      "min": 1,
+      "weight": 0.9,
+      "max": 8
+    },
+    "supply-area": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 3
+    },
+    "horse-line": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 3
+    },
+    "lookout": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 4
+    },
+    "clutter": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 1
+    }
+  },
+  "compile": {
+    "network": {
+      "class": "lane",
+      "terrain": "dirt",
+      "spacing": 9
+    }
+  }
+}
