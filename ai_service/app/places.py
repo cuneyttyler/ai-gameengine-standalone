@@ -314,7 +314,8 @@ REVISE_SHAPE = """The changes, as JSON:
 }
 "move" says where a part goes, and nothing else: use it when the request is about place ("put X south of Y", "near
 the river"); relations: near, adjacent, along, far, north-of, south-of, east-of, west-of ("below" on the map is
-south-of, "above" north-of). "set" changes only the fields given. "zone" re-plans a zone's parcels: list all of them,
+south-of, "above" north-of). To take one part out (the inn north of the market), "remove" its id and change nothing else: not its zone's
+parcels, sizes or counts. "set" changes only the fields given. "zone" re-plans a zone's parcels: list all of them,
 kept ones too, and only when the request is about what that zone holds.
 "expect" lists every spatial fact the request asks for, one relation each ("the residential ward along the river on
 its left side, the farmland to its left" is: residential-ward along river, residential-ward west-of river,

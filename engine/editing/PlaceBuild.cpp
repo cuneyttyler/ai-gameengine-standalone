@@ -736,6 +736,12 @@ void PlaceBuild::Solve() {
         }
     }
     (void)rounds;
+    RenderMap();
+    Log({{"step", "solved"}, {"rounds", rounds}, {"irProblems", ProblemsJson(irProblems)}, {"problems", bestProblems},
+         {"stats", solved_.value("stats", json())}});
+}
+
+void PlaceBuild::RenderMap() {
     int buildings = 0;
     for (const auto& o : solved_.value("objects", json::array())) buildings += o.value("layer", "") == "building";
     int failed = 0;
@@ -766,8 +772,6 @@ void PlaceBuild::Solve() {
     ++imageVersion_;
     status_ = "Laid out " + std::to_string(buildings) + " buildings" + (failed ? " (" + std::to_string(failed) + " check(s) to look at)" : "") +
               ". Build puts it into the scene.";
-    Log({{"step", "solved"}, {"rounds", rounds}, {"irProblems", ProblemsJson(irProblems)}, {"problems", bestProblems},
-         {"stats", solved_.value("stats", json())}});
 }
 
 int PlaceBuild::SiteSide() const {
@@ -928,6 +932,32 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
         kept.push_back(change);
         moving.insert(zone);
     }
+    // A small edit (parts taken out of a zone) edits the layout itself: the
+    // rest stays exactly as it was, nothing is laid out again.
+    if (const auto removals = LocalRemovals(kept); !removals.empty() && briefChanges.empty() && (expect_.empty() || allHold)) {
+        json removes = json::array();
+        for (const auto& id : removals) removes.push_back({{"op", "remove"}, {"node", id}});
+        for (const auto& p : ApplyRevision(ontology, brief_, spec_, removes)) notes.push_back(p.where + ": " + p.message);
+        RebalanceBuildings(ontology, brief_, spec_, false); // the counts, nothing re-balanced
+        const int gone = RemoveFromLayout(solved_, removals);
+        std::string list;
+        for (const auto& id : removals) list += (list.empty() ? "" : ", ") + id;
+        notes.push_back("Took out " + list + " (" + std::to_string(gone) + " things); the rest of the layout is as it was.");
+        WriteJson(Folder() / "spec.json", spec_);
+        WriteJson(Folder() / "layout.solved.json", solved_);
+        RenderMap();
+        entry["notes"] = notes;
+        entry["local"] = true;
+        revisions_.push_back(entry);
+        planProblems_.clear();
+        for (const auto& p : ValidateSpec(ontology, spec_, SpecStage::Final, brief_.value("buildType", ""))) {
+            planProblems_.push_back({p.where, p.warning ? p.message : "kept as planned, though " + p.message, true});
+        }
+        Log({{"step", "local edit"}, {"removed", removals}, {"things", gone}});
+        stage_ = beforeRevision_ == "built" ? "planned" : beforeRevision_;
+        expect_ = json();
+        return;
+    }
     // The request's own direction ("below the docks"), if the answer moved a
     // zone and lost it: added, as the words say.
     if (!review) {
@@ -974,6 +1004,58 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
     planPhase_ = "final";
     status_ = "Applying the changes…";
     FinishPlanning();
+}
+
+std::set<std::string> PlaceBuild::LocalRemovals(const json& changes) const {
+    std::set<std::string> out;
+    if (changes.empty()) return out;
+    const Ontology& ontology = host_.ontology();
+    json spec = spec_;
+    for (const auto& change : changes) {
+        const std::string op = change.value("op", "");
+        const std::string id = change.contains("node") && change["node"].is_string() ? change["node"].get<std::string>() : "";
+        const json* node = SpecNode(spec, id);
+        if (node == nullptr) return {};
+        const ModuleDef* m = ontology.Module(node->value("module", ""));
+        if (m == nullptr) return {};
+        if (op == "remove") {
+            // A part of a zone (a parcel, a garden); a zone or a network goes through the full layout.
+            if (m->level == PlaceLevel::Zone || m->level == PlaceLevel::Network || m->level == PlaceLevel::Site ||
+                id.find('/') == std::string::npos) {
+                return {};
+            }
+            out.insert(id);
+        } else if (op == "zone") {
+            // A zone re-planned with the same parcels but some: those are taken out.
+            if (change.contains("rel") || (change.contains("quantity") && !change["quantity"].empty() &&
+                                           change["quantity"] != node->value("quantity", json::object()))) {
+                return {};
+            }
+            std::map<std::string, const json*> before;
+            const json& children = node->contains("children") ? (*node)["children"] : json::array(); // pointers into it below
+            if (!children.is_array()) return {};
+            for (const auto& c : children) before[c.value("id", "")] = &c;
+            std::set<std::string> after;
+            for (const auto& c : change.value("children", json::array())) {
+                std::string cid = c.value("id", "");
+                if (cid.rfind(id + "/", 0) != 0) cid = id + "/" + cid;
+                auto it = before.find(cid);
+                if (it == before.end() || it->second->value("module", "") != c.value("module", "")) return {};
+                const json r0 = it->second->value("repeat", json(1)), r1 = c.value("repeat", json(1));
+                if (r0 != r1) return {};
+                after.insert(cid);
+            }
+            for (const auto& [cid, c] : before) {
+                const ModuleDef* cm = ontology.Module(c->value("module", ""));
+                // Its streets aren't parcels to take out.
+                if (!after.contains(cid) && cm && cm->level != PlaceLevel::Network) out.insert(cid);
+            }
+            if (out.empty()) return {};
+        } else {
+            return {};
+        }
+    }
+    return out;
 }
 
 void PlaceBuild::MeetExpectations() {

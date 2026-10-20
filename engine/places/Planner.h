@@ -102,7 +102,7 @@ double DensityShare(const std::string& word);
 // tree) and, outside the Brief's range, scales each zone's building-parcel
 // repeats to its middle; the root's buildings and the zones' plots follow.
 // Returns the count after.
-int RebalanceBuildings(const Ontology& ontology, const nlohmann::json& brief, nlohmann::json& spec);
+int RebalanceBuildings(const Ontology& ontology, const nlohmann::json& brief, nlohmann::json& spec, bool scale = true);
 int CountBuildings(const Ontology& ontology, const nlohmann::json& spec);
 
 // A node by id (nullptr if none), and its JSON path for patching.

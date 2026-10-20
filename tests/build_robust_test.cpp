@@ -587,3 +587,105 @@ TEST(BuildRobustTest, ARevisionsSpatialFactsAreCheckedOnTheLayout) {
     EXPECT_TRUE(truth[1]["ok"].get<bool>()) << truth[1].dump();
     std::cout << "  checks: " << truth.dump() << "\n";
 }
+
+namespace {
+
+// Everything of a layout but what belongs to `node` (and its parts).
+json Without(const json& solved, const std::string& node) {
+    json out = json::object();
+    for (const char* list : {"regions", "objects", "lines"}) {
+        out[list] = json::array();
+        for (const auto& t : solved.value(list, json::array())) {
+            bool of = false;
+            for (const char* key : {"node", "id"}) {
+                const std::string v = t.value(key, "");
+                of = of || v == node || v.rfind(node + "/", 0) == 0 || v.rfind(node + "#", 0) == 0;
+            }
+            if (!of) out[list].push_back(t);
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+// "Remove the inn north of the marketplace" (a user's request): the inn goes,
+// and nothing else changes: not the market's other parcels, not the other
+// zones, not one cell of the rest of the layout. Whether the AI says "remove"
+// or re-plans the market without its inn.
+TEST(BuildRobustTest, TakingAPartOutChangesNothingElse) {
+    for (const bool asZone : {false, true}) {
+        Fixture f(asZone ? "aige_build_local_zone" : "aige_build_local_remove");
+        PlaceBuild build(f.Host());
+        const json off = {{"ok", false}, {"errors", json::array({"No AI provider configured"})}};
+        ASSERT_EQ(build.Start("a village by a river"), "");
+        json brief = {{"buildType", "settlement"}, {"name", "Riverside"}, {"features", json::array({{{"module", "river"}}})},
+                      {"scale", {{"class", "village"}}}, {"walled", "none"},
+                      {"components", {{"residential-ward", {{"enabled", true}}}, {"market-ward", {{"enabled", true}}},
+                                      {"house-plot", {{"enabled", true}}}, {"road", {{"enabled", true}}}}}};
+        f.answered.insert(1);
+        build.OnResponse(1, {{"ok", true}, {"drafts", json::array({{{"reading", "typical"}, {"brief", brief}}})}});
+        f.AnswerAll(build, off);
+        ASSERT_EQ(build.Step("assets"), "");
+        ASSERT_EQ(build.Confirm(), "");
+        // The market gets an inn; everything else comes from the rules.
+        for (int guard = 0; guard < 50 && build.Stage() == "planning"; ++guard) {
+            int next = 0;
+            for (int i = 1; i <= static_cast<int>(f.sent.size()); ++i) {
+                if (!f.answered.contains(i)) {
+                    next = i;
+                    break;
+                }
+            }
+            if (next == 0) break;
+            f.answered.insert(next);
+            const auto& [path, body] = f.sent[next - 1];
+            const bool market = path == "/places/plan-zone" && body["zone"].value("module", "") == "market-ward";
+            const json answer = {{"children", json::array({{{"id", "square"}, {"module", "market-square"}},
+                                                           {{"id", "shops"}, {"module", "shop-plot"}, {"repeat", 4}},
+                                                           {{"id", "inn"}, {"module", "inn-plot"}}})}};
+            build.OnResponse(next, market ? json{{"ok", true}, {"answer", answer}} : off);
+        }
+        ASSERT_EQ(build.Stage(), "plan") << build.State()["status"];
+        const json before = build.Solved();
+        const json specBefore = build.Spec();
+        bool innThere = false;
+        for (const auto& o : before["objects"]) innThere = innThere || o.value("node", "") == "market-ward/inn";
+        ASSERT_TRUE(innThere) << "the inn wasn't laid out";
+
+        ASSERT_EQ(build.Revise("remove the inn north of the marketplace"), "");
+        json change = {{"op", "remove"}, {"node", "market-ward/inn"}};
+        if (asZone) {
+            json zone = *SpecNode(const_cast<json&>(specBefore), "market-ward");
+            json children = json::array();
+            for (const auto& c : zone["children"]) {
+                if (c["id"] != "market-ward/inn") children.push_back(c);
+            }
+            change = {{"op", "zone"}, {"node", "market-ward"}, {"children", children}};
+        }
+        f.answered.insert(static_cast<int>(f.sent.size()));
+        build.OnResponse(static_cast<int>(f.sent.size()),
+                         {{"ok", true}, {"answer", {{"summary", "Removed the inn."}, {"changes", json::array({change})}}}});
+        ASSERT_EQ(build.Stage(), "plan") << asZone;
+        EXPECT_TRUE(build.Revisions().back().value("local", false)) << build.Revisions().back().dump();
+        // The inn is gone, and the rest is the same, cell for cell.
+        const json after = build.Solved();
+        for (const auto& o : after["objects"]) EXPECT_NE(o.value("node", "").rfind("market-ward/inn", 0), 0u) << o.dump();
+        EXPECT_EQ(Without(after, "market-ward/inn"), Without(before, "market-ward/inn")) << asZone;
+        // The other zones' plans are as they were; the market keeps its other parcels.
+        json spec = build.Spec();
+        for (const auto& c : specBefore["root"]["children"]) {
+            if (c["id"] == "market-ward") continue;
+            const json* now = SpecNode(spec, c["id"]);
+            ASSERT_NE(now, nullptr);
+            EXPECT_EQ((*now)["children"], c["children"]) << c["id"];
+        }
+        EXPECT_EQ(SpecNode(spec, "market-ward/inn"), nullptr);
+        EXPECT_NE(SpecNode(spec, "market-ward/shops"), nullptr);
+        // Undo: the inn is back.
+        ASSERT_EQ(build.Undo(), "");
+        bool back = false;
+        for (const auto& o : build.Solved()["objects"]) back = back || o.value("node", "") == "market-ward/inn";
+        EXPECT_TRUE(back);
+    }
+}

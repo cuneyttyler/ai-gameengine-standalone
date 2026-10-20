@@ -159,6 +159,10 @@ private:
     // After a revision is laid out: the spatial facts it asked for, checked; a
     // miss strengthens its relation and lays out again; what's still missed is said.
     void MeetExpectations();
+    // The parts a revision only takes out (removes, or a zone re-planned with
+    // its parcels but some): empty if it does anything more.
+    std::set<std::string> LocalRemovals(const nlohmann::json& changes) const;
+    void RenderMap(); // layout.png from solved_, and the status line
     // Whether a request names a zone (its id, or its module's name).
     bool Mentions(const std::string& request, const std::string& zoneId) const;
     // Directions a request gives a zone, as relations: "below the docks" -> {south-of, docks}.

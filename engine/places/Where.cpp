@@ -247,6 +247,34 @@ json LayoutWhere(const json& solved, const std::map<std::string, std::string>& n
             {"directions", "x grows east (right), y grows south (down): left is west, below is south"}};
 }
 
+int RemoveFromLayout(json& solved, const std::set<std::string>& nodes) {
+    auto ofNode = [&](const json& thing) {
+        for (const std::string key : {"node", "id"}) {
+            const std::string v = thing.value(key, "");
+            for (const auto& n : nodes) {
+                if (v == n || v.rfind(n + "/", 0) == 0 || v.rfind(n + "#", 0) == 0) return true;
+            }
+        }
+        return false;
+    };
+    int removed = 0;
+    for (const char* list : {"regions", "objects", "lines"}) {
+        if (!solved.contains(list) || !solved[list].is_array()) continue;
+        json kept = json::array();
+        for (const auto& thing : solved[list]) {
+            if (ofNode(thing)) ++removed;
+            else kept.push_back(thing);
+        }
+        solved[list] = kept;
+    }
+    if (solved.contains("stats") && solved["stats"].is_object()) {
+        solved["stats"]["regions"] = solved.value("regions", json::array()).size();
+        solved["stats"]["objects"] = solved.value("objects", json::array()).size();
+        solved["stats"]["lines"] = solved.value("lines", json::array()).size();
+    }
+    return removed;
+}
+
 json CheckExpectations(const json& solved, const json& expects) {
     const Geometry g = Read(solved, {});
     json out = json::array();

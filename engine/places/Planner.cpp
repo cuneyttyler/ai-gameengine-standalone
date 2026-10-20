@@ -935,10 +935,11 @@ int CountBuildings(const Ontology& ontology, const json& spec) {
     return static_cast<int>(std::lround(total));
 }
 
-int RebalanceBuildings(const Ontology& ontology, const json& brief, json& spec) {
+int RebalanceBuildings(const Ontology& ontology, const json& brief, json& spec, bool scale) {
     int count = CountBuildings(ontology, spec);
     const auto [lo, hi] = Bounds(BriefValue(brief, "scale.buildings"));
-    if (lo >= 0 && count > 0 && (count < lo || count > hi)) {
+    // `scale` false: the counts are only written down (a small edit leaves the other zones alone).
+    if (scale && lo >= 0 && count > 0 && (count < lo || count > hi)) {
         const double factor = ((lo + hi) / 2.0) / count;
         for (auto& zone : spec["root"]["children"]) {
             for (auto& c : zone["children"]) {
