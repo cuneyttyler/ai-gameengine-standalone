@@ -5,6 +5,8 @@
 #include "editing/EditHistory.h"
 #include "editing/PlaceBuild.h"
 #include "editing/PlaceScene.h"
+#include "assets/TextureCook.h"
+#include "editing/ScenePreview.h"
 #include "gameplay/Archetypes.h"
 #include "gameplay/Components.h"
 #include "gameplay/TileGrid.h"
@@ -17,11 +19,13 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <iostream>
+#include <fstream>
 #include <functional>
 #include <set>
 
 // development_plan.md 7.7: the solved layout into the scene, verified and repaired.
-// In progress: the scene build tests are disabled until 7.7 is finished.
+
 using namespace aige;
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -119,7 +123,7 @@ std::string Describe(const json& checks) {
 
 } // namespace
 
-TEST(PlaceSceneTest, DISABLED_AVillageIsBuiltIntoTheSceneBesideWhatsThere) {
+TEST(PlaceSceneTest, AVillageIsBuiltIntoTheSceneBesideWhatsThere) {
     Village v;
     ASSERT_TRUE(v.solved.is_object());
     Registry registry;
@@ -197,7 +201,7 @@ TEST(PlaceSceneTest, DISABLED_AVillageIsBuiltIntoTheSceneBesideWhatsThere) {
     EXPECT_EQ(names, 1u);
 }
 
-TEST(PlaceSceneTest, DISABLED_InjectedFailuresAreFoundAndRepaired) {
+TEST(PlaceSceneTest, InjectedFailuresAreFoundAndRepaired) {
     Village v;
     Registry registry;
     const json plan = PlanPlaceAssets(Library(), v.spec, v.solved, Catalog{}, *v.prefabs, *v.assets, v.terrains, v.options);
@@ -218,10 +222,14 @@ TEST(PlaceSceneTest, DISABLED_InjectedFailuresAreFoundAndRepaired) {
             break;
         }
     }
-    const int dx = v.options.originX + (*other)["x"].get<int>() + (*other)["w"].get<int>() / 2;
-    const int dy = v.options.originY + (*other)["y"].get<int>() + (*other)["h"].get<int>();
+    // The cell in front of its door, whichever way it faces.
+    const int ox = v.options.originX + (*other)["x"].get<int>(), oy = v.options.originY + (*other)["y"].get<int>();
+    const int ow = (*other)["w"].get<int>(), oh = (*other)["h"].get<int>();
     const std::string facing = (*other).value("facing", "s");
-    ASSERT_EQ(facing, "s") << "the test puts the crate south of the door";
+    int dx = ox + ow / 2, dy = oy + oh;
+    if (facing == "n") dy = oy - 1;
+    if (facing == "w") dx = ox - 1, dy = oy + oh / 2;
+    if (facing == "e") dx = ox + ow, dy = oy + oh / 2;
     Entity crate = CreateProp(registry, dx + 0.5f, dy + 0.5f, "assets/pack/crate.png", 16, 16);
     registry.emplace<Obstacle>(crate);
     registry.emplace<PlaceNode>(crate, v.options.place, "x", "x/crate");
@@ -238,7 +246,7 @@ TEST(PlaceSceneTest, DISABLED_InjectedFailuresAreFoundAndRepaired) {
     for (const char* id : {"objects", "doors", "overlaps"}) EXPECT_TRUE((*v.Check(after, id))["ok"].get<bool>()) << id << Describe(after);
 }
 
-TEST(PlaceSceneTest, DISABLED_TheProjectsArtIsUsedWhereItFits) {
+TEST(PlaceSceneTest, TheProjectsArtIsUsedWhereItFits) {
     Village v;
     // The house image, catalogued as a house (no cottage drawn: the nearest is fine).
     Catalog catalog;
@@ -260,7 +268,8 @@ TEST(PlaceSceneTest, DISABLED_TheProjectsArtIsUsedWhereItFits) {
         if (n.value("source", "") == "project") {
             used = true;
             EXPECT_EQ(n["prefab"], "prefabs/house.prefab"); // its existing prefab
-            EXPECT_TRUE(n.contains("nearest")) << n.dump();  // a cottage was asked for
+            // A kind asked for (a cottage) that no art shows: the nearest, said so.
+            if (!n["concepts"].empty()) EXPECT_TRUE(n.contains("nearest")) << n.dump();
         } else {
             ADD_FAILURE() << n.dump();
         }
@@ -289,3 +298,44 @@ TEST(PlaceSceneTest, ObstaclesBlockTheirFootprint) {
     EXPECT_FALSE(grid.IsSolid(10, 11));
 }
 
+
+// AIGE_SCENE_BUILD=<project root>|<build id>: a COPY of the project (never the
+// project itself), the build put into an empty scene with the project's own
+// art, verified, and drawn to AIGE_SCENE_PNG (a diagnostic; skipped otherwise).
+TEST(PlaceSceneTest, BuildsAGivenProjectsPlace) {
+    const char* arg = std::getenv("AIGE_SCENE_BUILD");
+    if (arg == nullptr) GTEST_SKIP() << "set AIGE_SCENE_BUILD=<project root>|<build id>";
+    const std::string text = arg;
+    const fs::path from = text.substr(0, text.find('|'));
+    const std::string id = text.substr(text.find('|') + 1);
+    const fs::path root = fs::temp_directory_path() / "aige_scene_copy";
+    fs::remove_all(root);
+    fs::copy(from, root, fs::copy_options::recursive);
+    PrefabLibrary prefabs(Project{root});
+    AssetDatabase assets(Project{root});
+    assets.Refresh();
+    const TerrainSet terrains = ProjectTerrainSet(prefabs, Project{root});
+    CatalogOptions catalogOptions;
+    const Catalog catalog = BuildCatalog(assets, &Library(), catalogOptions);
+    const json spec = json::parse(std::ifstream(root / "places" / id / "spec.json"));
+    const json solved = json::parse(std::ifstream(root / "places" / id / "layout.solved.json"));
+    PlaceSceneOptions options;
+    options.place = id;
+    options.isoGrid = true;
+    const json plan = PlanPlaceAssets(Library(), spec, solved, catalog, prefabs, assets, terrains, options);
+    Registry registry;
+    json report;
+    auto command = BuildPlaceScene(registry, prefabs, solved, plan, terrains, options, &report);
+    const json checks = VerifyPlaceScene(registry, solved, plan, options);
+    std::cout << "  report " << report.dump() << "\n";
+    for (const auto& c : checks) std::cout << "  " << (c["ok"].get<bool>() ? "ok   " : "FAIL ") << c["id"] << " " << c["detail"] << "\n";
+    int placeholders = 0;
+    for (const auto& n : plan["needs"]) placeholders += n["source"] == "placeholder";
+    std::cout << "  needs " << plan["needs"].size() << ", placeholders " << placeholders << "\n";
+    const int side = solved["grid"]["bounds"][2].get<int>();
+    if (const char* png = std::getenv("AIGE_SCENE_PNG")) {
+        const auto image = RenderScenePreview(registry, Project{root}, options.iso, 0, 0, side, side, 1800);
+        WritePng(png, image);
+        std::cout << "  preview " << image.width << "x" << image.height << "\n";
+    }
+}

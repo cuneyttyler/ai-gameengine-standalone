@@ -152,6 +152,7 @@ interface BuildResult {
   repairs: { what: string; id: string; how: string }[]
   after: SceneCheck[]
   origin?: [number, number]
+  image?: string // places/<id>/scene.png: the built place, as rendered
 }
 interface Revision {
   by: 'you' | 'review'
@@ -227,8 +228,8 @@ function step(id: string): void {
 const ZONE_COLOURS = ['#a6e3a1', '#fab387', '#cba6f7', '#f9e2af', '#94e2d5', '#f38ba8']
 const selectedZone = ref<string | null>(null)
 const MARKS: Record<string, string> = { ok: '✓', short: '!', missing: '✗' }
-// ④ Build into the scene (7.7) is still being finished: hidden until it is.
-const SCENE_BUILD = false
+// ④ Build into the scene (7.7).
+const SCENE_BUILD = true
 const sceneFailing = computed(() => (state.value?.result?.after ?? []).filter((c) => !c.ok && !c.warning))
 const builtCount = computed(() => {
   const r = state.value?.result?.report
@@ -447,6 +448,13 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             <template v-if="state.result.origin">at {{ state.result.origin[0] }}, {{ state.result.origin[1] }}</template>
           </span>
         </p>
+        <img
+          v-if="state.result.image"
+          :src="PROJECT_HOST + state.result.image"
+          :class="['map', { large: bigMap }]"
+          title="The place in the scene, drawn as the game draws it. Click to enlarge."
+          @click="bigMap = !bigMap"
+        />
         <h4>In the scene</h4>
         <ul class="checks">
           <li v-for="c in state.result.after" :key="c.id" :class="c.ok ? 'ok' : c.warning ? 'warning' : 'error'">

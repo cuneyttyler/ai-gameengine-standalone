@@ -25,6 +25,7 @@
 #include "places/Ontology.h"
 #include "editing/PlaceBuild.h"
 #include "editing/PlaceScene.h"
+#include "editing/ScenePreview.h"
 #include "renderer2d/Camera2D.h"
 #include "renderer2d/Renderer2D.h"
 #include "ui/GameUi.h"

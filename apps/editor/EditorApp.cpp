@@ -1,5 +1,7 @@
 #include "EditorApp.h"
 
+#include "assets/TextureCook.h"
+
 #include "Win32Util.h"
 
 #include "ai_bridge/ContextBuilder.h"
@@ -2912,8 +2914,15 @@ void EditorApp::BuildIntoScene() {
     dirty_ = true;
     editorStateStale_ = true;
     sceneTreeStale_ = true;
+    // What it looks like in the scene, drawn as the renderer draws it: for the Result step.
+    const int built = build_->SiteSide();
+    const ImageData picture = RenderScenePreview(registry_, assets_.GetProject(), iso_, options.originX, options.originY,
+                                                 options.originX + built, options.originY + built, 1600);
+    WritePng(build_->Folder() / "scene.png", picture);
+    static int pictures = 0;
     build_->Built({{"assets", assets}, {"report", report}, {"verify", verify}, {"repairs", repairs}, {"after", after},
-                   {"origin", {options.originX, options.originY}}});
+                   {"origin", {options.originX, options.originY}},
+                   {"image", "places/" + build_->Id() + "/scene.png?v=" + std::to_string(++pictures)}});
     // Look at it.
     const int side = build_->SiteSide();
     const ScreenPose centre = ProjectIso(options.originX + side / 2.0f, options.originY + side / 2.0f, iso_);
