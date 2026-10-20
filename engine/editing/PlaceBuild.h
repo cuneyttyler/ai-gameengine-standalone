@@ -163,6 +163,10 @@ private:
     // its parcels but some): empty if it does anything more.
     std::set<std::string> LocalRemovals(const nlohmann::json& changes) const;
     void RenderMap(); // layout.png from solved_, and the status line
+    // Verified examples (7.7): a built place that passed its checks is kept in
+    // places/examples.json; planning a place like it shows the planner how it went.
+    void KeepAsExample() const;
+    nlohmann::json ExamplesLikeThis() const;
     // Whether a request names a zone (its id, or its module's name).
     bool Mentions(const std::string& request, const std::string& zoneId) const;
     // Directions a request gives a zone, as relations: "below the docks" -> {south-of, docks}.

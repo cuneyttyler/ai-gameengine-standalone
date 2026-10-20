@@ -222,3 +222,19 @@ def test_revise_sees_where_things_are_and_lists_the_facts():
     prompt = provider.requests[0][-1]["content"]
     assert "AA~~BB" in prompt and "WHERE (the layout now)" in prompt
     assert "left\" is west" in provider.requests[0][0]["content"]
+
+
+def test_the_built_scene_is_reviewed_as_rendered():
+    provider = ScriptedProvider([json.dumps({"issues": ["a house stands on the road"], "summary": "One house on the road.",
+                                             "changes": []})])
+    image = {"type": "image_url", "image_url": "data:image/png;base64,AAAA"}
+    result = review_layout(provider, image, {}, {}, {}, [], {}, kind="scene")
+    assert result["ok"] and result["answer"]["issues"] == ["a house stands on the road"]
+    assert "drawn the way the game draws it" in provider.requests[0][0]["content"]
+
+
+def test_plan_root_sees_the_projects_kept_places():
+    provider = ScriptedProvider(lambda messages: json.dumps(ROOT))
+    examples = [{"request": "a village by a river", "zones": [{"module": "residential-ward", "plots": 18}]}]
+    plan_root(provider, {"buildType": "settlement"}, {}, mode="one-pass", examples=examples)
+    assert "the user kept" in provider.requests[0][-1]["content"] and "residential-ward" in provider.requests[0][-1]["content"]

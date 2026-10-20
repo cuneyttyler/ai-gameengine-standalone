@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <set>
 
@@ -688,4 +689,59 @@ TEST(BuildRobustTest, TakingAPartOutChangesNothingElse) {
         for (const auto& o : build.Solved()["objects"]) back = back || o.value("node", "") == "market-ward/inn";
         EXPECT_TRUE(back);
     }
+}
+
+// 7.7: a built place that passed its checks becomes an example for the next
+// one like it; the AI looks at the built place as rendered.
+TEST(BuildRobustTest, ABuiltPlaceIsKeptAndReviewedAsRendered) {
+    Fixture f("aige_build_example");
+    const json off = {{"ok", false}, {"errors", json::array({"No AI provider configured"})}};
+    std::string first;
+    {
+        PlaceBuild build(f.Host());
+        ASSERT_EQ(build.Start("a village by a river"), "");
+        f.AnswerAll(build, off);
+        ASSERT_EQ(build.Step("assets"), "");
+        ASSERT_EQ(build.Confirm(), "");
+        f.AnswerAll(build, off);
+        ASSERT_EQ(build.Approve(), "");
+        f.AnswerAll(build, off); // the map review
+        ASSERT_EQ(build.StartBuilding(), "");
+        // What the editor does: the scene picture, then the result.
+        fs::create_directories(build.Folder());
+        std::ofstream(build.Folder() / "scene.png") << "png";
+        const size_t before = f.sent.size();
+        build.Built({{"after", json::array({{{"id", "objects"}, {"ok", true}}})}, {"image", "places/x/scene.png"}});
+        EXPECT_EQ(build.Stage(), "built");
+        // Reviewed as rendered.
+        ASSERT_EQ(f.sent.size(), before + 1);
+        EXPECT_EQ(f.sent.back().first, "/places/review-layout");
+        EXPECT_EQ(f.sent.back().second["kind"], "scene");
+        EXPECT_EQ(f.sent.back().second["image"], "places/" + build.Id() + "/scene.png");
+        f.answered.insert(static_cast<int>(f.sent.size()));
+        build.OnResponse(static_cast<int>(f.sent.size()),
+                         {{"ok", true}, {"answer", {{"summary", "One house stands on the road."}, {"issues", json::array({"a house on the road"})}}}});
+        EXPECT_EQ(build.Result()["critique"]["issues"][0], "a house on the road");
+        EXPECT_EQ(build.Stage(), "built");
+        first = build.Id();
+    }
+    // Kept: the next place like it is planned with it as an example.
+    const json examples = json::parse(std::ifstream(f.root / "places" / "examples.json"));
+    ASSERT_EQ(examples.size(), 1u);
+    EXPECT_EQ(examples[0]["id"], first);
+    EXPECT_FALSE(examples[0]["zones"].empty());
+    PlaceBuild next(f.Host());
+    ASSERT_EQ(next.Start("another village by a river"), "");
+    f.AnswerAll(next, off);
+    ASSERT_EQ(next.Step("assets"), "");
+    const size_t sentBefore = f.sent.size();
+    ASSERT_EQ(next.Confirm(), "");
+    ASSERT_GT(f.sent.size(), sentBefore);
+    EXPECT_EQ(f.sent[sentBefore].first, "/places/plan-root");
+    ASSERT_EQ(f.sent[sentBefore].second["examples"].size(), 1u) << f.sent[sentBefore].second["examples"].dump();
+    EXPECT_EQ(f.sent[sentBefore].second["examples"][0]["request"], "a village by a river");
+    // Why: each plan row says how it's placed.
+    f.AnswerAll(next, off);
+    const json rows = next.State()["plan"]["rows"];
+    EXPECT_FALSE(rows.empty());
 }

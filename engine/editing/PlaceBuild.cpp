@@ -306,6 +306,19 @@ void PlaceBuild::OnResponse(int requestId, const json& body) {
     if (it == pending_.end()) return;
     const Pending what = it->second;
     pending_.erase(it);
+    if (what.kind == "scene-review") {
+        const bool ok = body.value("ok", false) && body.contains("answer") && body["answer"].is_object();
+        if (!ok && Retry(what, body)) return;
+        Log({{"step", "scene review"}, {"thinking", body.value("thinking", "")}, {"answer", body.value("answer", json())},
+             {"errors", body.value("errors", json::array())}});
+        if (result_.is_object()) {
+            result_["critique"] = ok ? json{{"summary", body["answer"].value("summary", "")}, {"issues", body["answer"].value("issues", json::array())}}
+                                     : json{{"error", FirstError(body)}};
+            WriteJson(Folder() / "result.json", result_);
+        }
+        Save();
+        return;
+    }
     if (what.kind == "revise" || what.kind == "review") {
         if (stage_ == "revising") OnRevision(what, body);
         Save();
@@ -479,7 +492,8 @@ void PlaceBuild::StartPlanning() {
     zonesTotal_ = zonesDone_ = 0;
     spec_ = solved_ = json();
     status_ = "Planning the zones, roads and walls…";
-    if (!Send({"plan-root", -1, "", "/places/plan-root", {{"brief", brief_}, {"context", PlanRootContext(host_.ontology(), brief_)}}, 600})) {
+    if (!Send({"plan-root", -1, "", "/places/plan-root",
+               {{"brief", brief_}, {"context", PlanRootContext(host_.ontology(), brief_)}, {"examples", ExamplesLikeThis()}}, 600})) {
         Notice("The AI is off, so the plan comes from the Brief and the module rules alone.");
         spec_ = SpecFromRoot(host_.ontology(), brief_, FallbackRootAnswer(host_.ontology(), brief_), id_);
         PlanZones();
@@ -1169,7 +1183,62 @@ void PlaceBuild::Built(const json& result) {
     for (const auto& c : result_.value("after", json::array())) failed += !c.value("ok", true) && !c.value("warning", false);
     status_ = failed ? std::to_string(failed) + " check(s) still failing after the repairs" : "Built and verified.";
     Log({{"step", "built"}, {"report", result_.value("report", json())}, {"repairs", result_.value("repairs", json::array())}});
+    if (failed == 0) KeepAsExample();
+    // The AI looks at the place as the game draws it (the Result shows what it saw).
+    if (result_.contains("image") && fs::exists(Folder() / "scene.png")) {
+        json body = RevisionBody();
+        body["image"] = "places/" + id_ + "/scene.png";
+        body["kind"] = "scene";
+        body["verify"] = result_.value("after", json::array());
+        if (Send({"scene-review", -1, "", "/places/review-layout", body, 600})) result_["critique"] = {{"looking", true}};
+    }
     Save();
+}
+
+void PlaceBuild::KeepAsExample() const {
+    // places/examples.json: the project's built and verified places, latest first.
+    const fs::path file = host_.projectRoot / "places" / "examples.json";
+    json examples = ReadJson(file);
+    if (!examples.is_array()) examples = json::array();
+    json zones = json::array();
+    for (const auto& c : spec_["root"].value("children", json::array())) {
+        const ModuleDef* m = host_.ontology().Module(c.value("module", ""));
+        if (m == nullptr || m->level != PlaceLevel::Zone) continue;
+        json one = {{"module", m->id}};
+        for (const char* field : {"plots", "area"}) {
+            if (c.contains("quantity") && c["quantity"].contains(field)) one[field] = c["quantity"][field];
+        }
+        if (c.contains("quality") && c["quality"].contains("street-style")) one["street-style"] = c["quality"]["street-style"];
+        if (c.contains("rel")) one["rel"] = c["rel"];
+        json parcels = json::array();
+        for (const auto& p : c.value("children", json::array())) {
+            parcels.push_back({{"module", p.value("module", "")}, {"repeat", p.value("repeat", 1)}});
+        }
+        one["parcels"] = parcels;
+        zones.push_back(one);
+    }
+    json example = {{"id", id_}, {"request", query_}, {"buildType", brief_.value("buildType", "")},
+                    {"class", BriefValue(brief_, "scale.class")}, {"buildings", CountBuildings(host_.ontology(), spec_)}, {"zones", zones}};
+    json kept = json::array({example});
+    for (const auto& e : examples) {
+        if (e.value("id", "") != id_ && kept.size() < 20) kept.push_back(e);
+    }
+    WriteJson(file, kept);
+}
+
+json PlaceBuild::ExamplesLikeThis() const {
+    const json examples = ReadJson(host_.projectRoot / "places" / "examples.json");
+    json out = json::array();
+    if (!examples.is_array()) return out;
+    for (const auto& e : examples) {
+        if (out.size() >= 2) break;
+        if (e.value("id", "") == id_ || e.value("buildType", "") != brief_.value("buildType", "")) continue;
+        if (e.value("class", json()) != BriefValue(brief_, "scale.class")) continue;
+        json shown = e;
+        shown.erase("id");
+        out.push_back(shown);
+    }
+    return out;
 }
 
 void PlaceBuild::SetOrigin(int x, int y) {
@@ -1306,6 +1375,17 @@ json PlaceBuild::State() {
                   {"status", status_}, {"errors", errors_}, {"notices", notices_}, {"drafts", drafts_.size()}};
     if (stage_ == "plan" || stage_ == "planned" || stage_ == "building" || stage_ == "built") {
         state["plan"] = PlanSummary(host_.ontology(), spec_);
+        // Why each part is as it is: its rationale (already there), its relations, and what was fixed.
+        json spec = spec_;
+        for (auto& row : state["plan"]["rows"]) {
+            const std::string id = row.value("id", "");
+            if (const json* node = SpecNode(spec, id); node && node->contains("rel")) row["rel"] = (*node)["rel"];
+            json notes = json::array();
+            for (const auto& p : planProblems_) {
+                if (p.where == id || p.where.rfind(id + ".", 0) == 0 || p.where.rfind(id + "/", 0) == 0) notes.push_back(p.where + ": " + p.message);
+            }
+            if (!notes.empty()) row["notes"] = notes;
+        }
         state["sketch"] = PlanSketch(host_.ontology(), spec_, SiteSide());
         state["problems"] = ProblemsJson(planProblems_);
         if (solved_.is_object()) {

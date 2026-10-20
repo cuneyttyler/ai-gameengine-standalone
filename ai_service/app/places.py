@@ -266,11 +266,16 @@ PLAN_CHECK = """Before answering, check while thinking:
 - does each zone follow its module's site preferences and the design rules?"""
 
 
-def plan_root(provider: Provider, brief: dict, context: dict, mode: str = "auto") -> dict:
-    """The root and its zones, networks and ground (place-interaction.md B4: thinks)."""
+def plan_root(provider: Provider, brief: dict, context: dict, mode: str = "auto", examples: list | None = None) -> dict:
+    """The root and its zones, networks and ground (place-interaction.md B4: thinks). `examples`: places this
+    project built and the user kept (7.7, verified examples), for its style."""
     task = ("You plan a game place from its confirmed Brief: its zones (wards), networks (roads, river, walls) and "
             "ground, each with its quantity and quality fields. " + PLAN_CHECK)
-    inputs = (f"The Brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n"
+    shown = ""
+    if examples:
+        shown = ("Places this project built before and the user kept (follow their choices where this Brief is "
+                 f"alike; the Brief decides where it differs):\n{json.dumps(examples, ensure_ascii=False)}\n\n")
+    inputs = (f"The Brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n" + shown +
               f"The modules and rules (the ontology's relevant part):\n{json.dumps(context, ensure_ascii=False)}")
     return _plan_result(think_then_answer(provider, task, inputs, ROOT_SHAPE, mode))
 
@@ -390,10 +395,20 @@ REVIEW_SHAPE = """Your review, as JSON:
 """ + REVISE_SHAPE.split("\n", 1)[1]
 
 
+SCENE_TASK = ("You check a game place as it was built into the scene, drawn the way the game draws it (an "
+              "isometric view; plain coloured shapes are placeholders where the project has no art yet). Look for "
+              "what a player would see as wrong: buildings standing on roads or water, things floating, cut off or "
+              "far too big or small for their plot, crowded or empty stretches, roads that end nowhere, a part the "
+              "Brief asked for that isn't there. Placeholders themselves aren't a problem to fix in the plan. The "
+              "checks below say what the build verified. Propose plan changes only for real problems; when it "
+              "looks right, say so and change nothing.")
+
+
 def review_layout(provider: Provider, image: dict, brief: dict, plan: dict, result: dict, verify: list,
-                  context: dict) -> dict:
-    """The AI looks at the solved map and proposes changes (7.6: a review before building)."""
-    task = ("You check a game place's layout, drawn as a map with a legend, against its Brief and its plan. Look "
+                  context: dict, kind: str = "map") -> dict:
+    """The AI looks at the solved map (7.6) or at the built scene (7.7, kind "scene") and proposes changes."""
+    task = SCENE_TASK if kind == "scene" else (
+            "You check a game place's layout, drawn as a map with a legend, against its Brief and its plan. Look "
             "for what a player would notice: a zone without buildings, a ward whose main building is missing (a "
             "temple ward without its temple), empty stretches, things in odd places, a part the Brief asked for "
             "that isn't there. The checks below say what the layout placed against what was planned. Propose "

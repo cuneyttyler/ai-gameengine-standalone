@@ -79,6 +79,7 @@ class PlanRootRequest(BaseModel):
     brief: dict
     context: dict          # the root's subgraph and its possible children (engine/places Planner)
     mode: str = "auto"
+    examples: list = []    # the project's approved places like this one (7.7)
 
 
 class PlanZoneRequest(BaseModel):
@@ -117,6 +118,7 @@ class ReviewLayoutRequest(BaseModel):
     result: dict = {}
     verify: list = []      # the Verify rows: asked, planned, built
     context: dict
+    kind: str = "map"      # map (the solved layout) or scene (the built place, rendered)
 
 
 class GenerateAssetRequest(BaseModel):
@@ -340,7 +342,7 @@ def create_app(
 
     @app.post("/places/plan-root")
     def places_plan_root(request: PlanRootRequest) -> dict:
-        return _planning(lambda p: plan_root(p, request.brief, request.context, request.mode))
+        return _planning(lambda p: plan_root(p, request.brief, request.context, request.mode, request.examples))
 
     @app.post("/places/plan-zone")
     def places_plan_zone(request: PlanZoneRequest) -> dict:
@@ -390,7 +392,7 @@ def create_app(
         if root.resolve() not in path.parents or not path.is_file():
             return {"ok": False, "errors": [f"No map at {request.image}"]}
         result = review_layout(vision, map_chunk(path), request.brief, request.plan, request.result, request.verify,
-                               request.context)
+                               request.context, kind=request.kind)
         state["usage"].add(Usage(**result["usage"]))
         return result
 

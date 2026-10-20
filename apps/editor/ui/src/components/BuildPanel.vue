@@ -74,6 +74,8 @@ interface PlanRow {
   qualities: Record<string, unknown>
   parcels: { id: string; module: string; name: string; count: number }[]
   rationale: string
+  rel?: { type: string; to: string; weight?: number }[] // where it's placed, and why (Why?)
+  notes?: string[] // what the fixes did to it
 }
 interface BuildState {
   id: string
@@ -153,6 +155,7 @@ interface BuildResult {
   after: SceneCheck[]
   origin?: [number, number]
   image?: string // places/<id>/scene.png: the built place, as rendered
+  critique?: { looking?: boolean; error?: string; summary?: string; issues?: string[] } // the AI's look at it
 }
 interface Revision {
   by: 'you' | 'review'
@@ -227,6 +230,7 @@ function step(id: string): void {
 }
 const ZONE_COLOURS = ['#a6e3a1', '#fab387', '#cba6f7', '#f9e2af', '#94e2d5', '#f38ba8']
 const selectedZone = ref<string | null>(null)
+const selectedRow = computed(() => state.value?.plan?.rows.find((r) => r.id === selectedZone.value) ?? null)
 const MARKS: Record<string, string> = { ok: '✓', short: '!', missing: '✗' }
 // ④ Build into the scene (7.7).
 const SCENE_BUILD = true
@@ -462,6 +466,23 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             <span v-if="!c.ok && c.items?.length" class="dim small"> ({{ c.items.slice(0, 5).join(', ') }}{{ c.items.length > 5 ? '…' : '' }})</span>
           </li>
         </ul>
+        <template v-if="state.result.critique">
+          <h4>The AI looked at it</h4>
+          <p v-if="state.result.critique.looking" class="dim">Looking at the built place…</p>
+          <p v-else-if="state.result.critique.error" class="dim">Couldn't look ({{ state.result.critique.error }}).</p>
+          <template v-else>
+            <p>{{ state.result.critique.summary }}</p>
+            <ul v-if="state.result.critique.issues?.length">
+              <li v-for="i in state.result.critique.issues" :key="i">{{ i }}</li>
+            </ul>
+            <button
+              v-if="state.result.critique.issues?.length"
+              @click="revise('Fix what the review of the built place found: ' + state.result.critique.issues.join('; '))"
+            >
+              Revise with these
+            </button>
+          </template>
+        </template>
         <template v-if="state.result.repairs?.length">
           <h4>Repaired</h4>
           <ul class="dim">
@@ -521,7 +542,14 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           </tbody>
         </table>
       </div>
-      <p v-if="selectedZone" class="dim why">{{ state.plan.rows.find((r) => r.id === selectedZone)?.rationale }}</p>
+      <div v-if="selectedRow" class="why">
+        <strong>Why {{ selectedRow.name }}:</strong>
+        <span class="dim"> {{ selectedRow.rationale || 'from the module rules' }}</span>
+        <div v-if="selectedRow.rel?.length" class="dim small">
+          Placed: {{ selectedRow.rel.map((r) => `${r.type} ${r.to}${r.weight ? ' (asked for)' : ''}`).join(' · ') }}
+        </div>
+        <div v-for="n in selectedRow.notes ?? []" :key="n" class="dim small">{{ n }}</div>
+      </div>
       <p v-if="!state.solved" class="dim">The sketch shows sizes only; where each part goes is worked out when it's built. The site is outlined in the viewport.</p>
       <!-- Verify: does the layout hold what the Brief asked for and the plan has? -->
       <section v-if="state.verify?.length" class="verify">

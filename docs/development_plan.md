@@ -2056,6 +2056,45 @@ Moved to 7.5: the plan preview needs the plan.
 - Tests: each solver on fixtures; hard rules never broken; seeded determinism.
 
 **7.7 — Build, verify, repair**
+
+**Done (2026-10-20), for the settlement build type:**
+- **The plan stage, made reliable first** (`editing/PlaceBuild.h`): planning ends laid
+  out, so ③ Plan shows the real map; fitting rounds give a zone that couldn't place its
+  parcels more land; Verify shows asked / planned / built per zone and component; the AI
+  reviews the map; Revise takes a request in words, shows the AI where everything is
+  (`places/Where.h`: areas, banks, directions, a text map), checks the spatial facts it
+  asked for on the new layout, keeps the zones it doesn't name in place, and takes parts
+  out by editing the layout itself (nothing else moves). Retries and fallbacks keep a
+  build from stopping for the AI's mistakes; builds reopen across sessions. The model is
+  a choice (Mistral or Claude).
+- **Build** (`editing/PlaceScene.h`):
+  - the asset plan: each need gets the catalog's best fit, made a prefab if needed, else
+    a placeholder (a plain shape per role), so the place is whole;
+  - the ground in a tile layer of its own through the autotiler; buildings, props,
+    decals and fence pieces as prefab instances tagged with PlaceNode; a building blocks
+    its footprint (Obstacle left/right/back);
+  - beside what the scene has (never over it); a rebuild replaces only the place; one
+    undo step.
+- **Verify and repair** in the scene: every object there at its cell, the ground whole,
+  every door reachable over the scene's real collision, no two solid things on a cell;
+  a missing object gets a placeholder, an adaptable thing in a door's way is removed.
+- **Visual critique of the rendered part**: `editing/ScenePreview.h` draws the place as
+  the renderer does, on the CPU; the AI looks at it (and at the plan's map before).
+- **Verified examples**: a build that passes its checks is kept in
+  `places/examples.json`; planning a place of the same type and size shows the planner
+  up to two of them.
+- ④ Build and ⑤ Result: the rendered place, the checks before and after repair, the
+  repairs, assets by source with licences and why a placeholder, the AI's critique with
+  "Revise with these", next steps. **Why?** per part: its rationale, how it's placed
+  (relations, those asked for marked), what the fixes did to it.
+- Tests: `tests/place_scene_test.cpp` (a village built beside existing content, undo and
+  rebuild, injected failures found and repaired, the project's art used), `tests/
+  build_robust_test.cpp`, `tests/where_test.cpp`, `tests/live_plan_test.cpp` (opt-in,
+  both models).
+- **Not yet:** progress and resume (a village builds in well under a second; a city
+  will need it), re-solving one node as a repair (a revision does it for zones).
+
+The plan as first written:
 - Bulk commands per node, with progress and resume; nodes are independent where
   possible.
 - **Verification** after each level:
