@@ -156,6 +156,8 @@ private:
     void FinishPlanning();
     void Solve();
     void OnRevision(const Pending& what, const nlohmann::json& body);
+    // Whether a request names a zone (its id, or its module's name).
+    bool Mentions(const std::string& request, const std::string& zoneId) const;
     nlohmann::json RevisionBody() const;
 
     Host host_;
@@ -181,6 +183,8 @@ private:
     nlohmann::json revisions_ = nlohmann::json::array();
     std::string beforeRevision_; // the stage a revision returns to
     bool solveAfter_ = false;    // a revision of a laid-out plan: solve again once planned
+    // The next layout keeps these zones' seeds (a revision moves only what it's about).
+    std::map<std::string, std::pair<int, int>> keepSeeds_;
     nlohmann::json result_;      // the last scene build's (⑤ Result)
     bool hasOrigin_ = false;
     int originX_ = 0, originY_ = 0;

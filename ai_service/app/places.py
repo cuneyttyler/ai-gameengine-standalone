@@ -301,6 +301,7 @@ REVISE_SHAPE = """The changes, as JSON:
   "summary": "<one or two sentences to the user: what you changed, or why it can't be done>",
   "brief": {"<a Brief path, e.g. scale.buildings.count>": <its new value>},
   "changes": [
+    {"op": "move", "node": "<id>", "rel": [{"type": "<relation>", "to": "<a part's id, or river / road>"}]},
     {"op": "set", "node": "<id>", "quantity": {"<field>": <value>}, "quality": {"<field>": <value>}, "rel": [...]},
     {"op": "zone", "node": "<zone id>", "quantity": {...}, "quality": {...},
      "children": [<all of the zone's parcels afterwards, as in the plan: id, module, repeat, quantity, quality>]},
@@ -309,7 +310,10 @@ REVISE_SHAPE = """The changes, as JSON:
     {"op": "remove", "node": "<id>"}
   ]
 }
-"set" changes only the fields given. "zone" re-plans a zone's parcels: list all of them, kept ones too. Leave out
+"move" says where a part goes, and nothing else: use it when the request is about place ("put X south of Y", "near
+the river"); relations: near, adjacent, along, far, north-of, south-of, east-of, west-of ("below" on the map is
+south-of, "above" north-of). "set" changes only the fields given. "zone" re-plans a zone's parcels: list all of them,
+kept ones too, and only when the request is about what that zone holds. Leave out
 "brief" unless the request changes the place's totals. An empty "changes" list, with the reason in "summary",
 when the request can't be met with these modules."""
 
@@ -318,7 +322,7 @@ def revise_plan(provider: Provider, brief: dict, plan: dict, result: dict, instr
                 mode: str = "auto") -> dict:
     """The user's change to a plan they've seen (place-interaction.md A3: revise before building)."""
     task = ("You revise a game place's plan as its user asks. Change only what the request is about; everything "
-            "else stays as planned. Use only the modules, fields and values the rules allow (a zone may hold only "
+            "else stays as planned: never re-plan, resize or move a zone the request doesn't name. Use only the modules, fields and values the rules allow (a zone may hold only "
             "the parcels its rules list): when the request asks for something a module can't hold, do the nearest "
             "thing that is allowed and say so in the summary. The Brief's building count bounds the total: when "
             "adding buildings, take them from elsewhere or raise scale.buildings.count. " + PLAN_CHECK)
@@ -341,7 +345,7 @@ def _revision_result(step: StepResult) -> dict:
     if not isinstance(changes, list):
         out["errors"].append("changes is a list")
         return out
-    answer["changes"] = [c for c in changes if isinstance(c, dict) and c.get("op") in ("set", "zone", "add", "remove")]
+    answer["changes"] = [c for c in changes if isinstance(c, dict) and c.get("op") in ("move", "set", "zone", "add", "remove")]
     if not isinstance(answer.get("brief", {}), dict):
         answer["brief"] = {}
     answer["summary"] = str(answer.get("summary", "")).strip()

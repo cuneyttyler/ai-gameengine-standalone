@@ -47,6 +47,9 @@ struct CompileOptions {
     // More land for a zone than its plan says (zone id -> factor): the fitting
     // rounds give it to a zone that couldn't place all its parcels.
     std::map<std::string, double> zoneScale;
+    // Where a zone was seeded last time (zone id -> cell): a revision moves
+    // the zones it's about and keeps the others where they were.
+    std::map<std::string, std::pair<int, int>> keepSeeds;
 };
 
 nlohmann::json CompileSpec(const Ontology& ontology, const nlohmann::json& spec, const CompileOptions& options = {});

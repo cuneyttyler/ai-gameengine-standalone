@@ -213,5 +213,33 @@
     ],
     "hard": false,
     "description": "the site's interest for a criterion at a's cells (-1 vetoes)"
+  },
+  "north-of": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a lies above (north of) b on the map"
+  },
+  "south-of": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a lies below (south of) b on the map"
+  },
+  "east-of": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a lies right of (east of) b on the map"
+  },
+  "west-of": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a lies left of (west of) b on the map"
   }
 }

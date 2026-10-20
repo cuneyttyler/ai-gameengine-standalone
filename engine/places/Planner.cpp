@@ -1116,7 +1116,16 @@ std::vector<PlaceProblem> ApplyRevision(const Ontology& ontology, const json& br
         if (!change.is_object()) continue;
         const std::string op = change.value("op", "");
         const std::string id = change.contains("node") && change["node"].is_string() ? change["node"].get<std::string>() : "";
-        if (op == "set") {
+        if (op == "move") {
+            // Where it goes, nothing else: its relations replaced.
+            json* node = SpecNode(spec, id);
+            if (node == nullptr) {
+                note(id, "not moved: the plan has no such part");
+                continue;
+            }
+            (*node)["rel"] = relations(change.value("rel", json::array()));
+            if ((*node)["rel"].empty()) note(id, "not moved: the relations name nothing in the plan");
+        } else if (op == "set") {
             json* node = SpecNode(spec, id);
             if (node == nullptr) {
                 note(id, "not changed: the plan has no such part");
@@ -1147,6 +1156,9 @@ std::vector<PlaceProblem> ApplyRevision(const Ontology& ontology, const json& br
             ApplyZoneAnswer(ontology, brief, spec, id,
                             {{"quantity", change.value("quantity", json::object())}, {"quality", change.value("quality", json::object())},
                              {"children", change.value("children", json::array())}});
+            if (change.contains("rel")) {
+                if (json* zone = SpecNode(spec, id)) (*zone)["rel"] = relations(change["rel"]);
+            }
         } else if (op == "add") {
             const json given = change.value("node", json::object());
             const std::string module = given.is_object() ? given.value("module", "") : "";

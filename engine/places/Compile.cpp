@@ -379,6 +379,15 @@ void Compiler::Root(const json& root) {
                      {"area", static_cast<int>(std::lround(std::max(planned * (flexible ? 1.0 : scale), need)))}, {"prefers", prefers}};
         if (flexible) zone["flexible"] = true;
         else zone["min"] = static_cast<int>(std::lround(need));
+        // Where it goes among the others: its relations (near the river, south of the docks).
+        json rel = json::array();
+        for (const auto& r : c.value("rel", json::array())) {
+            if (r.is_object() && r.contains("to") && r["to"].is_string()) rel.push_back({{"type", r.value("type", "near")}, {"to", r["to"]}});
+        }
+        if (!rel.empty()) zone["rel"] = rel;
+        if (auto it = options_.keepSeeds.find(c.value("id", "")); it != options_.keepSeeds.end()) {
+            zone["seed"] = {it->second.first, it->second.second};
+        }
         builtNeed += need;
         into.push_back(zone);
         zones.push_back({&c, cm});

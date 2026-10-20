@@ -3,6 +3,7 @@ name = "aige-ai-service"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=1.15.0",
     "fastapi>=0.143.2",
     "mistralai>=3.2.0",
     "pillow>=12.3.0",

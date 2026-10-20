@@ -139,6 +139,7 @@ private:
     // Results.
     std::vector<Region> regions_;
     std::map<std::string, int> regionById_;
+    std::map<std::string, int> zoneSeeds_; // each zone's seed cell (written out, for a revision to keep)
     std::vector<Object> objects_;
     std::map<std::string, std::vector<int>> objectsByStatement_;
     std::map<std::string, int> objectById_;
@@ -844,6 +845,8 @@ void Solver::Partition(const json& s, int region) {
         double quota = 0;
         bool flexible = false; // no buildings: takes what's left
         json prefers;
+        json rel;          // [{type, to}]: near the river, south of the docks
+        int keep = -1;     // the cell it was seeded at last time, to stay there
         int seed = -1;
         std::vector<int> cells;
     };
@@ -857,6 +860,10 @@ void Solver::Partition(const json& s, int region) {
         zone.quota = RangeOf(z.value("area", json()), 400).lo > 0 ? (RangeOf(z.value("area", json()), 400).lo + RangeOf(z.value("area", json()), 400).hi) / 2.0 : 400;
         zone.prefers = z.value("prefers", json::object());
         zone.flexible = z.value("flexible", false);
+        zone.rel = z.value("rel", json::array());
+        if (const json k = z.value("seed", json()); k.is_array() && k.size() == 2 && In(k[0].get<int>(), k[1].get<int>())) {
+            zone.keep = Cell(k[0].get<int>(), k[1].get<int>());
+        }
         wanted += zone.quota;
         zones.push_back(zone);
     }
@@ -908,9 +915,81 @@ void Solver::Partition(const json& s, int region) {
     distanceField(nearWater, [&](int c) { return water_[c] != 0; });
     const double cx = (parent.x0 + parent.x1) / 2.0, cy = (parent.y0 + parent.y1) / 2.0;
     const double half = std::max(1.0, std::hypot(parent.x1 - parent.x0, parent.y1 - parent.y0) / 2.0);
+    // What a relation names: another zone (by its seed, once placed) or a path
+    // (the river, a road: by the distance to it).
+    std::map<std::string, size_t> zoneIndex;
+    for (size_t k = 0; k < zones.size(); ++k) zoneIndex[zones[k].id] = k;
+    std::map<std::string, std::vector<int>> pathDistance;
+    auto distanceToPath = [&](const std::string& name) -> const std::vector<int>* {
+        if (auto it = pathDistance.find(name); it != pathDistance.end()) return it->second.empty() ? nullptr : &it->second;
+        std::vector<int> field;
+        std::set<int> cells;
+        for (const auto& p : paths_) {
+            if (p.id == name || p.node == name || (name == "river" && p.cls == "river") || (name == "road" && p.cls == "main")) {
+                cells.insert(p.cells.begin(), p.cells.end());
+            }
+        }
+        if (!cells.empty()) {
+            field.assign(W * H, 1 << 20);
+            std::deque<int> todo;
+            for (int c : cells) {
+                field[c] = 0;
+                todo.push_back(c);
+            }
+            while (!todo.empty()) {
+                const int c = todo.front();
+                todo.pop_front();
+                for (const auto& [ddx, ddy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                    const int nx = c % W + ddx, ny = c / W + ddy;
+                    if (!In(nx, ny) || field[Cell(nx, ny)] <= field[c] + 1) continue;
+                    field[Cell(nx, ny)] = field[c] + 1;
+                    todo.push_back(Cell(nx, ny));
+                }
+            }
+        }
+        auto& stored = pathDistance[name] = std::move(field);
+        return stored.empty() ? nullptr : &stored;
+    };
     auto interest = [&](const Zone& z, int c) {
         const double x = c % W + 0.5, y = c / W + 0.5;
         double score = 0;
+        // Its relations weigh more than its general preferences: someone asked for them.
+        for (const auto& r : z.rel) {
+            const std::string type = r.value("type", "near"), to = r.value("to", "");
+            double tx = 0, ty = 0, distance = 0;
+            bool known = false;
+            if (auto it = zoneIndex.find(to); it != zoneIndex.end() && zones[it->second].seed >= 0 && it->second != static_cast<size_t>(&z - &zones[0])) {
+                const int seed = zones[it->second].seed;
+                tx = seed % W + 0.5, ty = seed / W + 0.5;
+                distance = std::hypot(x - tx, y - ty);
+                known = true;
+            } else if (const std::vector<int>* field = distanceToPath(to)) {
+                distance = (*field)[c];
+                // A direction from a path: from its nearest point, along the field's gradient isn't kept, so its middle.
+                double sx = 0, sy = 0;
+                int n = 0;
+                for (const auto& p : paths_) {
+                    if (p.id == to || p.node == to || (to == "river" && p.cls == "river")) {
+                        for (int pc : p.cells) sx += pc % W, sy += pc / W, ++n;
+                    }
+                }
+                tx = n ? sx / n : x, ty = n ? sy / n : y;
+                known = true;
+            }
+            if (!known) continue;
+            double v = 0;
+            const double reach = std::max(4.0, half * 0.35);
+            if (type == "near" || type == "adjacent" || type == "along" || type == "beside") v = 1 - std::min(2.0, distance / reach);
+            else if (type == "far" || type == "away-from") v = std::min(1.0, distance / half) * 2 - 1;
+            else if (type == "south-of") v = std::clamp((y - ty) / reach, -1.0, 1.0);
+            else if (type == "north-of") v = std::clamp((ty - y) / reach, -1.0, 1.0);
+            else if (type == "east-of") v = std::clamp((x - tx) / reach, -1.0, 1.0);
+            else if (type == "west-of") v = std::clamp((tx - x) / reach, -1.0, 1.0);
+            else continue;
+            // A direction still wants it close by (south of the docks, not the far south).
+            if (type.ends_with("-of")) v = 0.7 * v + 0.3 * (1 - std::min(2.0, distance / (2 * reach)));
+            score += 2.0 * v;
+        }
         for (const auto& [criterion, weightJson] : z.prefers.items()) {
             const double weight = weightJson.is_number() ? weightJson.get<double>() : 0;
             double v = 0; // in [-1, 1]
@@ -931,10 +1010,35 @@ void Solver::Partition(const json& s, int region) {
         for (const auto& [k, v] : z.prefers.items()) s += v.is_number() ? std::abs(v.get<double>()) : 0;
         return s;
     };
-    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return strength(zones[a]) > strength(zones[b]); });
+    auto dependsOnZone = [&](const Zone& z) {
+        for (const auto& r : z.rel) {
+            if (zoneIndex.contains(r.value("to", ""))) return true;
+        }
+        return false;
+    };
+    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        // Kept seeds first, then zones free of other zones, then the strongest preferences.
+        if ((zones[a].keep >= 0) != (zones[b].keep >= 0)) return zones[a].keep >= 0;
+        if (dependsOnZone(zones[a]) != dependsOnZone(zones[b])) return !dependsOnZone(zones[a]);
+        return strength(zones[a]) > strength(zones[b]);
+    });
+    std::vector<uint8_t> open(W * H, 0);
+    for (int c : available) open[c] = 1;
     Rng rng = StreamFor(s);
     const double minApart = std::sqrt(room / zones.size()) * 0.8;
     for (size_t k : order) {
+        // Where it was last time, if that's still open land (a revision keeps the zones it isn't about).
+        if (zones[k].keep >= 0) {
+            int best = -1;
+            double nearest = 1e18;
+            for (int c : available) {
+                const double d = std::hypot(c % W - zones[k].keep % W, c / W - zones[k].keep / W);
+                if (d < nearest) nearest = d, best = c;
+                if (d == 0) break;
+            }
+            zones[k].seed = best;
+            continue;
+        }
         double best = -1e18;
         for (size_t i = 0; i < available.size(); i += std::max<size_t>(1, available.size() / 3000)) {
             const int c = available[i];
@@ -1002,6 +1106,7 @@ void Solver::Partition(const json& s, int region) {
             continue;
         }
         AddRegion(z.id, z.node, s.value("id", ""), region, z.cells, z.module);
+        if (z.seed >= 0) zoneSeeds_[z.id] = z.seed;
     }
     instancesOf_[s.value("id", "")] = static_cast<int>(zones.size());
 }
@@ -1858,6 +1963,7 @@ SolvedLayout Solver::Run() {
     for (const auto& r : regions_) {
         json one = {{"id", r.id}, {"node", r.node}, {"statement", r.statement}, {"parent", r.parent >= 0 ? json(regions_[r.parent].id) : json()},
                     {"bounds", {r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0}}, {"area", r.cells.size()}, {"cells", EncodeCells(r.cells, W)}};
+        if (auto seed = zoneSeeds_.find(r.id); seed != zoneSeeds_.end() && r.statement.ends_with("zones")) one["seed"] = {seed->second % W, seed->second / W};
         if (r.facing) one["facing"] = std::string(1, r.facing);
         if (!r.module.empty()) one["module"] = r.module;
         regions.push_back(one);

@@ -78,8 +78,9 @@ nlohmann::json FallbackZoneAnswer(const Ontology& ontology, const nlohmann::json
 // and what each zone can hold.
 nlohmann::json RevisionInput(const Ontology& ontology, const nlohmann::json& spec, const nlohmann::json& solved);
 nlohmann::json RevisionContext(const Ontology& ontology, const nlohmann::json& brief, const nlohmann::json& spec);
-// Applies its changes: "set" (fields of a part), "zone" (a zone's parcels,
-// all of them), "add" (a zone, network or site at the top), "remove". Returns
+// Applies its changes: "move" (where a part goes: its relations), "set"
+// (fields of a part), "zone" (a zone's parcels, all of them), "add" (a zone,
+// network or site at the top), "remove". Returns
 // the changes it couldn't make, as warnings. The fixes and the expansion
 // follow, as after planning.
 std::vector<PlaceProblem> ApplyRevision(const Ontology& ontology, const nlohmann::json& brief, nlohmann::json& spec,

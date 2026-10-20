@@ -142,6 +142,28 @@ json ListBuilds(const fs::path& projectRoot) {
     return out;
 }
 
+bool PlaceBuild::Mentions(const std::string& request, const std::string& zoneId) const {
+    auto lower = [](std::string t) {
+        for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return t;
+    };
+    const std::string text = lower(request);
+    std::string spaced = lower(zoneId);
+    std::replace(spaced.begin(), spaced.end(), '-', ' ');
+    if (text.find(lower(zoneId)) != std::string::npos || text.find(spaced) != std::string::npos) return true;
+    json spec = spec_;
+    if (const json* zone = SpecNode(spec, zoneId)) {
+        if (const ModuleDef* m = host_.ontology().Module(zone->value("module", ""))) {
+            const std::string name = lower(m->name);
+            if (text.find(name) != std::string::npos) return true;
+            // Its first word ("residential" for the residential ward), if it's a word of its own.
+            const std::string first = name.substr(0, name.find(' '));
+            if (first.size() >= 4 && first != "ward" && text.find(first) != std::string::npos) return true;
+        }
+    }
+    return false;
+}
+
 // --- Requests to the AI --------------------------------------------------------------
 
 bool PlaceBuild::Send(Pending what) {
@@ -581,6 +603,8 @@ void PlaceBuild::Solve() {
     options.seed = Fnv1a(id_);
     options.side = BriefSide();
     options.isoGrid = host_.isoGrid ? host_.isoGrid() : true;
+    options.keepSeeds = keepSeeds_;
+    keepSeeds_.clear();
     // Fitting rounds: a zone that couldn't place all it's planned to gets more
     // land (and the site grows if it must), until each holds its parcels or
     // four rounds are done; the best layout is kept.
@@ -751,7 +775,8 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
     }
     // What it was, so Undo can go back.
     const int n = static_cast<int>(revisions_.size()) + 1;
-    WriteJson(Folder() / "revisions" / (std::to_string(n) + ".json"), {{"brief", brief_}, {"spec", spec_}, {"stage", beforeRevision_}});
+    WriteJson(Folder() / "revisions" / (std::to_string(n) + ".json"),
+              {{"brief", brief_}, {"spec", spec_}, {"stage", beforeRevision_}, {"solved", solved_}});
     entry["undo"] = n;
     json notes = json::array();
     // The Brief's totals, if the change needs them; kept only if the Brief still follows the rules.
@@ -767,7 +792,30 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
             notes.push_back("Kept the Brief as it was: " + errors.front().where + " " + errors.front().message);
         }
     }
-    for (const auto& p : ApplyRevision(ontology, brief_, spec_, changes)) notes.push_back(p.where + ": " + p.message);
+    // A request about one part changes that part: re-planning or removing a
+    // zone it doesn't name is left out (the AI review may touch any).
+    json kept = json::array();
+    std::set<std::string> moving;
+    for (const auto& change : changes) {
+        const std::string op = change.value("op", "");
+        std::string target = change.contains("node") && change["node"].is_string() ? change["node"].get<std::string>()
+                             : change.contains("node") && change["node"].is_object() ? change["node"].value("id", "")
+                                                                                       : "";
+        const std::string zone = target.substr(0, target.find('/'));
+        if (!review && (op == "zone" || op == "remove") && !Mentions(what.node, zone)) {
+            notes.push_back(zone + ": left as it was; the request didn't ask about it");
+            continue;
+        }
+        kept.push_back(change);
+        moving.insert(zone);
+    }
+    for (const auto& p : ApplyRevision(ontology, brief_, spec_, kept)) notes.push_back(p.where + ": " + p.message);
+    // The zones it changed are placed anew; the others keep their place.
+    keepSeeds_.clear();
+    for (const auto& r : solved_.value("regions", json::array())) {
+        if (r.value("statement", "") != "site/zones" || !r.contains("seed") || moving.contains(r.value("id", ""))) continue;
+        keepSeeds_[r.value("id", "")] = {r["seed"][0].get<int>(), r["seed"][1].get<int>()};
+    }
     entry["notes"] = notes;
     revisions_.push_back(entry);
     // The rest as after planning: the expansion, the fixes, the checks; then laid out again.
@@ -788,6 +836,13 @@ std::string PlaceBuild::Undo() {
         if (!saved.is_object()) return "the saved plan is missing";
         brief_ = saved["brief"];
         spec_ = saved["spec"];
+        // Laid out where it was: every zone from its old seed.
+        keepSeeds_.clear();
+        for (const auto& r : saved.value("solved", json::object()).value("regions", json::array())) {
+            if (r.value("statement", "") == "site/zones" && r.contains("seed")) {
+                keepSeeds_[r.value("id", "")] = {r["seed"][0].get<int>(), r["seed"][1].get<int>()};
+            }
+        }
         (*it)["undone"] = true;
         WriteJson(Folder() / "brief.json", brief_);
         WriteJson(Folder() / "spec.json", spec_);

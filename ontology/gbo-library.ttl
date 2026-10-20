@@ -7869,6 +7869,14 @@ gbx:crosses
     gbo:maxMembers 2 ;
     gbo:hardByDefault false .
 
+gbx:east-of
+    a gbo:RelationType ;
+    rdfs:label "east-of"@en ;
+    rdfs:comment "a lies right of (east of) b on the map"@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
 gbx:edge
     a gbo:RelationType ;
     rdfs:label "edge"@en ;
@@ -7954,6 +7962,14 @@ gbx:near
     gbo:argument "d0", "d1" ;
     gbo:hardByDefault false .
 
+gbx:north-of
+    a gbo:RelationType ;
+    rdfs:label "north-of"@en ;
+    rdfs:comment "a lies above (north of) b on the map"@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
 gbx:on
     a gbo:RelationType ;
     rdfs:label "on"@en ;
@@ -7987,6 +8003,14 @@ gbx:repeat
     gbo:argument "spacing" ;
     gbo:hardByDefault false .
 
+gbx:south-of
+    a gbo:RelationType ;
+    rdfs:label "south-of"@en ;
+    rdfs:comment "a lies below (south of) b on the map"@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
 gbx:symmetric
     a gbo:RelationType ;
     rdfs:label "symmetric"@en ;
@@ -8002,6 +8026,14 @@ gbx:visible-from
     gbo:minMembers 2 ;
     gbo:maxMembers 2 ;
     gbo:argument "radius" ;
+    gbo:hardByDefault false .
+
+gbx:west-of
+    a gbo:RelationType ;
+    rdfs:label "west-of"@en ;
+    rdfs:comment "a lies left of (west of) b on the map"@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
     gbo:hardByDefault false .
 
 # --- Design rules ---

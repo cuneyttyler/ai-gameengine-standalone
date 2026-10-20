@@ -463,3 +463,68 @@ TEST(BuildRobustTest, ThePlanIsLaidOutAsPlanned) {
         EXPECT_EQ((*zone)["quantity"]["area"]["area"], r["area"]);
     }
 }
+
+namespace {
+
+std::map<std::string, std::pair<int, int>> ZoneSeeds(const json& solved) {
+    std::map<std::string, std::pair<int, int>> out;
+    for (const auto& r : solved["regions"]) {
+        if (r.value("statement", "") == "site/zones" && r.contains("seed")) out[r["id"]] = {r["seed"][0].get<int>(), r["seed"][1].get<int>()};
+    }
+    return out;
+}
+
+double ToRiver(const json& solved, std::pair<int, int> at) {
+    double best = 1e9;
+    for (const auto& p : solved["paths"]) {
+        if (p.value("class", "") != "river") continue;
+        for (const auto& c : p["cells"]) best = std::min(best, std::hypot(c[0].get<int>() - at.first, c[1].get<int>() - at.second));
+    }
+    return best;
+}
+
+} // namespace
+
+// "Put the residential ward below the docks, near the river" (a user's
+// request): the ward moves there; the zones it doesn't name stay where they
+// were; a re-plan of a zone it doesn't name is left out.
+TEST(BuildRobustTest, ARevisionMovesWhatItsAskedToAndKeepsTheRest) {
+    Fixture f("aige_build_move");
+    PlaceBuild build(f.Host());
+    const json off = {{"ok", false}, {"errors", json::array({"No AI provider configured"})}};
+    ASSERT_EQ(build.Start("a village by a river with a market and a temple ward"), "");
+    f.AnswerAll(build, off);
+    ASSERT_EQ(build.Step("assets"), "");
+    ASSERT_EQ(build.Confirm(), "");
+    f.AnswerAll(build, off);
+    ASSERT_EQ(build.Stage(), "plan") << build.State()["status"];
+    const json before = build.Solved();
+    const auto seeds = ZoneSeeds(before);
+    ASSERT_TRUE(seeds.contains("residential-ward") && seeds.contains("market-ward") && seeds.contains("temple-ward"))
+        << json(seeds).dump();
+
+    ASSERT_EQ(build.Revise("put the residential ward south of the market ward, near the river"), "");
+    const json changes = json::array({{{"op", "move"}, {"node", "residential-ward"},
+                                       {"rel", json::array({{{"type", "south-of"}, {"to", "market-ward"}}, {{"type", "near"}, {"to", "river"}}})}},
+                                      {{"op", "zone"}, {"node", "temple-ward"}, {"children", json::array()}}});
+    f.answered.insert(static_cast<int>(f.sent.size()));
+    build.OnResponse(static_cast<int>(f.sent.size()), {{"ok", true}, {"answer", {{"summary", "Moved it."}, {"changes", changes}}}});
+    f.AnswerAll(build, off);
+    ASSERT_EQ(build.Stage(), "plan");
+    const json after = build.Solved();
+    const auto moved = ZoneSeeds(after);
+    // The others where they were.
+    EXPECT_EQ(moved.at("market-ward"), seeds.at("market-ward"));
+    EXPECT_EQ(moved.at("temple-ward"), seeds.at("temple-ward"));
+    // The ward south of the market, by the river.
+    EXPECT_GT(moved.at("residential-ward").second, moved.at("market-ward").second);
+    EXPECT_LT(ToRiver(after, moved.at("residential-ward")), std::max(8.0, ToRiver(before, seeds.at("residential-ward"))));
+    // The temple ward's re-plan wasn't asked for.
+    json spec = build.Spec();
+    EXPECT_FALSE((*SpecNode(spec, "temple-ward"))["children"].empty());
+    EXPECT_NE(build.Revisions().back()["notes"].dump().find("temple-ward: left as it was"), std::string::npos)
+        << build.Revisions().back().dump();
+    // Undo: back where it was.
+    ASSERT_EQ(build.Undo(), "");
+    EXPECT_EQ(ZoneSeeds(build.Solved()).at("residential-ward"), seeds.at("residential-ward"));
+}

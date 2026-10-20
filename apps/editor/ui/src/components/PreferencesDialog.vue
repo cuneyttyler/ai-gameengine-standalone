@@ -71,6 +71,20 @@ function close(): void {
           />
           Apply small tweaks directly (with Undo)
         </label>
+        <div class="row model">
+          <span>Model</span>
+          <select
+            :value="editorState.ai.provider"
+            :disabled="!editorState.ai.enabled"
+            @change="sendToHost({ type: 'ai:setProvider', provider: ($event.target as HTMLSelectElement).value })"
+          >
+            <option value="mistral">Mistral{{ editorState.ai.available.mistral === false ? ' (no key)' : '' }}</option>
+            <option value="claude">Claude{{ editorState.ai.available.claude === false ? ' (no key)' : '' }}</option>
+          </select>
+          <span v-if="editorState.ai.model" class="muted">{{ editorState.ai.model }}</span>
+        </div>
+        <p v-if="editorState.ai.providerError" class="error">{{ editorState.ai.providerError }}</p>
+        <p class="muted">Keys go in ai_service/.env (MISTRAL_API_KEY, ANTHROPIC_API_KEY); they never leave this computer except to that model.</p>
       </section>
       <section>
         <h4>Project</h4>
@@ -131,6 +145,15 @@ h4 {
   align-items: center;
   gap: 8px;
   padding: 3px 0;
+}
+.model {
+  margin-top: 6px;
+}
+.model select {
+  border-radius: 0;
+}
+.error {
+  color: #f38ba8;
 }
 .muted {
   opacity: 0.6;

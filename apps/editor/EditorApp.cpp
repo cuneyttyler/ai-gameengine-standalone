@@ -551,6 +551,13 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         }
     } else if (type == "ai:setEnabled") {
         SetAiEnabled(message.value("enabled", true));
+    } else if (type == "ai:setProvider") {
+        if (userPrefs_) {
+            userPrefs_->Set("aiProvider", message.value("provider", "mistral"));
+            userPrefs_->Set("aiModel", message.value("model", ""));
+        }
+        SendProvider();
+        post_(AiStatusJson());
     } else if (type == "ai:setReviewPolicy") {
         if (userPrefs_) {
             userPrefs_->Set("reviewPolicy", ReviewPolicyName(ParseReviewPolicy(message.value("policy", ""))));
@@ -2669,6 +2676,15 @@ void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
     post_(AiStatusJson());
 }
 
+void EditorApp::SendProvider() {
+    if (!Ai() || Ai()->GetState() != AiClient::State::Ready || !userPrefs_) return;
+    const nlohmann::json provider = userPrefs_->Get("aiProvider", "mistral");
+    const nlohmann::json model = userPrefs_->Get("aiModel", "");
+    providerRequest_ = Ai()->Request("PUT", "/provider",
+                                     {{"provider", provider.is_string() ? provider : nlohmann::json("mistral")},
+                                      {"model", model.is_string() ? model : nlohmann::json("")}});
+}
+
 AiClient* EditorApp::Ai() {
     return aiConnection_ ? aiConnection_->Client() : nullptr;
 }
@@ -2706,6 +2722,11 @@ nlohmann::json EditorApp::AiStatusJson() {
             {"enabled", choice == AiChoice::On},
             {"choice", choice == AiChoice::On ? "on" : choice == AiChoice::Off ? "off" : "undecided"},
             {"reviewPolicy", ReviewPolicyName(CurrentReviewPolicy())},
+            {"provider", userPrefs_ ? userPrefs_->Get("aiProvider", "mistral") : nlohmann::json("mistral")},
+            {"model", providerStatus_.value("model", "")},
+            {"providerError", providerStatus_.value("ok", true) ? "" : (providerStatus_.contains("errors") && !providerStatus_["errors"].empty()
+                                                                       ? providerStatus_["errors"][0].get<std::string>() : "")},
+            {"available", providerStatus_.value("available", nlohmann::json::object())},
             {"text", ai ? ai->StatusText() : text}};
 }
 
@@ -2715,9 +2736,14 @@ void EditorApp::PollAi() {
     }
     while (auto result = Ai()->Poll()) {
         if (result->kind == AiClient::Result::Kind::Status) {
+            if (Ai()->GetState() == AiClient::State::Ready) SendProvider();
             post_(AiStatusJson());
         } else if (result->kind == AiClient::Result::Kind::Response) {
-            if (build_ && build_->Owns(result->requestId)) {
+            if (result->requestId != 0 && result->requestId == providerRequest_) {
+                providerRequest_ = 0;
+                providerStatus_ = result->body.is_object() ? result->body : nlohmann::json{{"ok", false}};
+                post_(AiStatusJson());
+            } else if (build_ && build_->Owns(result->requestId)) {
                 build_->OnResponse(result->requestId, result->body);
                 PostBuild();
             } else if (result->requestId == worldSearchRequest_) {

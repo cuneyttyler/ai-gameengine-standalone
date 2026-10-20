@@ -88,6 +88,84 @@ class MistralProvider:
         return Completion(text=text, usage=usage, model=response.model or self.model, thinking=thinking)
 
 
+class ClaudeProvider:
+    """Anthropic's Claude (Claude Opus 5.5 by default). It thinks before it
+    answers (adaptive thinking), so steps run in native mode: the thinking comes
+    back apart from the answer (a summary of it). Sees images, so it also
+    looks at maps and art."""
+
+    name = "claude"
+    reasoning = True
+
+    def __init__(self, api_key: str | None = None, model: str = "claude-opus-5-5", effort: str = "high",
+                 timeout_s: float = 600.0):
+        import anthropic  # imported lazily so tests don't need the SDK configured
+
+        self.model = model
+        self.effort = effort
+        self._anthropic = anthropic
+        self._client = anthropic.Anthropic(api_key=api_key, timeout=timeout_s) if api_key else anthropic.Anthropic(timeout=timeout_s)
+
+    def complete(self, messages: list[dict]) -> Completion:
+        return self._call(messages)
+
+    def complete_text(self, messages: list[dict]) -> Completion:
+        return self._call(messages)
+
+    @staticmethod
+    def _convert(messages: list[dict]) -> tuple[str, list[dict]]:
+        """The service's chat messages (OpenAI-style, as Mistral takes them) as
+        Claude's: system text apart, images as base64 blocks."""
+        system, out = [], []
+        for message in messages:
+            role, content = message.get("role", "user"), message.get("content", "")
+            if role == "system":
+                system.append(content if isinstance(content, str) else
+                              "\n".join(c.get("text", "") for c in content if isinstance(c, dict)))
+                continue
+            if isinstance(content, list):
+                blocks = []
+                for chunk in content:
+                    if chunk.get("type") == "image_url":
+                        url = chunk.get("image_url", "")
+                        url = url.get("url", "") if isinstance(url, dict) else url
+                        header, _, data = url.partition(",")
+                        media = header.removeprefix("data:").split(";")[0] or "image/png"
+                        blocks.append({"type": "image", "source": {"type": "base64", "media_type": media, "data": data}})
+                    elif chunk.get("type") == "text":
+                        blocks.append({"type": "text", "text": chunk.get("text", "")})
+                content = blocks
+            out.append({"role": "assistant" if role == "assistant" else "user", "content": content})
+        return "\n\n".join(system), out
+
+    def _call(self, messages: list[dict]) -> Completion:
+        system, converted = self._convert(messages)
+        try:
+            # Streamed (a long plan takes a while); a declined request is retried
+            # on another model by the server (refusal fallbacks).
+            with self._client.beta.messages.stream(
+                model=self.model,
+                max_tokens=64000,
+                system=system or self._anthropic.NOT_GIVEN,
+                messages=converted,
+                thinking={"type": "adaptive", "display": "summarized"},
+                output_config={"effort": self.effort},
+                betas=["server-side-fallback-2026-07-01"],
+                fallbacks="default",
+            ) as stream:
+                response = stream.get_final_message()
+        except self._anthropic.APIStatusError as error:
+            raise ProviderError(f"Claude request failed ({error.status_code}): {error.message}") from error
+        except self._anthropic.APIConnectionError as error:
+            raise ProviderError(f"Claude request failed: {error}") from error
+        if response.stop_reason == "refusal":
+            raise ProviderError("Claude declined the request")
+        text = "".join(b.text for b in response.content if b.type == "text")
+        thinking = "\n".join(b.thinking for b in response.content if b.type == "thinking" and b.thinking)
+        usage = Usage(inputTokens=response.usage.input_tokens or 0, outputTokens=response.usage.output_tokens or 0, requests=1)
+        return Completion(text=text, usage=usage, model=response.model or self.model, thinking=thinking)
+
+
 class ScriptedProvider:
     """For tests and offline development: answers from a list (or a function
     of the messages), recording every request it receives."""

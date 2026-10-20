@@ -29,8 +29,9 @@ def client_with(answers, schema=None):
 
 def test_health_reports_provider_and_schema(schema):
     client, _ = client_with([], schema=None)
-    assert client.get("/health").json() == {"ok": True, "provider": "scripted", "model": "scripted",
-                                            "schemaLoaded": False}
+    health = client.get("/health").json()
+    assert health.pop("usage")["requests"] == 0  # every model call so far
+    assert health == {"ok": True, "provider": "scripted", "model": "scripted", "schemaLoaded": False}
 
 
 def test_editor_sends_its_schema(schema_json):

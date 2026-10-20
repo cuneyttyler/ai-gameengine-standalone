@@ -28,7 +28,7 @@ from .consistency import check_consistency, writing_from_operations
 from .images import ImageGenerator, MistralImageGenerator, generate_sprites
 from .places import interpret, plan_root, plan_zone, repair_brief, repair_node, review_layout, revise_plan
 from .vision import describe_assets, map_chunk
-from .providers import MistralEmbedder, MistralProvider, Provider, ProviderError
+from .providers import ClaudeProvider, MistralEmbedder, MistralProvider, Provider, ProviderError
 from .service import propose
 from .world import Embedder, WorldIndex, format_entry, load_entries
 
@@ -95,6 +95,11 @@ class RepairNodeRequest(BaseModel):
     context: dict
 
 
+class ProviderRequest(BaseModel):
+    provider: str          # mistral or claude
+    model: str = ""        # empty: the provider's default
+
+
 class RevisePlanRequest(BaseModel):
     brief: dict
     plan: dict             # the Spec's zones and their parcels (engine/places Planner PlanForRevision)
@@ -131,12 +136,31 @@ class ProposeResponse(BaseModel):
     model: str = ""
 
 
-def default_provider() -> Provider | None:
+PROVIDERS = ("mistral", "claude")
+
+
+def available_providers() -> dict[str, bool]:
+    """Which models this machine has keys for (in ai_service/.env or the environment)."""
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-    key = os.environ.get("MISTRAL_API_KEY")
-    if not key:
+    return {"mistral": bool(os.environ.get("MISTRAL_API_KEY")),
+            "claude": bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))}
+
+
+def make_provider(name: str, model: str | None = None) -> Provider | None:
+    """The model that writes: Mistral (MISTRAL_API_KEY) or Claude (ANTHROPIC_API_KEY)."""
+    if not available_providers().get(name):
         return None
-    return MistralProvider(api_key=key, model=os.environ.get("MISTRAL_MODEL", DEFAULT_MODEL))
+    if name == "claude":
+        return ClaudeProvider(api_key=os.environ.get("ANTHROPIC_API_KEY") or None,
+                              model=model or os.environ.get("CLAUDE_MODEL", "claude-opus-5-5"),
+                              effort=os.environ.get("CLAUDE_EFFORT", "high"))
+    return MistralProvider(api_key=os.environ["MISTRAL_API_KEY"], model=model or os.environ.get("MISTRAL_MODEL", DEFAULT_MODEL))
+
+
+def default_provider() -> Provider | None:
+    """AIGE_PROVIDER picks it (mistral, the default, or claude); the editor can change it (PUT /provider)."""
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    return make_provider(os.environ.get("AIGE_PROVIDER", "mistral"))
 
 
 def default_checker() -> Provider | None:
@@ -190,6 +214,7 @@ def create_app(
         "checker": checker,
         "images": images,
         "vision": vision,
+        "mistralVision": vision,
         "root": None,
     }
 
@@ -201,6 +226,7 @@ def create_app(
             "provider": current.name if current else None,
             "model": current.model if current else None,
             "schemaLoaded": state["schema"] is not None,
+            "usage": state["usage"].model_dump(),  # every model call so far
         }
 
     @app.put("/schema")
@@ -320,6 +346,27 @@ def create_app(
     @app.post("/places/repair-node")
     def places_repair_node(request: RepairNodeRequest) -> dict:
         return _planning(lambda p: repair_node(p, request.node, request.problems, request.context))
+
+    @app.get("/provider")
+    def provider_info() -> dict:
+        current: Provider | None = state["provider"]
+        return {"ok": True, "provider": getattr(current, "name", None), "model": getattr(current, "model", None),
+                "available": available_providers()}
+
+    @app.put("/provider")
+    def set_provider(request: ProviderRequest) -> dict:
+        """The model that writes (and, for Claude, looks at maps): the editor's Preferences."""
+        if request.provider not in PROVIDERS:
+            return {"ok": False, "errors": [f"Unknown provider {request.provider}: one of {', '.join(PROVIDERS)}"]}
+        chosen = make_provider(request.provider, request.model or None)
+        if chosen is None:
+            key = "ANTHROPIC_API_KEY" if request.provider == "claude" else "MISTRAL_API_KEY"
+            return {"ok": False, "errors": [f"No key for {request.provider}: set {key} in ai_service/.env"],
+                    "available": available_providers()}
+        state["provider"] = chosen
+        # Claude sees images itself; with Mistral, its vision model looks at them.
+        state["vision"] = chosen if request.provider == "claude" else (state.get("mistralVision") or state["vision"])
+        return {"ok": True, "provider": chosen.name, "model": chosen.model, "available": available_providers()}
 
     @app.post("/places/revise-plan")
     def places_revise_plan(request: RevisePlanRequest) -> dict:

@@ -200,6 +200,10 @@ private:
     StoryLibrary story_; // dialogue/ and quests/ (3.2b), reloaded when Play starts
     ScheduleLibrary schedules_; // schedules/ (3.5), reloaded when Play starts
     int worldSearchRequest_ = 0;
+    // The model the AI service writes with (File ▸ Preferences ▸ AI): sent when it's ready.
+    void SendProvider();
+    int providerRequest_ = 0;
+    nlohmann::json providerStatus_ = nlohmann::json::object(); // its answer: {ok, provider, model, available, errors}
     // Contradiction checks (development_plan.md 3.3) in flight: request id ->
     // the proposal they're for; and the World tab's "Check against canon".
     std::map<int, int> consistencyRequests_;
