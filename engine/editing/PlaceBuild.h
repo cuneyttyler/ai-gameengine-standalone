@@ -1,6 +1,7 @@
 #pragma once
 
 #include "assets/Catalog.h"
+#include "assets/Sourcing.h"
 #include "places/Brief.h"
 #include "places/Ontology.h"
 #include "places/PlaceValidate.h"
@@ -115,6 +116,19 @@ public:
     std::set<std::string> TakeChanged();
     // Whether a request (in the AI panel) is about this place: it names a part of it.
     bool AboutThisPlace(const std::string& request) const;
+    // --- Sourcing the art (7.9) -------------------------------------------------
+    // The asset plan's pending needs ({key, action: generate | web, ...}) go to the
+    // Art tool or the web tool; each result is described and checked by the vision
+    // model (a generated one is tried again, up to 3 times, with the reasons).
+    // Returns false if nothing could be sent (no AI): the build goes on with placeholders.
+    bool StartSourcing(const nlohmann::json& pending, const SourcingSettings& settings);
+    // What was tried per need (the asset plan's next pass moves on from it).
+    const std::map<std::string, Tried>& TriedSources() const { return tried_; }
+    // Sourcing is over: the build can go on (the editor refreshes its assets first).
+    bool SourcingDone() const { return sourcingDone_; }
+    void ClearSourcingDone() { sourcingDone_ = false; }
+    // The new assets' descriptions and provenance, for their .meta: [{path, fields}], then cleared.
+    nlohmann::json TakeNewAssets();
     // ④ Build: from a laid-out plan. Returns why not, or "".
     std::string StartBuilding();
     // The editor's scene build is done: {assets, report, verify, repairs, after}.
@@ -223,6 +237,19 @@ private:
     std::map<std::string, std::pair<int, int>> revisionKeep_;     // its kept seeds, for the retries
     // Where the last fitting ended (zone scales, the site's side): the next layout starts there.
     std::set<std::string> locks_;   // parts kept as they are (7.8)
+    struct Sourcing {
+        nlohmann::json need;      // the pending need
+        int attempts = 0;
+        std::string reasons;      // why the last try didn't pass
+        bool done = false;
+    };
+    std::map<std::string, Sourcing> sourcing_;
+    std::map<std::string, Tried> tried_;
+    nlohmann::json newAssets_ = nlohmann::json::array();
+    bool sourcingDone_ = false;
+    bool SendArt(const std::string& key);
+    void SourcingStep(const Pending& what, const nlohmann::json& body);
+    void FinishSourcing();
     std::set<std::string> changed_; // parts laid out again by the last edit
     // Lays these parts out again from the plan, everything else as it was (a partial solve).
     void SolveParts(const std::set<std::string>& parts, const std::string& why);

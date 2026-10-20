@@ -4,6 +4,8 @@
 #include "assets/SceneIO.h"
 #include "assets/TextureCook.h"
 #include "editing/SceneTools.h"
+#include "gameplay/Archetypes.h"
+#include "places/Brief.h"
 #include "gameplay/Components.h"
 #include "gameplay/EngineReflection.h"
 #include "gameplay/TileGrid.h"
@@ -221,6 +223,8 @@ struct Need {
     std::string key, role, layer, kind; // kind: building, prop, decal, fence
     std::vector<std::string> concepts;
     int w = 1, h = 1;
+    bool essential = true;
+    std::string node; // a Spec node that has it (for the component's source policy)
 };
 
 // What a solved object needs: its slot's role, what it must show (the mix's
@@ -242,6 +246,7 @@ Need NeedOf(const Ontology& ontology, const json& spec, const json& object) {
             }
         }
         need.role = bind->role;
+        need.essential = slot->essential;
         need.concepts = bind->conceptList;
         if (!bind->concepts.empty() && node) {
             const json v = node->contains("quality") ? (*node)["quality"].value(bind->concepts, json()) : json();
@@ -249,6 +254,7 @@ Need NeedOf(const Ontology& ontology, const json& spec, const json& object) {
         }
     }
     if (need.role.empty()) need.role = object.value("slot", "thing");
+    need.node = object.value("node", "");
     if (object.contains("module") && object["module"].is_string()) need.concepts = {object["module"].get<std::string>()};
     need.kind = need.layer == "building" ? "building" : need.layer == "decal" ? "decal" : "prop";
     std::string concepts;
@@ -265,7 +271,29 @@ float FootprintPixels(int w, int h, const PlaceSceneOptions& options) {
 // The prefab showing a catalog entry: an existing one of the whole image, or a new one.
 std::string PrefabForEntry(PrefabLibrary& prefabs, const AssetDatabase& assets, const CatalogEntry& entry, bool solid,
                            const PlaceSceneOptions& options) {
-    if (entry.id.find('#') != std::string::npos) return {}; // one object of a sheet: not yet (7.9)
+    if (entry.id.find('#') != std::string::npos) {
+        // One object of a sheet (a web tileset): a prefab showing only its part of the image.
+        const std::string path = "prefabs/sheets/" + PrefabSlug(entry.id) + ".prefab";
+        if (prefabs.Find(path)) return path;
+        const auto image = DecodeImage(prefabs.GetProject().Resolve(entry.path));
+        if (!image || image->width == 0 || entry.rect.Empty()) return {};
+        Registry scratch;
+        const float width = std::max(1.0f, entry.spriteW) * options.iso.tileWidth;
+        const float height = width * static_cast<float>(entry.rect.h) / std::max(1, entry.rect.w);
+        Entity e = CreateProp(scratch, 0.0f, 0.0f, entry.path, width, height);
+        auto& sprite = scratch.get<Sprite>(e);
+        sprite.u0 = static_cast<float>(entry.rect.x) / image->width;
+        sprite.v0 = static_cast<float>(entry.rect.y) / image->height;
+        sprite.u1 = static_cast<float>(entry.rect.x + entry.rect.w) / image->width;
+        sprite.v1 = static_cast<float>(entry.rect.y + entry.rect.h) / image->height;
+        if (solid) scratch.emplace<Obstacle>(e);
+        scratch.emplace_or_replace<Name>(e, entry.name.empty() ? entry.id : entry.name);
+        std::error_code ec;
+        fs::create_directories(prefabs.GetProject().Resolve("prefabs/sheets"), ec);
+        if (!prefabs.SaveAsPrefab(scratch, e, path)) return {};
+        prefabs.Refresh();
+        return prefabs.Find(path) ? path : std::string();
+    }
     for (const auto& info : prefabs.Prefabs()) {
         if (!info.isTile && info.texture == entry.path && info.u0 <= 0.001f && info.v0 <= 0.001f && info.u1 >= 0.999f && info.v1 >= 0.999f) {
             return info.path;
@@ -422,9 +450,33 @@ std::pair<int, int> FreeOrigin(Registry& registry, const std::string& place, int
 // --- The asset plan ------------------------------------------------------------------------------
 
 json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& solved, const Catalog& catalog, PrefabLibrary& prefabs,
-                     const AssetDatabase& assets, const TerrainSet& terrains, const PlaceSceneOptions& options) {
+                     const AssetDatabase& assets, const TerrainSet& terrains, const PlaceSceneOptions& options, const AssetSourcing* sourcing) {
     std::map<std::string, std::pair<Need, int>> needs; // key -> need, uses
-    json out = {{"needs", json::array()}, {"terrains", json::object()}, {"pieces", json::object()}, {"byObject", json::object()}};
+    json out = {{"needs", json::array()}, {"terrains", json::object()}, {"pieces", json::object()}, {"byObject", json::object()},
+                {"pending", json::array()}};
+    if (sourcing) {
+        json extra = json::array();
+        for (const auto& l : sourcing->settings.licences.extra) extra.push_back(l);
+        out["licencePolicy"] = {{"shareAlike", sourcing->settings.licences.shareAlike}, {"extra", extra}};
+    }
+    // The policy of the component a need is used in: the nearest of its node's
+    // ancestors the Brief names (a garden in a ward: the garden's, else the ward's).
+    auto policyOf = [&](const std::string& node) -> std::string {
+        if (sourcing == nullptr) return "auto";
+        std::string path = node;
+        json specCopy = spec;
+        for (int guard = 0; guard < 8 && !path.empty(); ++guard) {
+            const std::string base = path.substr(0, path.find('#'));
+            if (const json* n = SpecNode(specCopy, base)) {
+                const json source = BriefValue(sourcing->brief, "components." + n->value("module", "") + ".assets.source");
+                if (source.is_string() && !source.get<std::string>().empty()) return source.get<std::string>();
+            }
+            const size_t slash = path.find_last_of('/');
+            if (slash == std::string::npos) break;
+            path = path.substr(0, slash);
+        }
+        return "auto";
+    };
     for (const auto& o : solved.value("objects", json::array())) {
         Need need = NeedOf(ontology, spec, o);
         out["byObject"][o.value("id", "")] = need.key;
@@ -458,21 +510,66 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
             }
         }
         const bool solid = need.kind == "building";
-        for (const auto& c : found.candidates) {
-            if (c.entry == nullptr || c.grade.empty()) continue;
+        const NeedProfile profile = ProfileOf(need.layer, need.essential, false, uses);
+        row["importance"] = ImportanceName(profile.importance);
+        row["styleCritical"] = profile.styleCritical;
+        auto take = [&](const Candidate& c) {
             const std::string prefab = PrefabForEntry(prefabs, assets, *c.entry, solid, options);
-            if (prefab.empty()) continue;
+            if (prefab.empty()) return false;
             row["prefab"] = prefab;
             row["entry"] = c.entry->id;
             row["source"] = c.entry->source;
             row["grade"] = c.grade;
             row["fit"] = c.fit;
             row["licence"] = c.entry->licence;
+            row["author"] = c.entry->author;
+            row["url"] = c.entry->url;
             row["name"] = c.entry->name;
-            break;
+            return true;
+        };
+        if (sourcing) {
+            // The decision procedure (place-assets.md §5), by the component's policy and the user's choice.
+            const json choice = sourcing->overrides.is_object() ? sourcing->overrides.value(key, json::object()) : json::object();
+            const std::string policy = choice.value("source", policyOf(need.node));
+            row["policy"] = policy;
+            SourceCandidates candidates;
+            candidates.project = found.candidates;
+            if (!sourcing->library.entries.empty()) candidates.library = RetrieveForSlot(sourcing->library, ontology, slot, options.isoGrid).candidates;
+            for (const auto& c : found.candidates) {
+                if (c.entry && c.entry->source == "web") candidates.web.push_back(c);
+            }
+            const auto tried = sourcing->tried.contains(key) ? sourcing->tried.at(key) : Tried{};
+            Decision d = choice.value("exclude", false) ? Decision{"A7", "drop", "none", std::nullopt, "excluded by you", false}
+                                                        : Decide(policy, profile, candidates, sourcing->settings.licences,
+                                                                 sourcing->settings.webSearch || policy == "web", sourcing->canGenerate, tried);
+            row["decision"] = {{"step", d.step}, {"action", d.action}, {"reason", d.reason}, {"warn", d.warn}};
+            if (d.candidate && d.candidate->entry && take(*d.candidate)) {
+                // A library asset is the project's from now on (copied when the build runs).
+                if (d.action == "import" && d.candidate->entry->source == "library") row["import"] = d.candidate->entry->path;
+            } else if (d.action == "drop") {
+                row["source"] = "dropped";
+                row["why"] = d.reason;
+            } else if (d.action == "generate" || d.action == "web") {
+                std::string concepts;
+                for (const auto& c : need.concepts) concepts += (concepts.empty() ? "" : " ") + c;
+                const std::string what = (concepts.empty() ? need.role : concepts + " " + need.role);
+                const std::string view = options.isoGrid ? "isometric" : "top-down";
+                out["pending"].push_back({{"key", key}, {"action", d.action}, {"role", need.role}, {"concepts", need.concepts},
+                                          {"layer", need.layer}, {"w", need.w}, {"h", need.h}, {"kind", need.kind},
+                                          {"query", view + " " + what},
+                                          {"description", "a " + what + " for a game, " + view + " view, " +
+                                                              (need.kind == "building" ? "a building about " + std::to_string(need.w) + " by " +
+                                                                                             std::to_string(need.h) + " cells"
+                                                                                       : "a small " + need.kind)}});
+                row["why"] = d.action == "generate" ? "to be made by the Art tool" : "to be found on the web";
+            }
+        } else {
+            for (const auto& c : found.candidates) {
+                if (c.entry && !c.grade.empty() && take(c)) break;
+            }
         }
-        if (!row.contains("prefab")) {
-            // Nothing fits: a placeholder, and why (the best rejection).
+        if (!row.contains("prefab") && row.value("source", "") != "dropped") {
+            // Nothing fits (or it's still to be made): a placeholder, and why (the best rejection).
             const float width = need.kind == "building" ? FootprintPixels(need.w, need.h, options)
                                 : need.kind == "decal"  ? options.iso.tileWidth * 0.35f
                                                         : options.iso.tileWidth * 0.6f;
@@ -481,9 +578,11 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
                                                          width, width, solid, options.iso);
             row["prefab"] = prefab;
             row["source"] = "placeholder";
-            row["why"] = found.candidates.empty() ? (found.rejected.empty() ? "no art in the project for it"
-                                                                             : "nothing fits: " + found.rejected.front().reason)
-                                                  : "no candidate could be made a prefab";
+            if (!row.contains("why")) {
+                row["why"] = found.candidates.empty() ? (found.rejected.empty() ? "no art in the project for it"
+                                                                                 : "nothing fits: " + found.rejected.front().reason)
+                                                      : "no candidate could be made a prefab";
+            }
         }
         out["needs"].push_back(row);
     }
@@ -621,6 +720,10 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
         if (Kept(options, o->value("node", ""), id)) continue; // not this edit's, or locked: as it is
         const std::string key = byObject.value(id, "");
         auto it = choices.find(key);
+        if (it != choices.end() && it->second.value("source", "") == "dropped") {
+            out["dropped"] = out.value("dropped", 0) + 1; // excluded, or optional with nothing to show
+            continue;
+        }
         if (it == choices.end() || !PlaceObject(registry, prefabs, *o, it->second, options)) {
             out["missing"].push_back(id);
             continue;
@@ -678,7 +781,13 @@ json VerifyPlaceScene(Registry& registry, const json& solved, const json& assetP
     // Every object there, at its place.
     int expected = 0, found = 0, misplaced = 0;
     json missing = json::array(), off = json::array();
+    std::set<std::string> dropped; // needs left out on purpose
+    for (const auto& n : assetPlan.value("needs", json::array())) {
+        if (n.value("source", "") == "dropped") dropped.insert(n.value("key", ""));
+    }
+    const json byObject = assetPlan.value("byObject", json::object());
     for (const auto& o : solved.value("objects", json::array())) {
+        if (dropped.contains(byObject.value(o.value("id", ""), ""))) continue;
         ++expected;
         auto it = byStatement.find(o.value("id", ""));
         if (it == byStatement.end()) {
@@ -763,6 +872,21 @@ json VerifyPlaceScene(Registry& registry, const json& solved, const json& assetP
     checks.push_back({{"id", "overlaps"}, {"what", "No two solid things share a cell"}, {"ok", overlaps.empty()},
                       {"detail", overlaps.empty() ? "none" : std::to_string(overlaps.size()) + " overlapping"}, {"items", overlaps}});
 
+    // Licences: every asset used is allowed (the project's own, generated, or a licence the project takes).
+    {
+        LicencePolicy policy;
+        const json used = assetPlan.value("licencePolicy", json::object());
+        policy.shareAlike = used.value("shareAlike", false);
+        for (const auto& l : used.value("extra", json::array())) policy.extra.insert(l.get<std::string>());
+        json bad = json::array();
+        for (const auto& n : assetPlan.value("needs", json::array())) {
+            const std::string source = n.value("source", "");
+            if (source != "web" && source != "library") continue;
+            if (!policy.Allowed(n.value("licence", ""))) bad.push_back(n.value("entry", n.value("key", "")));
+        }
+        checks.push_back({{"id", "licences"}, {"what", "Every asset's licence is allowed"}, {"ok", bad.empty()},
+                          {"detail", bad.empty() ? "all of them" : std::to_string(bad.size()) + " not allowed"}, {"items", bad}});
+    }
     // Placeholders: there, but to replace.
     int placeholders = 0, kinds = 0;
     for (const auto& n : assetPlan.value("needs", json::array())) {

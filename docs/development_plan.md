@@ -2148,6 +2148,37 @@ The plan as first written:
   parent's regeneration.
 
 **7.9 — Asset sourcing** (`place-assets.md`)
+
+**Done (2026-10-20):**
+- **The decision procedure** (`assets/Sourcing.h`): each need's importance (critical,
+  normal, optional) and whether it's style-critical; the steps A1-A7 and rule G under
+  each policy (auto, project, library, web, generate), with what was tried so the
+  procedure moves on; the user's per-need choices (exclude, a source) from
+  `places/<id>/assets.json`, which the build writes with its decisions.
+- **Licences**: CC0, CC-BY and OGA-BY by default, CC-BY-SA when the project allows
+  share-alike (`places/sourcing.json`, switches in ② Assets); unknown or disallowed
+  licences are never used; a hard check in Verify; `CREDITS.md` kept in a section of its
+  own (the user's text stays) and copied to the top of an exported game.
+- **Sources**: the project catalog; the AIGE library interface (`library/catalog.json`,
+  nothing until it exists); **the web tool** (`ai_service/app/websource.py`, off
+  unless the project turns it on): searches OpenGameArt, reads each result's licence and
+  author from its page, downloads PNGs only (size and type checked) into the need's own
+  folder, and rejects what it can't read; **the Art tool** with the need and the view,
+  then the critic (the vision model describes it; a mismatch is made again with the
+  reasons, 3 tries at most). Found and made art gets its provenance in its `.meta`.
+- **④ Build** sources first: the needs to make or fetch go out, the new assets are
+  described and catalogued, and the build goes on with them (placeholders meanwhile,
+  or without the AI). Sheet objects (a tileset's cut-outs) become prefabs of their part
+  of the image; a piece set with one straight piece fences both ways (mirrored).
+- Tests: `tests/sourcing_test.cpp` (importance, the decision table per policy,
+  licence filtering, credits, the library, the sourcing step with the critic's retry
+  and the web's provenance), `tests/place_scene_test.cpp` (the asset plan decides each
+  need, exclusions are dropped not missing, one straight piece fences both ways),
+  `ai_service/tests/test_websource.py`.
+- **Not yet:** references (project images) sent to the image model, recolouring a usable
+  candidate to the palette, generating a piece set's missing pieces as images.
+
+The plan as first written:
 - The **asset plan**: needs from the Brief's components and their slots, merged, with an
   importance and a style-critical flag.
 - **Fit**: hard filters (role and concept, perspective, footprint, layer, licence, piece

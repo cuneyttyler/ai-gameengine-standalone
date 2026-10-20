@@ -28,6 +28,7 @@ from .consistency import check_consistency, writing_from_operations
 from .images import ImageGenerator, MistralImageGenerator, generate_sprites
 from .places import interpret, plan_root, plan_zone, repair_brief, repair_node, review_layout, revise_plan
 from .vision import describe_assets, map_chunk
+from .websource import search_web
 from .providers import ClaudeProvider, MistralEmbedder, MistralProvider, Provider, ProviderError
 from .service import propose
 from .world import Embedder, WorldIndex, format_entry, load_entries
@@ -119,6 +120,13 @@ class ReviewLayoutRequest(BaseModel):
     verify: list = []      # the Verify rows: asked, planned, built
     context: dict
     kind: str = "map"      # map (the solved layout) or scene (the built place, rendered)
+
+
+class WebSearchRequest(BaseModel):
+    query: str
+    folder: str            # where its downloads go, inside the project (assets/web/<need>)
+    maxAssets: int = 4
+    shareAlike: bool = False
 
 
 class GenerateAssetRequest(BaseModel):
@@ -395,6 +403,16 @@ def create_app(
                                request.context, kind=request.kind)
         state["usage"].add(Usage(**result["usage"]))
         return result
+
+    @app.post("/assets/web-search")
+    def assets_web_search(request: WebSearchRequest) -> dict:
+        """Free art from an approved site, licence checked (7.9, rule W)."""
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        if not request.query.strip():
+            return {"ok": False, "errors": ["Say what to look for"]}
+        return search_web(root, request.query, request.folder, max(1, min(request.maxAssets, 8)), share_alike=request.shareAlike)
 
     @app.post("/assets/generate")
     def assets_generate(request: GenerateAssetRequest) -> dict:

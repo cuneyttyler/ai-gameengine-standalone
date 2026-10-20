@@ -353,6 +353,64 @@ TEST(PlaceSceneTest, AnEditReplacesOnlyItsPartsAndKeepsHandEdits) {
     EXPECT_GT(v.Built(registry), 0u);
 }
 
+// 7.9: the asset plan decides each need: with the AI, what nothing fits is to be
+// generated (a placeholder meanwhile); a need the user excluded is dropped.
+TEST(PlaceSceneTest, TheAssetPlanDecidesEachNeed) {
+    Village v;
+    AssetSourcing sourcing;
+    sourcing.canGenerate = true;
+    const json first = PlanPlaceAssets(Library(), v.spec, v.solved, Catalog{}, *v.prefabs, *v.assets, v.terrains, v.options, &sourcing);
+    ASSERT_FALSE(first["pending"].empty());
+    for (const auto& p : first["pending"]) EXPECT_EQ(p["action"], "generate") << p.dump(); // web off: the Art tool
+    std::string excluded;
+    for (const auto& n : first["needs"]) {
+        EXPECT_TRUE(n.contains("decision")) << n.dump();
+        EXPECT_EQ(n["source"], "placeholder"); // meanwhile
+        if (excluded.empty() && n["layer"] == "decal") excluded = n["key"];
+    }
+    ASSERT_FALSE(excluded.empty());
+    // The user excludes one; what was tried moves the rest on to placeholders.
+    sourcing.overrides[excluded] = {{"exclude", true}};
+    for (const auto& p : first["pending"]) sourcing.tried[p["key"]] = {false, true};
+    const json second = PlanPlaceAssets(Library(), v.spec, v.solved, Catalog{}, *v.prefabs, *v.assets, v.terrains, v.options, &sourcing);
+    EXPECT_TRUE(second["pending"].empty());
+    for (const auto& n : second["needs"]) {
+        if (n["key"] == excluded) {
+            EXPECT_EQ(n["source"], "dropped");
+            EXPECT_FALSE(n.contains("prefab"));
+        }
+    }
+    // Built: the excluded need's objects aren't placed.
+    Registry registry;
+    json report;
+    BuildPlaceScene(registry, *v.prefabs, v.solved, second, v.terrains, v.options, &report);
+    EXPECT_GT(report.value("dropped", 0), 0);
+    EXPECT_TRUE(report["missing"].empty());
+    const json checks = VerifyPlaceScene(registry, v.solved, second, v.options);
+    for (const auto& c : checks) {
+        if (c["id"] == "objects" || c["id"] == "licences") EXPECT_TRUE(c["ok"].get<bool>()) << c.dump();
+    }
+}
+
+// A piece set with one straight piece fences every edge: the other direction mirrored.
+TEST(PlaceSceneTest, APieceSetWithOneStraightFencesBothWays) {
+    Village v;
+    json plan = PlanPlaceAssets(Library(), v.spec, v.solved, Catalog{}, *v.prefabs, *v.assets, v.terrains, v.options);
+    ASSERT_TRUE(plan["pieces"].contains("fence")) << plan["pieces"].dump();
+    plan["pieces"]["fence"]["pieces"] = {{"straight-h", plan["pieces"]["fence"]["pieces"]["straight-h"]}};
+    Registry registry;
+    json report;
+    BuildPlaceScene(registry, *v.prefabs, v.solved, plan, v.terrains, v.options, &report);
+    int edges = 0;
+    bool bothWays = false;
+    for (const auto& l : v.solved["lines"]) {
+        edges += static_cast<int>(l["edges"].size()); // gaps are listed apart, not among the edges
+        for (const auto& e : l["edges"]) bothWays = bothWays || e[2] == "w";
+    }
+    ASSERT_TRUE(bothWays);
+    EXPECT_EQ(report["pieces"].get<int>(), edges);
+}
+
 // AIGE_SCENE_BUILD=<project root>|<build id>: a COPY of the project (never the
 // project itself), the build put into an empty scene with the project's own
 // art, verified, and drawn to AIGE_SCENE_PNG (a diagnostic; skipped otherwise).

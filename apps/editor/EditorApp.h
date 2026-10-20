@@ -156,6 +156,7 @@ private:
     void StartBuild(const std::string& query);
     void ResumeBuild(const std::string& id); // a build of the project, from places/<id>/
     void BuildIntoScene();                   // ④ Build: the solved layout into the scene (7.7)
+    bool HandleBuildMessage(const std::string& type, const nlohmann::json& message);
     // Editing after the build (7.8): the scene follows the parts an edit laid out again.
     void UpdateBuiltParts();
     // The part of the open build an entity belongs to ("ward/cottages#2"), or "".

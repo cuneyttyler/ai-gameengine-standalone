@@ -260,6 +260,11 @@ void PlaceBuild::Save() const {
                                           {"revisions", revisions_},
                                           {"fit", {{"scale", fitScale_}, {"side", fitSide_}}},
                                           {"locks", locks_},
+                                          {"tried", [this] {
+                                               json t = json::object();
+                                               for (const auto& [k, v] : tried_) t[k] = {{"web", v.web}, {"generate", v.generate}};
+                                               return t;
+                                           }()},
                                           {"origin", hasOrigin_ ? json::array({originX_, originY_}) : json()}});
 }
 
@@ -307,6 +312,11 @@ void PlaceBuild::OnResponse(int requestId, const json& body) {
     if (it == pending_.end()) return;
     const Pending what = it->second;
     pending_.erase(it);
+    if (what.kind == "art" || what.kind == "web" || what.kind == "critic") {
+        SourcingStep(what, body);
+        Save();
+        return;
+    }
     if (what.kind == "scene-review") {
         const bool ok = body.value("ok", false) && body.contains("answer") && body["answer"].is_object();
         if (!ok && Retry(what, body)) return;
@@ -1346,8 +1356,159 @@ bool PlaceBuild::AboutThisPlace(const std::string& request) const {
     return false;
 }
 
+// --- Sourcing the art (7.9) ---------------------------------------------------------------
+
+bool PlaceBuild::StartSourcing(const json& pending, const SourcingSettings& settings) {
+    sourcing_.clear();
+    sourcingDone_ = false;
+    bool sent = false;
+    for (const auto& need : pending) {
+        const std::string key = need.value("key", "");
+        if (key.empty()) continue;
+        sourcing_[key] = {need};
+        if (need.value("action", "") == "web") {
+            std::string folder = "assets/web/";
+            for (const char c : need.value("query", key)) folder += std::isalnum(static_cast<unsigned char>(c)) ? static_cast<char>(std::tolower(c)) : '-';
+            sent = Send({"web", -1, key, "/assets/web-search",
+                         {{"query", need.value("query", "")}, {"folder", folder.substr(0, 60)}, {"maxAssets", 3},
+                          {"shareAlike", settings.licences.shareAlike}},
+                         300}) || sent;
+        } else {
+            sent = SendArt(key) || sent;
+        }
+    }
+    if (!sent) {
+        sourcing_.clear();
+        return false;
+    }
+    stage_ = "sourcing";
+    status_ = "Finding and making the art: " + std::to_string(sourcing_.size()) + " kind(s)…";
+    Log({{"step", "sourcing"}, {"needs", pending}});
+    Save();
+    return true;
+}
+
+bool PlaceBuild::SendArt(const std::string& key) {
+    Sourcing& s = sourcing_[key];
+    const json& need = s.need;
+    ++s.attempts;
+    std::string name;
+    for (const char c : key) name += std::isalnum(static_cast<unsigned char>(c)) ? static_cast<char>(std::tolower(c)) : '-';
+    while (name.find("--") != std::string::npos) name.replace(name.find("--"), 2, "-");
+    name = name.substr(0, 40) + "-" + std::to_string(s.attempts);
+    while (!name.empty() && name.front() == '-') name.erase(0, 1);
+    const std::string kind = need.value("layer", "") == "ground" ? "tile" : "object";
+    const int height = need.value("kind", "") == "building" ? 128 : need.value("kind", "") == "decal" ? 32 : 64;
+    std::string description = need.value("description", "");
+    if (!s.reasons.empty()) description += ". Last time it came out wrong: " + s.reasons + "; fix that.";
+    return Send({"art", -1, key, "/assets/generate",
+                 {{"name", name}, {"description", description}, {"kind", kind}, {"height", height}, {"style", "pixel"}}, 600});
+}
+
+void PlaceBuild::SourcingStep(const Pending& what, const json& body) {
+    const std::string key = what.node;
+    auto it = sourcing_.find(key);
+    if (it == sourcing_.end()) return;
+    Sourcing& s = it->second;
+    const bool ok = body.value("ok", false);
+    if (!ok && what.kind != "critic" && Retry(what, body)) return;
+    Log({{"step", "sourcing " + what.kind}, {"need", key}, {"answer", body}});
+    if (what.kind == "art" || what.kind == "web") {
+        json paths = json::array(), provenance = json::object();
+        for (const auto& a : body.value("assets", json::array())) {
+            const std::string path = a.value("path", "");
+            if (path.empty()) continue;
+            paths.push_back(path);
+            provenance[path] = what.kind == "web"
+                                   ? json{{"source", "web"}, {"licence", a.value("licence", "")}, {"author", a.value("author", "")},
+                                          {"url", a.value("url", "")}, {"retrieved", a.value("retrieved", "")}}
+                                   : json{{"source", "generated"}, {"licence", ""}, {"author", "Art tool"}};
+        }
+        if (paths.empty()) {
+            s.done = true; // nothing came: the next pass moves on
+        } else {
+            s.need["provenance"] = provenance;
+            // The critic: what the vision model sees in it, against what was asked.
+            if (!Send({"critic", -1, key, "/assets/describe", {{"paths", paths}, {"roles", json::array({s.need.value("role", "")})}}, 300})) {
+                for (const auto& p : paths) newAssets_.push_back({{"path", p}, {"fields", provenance[p.get<std::string>()]}});
+                s.done = true;
+            }
+        }
+    } else if (what.kind == "critic") {
+        const Ontology& ontology = host_.ontology();
+        const std::string role = s.need.value("role", "");
+        bool passed = false;
+        std::string reasons;
+        for (const auto& a : body.value("assets", json::array())) {
+            const std::string path = a.value("path", "");
+            json fields = s.need.value("provenance", json::object()).value(path, json::object());
+            // What it is, for the catalog (as the Assets panel's Analyze writes it).
+            std::string tags;
+            for (const auto& t : a.value("tags", json::array())) {
+                if (t.is_string()) tags += (tags.empty() ? "" : ", ") + t.get<std::string>();
+            }
+            fields["description"] = a.value("description", "");
+            fields["kind"] = a.value("kind", "other");
+            fields["tags"] = tags;
+            fields["name"] = a.value("name", "");
+            fields["roles"] = a.value("role", "");
+            const std::string perspective = a.value("perspective", "unknown");
+            fields["perspective"] = perspective == "unknown" ? "" : perspective;
+            char cells[32];
+            std::snprintf(cells, sizeof(cells), "%.2f", a.value("sizeCells", 1.0));
+            fields["cells"] = cells;
+            fields["blocks"] = a.value("blocks", false) ? "1" : "0";
+            newAssets_.push_back({{"path", path}, {"fields", fields}});
+            // Does it show what was asked: its role (or a narrower one), or the concept in its words?
+            const std::string seen = a.value("role", "");
+            bool fills = seen == role;
+            for (const Role* r = ontology.FindRole(seen); r && !fills; r = ontology.FindRole(r->broader)) fills = r->broader == role;
+            for (const auto& c : s.need.value("concepts", json::array())) {
+                const std::string text = a.value("description", "") + " " + tags + " " + a.value("name", "");
+                if (text.find(c.get<std::string>()) != std::string::npos) fills = true;
+            }
+            if (fills) passed = true;
+            else reasons += (reasons.empty() ? "" : "; ") + std::string("it looks like ") + (seen.empty() ? a.value("kind", "something else") : seen) +
+                            ", not a " + role;
+        }
+        if (!body.value("ok", false)) reasons = FirstError(body);
+        // A generated one that didn't pass: again, with the reasons (3 tries at most).
+        if (!passed && s.need.value("action", "") == "generate" && s.attempts < 3) {
+            s.reasons = reasons;
+            if (SendArt(key)) {
+                status_ = "Making the art again for " + key + " (" + reasons + ")…";
+                return;
+            }
+        }
+        s.done = true;
+    }
+    FinishSourcing();
+}
+
+void PlaceBuild::FinishSourcing() {
+    for (const auto& [key, s] : sourcing_) {
+        if (!s.done) return;
+    }
+    for (const auto& [key, s] : sourcing_) {
+        Tried& t = tried_[key];
+        if (s.need.value("action", "") == "web") t.web = true;
+        else t.generate = true;
+    }
+    sourcing_.clear();
+    sourcingDone_ = true;
+    stage_ = "building";
+    status_ = "Art found and made; putting the place into the scene…";
+    Log({{"step", "sourced"}, {"newAssets", newAssets_}});
+}
+
+json PlaceBuild::TakeNewAssets() {
+    json out = newAssets_;
+    newAssets_ = json::array();
+    return out;
+}
+
 std::string PlaceBuild::StartBuilding() {
-    if (stage_ != "planned" && stage_ != "built") return "approve the plan first";
+    if (stage_ != "planned" && stage_ != "built" && stage_ != "building") return "approve the plan first";
     if (!solved_.is_object()) return "the plan isn't laid out";
     stage_ = "building";
     status_ = "Putting the place into the scene…";
@@ -1478,6 +1639,9 @@ std::string PlaceBuild::Open(const std::string& id) {
         for (const auto& l : session.value("locks", json::array())) {
             if (l.is_string()) locks_.insert(l.get<std::string>());
         }
+        tried_.clear();
+        const json tried = session.value("tried", json::object());
+        for (const auto& [k, v] : tried.items()) tried_[k] = {v.value("web", false), v.value("generate", false)};
         if (const json o = session.value("origin", json()); o.is_array() && o.size() == 2) {
             hasOrigin_ = true;
             originX_ = o[0].get<int>();
@@ -1493,7 +1657,7 @@ std::string PlaceBuild::Open(const std::string& id) {
         Notice("A revision was still running when the build was closed; ask for it again.");
         stage.clear();
     }
-    if (stage == "building") stage = "planned"; // Build again
+    if (stage == "building" || stage == "sourcing") stage = "planned"; // Build again
     result_ = ReadJson(folder / "result.json");
     if (stage == "built" && !result_.is_object()) stage = "planned";
     if (stage.empty() || stage == "cancelled" || stage == "failed") {
@@ -1621,6 +1785,7 @@ json PlaceBuild::Card() const {
     else if (stage_ == "planned") text = "Laid out; Build puts it into the scene";
     else if (stage_ == "revising") text = status_.empty() ? "Revising the plan…" : status_;
     else if (stage_ == "building") text = "④ Build: putting it into the scene…";
+    else if (stage_ == "sourcing") text = "④ Build: " + status_;
     else if (stage_ == "built") text = "⑤ Result: " + status_;
     else if (stage_ == "cancelled") text = "Cancelled";
     else if (stage_ == "failed") text = errors_.empty() ? "Failed" : errors_.front();

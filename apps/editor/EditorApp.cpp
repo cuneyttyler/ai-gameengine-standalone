@@ -215,8 +215,82 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
 
 // --- IPC --------------------------------------------------------------------
 
+// The Build panel's messages (7.4-7.9), apart: one chain of them all is too deep for the compiler.
+bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json& message) {
+    if (type == "build:start") {
+        StartBuild(message.value("query", ""));
+    } else if (type == "build:request") {
+        PostBuild();
+    } else if (type == "build:sourcingRequest") {
+        const SourcingSettings settings = ReadSourcingSettings(assets_.GetProject().root);
+        post_({{"type", "build:sourcing"}, {"webSearch", settings.webSearch}, {"shareAlike", settings.licences.shareAlike}});
+    } else if (type == "build:list") {
+        post_({{"type", "build:list"}, {"builds", ListBuilds(assets_.GetProject().root)}});
+    } else if (type == "build:resume") {
+        ResumeBuild(message.value("id", ""));
+    } else if (type == "build:edit") {
+        if (build_) build_->Edit(message.value("path", ""), message.value("value", nlohmann::json()));
+        PostBuild();
+    } else if (type == "build:step" || type == "build:confirm") {
+        if (build_) {
+            const std::string why = type == "build:confirm" ? build_->Confirm() : build_->Step(message.value("step", ""));
+            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not yet: " + why}});
+        }
+        PostBuild();
+    } else if (type == "build:approve") {
+        if (build_) {
+            const std::string why = build_->Approve();
+            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not yet: " + why}});
+        }
+        PostBuild();
+    } else if (type == "build:revise" || type == "build:review" || type == "build:undo") {
+        if (build_) {
+            const std::string why = type == "build:revise" ? build_->Revise(message.value("text", ""))
+                                    : type == "build:review" ? build_->Review()
+                                                             : build_->Undo();
+            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not now: " + why}});
+        }
+        PostBuild();
+    } else if (type == "build:relayout") {
+        if (build_) {
+            const std::string why = build_->Relayout();
+            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not now: " + why}});
+        }
+        PostBuild();
+    } else if (type == "build:editNode" || type == "build:regenerate" || type == "build:lock" || type == "build:brush") {
+        if (build_) {
+            std::string why;
+            const std::string node = message.value("node", "");
+            if (type == "build:editNode") why = build_->EditNode(node, message.value("field", ""), message.value("value", nlohmann::json()));
+            else if (type == "build:regenerate") why = build_->Regenerate(node);
+            else if (type == "build:lock") build_->Lock(node, message.value("locked", true));
+            else placeBrush_ = message.value("module", "");
+            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not now: " + why}});
+            UpdateBuiltParts();
+            PostSelectedPart();
+        }
+        PostBuild();
+    } else if (type == "build:sourcing") {
+        SourcingSettings settings = ReadSourcingSettings(assets_.GetProject().root);
+        if (message.contains("webSearch")) settings.webSearch = message.value("webSearch", false);
+        if (message.contains("shareAlike")) settings.licences.shareAlike = message.value("shareAlike", false);
+        WriteSourcingSettings(assets_.GetProject().root, settings);
+        post_({{"type", "build:sourcing"}, {"webSearch", settings.webSearch}, {"shareAlike", settings.licences.shareAlike}});
+    } else if (type == "build:build") {
+        BuildIntoScene();
+        PostBuild();
+    } else if (type == "build:cancel") {
+        if (build_) build_->Cancel();
+        PostBuild();
+    } else {
+        return false;
+    }
+    return true;
+}
+
 void EditorApp::OnWebMessage(const nlohmann::json& message) {
     const std::string type = message.value("type", "");
+    if (type.rfind("build:", 0) == 0 && HandleBuildMessage(type, message)) return;
 
     if (type == "viewport:bounds") {
         int width = message.value("width", 0);
@@ -769,62 +843,6 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         ReapplyProposal(message.value("id", 0));
     } else if (type == "ai:send") {
         SendToAi(message.value("text", ""), message.value("focus", ""), message.value("asChange", false));
-    } else if (type == "build:start") {
-        StartBuild(message.value("query", ""));
-    } else if (type == "build:request") {
-        PostBuild();
-    } else if (type == "build:list") {
-        post_({{"type", "build:list"}, {"builds", ListBuilds(assets_.GetProject().root)}});
-    } else if (type == "build:resume") {
-        ResumeBuild(message.value("id", ""));
-    } else if (type == "build:edit") {
-        if (build_) build_->Edit(message.value("path", ""), message.value("value", nlohmann::json()));
-        PostBuild();
-    } else if (type == "build:step" || type == "build:confirm") {
-        if (build_) {
-            const std::string why = type == "build:confirm" ? build_->Confirm() : build_->Step(message.value("step", ""));
-            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not yet: " + why}});
-        }
-        PostBuild();
-    } else if (type == "build:approve") {
-        if (build_) {
-            const std::string why = build_->Approve();
-            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not yet: " + why}});
-        }
-        PostBuild();
-    } else if (type == "build:revise" || type == "build:review" || type == "build:undo") {
-        if (build_) {
-            const std::string why = type == "build:revise" ? build_->Revise(message.value("text", ""))
-                                    : type == "build:review" ? build_->Review()
-                                                             : build_->Undo();
-            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not now: " + why}});
-        }
-        PostBuild();
-    } else if (type == "build:relayout") {
-        if (build_) {
-            const std::string why = build_->Relayout();
-            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not now: " + why}});
-        }
-        PostBuild();
-    } else if (type == "build:editNode" || type == "build:regenerate" || type == "build:lock" || type == "build:brush") {
-        if (build_) {
-            std::string why;
-            const std::string node = message.value("node", "");
-            if (type == "build:editNode") why = build_->EditNode(node, message.value("field", ""), message.value("value", nlohmann::json()));
-            else if (type == "build:regenerate") why = build_->Regenerate(node);
-            else if (type == "build:lock") build_->Lock(node, message.value("locked", true));
-            else placeBrush_ = message.value("module", "");
-            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not now: " + why}});
-            UpdateBuiltParts();
-            PostSelectedPart();
-        }
-        PostBuild();
-    } else if (type == "build:build") {
-        BuildIntoScene();
-        PostBuild();
-    } else if (type == "build:cancel") {
-        if (build_) build_->Cancel();
-        PostBuild();
     } else if (type == "ai:apply") {
         ApplyProposal(message.value("id", 0), message.value("items", nlohmann::json::array()));
     } else if (type == "ai:reject") {
@@ -2842,7 +2860,26 @@ void EditorApp::PollAi() {
             if (Ai()->GetState() == AiClient::State::Ready) SendProvider();
             post_(AiStatusJson());
         } else if (result->kind == AiClient::Result::Kind::Response) {
-            if (result->requestId != 0 && result->requestId == providerRequest_) {
+            if (build_ && build_->Owns(result->requestId) && build_->Stage() == "sourcing") {
+                build_->OnResponse(result->requestId, result->body);
+                if (build_->SourcingDone()) {
+                    build_->ClearSourcingDone();
+                    RefreshAssets();
+                    int added = 0;
+                    for (const auto& a : build_->TakeNewAssets()) {
+                        std::map<std::string, std::string> fields;
+                        const nlohmann::json given = a.value("fields", nlohmann::json::object());
+                        for (const auto& [k, v] : given.items()) {
+                            if (v.is_string()) fields[k] = v.get<std::string>();
+                        }
+                        added += SetCatalogFields(assets_, a.value("path", ""), fields) ? 1 : 0;
+                    }
+                    post_(AssetsJson());
+                    post_({{"type", "notify"}, {"text", "Added " + std::to_string(added) + " new asset(s) for the build"}});
+                    BuildIntoScene();
+                }
+                PostBuild();
+            } else if (result->requestId != 0 && result->requestId == providerRequest_) {
                 providerRequest_ = 0;
                 providerStatus_ = result->body.is_object() ? result->body : nlohmann::json{{"ok", false}};
                 post_(AiStatusJson());
@@ -2985,8 +3022,26 @@ void EditorApp::BuildIntoScene() {
     options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
     const TerrainSet terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
     const Catalog catalog = BuildCatalog(assets_, &Places(), CatalogOptionsNow());
+    // Where the art comes from (7.9): the project, the library, the web, the Art tool.
+    const std::filesystem::path root = assets_.GetProject().root;
+    AssetSourcing sourcing;
+    sourcing.brief = build_->Brief();
+    sourcing.settings = ReadSourcingSettings(root);
+    sourcing.canGenerate = Ai() && Ai()->GetState() == AiClient::State::Ready;
+    sourcing.tried = build_->TriedSources();
+    sourcing.library = LoadAssetLibrary(root);
+    {
+        std::ifstream in(build_->Folder() / "assets.json");
+        const nlohmann::json saved = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+        if (saved.is_object()) sourcing.overrides = saved.value("overrides", nlohmann::json::object());
+    }
     // The asset plan, the build, then verify and repair before it becomes one undo step.
-    const nlohmann::json assets = PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), catalog, prefabs_, assets_, terrains, options);
+    const nlohmann::json assets = PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), catalog, prefabs_, assets_, terrains, options, &sourcing);
+    // Art to make or fetch first: the build goes on when it's there (PollAi).
+    if (!assets.value("pending", nlohmann::json::array()).empty() && build_->StartSourcing(assets["pending"], sourcing.settings)) {
+        PostBuild();
+        return;
+    }
     nlohmann::json report;
     auto command = BuildPlaceScene(registry_, prefabs_, build_->Solved(), assets, terrains, options, &report);
     const nlohmann::json verify = VerifyPlaceScene(registry_, build_->Solved(), assets, options);
@@ -3004,6 +3059,19 @@ void EditorApp::BuildIntoScene() {
     dirty_ = true;
     editorStateStale_ = true;
     sceneTreeStale_ = true;
+    // The decided plan (with the user's overrides kept), and the credits for what needs attribution.
+    {
+        nlohmann::json saved = {{"needs", assets["needs"]}, {"overrides", sourcing.overrides}};
+        std::ofstream(build_->Folder() / "assets.json") << saved.dump(2) << "\n";
+        nlohmann::json used = nlohmann::json::array();
+        for (const auto& n : assets["needs"]) {
+            if (n.value("source", "") == "web" || n.value("source", "") == "library") {
+                used.push_back({{"path", n.value("entry", "")}, {"licence", n.value("licence", "")}, {"author", n.value("author", "")},
+                                {"url", n.value("url", "")}, {"source", n.value("source", "")}});
+            }
+        }
+        if (!used.empty()) WriteCredits(root, used, sourcing.settings.licences);
+    }
     // What it looks like in the scene, drawn as the renderer draws it: for the Result step.
     const int built = build_->SiteSide();
     const ImageData picture = RenderScenePreview(registry_, assets_.GetProject(), iso_, options.originX, options.originY,

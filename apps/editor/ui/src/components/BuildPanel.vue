@@ -148,6 +148,7 @@ interface AssetNeed {
   source: string
   licence?: string
   why?: string
+  decision?: { step: string; action: string; reason: string; warn?: boolean }
 }
 interface BuildResult {
   assets: { needs: AssetNeed[]; terrains: Record<string, AssetNeed & { terrain?: string }>; pieces: Record<string, AssetNeed> }
@@ -201,6 +202,12 @@ interface BuildEntry {
 }
 
 const state = ref<BuildState | null>(null)
+// Asset sourcing (7.9): the project's settings.
+const sourcingSettings = ref({ webSearch: false, shareAlike: false })
+function setSourcing(change: { webSearch?: boolean; shareAlike?: boolean }): void {
+  sendToHost({ type: 'build:sourcing', ...change })
+}
+sendToHost({ type: 'build:sourcingRequest' })
 // Editing after the build (7.8): the part selected in the viewport, and the module brush.
 const selectedPart = ref<PartInfo | null>(null)
 const brush = ref('')
@@ -244,6 +251,8 @@ onHostMessage((message) => {
   } else if (message.type === 'build:part') {
     selectedPart.value = (message.part as PartInfo | null) ?? null
     brush.value = (message.brush as string) ?? ''
+  } else if (message.type === 'build:sourcing') {
+    sourcingSettings.value = { webSearch: Boolean(message.webSearch), shareAlike: Boolean(message.shareAlike) }
   } else if (message.type === 'build:list') {
     builds.value = (message.builds as BuildEntry[]) ?? []
   } else if (message.type === 'build:open') {
@@ -554,7 +563,10 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
               <td>{{ a.source }}</td>
               <td>{{ a.label }}</td>
               <td>{{ a.uses ?? '' }}</td>
-              <td class="small">{{ a.source === 'placeholder' ? a.why : a.name || a.prefab }}</td>
+              <td class="small">
+                {{ a.source === 'placeholder' || a.source === 'dropped' ? a.why : a.name || a.prefab }}
+                <span v-if="a.decision" class="dim"> · {{ a.decision.step }}: {{ a.decision.reason }}</span>
+              </td>
               <td class="small">{{ a.licence || (a.source === 'project' ? 'the project’s' : '') }}</td>
             </tr>
           </tbody>
@@ -912,6 +924,16 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           </div>
         </section>
 
+        <section v-if="win.round === 2" class="note">
+          <label class="row">
+            <input type="checkbox" :checked="sourcingSettings.webSearch" @change="setSourcing({ webSearch: ($event.target as HTMLInputElement).checked })" />
+            Search the web for free art (OpenGameArt; only CC0, CC-BY and OGA-BY, credited in CREDITS.md)
+          </label>
+          <label class="row">
+            <input type="checkbox" :checked="sourcingSettings.shareAlike" @change="setSourcing({ shareAlike: ($event.target as HTMLInputElement).checked })" />
+            Allow share-alike art (CC-BY-SA: the game's art must then be shared alike)
+          </label>
+        </section>
         <section v-if="win.assetPlan" class="plan">
           <h4>
             Assets: {{ win.assetPlan.summary.project }} from the project, {{ win.assetPlan.summary.generate }} to generate

@@ -117,6 +117,8 @@ ExportResult ExportGame(const ExportOptions& options) {
         result.files.push_back(relative);
     };
 
+    // The credits (7.9), where a player sees them.
+    if (fs::is_regular_file(options.project / "CREDITS.md", ec)) copy(options.project / "CREDITS.md", "CREDITS.md");
     // The player and what it needs (shaders), renamed after the game.
     copy(playerExe, name + ".exe");
     for (auto it = fs::recursive_directory_iterator(options.playerDir / "shaders", ec);

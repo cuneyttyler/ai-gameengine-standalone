@@ -3,6 +3,7 @@
 #include "assets/AssetDatabase.h"
 #include "assets/Catalog.h"
 #include "assets/Prefab.h"
+#include "assets/Sourcing.h"
 #include "ecs/Registry.h"
 #include "editing/Autotile.h"
 #include "editing/EditHistory.h"
@@ -55,12 +56,26 @@ struct PlaceSceneOptions {
 // place's own earlier build doesn't count.
 std::pair<int, int> FreeOrigin(Registry& registry, const std::string& place, int side, int gap = 8);
 
-// {"needs": [{key, role, concepts, layer, w, h, uses, prefab, entry, source,
-//   grade, fit, licence, why}], "terrains": {"grass": {terrain, source}},
-//   "pieces": {...}}. Writes the prefabs (and placeholder images) it needs.
+// How the art is sourced (7.9): the Brief's per-component policies, the user's
+// choices per need (places/<id>/assets.json), the library, what was tried.
+struct AssetSourcing {
+    nlohmann::json brief = nlohmann::json::object();     // components.<id>.assets.source: auto, project, library, web, generate
+    nlohmann::json overrides = nlohmann::json::object(); // {need key: {source?, exclude?}}
+    SourcingSettings settings; // web search on or off, the licences allowed
+    bool canGenerate = false;  // the AI is there to make art
+    std::map<std::string, Tried> tried;
+    Catalog library;           // LoadLibrary
+};
+
+// {"needs": [{key, role, concepts, layer, w, h, uses, importance, styleCritical,
+//   decision: {step, action, reason}, prefab, entry, source, grade, fit, licence,
+//   why}], "terrains": {"grass": {terrain, source}}, "pieces": {...},
+//   "pending": [{key, action (generate | web), role, concepts, layer, w, h, query,
+//   description}]}. Writes the prefabs (and placeholder images) it needs; a need
+// still to be generated or fetched shows a placeholder meanwhile.
 nlohmann::json PlanPlaceAssets(const Ontology& ontology, const nlohmann::json& spec, const nlohmann::json& solved,
                                const Catalog& catalog, PrefabLibrary& prefabs, const AssetDatabase& assets,
-                               const TerrainSet& terrains, const PlaceSceneOptions& options);
+                               const TerrainSet& terrains, const PlaceSceneOptions& options, const AssetSourcing* sourcing = nullptr);
 
 // Builds it; returns the undo step (to push once verified and repaired) and
 // fills `report` (cells per terrain, objects per layer, what couldn't be placed).
