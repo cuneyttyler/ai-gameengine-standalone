@@ -92,6 +92,8 @@ interface BuildState {
   image?: string // places/<id>/layout.png: the solved layout as a map, with its legend
   solved?: { stats: Record<string, number>; checks: { id: string; predicate: string; ok: boolean; detail?: unknown }[] }
   verify?: VerifyRow[] // asked, planned, built
+  result?: BuildResult // ⑤ Result: the scene build
+  origin?: [number, number]
   revisions?: Revision[]
 }
 
@@ -122,6 +124,34 @@ interface VerifyRow {
   note?: string
   zone?: boolean
   parts?: VerifyRow[]
+}
+interface SceneCheck {
+  id: string
+  what: string
+  ok: boolean
+  warning?: boolean
+  detail: string
+  items?: string[]
+}
+interface AssetNeed {
+  key?: string
+  role: string
+  concepts?: string[]
+  layer?: string
+  uses?: number
+  prefab?: string
+  name?: string
+  source: string
+  licence?: string
+  why?: string
+}
+interface BuildResult {
+  assets: { needs: AssetNeed[]; terrains: Record<string, AssetNeed & { terrain?: string }>; pieces: Record<string, AssetNeed> }
+  report: { cells: Record<string, number>; objects: Record<string, number>; missing: string[]; pieces: number }
+  verify: SceneCheck[]
+  repairs: { what: string; id: string; how: string }[]
+  after: SceneCheck[]
+  origin?: [number, number]
 }
 interface Revision {
   by: 'you' | 'review'
@@ -170,11 +200,55 @@ const shownComponents = computed(() =>
   (win.value?.components ?? []).filter((c) => showAll.value || c.inBrief),
 )
 const activeStep = computed(() =>
-  stage.value === 'assets' ? 'assets' : ['planning', 'plan', 'planned', 'revising'].includes(stage.value) ? 'plan' : 'request',
+  stage.value === 'assets'
+    ? 'assets'
+    : stage.value === 'building'
+      ? 'build'
+      : stage.value === 'built'
+        ? 'result'
+        : ['planning', 'plan', 'planned', 'revising'].includes(stage.value)
+          ? 'plan'
+          : 'request',
 )
+const REACHED: Record<string, string[]> = {
+  plan: ['planning', 'plan', 'planned', 'revising', 'building', 'built'],
+  build: ['building', 'built'],
+  result: ['built'],
+}
+function stepDisabled(id: string): boolean {
+  if (REACHED[id]) return !REACHED[id].includes(stage.value)
+  return !win.value || (id === 'assets' && stage.value === 'request' && errors.value.length > 0)
+}
+function step(id: string): void {
+  if (id === 'request' || id === 'assets') sendToHost({ type: 'build:step', step: id })
+}
 const ZONE_COLOURS = ['#a6e3a1', '#fab387', '#cba6f7', '#f9e2af', '#94e2d5', '#f38ba8']
 const selectedZone = ref<string | null>(null)
 const MARKS: Record<string, string> = { ok: '✓', short: '!', missing: '✗' }
+// ④ Build into the scene (7.7) is still being finished: hidden until it is.
+const SCENE_BUILD = false
+const sceneFailing = computed(() => (state.value?.result?.after ?? []).filter((c) => !c.ok && !c.warning))
+const builtCount = computed(() => {
+  const r = state.value?.result?.report
+  return r ? Object.values(r.objects).reduce((a, b) => a + b, 0) + (r.pieces ?? 0) : 0
+})
+const groundCells = computed(() => Object.values(state.value?.result?.report.cells ?? {}).reduce((a, b) => a + b, 0))
+// Every asset the build used, placeholders first.
+const assetRows = computed(() => {
+  const a = state.value?.result?.assets
+  if (!a) return []
+  const rows: (AssetNeed & { key: string; label: string })[] = []
+  for (const n of a.needs) {
+    const what = n.concepts?.length ? `${n.concepts.join(', ')} (${n.role})` : n.role
+    rows.push({ ...n, key: n.key ?? what, label: what })
+  }
+  for (const [slot, p] of Object.entries(a.pieces ?? {})) rows.push({ ...p, key: 'pieces:' + slot, label: `${slot} pieces` })
+  for (const [t, row] of Object.entries(a.terrains ?? {})) {
+    rows.push({ ...row, role: 'ground', key: 'ground:' + t, label: `${t} ground`, name: row.terrain })
+  }
+  return rows.sort((x, y) => Number(y.source === 'placeholder') - Number(x.source === 'placeholder'))
+})
+const placeholderKinds = computed(() => assetRows.value.filter((r) => r.source === 'placeholder').length)
 const revision = ref('')
 const verifyIssues = computed(() => {
   const out: VerifyRow[] = []
@@ -313,9 +387,8 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           v-for="s in STEPS"
           :key="s.id"
           :class="{ active: activeStep === s.id }"
-          :disabled="s.id === 'plan' ? !['planning', 'plan', 'planned'].includes(stage) : !win || (s.id !== 'request' && s.id !== 'assets') || (s.id === 'assets' && stage === 'request' && errors.length > 0)"
-          :title="s.id === 'plan' || s.id === 'build' || s.id === 'result' ? 'Comes with the next milestones (7.5–7.7)' : ''"
-          @click="sendToHost({ type: 'build:step', step: s.id })"
+          :disabled="stepDisabled(s.id)"
+          @click="step(s.id)"
         >
           {{ s.label }}
         </button>
@@ -362,7 +435,49 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
     </div>
 
     <!-- ③ Plan: what will be built, before anything is. -->
-    <div v-else-if="['plan', 'planned', 'revising'].includes(stage) && state?.plan" class="body plan-view">
+    <div v-else-if="['plan', 'planned', 'revising', 'building', 'built'].includes(stage) && state?.plan" class="body plan-view">
+      <!-- ⑤ Result: what the scene got, checked. -->
+      <section v-if="stage === 'built' && state.result" :class="['result', { failing: sceneFailing.length }]">
+        <p class="headline">
+          {{ sceneFailing.length ? `Built, ${sceneFailing.length} check(s) to look at` : 'Built and verified' }}
+          <span class="dim">
+            · {{ builtCount }} things, {{ groundCells }} ground cells
+            <template v-if="state.result.origin">at {{ state.result.origin[0] }}, {{ state.result.origin[1] }}</template>
+          </span>
+        </p>
+        <h4>In the scene</h4>
+        <ul class="checks">
+          <li v-for="c in state.result.after" :key="c.id" :class="c.ok ? 'ok' : c.warning ? 'warning' : 'error'">
+            {{ c.ok ? '✓' : c.warning ? '!' : '✗' }} {{ c.what }} <span class="dim">· {{ c.detail }}</span>
+            <span v-if="!c.ok && c.items?.length" class="dim small"> ({{ c.items.slice(0, 5).join(', ') }}{{ c.items.length > 5 ? '…' : '' }})</span>
+          </li>
+        </ul>
+        <template v-if="state.result.repairs?.length">
+          <h4>Repaired</h4>
+          <ul class="dim">
+            <li v-for="(r, i) in state.result.repairs" :key="i">{{ r.id }}: {{ r.what }} ({{ r.how }})</li>
+          </ul>
+        </template>
+        <h4>Assets</h4>
+        <table>
+          <thead><tr><th>Source</th><th>For</th><th>Uses</th><th>Asset</th><th>Licence</th></tr></thead>
+          <tbody>
+            <tr v-for="a in assetRows" :key="a.key" :class="{ placeholder: a.source === 'placeholder' }">
+              <td>{{ a.source }}</td>
+              <td>{{ a.label }}</td>
+              <td>{{ a.uses ?? '' }}</td>
+              <td class="small">{{ a.source === 'placeholder' ? a.why : a.name || a.prefab }}</td>
+              <td class="small">{{ a.licence || (a.source === 'project' ? 'the project’s' : '') }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <h4>Next</h4>
+        <ul class="dim">
+          <li v-if="placeholderKinds">Replace the {{ placeholderKinds }} placeholder kind(s): import art for them, then Build again (asset sourcing comes with 7.9).</li>
+          <li>Revise below and Build again: the place is replaced, nothing else in the scene is touched.</li>
+          <li>Undo (Ctrl+Z) takes the whole build out of the scene in one step.</li>
+        </ul>
+      </section>
       <p class="headline">
         {{ state.plan.totals.buildings }} buildings in {{ state.plan.totals.zones }} zones
         <span class="dim">· {{ amountText(state.plan.totals.area) }} cells²</span>
@@ -467,6 +582,9 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
               Check the map
             </button>
             <button v-if="canUndo" @click="sendToHost({ type: 'build:undo' })">Undo last revision</button>
+            <button title="Lays the plan out again with the latest layout rules (no AI)" @click="sendToHost({ type: 'build:relayout' })">
+              Lay out again
+            </button>
           </div>
         </template>
       </section>
@@ -479,7 +597,18 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <button v-if="stage === 'plan'" class="primary" @click="sendToHost({ type: 'build:approve' })">
           Approve plan
         </button>
-        <span v-else-if="stage === 'planned'" class="dim">{{ state.status }}</span>
+        <template v-else-if="stage === 'planned' || stage === 'built'">
+          <span class="dim">{{ stage === 'planned' ? state.status : '' }}</span>
+          <button
+            v-if="SCENE_BUILD"
+            class="primary"
+            title="Puts the place into the scene, verifies it and repairs what it can"
+            @click="sendToHost({ type: 'build:build' })"
+          >
+            {{ stage === 'built' ? 'Build again' : 'Build' }}
+          </button>
+        </template>
+        <span v-else-if="stage === 'building'" class="dim">{{ state.status }}</span>
       </div>
     </div>
 
@@ -894,6 +1023,36 @@ button.link {
   border-left: 3px solid #89b4fa;
   padding: 6px 10px;
   margin: 8px 0;
+}
+.result {
+  border-left: 3px solid #a6e3a1;
+  padding: 6px 10px;
+  margin: 8px 0 12px;
+  background: #1e1e2e;
+}
+.result.failing {
+  border-left-color: #f9e2af;
+}
+.result h4 {
+  margin: 10px 0 4px;
+  font-weight: 600;
+}
+.result table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.result td,
+.result th {
+  text-align: left;
+  padding: 2px 8px 2px 0;
+  border-bottom: 1px solid #313244;
+}
+.result th {
+  color: #7f849c;
+  font-weight: normal;
+}
+.result .placeholder td:first-child {
+  color: #f9e2af;
 }
 .verify h4,
 .revise h4 {

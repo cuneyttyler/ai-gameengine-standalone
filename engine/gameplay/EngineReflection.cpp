@@ -133,7 +133,11 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
 
     // --- World & AI ----------------------------------------------------------------
 
-    r.Component<Obstacle>("Obstacle", "Blocks movement through the cell it stands in (trees, rocks, crates).")
+    r.Component<Obstacle>("Obstacle", "Blocks movement through the cell it stands in (trees, rocks, crates) and, "
+                                      "for something bigger, the cells beside and behind it.")
+        .Field("left", &Obstacle::left, "Cells blocked to the left of where it stands.").Range(0, 64)
+        .Field("right", &Obstacle::right, "Cells blocked to the right.").Range(0, 64)
+        .Field("back", &Obstacle::back, "Cells blocked behind it.").Range(0, 64)
         .DependsOn({"WorldTransform2D"});
 
     r.Component<Sounds>("Sounds", "Sound effects this entity plays.")

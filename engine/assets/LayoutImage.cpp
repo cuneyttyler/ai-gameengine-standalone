@@ -293,6 +293,8 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
             else if (slot == "grave") add(Swatch::Grave, Hex(0x9b9b96), "Grave");
             else if (slot == "item") add(Swatch::Prop, Hex(0x8b6b45), "Doorstep things (pots, barrels, a bench)");
             else if (slot == "sign") add(Swatch::Prop, Hex(0x8b6b45), "Sign");
+            else if (slot == "pier") add(Swatch::Prop, Hex(0x8b6b45), "Pier");
+            else if (slot == "pile") add(Swatch::Prop, Hex(0x8b6b45), "Pile (wood, stone, goods)");
             else if (slot == "animal") {
                 std::string kinds;
                 for (const auto& a : animals) kinds += (kinds.empty() ? "" : ", ") + a;

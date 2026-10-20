@@ -823,8 +823,30 @@
       "dependencies": [
         "WorldTransform2D"
       ],
-      "description": "Blocks movement through the cell it stands in (trees, rocks, crates).",
-      "fields": [],
+      "description": "Blocks movement through the cell it stands in (trees, rocks, crates) and, for something bigger, the cells beside and behind it.",
+      "fields": [
+        {
+          "description": "Cells blocked to the left of where it stands.",
+          "max": 64.0,
+          "min": 0.0,
+          "name": "left",
+          "type": "int"
+        },
+        {
+          "description": "Cells blocked to the right.",
+          "max": 64.0,
+          "min": 0.0,
+          "name": "right",
+          "type": "int"
+        },
+        {
+          "description": "Cells blocked behind it.",
+          "max": 64.0,
+          "min": 0.0,
+          "name": "back",
+          "type": "int"
+        }
+      ],
       "name": "Obstacle",
       "userEditable": true
     },

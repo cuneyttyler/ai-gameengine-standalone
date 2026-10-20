@@ -788,6 +788,15 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             if (!why.empty()) post_({{"type", "notify"}, {"text", "Not now: " + why}});
         }
         PostBuild();
+    } else if (type == "build:relayout") {
+        if (build_) {
+            const std::string why = build_->Relayout();
+            if (!why.empty()) post_({{"type", "notify"}, {"text", "Not now: " + why}});
+        }
+        PostBuild();
+    } else if (type == "build:build") {
+        BuildIntoScene();
+        PostBuild();
     } else if (type == "build:cancel") {
         if (build_) build_->Cancel();
         PostBuild();
@@ -2532,7 +2541,9 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
         static const float kZones[6][3] = {{0.65f, 0.89f, 0.63f}, {0.98f, 0.70f, 0.53f}, {0.80f, 0.65f, 0.97f},
                                            {0.98f, 0.89f, 0.69f}, {0.58f, 0.89f, 0.84f}, {0.95f, 0.55f, 0.66f}};
         const float side = static_cast<float>(build_->SiteSide());
-        AddGridRect(overlay, 0, 0, side, side, iso_, kSite, 0.9f, 2.0f);
+        const auto [ox, oy] = build_->Origin();
+        const float fx = static_cast<float>(ox), fy = static_cast<float>(oy);
+        AddGridRect(overlay, fx, fy, side, side, iso_, kSite, 0.9f, 2.0f);
         const nlohmann::json& solved = build_->Solved();
         if (solved.is_object() && solved.contains("objects")) {
             // Solved (7.6): the zones' bounds and every building's footprint.
@@ -2541,19 +2552,19 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
             for (const auto& r : solved.value("regions", nlohmann::json::array())) {
                 if (r.value("statement", "") != "site/zones") continue;
                 const auto& b = r["bounds"];
-                AddGridRect(overlay, b[0].get<float>(), b[1].get<float>(), b[2].get<float>(), b[3].get<float>(), iso_,
+                AddGridRect(overlay, fx + b[0].get<float>(), fy + b[1].get<float>(), b[2].get<float>(), b[3].get<float>(), iso_,
                             kZones[n++ % 6], 0.6f, 1.0f);
             }
             for (const auto& o : solved["objects"]) {
                 if (o.value("layer", "") != "building") continue;
-                AddGridRect(overlay, o["x"].get<float>(), o["y"].get<float>(), o["w"].get<float>(), o["h"].get<float>(), iso_,
+                AddGridRect(overlay, fx + o["x"].get<float>(), fy + o["y"].get<float>(), o["w"].get<float>(), o["h"].get<float>(), iso_,
                             kBuilding, 0.95f, 1.5f);
             }
         } else {
             const nlohmann::json sketch = PlanSketch(Places(), build_->Spec(), build_->SiteSide());
             int n = 0;
             for (const auto& r : sketch.value("rects", nlohmann::json::array())) {
-                AddGridRect(overlay, r.value("x", 0.0f), r.value("y", 0.0f), r.value("w", 0.0f), r.value("h", 0.0f), iso_,
+                AddGridRect(overlay, fx + r.value("x", 0.0f), fy + r.value("y", 0.0f), r.value("w", 0.0f), r.value("h", 0.0f), iso_,
                             kZones[n++ % 6], 0.85f, 1.5f);
             }
         }
@@ -2814,8 +2825,65 @@ void EditorApp::PostBuild() {
         post_({{"type", "build:state"}, {"stage", ""}});
         return;
     }
+    const std::string stage = build_->Stage();
+    if (!build_->HasOrigin() && (stage == "plan" || stage == "planned" || stage == "built")) {
+        const auto [x, y] = FreeOrigin(registry_, build_->Id(), build_->SiteSide());
+        build_->SetOrigin(x, y);
+    }
     post_(build_->State());
     post_(build_->Card());
+}
+
+void EditorApp::BuildIntoScene() {
+    if (!build_) return;
+    if (playing_) {
+        post_({{"type", "notify"}, {"text", "Stop Play mode before building."}});
+        return;
+    }
+    if (const std::string why = build_->StartBuilding(); !why.empty()) {
+        post_({{"type", "notify"}, {"text", "Not yet: " + why}});
+        return;
+    }
+    PostBuild(); // ④ Build shows while it works
+    if (!build_->HasOrigin()) {
+        const auto [x, y] = FreeOrigin(registry_, build_->Id(), build_->SiteSide());
+        build_->SetOrigin(x, y);
+    }
+    PlaceSceneOptions options;
+    options.place = build_->Id();
+    std::tie(options.originX, options.originY) = build_->Origin();
+    options.iso = iso_;
+    options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
+    const TerrainSet terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
+    const Catalog catalog = BuildCatalog(assets_, &Places(), CatalogOptionsNow());
+    // The asset plan, the build, then verify and repair before it becomes one undo step.
+    const nlohmann::json assets = PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), catalog, prefabs_, assets_, terrains, options);
+    nlohmann::json report;
+    auto command = BuildPlaceScene(registry_, prefabs_, build_->Solved(), assets, terrains, options, &report);
+    const nlohmann::json verify = VerifyPlaceScene(registry_, build_->Solved(), assets, options);
+    bool failing = false;
+    for (const auto& c : verify) failing = failing || (!c.value("ok", true) && !c.value("warning", false));
+    nlohmann::json repairs = nlohmann::json::array();
+    nlohmann::json after = verify;
+    if (failing) {
+        repairs = RepairPlaceScene(registry_, prefabs_, build_->Solved(), assets, verify, options);
+        after = VerifyPlaceScene(registry_, build_->Solved(), assets, options);
+    }
+    history_.PushCommand(std::move(command));
+    prefabs_.SyncAll(registry_);
+    UpdateWorldToScreen(registry_, iso_);
+    dirty_ = true;
+    editorStateStale_ = true;
+    sceneTreeStale_ = true;
+    build_->Built({{"assets", assets}, {"report", report}, {"verify", verify}, {"repairs", repairs}, {"after", after},
+                   {"origin", {options.originX, options.originY}}});
+    // Look at it.
+    const int side = build_->SiteSide();
+    const ScreenPose centre = ProjectIso(options.originX + side / 2.0f, options.originY + side / 2.0f, iso_);
+    int width = 0, height = 0;
+    viewport_.GetFramebufferSize(width, height);
+    camera_.offsetX = centre.x - width / (2.0f * camera_.zoom);
+    camera_.offsetY = centre.y - height / (2.0f * camera_.zoom);
 }
 
 void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool asChange) {

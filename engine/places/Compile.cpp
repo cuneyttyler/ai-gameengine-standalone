@@ -139,10 +139,57 @@ private:
     std::pair<int, int> Footprint(const ModuleDef& m, const SlotDef& slot, const json& parentSize);
     // The share children a parent's instance gets: exactly round(share x n) of n, by hash.
     bool Gets(const std::string& childId, double share, int instance, int instances) const;
-    // What instance `index` of a parcel needs beyond its house: the depth of the
-    // garden or yard it gets, and whether it has dressing at its front (a doorstep).
+    // What instance `index` of a parcel needs beyond its house: the area of the
+    // gardens and yards it gets, and whether it has dressing at its front (a doorstep).
     std::pair<int, bool> Extras(const json& parcel, int index, int instances) const;
+    // A parcel instance's lot: its size, deepened for what it holds.
+    json LotSize(const json& parcel, const ModuleDef& m, int index, int instances) const;
+    // The lots of a zone's parcels, added up (cells).
+    double ParcelArea(const json& zone) const;
 };
+
+json Compiler::LotSize(const json& parcel, const ModuleDef& m, int index, int instances) const {
+    json lot = SizeOf(parcel, m, json{{"w", 5}, {"h", 6}});
+    const auto [extra, front] = Extras(parcel, index, instances);
+    // Deep enough for its house, its front row and the gardens and yards it gets:
+    // their area spread over the lot's width, no more than doubling its depth.
+    auto low = [](const json& v, int fallback) {
+        if (v.is_number()) return v.get<int>();
+        if (v.is_array() && !v.empty()) return v[0].get<int>();
+        return fallback;
+    };
+    const int width = std::max(1, low(lot["w"], 5)), depth = std::max(1, low(lot["h"], 6));
+    const int more = std::min(depth, (extra + width - 1) / width) + (front ? 1 : 0);
+    if (more > 0 && lot["h"].is_number()) lot["h"] = lot["h"].get<int>() + more;
+    if (more > 0 && lot["h"].is_array()) lot["h"] = {lot["h"][0].get<int>() + more, lot["h"][1].get<int>() + more};
+    return lot;
+}
+
+double Compiler::ParcelArea(const json& zone) const {
+    auto mid = [](const json& v) {
+        if (v.is_number()) return v.get<double>();
+        if (v.is_array() && v.size() == 2) return (v[0].get<double>() + v[1].get<double>()) / 2;
+        return 5.0;
+    };
+    double total = 0;
+    for (const auto& p : zone.value("children", json::array())) {
+        const ModuleDef* pm = ontology_.Module(p.value("module", ""));
+        if (pm == nullptr) continue;
+        // The zone's own features take land too.
+        if (pm->level == PlaceLevel::Feature && !ontology_.IsA(pm->id, "LinearFeature")) {
+            const json size = SizeOf(p, *pm, json{{"w", 3}, {"h", 3}});
+            total += mid(size["w"]) * mid(size["h"]) * std::max(1, p.value("repeat", 1));
+            continue;
+        }
+        if (pm->level != PlaceLevel::Parcel) continue;
+        const int repeat = std::max(1, p.value("repeat", 1));
+        for (int k = 0; k < repeat; ++k) {
+            const json lot = LotSize(p, *pm, k, repeat);
+            total += mid(lot["w"]) * mid(lot["h"]);
+        }
+    }
+    return total;
+}
 
 std::pair<int, bool> Compiler::Extras(const json& parcel, int index, int instances) const {
     int extra = 0;
@@ -157,15 +204,19 @@ std::pair<int, bool> Compiler::Extras(const json& parcel, int index, int instanc
             continue;
         }
         const json size = SizeOf(c, *cm, json{{"w", 3}, {"h", 3}});
-        int h = 3;
-        if (size["h"].is_number()) h = size["h"].get<int>();
-        if (size["h"].is_array()) h = (size["h"][0].get<int>() + size["h"][1].get<int>() + 1) / 2;
+        auto lo = [](const json& v, int fallback) {
+            if (v.is_number()) return v.get<int>();
+            if (v.is_array() && !v.empty()) return v[0].get<int>();
+            return fallback;
+        };
+        int w = lo(size["w"], 3), h = lo(size["h"], 3);
         if (cm->Field("depth") && !cm->Field("size")) {
+            w = 4;
             if (const auto d = Range(c, *cm, "depth")) h = static_cast<int>(std::lround(d->first));
         }
-        extra += std::clamp(h, 1, 8);
+        extra += std::clamp(w, 1, 12) * std::clamp(h, 1, 12);
     }
-    return {std::min(extra, 12), front};
+    return {extra, front};
 }
 
 bool Compiler::Gets(const std::string& childId, double share, int instance, int instances) const {
@@ -239,6 +290,17 @@ void Compiler::Root(const json& root) {
         const auto area = Range(root, *m, "area");
         side_ = area ? std::max(16, static_cast<int>(std::lround(std::sqrt((area->first + area->second) / 2)))) : 64;
     }
+    {
+        double required = 0;
+        for (const auto& c : root.value("children", json::array())) {
+            const ModuleDef* cm = ontology_.Module(c.value("module", ""));
+            if (cm == nullptr || cm->level != PlaceLevel::Zone) continue;
+            double scale = 1.0;
+            if (auto it = options_.zoneScale.find(c.value("id", "")); it != options_.zoneScale.end()) scale = it->second;
+            required += ParcelArea(c) * 1.9 * scale;
+        }
+        side_ = std::max(side_, static_cast<int>(std::ceil(std::sqrt(required / 0.6))));
+    }
     const int s = side_;
     Emit({{"op", "region"}, {"id", "site"}, {"node", id}, {"shape", "rect"}, {"at", {0, 0}}, {"size", {{"w", s}, {"h", s}}}});
     const json children = root.value("children", json::array());
@@ -296,6 +358,7 @@ void Compiler::Root(const json& root) {
     }
 
     // Zones, partitioned by their site preferences.
+    double builtNeed = 0;
     json into = json::array();
     std::vector<std::pair<const json*, const ModuleDef*>> zones;
     for (const auto& c : children) {
@@ -304,22 +367,20 @@ void Compiler::Root(const json& root) {
         const auto area = Range(c, *cm, "area");
         json prefers = json::object();
         for (const auto& [criterion, weight] : cm->prefersSite) prefers[criterion] = weight;
-        // A zone has room for its parcels: about 1.9 times their area, with its streets and open land.
-        double needed = 0;
-        for (const auto& p : c.value("children", json::array())) {
-            const ModuleDef* pm = ontology_.Module(p.value("module", ""));
-            if (pm == nullptr || pm->level != PlaceLevel::Parcel) continue;
-            const json size = SizeOf(p, *pm, json{{"w", 5}, {"h", 6}});
-            auto mid = [](const json& v) {
-                if (v.is_number()) return v.get<double>();
-                if (v.is_array() && v.size() == 2) return (v[0].get<double>() + v[1].get<double>()) / 2;
-                return 5.0;
-            };
-            needed += mid(size["w"]) * mid(size["h"]) * std::max(1, p.value("repeat", 1));
-        }
+        // A zone has room for its parcels: about 1.9 times their lots, with its streets and open land.
+        const double needed = ParcelArea(c);
         const double planned = area ? (area->first + area->second) / 2 : 400.0;
-        into.push_back({{"id", c.value("id", "")}, {"node", c.value("id", "")}, {"module", cm->id},
-                        {"area", static_cast<int>(std::lround(std::max(planned, needed * 1.9)))}, {"prefers", prefers}});
+        double scale = 1.0;
+        if (auto it = options_.zoneScale.find(c.value("id", "")); it != options_.zoneScale.end()) scale = it->second;
+        const double need = needed * 1.9 * scale;
+        // Without buildings (farmland, a green), a zone takes what the others leave.
+        const bool flexible = needed <= 0;
+        json zone = {{"id", c.value("id", "")}, {"node", c.value("id", "")}, {"module", cm->id},
+                     {"area", static_cast<int>(std::lround(std::max(planned * (flexible ? 1.0 : scale), need)))}, {"prefers", prefers}};
+        if (flexible) zone["flexible"] = true;
+        else zone["min"] = static_cast<int>(std::lround(need));
+        builtNeed += need;
+        into.push_back(zone);
         zones.push_back({&c, cm});
     }
     if (!into.empty()) {
@@ -365,15 +426,9 @@ void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json&
         const ModuleDef* cm = ontology_.Module(c.value("module", ""));
         if (cm == nullptr || cm->level != PlaceLevel::Parcel) continue;
         const int repeat = std::max(1, c.value("repeat", 1));
-        const json size = SizeOf(c, *cm, json{{"w", 5}, {"h", 6}});
         for (int k = 0; k < repeat; ++k) {
             const std::string instance = repeat == 1 ? c.value("id", "") : c.value("id", "") + "#" + std::to_string(k);
-            // Deep enough for its house, its front row and the garden or yard it gets.
-            json lot = size;
-            const auto [extra, front] = Extras(c, k, repeat);
-            const int more = extra + (front ? 1 : 0);
-            if (more > 0 && lot["h"].is_number()) lot["h"] = lot["h"].get<int>() + more;
-            if (more > 0 && lot["h"].is_array()) lot["h"] = {lot["h"][0].get<int>() + more, lot["h"][1].get<int>() + more};
+            const json lot = LotSize(c, *cm, k, repeat);
             if (lot["h"].is_number()) depth = std::max(depth, lot["h"].get<int>());
             if (lot["h"].is_array()) depth = std::max(depth, lot["h"][1].get<int>());
             into.push_back({{"id", instance}, {"node", c.value("id", "")}, {"module", cm->id}, {"size", lot}});
@@ -429,6 +484,17 @@ void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json&
               {"args", {{"ref", zoneId}, {"band", {band->first * 0.3, band->second}}}}});
     }
     for (const auto& [node, cm, instance, k] : parcels) Parcel(*node, *cm, instance, k);
+    // The zone's own features (a ward's gardens, a temple ward's graveyard): in
+    // its land between the lots.
+    for (const auto& c : children) {
+        const ModuleDef* cm = ontology_.Module(c.value("module", ""));
+        if (cm == nullptr || cm->level != PlaceLevel::Feature || ontology_.IsA(cm->id, "LinearFeature")) continue;
+        const int repeat = std::max(1, c.value("repeat", 1));
+        for (int k = 0; k < repeat; ++k) {
+            const std::string self = repeat == 1 ? c.value("id", "") : c.value("id", "") + "#" + std::to_string(k);
+            Feature(c, *cm, self, zoneId, "");
+        }
+    }
 }
 
 void Compiler::Parcel(const json& node, const ModuleDef& m, const std::string& instance, int index) {

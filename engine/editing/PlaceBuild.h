@@ -34,6 +34,11 @@ namespace aige {
 //   plan          ③ Plan: the summary and the sketch; Approve() compiles
 //   planned       and solves it: layout.solved.json and layout.png, Verify
 //                 (asked, planned, built), and the AI's review of the map
+//   building      ④ Build: StartBuilding(); the editor puts the layout into the
+//                 scene (editing/PlaceScene.h), verifies and repairs it, and
+//   built         ⑤ Result: Built(result) — asked vs built, assets by source,
+//                 the checks and the repairs; a revision, then Build again,
+//                 replaces the build in the scene
 //   revising      Revise(request) or Review(): the AI's changes are applied,
 //                 the plan finished again and, if it was laid out, solved
 //                 again; Undo() goes back one revision
@@ -86,6 +91,18 @@ public:
     std::string Review();
     // Back to the plan before the last revision.
     std::string Undo();
+    // The plan laid out again: the fixes that need no AI, then the fitting
+    // rounds (a plan from before a solver change gets its benefit). The stage stays.
+    std::string Relayout();
+    // ④ Build: from a laid-out plan. Returns why not, or "".
+    std::string StartBuilding();
+    // The editor's scene build is done: {assets, report, verify, repairs, after}.
+    void Built(const nlohmann::json& result);
+    const nlohmann::json& Result() const { return result_; }
+    // Where the site's corner is in the world (kept, so a rebuild lands on the same cells).
+    bool HasOrigin() const { return hasOrigin_; }
+    std::pair<int, int> Origin() const { return {originX_, originY_}; }
+    void SetOrigin(int x, int y);
     // [{by: you|review, text, summary, issues, notes, undo?, undone?}]
     const nlohmann::json& Revisions() const { return revisions_; }
     void Cancel();
@@ -99,8 +116,9 @@ public:
     const std::vector<PlaceProblem>& PlanProblems() const { return planProblems_; }
     // What the build did on its own when something failed (shown to the user).
     const std::vector<std::string>& Notices() const { return notices_; }
-    // The site's side in cells (the Brief's area), for the plan view.
+    // The site's side in cells: as laid out, else the Brief's area.
     int SiteSide() const;
+    int BriefSide() const;
     const BriefMerge& Merge() const { return merge_; }
     bool Active() const { return stage_ != "cancelled" && stage_ != "failed" && !stage_.empty(); }
     std::filesystem::path Folder() const { return host_.projectRoot / "places" / id_; }
@@ -163,6 +181,9 @@ private:
     nlohmann::json revisions_ = nlohmann::json::array();
     std::string beforeRevision_; // the stage a revision returns to
     bool solveAfter_ = false;    // a revision of a laid-out plan: solve again once planned
+    nlohmann::json result_;      // the last scene build's (⑤ Result)
+    bool hasOrigin_ = false;
+    int originX_ = 0, originY_ = 0;
 };
 
 // "Build a large village by a river" -> "large-village-by-river", unique in places/.

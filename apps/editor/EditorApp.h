@@ -24,6 +24,7 @@
 #include "assets/Catalog.h"
 #include "places/Ontology.h"
 #include "editing/PlaceBuild.h"
+#include "editing/PlaceScene.h"
 #include "renderer2d/Camera2D.h"
 #include "renderer2d/Renderer2D.h"
 #include "ui/GameUi.h"
@@ -153,6 +154,7 @@ private:
     void SendToAi(const std::string& text, const std::string& focus, bool asChange = false);
     void StartBuild(const std::string& query);
     void ResumeBuild(const std::string& id); // a build of the project, from places/<id>/
+    void BuildIntoScene();                   // ④ Build: the solved layout into the scene (7.7)
     std::unique_ptr<PlaceBuild> MakeBuild();
     void PostBuild();
     void OnProposal(int requestId, const nlohmann::json& body);

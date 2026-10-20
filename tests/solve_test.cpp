@@ -1,4 +1,6 @@
 #include "assets/LayoutImage.h"
+#include "assets/Catalog.h"
+#include "editing/PlaceBuild.h"
 #include "assets/TextureCook.h"
 #include "places/Brief.h"
 #include "places/Compile.h"
@@ -369,4 +371,35 @@ TEST(SolveTest, SolvesAGivenBuild) {
         if (!any && idle[op + " " + s.value("slot", "") ]++ < 2) std::cout << "  idle: " << s.dump().substr(0, 260) << "\n";
     }
     for (const auto& [k, n] : idle) std::cout << "  idle " << n << "  " << k << "\n";
+}
+
+// AIGE_RELAYOUT_BUILD=<places/<id> folder>: a copy of a user's build, opened and
+// laid out again (the fitting rounds), with its Verify rows printed.
+TEST(SolveTest, RelaysOutAGivenBuild) {
+    const char* path = std::getenv("AIGE_RELAYOUT_BUILD");
+    if (path == nullptr) GTEST_SKIP() << "set AIGE_RELAYOUT_BUILD";
+    const fs::path from(path);
+    const fs::path root = fs::temp_directory_path() / "aige_relayout";
+    fs::remove_all(root);
+    fs::create_directories(root / "places");
+    fs::copy(from, root / "places" / from.filename(), fs::copy_options::recursive);
+    PlaceBuild::Host host;
+    host.ontology = []() -> const Ontology& { return Library(); };
+    host.catalog = [] { return Catalog{}; };
+    host.isoGrid = [] { return true; };
+    host.request = [](const std::string&, const json&, int) { return 0; };
+    host.projectRoot = root;
+    PlaceBuild build(host);
+    ASSERT_EQ(build.Open(from.filename().string()), "");
+    ASSERT_EQ(build.Relayout(), "");
+    std::cout << "  side " << build.SiteSide() << "  stage " << build.Stage() << "\n";
+    json spec = build.Spec();
+    for (const auto& row : VerifyLayout(Library(), build.Brief(), spec, build.Solved())) {
+        std::cout << "  " << row.value("status", "") << "  " << row.value("what", "") << " " << row.value("id", "") << "  planned "
+                  << row.value("planned", json()).dump() << " built " << row.value("built", json()).dump() << "\n";
+        for (const auto& p : row.value("parts", json::array())) {
+            if (p["status"] != "ok") std::cout << "      " << p["status"] << " " << p["id"] << " " << p["planned"] << "/" << p["built"] << "\n";
+        }
+    }
+    if (const char* png = std::getenv("AIGE_LAYOUT_PNG")) fs::copy_file(build.Folder() / "layout.png", png, fs::copy_options::overwrite_existing);
 }

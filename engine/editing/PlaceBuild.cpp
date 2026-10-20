@@ -183,7 +183,8 @@ void PlaceBuild::Save() const {
                                           {"errors", errors_},
                                           {"notices", notices_},
                                           {"planProblems", ProblemsJson(planProblems_)},
-                                          {"revisions", revisions_}});
+                                          {"revisions", revisions_},
+                                          {"origin", hasOrigin_ ? json::array({originX_, originY_}) : json()}});
 }
 
 json PlaceBuild::Defaults() const { return ReadJson(host_.projectRoot / "places" / "defaults.json"); }
@@ -200,6 +201,8 @@ std::string PlaceBuild::Start(const std::string& query) {
     errors_.clear();
     notices_.clear();
     revisions_ = json::array();
+    result_ = json();
+    hasOrigin_ = false;
     brief_ = json::object();
     merge_ = {};
     spec_ = solved_ = json();
@@ -551,14 +554,13 @@ void PlaceBuild::FinishPlanning() {
         planProblems_.push_back({p.where, p.warning ? p.message : "kept as planned, though " + p.message, true});
     }
     planProblems_.insert(planProblems_.end(), tidied_.begin(), tidied_.end());
-    WriteJson(Folder() / "spec.json", spec_);
-    stage_ = "plan";
-    status_.clear();
     Log({{"step", "planned"}, {"buildings", buildings}, {"problems", ProblemsJson(planProblems_)}});
-    if (solveAfter_) {
-        solveAfter_ = false;
-        Solve();
-    }
+    // Laid out at once, so ③ Plan shows the map it will be, fitted until each
+    // zone holds what it's planned to (a revision of an approved plan stays approved).
+    stage_ = solveAfter_ ? "planned" : "plan";
+    solveAfter_ = false;
+    Solve();
+    WriteJson(Folder() / "spec.json", spec_);
 }
 
 // --- Solve ----------------------------------------------------------------------------------
@@ -566,24 +568,72 @@ void PlaceBuild::FinishPlanning() {
 std::string PlaceBuild::Approve() {
     if (stage_ != "plan") return "there's no plan to approve";
     Log({{"step", "approved"}});
-    Solve();
+    if (!solved_.is_object()) Solve();
+    stage_ = "planned";
     Review(); // the AI checks the map; without the AI, the layout stands as solved
     Save();
     return {};
 }
 
 void PlaceBuild::Solve() {
-    stage_ = "planned";
+    const Ontology& ontology = host_.ontology();
     CompileOptions options;
     options.seed = Fnv1a(id_);
-    options.side = SiteSide();
+    options.side = BriefSide();
     options.isoGrid = host_.isoGrid ? host_.isoGrid() : true;
-    const json ir = CompileSpec(host_.ontology(), spec_, options);
-    const auto irProblems = ValidateLayout(host_.ontology(), ir);
-    WriteJson(Folder() / "layout.ir.json", ir);
-    const SolvedLayout solved = SolveLayout(host_.ontology(), ir);
-    solved_ = solved.document;
+    // Fitting rounds: a zone that couldn't place all it's planned to gets more
+    // land (and the site grows if it must), until each holds its parcels or
+    // four rounds are done; the best layout is kept.
+    json ir, best, bestIr;
+    std::vector<PlaceProblem> irProblems;
+    json bestProblems = json::array();
+    double bestScore = -1e18;
+    int rounds = 0;
+    for (int round = 0; round < 4; ++round) {
+        ++rounds;
+        ir = CompileSpec(ontology, spec_, options);
+        const SolvedLayout solved = SolveLayout(ontology, ir);
+        const json rows = VerifyLayout(ontology, brief_, spec_, solved.document);
+        double score = 0;
+        int shortZones = 0;
+        json grown = json::object();
+        for (const auto& row : rows) {
+            if (!row.value("zone", false)) continue;
+            const int planned = row.value("planned", 0), built = row.value("built", 0);
+            int missing = 0;
+            for (const auto& p : row.value("parts", json::array())) missing += p.value("status", "") == "missing";
+            score += std::min(built, planned) - 3.0 * missing;
+            if (planned > 0 && (built < planned || missing > 0)) {
+                const double factor = std::clamp(static_cast<double>(planned) / std::max(1, built), 1.15, 1.8);
+                const std::string id = row.value("id", "");
+                options.zoneScale[id] = (options.zoneScale.contains(id) ? options.zoneScale[id] : 1.0) * factor;
+                grown[id] = options.zoneScale[id];
+                ++shortZones;
+            }
+        }
+        Log({{"step", "fit"}, {"round", round + 1}, {"score", score}, {"short", shortZones}, {"scale", grown}});
+        if (score > bestScore) {
+            bestScore = score;
+            best = solved.document;
+            bestIr = ir;
+            bestProblems = solved.problems;
+        }
+        if (shortZones == 0) break;
+    }
+    irProblems = ValidateLayout(ontology, bestIr);
+    WriteJson(Folder() / "layout.ir.json", bestIr);
+    solved_ = best;
     WriteJson(Folder() / "layout.solved.json", solved_);
+    // The plan says what the layout is: each zone's area as laid out, the site's side.
+    const int side = SiteSide();
+    if (spec_.contains("root")) {
+        spec_["root"]["quantity"]["area"] = {{"area", side * side}};
+        for (const auto& r : solved_.value("regions", json::array())) {
+            if (r.value("statement", "") != "site/zones") continue;
+            if (json* zone = SpecNode(spec_, r.value("id", ""))) (*zone)["quantity"]["area"] = {{"area", r.value("area", 0)}};
+        }
+    }
+    (void)rounds;
     int buildings = 0;
     for (const auto& o : solved_.value("objects", json::array())) buildings += o.value("layer", "") == "building";
     int failed = 0;
@@ -613,11 +663,21 @@ void PlaceBuild::Solve() {
     WritePng(Folder() / "layout.png", RenderLayoutImage(solved_, image));
     ++imageVersion_;
     status_ = "Laid out " + std::to_string(buildings) + " buildings" + (failed ? " (" + std::to_string(failed) + " check(s) to look at)" : "") +
-              ". Putting it into the scene comes next (milestone 7.7).";
-    Log({{"step", "solved"}, {"irProblems", ProblemsJson(irProblems)}, {"problems", solved.problems}, {"stats", solved_.value("stats", json())}});
+              ". Build puts it into the scene.";
+    Log({{"step", "solved"}, {"rounds", rounds}, {"irProblems", ProblemsJson(irProblems)}, {"problems", bestProblems},
+         {"stats", solved_.value("stats", json())}});
 }
 
 int PlaceBuild::SiteSide() const {
+    // As laid out (the site grows when its zones need it), else as the Brief says.
+    if (solved_.is_object() && solved_.contains("grid")) {
+        const json b = solved_["grid"].value("bounds", json());
+        if (b.is_array() && b.size() == 4 && b[2].is_number()) return b[2].get<int>();
+    }
+    return BriefSide();
+}
+
+int PlaceBuild::BriefSide() const {
     const json area = BriefValue(brief_, "scale.area.area");
     double a = 0;
     if (area.is_number()) a = area.get<double>();
@@ -634,7 +694,7 @@ json PlaceBuild::RevisionBody() const {
 }
 
 std::string PlaceBuild::Revise(const std::string& request) {
-    if (stage_ != "plan" && stage_ != "planned") return "there's no plan to revise yet";
+    if (stage_ != "plan" && stage_ != "planned" && stage_ != "built") return "there's no plan to revise yet";
     if (request.find_first_not_of(" \t\r\n") == std::string::npos) return "say what to change";
     json body = RevisionBody();
     body["instruction"] = request;
@@ -648,7 +708,7 @@ std::string PlaceBuild::Revise(const std::string& request) {
 }
 
 std::string PlaceBuild::Review() {
-    if (stage_ != "planned" || !fs::exists(Folder() / "layout.png")) return "there's no map to review yet";
+    if ((stage_ != "planned" && stage_ != "built") || !fs::exists(Folder() / "layout.png")) return "there's no map to review yet";
     json body = RevisionBody();
     body["image"] = "places/" + id_ + "/layout.png";
     body["verify"] = VerifyLayout(host_.ontology(), brief_, spec_, solved_);
@@ -711,7 +771,7 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
     entry["notes"] = notes;
     revisions_.push_back(entry);
     // The rest as after planning: the expansion, the fixes, the checks; then laid out again.
-    solveAfter_ = beforeRevision_ == "planned";
+    solveAfter_ = beforeRevision_ == "planned" || beforeRevision_ == "built";
     finalRepairAsked_ = false;
     tidied_.clear();
     stage_ = "planning";
@@ -721,7 +781,7 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
 }
 
 std::string PlaceBuild::Undo() {
-    if (stage_ != "plan" && stage_ != "planned") return "nothing to undo now";
+    if (stage_ != "plan" && stage_ != "planned" && stage_ != "built") return "nothing to undo now";
     for (auto it = revisions_.rbegin(); it != revisions_.rend(); ++it) {
         if (!it->contains("undo") || it->value("undone", false)) continue;
         const json saved = ReadJson(Folder() / "revisions" / (std::to_string((*it)["undo"].get<int>()) + ".json"));
@@ -736,11 +796,55 @@ std::string PlaceBuild::Undo() {
             planProblems_.push_back({p.where, p.warning ? p.message : "kept as planned, though " + p.message, true});
         }
         Log({{"step", "undo"}, {"revision", (*it)["undo"]}});
-        if (stage_ == "planned") Solve();
+        Solve();
         Save();
         return {};
     }
     return "no revision to undo";
+}
+
+std::string PlaceBuild::Relayout() {
+    if (stage_ != "plan" && stage_ != "planned" && stage_ != "built") return "there's no plan to lay out";
+    const Ontology& ontology = host_.ontology();
+    ExpandSpec(ontology, brief_, spec_);
+    for (auto& note : TidySpec(ontology, spec_)) tidied_.push_back(std::move(note));
+    RebalanceBuildings(ontology, brief_, spec_);
+    for (auto& note : ResolveSpec(ontology, brief_, spec_)) tidied_.push_back(std::move(note));
+    ExpandSpec(ontology, brief_, spec_);
+    RebalanceBuildings(ontology, brief_, spec_);
+    Log({{"step", "relayout"}});
+    Solve();
+    WriteJson(Folder() / "spec.json", spec_);
+    Save();
+    return {};
+}
+
+std::string PlaceBuild::StartBuilding() {
+    if (stage_ != "planned" && stage_ != "built") return "approve the plan first";
+    if (!solved_.is_object()) return "the plan isn't laid out";
+    stage_ = "building";
+    status_ = "Putting the place into the scene…";
+    Log({{"step", "building"}});
+    Save();
+    return {};
+}
+
+void PlaceBuild::Built(const json& result) {
+    result_ = result;
+    WriteJson(Folder() / "result.json", result_);
+    stage_ = "built";
+    int failed = 0;
+    for (const auto& c : result_.value("after", json::array())) failed += !c.value("ok", true) && !c.value("warning", false);
+    status_ = failed ? std::to_string(failed) + " check(s) still failing after the repairs" : "Built and verified.";
+    Log({{"step", "built"}, {"report", result_.value("report", json())}, {"repairs", result_.value("repairs", json::array())}});
+    Save();
+}
+
+void PlaceBuild::SetOrigin(int x, int y) {
+    hasOrigin_ = true;
+    originX_ = x;
+    originY_ = y;
+    Save();
 }
 
 // --- Reopening a build ------------------------------------------------------------------
@@ -755,6 +859,8 @@ std::string PlaceBuild::Open(const std::string& id) {
     errors_.clear();
     notices_.clear();
     revisions_ = json::array();
+    result_ = json();
+    hasOrigin_ = false;
     round_ = 1;
     const Ontology& ontology = host_.ontology();
     context_ = InterpretContext(ontology);
@@ -779,6 +885,11 @@ std::string PlaceBuild::Open(const std::string& id) {
         }
         planProblems_ = ProblemsFrom(session.value("planProblems", json::array()));
         revisions_ = session.value("revisions", json::array());
+        if (const json o = session.value("origin", json()); o.is_array() && o.size() == 2) {
+            hasOrigin_ = true;
+            originX_ = o[0].get<int>();
+            originY_ = o[1].get<int>();
+        }
     } else {
         brief_ = ReadJson(folder / "brief.json");
         if (!brief_.is_object() && !drafts_.empty()) brief_ = CompleteBrief(ontology, merge_.brief, Defaults());
@@ -789,6 +900,9 @@ std::string PlaceBuild::Open(const std::string& id) {
         Notice("A revision was still running when the build was closed; ask for it again.");
         stage.clear();
     }
+    if (stage == "building") stage = "planned"; // Build again
+    result_ = ReadJson(folder / "result.json");
+    if (stage == "built" && !result_.is_object()) stage = "planned";
     if (stage.empty() || stage == "cancelled" || stage == "failed") {
         stage = solved_.is_object()  ? "planned"
                 : spec_.is_object()   ? "plan"
@@ -814,10 +928,13 @@ std::string PlaceBuild::Open(const std::string& id) {
                 planProblems_.push_back({p.where, p.warning ? p.message : "kept as planned, though " + p.message, true});
             }
         }
-        if (stage_ == "planned") {
+        if (stage_ == "built") {
+            status_ = "Built.";
+            ++imageVersion_;
+        } else if (stage_ == "planned") {
             int buildings = 0;
             for (const auto& o : solved_.value("objects", json::array())) buildings += o.value("layer", "") == "building";
-            status_ = "Laid out " + std::to_string(buildings) + " buildings. Putting it into the scene comes next (milestone 7.7).";
+            status_ = "Laid out " + std::to_string(buildings) + " buildings. Build puts it into the scene.";
             ++imageVersion_;
         } else {
             status_.clear();
@@ -848,7 +965,7 @@ void PlaceBuild::Cancel() {
 json PlaceBuild::State() {
     json state = {{"type", "build:state"}, {"id", id_}, {"query", query_}, {"stage", stage_}, {"round", round_},
                   {"status", status_}, {"errors", errors_}, {"notices", notices_}, {"drafts", drafts_.size()}};
-    if (stage_ == "plan" || stage_ == "planned") {
+    if (stage_ == "plan" || stage_ == "planned" || stage_ == "building" || stage_ == "built") {
         state["plan"] = PlanSummary(host_.ontology(), spec_);
         state["sketch"] = PlanSketch(host_.ontology(), spec_, SiteSide());
         state["problems"] = ProblemsJson(planProblems_);
@@ -859,7 +976,13 @@ json PlaceBuild::State() {
         }
         state["name"] = brief_.value("name", id_);
     }
-    if (stage_ == "plan" || stage_ == "planned" || stage_ == "revising") {
+    if (stage_ == "built" && result_.is_object()) {
+        json shown = result_;
+        if (shown.contains("assets")) shown["assets"].erase("byObject");
+        state["result"] = shown;
+    }
+    if (hasOrigin_) state["origin"] = {originX_, originY_};
+    if (stage_ == "plan" || stage_ == "planned" || stage_ == "revising" || stage_ == "built") {
         state["revisions"] = revisions_;
         if (solved_.is_object()) state["verify"] = VerifyLayout(host_.ontology(), brief_, spec_, solved_);
     }
@@ -887,8 +1010,10 @@ json PlaceBuild::Card() const {
     else if (stage_ == "assets") text = "② Assets: choose where the art comes from";
     else if (stage_ == "planning") text = status_.empty() ? "Planning…" : status_;
     else if (stage_ == "plan") text = "③ Plan: review the zones before building";
-    else if (stage_ == "planned") text = "Laid out; putting it into the scene comes next";
+    else if (stage_ == "planned") text = "Laid out; Build puts it into the scene";
     else if (stage_ == "revising") text = status_.empty() ? "Revising the plan…" : status_;
+    else if (stage_ == "building") text = "④ Build: putting it into the scene…";
+    else if (stage_ == "built") text = "⑤ Result: " + status_;
     else if (stage_ == "cancelled") text = "Cancelled";
     else if (stage_ == "failed") text = errors_.empty() ? "Failed" : errors_.front();
     return {{"type", "build:card"}, {"buildId", id_}, {"name", brief_.is_object() ? brief_.value("name", "") : ""},

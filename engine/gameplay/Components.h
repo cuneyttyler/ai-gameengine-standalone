@@ -140,7 +140,15 @@ struct Dead {};
 
 // Blocks movement through the cell it stands in (trees, rocks, crates) —
 // TileGrid treats that cell as solid.
-struct Obstacle {};
+// Blocks movement through the cell it stands in and, for something bigger
+// (a house), the cells beyond it: `left` and `right` across, `back` behind
+// (toward -y). Upright art stands on its front row, so a house's footprint
+// lies behind and beside where it stands.
+struct Obstacle {
+    int left = 0;
+    int right = 0;
+    int back = 0;
+};
 
 // Sound effects (project-relative audio asset paths) played when this
 // entity swings, takes damage, dies, or — for a pickup — is collected.

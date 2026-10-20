@@ -384,3 +384,82 @@ TEST(BuildRobustTest, APlanIsRevisedReviewedAndUndone) {
     ASSERT_EQ(again.Open(build.Id()), "");
     EXPECT_EQ(again.Revisions().size(), 2u);
 }
+
+// What a user's village (Test1, October 2026) lost between plan and layout:
+// zone areas adding up to more than the site, a farmland ring that took the
+// wards' land, gardens and a graveyard planned in their wards, farmsteads
+// counted by the ring's field. The plan is laid out at once and fitted: Verify
+// finds everything planned.
+TEST(BuildRobustTest, ThePlanIsLaidOutAsPlanned) {
+    Fixture f("aige_build_fit");
+    PlaceBuild build(f.Host());
+    const json off = {{"ok", false}, {"errors", json::array({"No AI provider configured"})}};
+    ASSERT_EQ(build.Start("a village by a river"), "");
+    json brief = {{"buildType", "settlement"}, {"name", "Riverside"}, {"features", json::array({{{"module", "river"}}})},
+                  {"scale", {{"class", "village"}, {"area", {{"area", json::array({3600, 10000})}}}, {"buildings", {{"count", json::array({30, 50})}}}}},
+                  {"walled", "none"},
+                  {"components", {{"residential-ward", {{"enabled", true}}}, {"market-ward", {{"enabled", true}}}, {"temple-ward", {{"enabled", true}}},
+                                  {"farmland-ring", {{"enabled", true}}}, {"farmstead", {{"enabled", true}}}, {"garden", {{"enabled", true}}},
+                                  {"graveyard", {{"enabled", true}}}, {"house-plot", {{"enabled", true}}}, {"road", {{"enabled", true}}}}}};
+    f.answered.insert(1);
+    build.OnResponse(1, {{"ok", true}, {"drafts", json::array({{{"reading", "typical"}, {"brief", brief}}})}});
+    f.AnswerAll(build, off);
+    ASSERT_EQ(build.Step("assets"), "") << build.State()["window"]["problems"].dump();
+    ASSERT_EQ(build.Confirm(), "");
+    const json root = {{"children", json::array({
+                                        {{"id", "market-ward"}, {"module", "market-ward"}, {"quantity", {{"plots", {{"count", 5}}}, {"area", {{"area", 1200}}}}}},
+                                        {{"id", "residential-ward"}, {"module", "residential-ward"}, {"quantity", {{"plots", {{"count", 18}}}, {"area", {{"area", 1500}}}}}},
+                                        {{"id", "temple-ward"}, {"module", "temple-ward"}, {"quantity", {{"plots", {{"count", 3}}}, {"area", {{"area", 600}}}}}},
+                                        {{"id", "farmland-ring"}, {"module", "farmland-ring"}, {"quantity", {{"area", {{"area", 5000}}}, {"farmsteads", 3}}}},
+                                        {{"id", "main-road"}, {"module", "road"}, {"quality", {{"class", "main"}}}},
+                                    })}};
+    f.answered.insert(static_cast<int>(f.sent.size()));
+    build.OnResponse(static_cast<int>(f.sent.size()), {{"ok", true}, {"answer", root}});
+    for (int guard = 0; guard < 50 && build.Stage() == "planning"; ++guard) {
+        int next = 0;
+        for (int i = 1; i <= static_cast<int>(f.sent.size()); ++i) {
+            if (!f.answered.contains(i)) {
+                next = i;
+                break;
+            }
+        }
+        if (next == 0) break;
+        f.answered.insert(next);
+        const auto& [path, body] = f.sent[next - 1];
+        const std::string module = path == "/places/plan-zone" ? body["zone"].value("module", "") : "";
+        json answer;
+        if (module == "residential-ward") {
+            answer = {{"children", json::array({{{"id", "houses"}, {"module", "house-plot"}, {"repeat", 17}},
+                                                {{"id", "gardens"}, {"module", "garden"}, {"repeat", 10}}})}};
+        } else if (module == "temple-ward") {
+            answer = {{"children", json::array({{{"id", "temple"}, {"module", "temple-plot"}},
+                                                {{"id", "houses"}, {"module", "house-plot"}, {"repeat", 2}},
+                                                {{"id", "graveyard"}, {"module", "graveyard"}}})}};
+        }
+        build.OnResponse(next, answer.is_null() ? off : json{{"ok", true}, {"answer", answer}});
+    }
+    ASSERT_EQ(build.Stage(), "plan") << build.State()["status"];
+    // Laid out already: ③ Plan shows the map it will be.
+    ASSERT_TRUE(build.Solved().is_object());
+    EXPECT_TRUE(build.State().contains("image"));
+    json spec = build.Spec();
+    std::string report;
+    for (const auto& row : VerifyLayout(Library(), build.Brief(), spec, build.Solved())) {
+        if (row["id"] == "area") continue; // the site may grow for its zones
+        if (row["status"] != "ok") report += "  " + row.dump() + "\n";
+    }
+    EXPECT_TRUE(report.empty()) << report;
+    // The farmsteads the ring's field counts are in the plan.
+    const json* ring = SpecNode(spec, "farmland-ring");
+    ASSERT_NE(ring, nullptr);
+    bool farmsteads = false;
+    for (const auto& c : (*ring)["children"]) farmsteads = farmsteads || (c["module"] == "farmstead" && c.value("repeat", 1) == 3);
+    EXPECT_TRUE(farmsteads) << ring->dump();
+    // The plan's areas are the layout's.
+    for (const auto& r : build.Solved()["regions"]) {
+        if (r.value("statement", "") != "site/zones") continue;
+        const json* zone = SpecNode(spec, r["id"]);
+        ASSERT_NE(zone, nullptr);
+        EXPECT_EQ((*zone)["quantity"]["area"]["area"], r["area"]);
+    }
+}

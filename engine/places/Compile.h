@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -43,6 +44,9 @@ struct CompileOptions {
     // A slot's footprint in cells (from the asset plan); none: the default
     // for its role (a building takes ~60% x 45% of its plot, a prop one cell).
     std::function<std::optional<std::pair<int, int>>(const std::string& module, const std::string& slot)> footprint;
+    // More land for a zone than its plan says (zone id -> factor): the fitting
+    // rounds give it to a zone that couldn't place all its parcels.
+    std::map<std::string, double> zoneScale;
 };
 
 nlohmann::json CompileSpec(const Ontology& ontology, const nlohmann::json& spec, const CompileOptions& options = {});

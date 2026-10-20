@@ -842,6 +842,7 @@ void Solver::Partition(const json& s, int region) {
     struct Zone {
         std::string id, node, module;
         double quota = 0;
+        bool flexible = false; // no buildings: takes what's left
         json prefers;
         int seed = -1;
         std::vector<int> cells;
@@ -855,6 +856,7 @@ void Solver::Partition(const json& s, int region) {
         zone.module = z.value("module", "");
         zone.quota = RangeOf(z.value("area", json()), 400).lo > 0 ? (RangeOf(z.value("area", json()), 400).lo + RangeOf(z.value("area", json()), 400).hi) / 2.0 : 400;
         zone.prefers = z.value("prefers", json::object());
+        zone.flexible = z.value("flexible", false);
         wanted += zone.quota;
         zones.push_back(zone);
     }
@@ -863,10 +865,22 @@ void Solver::Partition(const json& s, int region) {
         if (owner_[c] == region && !road_[c] && !water_[c] && !occ_[kBuilding][c]) available.push_back(c);
     }
     if (zones.empty() || available.empty()) return;
-    // Quotas scaled to what's there (open land is left between zones).
+    // Quotas scaled to what's there (open land is left between zones). Zones
+    // without buildings (farmland, a green) give way first: the wards' parcels
+    // need their land, a field can be smaller.
     const double room = 0.92 * available.size();
     if (wanted > room) {
-        for (auto& z : zones) z.quota *= room / wanted;
+        double built = 0, flexible = 0;
+        for (const auto& z : zones) (z.flexible ? flexible : built) += z.quota;
+        if (built <= room) {
+            const double left = room - built;
+            for (auto& z : zones) {
+                if (z.flexible) z.quota *= flexible > 0 ? left / flexible : 0;
+            }
+        } else {
+            const double keep = 0.1 * room; // a little for the fields, the rest for the wards
+            for (auto& z : zones) z.quota *= z.flexible ? (flexible > 0 ? keep / flexible : 0) : (room - (flexible > 0 ? keep : 0)) / built;
+        }
     }
     // Interest of each cell for each zone (Emilien et al.): its site preferences.
     std::vector<int> nearRoad(W * H, 1 << 20), nearWater(W * H, 1 << 20);
@@ -1843,7 +1857,7 @@ SolvedLayout Solver::Run() {
     json regions = json::array(), objects = json::array(), paths = json::array(), lines = json::array(), anchors = json::array();
     for (const auto& r : regions_) {
         json one = {{"id", r.id}, {"node", r.node}, {"statement", r.statement}, {"parent", r.parent >= 0 ? json(regions_[r.parent].id) : json()},
-                    {"bounds", {r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0}}, {"cells", EncodeCells(r.cells, W)}};
+                    {"bounds", {r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0}}, {"area", r.cells.size()}, {"cells", EncodeCells(r.cells, W)}};
         if (r.facing) one["facing"] = std::string(1, r.facing);
         if (!r.module.empty()) one["module"] = r.module;
         regions.push_back(one);

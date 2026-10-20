@@ -352,6 +352,17 @@ std::vector<PlaceProblem> ResolveSpec(const Ontology& ontology, const json& brie
                 note(id + "." + name, "left out: it only applies when " + m->Field(name)->when);
             }
         }
+        // A count of parts the Brief turned off (a farmland ring's farmsteads with
+        // farmsteads off): none can be made, so the plan says none.
+        for (const ChildDef& rule : m->children) {
+            if (rule.count.empty() || !Disabled(brief, rule.module)) continue;
+            const FieldDef* f = m->Field(rule.count);
+            if (f == nullptr) continue;
+            json& group = node[f->quantity ? "quantity" : "quality"];
+            if (!group.contains(rule.count) || Mid(group[rule.count], 0) <= 0) continue;
+            group[rule.count] = 0;
+            note(id + "." + rule.count, "set to 0: " + rule.module + " is turned off in the Brief");
+        }
         if (!node.contains("children") || !node["children"].is_array()) return;
         // Children it can't hold.
         json kept = json::array();
@@ -820,7 +831,17 @@ void ExpandSpec(const Ontology& ontology, const json& brief, json& spec) {
             } else if (rule.min >= 1) {
                 if (rule.min >= 2) child["repeat"] = rule.min; // the minimum, at least
             } else if (!rule.count.empty()) {
-                continue; // tied to a field: the compiler makes as many as it says
+                // Tied to a field: a zone's (a farmland ring's farmsteads and fields)
+                // are made here, as many as it says; below a zone the compiler
+                // writes them (a garden's beds, as rows).
+                if (m->level != PlaceLevel::Zone) continue;
+                const FieldDef* f = m->Field(rule.count);
+                const places::Value v = f ? FieldValueOf(*f, (f->quantity ? node["quantity"] : node["quality"]).value(rule.count, json()))
+                                          : places::Value::Unknown();
+                if (v.kind != places::Value::Kind::Number) continue;
+                const int n = std::clamp(static_cast<int>(std::lround((v.number.lo + v.number.hi) / 2)), 0, rule.max);
+                if (n <= 0) continue;
+                if (n >= 2) child["repeat"] = n;
             } else if (belowZone && depth < 2) {
                 // Typical children: as often as the rule's weight, or the Brief's density for the component.
                 const json density = BriefValue(brief, "components." + cm->id + ".density");
@@ -1233,6 +1254,19 @@ json VerifyLayout(const Ontology& ontology, const json& brief, const json& spec,
         row["status"] = total < lo * 0.9 ? "short" : Status(planned, total);
         (void)built;
         rows.push_back(row);
+    }
+    // The site: within the Brief's area, unless its zones needed more.
+    {
+        const auto [lo, hi] = Bounds(BriefValue(brief, "scale.area"));
+        const json b = solved.contains("grid") ? solved["grid"].value("bounds", json()) : json();
+        if (lo >= 0 && b.is_array() && b.size() == 4) {
+            const int area = b[2].get<int>() * b[3].get<int>();
+            json row = {{"id", "area"}, {"what", "Site area (cells)"}, {"built", area},
+                        {"asked", std::to_string(static_cast<int>(lo)) + "–" + std::to_string(static_cast<int>(hi))}};
+            row["status"] = area <= hi * 1.1 ? "ok" : "short";
+            if (area > hi * 1.1) row["note"] = "larger than the Brief asks: its zones needed the room";
+            rows.push_back(row);
+        }
     }
     // Each zone, and its parcels: a ward without its temple shows here.
     for (const auto& zone : spec["root"].value("children", json::array())) {

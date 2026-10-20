@@ -20,14 +20,18 @@ TileGrid TileGrid::Build(Registry& registry) {
     if (const TileLayers* layers = FindLayers(registry)) grid.layers_ = layers->Ordered();
     // Obstacles make the cell they stand in solid (the tile entity stays
     // what At() reports).
-    for (auto [entity, world] : registry.view<Obstacle, WorldTransform2D>().each()) {
-        const int gx = static_cast<int>(std::floor(world.x));
-        const int gy = static_cast<int>(std::floor(world.y));
-        auto it = grid.cells_.find(Key(gx, gy));
-        if (it != grid.cells_.end()) {
-            it->second.solid = true;
-        } else {
-            grid.blocked_.insert(Key(gx, gy));
+    for (auto [entity, obstacle, world] : registry.view<Obstacle, WorldTransform2D>().each()) {
+        const int sx = static_cast<int>(std::floor(world.x));
+        const int sy = static_cast<int>(std::floor(world.y));
+        for (int gy = sy - std::max(0, obstacle.back); gy <= sy; ++gy) {
+            for (int gx = sx - std::max(0, obstacle.left); gx <= sx + std::max(0, obstacle.right); ++gx) {
+                auto it = grid.cells_.find(Key(gx, gy));
+                if (it != grid.cells_.end()) {
+                    it->second.solid = true;
+                } else {
+                    grid.blocked_.insert(Key(gx, gy));
+                }
+            }
         }
     }
     return grid;
