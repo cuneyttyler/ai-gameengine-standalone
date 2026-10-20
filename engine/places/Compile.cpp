@@ -299,7 +299,7 @@ void Compiler::Root(const json& root) {
             if (auto it = options_.zoneScale.find(c.value("id", "")); it != options_.zoneScale.end()) scale = it->second;
             required += ParcelArea(c) * 1.9 * scale;
         }
-        side_ = std::max(side_, static_cast<int>(std::ceil(std::sqrt(required / 0.6))));
+        if (!options_.fixedSide) side_ = std::max(side_, static_cast<int>(std::ceil(std::sqrt(required / 0.6))));
     }
     const int s = side_;
     Emit({{"op", "region"}, {"id", "site"}, {"node", id}, {"shape", "rect"}, {"at", {0, 0}}, {"size", {{"w", s}, {"h", s}}}});

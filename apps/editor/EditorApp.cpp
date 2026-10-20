@@ -556,7 +556,10 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             userPrefs_->Set("aiProvider", message.value("provider", "mistral"));
             userPrefs_->Set("aiModel", message.value("model", ""));
         }
-        SendProvider();
+        // A new model: the service starts again with it (and says so once it's up).
+        providerStatus_ = nlohmann::json::object();
+        providerRequest_ = 0;
+        if (aiConnection_) aiConnection_->Restart();
         post_(AiStatusJson());
     } else if (type == "ai:setReviewPolicy") {
         if (userPrefs_) {
@@ -2662,7 +2665,10 @@ void EditorApp::OnAppActivated() {
 void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
     userPrefs_ = std::make_unique<UserPrefs>(UserPrefs::DefaultPath());
     std::string projectRoot = std::filesystem::absolute(assets_.GetProject().root).string();
-    aiConnection_ = std::make_unique<AiConnection>(*userPrefs_, [serviceDir, projectRoot]() {
+    aiConnection_ = std::make_unique<AiConnection>(*userPrefs_, [this, serviceDir, projectRoot]() {
+        // The model chosen in Preferences, for the service to start with.
+        const nlohmann::json chosen = userPrefs_ ? userPrefs_->Get("aiProvider", "mistral") : nlohmann::json("mistral");
+        _putenv_s("AIGE_PROVIDER", chosen.is_string() ? chosen.get<std::string>().c_str() : "mistral");
         AiClient::Options options;
         options.serviceDir = serviceDir;
         auto client = std::make_unique<AiClient>(options);
@@ -2717,6 +2723,11 @@ nlohmann::json EditorApp::AiStatusJson() {
     }
     AiChoice choice = aiConnection_ ? aiConnection_->Choice() : AiChoice::Off;
     const char* text = choice == AiChoice::Undecided ? "AI not set up yet" : "AI is turned off";
+    // Ready: the model it writes with now (the one chosen in Preferences), not the one it started with.
+    std::string status = ai ? ai->StatusText() : text;
+    if (state == "ready" && providerStatus_.value("ok", false) && providerStatus_.contains("model")) {
+        status = "AI ready (" + providerStatus_.value("model", std::string()) + ")";
+    }
     return {{"type", "ai:status"},
             {"state", state},
             {"enabled", choice == AiChoice::On},
@@ -2727,7 +2738,7 @@ nlohmann::json EditorApp::AiStatusJson() {
             {"providerError", providerStatus_.value("ok", true) ? "" : (providerStatus_.contains("errors") && !providerStatus_["errors"].empty()
                                                                        ? providerStatus_["errors"][0].get<std::string>() : "")},
             {"available", providerStatus_.value("available", nlohmann::json::object())},
-            {"text", ai ? ai->StatusText() : text}};
+            {"text", status}};
 }
 
 void EditorApp::PollAi() {

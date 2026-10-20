@@ -50,6 +50,8 @@ struct CompileOptions {
     // Where a zone was seeded last time (zone id -> cell): a revision moves
     // the zones it's about and keeps the others where they were.
     std::map<std::string, std::pair<int, int>> keepSeeds;
+    // `side` as given, not grown for what the zones need (a revision keeps the site).
+    bool fixedSide = false;
 };
 
 nlohmann::json CompileSpec(const Ontology& ontology, const nlohmann::json& spec, const CompileOptions& options = {});

@@ -27,6 +27,8 @@ public:
     void Start();
     // Records the choice and starts or stops the service to match.
     void SetEnabled(bool enabled);
+    // Stops the service and starts it again (the model changed in Preferences).
+    void Restart();
 
     AiChoice Choice() const;
     // The running client, or null while AI is off or undecided.

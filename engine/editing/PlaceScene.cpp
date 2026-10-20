@@ -748,7 +748,8 @@ json VerifyPlaceScene(Registry& registry, const json& solved, const json& assetP
         ++kinds;
         placeholders += n.value("uses", 0);
     }
-    for (const auto& [name, t] : assetPlan.value("terrains", json::object()).items()) kinds += t.value("source", "") == "placeholder";
+    const json terrains = assetPlan.value("terrains", json::object());
+    for (const auto& [name, t] : terrains.items()) kinds += t.value("source", "") == "placeholder";
     checks.push_back({{"id", "art"}, {"what", "Everything has art from the project"}, {"ok", kinds == 0}, {"warning", true},
                       {"detail", kinds == 0 ? "all of it" : std::to_string(kinds) + " kinds shown by placeholders (" +
                                                                 std::to_string(placeholders) + " things)"}});

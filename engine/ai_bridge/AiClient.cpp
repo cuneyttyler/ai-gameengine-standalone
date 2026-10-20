@@ -15,7 +15,7 @@ namespace aige {
 namespace {
 
 constexpr int kStartupTimeoutSeconds = 45; // first launch may need uv to set up the environment
-constexpr int kProposeTimeoutSeconds = 180;
+constexpr int kProposeTimeoutSeconds = 600; // a thinking model (Claude) can take minutes, with its retries
 
 nlohmann::json Failure(const std::string& message) {
     return {{"ok", false}, {"errors", nlohmann::json::array({message})}};
@@ -55,10 +55,10 @@ AiClient::~AiClient() {
         jobs_.clear();
     }
     wake_.notify_all();
+    StopProcess(); // first: a request still waiting on a model then fails at once, and the worker can finish
     if (worker_.joinable()) {
         worker_.join();
     }
-    StopProcess();
 }
 
 std::string AiClient::StatusText() const {

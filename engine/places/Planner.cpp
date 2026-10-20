@@ -440,6 +440,63 @@ std::vector<PlaceProblem> ResolveSpec(const Ontology& ontology, const json& brie
         if (added > 0) note(zone.value("id", ""), "had no parcels: given " + std::to_string(added) + " from its module's typical ones");
     }
 
+    // What the Brief turned on and the plan left out (fields, an orchard): in
+    // the zone whose rules hold it most typically.
+    {
+        std::set<std::string> present;
+        std::function<void(const json&)> collect = [&](const json& n) {
+            present.insert(n.value("module", ""));
+            for (const auto& c : n.value("children", json::array())) collect(c);
+        };
+        collect(spec["root"]);
+        const json briefComponents = brief.value("components", json::object());
+        for (const auto& [id, c] : briefComponents.items()) {
+            const ModuleDef* cm = ontology.Module(id);
+            if (cm == nullptr || !c.is_object() || !c.value("enabled", true) || present.contains(id)) continue;
+            if (cm->level != PlaceLevel::Feature && cm->level != PlaceLevel::Parcel) continue;
+            if (cm->level == PlaceLevel::Dressing || ontology.IsA(id, "LinearFeature")) continue;
+            json* home = nullptr;
+            double weight = 0;
+            for (auto& zone : spec["root"]["children"]) {
+                const ModuleDef* zm = ontology.Module(zone.value("module", ""));
+                if (zm == nullptr || zm->level != PlaceLevel::Zone) continue;
+                const ChildDef* rule = ontology.ChildRule(zm->id, id);
+                if (rule && rule->weight > weight) weight = rule->weight, home = &zone;
+            }
+            if (home == nullptr) {
+                // No zone of the plan holds it: the kind of zone that does (fields: a farmland ring).
+                const BuildType* build = ontology.Build(brief.value("buildType", ""));
+                const ModuleDef* best = nullptr;
+                double bestWeight = 0;
+                for (const auto& [zid, zm] : ontology.Modules()) {
+                    if (zm.level != PlaceLevel::Zone || Disabled(brief, zid) || !build || !ontology.ChildRule(build->root, zid)) continue;
+                    const ChildDef* rule = ontology.ChildRule(zid, id);
+                    if (rule && rule->weight > bestWeight) bestWeight = rule->weight, best = &zm;
+                }
+                if (best == nullptr) {
+                    note("components." + id, "turned on in the Brief, but the Brief turns off everything that holds it");
+                    continue;
+                }
+                json zone = {{"id", UniqueId(best->id, used)}, {"module", best->id}, {"quantity", json::object()}, {"quality", json::object()},
+                             {"rationale", "holds the " + cm->name + " the Brief turns on"}, {"children", json::array()}};
+                ApplyBriefSettings(ontology, brief, zone);
+                spec["root"]["children"].push_back(zone);
+                note(zone.value("id", ""), "added: a " + best->name + " for the " + cm->name + " the Brief turns on");
+                home = &spec["root"]["children"].back();
+            }
+            const json count = c.value("count", json());
+            const int n = std::max(1, static_cast<int>(std::lround(Mid(count, 1))));
+            json node = {{"id", UniqueId(home->value("id", "") + "/" + id, used)}, {"module", id}, {"quantity", json::object()},
+                         {"quality", json::object()}, {"rationale", "turned on in the Brief"}, {"children", json::array()}};
+            if (n >= 2) node["repeat"] = n;
+            ApplyBriefSettings(ontology, brief, node);
+            if (!(*home).contains("children")) (*home)["children"] = json::array();
+            (*home)["children"].push_back(node);
+            present.insert(id);
+            note(home->value("id", "") + "/" + id, "added: the Brief turns " + cm->name + " on and the plan had none");
+        }
+    }
+
     // What a part needs, or rules out, anywhere in the place.
     for (int round = 0; round < 4; ++round) {
         std::vector<std::string> modules;
@@ -1249,6 +1306,12 @@ json VerifyLayout(const Ontology& ontology, const json& brief, const json& spec,
     auto builtOf = [&](const std::string& module) {
         int n = 0;
         for (const auto& r : regions) n += r.value("module", "") == module;
+        if (n > 0) return n;
+        // Laid out as paths (a river, a road): the paths of its nodes.
+        for (const auto& p : solved.value("paths", json::array())) {
+            json specCopy = spec;
+            if (const json* node = SpecNode(specCopy, p.value("node", "")); node && node->value("module", "") == module) ++n;
+        }
         if (n > 0) return n;
         for (const auto& o : objects) n += o.value("shows", "") == module;
         return n;

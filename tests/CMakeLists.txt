@@ -62,6 +62,7 @@ add_executable(aige_tests
     build_robust_test.cpp
     place_scene_test.cpp
     live_plan_test.cpp
+    source_rules_test.cpp
     solve_test.cpp
 )
 target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets aige_gameplay aige_editing aige_world aige_ai_bridge aige_ui aige_editor aige_modules aige_places gtest_main)

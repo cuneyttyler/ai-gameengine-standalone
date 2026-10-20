@@ -22,6 +22,12 @@ void AiConnection::Start() {
     }
 }
 
+void AiConnection::Restart() {
+    if (!client_) return;
+    client_.reset();
+    Start();
+}
+
 void AiConnection::SetEnabled(bool enabled) {
     prefs_.Set(kEnabledKey, enabled);
     if (enabled) {

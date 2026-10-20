@@ -70,7 +70,7 @@ TEST(LiveTest, PlanAndReviseAVillage) {
 
     AiClient::Options options;
     options.serviceDir = fs::path(AIGE_SOURCE_DIR) / "ai_service";
-    options.port = 8790; // not the editor's
+    options.port = std::string(provider) == "claude" ? 8791 : 8790; // not the editor's, one per model (runs side by side)
     AiClient client(options);
     client.Start(EngineReflection().ExportSchema());
     std::map<int, json> responses;
@@ -143,7 +143,7 @@ TEST(LiveTest, PlanAndReviseAVillage) {
 
     // 1. Interpret the request (the Test1 village).
     phase("interpret", [&] {
-        ASSERT_EQ(build.Start("Build a village by a river with several districts"), "");
+        ASSERT_EQ(build.Start("Build a village by a river with docks and several districts"), "");
         drive(900);
     });
     ASSERT_EQ(build.Stage(), "request") << build.State().dump().substr(0, 2000);
@@ -163,11 +163,19 @@ TEST(LiveTest, PlanAndReviseAVillage) {
     report["notices"] = build.Notices();
     const json before = build.Solved();
     const auto seeds = Seeds(before);
+    // The zones by what they are (each model names them its own way).
+    auto zoneOf = [&](const std::string& module) {
+        for (const auto& c : spec["root"]["children"]) {
+            if (c.value("module", "") == module) return c.value("id", "");
+        }
+        return std::string();
+    };
+    const std::string wardId = zoneOf("residential-ward"), docksId = zoneOf("docks");
     fs::copy_file(build.Folder() / "layout.png", root / "planned.png", fs::copy_options::overwrite_existing);
 
     // 3. The user's revision.
     const std::string request = "Put the residential ward below the docks near the river";
-    if (!seeds.contains("residential-ward") || !seeds.contains("docks")) {
+    if (wardId.empty() || docksId.empty() || !seeds.contains(wardId) || !seeds.contains(docksId)) {
         report["revise"] = {{"skipped", "the plan has no residential ward or no docks"}};
     } else {
         phase("revise", [&] {
@@ -178,17 +186,17 @@ TEST(LiveTest, PlanAndReviseAVillage) {
         const auto moved = Seeds(after);
         int kept = 0, others = 0;
         for (const auto& [id, seed] : seeds) {
-            if (id == "residential-ward") continue;
+            if (id == wardId) continue;
             ++others;
             kept += moved.contains(id) && moved.at(id) == seed;
         }
-        const auto ward = moved.at("residential-ward"), docks = moved.at("docks");
+        const auto ward = moved.at(wardId), docks = moved.at(docksId);
         const json& revision = build.Revisions().back();
         report["revise"]["request"] = request;
         report["revise"]["summary"] = revision.value("summary", "");
         report["revise"]["notes"] = revision.value("notes", json::array());
         report["revise"]["southOfDocks"] = ward.second > docks.second;
-        report["revise"]["riverDistance"] = {{"before", ToRiver(before, seeds.at("residential-ward"))}, {"after", ToRiver(after, ward)}};
+        report["revise"]["riverDistance"] = {{"before", ToRiver(before, seeds.at(wardId))}, {"after", ToRiver(after, ward)}};
         report["revise"]["othersKept"] = std::to_string(kept) + " of " + std::to_string(others);
         report["revise"]["verify"] = verify();
         // What it asked to change, from the log.

@@ -253,6 +253,8 @@ def create_app(
     def post_propose(request: ProposeRequest) -> ProposeResponse:
         if state["provider"] is None:
             return ProposeResponse(ok=False, errors=["No AI provider configured: set MISTRAL_API_KEY in ai_service/.env"])
+        # A change asked for in the AI panel is interactive: a thinking model at medium effort.
+        writer: Provider = state["provider"].at("medium") if hasattr(state["provider"], "at") else state["provider"]
         if state["schema"] is None:
             return ProposeResponse(ok=False, errors=["The editor hasn't sent its schema yet"])
         if not request.instruction.strip():
@@ -264,7 +266,7 @@ def create_app(
             canon = index.canon_for(" ".join(filter(None, [request.instruction, request.context.focus])))
         try:
             result = propose(
-                state["provider"], state["schema"], request.context, request.instruction, request.history, canon
+                writer, state["schema"], request.context, request.instruction, request.history, canon
             )
         except ProviderError as error:
             return ProposeResponse(ok=False, errors=[str(error)])

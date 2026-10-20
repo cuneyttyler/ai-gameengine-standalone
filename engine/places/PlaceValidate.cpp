@@ -568,6 +568,28 @@ std::vector<PlaceProblem> ValidateBrief(const Ontology& ontology, const json& br
             problem("features", "a " + build->id + " can't have a " + id);
         }
     }
+    // A part turned on whose every holder is turned off (fields on, farmland
+    // and meadows off): the plan can't have it. Said here, where it's chosen.
+    const json chosen = brief.value("components", json::object());
+    auto off = [&](const std::string& id) {
+        return chosen.contains(id) && chosen[id].is_object() && !chosen[id].value("enabled", true);
+    };
+    for (const auto& [id, c] : chosen.items()) {
+        if (!c.is_object() || !c.value("enabled", true)) continue;
+        const ModuleDef* m = ontology.Module(id);
+        if (m == nullptr || m->level == PlaceLevel::Zone || m->level == PlaceLevel::Network) continue;
+        std::vector<std::string> holders;
+        bool anyOn = false;
+        for (const auto& [hid, hm] : ontology.Modules()) {
+            if (!ontology.ChildRule(hid, id)) continue;
+            holders.push_back(hm.name);
+            anyOn = anyOn || !off(hid);
+        }
+        if (holders.empty() || anyOn) continue;
+        std::string list;
+        for (size_t i = 0; i < holders.size() && i < 4; ++i) list += (i ? ", " : "") + holders[i];
+        problem("components." + id, "is on, but everything that holds it is off (" + list + ")", true);
+    }
     return problems;
 }
 

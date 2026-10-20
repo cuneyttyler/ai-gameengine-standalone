@@ -986,8 +986,14 @@ void Solver::Partition(const json& s, int region) {
             else if (type == "east-of") v = std::clamp((x - tx) / reach, -1.0, 1.0);
             else if (type == "west-of") v = std::clamp((tx - x) / reach, -1.0, 1.0);
             else continue;
-            // A direction still wants it close by (south of the docks, not the far south).
-            if (type.ends_with("-of")) v = 0.7 * v + 0.3 * (1 - std::min(2.0, distance / (2 * reach)));
+            // A direction still wants it close by (south of the docks, not the far
+            // south), and weighs more than a "near": on the wrong side is a miss.
+            if (type.ends_with("-of")) {
+                const double side = v;
+                v = 0.7 * v + 0.3 * (1 - std::min(2.0, distance / (2 * reach)));
+                score += 3.0 * v - (side < 0 ? 3.0 : 0.0);
+                continue;
+            }
             score += 2.0 * v;
         }
         for (const auto& [criterion, weightJson] : z.prefers.items()) {

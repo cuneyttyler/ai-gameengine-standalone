@@ -112,6 +112,13 @@ class ClaudeProvider:
     def complete_text(self, messages: list[dict]) -> Completion:
         return self._call(messages)
 
+    def at(self, effort: str) -> "ClaudeProvider":
+        """The same model at another effort (medium for a quick change in the AI panel)."""
+        other = object.__new__(ClaudeProvider)
+        other.__dict__.update(self.__dict__)
+        other.effort = effort
+        return other
+
     @staticmethod
     def _convert(messages: list[dict]) -> tuple[str, list[dict]]:
         """The service's chat messages (OpenAI-style, as Mistral takes them) as

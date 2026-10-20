@@ -142,6 +142,39 @@ json ListBuilds(const fs::path& projectRoot) {
     return out;
 }
 
+std::vector<std::pair<std::string, std::string>> PlaceBuild::DirectionsIn(const std::string& request, const std::string& moving) const {
+    std::vector<std::pair<std::string, std::string>> out;
+    std::string text = request;
+    for (auto& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    static const std::vector<std::pair<std::string, std::string>> words = {
+        {"below", "south-of"}, {"under", "south-of"}, {"beneath", "south-of"}, {"south of", "south-of"},
+        {"above", "north-of"}, {"over", "north-of"}, {"north of", "north-of"},
+        {"left of", "west-of"}, {"west of", "west-of"}, {"right of", "east-of"}, {"east of", "east-of"}};
+    if (!spec_.contains("root")) return out;
+    for (const auto& [word, type] : words) {
+        for (size_t at = text.find(word); at != std::string::npos; at = text.find(word, at + 1)) {
+            // The part named right after the word (within a few words): "below the docks".
+            const std::string after = text.substr(at + word.size(), 40);
+            std::string best;
+            size_t bestAt = std::string::npos;
+            for (const auto& c : spec_["root"]["children"]) {
+                const std::string id = c.value("id", "");
+                if (id.empty() || id == moving) continue;
+                for (const auto& name : std::vector<std::string>{id, [&] {
+                                                                     std::string s = id;
+                                                                     std::replace(s.begin(), s.end(), '-', ' ');
+                                                                     return s;
+                                                                 }()}) {
+                    const size_t found = after.find(name.substr(0, name.find(' ') == std::string::npos ? name.size() : name.find(' ')));
+                    if (found != std::string::npos && found < bestAt) bestAt = found, best = id;
+                }
+            }
+            if (!best.empty() && bestAt < 20) out.push_back({type, best});
+        }
+    }
+    return out;
+}
+
 bool PlaceBuild::Mentions(const std::string& request, const std::string& zoneId) const {
     auto lower = [](std::string t) {
         for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -151,14 +184,32 @@ bool PlaceBuild::Mentions(const std::string& request, const std::string& zoneId)
     std::string spaced = lower(zoneId);
     std::replace(spaced.begin(), spaced.end(), '-', ' ');
     if (text.find(lower(zoneId)) != std::string::npos || text.find(spaced) != std::string::npos) return true;
+    // By word stems: a word of its id or its module's name (not "ward") whose first
+    // five letters start a word of the request ("craftsman's" for the craftsmen's ward).
+    auto words = [&](const std::string& t) {
+        std::vector<std::string> out;
+        std::string w;
+        for (const char c : t + " ") {
+            if (std::isalpha(static_cast<unsigned char>(c))) w += c;
+            else if (!w.empty()) out.push_back(w), w.clear();
+        }
+        return out;
+    };
+    const auto said = words(text);
+    std::vector<std::string> names = words(spaced);
     json spec = spec_;
     if (const json* zone = SpecNode(spec, zoneId)) {
         if (const ModuleDef* m = host_.ontology().Module(zone->value("module", ""))) {
-            const std::string name = lower(m->name);
-            if (text.find(name) != std::string::npos) return true;
-            // Its first word ("residential" for the residential ward), if it's a word of its own.
-            const std::string first = name.substr(0, name.find(' '));
-            if (first.size() >= 4 && first != "ward" && text.find(first) != std::string::npos) return true;
+            if (text.find(lower(m->name)) != std::string::npos) return true;
+            for (const auto& w : words(lower(m->name))) names.push_back(w);
+        }
+    }
+    static const std::set<std::string> common = {"ward", "zone", "plot", "area", "the", "and", "with"};
+    for (const auto& name : names) {
+        if (name.size() < 4 || common.contains(name)) continue;
+        const std::string stem = name.substr(0, std::min<size_t>(5, name.size()));
+        for (const auto& w : said) {
+            if (w.rfind(stem, 0) == 0) return true;
         }
     }
     return false;
@@ -206,6 +257,7 @@ void PlaceBuild::Save() const {
                                           {"notices", notices_},
                                           {"planProblems", ProblemsJson(planProblems_)},
                                           {"revisions", revisions_},
+                                          {"fit", {{"scale", fitScale_}, {"side", fitSide_}}},
                                           {"origin", hasOrigin_ ? json::array({originX_, originY_}) : json()}});
 }
 
@@ -343,6 +395,16 @@ void PlaceBuild::FinishInterpreting() {
                 SetBriefValue(brief_, p.where, nullptr);
                 Notice("'" + p.where + "' " + p.message + ": its default is used.");
             }
+        } else if (p.where == "features" && brief_.contains("features") && brief_["features"].is_array()) {
+            json kept = json::array();
+            for (const auto& f : brief_["features"]) {
+                const std::string module = f.is_object() ? f.value("module", "") : f.is_string() ? f.get<std::string>() : "";
+                if (host_.ontology().Module(module)) kept.push_back(f.is_object() ? f : json{{"module", module}});
+            }
+            if (kept.size() != brief_["features"].size()) {
+                brief_["features"] = kept;
+                Notice("Left out a feature the Brief named that isn't one the engine knows (" + p.message + ").");
+            }
         } else if (p.where == "shape.layout" || p.where.rfind("style.", 0) == 0) {
             SetBriefValue(brief_, p.where, nullptr);
             Notice("'" + p.where + "' " + p.message + ": its default is used.");
@@ -405,6 +467,8 @@ std::string PlaceBuild::Confirm() {
 // --- Planning -----------------------------------------------------------------------------
 
 void PlaceBuild::StartPlanning() {
+    fitScale_.clear();
+    fitSide_ = 0;
     stage_ = "planning";
     planPhase_ = "root";
     repaired_.clear();
@@ -604,17 +668,26 @@ void PlaceBuild::Solve() {
     options.side = BriefSide();
     options.isoGrid = host_.isoGrid ? host_.isoGrid() : true;
     options.keepSeeds = keepSeeds_;
+    // From where the last fitting ended: the same land per zone, and (when
+    // zones keep their places) the same site, so the river and roads stay put.
+    options.zoneScale = fitScale_;
+    if (!keepSeeds_.empty() && fitSide_ > 0) {
+        options.side = fitSide_;
+        options.fixedSide = true; // the river and roads stay where they were
+    }
     keepSeeds_.clear();
     // Fitting rounds: a zone that couldn't place all it's planned to gets more
     // land (and the site grows if it must), until each holds its parcels or
     // four rounds are done; the best layout is kept.
     json ir, best, bestIr;
+    std::map<std::string, double> bestScale;
     std::vector<PlaceProblem> irProblems;
     json bestProblems = json::array();
     double bestScore = -1e18;
     int rounds = 0;
     for (int round = 0; round < 4; ++round) {
         ++rounds;
+        const auto roundScale = options.zoneScale;
         ir = CompileSpec(ontology, spec_, options);
         const SolvedLayout solved = SolveLayout(ontology, ir);
         const json rows = VerifyLayout(ontology, brief_, spec_, solved.document);
@@ -641,15 +714,18 @@ void PlaceBuild::Solve() {
             best = solved.document;
             bestIr = ir;
             bestProblems = solved.problems;
+            bestScale = roundScale;
         }
         if (shortZones == 0) break;
     }
+    fitScale_ = bestScale;
     irProblems = ValidateLayout(ontology, bestIr);
     WriteJson(Folder() / "layout.ir.json", bestIr);
     solved_ = best;
     WriteJson(Folder() / "layout.solved.json", solved_);
     // The plan says what the layout is: each zone's area as laid out, the site's side.
     const int side = SiteSide();
+    fitSide_ = side;
     if (spec_.contains("root")) {
         spec_["root"]["quantity"]["area"] = {{"area", side * side}};
         for (const auto& r : solved_.value("regions", json::array())) {
@@ -802,12 +878,31 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
                              : change.contains("node") && change["node"].is_object() ? change["node"].value("id", "")
                                                                                        : "";
         const std::string zone = target.substr(0, target.find('/'));
-        if (!review && (op == "zone" || op == "remove") && !Mentions(what.node, zone)) {
+        // Adding a part is what a request does; anything else is for the parts it names.
+        if (!review && op != "add" && !Mentions(what.node, zone)) {
             notes.push_back(zone + ": left as it was; the request didn't ask about it");
             continue;
         }
         kept.push_back(change);
         moving.insert(zone);
+    }
+    // The request's own direction ("below the docks"), if the answer moved a
+    // zone and lost it: added, as the words say.
+    if (!review) {
+        for (auto& change : kept) {
+            const std::string op = change.value("op", "");
+            if (op != "move" && op != "set" && op != "zone") continue;
+            if (!change.contains("rel") && op != "move") continue;
+            const std::string zone = change.value("node", json("")).is_string() ? change["node"].get<std::string>() : "";
+            if (!Mentions(what.node, zone)) continue; // the request's directions are for the part it names
+            for (const auto& [type, to] : DirectionsIn(what.node, zone)) {
+                bool has = false;
+                for (const auto& r : change.value("rel", json::array())) has = has || (r.value("type", "") == type && r.value("to", "") == to);
+                if (has) continue;
+                change["rel"].push_back({{"type", type}, {"to", to}});
+                notes.push_back(zone + ": " + type + " " + to + ", as the request says");
+            }
+        }
     }
     for (const auto& p : ApplyRevision(ontology, brief_, spec_, kept)) notes.push_back(p.where + ": " + p.message);
     // The zones it changed are placed anew; the others keep their place.
@@ -860,6 +955,8 @@ std::string PlaceBuild::Undo() {
 
 std::string PlaceBuild::Relayout() {
     if (stage_ != "plan" && stage_ != "planned" && stage_ != "built") return "there's no plan to lay out";
+    fitScale_.clear();
+    fitSide_ = 0;
     const Ontology& ontology = host_.ontology();
     ExpandSpec(ontology, brief_, spec_);
     for (auto& note : TidySpec(ontology, spec_)) tidied_.push_back(std::move(note));
@@ -940,6 +1037,13 @@ std::string PlaceBuild::Open(const std::string& id) {
         }
         planProblems_ = ProblemsFrom(session.value("planProblems", json::array()));
         revisions_ = session.value("revisions", json::array());
+        fitScale_.clear();
+        const json fit = session.value("fit", json::object());
+        const json fitScale = fit.value("scale", json::object());
+        for (const auto& [id, f] : fitScale.items()) {
+            if (f.is_number()) fitScale_[id] = f.get<double>();
+        }
+        fitSide_ = session.value("fit", json::object()).value("side", 0);
         if (const json o = session.value("origin", json()); o.is_array() && o.size() == 2) {
             hasOrigin_ = true;
             originX_ = o[0].get<int>();
