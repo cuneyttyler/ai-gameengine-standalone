@@ -10,7 +10,7 @@ import { setPanelVisible, type PanelId } from './layout'
 
 export type AssetsTab = 'prefabs' | 'assets' | 'catalog' | 'library' | 'web'
 export type ProjectTab = 'scenes' | 'world' | 'story' | 'records'
-export type GenerateTab = 'level' | 'art'
+export type GenerateTab = 'level' | 'art' | 'character' | 'animate'
 export type AnyTab = AssetsTab | ProjectTab | GenerateTab
 
 export const panelTab = reactive({
@@ -31,6 +31,8 @@ const owner: Record<AnyTab, 'assets' | 'project' | 'generate'> = {
   records: 'project',
   level: 'generate',
   art: 'generate',
+  character: 'generate',
+  animate: 'generate',
 }
 
 export function showTab(tab: AnyTab): void {

@@ -49,9 +49,15 @@ export const editorState = reactive({
     model: '',
     providerError: '',
     available: {} as Record<string, boolean>,
+    artProvider: 'auto' as string, // what draws the art: auto (follows the LLM), mistral or pixellab
+    art: '', // the generator in use
+    artError: '',
+    models: {} as Record<string, string[]>, // each provider's models (Preferences ▸ AI ▸ Model)
+    modelsError: '',
   },
   // Set by an Inspector field's "Ask AI"; the AI panel picks it up (n makes repeats distinct).
   aiAsk: { focus: '', n: 0 },
+  animateFrom: '', // Generate ▸ Character's "Animate": the image the Animate tab picks
   showShortcuts: false, // Help ▸ Keyboard Shortcuts
   showOntology: false, // File ▸ Ontology…, the Build panel's menu (development_plan.md 9)
   replacePrefab: null as string | null, // Edit ▸ Replace prefab…: the prefab to replace ('' : choose)
@@ -111,6 +117,13 @@ onHostMessage((message) => {
     editorState.ai.model = (message.model as string) ?? ''
     editorState.ai.providerError = (message.providerError as string) ?? ''
     editorState.ai.available = (message.available as Record<string, boolean>) ?? {}
+    editorState.ai.artProvider = (message.artProvider as string) ?? 'auto'
+    editorState.ai.art = (message.art as string) ?? ''
+    editorState.ai.artError = (message.artError as string) ?? ''
+  } else if (message.type === 'ai:models') {
+    const provider = (message.provider as string) ?? editorState.ai.provider
+    editorState.ai.models = { ...editorState.ai.models, [provider]: (message.models as string[]) ?? [] }
+    editorState.ai.modelsError = message.ok === false ? ((message.errors as string[])?.[0] ?? '') : ''
   } else if (message.type === 'ai:busy') {
     editorState.ai.busy = message.busy as boolean
   } else if (message.type === 'prefabs:list') {

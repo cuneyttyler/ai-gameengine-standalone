@@ -156,7 +156,13 @@ def generate_sprites(
         file_name = f"{name}-{slug}.png" if slug else f"{name}.png"
         prompt = build_prompt(description, kind, style, variant)
         started = time.time()
-        image = generator.generate(prompt)
+        if getattr(generator, "takes_options", False):
+            # A generator made for game art (PixelLab): its view, size and background, and the
+            # project's palette (its style references) so the piece keeps to its colours.
+            from .style import project_palette
+            image = generator.generate(prompt, {"kind": kind, "height": height, "isometric": kind != "tile", "palette": project_palette(root)})
+        else:
+            image = generator.generate(prompt)
         png, processing = make_sprite(image.data, SpriteOptions(height=height, style=style, tile=kind == "tile", even_light=even_light and kind == "tile"))
         (folder / file_name).write_bytes(png)
         meta = {

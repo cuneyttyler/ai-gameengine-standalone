@@ -17,6 +17,8 @@ Run: uv run uvicorn app.main:app --port 8765
 from __future__ import annotations
 
 import hmac
+from datetime import datetime, timezone
+import json
 import re
 import os
 from pathlib import Path
@@ -159,6 +161,28 @@ class WebFetchRequest(BaseModel):
     folder: str = "assets/web/search"
 
 
+class ArtProviderRequest(BaseModel):
+    provider: str = "auto"
+
+
+class AnimationRequest(BaseModel):
+    path: str            # the project image to animate
+    action: str          # walking, swinging a sword, flickering
+    description: str = ""
+    direction: str = "south"
+    view: str = "low top-down"
+    name: str = ""
+
+
+class CharacterRequest(BaseModel):
+    name: str
+    description: str
+    directions: int = 4
+    size: int = 64
+    view: str = "low top-down"
+    isometric: bool = False
+
+
 class ReferencesRequest(BaseModel):
     pieces: list[dict] = []  # {path, role?, name?}
 
@@ -194,7 +218,39 @@ def available_providers() -> dict[str, bool]:
     """Which models this machine has keys for (in ai_service/.env or the environment)."""
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     return {"mistral": bool(os.environ.get("MISTRAL_API_KEY")),
-            "claude": bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))}
+            "claude": bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")),
+            "pixellab": bool(os.environ.get("PIXELLAB_API_KEY"))}
+
+
+ART_PROVIDERS = ("auto", "mistral", "pixellab")
+
+
+def make_image_generator(art: str, llm: str | None) -> ImageGenerator | None:
+    """What draws the art: "auto" follows the LLM (Mistral's images with Mistral; Claude makes no
+    images, so with Claude Mistral's if its key is there, else PixelLab), or one named."""
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    keys = available_providers()
+    if art == "auto":
+        art = "mistral" if keys["mistral"] else "pixellab"
+    if art == "pixellab" and keys["pixellab"]:
+        from .pixellab import PixelLabImageGenerator
+        return PixelLabImageGenerator(api_key=os.environ["PIXELLAB_API_KEY"])
+    if art == "mistral" and keys["mistral"]:
+        return MistralImageGenerator(api_key=os.environ["MISTRAL_API_KEY"])
+    return None
+
+
+def list_models(provider: str) -> list[str]:
+    """The models a provider offers this key (its own list)."""
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    if provider == "mistral" and os.environ.get("MISTRAL_API_KEY"):
+        from mistralai.client import Mistral
+        return sorted({m.id for m in Mistral(api_key=os.environ["MISTRAL_API_KEY"]).models.list().data})
+    if provider == "claude" and (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+        import anthropic
+        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY") or None)
+        return [m.id for m in client.models.list(limit=100).data]
+    return []
 
 
 def make_provider(name: str, model: str | None = None) -> Provider | None:
@@ -236,9 +292,9 @@ def default_vision() -> Provider | None:
 
 
 def default_image_generator() -> ImageGenerator | None:
+    """AIGE_ART_PROVIDER picks it (auto, the default: follows the LLM; mistral; pixellab); the editor can change it."""
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-    key = os.environ.get("MISTRAL_API_KEY")
-    return MistralImageGenerator(api_key=key) if key else None
+    return make_image_generator(os.environ.get("AIGE_ART_PROVIDER", "auto"), os.environ.get("AIGE_PROVIDER", "mistral"))
 
 
 def default_embedder() -> Embedder | None:
@@ -450,8 +506,98 @@ def create_app(
     @app.get("/provider")
     def provider_info() -> dict:
         current: Provider | None = state["provider"]
+        images: ImageGenerator | None = state["images"]
         return {"ok": True, "provider": getattr(current, "name", None), "model": getattr(current, "model", None),
-                "available": available_providers()}
+                "available": available_providers(), "artProvider": state.get("artProvider", "auto"),
+                "art": getattr(images, "name", None)}
+
+    @app.get("/models")
+    def models(provider: str = "mistral") -> dict:
+        """The models a provider offers (Preferences ▸ AI ▸ Model)."""
+        if provider not in PROVIDERS:
+            return {"ok": False, "errors": [f"Unknown provider {provider}"]}
+        try:
+            return {"ok": True, "provider": provider, "models": list_models(provider)}
+        except Exception as error:
+            return {"ok": False, "errors": [f"Couldn't list {provider}'s models: {error}"]}
+
+    @app.put("/art-provider")
+    def set_art_provider(request: ArtProviderRequest) -> dict:
+        """What draws the art (Preferences ▸ AI ▸ Art): auto (follows the LLM), mistral or pixellab."""
+        if request.provider not in ART_PROVIDERS:
+            return {"ok": False, "errors": [f"Unknown art provider {request.provider}: one of {', '.join(ART_PROVIDERS)}"]}
+        images = make_image_generator(request.provider, getattr(state["provider"], "name", None))
+        if images is None:
+            key = "PIXELLAB_API_KEY" if request.provider == "pixellab" else "MISTRAL_API_KEY"
+            return {"ok": False, "errors": [f"No key for {request.provider}: set {key} in ai_service/.env"], "available": available_providers()}
+        state["images"], state["artProvider"] = images, request.provider
+        return {"ok": True, "artProvider": request.provider, "art": images.name, "available": available_providers()}
+
+    @app.post("/animations/generate")
+    def animations_generate(request: AnimationRequest) -> dict:
+        """An asset of the project animated (PixelLab): its frames and a spritesheet, into the assets."""
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+        if not os.environ.get("PIXELLAB_API_KEY"):
+            return {"ok": False, "errors": ["Animations are made by PixelLab: set PIXELLAB_API_KEY in ai_service/.env"]}
+        source = (root / request.path).resolve()
+        if root.resolve() not in source.parents or not source.is_file():
+            return {"ok": False, "errors": ["Pick an image of the project to animate"]}
+        from .pixellab import PixelLabImageGenerator, animate, spritesheet
+        name = re.sub(r"[^a-z0-9-]+", "-", (request.name or source.stem + "-" + request.action).lower()).strip("-")[:48] or "animation"
+        try:
+            frames = animate(PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]), source.read_bytes(),
+                             request.description or source.stem.replace("-", " "), request.action, request.direction, request.view,
+                             project_style.project_palette(root))
+        except (ProviderError, OSError) as error:
+            return {"ok": False, "errors": [str(error)]}
+        folder = root / "assets" / "textures" / "generated" / "animations" / name
+        folder.mkdir(parents=True, exist_ok=True)
+        made = []
+        for k, data in enumerate(frames):
+            file = folder / f"{name}-{k + 1}.png"
+            file.write_bytes(data)
+            made.append(file.relative_to(root).as_posix())
+        sheet = folder / f"{name}-sheet.png"
+        sheet.write_bytes(spritesheet(frames))
+        meta = {"description": request.description, "action": request.action, "direction": request.direction, "from": request.path,
+                "frames": len(frames), "provider": "pixellab", "model": "pixellab animate-with-text",
+                "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        (folder / f"{sheet.name}.gen.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+        return {"ok": True, "name": name, "frames": made, "sheet": sheet.relative_to(root).as_posix()}
+
+    @app.post("/characters/generate")
+    def characters_generate(request: CharacterRequest) -> dict:
+        """A character from 4 or 8 directions (PixelLab), each into the project's assets."""
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+        if not os.environ.get("PIXELLAB_API_KEY"):
+            return {"ok": False, "errors": ["Characters are made by PixelLab: set PIXELLAB_API_KEY in ai_service/.env"]}
+        from .pixellab import PixelLabImageGenerator
+        name = re.sub(r"[^a-z0-9-]+", "-", request.name.lower()).strip("-")[:40] or "character"
+        try:
+            images = PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]).character(
+                request.description, 8 if request.directions == 8 else 4, max(32, min(256, request.size)), request.view,
+                request.isometric, project_style.project_palette(root))
+        except ProviderError as error:
+            return {"ok": False, "errors": [str(error)]}
+        if not images:
+            return {"ok": False, "errors": ["PixelLab finished but sent no images"]}
+        folder = root / "assets" / "textures" / "generated" / "characters" / name
+        folder.mkdir(parents=True, exist_ok=True)
+        made = []
+        for direction, data in images.items():
+            file = folder / f"{name}-{direction}.png"
+            file.write_bytes(data)
+            meta = {"description": request.description, "family": name, "kind": "character", "direction": direction,
+                    "provider": "pixellab", "model": "pixellab character", "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+            (folder / f"{file.name}.gen.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+            made.append({"path": file.relative_to(root).as_posix(), "direction": direction})
+        return {"ok": True, "name": name, "assets": made}
 
     @app.put("/provider")
     def set_provider(request: ProviderRequest) -> dict:

@@ -278,6 +278,11 @@ private:
     // The model the AI service writes with (File ▸ Preferences ▸ AI): sent when it's ready.
     void SendProvider();
     int providerRequest_ = 0;
+    int artProviderRequest_ = 0;   // PUT /art-provider: what draws the art (Preferences ▸ AI ▸ Art)
+    int modelsRequest_ = 0;        // GET /models: the provider's models, for Preferences
+    int characterRequest_ = 0;     // Generate ▸ Character in flight
+    int animationRequest_ = 0;     // Generate ▸ Animate in flight
+    nlohmann::json artStatus_ = nlohmann::json::object();
     nlohmann::json providerStatus_ = nlohmann::json::object(); // its answer: {ok, provider, model, available, errors}
     // Contradiction checks (development_plan.md 3.3) in flight: request id ->
     // the proposal they're for; and the World tab's "Check against canon".

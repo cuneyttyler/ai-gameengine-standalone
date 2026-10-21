@@ -2,12 +2,16 @@
 // The Generate panel (development_plan.md 6.8): the generators, a dungeon
 // (or village) from parameters, and art from a description.
 import { panelTab, type GenerateTab } from '../paneltabs'
+import AnimatePanel from './AnimatePanel.vue'
 import ArtPanel from './ArtPanel.vue'
+import CharacterPanel from './CharacterPanel.vue'
 import LevelPanel from './LevelPanel.vue'
 
 const tabs: { id: GenerateTab; label: string; title: string }[] = [
   { id: 'level', label: 'Level', title: 'Generate a dungeon or a village into the scene' },
   { id: 'art', label: 'Art', title: 'Generate sprites and tiles from a description' },
+  { id: 'character', label: 'Character', title: 'Generate a character seen from 4 or 8 directions (PixelLab)' },
+  { id: 'animate', label: 'Animate', title: 'Animate an image of the project: walking, attacking… (PixelLab)' },
 ]
 </script>
 
@@ -27,7 +31,9 @@ const tabs: { id: GenerateTab; label: string; title: string }[] = [
       </div>
     </div>
     <LevelPanel v-if="panelTab.generate === 'level'" class="body" />
-    <ArtPanel v-else class="body" />
+    <ArtPanel v-else-if="panelTab.generate === 'art'" class="body" />
+    <CharacterPanel v-else-if="panelTab.generate === 'character'" class="body" />
+    <AnimatePanel v-else class="body" />
   </div>
 </template>
 

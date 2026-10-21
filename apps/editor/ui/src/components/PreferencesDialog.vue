@@ -2,7 +2,7 @@
 // File ▸ Preferences (development_plan.md 4.2, 8.1): the per-user choices, in one
 // place (also reachable from the AI panel's ⚙). Sections on the left, the chosen
 // one on the right.
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { editorState, setAiEnabled } from '../editorState'
 import { sendToHost } from '../ipc'
 import { trackOverlay, untrackOverlay } from '../overlay'
@@ -26,6 +26,24 @@ watch(
       trackOverlay(backdrop.value)
       backdrop.value.focus()
     }
+  },
+)
+
+const models = computed(() => editorState.ai.models[editorState.ai.provider] ?? [])
+function listModels(): void {
+  if (editorState.ai.enabled) sendToHost({ type: 'ai:listModels', provider: editorState.ai.provider })
+}
+function setProvider(provider: string): void {
+  // A new provider starts on its default model; its list comes once it's up.
+  sendToHost({ type: 'ai:setProvider', provider, model: provider === 'mistral' ? 'ministral-8b-latest' : '' })
+}
+function setModel(model: string): void {
+  sendToHost({ type: 'ai:setProvider', provider: editorState.ai.provider, model })
+}
+watch(
+  () => [projectState.showPreferences, editorState.ai.state, editorState.ai.provider] as const,
+  ([open, state]) => {
+    if (open && state === 'ready' && !editorState.ai.models[editorState.ai.provider]) listModels()
   },
 )
 
@@ -89,20 +107,52 @@ function close(): void {
               />
               Apply small tweaks directly (with Undo)
             </label>
-            <h5>Model</h5>
+            <h5>Provider</h5>
             <div class="row">
               <select
                 :value="editorState.ai.provider"
                 :disabled="!editorState.ai.enabled"
-                @change="sendToHost({ type: 'ai:setProvider', provider: ($event.target as HTMLSelectElement).value })"
+                @change="setProvider(($event.target as HTMLSelectElement).value)"
               >
                 <option value="mistral">Mistral{{ editorState.ai.available.mistral === false ? ' (no key)' : '' }}</option>
                 <option value="claude">Claude{{ editorState.ai.available.claude === false ? ' (no key)' : '' }}</option>
               </select>
-              <span v-if="editorState.ai.model" class="muted">{{ editorState.ai.model }}</span>
             </div>
+            <h5>Model</h5>
+            <div class="row">
+              <select
+                :value="editorState.ai.model"
+                :disabled="!editorState.ai.enabled"
+                @focus="listModels"
+                @change="setModel(($event.target as HTMLSelectElement).value)"
+              >
+                <option v-if="!models.includes(editorState.ai.model)" :value="editorState.ai.model">
+                  {{ editorState.ai.model || 'the default model' }}
+                </option>
+                <option v-for="m in models" :key="m" :value="m">{{ m }}</option>
+              </select>
+              <button :disabled="!editorState.ai.enabled" title="Ask the provider for its models again" @click="listModels">↻</button>
+            </div>
+            <p v-if="editorState.ai.modelsError" class="error">{{ editorState.ai.modelsError }}</p>
             <p v-if="editorState.ai.providerError" class="error">{{ editorState.ai.providerError }}</p>
-            <p class="muted">Keys go in ai_service/.env (MISTRAL_API_KEY, ANTHROPIC_API_KEY); they never leave this computer except to that model.</p>
+            <h5>Art</h5>
+            <div class="row">
+              <select
+                :value="editorState.ai.artProvider"
+                :disabled="!editorState.ai.enabled"
+                @change="sendToHost({ type: 'ai:setArtProvider', provider: ($event.target as HTMLSelectElement).value })"
+              >
+                <option value="auto">Follow the provider{{ editorState.ai.provider === 'claude' ? ' (Claude draws nothing: Mistral, else PixelLab)' : '' }}</option>
+                <option value="mistral">Mistral{{ editorState.ai.available.mistral === false ? ' (no key)' : '' }}</option>
+                <option value="pixellab">PixelLab{{ editorState.ai.available.pixellab === false ? ' (no key)' : '' }}</option>
+              </select>
+              <span v-if="editorState.ai.art" class="muted">drawing with {{ editorState.ai.art }}</span>
+            </div>
+            <p v-if="editorState.ai.artError" class="error">{{ editorState.ai.artError }}</p>
+            <p class="muted">
+              Keys go in ai_service/.env (MISTRAL_API_KEY, ANTHROPIC_API_KEY, PIXELLAB_API_KEY); they never leave this
+              computer except to that service. Characters and animations (Generate ▸ Character, Animate) are always PixelLab's.
+            </p>
           </template>
           <template v-else-if="section === 'project'">
             <h4>Projects</h4>

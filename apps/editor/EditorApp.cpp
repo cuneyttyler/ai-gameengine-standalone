@@ -838,6 +838,21 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         providerRequest_ = 0;
         if (aiConnection_) aiConnection_->Restart();
         post_(AiStatusJson());
+    } else if (type == "ai:setArtProvider") {
+        // What draws the art: auto (follows the LLM), mistral or pixellab. Applied at once.
+        if (userPrefs_) userPrefs_->Set("artProvider", message.value("provider", "auto"));
+        if (Ai() && Ai()->GetState() == AiClient::State::Ready) {
+            artProviderRequest_ = Ai()->Request("PUT", "/art-provider", {{"provider", message.value("provider", "auto")}});
+        }
+        post_(AiStatusJson());
+    } else if (type == "ai:listModels") {
+        // The models the provider offers (its own list), for Preferences ▸ AI ▸ Model.
+        const std::string provider = message.value("provider", "mistral");
+        if (Ai() && Ai()->GetState() == AiClient::State::Ready && (provider == "mistral" || provider == "claude")) {
+            modelsRequest_ = Ai()->Request("GET", "/models?provider=" + provider, nlohmann::json::object(), 30);
+        } else {
+            post_({{"type", "ai:models"}, {"provider", provider}, {"models", nlohmann::json::array()}, {"errors", {"the AI service isn't running"}}});
+        }
     } else if (type == "ai:setReviewPolicy") {
         if (userPrefs_) {
             userPrefs_->Set("reviewPolicy", ReviewPolicyName(ParseReviewPolicy(message.value("policy", ""))));
@@ -961,6 +976,17 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             artRequest_ = Ai()->Request("POST", "/assets/generate", request, 300);
             artHistoryId_ = artHistory_.Begin(request);
             post_(ArtJson());
+        }
+    } else if (type == "character:generate" || type == "animation:generate") {
+        // PixelLab: a character from 4 or 8 directions, or an image animated. A minute or two.
+        const bool character = type == "character:generate";
+        const char* reply = character ? "character:result" : "animation:result";
+        int& inFlight = character ? characterRequest_ : animationRequest_;
+        if (Ai() == nullptr || Ai()->GetState() != AiClient::State::Ready) {
+            post_({{"type", reply}, {"result", {{"ok", false}, {"errors", {"AI is off"}}}}});
+        } else if (inFlight == 0) {
+            inFlight = Ai()->Request("POST", character ? "/characters/generate" : "/animations/generate",
+                                     message.value("request", nlohmann::json::object()), 420);
         }
     } else if (type == "art:discard") {
         // Only generated art, by its project-relative path.
@@ -3405,7 +3431,10 @@ void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
 void EditorApp::SendProvider() {
     if (!Ai() || Ai()->GetState() != AiClient::State::Ready || !userPrefs_) return;
     const nlohmann::json provider = userPrefs_->Get("aiProvider", "mistral");
-    const nlohmann::json model = userPrefs_->Get("aiModel", "");
+    // Mistral's small model unless another was chosen (fast and cheap; Preferences ▸ AI ▸ Model).
+    const nlohmann::json model = userPrefs_->Get("aiModel", provider == "mistral" ? "ministral-8b-latest" : "");
+    const nlohmann::json art = userPrefs_->Get("artProvider", "auto");
+    artProviderRequest_ = Ai()->Request("PUT", "/art-provider", {{"provider", art.is_string() ? art : nlohmann::json("auto")}});
     providerRequest_ = Ai()->Request("PUT", "/provider",
                                      {{"provider", provider.is_string() ? provider : nlohmann::json("mistral")},
                                       {"model", model.is_string() ? model : nlohmann::json("")}});
@@ -3458,6 +3487,10 @@ nlohmann::json EditorApp::AiStatusJson() {
             {"providerError", providerStatus_.value("ok", true) ? "" : (providerStatus_.contains("errors") && !providerStatus_["errors"].empty()
                                                                        ? providerStatus_["errors"][0].get<std::string>() : "")},
             {"available", providerStatus_.value("available", nlohmann::json::object())},
+            {"artProvider", userPrefs_ ? userPrefs_->Get("artProvider", "auto") : nlohmann::json("auto")},
+            {"art", artStatus_.value("art", "")},
+            {"artError", artStatus_.value("ok", true) ? "" : (artStatus_.contains("errors") && !artStatus_["errors"].empty()
+                                                              ? artStatus_["errors"][0].get<std::string>() : "")},
             {"text", status}};
 }
 
@@ -3474,6 +3507,15 @@ void EditorApp::PollAi() {
                 providerRequest_ = 0;
                 providerStatus_ = result->body.is_object() ? result->body : nlohmann::json{{"ok", false}};
                 post_(AiStatusJson());
+            } else if (result->requestId != 0 && result->requestId == artProviderRequest_) {
+                artProviderRequest_ = 0;
+                artStatus_ = result->body.is_object() ? result->body : nlohmann::json{{"ok", false}};
+                post_(AiStatusJson());
+            } else if (result->requestId != 0 && result->requestId == modelsRequest_) {
+                modelsRequest_ = 0;
+                nlohmann::json shown = result->body.is_object() ? result->body : nlohmann::json{{"ok", false}};
+                shown["type"] = "ai:models";
+                post_(shown);
             } else if (buildJob_ && !KnownRequest(result->requestId)) {
                 buildDeferred_.push_back({result->requestId, result->body, true}); // the build is busy: after its job
             } else if (build_ && build_->Owns(result->requestId)) {
@@ -3549,6 +3591,11 @@ void EditorApp::PollAi() {
                     post_({{"type", "web:added"}, {"path", path}, {"file", r.value("file", "")}});
                     post_({{"type", "notify"}, {"text", "Added " + path + " (" + r.value("licence", "") + ", " + r.value("author", "") + ")"}});
                 }
+            } else if (result->requestId == characterRequest_ || result->requestId == animationRequest_) {
+                const bool character = result->requestId == characterRequest_;
+                (character ? characterRequest_ : animationRequest_) = 0;
+                RefreshAssets(); // the new textures
+                post_({{"type", character ? "character:result" : "animation:result"}, {"result", result->body}});
             } else if (result->requestId == artRequest_) {
                 artRequest_ = 0;
                 artHistory_.Finish(artHistoryId_, result->body);
@@ -3577,6 +3624,7 @@ void EditorApp::PollAi() {
 
 bool EditorApp::KnownRequest(int requestId) const {
     return requestId == worldSearchRequest_ || requestId == analyzeRequest_ || requestId == artRequest_ ||
+           (requestId != 0 && (requestId == characterRequest_ || requestId == animationRequest_)) ||
            requestId == worldCheckRequest_ || consistencyRequests_.contains(requestId) ||
            (requestId != 0 && requestId == webPreviewRequest_) || webFetchRequests_.contains(requestId);
 }
