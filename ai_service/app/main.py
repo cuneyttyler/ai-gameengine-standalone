@@ -16,17 +16,19 @@ Run: uv run uvicorn app.main:app --port 8765
 
 from __future__ import annotations
 
+import hmac
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .models import EditorContext, EngineSchema, Proposal, Usage
 from .consistency import check_consistency, writing_from_operations
 from .images import ImageGenerator, MistralImageGenerator, generate_sprites
-from .places import interpret, plan_root, plan_zone, repair_brief, repair_node, review_layout, revise_plan
+from .places import ask_questions, interpret, plan_root, plan_zone, repair_brief, repair_node, review_layout, revise_plan
 from .vision import describe_assets, map_chunk
 from .websource import search_web
 from .providers import ClaudeProvider, MistralEmbedder, MistralProvider, Provider, ProviderError
@@ -67,6 +69,8 @@ class InterpretRequest(BaseModel):
     context: dict          # what can be built (engine/places InterpretContext)
     drafts: int = 3
     mode: str = "auto"     # auto, native, two-pass, one-pass (place-interaction.md B3)
+    choices: dict = {}     # what the user chose in the Build panel's form: {Brief path: value}, kept as given
+    reading: str = ""      # one reading alone (literal, typical, generous); empty: `drafts` of them
 
 
 class RepairBriefRequest(BaseModel):
@@ -81,6 +85,15 @@ class PlanRootRequest(BaseModel):
     context: dict          # the root's subgraph and its possible children (engine/places Planner)
     mode: str = "auto"
     examples: list = []    # the project's approved places like this one (7.7)
+    directions: dict = {}  # the user's answers to ② Assets' questions: {questions, answers}
+    grid: dict = {}        # the site as a coarse grid (river, roads, walls drawn in) for the AI to sketch the zones on
+
+
+class QuestionsRequest(BaseModel):
+    query: str
+    brief: dict
+    context: dict
+    choices: dict = {}
 
 
 class PlanZoneRequest(BaseModel):
@@ -110,6 +123,8 @@ class RevisePlanRequest(BaseModel):
     context: dict
     mode: str = "auto"
     where: dict = {}       # the layout now (engine/places Where): areas, banks, directions, a map
+    stage: str = ""        # "layout": only the zones are planned yet; "plan": the zones are fixed
+    room: list = []        # in the plan: each zone's land and about how many parcels it holds
 
 
 class ReviewLayoutRequest(BaseModel):
@@ -216,6 +231,23 @@ def create_app(
     vision: Provider | None = None,
 ) -> FastAPI:
     app = FastAPI(title="AIGE AI Orchestration Service", version="0.1.0")
+
+    # Only the editor that started it (development_plan.md 11): a web page in the user's browser
+    # can reach 127.0.0.1 too. Every request but /health carries the editor's token (given to
+    # this process in AIGE_SERVICE_TOKEN), and names this machine as its host (no DNS rebinding).
+    # Without the variable (started by hand, or by the tests) it stays open.
+    @app.middleware("http")
+    async def editor_only(request: Request, call_next):
+        token = os.environ.get("AIGE_SERVICE_TOKEN", "")
+        if token and request.url.path != "/health":
+            host = request.headers.get("host", "").split(":")[0].strip("[]").lower()
+            if host not in ("127.0.0.1", "localhost", "::1"):
+                return JSONResponse({"ok": False, "errors": ["not this machine"]}, status_code=403)
+            given = request.headers.get("x-aige-token", "")
+            if not hmac.compare_digest(given.encode(), token.encode()):
+                return JSONResponse({"ok": False, "errors": ["not the editor"]}, status_code=401)
+        return await call_next(request)
+
     state = {
         "provider": provider,
         "schema": schema,
@@ -325,9 +357,10 @@ def create_app(
         provider: Provider | None = state["provider"]
         if provider is None:
             return {"ok": False, "errors": ["No AI provider configured: set MISTRAL_API_KEY in ai_service/.env"]}
-        if not request.query.strip():
+        if not request.query.strip() and not request.choices:
             return {"ok": False, "errors": ["Say what to build"]}
-        result = interpret(provider, request.query, request.context, request.drafts, request.mode)
+        result = interpret(provider, request.query, request.context, request.drafts, request.mode, choices=request.choices,
+                           reading=request.reading)
         state["usage"].add(Usage(**result["usage"]))
         return result
 
@@ -350,7 +383,12 @@ def create_app(
 
     @app.post("/places/plan-root")
     def places_plan_root(request: PlanRootRequest) -> dict:
-        return _planning(lambda p: plan_root(p, request.brief, request.context, request.mode, request.examples))
+        return _planning(lambda p: plan_root(p, request.brief, request.context, request.mode, request.examples,
+                                             directions=request.directions, grid=request.grid))
+
+    @app.post("/places/questions")
+    def places_questions(request: QuestionsRequest) -> dict:
+        return _planning(lambda p: ask_questions(p, request.query, request.brief, request.context, request.choices))
 
     @app.post("/places/plan-zone")
     def places_plan_zone(request: PlanZoneRequest) -> dict:
@@ -386,7 +424,8 @@ def create_app(
         if not request.instruction.strip():
             return {"ok": False, "errors": ["Say what to change"]}
         return _planning(lambda p: revise_plan(p, request.brief, request.plan, request.result, request.instruction,
-                                               request.context, request.mode, where=request.where))
+                                               request.context, request.mode, where=request.where, stage=request.stage,
+                                               room=request.room))
 
     @app.post("/places/review-layout")
     def places_review_layout(request: ReviewLayoutRequest) -> dict:

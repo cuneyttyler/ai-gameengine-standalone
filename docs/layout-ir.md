@@ -133,7 +133,23 @@ Every statement also accepts `node` (required), `id`, `tags` (free words, never 
 | op | Fields | Meaning |
 |---|---|---|
 | **`region`** | `in` (parent ref; omitted only for the root), `shape`: `rect` · `poly` · `cells` · `any` · `cave` (cellular automata: `fill`, `steps`), `size` and/or `area`, `ratio`, `cells` (for `cells`), `layer` (default `ground`), `subplace` (a child place's id; `place-schema.md` §3.5) | An area the solver must find inside its parent. Regions are the hierarchy: plots, gardens, rooms. Sibling regions never overlap. A region with `subplace` is solved by the child place, inside the boundary and anchors found here. |
-| **`partition`** | `in`, `into`: a list of `{id, area or share, prefers: [criterion: weight]}`, `method`: `voronoi` · `growth`, `interest`: interest map names | Splits a region into zones. Each zone's `prefers` uses interest criteria from the ontology (`center`, `high-ground`, `water`, `road`, `away-from:<ref>`), each in [−1, 1]; −1 vetoes a cell (Emilien et al.). Each zone becomes a region named by its `id`. |
+| **`partition`** | `in`, `into`: a list of zones (below), `method`: `voronoi` · `growth`, `interest`: interest map names | Splits a region into zones. Each zone's `prefers` uses interest criteria from the ontology (`center`, `high-ground`, `water`, `road`, `away-from:<ref>`), each in [−1, 1]; −1 vetoes a cell (Emilien et al.). Each zone becomes a region named by its `id`, with its `seed` in the solved document. |
+
+A zone of `partition.into`:
+
+| Field | Meaning |
+|---|---|
+| `id`, `node`, `module` | the zone's region id, its spec node, its module |
+| `area` or `share` | its quota of cells; scaled down to what's free (zones that are `flexible` give way first) |
+| `flexible` | no buildings (farmland, a green): takes what's left |
+| `prefers` | interest criteria, as above |
+| `rel` | `[{type, to, weight?}]`: zone relations (`near`, `along`, `adjacent`, `far`, `north-of`…, and `in-north`… to `site`), scored per cell in its interest and in its growth |
+| `seed` | `[x, y]`: start from the free cell nearest it (a revision keeps the zones it didn't move) |
+| `box` | `[x0, y0, x1, y1]`: drawn by the user; the zone takes the free cells in it, exactly, and doesn't grow |
+| `paint` | cell runs (`EncodeCells`): painted by the user, or the layout the user approved (`place-layout.md` §9); the zone takes those cells first, exactly, and doesn't grow |
+| `sketch` | cell runs: the AI's sketch of it (`place-layout.md` §11.1); a guide, not a border: the seed is its middle, its cells score +4 in the zone's interest, another zone's sketched cells −2, the rest −0.5. Ignored with `paint` |
+
+Zones with `box` or `paint` take their cells before any seed is placed; a seed that falls in them moves to the nearest free cell.
 | **`floorplan`** | `in` (a building's interior region), `rooms`: a list of `{id, kind, area, size?, adjacent: [ids], entrance: bool}`, `corridors` (bool), `wall` (slot: wall piece set) | Lays out rooms inside a footprint from a room programme (ProcTHOR-style), with walls on the shared edges. Each room becomes a region `id`. Doors are added with `connect`. |
 | **`graph`** | `in`, `nodes`: a list of `{id, kind, size}`, `edges`: a list of `{from, to, kind, lock?: key-id}`, `keys`: a list of `{id, in: node}`, `layout`: `grid` · `organic` · `cave` | An abstract mission/space graph (Dormans; Unexplored's cycles) embedded in the region. Each node becomes a region and each edge a `connect`. Lock–key pairs are kept for checks. |
 | **`subdivide`** | `in`, `style`: `skeleton` · `split` · `mixed`, `area`, `width`, `irregularity` (0–1), `access`: `street` · `any`, `count` (optional); or `style: frontage` with `into`: a list of `{id, node, module, size}` (one per parcel, as the compiler writes them out) | Splits a block into parcels (Vanegas et al.). With `access: street`, every parcel touches a path. **`frontage`** (solver v1): each parcel is a rectangle whose front (its `w`) runs along a street for at least 60% of its width, its depth (`h`) away from it, packed tightly, central ones first; the parcel's `facing` is the side its street is on, and its `.street` selector gives those street cells. Instances: `id[i]`, or the `into` ids. |

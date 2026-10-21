@@ -1932,6 +1932,10 @@ gbs:CraftsmenWardShape
         sh:minInclusive 0 ;
         sh:maxInclusive 2000
     ], [
+        sh:path gbl:CraftsmenWard.street-style ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:layout.organic gbv:layout.grid gbv:layout.radial gbv:layout.linear-along-road gbv:layout.linear-along-river )
+    ], [
         sh:path gbl:CraftsmenWard.trades ;
         sh:in ( gbv:trade.smith gbv:trade.carpenter gbv:trade.tanner gbv:trade.potter gbv:trade.weaver gbv:trade.mason gbv:trade.baker gbv:trade.brewer )
     ], [
@@ -2199,6 +2203,10 @@ gbs:DocksShape
         sh:datatype xsd:integer ;
         sh:minInclusive 0 ;
         sh:maxInclusive 2000
+    ], [
+        sh:path gbl:Docks.street-style ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:layout.organic gbv:layout.grid gbv:layout.radial gbv:layout.linear-along-road gbv:layout.linear-along-river )
     ], [
         sh:path gbo:hasPart ;
         sh:qualifiedValueShape [
@@ -2686,6 +2694,10 @@ gbs:FarmlandRingShape
         sh:path gbl:FarmlandRing.crops ;
         sh:maxCount 1 ;
         sh:datatype rdf:JSON
+    ], [
+        sh:path gbl:FarmlandRing.street-style ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:layout.organic gbv:layout.grid gbv:layout.radial gbv:layout.linear-along-road gbv:layout.linear-along-river )
     ], [
         sh:path gbo:hasPart ;
         sh:qualifiedValueShape [
@@ -3341,6 +3353,10 @@ gbs:GateWardShape
         sh:datatype xsd:integer ;
         sh:minInclusive 0 ;
         sh:maxInclusive 2000
+    ], [
+        sh:path gbl:GateWard.street-style ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:layout.organic gbv:layout.grid gbv:layout.radial gbv:layout.linear-along-road gbv:layout.linear-along-river )
     ], [
         sh:path gbl:GateWard.traffic ;
         sh:maxCount 1 ;
@@ -4239,6 +4255,34 @@ gbs:LandmarkShape
         sh:maxCount 0
     ] .
 
+gbs:LandscapeShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Landscape ;
+    sh:property [
+        sh:path gbl:Landscape.bushes ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "rare" "some" "common" "abundant" )
+    ], [
+        sh:path gbl:Landscape.flowers ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "rare" "some" "common" "abundant" )
+    ], [
+        sh:path gbl:Landscape.grass ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "rare" "some" "common" "abundant" )
+    ], [
+        sh:path gbl:Landscape.rocks ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "rare" "some" "common" "abundant" )
+    ], [
+        sh:path gbl:Landscape.trees ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "rare" "some" "common" "abundant" )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:maxCount 0
+    ] .
+
 gbs:LibraryShape
     a sh:NodeShape ;
     sh:targetClass gbl:Library ;
@@ -4678,6 +4722,10 @@ gbs:MarketWardShape
         sh:maxCount 1 ;
         sh:in ( "quiet" "busy" )
     ], [
+        sh:path gbl:MarketWard.street-style ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:layout.organic gbv:layout.grid gbv:layout.radial gbv:layout.linear-along-road gbv:layout.linear-along-river )
+    ], [
         sh:path gbl:MarketWard.wealth ;
         sh:maxCount 1 ;
         sh:in ( gbv:wealth.poor gbv:wealth.common gbv:wealth.rich )
@@ -4762,6 +4810,10 @@ gbs:MerchantWardShape
         sh:datatype xsd:integer ;
         sh:minInclusive 0 ;
         sh:maxInclusive 2000
+    ], [
+        sh:path gbl:MerchantWard.street-style ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:layout.organic gbv:layout.grid gbv:layout.radial gbv:layout.linear-along-road gbv:layout.linear-along-river )
     ], [
         sh:path gbl:MerchantWard.wealth ;
         sh:maxCount 1 ;
@@ -5020,6 +5072,10 @@ gbs:OutskirtsShape
         sh:minInclusive 0 ;
         sh:maxInclusive 2000
     ], [
+        sh:path gbl:Outskirts.street-style ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:layout.organic gbv:layout.grid gbv:layout.radial gbv:layout.linear-along-road gbv:layout.linear-along-river )
+    ], [
         sh:path gbo:hasPart ;
         sh:qualifiedValueShape [
             sh:class gbl:Farmstead
@@ -5131,6 +5187,10 @@ gbs:PastureLandShape
         sh:maxCount 1 ;
         sh:datatype rdf:JSON
     ], [
+        sh:path gbl:PastureLand.street-style ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:layout.organic gbv:layout.grid gbv:layout.radial gbv:layout.linear-along-road gbv:layout.linear-along-river )
+    ], [
         sh:path gbo:hasPart ;
         sh:qualifiedValueShape [
             sh:class gbl:HedgeLine
@@ -5188,6 +5248,10 @@ gbs:PatricianWardShape
         sh:path gbl:PatricianWard.grandeur ;
         sh:maxCount 1 ;
         sh:in ( "modest" "grand" )
+    ], [
+        sh:path gbl:PatricianWard.street-style ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:layout.organic gbv:layout.grid gbv:layout.radial gbv:layout.linear-along-road gbv:layout.linear-along-river )
     ], [
         sh:path gbo:hasPart ;
         sh:qualifiedValueShape [
@@ -6212,6 +6276,10 @@ gbs:SlumShape
         sh:maxCount 1 ;
         sh:in ( "poor" "wretched" )
     ], [
+        sh:path gbl:Slum.street-style ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:layout.organic gbv:layout.grid gbv:layout.radial gbv:layout.linear-along-road gbv:layout.linear-along-river )
+    ], [
         sh:path gbo:hasPart ;
         sh:qualifiedValueShape [
             sh:class gbl:Clutter
@@ -6917,6 +6985,10 @@ gbs:TempleWardShape
         sh:path gbl:TempleWard.grandeur ;
         sh:maxCount 1 ;
         sh:in ( "modest" "grand" )
+    ], [
+        sh:path gbl:TempleWard.street-style ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:layout.organic gbv:layout.grid gbv:layout.radial gbv:layout.linear-along-road gbv:layout.linear-along-river )
     ], [
         sh:path gbo:hasPart ;
         sh:qualifiedValueShape [

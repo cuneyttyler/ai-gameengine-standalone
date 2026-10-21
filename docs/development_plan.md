@@ -2280,6 +2280,126 @@ The plan as first written:
 
 ---
 
+## Phase 8 — Fixes from using the Build panel
+
+Added 2026-10-20 from testing. The fixes made before it (after 7.10) are in `fixes.md`.
+
+### Milestones
+
+**8.1 The editor's look**
+- Preferences: its sections in a list on the left, the chosen section on the right.
+- Select boxes styled the same across the app (they look like the OS's now).
+- A shortcut to maximise the focused panel to the whole window and to bring the layout
+  back (what double-clicking a panel's title does).
+- A shortcut for the Build panel.
+- F1 toggles the shortcuts page (it opens it; it should close it too).
+- A new project starts with nothing placed in the viewport, and the grid shown.
+
+**8.2 The Build panel**
+- An audit of each build: the conversation (kept already) and every action taken (each
+  edit, revision, paint stroke, approval), with undo and redo across them.
+- Undo for the brush: in the Layout tab and in the painting popup.
+- "Revising the layout…" / "Revising the plan…" at the top of the page while a revision runs.
+- "The layout could be better" goes from the Layout tab.
+- A button to remove older builds (with a confirmation).
+- An advanced view: the build's PLL document, the solved layout, the Spec, the log.
+
+**8.3 The built place: realistic, with nothing bare**
+- Empty land, inside zones and outside them, is dressed: grass and its variants, bushes,
+  trees, small hills, flowers, rocks, by the terrain and the zone (a ward's yards, a
+  field's edges, the wild outside), so the place reads as one landscape.
+- The spaces between elements handled well: verges along roads, yards around houses,
+  no grid of identical tiles (variants mixed, seams hidden).
+- One image isn't used for two different things (a sign and a doorstep shared a picture):
+  a need takes art only of its own role.
+
+Done when: a built village has no bare or tiled-looking land and reads as a place; the
+Build panel's actions can be undone and redone; the listed UI fixes are in.
+
+**Status (2026-10-21): built, to be tried.**
+- 8.1: Preferences in two panes; one select-box style everywhere (`main.css`); F11 maximises
+  the panel in use (or brings the layout back); U toggles the Build panel; F1 toggles the
+  shortcuts; a new project's scene is empty, the grid on.
+- 8.2: every Layout-tab action (paint, draw, a size, a kind of building) and every revision and
+  edit kept in the build's history with its time, undone and redone exactly (each restores the
+  saved layout, not a new solve); Undo/Redo by the map, in the painting popup and in Revise;
+  "Revising the layout/plan…" at the top while one runs; "The layout could be better" gone;
+  Remove older builds (asked first); Advanced: the PLL, the solved layout, the Spec, the Brief,
+  the asset plan, the log. Not yet: Contents edits as undoable steps.
+- 8.3: the `landscape` module (dressing): on land nothing covers, outside the zones (wild),
+  inside them (yards) and along the main roads (verges), scattered trees, bushes, flowers,
+  grass, rocks and mounds (a new role); made by the Art tool like any art, left out when it
+  can't be. Generated ground tiles are made seamless (wrapped and blended). A slot of
+  alternatives ("barrel|pot|bench|sign|lamp") gives each object one of them, so each kind
+  gets its own art.
+
+## Phase 9 — The ontology, editable
+
+**9.1 The ontology panel** (from a context menu)
+- Every module that can be built (village, interior, dungeon...), its fields, children,
+  slots and relations, shown; the defaults read-only.
+- Users add modules and properties within the ontology schema (`gbo-shapes.ttl`); the
+  additions are validated by the same shapes.
+- The AI works with the extended ontology (the contexts it's given are built from it).
+
+**9.2 Per user, across projects**
+- The user's extensions live in the user's folder, used by every project, and can be
+  exported and imported (a file).
+
+Done when: a user adds a module (a "watermill" parcel) with its fields, it appears in the
+Build panel's choices, and a build places one.
+
+**Status (2026-10-21): built, to be tried.** `places/OntologyEdit` (the panel's view of the
+whole, saving with checks, export and import), `Ontology::ApplyExtensions` (a module's
+`extends`, `extensions.json`), the user folder `%LOCALAPPDATA%\aige\ontology` loaded between
+the engine's library and the project's; `OntologyDialog.vue` (File ▸ Ontology…, the Build
+panel's right-click menu): build types and their components (more can be offered), modules
+by level (yours marked), a built-in's fields and parts with "add a field" and "allow a part",
+your own modules made and edited with a form (id, level, classes, where it goes, which builds
+offer it, fields, slots), deleted (asked first). Tested (`ontology_edit_test.cpp`): a
+watermill saved, found where it said, planned in a craftsmen's ward and placed by the solver;
+built-ins and broken modules refused and not kept; fields added to a built-in; exported and
+imported on another folder. Not yet: new roles and vocabularies (a module uses the existing ones).
+
+## Phase 10 — The asset library
+
+- In the user library: folders, made by the user, holding assets from the web, from the
+  AIGE library, and generated ones.
+- Every generated asset is kept (outside the project too), reachable across sessions, and
+  exportable.
+- Sharing: the user is asked whether to share what they generated with other users
+  through the AIGE library (when the AIGE web service exists, it stores each user's shared
+  art); the question, its timing and its consent are designed in `asset_management.md`.
+
+Done when: assets can be organised in folders, generated art is never lost between
+sessions, and the sharing choice is asked and kept.
+
+**Status (2026-10-21): built, to be tried.** The user library (`%LOCALAPPDATA%\aige\library`,
+`engine/assets/UserLibrary`) and the Assets panel's **Library** tab: folders, items into a
+project, "Keep in my library" from the Assets tab, export and import (`.aige-library`
+folders); generated art kept from every project on each asset refresh; the sharing question
+asked in the Library tab the first time it holds generated art (offer by default, decide for
+each, keep private), changeable any time, per item too. Designed in `asset_management.md`; the
+upload waits for the AIGE service.
+
+## Phase 11 — Review and polish
+
+- A code review of the codebase, and security checks (the AI service, file access, web
+  fetching, keys).
+- CSS across the app: select boxes, input fields, spacings, layouts.
+
+Done when: the review's findings are fixed or recorded, and the UI is consistent.
+
+**Status (2026-10-21): done, to be tried.** `security_review.md`: the AI service answers only
+the editor that started it (a per-session token, and localhost Host names only); the UI's file
+actions can't reach outside the project (`Project::IsInside`: scene delete, folder rename and
+remove); a path check in the vision model's batches; a second source rule against loops over a
+temporary's element; recommendations recorded. CSS: one look for selects, text and number
+fields, text areas, checkboxes, buttons and scrollbars across the app (`main.css`, at zero
+specificity so panels' own rules still apply).
+
+---
+
 ## Later
 
 Phases after 5 are planned as development goes (2026-10-17): each new phase is written

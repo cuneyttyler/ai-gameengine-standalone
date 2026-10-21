@@ -43,6 +43,8 @@ struct BriefMerge {
     std::vector<BriefField> fields;
     std::vector<std::string> assumptions; // every draft's, without repeats
     std::vector<std::string> questions;
+    // Each open point, with what was assumed for it: [{question, assumed, path, options, readings: {reading: assumed}}].
+    nlohmann::json decisions = nlohmann::json::array();
     const BriefField* Field(const std::string& path) const;
 };
 
@@ -66,6 +68,10 @@ void FollowScale(const Ontology& ontology, nlohmann::json& brief, const std::str
 // components and features it names ("gardens", "a river", "walled"), a few
 // usual components, every field marked as a guess, and an assumption saying so.
 nlohmann::json FallbackDraft(const Ontology& ontology, const std::string& query);
+
+// The build type a request names by its words ("a village": the settlement; "a cave": the
+// dungeon), or "" when it names none. The AI is then given that type's options alone.
+std::string NamedBuildType(const Ontology& ontology, const std::string& query);
 
 // The project defaults a confirmed Brief leaves (per build type: component
 // sources and settings, style): the next build starts from them.

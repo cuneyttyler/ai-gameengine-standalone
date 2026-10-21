@@ -108,6 +108,7 @@ std::vector<std::string> SceneReferences(const Project& project, const std::stri
 }
 
 std::string DeleteScene(const Project& project, const std::string& scene) {
+    if (!Project::IsInside(scene) || scene.rfind("scenes/", 0) != 0) return scene + " isn't a scene of the project";
     if (!Exists(project, scene)) return scene + " doesn't exist";
     if (scene == StartScene()) return "it's the start scene; make another scene the start first";
     auto references = SceneReferences(project, scene);

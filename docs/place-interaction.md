@@ -202,7 +202,8 @@ provider. The design doesn't depend on it, because the two-pass mode always work
 
 - **Thinking length:** set per step (default: generous for Interpret and Plan, short
   elsewhere). The model budget is unlimited by decision, but each step still has a
-  ceiling so that a runaway answer is cut off.
+  ceiling so that a runaway answer is cut off: for Mistral, about 3,000 tokens of thinking
+  and 6,000 of answer per call, and 3 minutes before a call is retried (B7).
 - **Logging:** each call's inputs (with ontology fact ids), thinking, answer, validation
   result and repair go into the place's log (`places/<place>/log.jsonl`). Reviewers and
   tests can replay a step from it.
@@ -221,3 +222,46 @@ thinking, before it answers. For the Plan step:
 
 The validators then check the same rules for real. Their job is to make the first answer
 more often right.
+
+### B7. Interpret: three readings of the request
+
+The request is read three times, in parallel, each with a different instruction
+(`ai_service/app/places.py`, `READINGS`):
+
+| Reading | The AI is told |
+|---|---|
+| **literal** | decide only what the request says or clearly implies; leave everything else at the build type's defaults and say so in the assumptions |
+| **typical** | read it as an experienced level designer would: what a place like this typically has, sized to what was asked |
+| **generous** | a rich, lively version of what was asked (more components, livelier densities), never contradicting it |
+
+Each reading writes a whole Brief (build type, size in numbers, components and amounts,
+style), with its **decisions** (`{question, assumed, path, options}`: each open point and
+the answer it chose) and other assumptions. Then:
+
+1. **Checked** against the ontology's rules (`ValidateBrief`); a reading that breaks them
+   goes back to the AI once, with its exact violations (`/places/repair-brief`).
+2. **Merged** (`MergeBriefs`): each field takes the value most readings agree on (a tie goes
+   to the typical one). The decisions are merged one per point (by the field they set,
+   else by the question); the other readings' answers become its options.
+3. **Shown** in ① Confirm's Contents: a field the readings disagree on is marked *differ*,
+   with the others' values to pick; one a reading guessed (confidence below 0.6) is marked
+   *guessed*; "To decide" lists the decisions with their assumed answers.
+
+Why three: their disagreements are what the request leaves open, so the user sees them
+before anything is planned (A1).
+
+How it runs (2026-10-20):
+- **One request per reading** (`PlaceBuild::SendReadings`, `/places/interpret` with
+  `reading`), side by side: the progress page shows each as it comes ("1 of 3 readings").
+  A reading that fails after its retries is dropped; only when all three fail does the
+  Brief come from the request's words alone (`FallbackDraft`).
+- **Only the named build type's options** go with them: the build type the request's words
+  name (or the one chosen in the form) and its components, scale and fields; all build
+  types only when the words name none (`InterpretContextFor`). For a village that's about
+  8 KB of context instead of 36 KB.
+- **Cost and time:** each reading is two calls (two-pass, B3), so six calls in all, usually
+  30–60 s together. One reading alone would be a third of that, without the *differ* marks.
+- **A ceiling on each call** (B5): the thinking pass may write about 3,000 tokens, the answer
+  about 6,000 (`MistralProvider.MAX_THINKING_TOKENS`, `MAX_ANSWER_TOKENS`), and a call waits
+  3 minutes at most before it's retried. Before these, a reading that ran on could hold the
+  step for five minutes.

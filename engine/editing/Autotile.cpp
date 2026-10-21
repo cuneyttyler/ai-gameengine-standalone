@@ -210,8 +210,21 @@ AssetAnalysis ProjectAnalysis(const PrefabLibrary& prefabs, const Project& proje
 TerrainSet ProjectTerrainSet(const PrefabLibrary& prefabs, const Project& project) {
     const AssetAnalysis analysis = ProjectAnalysis(prefabs, project);
     return BuildTerrainSet(prefabs, [&](const std::string& asset) {
+        // A placeholder an earlier build left isn't the project's ground (it hid the real art).
+        if (asset.find("generated/placeholders/") != std::string::npos) return std::map<std::string, std::string>{};
         auto it = analysis.find(asset);
-        return it == analysis.end() ? std::map<std::string, std::string>{} : it->second;
+        if (it == analysis.end()) return std::map<std::string, std::string>{};
+        // A ground tile the Art tool made for one terrain (and made seamless): that terrain
+        // all over, whatever reading its pixels said (a grey cobble tile was taken for grass).
+        std::map<std::string, std::string> fields = it->second;
+        const auto terrain = fields.find("terrain"), source = fields.find("source");
+        if (terrain != fields.end() && !terrain->second.empty() && source != fields.end() && source->second == "generated") {
+            fields["center"] = terrain->second;
+            std::string edges;
+            for (int i = 0; i < 8; ++i) edges += (i ? "," : "") + terrain->second;
+            fields["edges"] = edges;
+        }
+        return fields;
     });
 }
 

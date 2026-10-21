@@ -950,7 +950,11 @@ void Solver::Partition(const json& s, int region) {
         int keep = -1;     // the cell it was seeded at last time, to stay there
         int seed = -1;
         std::vector<int> cells;
+        std::array<int, 4> box{-1, -1, -1, -1}; // drawn by the user (x0, y0, x1, y1): it takes that land, exactly
+        std::vector<int> painted;                // painted by the user: those cells, exactly
+        std::vector<uint8_t> sketched;           // the AI's sketch of where it goes (a guide, not its border)
     };
+    std::vector<uint8_t> anySketch(W * H, 0);
     std::vector<Zone> zones;
     double wanted = 0;
     for (const auto& z : s.value("into", json::array())) {
@@ -964,6 +968,23 @@ void Solver::Partition(const json& s, int region) {
         zone.rel = z.value("rel", json::array());
         if (const json k = z.value("seed", json()); k.is_array() && k.size() == 2 && In(k[0].get<int>(), k[1].get<int>())) {
             zone.keep = Cell(k[0].get<int>(), k[1].get<int>());
+        }
+        if (const json b = z.value("box", json()); b.is_array() && b.size() == 4) {
+            zone.box = {std::max(0, b[0].get<int>()), std::max(0, b[1].get<int>()), std::min(W, b[2].get<int>()), std::min(H, b[3].get<int>())};
+            zone.quota = std::max(1, (zone.box[2] - zone.box[0]) * (zone.box[3] - zone.box[1]));
+        }
+        if (const json paint = z.value("paint", json()); paint.is_array() && !paint.empty()) {
+            for (int c : DecodeCells(paint, W)) {
+                if (c >= 0 && c < W * H) zone.painted.push_back(c);
+            }
+            zone.box = {0, 0, 0, 0}; // drawn: it doesn't grow
+            zone.quota = std::max<double>(1, zone.painted.size());
+        }
+        if (const json sketch = z.value("sketch", json()); sketch.is_array() && !sketch.empty() && zone.painted.empty()) {
+            zone.sketched.assign(W * H, 0);
+            for (int c : DecodeCells(sketch, W)) {
+                if (c >= 0 && c < W * H) zone.sketched[c] = anySketch[c] = 1;
+            }
         }
         wanted += zone.quota;
         zones.push_back(zone);
@@ -1079,9 +1100,24 @@ void Solver::Partition(const json& s, int region) {
     auto interest = [&](const Zone& z, int c) {
         const double x = c % W + 0.5, y = c / W + 0.5;
         double score = 0;
+        // The AI's sketch: its own sketched land draws it, another zone's sketched land doesn't.
+        if (!z.sketched.empty()) score += z.sketched[c] ? 4.0 : anySketch[c] ? -2.0 : -0.5;
         // Its relations weigh more than its general preferences: someone asked for them.
         for (const auto& r : z.rel) {
             const std::string type = r.value("type", "near"), to = r.value("to", "");
+            // In a part of the map (its north, its west): by where the cell is in the site.
+            if (type.rfind("in-", 0) == 0) {
+                const double w = std::max(1.0, (parent.x1 - parent.x0) / 2.0), h = std::max(1.0, (parent.y1 - parent.y0) / 2.0);
+                const double fx = (x - cx) / w, fy = (y - cy) / h; // -1..1 from the middle
+                double v = 0;
+                if (type == "in-north") v = -fy;
+                else if (type == "in-south") v = fy;
+                else if (type == "in-west") v = -fx;
+                else if (type == "in-east") v = fx;
+                else continue;
+                score += std::max(0.1, r.value("weight", 1.0)) * 3.0 * std::clamp(v * 1.5, -1.0, 1.0);
+                continue;
+            }
             double tx = 0, ty = 0, distance = 0;
             bool known = false, path = false;
             const double weight = std::max(0.1, r.value("weight", 1.0));
@@ -1166,12 +1202,55 @@ void Solver::Partition(const json& s, int region) {
     for (int c : available) open[c] = 1;
     Rng rng = StreamFor(s);
     const double minApart = std::sqrt(room / zones.size()) * 0.8;
+    // The land drawn, painted or kept for zones is theirs before any seed is placed; a seed goes
+    // on the free land that's left, in a stretch of it big enough for its zone (not a pocket shut
+    // in by kept zones, the river and a road).
+    std::vector<uint8_t> claimed(W * H, 0);
+    for (const auto& z : zones) {
+        for (int c : z.painted) claimed[c] = 1;
+        if (z.box[0] >= 0) {
+            for (int y = z.box[1]; y < z.box[3]; ++y) {
+                for (int x = z.box[0]; x < z.box[2]; ++x) claimed[Cell(x, y)] = 1;
+            }
+        }
+    }
+    std::vector<int> stretch(W * H, -1);
+    std::vector<int> stretchSize;
+    for (int start : available) {
+        if (claimed[start] || stretch[start] >= 0) continue;
+        const int label = static_cast<int>(stretchSize.size());
+        stretchSize.push_back(0);
+        std::vector<int> stack = {start};
+        stretch[start] = label;
+        while (!stack.empty()) {
+            const int c = stack.back();
+            stack.pop_back();
+            ++stretchSize[label];
+            static const int dx[4] = {1, -1, 0, 0}, dy[4] = {0, 0, 1, -1};
+            for (int d = 0; d < 4; ++d) {
+                int nx = c % W + dx[d], ny = c / W + dy[d];
+                for (int hop = 0; hop < 4 && In(nx, ny) && road_[Cell(nx, ny)]; ++hop) nx += dx[d], ny += dy[d]; // across a road, as growth does
+                if (!In(nx, ny)) continue;
+                const int n = Cell(nx, ny);
+                if (!open[n] || claimed[n] || stretch[n] >= 0) continue;
+                stretch[n] = label;
+                stack.push_back(n);
+            }
+        }
+    }
+    const int widest = stretchSize.empty() ? 0 : *std::max_element(stretchSize.begin(), stretchSize.end());
+    auto seedable = [&](const Zone& z, int c) {
+        if (claimed[c] || stretch[c] < 0) return false;
+        return stretchSize[stretch[c]] >= std::min(0.7 * z.quota, 0.9 * widest);
+    };
     for (size_t k : order) {
+        if (zones[k].box[0] >= 0) continue; // drawn or painted: its seed is its land's
         // Where it was last time, if that's still open land (a revision keeps the zones it isn't about).
         if (zones[k].keep >= 0) {
             int best = -1;
             double nearest = 1e18;
             for (int c : available) {
+                if (!seedable(zones[k], c)) continue;
                 const double d = std::hypot(c % W - zones[k].keep % W, c / W - zones[k].keep / W);
                 if (d < nearest) nearest = d, best = c;
                 if (d == 0) break;
@@ -1179,9 +1258,30 @@ void Solver::Partition(const json& s, int region) {
             zones[k].seed = best;
             continue;
         }
+        // Sketched: from the middle of its sketch (the open cell of it nearest its centre).
+        if (!zones[k].sketched.empty()) {
+            double sx = 0, sy = 0, n = 0;
+            for (int c = 0; c < W * H; ++c) {
+                if (zones[k].sketched[c]) sx += c % W, sy += c / W, ++n;
+            }
+            int best = -1;
+            double nearest = 1e18;
+            for (int c : available) {
+                if (!seedable(zones[k], c)) continue;
+                const double d = std::hypot(c % W - sx / std::max(1.0, n), c / W - sy / std::max(1.0, n)) - (zones[k].sketched[c] ? 1000 : 0);
+                bool used = false;
+                for (const auto& z : zones) used = used || z.seed == c;
+                if (!used && d < nearest) nearest = d, best = c;
+            }
+            if (best >= 0) {
+                zones[k].seed = best;
+                continue;
+            }
+        }
         double best = -1e18;
         for (size_t i = 0; i < available.size(); i += std::max<size_t>(1, available.size() / 3000)) {
             const int c = available[i];
+            if (!seedable(zones[k], c)) continue;
             double apart = 1e9;
             for (const auto& z : zones) {
                 if (z.seed >= 0) apart = std::min(apart, std::hypot(c % W - z.seed % W, c / W - z.seed / W));
@@ -1197,11 +1297,43 @@ void Solver::Partition(const json& s, int region) {
     std::vector<int> taken(W * H, -1);
     using Item = std::pair<double, int>;
     std::vector<std::priority_queue<Item>> frontier(zones.size());
-    for (size_t k = 0; k < zones.size(); ++k) {
-        if (zones[k].seed >= 0) frontier[k].push({0, zones[k].seed});
-    }
     std::vector<uint8_t> usable(W * H, 0);
     for (int c : available) usable[c] = 1;
+    // Drawn zones first: the free land in their boxes is theirs, and they don't grow beyond it.
+    for (size_t k = 0; k < zones.size(); ++k) {
+        Zone& z = zones[k];
+        if (z.box[0] < 0) continue;
+        for (int c : z.painted) {
+            if (!usable[c] || taken[c] >= 0) continue;
+            taken[c] = static_cast<int>(k);
+            z.cells.push_back(c);
+        }
+        for (int y = z.box[1]; y < z.box[3]; ++y) {
+            for (int x = z.box[0]; x < z.box[2]; ++x) {
+                const int c = Cell(x, y);
+                if (!usable[c] || taken[c] >= 0) continue;
+                taken[c] = static_cast<int>(k);
+                z.cells.push_back(c);
+            }
+        }
+        z.quota = static_cast<double>(z.cells.size());
+        if (!z.cells.empty()) z.seed = z.cells[z.cells.size() / 2];
+    }
+    // A seed that fell in a drawn zone moves to the nearest land that's free.
+    for (auto& z : zones) {
+        if (z.box[0] >= 0 || z.seed < 0 || taken[z.seed] < 0) continue;
+        int best = -1;
+        double nearest = 1e18;
+        for (int c : available) {
+            if (taken[c] >= 0) continue;
+            const double d = std::hypot(c % W - z.seed % W, c / W - z.seed / W);
+            if (d < nearest) nearest = d, best = c;
+        }
+        z.seed = best;
+    }
+    for (size_t k = 0; k < zones.size(); ++k) {
+        if (zones[k].seed >= 0 && zones[k].box[0] < 0) frontier[k].push({0, zones[k].seed});
+    }
     while (true) {
         int pick = -1;
         double lowest = 1e18;
@@ -1238,7 +1370,7 @@ void Solver::Partition(const json& s, int region) {
             // Compact zones: closeness to the seed matters most; interest breaks ties.
             // A zone with relations grows by them too (along the river: a strip).
             const double distance = std::hypot(nx - z.seed % W, ny - z.seed / W);
-            const bool related = !z.rel.empty();
+            const bool related = !z.rel.empty() || !z.sketched.empty();
             queue.push({-(related ? 0.45 : 1.0) * distance + (related ? 1.5 : 0.5) * interest(z, n), n});
         }
     }
@@ -1853,6 +1985,53 @@ void Solver::Scatter(const json& s, int container) {
     target = std::max(target, std::min(static_cast<int>(free.size()), s.value("min", 0)));
     const int spacing = std::max(0, RangeOf(s.value("spacing", json::object()).value("min", json()), solid ? 1 : 0).lo);
     for (size_t i = free.size(); i > 1; --i) std::swap(free[i - 1], free[rng.Next() % i]);
+    // In patches ("cluster": {size: [lo, hi], fill}): a flower bed, a thicket, a grove, a lawn.
+    // Each patch grows from a seed over neighbouring free cells, and most of its cells get one;
+    // the same density as scattered, gathered as real plants grow. Patches stay apart.
+    if (const json cluster = s.value("cluster", json()); cluster.is_object() && target > 0 && !free.empty()) {
+        const IntRange size = RangeOf(cluster.value("size", json::array({4, 16})), 8);
+        const double fill = std::clamp(cluster.value("fill", 0.8), 0.1, 1.0);
+        std::vector<uint8_t> isFree(W * H, 0), used(W * H, 0);
+        for (int c : free) isFree[c] = 1;
+        std::vector<int> chosen;
+        static const int dx[4] = {1, -1, 0, 0}, dy[4] = {0, 0, 1, -1};
+        for (int seed : free) {
+            if (static_cast<int>(chosen.size()) >= target) break;
+            if (used[seed]) continue;
+            // Not touching another patch: a clear gap between them.
+            bool near = false;
+            for (int d = 0; d < 4 && !near; ++d) {
+                const int x = seed % W + dx[d], y = seed / W + dy[d];
+                near = In(x, y) && used[Cell(x, y)];
+            }
+            if (near) continue;
+            const int want = rng.Range(std::max(1, size.lo), std::max(size.lo, size.hi));
+            std::vector<int> grown = {seed}, frontier = {seed};
+            used[seed] = 1;
+            while (static_cast<int>(grown.size()) < want && !frontier.empty()) {
+                // A random cell of the frontier: a blob, not a diamond.
+                const size_t at = rng.Next() % frontier.size();
+                const int c = frontier[at];
+                frontier[at] = frontier.back();
+                frontier.pop_back();
+                for (int d = 0; d < 4; ++d) {
+                    const int x = c % W + dx[d], y = c / W + dy[d];
+                    if (!In(x, y)) continue;
+                    const int n = Cell(x, y);
+                    if (!isFree[n] || used[n]) continue;
+                    used[n] = 1;
+                    grown.push_back(n);
+                    frontier.push_back(n);
+                    if (static_cast<int>(grown.size()) >= want) break;
+                }
+            }
+            for (int c : grown) {
+                if (rng.Unit() < fill) chosen.push_back(c);
+            }
+        }
+        free = chosen;
+        target = static_cast<int>(chosen.size());
+    }
     std::vector<int> placed;
     std::vector<uint8_t> blocked(W * H, 0);
     std::vector<std::string> mix;
@@ -1918,8 +2097,12 @@ bool Solver::KeepsWay(int container, int x, int y, int w, int h) const {
     for (int c : r.cells) total += open(c);
     std::vector<int> todo;
     std::set<int> seen;
+    // From one door: the others, and all the floor, must be reached from it.
     for (int d : doors->second) {
-        if (open(d) && seen.insert(d).second) todo.push_back(d);
+        if (!open(d)) continue;
+        seen.insert(d);
+        todo.push_back(d);
+        break;
     }
     if (todo.empty()) return false; // it would stand in the doorway
     for (size_t k = 0; k < todo.size(); ++k) {
@@ -1961,6 +2144,7 @@ std::vector<uint8_t> Solver::Reached(bool throughProps) {
     for (const auto& [a, b] : links_) {
         links.insert({a, b});
         links.insert({b, a});
+        walk[a] = walk[b] = 1; // the stairs are stepped on (their object stands on the cell)
     }
     while (!todo.empty()) {
         const int c = todo.front();
@@ -3384,12 +3568,10 @@ SolvedLayout Solver::Run() {
                     {"connectors", connectors_},
                     {"spaces", SpacesJson()},
                     {"problems", problems_},
-                    {"stats", {{"regions", regions_.size()}, {"objects", objects_.size()}, {"paths", paths_.size()}, {"lines", lines_.size()},
-                               {"ms", [&] {
-                                    json ms = json::object();
-                                    for (const auto& [op, t] : msByOp_) ms[op] = std::lround(t);
-                                    return ms;
-                                }()}}}};
+                    {"stats", {{"regions", regions_.size()}, {"objects", objects_.size()}, {"paths", paths_.size()}, {"lines", lines_.size()}}}};
+    // The time per op: beside the document, which stays the same for the same seed.
+    out.timing = json::object();
+    for (const auto& [op, t] : msByOp_) out.timing[op] = std::lround(t);
     out.problems = problems_;
     return out;
 }

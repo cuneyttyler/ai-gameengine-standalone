@@ -135,6 +135,18 @@ private:
     std::vector<std::string> groupAnchors_; // furniture groups' anchor statements, for their check
 
     void Emit(json s) {
+        // Plants grow in patches (a bed, a thicket, a lawn), not one by one over the ground.
+        if (s.value("op", "") == "scatter" && !s.contains("cluster") && !s.contains("count")) {
+            static const char* plants[] = {"flower", "bush", "shrub", "grass", "herb", "fern", "reed", "weed"};
+            const std::string slot = s.value("slot", "");
+            for (const char* p : plants) {
+                if (slot.find(p) != std::string::npos) {
+                    s["cluster"] = {{"size", json::array({5, 18})}, {"fill", 0.8}};
+                    s["spacing"] = {{"min", 0}};
+                    break;
+                }
+            }
+        }
         const std::string id = s.value("id", "");
         if (id.empty() || !ids_.insert(id).second) return;
         statements_.push_back(std::move(s));
@@ -154,6 +166,7 @@ private:
     std::optional<double> HintNumber(const json& hint, const json& node, const ModuleDef& m) const;
     json HintCount(const json& hint, const json& node, const ModuleDef& m) const;
     void Zone(const json& zone, const ModuleDef& m, int index, const json& layoutMix);
+    void Landscape(const std::string& root, const std::string& zonesIn, const std::vector<std::pair<const json*, const ModuleDef*>>& zones);
     void Parcel(const json& templateNode, const ModuleDef& m, const std::string& instance, int index);
     void Feature(const json& node, const ModuleDef& m, const std::string& self, const std::string& parentInstance,
                  const std::string& parentPrimary);
@@ -595,6 +608,17 @@ void Compiler::Root(const json& root) {
         if (auto it = options_.keepSeeds.find(c.value("id", "")); it != options_.keepSeeds.end()) {
             zone["seed"] = {it->second.first, it->second.second};
         }
+        // Painted by the user (① Confirm's brush): exactly those cells. Else as ① Confirm's
+        // layout left it (its kept cells): the plan fills the zone, it doesn't move it.
+        if (const json paint = c.value("paint", json()); paint.is_array() && !paint.empty()) zone["paint"] = paint;
+        else if (const json kept = c.value("layoutCells", json()); kept.is_array() && !kept.empty()) zone["paint"] = kept;
+        // The AI's sketch of it (cells of this site): where it grows, not its border.
+        if (const json sketch = c.value("sketchCells", json()); sketch.is_array() && !sketch.empty()) zone["sketch"] = sketch;
+        // Drawn by the user (③ Layout's drawing): exactly that land.
+        if (const json at = c.value("at", json()); at.is_object()) {
+            const int x = at.value("x", 0), y = at.value("y", 0);
+            zone["box"] = {x, y, x + std::max(1, at.value("w", 1)), y + std::max(1, at.value("h", 1))};
+        }
         builtNeed += need;
         into.push_back(zone);
         zones.push_back({&c, cm});
@@ -604,6 +628,7 @@ void Compiler::Root(const json& root) {
     }
     const json layout = m ? FieldOf(root, *m, "layout") : json();
     for (size_t i = 0; i < zones.size(); ++i) Zone(*zones[i].first, *zones[i].second, static_cast<int>(i), layout);
+    Landscape(id, zonesIn, zones);
 
     // Walls round the site, with gates where the roads cross.
     for (const auto& c : children) {
@@ -615,6 +640,48 @@ void Compiler::Root(const json& root) {
         Emit({{"op", "check"}, {"id", node + "/closed"}, {"node", node}, {"predicate", "closed"}, {"args", {{"ref", node}}}});
     }
     Emit({{"op", "check"}, {"id", "site/doors-reachable"}, {"node", id}, {"predicate", "reachable"}, {"args", {{"from", "entrances"}, {"to", "doors"}}}});
+}
+
+// The land nothing else covers (development_plan.md 8.3): the wild outside the zones, the
+// yards inside them, the verges along the main roads, each with what grows and lies there
+// (the landscape module's settings: trees, bushes, flowers, grass, rocks, mounds), so the
+// place reads as one landscape. Each is a scatter on the cells its container owns itself.
+void Compiler::Landscape(const std::string& root, const std::string& zonesIn, const std::vector<std::pair<const json*, const ModuleDef*>>& zones) {
+    const ModuleDef* lm = ontology_.Module("landscape");
+    if (lm == nullptr || !lm->compile.is_object()) return;
+    const json settings = lm->compile.value("settings", json::object());
+    auto scatter = [&](const std::string& in, const std::string& setting, const std::string& tag, const std::string& near) {
+        for (const auto& b : settings.value(setting, json::array())) {
+            const std::string slotName = b.value("slot", "");
+            const SlotDef* slot = nullptr;
+            for (const auto& sd : lm->slots) {
+                if (sd.name == slotName) slot = &sd;
+            }
+            const double density = b.value("density", 0.0);
+            if (slot == nullptr || density <= 0) continue;
+            json st = {{"op", "scatter"}, {"id", in + "/landscape-" + tag + "-" + slotName}, {"node", root}, {"in", in}, {"slot", slotName},
+                       {"density", density}, {"own", true}, {"spacing", {{"min", b.value("spacing", 1)}}}, {"layer", LayerForSlot(ontology_, *slot)},
+                       {"dressing", "landscape"}};
+            if (!near.empty()) {
+                st["near"] = near;
+                st["radius"] = b.value("radius", 1);
+            }
+            if (b.contains("cluster")) st["cluster"] = b["cluster"];
+            Emit(st);
+        }
+    };
+    scatter("site", "wild", "wild", "");
+    if (zonesIn != "site") scatter(zonesIn, "wild", "inner", ""); // inside the walls, between the zones
+    for (const auto& [zone, zm] : zones) {
+        // A zone that is its own nature (a meadow, the wilds, a forest) or water dresses itself.
+        if (ontology_.IsA(zm->id, "NatureArea") || ontology_.IsA(zm->id, "WaterBody")) continue;
+        scatter(zone->value("id", ""), "yard", "yard", "");
+    }
+    int k = 0;
+    for (const char* road : {"site/main-road", "site/main-road-2", "site/main-road-3", "site/cross-road"}) {
+        if (!ids_.contains(road)) continue;
+        scatter("site", "verge", "verge" + std::to_string(++k), road);
+    }
 }
 
 void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json& layoutMix) {

@@ -236,12 +236,6 @@ button,
 input:not([type='checkbox']),
 select {
   height: 24px;
-  padding: 0 6px;
-  border: 1px solid #333;
-  border-radius: 0;
-  background: #11111b;
-  color: #eee;
-  font: inherit;
 }
 button {
   cursor: pointer;

@@ -2,6 +2,7 @@
 
 #include "places/Expr.h"
 #include "places/PlaceValidate.h"
+#include "places/Planner.h"
 
 #include <algorithm>
 #include <cmath>
@@ -61,6 +62,29 @@ std::string AmountOf(PlaceLevel level) {
         case PlaceLevel::Dressing: return "density";
         default: return "none";
     }
+}
+
+// What a component's amount counts: wards, zones, levels; a parcel's main thing (houses, shops); how common.
+std::string AmountUnit(const Ontology& ontology, const ModuleDef& m) {
+    if (m.level == PlaceLevel::Zone) {
+        if (ontology.IsA(m.id, "Ward")) return "ward(s)";
+        if (ontology.IsA(m.id, "Level")) return "level(s)";
+        return "zone(s)";
+    }
+    if (m.level == PlaceLevel::Parcel) {
+        for (const auto& s : m.slots) {
+            if (!s.primary || s.binds.empty()) continue;
+            std::string role = s.binds.front().role;
+            role = role.substr(0, role.find('|'));
+            const Role* r = ontology.FindRole(role);
+            std::string label = r && !r->label.empty() ? r->label : role;
+            std::replace(label.begin(), label.end(), '-', ' ');
+            return label + "(s)";
+        }
+        return "plot(s)";
+    }
+    if (m.level == PlaceLevel::Feature || m.level == PlaceLevel::Dressing) return "how common";
+    return "";
 }
 
 json FieldControl(const Ontology& ontology, const std::string& name, const FieldDef& f, const json& value) {
@@ -243,6 +267,19 @@ json BriefWindow(const Ontology& ontology, const json& brief, const BriefMerge* 
     window["layout"] = {{"value", shares}, {"options", fields.value("layout", json::array())},
                         {"description", BriefValue(brief, "shape.description")}};
     window["walled"] = {{"value", BriefValue(brief, "walled")}, {"options", fields.value("walled", json::array())}};
+    // The root's own settings (a dungeon's levels and goal, a building's floors and kind), as in the Build panel's choices.
+    json settings = json::array();
+    const json choices = BuildChoices(ontology); // named: its "types" are iterated by reference
+    for (const auto& t : choices["types"]) {
+        if (t.value("id", "") != build->id) continue;
+        for (auto f : t["fields"]) {
+            const std::string path = f.value("path", "");
+            if (path.rfind("root.", 0) != 0) continue;
+            f["value"] = BriefValue(brief, path);
+            settings.push_back(f);
+        }
+    }
+    window["settings"] = settings;
     json features = json::array();
     for (const auto& f : brief.value("features", json::array())) {
         if (f.is_object()) features.push_back(f.value("module", ""));
@@ -279,7 +316,7 @@ json BriefWindow(const Ontology& ontology, const json& brief, const BriefMerge* 
         const bool inBrief = settings.is_object();
         const bool enabled = inBrief && settings.value("enabled", true);
         json row = {{"id", id}, {"name", m->name}, {"description", m->description}, {"level", PlaceLevelName(m->level)},
-                    {"inBrief", inBrief}, {"enabled", enabled}, {"amount", AmountOf(m->level)},
+                    {"inBrief", inBrief}, {"enabled", enabled}, {"amount", AmountOf(m->level)}, {"unit", AmountUnit(ontology, *m)},
                     {"count", inBrief ? settings.value("count", json()) : json()},
                     {"density", inBrief ? settings.value("density", json()) : json()},
                     {"source", inBrief ? BriefValue(settings, "assets.source") : json("auto")}};
@@ -303,6 +340,26 @@ json BriefWindow(const Ontology& ontology, const json& brief, const BriefMerge* 
             }
         }
         row["thumbs"] = thumbs;
+        // A zone: what it holds (its buildings), beside how many of it there are.
+        if (m->level == PlaceLevel::Zone) {
+            for (const char* field : {"plots", "farmsteads", "tents", "rooms", "sites", "pois"}) {
+                const FieldDef* f = m->Field(field);
+                if (f == nullptr || f->type != "count") continue;
+                const json given = inBrief ? settings.value("params", json::object()).value(field, json()) : json();
+                const BuildType* build = ontology.Build(brief.value("buildType", ""));
+                row["holds"] = {{"field", field}, {"value", given.is_null() ? f->defaultValue : given},
+                                {"unit", std::string(field) == "plots" && build ? build->unit.label : std::string(field)}};
+                // Its kinds of building, each with how many (set, or about how many of its count).
+                if (build) {
+                    const json v = given.is_null() ? f->defaultValue : given;
+                    const json n = v.is_object() ? v.value("count", json()) : v;
+                    const double total = n.is_number() ? n.get<double>() : n.is_array() && n.size() == 2 && n[0].is_number() ? (n[0].get<double>() + n[1].get<double>()) / 2 : 0;
+                    const json kinds = ZoneKinds(ontology, *m, build->unit.cls, inBrief ? settings.value("kinds", json::object()) : json::object(), total);
+                    if (!kinds.empty()) row["kinds"] = kinds;
+                }
+                break;
+            }
+        }
         if (round >= 2 && enabled) {
             json params = json::array();
             const json given = settings.value("params", json::object());
@@ -329,6 +386,13 @@ json BriefWindow(const Ontology& ontology, const json& brief, const BriefMerge* 
         }
         window["assumptions"] = merge->assumptions;
         window["questions"] = merge->questions;
+        json decisions = json::array();
+        for (auto d : merge->decisions) {
+            const std::string path = d.value("path", "");
+            if (!path.empty()) d["current"] = BriefValue(brief, path);
+            decisions.push_back(d);
+        }
+        window["decisions"] = decisions;
     }
     window["marks"] = marks;
     if (round >= 2 && catalog) window["assetPlan"] = AssetPlan(ontology, *catalog, brief, isoGrid);
@@ -374,6 +438,183 @@ void ApplyWindowEdit(const Ontology& ontology, json& brief, const std::string& p
             if (!c.contains("assets")) c["assets"] = {{"source", "auto"}};
         }
     }
+}
+
+// --- The Build panel's choices (structured input) ----------------------------------------------
+
+namespace {
+
+std::string Label(std::string id) {
+    std::replace(id.begin(), id.end(), '-', ' ');
+    if (!id.empty()) id[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(id[0])));
+    return id;
+}
+
+json SchemeValues(const Ontology& ontology, const std::string& scheme) {
+    json out = json::array();
+    if (const auto* values = ontology.Scheme(scheme)) {
+        for (const auto& c : *values) out.push_back(c.id);
+    }
+    return out;
+}
+
+// A field as a choice: its values (an enum), or a count's bounds, or a switch.
+json FieldChoice(const Ontology& ontology, const FieldDef& f, const std::string& path) {
+    json c = {{"path", path}, {"label", Label(f.name)}};
+    if (f.type == "enum") {
+        c["values"] = f.vocabulary.empty() ? json(f.values) : SchemeValues(ontology, f.vocabulary);
+        if (c["values"].empty()) return json();
+    } else if (f.type == "count") {
+        c["type"] = "count";
+        c["min"] = f.min.value_or(0);
+        c["max"] = f.max.value_or(100);
+    } else if (f.type == "bool") {
+        c["type"] = "bool";
+    } else {
+        return json();
+    }
+    if (!f.description.empty()) c["hint"] = f.description;
+    return c;
+}
+
+} // namespace
+
+json BuildChoices(const Ontology& ontology) {
+    json types = json::array();
+    for (const auto& [id, build] : ontology.Builds()) {
+        json classes = json::array();
+        for (const auto& s : build.scale) classes.push_back({{"id", s.id}, {"label", Label(s.id)}, {"count", {s.buildings.first, s.buildings.second}}});
+        json fields = json::array();
+        std::set<std::string> covered;
+        const json& bf = build.briefFields;
+        if (bf.contains("walled") && bf["walled"].is_array()) {
+            fields.push_back({{"path", "walled"}, {"label", "Walls"}, {"values", bf["walled"]}});
+            covered.insert("walled");
+        }
+        if (bf.contains("layout") && bf["layout"].is_array()) {
+            fields.push_back({{"path", "shape.layout"}, {"label", "Layout"}, {"values", bf["layout"]}});
+            covered.insert("layout");
+        }
+        if (bf.contains("style") && bf["style"].is_object()) {
+            for (const auto& [name, v] : bf["style"].items()) {
+                const json values = v.is_array() ? v : v.is_string() ? SchemeValues(ontology, v.get<std::string>()) : json::array();
+                if (values.empty()) continue;
+                fields.push_back({{"path", "style." + name}, {"label", Label(name)}, {"values", values}});
+                covered.insert(name);
+            }
+        }
+        // The root's own asked settings (a dungeon's levels and goal, a building's floors and kind).
+        if (const ModuleDef* root = ontology.Module(build.root)) {
+            for (const auto* group : {&root->quality, &root->quantity}) {
+                for (const auto& [name, f] : *group) {
+                    if (!f.ask || covered.contains(name) || name == build.unit.field || name == "area") continue;
+                    const json c = FieldChoice(ontology, f, "root." + name);
+                    if (!c.is_null()) fields.push_back(c);
+                }
+            }
+        }
+        json features = json::array();
+        for (const auto& f : bf.value("features", json::array())) {
+            if (f.is_string() && ontology.Module(f.get<std::string>())) features.push_back({{"id", f}, {"label", Label(f.get<std::string>())}});
+        }
+        // Its main parts: zones and networks first, then the distinctive parcels and
+        // features (not the many alike: houses, an interior's rooms, fences, dressing).
+        json parts = json::array();
+        for (const int pass : {0, 1}) {
+            for (const auto& c : build.components) {
+                const ModuleDef* m = ontology.Module(c);
+                if (m == nullptr || m->level == PlaceLevel::Dressing || ontology.IsA(c, "LinearFeature") || c == "ground") continue;
+                const bool big = m->level == PlaceLevel::Zone || m->level == PlaceLevel::Network || m->level == PlaceLevel::Site;
+                if (pass == 0 && !big) continue;
+                if (pass == 1 && (big || ontology.IsA(c, "Dwelling") || ontology.IsA(c, "InteriorRoom") || ontology.IsA(c, "FurnitureGroup") ||
+                                  ontology.IsA(c, "NatureArea"))) {
+                    continue;
+                }
+                if (std::any_of(features.begin(), features.end(), [&](const json& f) { return f["id"] == c; })) continue;
+                if (parts.size() >= 24) break;
+                parts.push_back({{"id", c}, {"label", m->name}, {"level", PlaceLevelName(m->level)}, {"description", m->description}});
+            }
+        }
+        types.push_back({{"id", id}, {"name", build.name}, {"unit", build.unit.label}, {"default", build.isDefault}, {"classes", classes},
+                         {"fields", fields}, {"features", features}, {"parts", parts}});
+    }
+    // The settlement first, then by name.
+    std::stable_sort(types.begin(), types.end(), [](const json& a, const json& b) {
+        if (a["default"] != b["default"]) return a["default"].get<bool>();
+        return a["name"].get<std::string>() < b["name"].get<std::string>();
+    });
+    return {{"types", types}};
+}
+
+json ApplyChoices(const Ontology& ontology, json brief, const json& choices) {
+    if (!choices.is_object() || choices.empty()) return brief;
+    if (!brief.is_object()) brief = json::object();
+    // The build type first: what isn't the chosen type's goes (the words may have read another).
+    if (const json type = choices.value("buildType", json()); type.is_string() && ontology.Build(type.get<std::string>())) {
+        const BuildType& build = *ontology.Build(type.get<std::string>());
+        if (brief.value("buildType", "") != build.id) {
+            brief["buildType"] = build.id;
+            json kept = json::object();
+            const json components = brief.value("components", json::object());
+            for (const auto& [id, c] : components.items()) {
+                if (std::find(build.components.begin(), build.components.end(), id) != build.components.end()) kept[id] = c;
+            }
+            brief["components"] = kept;
+            if (brief.contains("scale") && brief["scale"].is_object() && !build.Scale(brief["scale"].value("class", ""))) brief.erase("scale");
+            brief.erase("root");
+            if (build.briefFields.value("walled", json::array()).empty()) brief.erase("walled");
+        }
+        brief = CompleteBrief(ontology, brief);
+    }
+    // A size class, then numbers over it (the numbers win, as in the window).
+    for (const char* path : {"scale.class", "scale.buildings"}) {
+        if (choices.contains(path) && !choices[path].is_null()) ApplyWindowEdit(ontology, brief, path, choices[path]);
+    }
+    for (const auto& [path, value] : choices.items()) {
+        if (path == "buildType" || path == "scale.class" || path == "scale.buildings" || value.is_null()) continue;
+        if (path == "features") {
+            // Added to what the words named.
+            json list = brief.value("features", json::array());
+            if (!list.is_array()) list = json::array();
+            for (const auto& f : value) {
+                const std::string id = f.is_string() ? f.get<std::string>() : "";
+                const bool there = std::any_of(list.begin(), list.end(), [&](const json& g) { return g.is_object() && g.value("module", "") == id; });
+                if (!id.empty() && !there) list.push_back({{"module", id}});
+            }
+            brief["features"] = list;
+            continue;
+        }
+        ApplyWindowEdit(ontology, brief, path, value);
+    }
+    return brief;
+}
+
+std::string ChoicesQuery(const Ontology& ontology, const json& choices) {
+    if (!choices.is_object()) return {};
+    const BuildType* build = ontology.Build(choices.value("buildType", ""));
+    if (build == nullptr) build = ontology.DefaultBuild();
+    if (build == nullptr) return {};
+    std::string text = "build a ";
+    const json cls = choices.value("scale.class", json());
+    if (cls.is_string()) {
+        text += Label(cls.get<std::string>());
+        if (build->id != "settlement" && cls.get<std::string>() != build->id) text += " " + build->name;
+    } else {
+        text += build->name;
+    }
+    std::vector<std::string> with;
+    for (const auto& [path, value] : choices.items()) {
+        if (path.rfind("components.", 0) == 0 && path.size() > 19 && value == true) {
+            if (const ModuleDef* m = ontology.Module(path.substr(11, path.size() - 11 - 8))) with.push_back(m->name);
+        }
+    }
+    for (const auto& f : choices.value("features", json::array())) {
+        if (f.is_string()) with.push_back(f.get<std::string>());
+    }
+    for (size_t k = 0; k < with.size(); ++k) text += (k == 0 ? " with " : k + 1 == with.size() ? " and " : ", ") + with[k];
+    for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    text[0] = 'B';
+    return text;
 }
 
 } // namespace aige

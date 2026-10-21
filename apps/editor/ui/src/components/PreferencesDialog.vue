@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// File ▸ Preferences (development_plan.md 4.2): the per-user choices, in one
-// place (also reachable from the AI panel's ⚙).
+// File ▸ Preferences (development_plan.md 4.2, 8.1): the per-user choices, in one
+// place (also reachable from the AI panel's ⚙). Sections on the left, the chosen
+// one on the right.
 import { nextTick, ref, watch } from 'vue'
 import { editorState, setAiEnabled } from '../editorState'
 import { sendToHost } from '../ipc'
@@ -8,6 +9,14 @@ import { trackOverlay, untrackOverlay } from '../overlay'
 import { projectState } from '../projects'
 
 const backdrop = ref<HTMLElement | null>(null)
+
+type Section = 'ai' | 'project' | 'keyboard'
+const SECTIONS: { id: Section; label: string; hint: string }[] = [
+  { id: 'ai', label: 'AI', hint: 'the model, and how its changes are applied' },
+  { id: 'project', label: 'Projects', hint: 'what opens at launch' },
+  { id: 'keyboard', label: 'Keyboard', hint: 'shortcuts' },
+]
+const section = ref<Section>('ai')
 
 watch(
   () => projectState.showPreferences,
@@ -38,71 +47,84 @@ function close(): void {
     <div class="sheet">
       <header>
         <h3>Preferences</h3>
-        <button title="Close (Esc)" @click="close">×</button>
+        <span class="muted">Yours, on this computer: not part of the project.</span>
+        <button class="close" title="Close (Esc)" @click="close">×</button>
       </header>
-      <p class="muted">These are yours, on this computer — not part of the project.</p>
-      <section>
-        <h4>AI</h4>
-        <label class="row">
-          <input
-            type="checkbox"
-            :checked="editorState.ai.enabled"
-            @change="setAiEnabled(($event.target as HTMLInputElement).checked)"
-          />
-          Use AI (when off, the AI service isn't started and nothing is sent to a model)
-        </label>
-        <label class="row">
-          <input
-            type="radio"
-            name="pref-review"
-            :checked="editorState.ai.reviewPolicy === 'reviewAll'"
-            :disabled="!editorState.ai.enabled"
-            @change="sendToHost({ type: 'ai:setReviewPolicy', policy: 'reviewAll' })"
-          />
-          Review every AI change before it's applied
-        </label>
-        <label class="row">
-          <input
-            type="radio"
-            name="pref-review"
-            :checked="editorState.ai.reviewPolicy === 'autoApplyTweaks'"
-            :disabled="!editorState.ai.enabled"
-            @change="sendToHost({ type: 'ai:setReviewPolicy', policy: 'autoApplyTweaks' })"
-          />
-          Apply small tweaks directly (with Undo)
-        </label>
-        <div class="row model">
-          <span>Model</span>
-          <select
-            :value="editorState.ai.provider"
-            :disabled="!editorState.ai.enabled"
-            @change="sendToHost({ type: 'ai:setProvider', provider: ($event.target as HTMLSelectElement).value })"
-          >
-            <option value="mistral">Mistral{{ editorState.ai.available.mistral === false ? ' (no key)' : '' }}</option>
-            <option value="claude">Claude{{ editorState.ai.available.claude === false ? ' (no key)' : '' }}</option>
-          </select>
-          <span v-if="editorState.ai.model" class="muted">{{ editorState.ai.model }}</span>
-        </div>
-        <p v-if="editorState.ai.providerError" class="error">{{ editorState.ai.providerError }}</p>
-        <p class="muted">Keys go in ai_service/.env (MISTRAL_API_KEY, ANTHROPIC_API_KEY); they never leave this computer except to that model.</p>
-      </section>
-      <section>
-        <h4>Project</h4>
-        <p class="muted">{{ projectState.current }}</p>
-        <label class="row">
-          <input
-            type="checkbox"
-            :checked="projectState.openLast"
-            @change="sendToHost({ type: 'prefs:openLast', on: ($event.target as HTMLInputElement).checked })"
-          />
-          Open the last project directly at launch (otherwise the welcome window; File ▸ Close Project shows it)
-        </label>
-        <p class="muted">Project-wide settings (camera, combat, time…) are in File ▸ Project Settings…</p>
-      </section>
-      <section>
-        <h4>Keyboard</h4>
-        <button class="keys-button" @click="(close(), (editorState.showShortcuts = true))">Keyboard shortcuts…</button>
-      </section>
+      <div class="panes">
+        <nav>
+          <button v-for="s in SECTIONS" :key="s.id" :class="{ active: section === s.id }" @click="section = s.id">
+            <span class="label">{{ s.label }}</span>
+            <span class="hint">{{ s.hint }}</span>
+          </button>
+        </nav>
+        <main>
+          <template v-if="section === 'ai'">
+            <h4>AI</h4>
+            <label class="row">
+              <input
+                type="checkbox"
+                :checked="editorState.ai.enabled"
+                @change="setAiEnabled(($event.target as HTMLInputElement).checked)"
+              />
+              Use AI <span class="muted">(when off, the AI service isn't started and nothing is sent to a model)</span>
+            </label>
+            <h5>Its changes</h5>
+            <label class="row">
+              <input
+                type="radio"
+                name="pref-review"
+                :checked="editorState.ai.reviewPolicy === 'reviewAll'"
+                :disabled="!editorState.ai.enabled"
+                @change="sendToHost({ type: 'ai:setReviewPolicy', policy: 'reviewAll' })"
+              />
+              Review every AI change before it's applied
+            </label>
+            <label class="row">
+              <input
+                type="radio"
+                name="pref-review"
+                :checked="editorState.ai.reviewPolicy === 'autoApplyTweaks'"
+                :disabled="!editorState.ai.enabled"
+                @change="sendToHost({ type: 'ai:setReviewPolicy', policy: 'autoApplyTweaks' })"
+              />
+              Apply small tweaks directly (with Undo)
+            </label>
+            <h5>Model</h5>
+            <div class="row">
+              <select
+                :value="editorState.ai.provider"
+                :disabled="!editorState.ai.enabled"
+                @change="sendToHost({ type: 'ai:setProvider', provider: ($event.target as HTMLSelectElement).value })"
+              >
+                <option value="mistral">Mistral{{ editorState.ai.available.mistral === false ? ' (no key)' : '' }}</option>
+                <option value="claude">Claude{{ editorState.ai.available.claude === false ? ' (no key)' : '' }}</option>
+              </select>
+              <span v-if="editorState.ai.model" class="muted">{{ editorState.ai.model }}</span>
+            </div>
+            <p v-if="editorState.ai.providerError" class="error">{{ editorState.ai.providerError }}</p>
+            <p class="muted">Keys go in ai_service/.env (MISTRAL_API_KEY, ANTHROPIC_API_KEY); they never leave this computer except to that model.</p>
+          </template>
+          <template v-else-if="section === 'project'">
+            <h4>Projects</h4>
+            <p class="muted path">{{ projectState.current }}</p>
+            <label class="row">
+              <input
+                type="checkbox"
+                :checked="projectState.openLast"
+                @change="sendToHost({ type: 'prefs:openLast', on: ($event.target as HTMLInputElement).checked })"
+              />
+              Open the last project directly at launch
+            </label>
+            <p class="muted">Otherwise the welcome window opens; File ▸ Close Project shows it too.</p>
+            <p class="muted">Project-wide settings (camera, combat, time…) are in File ▸ Project Settings…</p>
+          </template>
+          <template v-else>
+            <h4>Keyboard</h4>
+            <p class="muted">Every action's keys, and your own bindings.</p>
+            <button class="primary" @click="(close(), (editorState.showShortcuts = true))">Keyboard shortcuts…</button>
+          </template>
+        </main>
+      </div>
     </div>
   </div>
 </template>
@@ -119,23 +141,90 @@ function close(): void {
   outline: none;
 }
 .sheet {
-  width: min(560px, 92vw);
+  width: min(720px, 94vw);
+  height: min(460px, 86vh);
+  display: flex;
+  flex-direction: column;
   background: #181825;
   border: 1px solid #333;
   border-top: 2px solid #3b82f6;
-  padding: 14px 18px;
 }
 header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #2a2a3a;
+}
+header .close {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #cdd6f4;
+  font-size: 16px;
+  cursor: pointer;
+}
+header .close:hover {
+  border-color: #45475a;
 }
 h3 {
   margin: 0;
 }
-h4 {
-  margin: 12px 0 6px;
+.panes {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+nav {
+  width: 190px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #2a2a3a;
+  background: #141420;
+  padding: 6px 0;
+}
+nav button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 14px;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #cdd6f4;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+nav button:hover {
+  background: #1e1e2e;
+}
+nav button.active {
+  background: #1e1e2e;
+  border-left-color: #3b82f6;
+}
+nav .hint {
   font-size: 0.8em;
+  opacity: 0.55;
+}
+main {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 18px;
+}
+h4 {
+  margin: 0 0 10px;
+  font-size: 1em;
+}
+h5 {
+  margin: 14px 0 4px;
+  font-size: 0.78em;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   opacity: 0.6;
@@ -146,12 +235,6 @@ h4 {
   gap: 8px;
   padding: 3px 0;
 }
-.model {
-  margin-top: 6px;
-}
-.model select {
-  border-radius: 0;
-}
 .error {
   color: #f38ba8;
 }
@@ -159,16 +242,8 @@ h4 {
   opacity: 0.6;
   font-size: 0.9em;
   margin: 4px 0;
-  word-break: break-all;
 }
-.keys-button {
-  height: 26px;
-  padding: 0 10px;
-  border: 1px solid #333;
-  border-radius: 0;
-  background: #11111b;
-  color: #eee;
-  font: inherit;
-  cursor: pointer;
+.path {
+  word-break: break-all;
 }
 </style>

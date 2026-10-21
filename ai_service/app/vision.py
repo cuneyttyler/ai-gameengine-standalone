@@ -173,7 +173,10 @@ def _describe_batch(provider: Provider, root: Path, items: list[dict],
     content: list[dict] = [{"type": "text", "text": prompt_for(roles)}]
     ids = [item["id"] for item in items]
     for index, item in enumerate(items, start=1):
-        chunk, (w, h) = image_chunk(root / item["path"], item.get("rect"))
+        file = (root / item["path"]).resolve()
+        if root.resolve() not in file.parents:  # only the project's own images are shown to a model
+            raise ValueError(f"{item['path']} is outside the project")
+        chunk, (w, h) = image_chunk(file, item.get("rect"))
         part = " (one object cut from a sheet)" if item.get("rect") else ""
         content.append({"type": "text", "text": f"Image {index}: file \"{Path(item['path']).name}\"{part}, {w}x{h} pixels"})
         content.append(chunk)

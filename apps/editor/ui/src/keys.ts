@@ -6,7 +6,7 @@ import { reactive } from 'vue'
 import { editorState, armPrefab } from './editorState'
 import { onHostMessage, sendToHost } from './ipc'
 import { actionFor, actions, comboOf, effectiveKeymap, label, type Keymap } from './keymap'
-import { togglePanel, toggleViewport } from './layout'
+import { dockView, toggleMaximize, togglePanel, toggleViewport } from './layout'
 
 export const keyState = reactive({
   overrides: {} as Keymap,
@@ -59,7 +59,10 @@ const handlers: Record<string, () => void> = {
   'panel.generate': () => togglePanel('generate'),
   'panel.ai': () => togglePanel('ai'),
   'panel.viewport': () => toggleViewport(),
-  'help.shortcuts': () => (editorState.showShortcuts = true),
+  'panel.build': () => togglePanel('build'),
+  // The panel last clicked in (the viewport when none), or back to the whole layout.
+  'panel.maximize': () => toggleMaximize(dockView.maximized ?? dockView.focused ?? 'viewport'),
+  'help.shortcuts': () => (editorState.showShortcuts = !editorState.showShortcuts),
 }
 
 // For actions whose code lives elsewhere (projects.ts: New, Save As).

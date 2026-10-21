@@ -13,6 +13,8 @@
 #include "gameplay/TileLayer.h"
 #include "physics2d/Components.h"
 #include "places/Brief.h"
+#include "places/Compile.h"
+#include "places/Solver.h"
 #include "places/Ontology.h"
 #include "places/Planner.h"
 
@@ -430,7 +432,15 @@ TEST(PlaceSceneTest, BuildsAGivenProjectsPlace) {
     CatalogOptions catalogOptions;
     const Catalog catalog = BuildCatalog(assets, &Library(), catalogOptions);
     const json spec = json::parse(std::ifstream(root / "places" / id / "spec.json"));
-    const json solved = json::parse(std::ifstream(root / "places" / id / "layout.solved.json"));
+    json solved = json::parse(std::ifstream(root / "places" / id / "layout.solved.json"));
+    // AIGE_SCENE_RESOLVE=1: the Spec compiled and solved again first (the layout's own site and seed).
+    if (const char* again = std::getenv("AIGE_SCENE_RESOLVE"); again && std::string(again) == "1") {
+        CompileOptions compile;
+        compile.side = spec["root"].value("layoutSide", solved["grid"]["bounds"][2].get<int>());
+        compile.fixedSide = true;
+        if (spec["root"].contains("layoutSeed")) compile.seed = spec["root"]["layoutSeed"].get<uint64_t>();
+        solved = SolveLayout(Library(), CompileSpec(Library(), spec, compile)).document;
+    }
     PlaceSceneOptions options;
     options.place = id;
     options.isoGrid = true;

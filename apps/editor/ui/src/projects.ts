@@ -85,6 +85,7 @@ function updateMenus(): void {
   ]
   menuExtensions.file.settings = [
     { label: 'Preferences…', action: () => (projectState.showPreferences = true) },
+    { label: 'Ontology…', action: () => (editorState.showOntology = true) },
   ]
 }
 

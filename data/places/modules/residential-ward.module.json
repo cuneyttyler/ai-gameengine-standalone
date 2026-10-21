@@ -61,8 +61,7 @@
     "street-style": {
       "type": "enum",
       "vocabulary": "layout",
-      "default": "organic",
-      "description": "this ward's street pattern, one of the settlement's layout mix"
+      "description": "this zone's own street pattern; unset, the place's main layout"
     }
   },
   "slots": {},

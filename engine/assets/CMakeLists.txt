@@ -29,6 +29,8 @@ add_library(aige_assets STATIC
     Catalog.cpp
     Sourcing.h
     Sourcing.cpp
+    UserLibrary.h
+    UserLibrary.cpp
     LayoutImage.h
     LayoutImage.cpp
     PackImport.h

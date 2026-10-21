@@ -2,6 +2,8 @@
 
 #include "ecs/Registry.h"
 
+#include "gameplay/TileLayer.h"
+
 #include <nlohmann/json.hpp>
 
 #include <optional>
@@ -52,6 +54,8 @@ struct ApplyOutcome {
     bool prefabsChanged = false;
     // One per operation: the entity it created (scene.spawn), else entt::null.
     std::vector<Entity> created;
+    // Tile-layer changes (terrain.replace on a built place's ground): undone on their own.
+    std::vector<TileLayerEdit> layerEdits;
 };
 
 // Applies the accepted operations, in order, through the same registry

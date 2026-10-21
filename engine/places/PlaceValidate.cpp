@@ -444,7 +444,7 @@ std::vector<PlaceProblem> ValidateSpec(const Ontology& ontology, const json& spe
             if (ontology.Relation(type) == nullptr) problem(where, "unknown relation '" + type + "'");
             for (const char* key : {"of", "to"}) {
                 const std::string target = rel.value(key, "");
-                if (!target.empty() && !ids.contains(target)) problem(where, type + " " + key + " '" + target + "', which isn't a node here");
+                if (!target.empty() && target != "site" && !ids.contains(target)) problem(where, type + " " + key + " '" + target + "', which isn't a node here");
             }
         }
 
@@ -511,6 +511,19 @@ std::vector<PlaceProblem> ValidateBrief(const Ontology& ontology, const json& br
         if (std::string error = CheckFieldValue(ontology, *layoutField, layout); !error.empty()) problem("shape.layout", error);
     }
 
+    // The root's own settings, as chosen in the Build panel ("root": {"levels": 2}).
+    if (brief.contains("root") && brief["root"].is_object()) {
+        for (const auto& [name, value] : brief["root"].items()) {
+            const FieldDef* f = root ? root->Field(name) : nullptr;
+            if (f == nullptr) {
+                problem("root." + name, "isn't a setting of a " + build->id);
+                continue;
+            }
+            const json given = f->type == "count" && value.is_number() ? json{{"count", value}} : value;
+            if (std::string error = CheckFieldValue(ontology, *f, given); !error.empty()) problem("root." + name, error);
+        }
+    }
+
     const json& components = brief.value("components", json::object());
     if (!components.is_object()) {
         problem("components", "is an object: module -> its settings");
@@ -545,6 +558,16 @@ std::vector<PlaceProblem> ValidateBrief(const Ontology& ontology, const json& br
             FieldDef choice;
             choice.type = "assetChoice";
             if (std::string error = CheckFieldValue(ontology, choice, c["assets"]); !error.empty()) problem(where + ".assets", error);
+        }
+        if (c.contains("kinds")) {
+            if (!c["kinds"].is_object()) {
+                problem(where + ".kinds", "is an object: {kind of building: how many}");
+            } else {
+                for (const auto& [kind, n] : c["kinds"].items()) {
+                    if (!ontology.ChildRule(id, kind)) problem(where + ".kinds." + kind, "a " + id + " can't hold a " + kind);
+                    else if (!n.is_number_integer() || n.get<int>() < 0) problem(where + ".kinds." + kind, "is a whole number");
+                }
+            }
         }
         const json& params = c.value("params", json::object());
         if (params.is_object() && module) {

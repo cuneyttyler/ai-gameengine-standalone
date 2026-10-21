@@ -161,6 +161,7 @@ export const dockView = reactive({
   // Double-clicking a tab: that panel covers the whole layout, the others are
   // out of sight (still mounted); double-clicking again brings them back.
   maximized: null as PanelId | null,
+  focused: null as PanelId | null, // the panel last clicked in (the maximise shortcut's)
 })
 
 export function toggleMaximize(id: PanelId): void {
@@ -199,6 +200,7 @@ function applySaved(saved: unknown): void {
 
 onHostMessage((message) => {
   if (message.type === 'layout:state') applySaved(message.layout)
+  else if (message.type === 'panel:focused') dockView.focused = message.id as PanelId // the viewport, clicked in its own window
 })
 sendToHost({ type: 'layout:request' })
 
@@ -224,7 +226,13 @@ export function hiddenPanels(): PanelId[] {
 // Showing brings a panel to the front, back where it was if that group still
 // exists, else along its usual window edge. Hiding takes it out of the layout.
 export function setPanelVisible(id: PanelId, on: boolean): void {
-  dockView.maximized = null // showing or hiding panels brings the whole layout back
+  // Showing the panel that's maximised keeps it so (a build started in a full-window Build
+  // panel); showing or hiding any other brings the whole layout back.
+  if (on && isOpen(id) && dockView.maximized === id) {
+    setRoot(activate(layout.root, id))
+    return
+  }
+  dockView.maximized = null
   if (on) {
     if (isOpen(id)) {
       setRoot(activate(layout.root, id))

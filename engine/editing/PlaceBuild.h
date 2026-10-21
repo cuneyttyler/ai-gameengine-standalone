@@ -64,12 +64,44 @@ public:
         // with the id returned. 0: the AI isn't available.
         std::function<int(const std::string& path, const nlohmann::json& body, int timeoutSeconds)> request;
         std::filesystem::path projectRoot;
+        // ③ Layout (the zones and where they go, revised before anything inside them is
+        // planned): on in the editor; off, confirming plans everything at once.
+        bool layoutStep = false;
     };
 
     explicit PlaceBuild(Host host) : host_(std::move(host)) {}
 
     // Starts interpreting `query`. Returns why it can't, or "".
-    std::string Start(const std::string& query);
+    // `choices` (the Build panel's form, {Brief path: value}, BuildChoices): sent
+    // with the words and applied over every reading of them: what was chosen stays.
+    std::string Start(const std::string& query, const nlohmann::json& choices = {});
+    const nlohmann::json& Choices() const { return choices_; }
+
+    // ② Assets' confirming questions (the AI's, first where each zone goes; or the
+    // zones' own without it): [{text, about}]. The user's answers and directions, in
+    // their words, go with the plan (the layout follows them).
+    const nlohmann::json& Questions() const { return questions_; }
+    void SetDirections(const std::string& text);
+    // An answer to a decision of ① Confirm's "To decide" that sets no field (in words: it goes to the plan).
+    void AnswerDecision(const std::string& question, const std::string& answer);
+    const std::string& Directions() const { return directions_; }
+
+    // ③ Layout: confirming plans the zones and lays them out alone (stage "layout");
+    // Revise works on them there; PlanFromLayout plans what's inside each zone, the
+    // zones kept where the layout put them. Returns why not, or "".
+    std::string PlanFromLayout();
+    // ① Confirm's Layout tab: the zones planned again from the Brief and the answers
+    // (after the Contents tab changed them); a zone's own field (its street pattern,
+    // its area, its count); a zone drawn where the user wants it ({x, y, w, h}, or
+    // null to let it be placed). Each lays the zones out again. Returns why not, or "".
+    std::string ReplanLayout();
+    std::string SetZoneKind(const std::string& module, const std::string& kind, const nlohmann::json& value); // ① Confirm: how many of one kind of building
+    std::string SetZoneField(const std::string& zone, const std::string& field, const nlohmann::json& value);
+    std::string DrawZone(const std::string& zone, const nlohmann::json& rect);
+    // The drawing tool's brush: cells [[x, y]...] painted onto a zone (taken from any other
+    // zone painted there), or erased from it. The zone takes exactly its painted cells.
+    std::string PaintZone(const std::string& zone, const nlohmann::json& cells, bool erase);
+    bool LayoutStale() const { return layoutStale_; }
     // Reopens a build of the project (places/<id>/) where it was left; a step
     // that was waiting on the AI starts again. Returns why it can't, or "".
     std::string Open(const std::string& id);
@@ -92,6 +124,8 @@ public:
     std::string Review();
     // Back to the plan before the last revision.
     std::string Undo();
+    std::string Redo(); // the last action undone, again (8.2)
+    nlohmann::json Advanced(const std::string& what) const; // the build's documents: brief, spec, pll, solved, assets, log
     // The plan laid out again: the fixes that need no AI, then the fitting
     // rounds (a plan from before a solver change gets its benefit). The stage stays.
     std::string Relayout();
@@ -124,18 +158,31 @@ public:
     bool StartSourcing(const nlohmann::json& pending, const SourcingSettings& settings);
     // What was tried per need (the asset plan's next pass moves on from it).
     const std::map<std::string, Tried>& TriedSources() const { return tried_; }
+    // The user builds again: what's still missing is tried again (once more per build).
+    void ForgetTried() { tried_.clear(); }
     // Sourcing is over: the build can go on (the editor refreshes its assets first).
     bool SourcingDone() const { return sourcingDone_; }
     void ClearSourcingDone() { sourcingDone_ = false; }
+    // Stops sourcing (the user won't wait for the art): what's missing gets placeholders, the build goes on.
+    void SkipSourcing();
+    // Refine one piece of the build's art: made again with the user's words, checked again
+    // (3 tries). While sourcing, in its place; after the build, then the place is built again
+    // with it (the editor goes on as after sourcing). Returns why not, or "".
+    std::string RefineArt(const std::string& key, const std::string& text);
     // The new assets' descriptions and provenance, for their .meta: [{path, fields}], then cleared.
     nlohmann::json TakeNewAssets();
     // A region's sites (7.10), each built later as a place of its own:
     // [{id, node, name, buildType, scale, bounds: [x, y, w, h]}] from the layout.
     nlohmann::json Sites() const;
     // ④ Build: from a laid-out plan. Returns why not, or "".
+    void SetAssetNeeds(const nlohmann::json& needs); // ③ Assets: what each part's art will be (decided, not yet fetched)
+    bool HasAssetNeeds() const { return !assetNeeds_.empty(); }
+    void MarkSourced(const nlohmann::json& needs); // ③ Assets: the art is all there (or found at once); Build waits for the user
+    void SetBuildProgress(int done, int total, const std::string& text); // ④ Build, as it goes
     std::string StartBuilding();
     // The editor's scene build is done: {assets, report, verify, repairs, after}.
     void Built(const nlohmann::json& result);
+    void BuildFailed(const std::string& why); // ④ Build stopped: back to ③ Assets, said why
     const nlohmann::json& Result() const { return result_; }
     // Where the site's corner is in the world (kept, so a rebuild lands on the same cells).
     bool HasOrigin() const { return hasOrigin_; }
@@ -207,6 +254,12 @@ private:
     nlohmann::json ExamplesLikeThis() const;
     // Whether a request names a zone (its id, or its module's name).
     bool Mentions(const std::string& request, const std::string& zoneId) const;
+    bool IsSubject(const std::string& request, const std::string& zoneId) const; // named as what moves, not as where
+    void RelayoutMoving(const std::set<std::string>& moving);
+    // A moved zone's place on the axes its relations don't move along, from its references
+    // (place-layout.md §8.3): {add: [rel], drop: [rel], why: [text]}.
+    nlohmann::json ComposePlace(const std::string& zone, const nlohmann::json& rel, const std::string& request,
+                                const std::set<std::string>& moving) const; // at the layout: the moved zones anew, the rest exactly as they are
     // Directions a request gives a zone, as relations: "below the docks" -> {south-of, docks}.
     std::vector<std::pair<std::string, std::string>> DirectionsIn(const std::string& request, const std::string& moving) const;
     nlohmann::json RevisionBody() const;
@@ -245,7 +298,17 @@ private:
         int attempts = 0;
         std::string reasons;      // why the last try didn't pass
         bool done = false;
+        bool passed = false;
+        nlohmann::json made = nlohmann::json::array(); // what came, try by try: {path, attempt, seen?, ok?}
+        std::string request;      // the user's words for it (Refine)
+        nlohmann::json superseded = nlohmann::json::array(); // what a refined piece replaces
     };
+    // The sourcing as it goes, for the panel: [{key, role, description, action, attempts, done, passed, made}].
+    static nlohmann::json SourcingProgress(const std::map<std::string, Sourcing>& pieces);
+    // Kept in session.json: the art made, try by try, and what's still being made.
+    static nlohmann::json SourcingJson(const std::map<std::string, Sourcing>& pieces);
+    static std::map<std::string, Sourcing> SourcingFrom(const nlohmann::json& saved);
+    std::map<std::string, Sourcing> sourced_; // what this session's sourcing made, by need (Refine after the build)
     std::map<std::string, Sourcing> sourcing_;
     std::map<std::string, Tried> tried_;
     nlohmann::json newAssets_ = nlohmann::json::array();
@@ -259,6 +322,44 @@ private:
     std::map<std::string, double> fitScale_;
     int fitSide_ = 0;
     nlohmann::json result_;      // the last scene build's (⑤ Result)
+    nlohmann::json choices_ = nlohmann::json::object(); // the form's choices with the request
+    nlohmann::json questions_ = nlohmann::json::array();  // ② Assets' confirming questions
+    std::string directions_;                              // the user's answers, in their words
+    nlohmann::json decisionAnswers_ = nlohmann::json::object(); // {question: answer}: decisions answered in words
+    std::map<std::string, std::pair<int, int>> layoutSeeds_; // the zones as the layout placed them (for the plan)
+    int layoutSide_ = 0;
+    bool layoutStale_ = false; // the Contents tab changed what the layout was made from
+    void AskQuestions();
+    bool SendReadings(); // the three readings, a request each
+    static nlohmann::json InterpretContextFor(const Ontology& ontology, const std::string& query, const nlohmann::json& choices);
+    int PlanWaiting() const; // the plan's own requests still out
+    // From the request to the layout, step by step, for the panel:
+    // {steps: [{id, label, state: done|active|waiting, detail: [..]}], fraction, since}.
+    nlohmann::json ConfirmProgress();
+    std::string progressStep_;   // the step that was active last time (its start is `progressSince_`)
+    std::string lastRetry_;      // why the last request was asked again
+    long long progressSince_ = 0;
+    void LayoutZones(); // the zones alone, solved and drawn (stage "layout")
+    // The zones' kept cells go (the user asked for them laid out again); `keepPlaces`: the
+    // zones not in `moving` keep their seeds.
+    void UnfreezeLayout(bool keepPlaces, const std::set<std::string>& moving = {}, bool keepOthersCells = false);
+    bool LayoutFrozen() const;
+    void FitToRoom();
+    // History (8.2): each action's state before it, restored exactly by Undo; Redo's after.
+    nlohmann::json Snapshot() const;
+    void Checkpoint(const std::string& what);
+    void Restore(const nlohmann::json& saved);
+    void ForgetRedo();
+    static long long Now();
+    nlohmann::json assetNeeds_ = nlohmann::json::array(); // ③ Assets: what each need got
+    nlohmann::json buildProgress_ = nlohmann::json::object(); // ④ Build: {done, total, text}             // a zone asked for more than its land holds keeps what fitted, and says so
+    bool roomToRevision_ = false; // FitToRoom's notes go to the revision being solved
+    std::set<std::string> anchored_; // a revision's landmarks and the zones it says stay: never moved by it
+    nlohmann::json layoutQuality_ = nlohmann::json::object(); // the layout's quality checks (§11.3)
+    nlohmann::json LayoutQuality(const nlohmann::json& spec, const nlohmann::json& solved) const;
+    void ApplySketch(nlohmann::json& zones, int side) const; // the AI's grid sketch, onto the zones
+    nlohmann::json NetworkGrid(); // the river and roads on a 16x16 grid, for the AI to sketch on
+    static std::string WhereText(const nlohmann::json& zone, const std::map<std::string, std::string>& names, int side);
     bool hasOrigin_ = false;
     int originX_ = 0, originY_ = 0;
 };
@@ -268,5 +369,7 @@ std::string PlaceIdFor(const std::filesystem::path& projectRoot, const std::stri
 
 // The project's builds, the latest first: [{id, query, name, stage, updated}].
 nlohmann::json ListBuilds(const std::filesystem::path& projectRoot);
+// Removes every build under places/ but `keep` (8.2: "Remove older builds"); how many went.
+int RemoveBuilds(const std::filesystem::path& projectRoot, const std::string& keep);
 
 } // namespace aige

@@ -49,4 +49,20 @@ nlohmann::json BriefWindow(const Ontology& ontology, const nlohmann::json& brief
 // numbers consistent, and drops a disabled component's settings.
 void ApplyWindowEdit(const Ontology& ontology, nlohmann::json& brief, const std::string& path, const nlohmann::json& value);
 
+// The Build panel's choices (structured input beside the request's words), from
+// the ontology: per build type its size classes (with the unit's numbers), its
+// substantial settings ({path, label, values} or {path, label, type: count|bool,
+// min, max}: walls, layout, style, the root's asked fields as "root.<field>"),
+// its features, and its main parts (zones, networks, distinctive parcels).
+nlohmann::json BuildChoices(const Ontology& ontology);
+
+// Choices are {Brief path: value} ("buildType", "scale.class", "scale.buildings",
+// "walled", "shape.layout", "style.theme", "root.levels", "components.moat.enabled",
+// "features": ["river"]). Applied over an interpreted Brief, they win: a build type
+// chosen drops what isn't the type's (its components, its scale, its root settings).
+nlohmann::json ApplyChoices(const Ontology& ontology, nlohmann::json brief, const nlohmann::json& choices);
+
+// A request in words for choices given without any ("a large castle with a moat").
+std::string ChoicesQuery(const Ontology& ontology, const nlohmann::json& choices);
+
 } // namespace aige

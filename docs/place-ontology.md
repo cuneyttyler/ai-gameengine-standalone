@@ -107,6 +107,21 @@ manor plot?"* and get the inherited set.
   authored ones.
 - **Per project:** a project can add concepts, modules and roles (its own art style, its
   own culture) without editing the engine's core.
+- **Per user** (development_plan.md 9): File ▸ Ontology… (also the Build panel's menu) shows
+  everything that can be built; the engine's modules are read-only. A user's additions live
+  in `%LOCALAPPDATA%\aige\ontology\`, used by every project, loaded between the engine's
+  library and the project's (engine, user, project):
+  - `modules/<id>.module.json`: a module of theirs (aige.module/1), with
+    `"extends": {"parents": {"craftsmen-ward": {"min": 0, "max": 3, "weight": 0.3}},
+    "components": ["settlement"]}`: where it may go, and which build types offer it.
+  - `extensions.json`: additions to the engine's own, without editing them:
+    `{"fields": {module: {quantity, quality}}, "children": {parent: {child: rule}},
+    "components": {build type: [module]}}`.
+  - Each save is checked with the rest (`Ontology::Check`, as the engine's library is): what
+    fails is reported and the previous file kept. A built-in id can't be taken.
+  - Export and import: one file (`aige.ontology-extension/1`: the modules and the
+    extensions); imported modules replace the user's of the same id, extensions merge.
+  - The AI works with the extended ontology: its contexts are built from the loaded whole.
 
 ## 5. Language: our own, aligned with GLDL
 

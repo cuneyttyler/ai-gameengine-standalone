@@ -146,17 +146,34 @@ Decision Decide(const std::string& policy, const NeedProfile& profile, const Sou
         }
         return d;
     };
+    // A source the user chose is honoured: the project's art counts as found only if it came
+    // from there (generated art in the project doesn't stop a web search the user asked for).
+    auto fromSource = [](const std::vector<Candidate>& list, std::initializer_list<const char*> sources) {
+        std::vector<Candidate> out;
+        for (const auto& cand : list) {
+            if (!cand.entry) continue;
+            for (const char* s : sources) {
+                if (cand.entry->source == s) {
+                    out.push_back(cand);
+                    break;
+                }
+            }
+        }
+        return out;
+    };
     if (policy == "project") {
         if (const Candidate* g = Best(c.project, "good")) return use("A1", "use", g, "project", "fits well");
         return fallback({&c.project}, {"project"});
     }
     if (policy == "library") {
-        if (const Candidate* g = Best(c.project, "good")) return use("A1", "use", g, "project", "fits well");
+        const auto fromLibrary = fromSource(c.project, {"library", "aige"});
+        if (const Candidate* g = Best(fromLibrary, "good")) return use("A1", "use", g, "library", "from the library, already in the project");
         if (const Candidate* g = Best(c.library, "good")) return use("A2", "import", g, "library", "from the AIGE library");
         return fallback({&c.project, &c.library}, {"project", "library"});
     }
     if (policy == "web") {
-        if (const Candidate* g = Best(c.project, "good")) return use("A1", "use", g, "project", "fits well");
+        const auto fromWeb = fromSource(c.project, {"web"});
+        if (const Candidate* g = Best(fromWeb, "good")) return use("A1", "use", g, "web", "from the web, already in the project");
         if (const Candidate* g = Best(c.web, "good")) {
             d = use("A4", "import", g, "web", "free art from the web, licence checked");
             d.warn = profile.styleCritical;

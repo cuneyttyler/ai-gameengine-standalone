@@ -77,7 +77,30 @@ void ApplyBriefSettings(const Ontology& ontology, const json& brief, json& node)
         if (f == nullptr) continue;
         node[f->quantity ? "quantity" : "quality"][name] = value;
     }
+    // How many of each kind of building the user set (a market ward's 4 inns): the zone holds
+    // at least that many in all.
+    if (m->level == PlaceLevel::Zone) {
+        json kinds = json::object();
+        int sum = 0;
+        const json given = settings.value("kinds", json::object());
+        for (const auto& [kind, n] : given.items()) {
+            if (!n.is_number() || !ontology.ChildRule(m->id, kind)) continue;
+            kinds[kind] = std::max(0, static_cast<int>(std::lround(n.get<double>())));
+            sum += kinds[kind].get<int>();
+        }
+        if (kinds.empty()) {
+            node.erase("kinds");
+        } else {
+            node["kinds"] = kinds;
+            const std::string field = CountField(*m);
+            if (!field.empty()) {
+                if (!node.contains("quantity") || !node["quantity"].is_object()) node["quantity"] = json::object();
+                if (Mid(node["quantity"].value(field, json()), 0) < sum) node["quantity"][field] = {{"count", sum}};
+            }
+        }
+    }
 }
+
 
 void EnsureGroups(json& node) {
     for (const char* key : {"quantity", "quality"}) {
@@ -142,6 +165,84 @@ bool Disabled(const json& brief, const std::string& module) {
 }
 
 } // namespace
+
+json ZoneKinds(const Ontology& ontology, const ModuleDef& zone, const std::string& unitClass, const json& kinds, double total) {
+    // The kinds of building (or room, tent) a zone may hold, with how many of each the user set
+    // and, for the rest, about how many the plan makes of its total (by the rules' weights).
+    json out = json::array();
+    double setSum = 0, weights = 0;
+    for (const ChildDef& rule : zone.children) {
+        const ModuleDef* cm = ontology.Module(rule.module);
+        if (cm == nullptr || !ontology.IsA(cm->id, unitClass)) continue;
+        const json n = kinds.is_object() ? kinds.value(cm->id, json()) : json();
+        if (n.is_number()) setSum += n.get<double>();
+        else weights += std::max(0.05, rule.weight);
+    }
+    const double rest = std::max(0.0, total - setSum);
+    for (const ChildDef& rule : zone.children) {
+        const ModuleDef* cm = ontology.Module(rule.module);
+        if (cm == nullptr || !ontology.IsA(cm->id, unitClass)) continue;
+        json row = {{"module", cm->id}, {"name", cm->name}};
+        const json n = kinds.is_object() ? kinds.value(cm->id, json()) : json();
+        if (n.is_number()) row["count"] = n;
+        else if (weights > 0) row["estimate"] = static_cast<int>(std::lround(rest * std::max(0.05, rule.weight) / weights));
+        out.push_back(row);
+    }
+    return out;
+}
+
+json NormalizeRelations(const json& rel) {
+    json out = json::array();
+    if (!rel.is_array()) return out;
+    auto lower = [](std::string t) {
+        for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        std::replace(t.begin(), t.end(), ' ', '-');
+        std::replace(t.begin(), t.end(), '_', '-');
+        return t;
+    };
+    for (const auto& r : rel) {
+        if (!r.is_object()) continue;
+        std::string type = lower(r.value("type", ""));
+        const std::string to = r.value("to", "");
+        const std::string target = lower(to);
+        const bool toMap = target.empty() || target == "site" || target == "map" || target == "place" || target == "the-map";
+        // Words for a direction.
+        static const std::map<std::string, std::string> words = {
+            {"below", "south-of"}, {"under", "south-of"}, {"beneath", "south-of"}, {"south", "south-of"},
+            {"above", "north-of"}, {"over", "north-of"}, {"north", "north-of"},
+            {"left-of", "west-of"}, {"left", "west-of"}, {"west", "west-of"},
+            {"right-of", "east-of"}, {"right", "east-of"}, {"east", "east-of"},
+            {"northwest-of", "north-west-of"}, {"northeast-of", "north-east-of"}, {"southwest-of", "south-west-of"}, {"southeast-of", "south-east-of"},
+            {"north-west", "north-west-of"}, {"north-east", "north-east-of"}, {"south-west", "south-west-of"}, {"south-east", "south-east-of"},
+            {"in-the-north", "in-north"}, {"in-the-south", "in-south"}, {"in-the-east", "in-east"}, {"in-the-west", "in-west"}};
+        if (auto it = words.find(type); it != words.end()) type = it->second;
+        // Compound: two relations.
+        std::vector<std::string> parts;
+        for (const char* compound : {"north-west", "north-east", "south-west", "south-east"}) {
+            const std::string c = compound;
+            if (type == c + "-of" || type == "in-" + c) {
+                parts = {c.substr(0, c.find('-')), c.substr(c.find('-') + 1)};
+            }
+        }
+        if (parts.empty()) {
+            for (const char* side : {"north", "south", "east", "west"}) {
+                if (type == std::string(side) + "-of" || type == "in-" + std::string(side)) parts = {side};
+            }
+        }
+        if (parts.empty()) {
+            out.push_back(r);
+            continue;
+        }
+        const bool inMap = type.rfind("in-", 0) == 0 || toMap;
+        for (const auto& side : parts) {
+            json one = r;
+            one["type"] = inMap ? "in-" + side : side + "-of";
+            one["to"] = inMap ? "site" : to;
+            out.push_back(one);
+        }
+    }
+    return out;
+}
 
 BuildType::Unit UnitOf(const Ontology& ontology, const json& spec) {
     const std::string root = spec.contains("root") ? spec["root"].value("module", "") : "";
@@ -831,6 +932,15 @@ json SpecFromRoot(const Ontology& ontology, const json& brief, const json& answe
         const double buildings = given >= lo && given <= hi ? given : std::round((lo + hi) / 2);
         root["quantity"][field] = {{"count", static_cast<int>(buildings)}};
     }
+    // The root's own settings the user chose (Brief "root": a dungeon's levels, a building's floors): they win.
+    if (rootModule && brief.contains("root") && brief["root"].is_object()) {
+        for (const auto& [name, value] : brief["root"].items()) {
+            const FieldDef* f = rootModule->Field(name);
+            if (f == nullptr || value.is_null()) continue;
+            json& group = root[f->quantity ? "quantity" : "quality"];
+            group[name] = f->type == "count" && value.is_number() ? json{{"count", value}} : value;
+        }
+    }
     // The root's own Brief fields (a dungeon's theme, a camp's kind): from the Brief's style.
     if (rootModule) {
         for (const auto& [name, f] : rootModule->quality) {
@@ -850,10 +960,33 @@ json SpecFromRoot(const Ontology& ontology, const json& brief, const json& answe
     std::set<std::string> used = {placeId};
     json children = json::array();
     std::map<std::string, std::string> renamed;
+    // A zone the Brief didn't ask for twice: one per component, unless its count says more (an
+    // AI that splits the craftsmen into an "industrial ward" too). Its relations go to the one kept.
+    std::map<std::string, int> zonesOf;
+    std::map<std::string, std::string> firstOf;
+    std::vector<std::pair<std::string, std::string>> merged;
+    // Only a count the Brief gives caps it (no count: any number, as two residential wards).
+    const json components = brief.value("components", json::object());
+    const auto zoneLimit = [&](const std::string& module, const ChildDef& rule) {
+        if (!rule.count.empty()) return rule.max; // tied to a root field (levels, floors): as that says
+        int limit = rule.max;
+        const json given = components.value(module, json::object());
+        if (given.is_object() && given.contains("count")) {
+            const auto [lo, hi] = Bounds(given["count"]);
+            if (hi >= 1) limit = static_cast<int>(std::lround(hi));
+        }
+        return std::clamp(limit, std::max(1, rule.min), rule.max);
+    };
     for (const auto& c : answer.value("children", json::array())) {
         const std::string module = c.value("module", "");
         const ModuleDef* m = ontology.Module(module);
         if (m == nullptr || Disabled(brief, module) || !ontology.ChildRule(build->root, module)) continue;
+        if (m->level == PlaceLevel::Zone) {
+            if (++zonesOf[module] > zoneLimit(module, *ontology.ChildRule(build->root, module)) && firstOf.contains(module)) {
+                merged.push_back({c.value("id", ""), firstOf[module]});
+                continue;
+            }
+        }
         json node = {{"id", ""}, {"module", module}, {"quantity", c.value("quantity", json::object())},
                      {"quality", c.value("quality", json::object())}, {"rationale", c.value("rationale", "")}};
         EnsureGroups(node);
@@ -863,8 +996,11 @@ json SpecFromRoot(const Ontology& ontology, const json& brief, const json& answe
         ApplyBriefSettings(ontology, brief, node);
         KeepKnownFields(*m, node);
         if (c.contains("rel") && c["rel"].is_array()) node["rel"] = c["rel"];
+        if (c.contains("placement") && c["placement"].is_string()) node["placement"] = c["placement"]; // where it goes, in words
+        if (m->level == PlaceLevel::Zone && !firstOf.contains(module)) firstOf[module] = node["id"];
         children.push_back(node);
     }
+    for (const auto& [from, to] : merged) renamed[from] = to;
     // What the Brief asks for and the answer left out, and what the root needs.
     auto has = [&](const std::string& module) {
         return std::any_of(children.begin(), children.end(), [&](const json& n) { return n["module"] == module; });
@@ -916,11 +1052,11 @@ json SpecFromRoot(const Ontology& ontology, const json& brief, const json& answe
     for (auto& node : children) {
         if (!node.contains("rel")) continue;
         json kept = json::array();
-        for (auto rel : node["rel"]) {
+        for (auto rel : NormalizeRelations(node["rel"])) {
             if (!rel.is_object() || !ontology.Relation(rel.value("type", ""))) continue;
             bool ok = true;
             for (const char* key : {"to", "of"}) {
-                if (!rel.contains(key)) continue;
+                if (!rel.contains(key) || rel.value(key, "") == "site") continue;
                 auto it = renamed.find(rel.value(key, ""));
                 if (it == renamed.end()) ok = false;
                 else rel[key] = it->second;
@@ -928,6 +1064,20 @@ json SpecFromRoot(const Ontology& ontology, const json& brief, const json& answe
             if (ok) kept.push_back(rel);
         }
         node["rel"] = kept;
+    }
+    // The AI's sketch on the site's grid (place-layout.md §11.1): its legend by the final ids.
+    if (const json sketch = answer.value("sketch", json()); sketch.is_object() && sketch.value("rows", json()).is_array()) {
+        json legend = json::object();
+        const json sketched = sketch.value("legend", json::object());
+        for (const auto& [letter, id] : sketched.items()) {
+            if (letter.size() != 1 || !id.is_string()) continue;
+            if (auto it = renamed.find(id.get<std::string>()); it != renamed.end()) legend[letter] = it->second;
+        }
+        json rows = json::array();
+        for (const auto& r : sketch["rows"]) {
+            if (r.is_string()) rows.push_back(r);
+        }
+        if (!legend.empty() && !rows.empty()) root["sketch"] = {{"rows", rows}, {"legend", legend}};
     }
     root["children"] = children;
     spec["root"] = root;
@@ -978,6 +1128,46 @@ void ApplyZoneAnswer(const Ontology& ontology, const json& brief, json& spec, co
         ApplyBriefSettings(ontology, brief, node);
         KeepKnownFields(*m, node);
         children.push_back(node);
+    }
+    // The kinds the user set, exactly: added, removed or recounted.
+    for (const auto& [kind, nv] : zone->value("kinds", json::object()).items()) {
+        if (!nv.is_number()) continue;
+        const int want = nv.get<int>();
+        int have = 0;
+        std::vector<size_t> of;
+        for (size_t i = 0; i < children.size(); ++i) {
+            if (children[i].value("module", "") != kind) continue;
+            of.push_back(i);
+            have += static_cast<int>(std::lround(Mid(children[i].value("repeat", json()), 1)));
+        }
+        if (have == want) continue;
+        if (of.empty()) {
+            const ModuleDef* km = ontology.Module(kind);
+            if (km == nullptr || want <= 0) continue;
+            json node = {{"id", UniqueId(zoneId + "/" + kind, used)}, {"module", kind}, {"quantity", json::object()},
+                         {"quality", json::object()}, {"rationale", "as many as the user set"}};
+            if (want >= 2) node["repeat"] = want;
+            ApplyBriefSettings(ontology, brief, node);
+            KeepKnownFields(*km, node);
+            children.push_back(node);
+            continue;
+        }
+        // The difference on the largest template; none left: the templates go.
+        std::sort(of.begin(), of.end(), [&](size_t a, size_t b) { return Mid(children[a].value("repeat", json()), 1) > Mid(children[b].value("repeat", json()), 1); });
+        int diff = want - have;
+        std::vector<size_t> gone;
+        for (size_t i : of) {
+            if (diff == 0) break;
+            const int r = static_cast<int>(std::lround(Mid(children[i].value("repeat", json()), 1)));
+            const int next = std::max(0, r + diff);
+            diff -= next - r;
+            if (next == 0) gone.push_back(i);
+            else if (next == 1) children[i].erase("repeat");
+            else children[i]["repeat"] = next;
+            children[i].erase("share");
+        }
+        std::sort(gone.rbegin(), gone.rend());
+        for (size_t i : gone) children.erase(children.begin() + static_cast<long>(i));
     }
     (*zone)["children"] = children;
 }
@@ -1079,6 +1269,7 @@ int RebalanceBuildings(const Ontology& ontology, const json& brief, json& spec, 
             const ModuleDef* zm = ontology.Module(zone.value("module", ""));
             for (auto& c : zone["children"]) {
                 if (!ontology.IsA(c.value("module", ""), unit.cls)) continue;
+                if (zone.value("kinds", json::object()).contains(c.value("module", ""))) continue; // as the user set
                 const double repeat = Mid(c.value("repeat", json()), 1);
                 int scaled = std::max(1, static_cast<int>(std::lround(repeat * factor)));
                 // No more than the zone's rule allows (a dungeon level has one entrance).
@@ -1285,8 +1476,9 @@ std::vector<PlaceProblem> ApplyRevision(const Ontology& ontology, const json& br
     if (!spec.contains("root") || !changes.is_array()) return notes;
     const BuildType* build = ontology.Build(brief.value("buildType", ""));
     // A relation may name a part by its id or, at the top, by its module ("the river").
-    auto relations = [&](const json& rel) {
+    auto relations = [&](const json& given) {
         json kept = json::array();
+        const json rel = NormalizeRelations(given);
         if (!rel.is_array()) return kept;
         for (auto r : rel) {
             if (!r.is_object() || !ontology.Relation(r.value("type", ""))) continue;
@@ -1294,7 +1486,7 @@ std::vector<PlaceProblem> ApplyRevision(const Ontology& ontology, const json& br
             for (const char* key : {"to", "of"}) {
                 if (!r.contains(key) || !r[key].is_string()) continue;
                 const std::string to = r[key];
-                if (SpecNode(spec, to)) continue;
+                if (to == "site" || SpecNode(spec, to)) continue;
                 ok = false;
                 for (const auto& c : spec["root"]["children"]) {
                     if (c.value("module", "") == to) {

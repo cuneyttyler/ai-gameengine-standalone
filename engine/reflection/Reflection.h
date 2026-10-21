@@ -118,10 +118,15 @@ struct SettingsInfo {
 
 // What a command acts on. Hosts fill in what they have; commands that need
 // something missing fail with a message instead of crashing.
+struct TileLayerEdit;
+
 struct CommandContext {
     Registry& registry;
     PrefabLibrary* prefabs = nullptr;
     const Project* project = nullptr;
+    // Changes to tile layers (a built place's ground), handed back for their own undo step:
+    // layers aren't part of the scene's text, so a snapshot can't undo them.
+    std::vector<TileLayerEdit>* layerEdits = nullptr;
 };
 
 struct CommandResult {

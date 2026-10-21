@@ -54,6 +54,7 @@ struct SolveOptions {
 struct SolvedLayout {
     nlohmann::json document;               // aige.solved/1
     std::vector<nlohmann::json> problems;  // {code, statement, node, message}
+    nlohmann::json timing;                 // milliseconds per op (not in the document: it varies run to run)
     bool ok() const;
 };
 

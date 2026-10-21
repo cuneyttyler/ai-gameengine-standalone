@@ -12,6 +12,7 @@
 #include "scripting/Components.h"
 #include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
+#include "gameplay/TileLayer.h"
 #include "world/WorldBible.h"
 
 #include <algorithm>
@@ -232,6 +233,21 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
                               {"assets", assetList},  {"scripts", scripts},   {"scriptSources", scriptSources},
                               {"settings", settings}, {"world", worldList},   {"dialogues", dialogues},
                               {"quests", quests},     {"markers", markers},   {"schedules", schedules}};
+    // A built place's ground (tile layers, not entities): which tile prefabs cover how many
+    // cells, so a request like "use grass in place of cobble" names what's there (terrain.replace).
+    if (const TileLayers* layers = FindLayers(registry); layers && !layers->layers.empty()) {
+        nlohmann::json ground = nlohmann::json::array();
+        for (const auto& [name, layer] : layers->layers) {
+            std::map<std::string, int> cells;
+            layer.ForEach([&](int, int, uint16_t id) {
+                if (const TileDef* def = layer.Def(id)) ++cells[def->prefab.empty() ? def->sprite.texture : def->prefab];
+            });
+            nlohmann::json tilesUsed = nlohmann::json::array();
+            for (const auto& [prefab, n] : cells) tilesUsed.push_back({{"prefab", prefab}, {"cells", n}});
+            ground.push_back({{"layer", name}, {"tiles", tilesUsed}});
+        }
+        context["ground"] = ground;
+    }
     if (options.selection && registry.valid(*options.selection)) {
         context["selection"] = static_cast<uint32_t>(*options.selection);
     }

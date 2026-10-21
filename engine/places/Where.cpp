@@ -283,6 +283,17 @@ json CheckExpectations(const json& solved, const json& expects) {
         json r = e;
         const std::string node = e.value("node", ""), type = e.value("type", ""), to = e.value("to", "");
         const Area* a = g.Zone(node);
+        if (type.rfind("in-", 0) == 0 && a) {
+            // In a part of the map: its middle in that third of the site.
+            const double fx = a->cx / std::max(1, g.W), fy = a->cy / std::max(1, g.H);
+            const std::string side = type.substr(3);
+            const bool ok = side == "north" ? fy < 0.42 : side == "south" ? fy > 0.58 : side == "west" ? fx < 0.42 : side == "east" ? fx > 0.58 : false;
+            r["ok"] = ok;
+            r["detail"] = node + "'s middle is " + std::to_string(std::lround(fx * 100)) + "% across and " + std::to_string(std::lround(fy * 100)) +
+                          "% down the map";
+            out.push_back(r);
+            continue;
+        }
         const Area* b = g.Zone(to);
         const std::vector<int>* path = b ? nullptr : (g.paths.contains(to) ? &g.paths.at(to) : nullptr);
         if (a == nullptr || (b == nullptr && path == nullptr)) {

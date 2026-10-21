@@ -222,6 +222,39 @@ BriefMerge MergeBriefs(const std::vector<json>& drafts) {
                 if (std::find(into.begin(), into.end(), text) == into.end()) into.push_back(text);
             }
         }
+        // Decisions: the same point (by the field it sets, else by its question) once.
+        for (const auto& dec : d.value("decisions", json::array())) {
+            if (!dec.is_object() || dec.value("question", "").empty()) continue;
+            const std::string path = dec.value("path", "");
+            auto norm = [](std::string t) {
+                std::string out;
+                for (const char c : t) {
+                    if (std::isalnum(static_cast<unsigned char>(c))) out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                }
+                return out;
+            };
+            json* same = nullptr;
+            for (auto& m : merge.decisions) {
+                if ((!path.empty() && m.value("path", "") == path) || norm(m.value("question", "")) == norm(dec.value("question", ""))) same = &m;
+            }
+            const std::string reading = d.value("reading", "");
+            if (same == nullptr) {
+                json one = dec;
+                one["readings"] = json::object();
+                merge.decisions.push_back(one);
+                same = &merge.decisions.back();
+            } else {
+                // Another reading's answer: an option to pick.
+                const std::string assumed = dec.value("assumed", "");
+                json& options = (*same)["options"];
+                if (!options.is_array()) options = json::array();
+                if (!assumed.empty() && assumed != same->value("assumed", "") &&
+                    std::find(options.begin(), options.end(), assumed) == options.end()) {
+                    options.push_back(assumed);
+                }
+            }
+            if (!reading.empty()) (*same)["readings"][reading] = dec.value("assumed", "");
+        }
     }
     if (briefs.empty()) return merge;
     const auto typical = std::find(readings.begin(), readings.end(), "typical");
@@ -357,6 +390,36 @@ json CompleteBrief(const Ontology& ontology, json brief, const json& defaults) {
             c = {{"enabled", false}};
             continue;
         }
+        // A zone's count is how many of that zone. A count far above what a place of this
+        // size has in zones is its buildings (a reading wrote "count: 10-40" for the houses).
+        if (const ModuleDef* zm = ontology.Module(id); zm && zm->level == PlaceLevel::Zone && c.contains("count")) {
+            const auto [lo, hi] = Range(c["count"]);
+            const ScaleClass* cls = build->Scale(brief["scale"].value("class", ""));
+            const int most = cls ? std::max(2, cls->zones.second) : 6;
+            if (hi > most) {
+                for (const char* field : {"plots", "farmsteads", "tents", "rooms", "sites", "pois"}) {
+                    const FieldDef* f = zm->Field(field);
+                    if (f == nullptr || f->type != "count") continue;
+                    json& params = c["params"];
+                    if (!params.is_object()) params = json::object();
+                    if (!params.contains(field)) params[field] = static_cast<int>(std::lround((lo + hi) / 2.0));
+                    break;
+                }
+                c["count"] = 1;
+            }
+        }
+        // A density in other words ("medium", "dense"): the nearest of the five.
+        if (c.contains("density") && c["density"].is_string()) {
+            static const std::map<std::string, std::string> words = {
+                {"zero", "none"}, {"no", "none"}, {"absent", "none"},
+                {"few", "rare"}, {"low", "rare"}, {"sparse", "rare"}, {"scarce", "rare"}, {"light", "rare"}, {"very low", "rare"},
+                {"medium", "some"}, {"moderate", "some"}, {"normal", "some"}, {"average", "some"}, {"mid", "some"}, {"several", "some"},
+                {"high", "common"}, {"dense", "common"}, {"many", "common"}, {"frequent", "common"}, {"lots", "common"},
+                {"very high", "abundant"}, {"very dense", "abundant"}, {"plentiful", "abundant"}, {"lush", "abundant"}, {"packed", "abundant"}};
+            std::string d = c["density"].get<std::string>();
+            for (char& ch : d) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            if (auto it = words.find(d); it != words.end()) c["density"] = it->second;
+        }
         if (!c.contains("assets")) {
             const json earlier = previous.is_object() ? previous.value(id, json::object()).value("assets", json()) : json();
             c["assets"] = earlier.is_object() ? earlier : json{{"source", "auto"}};
@@ -393,6 +456,43 @@ void FollowScale(const Ontology& ontology, json& brief, const std::string& chang
         scale["class"] = fit->id;
         if (!scale.contains("area")) area(*fit);
     }
+}
+
+namespace {
+// The build type the request names most (its id, its words, its size classes), and its score (0: none named).
+std::pair<const BuildType*, int> NamedBuild(const Ontology& ontology, const std::string& query) {
+    std::string text;
+    for (const auto& w : Words(query)) text += " " + w;
+    text += " ";
+    auto says = [&](const std::string& phrase) { return text.find(" " + phrase + " ") != std::string::npos; };
+    auto saysWord = [&](const std::string& word) { return says(word) || says(word + "s"); };
+    const BuildType* chosen = ontology.DefaultBuild();
+    int best = 0;
+    for (const auto& [id, b] : ontology.Builds()) {
+        int score = saysWord(id) ? 3 : 0;
+        for (const auto& w : b.words) {
+            std::string spaced = w;
+            std::replace(spaced.begin(), spaced.end(), '-', ' ');
+            score += saysWord(spaced) ? 2 : 0;
+        }
+        for (const auto& s : b.scale) {
+            std::string words = s.id;
+            std::replace(words.begin(), words.end(), '-', ' ');
+            score += says(words) ? 1 : 0;
+        }
+        if (score > 0) score += 10 * b.rank;
+        if (score > best || (score == best && score > 0 && b.isDefault)) {
+            best = score;
+            chosen = &b;
+        }
+    }
+    return {chosen, best};
+}
+} // namespace
+
+std::string NamedBuildType(const Ontology& ontology, const std::string& query) {
+    const auto [build, score] = NamedBuild(ontology, query);
+    return build && score > 0 ? build->id : std::string();
 }
 
 json FallbackDraft(const Ontology& ontology, const std::string& query) {

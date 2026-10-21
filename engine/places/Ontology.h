@@ -238,6 +238,9 @@ public:
 private:
     std::map<std::string, std::vector<std::string>> superclasses_; // class -> its direct superclasses
     std::map<std::string, ModuleClass> classes_;
+    // A module's "extends" (its parents, the build types offering it) and extensions.json files
+    // (fields on modules, children, components), applied once every folder is loaded.
+    void ApplyExtensions(const nlohmann::json& extensions, std::vector<std::string>& problems);
     std::map<std::string, ModuleDef> modules_;
     std::map<std::string, BuildType> builds_;
     std::map<std::string, std::vector<Concept>> schemes_;

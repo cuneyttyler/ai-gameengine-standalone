@@ -5,6 +5,8 @@ add_library(aige_places STATIC
     Ontology.cpp
     OntologyExport.h
     OntologyExport.cpp
+    OntologyEdit.h
+    OntologyEdit.cpp
     Expr.h
     Expr.cpp
     PlaceValidate.h

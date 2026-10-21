@@ -3,13 +3,22 @@
 // build at a time, as a stepper: ① Request · ② Assets · ③ Plan · ④ Build ·
 // ⑤ Result. Not modal: the viewport stays in view. The host (PlaceBuild)
 // holds the Brief; every edit here goes back to it as (path, value).
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
+import { openContextMenu } from '../contextMenu'
+import { editorState } from '../editorState'
 import { activatePanel, setPanelVisible } from '../layout'
 import CatalogThumb from './CatalogThumb.vue'
 import { amountText, countRange, layoutSketch, parseRange, setShare, toggleShare, type Shares } from '../buildwindow'
 
 type Rect = [number, number, number, number]
+// A kind of building a zone holds: how many the user set, or about how many the plan makes.
+interface ZoneKind {
+  module: string
+  name: string
+  count?: number
+  estimate?: number
+}
 interface Thumb { id: string; path: string; rect: Rect }
 interface Control {
   name: string
@@ -29,6 +38,9 @@ interface Component {
   inBrief: boolean
   enabled: boolean
   amount: 'count' | 'density' | 'none'
+  unit?: string // what the amount counts: ward(s), house(s), how common
+  holds?: { field: string; value: unknown; unit: string } // a zone: its buildings, each
+  kinds?: ZoneKind[] // a zone: its kinds of building, each with how many
   count: unknown
   density: string | null
   source: string | null
@@ -47,6 +59,28 @@ interface PlanRow {
   reason: string
   candidates: { id: string; path: string; rect: Rect; name: string; fit: number; grade: string }[]
 }
+// The Build panel's choices (structured input beside the words): from the ontology (BuildChoices).
+interface Choice {
+  path: string
+  label: string
+  values?: string[]
+  type?: 'count' | 'bool'
+  min?: number
+  max?: number
+  hint?: string
+  value?: unknown
+}
+interface ChoiceType {
+  id: string
+  name: string
+  unit: string
+  default: boolean
+  classes: { id: string; label: string; count: [number, number] }[]
+  fields: Choice[]
+  features: { id: string; label: string }[]
+  parts: { id: string; label: string; level: string; description: string }[]
+}
+
 interface BuildWindow {
   round: number
   buildTypeName: string
@@ -54,12 +88,14 @@ interface BuildWindow {
   size: { class: string | null; buildings: unknown; area: unknown; unit?: string; classes: { id: string; buildings: [number, number]; side: [number, number] }[] }
   layout: { value: Shares; options: string[]; description: string | null }
   walled: { value: string | null; options: string[] }
+  settings?: Choice[] // the root's own settings (7.10: a dungeon's levels, a building's floors)
   features: { value: string[]; options: string[] }
   style: Record<string, { value: unknown; options?: string[] }>
   components: Component[]
   marks: Record<string, Mark>
   assumptions?: string[]
   questions?: string[]
+  decisions?: { question: string; assumed: string; path?: string; options?: string[]; current?: unknown }[]
   problems: Problem[]
   assetPlan?: { rows: PlanRow[]; summary: { project: number; generate: number } }
 }
@@ -79,6 +115,52 @@ interface PlanRow {
 }
 interface BuildState {
   busy?: boolean // working off the UI thread (planning, laying out)
+  revisingFrom?: string
+  questions?: { text: string; about?: string; zone?: string }[] // ② Assets' confirming questions
+  directions?: string
+  decisionAnswers?: Record<string, string>
+  // ③ Layout: the zones and where they go.
+  layout?: {
+    unit: string
+    image?: string // the zones' own map
+    view?: boolean // looked at while the plan stands: changing it discards the plan
+    map?: string[]
+    zones: {
+      id: string
+      module: string
+      name: string
+      level: string
+      description: string
+      placement: string
+      rationale: string
+      rel: { type: string; to: string }[]
+      count?: unknown
+      where?: string
+      countField?: string
+      kinds?: ZoneKind[]
+      hasStyle?: boolean
+      style?: unknown
+      drawn?: unknown
+      painted?: boolean
+      area?: unknown
+      space?: { cells: number; needed: number; ok: boolean }
+    }[]
+    stale?: boolean
+    quality?: { zone: string; check: string; text: string }[]
+    sketched?: boolean
+    main?: unknown
+    patterns?: string[]
+    side?: number
+    regions?: { id: string; cells: [number, number, number][] }[]
+    paths?: { class: string; cells: [number, number][] }[]
+  }
+  planPhase?: string
+  confirmProgress?: {
+    steps: { id: string; label: string; state: 'done' | 'active' | 'waiting'; detail: string[] }[]
+    fraction: number
+    since: number
+    now: number
+  }
   id: string
   query: string
   stage: string
@@ -88,7 +170,37 @@ interface BuildState {
   notices?: string[] // what the build did on its own when something failed
   name?: string
   window?: BuildWindow
-  progress?: { zones: number; done: number }
+  progress?: { zones?: number; done: number; total?: number }
+  // ④ Build's art (7.9): each piece found or made, try by try, as it comes.
+  sourcing?: {
+    key: string
+    role: string
+    description: string
+    action: string
+    attempts: number
+    done: boolean
+    passed: boolean
+    made: { path: string; attempt: number; seen?: string; ok?: boolean }[]
+    request?: string
+    alternatives?: string
+  }[]
+  sourced?: NonNullable<BuildState['sourcing']> // what was made for this build (Refine after it)
+  // ③ Assets: what each part's art is (the project's, the library's, made, or a placeholder).
+  assetNeeds?: {
+    key: string
+    role: string
+    concepts?: string[]
+    source: string
+    entry?: string
+    name?: string
+    why?: string
+    uses?: number
+    component?: string
+    componentName?: string
+    policy?: string
+    decision?: { action?: string; reason?: string }
+  }[]
+  buildProgress?: { done?: number; total?: number; text?: string } // ④ Build, as it goes
   plan?: { rows: PlanRow[]; totals: { buildings: number; unit?: string; zones: number; area: unknown }; rationale: string }
   sketch?: { side: number; rects: { id: string; module: string; name: string; x: number; y: number; w: number; h: number }[] }
   problems?: Problem[]
@@ -113,10 +225,10 @@ const SOURCES = [
 ]
 const DENSITIES = ['none', 'rare', 'some', 'common', 'abundant']
 const STEPS = [
-  { id: 'request', label: '① Request' },
-  { id: 'assets', label: '② Assets' },
+  { id: 'confirm', label: '① Confirm' },
+  { id: 'layout', label: '② Layout' },
   { id: 'plan', label: '③ Plan' },
-  { id: 'build', label: '④ Build' },
+  { id: 'assets', label: '④ Assets' },
   { id: 'result', label: '⑤ Result' },
 ]
 
@@ -163,7 +275,9 @@ interface BuildResult {
   critique?: { looking?: boolean; error?: string; summary?: string; issues?: string[] } // the AI's look at it
 }
 interface Revision {
-  by: 'you' | 'review'
+  by: 'you' | 'review' | 'edit'
+  time?: number // seconds since 1970
+  redo?: boolean
   text: string
   summary: string
   now?: string
@@ -244,17 +358,77 @@ const builds = ref<BuildEntry[]>([])
 // The start screen shown over an open build (the header's Builds).
 const browsing = ref(false)
 const query = ref('')
-const showAll = ref(false)
+const showAll = ref(true)
+
+// The choices: the build type, its size, its main settings, features and parts.
+// What's set here is sent with the words and kept as set; the rest the words decide.
+const choiceTypes = ref<ChoiceType[]>([])
+const choicesOpen = ref(false)
+const chosenType = ref('')
+const chosen = ref<Record<string, unknown>>({})
+const partsChosen = ref<Record<string, boolean>>({})
+const featuresChosen = ref<string[]>([])
+const countLow = ref('')
+const countHigh = ref('')
+const choiceType = computed(() => choiceTypes.value.find((t) => t.id === chosenType.value))
+function setType(id: string): void {
+  chosenType.value = id
+  chosen.value = {}
+  partsChosen.value = {}
+  featuresChosen.value = []
+  countLow.value = countHigh.value = ''
+}
+function setChoice(path: string, value: unknown): void {
+  const next = { ...chosen.value }
+  if (value === '' || value === null || value === undefined) delete next[path]
+  else next[path] = value
+  chosen.value = next
+}
+// A part: in, then out, then the words decide.
+function cyclePart(id: string): void {
+  const next = { ...partsChosen.value }
+  if (!(id in next)) next[id] = true
+  else if (next[id]) next[id] = false
+  else delete next[id]
+  partsChosen.value = next
+}
+function toggleChosenFeature(id: string): void {
+  featuresChosen.value = featuresChosen.value.includes(id) ? featuresChosen.value.filter((f) => f !== id) : [...featuresChosen.value, id]
+}
+function choices(): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (chosenType.value) out.buildType = chosenType.value
+  for (const [path, value] of Object.entries(chosen.value)) out[path] = value
+  const lo = Number(countLow.value), hi = Number(countHigh.value || countLow.value)
+  if (countLow.value !== '' && lo > 0) out['scale.buildings'] = { count: [lo, Math.max(lo, hi)] }
+  for (const [id, on] of Object.entries(partsChosen.value)) out[`components.${id}.enabled`] = on
+  if (featuresChosen.value.length) out.features = [...featuresChosen.value]
+  return out
+}
+const hasChoices = computed(() => Object.keys(choices()).length > 0)
+function countOf(v: unknown): string {
+  if (typeof v === 'number') return String(v)
+  if (v && typeof v === 'object' && 'count' in v) return String((v as { count: unknown }).count)
+  return ''
+}
+sendToHost({ type: 'build:choicesRequest' })
 
 onHostMessage((message) => {
   if (message.type === 'build:state') {
+    if (typeof message.directions === 'string' && message.directions !== directions.value && document.activeElement?.id !== 'directions') {
+      directions.value = message.directions
+    }
     state.value = message.stage ? (message as unknown as BuildState) : null
     if (!state.value || ['cancelled', 'failed'].includes(state.value.stage)) sendToHost({ type: 'build:list' })
   } else if (message.type === 'build:part') {
     selectedPart.value = (message.part as PartInfo | null) ?? null
     brush.value = (message.brush as string) ?? ''
+  } else if (message.type === 'build:advanced') {
+    advancedDoc.value = message as unknown as { what?: string; file?: string; text?: string; cut?: boolean }
   } else if (message.type === 'build:sourcing') {
     sourcingSettings.value = { webSearch: Boolean(message.webSearch), shareAlike: Boolean(message.shareAlike) }
+  } else if (message.type === 'build:choices') {
+    choiceTypes.value = (message.types as ChoiceType[]) ?? []
   } else if (message.type === 'build:list') {
     builds.value = (message.builds as BuildEntry[]) ?? []
   } else if (message.type === 'build:open') {
@@ -270,31 +444,282 @@ const win = computed(() => state.value?.window ?? null)
 const stage = computed(() => state.value?.stage ?? '')
 const errors = computed(() => (win.value?.problems ?? []).filter((p) => !p.warning))
 const warnings = computed(() => (win.value?.problems ?? []).filter((p) => p.warning))
-const shownComponents = computed(() =>
-  (win.value?.components ?? []).filter((c) => showAll.value || c.inBrief),
+const shownComponents = computed(() => {
+  const all = (win.value?.components ?? []).filter((c) => showAll.value || c.inBrief)
+  // What the place has first; then what it can have.
+  return [...all].sort((x, y) => Number(y.enabled) - Number(x.enabled))
+})
+// The seconds the active step has run (the host's clock, ticking here between its messages).
+const tick = ref(0)
+setInterval(() => (tick.value += 1), 1000)
+let progressAnchor = { host: 0, local: 0 }
+const elapsed = computed(() => {
+  const p = state.value?.confirmProgress
+  if (!p) return 0
+  void tick.value
+  if (progressAnchor.host !== p.now) progressAnchor = { host: p.now, local: Date.now() / 1000 }
+  return Math.max(0, Math.round(p.now - p.since + (Date.now() / 1000 - progressAnchor.local)))
+})
+// ① Confirm's "To decide": what control a decision's field takes.
+type Decision = NonNullable<BuildWindow['decisions']>[number]
+function decisionControl(d: Decision): 'enabled' | 'options' | 'text' | 'words' {
+  const p = d.path ?? ''
+  if (!p) return 'words'
+  if (/^components\.[^.]+\.enabled$/.test(p)) return 'enabled'
+  if (p === 'name') return 'text'
+  if (decisionOptions(d).length) return 'options'
+  return 'words'
+}
+function decisionOptions(d: Decision): string[] {
+  const p = d.path ?? '', w = win.value
+  if (!w) return []
+  if (p === 'walled') return w.walled.options
+  if (p === 'scale.class') return w.size.classes.map((c) => c.id)
+  if (p.startsWith('style.')) return w.style[p.slice(6)]?.options ?? []
+  const f = (w.settings ?? []).find((x) => x.path === p)
+  return f?.values ?? []
+}
+// The assumptions no decision already says.
+const otherAssumptions = computed(() => {
+  const said = (win.value?.decisions ?? []).map((d) => d.assumed.toLowerCase())
+  return (win.value?.assumptions ?? []).filter((a) => !said.some((s) => s && (a.toLowerCase().includes(s) || s.includes(a.toLowerCase()))))
+})
+// ① Confirm: the layout first; its tabs.
+// A step looked at again without going back to it (the plan from ③ Assets, ① Confirm from the plan): '' is the stage's own.
+const viewing = ref('')
+const planStands = computed(() => ['plan', 'planned', 'sourced', 'built'].includes(stage.value) && !!state.value?.layout?.view)
+const atConfirm = computed(
+  () => stage.value === 'layout' || (stage.value === 'revising' && state.value?.revisingFrom === 'layout') || (viewing.value === 'confirm' && planStands.value),
 )
-const activeStep = computed(() =>
-  stage.value === 'assets'
-    ? 'assets'
-    : stage.value === 'building'
-      ? 'build'
-      : stage.value === 'built'
-        ? 'result'
-        : ['planning', 'plan', 'planned', 'revising'].includes(stage.value)
-          ? 'plan'
-          : 'request',
+const atLayout = atConfirm
+// ① Confirm looked at while the plan stands: changing anything discards the plan (asked first).
+const confirmLocked = computed(() => atConfirm.value && planStands.value)
+const discardAsk = ref(false)
+function guardLocked(e: Event): void {
+  if (!confirmLocked.value) return
+  const target = e.target as HTMLElement | null
+  if (target?.closest('[data-view-ok]')) return
+  e.preventDefault()
+  e.stopPropagation()
+  if (e.type === 'click' || e.type === 'keydown') discardAsk.value = true
+}
+function discardPlan(): void {
+  discardAsk.value = false
+  viewing.value = ''
+  sendToHost({ type: 'build:step', step: 'layout' })
+}
+function backToPlan(): void {
+  viewing.value = stage.value === 'plan' ? '' : 'plan'
+}
+const confirmTab = ref<'layout' | 'contents'>('contents')
+const showAssets = computed(
+  () =>
+    (['planned', 'sourcing', 'sourced', 'building'].includes(stage.value) && viewing.value !== 'plan' && viewing.value !== 'confirm') ||
+    (stage.value === 'built' && viewing.value === 'assets'),
 )
+// ③ Assets' two tabs: how each part's art will be found, and the art found and made.
+const assetsTab = ref<'how' | 'found'>('how')
+const assetsFound = computed(() => ['sourcing', 'sourced', 'building', 'built'].includes(stage.value))
+watch(stage, (s) => {
+  if (s === 'sourcing' || s === 'sourced' || s === 'building') assetsTab.value = 'found'
+  else if (s === 'planned') assetsTab.value = 'how'
+})
+// ④ Result: the built place alone (the plan is ② Plan's).
+const showResult = computed(() => stage.value === 'built' && viewing.value !== 'plan' && viewing.value !== 'assets')
+// What each part's art will be, in words.
+const ACTIONS: Record<string, string> = {
+  use: "the project's art",
+  import: 'from the library',
+  generate: 'made by the Art tool',
+  web: 'searched on the web',
+  placeholder: 'a placeholder',
+  drop: 'left out',
+}
+function willGet(n: { source: string; decision?: { action?: string } }): string {
+  const action = n.decision?.action ? ACTIONS[n.decision.action] : undefined
+  if (n.source === 'placeholder' && action) return action
+  if (n.source === 'generated') return 'made (already)'
+  return SOURCE_NAMES[n.source] ?? n.source
+}
+const SOURCE_NAMES: Record<string, string> = { project: 'the project', library: 'the library', generated: 'made', web: 'the web', placeholder: 'placeholder', dropped: 'left out' }
+const neededBySource = computed(() => {
+  const counts: Record<string, number> = {}
+  for (const n of state.value?.assetNeeds ?? []) counts[n.source || 'placeholder'] = (counts[n.source || 'placeholder'] ?? 0) + 1
+  return counts
+})
+const activeStep = computed(() => {
+  const s = stage.value
+  if (s === 'interpreting' || (s === 'planning' && state.value?.planPhase === 'root')) return 'confirm'
+  if (atConfirm.value) return confirmTab.value === 'layout' ? 'layout' : 'confirm'
+  if (showAssets.value) return 'assets'
+  if (s === 'built') return viewing.value === 'plan' ? 'plan' : 'result'
+  if (['planning', 'plan', 'planned', 'sourcing', 'sourced', 'revising'].includes(s)) return 'plan'
+  return 'confirm'
+})
 const REACHED: Record<string, string[]> = {
-  plan: ['planning', 'plan', 'planned', 'revising', 'building', 'built'],
-  build: ['building', 'built'],
+  confirm: ['layout', 'planning', 'plan', 'planned', 'revising', 'sourcing', 'sourced', 'building', 'built'],
+  layout: ['layout', 'plan', 'planned', 'revising', 'sourcing', 'sourced', 'building', 'built'],
+  plan: ['plan', 'planned', 'revising', 'sourcing', 'sourced', 'building', 'built'],
+  assets: ['planned', 'sourcing', 'sourced', 'building', 'built'],
   result: ['built'],
 }
 function stepDisabled(id: string): boolean {
   if (REACHED[id]) return !REACHED[id].includes(stage.value)
-  return !win.value || (id === 'assets' && stage.value === 'request' && errors.value.length > 0)
+  return !win.value
 }
 function step(id: string): void {
-  if (id === 'request' || id === 'assets') sendToHost({ type: 'build:step', step: id })
+  // ① Confirm (the contents) and ② Layout are the same stage, two pages.
+  if (id === 'confirm' || id === 'layout') confirmTab.value = id === 'layout' ? 'layout' : 'contents'
+  if ((id === 'confirm' || id === 'layout') && planStands.value) {
+    // ① Confirm as the plan was made from it; the plan stays (changing it there asks first).
+    viewing.value = 'confirm'
+  } else if ((id === 'confirm' || id === 'layout') && ['plan', 'planned', 'built'].includes(stage.value)) {
+    sendToHost({ type: 'build:step', step: 'layout' })
+  } else if (id === 'plan' && stage.value === 'plan') {
+    viewing.value = ''
+  } else if (id === 'assets' && ['planned', 'sourcing', 'sourced'].includes(stage.value)) {
+    viewing.value = ''
+  } else if (id === 'build') {
+    viewing.value = ''
+  } else if (id === 'plan' || id === 'assets') {
+    viewing.value = id
+  } else if (id === 'result') {
+    viewing.value = ''
+  }
+}
+// The main layout pattern (a mix shows its largest share).
+const mainPattern = computed(() => {
+  const m = state.value?.layout?.main as unknown
+  if (typeof m === 'string') return m
+  if (m && typeof m === 'object') {
+    const shares = ('mix' in m ? (m as { mix: Record<string, number> }).mix : m) as Record<string, number>
+    let best = 'organic', top = -1
+    for (const [k, v] of Object.entries(shares)) if (typeof v === 'number' && v > top) (best = k), (top = v)
+    return best
+  }
+  return 'organic'
+})
+function areaOf(v: unknown): string {
+  if (typeof v === 'number') return String(v)
+  if (v && typeof v === 'object' && 'area' in v) return String((v as { area: unknown }).area)
+  return ''
+}
+function zoneName(id: string): string | undefined {
+  return state.value?.layout?.zones.find((z) => z.id === id)?.name
+}
+
+// The drawing tool: the zones as laid out; a zone picked on the right is dragged where it goes.
+const DRAW_SIZE = 560
+const drawing = ref(false)
+const drawZone = ref('')
+const drawCanvas = ref<HTMLCanvasElement | null>(null)
+const drawWarnings = computed(() =>
+  (state.value?.layout?.zones ?? [])
+    .filter((z) => z.space && !z.space.ok)
+    .map((z) => `${z.name}: ${z.space?.cells} cells, about ${z.space?.needed} needed`),
+)
+function openDrawing(): void {
+  drawing.value = true
+  setTimeout(redraw, 0)
+}
+function cellAt(e: MouseEvent): [number, number] {
+  const side = state.value?.layout?.side ?? 64
+  const rect = (e.target as HTMLCanvasElement).getBoundingClientRect()
+  const k = side / rect.width
+  return [Math.max(0, Math.min(side - 1, Math.floor((e.clientX - rect.left) * k))), Math.max(0, Math.min(side - 1, Math.floor((e.clientY - rect.top) * k)))]
+}
+// The brush: a round stroke of cells, sent when the button comes up.
+const brushSize = ref(3)
+const erasing = ref(false)
+const stroke = ref(new Set<number>())
+const painting = ref(false)
+function dab(e: MouseEvent): void {
+  const side = state.value?.layout?.side ?? 64
+  const [cx, cy] = cellAt(e)
+  const r = (brushSize.value - 1) / 2
+  for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); ++y) {
+    for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); ++x) {
+      if (x < 0 || y < 0 || x >= side || y >= side) continue
+      if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= (r + 0.5) * (r + 0.5)) stroke.value.add(y * side + x)
+    }
+  }
+}
+function drawStart(e: MouseEvent): void {
+  if (!drawZone.value) return
+  painting.value = true
+  stroke.value = new Set<number>()
+  dab(e)
+  redraw()
+}
+function drawMove(e: MouseEvent): void {
+  if (!painting.value) return
+  dab(e)
+  redraw()
+}
+function drawEnd(): void {
+  if (!painting.value) return
+  painting.value = false
+  const side = state.value?.layout?.side ?? 64
+  const cells = [...stroke.value].map((c) => [c % side, Math.floor(c / side)])
+  stroke.value = new Set<number>()
+  if (cells.length) sendToHost({ type: 'build:paintZone', zone: drawZone.value, cells, erase: erasing.value })
+  redraw()
+}
+function redraw(): void {
+  const canvas = drawCanvas.value
+  const layout = state.value?.layout
+  if (!canvas || !layout) return
+  const g = canvas.getContext('2d')
+  if (!g) return
+  const side = layout.side ?? 64
+  const k = DRAW_SIZE / side
+  g.fillStyle = '#86b25f'
+  g.fillRect(0, 0, DRAW_SIZE, DRAW_SIZE)
+  layout.regions?.forEach((r) => {
+    const i = layout.zones.findIndex((z) => z.id === r.id)
+    g.fillStyle = ZONE_COLOURS[(i < 0 ? 0 : i) % ZONE_COLOURS.length] ?? '#a6e3a1'
+    g.globalAlpha = r.id === drawZone.value ? 1 : 0.75
+    for (const [y, x0, x1] of r.cells) g.fillRect(x0 * k, y * k, (x1 - x0) * k, k)
+  })
+  g.globalAlpha = 1
+  layout.paths?.forEach((p) => {
+    g.fillStyle = p.class === 'river' ? '#4f8fc4' : '#c9a874'
+    for (const [x, y] of p.cells) g.fillRect(x * k, y * k, Math.max(1, k), Math.max(1, k))
+  })
+  // Drawn zones: their rectangles.
+  g.lineWidth = 2
+  layout.zones.forEach((z) => {
+    const d = z.drawn as { x: number; y: number; w: number; h: number } | undefined
+    if (!d) return
+    g.strokeStyle = z.id === drawZone.value ? '#ffffff' : '#333333'
+    g.strokeRect(d.x * k, d.y * k, d.w * k, d.h * k)
+  })
+  if (stroke.value.size) {
+    const i = layout.zones.findIndex((z) => z.id === drawZone.value)
+    g.fillStyle = erasing.value ? 'rgba(134, 178, 95, 0.9)' : ZONE_COLOURS[(i < 0 ? 0 : i) % ZONE_COLOURS.length] ?? '#fff'
+    for (const c of stroke.value) g.fillRect((c % side) * k, Math.floor(c / side) * k, k, k)
+  }
+  // Names on the zones.
+  g.fillStyle = '#111'
+  g.font = '11px sans-serif'
+  layout.regions?.forEach((r) => {
+    if (!r.cells.length) return
+    let sx = 0, sy = 0, n = 0
+    for (const [y, x0, x1] of r.cells) (sx += ((x0 + x1) / 2) * (x1 - x0)), (sy += y * (x1 - x0)), (n += x1 - x0)
+    if (n) g.fillText(zoneName(r.id) ?? r.id, (sx / n) * k - 20, (sy / n) * k)
+  })
+}
+watch(() => state.value?.layout, () => {
+  if (drawing.value) setTimeout(redraw, 0)
+})
+watch(drawZone, () => redraw())
+watch(stage, () => {
+  viewing.value = ''
+})
+// ② Assets' answers to the questions, in the user's words: sent as they're written (on leaving the box).
+const directions = ref('')
+function saveDirections(): void {
+  sendToHost({ type: 'build:directions', text: directions.value })
 }
 const ZONE_COLOURS = ['#a6e3a1', '#fab387', '#cba6f7', '#f9e2af', '#94e2d5', '#f38ba8']
 const selectedZone = ref<string | null>(null)
@@ -342,6 +767,38 @@ const fixText = computed(
       .join('; '),
 )
 const canUndo = computed(() => (state.value?.revisions ?? []).some((r) => r.undo !== undefined && !r.undone))
+const canRedo = computed(() => (state.value?.revisions ?? []).some((r) => r.undone && r.redo))
+// What Undo and Redo would take back or bring back (for their tooltips).
+const undoText = computed(() => {
+  const list = (state.value?.revisions ?? []).filter((r) => r.undo !== undefined && !r.undone)
+  const last = list[list.length - 1]
+  return last ? 'Undo: ' + last.text : 'Nothing to undo'
+})
+const redoText = computed(() => {
+  const next = (state.value?.revisions ?? []).find((r) => r.undone && r.redo)
+  return next ? 'Redo: ' + next.text : 'Nothing to redo'
+})
+// The build's history, shown open or folded.
+const historyOpen = ref(true)
+// Advanced (8.2): the build's own documents.
+const advanced = ref(false)
+const advancedWhat = ref('pll')
+const advancedDoc = ref<{ what?: string; file?: string; text?: string; cut?: boolean } | null>(null)
+const ADVANCED = [
+  { id: 'pll', label: 'PLL' },
+  { id: 'solved', label: 'Solved layout' },
+  { id: 'spec', label: 'Spec' },
+  { id: 'brief', label: 'Brief' },
+  { id: 'assets', label: 'Assets' },
+  { id: 'log', label: 'Log' },
+]
+function showAdvanced(what: string): void {
+  advancedWhat.value = what
+  advancedDoc.value = null
+  sendToHost({ type: 'build:advanced', what })
+}
+// Removing older builds, asked first.
+const removeAsk = ref(false)
 function revise(text?: string): void {
   const request = (text ?? revision.value).trim()
   if (!request) return
@@ -349,6 +806,17 @@ function revise(text?: string): void {
   if (text === undefined) revision.value = ''
 }
 const bigMap = ref(false)
+// The panel's context menu (right-click its header): the ontology it builds from, and the builds.
+function headerMenu(e: MouseEvent): void {
+  openContextMenu(e.clientX, e.clientY, [
+    { label: 'Ontology…', action: () => (editorState.showOntology = true) },
+    { label: 'Your builds', action: () => browse() },
+  ])
+}
+// How many of one kind of building a zone holds (empty: the plan decides).
+function setKind(module: string, kind: string, value: string): void {
+  sendToHost({ type: 'build:zoneKind', module, kind, value: value.trim() === '' ? null : Number(value) })
+}
 
 function edit(path: string, value: unknown): void {
   sendToHost({ type: 'build:edit', path, value })
@@ -370,11 +838,33 @@ function problemFor(prefix: string): string {
   const p = (win.value?.problems ?? []).find((x) => x.where === prefix || x.where.startsWith(prefix + '.'))
   return p ? p.message : ''
 }
+// A piece of art seen large (click a thumbnail; click or Esc to close).
+const zoomed = ref<{ path: string; caption: string } | null>(null)
+function zoom(path: string, caption: string): void {
+  zoomed.value = { path, caption }
+}
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') zoomed.value = null
+})
+// Refine one piece of the build's art: the user's words, then it's made again.
+const refining = ref('')
+const refineText = ref('')
+function openRefine(key: string): void {
+  refining.value = refining.value === key ? '' : key
+  refineText.value = ''
+}
+function refine(key: string): void {
+  if (!refineText.value.trim()) return
+  sendToHost({ type: 'build:refineArt', key, text: refineText.value.trim() })
+  refining.value = ''
+  refineText.value = ''
+}
 function urlOf(path: string): string {
   return `${PROJECT_HOST}${path.split('/').map(encodeURIComponent).join('/')}`
 }
 function start(): void {
-  if (query.value.trim()) sendToHost({ type: 'build:start', query: query.value.trim() })
+  // The words and the choices together; either may be empty, not both.
+  if (query.value.trim() || hasChoices.value) sendToHost({ type: 'build:start', query: query.value.trim(), choices: choices() })
 }
 function browse(): void {
   browsing.value = true
@@ -389,8 +879,13 @@ const STAGE_NAMES: Record<string, string> = {
   request: '① Request',
   assets: '② Assets',
   planning: 'planning',
+  layout: '① Confirm · ② Layout',
   plan: '③ Plan',
   planned: 'laid out',
+  sourcing: '④ Assets: finding the art',
+  sourced: '④ Assets: the art is ready',
+  building: 'building',
+  built: '⑤ Result',
   cancelled: 'stopped',
   failed: 'stopped',
 }
@@ -456,9 +951,13 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
 
 <template>
   <div class="build">
+    <div v-if="zoomed" class="lightbox" @click="zoomed = null">
+      <img :src="urlOf(zoomed.path)" alt="" />
+      <div class="caption">{{ zoomed.caption }} <span class="dim">{{ zoomed.path }}</span></div>
+    </div>
     <!-- Working off the UI thread (7.10): the editor stays usable; the build's own buttons wait. -->
     <div v-if="state?.busy" class="busy">{{ state.status }}</div>
-    <div class="header">
+    <div class="header" @contextmenu.prevent="headerMenu($event)">
       <div class="steps">
         <button
           v-for="s in STEPS"
@@ -473,6 +972,9 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <span v-if="state && !browsing" class="title">{{ state.name || state.query }}</span>
       <button v-if="state && !browsing && !['cancelled', 'failed'].includes(stage)" class="browse" title="Start another build or reopen an earlier one" @click="browse">Builds</button>
       <button v-if="browsing" class="browse" @click="browsing = false">Back to {{ state?.name || 'the build' }}</button>
+      <button v-if="state && !browsing && !['cancelled', 'failed', 'interpreting'].includes(stage)" class="browse" :class="{ active: advanced }"
+              title="The build's own documents: its PLL, the solved layout, the Spec, the Brief, the asset plan, the log"
+              @click="(advanced = !advanced), advanced && showAdvanced(advancedWhat)">Advanced</button>
     </div>
 
     <section v-if="state?.notices?.length && !browsing" class="note notices">
@@ -480,16 +982,178 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
     </section>
 
     <!-- No build yet, or the last one is over: ask for one. -->
+    <!-- The drawing tool: pick a zone on the right, drag where it goes on the left. -->
+    <div v-if="drawing && state?.layout" class="drawing" @click.self="drawing = false">
+      <div class="drawing-box">
+        <div class="canvas-wrap">
+          <canvas
+            ref="drawCanvas"
+            :width="DRAW_SIZE"
+            :height="DRAW_SIZE"
+            @mousedown="drawStart"
+            @mousemove="drawMove"
+            @mouseup="drawEnd"
+            @mouseleave="drawEnd"
+          />
+          <p class="dim small">
+            {{ drawZone ? (erasing ? 'Paint to take land away from the ' : 'Paint where the ') + (zoneName(drawZone) ?? drawZone) + (erasing ? '.' : ' goes.') : 'Pick a zone on the right.' }}
+          </p>
+        </div>
+        <div class="draw-list">
+          <h4>Zones</h4>
+          <button
+            v-for="(z, i) in state.layout.zones.filter((x) => x.level === 'zone')"
+            :key="z.id"
+            :class="['draw-zone', { active: drawZone === z.id }]"
+            @click="drawZone = z.id"
+          >
+            <span class="swatch" :style="{ background: ZONE_COLOURS[state.layout.zones.indexOf(z) % ZONE_COLOURS.length] }" />
+            {{ z.name }}
+            <span v-if="z.space && !z.space.ok" class="warning small"> ⚠ needs ~{{ z.space.needed }}, has {{ z.space.cells }}</span>
+            <span v-if="z.drawn" class="dim small"> · drawn</span>
+          </button>
+          <div class="brush">
+            <label>Brush {{ brushSize }} cell{{ brushSize > 1 ? 's' : '' }}</label>
+            <input v-model.number="brushSize" type="range" min="1" max="16" />
+            <label class="row"><input v-model="erasing" type="checkbox" /> Erase</label>
+          </div>
+          <div v-if="drawWarnings.length" class="warning small">
+            <strong>Short of room:</strong>
+            <div v-for="w in drawWarnings" :key="w">{{ w }}</div>
+          </div>
+          <div class="actions">
+            <button v-if="drawZone && (state.layout.zones.find((x) => x.id === drawZone)?.drawn || state.layout.zones.find((x) => x.id === drawZone)?.painted)" @click="sendToHost({ type: 'build:drawZone', zone: drawZone, rect: null })">
+              Let it be placed
+            </button>
+            <button :disabled="!canUndo" :title="undoText" @click="sendToHost({ type: 'build:undo' })">↶ Undo</button>
+            <button :disabled="!canRedo" :title="redoText" @click="sendToHost({ type: 'build:redo' })">↷ Redo</button>
+            <button class="primary" @click="drawing = false">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <section v-if="advanced && state && !browsing" class="advanced">
+      <div class="confirm-tabs">
+        <button v-for="a in ADVANCED" :key="a.id" :class="{ active: advancedWhat === a.id }" @click="showAdvanced(a.id)">{{ a.label }}</button>
+        <span class="dim">{{ advancedDoc?.file ?? '' }}{{ advancedDoc?.cut ? ' (cut: too long to show whole)' : '' }}</span>
+        <button class="small" @click="showAdvanced(advancedWhat)">Reload</button>
+        <button class="small" @click="advanced = false">Close</button>
+      </div>
+      <pre>{{ advancedDoc ? advancedDoc.text : 'Loading…' }}</pre>
+    </section>
+    <section v-if="stage === 'revising' && !browsing" class="note busy-note">
+      <span>{{ state?.status }}</span>
+      <button @click="sendToHost({ type: 'build:cancel' })">Stop</button>
+    </section>
+    <section v-if="confirmLocked && !browsing" class="note view-note">
+      <span>The layout and contents the plan was made from. Changing anything here discards the plan, and the zones are planned again.</span>
+      <button class="primary" @click="backToPlan()">← Back to the plan</button>
+    </section>
+    <div v-if="discardAsk" class="lightbox ask" @click.self="discardAsk = false">
+      <div class="ask-box">
+        <strong>Discard the plan?</strong>
+        <p>Changing the layout or contents discards the plan made from them{{ stage === 'built' ? ' (and the build)' : '' }}. You'll need to plan the zones again.</p>
+        <div class="actions">
+          <button @click="discardAsk = false">Keep the plan</button>
+          <button class="primary" @click="discardPlan()">Discard it and make changes</button>
+        </div>
+      </div>
+    </div>
     <div v-if="browsing || !state || stage === 'cancelled' || stage === 'failed'" class="body start">
       <p v-if="stage === 'failed'" class="error">{{ state?.errors.join(' · ') }}</p>
       <p v-else-if="stage === 'cancelled'" class="dim">The build was cancelled.</p>
       <p class="dim">Describe a place to build. You'll confirm the details before anything is made.</p>
       <div class="ask">
         <input v-model="query" placeholder="e.g. a large village by a river, with gardens and a market" @keydown.enter="start" />
-        <button class="primary" :disabled="!query.trim()" @click="start">Start</button>
+        <button class="primary" :disabled="!query.trim() && !hasChoices" @click="start">Start</button>
       </div>
+      <section class="choices">
+        <button class="toggle" @click="choicesOpen = !choicesOpen">
+          {{ choicesOpen ? '▾' : '▸' }} Choices
+          <span class="dim">{{ hasChoices ? `${Object.keys(choices()).length} set: kept as you set them` : 'optional: set what matters, the words decide the rest' }}</span>
+        </button>
+        <div v-if="choicesOpen" class="grid">
+          <label>Build</label>
+          <select :value="chosenType" @change="setType(($event.target as HTMLSelectElement).value)">
+            <option value="">from the words</option>
+            <option v-for="t in choiceTypes" :key="t.id" :value="t.id">{{ t.name }}</option>
+          </select>
+          <template v-if="choiceType">
+            <label>Size</label>
+            <div>
+              <select :value="(chosen['scale.class'] as string) ?? ''" @change="setChoice('scale.class', ($event.target as HTMLSelectElement).value)">
+                <option value="">from the words</option>
+                <option v-for="c in choiceType.classes" :key="c.id" :value="c.id">{{ c.label }} ({{ c.count[0] }}–{{ c.count[1] }} {{ choiceType.unit }})</option>
+              </select>
+              <span class="dim"> or </span>
+              <input v-model="countLow" class="num" type="number" min="1" placeholder="from" />
+              –
+              <input v-model="countHigh" class="num" type="number" min="1" placeholder="to" />
+              <span class="dim"> {{ choiceType.unit }}</span>
+            </div>
+            <template v-for="f in choiceType.fields" :key="f.path">
+              <label :title="f.hint">{{ f.label }}</label>
+              <div>
+                <select v-if="f.values" :value="(chosen[f.path] as string) ?? ''" @change="setChoice(f.path, ($event.target as HTMLSelectElement).value)">
+                  <option value="">from the words</option>
+                  <option v-for="v in f.values" :key="v" :value="v">{{ v.replace(/-/g, ' ') }}</option>
+                </select>
+                <input v-else-if="f.type === 'count'" class="num" type="number" :min="f.min" :max="f.max" placeholder="from the words"
+                       :value="(chosen[f.path] as number) ?? ''"
+                       @change="setChoice(f.path, ($event.target as HTMLInputElement).value === '' ? '' : Number(($event.target as HTMLInputElement).value))" />
+                <select v-else-if="f.type === 'bool'" :value="chosen[f.path] === undefined ? '' : String(chosen[f.path])"
+                        @change="setChoice(f.path, ($event.target as HTMLSelectElement).value === '' ? '' : ($event.target as HTMLSelectElement).value === 'true')">
+                  <option value="">from the words</option>
+                  <option value="true">yes</option>
+                  <option value="false">no</option>
+                </select>
+              </div>
+            </template>
+            <template v-if="choiceType.features.length">
+              <label>Features</label>
+              <div class="chips">
+                <button v-for="f in choiceType.features" :key="f.id" :class="{ active: featuresChosen.includes(f.id) }" @click="toggleChosenFeature(f.id)">{{ f.label }}</button>
+              </div>
+            </template>
+            <template v-if="choiceType.parts.length">
+              <label>Parts</label>
+              <div>
+                <div class="chips">
+                  <button
+                    v-for="part in choiceType.parts"
+                    :key="part.id"
+                    :class="{ active: partsChosen[part.id] === true, out: partsChosen[part.id] === false }"
+                    :title="part.description"
+                    @click="cyclePart(part.id)"
+                  >
+                    {{ partsChosen[part.id] === true ? '✓ ' : partsChosen[part.id] === false ? '✗ ' : '' }}{{ part.label }}
+                  </button>
+                </div>
+                <p class="dim">Click a part once to have it, again to leave it out, again to let the words decide.</p>
+              </div>
+            </template>
+          </template>
+        </div>
+      </section>
       <section v-if="builds.length" class="builds">
-        <h4>Your builds</h4>
+        <h4>
+          Your builds
+          <button v-if="builds.length > 1" class="small" title="Deletes every build but the open one (asks first)" @click="removeAsk = true">Remove older builds</button>
+        </h4>
+        <div v-if="removeAsk" class="lightbox ask" @click.self="removeAsk = false">
+          <div class="ask-box">
+            <strong>Remove older builds?</strong>
+            <p>
+              Deletes {{ builds.filter((b) => b.id !== state?.id).length }} build(s) and their files (their plans, maps and history) from the
+              project's places folder. {{ state?.id ? 'The open build is kept. ' : '' }}What they put in a scene stays there. This can't be undone.
+            </p>
+            <div class="actions">
+              <button @click="removeAsk = false">Keep them</button>
+              <button class="primary" @click="(removeAsk = false), sendToHost({ type: 'build:removeOlder' })">Remove them</button>
+            </div>
+          </div>
+        </div>
         <button v-for="b in builds" :key="b.id" class="build-row" :class="{ current: b.id === state?.id && !['cancelled', 'failed'].includes(stage) }" :title="b.query" @click="resume(b.id)">
           <span class="name">{{ b.name || b.query }}</span>
           <span class="dim">{{ STAGE_NAMES[b.stage] ?? b.stage }}</span>
@@ -498,9 +1162,24 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       </section>
     </div>
 
+    <div v-else-if="(stage === 'interpreting' || (stage === 'planning' && state?.planPhase === 'root')) && state?.confirmProgress" class="body start progress-view">
+      <p class="query">“{{ state.query }}”</p>
+      <div class="bar"><i :style="{ width: `${Math.round(100 * state.confirmProgress.fraction)}%` }" /></div>
+      <ol class="progress-steps">
+        <li v-for="s in state.confirmProgress.steps" :key="s.id" :class="s.state">
+          <span class="mark">{{ s.state === 'done' ? '✓' : s.state === 'active' ? '●' : '○' }}</span>
+          <span class="label">{{ s.label }}</span>
+          <span v-if="s.state === 'active'" class="dim"> · {{ elapsed }}s</span>
+          <ul v-if="s.detail.length && s.state !== 'waiting'" class="detail">
+            <li v-for="(d, i) in s.detail" :key="i">{{ d }}</li>
+          </ul>
+        </li>
+      </ol>
+      <p class="dim">Then ① Confirm opens: what the place holds, and its layout to adjust.</p>
+      <button @click="sendToHost({ type: 'build:cancel' })">Stop</button>
+    </div>
     <div v-else-if="stage === 'interpreting'" class="body start">
       <p>{{ state?.status || 'Reading your request…' }}</p>
-      <p class="dim">“{{ state?.query }}”: three readings are drafted, then compared, so you see what the request leaves open.</p>
       <button @click="sendToHost({ type: 'build:cancel' })">Stop</button>
     </div>
 
@@ -511,10 +1190,342 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <button @click="sendToHost({ type: 'build:cancel' })">Stop</button>
     </div>
 
+    <!-- ① Confirm: the layout first (the zones and where they go), and what the place holds. -->
+    <div
+      v-else-if="atConfirm && confirmTab === 'layout' && state?.layout"
+      class="body layout-view"
+      :class="{ locked: confirmLocked }"
+      @click.capture="guardLocked"
+      @mousedown.capture="guardLocked"
+      @keydown.capture="guardLocked"
+    >
+      <section v-if="state.layout.stale" class="note warning">
+        The Contents changed since these zones were planned.
+        <button class="primary" @click="sendToHost({ type: 'build:replanLayout' })">Lay out the zones again</button>
+      </section>
+      <div class="layout-top">
+        <div class="map-box">
+          <img v-if="state.layout.image || state.image" :src="PROJECT_HOST + (state.layout.image ?? state.image)" alt="The zones" class="zones-map" title="Click to paint the zones" @click="openDrawing()" />
+          <div class="map-actions">
+            <button class="small" @click="openDrawing()">Paint the zones…</button>
+            <button class="small" :disabled="!canUndo || stage === 'revising'" :title="undoText" @click="sendToHost({ type: 'build:undo' })">↶ Undo</button>
+            <button class="small" :disabled="!canRedo || stage === 'revising'" :title="redoText" @click="sendToHost({ type: 'build:redo' })">↷ Redo</button>
+          </div>
+        </div>
+        <table class="zones">
+          <thead><tr><th>Zone</th><th>What it is</th><th>Where it goes</th><th>Size</th></tr></thead>
+          <tbody>
+            <tr v-for="(z, i) in state.layout.zones" :key="z.id">
+              <td>
+                <span class="swatch" :style="{ background: ZONE_COLOURS[i % ZONE_COLOURS.length] }" />
+                <strong>{{ z.name }}</strong><br />
+                <span class="dim">{{ z.id }}</span>
+                <div v-if="z.space && !z.space.ok" class="warning small">⚠ painted smaller than its {{ show(z.count) }} {{ state.layout.unit }} need (about {{ z.space.needed }} cells)</div>
+                <div v-if="z.drawn || z.painted" class="dim small">painted <button class="link" @click="sendToHost({ type: 'build:drawZone', zone: z.id, rect: null })">let it be placed</button></div>
+              </td>
+              <td class="small">{{ z.description }}<span v-if="z.rationale" class="dim"><br />{{ z.rationale }}</span></td>
+              <td class="small">
+                <span v-if="z.placement">{{ z.placement }}</span>
+                <span v-if="z.rel?.length" class="dim"><br />{{ z.rel.map((r) => r.type + ' ' + r.to).join(' · ') }}</span>
+                <span v-if="z.where" :class="z.placement ? 'dim' : ''"><br />Laid out: {{ z.where }}</span>
+              </td>
+              <td class="small">
+                <template v-if="z.level === 'zone'">
+                  <input class="num" type="number" min="1" :value="areaOf(z.area)" title="Its land, in cells²"
+                         @change="sendToHost({ type: 'build:zoneField', zone: z.id, field: 'area', value: Number(($event.target as HTMLInputElement).value) })" />
+                  <span class="dim">cells²</span>
+                  <template v-if="z.countField">
+                    <br />
+                    <input class="num" type="number" min="0" :value="countOf(z.count)" :title="'Its ' + state.layout.unit"
+                           @change="sendToHost({ type: 'build:zoneField', zone: z.id, field: z.countField, value: Number(($event.target as HTMLInputElement).value) })" />
+                    <span class="dim">{{ state.layout.unit }}</span>
+                  </template>
+                  <div v-if="z.kinds?.length" class="kinds">
+                    <label v-for="k in z.kinds" :key="k.module" :title="'How many ' + k.name + ' (empty: the plan decides)'">
+                      <input class="num small" type="number" min="0" :value="k.count ?? ''" :placeholder="k.estimate !== undefined ? '~' + k.estimate : 'any'"
+                             @change="setKind(z.module, k.module, ($event.target as HTMLInputElement).value)" />
+                      <span class="dim">{{ k.name }}</span>
+                    </label>
+                  </div>
+                </template>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <section v-if="win" class="layouts-section">
+        <h4>Layout</h4>
+        <div class="layout-row">
+          <span class="layout-name">The place</span>
+          <div class="layouts">
+            <div v-for="l in win.layout.options" :key="l" class="layout" :class="{ active: l in win.layout.value }">
+              <button :title="l in win.layout.value ? 'Leave this pattern out' : 'Add this pattern'" @click="edit('shape.layout', toggleShare(win.layout.value, l))">
+                <svg viewBox="0 0 40 28" width="40" height="28" v-html="layoutSketch(l)" />
+                <span>{{ l.replace(/-/g, ' ') }}</span>
+              </button>
+              <span v-if="l in win.layout.value && Object.keys(win.layout.value).length > 1" class="share">
+                <input
+                  class="num"
+                  :value="Math.round((win.layout.value[l] ?? 0) * 100)"
+                  @change="edit('shape.layout', setShare(win.layout.value, l, Number(($event.target as HTMLInputElement).value) / 100))"
+                />%
+              </span>
+            </div>
+          </div>
+        </div>
+        <input
+          class="wide"
+          :value="win.layout.description ?? ''"
+          placeholder="Where each pattern goes, if it matters: e.g. a grid core inside the walls, organic lanes outside"
+          @change="edit('shape.description', ($event.target as HTMLInputElement).value)"
+        />
+        <div v-for="z in state.layout.zones.filter((x) => x.hasStyle)" :key="z.id" class="layout-row">
+          <span class="layout-name">{{ z.name }}</span>
+          <div class="layouts small-tiles">
+            <div class="layout" :class="{ active: !z.style }">
+              <button title="The place's layout" @click="sendToHost({ type: 'build:zoneField', zone: z.id, field: 'street-style', value: '' })">
+                <svg viewBox="0 0 40 28" width="30" height="21" v-html="layoutSketch(mainPattern)" />
+                <span>as the place</span>
+              </button>
+            </div>
+            <div v-for="l in win.layout.options" :key="l" class="layout" :class="{ active: z.style === l }">
+              <button @click="sendToHost({ type: 'build:zoneField', zone: z.id, field: 'street-style', value: l })">
+                <svg viewBox="0 0 40 28" width="30" height="21" v-html="layoutSketch(l)" />
+                <span>{{ l.replace(/-/g, ' ') }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section v-if="state.directions" class="note small"><strong>Your answers:</strong> {{ state.directions }}</section>
+      <section class="revise">
+        <h4>
+          Revise the layout
+          <button v-if="state.revisions?.length" class="small link" @click="historyOpen = !historyOpen">
+            {{ historyOpen ? 'hide' : 'show' }} the history ({{ state.revisions.length }})
+          </button>
+        </h4>
+        <div v-for="(r, i) in historyOpen ? state.revisions ?? [] : []" :key="i" :class="['revision', { undone: r.undone, edit: r.by === 'edit' }]">
+          <div v-if="r.by === 'you'"><span class="who">You:</span> {{ r.text }} <span v-if="r.time" class="dim when">{{ when(r.time) }}</span></div>
+          <div v-if="r.by === 'edit'"><span class="who">You did:</span> {{ r.text }} <span v-if="r.time" class="dim when">{{ when(r.time) }}</span><span v-if="r.undone" class="dim"> (undone)</span></div>
+          <div v-if="r.by !== 'edit'"><span class="who">AI:</span> {{ r.summary }}<span v-if="r.undone" class="dim"> (undone)</span></div>
+          <div v-for="(c, k) in r.checks ?? []" :key="'c' + k" :class="['small', c.ok ? 'ok' : 'error']">
+            {{ c.ok ? '✓' : '✗' }} {{ c.node }} {{ c.type }} {{ c.to }} <span class="dim">· {{ c.detail }}</span>
+          </div>
+          <div v-for="n in r.notes ?? []" :key="n" class="dim small">{{ n }}</div>
+        </div>
+        <p v-if="stage === 'revising'">{{ state.status }} <button @click="sendToHost({ type: 'build:cancel' })">Stop</button></p>
+        <template v-else>
+          <textarea
+            v-model="revision"
+            rows="2"
+            placeholder="e.g. move the market to the crossroads; the residential ward along the river, south of the docks"
+            @keydown.enter.exact.prevent="revise()"
+          />
+          <div class="actions left">
+            <button class="primary" :disabled="!revision.trim()" @click="revise()">Revise</button>
+            <button :disabled="!canUndo" :title="undoText" @click="sendToHost({ type: 'build:undo' })">↶ Undo</button>
+            <button :disabled="!canRedo" :title="redoText" @click="sendToHost({ type: 'build:redo' })">↷ Redo</button>
+          </div>
+        </template>
+      </section>
+      <div class="actions">
+        <button v-if="confirmLocked" class="primary" data-view-ok @click="backToPlan()">Back to the plan →</button>
+        <template v-else>
+        <button @click="sendToHost({ type: 'build:cancel' })">Cancel</button>
+        <button
+          class="primary"
+          :disabled="stage === 'revising' || state.layout.stale || errors.length > 0"
+          :title="state.layout.stale ? 'Lay the zones out again first' : 'Plans what is inside each zone, the zones kept where they are'"
+          @click="sendToHost({ type: 'build:planFromLayout' })"
+        >
+          Plan the zones →
+        </button>
+        </template>
+      </div>
+    </div>
+
+    <!-- ③ Assets (after the plan): where the art comes from, then the build. -->
+    <div v-else-if="showAssets && (win || state?.sourcing || state?.sourced)" class="body window assets-view">
+      <div class="confirm-tabs">
+        <button :class="{ active: assetsTab === 'how' }" @click="assetsTab = 'how'">How each is found</button>
+        <button :class="{ active: assetsTab === 'found' }" :disabled="!assetsFound" @click="assetsTab = 'found'">The assets</button>
+        <span class="dim">{{ assetsTab === 'how' ? 'the project, the library, the web or the Art tool, for each part' : 'what was found and made, each refinable' }}</span>
+      </div>
+      <template v-if="assetsTab === 'how' && win">
+      <section class="note">
+        <label class="row">
+          <input type="checkbox" :checked="sourcingSettings.webSearch" @change="setSourcing({ webSearch: ($event.target as HTMLInputElement).checked })" />
+          Search the web for free art (OpenGameArt; only CC0, CC-BY and OGA-BY, credited in CREDITS.md)
+        </label>
+        <label class="row">
+          <input type="checkbox" :checked="sourcingSettings.shareAlike" @change="setSourcing({ shareAlike: ($event.target as HTMLInputElement).checked })" />
+          Allow share-alike art (CC-BY-SA: the game's art must then be shared alike)
+        </label>
+        </section>
+        <section v-if="state?.assetNeeds?.length" class="plan">
+        <h4>
+          Each part's art:
+          <span class="dim">{{ state.assetNeeds.filter((n) => n.decision?.action === 'generate' && n.source === 'placeholder').length }} to make,
+            {{ state.assetNeeds.filter((n) => n.decision?.action === 'web' && n.source === 'placeholder').length }} to search for,
+            {{ state.assetNeeds.filter((n) => n.source !== 'placeholder').length }} found</span>
+        </h4>
+        <table class="components">
+          <thead><tr><th>Needed</th><th>For</th><th>Gets</th><th>Source</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr v-for="n in state.assetNeeds" :key="n.key">
+              <td>{{ n.concepts?.length ? n.concepts.join(', ') + ' ' : '' }}{{ n.role }}<span v-if="(n.uses ?? 1) > 1" class="dim"> ×{{ n.uses }}</span></td>
+              <td class="dim">{{ n.componentName || n.component }}</td>
+              <td :class="{ warning: n.source === 'placeholder' && !['generate', 'web'].includes(n.decision?.action ?? '') }">{{ willGet(n) }}
+                <span v-if="n.name" class="dim">· {{ n.name }}</span></td>
+              <td>
+                <select v-if="n.component && n.component !== 'ground'" :value="n.policy ?? 'auto'"
+                        @change="edit(`components.${n.component}.assets.source`, ($event.target as HTMLSelectElement).value)">
+                  <option v-for="s in SOURCES" :key="s.id" :value="s.id" :title="s.title">{{ s.label }}</option>
+                </select>
+              </td>
+              <td class="dim">{{ n.decision?.reason || n.why }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+      <section v-else-if="win.assetPlan" class="plan">
+        <h4>Assets: {{ win.assetPlan.summary.project }} from the project, {{ win.assetPlan.summary.generate }} to generate</h4>
+        <table class="components">
+          <thead><tr><th>Needed</th><th>For</th><th>Candidates</th><th>Source</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr v-for="row in win.assetPlan.rows" :key="row.component + row.label + row.slot">
+              <td>{{ row.label }}<span v-if="!row.essential" class="dim"> (optional)</span></td>
+              <td class="dim">{{ row.component }}</td>
+              <td class="thumbs">
+                <CatalogThumb v-for="c in row.candidates" :key="c.id" :src="urlOf(c.path)" :rect="c.rect" :size="28" :title="`${c.name}: fit ${c.fit} (${c.grade})`" />
+                <span v-if="row.candidates.length === 0" class="dim">none</span>
+              </td>
+              <td>
+                <select :value="row.chosen" @change="edit(`components.${row.component}.assets.source`, ($event.target as HTMLSelectElement).value)">
+                  <option v-for="s in SOURCES" :key="s.id" :value="s.id" :title="s.title">{{ s.id === 'auto' ? `auto (${row.source})` : s.label }}</option>
+                </select>
+              </td>
+              <td class="dim">{{ row.reason }}</td>
+            </tr>
+          </tbody>
+        </table>
+        </section>
+        <div class="actions">
+          <button @click="viewing = 'plan'">← Plan</button>
+          <span class="dim">{{ state?.status }}</span>
+          <button v-if="SCENE_BUILD" class="primary" :disabled="stage === 'sourcing' || stage === 'building'"
+                  title="Finds each part's art in the project or the library, and searches or makes what's missing"
+                  @click="sendToHost({ type: 'build:findAssets' }); assetsTab = 'found'">
+            {{ assetsFound ? 'Find the assets again' : 'Find the assets →' }}
+          </button>
+        </div>
+      </template>
+      <template v-else>
+        <!-- Being found and made: each piece as it comes. -->
+        <section v-if="stage === 'sourcing' && state?.sourcing" class="sourcing">
+          <h4>Finding and making the art: {{ state.progress?.done ?? 0 }} of {{ state.progress?.total ?? state.sourcing.length }} done</h4>
+          <div class="bar"><i :style="{ width: `${(100 * (state.progress?.done ?? 0)) / Math.max(1, state.progress?.total ?? state.sourcing.length)}%` }" /></div>
+          <p class="dim">
+            Each piece the project has no art for is {{ state.sourcing.some((n) => n.action === 'web') ? 'searched for on the web or ' : '' }}made by
+            the Art tool, then checked by the vision model (up to 3 tries). When they're all in, Build puts the place into the scene.
+          </p>
+        <div class="art-grid">
+          <div v-for="n in state.sourcing" :key="n.key" :class="['art-need', { done: n.done, passed: n.passed, open: refining === n.key }]">
+            <div class="thumbs">
+              <template v-if="n.made.length">
+                <figure v-for="m in n.made" :key="m.path" :class="{ bad: m.ok === false }" :title="m.seen ? 'Seen as: ' + m.seen : 'Being checked…'">
+                  <img :src="urlOf(m.path)" alt="" class="zoomable" @click="zoom(m.path, n.role + (m.seen ? ' · seen as ' + m.seen : ''))" />
+                  <figcaption>{{ m.ok === undefined ? 'checking' : m.ok ? '✓' : '✗ ' + (m.seen ?? '') }}</figcaption>
+                </figure>
+              </template>
+              <span v-else class="waiting">{{ n.done ? 'none came' : n.action === 'web' ? 'searching…' : 'making…' }}</span>
+            </div>
+            <div class="what">
+              <strong>{{ n.role }}</strong>
+              <span v-if="n.alternatives" class="dim">or any of: {{ n.alternatives.replace(/,/g, ', ') }}</span>
+              <span class="dim">{{ n.description }}</span>
+              <span class="dim">try {{ Math.max(1, n.attempts) }}{{ n.done ? (n.passed ? ' · done' : ' · placeholder') : '' }}</span>
+              <span v-if="n.request" class="dim">asked: {{ n.request }}</span>
+              <button v-if="n.done" class="small" @click="openRefine(n.key)">Refine</button>
+            </div>
+            <div v-if="refining === n.key" class="refine">
+              <textarea v-model="refineText" rows="2" placeholder="What to change, e.g. a thatched roof, warmer colours, smaller" @keydown.enter.ctrl="refine(n.key)" />
+              <div class="row">
+                <button class="primary" :disabled="!refineText.trim()" @click="refine(n.key)">Make it again</button>
+                <button @click="refining = ''">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        </section>
+        <!-- Found: what each part got, and the art made (refinable). -->
+        <section v-if="stage !== 'sourcing' && state?.assetNeeds?.length" class="plan">
+          <h4>
+            The assets:
+            <span v-for="(n, src) in neededBySource" :key="src" class="dim">{{ n }} {{ SOURCE_NAMES[src] ?? src }} · </span>
+          </h4>
+          <table class="components">
+            <thead><tr><th>Needed</th><th>Gets</th><th>From</th></tr></thead>
+            <tbody>
+              <tr v-for="n in state.assetNeeds" :key="n.key">
+                <td>{{ n.concepts?.length ? n.concepts.join(', ') + ' ' : '' }}{{ n.role }}<span v-if="(n.uses ?? 1) > 1" class="dim"> ×{{ n.uses }}</span></td>
+                <td>{{ n.name || (n.entry ? n.entry.split('/').pop() : '') }}<span v-if="n.why" class="dim"> {{ n.why }}</span></td>
+                <td :class="{ warning: n.source === 'placeholder' }">{{ SOURCE_NAMES[n.source] ?? n.source }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <section v-if="stage !== 'sourcing' && state?.sourced?.length" class="sourcing">
+          <h4>Art made for this build</h4>
+          <div class="art-grid">
+            <div v-for="n in state.sourced" :key="n.key" :class="['art-need', { done: true, passed: n.passed, open: refining === n.key }]">
+              <div class="thumbs">
+                <figure v-for="m in n.made.filter((x) => x.ok !== false).slice(-1)" :key="m.path" :title="m.seen ? 'Seen as: ' + m.seen : ''">
+                  <img :src="urlOf(m.path)" alt="" class="zoomable" @click="zoom(m.path, n.role + (m.seen ? ' · seen as ' + m.seen : ''))" />
+                </figure>
+                <span v-if="!n.made.some((x) => x.ok !== false)" class="waiting">placeholder</span>
+              </div>
+              <div class="what">
+                <strong>{{ n.role }}</strong>
+                <span v-if="n.alternatives" class="dim">or any of: {{ n.alternatives.replace(/,/g, ', ') }}</span>
+                <span class="dim">{{ n.description }}</span>
+                <span v-if="n.request" class="dim">asked: {{ n.request }}</span>
+                <button class="small" @click="openRefine(n.key)">Refine</button>
+              </div>
+              <div v-if="refining === n.key" class="refine">
+                <textarea v-model="refineText" rows="2" placeholder="What to change, e.g. a thatched roof, warmer colours, smaller" @keydown.enter.ctrl="refine(n.key)" />
+                <div class="row">
+                  <button class="primary" :disabled="!refineText.trim()" @click="refine(n.key)">Make it again</button>
+                  <button @click="refining = ''">Cancel</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section v-if="stage === 'building'" class="build-progress">
+          <h4>Building {{ state?.name || 'the place' }}</h4>
+          <div class="bar"><i :style="{ width: `${(100 * (state?.buildProgress?.done ?? 0)) / Math.max(1, state?.buildProgress?.total ?? 5)}%` }" /></div>
+          <p>{{ state?.buildProgress?.text || state?.status }}</p>
+        </section>
+        <div class="actions">
+          <button @click="assetsTab = 'how'">← How each is found</button>
+          <span class="dim">{{ state?.status }}</span>
+          <button v-if="stage === 'sourcing'" title="Stop finding and making art: what's missing is a placeholder" @click="sendToHost({ type: 'build:skipSourcing' })">
+            Stop: use placeholders
+          </button>
+          <button v-if="stage === 'sourced' || stage === 'built'" class="primary" title="Puts the place into the scene, verifies it and repairs what it can"
+                  @click="sendToHost({ type: 'build:build' })">
+            {{ stage === 'built' ? 'Build again' : 'Build →' }}
+          </button>
+        </div>
+      </template>
+    </div>
+
     <!-- ③ Plan: what will be built, before anything is. -->
-    <div v-else-if="['plan', 'planned', 'revising', 'building', 'built'].includes(stage) && state?.plan" class="body plan-view">
+    <div v-else-if="['plan', 'planned', 'sourcing', 'sourced', 'revising', 'building', 'built'].includes(stage) && state?.plan && !atConfirm" class="body plan-view">
       <!-- ⑤ Result: what the scene got, checked. -->
-      <section v-if="stage === 'built' && state.result" :class="['result', { failing: sceneFailing.length }]">
+      <section v-if="showResult && state.result" :class="['result', { failing: sceneFailing.length }]">
         <p class="headline">
           {{ sceneFailing.length ? `Built, ${sceneFailing.length} check(s) to look at` : 'Built and verified' }}
           <span class="dim">
@@ -577,11 +1588,19 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         </table>
         <h4>Next</h4>
         <ul class="dim">
-          <li v-if="placeholderKinds">Replace the {{ placeholderKinds }} placeholder kind(s): import art for them, then Build again (asset sourcing comes with 7.9).</li>
+          <li>The place is in the scene now. Finish saves the scene with it and closes the build (reopen it from Your builds).</li>
+          <li v-if="placeholderKinds">
+            {{ placeholderKinds }} kind(s) still show placeholders: Refine their art below, import art for them, or Build again
+            to have the Art tool make what's missing.
+          </li>
           <li>Revise below and Build again: the place is replaced, nothing else in the scene is touched.</li>
           <li>Undo (Ctrl+Z) takes the whole build out of the scene in one step.</li>
         </ul>
+        <div class="row">
+          <button class="primary" title="Save the scene with the place in it and close the build" @click="sendToHost({ type: 'build:finish' })">Finish</button>
+        </div>
       </section>
+      <template v-if="!showResult">
       <p class="headline">
         {{ state.plan.totals.buildings }} {{ state.plan.totals.unit ?? 'buildings' }} in {{ state.plan.totals.zones }} zones
         <span class="dim">· {{ amountText(state.plan.totals.area) }} cells²</span>
@@ -727,14 +1746,20 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       </div>
       <!-- Revise: say what to change; the AI changes the plan and it's laid out again. -->
       <section class="revise">
-        <h4>Revise</h4>
-        <div v-for="(r, i) in state.revisions ?? []" :key="i" :class="['revision', { undone: r.undone }]">
-          <div v-if="r.by === 'you'"><span class="who">You:</span> {{ r.text }}</div>
-          <div v-else><span class="who">AI review of the map:</span></div>
+        <h4>
+          Revise
+          <button v-if="state.revisions?.length" class="small link" @click="historyOpen = !historyOpen">
+            {{ historyOpen ? 'hide' : 'show' }} the history ({{ state.revisions.length }})
+          </button>
+        </h4>
+        <div v-for="(r, i) in historyOpen ? state.revisions ?? [] : []" :key="i" :class="['revision', { undone: r.undone, edit: r.by === 'edit' }]">
+          <div v-if="r.by === 'you'"><span class="who">You:</span> {{ r.text }} <span v-if="r.time" class="dim when">{{ when(r.time) }}</span></div>
+          <div v-else-if="r.by === 'edit'"><span class="who">You did:</span> {{ r.text }} <span v-if="r.time" class="dim when">{{ when(r.time) }}</span></div>
+          <div v-else><span class="who">AI review of the map:</span> <span v-if="r.time" class="dim when">{{ when(r.time) }}</span></div>
           <ul v-if="r.issues?.length" class="dim">
             <li v-for="issue in r.issues" :key="issue">{{ issue }}</li>
           </ul>
-          <div><span class="who">AI:</span> {{ r.summary }}<span v-if="r.undone" class="dim"> (undone)</span></div>
+          <div v-if="r.summary"><span class="who">{{ r.by === 'edit' ? '' : 'AI:' }}</span> {{ r.summary }}<span v-if="r.undone" class="dim"> (undone)</span></div>
           <div v-for="(c, k) in r.checks ?? []" :key="'c' + k" :class="['small', c.ok ? 'ok' : 'error']">
             {{ c.ok ? '✓' : '✗' }} {{ c.node }} {{ c.type }} {{ c.to }} <span class="dim">· {{ c.detail }}</span>
           </div>
@@ -754,7 +1779,8 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             <button v-if="stage === 'planned'" title="The AI looks at the map and fixes what looks wrong" @click="sendToHost({ type: 'build:review' })">
               Check the map
             </button>
-            <button v-if="canUndo" @click="sendToHost({ type: 'build:undo' })">Undo last revision</button>
+            <button :disabled="!canUndo" :title="undoText" @click="sendToHost({ type: 'build:undo' })">↶ Undo</button>
+            <button :disabled="!canRedo" :title="redoText" @click="sendToHost({ type: 'build:redo' })">↷ Redo</button>
             <button title="Lays the plan out again with the latest layout rules (no AI)" @click="sendToHost({ type: 'build:relayout' })">
               Lay out again
             </button>
@@ -764,39 +1790,98 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <section v-if="state.problems?.length" class="problems">
         <div v-for="p in state.problems" :key="p.where + p.message" :class="p.warning ? 'warning' : 'error'">{{ p.where }}: {{ p.message }}</div>
       </section>
-      <div class="actions">
+      </template>
+      <div v-if="!showResult" class="actions">
         <button @click="sendToHost({ type: 'build:cancel' })">Cancel</button>
         <button v-if="stage === 'plan'" @click="sendToHost({ type: 'build:step', step: 'assets' })">Back</button>
         <button v-if="stage === 'plan'" class="primary" @click="sendToHost({ type: 'build:approve' })">
           Approve plan
         </button>
-        <template v-else-if="stage === 'planned' || stage === 'built'">
+        <template v-else-if="['planned', 'sourcing', 'sourced', 'built'].includes(stage)">
           <span class="dim">{{ stage === 'planned' ? state.status : '' }}</span>
-          <button
-            v-if="SCENE_BUILD"
-            class="primary"
-            title="Puts the place into the scene, verifies it and repairs what it can"
-            @click="sendToHost({ type: 'build:build' })"
-          >
-            {{ stage === 'built' ? 'Build again' : 'Build' }}
-          </button>
+          <button class="primary" title="Where the art comes from, then the build" @click="viewing = 'assets'">Assets →</button>
         </template>
         <span v-else-if="stage === 'building'" class="dim">{{ state.status }}</span>
       </div>
     </div>
 
     <!-- ① Request and ② Assets: the confirmation window. -->
-    <div v-else-if="win" class="body window">
-      <section v-if="win.questions?.length || Object.values(win.marks).some((m) => m.disputed)" class="note">
-        <strong>To decide:</strong> fields marked
-        <span class="tag disputed">differ</span> were read differently;
-        <span class="tag low">guessed</span> ones are the AI's guesses.
-        <ul v-if="win.questions?.length">
-          <li v-for="q in win.questions" :key="q">{{ q }}</li>
+    <div
+      v-else-if="win"
+      class="body window"
+      :class="{ locked: confirmLocked }"
+      @click.capture="guardLocked"
+      @mousedown.capture="guardLocked"
+      @keydown.capture="guardLocked"
+    >
+      <div v-if="atConfirm && win.decisions?.length" class="confirm-row">
+        <section class="note decide">
+          <strong>To decide</strong>
+          <span class="dim"> · each with what was assumed; change it if you want another</span>
+          <table class="decisions">
+            <thead><tr><th>Question</th><th>Assumed</th><th>Your answer</th></tr></thead>
+            <tbody>
+              <tr v-for="d in win.decisions" :key="d.question">
+                <td>{{ d.question }}</td>
+                <td class="dim">{{ d.assumed }}<span v-if="d.path" class="small"><br />({{ d.path }}: {{ show(d.current) }})</span></td>
+                <td>
+                  <template v-if="decisionControl(d) === 'enabled'">
+                    <label class="row"><input type="checkbox" :checked="Boolean(d.current)" @change="edit(d.path ?? '', ($event.target as HTMLInputElement).checked)" /> yes</label>
+                  </template>
+                  <select v-else-if="decisionControl(d) === 'options'" :value="(d.current as string) ?? ''" @change="edit(d.path ?? '', ($event.target as HTMLSelectElement).value)">
+                    <option v-for="o in decisionOptions(d)" :key="o" :value="o">{{ o.replace(/-/g, ' ') }}</option>
+                  </select>
+                  <input v-else-if="decisionControl(d) === 'text'" :value="(d.current as string) ?? ''" @change="edit(d.path ?? '', ($event.target as HTMLInputElement).value)" />
+                  <template v-else>
+                    <input
+                      :value="state?.decisionAnswers?.[d.question] ?? ''"
+                      :placeholder="d.options?.length ? 'e.g. ' + d.options.join(' / ') : 'your answer'"
+                      :list="'opts-' + d.question.length"
+                      @change="sendToHost({ type: 'build:decision', question: d.question, answer: ($event.target as HTMLInputElement).value })"
+                    />
+                    <datalist :id="'opts-' + d.question.length"><option v-for="o in d.options ?? []" :key="o" :value="o" /></datalist>
+                  </template>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <section v-if="otherAssumptions.length" class="note assumed">
+          <strong>Also assumed:</strong>
+          <ul><li v-for="a in otherAssumptions" :key="a">{{ a }}</li></ul>
+        </section>
+      </div>
+      <div v-else :class="{ 'confirm-row': atConfirm }">
+        <section v-if="win.questions?.length || Object.values(win.marks).some((m) => m.disputed)" class="note">
+          <strong>To decide:</strong> fields marked
+          <span class="tag disputed">differ</span> were read differently;
+          <span class="tag low">guessed</span> ones are the AI's guesses.
+          <ul v-if="win.questions?.length">
+            <li v-for="q in win.questions" :key="q">{{ q }}</li>
+          </ul>
+        </section>
+        <section v-if="atConfirm && win.assumptions?.length" class="note assumed">
+          <strong>Assumed:</strong>
+          <ul><li v-for="a in win.assumptions" :key="a">{{ a }}</li></ul>
+        </section>
+      </div>
+      <section v-if="win.round === 2 && !atConfirm" class="questions">
+        <h4>Before the layout</h4>
+        <ul v-if="state?.questions?.length">
+          <li v-for="(q, i) in state.questions" :key="i">{{ q.text }}</li>
         </ul>
+        <p v-else class="dim">Asking the AI what to confirm…</p>
+        <textarea
+          id="directions"
+          v-model="directions"
+          rows="4"
+          placeholder="Your answers, and anything else about where things go, e.g. the market at the crossroads; houses along the river on its west bank; farms to the south"
+          @blur="saveDirections"
+        />
+        <p class="dim">The layout follows these: where each zone goes, in your words.</p>
       </section>
 
-      <template v-if="win.round === 1">
+      <template v-if="win.round === 1 || atConfirm">
         <div class="grid">
           <label>Name</label>
           <div><input :value="win.name" @change="edit('name', ($event.target as HTMLInputElement).value)" /> <span class="dim">{{ win.buildTypeName }}</span></div>
@@ -824,8 +1909,8 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             </div>
           </div>
 
-          <label title="One street pattern or several; the plan gives each ward one of them">Layout</label>
-          <div :class="markClass('shape.layout')">
+          <label v-if="!atConfirm" title="One street pattern or several; the plan gives each ward one of them">Layout</label>
+          <div v-if="!atConfirm" :class="markClass('shape.layout')">
             <div class="layouts">
               <div v-for="l in win.layout.options" :key="l" class="layout" :class="{ active: l in win.layout.value }">
                 <button :title="l in win.layout.value ? 'Leave this pattern out' : 'Add this pattern'" @click="edit('shape.layout', toggleShare(win.layout.value, l))">
@@ -849,8 +1934,22 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             />
           </div>
 
-          <label>Walls</label>
-          <div :class="markClass('walled')">
+          <template v-for="f in win.settings ?? []" :key="f.path">
+            <label>{{ f.label }}</label>
+            <div :class="markClass(f.path)">
+              <select v-if="f.values" :value="f.value ?? ''" @change="edit(f.path, ($event.target as HTMLSelectElement).value || null)">
+                <option value="">default</option>
+                <option v-for="v in f.values" :key="v" :value="v">{{ v.replace(/-/g, ' ') }}</option>
+              </select>
+              <input v-else-if="f.type === 'count'" class="num" type="number" :min="f.min" :max="f.max" :value="countOf(f.value)" placeholder="default"
+                     @change="edit(f.path, ($event.target as HTMLInputElement).value === '' ? null : Number(($event.target as HTMLInputElement).value))" />
+              <input v-else-if="f.type === 'bool'" type="checkbox" :checked="Boolean(f.value)" @change="edit(f.path, ($event.target as HTMLInputElement).checked)" />
+              <span v-if="f.hint" class="dim"> {{ f.hint }}</span>
+            </div>
+          </template>
+
+          <label v-if="win.walled.options.length">Walls</label>
+          <div v-if="win.walled.options.length" :class="markClass('walled')">
             <select :value="win.walled.value ?? 'none'" @change="edit('walled', ($event.target as HTMLSelectElement).value)">
               <option v-for="w in win.walled.options" :key="w" :value="w">{{ w }}</option>
             </select>
@@ -877,7 +1976,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
 
         <table class="components">
           <thead>
-            <tr><th>Component</th><th>On</th><th>Amount</th><th>Art</th><th>Source</th></tr>
+            <tr><th>Component</th><th>On</th><th>How many</th><th>Art</th><th>Source</th></tr>
           </thead>
           <tbody>
             <tr v-for="c in shownComponents" :key="c.id" :class="{ off: !c.enabled, ...markClass('components.' + c.id + '.enabled') }">
@@ -888,8 +1987,18 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
               <td :class="markClass(`components.${c.id}.${c.amount === 'count' ? 'count' : 'density'}`)">
                 <template v-if="c.enabled && c.amount === 'count'">
                   <input class="range" :value="show(c.count) === '—' ? '' : show(c.count)" placeholder="any" @change="setCount(c, ($event.target as HTMLInputElement).value)" />
+                  <span class="dim"> {{ c.unit }}</span>
+                  <span v-if="c.holds" class="dim"> · {{ show(c.holds.value) }} {{ c.holds.unit }} each</span>
+                  <div v-if="c.kinds?.length && c.level === 'zone'" class="kinds">
+                    <label v-for="k in c.kinds" :key="k.module" :title="'How many ' + k.name + ' in each (empty: the plan decides)'">
+                      <input class="num small" type="number" min="0" :value="k.count ?? ''" :placeholder="k.estimate !== undefined ? '~' + k.estimate : 'any'"
+                             @change="setKind(c.id, k.module, ($event.target as HTMLInputElement).value)" />
+                      <span class="dim">{{ k.name }}</span>
+                    </label>
+                  </div>
                 </template>
                 <template v-else-if="c.enabled && c.amount === 'density'">
+                  <span class="dim">how common </span>
                   <select :value="c.density ?? ''" @change="edit(`components.${c.id}.density`, ($event.target as HTMLSelectElement).value)">
                     <option value="">default</option>
                     <option v-for="d in DENSITIES" :key="d" :value="d">{{ d }}</option>
@@ -912,7 +2021,9 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <button class="link" @click="showAll = !showAll">{{ showAll ? 'Only the components in the request' : 'Every component this place can have' }}</button>
       </template>
 
-      <template v-else>
+      <template v-if="win.round !== 1 || atConfirm">
+        <h4 v-if="atConfirm" class="contents-head">What each part holds</h4>
+        <div :class="{ 'params-grid': atConfirm }">
         <section v-for="c in win.components.filter((x) => x.enabled && x.params?.length)" :key="c.id" class="params">
           <h4>{{ c.name }}</h4>
           <div class="grid">
@@ -943,7 +2054,8 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           </div>
         </section>
 
-        <section v-if="win.round === 2" class="note">
+        </div>
+        <section v-if="win.round === 2 && !atConfirm" class="note">
           <label class="row">
             <input type="checkbox" :checked="sourcingSettings.webSearch" @change="setSourcing({ webSearch: ($event.target as HTMLInputElement).checked })" />
             Search the web for free art (OpenGameArt; only CC0, CC-BY and OGA-BY, credited in CREDITS.md)
@@ -953,7 +2065,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             Allow share-alike art (CC-BY-SA: the game's art must then be shared alike)
           </label>
         </section>
-        <section v-if="win.assetPlan" class="plan">
+        <section v-if="win.assetPlan && !atConfirm" class="plan">
           <h4>
             Assets: {{ win.assetPlan.summary.project }} from the project, {{ win.assetPlan.summary.generate }} to generate
           </h4>
@@ -979,7 +2091,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         </section>
       </template>
 
-      <section v-if="win.assumptions?.length" class="note">
+      <section v-if="win.assumptions?.length && !atConfirm" class="note">
         <strong>Assumed:</strong>
         <ul><li v-for="a in win.assumptions" :key="a">{{ a }}</li></ul>
       </section>
@@ -988,7 +2100,20 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <div v-for="p in warnings" :key="p.where + p.message" class="warning">{{ p.where }}: {{ p.message }}</div>
       </section>
 
-      <div class="actions">
+      <div v-if="confirmLocked" class="actions">
+        <button class="primary" data-view-ok @click="backToPlan()">Back to the plan →</button>
+      </div>
+      <div v-else-if="atConfirm" class="actions">
+        <button @click="sendToHost({ type: 'build:cancel' })">Cancel</button>
+        <span v-if="state?.layout?.stale" class="dim">These changed what the zones were planned from:</span>
+        <button v-if="state?.layout?.stale" class="primary" :disabled="errors.length > 0" @click="sendToHost({ type: 'build:replanLayout' }); confirmTab = 'layout'">
+          Lay out the zones again →
+        </button>
+        <button v-else class="primary" :disabled="errors.length > 0" title="② Layout: the zones and where they go" @click="confirmTab = 'layout'">
+          Layout →
+        </button>
+      </div>
+      <div v-else class="actions">
         <button @click="sendToHost({ type: 'build:cancel' })">Cancel</button>
         <button v-if="win.round === 2" @click="sendToHost({ type: 'build:step', step: 'request' })">Back</button>
         <button
@@ -999,7 +2124,9 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         >
           Continue →
         </button>
-        <button v-else class="primary" :disabled="errors.length > 0" @click="sendToHost({ type: 'build:confirm' })">Build</button>
+        <button v-else class="primary" :disabled="errors.length > 0" @click="saveDirections(); sendToHost({ type: 'build:confirm' })">
+          Lay out the zones →
+        </button>
       </div>
     </div>
   </div>
@@ -1195,6 +2322,31 @@ button.link {
 }
 .components tr.off td {
   color: #6c7086;
+}
+.kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-top: 3px;
+}
+.kinds label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.kinds input.num.small {
+  width: 46px;
+}
+.note.quality {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.note.quality ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
 }
 .thumbs {
   display: flex;
@@ -1464,5 +2616,416 @@ button.link {
   background: var(--accent, #3b82f6);
   color: #fff;
   font-size: 12px;
+}
+.choices {
+  margin: 8px 0;
+}
+.choices .toggle {
+  background: none;
+  border: none;
+  padding: 4px 0;
+  cursor: pointer;
+  color: inherit;
+}
+.choices .grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 6px 0;
+}
+.chips button.out {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.build-progress {
+  max-width: 560px;
+  margin: 40px auto;
+}
+.build-progress .bar,
+.sourcing .bar {
+  height: 6px;
+  background: var(--border, #333);
+  margin: 4px 0 8px;
+}
+.build-progress .bar i,
+.sourcing .bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent, #3b82f6);
+}
+.art-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.art-need {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--border, #333);
+}
+.art-need.done.passed {
+  border-color: #6c9;
+}
+.art-need .thumbs {
+  display: flex;
+  gap: 4px;
+  min-width: 64px;
+  align-items: center;
+}
+.art-need figure {
+  margin: 0;
+  text-align: center;
+  font-size: 10px;
+}
+.art-need figure.bad img {
+  opacity: 0.45;
+}
+.art-need img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: rgba(127, 127, 127, 0.15);
+}
+.art-need .waiting {
+  font-size: 11px;
+  opacity: 0.7;
+}
+.art-need .what {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  min-width: 0;
+}
+.art-need {
+  flex-wrap: wrap;
+}
+.art-need.open {
+  grid-column: 1 / -1;
+}
+.art-need .refine {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.art-need .refine textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+.art-need .what button.small {
+  align-self: flex-start;
+  margin-top: 4px;
+  font-size: 11px;
+  padding: 1px 8px;
+}
+.art-view .actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 0;
+}
+.zoomable {
+  cursor: zoom-in;
+}
+.advanced {
+  border-bottom: 1px solid #333;
+  padding: 4px 8px 8px;
+}
+.advanced pre {
+  max-height: 40vh;
+  overflow: auto;
+  margin: 6px 0 0;
+  padding: 8px;
+  background: #11111b;
+  border: 1px solid #2a2a3a;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.busy-note {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  border-left: 3px solid #3b82f6;
+}
+.map-actions {
+  display: flex;
+  gap: 4px;
+}
+.revision.edit {
+  opacity: 0.85;
+}
+.revision .when {
+  font-size: 0.8em;
+}
+button.link {
+  border: none;
+  background: transparent;
+  color: #89b4fa;
+  padding: 0 4px;
+  font-weight: normal;
+}
+.view-note {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+.body.locked input,
+.body.locked select,
+.body.locked textarea,
+.body.locked button:not([data-view-ok]) {
+  opacity: 0.75;
+}
+.lightbox.ask {
+  cursor: default;
+}
+.ask-box {
+  background: #1e1e2e;
+  border: 1px solid #45475a;
+  padding: 16px 18px;
+  max-width: 420px;
+}
+.ask-box p {
+  margin: 8px 0 12px;
+}
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.8);
+  cursor: zoom-out;
+}
+.lightbox img {
+  max-width: 90%;
+  max-height: 80%;
+  min-width: 256px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: rgba(127, 127, 127, 0.2);
+}
+.lightbox .caption {
+  color: #fff;
+  font-size: 12px;
+}
+.layout-view .layout-top {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.layout-view .zones-map {
+  width: 320px;
+  max-width: 100%;
+  image-rendering: pixelated;
+}
+.layout-view table.zones {
+  flex: 1;
+  min-width: 280px;
+  border-collapse: collapse;
+}
+.layout-view table.zones td,
+.layout-view table.zones th {
+  text-align: left;
+  vertical-align: top;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border, #333);
+}
+.questions textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+.confirm-tabs {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 6px 10px 0;
+}
+.confirm-tabs button {
+  border: 1px solid var(--border, #444);
+  background: none;
+  color: inherit;
+  padding: 4px 14px;
+  cursor: pointer;
+}
+.confirm-tabs button.active {
+  background: var(--accent, #3b82f6);
+  color: #fff;
+  border-color: var(--accent, #3b82f6);
+}
+.layout-view .zones-map {
+  width: 520px;
+  max-width: 100%;
+  cursor: crosshair;
+}
+.layout-view .map-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.layout-view .main-layout {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.layout-view table.zones {
+  width: 100%;
+  margin-top: 8px;
+}
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.warning {
+  color: #e5a50a;
+}
+.drawing {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.drawing-box {
+  display: flex;
+  gap: 12px;
+  background: var(--panel-bg, #1e1e1e);
+  padding: 12px;
+  max-width: 95vw;
+  max-height: 92vh;
+  overflow: auto;
+}
+.drawing canvas {
+  width: 560px;
+  height: 560px;
+  max-width: 70vw;
+  max-height: 70vw;
+  cursor: crosshair;
+  image-rendering: pixelated;
+}
+.draw-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+}
+.draw-zone {
+  text-align: left;
+  background: none;
+  border: 1px solid var(--border, #444);
+  color: inherit;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+.draw-zone.active {
+  border-color: var(--accent, #3b82f6);
+  background: rgba(59, 130, 246, 0.15);
+}
+.contents-head {
+  margin-top: 12px;
+}
+.layout-view .layout-top table.zones {
+  flex: 1;
+  min-width: 320px;
+  margin-top: 0;
+}
+.layouts-section .layout-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 4px 0;
+}
+.layouts-section .layout-name {
+  min-width: 130px;
+  font-size: 12px;
+}
+.small-tiles .layout button span {
+  font-size: 10px;
+}
+.confirm-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.confirm-row > section {
+  flex: 1;
+  min-width: 0;
+}
+.params-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 8px;
+}
+.params-grid .params {
+  margin: 0;
+}
+.drawing .brush {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+.progress-view .query {
+  font-style: italic;
+}
+.progress-steps {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+}
+.progress-steps > li {
+  margin: 6px 0;
+}
+.progress-steps > li.waiting {
+  opacity: 0.5;
+}
+.progress-steps > li.active .label {
+  font-weight: 600;
+}
+.progress-steps .mark {
+  display: inline-block;
+  width: 18px;
+}
+.progress-steps .detail {
+  margin: 2px 0 0 18px;
+  padding-left: 12px;
+  font-size: 11px;
+  opacity: 0.8;
+}
+table.decisions {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+}
+table.decisions td,
+table.decisions th {
+  text-align: left;
+  vertical-align: top;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border, #333);
+  font-size: 12px;
+}
+table.decisions input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.confirm-row > .decide {
+  flex: 2;
 }
 </style>

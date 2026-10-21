@@ -22,6 +22,13 @@ std::vector<std::filesystem::path> ShowImportDialog(HWND owner);
 // the user cancels.
 std::optional<std::filesystem::path> ShowFolderDialog(HWND owner, const std::wstring& title);
 
+// One file to open, or where to save one (its type's name and pattern, e.g. L"AIGE ontology",
+// L"*.aige-ontology.json"). Nothing if the user cancels.
+std::optional<std::filesystem::path> ShowOpenFileDialog(HWND owner, const std::wstring& title, const std::wstring& typeName,
+                                                        const std::wstring& pattern);
+std::optional<std::filesystem::path> ShowSaveFileDialog(HWND owner, const std::wstring& title, const std::wstring& typeName,
+                                                        const std::wstring& pattern, const std::wstring& defaultName);
+
 // Starts another editor process with `arguments` (e.g. --project "<dir>",
 // or --welcome). False if it couldn't be started.
 bool StartEditorProcess(const std::wstring& arguments);

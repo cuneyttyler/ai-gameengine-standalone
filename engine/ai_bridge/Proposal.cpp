@@ -529,6 +529,7 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
         item.after = args;
         if (apply) {
             CommandContext context{registry, &prefabs, &project};
+            if (outcome) context.layerEdits = &outcome->layerEdits;
             CommandResult result = reflection.Run(context, name, values);
             if (!result.ok) {
                 error = result.error;

@@ -5,6 +5,7 @@
 // ("hole punching", docs/technical.md §4). The WebView2 control always
 // fills the client area; only the viewport window's bounds are dynamic.
 #include "EditorApp.h"
+#include "ai_bridge/UserPrefs.h"
 #include "Launcher.h"
 #include "Win32Util.h"
 
@@ -253,9 +254,8 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
         aige::Registry registry;
         const std::filesystem::path scenePath = aige::StartScenePath(project); // Game.startScene (5.3)
         if (!aige::LoadScene(registry, scenePath.string())) {
-            // A new project: start from the bootstrap level and save it, so
-            // the project is complete on disk from the first launch.
-            aige::BuildBootstrapScene(registry, "scripts/npc_wander.lua");
+            // A new project: an empty scene (8.1: nothing placed), saved so the
+            // project is complete on disk from the first launch.
             std::filesystem::create_directories(scenePath.parent_path());
             aige::SaveScene(registry, scenePath.string());
         }
@@ -277,6 +277,14 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
 
         webView.SetBounds(0, 0, clientWidth, clientHeight);
         webView.MapVirtualHostToFolder(kProjectHostName, project.root.wstring());
+        // The user's own asset library (development_plan.md 10), shown in the Assets panel's Library tab.
+        {
+            const std::filesystem::path prefs = aige::UserPrefs::DefaultPath();
+            const std::filesystem::path library = prefs.empty() ? prefs : prefs.parent_path() / "library";
+            std::error_code ec;
+            std::filesystem::create_directories(library, ec);
+            if (!library.empty()) webView.MapVirtualHostToFolder(L"aige-library.local", library.wstring());
+        }
         webView.NavigateToVirtualHost(kVirtualHostName, aige::Utf8ToWide(AIGE_EDITOR_UI_DIST_DIR), L"index.html");
         webView.SetMessageHandler([&app](std::wstring json) {
             try {

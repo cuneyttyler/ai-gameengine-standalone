@@ -55,6 +55,8 @@ add_executable(aige_tests
     village_gen_test.cpp
     project_story_test.cpp
     places_test.cpp
+    ontology_edit_test.cpp
+    user_library_test.cpp
     big_scene_test.cpp
     catalog_test.cpp
     brief_test.cpp

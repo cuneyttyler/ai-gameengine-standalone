@@ -4,6 +4,7 @@
 #include "gameplay/Components.h"
 #include "renderer2d/Components.h"
 
+#include <cstdlib>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -107,9 +108,21 @@ std::vector<PrefabPlan> PlanPackImport(const AssetDatabase& assets, const std::v
             plan.height = iso.tileHeight;
             plan.solid = false;
         } else {
-            const float ppc = std::max(1.0f, pixelsPerCell(Folder(path)));
-            plan.width = static_cast<float>(asset->width) / ppc * iso.tileWidth;
-            plan.height = static_cast<float>(asset->height) / ppc * iso.tileWidth; // the image's proportions
+            // Its size: by the pack's pixels per cell; without one (a single image, as the scene
+            // build asks), the size the image's analysis gives it ("cells" across), else left to the caller.
+            float ppc = pixelsPerCell ? pixelsPerCell(Folder(path)) : 0.0f;
+            if (ppc <= 0) {
+                const std::string cells = Analysis(*asset, "cells");
+                const float across = cells.empty() ? 0.0f : std::strtof(cells.c_str(), nullptr);
+                if (across > 0) ppc = asset->width / across;
+            }
+            if (ppc > 0) {
+                ppc = std::max(1.0f, ppc);
+                plan.width = static_cast<float>(asset->width) / ppc * iso.tileWidth;
+                plan.height = static_cast<float>(asset->height) / ppc * iso.tileWidth; // the image's proportions
+            } else {
+                plan.width = plan.height = 0; // the caller sizes it (PrefabForEntry: by its catalog entry)
+            }
             plan.solid = Analysis(*asset, "blocks") == "1" || plan.kind == "building";
         }
         // Names: the analysis's, else the file's; prefabs/<pack>/<name>.prefab.

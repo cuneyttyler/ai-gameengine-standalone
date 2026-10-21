@@ -124,10 +124,10 @@ TEST(BuildRobustTest, FailedCallsAreRetriedThenFallBack) {
     ASSERT_EQ(build.Start("a village by a river"), "");
     f.answered.insert(1);
     build.OnResponse(1, failed);
-    ASSERT_EQ(f.Count("/places/interpret"), 2); // asked again
+    ASSERT_EQ(f.Count("/places/interpret"), 4); // the three readings, and the first asked again
     EXPECT_EQ(build.Stage(), "interpreting");
     f.AnswerAll(build, failed);
-    EXPECT_EQ(f.Count("/places/interpret"), 3); // three times in all, then the request's words
+    EXPECT_EQ(f.Count("/places/interpret"), 9); // each reading three times in all, then the request's words
     ASSERT_EQ(build.Stage(), "request");
     EXPECT_FALSE(build.Notices().empty());
 
@@ -146,7 +146,7 @@ TEST(BuildRobustTest, AServiceWithoutAModelIsNotAskedAgain) {
     PlaceBuild build(f.Host());
     ASSERT_EQ(build.Start("a hamlet"), "");
     f.AnswerAll(build, {{"ok", false}, {"errors", json::array({"No AI provider configured"})}});
-    EXPECT_EQ(f.Count("/places/interpret"), 1);
+    EXPECT_EQ(f.Count("/places/interpret"), 3); // each reading once: none asked again
     EXPECT_EQ(build.Stage(), "request");
 }
 
@@ -175,8 +175,9 @@ TEST(BuildRobustTest, ABrokenPlanIsFixedOrKeptAndCanBeApproved) {
                     {"road", {{"enabled", true}}}}}};
     f.answered.insert(1);
     build.OnResponse(1, {{"ok", true}, {"drafts", json::array({{{"reading", "typical"}, {"brief", brief}}})}});
+    // The other two readings (and any draft repair) get no answer: the one draft decides.
+    f.AnswerAll(build, {{"ok", false}, {"errors", json::array({"No AI provider configured"})}});
     ASSERT_EQ(build.Stage(), "request");
-    f.AnswerAll(build, {{"ok", false}, {"errors", json::array({"No AI provider configured"})}}); // draft repairs, if any
     ASSERT_EQ(build.Step("assets"), "") << build.State()["window"]["problems"].dump();
     ASSERT_EQ(build.Confirm(), "");
 
@@ -299,8 +300,8 @@ TEST(BuildRobustTest, AStepThatWasWaitingOnTheAiStartsAgain) {
     PlaceBuild build(f.Host());
     ASSERT_EQ(build.Open(id), "");
     EXPECT_EQ(build.Stage(), "interpreting");
-    EXPECT_EQ(f.Count("/places/interpret"), 2);
-    EXPECT_TRUE(build.Owns(2));
+    EXPECT_EQ(f.Count("/places/interpret"), 6); // the three readings, asked again
+    EXPECT_TRUE(build.Owns(4));
 }
 
 TEST(BuildRobustTest, VerifyShowsAWardWithoutItsTemple) {

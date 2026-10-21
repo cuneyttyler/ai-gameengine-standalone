@@ -156,9 +156,41 @@ private:
     // A request to build a place ("a village by a river") starts a build
     // (7.4) unless `asChange`; anything else becomes a proposal.
     void SendToAi(const std::string& text, const std::string& focus, bool asChange = false);
-    void StartBuild(const std::string& query);
+    void StartBuild(const std::string& query, const nlohmann::json& choices = nlohmann::json::object());
     void ResumeBuild(const std::string& id); // a build of the project, from places/<id>/
-    void BuildIntoScene();                   // ④ Build: the solved layout into the scene (7.7)
+    void PreviewAssets();                    // ③ Assets: each part's art decided, nothing fetched yet
+    void FindAssets();
+    // A ground cell of a tile layer (a built place's ground), selected with the Select tool.
+    struct CellPick {
+        std::string layer;
+        int gx = 0, gy = 0;
+    };
+    std::optional<CellPick> selectedCell_;
+    std::optional<CellPick> PickLayerCell(float sceneX, float sceneY) const;
+    void SelectCell(const CellPick& cell);
+    void EraseSelectedCell();
+    // The ontology panel (development_plan.md 9).
+    static std::filesystem::path UserOntologyDir();
+    // The user's asset library (development_plan.md 10).
+    static std::filesystem::path UserLibraryDir();
+    void PostLibrary();
+    bool HandleLibraryMessage(const std::string& type, const nlohmann::json& message);
+    void PostOntology(const std::string& error = {});
+    bool HandleOntologyMessage(const std::string& type, const nlohmann::json& message);                       // ③ Assets: where each part's art comes from, made or fetched first (7.9)
+    void BuildIntoScene();                   // ④ Build: the solved layout into the scene (7.7), a phase a frame
+    void StepBuildRun();                     // the build's next phase
+    AssetSourcing SourcingNow();             // the project's sourcing settings and what was tried
+    // ④ Build in phases (one per frame, so its progress shows): the art chosen, the scene built,
+    // verified, repaired, saved and drawn.
+    struct BuildRun {
+        int phase = 0;
+        PlaceSceneOptions options;
+        TerrainSet terrains;
+        AssetSourcing sourcing;
+        nlohmann::json assets, report, verify, repairs, after;
+        std::unique_ptr<EditCommand> command;
+    };
+    std::unique_ptr<BuildRun> buildRun_;
     bool HandleBuildMessage(const std::string& type, const nlohmann::json& message);
     // Editing after the build (7.8): the scene follows the parts an edit laid out again.
     void UpdateBuiltParts();
@@ -243,7 +275,7 @@ private:
     double updateMs_ = 0.0;
     void AddStatsOverlay(std::vector<UiQuad>& ui);
     // Scene editing polish (4.3).
-    bool showGrid_ = false;   // tile borders on empty ground
+    bool showGrid_ = true;    // tile borders on empty ground (shown from the start, 8.1)
     float brushScale_ = 1.0f; // the prefab brush places copies at this size
     int brushRotation_ = 0;   // quarter turns given to flat things the brush places (5.2)
     // Auto-fit (6.4): painting a ground tile lays its terrain and the engine
@@ -424,6 +456,7 @@ private:
     void RunBuildJob(std::function<std::string(PlaceBuild&)> job, const std::string& prefix = {}, std::function<void()> after = {});
     void FinishBuildJob();
     void OnBuildResult(int requestId, const nlohmann::json& body);
+    void AfterSourcing(); // the art is in (or skipped): into the scene
     bool KnownRequest(int requestId) const;
     // The selection when Play started, restored on Stop. Indices taken from
     // the live registry at Stop would be off once enemies die mid-play.

@@ -36,7 +36,7 @@ class ProviderError(Exception):
 class MistralProvider:
     name = "mistral"
 
-    def __init__(self, api_key: str, model: str = "mistral-large-latest", timeout_s: float = 90.0):
+    def __init__(self, api_key: str, model: str = "mistral-large-latest", timeout_s: float = 180.0):
         from mistralai.client import Mistral  # imported lazily so tests don't need the SDK configured
 
         self.model = model
@@ -45,20 +45,26 @@ class MistralProvider:
         # Magistral models think apart from their answer (place-interaction.md B3, native mode).
         self.reasoning = "magistral" in model
 
+    # What a call may write at most: a model that runs on (repeating itself) is cut off
+    # instead of taking minutes. The answers are JSON a few thousand tokens long at most.
+    MAX_ANSWER_TOKENS = 6000
+    MAX_THINKING_TOKENS = 3000
+
     def complete(self, messages: list[dict]) -> Completion:
-        return self._call(messages, json_mode=True)
+        return self._call(messages, json_mode=True, max_tokens=self.MAX_ANSWER_TOKENS)
 
     def complete_text(self, messages: list[dict]) -> Completion:
         """Free text: the thinking pass of a two-pass call."""
-        return self._call(messages, json_mode=False)
+        return self._call(messages, json_mode=False, max_tokens=self.MAX_THINKING_TOKENS)
 
-    def _call(self, messages: list[dict], json_mode: bool) -> Completion:
+    def _call(self, messages: list[dict], json_mode: bool, max_tokens: int = 6000) -> Completion:
         try:
             options = {"response_format": {"type": "json_object"}} if json_mode else {}  # the prompt spells out the shape
             response = self._client.chat.complete(
                 model=self.model,
                 messages=messages,
                 temperature=0.2,
+                max_tokens=max_tokens,
                 timeout_ms=self._timeout_ms,
                 **options,
             )

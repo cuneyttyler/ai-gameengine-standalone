@@ -2,6 +2,9 @@
 
 #include <httplib.h>
 
+#include <cwchar>
+#include <random>
+
 #include <chrono>
 
 #ifdef _WIN32
@@ -45,7 +48,12 @@ struct AiClient::ProcessHandle {
 };
 
 AiClient::AiClient(Options options) : options_(std::move(options)) {
-    worker_ = std::thread([this] { Worker(); });
+    // A fresh secret each session (128 bits).
+    std::random_device random;
+    static const char* hex = "0123456789abcdef";
+    for (int i = 0; i < 32; ++i) token_ += hex[random() % 16];
+    // A few workers: requests to the service run at once (it answers them in parallel).
+    for (int k = 0; k < 4; ++k) workers_.emplace_back([this] { Worker(); });
 }
 
 AiClient::~AiClient() {
@@ -56,8 +64,8 @@ AiClient::~AiClient() {
     }
     wake_.notify_all();
     StopProcess(); // first: a request still waiting on a model then fails at once, and the worker can finish
-    if (worker_.joinable()) {
-        worker_.join();
+    for (auto& w : workers_) {
+        if (w.joinable()) w.join();
     }
 }
 
@@ -73,23 +81,23 @@ void AiClient::Start(nlohmann::json schema) {
         statusText_ = "Starting the AI service…";
     }
     std::lock_guard lock(mutex_);
-    jobs_.push_back([this, schema = std::move(schema)] { RunStart(schema); });
-    wake_.notify_one();
+    jobs_.push_back({true, [this, schema = std::move(schema)] { RunStart(schema); }});
+    wake_.notify_all();
 }
 
 int AiClient::Propose(const std::string& instruction, nlohmann::json context, nlohmann::json history) {
     std::lock_guard lock(mutex_);
     int id = nextRequestId_++;
     nlohmann::json request = {{"instruction", instruction}, {"context", std::move(context)}, {"history", std::move(history)}};
-    jobs_.push_back([this, id, request = std::move(request)] { RunPropose(id, request); });
-    wake_.notify_one();
+    jobs_.push_back({false, [this, id, request = std::move(request)] { RunPropose(id, request); }});
+    wake_.notify_all();
     return id;
 }
 
 int AiClient::Request(const std::string& method, const std::string& path, nlohmann::json body, int timeoutSeconds) {
     std::lock_guard lock(mutex_);
     int id = nextRequestId_++;
-    jobs_.push_back([this, id, method, path, body = std::move(body), timeoutSeconds] {
+    jobs_.push_back({false, [this, id, method, path, body = std::move(body), timeoutSeconds] {
         if (state_ != State::Ready) {
             Push({Result::Kind::Response, id, Failure(StatusText())});
             return;
@@ -97,8 +105,8 @@ int AiClient::Request(const std::string& method, const std::string& path, nlohma
         std::string error;
         auto response = Send(method, path, &body, timeoutSeconds, &error);
         Push({Result::Kind::Response, id, response ? *response : Failure(error)});
-    });
-    wake_.notify_one();
+    }});
+    wake_.notify_all();
     return id;
 }
 
@@ -119,17 +127,35 @@ void AiClient::Push(Result result) {
 
 void AiClient::Worker() {
     for (;;) {
-        std::function<void()> job;
+        Job job;
         {
             std::unique_lock lock(mutex_);
-            wake_.wait(lock, [this] { return quitting_ || !jobs_.empty(); });
+            // A start runs alone; requests wait until the service has started (or failed to).
+            // The job to take: a start wherever it is in the queue, else the first request once started.
+            auto next = [this]() -> std::ptrdiff_t {
+                for (size_t i = 0; i < jobs_.size(); ++i) {
+                    if (jobs_[i].start) return starting_ ? -1 : static_cast<std::ptrdiff_t>(i);
+                }
+                if (!jobs_.empty() && !starting_ && state_ != State::Starting) return 0;
+                return -1;
+            };
+            wake_.wait(lock, [&] { return quitting_ || next() >= 0; });
             if (quitting_) {
                 return;
             }
-            job = std::move(jobs_.front());
-            jobs_.pop_front();
+            const std::ptrdiff_t at = next();
+            job = std::move(jobs_[at]);
+            jobs_.erase(jobs_.begin() + at);
+            if (job.start) starting_ = true;
         }
-        job();
+        job.run();
+        if (job.start) {
+            {
+                std::lock_guard lock(mutex_);
+                starting_ = false;
+            }
+            wake_.notify_all(); // the requests waiting on it go now
+        }
     }
 }
 
@@ -139,9 +165,10 @@ std::optional<nlohmann::json> AiClient::Send(const std::string& method, const st
     client.set_connection_timeout(2);
     client.set_read_timeout(timeoutSeconds);
     client.set_write_timeout(10);
-    httplib::Result response = method == "GET"   ? client.Get(path)
-                               : method == "PUT" ? client.Put(path, body->dump(), "application/json")
-                                                 : client.Post(path, body->dump(), "application/json");
+    const httplib::Headers headers = {{"X-AIGE-Token", token_}};
+    httplib::Result response = method == "GET"   ? client.Get(path, headers)
+                               : method == "PUT" ? client.Put(path, headers, body->dump(), "application/json")
+                                                 : client.Post(path, headers, body->dump(), "application/json");
     if (!response) {
         if (error) *error = "can't reach the AI service (" + httplib::to_string(response.error()) + ")";
         return std::nullopt;
@@ -245,8 +272,22 @@ bool AiClient::LaunchProcess(std::string* error) {
 
     STARTUPINFOW startup{sizeof(startup)};
     std::wstring mutableCommand = L"cmd.exe /c " + wideCommand; // resolves uv on PATH like a terminal would
+    // Its environment: this one's, and the token it answers to.
+    std::wstring environment;
+    if (wchar_t* block = GetEnvironmentStringsW()) {
+        for (const wchar_t* at = block; *at; at += wcslen(at) + 1) {
+            if (_wcsnicmp(at, L"AIGE_SERVICE_TOKEN=", 19) == 0) continue;
+            environment += at;
+            environment.push_back(L'\0');
+        }
+        FreeEnvironmentStringsW(block);
+    }
+    environment += L"AIGE_SERVICE_TOKEN=" + std::wstring(token_.begin(), token_.end());
+    environment.push_back(L'\0');
+    environment.push_back(L'\0');
     if (!CreateProcessW(nullptr, mutableCommand.data(), nullptr, nullptr, FALSE,
-                        CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, directory.c_str(), &startup, &handle->info)) {
+                        CREATE_NO_WINDOW | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT, environment.data(), directory.c_str(), &startup,
+                        &handle->info)) {
         if (error) *error = "CreateProcess failed (" + std::to_string(GetLastError()) + ")";
         return false;
     }

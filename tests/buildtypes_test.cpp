@@ -1,3 +1,4 @@
+#include "editing/BuildWindow.h"
 #include "editing/PlaceBuild.h"
 #include "places/Brief.h"
 #include "places/Compile.h"
@@ -12,6 +13,7 @@
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <set>
@@ -88,6 +90,20 @@ std::string Failed(const json& solved) {
         }
     }
     for (const auto& p : solved.value("problems", json::array())) out += "  " + p.dump() + "\n";
+    return out;
+}
+
+// A dungeon as text: # rock, . floor, , corridor, o a solid thing, d a flat one.
+std::string MapText(const json& solved) {
+    const int W = solved["grid"]["bounds"][2], H = solved["grid"]["bounds"][3];
+    std::vector<std::string> map(H, std::string(W, '#'));
+    for (const auto& r : solved["regions"]) {
+        if (r["id"] == "site" || r.value("module", "") == "dungeon-level") continue;
+        for (int c : DecodeCells(r["cells"], W)) map[c / W][c % W] = r["id"].get<std::string>().find("corridors") != std::string::npos ? ',' : '.';
+    }
+    for (const auto& o : solved["objects"]) map[o["y"].get<int>()][o["x"].get<int>()] = o["layer"] == "decal" ? 'd' : 'o';
+    std::string out;
+    for (const auto& line : map) out += line + "\n";
     return out;
 }
 
@@ -281,19 +297,7 @@ TEST(BuildTypesTest, ACaveHasRaggedChambersAndOpenings) {
                        {"children", json::array({{{"id", "caves"}, {"module", "dungeon-level"}, {"quantity", {{"rooms", {{"count", 8}}}}}}})}};
     const json result = SolveSpec(brief, root);
     const json& solved = result["solved"];
-    EXPECT_TRUE(Failed(solved).empty()) << Failed(solved) << [&] {
-        // The level as text: # rock, . floor, o a solid thing, d a flat one.
-        const int W = solved["grid"]["bounds"][2], H = solved["grid"]["bounds"][3];
-        std::vector<std::string> map(H, std::string(W, '#'));
-        for (const auto& r : solved["regions"]) {
-            if (r["id"] == "site" || r["id"] == "caves") continue;
-            for (int c : DecodeCells(r["cells"], W)) map[c / W][c % W] = r["id"].get<std::string>().find("corridors") != std::string::npos ? ',' : '.';
-        }
-        for (const auto& o : solved["objects"]) map[o["y"].get<int>()][o["x"].get<int>()] = o["layer"] == "decal" ? 'd' : 'o';
-        std::string out;
-        for (const auto& line : map) out += line + "\n";
-        return out;
-    }();
+    EXPECT_TRUE(Failed(solved).empty()) << Failed(solved) << MapText(solved);
     int ragged = 0, rooms = 0;
     for (const auto& r : solved["regions"]) {
         if (!Library().IsA(r.value("module", ""), "Room")) continue;
@@ -440,4 +444,237 @@ TEST(BuildTypesTest, AWalledCityFromItsRequest) {
     if (!soft.empty()) std::cout << "[ city ] soft checks:\n" << soft;
     for (const auto& p : solved["problems"]) EXPECT_NE(p.value("code", "").substr(0, 2), "S-") << p.dump();
     (void)window;
+}
+
+// The Build panel's choices: structured input from the ontology, beside the words.
+TEST(BuildTypesTest, TheChoicesComeFromTheOntology) {
+    const json options = BuildChoices(Library());
+    std::map<std::string, json> byId;
+    for (const auto& t : options["types"]) byId[t["id"]] = t;
+    ASSERT_EQ(byId.size(), 8u);
+    EXPECT_EQ(options["types"][0]["id"], "settlement"); // the default first
+    auto paths = [&](const std::string& type) {
+        std::set<std::string> out;
+        for (const auto& f : byId[type]["fields"]) out.insert(f["path"]);
+        return out;
+    };
+    auto parts = [&](const std::string& type) {
+        std::set<std::string> out;
+        for (const auto& p : byId[type]["parts"]) out.insert(p["id"]);
+        return out;
+    };
+    EXPECT_TRUE(paths("settlement").contains("walled"));
+    EXPECT_TRUE(paths("settlement").contains("shape.layout"));
+    EXPECT_TRUE(paths("dungeon").contains("root.levels"));
+    EXPECT_TRUE(paths("dungeon").contains("root.goal"));
+    EXPECT_TRUE(paths("dungeon").contains("style.theme"));
+    EXPECT_TRUE(paths("interior").contains("root.floors"));
+    EXPECT_TRUE(paths("interior").contains("root.kind"));
+    EXPECT_TRUE(parts("settlement").contains("market-ward"));
+    EXPECT_FALSE(parts("settlement").contains("house-plot")) << "the many alike aren't offered";
+    EXPECT_TRUE(parts("castle").contains("moat"));
+    EXPECT_TRUE(parts("dungeon").contains("boss-arena"));
+    for (const auto& [id, t] : byId) {
+        EXPECT_FALSE(t["classes"].empty()) << id;
+        EXPECT_LE(t["parts"].size(), 24u) << id;
+    }
+}
+
+TEST(BuildTypesTest, ChoicesWinOverTheWords) {
+    // The words read a village; the choices make it a castle with a moat.
+    json brief = CompleteBrief(Library(), FallbackDraft(Library(), "a village by a river with a market")["brief"]);
+    ASSERT_EQ(brief["buildType"], "settlement");
+    brief = ApplyChoices(Library(), brief, {{"buildType", "castle"}, {"scale.class", "fortress"}, {"components.moat.enabled", true},
+                                            {"style.condition", "ruined"}});
+    EXPECT_EQ(brief["buildType"], "castle");
+    EXPECT_EQ(BriefValue(brief, "scale.class"), "fortress");
+    EXPECT_EQ(BriefValue(brief, "components.moat.enabled"), true);
+    EXPECT_FALSE(brief["components"].contains("market-ward")) << "not a castle's";
+    EXPECT_EQ(BriefValue(brief, "style.condition"), "ruined");
+    std::vector<PlaceProblem> errors;
+    for (const auto& p : ValidateBrief(Library(), brief)) {
+        if (!p.warning) errors.push_back(p);
+    }
+    EXPECT_TRUE(errors.empty()) << Describe(errors);
+    // Numbers over a class: the class follows them.
+    const json numbers = ApplyChoices(Library(), brief, {{"scale.buildings", {{"count", json::array({2, 3})}}}});
+    EXPECT_EQ(BriefValue(numbers, "scale.class"), "tower-house");
+    EXPECT_EQ(ChoicesQuery(Library(), {{"buildType", "castle"}, {"components.moat.enabled", true}}), "Build a castle with moat");
+}
+
+TEST(BuildTypesTest, ABuildFromChoicesAlone) {
+    Offline f("aige_buildtype_choices");
+    PlaceBuild build(f.Host());
+    const json choices = {{"buildType", "dungeon"}, {"scale.class", "medium"}, {"style.theme", "cave"}, {"root.levels", 2},
+                          {"root.goal", "boss"}, {"components.boss-arena.enabled", true}};
+    ASSERT_EQ(build.Start("", choices), "");
+    EXPECT_EQ(build.Brief()["buildType"], "dungeon");
+    EXPECT_EQ(BriefValue(build.Brief(), "root.levels"), 2);
+    EXPECT_EQ(BriefValue(build.Brief(), "style.theme"), "cave");
+    EXPECT_EQ(build.Choices(), choices);
+    const json solved = RunToLayout(build, "", "dungeon", true);
+    int levels = 0;
+    for (const auto& c : build.Spec()["root"]["children"]) levels += c["module"] == "dungeon-level";
+    EXPECT_EQ(levels, 2);
+    EXPECT_EQ(build.Spec()["root"]["quality"].value("goal", ""), "boss");
+    bool arena = false;
+    for (const auto& r : solved["regions"]) arena = arena || r.value("module", "") == "boss-arena";
+    EXPECT_TRUE(arena);
+    EXPECT_TRUE(Failed(solved).empty()) << Failed(solved) << MapText(solved);
+    if (std::getenv("AIGE_DUMP_SOLVED")) std::ofstream(std::getenv("AIGE_DUMP_SOLVED")) << solved.dump();
+}
+
+TEST(BuildTypesTest, WordsAndChoicesTogether) {
+    Offline f("aige_buildtype_both");
+    PlaceBuild build(f.Host());
+    ASSERT_EQ(build.Start("a village by a river", {{"scale.class", "town"}, {"components.temple-ward.enabled", true}}), "");
+    EXPECT_EQ(BriefValue(build.Brief(), "scale.class"), "town");
+    EXPECT_EQ(BriefValue(build.Brief(), "components.temple-ward.enabled"), true);
+    EXPECT_NE(build.Brief().value("features", json::array()).dump().find("river"), std::string::npos) << "the words still count";
+}
+
+// ③ Layout: confirming lays out the zones alone; the user revises them there, then the plan follows.
+TEST(BuildTypesTest, TheLayoutStepComesBeforeThePlan) {
+    Offline f("aige_buildtype_layout");
+    PlaceBuild::Host host = f.Host();
+    host.layoutStep = true;
+    PlaceBuild build(host);
+    ASSERT_EQ(build.Start("a village by a river with a market and a temple"), "");
+    // ① Confirm: straight to the layout after reading the request, the questions beside it.
+    ASSERT_EQ(build.Stage(), "layout") << build.State()["status"];
+    ASSERT_FALSE(build.Questions().empty());
+    for (const auto& q : build.Questions()) EXPECT_EQ(q.value("about", ""), "placement") << q.dump();
+    build.SetDirections("the market in the middle, the temple to the north");
+    EXPECT_EQ(build.State()["directions"], "the market in the middle, the temple to the north");
+    ASSERT_EQ(build.ReplanLayout(), "");
+    ASSERT_EQ(build.Stage(), "layout") << build.State()["status"];
+    const json state = build.State();
+    ASSERT_TRUE(state.contains("layout"));
+    int zones = 0;
+    for (const auto& z : state["layout"]["zones"]) {
+        if (z["level"] != "zone") continue;
+        ++zones;
+        EXPECT_FALSE(z.value("description", "").empty()) << z.dump();
+        EXPECT_FALSE(z.value("where", "").empty()) << "where it lies: " << z.dump();
+    }
+    EXPECT_GE(zones, 2);
+    EXPECT_TRUE(fs::exists(build.Folder() / "layout.png"));
+    // Nothing inside the zones yet.
+    for (const auto& r : build.Solved()["regions"]) EXPECT_NE(r.value("statement", "").find("/plots"), 0u);
+    for (const auto& o : build.Solved()["objects"]) EXPECT_NE(o.value("layer", ""), "building") << o.dump();
+    // The Contents tab is there too; a change to it makes the layout out of date.
+    ASSERT_TRUE(state.contains("window"));
+    build.Edit("walled", "palisade");
+    EXPECT_TRUE(build.State()["layout"]["stale"].get<bool>());
+    EXPECT_NE(build.PlanFromLayout(), "") << "planned from an out-of-date layout";
+    ASSERT_EQ(build.ReplanLayout(), "");
+    EXPECT_FALSE(build.State()["layout"]["stale"].get<bool>());
+    // A zone drawn where the user wants it takes exactly that land; a zone's own pattern and size.
+    std::string ward;
+    const json zonesNow = build.State()["layout"]["zones"]; // named: iterated by reference
+    for (const auto& z : zonesNow) {
+        if (ward.empty() && z["level"] == "zone" && z.value("hasStyle", false)) ward = z["id"];
+    }
+    ASSERT_FALSE(ward.empty()) << build.State()["layout"]["zones"].dump().substr(0, 3000);
+    ASSERT_EQ(build.DrawZone(ward, {{"x", 2}, {"y", 2}, {"w", 20}, {"h", 14}}), "");
+    for (const auto& r : build.Solved()["regions"]) {
+        if (r["id"] != ward) continue;
+        EXPECT_GE(r["bounds"][0].get<int>(), 2);
+        EXPECT_LE(r["bounds"][0].get<int>() + r["bounds"][2].get<int>(), 22);
+        EXPECT_GT(r["area"].get<int>(), 200);
+    }
+    ASSERT_EQ(build.SetZoneField(ward, "street-style", "radial"), "");
+    EXPECT_EQ(SpecNode(const_cast<json&>(build.Spec()), ward)->at("quality")["street-style"], "radial");
+    EXPECT_NE(build.SetZoneField(ward, "street-style", "zigzag"), "") << "not a pattern";
+    bool spaced = false;
+    const json zonesAfter = build.State()["layout"]["zones"];
+    for (const auto& z : zonesAfter) spaced = spaced || z.contains("space");
+    EXPECT_TRUE(spaced) << "each zone's room is checked";
+    // Then the plan: the zones kept near where the layout put them.
+    std::map<std::string, std::pair<int, int>> before;
+    const int side = build.Solved()["grid"]["bounds"][2];
+    for (const auto& r : build.Solved()["regions"]) {
+        if (r.value("statement", "") == "site/zones") before[r["id"]] = {r["seed"][0].get<int>(), r["seed"][1].get<int>()};
+    }
+    ASSERT_EQ(build.PlanFromLayout(), "");
+    ASSERT_EQ(build.Stage(), "plan");
+    const int after = build.Solved()["grid"]["bounds"][2];
+    for (const auto& r : build.Solved()["regions"]) {
+        if (r.value("statement", "") != "site/zones" || !before.contains(r["id"])) continue;
+        const double k = static_cast<double>(after) / side;
+        EXPECT_NEAR(r["seed"][0].get<int>(), before[r["id"]].first * k, 2.0) << r["id"];
+        EXPECT_NEAR(r["seed"][1].get<int>(), before[r["id"]].second * k, 2.0) << r["id"];
+    }
+    // Back to the layout from the plan.
+    ASSERT_EQ(build.Step("layout"), "");
+    EXPECT_EQ(build.Stage(), "layout");
+}
+
+// The painting tool: a zone takes exactly the cells painted for it, taken from any other zone.
+TEST(BuildTypesTest, AZoneIsPaintedCellByCell) {
+    Offline f("aige_buildtype_paint");
+    PlaceBuild::Host host = f.Host();
+    host.layoutStep = true;
+    PlaceBuild build(host);
+    ASSERT_EQ(build.Start("a village by a river with a market and a temple"), "");
+    ASSERT_EQ(build.Stage(), "layout");
+    const json zones = build.State()["layout"]["zones"];
+    std::vector<std::string> ids;
+    for (const auto& z : zones) {
+        if (z["level"] == "zone") ids.push_back(z["id"]);
+    }
+    ASSERT_GE(ids.size(), 2u);
+    json cells = json::array();
+    for (int y = 4; y < 14; ++y) {
+        for (int x = 4; x < 16; ++x) cells.push_back({x, y});
+    }
+    ASSERT_EQ(build.PaintZone(ids[0], cells, false), "");
+    ASSERT_EQ(build.PaintZone(ids[1], json::array({{6, 6}, {7, 6}}), false), ""); // two of them for the other
+    const int W = build.Solved()["grid"]["bounds"][2];
+    std::set<int> first;
+    for (const auto& r : build.Solved()["regions"]) {
+        if (r["id"] == ids[0]) {
+            for (int c : DecodeCells(r["cells"], W)) first.insert(c);
+        }
+    }
+    EXPECT_FALSE(first.contains(6 * W + 6)) << "repainted for the other zone";
+    EXPECT_FALSE(first.contains(6 * W + 7)) << "repainted for the other zone";
+    // A stroke adds to the land the zone has: every painted cell is its own.
+    for (int y = 4; y < 14; ++y) {
+        for (int x = 4; x < 16; ++x) {
+            if (y == 6 && (x == 6 || x == 7)) continue;
+            EXPECT_TRUE(first.contains(y * W + x)) << x << "," << y;
+        }
+    }
+    ASSERT_EQ(build.PaintZone(ids[0], json::array({{10, 10}}), true), ""); // erased
+    for (const auto& r : build.Solved()["regions"]) {
+        if (r["id"] != ids[0]) continue;
+        for (int c : DecodeCells(r["cells"], W)) EXPECT_NE(c, 10 * W + 10);
+    }
+    ASSERT_EQ(build.PlanFromLayout(), "");
+    EXPECT_EQ(build.Stage(), "plan");
+}
+
+// The AI's relations, as the layout knows them.
+TEST(BuildTypesTest, CompoundAndMapDirectionsAreNormalised) {
+    const json out = NormalizeRelations(json::array({{{"type", "north-west-of"}, {"to", "market-ward"}},
+                                                     {{"type", "below"}, {"to", "temple-ward"}},
+                                                     {{"type", "north-west"}, {"to", "site"}},
+                                                     {{"type", "along"}, {"to", "river"}}}));
+    std::vector<std::string> got;
+    for (const auto& r : out) got.push_back(r.value("type", "") + " " + r.value("to", ""));
+    const std::vector<std::string> want = {"north-of market-ward", "west-of market-ward", "south-of temple-ward",
+                                           "in-north site", "in-west site", "along river"};
+    EXPECT_EQ(got, want);
+}
+
+// Reading a request: the AI is given the one build type it names, not all eight.
+TEST(BuildTypesTest, ARequestIsReadWithItsBuildTypeAlone) {
+    const json all = InterpretContext(Library());
+    const json village = InterpretContext(Library(), NamedBuildType(Library(), "build a village by river with several parts"));
+    ASSERT_EQ(village["buildTypes"].size(), 1u);
+    EXPECT_EQ(village["buildTypes"][0]["id"], "settlement");
+    EXPECT_EQ(NamedBuildType(Library(), "something nice"), "");
+    std::cout << "[ context ] all types " << all.dump().size() << " bytes, the village's " << village.dump().size() << " bytes" << std::endl;
+    EXPECT_LT(village.dump().size() * 2, all.dump().size());
 }

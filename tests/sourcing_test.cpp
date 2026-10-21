@@ -213,7 +213,7 @@ TEST(SourcingTest, ArtIsMadeCheckedAndFound) {
     build.OnResponse(static_cast<int>(sent.size()),
                      {{"ok", true}, {"assets", json::array({{{"path", "assets/web/isometric-well/well.png"}, {"role", "well"}, {"description", "a stone well"}}})}});
     ASSERT_TRUE(build.SourcingDone());
-    EXPECT_EQ(build.Stage(), "building");
+    EXPECT_EQ(build.Stage(), "sourced"); // the art is in: ③ Assets waits for Build
     EXPECT_TRUE(build.TriedSources().at("house||building|4x3").generate);
     EXPECT_TRUE(build.TriedSources().at("well||prop").web);
     const json added = build.TakeNewAssets();
@@ -224,4 +224,26 @@ TEST(SourcingTest, ArtIsMadeCheckedAndFound) {
     EXPECT_EQ(byPath["assets/web/isometric-well/well.png"]["author"], "Alice");
     EXPECT_EQ(byPath["assets/web/isometric-well/well.png"]["roles"], "well");
     fs::remove_all(root);
+}
+
+// A source the user chose is honoured (2026-10-21): with art already generated into the
+// project, "web" still searches the web, and "library" the library; art that came from
+// there is used again.
+TEST(SourcingTest, AChosenSourceIsSearchedEvenWithGeneratedArtThere) {
+    Synthetic s;
+    s.entries.reserve(4);
+    const Candidate made = s.Make("made", "good", 0.95f, "generated", ""), fetched = s.Make("fetched", "good", 0.9f, "web", "CC0");
+    const auto generatedOnly = s.List({{made, 0}});
+    const Decision web = Decide("web", kNormal, {generatedOnly, {}, {}}, LicencePolicy{}, true, true, {});
+    EXPECT_EQ(web.action, "web") << web.reason;
+    const Decision library = Decide("library", kNormal, {generatedOnly, {}, {}}, LicencePolicy{}, false, true, {});
+    EXPECT_NE(library.step, "A1") << library.reason;
+    // Art fetched from the web before, in the project: used again, not fetched twice.
+    const auto both = s.List({{made, 0}, {fetched, 1}});
+    const Decision again = Decide("web", kNormal, {both, {}, {}}, LicencePolicy{}, true, true, {});
+    ASSERT_TRUE(again.candidate.has_value());
+    EXPECT_EQ(again.candidate->entry->id, "fetched");
+    // Searched already and nothing came: what the project has is better than a placeholder.
+    const Decision tried = Decide("web", kNormal, {generatedOnly, {}, {}}, LicencePolicy{}, true, true, {false, true});
+    EXPECT_NE(tried.action, "placeholder") << tried.reason;
 }

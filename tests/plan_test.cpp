@@ -215,6 +215,8 @@ TEST(PlanTest, ABuildIsPlannedAndABrokenNodeRepaired) {
     ASSERT_EQ(build.Start("a village by a river"), "");
     json draft = {{"reading", "typical"}, {"brief", BriefFor("village")}};
     build.OnResponse(1, {{"ok", true}, {"drafts", json::array({draft})}});
+    // The other two readings: no answer (no model); the one draft decides.
+    for (int i : {2, 3}) build.OnResponse(i, {{"ok", false}, {"errors", json::array({"No AI provider configured"})}});
     ASSERT_EQ(build.Stage(), "request");
     ASSERT_EQ(build.Step("assets"), "");
     ASSERT_EQ(build.Confirm(), "");

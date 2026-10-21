@@ -12,6 +12,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace aige {
 
@@ -31,6 +32,9 @@ public:
     };
 
     explicit AiClient(Options options);
+    // The secret the service it starts is given (AIGE_SERVICE_TOKEN) and every request carries
+    // (X-AIGE-Token): only this editor is answered (development_plan.md 11).
+    const std::string& Token() const { return token_; }
     ~AiClient(); // stops the sidecar it started
 
     AiClient(const AiClient&) = delete;
@@ -65,6 +69,7 @@ public:
     std::optional<nlohmann::json> GetJson(const std::string& path, int timeoutSeconds = 2);
 
 private:
+    std::string token_;
     struct Job;
     void Worker();
     void RunStart(nlohmann::json schema);
@@ -82,11 +87,18 @@ private:
 
     std::mutex mutex_;
     std::condition_variable wake_;
-    std::deque<std::function<void()>> jobs_;
+    // Each job; starting the service runs first and alone, requests then run side by side
+    // (a long build step doesn't hold up the AI panel).
+    struct Job {
+        bool start = false;
+        std::function<void()> run;
+    };
+    std::deque<Job> jobs_;
     std::deque<Result> results_;
     bool quitting_ = false;
+    bool starting_ = false; // a start job is running
     int nextRequestId_ = 1;
-    std::thread worker_;
+    std::vector<std::thread> workers_;
 
     struct ProcessHandle;
     std::unique_ptr<ProcessHandle> process_;

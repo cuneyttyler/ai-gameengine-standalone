@@ -12,7 +12,10 @@
 #include "assets/SceneIO.h"
 #include "assets/TileLayerIO.h"
 #include "places/Planner.h"
+#include "editing/BuildWindow.h"
 #include "assets/ProjectTemplate.h"
+#include "places/OntologyEdit.h"
+#include "assets/UserLibrary.h"
 #include "editing/Edits.h"
 #include "editing/LevelBuild.h"
 #include "editing/SceneTools.h"
@@ -168,6 +171,19 @@ nlohmann::json FieldJson(const FieldMeta& meta, const FieldValue& value) {
     return entry;
 }
 
+// ③ Assets' rows: each need, and the ground (each terrain: the project's tiles, made ones, or the Art tool).
+nlohmann::json AssetRows(const nlohmann::json& assets) {
+    nlohmann::json needs = assets.value("needs", nlohmann::json::array());
+    const nlohmann::json terrains = assets.value("terrains", nlohmann::json::object());
+    for (const auto& [t, g] : terrains.items()) {
+        nlohmann::json row = {{"key", "terrain|" + t}, {"role", "ground-tile"}, {"concepts", nlohmann::json::array({t})}, {"source", g.value("source", "")},
+                              {"entry", g.value("entry", g.value("terrain", ""))}, {"why", g.value("why", "")}, {"component", "ground"}};
+        if (g.value("why", "") == "to be made by the Art tool") row["decision"] = {{"action", "generate"}, {"reason", "no " + t + " ground tiles in the project"}};
+        needs.push_back(row);
+    }
+    return needs;
+}
+
 } // namespace
 
 EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& registry, LuaVM& lua, AssetDatabase& assets,
@@ -218,13 +234,18 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
 // The Build panel's messages (7.4-7.9), apart: one chain of them all is too deep for the compiler.
 bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json& message) {
     // While the build works off the UI thread, only what doesn't touch it.
-    if (buildJob_ && type != "build:request" && type != "build:list" && type != "build:sourcingRequest" && type != "build:sourcing") {
+    if (buildJob_ && type != "build:request" && type != "build:list" && type != "build:sourcingRequest" && type != "build:sourcing" &&
+        type != "build:choicesRequest" && type != "build:advanced") {
         post_({{"type", "notify"}, {"text", "The build is still working: a moment"}});
         PostBuild();
         return true;
     }
     if (type == "build:start") {
-        StartBuild(message.value("query", ""));
+        StartBuild(message.value("query", ""), message.value("choices", nlohmann::json::object()));
+    } else if (type == "build:choicesRequest") {
+        nlohmann::json options = BuildChoices(Places());
+        options["type"] = "build:choices";
+        post_(options);
     } else if (type == "build:request") {
         PostBuild();
     } else if (type == "build:sourcingRequest") {
@@ -251,22 +272,70 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         PostBuild();
     } else if (type == "build:list") {
         post_({{"type", "build:list"}, {"builds", ListBuilds(assets_.GetProject().root)}});
+    } else if (type == "build:removeOlder") {
+        // Every build but the open one (the panel asked first).
+        const int removed = RemoveBuilds(assets_.GetProject().root, build_ ? build_->Id() : std::string());
+        post_({{"type", "notify"}, {"text", "Removed " + std::to_string(removed) + " older build(s)"}});
+        post_({{"type", "build:list"}, {"builds", ListBuilds(assets_.GetProject().root)}});
+    } else if (type == "build:advanced") {
+        if (build_) {
+            nlohmann::json doc = build_->Advanced(message.value("what", ""));
+            doc["type"] = "build:advanced";
+            post_(doc);
+        }
     } else if (type == "build:resume") {
         ResumeBuild(message.value("id", ""));
     } else if (type == "build:edit") {
-        if (build_) build_->Edit(message.value("path", ""), message.value("value", nlohmann::json()));
+        if (build_) {
+            const std::string path = message.value("path", "");
+            build_->Edit(path, message.value("value", nlohmann::json()));
+            // A part's source changed in ③ Assets: what it gets is decided again.
+            if (path.ends_with(".assets.source") &&
+                (build_->Stage() == "planned" || build_->Stage() == "sourced" || build_->Stage() == "built")) {
+                PreviewAssets();
+            }
+        }
         PostBuild();
     } else if (type == "build:step" || type == "build:confirm") {
         // Planning (without the AI, all of it here) and laying out: off the UI thread.
         const std::string step = message.value("step", "");
         const bool confirm = type == "build:confirm";
         RunBuildJob([confirm, step](PlaceBuild& build) { return confirm ? build.Confirm() : build.Step(step); }, "Not yet: ");
+    } else if (type == "build:decision") {
+        if (build_) build_->AnswerDecision(message.value("question", ""), message.value("answer", ""));
+        PostBuild();
+    } else if (type == "build:directions") {
+        if (build_) build_->SetDirections(message.value("text", ""));
+    } else if (type == "build:replanLayout") {
+        RunBuildJob([](PlaceBuild& build) { return build.ReplanLayout(); }, "Not now: ");
+    } else if (type == "build:zoneKind") {
+        const std::string module = message.value("module", ""), kind = message.value("kind", "");
+        const nlohmann::json value = message.value("value", nlohmann::json());
+        RunBuildJob([module, kind, value](PlaceBuild& build) { return build.SetZoneKind(module, kind, value); }, "Can't set it: ");
+    } else if (type == "build:zoneField") {
+        const std::string zone = message.value("zone", ""), field = message.value("field", "");
+        const nlohmann::json value = message.value("value", nlohmann::json());
+        RunBuildJob([zone, field, value](PlaceBuild& build) { return build.SetZoneField(zone, field, value); }, "Can't set it: ");
+    } else if (type == "build:paintZone") {
+        const std::string zone = message.value("zone", "");
+        const nlohmann::json cells = message.value("cells", nlohmann::json::array());
+        const bool erase = message.value("erase", false);
+        RunBuildJob([zone, cells, erase](PlaceBuild& build) { return build.PaintZone(zone, cells, erase); }, "Can't paint it: ");
+    } else if (type == "build:drawZone") {
+        const std::string zone = message.value("zone", "");
+        const nlohmann::json rect = message.value("rect", nlohmann::json());
+        RunBuildJob([zone, rect](PlaceBuild& build) { return build.DrawZone(zone, rect); }, "Can't draw it: ");
+    } else if (type == "build:planFromLayout") {
+        RunBuildJob([](PlaceBuild& build) { return build.PlanFromLayout(); }, "Not yet: ");
     } else if (type == "build:approve") {
         RunBuildJob([](PlaceBuild& build) { return build.Approve(); }, "Not yet: ");
-    } else if (type == "build:revise" || type == "build:review" || type == "build:undo") {
+    } else if (type == "build:revise" || type == "build:review" || type == "build:undo" || type == "build:redo") {
         const std::string text = message.value("text", "");
         RunBuildJob([type, text](PlaceBuild& build) {
-            return type == "build:revise" ? build.Revise(text) : type == "build:review" ? build.Review() : build.Undo();
+            return type == "build:revise" ? build.Revise(text)
+                   : type == "build:review" ? build.Review()
+                   : type == "build:undo"   ? build.Undo()
+                                            : build.Redo();
         }, "Not now: ");
     } else if (type == "build:relayout") {
         RunBuildJob([](PlaceBuild& build) { return build.Relayout(); }, "Not now: ");
@@ -294,9 +363,34 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         if (message.contains("shareAlike")) settings.licences.shareAlike = message.value("shareAlike", false);
         WriteSourcingSettings(assets_.GetProject().root, settings);
         post_({{"type", "build:sourcing"}, {"webSearch", settings.webSearch}, {"shareAlike", settings.licences.shareAlike}});
+    } else if (type == "build:findAssets") {
+        if (build_) build_->ForgetTried(); // asked again: what's still missing is made again
+        FindAssets();
+        PostBuild();
     } else if (type == "build:build") {
         BuildIntoScene();
         PostBuild();
+    } else if (type == "build:finish") {
+        // The place stays in the scene: saved with it, and the build closed (Your builds reopens it).
+        if (build_ && build_->Stage() == "built") {
+            const std::string name = build_->Brief().value("name", build_->Id());
+            Save();
+            build_.reset();
+            buildShown_ = nlohmann::json();
+            post_({{"type", "notify"}, {"text", name + " is in the scene, and the scene is saved"}});
+        }
+        PostBuild();
+    } else if (type == "build:refineArt") {
+        if (build_) {
+            const std::string why = build_->RefineArt(message.value("key", ""), message.value("text", ""));
+            if (!why.empty()) post_({{"type", "notify"}, {"text", "Can't refine it: " + why}});
+        }
+        PostBuild();
+    } else if (type == "build:skipSourcing") {
+        if (build_) {
+            build_->SkipSourcing();
+            AfterSourcing();
+        }
     } else if (type == "build:cancel") {
         if (build_) build_->Cancel();
         PostBuild();
@@ -309,6 +403,8 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
 void EditorApp::OnWebMessage(const nlohmann::json& message) {
     const std::string type = message.value("type", "");
     if (type.rfind("build:", 0) == 0 && HandleBuildMessage(type, message)) return;
+    if (type.rfind("ontology:", 0) == 0 && HandleOntologyMessage(type, message)) return;
+    if (type.rfind("library:", 0) == 0 && HandleLibraryMessage(type, message)) return;
 
     if (type == "viewport:bounds") {
         int width = message.value("width", 0);
@@ -411,9 +507,11 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         const std::wstring folder = Utf8ToWide(message.value("path", ""));
         ShellExecuteW(mainWindow_, nullptr, L"explorer.exe", (L"\"" + folder + L"\"").c_str(), nullptr, SW_SHOWNORMAL);
     } else if (type == "folder:rename") {
-        RenameFolder(message.value("folder", ""), message.value("to", ""));
+        if (Project::IsInside(message.value("folder", "")) && Project::IsInside(message.value("to", ""))) {
+            RenameFolder(message.value("folder", ""), message.value("to", ""));
+        }
     } else if (type == "folder:remove") {
-        RemoveFolder(message.value("folder", ""), message.value("deleteContents", false));
+        if (Project::IsInside(message.value("folder", ""))) RemoveFolder(message.value("folder", ""), message.value("deleteContents", false));
     } else if (type == "file:move") {
         MoveProjectItem(message.value("from", ""), message.value("to", ""));
     } else if (type == "prefab:remove") {
@@ -965,7 +1063,8 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     } else if (type == "edit:redo") {
         Redo();
     } else if (type == "edit:delete") {
-        DeleteSelected();
+        if (selectedCell_ && !selected_) EraseSelectedCell();
+        else DeleteSelected();
     } else if (type == "edit:duplicate") {
         DuplicateSelected();
     } else if (type == "scene:save") {
@@ -1050,8 +1149,9 @@ void EditorApp::UpdateCursor() {
                 cursor = Cursor::Erase;
                 break;
             case Tool::Select:
-                // Over something that can be picked up and moved (not the
-                // ground itself): the move pointer.
+                // The Select tool's hand; over something that can be picked up
+                // and moved (not the ground itself): the move pointer.
+                cursor = Cursor::Select;
                 if (dragging_) {
                     cursor = Cursor::Move;
                 } else if (hasHover_) {
@@ -1880,6 +1980,7 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
             hasHover_ = false;
             return;
         case Type::Down:
+            post_({{"type", "panel:focused"}, {"id", "viewport"}}); // the maximise shortcut's panel (8.1)
             if (event.button == Button::Right || event.button == Button::Middle) {
                 panning_ = true;
                 panLastX_ = event.x;
@@ -1916,6 +2017,8 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                     dragFromX_ = sceneX;
                     dragFromY_ = sceneY;
                     BeginEdit();
+                } else if (auto cell = PickLayerCell(sceneX, sceneY)) {
+                    SelectCell(*cell);
                 }
             } else {
                 stroking_ = true;
@@ -2221,10 +2324,51 @@ void EditorApp::ApplyOneShotEdit(const std::function<bool()>& edit) {
 
 // --- Commands ---------------------------------------------------------------
 
+std::optional<EditorApp::CellPick> EditorApp::PickLayerCell(float sceneX, float sceneY) const {
+    // The ground of a built place is tile layers, not entities: the topmost layer with a tile there.
+    const TileLayers* layers = FindLayers(registry_);
+    if (layers == nullptr) return std::nullopt;
+    int gx = 0, gy = 0;
+    CellAt(sceneX, sceneY, iso_, gx, gy);
+    const auto ordered = layers->Ordered();
+    for (auto it = ordered.rbegin(); it != ordered.rend(); ++it) {
+        if ((*it)->Get(gx, gy) != TileLayer::kEmpty) return CellPick{(*it)->name, gx, gy};
+    }
+    return std::nullopt;
+}
+
+void EditorApp::SelectCell(const CellPick& cell) {
+    selectedCell_ = cell;
+    const TileLayers* layers = FindLayers(registry_);
+    const TileLayer* layer = layers ? layers->Find(cell.layer) : nullptr;
+    const TileDef* def = layer ? layer->Def(layer->Get(cell.gx, cell.gy)) : nullptr;
+    post_({{"type", "inspector:cell"},
+           {"layer", cell.layer},
+           {"x", cell.gx},
+           {"y", cell.gy},
+           {"prefab", def ? def->prefab : std::string()},
+           {"texture", def ? def->sprite.texture : std::string()},
+           {"solid", def ? def->solid : false}});
+}
+
+void EditorApp::EraseSelectedCell() {
+    if (!selectedCell_ || playing_) return;
+    TileLayer* layer = LayersOf(registry_).Find(selectedCell_->layer);
+    if (layer == nullptr) return;
+    TileLayerEdit edit(selectedCell_->layer);
+    edit.Set(*layer, selectedCell_->gx, selectedCell_->gy, TileLayer::kEmpty);
+    history_.PushCommand(std::make_unique<TileLayerCommand>(std::vector<TileLayerEdit>{edit}, "Erase a ground cell"));
+    dirty_ = true;
+    editorStateStale_ = true;
+    selectedCell_.reset();
+    post_({{"type", "inspector:clear"}});
+}
+
 void EditorApp::Select(std::optional<Entity> entity) {
     if (entity && !registry_.valid(*entity)) {
         entity.reset();
     }
+    selectedCell_.reset(); // a cell or an entity, not both
     selected_ = entity;
     post_({{"type", "selection:changed"},
            {"id", entity ? nlohmann::json(static_cast<uint32_t>(*entity)) : nlohmann::json(nullptr)}});
@@ -2593,6 +2737,7 @@ void EditorApp::AddStatsOverlay(std::vector<UiQuad>& ui) {
 void EditorApp::Tick(double frameSeconds) {
     PollAi();
     FinishBuildJob();
+    StepBuildRun();
     // The Grid setting changed (Project Settings, an AI proposal, undo): the
     // whole scene re-lays on the other grid (6.1).
     if (const IsoParams grid = BootstrapIso(); grid.topDown != iso_.topDown) {
@@ -2739,6 +2884,7 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
                        kMarkerColor, 0.9f, 1.5f);
     }
 
+    if (selectedCell_) AddCellOutline(overlay, selectedCell_->gx, selectedCell_->gy, iso_, kAccent, 0.95f, 2.0f);
     if (hasHover_ && !panning_ && !dragging_) {
         int gx = 0;
         int gy = 0;
@@ -2748,6 +2894,8 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
             case Tool::Select:
                 if (auto hovered = PickEntity(registry_, hoverX_, hoverY_, iso_); hovered && hovered != selected_) {
                     AddEntityOutline(overlay, registry_, *hovered, iso_, kWhite, 0.35f, 1.0f);
+                } else if (!hovered) {
+                    if (auto cell = PickLayerCell(hoverX_, hoverY_)) AddCellOutline(overlay, cell->gx, cell->gy, iso_, kWhite, 0.35f, 1.0f);
                 }
                 break;
             case Tool::Prefab: {
@@ -2960,6 +3108,18 @@ void EditorApp::OnBuildResult(int requestId, const nlohmann::json& body) {
     if (build_->Stage() == "sourcing") {
         // The art as it comes (light): then, when it's all there, the build goes on into the scene.
         build_->OnResponse(requestId, body);
+        AfterSourcing();
+        return;
+    }
+    // An answer may finish the plan and lay it out: off the UI thread.
+    RunBuildJob([requestId, body](PlaceBuild& build) {
+        build.OnResponse(requestId, body);
+        return std::string();
+    });
+}
+
+void EditorApp::AfterSourcing() {
+    {
         if (build_->SourcingDone()) {
             build_->ClearSourcingDone();
             RefreshAssets();
@@ -2974,16 +3134,21 @@ void EditorApp::OnBuildResult(int requestId, const nlohmann::json& body) {
             }
             post_(AssetsJson());
             post_({{"type", "notify"}, {"text", "Added " + std::to_string(added) + " new asset(s) for the build"}});
-            BuildIntoScene();
+            // What each part now gets, with the new art in the catalog.
+            const TerrainSet terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
+            const Catalog catalog = BuildCatalog(assets_, &Places(), CatalogOptionsNow());
+            AssetSourcing sourcing = SourcingNow();
+            sourcing.canGenerate = false;
+            PlaceSceneOptions options;
+            options.place = build_->Id();
+            std::tie(options.originX, options.originY) = build_->Origin();
+            options.iso = iso_;
+            options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
+            const nlohmann::json assets = PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), catalog, prefabs_, assets_, terrains, options, &sourcing);
+            build_->MarkSourced(AssetRows(assets));
         }
         PostBuild();
-        return;
     }
-    // An answer may finish the plan and lay it out: off the UI thread.
-    RunBuildJob([requestId, body](PlaceBuild& build) {
-        build.OnResponse(requestId, body);
-        return std::string();
-    });
 }
 
 void EditorApp::RunBuildJob(std::function<std::string(PlaceBuild&)> job, const std::string& prefix, std::function<void()> after) {
@@ -3029,7 +3194,7 @@ void EditorApp::FinishBuildJob() {
     }
 }
 
-void EditorApp::StartBuild(const std::string& query) {
+void EditorApp::StartBuild(const std::string& query, const nlohmann::json& choices) {
     if (buildJob_) {
         post_({{"type", "notify"}, {"text", "The build is still working: a moment"}});
         return;
@@ -3039,7 +3204,7 @@ void EditorApp::StartBuild(const std::string& query) {
         return;
     }
     build_ = MakeBuild();
-    const std::string why = build_->Start(query);
+    const std::string why = build_->Start(query, choices);
     if (!why.empty()) post_({{"type", "notify"}, {"text", "Can't build: " + why}});
     post_({{"type", "build:open"}});
     PostBuild();
@@ -3070,6 +3235,7 @@ std::unique_ptr<PlaceBuild> EditorApp::MakeBuild() {
         return Ai() && Ai()->GetState() == AiClient::State::Ready ? Ai()->Request("POST", path, body, timeout) : 0;
     };
     host.projectRoot = assets_.GetProject().root;
+    host.layoutStep = true; // ③ Layout: the zones placed and revised before what's inside them
     return std::make_unique<PlaceBuild>(std::move(host));
 }
 
@@ -3091,22 +3257,50 @@ void EditorApp::PostBuild() {
         const auto [x, y] = FreeOrigin(registry_, build_->Id(), build_->SiteSide());
         build_->SetOrigin(x, y);
     }
+    // ③ Assets: the decisions, as soon as the plan is approved.
+    if (stage == "planned" && !build_->HasAssetNeeds() && !buildJob_ && !buildRun_) PreviewAssets();
     buildShown_ = build_->State();
     post_(buildShown_);
     post_(build_->Card());
 }
 
-void EditorApp::BuildIntoScene() {
-    if (!build_ || buildJob_) return;
-    if (playing_) {
-        post_({{"type", "notify"}, {"text", "Stop Play mode before building."}});
+AssetSourcing EditorApp::SourcingNow() {
+    const std::filesystem::path root = assets_.GetProject().root;
+    AssetSourcing sourcing;
+    sourcing.brief = build_->Brief();
+    sourcing.settings = ReadSourcingSettings(root);
+    sourcing.canGenerate = Ai() && Ai()->GetState() == AiClient::State::Ready;
+    sourcing.tried = build_->TriedSources();
+    sourcing.library = LoadAssetLibrary(root);
+    std::ifstream in(build_->Folder() / "assets.json");
+    const nlohmann::json saved = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+    if (saved.is_object()) sourcing.overrides = saved.value("overrides", nlohmann::json::object());
+    return sourcing;
+}
+
+void EditorApp::PreviewAssets() {
+    if (!build_ || buildJob_ || buildRun_) return;
+    PlaceSceneOptions options;
+    options.place = build_->Id();
+    std::tie(options.originX, options.originY) = build_->Origin();
+    options.iso = iso_;
+    options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
+    const TerrainSet terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
+    const Catalog catalog = BuildCatalog(assets_, &Places(), CatalogOptionsNow());
+    const AssetSourcing sourcing = SourcingNow();
+    const nlohmann::json assets = PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), catalog, prefabs_, assets_, terrains, options, &sourcing);
+    build_->SetAssetNeeds(AssetRows(assets));
+}
+
+void EditorApp::FindAssets() {
+    // ③ Assets: each part's art decided (the project, the library, the web, the Art tool); what's
+    // to be made or fetched starts, and the panel shows it as it comes. Build waits for the user.
+    if (!build_ || buildJob_ || buildRun_) return;
+    const std::string stage = build_->Stage();
+    if (stage != "planned" && stage != "sourced" && stage != "built") {
+        post_({{"type", "notify"}, {"text", "Not yet: approve the plan first"}});
         return;
     }
-    if (const std::string why = build_->StartBuilding(); !why.empty()) {
-        post_({{"type", "notify"}, {"text", "Not yet: " + why}});
-        return;
-    }
-    PostBuild(); // ④ Build shows while it works
     if (!build_->HasOrigin()) {
         const auto [x, y] = FreeOrigin(registry_, build_->Id(), build_->SiteSide());
         build_->SetOrigin(x, y);
@@ -3118,72 +3312,126 @@ void EditorApp::BuildIntoScene() {
     options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
     const TerrainSet terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
     const Catalog catalog = BuildCatalog(assets_, &Places(), CatalogOptionsNow());
-    // Where the art comes from (7.9): the project, the library, the web, the Art tool.
-    const std::filesystem::path root = assets_.GetProject().root;
-    AssetSourcing sourcing;
-    sourcing.brief = build_->Brief();
-    sourcing.settings = ReadSourcingSettings(root);
-    sourcing.canGenerate = Ai() && Ai()->GetState() == AiClient::State::Ready;
-    sourcing.tried = build_->TriedSources();
-    sourcing.library = LoadAssetLibrary(root);
-    {
-        std::ifstream in(build_->Folder() / "assets.json");
-        const nlohmann::json saved = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
-        if (saved.is_object()) sourcing.overrides = saved.value("overrides", nlohmann::json::object());
-    }
-    // The asset plan, the build, then verify and repair before it becomes one undo step.
+    const AssetSourcing sourcing = SourcingNow();
     const nlohmann::json assets = PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), catalog, prefabs_, assets_, terrains, options, &sourcing);
-    // Art to make or fetch first: the build goes on when it's there (PollAi).
-    if (!assets.value("pending", nlohmann::json::array()).empty() && build_->StartSourcing(assets["pending"], sourcing.settings)) {
-        PostBuild();
+    build_->MarkSourced(AssetRows(assets));
+    if (!assets.value("pending", nlohmann::json::array()).empty()) build_->StartSourcing(assets["pending"], sourcing.settings);
+    PostBuild();
+}
+
+void EditorApp::BuildIntoScene() {
+    if (!build_ || buildJob_ || buildRun_) return;
+    if (playing_) {
+        post_({{"type", "notify"}, {"text", "Stop Play mode before building."}});
         return;
     }
-    nlohmann::json report;
-    auto command = BuildPlaceScene(registry_, prefabs_, build_->Solved(), assets, terrains, options, &report);
-    const nlohmann::json verify = VerifyPlaceScene(registry_, build_->Solved(), assets, options);
-    bool failing = false;
-    for (const auto& c : verify) failing = failing || (!c.value("ok", true) && !c.value("warning", false));
-    nlohmann::json repairs = nlohmann::json::array();
-    nlohmann::json after = verify;
-    if (failing) {
-        repairs = RepairPlaceScene(registry_, prefabs_, build_->Solved(), assets, verify, options);
-        after = VerifyPlaceScene(registry_, build_->Solved(), assets, options);
+    if (const std::string why = build_->StartBuilding(); !why.empty()) {
+        post_({{"type", "notify"}, {"text", "Not yet: " + why}});
+        return;
     }
-    history_.PushCommand(std::move(command));
-    prefabs_.SyncAll(registry_);
-    UpdateWorldToScreen(registry_, iso_);
-    dirty_ = true;
-    editorStateStale_ = true;
-    sceneTreeStale_ = true;
-    // The decided plan (with the user's overrides kept), and the credits for what needs attribution.
-    {
-        nlohmann::json saved = {{"needs", assets["needs"]}, {"overrides", sourcing.overrides}};
-        std::ofstream(build_->Folder() / "assets.json") << saved.dump(2) << "\n";
-        nlohmann::json used = nlohmann::json::array();
-        for (const auto& n : assets["needs"]) {
-            if (n.value("source", "") == "web" || n.value("source", "") == "library") {
-                used.push_back({{"path", n.value("entry", "")}, {"licence", n.value("licence", "")}, {"author", n.value("author", "")},
-                                {"url", n.value("url", "")}, {"source", n.value("source", "")}});
-            }
+    if (!build_->HasOrigin()) {
+        const auto [x, y] = FreeOrigin(registry_, build_->Id(), build_->SiteSide());
+        build_->SetOrigin(x, y);
+    }
+    buildRun_ = std::make_unique<BuildRun>();
+    buildRun_->options.place = build_->Id();
+    std::tie(buildRun_->options.originX, buildRun_->options.originY) = build_->Origin();
+    buildRun_->options.iso = iso_;
+    buildRun_->options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
+    build_->SetBuildProgress(0, 5, "Choosing the art for each part…");
+    PostBuild(); // ④ Build shows while it works
+}
+
+void EditorApp::StepBuildRun() {
+    if (!buildRun_ || !build_) return;
+    BuildRun& run = *buildRun_;
+    try {
+        switch (run.phase) {
+        case 0: {
+            // The art for each part: what ③ Assets found and made (nothing is fetched now: what's
+            // still missing is a placeholder).
+            run.terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
+            const Catalog catalog = BuildCatalog(assets_, &Places(), CatalogOptionsNow());
+            run.sourcing = SourcingNow();
+            run.sourcing.canGenerate = false;
+            run.assets = PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), catalog, prefabs_, assets_, run.terrains, run.options, &run.sourcing);
+            build_->SetBuildProgress(1, 5, "Placing the ground, the buildings and what's around them…");
+            break;
         }
-        if (!used.empty()) WriteCredits(root, used, sourcing.settings.licences);
+        case 1:
+            run.command = BuildPlaceScene(registry_, prefabs_, build_->Solved(), run.assets, run.terrains, run.options, &run.report);
+            build_->SetBuildProgress(2, 5, "Checking the place: every door reachable, nothing overlapping, the art in place…");
+            break;
+        case 2: {
+            run.verify = VerifyPlaceScene(registry_, build_->Solved(), run.assets, run.options);
+            run.repairs = nlohmann::json::array();
+            run.after = run.verify;
+            int failing = 0;
+            for (const auto& c : run.verify) failing += !c.value("ok", true) && !c.value("warning", false);
+            build_->SetBuildProgress(3, 5, failing ? "Fixing " + std::to_string(failing) + " check(s) that failed…" : "All checks passed.");
+            break;
+        }
+        case 3: {
+            bool failing = false;
+            for (const auto& c : run.verify) failing = failing || (!c.value("ok", true) && !c.value("warning", false));
+            if (failing) {
+                run.repairs = RepairPlaceScene(registry_, prefabs_, build_->Solved(), run.assets, run.verify, run.options);
+                run.after = VerifyPlaceScene(registry_, build_->Solved(), run.assets, run.options);
+            }
+            build_->SetBuildProgress(4, 5, "Saving it as one undo step and drawing the result…");
+            break;
+        }
+        default: {
+            history_.PushCommand(std::move(run.command));
+            prefabs_.SyncAll(registry_);
+            UpdateWorldToScreen(registry_, iso_);
+            dirty_ = true;
+            editorStateStale_ = true;
+            sceneTreeStale_ = true;
+            const std::filesystem::path root = assets_.GetProject().root;
+            // The decided plan (with the user's overrides kept), and the credits for what needs attribution.
+            {
+                nlohmann::json saved = {{"needs", run.assets["needs"]}, {"overrides", run.sourcing.overrides}};
+                std::ofstream(build_->Folder() / "assets.json") << saved.dump(2) << "\n";
+                nlohmann::json used = nlohmann::json::array();
+                for (const auto& n : run.assets["needs"]) {
+                    if (n.value("source", "") == "web" || n.value("source", "") == "library") {
+                        used.push_back({{"path", n.value("entry", "")}, {"licence", n.value("licence", "")}, {"author", n.value("author", "")},
+                                        {"url", n.value("url", "")}, {"source", n.value("source", "")}});
+                    }
+                }
+                if (!used.empty()) WriteCredits(root, used, run.sourcing.settings.licences);
+            }
+            // What it looks like in the scene, drawn as the renderer draws it: for the Result step.
+            const int built = build_->SiteSide();
+            const ImageData picture = RenderScenePreview(registry_, assets_.GetProject(), iso_, run.options.originX, run.options.originY,
+                                                         run.options.originX + built, run.options.originY + built, 1600);
+            WritePng(build_->Folder() / "scene.png", picture);
+            static int pictures = 0;
+            build_->MarkSourced(AssetRows(run.assets));
+            build_->Built({{"assets", run.assets}, {"report", run.report}, {"verify", run.verify}, {"repairs", run.repairs}, {"after", run.after},
+                           {"origin", {run.options.originX, run.options.originY}},
+                           {"image", "places/" + build_->Id() + "/scene.png?v=" + std::to_string(++pictures)}});
+            // Look at it.
+            const int side = build_->SiteSide();
+            const ScreenPose centre = ProjectIso(run.options.originX + side / 2.0f, run.options.originY + side / 2.0f, iso_);
+            int width = 0, height = 0;
+            viewport_.GetFramebufferSize(width, height);
+            camera_.offsetX = centre.x - width / (2.0f * camera_.zoom);
+            camera_.offsetY = centre.y - height / (2.0f * camera_.zoom);
+            buildRun_.reset();
+            PostBuild();
+            return;
+        }
+        }
+        ++run.phase;
+    } catch (const std::exception& e) {
+        // Never a crash: what failed is said, and the build can be tried again.
+        post_({{"type", "notify"}, {"text", std::string("The build failed: ") + e.what()}});
+        build_->BuildFailed(e.what());
+        buildRun_.reset();
     }
-    // What it looks like in the scene, drawn as the renderer draws it: for the Result step.
-    const int built = build_->SiteSide();
-    const ImageData picture = RenderScenePreview(registry_, assets_.GetProject(), iso_, options.originX, options.originY,
-                                                 options.originX + built, options.originY + built, 1600);
-    WritePng(build_->Folder() / "scene.png", picture);
-    static int pictures = 0;
-    build_->Built({{"assets", assets}, {"report", report}, {"verify", verify}, {"repairs", repairs}, {"after", after},
-                   {"origin", {options.originX, options.originY}},
-                   {"image", "places/" + build_->Id() + "/scene.png?v=" + std::to_string(++pictures)}});
-    // Look at it.
-    const int side = build_->SiteSide();
-    const ScreenPose centre = ProjectIso(options.originX + side / 2.0f, options.originY + side / 2.0f, iso_);
-    int width = 0, height = 0;
-    viewport_.GetFramebufferSize(width, height);
-    camera_.offsetX = centre.x - width / (2.0f * camera_.zoom);
-    camera_.offsetY = centre.y - height / (2.0f * camera_.zoom);
+    PostBuild();
 }
 
 void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool asChange) {
@@ -3398,6 +3646,11 @@ ApplyOutcome EditorApp::ApplyAccepted(const std::vector<nlohmann::json>& operati
         }
         return outcome.applied > 0;
     });
+    // The ground it changed (a built place's tile layers): its own undo step, the cells as they were.
+    if (!outcome.layerEdits.empty()) {
+        history_.PushCommand(std::make_unique<TileLayerCommand>(std::move(outcome.layerEdits), "AI: the ground"));
+        dirty_ = true;
+    }
     if (outcome.settingsChanged) {
         settingsDirty_ = true;
         post_(SettingsJson());
@@ -4111,6 +4364,8 @@ void EditorApp::RefreshAssets() {
         ++assetVersions_[path];
     }
     post_(AssetsJson());
+    // What the Art tool made, kept outside the project too (development_plan.md 10).
+    if (UserLibrary(UserLibraryDir()).KeepGenerated(assets_.GetProject().root) > 0) PostLibrary();
 }
 
 void EditorApp::ImportAssets() {
@@ -4228,10 +4483,137 @@ nlohmann::json EditorApp::ArtJson() {
 
 const Ontology& EditorApp::Places() {
     if (!places_) {
+        // The engine's library, then the user's own (every project: development_plan.md 9), then the project's.
         places_.emplace();
-        places_->Load({EnginePlacesDir(), assets_.GetProject().root / "places"});
+        places_->Load({EnginePlacesDir(), UserOntologyDir(), assets_.GetProject().root / "places"});
     }
     return *places_;
+}
+
+std::filesystem::path EditorApp::UserLibraryDir() {
+    const std::filesystem::path prefs = UserPrefs::DefaultPath();
+    return prefs.empty() ? std::filesystem::path() : prefs.parent_path() / "library";
+}
+
+void EditorApp::PostLibrary() {
+    nlohmann::json state = UserLibrary(UserLibraryDir()).State();
+    state["type"] = "library:state";
+    post_(state);
+}
+
+bool EditorApp::HandleLibraryMessage(const std::string& type, const nlohmann::json& message) {
+    // The Library tab (development_plan.md 10, docs/asset_management.md).
+    UserLibrary library(UserLibraryDir());
+    const std::string item = message.value("item", ""), folder = message.value("folder", "");
+    std::string error;
+    if (type == "library:get") {
+        library.KeepGenerated(assets_.GetProject().root);
+    } else if (type == "library:newFolder") {
+        error = library.NewFolder(message.value("name", ""), message.value("parent", ""));
+    } else if (type == "library:renameFolder") {
+        error = library.RenameFolder(folder, message.value("name", ""));
+    } else if (type == "library:deleteFolder") {
+        error = library.DeleteFolder(folder);
+    } else if (type == "library:move") {
+        error = library.Move(item, folder);
+    } else if (type == "library:rename") {
+        error = library.Rename(item, message.value("name", ""));
+    } else if (type == "library:remove") {
+        error = library.Remove(item);
+    } else if (type == "library:setShared") {
+        error = library.SetShared(item, message.value("shared", ""));
+    } else if (type == "library:setSharing") {
+        error = library.SetSharing(message.value("choice", ""));
+    } else if (type == "library:toProject") {
+        const std::string path = library.CopyToProject(item, assets_.GetProject().root);
+        if (path.empty()) {
+            error = "couldn't copy it into the project";
+        } else {
+            RefreshAssets();
+            post_({{"type", "notify"}, {"text", "Added " + path + " to the project"}});
+        }
+    } else if (type == "library:addFromProject") {
+        // Assets in the project, into the library (from the Assets tab's menu).
+        int added = 0;
+        const nlohmann::json paths = message.value("paths", nlohmann::json::array());
+        for (const auto& p : paths) {
+            if (!p.is_string() || p.get<std::string>().find("..") != std::string::npos) continue;
+            const nlohmann::json info = {{"origin", assets_.GetProject().root.filename().string()}};
+            added += !library.Add(assets_.GetProject().Resolve(p.get<std::string>()), info, folder).empty();
+        }
+        post_({{"type", "notify"}, {"text", "Kept " + std::to_string(added) + " asset(s) in your library"}});
+    } else if (type == "library:export") {
+        const auto to = ShowFolderDialog(mainWindow_, L"Where to export the library");
+        if (!to) return true;
+        error = library.Export(folder, *to);
+        if (error.empty()) post_({{"type", "notify"}, {"text", "Exported to " + WideToUtf8(to->wstring())}});
+    } else if (type == "library:import") {
+        const auto from = ShowFolderDialog(mainWindow_, L"Pick an exported library (a .aige-library folder)");
+        if (!from) return true;
+        error = library.Import(*from);
+    } else {
+        return false;
+    }
+    if (!error.empty()) post_({{"type", "notify"}, {"text", "Library: " + error}});
+    PostLibrary();
+    return true;
+}
+
+std::filesystem::path EditorApp::UserOntologyDir() {
+    const std::filesystem::path prefs = UserPrefs::DefaultPath();
+    return prefs.empty() ? std::filesystem::path() : prefs.parent_path() / "ontology";
+}
+
+void EditorApp::PostOntology(const std::string& error) {
+    nlohmann::json state = OntologyJson(Places());
+    state["type"] = "ontology:state";
+    state["userDir"] = WideToUtf8(UserOntologyDir().wstring());
+    state["extensions"] = UserExtensions(UserOntologyDir());
+    state["userModules"] = ExportUserOntology(UserOntologyDir()).value("modules", nlohmann::json::array()); // as written, for editing
+    if (!error.empty()) state["error"] = error;
+    post_(state);
+}
+
+bool EditorApp::HandleOntologyMessage(const std::string& type, const nlohmann::json& message) {
+    // The ontology panel (development_plan.md 9): the user's modules and extensions, kept in
+    // their folder; after each change the ontology is loaded again (the Build panel and the AI
+    // work from it).
+    const std::filesystem::path dir = UserOntologyDir();
+    auto changed = [&](const std::string& error) {
+        if (error.empty()) {
+            places_.reset();
+            nlohmann::json options = BuildChoices(Places());
+            options["type"] = "build:choices";
+            post_(options);
+        }
+        PostOntology(error);
+    };
+    if (type == "ontology:get") {
+        PostOntology();
+    } else if (type == "ontology:saveModule") {
+        changed(SaveUserModule(dir, EnginePlacesDir(), message.value("module", nlohmann::json::object())));
+    } else if (type == "ontology:deleteModule") {
+        changed(DeleteUserModule(dir, message.value("id", "")));
+    } else if (type == "ontology:saveExtensions") {
+        changed(SaveUserExtensions(dir, EnginePlacesDir(), message.value("extensions", nlohmann::json::object())));
+    } else if (type == "ontology:export") {
+        const auto path = ShowSaveFileDialog(mainWindow_, L"Export your ontology", L"AIGE ontology", L"*.json", L"my-ontology.aige-ontology.json");
+        if (!path) return true;
+        std::ofstream(*path, std::ios::binary) << ExportUserOntology(dir).dump(2) << "\n";
+        post_({{"type", "notify"}, {"text", "Exported to " + WideToUtf8(path->wstring())}});
+    } else if (type == "ontology:import") {
+        const auto path = ShowOpenFileDialog(mainWindow_, L"Import an ontology", L"AIGE ontology", L"*.json");
+        if (!path) return true;
+        std::ifstream in(*path);
+        const nlohmann::json bundle = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+        const std::string error = ImportUserOntology(dir, EnginePlacesDir(), bundle);
+        places_.reset();
+        changed(error);
+        if (error.empty()) post_({{"type", "notify"}, {"text", "Imported " + WideToUtf8(path->filename().wstring())}});
+    } else {
+        return false;
+    }
+    return true;
 }
 
 CatalogOptions EditorApp::CatalogOptionsNow() {

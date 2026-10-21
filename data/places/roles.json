@@ -219,6 +219,11 @@
     "affordance": "environmental-object",
     "broader": "prop"
   },
+  "mound": {
+    "label": "mound",
+    "affordance": "environmental-object",
+    "broader": "prop"
+  },
   "boulder": {
     "label": "boulder",
     "affordance": "environmental-object",

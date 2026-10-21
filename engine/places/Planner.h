@@ -72,6 +72,12 @@ std::vector<PlaceProblem> ResolveSpec(const Ontology& ontology, const nlohmann::
 // `root` (the Spec's root, if there is one yet) picks a room programme by its
 // fields: a house's floor gets a living room, a kitchen and bedrooms.
 nlohmann::json FallbackRootAnswer(const Ontology& ontology, const nlohmann::json& brief);
+
+// Relations as the AI writes them, as the layout knows them: "north-west-of X" is
+// north-of X and west-of X; "below" south-of, "above" north-of, "left of" west-of,
+// "right of" east-of; a direction to the map itself ("site", "map", none: "in the
+// north-west") is in-north and in-west. [{type, to, ...}] -> the same, expanded.
+nlohmann::json NormalizeRelations(const nlohmann::json& rel);
 nlohmann::json FallbackZoneAnswer(const Ontology& ontology, const nlohmann::json& zone, const nlohmann::json& root = {});
 
 // What a place is counted in (7.10): its build type's unit, found by the Spec's
@@ -80,6 +86,10 @@ BuildType::Unit UnitOf(const Ontology& ontology, const nlohmann::json& spec);
 // A zone's count of that unit: its "plots", or the count field of its kind
 // ("rooms", "tents", "farmsteads"); "" if it has none.
 std::string CountField(const ModuleDef& zone);
+
+// The kinds of `unitClass` (buildings, rooms, tents) a zone may hold: [{module, name, count (set
+// by the user) | estimate (of `total`, by the rules' weights)}].
+nlohmann::json ZoneKinds(const Ontology& ontology, const ModuleDef& zone, const std::string& unitClass, const nlohmann::json& kinds, double total);
 
 // Revising a plan the user has seen (③ Plan's Revise, and the AI's review of
 // the map). What the AI is shown: the zones with their parcels, and how the

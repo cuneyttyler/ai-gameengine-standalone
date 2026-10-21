@@ -206,10 +206,14 @@ double Tolerances::Count(double target) const {
 
 std::vector<std::string> Ontology::Load(const std::vector<fs::path>& dirs) {
     std::vector<std::string> problems;
+    json extensions = json::array();
     for (const fs::path& dir : dirs) {
         std::error_code ec;
         if (!fs::is_directory(dir, ec)) continue;
-        const std::string source = dir == EnginePlacesDir() ? "engine" : dir.parent_path().filename().string();
+        // Where its entries come from: the engine's library, the user's folder (…/aige/ontology), a project.
+        const std::string source = dir == EnginePlacesDir() ? "engine"
+                                   : dir.filename() == "ontology" && dir.parent_path().filename() == "aige" ? "user"
+                                                                                                            : dir.parent_path().filename().string();
 
         if (auto classes = ReadJson(dir / "classes.json", problems); classes && classes->is_object()) {
             for (const auto& [cls, spec] : classes->items()) {
@@ -342,10 +346,84 @@ std::vector<std::string> Ontology::Load(const std::vector<fs::path>& dirs) {
                     continue;
                 }
                 modules_[m.id] = m;
+                if (j->contains("extends") && (*j)["extends"].is_object()) extensions.push_back({{"module", m.id}, {"extends", (*j)["extends"]}});
+            }
+        }
+        // A user's or a project's additions to what's there (development_plan.md 9): fields on
+        // built-in modules, children of them, components of build types.
+        if (auto more = ReadJson(dir / "extensions.json", problems); more && more->is_object()) extensions.push_back({{"file", *more}});
+    }
+    ApplyExtensions(extensions, problems);
+    return problems;
+}
+
+void Ontology::ApplyExtensions(const json& extensions, std::vector<std::string>& problems) {
+    auto addChild = [&](const std::string& parent, const std::string& child, const json& rule) {
+        auto it = modules_.find(parent);
+        if (it == modules_.end()) {
+            problems.push_back(child + ": its parent '" + parent + "' isn't a module");
+            return;
+        }
+        // The rule as a module file writes it, parsed the same way.
+        const ModuleDef parsed = ParseModule({{"schema", "aige.module/1"}, {"id", parent}, {"children", {{child, rule.is_object() ? rule : json::object()}}}}, "");
+        auto& kids = it->second.children;
+        kids.erase(std::remove_if(kids.begin(), kids.end(), [&](const ChildDef& c) { return c.module == child; }), kids.end());
+        for (const auto& c : parsed.children) kids.push_back(c);
+    };
+    auto addComponent = [&](const std::string& build, const std::string& module) {
+        auto it = builds_.find(build);
+        if (it == builds_.end()) {
+            problems.push_back(module + ": no build type '" + build + "'");
+            return;
+        }
+        auto& list = it->second.components;
+        if (std::find(list.begin(), list.end(), module) == list.end()) list.push_back(module);
+    };
+    for (const auto& e : extensions) {
+        if (e.contains("module")) {
+            const std::string id = e["module"].get<std::string>();
+            const json ext = e["extends"];
+            const json parents = ext.value("parents", json::object());
+            for (const auto& [parent, rule] : parents.items()) addChild(parent, id, rule);
+            const json components = ext.value("components", json::array());
+            for (const auto& b : components) {
+                if (b.is_string()) addComponent(b.get<std::string>(), id);
+            }
+            continue;
+        }
+        const json file = e.value("file", json::object());
+        const json fields = file.value("fields", json::object());
+        for (const auto& [moduleId, groups] : fields.items()) {
+            auto it = modules_.find(moduleId);
+            if (it == modules_.end()) {
+                problems.push_back("extensions.json: no module '" + moduleId + "' to add fields to");
+                continue;
+            }
+            json fake = {{"schema", "aige.module/1"}, {"id", moduleId}};
+            for (const char* kind : {"quantity", "quality"}) {
+                if (groups.is_object() && groups.contains(kind)) fake[kind] = groups[kind];
+            }
+            const ModuleDef parsed = ParseModule(fake, "");
+            for (const auto& [name, f] : parsed.quantity) {
+                if (!it->second.Field(name)) it->second.quantity[name] = f;
+            }
+            for (const auto& [name, f] : parsed.quality) {
+                if (!it->second.Field(name)) it->second.quality[name] = f;
+            }
+        }
+        const json children = file.value("children", json::object());
+        for (const auto& [parent, kids] : children.items()) {
+            if (!kids.is_object()) continue;
+            for (const auto& [child, rule] : kids.items()) addChild(parent, child, rule);
+        }
+        const json components = file.value("components", json::object());
+        for (const auto& [build, list] : components.items()) {
+            if (!list.is_array()) continue;
+            for (const auto& m : list) {
+                if (m.is_string()) addComponent(build, m.get<std::string>());
             }
         }
     }
-    return problems;
 }
 
 std::vector<std::string> Ontology::Check() const {

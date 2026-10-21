@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { armPrefab, editorState } from '../editorState'
 import PrefabThumb from './PrefabThumb.vue'
 import CatalogReview from './CatalogReview.vue'
+import LibraryTab from './LibraryTab.vue'
 import { openContextMenu, separator, type MenuItem } from '../contextMenu'
 import { prefabMenuExtensions } from '../assetMenus'
 import { panelTab } from '../paneltabs'
@@ -418,6 +419,9 @@ function manyMenu(which: 'assets' | 'prefabs', event: MouseEvent): void {
       disabled: editorState.playing,
       action: () => askMoveManyToFolder([...paths], which),
     },
+    ...(which === 'assets'
+      ? [{ label: `Keep ${paths.length} in my library`, action: () => sendToHost({ type: 'library:addFromProject', paths: [...paths] }) }]
+      : []),
     separator,
     { label: `Delete ${paths.length}…`, danger: true, disabled: editorState.playing, action: () => deletePicked(which) },
   ]
@@ -436,6 +440,7 @@ function assetMenu(asset: Asset, event: MouseEvent): void {
     { label: 'Rename…', disabled: editorState.playing, action: () => renameItem(asset.path) },
     { label: 'Move to folder…', disabled: editorState.playing, action: () => askMoveToFolder(asset.path, 'assets') },
     { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: asset.path }) },
+    { label: 'Keep in my library', action: () => sendToHost({ type: 'library:addFromProject', paths: [asset.path] }) },
     separator,
     {
       label: 'Delete…',
@@ -495,6 +500,7 @@ onMounted(() => {
       <div class="tabs">
         <button :class="{ active: tab === 'prefabs' }" @click="tab = 'prefabs'">Prefabs</button>
         <button :class="{ active: tab === 'assets' }" @click="tab = 'assets'">Assets</button>
+        <button :class="{ active: tab === 'library' }" title="Your own art, for every project: generated, from the web and the AIGE library, in your folders" @click="tab = 'library'">Library</button>
         <button
           :class="{ active: tab === 'catalog' }"
           title="What the builder understood about each image: role, footprint, anchor, perspective, piece sets, and what looks wrong"
@@ -504,7 +510,7 @@ onMounted(() => {
         </button>
       </div>
       <input
-        v-if="tab === 'prefabs' || tab === 'assets' || tab === 'catalog'"
+        v-if="tab === 'prefabs' || tab === 'assets' || tab === 'catalog' || tab === 'library'"
         v-model="filter"
         class="filter"
         type="search"
@@ -541,6 +547,7 @@ onMounted(() => {
       </button>
     </div>
 
+    <div v-if="tab === 'library'" class="body library-body"><LibraryTab :filter="filter" /></div>
     <div v-if="tab === 'prefabs'" class="body">
       <nav class="folders" title="Folders inside prefabs/ — drop a card on one to move it">
         <button
@@ -895,12 +902,6 @@ button,
 input,
 select {
   height: 24px;
-  padding: 0 8px;
-  border: 1px solid #333;
-  border-radius: 0;
-  background: #11111b;
-  color: #eee;
-  font: inherit;
 }
 button {
   cursor: pointer;
@@ -911,6 +912,10 @@ button:hover {
 }
 button.primary {
   border-color: #3b82f6;
+}
+.library-body {
+  padding: 0 !important;
+  overflow: hidden !important;
 }
 .body {
   flex: 1;

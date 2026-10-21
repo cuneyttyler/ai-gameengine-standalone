@@ -7,6 +7,7 @@
 #include "assets/Project.h"
 #include "gameplay/Components.h"
 #include "gameplay/GameSession.h"
+#include "gameplay/TileLayer.h"
 #include "physics2d/Components.h"
 #include "editing/Autotile.h"
 #include "editing/LevelBuild.h"
@@ -299,8 +300,109 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
             return terrainCommand(context, ToString(args[0]), ToString(args[1]), PathCells(points, ToInt(args[3])));
         });
 
+    // Bulk changes by prefab (2026-10-21): what "replace every X with Y" needs, without a script.
+    r.Command("prefab.replace",
+              "Replaces every copy of one prefab in the scene with another, each where it was, keeping how it "
+              "was turned and mirrored (so a fence piece mirrored for the other isometric direction stays so), "
+              "and which built place it belongs to. Use it for any 'replace all X with Y'. For ground tiles, use "
+              "terrain.replace.")
+        .Param("from", FieldType::String, "The prefab now in the scene, e.g. prefabs/placeholders/fence-fence.prefab.")
+        .Param("to", FieldType::String, "The prefab to put in its place, e.g. prefabs/a-diagonal-fence.prefab.")
+        .Param("orient", FieldType::String, "keep (as each copy was turned and mirrored), mirror (the other way), or none.")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.prefabs == nullptr) return Fail("prefabs aren't available here");
+            const std::string from = ToString(args[0]), to = ToString(args[1]), orient = ToString(args[2]);
+            const PrefabInfo* target = context.prefabs->Find(to);
+            if (target == nullptr) return Fail("no prefab " + to);
+            if (target->isTile) return Fail(to + " is a ground tile: use terrain.replace");
+            std::vector<Entity> copies;
+            for (auto [entity, instance] : context.registry.view<PrefabInstance>().each()) {
+                if (instance.path == from) copies.push_back(entity);
+            }
+            if (copies.empty()) return Fail("no copies of " + from + " in the scene");
+            for (Entity old : copies) {
+                const auto* world = context.registry.try_get<WorldTransform2D>(old);
+                if (world == nullptr) continue;
+                const auto placed = context.prefabs->Instantiate(context.registry, to, world->x, world->y, false);
+                if (!placed) continue;
+                if (const auto* node = context.registry.try_get<PlaceNode>(old)) context.registry.emplace_or_replace<PlaceNode>(*placed, *node);
+                if (!context.registry.all_of<Obstacle>(old)) context.registry.remove<Obstacle>(*placed);
+                const auto* was = context.registry.try_get<Sprite>(old);
+                const auto* now = context.registry.try_get<Sprite>(*placed);
+                if (was && now && orient != "none") {
+                    const bool mirrored = (was->u0 > was->u1) != (orient == "mirror");
+                    if (mirrored != (now->u0 > now->u1)) MirrorEntity(EngineReflection(), context.registry, *placed);
+                    if (now->flat && was->rotation != now->rotation) {
+                        TurnEntity(EngineReflection(), context.registry, *placed, was->rotation - now->rotation);
+                    }
+                }
+                context.registry.destroy(old);
+            }
+            return {};
+        });
+
+    r.Command("terrain.replace",
+              "Replaces one ground tile with another everywhere: hand-painted tiles and a built place's ground "
+              "(its tile layers) alike, however many cells. Use it for 'use grass in place of cobble'.")
+        .Param("from", FieldType::String, "The tile prefab now on the ground, e.g. prefabs/generated/tile-terrain-cobble-1-seamless.prefab.")
+        .Param("to", FieldType::String, "The tile prefab to use instead.")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.prefabs == nullptr) return Fail("prefabs aren't available here");
+            const std::string from = ToString(args[0]), to = ToString(args[1]);
+            const PrefabInfo* target = context.prefabs->Find(to);
+            if (target == nullptr || !target->isTile) return Fail(to + " isn't a ground tile prefab");
+            int changed = 0;
+            // Hand-painted tiles: entities.
+            std::vector<std::pair<Entity, std::pair<int, int>>> tiles;
+            for (auto [entity, instance, tile] : context.registry.view<PrefabInstance, Tile>().each()) {
+                if (instance.path == from) tiles.push_back({entity, {tile.gx, tile.gy}});
+            }
+            for (const auto& [entity, cell] : tiles) {
+                context.registry.destroy(entity);
+                context.prefabs->Instantiate(context.registry, to, cell.first + 0.5f, cell.second + 0.5f);
+                ++changed;
+            }
+            // A built place's ground: the layers' cells of that tile (each rotation of it kept).
+            if (auto* layers = &LayersOf(context.registry); !layers->layers.empty()) {
+                for (auto& [name, layer] : layers->layers) {
+                    std::map<uint16_t, uint16_t> swap;
+                    for (size_t i = 0; i < layer.Palette().size(); ++i) {
+                        const TileDef& def = layer.Palette()[i];
+                        if (def.prefab != from) continue;
+                        // The new tile, as that prefab draws it, turned as the old one was.
+                        std::optional<TileDef> made;
+                        context.prefabs->VisitTemplate(to, [&](Registry& scratch, Entity entity) {
+                            const auto* sprite = scratch.try_get<Sprite>(entity);
+                            if (sprite == nullptr) return;
+                            TileDef d;
+                            d.sprite = *sprite;
+                            d.sprite.rotation = def.sprite.rotation;
+                            const auto* tile = scratch.try_get<Tile>(entity);
+                            d.solid = tile && tile->solid;
+                            d.prefab = to;
+                            made = d;
+                        });
+                        if (made) swap[static_cast<uint16_t>(i + 1)] = layer.Intern(*made);
+                    }
+                    if (swap.empty()) continue;
+                    TileLayerEdit edit(name);
+                    std::vector<std::tuple<int, int, uint16_t>> cells;
+                    layer.ForEach([&](int gx, int gy, uint16_t id) {
+                        if (auto it = swap.find(id); it != swap.end()) cells.push_back({gx, gy, it->second});
+                    });
+                    for (const auto& [gx, gy, id] : cells) edit.Set(layer, gx, gy, id);
+                    changed += static_cast<int>(cells.size());
+                    if (context.layerEdits) context.layerEdits->push_back(std::move(edit));
+                }
+            }
+            if (changed == 0) return Fail("no ground uses " + from);
+            return {};
+        });
+
     r.Command("script.write", "Creates or replaces a Lua script (see docs/scripting.md for the API scripts can "
-                              "use). Attach it with a LuaScript component.")
+                              "use). Attach it with a LuaScript component. Scripts are the game's behaviour: they "
+                              "run while playing, never while editing, so never write one to change the scene "
+                              "(use the scene commands: scene.spawn, entity.delete, prefab.replace, terrain.replace).")
         .Param("path", FieldType::Script, "Where to write it: scripts/<name>.lua.")
         .Param("source", FieldType::String, "The complete Lua source.")
         .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {

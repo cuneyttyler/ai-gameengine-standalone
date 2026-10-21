@@ -241,5 +241,33 @@
     "args": [],
     "hard": false,
     "description": "a lies left of (west of) b on the map"
+  },
+  "in-north": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a lies in the north of the map (its top side); b is \"site\""
+  },
+  "in-south": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a lies in the south of the map (its bottom side); b is \"site\""
+  },
+  "in-east": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a lies in the east of the map (its right side); b is \"site\""
+  },
+  "in-west": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a lies in the west of the map (its left side); b is \"site\""
   }
 }

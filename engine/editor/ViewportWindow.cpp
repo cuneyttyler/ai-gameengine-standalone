@@ -177,13 +177,15 @@ void ViewportWindow::SetCursor(Cursor cursor) {
     static const HCURSOR arrow = LoadCursorW(nullptr, IDC_ARROW);
     static const HCURSOR move = LoadCursorW(nullptr, IDC_SIZEALL);
     static const HCURSOR brush = LoadCursorW(nullptr, IDC_CROSS);
-    static const HCURSOR pan = LoadCursorW(nullptr, IDC_HAND);
+    static const HCURSOR pan = LoadCursorW(nullptr, IDC_SIZEALL);
+    static const HCURSOR select = LoadCursorW(nullptr, IDC_HAND);
     static const HCURSOR eraser = CreateEraserCursor();
-    HCURSOR next = cursor == Cursor::Move    ? move
-                   : cursor == Cursor::Brush ? brush
-                   : cursor == Cursor::Erase ? eraser
-                   : cursor == Cursor::Pan   ? pan
-                                             : arrow;
+    HCURSOR next = cursor == Cursor::Move     ? move
+                   : cursor == Cursor::Brush  ? brush
+                   : cursor == Cursor::Erase  ? eraser
+                   : cursor == Cursor::Pan    ? pan
+                   : cursor == Cursor::Select ? select
+                                              : arrow;
     if (next == cursor_) {
         return;
     }

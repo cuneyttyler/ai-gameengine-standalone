@@ -39,6 +39,11 @@
         "busy"
       ],
       "default": "busy"
+    },
+    "street-style": {
+      "type": "enum",
+      "vocabulary": "layout",
+      "description": "this zone's own street pattern; unset, the place's main layout"
     }
   },
   "slots": {},

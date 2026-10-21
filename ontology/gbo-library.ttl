@@ -3000,7 +3000,7 @@ gbl:CraftsmenWard
     gbo:moduleId "craftsmen-ward" ;
     gbo:level gbo:Zone ;
     gbo:allowedIn gbb:settlement ;
-    gbo:hasField gbl:CraftsmenWard.area, gbl:CraftsmenWard.plots, gbl:CraftsmenWard.trades, gbl:CraftsmenWard.wealth ;
+    gbo:hasField gbl:CraftsmenWard.area, gbl:CraftsmenWard.plots, gbl:CraftsmenWard.street-style, gbl:CraftsmenWard.trades, gbl:CraftsmenWard.wealth ;
     gbo:hasChildRule gbl:CraftsmenWard.child.house-plot, gbl:CraftsmenWard.child.lumber-yard, gbl:CraftsmenWard.child.road, gbl:CraftsmenWard.child.workshop-plot ;
     gbo:constraint "count(children(workshop-plot)) >= 1"^^gbo:Expression ;
     gbo:typicallyRelated [
@@ -3046,6 +3046,15 @@ gbl:CraftsmenWard.plots
     gbo:maxValue 2000.0 ;
     gbo:defaultValue "[6,30]"^^rdf:JSON ;
     gbo:askedInConfirmation true .
+
+gbl:CraftsmenWard.street-style
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "street-style"@en ;
+    rdfs:comment "this zone's own street pattern; unset, the place's main layout"@en ;
+    rdfs:domain gbl:CraftsmenWard ;
+    gbo:fieldName "street-style" ;
+    gbo:fieldType gbo:enum ;
+    gbo:vocabulary gbv:layout .
 
 gbl:CraftsmenWard.trades
     a gbo:QualityField, owl:ObjectProperty ;
@@ -3562,7 +3571,7 @@ gbl:Docks
     gbo:moduleId "docks" ;
     gbo:level gbo:Zone ;
     gbo:allowedIn gbb:settlement ;
-    gbo:hasField gbl:Docks.area, gbl:Docks.piers, gbl:Docks.plots ;
+    gbo:hasField gbl:Docks.area, gbl:Docks.piers, gbl:Docks.plots, gbl:Docks.street-style ;
     gbo:hasChildRule gbl:Docks.child.dock, gbl:Docks.child.fish-market, gbl:Docks.child.road, gbl:Docks.child.warehouse-plot ;
     gbo:typicallyRelated [
         a gbo:RelationUse ;
@@ -3610,6 +3619,15 @@ gbl:Docks.plots
     gbo:maxValue 2000.0 ;
     gbo:defaultValue "[3,15]"^^rdf:JSON ;
     gbo:askedInConfirmation true .
+
+gbl:Docks.street-style
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "street-style"@en ;
+    rdfs:comment "this zone's own street pattern; unset, the place's main layout"@en ;
+    rdfs:domain gbl:Docks ;
+    gbo:fieldName "street-style" ;
+    gbo:fieldType gbo:enum ;
+    gbo:vocabulary gbv:layout .
 
 gbl:Docks.child.dock
     a gbo:ChildRule ;
@@ -4483,7 +4501,7 @@ gbl:FarmlandRing
     gbo:moduleId "farmland-ring" ;
     gbo:level gbo:Zone ;
     gbo:allowedIn gbb:settlement, gbb:farmland ;
-    gbo:hasField gbl:FarmlandRing.area, gbl:FarmlandRing.farmsteads, gbl:FarmlandRing.fields, gbl:FarmlandRing.crops ;
+    gbo:hasField gbl:FarmlandRing.area, gbl:FarmlandRing.farmsteads, gbl:FarmlandRing.fields, gbl:FarmlandRing.crops, gbl:FarmlandRing.street-style ;
     gbo:hasChildRule gbl:FarmlandRing.child.farmstead, gbl:FarmlandRing.child.field, gbl:FarmlandRing.child.hedge-line, gbl:FarmlandRing.child.mill-plot, gbl:FarmlandRing.child.orchard, gbl:FarmlandRing.child.pasture, gbl:FarmlandRing.child.pond, gbl:FarmlandRing.child.road, gbl:FarmlandRing.child.subplace ;
     gbo:typicallyRelated [
         a gbo:RelationUse ;
@@ -4545,6 +4563,15 @@ gbl:FarmlandRing.crops
     gbo:fieldType gbo:mix ;
     gbo:defaultValue "{\"barley\":0.3,\"cabbage\":0.2,\"wheat\":0.5}"^^rdf:JSON ;
     gbo:vocabulary gbv:crop-kind .
+
+gbl:FarmlandRing.street-style
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "street-style"@en ;
+    rdfs:comment "this zone's own street pattern; unset, the place's main layout"@en ;
+    rdfs:domain gbl:FarmlandRing ;
+    gbo:fieldName "street-style" ;
+    gbo:fieldType gbo:enum ;
+    gbo:vocabulary gbv:layout .
 
 gbl:FarmlandRing.child.farmstead
     a gbo:ChildRule ;
@@ -5856,7 +5883,7 @@ gbl:GateWard
     gbo:moduleId "gate-ward" ;
     gbo:level gbo:Zone ;
     gbo:allowedIn gbb:settlement ;
-    gbo:hasField gbl:GateWard.area, gbl:GateWard.plots, gbl:GateWard.traffic ;
+    gbo:hasField gbl:GateWard.area, gbl:GateWard.plots, gbl:GateWard.street-style, gbl:GateWard.traffic ;
     gbo:hasChildRule gbl:GateWard.child.guard-post, gbl:GateWard.child.inn-plot, gbl:GateWard.child.market-stalls, gbl:GateWard.child.road, gbl:GateWard.child.stable-yard ;
     gbo:typicallyRelated [
         a gbo:RelationUse ;
@@ -5888,6 +5915,15 @@ gbl:GateWard.plots
     gbo:maxValue 2000.0 ;
     gbo:defaultValue "[3,12]"^^rdf:JSON ;
     gbo:askedInConfirmation true .
+
+gbl:GateWard.street-style
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "street-style"@en ;
+    rdfs:comment "this zone's own street pattern; unset, the place's main layout"@en ;
+    rdfs:domain gbl:GateWard ;
+    gbo:fieldName "street-style" ;
+    gbo:fieldType gbo:enum ;
+    gbo:vocabulary gbv:layout .
 
 gbl:GateWard.traffic
     a gbo:QualityField, owl:DatatypeProperty ;
@@ -7491,6 +7527,107 @@ gbl:Landmark.slot.landmark
     gbo:needsRole gbr:landmark ;
     gbo:conceptsFrom gbl:Landmark.kind .
 
+gbl:Landscape
+    a owl:Class, gbo:Module ;
+    rdfs:subClassOf gbo:Dressing, [
+        a owl:Restriction ;
+        owl:onProperty gbo:hasPart ;
+        owl:maxCardinality "0"^^xsd:nonNegativeInteger
+    ] ;
+    rdfs:label "Landscape"@en ;
+    rdfs:comment "What grows and lies on land nothing else covers: trees, bushes, flowers, grass, rocks and mounds, so a built place reads as one landscape, not bare ground (development_plan.md 8.3)."@en ;
+    gbo:moduleId "landscape" ;
+    gbo:level gbo:Dressing ;
+    gbo:hasField gbl:Landscape.bushes, gbl:Landscape.flowers, gbl:Landscape.grass, gbl:Landscape.rocks, gbl:Landscape.trees ;
+    gbo:hasSlot gbl:Landscape.slot.bush, gbl:Landscape.slot.flower, gbl:Landscape.slot.grass, gbl:Landscape.slot.mound, gbl:Landscape.slot.rock, gbl:Landscape.slot.tree ;
+    gbo:origin "engine" .
+
+gbl:Landscape.bushes
+    a gbo:QuantityField, owl:DatatypeProperty ;
+    rdfs:label "bushes"@en ;
+    rdfs:domain gbl:Landscape ;
+    gbo:fieldName "bushes" ;
+    gbo:fieldType gbo:density ;
+    gbo:defaultValue "\"some\""^^rdf:JSON ;
+    gbo:unit "per free cell" ;
+    gbo:densityLevels "[0.0,0.01,0.035,0.07,0.12]"^^rdf:JSON .
+
+gbl:Landscape.flowers
+    a gbo:QuantityField, owl:DatatypeProperty ;
+    rdfs:label "flowers"@en ;
+    rdfs:domain gbl:Landscape ;
+    gbo:fieldName "flowers" ;
+    gbo:fieldType gbo:density ;
+    gbo:defaultValue "\"some\""^^rdf:JSON ;
+    gbo:unit "per free cell" ;
+    gbo:densityLevels "[0.0,0.01,0.03,0.07,0.15]"^^rdf:JSON .
+
+gbl:Landscape.grass
+    a gbo:QuantityField, owl:DatatypeProperty ;
+    rdfs:label "grass"@en ;
+    rdfs:domain gbl:Landscape ;
+    gbo:fieldName "grass" ;
+    gbo:fieldType gbo:density ;
+    gbo:defaultValue "\"some\""^^rdf:JSON ;
+    gbo:unit "per free cell" ;
+    gbo:densityLevels "[0.0,0.02,0.07,0.15,0.3]"^^rdf:JSON .
+
+gbl:Landscape.rocks
+    a gbo:QuantityField, owl:DatatypeProperty ;
+    rdfs:label "rocks"@en ;
+    rdfs:domain gbl:Landscape ;
+    gbo:fieldName "rocks" ;
+    gbo:fieldType gbo:density ;
+    gbo:defaultValue "\"some\""^^rdf:JSON ;
+    gbo:unit "per free cell" ;
+    gbo:densityLevels "[0.0,0.004,0.01,0.02,0.04]"^^rdf:JSON .
+
+gbl:Landscape.trees
+    a gbo:QuantityField, owl:DatatypeProperty ;
+    rdfs:label "trees"@en ;
+    rdfs:domain gbl:Landscape ;
+    gbo:fieldName "trees" ;
+    gbo:fieldType gbo:density ;
+    gbo:defaultValue "\"some\""^^rdf:JSON ;
+    gbo:unit "per free cell" ;
+    gbo:densityLevels "[0.0,0.01,0.03,0.06,0.12]"^^rdf:JSON .
+
+gbl:Landscape.slot.bush
+    a gbo:Slot ;
+    gbo:slotName "bush" ;
+    gbo:essential false ;
+    gbo:needsRole gbr:bush .
+
+gbl:Landscape.slot.flower
+    a gbo:Slot ;
+    gbo:slotName "flower" ;
+    gbo:essential false ;
+    gbo:needsRole gbr:flower .
+
+gbl:Landscape.slot.grass
+    a gbo:Slot ;
+    gbo:slotName "grass" ;
+    gbo:essential false ;
+    gbo:needsRole gbr:grass .
+
+gbl:Landscape.slot.mound
+    a gbo:Slot ;
+    gbo:slotName "mound" ;
+    gbo:essential false ;
+    gbo:needsRole gbr:mound .
+
+gbl:Landscape.slot.rock
+    a gbo:Slot ;
+    gbo:slotName "rock" ;
+    gbo:essential false ;
+    gbo:needsRole gbr:rock .
+
+gbl:Landscape.slot.tree
+    a gbo:Slot ;
+    gbo:slotName "tree" ;
+    gbo:essential false ;
+    gbo:needsRole gbr:tree .
+
 gbl:Library
     a owl:Class, gbo:Module ;
     rdfs:subClassOf gbo:Parcel, gbl:InteriorRoom, [
@@ -8303,7 +8440,7 @@ gbl:MarketWard
     gbo:moduleId "market-ward" ;
     gbo:level gbo:Zone ;
     gbo:allowedIn gbb:settlement ;
-    gbo:hasField gbl:MarketWard.area, gbl:MarketWard.plots, gbl:MarketWard.bustle, gbl:MarketWard.wealth ;
+    gbo:hasField gbl:MarketWard.area, gbl:MarketWard.plots, gbl:MarketWard.bustle, gbl:MarketWard.street-style, gbl:MarketWard.wealth ;
     gbo:hasChildRule gbl:MarketWard.child.inn-plot, gbl:MarketWard.child.market-square, gbl:MarketWard.child.road, gbl:MarketWard.child.shop-plot, gbl:MarketWard.child.well-plaza ;
     gbo:typicallyRelated [
         a gbo:RelationUse ;
@@ -8357,6 +8494,15 @@ gbl:MarketWard.bustle
     gbo:fieldType gbo:enum ;
     gbo:defaultValue "\"busy\""^^rdf:JSON ;
     gbo:allowedValue "quiet", "busy" .
+
+gbl:MarketWard.street-style
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "street-style"@en ;
+    rdfs:comment "this zone's own street pattern; unset, the place's main layout"@en ;
+    rdfs:domain gbl:MarketWard ;
+    gbo:fieldName "street-style" ;
+    gbo:fieldType gbo:enum ;
+    gbo:vocabulary gbv:layout .
 
 gbl:MarketWard.wealth
     a gbo:QualityField, owl:ObjectProperty ;
@@ -8495,7 +8641,7 @@ gbl:MerchantWard
     gbo:moduleId "merchant-ward" ;
     gbo:level gbo:Zone ;
     gbo:allowedIn gbb:settlement ;
-    gbo:hasField gbl:MerchantWard.area, gbl:MerchantWard.plots, gbl:MerchantWard.wealth ;
+    gbo:hasField gbl:MerchantWard.area, gbl:MerchantWard.plots, gbl:MerchantWard.street-style, gbl:MerchantWard.wealth ;
     gbo:hasChildRule gbl:MerchantWard.child.road, gbl:MerchantWard.child.shop-plot, gbl:MerchantWard.child.townhouse-block, gbl:MerchantWard.child.warehouse-plot ;
     gbo:typicallyRelated [
         a gbo:RelationUse ;
@@ -8531,6 +8677,15 @@ gbl:MerchantWard.plots
     gbo:maxValue 2000.0 ;
     gbo:defaultValue "[6,30]"^^rdf:JSON ;
     gbo:askedInConfirmation true .
+
+gbl:MerchantWard.street-style
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "street-style"@en ;
+    rdfs:comment "this zone's own street pattern; unset, the place's main layout"@en ;
+    rdfs:domain gbl:MerchantWard ;
+    gbo:fieldName "street-style" ;
+    gbo:fieldType gbo:enum ;
+    gbo:vocabulary gbv:layout .
 
 gbl:MerchantWard.wealth
     a gbo:QualityField, owl:ObjectProperty ;
@@ -9004,7 +9159,7 @@ gbl:Outskirts
     gbo:moduleId "outskirts" ;
     gbo:level gbo:Zone ;
     gbo:allowedIn gbb:settlement ;
-    gbo:hasField gbl:Outskirts.area, gbl:Outskirts.buildings, gbl:Outskirts.plots ;
+    gbo:hasField gbl:Outskirts.area, gbl:Outskirts.buildings, gbl:Outskirts.plots, gbl:Outskirts.street-style ;
     gbo:hasChildRule gbl:Outskirts.child.farmstead, gbl:Outskirts.child.house-plot, gbl:Outskirts.child.nature-scatter, gbl:Outskirts.child.road ;
     gbo:typicallyRelated [
         a gbo:RelationUse ;
@@ -9044,6 +9199,15 @@ gbl:Outskirts.plots
     gbo:maxValue 2000.0 ;
     gbo:defaultValue "[4,20]"^^rdf:JSON ;
     gbo:askedInConfirmation true .
+
+gbl:Outskirts.street-style
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "street-style"@en ;
+    rdfs:comment "this zone's own street pattern; unset, the place's main layout"@en ;
+    rdfs:domain gbl:Outskirts ;
+    gbo:fieldName "street-style" ;
+    gbo:fieldType gbo:enum ;
+    gbo:vocabulary gbv:layout .
 
 gbl:Outskirts.child.farmstead
     a gbo:ChildRule ;
@@ -9209,7 +9373,7 @@ gbl:PastureLand
     gbo:moduleId "pasture-land" ;
     gbo:level gbo:Zone ;
     gbo:allowedIn gbb:farmland ;
-    gbo:hasField gbl:PastureLand.area, gbl:PastureLand.farmsteads, gbl:PastureLand.livestock-mix ;
+    gbo:hasField gbl:PastureLand.area, gbl:PastureLand.farmsteads, gbl:PastureLand.livestock-mix, gbl:PastureLand.street-style ;
     gbo:hasChildRule gbl:PastureLand.child.farmstead, gbl:PastureLand.child.hedge-line, gbl:PastureLand.child.pasture, gbl:PastureLand.child.pond, gbl:PastureLand.child.stable-yard ;
     gbo:prefersSite [
         a gbo:SitePreference ;
@@ -9248,6 +9412,15 @@ gbl:PastureLand.livestock-mix
     gbo:defaultValue "{\"cow\":0.4,\"horse\":0.1,\"sheep\":0.5}"^^rdf:JSON ;
     gbo:vocabulary gbv:livestock ;
     gbo:askedInConfirmation true .
+
+gbl:PastureLand.street-style
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "street-style"@en ;
+    rdfs:comment "this zone's own street pattern; unset, the place's main layout"@en ;
+    rdfs:domain gbl:PastureLand ;
+    gbo:fieldName "street-style" ;
+    gbo:fieldType gbo:enum ;
+    gbo:vocabulary gbv:layout .
 
 gbl:PastureLand.child.farmstead
     a gbo:ChildRule ;
@@ -9325,7 +9498,7 @@ gbl:PatricianWard
     gbo:moduleId "patrician-ward" ;
     gbo:level gbo:Zone ;
     gbo:allowedIn gbb:settlement ;
-    gbo:hasField gbl:PatricianWard.area, gbl:PatricianWard.plots, gbl:PatricianWard.grandeur ;
+    gbo:hasField gbl:PatricianWard.area, gbl:PatricianWard.plots, gbl:PatricianWard.grandeur, gbl:PatricianWard.street-style ;
     gbo:hasChildRule gbl:PatricianWard.child.formal-garden, gbl:PatricianWard.child.fountain-square, gbl:PatricianWard.child.manor-plot, gbl:PatricianWard.child.road ;
     gbo:typicallyRelated [
         a gbo:RelationUse ;
@@ -9375,6 +9548,15 @@ gbl:PatricianWard.grandeur
     gbo:defaultValue "\"modest\""^^rdf:JSON ;
     gbo:allowedValue "modest", "grand" ;
     gbo:askedInConfirmation true .
+
+gbl:PatricianWard.street-style
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "street-style"@en ;
+    rdfs:comment "this zone's own street pattern; unset, the place's main layout"@en ;
+    rdfs:domain gbl:PatricianWard ;
+    gbo:fieldName "street-style" ;
+    gbo:fieldType gbo:enum ;
+    gbo:vocabulary gbv:layout .
 
 gbl:PatricianWard.child.formal-garden
     a gbo:ChildRule ;
@@ -9897,11 +10079,10 @@ gbl:ResidentialWard.density
 gbl:ResidentialWard.street-style
     a gbo:QualityField, owl:ObjectProperty ;
     rdfs:label "street-style"@en ;
-    rdfs:comment "this ward's street pattern, one of the settlement's layout mix"@en ;
+    rdfs:comment "this zone's own street pattern; unset, the place's main layout"@en ;
     rdfs:domain gbl:ResidentialWard ;
     gbo:fieldName "street-style" ;
     gbo:fieldType gbo:enum ;
-    gbo:defaultValue "\"organic\""^^rdf:JSON ;
     gbo:vocabulary gbv:layout .
 
 gbl:ResidentialWard.wealth
@@ -11251,7 +11432,7 @@ gbl:Slum
     gbo:moduleId "slum" ;
     gbo:level gbo:Zone ;
     gbo:allowedIn gbb:settlement ;
-    gbo:hasField gbl:Slum.area, gbl:Slum.plots, gbl:Slum.squalor ;
+    gbo:hasField gbl:Slum.area, gbl:Slum.plots, gbl:Slum.squalor, gbl:Slum.street-style ;
     gbo:hasChildRule gbl:Slum.child.clutter, gbl:Slum.child.road, gbl:Slum.child.shack-cluster ;
     gbo:typicallyRelated [
         a gbo:RelationUse ;
@@ -11299,6 +11480,15 @@ gbl:Slum.squalor
     gbo:fieldType gbo:enum ;
     gbo:defaultValue "\"poor\""^^rdf:JSON ;
     gbo:allowedValue "poor", "wretched" .
+
+gbl:Slum.street-style
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "street-style"@en ;
+    rdfs:comment "this zone's own street pattern; unset, the place's main layout"@en ;
+    rdfs:domain gbl:Slum ;
+    gbo:fieldName "street-style" ;
+    gbo:fieldType gbo:enum ;
+    gbo:vocabulary gbv:layout .
 
 gbl:Slum.child.clutter
     a gbo:ChildRule ;
@@ -12400,7 +12590,7 @@ gbl:TempleWard
     gbo:moduleId "temple-ward" ;
     gbo:level gbo:Zone ;
     gbo:allowedIn gbb:settlement ;
-    gbo:hasField gbl:TempleWard.area, gbl:TempleWard.plots, gbl:TempleWard.faith, gbl:TempleWard.grandeur ;
+    gbo:hasField gbl:TempleWard.area, gbl:TempleWard.plots, gbl:TempleWard.faith, gbl:TempleWard.grandeur, gbl:TempleWard.street-style ;
     gbo:hasChildRule gbl:TempleWard.child.graveyard, gbl:TempleWard.child.house-plot, gbl:TempleWard.child.road, gbl:TempleWard.child.temple-plot ;
     gbo:prefersSite [
         a gbo:SitePreference ;
@@ -12451,6 +12641,15 @@ gbl:TempleWard.grandeur
     gbo:fieldType gbo:enum ;
     gbo:defaultValue "\"modest\""^^rdf:JSON ;
     gbo:allowedValue "modest", "grand" .
+
+gbl:TempleWard.street-style
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "street-style"@en ;
+    rdfs:comment "this zone's own street pattern; unset, the place's main layout"@en ;
+    rdfs:domain gbl:TempleWard ;
+    gbo:fieldName "street-style" ;
+    gbo:fieldType gbo:enum ;
+    gbo:vocabulary gbv:layout .
 
 gbl:TempleWard.child.graveyard
     a gbo:ChildRule ;
@@ -17018,6 +17217,14 @@ gbr:mill
     skos:broader gbr:building ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:mound
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "mound"@en ;
+    skos:notation "mound" ;
+    skos:broader gbr:prop ;
+    gbo:affordance gbv:affordance.environmental-object .
+
 gbr:mushroom
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
@@ -17674,6 +17881,14 @@ gbx:focus
     gbo:maxMembers 2 ;
     gbo:hardByDefault false .
 
+gbx:in-east
+    a gbo:RelationType ;
+    rdfs:label "in-east"@en ;
+    rdfs:comment "a lies in the east of the map (its right side); b is \"site\""@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
 gbx:in-front-of
     a gbo:RelationType ;
     rdfs:label "in-front-of"@en ;
@@ -17683,12 +17898,36 @@ gbx:in-front-of
     gbo:argument "gap" ;
     gbo:hardByDefault false .
 
+gbx:in-north
+    a gbo:RelationType ;
+    rdfs:label "in-north"@en ;
+    rdfs:comment "a lies in the north of the map (its top side); b is \"site\""@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
 gbx:in-row
     a gbo:RelationType ;
     rdfs:label "in-row"@en ;
     rdfs:comment "aligned, with even gaps"@en ;
     gbo:minMembers 2 ;
     gbo:argument "axis", "spacing" ;
+    gbo:hardByDefault false .
+
+gbx:in-south
+    a gbo:RelationType ;
+    rdfs:label "in-south"@en ;
+    rdfs:comment "a lies in the south of the map (its bottom side); b is \"site\""@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
+gbx:in-west
+    a gbo:RelationType ;
+    rdfs:label "in-west"@en ;
+    rdfs:comment "a lies in the west of the map (its left side); b is \"site\""@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
     gbo:hardByDefault false .
 
 gbx:inside

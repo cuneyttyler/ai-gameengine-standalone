@@ -517,7 +517,8 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
     }
 
     // Zone names, and the title along the bottom.
-    const float labelSize = std::clamp(cell * 2.2f, 12.0f, 26.0f);
+    // The zone names, by the map's size (it's shown at a fraction of it): about a twentieth of its width.
+    const float labelSize = std::clamp(cell * std::max(W, H) / 20.0f, 22.0f, 72.0f);
     for (const auto& [text, at] : zoneLabels) Label(canvas, text, at[0], at[1], labelSize, Hex(0xfdfaf2));
     if (footer > 0) {
         canvas.Rect(0, static_cast<float>(H * cell), static_cast<float>(W * cell), static_cast<float>(H * cell + footer), Hex(0x1e1e2e));

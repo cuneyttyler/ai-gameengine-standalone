@@ -37,6 +37,8 @@ interface InspectorData {
 }
 
 const current = ref<InspectorData | null>(null)
+// A ground cell of a tile layer (a built place's ground), selected with the Select tool.
+const cell = ref<{ layer: string; x: number; y: number; prefab: string; texture: string; solid: boolean } | null>(null)
 const collapsed = reactive<Record<string, boolean>>({})
 // Last validation error per "Component.field" (or "Section.field").
 const errors = reactive<Record<string, string>>({})
@@ -58,8 +60,13 @@ onHostMessage((message) => {
       Object.keys(errors).forEach((key) => delete errors[key])
     }
     current.value = data
+    cell.value = null
+  } else if (message.type === 'inspector:cell') {
+    cell.value = message as unknown as NonNullable<typeof cell.value>
+    current.value = null
   } else if (message.type === 'inspector:clear') {
     current.value = null
+    cell.value = null
   } else if (message.type === 'inspector:fieldError') {
     const key = `${message.component}.${message.field}`
     if (message.error) {
@@ -145,8 +152,17 @@ function numberFrom(event: Event): number {
   <div class="panel inspector">
     <h2>Inspector</h2>
 
+    <!-- A ground cell (a built place's tile layer): what's there, and erase it. -->
+    <template v-if="cell && !current">
+      <div class="entity-label">Ground cell ({{ cell.x }}, {{ cell.y }})</div>
+      <p class="hint">In the tile layer “{{ cell.layer }}”{{ cell.solid ? ', blocking' : '' }}.</p>
+      <p v-if="cell.prefab" class="hint">Tile: {{ cell.prefab }}</p>
+      <p v-else-if="cell.texture" class="hint">Image: {{ cell.texture }}</p>
+      <button @click="sendToHost({ type: 'edit:delete' })">Erase this cell (Delete)</button>
+    </template>
+
     <!-- Nothing selected. Project settings have their own window (5.5). -->
-    <template v-if="!current">
+    <template v-else-if="!current">
       <p class="hint">Select something in the viewport or Scene Tree to inspect it.</p>
       <button class="settings-link" @click="projectState.showProjectSettings = true">Project Settings…</button>
     </template>

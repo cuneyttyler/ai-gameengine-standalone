@@ -44,10 +44,12 @@ export const actions: ActionDef[] = [
   { id: 'panel.generate', label: 'Show / hide the Generate panel (level, art)', group: 'Panels', keys: ['K'] },
   { id: 'panel.ai', label: 'Show / hide the AI panel', group: 'Panels', keys: ['I'] },
   { id: 'panel.viewport', label: 'Show / hide the viewport', group: 'Panels', keys: ['M'] },
+  { id: 'panel.build', label: 'Show / hide the Build panel', group: 'Panels', keys: ['U'] },
+  { id: 'panel.maximize', label: 'Maximise the panel in use to the whole window, or bring the layout back', group: 'Panels', keys: ['F11'], whileTyping: true },
   { id: 'play.toggle', label: 'Play / stop', group: 'Play', keys: ['F5'], inPlay: true },
   { id: 'play.save', label: 'Save the game (while playing)', group: 'Play', keys: ['F6'], inPlay: true },
   { id: 'play.load', label: 'Load the saved game (or continue from it)', group: 'Play', keys: ['F9'], inPlay: true },
-  { id: 'help.shortcuts', label: 'Shortcuts', group: 'Help', keys: ['F1'], inPlay: true },
+  { id: 'help.shortcuts', label: 'Show / hide the shortcuts', group: 'Help', keys: ['F1'], inPlay: true, whileTyping: true },
 ]
 
 // Shown in the list but not rebindable.

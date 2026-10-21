@@ -90,6 +90,44 @@ std::optional<std::filesystem::path> ShowFolderDialog(HWND owner, const std::wst
     return std::filesystem::path(path.get());
 }
 
+namespace {
+std::optional<std::filesystem::path> ResultOf(IFileDialog* dialog, HWND owner) {
+    if (FAILED(dialog->Show(owner))) return std::nullopt; // cancelled
+    wil::com_ptr<IShellItem> item;
+    wil::unique_cotaskmem_string path;
+    if (FAILED(dialog->GetResult(&item)) || FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) return std::nullopt;
+    return std::filesystem::path(path.get());
+}
+} // namespace
+
+std::optional<std::filesystem::path> ShowOpenFileDialog(HWND owner, const std::wstring& title, const std::wstring& typeName,
+                                                        const std::wstring& pattern) {
+    wil::com_ptr<IFileOpenDialog> dialog;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) return std::nullopt;
+    dialog->SetTitle(title.c_str());
+    const COMDLG_FILTERSPEC filters[] = {{typeName.c_str(), pattern.c_str()}, {L"All files", L"*.*"}};
+    dialog->SetFileTypes(2, filters);
+    FILEOPENDIALOGOPTIONS options = 0;
+    dialog->GetOptions(&options);
+    dialog->SetOptions(options | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST);
+    return ResultOf(dialog.get(), owner);
+}
+
+std::optional<std::filesystem::path> ShowSaveFileDialog(HWND owner, const std::wstring& title, const std::wstring& typeName,
+                                                        const std::wstring& pattern, const std::wstring& defaultName) {
+    wil::com_ptr<IFileSaveDialog> dialog;
+    if (FAILED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) return std::nullopt;
+    dialog->SetTitle(title.c_str());
+    const COMDLG_FILTERSPEC filters[] = {{typeName.c_str(), pattern.c_str()}};
+    dialog->SetFileTypes(1, filters);
+    dialog->SetFileName(defaultName.c_str());
+    dialog->SetDefaultExtension(L"json");
+    FILEOPENDIALOGOPTIONS options = 0;
+    dialog->GetOptions(&options);
+    dialog->SetOptions(options | FOS_FORCEFILESYSTEM | FOS_OVERWRITEPROMPT);
+    return ResultOf(dialog.get(), owner);
+}
+
 bool StartEditorProcess(const std::wstring& arguments) {
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);

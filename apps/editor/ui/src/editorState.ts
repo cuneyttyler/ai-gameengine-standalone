@@ -50,6 +50,7 @@ export const editorState = reactive({
   // Set by an Inspector field's "Ask AI"; the AI panel picks it up (n makes repeats distinct).
   aiAsk: { focus: '', n: 0 },
   showShortcuts: false, // Help ▸ Keyboard Shortcuts
+  showOntology: false, // File ▸ Ontology…, the Build panel's menu (development_plan.md 9)
   grid: false, // tile borders on empty ground (G)
   brushScale: 1, // the prefab brush places copies at this size
   brushRotation: 0, // quarter turns for flat things the brush places (R)

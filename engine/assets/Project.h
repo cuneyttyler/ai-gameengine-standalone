@@ -28,6 +28,13 @@ struct Project {
     std::filesystem::path AssetsDir() const { return (assetsFrom.empty() ? root : assetsFrom) / "assets"; }
     std::filesystem::path CacheDir() const { return root / ".cache"; }
 
+    // A path the UI may name for a file action (development_plan.md 11): relative, '/'-separated,
+    // no "..", no drive or root: it can't reach outside the project.
+    static bool IsInside(const std::string& relative) {
+        return !relative.empty() && relative.find("..") == std::string::npos && relative.find('\\') == std::string::npos &&
+               relative.front() != '/' && relative.find(':') == std::string::npos;
+    }
+
     std::filesystem::path Resolve(const std::string& relative) const {
         if (!assetsFrom.empty() && relative.rfind("assets/", 0) == 0) return assetsFrom / relative;
         return root / relative;

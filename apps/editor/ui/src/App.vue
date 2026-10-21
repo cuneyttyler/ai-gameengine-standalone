@@ -16,6 +16,7 @@ import DialogHost from './components/DialogHost.vue'
 import ContextMenuHost from './components/ContextMenuHost.vue'
 import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import PreferencesDialog from './components/PreferencesDialog.vue'
+import OntologyDialog from './components/OntologyDialog.vue'
 import ProjectSettingsDialog from './components/ProjectSettingsDialog.vue'
 import PackImportDialog from './components/PackImportDialog.vue'
 import DockNode from './components/DockNode.vue'
@@ -102,7 +103,7 @@ onBeforeUnmount(() => setShell(null))
           <button class="max-tab" title="Double-click to bring the other panels back" @dblclick="toggleMaximize(dockView.maximized)">
             {{ panelNames[dockView.maximized] }}
           </button>
-          <span class="max-hint">Double-click the tab to bring the other panels back</span>
+          <span class="max-hint">Double-click the tab (or {{ keyLabel('panel.maximize') }}) to bring the other panels back</span>
         </div>
         <div v-if="!layout.root" class="empty">
           <p>Every panel is hidden.</p>
@@ -113,13 +114,13 @@ onBeforeUnmount(() => setShell(null))
         </div>
 
         <!-- The panels, each over its group's body. Always mounted: hiding or moving keeps their state. -->
-        <div class="panel-host" :style="hostStyle('viewport')"><ViewportPanel /></div>
-        <div class="panel-host" :style="hostStyle('scene')"><ScenePanel /></div>
-        <div class="panel-host" :style="hostStyle('assets')"><AssetBrowser /></div>
-        <div class="panel-host" :style="hostStyle('project')"><ProjectPanel /></div>
-        <div class="panel-host" :style="hostStyle('generate')"><GeneratePanel /></div>
-        <div class="panel-host" :style="hostStyle('ai')"><AiPanel /></div>
-        <div class="panel-host" :style="hostStyle('build')"><BuildPanel /></div>
+        <div class="panel-host" :style="hostStyle('viewport')" @pointerdown.capture="dockView.focused = 'viewport'"><ViewportPanel /></div>
+        <div class="panel-host" :style="hostStyle('scene')" @pointerdown.capture="dockView.focused = 'scene'"><ScenePanel /></div>
+        <div class="panel-host" :style="hostStyle('assets')" @pointerdown.capture="dockView.focused = 'assets'"><AssetBrowser /></div>
+        <div class="panel-host" :style="hostStyle('project')" @pointerdown.capture="dockView.focused = 'project'"><ProjectPanel /></div>
+        <div class="panel-host" :style="hostStyle('generate')" @pointerdown.capture="dockView.focused = 'generate'"><GeneratePanel /></div>
+        <div class="panel-host" :style="hostStyle('ai')" @pointerdown.capture="dockView.focused = 'ai'"><AiPanel /></div>
+        <div class="panel-host" :style="hostStyle('build')" @pointerdown.capture="dockView.focused = 'build'"><BuildPanel /></div>
 
         <!-- While dragging: where the panel will land, and its name under the pointer. -->
         <template v-if="dockView.dragging">
@@ -146,6 +147,7 @@ onBeforeUnmount(() => setShell(null))
   <ContextMenuHost />
   <ShortcutsDialog />
   <PreferencesDialog />
+  <OntologyDialog />
   <ProjectSettingsDialog />
   <PackImportDialog />
   <DialogHost />

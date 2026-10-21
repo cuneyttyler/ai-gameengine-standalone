@@ -19,6 +19,7 @@
 #include <cmath>
 #include <deque>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <map>
 #include <set>
@@ -208,6 +209,80 @@ std::string PlaceholderPrefab(PrefabLibrary& prefabs, const std::string& kind, c
     return prefabs.Find(path) ? path : std::string();
 }
 
+// A ground tile made seamless (8.3): the image wrapped by half its size and blended with
+// itself, the original in the middle, the wrapped one at the edges, so copies side by side
+// show no seams. Written beside it ("-seamless.png", without roles: never chosen itself).
+// Its description says what it is: one terrain all over, centre and edges (made for that
+// terrain, and seamless): no reading of its pixels (that took a grey cobble tile for grass).
+void WriteTerrainMeta(const Project& project, const std::string& image, const std::string& source, const std::string& terrain) {
+    std::vector<std::string> lines;
+    {
+        std::ifstream meta(project.Resolve(source + ".meta"));
+        for (std::string line; std::getline(meta, line);) {
+            if (line.rfind("roles=", 0) == 0 || line.rfind("center=", 0) == 0 || line.rfind("edges=", 0) == 0 || line.rfind("derived=", 0) == 0) continue;
+            lines.push_back(line);
+        }
+    }
+    std::ofstream written(project.Resolve(image + ".meta"), std::ios::binary);
+    for (const auto& line : lines) written << line << "\n";
+    written << "center=" << terrain << "\n";
+    written << "edges=";
+    for (int i = 0; i < 8; ++i) written << (i ? "," : "") << terrain;
+    written << "\nderived=seamless\n";
+}
+
+std::string SeamlessCopy(const Project& project, const std::string& image, const std::string& terrain) {
+    const fs::path from(image);
+    const std::string copy = (from.parent_path() / (from.stem().string() + "-seamless.png")).generic_string();
+    std::error_code ec;
+    if (fs::exists(project.Resolve(copy), ec)) {
+        // Made before: its description put right if it was read as another terrain.
+        std::ifstream meta(project.Resolve(copy + ".meta"));
+        bool right = false;
+        for (std::string line; std::getline(meta, line);) right = right || line == "center=" + terrain;
+        meta.close();
+        if (!right) WriteTerrainMeta(project, copy, image, terrain);
+        return copy;
+    }
+    const auto src = DecodeImage(project.Resolve(image));
+    if (!src || src->width < 4 || src->height < 4) return image;
+    const uint32_t w = src->width, h = src->height;
+    ImageData out = *src;
+    auto smooth = [](double t) { return t * t * (3 - 2 * t); };
+    for (uint32_t y = 0; y < h; ++y) {
+        const double fy = 1.0 - std::abs(2.0 * (y + 0.5) / h - 1.0);
+        for (uint32_t x = 0; x < w; ++x) {
+            const double fx = 1.0 - std::abs(2.0 * (x + 0.5) / w - 1.0);
+            const double keep = smooth(std::min(1.0, 1.6 * std::min(fx, fy))); // 1 inside, 0 at the edges
+            const uint32_t rx = (x + w / 2) % w, ry = (y + h / 2) % h;
+            for (int c = 0; c < 4; ++c) {
+                const double a = src->rgba[(y * w + x) * 4 + c], b = src->rgba[(ry * w + rx) * 4 + c];
+                out.rgba[(y * w + x) * 4 + c] = static_cast<uint8_t>(std::lround(a * keep + b * (1 - keep)));
+            }
+        }
+    }
+    if (!WritePng(project.Resolve(copy), out)) return image;
+    WriteTerrainMeta(project, copy, image, terrain);
+    return copy;
+}
+
+// A ground tile the Art tool made, as a tile prefab (one per image: a refined one gets its own).
+std::string GeneratedTilePrefab(PrefabLibrary& prefabs, const std::string& image, const std::string& terrain, bool solid, const IsoParams& iso) {
+    const std::string path = "prefabs/generated/" + PrefabSlug("tile-" + fs::path(image).stem().string() + "-seamless") + ".prefab";
+    if (prefabs.Find(path)) return path;
+    PrefabPlan plan;
+    plan.asset = SeamlessCopy(prefabs.GetProject(), image, terrain);
+    plan.path = path;
+    plan.name = "Generated " + terrain + " ground";
+    plan.tile = true;
+    plan.solid = solid;
+    plan.width = iso.tileWidth;
+    plan.height = iso.tileHeight;
+    if (!CreatePrefabFromPlan(prefabs, plan, iso).empty()) return {};
+    prefabs.Refresh();
+    return prefabs.Find(path) ? path : std::string();
+}
+
 // --- Needs ------------------------------------------------------------------------------------
 
 const SlotDef* SlotOf(const ModuleDef* m, const std::string& name) {
@@ -248,6 +323,11 @@ Need NeedOf(const Ontology& ontology, const json& spec, const json& object) {
     const json* node = NodeOf(spec, object.value("node", ""));
     const ModuleDef* m = node ? ontology.Module(node->value("module", "")) : nullptr;
     const SlotDef* slot = SlotOf(m, object.value("slot", ""));
+    // The landscape's dressing (8.3): its own module's slots, whatever node it's under.
+    if (object.value("statement", "").find("/landscape-") != std::string::npos) {
+        m = ontology.Module("landscape");
+        slot = SlotOf(m, object.value("slot", ""));
+    }
     if (slot && !slot->binds.empty()) {
         const SlotBinding* bind = &slot->binds.front();
         for (const auto& b : slot->binds) {
@@ -265,6 +345,24 @@ Need NeedOf(const Ontology& ontology, const json& spec, const json& object) {
         }
     }
     if (need.role.empty()) need.role = object.value("slot", "thing");
+    // A slot of alternatives ("barrel|pot|bench|sign|lamp"): each object is one of them, by its
+    // id (the same each build), so each kind gets its own art: not one picture for them all.
+    if (need.role.find('|') != std::string::npos) {
+        std::vector<std::string> alternatives;
+        size_t start = 0;
+        while (start <= need.role.size()) {
+            const size_t bar = need.role.find('|', start);
+            const std::string one = need.role.substr(start, bar == std::string::npos ? std::string::npos : bar - start);
+            if (!one.empty()) alternatives.push_back(one);
+            if (bar == std::string::npos) break;
+            start = bar + 1;
+        }
+        if (!alternatives.empty()) {
+            uint32_t h = 2166136261u;
+            for (const char c : object.value("id", std::string())) h = (h ^ static_cast<unsigned char>(c)) * 16777619u;
+            need.role = alternatives[h % alternatives.size()];
+        }
+    }
     need.node = object.value("node", "");
     if (object.contains("module") && object["module"].is_string()) need.concepts = {object["module"].get<std::string>()};
     need.kind = need.layer == "building" ? "building" : need.layer == "decal" ? "decal" : "prop";
@@ -488,6 +586,24 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
         }
         return "auto";
     };
+    // The component a need is for: the nearest of its node's ancestors the Brief has, else its zone's module.
+    auto componentOf = [&](const std::string& node) -> std::string {
+        std::string path = node, last;
+        json specCopy = spec;
+        const json components = sourcing ? sourcing->brief.value("components", json::object()) : json::object();
+        for (int guard = 0; guard < 8 && !path.empty(); ++guard) {
+            const std::string base = path.substr(0, path.find('#'));
+            if (const json* n = SpecNode(specCopy, base)) {
+                const std::string module = n->value("module", "");
+                if (components.contains(module)) return module;
+                last = module;
+            }
+            const size_t slash = path.find_last_of('/');
+            if (slash == std::string::npos) break;
+            path = path.substr(0, slash);
+        }
+        return last;
+    };
     for (const auto& o : solved.value("objects", json::array())) {
         Need need = NeedOf(ontology, spec, o);
         out["byObject"][o.value("id", "")] = need.key;
@@ -507,7 +623,7 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
         }
         Retrieval found = RetrieveForSlot(catalog, ontology, slot, options.isoGrid);
         json row = {{"key", key}, {"role", need.role}, {"concepts", need.concepts}, {"layer", need.layer}, {"w", need.w},
-                    {"h", need.h}, {"uses", uses}};
+                    {"h", need.h}, {"uses", uses}, {"component", componentOf(need.node)}};
         // Nothing shows the concept (no cottage art): any art of the role beats a placeholder.
         if (found.candidates.empty() && !slot.concepts.empty()) {
             SlotNeed any = slot;
@@ -563,9 +679,11 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
             } else if (d.action == "generate" || d.action == "web") {
                 std::string concepts;
                 for (const auto& c : need.concepts) concepts += (concepts.empty() ? "" : " ") + c;
-                const std::string what = (concepts.empty() ? need.role : concepts + " " + need.role);
+                // A role of alternatives ("barrel|pot|bench"): any will do; the art is asked for as the first.
+                const std::string one = need.role.substr(0, need.role.find('|'));
+                const std::string what = (concepts.empty() ? one : concepts + " " + one);
                 const std::string view = options.isoGrid ? "isometric" : "top-down";
-                out["pending"].push_back({{"key", key}, {"action", d.action}, {"role", need.role}, {"concepts", need.concepts},
+                out["pending"].push_back({{"key", key}, {"action", d.action}, {"role", need.role}, {"title", what}, {"concepts", need.concepts},
                                           {"layer", need.layer}, {"w", need.w}, {"h", need.h}, {"kind", need.kind},
                                           {"query", view + " " + what},
                                           {"description", "a " + what + " for a game, " + view + " view, " +
@@ -639,11 +757,42 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
         const std::string mine = MatchTerrain(terrains, t);
         if (!mine.empty()) {
             out["terrains"][t] = {{"terrain", mine}, {"source", "project"}};
-        } else {
-            out["terrains"][t] = {{"prefab", PlaceholderPrefab(prefabs, "tile", t, options.iso.tileWidth, options.iso.tileHeight,
-                                                               SolidTerrain(t), options.iso)},
-                                  {"source", "placeholder"}, {"why", "no " + t + " ground tiles in the project"}};
+            continue;
         }
+        // Ground the Art tool made for it (the latest that passed its check), as a plain tile.
+        std::string made;
+        for (const AssetInfo& a : assets.Assets()) {
+            auto terrain = a.analysis.find("terrain"), source = a.analysis.find("source"), roles = a.analysis.find("roles");
+            if (terrain == a.analysis.end() || terrain->second != t || source == a.analysis.end() || source->second != "generated") continue;
+            if (roles == a.analysis.end() || roles->second.empty()) continue; // replaced by a refined one
+            if (made.empty() || a.path > made) made = a.path;
+        }
+        if (!made.empty()) {
+            if (const std::string prefab = GeneratedTilePrefab(prefabs, made, t, SolidTerrain(t), options.iso); !prefab.empty()) {
+                out["terrains"][t] = {{"prefab", prefab}, {"source", "generated"}, {"entry", made}};
+                continue;
+            }
+        }
+        // Else the Art tool makes one (with the AI, once), a placeholder meanwhile.
+        const std::string key = "terrain|" + t;
+        bool pending = false;
+        if (sourcing && sourcing->canGenerate && t != "water") {
+            const auto tried = sourcing->tried.find(key);
+            const json override = sourcing->overrides.value(key, json::object());
+            pending = (tried == sourcing->tried.end() || !tried->second.generate) && !override.value("exclude", false);
+        }
+        if (pending) {
+            const std::string view = options.isoGrid ? "isometric" : "top-down";
+            out["pending"].push_back({{"key", key}, {"action", "generate"}, {"role", "ground-tile"}, {"title", t + " ground"}, {"terrain", t},
+                                      {"concepts", json::array()}, {"layer", "ground"}, {"w", 1}, {"h", 1}, {"kind", "tile"},
+                                      {"query", view + " " + t + " ground tile"},
+                                      {"description", "a seamless " + t + " ground tile for a game, " + view +
+                                                          " view, one cell, edges that tile with copies of itself, no objects on it"}});
+        }
+        out["terrains"][t] = {{"prefab", PlaceholderPrefab(prefabs, "tile", t, options.iso.tileWidth, options.iso.tileHeight,
+                                                           SolidTerrain(t), options.iso)},
+                              {"source", "placeholder"},
+                              {"why", pending ? "to be made by the Art tool" : "no " + t + " ground tiles in the project"}};
     }
     return out;
 }

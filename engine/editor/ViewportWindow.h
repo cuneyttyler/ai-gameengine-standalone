@@ -77,7 +77,7 @@ public:
 
     // The mouse pointer over the viewport (development_plan.md 5.6), so it
     // says what a click will do: select, move, paint or place, erase.
-    enum class Cursor { Arrow, Move, Brush, Erase, Pan };
+    enum class Cursor { Arrow, Move, Brush, Erase, Pan, Select };
     void SetCursor(Cursor cursor);
 
     // Public so the free function registering the window class (which needs

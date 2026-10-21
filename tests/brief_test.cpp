@@ -273,9 +273,14 @@ TEST(BriefTest, ABuildFromRequestToConfirmedBrief) {
     ASSERT_EQ(build.Start("Build a village by a river"), "");
     EXPECT_EQ(build.Id(), "village-by-river");
     EXPECT_EQ(build.Stage(), "interpreting");
-    ASSERT_EQ(sent.size(), 1u);
-    EXPECT_EQ(sent[0].first, "/places/interpret");
-    EXPECT_EQ(sent[0].second["drafts"], 3);
+    // The three readings, a request each (literal, typical, generous), side by side.
+    ASSERT_EQ(sent.size(), 3u);
+    for (int i = 0; i < 3; ++i) {
+        EXPECT_EQ(sent[i].first, "/places/interpret");
+        EXPECT_EQ(sent[i].second["drafts"], 1);
+    }
+    EXPECT_EQ(sent[0].second["reading"], "literal");
+    EXPECT_EQ(sent[2].second["reading"], "generous");
 
     // One draft names a component that doesn't exist: it's repaired once.
     json bad = Draft("generous", "village", json::array({30, 40}), true, "common");
@@ -286,15 +291,15 @@ TEST(BriefTest, ABuildFromRequestToConfirmedBrief) {
         d["thinking"] = "a village by a river: twenty to forty houses";
         d["mode"] = "two-pass";
     }
-    build.OnResponse(1, {{"ok", true}, {"drafts", drafts}});
-    ASSERT_EQ(sent.size(), 2u);
-    EXPECT_EQ(sent[1].first, "/places/repair-brief");
-    EXPECT_EQ(sent[1].second["problems"][0]["where"], "components.walls");
+    for (int i = 0; i < 3; ++i) build.OnResponse(i + 1, {{"ok", true}, {"drafts", json::array({drafts[i]})}});
+    ASSERT_EQ(sent.size(), 4u);
+    EXPECT_EQ(sent[3].first, "/places/repair-brief");
+    EXPECT_EQ(sent[3].second["problems"][0]["where"], "components.walls");
     EXPECT_EQ(build.Stage(), "interpreting");
     json fixed = bad;
     fixed["brief"]["components"].erase("walls");
     fixed["brief"]["components"]["wall"] = {{"enabled", true}};
-    build.OnResponse(2, {{"ok", true}, {"brief", fixed["brief"]}});
+    build.OnResponse(4, {{"ok", true}, {"brief", fixed["brief"]}});
     EXPECT_EQ(build.Stage(), "request");
     EXPECT_EQ(BriefValue(build.Brief(), "scale.class"), "village");
 
