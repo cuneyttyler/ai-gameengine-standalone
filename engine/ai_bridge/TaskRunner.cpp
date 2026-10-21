@@ -100,7 +100,7 @@ TaskRunner::TaskRunner(Registry& scene, const Project& project, const Reflection
     scratch_.assetsFrom = project.assetsFrom.empty() ? project.root : project.assetsFrom;
     std::error_code ec;
     fs::create_directories(scratch_.root, ec);
-    for (const char* dir : {"scripts", "prefabs", "world", "dialogue", "quests", "schedules"}) {
+    for (const char* dir : {"scripts", "prefabs", "world", "dialogue", "quests", "schedules", "cutscenes"}) {
         if (fs::exists(project.root / dir, ec)) {
             fs::copy(project.root / dir, scratch_.root / dir, fs::copy_options::recursive, ec);
         } else {

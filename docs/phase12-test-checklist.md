@@ -101,3 +101,10 @@ the camera rig. This list covers what tests can't judge: whether it feels right.
       restart (`%LOCALAPPDATA%\AIGE\saves\<game>\settings.json`).
 - [ ] An exported game (File ▸ Export) has its `records/`, `input.json`, `game.json` and
       `loc/`, and plays the same.
+
+## The AI panel
+
+- [ ] Ask the AI "add an item record for a healing potion worth 25 gold": the proposal is a
+      write_record for records/item/…, it passes the checks, and Records shows it after Apply.
+- [ ] Ask for "a script that plays a bell sound 2 seconds after any enemy dies": it uses
+      `on("death", …)` and `wait`/`after`, not a polling `update`.

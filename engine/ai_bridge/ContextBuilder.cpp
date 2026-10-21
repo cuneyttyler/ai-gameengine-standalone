@@ -11,6 +11,7 @@
 #include "reflection/Reflection.h"
 #include "renderer2d/Components.h"
 #include "scripting/Components.h"
+#include "gameplay/Cutscene.h"
 #include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
 #include "gameplay/TileLayer.h"
@@ -241,6 +242,15 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
         }
     }
 
+    // Cutscenes (15.5): what play_cutscene can name; each with its name and length.
+    nlohmann::json cutscenes = nlohmann::json::array();
+    for (const std::string& id : ListCutscenes(project.root)) {
+        std::string error;
+        if (auto cutscene = LoadCutscene(project.root, id, &error)) {
+            cutscenes.push_back({{"id", id}, {"name", cutscene->name}, {"seconds", cutscene->Length()}});
+        }
+    }
+
     // The project's scenes and their markers (5.3), for gateways.
     nlohmann::json scenes = nlohmann::json::array();
     for (const std::string& scene : ListScenes(project)) {
@@ -254,7 +264,7 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
                               {"assets", assetList},  {"scripts", scripts},   {"scriptSources", scriptSources},
                               {"settings", settings}, {"world", worldList},   {"dialogues", dialogues},
                               {"quests", quests},     {"markers", markers},   {"schedules", schedules},
-                              {"records", records}};
+                              {"records", records},   {"cutscenes", cutscenes}};
     // A built place's ground (tile layers, not entities): which tile prefabs cover how many
     // cells, so a request like "use grass in place of cobble" names what's there (terrain.replace).
     if (const TileLayers* layers = FindLayers(registry); layers && !layers->layers.empty()) {

@@ -46,6 +46,7 @@ Operations (use exact component, field, setting and command names from the schem
   {"op": "write_dialogue", "id": "<file id>", "dialogue": {...see STORY below...}}
   {"op": "write_quest", "id": "<file id>", "quest": {...see STORY below...}}
   {"op": "write_schedule", "id": "<file id>", "schedule": {...see ROUTINES below...}}
+  {"op": "write_cutscene", "id": "<file id>", "cutscene": {...see CUTSCENES below...}}
 
 Rules:
 - Only use components, fields, settings and commands that appear in the schema, and only
@@ -82,7 +83,7 @@ Rules:
   List it under "art": [{"name": "stone-floor", "kind": "tile"|"object"|"character",
   "description": "what it is, for this scene", "cells": <width in cells>}], and use "art:<name>"
   wherever its path goes (a prefab.create texture, ...). It's drawn before the change is applied.
-- Every operation is a JSON object with "op" set to one of the twelve kinds above; commands
+- Every operation is a JSON object with "op" set to one of the thirteen kinds above; commands
   always use {"op": "command", "name": ..., "args": {...}}.
 - Make the smallest change that does what was asked. If the request can't be done with
   what's available, return no operations and explain why in "notes".
@@ -210,6 +211,43 @@ ART (context "assets"): file names are often meaningless ("Ground 37"). When an 
   the other way, use the pack's piece drawn that way ("direction"), not a turn.
 """
 
+CUTSCENES = """\
+CUTSCENES (file cutscenes/<id>.json; context "cutscenes" lists the project's)
+{"name": "...", "letterbox": true, "length": <seconds, optional>, "tracks": [
+  {"type": "actor", "actor": "<who>", "keys": [{"at": 0, "op": "move", "marker": "<marker>", "speed": 2},
+       {"at": 3, "op": "face", "target": "player"}, {"at": 4, "op": "place"|"show"|"hide", ...}]},
+  {"type": "dialogue", "keys": [{"at": 1, "speaker": "<who>", "text": "...", "seconds": 2, "voice": "<audio>"}]},
+  {"type": "camera", "keys": [{"at": 0, "op": "follow", "actor": "<who>"} | {"op": "move", "marker": "..."} | {"op": "zoom", "value": 1.5}]},
+  {"type": "audio", "keys": [{"at": 0, "op": "music", "path": "<audio asset, empty for the scene's>"} | {"op": "sound", "path": "..."}]},
+  {"type": "screen", "keys": [{"at": 0, "op": "fade_in"|"fade_out", "seconds": 1} | {"op": "title", "text": "...", "seconds": 2}]},
+  {"type": "logic", "keys": [{"at": 5, "do": [<effect>]} | {"op": "emit", "event": "..."} | {"op": "wait_input"}]}]}
+  "at" is seconds from the start. <who> is a World Bible key, an entity's Name, an Actor key, "player", or
+  "@alias" of the quest that plays it. Markers must exist (context "scenes"/"markers") or be added with
+  scene.addMarker in the same proposal. The world waits while it plays; skipping applies every key at once,
+  so put story changes in logic keys. Play it with a {"op": "play_cutscene", "cutscene": "<id>"} effect (a
+  dialogue choice, a quest stage's onEnter), a CutsceneTrigger component {"cutscene": "<id>", "radius": 1.5},
+  or play_cutscene(id) in Lua. Write the cutscene in the same proposal as anything that plays it.
+"""
+
+GAMEPLAY = """\
+GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
+- Items are records (records/item/<id>). Inventory.items, Container.items and Merchant.items are text lists:
+  "potion*3, iron-sword" (an id, then *count). Equipment holds an item id per slot. An ItemPickup lies on the
+  ground. Loot tables are "loot" records; Container.loot and Merchant.stock name one; enemies drop theirs.
+- Attributes, Progression (level, experience) and perk records shape a character; item and perk modifiers
+  change attributes. Experience comes from kills and quest rewards.
+- Interactable makes something usable with E (doors, chests, levers, signs: verb, locked + key item,
+  requiresFlag, setFlag, text, event). Merchant opens a shop.
+- Combat: MeleeAttack, RangedAttack (projectiles), Health, Stats, Faction/FactionMember (records "faction";
+  disposition < 0 is hostile). A Spawner makes enemies from an "encounter" record around itself.
+- Character AI: Behaviour holds a stack of "package" records (template: work, sleep, sandbox, patrol, follow,
+  guard, ambush, script...; location, schedule, data); the first that holds runs. Perception (sight, hearing),
+  aggression and confidence decide fights; a "combat-style" record says how they fight; Barks are one-line
+  remarks (alternatives separated by |). SmartObject marks beds, chairs, counters for packages to use. Actor
+  {key, prefab} makes one person persist across scenes (dead stays dead).
+- Prefer these systems over Lua for anything they cover.
+"""
+
 LUA_API = """\
 Lua scripts (plain Lua 5.4; one environment per entity; `update(dt)` runs 60 times per
 second while playing). These are ALL the engine functions — there are no others:
@@ -229,12 +267,33 @@ second while playing). These are ALL the engine functions — there are no other
   set_field(id, component, field, value) -> boolean
   spawn(prefab_path, x, y)          -> id, or nil
   start_quest(id)                      starts quests/<id>.json
-  complete_objective(quest, objective) completes the quest's current objective if it's that one
-  quest_state(id)                   -> "inactive" | "active" | "completed"
+  complete_objective(quest, objective) completes that objective if it's open in the quest's current stage
+  quest_state(id)                   -> "inactive" | "active" | "completed" | "failed"
+  quest_stage(id) / set_stage(id, stage) / fail_quest(id)
   set_flag(name[, value]) / get_flag(name) -> story flags, shared with dialogue conditions
+  get_var(name) / set_var(name, value)  story variables (numbers, text, booleans)
+  used(name)                           counts as using something (use/examine objectives)
+  play_cutscene(id) -> boolean / skip_cutscene() / in_cutscene() -> boolean
   time_of_day()                     -> hours since midnight (fractional), e.g. 13.5
   day()                             -> the day number, from 1
-  play_sound(asset_path)
+  play_sound(asset_path) / play_sound_at(asset_path, x, y) / play_music(asset_path, or "" for the scene's)
+  record(type, id) -> table or nil / records(type) -> list of ids
+  on(event, fn) -> handle   fn(e) with e.name, e.entity, e.other, e.amount, e.text; "*" for every event
+  emit(event[, {entity=, other=, amount=, text=}])
+  after(seconds, fn) / every(seconds, fn) -> handle;  cancel(handle)
+  start(fn)   runs fn as a coroutine;  wait(seconds) pauses it (handlers and timers may wait too)
+  action_down(name) / action_pressed(name) -> boolean;  axis(name) -> -1..1   (input actions, not keys)
+  attribute(id, name) -> number;  add_modifier(id, attribute, value[, seconds, source, "multiply"])
+  remove_modifiers(id, source)
+  give_item(id, item[, n]) / take_item(id, item[, n]) / count_item(id, item)   ("gold" for gold)
+  equip(id, item) / use_item(id, item) -> ok, reason
+  award_xp(id, n) / level(id) / take_perk(id, perk);  drop_loot(x, y, loot_table[, level])
+  shoot(x, y) / dodge(dx, dy);  is_hostile(a, b) -> boolean;  set_disposition(id, n)
+  push_package(id, package) / pop_package(id, package);  bark(text);  awareness_of([id]) -> 0..1
+  set_visible(id, visible) / face(id);  start_dialogue(path) -> boolean;  find_object(type[, radius]) -> id
+  move_to(x, y)   (in a scripted package's run() coroutine: walks there around walls)
+Events: hit, death, pickup, attack, victory, talk, item_added, level_up, interact, bark, quest_started,
+quest_completed, quest_failed, quest_stage, objective_completed, cutscene_started, cutscene_ended.
 Entity ids are always the first argument where one is taken; prefab values can't be read
 from scripts (remember a value in a local at load time if you need it later, e.g.
 `local normal_speed = nil` then set it on the first update). A top-level
@@ -322,6 +381,8 @@ def build_messages(
             OUTPUT_FORMAT,
             STORY,
             ROUTINES,
+            CUTSCENES,
+            GAMEPLAY,
             RECORDS,
             SCENES,
             ART,

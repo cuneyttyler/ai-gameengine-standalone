@@ -1,5 +1,11 @@
 #include <gtest/gtest.h>
 
+#include "ai_bridge/Proposal.h"
+#include "assets/Prefab.h"
+#include "assets/Project.h"
+#include "editing/Commands.h"
+#include "gameplay/EngineReflection.h"
+
 #include "gameplay/Archetypes.h"
 #include "gameplay/Attributes.h"
 #include "gameplay/Components.h"
@@ -453,4 +459,35 @@ TEST(NarrativeTest, TheGamePlaysItAll) {
     // A failed play_cutscene (no file) is reported, not fatal.
     EXPECT_FALSE(session.PlayCutscene("missing"));
     EXPECT_FALSE(session.ScriptErrors().empty());
+}
+
+// The AI panel (15, AI): a cutscene proposed with the marker it uses, checked and written.
+TEST(NarrativeTest, TheAiProposesACutscene) {
+    Project p;
+    aige::Registry registry;
+    aige::Project project{p.root};
+    aige::PrefabLibrary prefabs(project);
+    aige::RegisterEditingCommands(aige::EngineReflection());
+    nlohmann::json ops = nlohmann::json::parse(R"([
+        {"op": "command", "name": "scene.addMarker", "args": {"name": "gate", "x": 4.5, "y": 4.5}},
+        {"op": "write_cutscene", "id": "arrival", "cutscene": {"name": "Arrival", "tracks": [
+            {"type": "actor", "actor": "player", "keys": [{"at": 0, "op": "move", "marker": "gate"}]},
+            {"type": "dialogue", "keys": [{"at": 1, "speaker": "A guard", "text": "Halt.", "seconds": 2}]}]}}
+    ])");
+    auto resolved = aige::ResolveProposal({{"summary", "x"}, {"operations", ops}}, registry, aige::EngineReflection(),
+                                          prefabs, project);
+    ASSERT_EQ(resolved.items.size(), 2u);
+    EXPECT_TRUE(resolved.items[1].error.empty()) << resolved.items[1].error;
+    EXPECT_EQ(resolved.items[1].target, "Cutscene · cutscenes/arrival.json (Arrival)");
+    auto outcome = aige::ApplyOperations(ops.get<std::vector<nlohmann::json>>(), registry, aige::EngineReflection(),
+                                         prefabs, project);
+    ASSERT_TRUE(outcome.errors.empty()) << outcome.errors[0];
+    std::string error;
+    ASSERT_TRUE(aige::LoadCutscene(p.root, "arrival", &error)) << error;
+
+    nlohmann::json bad = nlohmann::json::parse(R"([{"op": "write_cutscene", "id": "x", "cutscene": {"tracks": [
+        {"type": "actor", "actor": "player", "keys": [{"at": 0, "op": "move", "marker": "the_moon"}]}]}}])");
+    resolved = aige::ResolveProposal({{"summary", "x"}, {"operations", bad}}, registry, aige::EngineReflection(), prefabs,
+                                     project);
+    EXPECT_NE(resolved.items[0].error.find("no marker called 'the_moon'"), std::string::npos) << resolved.items[0].error;
 }

@@ -209,6 +209,67 @@ def check_dialogue(dialogue_id: str, d: dict[str, Any], scope: StoryScope, where
     return errors
 
 
+CUTSCENE_OPS = {
+    "actor": {"move", "face", "show", "hide", "place"},
+    "dialogue": {"line"},
+    "camera": {"follow", "move", "shake", "zoom"},
+    "audio": {"music", "sound"},
+    "screen": {"fade_out", "fade_in", "title", "letterbox"},
+    "logic": {"do", "emit", "wait_input"},
+    "effect": {"play"},
+}
+
+
+def check_cutscene(cutscene_id: str, c: dict[str, Any], scope: StoryScope, markers: set[str] | None,
+                   where: str) -> list[str]:
+    """Mirror of engine ValidateCutscene (engine/gameplay/Cutscene), plus markers and
+    speakers. `markers`: every scene's markers with those added here (None: not checked)."""
+    errors: list[str] = []
+    if not SAFE_ID.match(cutscene_id or ""):
+        errors.append(f"{where}: id must be lowercase letters, digits, - and _")
+    tracks = c.get("tracks")
+    if not isinstance(tracks, list) or not tracks:
+        return errors + [f"{where}: needs a non-empty \"tracks\" list"]
+    for i, track in enumerate(tracks, start=1):
+        if not isinstance(track, dict):
+            errors.append(f"{where}: tracks must be objects")
+            continue
+        kind = track.get("type")
+        at = f"{where} track {i} ({kind})"
+        if kind not in CUTSCENE_OPS:
+            errors.append(f"{at}: type must be one of {', '.join(CUTSCENE_OPS)}")
+            continue
+        if kind == "actor" and not track.get("actor"):
+            errors.append(f"{at} needs an \"actor\"")
+        for key in track.get("keys", []) or []:
+            if not isinstance(key, dict):
+                errors.append(f"{at}: keys must be objects")
+                continue
+            op = key.get("op", "line" if kind == "dialogue" else "do" if kind == "logic" and "do" in key else "")
+            k_at = f"{at} at {key.get('at', 0)}s"
+            if op not in CUTSCENE_OPS[kind]:
+                errors.append(f"{k_at}: op must be one of {', '.join(sorted(CUTSCENE_OPS[kind]))}")
+                continue
+            if op in ("move", "place") and "marker" not in key and not ("x" in key and "y" in key):
+                errors.append(f"{k_at}: {op} needs a \"marker\" (or x and y)")
+            if "marker" in key and markers is not None and key["marker"] not in markers:
+                errors.append(f"{k_at}: no marker called {key['marker']!r} (add it with scene.addMarker)")
+            if op == "line":
+                if not key.get("text"):
+                    errors.append(f"{k_at}: a line needs \"text\"")
+                if not scope.known_character(key.get("speaker")) and not str(key.get("speaker", "")).startswith("@"):
+                    errors.append(f"{k_at}: speaker {key.get('speaker')!r} isn't in the World Bible")
+            if op in ("music", "sound") and "path" not in key:
+                errors.append(f"{k_at}: needs a \"path\"")
+            if op == "emit" and not key.get("event"):
+                errors.append(f"{k_at}: emit needs an \"event\"")
+            if op == "follow" and not key.get("actor"):
+                errors.append(f"{k_at}: follow needs an \"actor\"")
+            if op == "do":
+                errors += _check_effects(key.get("do"), k_at, scope)
+    return errors
+
+
 ACTIVITIES = {"stay", "wander", "sleep"}
 CLOCK = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
 

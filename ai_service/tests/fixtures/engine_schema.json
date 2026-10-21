@@ -1616,6 +1616,7 @@
         {
           "description": "Its prefab.",
           "name": "prefab",
+          "optional": true,
           "type": "prefab"
         }
       ],
@@ -1831,6 +1832,33 @@
         }
       ],
       "name": "Talk",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Plays a cutscene when the player comes near (15.5).",
+      "fields": [
+        {
+          "description": "The cutscene, cutscenes/<id>.json (its id).",
+          "name": "cutscene",
+          "type": "string"
+        },
+        {
+          "description": "How close the player must come, in cells.",
+          "max": 50.0,
+          "min": 0.2,
+          "name": "radius",
+          "type": "float"
+        },
+        {
+          "description": "Only the first time (remembered in saves).",
+          "name": "once",
+          "type": "bool"
+        }
+      ],
+      "name": "CutsceneTrigger",
       "userEditable": true
     },
     {
@@ -2926,6 +2954,22 @@
         }
       ],
       "name": "Time"
+    },
+    {
+      "description": "Quest help on screen.",
+      "fields": [
+        {
+          "description": "Point the way to the current objective.",
+          "name": "objectiveMarkers",
+          "type": "bool"
+        },
+        {
+          "description": "The quest journal window (J).",
+          "name": "journal",
+          "type": "bool"
+        }
+      ],
+      "name": "Story"
     }
   ],
   "version": 1

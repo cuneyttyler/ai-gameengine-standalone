@@ -231,3 +231,38 @@ def test_staged_quest_problems_are_reported(schema, demo_context):
                      "\"ends\" is complete or fail", "has a \"fail\" node but no \"check\"", "has no stage 55",
                      "give_item needs an \"item\""]:
         assert expected in text, (expected, text)
+
+
+def test_a_cutscene_and_what_plays_it_validate_together(schema, demo_context):
+    marker = next(iter(demo_context.markers), {}).get("name") if demo_context.markers else None
+    actor_key = {"at": 0, "op": "move", "marker": marker} if marker else {"at": 0, "op": "move", "x": 3.5, "y": 3.5}
+    cutscene = {"name": "Arrival", "tracks": [
+        {"type": "actor", "actor": "character/villager", "keys": [actor_key]},
+        {"type": "dialogue", "keys": [{"at": 1, "speaker": "character/villager", "text": "You came.", "seconds": 2}]},
+        {"type": "logic", "keys": [{"at": 3, "do": [{"op": "set_flag", "flag": "arrived"}]}]}]}
+    p = proposal(
+        {"op": "write_cutscene", "id": "arrival", "cutscene": cutscene},
+        {"op": "write_dialogue", "id": "greet", "dialogue": dialogue(nodes=[
+            {"id": "hi", "text": "Hello.", "next": "", "do": [{"op": "play_cutscene", "cutscene": "arrival"}]}])},
+    )
+    assert validate_proposal(p, schema, demo_context) == []
+
+
+def test_cutscene_problems_are_reported(schema, demo_context):
+    bad = {"tracks": [
+        {"type": "actor", "keys": [{"at": 0, "op": "move"}]},
+        {"type": "screen", "keys": [{"at": 0, "op": "explode"}]},
+        {"type": "dialogue", "keys": [{"at": 1, "speaker": "character/nobody", "text": ""}]},
+        {"type": "actor", "actor": "player", "keys": [{"at": 0, "op": "move", "marker": "no-such-marker"}]}]}
+    errors = validate_proposal(proposal(
+        {"op": "write_cutscene", "id": "Bad Id", "cutscene": bad},
+        {"op": "write_dialogue", "id": "d", "dialogue": dialogue(nodes=[
+            {"id": "hi", "text": "Hi.", "next": "", "do": [{"op": "play_cutscene", "cutscene": "missing"}]}])},
+    ), schema, demo_context)
+    text = "\n".join(errors)
+    for expected in ["id must be lowercase", "needs an \"actor\"", "move needs a \"marker\"", "op must be one of",
+                     "a line needs \"text\"", "'character/nobody' isn't in the World Bible",
+                     "cutscene 'missing' doesn't exist"]:
+        assert expected in text, (expected, text)
+    if demo_context.scenes:
+        assert "no marker called 'no-such-marker'" in text

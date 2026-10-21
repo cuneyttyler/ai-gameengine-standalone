@@ -81,3 +81,11 @@ This list covers how it looks and feels in play. Formats are in `story.md`.
 
 - [ ] Ask the AI for "a quest with two stages where the player can spare or arrest a thief,
       with a reward": the proposal has `"stages"`, an alias or branch, and passes the checks.
+
+## The AI panel (cutscenes)
+
+- [ ] Ask the AI "a short cutscene where the guard walks to the gate and says halt, played
+      when the player first comes near": the proposal has a write_cutscene (and a
+      scene.addMarker if the gate marker is new) and a CutsceneTrigger naming it; it passes
+      the checks and plays in Play.
+- [ ] A proposal whose dialogue plays a cutscene that doesn't exist is flagged before review.

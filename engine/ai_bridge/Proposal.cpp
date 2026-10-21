@@ -10,6 +10,7 @@
 #include "assets/SceneFiles.h"
 #include "editing/LevelBuild.h"
 #include "editing/VillageBuild.h"
+#include "gameplay/Cutscene.h"
 #include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
 #include "world/WorldBible.h"
@@ -320,6 +321,51 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             }
         }
 
+    } else if (kind == "write_cutscene") {
+        // A cutscene (15.5), shown as its file, checked like the engine checks it.
+        const std::string id = op.value("id", "");
+        const std::string relative = "cutscenes/" + id + ".json";
+        const nlohmann::json content = op.value("cutscene", nlohmann::json());
+        item.kind = "cutscene";
+        item.touchesFiles = true;
+        item.target = "Cutscene · " + relative;
+        std::string parseError;
+        auto cutscene = CutsceneFromJson(content, id, &parseError);
+        if (!cutscene) {
+            error = parseError;
+            return item;
+        }
+        if (!cutscene->name.empty()) item.target += " (" + cutscene->name + ")";
+        item.detail = CutsceneToJson(*cutscene).dump(2);
+        auto problems = ValidateCutscene(*cutscene);
+        // Markers it moves people to: proposed here, in the open scene, or saved in any scene.
+        auto markers = MarkerPositions(registry);
+        for (const auto& track : cutscene->tracks) {
+            for (const auto& key : track.keys) {
+                const std::string marker = key.data.value("marker", "");
+                if (marker.empty() || scope.markers.contains(marker) ||
+                    std::any_of(markers.begin(), markers.end(), [&](const auto& m) { return m.first == marker; })) {
+                    continue;
+                }
+                bool saved = false;
+                for (const std::string& scene : ListScenes(project)) {
+                    const auto names = SceneMarkers(project, scene);
+                    saved = saved || std::find(names.begin(), names.end(), marker) != names.end();
+                }
+                if (!saved) problems.push_back("no marker called '" + marker + "' (add it with scene.addMarker)");
+            }
+        }
+        if (!problems.empty()) {
+            error = JoinProblems(problems);
+            return item;
+        }
+        std::error_code ec;
+        if (std::filesystem::exists(project.Resolve(relative), ec)) item.before = "(replaces the existing file)";
+        item.after = content;
+        if (apply) {
+            if (auto problem = WriteCutsceneFile(project.root, id, content)) error = *problem;
+        }
+
     } else if (kind == "write_schedule") {
         // A daily routine (development_plan.md 3.5), shown as its file.
         const std::string id = op.value("id", "");
@@ -391,7 +437,8 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             if (!KnownCharacter(quest->giver, world, scope)) {
                 problems.push_back("giver " + quest->giver + " isn't in the World Bible");
             }
-            for (const auto& objective : quest->objectives) {
+            for (QuestObjective objective : quest->objectives) {
+                objective.target = quest->Resolve(objective.target); // "@thief" -> its fill
                 const std::string where = "objective '" + objective.id + "'";
                 if (objective.type == "talk" && world.Find(objective.target) == nullptr &&
                     !scope.worldKeys.contains(objective.target)) {

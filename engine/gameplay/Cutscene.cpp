@@ -145,6 +145,23 @@ std::vector<std::string> ListCutscenes(const fs::path& projectRoot) {
     return ids;
 }
 
+std::optional<std::string> WriteCutsceneFile(const fs::path& projectRoot, const std::string& id,
+                                             const nlohmann::json& content) {
+    const bool safe = !id.empty() && std::all_of(id.begin(), id.end(), [](unsigned char c) {
+        return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+    });
+    if (!safe) return "file names are lowercase letters, digits, - and _";
+    std::string error;
+    auto cutscene = CutsceneFromJson(content, id, &error);
+    if (!cutscene) return error;
+    std::error_code ec;
+    fs::create_directories(projectRoot / "cutscenes", ec);
+    std::ofstream out(projectRoot / "cutscenes" / (id + ".json"), std::ios::binary | std::ios::trunc);
+    if (!out) return "couldn't write cutscenes/" + id + ".json";
+    out << CutsceneToJson(*cutscene).dump(2) << "\n";
+    return std::nullopt;
+}
+
 // --- Player --------------------------------------------------------------------
 
 void CutscenePlayer::Start(Cutscene cutscene) {

@@ -49,3 +49,10 @@ in play. The design is `ai-packages.md`.
 - [ ] A package with location.scene set to another scene: after you leave and come back,
       they're in that other scene, not this one.
 - [ ] Save, load: the roster (who's dead, who's where) comes back.
+
+## The AI panel
+
+- [ ] Ask the AI "make the innkeeper work at the counter by day and sleep at night": it
+      writes package records and gives the innkeeper a Behaviour listing them (not a Lua script).
+- [ ] Ask for "a cowardly bandit archer that keeps its distance": a combat-style record,
+      Behaviour aggression/confidence, and a RangedAttack.

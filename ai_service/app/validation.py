@@ -27,11 +27,12 @@ from .models import (
     WriteDialogue,
     WriteQuest,
     WriteSchedule,
+    WriteCutscene,
     WriteRecord,
     DeleteRecord,
 )
 from .records import check_record
-from .story import StoryScope, check_dialogue, check_quest, check_schedule
+from .story import StoryScope, check_cutscene, check_dialogue, check_quest, check_schedule
 
 _SAFE_SCRIPT = re.compile(r"^scripts/[A-Za-z0-9_\-/]+\.lua$")
 
@@ -184,11 +185,41 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
     if context.scene:
         scene_markers[context.scene] = scene_markers.get(context.scene, set()) | open_markers
     scope = StoryScope(quests, world_keys, {p.path for p in context.prefabs}, scene_markers if context.scenes else None)
+    all_markers = set().union(*scene_markers.values()) | open_markers if context.scenes else None
     for index, op in enumerate(proposal.operations, start=1):
         if isinstance(op, WriteDialogue):
             errors += check_dialogue(op.id, op.dialogue, scope, f"operation {index} (write_dialogue {op.id})")
         elif isinstance(op, WriteQuest):
             errors += check_quest(op.id, op.quest, scope, f"operation {index} (write_quest {op.id})")
+        elif isinstance(op, WriteCutscene):
+            errors += check_cutscene(op.id, op.cutscene, scope, all_markers, f"operation {index} (write_cutscene {op.id})")
+
+    # play_cutscene effects and CutsceneTrigger components name a cutscene that
+    # exists or is written here.
+    cutscenes = {str(c.get("id", "")) for c in context.cutscenes}
+    cutscenes |= {op.id for op in proposal.operations if isinstance(op, WriteCutscene)}
+    def _effects_in(value: Any):
+        if isinstance(value, dict):
+            if value.get("op") == "play_cutscene":
+                yield value
+            for v in value.values():
+                yield from _effects_in(v)
+        elif isinstance(value, list):
+            for v in value:
+                yield from _effects_in(v)
+    for index, op in enumerate(proposal.operations, start=1):
+        body = getattr(op, "dialogue", None) or getattr(op, "quest", None) or getattr(op, "cutscene", None)
+        for effect in _effects_in(body):
+            if effect.get("cutscene") not in cutscenes:
+                errors.append(f"operation {index} ({op.op}): cutscene {effect.get('cutscene')!r} doesn't exist "
+                              "and isn't written here (write_cutscene)")
+        trigger = None
+        if isinstance(op, AddComponent) and op.component == "CutsceneTrigger":
+            trigger = op.fields.get("cutscene")
+        elif isinstance(op, (SetField, SetPrefabField)) and op.component == "CutsceneTrigger" and op.field == "cutscene":
+            trigger = op.value
+        if isinstance(trigger, str) and trigger and trigger not in cutscenes:
+            errors.append(f"operation {index} ({op.op}): cutscene {trigger!r} doesn't exist and isn't written here")
 
     # Routines: places must be markers in the scene or added here; a Routine
     # must point at a schedule that exists or is written here.

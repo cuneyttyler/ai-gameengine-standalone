@@ -163,6 +163,8 @@ class EditorContext(BaseModel):
     # Records (12.1): {type, id, record} each ("record" is left out when the
     # project's are too many to include in full).
     records: list[dict[str, Any]] = []
+    # Cutscenes (15.5): {id, name, seconds} each, what play_cutscene can name.
+    cutscenes: list[dict[str, Any]] = []
 
 
 # --- Proposals --------------------------------------------------------------------
@@ -241,6 +243,14 @@ class WriteQuest(BaseModel):
     quest: dict[str, Any]
 
 
+class WriteCutscene(BaseModel):
+    """Creates or replaces cutscenes/<id>.json (a timeline of tracks; docs/story.md)."""
+
+    op: Literal["write_cutscene"]
+    id: str
+    cutscene: dict[str, Any]
+
+
 class WriteRecord(BaseModel):
     """Creates or replaces records/<type>/<id>.json (typed game data: items, ...)."""
 
@@ -261,7 +271,7 @@ class DeleteRecord(BaseModel):
 Operation = Annotated[
     Union[
         SetField, AddComponent, RemoveComponent, SetPrefabField, SetSetting, SetScriptProperty, RunCommand,
-        WriteDialogue, WriteQuest, WriteSchedule, WriteRecord, DeleteRecord,
+        WriteDialogue, WriteQuest, WriteSchedule, WriteCutscene, WriteRecord, DeleteRecord,
     ],
     Field(discriminator="op"),
 ]

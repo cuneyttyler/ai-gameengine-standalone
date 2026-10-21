@@ -65,3 +65,11 @@ dodging, factions and spawners, and kills giving experience and loot in play
       each other. A friendly member (disposition 30) leaves you alone until you hit it.
 - [ ] A **Spawner** with an encounter (prefab: your skeleton) fills up to maxAlive when the
       scene starts, and makes another respawnSeconds after one dies.
+
+## The AI panel
+
+- [ ] Ask the AI "give the blacksmith a shop that sells swords and armour": it writes item
+      records (and a loot table) and adds a Merchant whose stock names it.
+- [ ] Ask for "a locked chest that needs the cellar key, with some gold inside": an
+      Interactable (locked, key) and a Container, with the key item written as a record.
+- [ ] Ask for "skeletons that spawn in the crypt": an encounter record and a Spawner.

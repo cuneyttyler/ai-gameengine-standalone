@@ -57,6 +57,9 @@ std::vector<std::string> ValidateCutscene(const Cutscene& cutscene);
 // cutscenes/<id>.json under a project.
 std::optional<Cutscene> LoadCutscene(const std::filesystem::path& projectRoot, const std::string& id, std::string* error);
 std::vector<std::string> ListCutscenes(const std::filesystem::path& projectRoot);
+// Writes cutscenes/<id>.json, normalized through the reader and writer. Returns why not.
+std::optional<std::string> WriteCutsceneFile(const std::filesystem::path& projectRoot, const std::string& id,
+                                             const nlohmann::json& content);
 
 // A trigger area: the player coming within `radius` plays the cutscene (once,
 // remembered with the story flag "cutscene:<id>" so a save keeps it).
