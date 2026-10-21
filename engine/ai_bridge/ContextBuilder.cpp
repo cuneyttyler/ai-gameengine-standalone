@@ -13,6 +13,7 @@
 #include "scripting/Components.h"
 #include "gameplay/Cutscene.h"
 #include "gameplay/Difficulty.h"
+#include "ui/Documents.h"
 #include "gameplay/Settings.h"
 #include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
@@ -26,6 +27,8 @@
 #include <map>
 
 namespace aige {
+
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -267,6 +270,26 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
                               {"settings", settings}, {"world", worldList},   {"dialogues", dialogues},
                               {"quests", quests},     {"markers", markers},   {"schedules", schedules},
                               {"records", records},   {"cutscenes", cutscenes}};
+    // The game's UI (17): the built-in themes, the project's theme and its own UI files.
+    {
+        nlohmann::json themes = nlohmann::json::array();
+        std::error_code ec;
+        for (const auto& file : fs::directory_iterator(EngineUiDir() / "themes", ec)) {
+            if (file.path().extension() == ".json") themes.push_back(file.path().stem().string());
+        }
+        nlohmann::json files = nlohmann::json::array();
+        if (fs::is_directory(project.root / "ui", ec)) {
+            for (const auto& file : fs::recursive_directory_iterator(project.root / "ui", ec)) {
+                if (file.is_regular_file()) files.push_back("ui/" + fs::relative(file.path(), project.root / "ui").generic_string());
+            }
+        }
+        nlohmann::json theme = nlohmann::json::object();
+        if (std::ifstream in(project.root / "ui" / "theme.json", std::ios::binary); in) {
+            theme = nlohmann::json::parse(in, nullptr, false);
+            if (!theme.is_object()) theme = nlohmann::json::object();
+        }
+        context["ui"] = {{"themes", themes}, {"theme", theme}, {"files", files}, {"documents", ActiveSettings().ui.documents}};
+    }
     // Difficulty (16): the levels (built-in or the project's), their steps, and how
     // enemies' levels are chosen; scalable fields are marked in the schema.
     {

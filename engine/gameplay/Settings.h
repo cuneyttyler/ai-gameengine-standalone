@@ -60,6 +60,11 @@ struct DifficultySettings {
     int levelOffset = 0;                 // Scaled and Hybrid: the player's level plus this
 };
 
+// The game's UI (development_plan.md 17, game-ui.md).
+struct UiSettings {
+    bool documents = true; // menus, windows and the HUD as themed documents (off: the built-in overlays)
+};
+
 // The story's on-screen help (development_plan.md 15.4).
 struct StorySettings {
     bool objectiveMarkers = true; // a pip pointing the way to the current objective
@@ -92,6 +97,7 @@ struct ProjectSettings {
     TimeSettings time;
     StorySettings story;
     DifficultySettings difficulty;
+    UiSettings ui;
 };
 
 ProjectSettings& ActiveSettings();

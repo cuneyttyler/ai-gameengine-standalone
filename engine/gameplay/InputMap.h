@@ -64,6 +64,10 @@ bool SaveInputMap(const std::filesystem::path& projectRoot, const InputMap& map)
 // The open project's map, process-wide like ActiveSettings().
 InputMap& ActiveInputMap();
 
+// The glyph a prompt shows for an action (17.6): its first key ("E", "Space"), or
+// with `pad` its first gamepad button ("A", "Start"). "" when it has none.
+std::string ActionGlyph(const InputMap& map, const std::string& action, bool pad);
+
 using KeyQueryFn = std::function<bool(Key)>;
 using AxisQueryFn = std::function<float(PadAxis)>;
 
@@ -95,8 +99,11 @@ public:
     // What is held at the next Update counts as already held (after a scene
     // change: the key held while walking through a gateway isn't a new press).
     void HoldCurrent() { contextChanged_ = true; }
+    // Whether the gamepad was used last (prompts show its buttons, 17.6).
+    bool UsingPad() const { return usingPad_; }
 
 private:
+    bool usingPad_ = false;
     std::string context_ = "gameplay";
     bool contextChanged_ = false;
     std::map<std::string, float> now_;

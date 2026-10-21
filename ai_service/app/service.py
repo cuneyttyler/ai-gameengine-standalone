@@ -28,7 +28,7 @@ class ProposalResult:
 
 _OPS = {
     "set_field", "add_component", "remove_component", "set_prefab_field", "set_setting", "set_script_property",
-    "command", "write_dialogue", "write_quest", "write_schedule", "write_cutscene", "write_record", "delete_record",
+    "command", "write_dialogue", "write_quest", "write_schedule", "write_cutscene", "write_ui", "write_record", "delete_record",
 }
 
 

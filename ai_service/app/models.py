@@ -168,6 +168,8 @@ class EditorContext(BaseModel):
     cutscenes: list[dict[str, Any]] = []
     # Difficulty (16): {levels: [{id, name, categories, xp}], builtIn, defaultLevel, scaling}.
     difficulty: dict[str, Any] = {}
+    # Game UI (17): {themes, theme, files (the project's ui/ files), documents}.
+    ui: dict[str, Any] = {}
 
 
 # --- Proposals --------------------------------------------------------------------
@@ -254,6 +256,15 @@ class WriteCutscene(BaseModel):
     cutscene: dict[str, Any]
 
 
+class WriteUi(BaseModel):
+    """Creates or replaces a game UI file under ui/ (a screen .rml, a style .rcss, theme.json,
+    screens.json or notifications.json; docs/game-ui.md)."""
+
+    op: Literal["write_ui"]
+    path: str
+    content: str
+
+
 class WriteRecord(BaseModel):
     """Creates or replaces records/<type>/<id>.json (typed game data: items, ...)."""
 
@@ -274,7 +285,7 @@ class DeleteRecord(BaseModel):
 Operation = Annotated[
     Union[
         SetField, AddComponent, RemoveComponent, SetPrefabField, SetSetting, SetScriptProperty, RunCommand,
-        WriteDialogue, WriteQuest, WriteSchedule, WriteCutscene, WriteRecord, DeleteRecord,
+        WriteDialogue, WriteQuest, WriteSchedule, WriteCutscene, WriteUi, WriteRecord, DeleteRecord,
     ],
     Field(discriminator="op"),
 ]

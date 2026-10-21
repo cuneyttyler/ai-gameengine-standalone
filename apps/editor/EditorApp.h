@@ -30,6 +30,7 @@
 #include "editing/ScenePreview.h"
 #include "renderer2d/Camera2D.h"
 #include "renderer2d/Renderer2D.h"
+#include "ui/Documents.h"
 #include "ui/GameUi.h"
 
 #include <nlohmann/json.hpp>
@@ -382,6 +383,11 @@ private:
     // Difficulty (16.5): the levels, table and settings for the Difficulty panel,
     // and the curve over the project's scenes along their gateways.
     bool HandleDifficultyMessage(const std::string& type, const nlohmann::json& message);
+    // Game UI (17): the documents in Play and the UI tab's designer (preview, source, theme).
+    bool HandleUiMessage(const std::string& type, const nlohmann::json& message);
+    nlohmann::json UiJson();
+    DocumentUi& UiDocs();
+    void ShowUiPreview(std::vector<UiQuad>& ui, int width, int height);
     nlohmann::json DifficultyJson();
     nlohmann::json DifficultyCurveJson();
     nlohmann::json StoryJson(); // the Story tab: dialogues, quests, problems, what can be referenced
@@ -452,6 +458,8 @@ private:
     IsoParams iso_;
     GameSession session_;
     std::string playDifficulty_; // "Play at a level" (16.5); empty: the default
+    std::unique_ptr<DocumentUi> uiDocs_; // the game's UI documents (17), made when first needed
+    std::string uiPreview_;              // the UI tab's previewed screen ("" none)
     EditHistory history_;
     Camera2D camera_;
     bool framedOnce_ = false;

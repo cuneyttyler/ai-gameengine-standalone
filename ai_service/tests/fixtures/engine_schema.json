@@ -3204,6 +3204,17 @@
       "name": "Difficulty"
     },
     {
+      "description": "The game's own UI (game-ui.md).",
+      "fields": [
+        {
+          "description": "Menus, windows and the HUD as themed documents (ui/); off: the built-in overlays.",
+          "name": "documents",
+          "type": "bool"
+        }
+      ],
+      "name": "UI"
+    },
+    {
       "description": "Quest help on screen.",
       "fields": [
         {

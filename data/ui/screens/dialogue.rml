@@ -1,0 +1,30 @@
+<rml>
+<head>
+	<title>Dialogue</title>
+	<link type="text/rcss" href="../styles/base.rcss"/>
+	<style>
+		.dialogue .box { position: absolute; left: 50%; bottom: 20dp; width: 760dp; margin-left: -380dp; }
+		.dialogue .speaker { color: var(--accent); font-size: 15dp; margin-bottom: 4dp; }
+		.dialogue .text { white-space: pre-line; }
+		.dialogue .choices { margin-top: 8dp; }
+		.dialogue .choice { padding: 2dp 0; cursor: pointer; }
+		.dialogue .choice:hover, .dialogue .choice.lit { color: var(--highlight); }
+		.dialogue .portrait { position: absolute; left: 0; top: -124dp; width: 112dp; height: 112dp;
+		                      border: 2dp var(--panel-border); }
+	</style>
+</head>
+<!-- A conversation (the "dialogue" model): speaker, portrait, text and choices. -->
+<body class="dialogue">
+<div data-model="dialogue">
+	<div class="box panel">
+		<img class="portrait" data-if="portrait != ''" data-attr-src="portrait"/>
+		<div class="speaker" data-if="speaker != ''">{{speaker}}</div>
+		<div class="text">{{text}}</div>
+		<div class="choices">
+			<div class="choice" data-for="choice, i : choices" data-class-lit="i == highlighted"
+			     data-event-click="choose(i)">{{i + 1}}. {{choice.label}}</div>
+		</div>
+	</div>
+</div>
+</body>
+</rml>

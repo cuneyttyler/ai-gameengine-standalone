@@ -1,0 +1,23 @@
+<rml>
+<head>
+	<title>Window</title>
+	<link type="text/rcss" href="../styles/base.rcss"/>
+	<link type="text/rcss" href="../styles/menu.rcss"/>
+</head>
+<!-- Windows over play (inventory, shop, journal): the list beside its details. -->
+<body class="menu window">
+<div class="screen shade" data-model="menu">
+	<div class="panel">
+		<h1>{{title}}</h1>
+		<div class="columns">
+			<div class="items">
+				<div class="item" data-for="item, i : items" data-class-lit="i == highlighted"
+				     data-class-off="!item.enabled" data-event-click="choose(i)">{{item.label}}</div>
+			</div>
+			<div class="body" data-if="body != ''">{{body}}</div>
+		</div>
+		<p class="footer" data-if="footer != ''">{{footer}}</p>
+	</div>
+</div>
+</body>
+</rml>

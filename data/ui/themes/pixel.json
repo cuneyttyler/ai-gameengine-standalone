@@ -1,0 +1,22 @@
+{
+  "schema": "aige.ui-theme/1",
+  "name": "Pixel frame",
+  "license": "CC0 (part of the engine)",
+  "tokens": {
+    "font-size": "16px",
+    "title-size": "32px",
+    "panel": "#20142eff",
+    "panel-border": "#f4e6c1",
+    "text": "#f4e6c1",
+    "text-dim": "#f4e6c199",
+    "accent": "#e8b04c",
+    "highlight": "#ffe066",
+    "danger": "#e04a3a",
+    "health": "#e04a3a",
+    "mana": "#3a7ae0",
+    "stamina": "#4ab04a",
+    "xp": "#e8b04c",
+    "shade": "#000000a0",
+    "bar-back": "#000000cc"
+  }
+}

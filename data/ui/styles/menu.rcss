@@ -1,0 +1,29 @@
+/* Menus and windows: a title, a body and items to pick (the highlighted one marked). */
+
+body.menu { background-color: transparent; }
+.menu .screen { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
+.menu .screen.shade { background-color: var(--shade); }
+
+.menu .panel
+{
+	position: absolute;
+	left: 50%;
+	top: 22%;
+	width: 460dp;
+	margin-left: -230dp;
+	text-align: center;
+}
+.menu .subtitle { color: var(--text-dim); margin-bottom: 8dp; }
+.menu .body { color: var(--text-dim); text-align: left; white-space: pre-line; margin: 10dp 0; font-size: 15dp; }
+.menu .items { margin-top: 12dp; }
+.menu .item { padding: 4dp 8dp; cursor: pointer; }
+.menu .item:hover { color: var(--highlight); }
+.menu .item.lit { color: var(--highlight); }
+.menu .item.off { color: var(--text-dim); }
+.menu .footer { color: var(--text-dim); font-size: 13dp; margin-top: 12dp; }
+
+/* Windows (inventory, shop, journal): wider, the list beside the details. */
+.window .panel { width: 680dp; margin-left: -340dp; text-align: left; top: 14%; }
+.window .columns { display: flex; flex-direction: row; }
+.window .items { width: 300dp; overflow-y: auto; max-height: 380dp; }
+.window .body { flex: 1; margin: 12dp 0 0 16dp; }

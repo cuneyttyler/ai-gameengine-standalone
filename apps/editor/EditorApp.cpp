@@ -56,12 +56,15 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <limits>
 
 #include <shellapi.h>
 
 namespace aige {
+
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -559,6 +562,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     if (type.rfind("ontology:", 0) == 0 && HandleOntologyMessage(type, message)) return;
     if (type.rfind("library:", 0) == 0 && HandleLibraryMessage(type, message)) return;
     if (type.rfind("difficulty:", 0) == 0 && HandleDifficultyMessage(type, message)) return;
+    if (type.rfind("ui:", 0) == 0 && HandleUiMessage(type, message)) return;
 
     if (type == "viewport:bounds") {
         int width = message.value("width", 0);
@@ -3164,6 +3168,14 @@ void EditorApp::StartPlay() {
     world_.Refresh();
     session_.SetStory(&story_);
     session_.SetScene(OpenSceneRelative());
+    // The game's UI as documents (17), as a shipped game shows it.
+    if (ActiveSettings().ui.documents) {
+        UiDocs().Reload();
+        session_.SetDocumentHud(true);
+        session_.SetNoticeSink([this](const std::string& channel, const std::string& text, const std::string& key, double seconds) {
+            UiDocs().Notify({channel, text, "", seconds, 1, key});
+        });
+    }
     // Play at the chosen level (16.5), else the game's default.
     session_.ReloadDifficulty();
     session_.SetDifficulty(playDifficulty_.empty() ? session_.Difficulty().DefaultLevel() : playDifficulty_);
@@ -3195,6 +3207,12 @@ void EditorApp::StartPlay() {
 void EditorApp::StopPlay() {
     if (!playing_) {
         return;
+    }
+    session_.SetDocumentHud(false);
+    session_.SetNoticeSink({});
+    if (uiDocs_) {
+        uiDocs_->SetHud(HudData{false});
+        uiDocs_->SetDialogue(std::nullopt);
     }
     DeserializeScene(registry_, playSnapshot_);
     LayersOf(registry_) = std::move(playLayers_);
@@ -3232,6 +3250,12 @@ std::vector<UiQuad> EditorApp::BuildUi() {
                       {0.05f, 0.05f, 0.09f, 0.8f});
             font.Draw(ui, text, vx - w * 0.5f + 5.0f, vy - 26.0f, {0.99f, 0.86f, 0.45f, 1.0f});
         }
+        if (!uiPreview_.empty()) {
+            int width = 0;
+            int height = 0;
+            viewport_.GetFramebufferSize(width, height);
+            ShowUiPreview(ui, width, height);
+        }
         AddStatsOverlay(ui);
         return ui;
     }
@@ -3239,11 +3263,257 @@ std::vector<UiQuad> EditorApp::BuildUi() {
     int height = 0;
     viewport_.GetFramebufferSize(width, height);
     session_.BuildUi(ui, static_cast<float>(width), static_cast<float>(height));
+    if (uiDocs_ && ActiveSettings().ui.documents) {
+        uiDocs_->SetViewport(width, height);
+        uiDocs_->SetMenu(std::nullopt, "");
+        uiDocs_->SetDialogue(session_.CurrentDialogueView());
+        uiDocs_->SetHud(session_.MakeHud(static_cast<float>(width), static_cast<float>(height)));
+        uiDocs_->Render(ui);
+        for (const auto& texture : uiDocs_->TakeNewTextures()) renderer_.RegisterTexture(texture.name, texture.image);
+    }
     if (!banner_.first.empty()) {
         AddBanner(ui, banner_.first, banner_.second, static_cast<float>(width), static_cast<float>(height));
     }
     AddStatsOverlay(ui);
     return ui;
+}
+
+DocumentUi& EditorApp::UiDocs() {
+    if (!uiDocs_) {
+        uiDocs_ = std::make_unique<DocumentUi>(assets_.GetProject().root,
+                                               [this](const std::string& path) { return assets_.LoadTexture(path); });
+    }
+    return *uiDocs_;
+}
+
+namespace {
+
+// Sample data for previewing a screen in the UI tab (17.7).
+MenuView MockMenu(const std::string& id) {
+    MenuView v;
+    auto items = [&](std::initializer_list<const char*> labels) {
+        for (const char* label : labels) v.items.push_back({label, true});
+    };
+    if (id == "title") {
+        v.title = "The Game";
+        v.subtitle = "a subtitle";
+        v.dimBackground = false;
+        items({"Continue", "New game", "Load game", "Settings", "Credits", "Quit"});
+    } else if (id == "pause") {
+        v.title = "Paused";
+        items({"Resume", "Save game", "Load game", "Settings", "Quit to title", "Quit game"});
+    } else if (id == "settings") {
+        v.title = "Settings";
+        items({"Master volume  100%", "Music volume  80%", "Subtitles  On", "Difficulty  Normal", "Back"});
+    } else if (id == "inventory") {
+        v.title = "Inventory";
+        v.body = "Gold 120   Level 3 (40/100)   Health 7/10";
+        items({"[weapon] Iron sword", "Potion x3", "Leather armour", "Close"});
+    } else if (id == "journal") {
+        v.title = "Journal";
+        v.body = "Someone has been stealing from the market.\n- The guard told me about a thief.\n[ ] Find Mira";
+        items({"The thief", "The hunt (done)", "Close"});
+    } else if (id == "shop") {
+        v.title = "Blacksmith";
+        v.body = "Your gold 120   Their gold 500";
+        items({"Buy Iron sword  40", "Buy Shield  25", "Sell Potion  4", "Close"});
+    } else {
+        v.title = id.empty() ? "Menu" : id;
+        items({"First", "Second", "Back"});
+    }
+    v.footer = "Up/Down to choose, Enter to pick, Esc to go back";
+    return v;
+}
+
+} // namespace
+
+void EditorApp::ShowUiPreview(std::vector<UiQuad>& ui, int width, int height) {
+    DocumentUi& docs = UiDocs();
+    docs.SetViewport(width, height);
+    HudData hud;
+    hud.health = 7;
+    hud.healthMax = 10;
+    hud.mana = 4;
+    hud.manaMax = 10;
+    hud.stamina = 8;
+    hud.staminaMax = 10;
+    hud.level = 3;
+    hud.xp = 40;
+    hud.xpNext = 100;
+    hud.gold = 120;
+    hud.quest = "The thief";
+    hud.objective = "Find Mira";
+    hud.clock = "Day 2  14:30";
+    hud.promptKey = "E";
+    hud.promptText = "Talk to Old Tamsin";
+    hud.marker = "12 m";
+    hud.markerX = width * 0.8f;
+    hud.markerY = height * 0.5f;
+    hud.visible = uiPreview_ == "hud";
+    docs.SetHud(hud);
+    if (uiPreview_ == "dialogue") {
+        DialogueView talk;
+        talk.speaker = "Old Tamsin";
+        talk.text = "Another Warden? The last one came back in a sack.";
+        talk.choices = {"I'm here about the keep.", "[Speech 5] Surely the keep can pay more.", "Goodbye."};
+        docs.SetDialogue(talk);
+    } else {
+        docs.SetDialogue(std::nullopt);
+    }
+    docs.SetMenu(uiPreview_ == "hud" || uiPreview_ == "dialogue" ? std::nullopt : std::optional<MenuView>(MockMenu(uiPreview_)),
+                 uiPreview_);
+    docs.Render(ui);
+    for (const auto& texture : docs.TakeNewTextures()) renderer_.RegisterTexture(texture.name, texture.image);
+}
+
+nlohmann::json EditorApp::UiJson() {
+    DocumentUi& docs = UiDocs();
+    const fs::path root = assets_.GetProject().root;
+    // Every screen the engine knows, with where its document comes from.
+    nlohmann::json screens = nlohmann::json::array();
+    std::set<std::string> ids;
+    for (const auto& s : docs.Screens()) {
+        ids.insert(s.id);
+        screens.push_back({{"id", s.id}, {"document", s.document}, {"layer", s.layer}, {"pauses", s.pauses},
+                           {"source", docs.SourceOf(s.id)}});
+    }
+    std::error_code ec;
+    for (const auto& file : fs::directory_iterator(root / "ui" / "screens", ec)) {
+        const std::string id = file.path().stem().string();
+        if (file.path().extension() == ".rml" && !ids.contains(id)) {
+            screens.push_back({{"id", id}, {"document", "screens/" + id + ".rml"}, {"layer", "window"}, {"pauses", true},
+                               {"source", "project"}, {"custom", true}});
+        }
+    }
+    nlohmann::json theme = nlohmann::json::object();
+    if (std::ifstream in(root / "ui" / "theme.json", std::ios::binary); in) theme = nlohmann::json::parse(in, nullptr, false);
+    if (!theme.is_object()) theme = nlohmann::json::object();
+    nlohmann::json rules;
+    for (const fs::path& file : {root / "ui" / "notifications.json", EngineUiDir() / "notifications.json"}) {
+        if (std::ifstream in(file, std::ios::binary); in) {
+            std::stringstream text;
+            text << in.rdbuf();
+            rules = {{"text", text.str()}, {"project", file.parent_path().parent_path() == root}};
+            break;
+        }
+    }
+    nlohmann::json problems = nlohmann::json::array();
+    for (auto& p : docs.TakeProblems()) problems.push_back(p);
+    return {{"type", "ui:model"},
+            {"screens", screens},
+            {"themes", docs.Themes()},
+            {"theme", theme},
+            {"tokens", docs.ThemeTokens()},
+            {"notifications", rules},
+            {"problems", problems},
+            {"preview", uiPreview_},
+            {"documents", ActiveSettings().ui.documents}};
+}
+
+bool EditorApp::HandleUiMessage(const std::string& type, const nlohmann::json& message) {
+    const fs::path root = assets_.GetProject().root;
+    // A file the tab may write: under ui/, a document, style or settings file.
+    auto safe = [](const std::string& path) {
+        const fs::path p = fs::path(path).lexically_normal();
+        const std::string ext = p.extension().string();
+        return !p.is_absolute() && p.generic_string().rfind("ui/", 0) == 0 && p.generic_string().find("..") == std::string::npos &&
+               (ext == ".rml" || ext == ".rcss" || ext == ".json");
+    };
+    auto write = [&](const std::string& path, const std::string& text) -> std::optional<std::string> {
+        if (!safe(path)) return "UI files live under ui/ (.rml, .rcss, .json)";
+        if (fs::path(path).extension() == ".json" && nlohmann::json::parse(text, nullptr, false).is_discarded()) {
+            return path + " isn't valid JSON";
+        }
+        std::error_code ec;
+        fs::create_directories((root / path).parent_path(), ec);
+        std::ofstream out(root / path, std::ios::binary | std::ios::trunc);
+        if (!out) return "couldn't write " + path;
+        out << text;
+        return std::nullopt;
+    };
+    auto reload = [&] {
+        UiDocs().Reload();
+        post_(UiJson());
+    };
+    if (type == "ui:request") {
+        post_(UiJson());
+    } else if (type == "ui:source") {
+        // The document a screen uses: the project's copy, else the engine's.
+        const std::string document = message.value("document", "");
+        const fs::path project = root / "ui" / document, engine = EngineUiDir() / document;
+        std::error_code ec;
+        const bool own = fs::exists(project, ec);
+        std::ifstream in(own ? project : engine, std::ios::binary);
+        std::stringstream text;
+        text << in.rdbuf();
+        post_({{"type", "ui:source"}, {"document", document}, {"text", text.str()}, {"project", own}});
+    } else if (type == "ui:customise") {
+        // Copy the engine's document into the project (it then wins) and point the manifest at it.
+        const std::string id = message.value("id", "");
+        const std::string document = message.value("document", "screens/menu.rml");
+        const std::string target = "screens/" + id + ".rml";
+        std::error_code ec;
+        if (!fs::exists(root / "ui" / target, ec)) {
+            fs::create_directories(root / "ui" / "screens", ec);
+            fs::copy_file(fs::exists(root / "ui" / document, ec) ? root / "ui" / document : EngineUiDir() / document,
+                          root / "ui" / target, ec);
+        }
+        nlohmann::json manifest = {{"schema", "aige.ui-screens/1"}, {"screens", nlohmann::json::array()}};
+        if (std::ifstream in(root / "ui" / "screens.json", std::ios::binary); in) {
+            const auto json = nlohmann::json::parse(in, nullptr, false);
+            if (json.is_object() && json.contains("screens")) manifest = json;
+        }
+        bool found = false;
+        for (auto& s : manifest["screens"]) {
+            if (s.value("id", "") == id) {
+                s["document"] = target;
+                found = true;
+            }
+        }
+        if (!found) manifest["screens"].push_back({{"id", id}, {"document", target}});
+        if (auto error = write("ui/screens.json", manifest.dump(2) + "\n")) post_({{"type", "notify"}, {"text", *error}});
+        reload();
+    } else if (type == "ui:save") {
+        if (auto error = write(message.value("path", ""), message.value("text", ""))) {
+            post_({{"type", "notify"}, {"text", *error}});
+        }
+        reload();
+    } else if (type == "ui:theme") {
+        nlohmann::json theme = {{"base", message.value("base", "stone")},
+                                {"tokens", message.value("tokens", nlohmann::json::object())}};
+        if (auto error = write("ui/theme.json", theme.dump(2) + "\n")) post_({{"type", "notify"}, {"text", *error}});
+        reload();
+    } else if (type == "ui:preview") {
+        uiPreview_ = playing_ ? std::string() : message.value("id", "");
+        if (uiPreview_.empty() && uiDocs_) {
+            uiDocs_->SetMenu(std::nullopt, "");
+            uiDocs_->SetHud(HudData{false});
+            uiDocs_->SetDialogue(std::nullopt);
+        }
+    } else if (type == "ui:check") {
+        // Show every screen once with sample data and collect what RmlUi reports.
+        DocumentUi& docs = UiDocs();
+        docs.Reload();
+        docs.TakeProblems();
+        nlohmann::json results = nlohmann::json::array();
+        std::vector<std::string> ids;
+        for (const auto& s : docs.Screens()) ids.push_back(s.id);
+        for (const auto& id : ids) {
+            std::vector<UiQuad> scratch;
+            const std::string saved = uiPreview_;
+            uiPreview_ = id;
+            ShowUiPreview(scratch, 1280, 720);
+            uiPreview_ = saved;
+            for (const auto& p : docs.TakeProblems()) results.push_back({{"screen", id}, {"message", p}});
+        }
+        docs.SetMenu(std::nullopt, "");
+        docs.SetHud(HudData{false});
+        docs.SetDialogue(std::nullopt);
+        post_({{"type", "ui:checked"}, {"problems", results}});
+    } else {
+        return false;
+    }
+    return true;
 }
 
 void EditorApp::AddStatsOverlay(std::vector<UiQuad>& ui) {
@@ -3282,6 +3552,7 @@ void EditorApp::Tick(double frameSeconds) {
         FrameScene();
     }
     frameMs_ = frameMs_ * 0.9 + frameSeconds * 1000.0 * 0.1;
+    if (uiDocs_) uiDocs_->Update(frameSeconds);
     if (playing_) {
         const auto updateStart = std::chrono::steady_clock::now();
         session_.Advance(frameSeconds, [this](Key key) { return viewport_.IsKeyDown(key); });

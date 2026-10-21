@@ -273,6 +273,7 @@ void GameRunner::Frame(double seconds, const KeyQueryFn& keys, const AxisQueryFn
 
 void GameRunner::FrameLogic(double seconds, const KeyQueryFn& keys, const AxisQueryFn& axes) {
     if (fade_ > 0.0) fade_ = std::max(0.0, fade_ - seconds / kFadeSeconds);
+    if (docs_) docs_->Update(seconds);
     if (!flow_.InPlay()) {
         menuInput_.SetContext("menu");
         menuInput_.Update(ActiveInputMap(), keys, axes);
@@ -298,6 +299,7 @@ void GameRunner::FrameLogic(double seconds, const KeyQueryFn& keys, const AxisQu
     }
     playSeconds_ += seconds;
     session_->Advance(seconds, keys);
+    NotifyByRules();
     TravelIfAsked();
     if (const auto player = FindPlayer(registry_)) {
         const bool free = !session_->Conversation().Active() && !session_->InCutscene();
@@ -335,10 +337,127 @@ void GameRunner::FrameLogic(double seconds, const KeyQueryFn& keys, const AxisQu
 }
 
 void GameRunner::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float viewportHeight) {
-    if (flow_.Current() != GameFlow::State::Title) session_->BuildUi(out, viewportWidth, viewportHeight);
-    if (auto view = windows_.View(registry_)) AddMenu(out, *view, viewportWidth, viewportHeight);
-    if (auto view = flow_.View()) AddMenu(out, *view, viewportWidth, viewportHeight);
+    const bool title = flow_.Current() == GameFlow::State::Title;
+    if (!title) session_->BuildUi(out, viewportWidth, viewportHeight);
+    if (docs_) {
+        // The documents (17): the menu or window on screen, the dialogue, the HUD.
+        docs_->SetViewport(static_cast<int>(viewportWidth), static_cast<int>(viewportHeight));
+        auto view = windows_.View(registry_);
+        if (!view) view = flow_.View();
+        docs_->SetMenu(view, MenuScreen());
+        docs_->SetDialogue(view ? std::nullopt : session_->CurrentDialogueView());
+        HudData hud = session_->MakeHud(viewportWidth, viewportHeight);
+        hud.visible = hud.visible && !title && flow_.InPlay();
+        docs_->SetHud(hud);
+        docs_->Render(out);
+    } else {
+        if (auto view = windows_.View(registry_)) AddMenu(out, *view, viewportWidth, viewportHeight);
+        if (auto view = flow_.View()) AddMenu(out, *view, viewportWidth, viewportHeight);
+    }
     AddScreenFade(out, static_cast<float>(fade_), viewportWidth, viewportHeight);
+}
+
+std::string GameRunner::MenuScreen() const {
+    switch (windows_.Open()) {
+        case PlayWindows::Kind::Inventory: return "inventory";
+        case PlayWindows::Kind::Shop: return "shop";
+        case PlayWindows::Kind::Journal: return "journal";
+        default: break;
+    }
+    switch (flow_.Current()) {
+        case GameFlow::State::Title: return "title";
+        case GameFlow::State::Paused: return "pause";
+        case GameFlow::State::Load: return "load";
+        case GameFlow::State::Save: return "save";
+        case GameFlow::State::GameOver: return "game-over";
+        case GameFlow::State::Victory: return "victory";
+        case GameFlow::State::Credits: return "credits";
+        case GameFlow::State::Settings: return "settings";
+        case GameFlow::State::Difficulty: return "difficulty";
+        default: return "";
+    }
+}
+
+void GameRunner::EnableDocuments(DocumentUi::ImageLoader images) {
+    if (!ActiveSettings().ui.documents) return; // the project keeps the built-in overlays
+    docs_ = std::make_unique<DocumentUi>(project_.root, std::move(images));
+    if (!docs_->Ready()) {
+        for (const auto& p : docs_->TakeProblems()) log_.push_back("UI: " + p);
+        docs_.reset();
+        return;
+    }
+    // A click on an item picks it, through the same logic as the keys.
+    docs_->onMenuChoose = [this](int index) {
+        if (windows_.Open() != PlayWindows::Kind::None) {
+            windows_.Choose(registry_, index);
+            if (const std::string message = windows_.TakeMessage(); !message.empty()) session_->Toast(message);
+        } else {
+            HandleCommand(flow_.Choose(index));
+        }
+    };
+    docs_->onDialogueChoose = [this](int index) { session_->ChooseDialogue(index); };
+    docs_->onAction = [this](const std::string& action) {
+        session_->Emit({"ui_action", entt::null, entt::null, 0.0, action}); // scripts: on("ui_action", fn)
+    };
+    session_->SetNoticeSink([this](const std::string& channel, const std::string& text, const std::string& key, double seconds) {
+        docs_->Notify({channel, text, "", seconds, 1, key});
+    });
+    session_->SetDocumentHud(true);
+    session_->SetScreenHook([this](const std::string& id, int open) {
+        if (open < 0) return docs_->IsShown(id);
+        docs_->ShowScreen(id, open == 1);
+        return true;
+    });
+    LoadNotificationRules();
+}
+
+std::vector<DocumentUi::NewTexture> GameRunner::TakeUiTextures() {
+    if (!docs_) return {};
+    for (const auto& p : docs_->TakeProblems()) log_.push_back("UI: " + p);
+    return docs_->TakeNewTextures();
+}
+
+void GameRunner::UiMouse(int x, int y, int button, bool down) {
+    if (!docs_) return;
+    if (button < 0) docs_->MouseMove(x, y);
+    else docs_->MouseButton(button, down);
+}
+
+// ui/notifications.json (the project's, else the engine's): events -> notifications.
+void GameRunner::LoadNotificationRules() {
+    notificationRules_ = nlohmann::json::array();
+    for (const auto& file : {project_.root / "ui" / "notifications.json", EngineUiDir() / "notifications.json"}) {
+        std::ifstream in(file, std::ios::binary);
+        if (!in) continue;
+        const nlohmann::json json = nlohmann::json::parse(in, nullptr, false);
+        if (json.is_object() && json.contains("rules") && json["rules"].is_array()) {
+            notificationRules_ = json["rules"];
+            return;
+        }
+    }
+}
+
+void GameRunner::NotifyByRules() {
+    if (!docs_ || notificationRules_.empty()) return;
+    for (const auto& event : session_->DeliveredEvents()) {
+        for (const auto& rule : notificationRules_) {
+            if (!rule.is_object() || rule.value("event", "") != event.name) continue;
+            std::string text = Tr(rule.value("text", ""), rule.value("text", ""));
+            auto put = [&](const std::string& name, const std::string& value) {
+                for (size_t at = text.find(name); at != std::string::npos; at = text.find(name, at + value.size())) {
+                    text.replace(at, name.size(), value);
+                }
+            };
+            char amount[32];
+            std::snprintf(amount, sizeof(amount), "%g", event.amount);
+            put("{amount}", amount);
+            put("{count}", event.amount > 0 ? amount : "1");
+            put("{text}", event.text);
+            const std::string coalesce = rule.value("coalesce", "");
+            docs_->Notify({rule.value("channel", "toast"), text, rule.value("icon", ""), rule.value("seconds", 3.0),
+                           std::max(1, static_cast<int>(event.amount)), coalesce == "text" ? event.text : std::string()});
+        }
+    }
 }
 
 } // namespace aige

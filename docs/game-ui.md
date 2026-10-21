@@ -1,6 +1,6 @@
 # Game UI — menus, windows, HUD, notifications and themes
 
-Status: **draft for review (2026-10-21)**. Phase 17 in `development_plan.md`. This is the
+Status: **built, to be tried (2026-10-22)**; see "As built" at the end. Phase 17 in `development_plan.md`. This is the
 UI *of the games* AIGE makes (what a player sees), not the editor's UI. The AI Planner
 designs it in its Visuals stage (`ai-planner.md` §5.8).
 
@@ -305,3 +305,46 @@ From the Brief's Visuals tab and the systems that are on (`ai-planner.md` §5.8)
    panel for approval; edits go to the documents and re-render.
 6. **Checks:** §12's, plus every system's screen exists and is opened by an action in the
    input map.
+
+## 18. As built (Phase 17)
+
+- **RmlUi 6.0** (MIT, fetched by CMake, static, without FreeType): `ui/Documents` gives it our
+  TrueType font engine (the built-in face for any family, or a `.ttf` by its file name), a render
+  interface that turns its geometry into the renderer's UI quads (clipped to scissor regions;
+  CSS transforms, gradients and rounded corners are approximated as rectangles), a file interface
+  that looks in the project's `ui/` before the engine's `data/ui` and puts the theme's tokens into
+  styles, and the game's data as models.
+- **The game's logic stays where it was.** GameFlow and PlayWindows still decide what a menu
+  shows (MenuView); a document only shows it, and a click calls the same `Choose()`. So every
+  screen works the same by keyboard, gamepad or mouse.
+- **Models:** `menu` (title, subtitle, body, footer, items, highlighted, `choose(i)`), `dialogue`
+  (speaker, text, portrait, choices, `choose(i)`), `hud` (health, mana, stamina and their maxima,
+  level, xp, xp_next, gold, quest, objective, clock, prompt_key, prompt_text, subtitle, marker),
+  `notes` (toast, feed, banner, alert) and `ui` (`action('…')`, the `ui_action` event for Lua).
+  A model must be on an element inside `<body>`.
+- **Documents** (`data/ui/screens`): `menu.rml` (every menu), `title.rml`, `window.rml`
+  (inventory, shop, journal), `dialogue.rml`, `hud.rml`; styles in `data/ui/styles`. The
+  manifest `data/ui/screens.json` (and a project's `ui/screens.json`) says which document a
+  screen uses. **Customise** in the UI tab copies a document into the project and points the
+  manifest at it.
+- **Themes:** seven built-in token sets (`data/ui/themes`: stone, parchment, iron, arcane,
+  scifi-glass, minimal, pixel); `ui/theme.json` picks one and overrides tokens. 9-slice frames,
+  icon sets and sounds per theme are later work.
+- **Notifications:** toast (one at a time), feed (coalesced by key), banner and alert channels;
+  the game's own notices go to them by kind, and `ui/notifications.json` (else the engine's)
+  maps events to notifications. A history of 50.
+- **Glyphs:** prompts show the key or gamepad button the action is bound to, for the device used
+  last.
+- **Editor:** Project ▸ **UI** tab: screens (source, Customise, preview over the viewport with
+  sample data, new screens), the theme (base and token overrides), notification rules, and
+  "Check all". Play uses the documents too.
+- **Lua:** `notify(channel, text[, seconds])`, `open_screen(id)`, `close_screen(id)`, `is_open(id)`.
+- **The AI:** `write_ui` writes screens, styles, the theme, the manifest and the rules; checked
+  like the UI tab checks them.
+- **Fallback:** Project Settings ▸ UI.documents off keeps the built-in overlays (and headless
+  runs and tests without a renderer use them).
+- **Not yet:** pop-ups and `confirm()`, the loading, character, skills, spellbook, map, codex,
+  crafting and tutorial screens (with the systems they show), world-space UI (name plates,
+  damage numbers), the player's HUD adjustments, mouse input in the standalone player, a visual
+  (drag and drop) designer, contrast and overflow checks.
+

@@ -1,0 +1,77 @@
+{
+  "schema": "aige.ui-screens/1",
+  "screens": [
+    {
+      "id": "hud",
+      "document": "screens/hud.rml",
+      "layer": "hud",
+      "pauses": false
+    },
+    {
+      "id": "dialogue",
+      "document": "screens/dialogue.rml",
+      "layer": "window",
+      "pauses": true
+    },
+    {
+      "id": "title",
+      "document": "screens/title.rml",
+      "layer": "screen"
+    },
+    {
+      "id": "pause",
+      "document": "screens/menu.rml",
+      "layer": "screen"
+    },
+    {
+      "id": "settings",
+      "document": "screens/menu.rml",
+      "layer": "screen"
+    },
+    {
+      "id": "load",
+      "document": "screens/menu.rml",
+      "layer": "screen"
+    },
+    {
+      "id": "save",
+      "document": "screens/menu.rml",
+      "layer": "screen"
+    },
+    {
+      "id": "difficulty",
+      "document": "screens/menu.rml",
+      "layer": "screen"
+    },
+    {
+      "id": "game-over",
+      "document": "screens/menu.rml",
+      "layer": "screen"
+    },
+    {
+      "id": "victory",
+      "document": "screens/menu.rml",
+      "layer": "screen"
+    },
+    {
+      "id": "credits",
+      "document": "screens/menu.rml",
+      "layer": "screen"
+    },
+    {
+      "id": "inventory",
+      "document": "screens/window.rml",
+      "layer": "window"
+    },
+    {
+      "id": "shop",
+      "document": "screens/window.rml",
+      "layer": "window"
+    },
+    {
+      "id": "journal",
+      "document": "screens/window.rml",
+      "layer": "window"
+    }
+  ]
+}

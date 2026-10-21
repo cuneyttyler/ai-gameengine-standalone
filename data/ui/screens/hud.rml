@@ -1,0 +1,59 @@
+<rml>
+<head>
+	<title>HUD</title>
+	<link type="text/rcss" href="../styles/base.rcss"/>
+	<style>
+		.hud .bars { position: absolute; left: 20dp; top: 20dp; width: 220dp; }
+		.hud .bar { height: 12dp; background-color: var(--bar-back); margin-bottom: 4dp; }
+		.hud .fill { height: 100%; }
+		.hud .health .fill { background-color: var(--health); }
+		.hud .mana .fill { background-color: var(--mana); }
+		.hud .stamina .fill { background-color: var(--stamina); }
+		.hud .xp { height: 4dp; }
+		.hud .xp .fill { background-color: var(--xp); }
+		.hud .quest { position: absolute; left: 20dp; top: 84dp; width: 340dp; padding: 8dp 12dp; }
+		.hud .quest .name { color: var(--accent); font-size: 14dp; }
+		.hud .clock { position: absolute; right: 20dp; top: 20dp; padding: 6dp 10dp; }
+		.hud .prompt { position: absolute; left: 0; right: 0; bottom: 210dp; text-align: center; }
+		.hud .key { background-color: var(--accent); color: var(--panel); padding: 1dp 7dp; margin-right: 6dp; }
+		.hud .subtitle { position: absolute; left: 10%; right: 10%; bottom: 100dp; text-align: center; }
+		.hud .subtitle span { background-color: var(--shade); padding: 4dp 10dp; }
+		.hud .marker { position: absolute; width: 10dp; height: 10dp; margin-left: -5dp; margin-top: -5dp;
+		               background-color: var(--highlight); }
+		.hud .marker span { position: absolute; top: 12dp; left: -20dp; width: 50dp; text-align: center;
+		                    font-size: 13dp; color: var(--highlight); }
+		.hud .toast { position: absolute; left: 0; right: 0; top: 24dp; text-align: center; }
+		.hud .toast span { background-color: var(--panel); border-top: 2dp var(--panel-border); padding: 6dp 14dp; }
+		.hud .feed { position: absolute; right: 20dp; top: 70dp; width: 220dp; text-align: right; }
+		.hud .feed div { margin-bottom: 3dp; }
+		.hud .banner { position: absolute; left: 0; right: 0; top: 34%; text-align: center; font-size: 40dp; }
+	</style>
+</head>
+<!-- The HUD (the "hud" and "notes" models): bars, the tracked quest, the clock,
+     the interaction prompt, subtitles, the objective marker and notifications. -->
+<body class="hud">
+	<div data-model="hud">
+		<div class="bars" data-if="health_max > 0">
+			<div class="bar health"><div class="fill" data-style-width="(health / health_max * 100) + '%'"></div></div>
+			<div class="bar mana" data-if="mana_max > 0"><div class="fill" data-style-width="(mana / mana_max * 100) + '%'"></div></div>
+			<div class="bar stamina" data-if="stamina_max > 0"><div class="fill" data-style-width="(stamina / stamina_max * 100) + '%'"></div></div>
+			<div class="bar xp" data-if="xp_next > 0"><div class="fill" data-style-width="(xp / xp_next * 100) + '%'"></div></div>
+		</div>
+		<div class="quest panel" data-if="objective != ''">
+			<div class="name">{{quest}}</div>
+			<div>{{objective}}</div>
+		</div>
+		<div class="clock panel" data-if="clock != ''">{{clock}}</div>
+		<div class="prompt" data-if="prompt_text != ''"><span class="key">{{prompt_key}}</span>{{prompt_text}}</div>
+		<div class="subtitle" data-if="subtitle != ''"><span>{{subtitle}}</span></div>
+		<div class="marker" data-if="marker != ''" data-style-left="marker_x + 'px'" data-style-top="marker_y + 'px'">
+			<span>{{marker}}</span>
+		</div>
+	</div>
+	<div data-model="notes">
+		<div class="toast" data-for="note : toast"><span>{{note.text}}</span></div>
+		<div class="feed"><div data-for="note : feed">{{note.text}}</div></div>
+		<div class="banner" data-for="note : banner">{{note.text}}</div>
+	</div>
+</body>
+</rml>

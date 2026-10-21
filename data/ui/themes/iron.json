@@ -1,0 +1,22 @@
+{
+  "schema": "aige.ui-theme/1",
+  "name": "Iron",
+  "license": "CC0 (part of the engine)",
+  "tokens": {
+    "font-size": "17px",
+    "title-size": "34px",
+    "panel": "#2a2d31f0",
+    "panel-border": "#9aa3ad",
+    "text": "#e3e6ea",
+    "text-dim": "#e3e6ea8c",
+    "accent": "#9aa3ad",
+    "highlight": "#f0c060",
+    "danger": "#e05050",
+    "health": "#c04040",
+    "mana": "#5080c0",
+    "stamina": "#50a060",
+    "xp": "#c0a040",
+    "shade": "#00000099",
+    "bar-back": "#000000aa"
+  }
+}

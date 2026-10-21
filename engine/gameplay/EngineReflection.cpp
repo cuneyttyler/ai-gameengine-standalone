@@ -488,6 +488,9 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Options({"None", "FixedZones", "Scaled", "Hybrid"})
         .Field("levelOffset", &DifficultySettings::levelOffset, "Scaled and Hybrid: the player's level plus this.")
         .Range(-20, 20);
+    r.Settings("UI", "The game's own UI (game-ui.md).", &settings.ui)
+        .Field("documents", &UiSettings::documents,
+               "Menus, windows and the HUD as themed documents (ui/); off: the built-in overlays.");
     r.Settings("Story", "Quest help on screen.", &settings.story)
         .Field("objectiveMarkers", &StorySettings::objectiveMarkers, "Point the way to the current objective.")
         .Field("journal", &StorySettings::journal, "The quest journal window (J).");

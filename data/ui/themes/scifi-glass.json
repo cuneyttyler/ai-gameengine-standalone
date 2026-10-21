@@ -1,0 +1,22 @@
+{
+  "schema": "aige.ui-theme/1",
+  "name": "Sci-fi glass",
+  "license": "CC0 (part of the engine)",
+  "tokens": {
+    "font-size": "16px",
+    "title-size": "32px",
+    "panel": "#0b1a24cc",
+    "panel-border": "#38d6ff",
+    "text": "#dff7ff",
+    "text-dim": "#dff7ff8c",
+    "accent": "#38d6ff",
+    "highlight": "#ffb238",
+    "danger": "#ff4d5e",
+    "health": "#ff4d5e",
+    "mana": "#38d6ff",
+    "stamina": "#5cff9d",
+    "xp": "#ffd84d",
+    "shade": "#00060a99",
+    "bar-back": "#00000088"
+  }
+}

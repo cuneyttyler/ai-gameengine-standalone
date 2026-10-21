@@ -1,0 +1,22 @@
+{
+  "schema": "aige.ui-theme/1",
+  "name": "Parchment",
+  "license": "CC0 (part of the engine)",
+  "tokens": {
+    "font-size": "17px",
+    "title-size": "34px",
+    "panel": "#e8d9b5f0",
+    "panel-border": "#7a5a2e",
+    "text": "#2b1d0e",
+    "text-dim": "#2b1d0e99",
+    "accent": "#7a5a2e",
+    "highlight": "#9c2f1e",
+    "danger": "#9c2f1e",
+    "health": "#a3271b",
+    "mana": "#244e8c",
+    "stamina": "#3f7d2f",
+    "xp": "#a07818",
+    "shade": "#2b1d0e66",
+    "bar-back": "#2b1d0e55"
+  }
+}

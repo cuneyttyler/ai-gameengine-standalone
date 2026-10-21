@@ -1,0 +1,22 @@
+{
+  "schema": "aige.ui-theme/1",
+  "name": "Arcane",
+  "license": "CC0 (part of the engine)",
+  "tokens": {
+    "font-size": "17px",
+    "title-size": "34px",
+    "panel": "#1a1030ee",
+    "panel-border": "#a06cff",
+    "text": "#efe8ff",
+    "text-dim": "#efe8ff8c",
+    "accent": "#a06cff",
+    "highlight": "#7af0ff",
+    "danger": "#ff5c8a",
+    "health": "#e0457b",
+    "mana": "#6c8cff",
+    "stamina": "#4ad6a0",
+    "xp": "#ffd36c",
+    "shade": "#0a0418a0",
+    "bar-back": "#000000aa"
+  }
+}

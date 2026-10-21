@@ -213,6 +213,8 @@ int main(int argc, char** argv) {
         game.onFullscreen = [&window](bool fullscreen) { window.SetFullscreen(fullscreen); };
         game.SetAudio(&audio);
         session.SetAxisQuery([&window](aige::PadAxis axis) { return window.PadAxisValue(axis); });
+        // The game's UI as documents (17): menus, windows, HUD and notifications, themed.
+        game.EnableDocuments([&assets](const std::string& path) { return assets.LoadTexture(path); });
         game.Start();
         if (bench) {
             registry.clear();
@@ -296,6 +298,7 @@ int main(int argc, char** argv) {
                 const float width = static_cast<float>(extent.width);
                 const float height = static_cast<float>(extent.height);
                 game.BuildUi(ui, width, height);
+                for (const auto& texture : game.TakeUiTextures()) renderer.RegisterTexture(texture.name, texture.image);
                 if (showStats) {
                     const aige::RenderStats& stats = renderer.LastStats();
                     char lines[3][96];

@@ -9,7 +9,7 @@ import { reactive } from 'vue'
 import { setPanelVisible, type PanelId } from './layout'
 
 export type AssetsTab = 'prefabs' | 'assets' | 'catalog' | 'library' | 'web'
-export type ProjectTab = 'scenes' | 'world' | 'story' | 'records' | 'difficulty'
+export type ProjectTab = 'scenes' | 'world' | 'story' | 'records' | 'difficulty' | 'ui'
 export type GenerateTab = 'level' | 'art' | 'character' | 'animate'
 export type AnyTab = AssetsTab | ProjectTab | GenerateTab
 
@@ -30,6 +30,7 @@ const owner: Record<AnyTab, 'assets' | 'project' | 'generate'> = {
   story: 'project',
   records: 'project',
   difficulty: 'project',
+  ui: 'project',
   level: 'generate',
   art: 'generate',
   character: 'generate',

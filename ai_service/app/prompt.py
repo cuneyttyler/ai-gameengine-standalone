@@ -47,6 +47,7 @@ Operations (use exact component, field, setting and command names from the schem
   {"op": "write_quest", "id": "<file id>", "quest": {...see STORY below...}}
   {"op": "write_schedule", "id": "<file id>", "schedule": {...see ROUTINES below...}}
   {"op": "write_cutscene", "id": "<file id>", "cutscene": {...see CUTSCENES below...}}
+  {"op": "write_ui", "path": "ui/<file>", "content": "<the whole file>"}   (see GAME UI below)
 
 Rules:
 - Only use components, fields, settings and commands that appear in the schema, and only
@@ -83,7 +84,7 @@ Rules:
   List it under "art": [{"name": "stone-floor", "kind": "tile"|"object"|"character",
   "description": "what it is, for this scene", "cells": <width in cells>}], and use "art:<name>"
   wherever its path goes (a prefab.create texture, ...). It's drawn before the change is applied.
-- Every operation is a JSON object with "op" set to one of the thirteen kinds above; commands
+- Every operation is a JSON object with "op" set to one of the fourteen kinds above; commands
   always use {"op": "command", "name": ..., "args": {...}}.
 - Make the smallest change that does what was asked. If the request can't be done with
   what's available, return no operations and explain why in "notes".
@@ -230,6 +231,30 @@ CUTSCENES (file cutscenes/<id>.json; context "cutscenes" lists the project's)
   or play_cutscene(id) in Lua. Write the cutscene in the same proposal as anything that plays it.
 """
 
+GAME_UI = """\
+GAME UI (docs/game-ui.md; the game's menus, windows, HUD and notifications are documents; context "ui")
+- Write files with {"op": "write_ui", "path": "ui/...", "content": "<the whole file>"}:
+  ui/theme.json {"base": "<a built-in theme from context ui.themes>", "tokens": {"panel": "#1b1b24e6",
+  "text": "#eeeef2", "accent": "#3b82f6", "highlight": "#ffdb73", "health": "#d64545", ...}} restyles every
+  screen; ui/notifications.json {"rules": [{"event": "<game event>", "channel": "toast"|"feed"|"banner"|"alert",
+  "text": "Level {amount}" ({amount}, {text}, {count}), "seconds": 3, "coalesce": "text"}]};
+  ui/screens.json {"screens": [{"id", "document": "screens/<id>.rml", "layer": "screen"|"window"|"hud"|"popup",
+  "pauses": true}]} says which document shows a screen (ids: title, pause, settings, load, save, difficulty,
+  game-over, victory, credits, inventory, shop, journal, dialogue, hud); ui/screens/<id>.rml and
+  ui/styles/<name>.rcss are documents and styles.
+- A document is RML (HTML-like) with RCSS (CSS-like) and data bindings: put data-model="menu" (title,
+  subtitle, body, footer, items [label, enabled], highlighted; data-event-click="choose(i)"), "dialogue"
+  (speaker, text, portrait, choices, highlighted, choose(i)), "hud" (health, health_max, mana, mana_max,
+  stamina, stamina_max, level, xp, xp_next, gold, quest, objective, clock, prompt_key, prompt_text, subtitle,
+  marker, marker_x, marker_y), "notes" (toast, feed, banner lists of {text, count}) or "ui"
+  (data-event-click="action('<name>')" reaches Lua as the "ui_action" event) on an element INSIDE <body>.
+  {{name}} shows a value; data-for="item, i : items", data-if="...", data-class-lit="i == highlighted",
+  data-style-width="(health / health_max * 100) + '%'". Link "../styles/base.rcss" for the defaults. Colours
+  and sizes are theme tokens: var(--panel), var(--text), var(--accent), var(--highlight)...
+- A project's own screen (a map, a codex): ui/screens/<id>.rml with data-model="ui"; open it from Lua with
+  open_screen("<id>"), close it with close_screen("<id>"); notify(channel, text) shows a notification.
+"""
+
 DIFFICULTY = """\
 DIFFICULTY (difficulty.md; context "difficulty" has the levels and how enemies' levels are chosen)
 - Files hold BASE values. A difficulty level scales every field marked "scalable" in the schema (Health.max,
@@ -296,6 +321,7 @@ second while playing). These are ALL the engine functions — there are no other
   used(name)                           counts as using something (use/examine objectives)
   play_cutscene(id) -> boolean / skip_cutscene() / in_cutscene() -> boolean
   difficulty() -> level id / difficulty_step(category) -> 1..5 / set_difficulty(id) -> boolean
+  notify(channel, text[, seconds]) / open_screen(id) -> boolean / close_screen(id) / is_open(id) -> boolean
   time_of_day()                     -> hours since midnight (fractional), e.g. 13.5
   day()                             -> the day number, from 1
   play_sound(asset_path) / play_sound_at(asset_path, x, y) / play_music(asset_path, or "" for the scene's)
@@ -316,7 +342,7 @@ second while playing). These are ALL the engine functions — there are no other
   move_to(x, y)   (in a scripted package's run() coroutine: walks there around walls)
 Events: hit, death, pickup, attack, victory, talk, item_added, level_up, interact, bark, quest_started,
 quest_completed, quest_failed, quest_stage, objective_completed, cutscene_started, cutscene_ended,
-difficulty_changed.
+difficulty_changed, ui_action (text: the action's name).
 Entity ids are always the first argument where one is taken; prefab values can't be read
 from scripts (remember a value in a local at load time if you need it later, e.g.
 `local normal_speed = nil` then set it on the first update). A top-level
@@ -407,6 +433,7 @@ def build_messages(
             CUTSCENES,
             GAMEPLAY,
             DIFFICULTY,
+            GAME_UI,
             RECORDS,
             SCENES,
             ART,

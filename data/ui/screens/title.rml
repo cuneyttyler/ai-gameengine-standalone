@@ -1,0 +1,24 @@
+<rml>
+<head>
+	<title>Title</title>
+	<link type="text/rcss" href="../styles/base.rcss"/>
+	<link type="text/rcss" href="../styles/menu.rcss"/>
+	<style>
+		.title-screen h1 { font-size: 54dp; margin-bottom: 4dp; }
+		.title-screen .panel { background-color: transparent; border-top-width: 0; top: 30%; }
+	</style>
+</head>
+<!-- The title screen: the game's name and its menu (the "menu" model). -->
+<body class="menu title-screen">
+<div class="screen" data-model="menu">
+	<div class="panel">
+		<h1>{{title}}</h1>
+		<p class="subtitle" data-if="subtitle != ''">{{subtitle}}</p>
+		<div class="items">
+			<div class="item" data-for="item, i : items" data-class-lit="i == highlighted"
+			     data-class-off="!item.enabled" data-event-click="choose(i)">{{item.label}}</div>
+		</div>
+	</div>
+</div>
+</body>
+</rml>

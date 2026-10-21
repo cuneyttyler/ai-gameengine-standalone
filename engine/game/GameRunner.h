@@ -79,6 +79,15 @@ public:
     void ApplyAssists();      // the player's assists and adaptive choice (16.4)
     std::function<void(bool fullscreen)> onFullscreen;
 
+    // The game's UI as documents (17, game-ui.md): the host turns it on once it can
+    // load pictures and register textures; without it the built-in overlays draw.
+    void EnableDocuments(DocumentUi::ImageLoader images);
+    DocumentUi* Documents() { return docs_.get(); }
+    // Textures the documents made since the last call, for the renderer.
+    std::vector<DocumentUi::NewTexture> TakeUiTextures();
+    // The mouse over the documents (viewport pixels; button -1: a move).
+    void UiMouse(int x, int y, int button, bool down);
+
     // The world's changes per scene, so far (tests, the debug overlay).
     const std::map<std::string, nlohmann::json>& Worlds() const { return worlds_; }
 
@@ -89,6 +98,9 @@ private:
     ActorRoster::SpawnFn ActorSpawner();
     void ApplyWorld(const std::string& scene);
     void TravelIfAsked();
+    void LoadNotificationRules();
+    void NotifyByRules(); // the session's events this frame -> notifications (17.5)
+    std::string MenuScreen() const; // the id of the menu or window on screen
     std::string PlaceName(const std::string& scene) const;
 
     const Project& project_;
@@ -115,6 +127,8 @@ private:
     PlayWindows windows_; // inventory and shop over play (13.3-13.4)
     ActorRoster actors_;  // persistent characters (14.4)
     std::mt19937 shopRng_{0x5409u};
+    std::unique_ptr<DocumentUi> docs_;
+    nlohmann::json notificationRules_ = nlohmann::json::array();
 };
 
 } // namespace aige

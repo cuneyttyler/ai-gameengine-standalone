@@ -569,6 +569,15 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
         if (storyLibrary_) story_.OnUsed(thing, *storyLibrary_);
     };
     env["play_cutscene"] = [this](const std::string& id) { return PlayCutscene(id); };
+    // Game UI (17): notifications and the project's own screens.
+    env["notify"] = [this](const std::string& channel, const std::string& text, sol::optional<double> seconds) {
+        ShowNotice(text, seconds.value_or(3.0), channel);
+    };
+    env["open_screen"] = [this](const std::string& id) { return screenHook_ && screenHook_(id, 1); };
+    env["close_screen"] = [this](const std::string& id) {
+        if (screenHook_) screenHook_(id, 0);
+    };
+    env["is_open"] = [this](const std::string& id) { return screenHook_ && screenHook_(id, -1); };
     // Difficulty (16): the level's id, a category's step (1-5), and changing it.
     env["difficulty"] = [this]() { return difficultyLevel_.empty() ? difficultyModel_.DefaultLevel() : difficultyLevel_; };
     env["difficulty_step"] = [this](const std::string& category) {
@@ -875,8 +884,7 @@ void GameSession::ApplySave(const nlohmann::json& save) {
     }
     conversation_ = DialogueRunner{};
     talkingTo_ = entt::null;
-    notice_ = "Game loaded";
-    noticeSeconds_ = 2.0;
+    ShowNotice("Game loaded", 2.0);
 }
 
 void GameSession::OnSceneChanged() {
@@ -1023,14 +1031,136 @@ int GameSession::Day() const {
     return static_cast<int>(std::max(0.0, clockMinutes_) / kMinutesPerDay) + 1;
 }
 
-void GameSession::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float viewportHeight) {
+void GameSession::ShowNotice(const std::string& text, double seconds, const std::string& channel, const std::string& key) {
+    if (text.empty()) return;
+    if (noticeSink_) {
+        noticeSink_(channel, text, key, seconds); // the UI documents' notifications (17.5)
+        return;
+    }
+    notice_ = text;
+    noticeSeconds_ = seconds;
+}
+
+std::optional<DialogueView> GameSession::CurrentDialogueView() const {
+    const DialogueNode* node = conversation_.Node();
+    if (node == nullptr) return std::nullopt;
+    const Dialogue* dialogue = conversation_.Current();
+    DialogueView view;
+    const std::string speaker = node->speaker.empty() ? dialogue->speaker : node->speaker;
+    if (speaker == "player") {
+        auto player = FindPlayer(const_cast<Registry&>(registry_));
+        view.speaker = player ? NameOf("", *player) : std::string();
+        if (view.speaker.empty()) view.speaker = "You";
+    } else {
+        view.speaker = NameOf(speaker, talkingTo_);
+    }
+    // Translated when the game's language has the line (12.7).
+    const std::string key = "dialogue/" + std::filesystem::path(dialogue->path).stem().string() + "/" + node->id;
+    view.text = Tr(key, node->text);
+    for (size_t index : conversation_.VisibleChoices()) {
+        const DialogueChoice& choice = node->choices[index];
+        std::string label = Tr(key + "/" + std::to_string(index + 1), choice.text);
+        // A skill check shows what it tests: "[Speech 5] Surely you can spare it."
+        if (choice.check.is_object() && choice.check.contains("attribute")) {
+            std::string attribute = choice.check.value("attribute", "");
+            if (!attribute.empty()) attribute[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(attribute[0])));
+            const nlohmann::json level = choice.check.contains("difficulty") ? choice.check["difficulty"]
+                                                                             : choice.check.value("atLeast", nlohmann::json(0));
+            label = "[" + attribute + " " + (level.is_number() ? std::to_string(level.get<int>()) : std::string("?")) + "] " +
+                    label;
+        }
+        view.choices.push_back(label);
+    }
+    view.highlighted = conversation_.Highlighted();
+    view.portrait = node->portrait;
+    return view;
+}
+
+void GameSession::ChooseDialogue(int index) {
+    if (!conversation_.Active() || storyLibrary_ == nullptr || index < 0) return;
+    conversation_.Choose(static_cast<size_t>(index), story_, *storyLibrary_);
+    if (conversation_.LastCheck()) Toast(*conversation_.LastCheck() ? "Success" : "Failure");
+    if (!conversation_.Active()) talkingTo_ = entt::null;
+}
+
+HudData GameSession::MakeHud(float viewportWidth, float viewportHeight) {
+    HudData hud;
+    hud.visible = !cutscene_.Active();
+    if (const auto player = FindPlayer(registry_)) {
+        if (const auto* health = registry_.try_get<Health>(*player)) {
+            hud.health = std::max(0.0f, health->current);
+            hud.healthMax = health->max;
+        }
+        if (const auto* resources = registry_.try_get<Resources>(*player)) {
+            hud.mana = resources->mana;
+            hud.manaMax = resources->maxMana;
+            hud.stamina = resources->stamina;
+            hud.staminaMax = resources->maxStamina;
+        }
+        if (const auto* progression = registry_.try_get<Progression>(*player)) {
+            hud.level = progression->level;
+            hud.xp = progression->experience;
+            hud.xpNext = ExperienceForLevel(progression->level);
+        }
+        if (const auto* inventory = registry_.try_get<Inventory>(*player)) hud.gold = inventory->gold;
+    }
     const auto routines = registry_.view<Routine>();
     if (ActiveSettings().time.showClock || routines.begin() != routines.end()) {
-        AddClock(out, "Day " + std::to_string(Day()) + "  " + FormatClockTime(static_cast<int>(MinuteOfDay())),
-                 viewportWidth, viewportHeight);
+        hud.clock = "Day " + std::to_string(Day()) + "  " + FormatClockTime(static_cast<int>(MinuteOfDay()));
     }
-    if (!notice_.empty()) {
-        AddToast(out, notice_, viewportWidth, viewportHeight);
+    if (!barkText_.empty() && !conversation_.Active()) hud.subtitle = barkText_;
+    if (cutscene_.Active()) {
+        hud.subtitle = subtitle_;
+        return hud;
+    }
+    if (storyLibrary_ != nullptr) {
+        if (auto shown = story_.CurrentObjective(*storyLibrary_)) {
+            hud.quest = shown->quest;
+            hud.objective = shown->text;
+            // The marker (15.4): which way the objective lies, when it's more than a few steps off.
+            const auto player = FindPlayer(registry_);
+            const auto target = ObjectiveLocation();
+            if (player && target && !conversation_.Active() && ActiveSettings().story.objectiveMarkers) {
+                const auto& at = registry_.get<WorldTransform2D>(*player);
+                const float dx = target->first - at.x, dy = target->second - at.y;
+                const float distance = std::sqrt(dx * dx + dy * dy);
+                if (distance > 3.0f) {
+                    const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
+                    const float sx = topDown ? dx : dx - dy, sy = topDown ? dy : (dx + dy) * 0.5f;
+                    const float length = std::max(0.0001f, std::sqrt(sx * sx + sy * sy));
+                    const float radius = std::min(viewportWidth, viewportHeight) * 0.36f;
+                    hud.marker = std::to_string(static_cast<int>(distance + 0.5f)) + " m";
+                    hud.markerX = viewportWidth * 0.5f + sx / length * radius;
+                    hud.markerY = viewportHeight * 0.5f + sy / length * radius;
+                }
+            }
+        }
+    }
+    if (!conversation_.Active()) {
+        if (auto npc = storyLibrary_ ? TalkTarget() : std::nullopt) {
+            const Talk& talk = registry_.get<Talk>(*npc);
+            if (storyLibrary_->FindDialogue(talk.dialogue) != nullptr) {
+                hud.promptText = "Talk to " + NameOf(talk.character, *npc);
+            }
+        } else if (auto target = CurrentInteraction(); target && !target->talk) {
+            hud.promptText = InteractPrompt(registry_, target->entity);
+        }
+        // The key or button the interact action is bound to, for the device in use (17.6).
+        if (!hud.promptText.empty()) {
+            hud.promptKey = ActionGlyph(ActiveInputMap(), "interact", input_.UsingPad());
+            if (hud.promptKey.empty()) hud.promptKey = ActionGlyph(ActiveInputMap(), "interact", !input_.UsingPad());
+        }
+    }
+    return hud;
+}
+
+void GameSession::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float viewportHeight) {
+    // With the UI documents (17), the HUD and dialogue are documents: only the
+    // cutscene layers and the debug overlay are drawn here.
+    const HudData hud = documentHud_ ? HudData{} : MakeHud(viewportWidth, viewportHeight);
+    if (!documentHud_) {
+        if (!hud.clock.empty()) AddClock(out, hud.clock, viewportWidth, viewportHeight);
+        if (!notice_.empty()) AddToast(out, notice_, viewportWidth, viewportHeight);
     }
     if (cutscene_.Active() || letterbox_ > 0.0f || fade_ > 0.0f) {
         // A cutscene (15.5): bars, its lines and title, its fades; nothing of play.
@@ -1045,7 +1175,6 @@ void GameSession::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float v
             return;
         }
     }
-    if (!barkText_.empty() && !conversation_.Active()) AddSubtitle(out, barkText_, viewportWidth, viewportHeight);
     if (showAiDebug_) {
         // What every character is doing (F4).
         std::vector<std::string> lines;
@@ -1061,68 +1190,17 @@ void GameSession::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float v
         if (lines.empty()) lines.push_back("No characters with Behaviour");
         AddDebugLines(out, lines, viewportWidth, viewportHeight);
     }
-    if (storyLibrary_ == nullptr) {
-        if (auto target = CurrentInteraction(); target && !target->talk) {
-            AddPrompt(out, "E", InteractPrompt(registry_, target->entity), viewportWidth, viewportHeight);
-        }
-        return;
+    if (documentHud_) return;
+    if (!hud.subtitle.empty()) AddSubtitle(out, hud.subtitle, viewportWidth, viewportHeight);
+    if (!hud.objective.empty()) AddObjective(out, hud.quest, hud.objective, viewportWidth, viewportHeight);
+    if (!hud.marker.empty()) {
+        AddObjectiveMarker(out, hud.markerX - viewportWidth * 0.5f, hud.markerY - viewportHeight * 0.5f, hud.marker,
+                           viewportWidth, viewportHeight);
     }
-    if (auto shown = story_.CurrentObjective(*storyLibrary_)) {
-        AddObjective(out, shown->quest, shown->text, viewportWidth, viewportHeight);
-        // The marker (15.4): which way the objective lies, when it's more than a few steps off.
-        const auto player = FindPlayer(registry_);
-        const auto target = ObjectiveLocation();
-        if (player && target && !conversation_.Active() && ActiveSettings().story.objectiveMarkers) {
-            const auto& at = registry_.get<WorldTransform2D>(*player);
-            const float dx = target->first - at.x, dy = target->second - at.y;
-            const float distance = std::sqrt(dx * dx + dy * dy);
-            if (distance > 3.0f) {
-                const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
-                AddObjectiveMarker(out, topDown ? dx : dx - dy, topDown ? dy : (dx + dy) * 0.5f,
-                                   std::to_string(static_cast<int>(distance + 0.5f)) + " m", viewportWidth, viewportHeight);
-            }
-        }
-    }
-    if (const DialogueNode* node = conversation_.Node()) {
-        const Dialogue* dialogue = conversation_.Current();
-        DialogueView view;
-        const std::string speaker = node->speaker.empty() ? dialogue->speaker : node->speaker;
-        if (speaker == "player") {
-            auto player = FindPlayer(registry_);
-            view.speaker = player ? NameOf("", *player) : std::string();
-            if (view.speaker.empty()) {
-                view.speaker = "You";
-            }
-        } else {
-            view.speaker = NameOf(speaker, talkingTo_);
-        }
-        // Translated when the game's language has the line (12.7).
-        const std::string key = "dialogue/" + std::filesystem::path(dialogue->path).stem().string() + "/" + node->id;
-        view.text = Tr(key, node->text);
-        for (size_t index : conversation_.VisibleChoices()) {
-            const DialogueChoice& choice = node->choices[index];
-            std::string label = Tr(key + "/" + std::to_string(index + 1), choice.text);
-            // A skill check shows what it tests: "[Speech 5] Surely you can spare it."
-            if (choice.check.is_object() && choice.check.contains("attribute")) {
-                std::string attribute = choice.check.value("attribute", "");
-                if (!attribute.empty()) attribute[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(attribute[0])));
-                const nlohmann::json level = choice.check.contains("difficulty") ? choice.check["difficulty"]
-                                                                                 : choice.check.value("atLeast", nlohmann::json(0));
-                label = "[" + attribute + " " + (level.is_number() ? std::to_string(level.get<int>()) : std::string("?")) +
-                        "] " + label;
-            }
-            view.choices.push_back(label);
-        }
-        view.highlighted = conversation_.Highlighted();
-        view.portrait = node->portrait;
-        AddDialogueBox(out, view, viewportWidth, viewportHeight);
-    } else if (auto npc = TalkTarget()) {
-        const Talk& talk = registry_.get<Talk>(*npc);
-        if (storyLibrary_->FindDialogue(talk.dialogue) != nullptr) {
-            AddPrompt(out, "E", "Talk to " + NameOf(talk.character, *npc), viewportWidth, viewportHeight);
-        }
-    } else if (auto target = CurrentInteraction(); target && !target->talk) {
-        AddPrompt(out, "E", InteractPrompt(registry_, target->entity), viewportWidth, viewportHeight);
+    if (auto view = CurrentDialogueView()) {
+        AddDialogueBox(out, *view, viewportWidth, viewportHeight);
+    } else if (!hud.promptText.empty()) {
+        AddPrompt(out, hud.promptKey, hud.promptText, viewportWidth, viewportHeight);
     }
 }
 
@@ -1130,12 +1208,12 @@ void GameSession::ShowNotices() {
     ApplyWorldEffects(); // the story's items, gold, experience, reputation, cutscenes
     for (const auto& notice : story_.TakeNotices()) {
         using Kind = StoryState::Notice::Kind;
-        notice_ = notice.kind == Kind::QuestStarted     ? "New quest: " + notice.text
-                  : notice.kind == Kind::QuestCompleted ? "Quest complete: " + notice.text
-                  : notice.kind == Kind::QuestFailed    ? "Quest failed: " + notice.text
-                  : notice.kind == Kind::StageChanged   ? "Journal: " + notice.text
-                                                        : "Done: " + notice.text;
-        noticeSeconds_ = 3.0;
+        ShowNotice(notice.kind == Kind::QuestStarted     ? "New quest: " + notice.text
+                   : notice.kind == Kind::QuestCompleted ? "Quest complete: " + notice.text
+                   : notice.kind == Kind::QuestFailed    ? "Quest failed: " + notice.text
+                   : notice.kind == Kind::StageChanged   ? "Journal: " + notice.text
+                                                         : "Done: " + notice.text,
+                   3.0);
         Emit({notice.kind == Kind::QuestStarted     ? "quest_started"
               : notice.kind == Kind::QuestCompleted ? "quest_completed"
               : notice.kind == Kind::QuestFailed    ? "quest_failed"
@@ -1553,8 +1631,7 @@ void GameSession::StepGameplay(float dt, const SolidQueryFn& isSolid, bool first
         }
         // Walking over items picks them up.
         for (const auto& taken : CollectItemPickups(registry_, *player)) {
-            notice_ = "Picked up " + taken;
-            noticeSeconds_ = 2.0;
+            ShowNotice("Picked up " + taken, 2.0, "feed", taken);
             Emit({"item_added", *player, entt::null, 0.0, taken});
         }
     }
@@ -1613,8 +1690,7 @@ void GameSession::OnDeaths(size_t firstEvent) {
             if (levels > 0) {
                 Emit({"level_up", event.other, entt::null, static_cast<double>(LevelOf(event.other)), ""});
                 if (auto player = FindPlayer(registry_); player && *player == event.other) {
-                    notice_ = "Level " + std::to_string(LevelOf(event.other)) + "!";
-                    noticeSeconds_ = 3.0;
+                    ShowNotice("Level " + std::to_string(LevelOf(event.other)) + "!", 3.0, "banner");
                 }
             }
         }
@@ -1723,11 +1799,9 @@ void GameSession::UseInteractable(Entity target) {
     if (!player) return;
     const InteractResult result = Interact(registry_, *player, target, story_, LevelOf(*player), gameplayRng_);
     if (!result.text.empty()) {
-        notice_ = result.text;
-        noticeSeconds_ = 4.0 + result.text.size() / 30.0; // time to read it
+        ShowNotice(result.text, 4.0 + result.text.size() / 30.0); // time to read it
     } else if (!result.message.empty()) {
-        notice_ = result.message;
-        noticeSeconds_ = 2.5;
+        ShowNotice(result.message, 2.5, "alert");
     }
     if (!result.event.empty()) Emit({result.event, target, *player, 0.0, ""});
     if (result.used) Emit({"interact", registry_.valid(target) ? target : Entity{entt::null}, *player, 0.0, ""});

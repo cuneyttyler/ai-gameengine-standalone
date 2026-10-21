@@ -1,0 +1,24 @@
+{
+  "schema": "aige.ui-notifications/1",
+  "rules": [
+    {
+      "event": "level_up",
+      "channel": "banner",
+      "text": "Level {amount}",
+      "seconds": 2.5
+    },
+    {
+      "event": "quest_completed",
+      "channel": "banner",
+      "text": "Quest complete",
+      "seconds": 2.5
+    },
+    {
+      "event": "item_added",
+      "channel": "feed",
+      "text": "+{count} {text}",
+      "coalesce": "text",
+      "seconds": 4
+    }
+  ]
+}

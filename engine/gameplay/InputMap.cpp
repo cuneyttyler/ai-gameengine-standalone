@@ -195,12 +195,14 @@ void InputState::Update(const InputMap& map, const KeyQueryFn& keys, const AxisQ
         for (const auto& binding : action.keys) {
             if (keys && keys(binding.key)) {
                 value = action.axis ? value + binding.scale : 1.0f;
+                usingPad_ = std::string_view(KeyName(binding.key)).starts_with("Pad"); // the device used last
             }
         }
         if (axes) {
             for (const auto& binding : action.axes) {
                 float v = axes(binding.axis) * binding.scale;
                 if (std::abs(v) < binding.deadzone) continue;
+                usingPad_ = true;
                 value = action.axis ? value + v : std::max(value, std::abs(v) > 0.5f ? 1.0f : 0.0f);
             }
         }
@@ -211,6 +213,17 @@ void InputState::Update(const InputMap& map, const KeyQueryFn& keys, const AxisQ
         for (const auto& [name, value] : now_) before_[name] = value;
         contextChanged_ = false;
     }
+}
+
+std::string ActionGlyph(const InputMap& map, const std::string& action, bool pad) {
+    const InputAction* a = map.Find(action);
+    if (a == nullptr) return {};
+    for (const auto& binding : a->keys) {
+        const std::string name = KeyName(binding.key);
+        const bool isPad = name.rfind("Pad", 0) == 0;
+        if (isPad == pad) return isPad ? name.substr(3) : name;
+    }
+    return {};
 }
 
 bool InputState::Down(const std::string& action) const {

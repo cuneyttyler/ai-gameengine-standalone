@@ -1,0 +1,29 @@
+/* The engine's base styles for game UI documents (game-ui.md). Colours and sizes are
+   theme tokens, var(--name), put in from the theme when the style is read
+   (data/ui/themes/<name>.json, a project's ui/theme.json). */
+
+body, div, h1, h2, h3, p, ul, li, section, header, footer
+{
+	display: block;
+}
+img { display: inline-block; }
+span, em, strong { display: inline; }
+
+body
+{
+	font-family: sans;
+	font-size: var(--font-size);
+	color: var(--text);
+	width: 100%;
+	height: 100%;
+}
+h1 { font-size: var(--title-size); margin-bottom: 6dp; }
+h2 { font-size: 22dp; margin-bottom: 4dp; }
+.dim { color: var(--text-dim); }
+
+.panel
+{
+	background-color: var(--panel);
+	border-top: 2dp var(--panel-border);
+	padding: 16dp 24dp;
+}

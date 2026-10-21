@@ -11,10 +11,12 @@
 #include "editing/LevelBuild.h"
 #include "editing/VillageBuild.h"
 #include "gameplay/Cutscene.h"
+#include "ui/Documents.h"
 #include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
 #include "world/WorldBible.h"
 
+#include <fstream>
 #include <map>
 #include <set>
 
@@ -319,6 +321,29 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             if (auto problem = EditScriptProperty(registry, *entity, name, op["value"])) {
                 error = *problem;
             }
+        }
+
+    } else if (kind == "write_ui") {
+        // The game's UI (17): a screen document, a style, the theme, the screens manifest
+        // or the notification rules, checked as the UI tab checks them.
+        const std::string path = op.value("path", "");
+        const std::string content = op.value("content", "");
+        item.kind = "ui";
+        item.touchesFiles = true;
+        item.target = "UI · " + path;
+        item.detail = content;
+        if (auto problems = CheckUiFile(path, content); !problems.empty()) {
+            error = JoinProblems(problems);
+            return item;
+        }
+        std::error_code ec;
+        if (std::filesystem::exists(project.Resolve(path), ec)) item.before = "(replaces the existing file)";
+        item.after = content;
+        if (apply) {
+            std::filesystem::create_directories(project.Resolve(path).parent_path(), ec);
+            std::ofstream out(project.Resolve(path), std::ios::binary | std::ios::trunc);
+            if (!out) error = "couldn't write " + path;
+            else out << content;
         }
 
     } else if (kind == "write_cutscene") {

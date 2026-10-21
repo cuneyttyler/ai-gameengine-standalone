@@ -1,0 +1,22 @@
+{
+  "schema": "aige.ui-theme/1",
+  "name": "Minimal flat",
+  "license": "CC0 (part of the engine)",
+  "tokens": {
+    "font-size": "16px",
+    "title-size": "30px",
+    "panel": "#ffffffee",
+    "panel-border": "#ffffff",
+    "text": "#111111",
+    "text-dim": "#11111199",
+    "accent": "#111111",
+    "highlight": "#0a66ff",
+    "danger": "#d61f1f",
+    "health": "#d61f1f",
+    "mana": "#0a66ff",
+    "stamina": "#13a538",
+    "xp": "#c48a00",
+    "shade": "#00000066",
+    "bar-back": "#00000033"
+  }
+}

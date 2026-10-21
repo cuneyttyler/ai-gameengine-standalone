@@ -29,10 +29,12 @@ from .models import (
     WriteQuest,
     WriteSchedule,
     WriteCutscene,
+    WriteUi,
     WriteRecord,
     DeleteRecord,
 )
 from .records import check_record
+from .gameui import check_ui
 from .story import StoryScope, check_cutscene, check_dialogue, check_quest, check_schedule
 
 _SAFE_SCRIPT = re.compile(r"^scripts/[A-Za-z0-9_\-/]+\.lua$")
@@ -194,6 +196,11 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
             errors += check_quest(op.id, op.quest, scope, f"operation {index} (write_quest {op.id})")
         elif isinstance(op, WriteCutscene):
             errors += check_cutscene(op.id, op.cutscene, scope, all_markers, f"operation {index} (write_cutscene {op.id})")
+
+    # Game UI files (17).
+    for index, op in enumerate(proposal.operations, start=1):
+        if isinstance(op, WriteUi):
+            errors += check_ui(op.path, op.content, list(context.ui.get("themes", [])), f"operation {index} (write_ui {op.path})")
 
     # DifficultyOverrides (16.2): JSON text, field -> level -> number, on scalable
     # fields and levels that exist (or are written here).

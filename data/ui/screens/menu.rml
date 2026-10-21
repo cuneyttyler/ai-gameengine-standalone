@@ -1,0 +1,25 @@
+<rml>
+<head>
+	<title>Menu</title>
+	<link type="text/rcss" href="../styles/base.rcss"/>
+	<link type="text/rcss" href="../styles/menu.rcss"/>
+</head>
+<!-- Every menu (pause, settings, save, load, game over...): the "menu" model is
+     what GameFlow says is on screen; choose(i) picks item i. Customise a screen by
+     copying this file to ui/screens/<id>.rml in the project (the manifest in
+     ui/screens.json says which document a screen uses). -->
+<body class="menu">
+<div class="screen" data-model="menu" data-class-shade="dim">
+	<div class="panel">
+		<h1>{{title}}</h1>
+		<p class="subtitle" data-if="subtitle != ''">{{subtitle}}</p>
+		<div class="body" data-if="body != ''">{{body}}</div>
+		<div class="items">
+			<div class="item" data-for="item, i : items" data-class-lit="i == highlighted"
+			     data-class-off="!item.enabled" data-event-click="choose(i)">{{item.label}}</div>
+		</div>
+		<p class="footer" data-if="footer != ''">{{footer}}</p>
+	</div>
+</div>
+</body>
+</rml>

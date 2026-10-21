@@ -2640,6 +2640,26 @@ Done when: a game has a themed title, pause, settings (with rebinding), save/loa
 journal and map, a customised HUD, and notifications by rule; changing the theme restyles
 all of it.
 
+**Status (2026-10-22): built, to be tried** (`phase17-test-checklist.md`; "As built" in `game-ui.md`).
+- 17.1 RmlUi 6.0 under `ui/Documents`: our fonts, our renderer (geometry to UI quads, clipped),
+  documents from the project's `ui/` then `data/ui`, layers by document.
+- 17.2 Models from game state (`menu`, `dialogue`, `hud`, `notes`, `ui`); a click calls the same
+  `Choose()` the keys do; `action('…')` reaches Lua as `ui_action`.
+- 17.3 The title, menus (pause, settings, save/load, difficulty, game over, victory, credits),
+  windows (inventory, shop, journal), dialogue and HUD as documents; the old overlays stay as the
+  fallback (Project Settings ▸ UI.documents).
+- 17.4 Seven built-in themes as tokens; `ui/theme.json` picks one and overrides tokens.
+- 17.5 Notification channels (toast, feed coalesced, banner, alert), rules from
+  `ui/notifications.json`, history; Lua `notify`.
+- 17.6 Prompts show the bound key or gamepad button for the device in use.
+- 17.7 Project ▸ UI tab: screens with source, Customise, preview with sample data, new screens;
+  theme; notification rules; Check all. Editor Play uses the documents.
+- AI panel: `write_ui` (screens, styles, theme, manifest, rules) checked like the UI tab; the
+  context lists the themes and the project's UI files. Tests: `game_ui_test.cpp`, `test_gameui.py`.
+- Not yet: pop-ups, the map and other system screens, world-space UI, HUD adjustments by the
+  player, mouse in the standalone player, a drag-and-drop designer, contrast checks. Rebinding in
+  the game's settings screen comes with the settings tabs.
+
 ## Phase 18 — Animation and effects (`effects-animation.md`)
 
 **18.1** Clips, directional sets, Aseprite and sheet import. **18.2** Animators bound to

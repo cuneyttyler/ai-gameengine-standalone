@@ -1,0 +1,22 @@
+{
+  "schema": "aige.ui-theme/1",
+  "name": "Stone",
+  "license": "CC0 (part of the engine)",
+  "tokens": {
+    "font-size": "17px",
+    "title-size": "34px",
+    "panel": "#1b1b24e6",
+    "panel-border": "#3b82f6",
+    "text": "#eeeef2",
+    "text-dim": "#eeeef28c",
+    "accent": "#3b82f6",
+    "highlight": "#ffdb73",
+    "danger": "#ef4444",
+    "health": "#d64545",
+    "mana": "#4a7bd6",
+    "stamina": "#4caf6a",
+    "xp": "#c9a227",
+    "shade": "#0000008c",
+    "bar-back": "#00000099"
+  }
+}

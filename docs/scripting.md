@@ -47,6 +47,8 @@ Entities are referred to by integer **ids** (as returned by `find_nearest` or `s
 | `quest_stage(id)` / `set_stage(id, stage)` / `fail_quest(id)` | number / — / — | A quest's current stage (0 when not active); move it to a stage; fail it. See [story.md](story.md#questsidjson). |
 | `get_var(name)` / `set_var(name, value)` | value / — | Story variables, shared with dialogue and quest conditions (numbers, text, booleans; `nil` removes). |
 | `used(name)` | — | Counts as using something, for `use` and `examine` objectives. |
+| `notify(channel, text[, seconds])` | — | A notification: `toast`, `feed`, `banner` or `alert` ([game-ui.md](game-ui.md)). |
+| `open_screen(id)` / `close_screen(id)` / `is_open(id)` | boolean / — / boolean | The project's own screen, `ui/screens/<id>.rml`; its `action('…')` calls arrive as the `ui_action` event. |
 | `difficulty()` / `difficulty_step(category)` / `set_difficulty(id)` | string / number / boolean | The difficulty level's id; a category's step, 1-5 (3: as designed); change the level. See [difficulty.md](difficulty.md). |
 | `play_cutscene(id)` / `skip_cutscene()` / `in_cutscene()` | boolean / — / boolean | Plays `cutscenes/<id>.json` (false if it doesn't load). See [story.md](story.md#cutscenes-cutscenesidjson). |
 | `set_flag(name[, value])` | — | Story flags shared with dialogue conditions; `value` defaults to true. |
@@ -89,6 +91,8 @@ Things that happen in the game are **events**, each with a name and a table `e`:
 | `talk` | who was talked to | the player | — / their World Bible key |
 | `quest_started`, `quest_completed`, `quest_failed`, `quest_stage`, `objective_completed` | — | — | — / the quest's id |
 | `cutscene_started`, `cutscene_ended` | — | — | — / the cutscene's id |
+| `ui_action` | — | — | — / the action's name (a document's `action('…')`) |
+| `difficulty_changed` | — | — | — / the level's id |
 
 Handlers run at the end of each step, after combat. They, timers and `start` run as
 coroutines, so they can `wait`:

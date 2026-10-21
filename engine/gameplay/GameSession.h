@@ -14,6 +14,7 @@
 #include "platform/Input.h"
 #include "scripting/ScriptSystem.h"
 #include "renderer2d/Text.h"
+#include "ui/Documents.h"
 
 #include <nlohmann/json.hpp>
 
@@ -164,10 +165,24 @@ public:
     nlohmann::json MakeSave() const;
     void ApplySave(const nlohmann::json& save);
     // A short message over the game ("Game saved").
-    void Toast(const std::string& text) {
-        notice_ = text;
-        noticeSeconds_ = 2.0;
-    }
+    void Toast(const std::string& text) { ShowNotice(text, 2.0); }
+    // A message in a channel (toast, feed, banner, alert): drawn as the classic toast,
+    // or handed to the UI documents' notifications when a sink is set (17.5).
+    void ShowNotice(const std::string& text, double seconds, const std::string& channel = "toast",
+                    const std::string& key = "");
+    using NoticeSink = std::function<void(const std::string& channel, const std::string& text, const std::string& key,
+                                          double seconds)>;
+    void SetNoticeSink(NoticeSink sink) { noticeSink_ = std::move(sink); }
+    // Lua's open_screen / close_screen / is_open (17): the host shows the project's documents.
+    using ScreenHook = std::function<bool(const std::string& id, int open /* 1 open, 0 close, -1 ask */)>;
+    void SetScreenHook(ScreenHook hook) { screenHook_ = std::move(hook); }
+    // The HUD and dialogue as documents (17): BuildUi then draws only cutscenes and
+    // debug overlays; the host shows MakeHud() and CurrentDialogueView().
+    void SetDocumentHud(bool on) { documentHud_ = on; }
+    HudData MakeHud(float viewportWidth, float viewportHeight);
+    std::optional<DialogueView> CurrentDialogueView() const;
+    // Picks a dialogue choice by its place among the visible ones (a click on the document).
+    void ChooseDialogue(int index);
 
     StoryState& Story() { return story_; }
     const StoryState& Story() const { return story_; }
@@ -373,6 +388,9 @@ private:
     std::optional<std::pair<float, float>> cameraGoal_;
     std::optional<float> cameraZoom_;
     const DialogueNode* voicedNode_ = nullptr; // whose voice line has played
+    NoticeSink noticeSink_;
+    ScreenHook screenHook_;
+    bool documentHud_ = false;
     // Difficulty (16).
     DifficultyModel difficultyModel_ = DifficultyModel::BuiltIn();
     std::string difficultyLevel_;
