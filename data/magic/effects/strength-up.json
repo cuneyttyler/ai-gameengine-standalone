@@ -1,0 +1,11 @@
+{
+  "schema": "aige.magic-effect/1",
+  "archetype": "modify",
+  "attribute": "attack",
+  "op": "add",
+  "magnitude": "3",
+  "duration": 30,
+  "tags": [
+    "buff.strength"
+  ]
+}

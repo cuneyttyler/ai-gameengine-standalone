@@ -1,0 +1,14 @@
+{
+  "schema": "aige.magic-effect/1",
+  "archetype": "over-time",
+  "attribute": "health",
+  "magnitude": "2",
+  "duration": 4,
+  "period": 1,
+  "damageType": "fire",
+  "tags": [
+    "state.burning",
+    "element.fire"
+  ],
+  "stacking": "refresh"
+}

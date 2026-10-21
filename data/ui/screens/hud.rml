@@ -27,6 +27,8 @@
 		.hud .feed { position: absolute; right: 20dp; top: 70dp; width: 220dp; text-align: right; }
 		.hud .feed div { margin-bottom: 3dp; }
 		.hud .banner { position: absolute; left: 0; right: 0; top: 34%; text-align: center; font-size: 40dp; }
+		.hud .slots { position: absolute; left: 0; right: 0; bottom: 20dp; text-align: center; }
+		.hud .slots span { background-color: var(--panel); padding: 4dp 12dp; }
 	</style>
 </head>
 <!-- The HUD (the "hud" and "notes" models): bars, the tracked quest, the clock,
@@ -44,6 +46,7 @@
 			<div>{{objective}}</div>
 		</div>
 		<div class="clock panel" data-if="clock != ''">{{clock}}</div>
+		<div class="slots" data-if="abilities != ''"><span>{{abilities}}</span></div>
 		<div class="prompt" data-if="prompt_text != ''"><span class="key">{{prompt_key}}</span>{{prompt_text}}</div>
 		<div class="subtitle" data-if="subtitle != ''"><span>{{subtitle}}</span></div>
 		<div class="marker" data-if="marker != ''" data-style-left="marker_x + 'px'" data-style-top="marker_y + 'px'">

@@ -1,0 +1,13 @@
+{
+  "schema": "aige.ability/1",
+  "name": "Toughness",
+  "kind": "passive",
+  "activation": "passive",
+  "delivery": "self",
+  "effects": [
+    {
+      "effect": "armour-up",
+      "magnitude": 2
+    }
+  ]
+}

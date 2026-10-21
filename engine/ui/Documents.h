@@ -37,6 +37,7 @@ struct HudData {
     std::string subtitle;         // a bark or a cutscene line
     std::string marker;           // the objective marker's distance ("12 m"; empty: hidden)
     float markerX = 0, markerY = 0; // its position on screen
+    std::string abilities; // the quick slots: "1 Firebolt   2 Heal (3s)" (19)
 };
 
 // A timed message (game-ui.md §9), in a channel: toast, feed, banner, alert.

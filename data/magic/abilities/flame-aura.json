@@ -1,0 +1,21 @@
+{
+  "schema": "aige.ability/1",
+  "name": "Flame aura",
+  "kind": "spell",
+  "school": "destruction",
+  "activation": "toggle",
+  "delivery": "aura",
+  "radius": 2,
+  "duration": 10,
+  "cost": {
+    "attribute": "mana",
+    "amount": 25
+  },
+  "cooldown": 12,
+  "effects": [
+    "burn"
+  ],
+  "tags": [
+    "element.fire"
+  ]
+}

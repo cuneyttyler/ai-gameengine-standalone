@@ -1,0 +1,11 @@
+{
+  "schema": "aige.magic-effect/1",
+  "archetype": "modify",
+  "attribute": "moveSpeed",
+  "op": "mul",
+  "magnitude": "0.5",
+  "duration": 3,
+  "tags": [
+    "state.slowed"
+  ]
+}

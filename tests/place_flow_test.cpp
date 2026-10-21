@@ -230,7 +230,8 @@ TEST(PlaceFlowTest, EveryKindOfPlaceIsReadLaidOutPlannedAndBuilt) {
         BuildPlaceScene(registry, prefabs, b.build->Solved(), plan, terrains, options, &report);
         where = "report";
         int placed = 0;
-        for (const auto& [layer, n] : report.value("objects", json::object()).items()) placed += n.get<int>();
+        const json objects = report.value("objects", json::object());
+        for (const auto& [layer, n] : objects.items()) placed += n.get<int>();
         EXPECT_GT(placed + report.value("pieces", 0), 0) << report.dump();
         } catch (const std::exception& e) {
             ADD_FAILURE() << prompt << ": " << where << ": " << e.what();

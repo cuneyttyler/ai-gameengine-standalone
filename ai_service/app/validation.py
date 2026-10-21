@@ -36,6 +36,7 @@ from .models import (
 )
 from .records import check_record
 from .fx import check_anim, check_fx_refs
+from .magic import check_magic
 from .gameui import check_ui
 from .story import StoryScope, check_cutscene, check_dialogue, check_quest, check_schedule
 
@@ -205,6 +206,7 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
             errors += check_anim(op.path, op.sheet, {a.get("path") for a in context.assets},
                                  f"operation {index} (write_anim {op.path})")
     errors += check_fx_refs(proposal, context)
+    errors += check_magic(proposal, context)  # abilities and magic (19)
 
     # Game UI files (17).
     for index, op in enumerate(proposal.operations, start=1):

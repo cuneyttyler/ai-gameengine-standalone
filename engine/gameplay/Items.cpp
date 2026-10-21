@@ -1,5 +1,6 @@
 #include "gameplay/Items.h"
 
+#include "gameplay/Magic.h"
 #include "gameplay/Attributes.h"
 #include "gameplay/Combat.h"
 #include "gameplay/Components.h"
@@ -168,6 +169,15 @@ std::string UseItem(Registry& registry, Entity entity, const std::string& item) 
     const nlohmann::json* record = ItemRecord(item);
     if (!record || !record->contains("use") || !(*record)["use"].is_object()) return "it can't be used";
     const nlohmann::json& use = (*record)["use"];
+    // Magic (19.3): a book teaches an ability, a scroll casts one, a potion applies effects.
+    if (use.contains("learn") || use.contains("ability") || use.contains("effects")) {
+        MagicSystem* magic = MagicOf(registry);
+        if (!magic) return "magic isn't available here";
+        std::string why;
+        if (!magic->UseItem(entity, use, &why)) return why.empty() ? "it can't be used" : why;
+        if (use.value("consumed", true)) RemoveItem(*inventory, item, 1);
+        return "";
+    }
     const bool doesSomething = use.value("heal", 0.0f) > 0.0f || use.value("mana", 0.0f) > 0.0f ||
                                use.value("stamina", 0.0f) > 0.0f || use.value("effect", std::string("none")) != "none" ||
                                !use.value("attribute", std::string()).empty();

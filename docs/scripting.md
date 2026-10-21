@@ -54,6 +54,9 @@ Entities are referred to by integer **ids** (as returned by `find_nearest` or `s
 | `shake(trauma)` / `hitstop(seconds)` / `slow_motion(scale, seconds)` | — | Juice: screen shake (0-1, decays), freeze the world, slow it. |
 | `tween(id, "Component.field", to, seconds[, ease])` / `tween_done(handle)` | handle / boolean | Eases a number field: `linear`, `ease_in`, `ease_out` (default), `ease_in_out`, `bounce`. |
 | `anim_trigger(id, trigger)` | — | Plays an animator's state: `attacking`, `casting`, `using`, `hurt`. |
+| `cast(ability[, target])` / `cast(ability, x, y)` | boolean | This entity casts an ability (a record or preset), known or not ([magic.md](magic.md)). |
+| `apply_effect(id, effect[, magnitude, duration])` / `remove_effects(id, tag)` | boolean / — | A magic effect on an entity; remove effects by tag or id. |
+| `has_tag(id, tag)` / `add_tag(id, tag)` / `cooldown_left(ability)` / `learn(id, ability)` | | Tags (state.stunned, element.fire…), cooldowns, teaching. |
 | `difficulty()` / `difficulty_step(category)` / `set_difficulty(id)` | string / number / boolean | The difficulty level's id; a category's step, 1-5 (3: as designed); change the level. See [difficulty.md](difficulty.md). |
 | `play_cutscene(id)` / `skip_cutscene()` / `in_cutscene()` | boolean / — / boolean | Plays `cutscenes/<id>.json` (false if it doesn't load). See [story.md](story.md#cutscenes-cutscenesidjson). |
 | `set_flag(name[, value])` | — | Story flags shared with dialogue conditions; `value` defaults to true. |

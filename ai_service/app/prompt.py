@@ -232,6 +232,25 @@ CUTSCENES (file cutscenes/<id>.json; context "cutscenes" lists the project's)
   or play_cutscene(id) in Lua. Write the cutscene in the same proposal as anything that plays it.
 """
 
+MAGIC = """\
+MAGIC (docs/magic.md; context "magic" lists the abilities and magic effects there are)
+- A magic effect (record "magic-effect") is what changes: {"archetype": "damage"|"heal"|"modify"|"over-time"|
+  "absorb"|"state"|"summon"|"displace"|"dispel"|"light", "magnitude": 10 or "8 + 2 * caster.level",
+  "duration", "period", "area", "damageType": "fire"..., "attribute" + "op" (modify), "tags": ["state.stunned"],
+  "stacking", "cue": "<effect id>"}. An ability (record "ability") is how: {"name", "kind": "spell"|"skill"|...,
+  "school", "activation": "press"|"toggle"|"passive", "delivery": "self"|"touch"|"projectile"|"area"|"cone"|"aura",
+  "range", "radius", "cost": {"attribute": "mana", "amount": 12}, "cooldown", "castTime", "effects": ["fire-damage",
+  "burn"], "tags": ["element.fire"], "cue": {"cast", "impact"}, "ai": {"use": "attack"|"heal-self"|"buff",
+  "when": "health < 0.4 && mana > 0.2" (health, mana, stamina, distance, enemyHealth), "priority"}}.
+- A character casts with an Abilities component {"known": "firebolt, heal", "slots": "firebolt, heal"} (and
+  Resources for mana); characters cast by their abilities' ai hints by themselves. The player uses slots with 1-4.
+- Items: a book {"use": {"learn": "<ability>"}}, a scroll {"use": {"ability": "<ability>"}}, a potion {"use":
+  {"effects": ["regen"]}}; an enchanted item {"enchantment": {"effects": ["fire-weapon"], "on": "hit"|"worn"}}.
+  Perks: "abilityModifiers": [{"tag": "element.fire", "stat": "magnitude"|"cost", "value": 1.25}].
+- Prefer the presets in context magic; write records for new ones. Lua: cast(ability[, target or x, y]),
+  apply_effect(id, effect[, magnitude, duration]), remove_effects(id, tag), has_tag(id, tag), learn(id, ability).
+"""
+
 FX = """\
 ANIMATION AND EFFECTS (docs/effects-animation.md; context "fx")
 - An animated character: a sheet assets/<name>.anim.json (write it with {"op": "write_anim", "path":
@@ -350,6 +369,8 @@ second while playing). These are ALL the engine functions — there are no other
   play_effect(id, x, y) or play_effect(id, entity) -> boolean / emit_particles(id, x, y[, seconds])
   shake(trauma) / hitstop(seconds) / slow_motion(scale, seconds) / anim_trigger(id, "attacking"|"casting"|...)
   tween(id, "Component.field", to, seconds[, ease]) -> handle / tween_done(handle) -> boolean
+  cast(ability[, target id or x, y]) -> boolean / apply_effect(id, effect[, magnitude, duration]) -> boolean
+  remove_effects(id, tag) / has_tag(id, tag) / add_tag(id, tag) / cooldown_left(ability) / learn(id, ability)
   time_of_day()                     -> hours since midnight (fractional), e.g. 13.5
   day()                             -> the day number, from 1
   play_sound(asset_path) / play_sound_at(asset_path, x, y) / play_music(asset_path, or "" for the scene's)
@@ -370,7 +391,8 @@ second while playing). These are ALL the engine functions — there are no other
   move_to(x, y)   (in a scripted package's run() coroutine: walks there around walls)
 Events: hit, death, pickup, attack, victory, talk, item_added, level_up, interact, bark, quest_started,
 quest_completed, quest_failed, quest_stage, objective_completed, cutscene_started, cutscene_ended,
-difficulty_changed, ui_action (text: the action's name), anim_event (text: a frame event), effect.
+difficulty_changed, ui_action (text: the action's name), anim_event (text: a frame event), effect, ability_used,
+ability_learned, effect_applied, effect_removed (text: the ability's or effect's id).
 Entity ids are always the first argument where one is taken; prefab values can't be read
 from scripts (remember a value in a local at load time if you need it later, e.g.
 `local normal_speed = nil` then set it on the first update). A top-level
@@ -463,6 +485,7 @@ def build_messages(
             DIFFICULTY,
             GAME_UI,
             FX,
+            MAGIC,
             RECORDS,
             SCENES,
             ART,

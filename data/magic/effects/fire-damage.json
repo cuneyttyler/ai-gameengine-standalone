@@ -1,0 +1,10 @@
+{
+  "schema": "aige.magic-effect/1",
+  "archetype": "damage",
+  "magnitude": "8 + 2 * caster.level",
+  "damageType": "fire",
+  "tags": [
+    "element.fire"
+  ],
+  "cue": "hit-fire"
+}

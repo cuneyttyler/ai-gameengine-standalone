@@ -2700,6 +2700,19 @@ the ability editor with Try. **19.5** Character AI uses abilities by their hints
 Done when: a player learns spells from a book, casts a fire projectile, a heal and an aura,
 drinks a potion, wields an enchanted sword; an enemy mage heals itself when hurt.
 
+**Status (2026-10-22): built, to be tried** (`phase19-test-checklist.md`; "As built" in `magic.md`).
+- 19.1 `magic-effect` records and presets (damage, heal, modify, over-time, absorb, state, summon,
+  displace, dispel, light; formulas, stacking, tags, requires/blockedBy, cues); the four status
+  effects have preset equivalents (`gameplay/Magic`).
+- 19.2 `ability` records and presets: activation, delivery (self, touch, projectile, area, cone,
+  aura), costs, cooldowns, cast time; ability projectiles through combat; keys 1-4 and K.
+- 19.3 Books, scrolls, potions and enchantments (worn, on hit); perks scale abilities by tag.
+- 19.4 The cost formula and figures; Project ▸ Magic tab with Try and Customise.
+- 19.5 Characters cast by their abilities' AI hints.
+- AI panel: magic in the context and prompt; checks on abilities, effects and what names them.
+  Tests: `magic_test.cpp`, `test_magic.py`.
+- Not yet: hold and charge, beams and homing, transforms, scripted effects, surfaces, a test arena.
+
 ## Phase 20 — Physics v2 (`physics.md`)
 
 **20.1** Layers and masks, shapes, sensors, queries, swept movement. **20.2** Character

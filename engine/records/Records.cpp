@@ -568,8 +568,23 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                      RecordField consumed = MakeRecordValue("consumed", FieldType::Bool, "Used up when used");
                      consumed.defaultValue = true;
                      return consumed;
+                 }(),
+                 MakeRecordValue("learn", FieldType::String, "A book: the ability it teaches (19.3)"),
+                 MakeRecordValue("ability", FieldType::String, "A scroll: the ability it casts"),
+                 [] {
+                     RecordField effects = MakeRecordValue("effects", FieldType::String, "Magic effects on the user");
+                     effects.list = true;
+                     return effects;
                  }()},
-                "What using it does (a potion, food, a scroll).");
+                "What using it does (a potion, food, a scroll, a book).")
+        .Object("enchantment",
+                {[] {
+                     RecordField effects = MakeRecordValue("effects", FieldType::String, "Magic effects (ids)");
+                     effects.list = true;
+                     return effects;
+                 }(),
+                 MakeRecordValue("on", FieldType::String, "worn (while equipped) or hit (on the target of each hit)")},
+                "Magic on equipment (19.3).");
 
     r.RecordType("loot", "A loot table (13.4): what a chest, an enemy or a merchant's stock gives, rolled from weighted "
                          "entries.")
@@ -603,6 +618,12 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                  }(),
                  MakeRecordValue("value", FieldType::Float, "How much")},
                 "What it changes.")
+        .List()
+        .Object("abilityModifiers",
+                {MakeRecordValue("tag", FieldType::String, "Abilities with this tag (element.fire, school.restoration; empty: all)"),
+                 MakeRecordValue("stat", FieldType::String, "magnitude or cost"),
+                 MakeRecordValue("value", FieldType::Float, "Times this (1.25 = +25%)")},
+                "Scales abilities by tag (19.3).")
         .List();
 
     r.RecordType("progression", "How characters grow (13.2). The record \"default\" is used: the experience curve, "
@@ -822,6 +843,79 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
         effect.description = "An effect (18.5): what something looks and sounds like. Presets: data/fx/effects.";
         effect.fields = {parts};
         r.AddRecordTypeInfo(effect);
+    }
+
+    // Abilities and magic (19): magic effects, abilities, the balance constants. Presets in data/magic.
+    {
+        RecordTypeInfo effect;
+        effect.name = "magic-effect";
+        effect.description = "A magic effect (19.1): what changes. Presets: data/magic/effects.";
+        auto value = [](const char* name, FieldType type, const char* description) { return MakeRecordValue(name, type, description); };
+        auto listOf = [](const char* name, const char* description) {
+            RecordField f = MakeRecordValue(name, FieldType::String, description);
+            f.list = true;
+            return f;
+        };
+        RecordField archetype = value("archetype", FieldType::Enum, "What it does");
+        archetype.options = {"damage", "heal", "modify", "over-time", "absorb", "state", "summon", "displace", "dispel", "light"};
+        effect.fields = {archetype,
+                         value("attribute", FieldType::String, "modify: the attribute; over-time: health (damage), heal, mana or stamina"),
+                         value("op", FieldType::String, "modify: add or mul"),
+                         value("magnitude", FieldType::String, "A number or a formula: 8 + 2 * caster.level"),
+                         value("duration", FieldType::Float, "Seconds (0: instant)"),
+                         value("period", FieldType::Float, "over-time: seconds between ticks"),
+                         value("area", FieldType::Float, "Cells around the target it also reaches"),
+                         value("damageType", FieldType::String, "physical, fire, frost, shock, poison"),
+                         value("stacking", FieldType::String, "refresh, stack, strongest or separate"),
+                         value("maxStacks", FieldType::Int, "stack: at most"),
+                         listOf("tags", "Granted while active: state.stunned, element.fire..."),
+                         listOf("requires", "Tags the target must have"),
+                         listOf("blockedBy", "Tags that stop it (immune.fire)"),
+                         value("cue", FieldType::String, "A visual effect (records effect) on apply"),
+                         value("prefab", FieldType::Prefab, "summon: what appears"),
+                         value("nonLethal", FieldType::Bool, "over-time: can't kill (poison)")};
+        effect.fields[14].optional = true;
+        r.AddRecordTypeInfo(effect);
+
+        RecordTypeInfo ability;
+        ability.name = "ability";
+        ability.description = "An ability (19.2): how magic effects are used. Presets: data/magic/abilities.";
+        RecordField kind = value("kind", FieldType::Enum, "A label for the UI and the AI");
+        kind.options = {"spell", "skill", "power", "passive", "item-use", "shout"};
+        RecordField activation = value("activation", FieldType::Enum, "How it's used");
+        activation.options = {"press", "hold", "toggle", "passive"};
+        RecordField delivery = value("delivery", FieldType::Enum, "How it reaches its target");
+        delivery.options = {"self", "touch", "projectile", "area", "cone", "aura"};
+        RecordField cost = value("cost", FieldType::String, "");
+        cost.kind = RecordFieldKind::Object;
+        cost.description = "What it costs";
+        cost.fields = {value("attribute", FieldType::String, "mana, stamina or health"), value("amount", FieldType::Float, "How much")};
+        RecordField uses = value("effects", FieldType::String, "The magic effects (ids)");
+        uses.list = true;
+        RecordField cue = value("cue", FieldType::String, "");
+        cue.kind = RecordFieldKind::Object;
+        cue.description = "Visual effects";
+        cue.fields = {value("cast", FieldType::String, "On casting"), value("impact", FieldType::String, "Where it lands")};
+        RecordField ai = value("ai", FieldType::String, "");
+        ai.kind = RecordFieldKind::Object;
+        ai.description = "How characters use it (19.5)";
+        ai.fields = {value("use", FieldType::String, "attack, heal-self, buff or debuff"),
+                     value("when", FieldType::String, "health < 0.4, distance < 6, mana > 0.2 (&& joins)"),
+                     value("priority", FieldType::Int, "Higher first")};
+        ability.fields = {value("name", FieldType::String, "Shown to the player"), kind, value("school", FieldType::String, "destruction, restoration..."),
+                          activation, delivery, value("range", FieldType::Float, "Cells"), value("radius", FieldType::Float, "area, aura: cells"),
+                          value("speed", FieldType::Float, "projectile: cells per second"), cost,
+                          value("cooldown", FieldType::Float, "Seconds"), value("castTime", FieldType::Float, "Seconds before it goes off"),
+                          value("duration", FieldType::Float, "aura, toggle: seconds"), uses, listOf("tags", "element.fire... (perks scale by them)"),
+                          value("animation", FieldType::String, "The caster's animator trigger (casting, attacking)"), cue,
+                          value("requiresLevel", FieldType::Int, "At least this level"), ai};
+        r.AddRecordTypeInfo(ability);
+
+        r.RecordType("magic-balance", "The constants of the cost formula (19.4). Only records/magic-balance/default is used.")
+            .Field("base", FieldType::Float, "Cost per point of magnitude").Default(0.6)
+            .Field("magnitudeExponent", FieldType::Float, "").Default(1.1)
+            .Field("durationExponent", FieldType::Float, "").Default(0.35)
+            .Field("areaExponent", FieldType::Float, "").Default(0.5);
     }
 
     r.RecordType("encounter", "An encounter (13.7): what a Spawner makes, picked by weight and level.")

@@ -1,0 +1,26 @@
+{
+  "schema": "aige.ability/1",
+  "name": "Frost nova",
+  "kind": "spell",
+  "school": "destruction",
+  "delivery": "area",
+  "range": 0,
+  "radius": 2.5,
+  "cost": {
+    "attribute": "mana",
+    "amount": 20
+  },
+  "cooldown": 6,
+  "effects": [
+    "frost-damage",
+    "slow"
+  ],
+  "tags": [
+    "element.frost"
+  ],
+  "ai": {
+    "use": "attack",
+    "when": "distance < 2.5",
+    "priority": 3
+  }
+}

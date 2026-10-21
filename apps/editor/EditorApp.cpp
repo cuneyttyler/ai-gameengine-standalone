@@ -564,6 +564,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     if (type.rfind("difficulty:", 0) == 0 && HandleDifficultyMessage(type, message)) return;
     if (type.rfind("ui:", 0) == 0 && HandleUiMessage(type, message)) return;
     if (type.rfind("fx:", 0) == 0 && HandleFxMessage(type, message)) return;
+    if (type.rfind("magic:", 0) == 0 && HandleMagicMessage(type, message)) return;
 
     if (type == "viewport:bounds") {
         int width = message.value("width", 0);
@@ -3511,6 +3512,89 @@ bool EditorApp::HandleUiMessage(const std::string& type, const nlohmann::json& m
         docs.SetHud(HudData{false});
         docs.SetDialogue(std::nullopt);
         post_({{"type", "ui:checked"}, {"problems", results}});
+    } else {
+        return false;
+    }
+    return true;
+}
+
+nlohmann::json EditorApp::MagicJson() {
+    ActiveRecords().Refresh();
+    auto merged = [](std::vector<std::string> presets, const char* type) {
+        std::vector<std::pair<std::string, std::string>> out;
+        std::set<std::string> own;
+        for (const Record* r : ActiveRecords().OfType(type)) {
+            out.push_back({r->id, "project"});
+            own.insert(r->id);
+        }
+        for (const auto& id : presets) {
+            if (!own.contains(id)) out.push_back({id, "engine"});
+        }
+        return out;
+    };
+    nlohmann::json abilities = nlohmann::json::array();
+    for (const auto& [id, source] : merged(AbilityPresets(), "ability")) {
+        auto a = FindAbility(id);
+        if (!a) continue;
+        const auto f = FiguresOf(*a);
+        nlohmann::json effects = nlohmann::json::array();
+        for (const auto& use : a->effects) effects.push_back(use.effect);
+        abilities.push_back({{"id", id}, {"name", a->name}, {"source", source}, {"kind", a->kind}, {"school", a->school},
+                             {"delivery", a->delivery}, {"activation", a->activation}, {"cost", a->cost},
+                             {"costAttribute", a->costAttribute}, {"cooldown", a->cooldown}, {"effects", effects},
+                             {"formulaCost", f.formulaCost}, {"output", f.output}, {"outputPerCost", f.outputPerCost},
+                             {"outputPerSecond", f.outputPerSecond}, {"outlier", f.outlier},
+                             {"ai", a->ai ? a->ai->use + (a->ai->when.empty() ? "" : " when " + a->ai->when) : ""},
+                             {"problems", ValidateAbility(*a)}});
+    }
+    nlohmann::json effects = nlohmann::json::array();
+    for (const auto& [id, source] : merged(MagicEffectPresets(), "magic-effect")) {
+        auto e = FindMagicEffect(id);
+        if (!e) continue;
+        effects.push_back({{"id", id}, {"source", source}, {"archetype", e->archetype}, {"magnitude", e->magnitude},
+                           {"duration", e->duration}, {"tags", e->tags}});
+    }
+    return {{"type", "magic:model"}, {"abilities", abilities}, {"effects", effects}};
+}
+
+bool EditorApp::HandleMagicMessage(const std::string& type, const nlohmann::json& message) {
+    if (type == "magic:request") {
+        post_(MagicJson());
+    } else if (type == "magic:customise") {
+        // The engine's preset as the project's record (to change in Records).
+        const std::string kind = message.value("kind", "ability");
+        const std::string id = message.value("id", "");
+        const fs::path preset = fs::path(AIGE_MAGIC_PRESETS) / (kind == "ability" ? "abilities" : "effects") / (id + ".json");
+        std::ifstream in(preset, std::ios::binary);
+        nlohmann::json data = nlohmann::json::parse(in, nullptr, false);
+        if (data.is_discarded()) data = nlohmann::json::object();
+        data.erase("schema");
+        ActiveRecords().Refresh();
+        if (auto error = ActiveRecords().Write(kind, id, data)) post_({{"type", "notify"}, {"text", *error}});
+        post_(MagicJson());
+    } else if (type == "magic:try") {
+        // Play, learn it and cast it at the nearest enemy (or straight ahead).
+        if (!playing_) StartPlay();
+        if (!playing_) return true;
+        const auto player = FindPlayer(registry_);
+        if (!player) {
+            post_({{"type", "notify"}, {"text", "The scene has no player."}});
+            return true;
+        }
+        const std::string id = message.value("id", "");
+        auto& resources = registry_.get_or_emplace<Resources>(*player);
+        resources.mana = std::max(resources.mana, 999.0f); // enough to try anything
+        resources.stamina = std::max(resources.stamina, 999.0f);
+        session_.Magic().Learn(*player, id);
+        auto& abilities = registry_.get<Abilities>(*player);
+        auto slots = SplitList(abilities.slots);
+        slots.erase(std::remove(slots.begin(), slots.end(), id), slots.end());
+        slots.insert(slots.begin(), id);
+        std::string joined;
+        for (const auto& s : slots) joined += (joined.empty() ? "" : ", ") + s;
+        abilities.slots = joined;
+        std::string why;
+        if (!session_.CastSlot(0, &why)) post_({{"type", "notify"}, {"text", "Couldn't cast it: " + why}});
     } else {
         return false;
     }

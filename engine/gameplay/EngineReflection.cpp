@@ -7,6 +7,7 @@
 #include "gameplay/Animation.h"
 #include "gameplay/Difficulty.h"
 #include "gameplay/Effects.h"
+#include "gameplay/Magic.h"
 #include "gameplay/Items.h"
 #include "gameplay/Settings.h"
 #include "records/Records.h"
@@ -372,6 +373,10 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
     r.Component<Weather>("Weather", "The scene's weather (18.6).")
         .Field("kind", &Weather::kind, "None, rain, snow, fog or sandstorm.").Options({"None", "Rain", "Snow", "Fog", "Sandstorm"})
         .Field("intensity", &Weather::intensity, "How strong (0-1).").Range(0, 1);
+    r.Component<Abilities>("Abilities", "What it can cast or do (19): known abilities and its quick slots, "
+                                        "each a list of ability ids (presets or records).")
+        .Field("known", &Abilities::known, "Known abilities: firebolt, heal...")
+        .Field("slots", &Abilities::slots, "The quick slots (1-4), in order.");
     r.Component<Zone>("Zone", "The scene's level band (16.3): enemies here are made at a level within it.")
         .Field("minLevel", &Zone::minLevel, "The lowest level.").Range(1, 100)
         .Field("maxLevel", &Zone::maxLevel, "The highest level.").Range(1, 100);

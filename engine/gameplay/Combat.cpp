@@ -4,6 +4,7 @@
 #include "gameplay/Behaviour.h"
 #include "gameplay/Animation.h"
 #include "gameplay/Difficulty.h"
+#include "gameplay/Magic.h"
 #include "gameplay/GameSession.h"
 #include "records/Records.h"
 #include "gameplay/Settings.h"
@@ -380,7 +381,15 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
                 continue;
             }
             projectile.alreadyHit.push_back(target);
-            DealDamage(registry, target, projectile.damage, projectile.owner, &events, true, false, projectile.damageType);
+            if (projectile.damage > 0.0f) {
+                DealDamage(registry, target, projectile.damage, projectile.owner, &events, true, false, projectile.damageType);
+            }
+            // An ability's projectile (19.2): its effects are the session's to apply.
+            if (const auto* carried = registry.try_get<AbilityProjectile>(shot)) {
+                GameEvent hit{GameEvent::Type::Hit, target, projectile.owner};
+                hit.ability = carried->ability;
+                events.push_back(hit);
+            }
             hurtbox.invulnerableRemaining = hurtbox.invulnerableTime;
             if (!projectile.pierce) {
                 expired.push_back(shot);

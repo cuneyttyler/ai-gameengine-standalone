@@ -1,0 +1,8 @@
+{
+  "schema": "aige.magic-effect/1",
+  "archetype": "state",
+  "duration": 1.5,
+  "tags": [
+    "state.stunned"
+  ]
+}

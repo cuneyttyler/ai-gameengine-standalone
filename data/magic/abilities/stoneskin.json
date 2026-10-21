@@ -1,0 +1,20 @@
+{
+  "schema": "aige.ability/1",
+  "name": "Stoneskin",
+  "kind": "spell",
+  "school": "alteration",
+  "delivery": "self",
+  "cost": {
+    "attribute": "mana",
+    "amount": 18
+  },
+  "cooldown": 30,
+  "effects": [
+    "armour-up"
+  ],
+  "ai": {
+    "use": "buff",
+    "when": "distance < 6",
+    "priority": 0
+  }
+}

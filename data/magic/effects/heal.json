@@ -1,0 +1,6 @@
+{
+  "schema": "aige.magic-effect/1",
+  "archetype": "heal",
+  "magnitude": "10 + 3 * caster.level",
+  "cue": "heal"
+}

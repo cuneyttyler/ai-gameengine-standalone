@@ -39,6 +39,7 @@ struct GameEvent {
     int gold = 0;
     std::string loot;
     std::string actor; // Death: its Actor key (14.4), so the roster knows who died
+    std::string ability; // Hit by an ability's projectile (19.2): which ability
 };
 
 // Whether `attacker` may hurt `target` (13.7): factions decide when both belong

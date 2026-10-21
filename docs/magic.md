@@ -1,6 +1,6 @@
 # Abilities and magic
 
-Status: **draft for review (2026-10-21)**. Phase 19 in `development_plan.md`. The AI
+Status: **built, to be tried (2026-10-22)**; see "As built" at the end. Phase 19 in `development_plan.md`. The AI
 Planner designs a game's magic system in its Systems stage (`ai-planner.md` §5.7).
 
 ---
@@ -149,3 +149,37 @@ From the Brief's systems (`abilities.magic`, schools, resource, acquisition) and
 6. **Checks:** every school has abilities in each band the player passes through; costs
    within the formula's band; every enemy fighter's abilities have AI hints; world rules
    respected (the critic).
+
+## 10. As built (Phase 19)
+
+- **Records:** `magic-effect` (archetype damage, heal, modify, over-time, absorb, state, summon,
+  displace, dispel, light; magnitude as a number or a formula over `caster.level`, the caster's
+  attributes and `charge`; duration, period, area, damage type, stacking refresh / stack /
+  strongest / separate, tags, requires, blockedBy, cue, prefab, nonLethal), `ability` (kind,
+  school, activation press / toggle / passive (hold is treated as press for now), delivery self /
+  touch / projectile / area / cone / aura, range, radius, speed, cost, cooldown, cast time,
+  duration, effects, tags, animation, cues, requiresLevel, AI hints) and `magic-balance`.
+  Presets in `data/magic` (fire, frost and shock damage, heal, burn, poison, regen, slow, stun,
+  root, silence, invisibility, buffs, drain, push, cleanse, light; firebolt, frost nova, heal,
+  flame aura, power strike, drain life, stoneskin, light, toughness).
+- **The four status effects** keep working through `MeleeAttack.effect`; the presets `burn`,
+  `poison`, `slow` and `regen` are their magic-effect equivalents for abilities and items.
+- **Runtime:** `Abilities` (known, slots) and the runtime `MagicState` (cooldowns, toggles, a
+  cast, active effects, tags), in `gameplay/Magic`; it lives in the registry's context so item
+  use anywhere can cast. Ability projectiles are combat projectiles carrying their ability.
+  Stunned and rooted can't move (stunned can't swing), silenced can't cast spells, invisible
+  fades.
+- **Items:** `use.learn` (books), `use.ability` (scrolls, free and without cooldown),
+  `use.effects` (potions); `enchantment` {effects, on: worn | hit}. **Perks:**
+  `abilityModifiers` [{tag, stat: magnitude | cost, value}].
+- **Play:** keys 1-4 use the quick slots (aimed at the nearest enemy in front); K opens the
+  abilities window (a pick goes to slot 1); the HUD shows the slots and cooldowns.
+- **Balance:** the cost formula (§6) with `magic-balance/default`; the Magic tab shows each
+  ability's formula cost, output per cost and per second, and flags outliers.
+- **AI:** characters with `Abilities` cast by their hints (`use`, `when` over health, mana,
+  stamina, distance and enemyHealth, `priority`), a few times a second.
+- **Lua:** `cast`, `apply_effect`, `remove_effects`, `has_tag`, `add_tag`, `cooldown_left`,
+  `learn`; events `ability_used`, `ability_learned`, `effect_applied`, `effect_removed`.
+- **Not yet:** hold and charge activation, beams, homing and bouncing projectiles, transforms,
+  scripted effects, surfaces and element interactions, the test arena (Try plays the open scene).
+

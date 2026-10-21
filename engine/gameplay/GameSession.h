@@ -7,6 +7,7 @@
 #include "gameplay/Animation.h"
 #include "gameplay/Difficulty.h"
 #include "gameplay/Effects.h"
+#include "gameplay/Magic.h"
 #include "gameplay/InputMap.h"
 #include "gameplay/Isometric.h"
 #include "gameplay/Schedule.h"
@@ -257,6 +258,11 @@ public:
     void StepPreviewFx(float dt);
     bool TweenDone(int id) const;
 
+    // Abilities and magic (19): the system (also in the registry's context), and casting.
+    MagicSystem& Magic() { return *magic_; }
+    // The player casts the ability in quick slot `slot` (0-3) the way it faces.
+    bool CastSlot(int slot, std::string* why = nullptr);
+
     // Objective markers (15.4): where the shown objective's target is (world
     // units), when the scene has it: a marker, a character, an item lying about.
     std::optional<std::pair<float, float>> ObjectiveLocation();
@@ -429,6 +435,9 @@ private:
     };
     std::vector<TempLight> tempLights_;
     void StepFx(float dt); // animators, particles, tweens, lights
+    std::unique_ptr<MagicSystem> magic_;
+    float magicThink_ = 0.0f;
+    void StepMagic(float dt, size_t firstEvent);
     void CueEffects(size_t firstEvent);
     NoticeSink noticeSink_;
     ScreenHook screenHook_;

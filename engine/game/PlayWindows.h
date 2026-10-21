@@ -18,7 +18,7 @@ namespace aige {
 // UI (Phase 17) makes them customisable documents. The game is paused while one is open.
 class PlayWindows {
 public:
-    enum class Kind { None, Inventory, Shop, Journal };
+    enum class Kind { None, Inventory, Shop, Journal, Spellbook };
 
     void OpenInventory(Entity player);
     // Restocks the merchant from its loot table when it's a new day.
@@ -26,6 +26,8 @@ public:
     // The journal: every quest started, active ones first; the highlighted one's
     // stages so far and what's left to do.
     void OpenJournal(Entity player, const StoryState& story, const StoryLibrary& library);
+    // The spellbook (19): known abilities; picking one puts it in the first quick slot.
+    void OpenSpellbook(Entity player);
     void Close() { kind_ = Kind::None; }
     Kind Open() const { return kind_; }
 

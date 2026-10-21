@@ -1,0 +1,24 @@
+{
+  "schema": "aige.ability/1",
+  "name": "Heal",
+  "kind": "spell",
+  "school": "restoration",
+  "delivery": "self",
+  "cost": {
+    "attribute": "mana",
+    "amount": 15
+  },
+  "cooldown": 4,
+  "castTime": 0.6,
+  "effects": [
+    "heal"
+  ],
+  "cue": {
+    "cast": "heal"
+  },
+  "ai": {
+    "use": "heal-self",
+    "when": "health < 0.4",
+    "priority": 5
+  }
+}

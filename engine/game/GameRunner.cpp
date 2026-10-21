@@ -304,6 +304,7 @@ void GameRunner::FrameLogic(double seconds, const KeyQueryFn& keys, const AxisQu
     if (const auto player = FindPlayer(registry_)) {
         const bool free = !session_->Conversation().Active() && !session_->InCutscene();
         if (session_->Input().Pressed("inventory") && free) windows_.OpenInventory(*player);
+        if (session_->Input().Pressed("spellbook") && free) windows_.OpenSpellbook(*player);
         if (session_->Input().Pressed("journal") && free && ActiveSettings().story.journal && session_->StoryLibraryInUse()) {
             windows_.OpenJournal(*player, session_->Story(), *session_->StoryLibraryInUse());
         }
@@ -362,6 +363,7 @@ std::string GameRunner::MenuScreen() const {
         case PlayWindows::Kind::Inventory: return "inventory";
         case PlayWindows::Kind::Shop: return "shop";
         case PlayWindows::Kind::Journal: return "journal";
+        case PlayWindows::Kind::Spellbook: return "spellbook";
         default: break;
     }
     switch (flow_.Current()) {

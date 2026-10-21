@@ -607,6 +607,7 @@ struct DocumentUi::Impl {
             c.Bind("marker", &hud.marker);
             c.Bind("marker_x", &hud.markerX);
             c.Bind("marker_y", &hud.markerY);
+            c.Bind("abilities", &hud.abilities);
             hudModel = c.GetModelHandle();
         }
         if (auto c = context->CreateDataModel("ui")) {

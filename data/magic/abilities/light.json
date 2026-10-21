@@ -1,0 +1,15 @@
+{
+  "schema": "aige.ability/1",
+  "name": "Light",
+  "kind": "spell",
+  "school": "illusion",
+  "delivery": "self",
+  "cost": {
+    "attribute": "mana",
+    "amount": 5
+  },
+  "cooldown": 10,
+  "effects": [
+    "light"
+  ]
+}

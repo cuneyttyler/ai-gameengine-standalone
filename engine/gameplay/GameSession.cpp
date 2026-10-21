@@ -246,6 +246,22 @@ GameSession::GameSession(Registry& registry, LuaVM& lua, IsoParams iso, std::fil
     ReloadDifficulty();
     animations_ = AnimLibrary(scriptRoot_);
     animations_.Refresh();
+    // Magic (19): its hooks reach the effects, spawns, events and lights here.
+    magic_ = std::make_unique<MagicSystem>(registry_);
+    magic_->playCue = [this](const std::string& effect, float x, float y, Entity target, Entity source) {
+        PlayEffect(effect, x, y, target, source);
+    };
+    magic_->spawn = [this](const std::string& prefab, float x, float y) -> std::optional<Entity> {
+        if (!spawner_) return std::nullopt;
+        difficultyDirty_ = true;
+        return spawner_(prefab, x, y);
+    };
+    magic_->emit = [this](const std::string& name, Entity entity, Entity other, double amount, const std::string& text) {
+        Emit({name, entity, other, amount, text});
+    };
+    magic_->light = [this](float x, float y, float radius, float r, float g, float b, float seconds) {
+        tempLights_.push_back({x, y, radius, r, g, b, seconds, 0.0f});
+    };
 }
 
 // --- Difficulty (development_plan.md 16) ---------------------------------------------
@@ -580,6 +596,37 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
         if (screenHook_) screenHook_(id, 0);
     };
     env["is_open"] = [this](const std::string& id) { return screenHook_ && screenHook_(id, -1); };
+    // Abilities and magic (19).
+    env["cast"] = [this, self](const std::string& ability, sol::optional<sol::object> a, sol::optional<float> y) {
+        float ax = 0, ay = 0;
+        Entity target = entt::null;
+        if (a && a->get_type() == sol::type::number && y) {
+            ax = a->as<float>();
+            ay = *y;
+        } else if (a && a->get_type() == sol::type::number) {
+            target = ToEntity(a->as<lua_Integer>());
+            if (const auto* w = registry_.valid(target) ? registry_.try_get<WorldTransform2D>(target) : nullptr) {
+                ax = w->x;
+                ay = w->y;
+            }
+        } else if (const auto* w = registry_.try_get<WorldTransform2D>(self)) {
+            const auto* f = registry_.try_get<Facing>(self);
+            ax = w->x + (f ? f->x : 1.0f) * 3.0f;
+            ay = w->y + (f ? f->y : 0.0f) * 3.0f;
+        }
+        return magic_->Cast(self, ability, ax, ay, target, nullptr, true);
+    };
+    env["apply_effect"] = [this, self](lua_Integer target, const std::string& effect, sol::optional<float> magnitude,
+                                       sol::optional<float> duration) {
+        return magic_->ApplyEffect(ToEntity(target), effect, self,
+                                   magnitude ? std::optional<float>(*magnitude) : std::nullopt,
+                                   duration ? std::optional<float>(*duration) : std::nullopt);
+    };
+    env["remove_effects"] = [this](lua_Integer target, const std::string& tag) { magic_->RemoveEffects(ToEntity(target), tag); };
+    env["has_tag"] = [this](lua_Integer id, const std::string& tag) { return magic_->HasTag(ToEntity(id), tag); };
+    env["add_tag"] = [this](lua_Integer id, const std::string& tag) { magic_->AddTag(ToEntity(id), tag); };
+    env["cooldown_left"] = [this, self](const std::string& ability) { return magic_->CooldownLeft(self, ability); };
+    env["learn"] = [this](lua_Integer id, const std::string& ability) { magic_->Learn(ToEntity(id), ability); };
     // Animation and effects (18).
     env["play_effect"] = [this](const std::string& id, sol::object a, sol::optional<float> y) {
         if (a.is<float>() && y) return PlayEffect(id, a.as<float>(), *y);
@@ -879,6 +926,20 @@ nlohmann::json GameSession::MakeSave() const {
     nlohmann::json save = {{"version", 1}, {"scene", scene_}, {"clock", clockMinutes_}, {"story", story_.ToJson()},
                            {"difficulty", {{"level", difficultyLevel_}, {"adaptive", adaptive_.ToJson()}}}};
     if (auto player = FindPlayer(const_cast<Registry&>(registry_))) {
+        // What the player knows and what's on them (19).
+        nlohmann::json magic = nlohmann::json::object();
+        if (const auto* a = registry_.try_get<Abilities>(*player)) magic["known"] = a->known, magic["slots"] = a->slots;
+        if (const auto* m = registry_.try_get<MagicState>(*player)) {
+            nlohmann::json effects = nlohmann::json::array();
+            for (const auto& e : m->effects) {
+                if (e.remaining < 1e8f) effects.push_back({{"effect", e.effect}, {"magnitude", e.magnitude}, {"remaining", e.remaining}});
+            }
+            magic["effects"] = effects;
+            magic["cooldowns"] = m->cooldowns;
+        }
+        save["magic"] = magic;
+    }
+    if (auto player = FindPlayer(const_cast<Registry&>(registry_))) {
         const auto& at = registry_.get<WorldTransform2D>(*player);
         save["player"] = {{"x", at.x}, {"y", at.y}};
         if (const auto* health = registry_.try_get<Health>(*player)) save["player"]["health"] = health->current;
@@ -900,6 +961,16 @@ void GameSession::ApplySave(const nlohmann::json& save) {
     fade_ = fadeTarget_ = letterbox_ = 0.0f;
     if (save.contains("clock") && save["clock"].is_number()) clockMinutes_ = save["clock"].get<double>();
     scene_ = save.value("scene", scene_);
+    if (auto player = FindPlayer(registry_); player && save.contains("magic") && save["magic"].is_object()) {
+        const auto& magic = save["magic"];
+        if (magic.contains("known")) registry_.emplace_or_replace<Abilities>(*player, magic.value("known", ""), magic.value("slots", ""));
+        auto& state = registry_.get_or_emplace<MagicState>(*player);
+        for (const auto& e : magic.value("effects", nlohmann::json::array())) {
+            magic_->ApplyEffect(*player, e.value("effect", ""), *player, e.value("magnitude", 0.0f), e.value("remaining", 1.0f));
+        }
+        const auto cooldowns = magic.value("cooldowns", nlohmann::json::object());
+        for (const auto& [id, left] : cooldowns.items()) state.cooldowns[id] = left.get<float>();
+    }
     if (auto player = FindPlayer(registry_); player && save.contains("player") && save["player"].is_object()) {
         auto& at = registry_.get<WorldTransform2D>(*player);
         at.x = save["player"].value("x", at.x);
@@ -1129,6 +1200,17 @@ HudData GameSession::MakeHud(float viewportWidth, float viewportHeight) {
             hud.xpNext = ExperienceForLevel(progression->level);
         }
         if (const auto* inventory = registry_.try_get<Inventory>(*player)) hud.gold = inventory->gold;
+        // The quick slots with their cooldowns (19).
+        if (const auto* abilities = registry_.try_get<Abilities>(*player)) {
+            int n = 1;
+            for (const auto& id : SplitList(abilities->slots)) {
+                auto ability = FindAbility(id);
+                const float left = magic_->CooldownLeft(*player, id);
+                hud.abilities += (n > 1 ? "    " : "") + std::to_string(n) + " " + (ability ? ability->name : id) +
+                                 (left > 0.05f ? " (" + std::to_string(static_cast<int>(std::ceil(left))) + "s)" : "");
+                if (++n > 4) break;
+            }
+        }
     }
     const auto routines = registry_.view<Routine>();
     if (ActiveSettings().time.showClock || routines.begin() != routines.end()) {
@@ -1655,6 +1737,62 @@ std::optional<std::pair<float, float>> GameSession::ObjectiveLocation() {
     return std::nullopt;
 }
 
+// --- Abilities and magic (development_plan.md 19) --------------------------------------
+
+bool GameSession::CastSlot(int slot, std::string* why) {
+    const auto player = FindPlayer(registry_);
+    if (!player) return false;
+    const auto* abilities = registry_.try_get<Abilities>(*player);
+    const auto slots = abilities ? SplitList(abilities->slots) : std::vector<std::string>{};
+    if (slot < 0 || slot >= static_cast<int>(slots.size())) {
+        if (why) *why = "nothing in that slot";
+        return false;
+    }
+    // Aim: the nearest hostile in front within the ability's range, else straight ahead.
+    const auto& at = registry_.get<WorldTransform2D>(*player);
+    const auto* facing = registry_.try_get<Facing>(*player);
+    const float fx = facing ? facing->x : 1.0f, fy = facing ? facing->y : 0.0f;
+    const float range = FindAbility(slots[slot]) ? FindAbility(slots[slot])->range : 6.0f;
+    float ax = at.x + fx * range, ay = at.y + fy * range;
+    Entity target = entt::null;
+    float best = range + 0.5f;
+    for (auto [e, health, w] : registry_.view<Health, WorldTransform2D>(entt::exclude<Dead>).each()) {
+        if (e == *player || !AreHostile(registry_, *player, e)) continue;
+        const float dx = w.x - at.x, dy = w.y - at.y, d = std::sqrt(dx * dx + dy * dy);
+        if (d < best && (dx * fx + dy * fy) >= 0.0f) {
+            best = d;
+            ax = w.x;
+            ay = w.y;
+            target = e;
+        }
+    }
+    return magic_->Cast(*player, slots[slot], ax, ay, target, why);
+}
+
+void GameSession::StepMagic(float dt, size_t firstEvent) {
+    // Hits: an ability projectile's effects, a weapon's enchantment.
+    for (size_t i = firstEvent; i < events_.size(); ++i) {
+        const GameEvent event = events_[i];
+        if (event.type == GameEvent::Type::Hit && registry_.valid(event.entity)) magic_->OnHit(event.other, event.entity, event.ability);
+    }
+    magic_->Update(dt);
+    // Characters cast by their abilities' hints, a few times a second.
+    if ((magicThink_ -= dt) <= 0.0f) {
+        magicThink_ = 0.4f;
+        if (const auto player = FindPlayer(registry_); player && !registry_.all_of<Dead>(*player)) {
+            const auto& at = registry_.get<WorldTransform2D>(*player);
+            std::vector<Entity> casters;
+            for (auto [e, abilities, w] : registry_.view<Abilities, WorldTransform2D>(entt::exclude<Dead>).each()) {
+                if (e != *player && std::hypot(w.x - at.x, w.y - at.y) < 12.0f) casters.push_back(e);
+            }
+            for (Entity e : casters) {
+                if (AreHostile(registry_, e, *player)) magic_->ThinkFor(e, *player);
+                else magic_->ThinkFor(e, entt::null); // allies heal and buff themselves
+            }
+        }
+    }
+}
+
 // --- Animation and effects (development_plan.md 18) ---------------------------------
 
 void GameSession::Shake(float trauma) {
@@ -1869,6 +2007,12 @@ void GameSession::StepGameplay(float dt, const SolidQueryFn& isSolid, bool first
         // Block while held; dodge, fire on press (once a frame).
         if (input_.Down("block") && !registry_.all_of<Dodging>(*player)) registry_.emplace_or_replace<Blocking>(*player);
         else registry_.remove<Blocking>(*player);
+        for (int slot = 0; slot < 4 && firstStep; ++slot) {
+            if (input_.Pressed("ability_" + std::to_string(slot + 1))) {
+                std::string why;
+                if (!CastSlot(slot, &why) && !why.empty()) ShowNotice(why, 1.5, "alert");
+            }
+        }
         if (firstStep && input_.Pressed("dodge")) {
             // The way the player walks (screen directions to the world's).
             const float right = input_.Value("move_x"), down = input_.Value("move_y");
@@ -2289,6 +2433,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         }
         OnStoryEvents(firstEvent);
         CueEffects(firstEvent); // animation triggers and effect cues for the step's hits, deaths, attacks
+        StepMagic(dt, firstEvent); // Phase 19: casts, effects, auras, enchantments, AI spells
         // Events (12.2): combat's, then the story's, to the scripts' handlers;
         // then timers, waiting coroutines and the modules' systems.
         static const char* kNames[] = {"hit", "death", "pickup", "attack", "victory"};

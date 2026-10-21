@@ -172,6 +172,8 @@ class EditorContext(BaseModel):
     ui: dict[str, Any] = {}
     # Animation and effects (18): {sheets [{path, texture, clips}], particles, effects, animators, lighting}.
     fx: dict[str, Any] = {}
+    # Abilities and magic (19): {abilities, effects} ids (presets and records).
+    magic: dict[str, Any] = {}
 
 
 # --- Proposals --------------------------------------------------------------------

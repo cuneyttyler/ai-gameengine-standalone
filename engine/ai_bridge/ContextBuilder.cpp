@@ -15,6 +15,7 @@
 #include "gameplay/Animation.h"
 #include "gameplay/Difficulty.h"
 #include "gameplay/Effects.h"
+#include "gameplay/Magic.h"
 #include "ui/Documents.h"
 #include "gameplay/Settings.h"
 #include "gameplay/Schedule.h"
@@ -294,6 +295,16 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
                          {"effects", ids(EffectPresets(), "effect")},
                          {"animators", BuiltInAnimatorIds()},
                          {"lighting", ActiveSettings().lighting.enabled}};
+    }
+    // Abilities and magic (19): the abilities and magic effects there are (presets and records).
+    {
+        auto ids = [&](std::vector<std::string> presets, const char* type) {
+            for (const Record* r : recordDb.OfType(type)) presets.push_back(r->id);
+            std::sort(presets.begin(), presets.end());
+            presets.erase(std::unique(presets.begin(), presets.end()), presets.end());
+            return presets;
+        };
+        context["magic"] = {{"abilities", ids(AbilityPresets(), "ability")}, {"effects", ids(MagicEffectPresets(), "magic-effect")}};
     }
     // The game's UI (17): the built-in themes, the project's theme and its own UI files.
     {

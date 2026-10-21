@@ -1,0 +1,21 @@
+{
+  "schema": "aige.ability/1",
+  "name": "Drain life",
+  "kind": "spell",
+  "school": "necromancy",
+  "delivery": "touch",
+  "range": 2,
+  "cost": {
+    "attribute": "mana",
+    "amount": 14
+  },
+  "cooldown": 2,
+  "effects": [
+    "drain-life"
+  ],
+  "ai": {
+    "use": "attack",
+    "when": "distance < 2",
+    "priority": 1
+  }
+}

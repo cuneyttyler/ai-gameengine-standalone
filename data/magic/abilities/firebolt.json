@@ -1,0 +1,31 @@
+{
+  "schema": "aige.ability/1",
+  "name": "Firebolt",
+  "kind": "spell",
+  "school": "destruction",
+  "activation": "press",
+  "delivery": "projectile",
+  "range": 8,
+  "speed": 9,
+  "cost": {
+    "attribute": "mana",
+    "amount": 12
+  },
+  "cooldown": 1.2,
+  "effects": [
+    "fire-damage",
+    "burn"
+  ],
+  "tags": [
+    "element.fire"
+  ],
+  "animation": "casting",
+  "cue": {
+    "impact": "fireball"
+  },
+  "ai": {
+    "use": "attack",
+    "when": "distance < 7 && mana > 0.2",
+    "priority": 2
+  }
+}

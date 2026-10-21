@@ -1,0 +1,8 @@
+{
+  "schema": "aige.magic-effect/1",
+  "archetype": "state",
+  "duration": 4,
+  "tags": [
+    "state.silenced"
+  ]
+}

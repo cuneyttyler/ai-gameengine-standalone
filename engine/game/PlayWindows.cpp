@@ -5,6 +5,7 @@
 #include "gameplay/Interact.h"
 #include "gameplay/Items.h"
 #include "gameplay/Localization.h"
+#include "gameplay/Magic.h"
 #include "records/Records.h"
 
 #include <algorithm>
@@ -97,8 +98,33 @@ void PlayWindows::OpenJournal(Entity player, const StoryState& story, const Stor
     for (auto& entry : finished) journal_.push_back(std::move(entry));
 }
 
+void PlayWindows::OpenSpellbook(Entity player) {
+    kind_ = Kind::Spellbook;
+    player_ = player;
+    highlighted_ = 0;
+}
+
 std::vector<PlayWindows::Line> PlayWindows::Lines(Registry& registry) const {
     std::vector<Line> lines;
+    if (kind_ == Kind::Spellbook) {
+        if (const auto* a = registry.valid(player_) ? registry.try_get<Abilities>(player_) : nullptr) {
+            const auto slots = SplitList(a->slots);
+            for (const auto& id : SplitList(a->known)) {
+                auto ability = FindAbility(id);
+                std::string label = ability ? ability->name : id;
+                if (ability && ability->cost > 0) {
+                    char cost[48];
+                    std::snprintf(cost, sizeof(cost), "  (%g %s)", ability->cost, ability->costAttribute.c_str());
+                    label += cost;
+                }
+                auto at = std::find(slots.begin(), slots.end(), id);
+                if (at != slots.end()) label = "[" + std::to_string(at - slots.begin() + 1) + "] " + label;
+                lines.push_back({"slot:" + id, label, ability && ability->activation != "passive"});
+            }
+        }
+        lines.push_back({"close", Tr("menu.close", "Close")});
+        return lines;
+    }
     if (kind_ == Kind::Journal) {
         for (size_t i = 0; i < journal_.size(); ++i) lines.push_back({"quest:" + std::to_string(i), journal_[i].label});
         lines.push_back({"close", Tr("menu.close", "Close")});
@@ -162,6 +188,19 @@ void PlayWindows::Choose(Registry& registry, int index) {
         Close();
         return;
     }
+    if (verb == "slot") {
+        // To the first quick slot (the others move along; four at most).
+        auto& a = registry.get_or_emplace<Abilities>(player_);
+        auto slots = SplitList(a.slots);
+        slots.erase(std::remove(slots.begin(), slots.end(), what), slots.end());
+        slots.insert(slots.begin(), what);
+        if (slots.size() > 4) slots.resize(4);
+        std::string joined;
+        for (const auto& s : slots) joined += (joined.empty() ? "" : ", ") + s;
+        a.slots = joined;
+        message_ = Tr("spellbook.slotted", "In slot 1: ") + what;
+        return;
+    }
     std::string why;
     if (verb == "equip") why = Equip(registry, player_, what), message_ = why.empty() ? "Equipped " + ItemName(what) : why;
     else if (verb == "unequip") why = Unequip(registry, player_, what), message_ = why.empty() ? "Took it off" : why;
@@ -212,7 +251,10 @@ std::optional<MenuView> PlayWindows::View(Registry& registry) const {
     MenuView view;
     const auto* inventory = registry.try_get<Inventory>(player_);
     const int gold = inventory ? inventory->gold : 0;
-    if (kind_ == Kind::Journal) {
+    if (kind_ == Kind::Spellbook) {
+        view.title = Tr("spellbook.title", "Abilities");
+        view.body = Tr("spellbook.help", "Pick one to put it in quick slot 1 (keys 1-4 use the slots).");
+    } else if (kind_ == Kind::Journal) {
         view.title = Tr("journal.title", "Journal");
         view.body = journal_.empty() ? Tr("journal.empty", "No quests yet.")
                     : highlighted_ < static_cast<int>(journal_.size()) ? journal_[highlighted_].body

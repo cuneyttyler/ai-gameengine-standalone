@@ -66,3 +66,4 @@ foreach(SHADER ${AIGE_SHADER_SOURCES})
         VERBATIM
     )
 endforeach()
+target_compile_definitions(editor PRIVATE AIGE_MAGIC_PRESETS="${CMAKE_SOURCE_DIR}/data/magic")

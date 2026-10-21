@@ -1,0 +1,9 @@
+{
+  "schema": "aige.magic-effect/1",
+  "archetype": "absorb",
+  "magnitude": "6 + caster.level",
+  "damageType": "physical",
+  "tags": [
+    "school.necromancy"
+  ]
+}

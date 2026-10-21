@@ -8,6 +8,7 @@ import RecordsPanel from './RecordsPanel.vue'
 import DifficultyPanel from './DifficultyPanel.vue'
 import UiPanel from './UiPanel.vue'
 import FxPanel from './FxPanel.vue'
+import MagicPanel from './MagicPanel.vue'
 import StoryPanel from './StoryPanel.vue'
 import WorldPanel from './WorldPanel.vue'
 
@@ -19,6 +20,7 @@ const tabs: { id: ProjectTab; label: string; title: string }[] = [
   { id: 'difficulty', label: 'Difficulty', title: 'Difficulty levels, the category table, previews and the curve' },
   { id: 'ui', label: 'UI', title: "The game's screens, theme and notifications (documents in ui/)" },
   { id: 'fx', label: 'Effects', title: 'Animation sheets, particles and effects, cutscenes' },
+  { id: 'magic', label: 'Magic', title: 'Abilities and magic effects, with their cost and output' },
 ]
 </script>
 
@@ -43,6 +45,7 @@ const tabs: { id: ProjectTab; label: string; title: string }[] = [
     <DifficultyPanel v-else-if="panelTab.project === 'difficulty'" class="body" />
     <UiPanel v-else-if="panelTab.project === 'ui'" class="body" />
     <FxPanel v-else-if="panelTab.project === 'fx'" class="body" />
+    <MagicPanel v-else-if="panelTab.project === 'magic'" class="body" />
     <StoryPanel v-else class="body" />
   </div>
 </template>

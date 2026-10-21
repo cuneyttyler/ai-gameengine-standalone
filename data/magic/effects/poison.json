@@ -1,0 +1,15 @@
+{
+  "schema": "aige.magic-effect/1",
+  "archetype": "over-time",
+  "attribute": "health",
+  "magnitude": "1",
+  "duration": 6,
+  "period": 1,
+  "damageType": "poison",
+  "nonLethal": true,
+  "tags": [
+    "state.poisoned"
+  ],
+  "stacking": "stack",
+  "maxStacks": 3
+}

@@ -390,6 +390,9 @@ private:
     bool HandleUiMessage(const std::string& type, const nlohmann::json& message);
     // Animation and effects (18.7): sheets, particles and effects to try, cutscenes.
     bool HandleFxMessage(const std::string& type, const nlohmann::json& message);
+    // Abilities and magic (19.4): the Magic tab's figures, Try and Customise.
+    bool HandleMagicMessage(const std::string& type, const nlohmann::json& message);
+    nlohmann::json MagicJson();
     nlohmann::json FxJson();
     nlohmann::json UiJson();
     DocumentUi& UiDocs();

@@ -1,0 +1,9 @@
+{
+  "schema": "aige.magic-effect/1",
+  "archetype": "dispel",
+  "tags": [
+    "state.poisoned",
+    "state.burning",
+    "state.slowed"
+  ]
+}

@@ -66,6 +66,11 @@ InputMap InputMap::Defaults() {
                                  {Key::LeftCtrl, Key::PadLB}));
     map.actions.push_back(Button("dodge", "A quick dash you can't be hit during.", "gameplay", {Key::LeftShift, Key::PadB}));
     map.actions.push_back(Button("inventory", "Open your inventory.", "gameplay", {Key::I, Key::Tab, Key::PadY}));
+    for (int i = 1; i <= 4; ++i) {
+        map.actions.push_back(Button("ability_" + std::to_string(i), "Use the ability in quick slot " + std::to_string(i) + ".",
+                                     "gameplay", {static_cast<Key>(static_cast<int>(Key::Num0) + i)}));
+    }
+    map.actions.push_back(Button("spellbook", "Open your abilities.", "gameplay", {Key::K}));
     map.actions.push_back(Button("journal", "Open or close your quest journal.", "any", {Key::J, Key::PadBack}));
     map.actions.push_back(Button("skip", "Skip a cutscene.", "cutscene", {Key::Escape, Key::Enter, Key::Space, Key::PadA}));
     map.actions.push_back(Button("confirm", "Continue a conversation; pick the highlighted choice.", "dialogue",

@@ -1,0 +1,25 @@
+{
+  "schema": "aige.ability/1",
+  "name": "Power strike",
+  "kind": "skill",
+  "delivery": "touch",
+  "range": 1.4,
+  "cost": {
+    "attribute": "stamina",
+    "amount": 20
+  },
+  "cooldown": 3,
+  "effects": [
+    {
+      "effect": "fire-damage",
+      "magnitude": 14
+    },
+    "push"
+  ],
+  "animation": "attacking",
+  "ai": {
+    "use": "attack",
+    "when": "distance < 1.5 && stamina > 0.3",
+    "priority": 1
+  }
+}

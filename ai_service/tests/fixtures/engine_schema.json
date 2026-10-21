@@ -2019,6 +2019,24 @@
     },
     {
       "dependencies": [],
+      "description": "What it can cast or do (19): known abilities and its quick slots, each a list of ability ids (presets or records).",
+      "fields": [
+        {
+          "description": "Known abilities: firebolt, heal...",
+          "name": "known",
+          "type": "string"
+        },
+        {
+          "description": "The quick slots (1-4), in order.",
+          "name": "slots",
+          "type": "string"
+        }
+      ],
+      "name": "Abilities",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
       "description": "The scene's level band (16.3): enemies here are made at a level within it.",
       "fields": [
         {
@@ -2393,7 +2411,7 @@
           "type": "object"
         },
         {
-          "description": "What using it does (a potion, food, a scroll).",
+          "description": "What using it does (a potion, food, a scroll, a book).",
           "fields": [
             {
               "description": "Health restored",
@@ -2447,9 +2465,43 @@
               "description": "Used up when used",
               "name": "consumed",
               "type": "bool"
+            },
+            {
+              "description": "A book: the ability it teaches (19.3)",
+              "name": "learn",
+              "type": "string"
+            },
+            {
+              "description": "A scroll: the ability it casts",
+              "name": "ability",
+              "type": "string"
+            },
+            {
+              "description": "Magic effects on the user",
+              "list": true,
+              "name": "effects",
+              "type": "string"
             }
           ],
           "name": "use",
+          "type": "object"
+        },
+        {
+          "description": "Magic on equipment (19.3).",
+          "fields": [
+            {
+              "description": "Magic effects (ids)",
+              "list": true,
+              "name": "effects",
+              "type": "string"
+            },
+            {
+              "description": "worn (while equipped) or hit (on the target of each hit)",
+              "name": "on",
+              "type": "string"
+            }
+          ],
+          "name": "enchantment",
           "type": "object"
         }
       ],
@@ -2588,6 +2640,29 @@
           ],
           "list": true,
           "name": "modifiers",
+          "type": "object"
+        },
+        {
+          "description": "Scales abilities by tag (19.3).",
+          "fields": [
+            {
+              "description": "Abilities with this tag (element.fire, school.restoration; empty: all)",
+              "name": "tag",
+              "type": "string"
+            },
+            {
+              "description": "magnitude or cost",
+              "name": "stat",
+              "type": "string"
+            },
+            {
+              "description": "Times this (1.25 = +25%)",
+              "name": "value",
+              "type": "float"
+            }
+          ],
+          "list": true,
+          "name": "abilityModifiers",
           "type": "object"
         }
       ],
@@ -3377,6 +3452,299 @@
         }
       ],
       "name": "effect"
+    },
+    {
+      "description": "A magic effect (19.1): what changes. Presets: data/magic/effects.",
+      "fields": [
+        {
+          "description": "What it does",
+          "name": "archetype",
+          "options": [
+            "damage",
+            "heal",
+            "modify",
+            "over-time",
+            "absorb",
+            "state",
+            "summon",
+            "displace",
+            "dispel",
+            "light"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "modify: the attribute; over-time: health (damage), heal, mana or stamina",
+          "name": "attribute",
+          "type": "string"
+        },
+        {
+          "description": "modify: add or mul",
+          "name": "op",
+          "type": "string"
+        },
+        {
+          "description": "A number or a formula: 8 + 2 * caster.level",
+          "name": "magnitude",
+          "type": "string"
+        },
+        {
+          "description": "Seconds (0: instant)",
+          "name": "duration",
+          "type": "float"
+        },
+        {
+          "description": "over-time: seconds between ticks",
+          "name": "period",
+          "type": "float"
+        },
+        {
+          "description": "Cells around the target it also reaches",
+          "name": "area",
+          "type": "float"
+        },
+        {
+          "description": "physical, fire, frost, shock, poison",
+          "name": "damageType",
+          "type": "string"
+        },
+        {
+          "description": "refresh, stack, strongest or separate",
+          "name": "stacking",
+          "type": "string"
+        },
+        {
+          "description": "stack: at most",
+          "name": "maxStacks",
+          "type": "int"
+        },
+        {
+          "description": "Granted while active: state.stunned, element.fire...",
+          "list": true,
+          "name": "tags",
+          "type": "string"
+        },
+        {
+          "description": "Tags the target must have",
+          "list": true,
+          "name": "requires",
+          "type": "string"
+        },
+        {
+          "description": "Tags that stop it (immune.fire)",
+          "list": true,
+          "name": "blockedBy",
+          "type": "string"
+        },
+        {
+          "description": "A visual effect (records effect) on apply",
+          "name": "cue",
+          "type": "string"
+        },
+        {
+          "description": "summon: what appears",
+          "name": "prefab",
+          "optional": true,
+          "type": "prefab"
+        },
+        {
+          "description": "over-time: can't kill (poison)",
+          "name": "nonLethal",
+          "type": "bool"
+        }
+      ],
+      "name": "magic-effect"
+    },
+    {
+      "description": "An ability (19.2): how magic effects are used. Presets: data/magic/abilities.",
+      "fields": [
+        {
+          "description": "Shown to the player",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "A label for the UI and the AI",
+          "name": "kind",
+          "options": [
+            "spell",
+            "skill",
+            "power",
+            "passive",
+            "item-use",
+            "shout"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "destruction, restoration...",
+          "name": "school",
+          "type": "string"
+        },
+        {
+          "description": "How it's used",
+          "name": "activation",
+          "options": [
+            "press",
+            "hold",
+            "toggle",
+            "passive"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "How it reaches its target",
+          "name": "delivery",
+          "options": [
+            "self",
+            "touch",
+            "projectile",
+            "area",
+            "cone",
+            "aura"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "Cells",
+          "name": "range",
+          "type": "float"
+        },
+        {
+          "description": "area, aura: cells",
+          "name": "radius",
+          "type": "float"
+        },
+        {
+          "description": "projectile: cells per second",
+          "name": "speed",
+          "type": "float"
+        },
+        {
+          "description": "What it costs",
+          "fields": [
+            {
+              "description": "mana, stamina or health",
+              "name": "attribute",
+              "type": "string"
+            },
+            {
+              "description": "How much",
+              "name": "amount",
+              "type": "float"
+            }
+          ],
+          "name": "cost",
+          "type": "object"
+        },
+        {
+          "description": "Seconds",
+          "name": "cooldown",
+          "type": "float"
+        },
+        {
+          "description": "Seconds before it goes off",
+          "name": "castTime",
+          "type": "float"
+        },
+        {
+          "description": "aura, toggle: seconds",
+          "name": "duration",
+          "type": "float"
+        },
+        {
+          "description": "The magic effects (ids)",
+          "list": true,
+          "name": "effects",
+          "type": "string"
+        },
+        {
+          "description": "element.fire... (perks scale by them)",
+          "list": true,
+          "name": "tags",
+          "type": "string"
+        },
+        {
+          "description": "The caster's animator trigger (casting, attacking)",
+          "name": "animation",
+          "type": "string"
+        },
+        {
+          "description": "Visual effects",
+          "fields": [
+            {
+              "description": "On casting",
+              "name": "cast",
+              "type": "string"
+            },
+            {
+              "description": "Where it lands",
+              "name": "impact",
+              "type": "string"
+            }
+          ],
+          "name": "cue",
+          "type": "object"
+        },
+        {
+          "description": "At least this level",
+          "name": "requiresLevel",
+          "type": "int"
+        },
+        {
+          "description": "How characters use it (19.5)",
+          "fields": [
+            {
+              "description": "attack, heal-self, buff or debuff",
+              "name": "use",
+              "type": "string"
+            },
+            {
+              "description": "health < 0.4, distance < 6, mana > 0.2 (&& joins)",
+              "name": "when",
+              "type": "string"
+            },
+            {
+              "description": "Higher first",
+              "name": "priority",
+              "type": "int"
+            }
+          ],
+          "name": "ai",
+          "type": "object"
+        }
+      ],
+      "name": "ability"
+    },
+    {
+      "description": "The constants of the cost formula (19.4). Only records/magic-balance/default is used.",
+      "fields": [
+        {
+          "default": 0.6,
+          "description": "Cost per point of magnitude",
+          "name": "base",
+          "type": "float"
+        },
+        {
+          "default": 1.1,
+          "description": "",
+          "name": "magnitudeExponent",
+          "type": "float"
+        },
+        {
+          "default": 0.35,
+          "description": "",
+          "name": "durationExponent",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "description": "",
+          "name": "areaExponent",
+          "type": "float"
+        }
+      ],
+      "name": "magic-balance"
     },
     {
       "description": "An encounter (13.7): what a Spawner makes, picked by weight and level.",
