@@ -22,6 +22,12 @@ struct PlayerSettings {
     bool vsync = true;
     float uiScale = 1.0f;
     bool subtitles = true;
+    // Assists (development_plan.md 16.4): help apart from the difficulty level.
+    bool invincible = false;
+    float damageReduction = 0.0f; // 0, 0.25, 0.5, 0.75
+    bool growingReduction = false; // more after each death
+    float gameSpeed = 1.0f;       // 1, 0.75, 0.5
+    bool adaptive = false;        // "adjust difficulty to how I play" (when the game offers it)
 
     nlohmann::json ToJson() const;
     static PlayerSettings FromJson(const nlohmann::json& json);

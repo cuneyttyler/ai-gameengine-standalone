@@ -28,6 +28,9 @@ nlohmann::json MetaToJson(const FieldMeta& meta) {
     if (meta.optional) {
         json["optional"] = true;
     }
+    if (!meta.scalable.empty()) {
+        json["scalable"] = meta.scalable;
+    }
     return json;
 }
 

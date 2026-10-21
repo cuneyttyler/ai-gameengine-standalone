@@ -709,6 +709,47 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
         .Default(0.2)
         .Field("callForHelp", FieldType::Float, "Cells within which allies join the fight.").Min(0).Default(6);
 
+    // Difficulty (16.1, difficulty.md §3.3): levels, and the multipliers their steps choose.
+    {
+        std::vector<RecordField> steps;
+        for (const char* category : {"player", "enemies", "allies", "stealth", "resources"}) {
+            RecordField step = MakeRecordValue(category, FieldType::Int, "1-5; 3 is as designed, higher is harder");
+            step.min = 1;
+            step.max = 5;
+            steps.push_back(step);
+        }
+        RecordField owner = MakeRecordValue("owner", FieldType::Enum, "Whose fields: player, enemy, ally or any");
+        owner.options = {"any", "player", "enemy", "ally"};
+        RecordField op = MakeRecordValue("op", FieldType::Enum, "mul, add, set, min or max");
+        op.options = {"mul", "add", "set", "min", "max"};
+        r.RecordType("difficulty", "A difficulty level (16.1): a step per category and modifiers on top.")
+            .Field("name", FieldType::String, "Shown to the player.").Required()
+            .Field("description", FieldType::String, "A line for the menu.")
+            .Field("order", FieldType::Int, "Easiest first.")
+            .Object("categories", steps, "A step per category (1-5, 3: as designed).")
+            .Object("modifiers",
+                    {MakeRecordValue("target", FieldType::String, "A field: Component.field, e.g. Health.max"), owner,
+                     MakeRecordValue("tag", FieldType::String, "Only entities whose Name contains this (a boss)"), op,
+                     MakeRecordValue("value", FieldType::Float, "The amount")},
+                    "Changes on top of the category steps.")
+            .List()
+            .Field("xp", FieldType::Float, "Experience rewards times this.").Min(0).Default(1)
+            .Field("permadeath", FieldType::Bool, "One life: death ends the run.");
+        RecordField multipliers = MakeRecordValue("steps", FieldType::Float, "Five multipliers, steps 1-5");
+        multipliers.list = true;
+        RecordField category = MakeRecordValue("category", FieldType::Enum, "The category");
+        category.options = {"player", "enemies", "allies", "stealth", "resources"};
+        r.RecordType("difficulty-table", "The game's multipliers per category, kind of value and step (16.1). "
+                                         "Only records/difficulty-table/default.json is used.")
+            .Object("rows",
+                    {category,
+                     MakeRecordValue("kind", FieldType::String,
+                                     "health, damage, defense, speed, perception, count, gold, loot, price, xp"),
+                     multipliers},
+                    "One row per category and kind; missing ones use the built-in table.")
+            .List();
+    }
+
     r.RecordType("encounter", "An encounter (13.7): what a Spawner makes, picked by weight and level.")
         .Field("name", FieldType::String, "A label for editors.")
         .Object("entries",

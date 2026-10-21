@@ -75,6 +75,8 @@ public:
     // and the language, and to the window through `onFullscreen`.
     PlayerSettings& Settings() { return settings_; }
     void ApplySettings();
+    void OfferDifficulties(); // the levels for the New game and Settings menus (16)
+    void ApplyAssists();      // the player's assists and adaptive choice (16.4)
     std::function<void(bool fullscreen)> onFullscreen;
 
     // The world's changes per scene, so far (tests, the debug overlay).

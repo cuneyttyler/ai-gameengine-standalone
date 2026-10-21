@@ -8,6 +8,7 @@ attempt and shown to the user.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from typing import Any
@@ -193,6 +194,42 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
             errors += check_quest(op.id, op.quest, scope, f"operation {index} (write_quest {op.id})")
         elif isinstance(op, WriteCutscene):
             errors += check_cutscene(op.id, op.cutscene, scope, all_markers, f"operation {index} (write_cutscene {op.id})")
+
+    # DifficultyOverrides (16.2): JSON text, field -> level -> number, on scalable
+    # fields and levels that exist (or are written here).
+    level_ids = {str(level.get("id", "")) for level in context.difficulty.get("levels", [])}
+    written_levels = {op.id for op in proposal.operations if isinstance(op, WriteRecord) and op.type == "difficulty"}
+    if written_levels:
+        level_ids = written_levels | {lid for lid in level_ids if not context.difficulty.get("builtIn", False)}
+    scalable = {f"{c.name}.{f.name}" for c in schema.components for f in c.fields if f.scalable}
+    for index, op in enumerate(proposal.operations, start=1):
+        text = None
+        if isinstance(op, AddComponent) and op.component == "DifficultyOverrides":
+            text = op.fields.get("values")
+        elif isinstance(op, (SetField, SetPrefabField)) and op.component == "DifficultyOverrides" and op.field == "values":
+            text = op.value
+        if text is None:
+            continue
+        where = f"operation {index} ({op.op} DifficultyOverrides)"
+        try:
+            values = json.loads(text) if isinstance(text, str) and text else {}
+        except ValueError:
+            errors.append(f"{where}: values must be JSON text like {{\"Health.max\": {{\"hard\": 40}}}}")
+            continue
+        if not isinstance(values, dict):
+            errors.append(f"{where}: values must be a JSON object")
+            continue
+        for field, per_level in values.items():
+            if field not in scalable:
+                errors.append(f"{where}: {field} isn't a scalable field")
+            if not isinstance(per_level, dict):
+                errors.append(f"{where}: {field} needs {{level id: number}}")
+                continue
+            for level, number in per_level.items():
+                if level_ids and level not in level_ids:
+                    errors.append(f"{where}: no difficulty level {level!r}")
+                if not isinstance(number, (int, float)) or isinstance(number, bool):
+                    errors.append(f"{where}: {field} at {level} must be a number")
 
     # play_cutscene effects and CutsceneTrigger components name a cutscene that
     # exists or is written here.

@@ -5,6 +5,7 @@
 import { panelTab, type ProjectTab } from '../paneltabs'
 import ScenesPanel from './ScenesPanel.vue'
 import RecordsPanel from './RecordsPanel.vue'
+import DifficultyPanel from './DifficultyPanel.vue'
 import StoryPanel from './StoryPanel.vue'
 import WorldPanel from './WorldPanel.vue'
 
@@ -13,6 +14,7 @@ const tabs: { id: ProjectTab; label: string; title: string }[] = [
   { id: 'world', label: 'World', title: "World Bible: the game's canon (characters, places, factions…)" },
   { id: 'story', label: 'Story', title: 'Dialogue, quests and daily routines' },
   { id: 'records', label: 'Records', title: "Typed game data: items and the project's other record types" },
+  { id: 'difficulty', label: 'Difficulty', title: 'Difficulty levels, the category table, previews and the curve' },
 ]
 </script>
 
@@ -34,6 +36,7 @@ const tabs: { id: ProjectTab; label: string; title: string }[] = [
     <ScenesPanel v-if="panelTab.project === 'scenes'" class="body" />
     <WorldPanel v-else-if="panelTab.project === 'world'" class="body" />
     <RecordsPanel v-else-if="panelTab.project === 'records'" class="body" />
+    <DifficultyPanel v-else-if="panelTab.project === 'difficulty'" class="body" />
     <StoryPanel v-else class="body" />
   </div>
 </template>

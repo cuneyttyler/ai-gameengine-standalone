@@ -63,6 +63,27 @@ GameRunner::GameRunner(const Project& project, Registry& registry, LuaVM& lua, P
     settings_ = LoadPlayerSettings(options_.saveDir / "settings.json");
     ActiveLocalization().Load(project_.root, settings_.language);
     flow_.SetPlayerSettings(&settings_, ActiveLocalization().Available());
+    OfferDifficulties();
+    ApplyAssists();
+}
+
+// Difficulty (16): the levels the menus offer, and the player's assists.
+void GameRunner::OfferDifficulties() {
+    std::vector<GameFlow::DifficultyChoice> levels;
+    for (const auto& level : session_->Difficulty().Levels()) levels.push_back({level.id, level.name, level.description});
+    const std::string current =
+        session_->DifficultyLevelId().empty() ? session_->Difficulty().DefaultLevel() : session_->DifficultyLevelId();
+    const auto& settings = ActiveSettings().difficulty;
+    flow_.SetDifficulties(std::move(levels), current, settings.changeAnytime, settings.adaptive);
+}
+
+void GameRunner::ApplyAssists() {
+    Assists& assists = ActiveAssists();
+    assists.invincible = settings_.invincible;
+    assists.damageReduction = settings_.damageReduction;
+    assists.growingReduction = settings_.growingReduction;
+    assists.gameSpeed = settings_.gameSpeed;
+    session_->SetAdaptive(settings_.adaptive);
 }
 
 void GameRunner::ApplySettings() {
@@ -213,9 +234,18 @@ void GameRunner::TravelIfAsked() {
 void GameRunner::HandleCommand(const GameFlow::Command& command) {
     using Kind = GameFlow::Command::Kind;
     switch (command.kind) {
-        case Kind::NewGame: NewGame(); break;
+        case Kind::NewGame:
+            NewGame();
+            session_->SetDifficulty(command.level.empty() ? flow_.CurrentDifficulty() : command.level);
+            ActiveAssists().deaths = 0;
+            break;
+        case Kind::DifficultyChanged:
+            session_->SetDifficulty(command.level);
+            log_.push_back("Difficulty: " + command.level);
+            break;
         case Kind::Load:
             if (!LoadFrom(command.slot)) NewGame();
+            OfferDifficulties(); // the save's level
             break;
         case Kind::Save: SaveTo(command.slot); break;
         case Kind::Resume: session_->ResetClock(); break;
@@ -226,6 +256,7 @@ void GameRunner::HandleCommand(const GameFlow::Command& command) {
         case Kind::SettingsChanged:
             SavePlayerSettings(options_.saveDir / "settings.json", settings_);
             ApplySettings();
+            ApplyAssists();
             break;
         case Kind::None: break;
     }

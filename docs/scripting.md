@@ -47,6 +47,7 @@ Entities are referred to by integer **ids** (as returned by `find_nearest` or `s
 | `quest_stage(id)` / `set_stage(id, stage)` / `fail_quest(id)` | number / — / — | A quest's current stage (0 when not active); move it to a stage; fail it. See [story.md](story.md#questsidjson). |
 | `get_var(name)` / `set_var(name, value)` | value / — | Story variables, shared with dialogue and quest conditions (numbers, text, booleans; `nil` removes). |
 | `used(name)` | — | Counts as using something, for `use` and `examine` objectives. |
+| `difficulty()` / `difficulty_step(category)` / `set_difficulty(id)` | string / number / boolean | The difficulty level's id; a category's step, 1-5 (3: as designed); change the level. See [difficulty.md](difficulty.md). |
 | `play_cutscene(id)` / `skip_cutscene()` / `in_cutscene()` | boolean / — / boolean | Plays `cutscenes/<id>.json` (false if it doesn't load). See [story.md](story.md#cutscenes-cutscenesidjson). |
 | `set_flag(name[, value])` | — | Story flags shared with dialogue conditions; `value` defaults to true. |
 | `get_flag(name)` | boolean | |

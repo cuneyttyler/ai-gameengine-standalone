@@ -43,6 +43,23 @@ struct TimeSettings {
     bool showClock = false;        // always show the clock (it shows anyway when someone has a routine)
 };
 
+// How enemies' levels follow the player (development_plan.md 16.3).
+enum class LevelScaling {
+    None,       // a spawner's own level
+    FixedZones, // the scene's Zone band
+    Scaled,     // the player's level plus an offset
+    Hybrid,     // the player's level, kept inside the zone's band
+};
+
+// Difficulty (development_plan.md 16, difficulty.md).
+struct DifficultySettings {
+    std::string defaultLevel = "normal"; // a difficulty record's id
+    bool changeAnytime = true;           // the player may change it during play
+    bool adaptive = false;               // offer "adjust difficulty to how I play"
+    LevelScaling scaling = LevelScaling::None;
+    int levelOffset = 0;                 // Scaled and Hybrid: the player's level plus this
+};
+
 // The story's on-screen help (development_plan.md 15.4).
 struct StorySettings {
     bool objectiveMarkers = true; // a pip pointing the way to the current objective
@@ -74,6 +91,7 @@ struct ProjectSettings {
     PhysicsSettings physics;
     TimeSettings time;
     StorySettings story;
+    DifficultySettings difficulty;
 };
 
 ProjectSettings& ActiveSettings();

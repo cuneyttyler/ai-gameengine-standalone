@@ -37,6 +37,8 @@ add_library(aige_gameplay STATIC
     Story.cpp
     Cutscene.h
     Cutscene.cpp
+    Difficulty.h
+    Difficulty.cpp
     LevelGen.h
     LevelGen.cpp
     VillageGen.h

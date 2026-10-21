@@ -27,6 +27,7 @@ class FieldSpec(BaseModel):
     min: float | None = None
     max: float | None = None
     optional: bool = False  # command parameters: may be left out
+    scalable: str | None = None  # difficulty scales it, as this kind (16.1)
 
 
 class ComponentSpec(BaseModel):
@@ -165,6 +166,8 @@ class EditorContext(BaseModel):
     records: list[dict[str, Any]] = []
     # Cutscenes (15.5): {id, name, seconds} each, what play_cutscene can name.
     cutscenes: list[dict[str, Any]] = []
+    # Difficulty (16): {levels: [{id, name, categories, xp}], builtIn, defaultLevel, scaling}.
+    difficulty: dict[str, Any] = {}
 
 
 # --- Proposals --------------------------------------------------------------------

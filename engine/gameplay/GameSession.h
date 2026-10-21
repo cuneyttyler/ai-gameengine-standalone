@@ -4,6 +4,7 @@
 #include "gameplay/Behaviour.h"
 #include "gameplay/Combat.h"
 #include "gameplay/Cutscene.h"
+#include "gameplay/Difficulty.h"
 #include "gameplay/InputMap.h"
 #include "gameplay/Isometric.h"
 #include "gameplay/Schedule.h"
@@ -203,6 +204,18 @@ public:
     // A cutscene's zoom, while it sets one.
     std::optional<float> CameraZoom() const { return cutscene_.Active() ? cameraZoom_ : std::nullopt; }
 
+    // Difficulty (development_plan.md 16): the level being played, applied to
+    // every scalable field when it changes, when a scene starts and after spawns.
+    // The model is the project's difficulty records (else the built-in five).
+    void SetDifficulty(const std::string& level);
+    const std::string& DifficultyLevelId() const { return difficultyLevel_; }
+    const DifficultyModel& Difficulty() const { return difficultyModel_; }
+    // Re-reads the levels from the records (they were edited).
+    void ReloadDifficulty();
+    // The player chose "adjust difficulty to how I play" (Project Settings must allow it).
+    void SetAdaptive(bool on);
+    const AdaptiveDifficulty& Adaptive() const { return adaptive_; }
+
     // Objective markers (15.4): where the shown objective's target is (world
     // units), when the scene has it: a marker, a character, an item lying about.
     std::optional<std::pair<float, float>> ObjectiveLocation();
@@ -360,6 +373,15 @@ private:
     std::optional<std::pair<float, float>> cameraGoal_;
     std::optional<float> cameraZoom_;
     const DialogueNode* voicedNode_ = nullptr; // whose voice line has played
+    // Difficulty (16).
+    DifficultyModel difficultyModel_ = DifficultyModel::BuiltIn();
+    std::string difficultyLevel_;
+    bool difficultyDirty_ = true; // apply before the next step
+    AdaptiveDifficulty adaptive_;
+    bool adaptiveOn_ = false;
+    bool playerHurtSinceKill_ = false;
+    void ApplyDifficultyNow();
+    float XpScale() const;
     std::vector<ScriptEvent> pendingEvents_;
     std::vector<ScriptEvent> delivered_;
     std::vector<ScriptHandler> handlers_;

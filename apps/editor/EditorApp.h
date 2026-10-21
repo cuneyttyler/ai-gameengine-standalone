@@ -379,6 +379,11 @@ private:
     bool RequestConsistencyCheck(int proposalId, const nlohmann::json& operations);
     nlohmann::json WorldJson();
     nlohmann::json RecordsJson();
+    // Difficulty (16.5): the levels, table and settings for the Difficulty panel,
+    // and the curve over the project's scenes along their gateways.
+    bool HandleDifficultyMessage(const std::string& type, const nlohmann::json& message);
+    nlohmann::json DifficultyJson();
+    nlohmann::json DifficultyCurveJson();
     nlohmann::json StoryJson(); // the Story tab: dialogues, quests, problems, what can be referenced
     std::optional<std::string> SaveStoryFile(const std::string& folder, const std::string& id,
                                              const std::string& originalId, const nlohmann::json& content);
@@ -446,6 +451,7 @@ private:
 
     IsoParams iso_;
     GameSession session_;
+    std::string playDifficulty_; // "Play at a level" (16.5); empty: the default
     EditHistory history_;
     Camera2D camera_;
     bool framedOnce_ = false;

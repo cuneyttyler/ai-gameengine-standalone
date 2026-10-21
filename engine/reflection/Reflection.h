@@ -61,6 +61,10 @@ struct FieldMeta {
     // empty value: "", 0, false), so adding one keeps older proposals valid;
     // a prefab or component field that may be empty.
     bool optional = false;
+    // Difficulty (16.1): what kind of value a level scales ("health", "damage",
+    // "defense", "speed", "perception", "count", "gold", "loot", "price", "xp");
+    // empty: not scaled.
+    std::string scalable;
 };
 
 // A value that breaks `meta`'s type or constraints, as a message; nullopt
@@ -368,6 +372,11 @@ public:
     }
     Derived& Optional() {
         Last().optional = true;
+        return Self();
+    }
+    // Scaled by the difficulty level, as this kind of value (difficulty.md §3.1).
+    Derived& Scalable(std::string kind) {
+        Last().scalable = std::move(kind);
         return Self();
     }
     // Presents the field as a richer type than its C++ type implies

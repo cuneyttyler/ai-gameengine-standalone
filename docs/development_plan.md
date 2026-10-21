@@ -2605,6 +2605,28 @@ curve view; play at a level.
 Done when: switching from Normal to Hard during play changes enemies as the panel predicts,
 a boss's hand-set Hard health is kept, and the curve view flags a chapter that's too hard.
 
+**Status (2026-10-21): built, to be tried** (`phase16-test-checklist.md`; "As built" in `difficulty.md`).
+- 16.1 Fields marked scalable with a kind (exported in the schema); categories from kind and owner;
+  `difficulty` and `difficulty-table` records, the built-in five levels; effective values with
+  the reasons, applied at play start, scene loads, spawns and level changes from kept base values
+  (`gameplay/Difficulty`).
+- 16.2 `DifficultyOverrides` per entity; the Inspector's ⚖ opens the Difficulty tab's preview,
+  where a value typed for one level is kept for that level only (undoable).
+- 16.3 `Zone` bands and Project Settings ▸ Difficulty.scaling (none, fixed zones, scaled, hybrid)
+  for spawners.
+- 16.4 Assists in the player's settings (invincible, damage reduction, growing protection, game
+  speed) and adaptive difficulty (±1 step, opt-in, in saves).
+- 16.5 Project ▸ Difficulty tab: levels with steps and modifiers, the category table, the preview
+  and combat preview of the selection, the curve over the scenes along their gateways, and
+  "Play at" a level. The game asks for the level at New game and offers it (with the assists) in
+  Settings; `difficulty()`, `difficulty_step()`, `set_difficulty()` in Lua; `{"difficulty": …}`
+  conditions in dialogue and quests; the XP reward multiplier.
+- AI panel: the context carries the levels and scaling, the prompt explains base values, level
+  records, overrides and zones; overrides and difficulty conditions are checked. Tests:
+  `difficulty_test.cpp`, `test_story_validation.py`.
+- Not yet: timing, checkpoint and puzzle categories (their systems come later); record and
+  settings modifier targets, `when` and `curve` ops; chapters from the story's critical path (Phase 21).
+
 ## Phase 17 — Game UI (`game-ui.md`)
 
 **17.1** RmlUi on our RHI and input actions; layers and the screen stack. **17.2** Data models

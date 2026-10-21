@@ -1,6 +1,6 @@
 # Difficulty — levels, scaling, assists and the difficulty curve
 
-Status: **draft for review (2026-10-21)**. Phase 16 in `development_plan.md`. The AI
+Status: **built, to be tried (2026-10-21)**; see "As built" at the end. Phase 16 in `development_plan.md`. The AI
 Planner asks about difficulty in the Game Brief's Difficulty tab (`planner-schema.md`
 §2.6) and writes the presets in its Systems stage (`ai-planner.md` §5.7).
 
@@ -219,3 +219,38 @@ base values only (`ai-planner.md` §14, point 5).
 - Proposals never write scaled values into files.
 - The Planner's playtest (`ai-planner.md` §11.2) runs at the default level; the combat
   preview checks the other levels.
+
+## 12. As built (Phase 16)
+
+Where the implementation differs from or settles the draft above:
+- **Kinds.** A scalable field has a kind: `health`, `damage`, `defense`, `speed`, `perception`,
+  `count`, `gold`, `loot`, `price`, `xp`. Its category comes from the kind and the owner's side:
+  gold, loot, price and xp are always *resources*; an enemy's perception is *stealth*; the rest are
+  *player*, *enemies* or *allies*. Marked in the engine: Health.max, Stats (attack, defense,
+  moveSpeed), MeleeAttack.damage, RangedAttack.damage, Perception (sight, hearing), Spawner.maxAlive,
+  Inventory.gold, Container.gold, ItemPickup.count, Pickup.amount, Merchant (buyRate as price,
+  sellRate as loot). The schema exports `"scalable": <kind>`.
+- **Categories in use**: player, enemies, allies, stealth, resources. Timing, checkpoints and puzzles
+  wait for the systems that have such fields.
+- **The table** is the record `records/difficulty-table/default.json` (`{"rows": [{category, kind,
+  steps: [5 numbers]}]}`), not `records/difficulty/categories.json`; rows it leaves out use the
+  built-in table. Higher steps are harder in every category.
+- **Levels** are `records/difficulty/<id>.json` (name, description, order, categories, modifiers,
+  xp, permadeath). With none, the built-in five apply: Story, Easy, Normal, Hard, Nightmare.
+  Modifier targets are `Component.field`; `tag` matches the entity's Name. Record and settings
+  targets, `when` and `curve` ops are later work.
+- **Overrides** are the `DifficultyOverrides` component (`values`: JSON text), edited from the
+  Difficulty tab's Preview (the Inspector's ⚖ opens it).
+- **Effective values** are applied when play starts, when a scene loads, after spawns and when the
+  level changes; base values are kept per entity at runtime and never saved. Health keeps its share.
+- **Level scaling**: the `Zone` component and Project Settings ▸ Difficulty (scaling, levelOffset);
+  spawners use it and set a spawned Progression's level.
+- **Adaptive**: ±1 step on enemies and stealth, after three deaths / two fights won unhurt; off
+  unless the game allows it and the player turns it on. Kept in saves.
+- **Assists** (the player's settings): invincible, damage reduction, more protection per death
+  (2% each, up to 80%), game speed.
+- **The curve** checks scenes in gateway order from the start scene by their Zone band: a band
+  starting more than two levels above the previous one's end is "too hard"; a band below the previous
+  one is flagged; enemies outside their band are flagged. Chapters from the story's critical path
+  come with the story ontology (Phase 21).
+

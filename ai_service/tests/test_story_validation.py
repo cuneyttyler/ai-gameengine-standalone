@@ -266,3 +266,29 @@ def test_cutscene_problems_are_reported(schema, demo_context):
         assert expected in text, (expected, text)
     if demo_context.scenes:
         assert "no marker called 'no-such-marker'" in text
+
+
+# Difficulty (16): overrides on scalable fields and real levels; difficulty conditions.
+def test_difficulty_overrides_are_checked(schema, demo_context):
+    entity = demo_context.entities[0].id if demo_context.entities else 1
+    good = proposal({"op": "add_component", "entity": entity, "component": "DifficultyOverrides",
+                     "fields": {"values": '{"Health.max": {"hard": 40}}'}})
+    errors = [e for e in validate_proposal(good, schema, demo_context) if "DifficultyOverrides" in e and "values" in e
+              or "scalable" in e or "difficulty level" in e]
+    assert errors == [], errors
+    bad = proposal({"op": "add_component", "entity": entity, "component": "DifficultyOverrides",
+                    "fields": {"values": '{"Health.current": {"impossible": "x"}}'}})
+    text = "\n".join(validate_proposal(bad, schema, demo_context))
+    assert "Health.current isn't a scalable field" in text, text
+    assert "must be a number" in text, text
+    broken = proposal({"op": "add_component", "entity": entity, "component": "DifficultyOverrides",
+                       "fields": {"values": "{not json"}})
+    assert any("must be JSON text" in e for e in validate_proposal(broken, schema, demo_context))
+
+
+def test_a_dialogue_can_ask_about_difficulty(schema, demo_context):
+    p = proposal({"op": "write_dialogue", "id": "hint", "dialogue": dialogue(nodes=[
+        {"id": "hi", "text": "Need a hint?", "choices": [
+            {"text": "Yes", "next": "", "if": [{"difficulty": "story"}]},
+            {"text": "No", "next": "", "if": [{"difficulty": {"enemies": {"atLeast": 4}}}]}]}])})
+    assert validate_proposal(p, schema, demo_context) == []

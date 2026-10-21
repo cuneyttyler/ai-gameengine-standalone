@@ -243,6 +243,40 @@ GameSession::GameSession(Registry& registry, LuaVM& lua, IsoParams iso, std::fil
     : registry_(registry), lua_(lua), iso_(iso), scriptRoot_(std::move(scriptRoot)) {
     binder_ = [this](sol::environment& env, Entity self) { BindScriptApi(env, self); };
     WireStory();
+    ReloadDifficulty();
+}
+
+// --- Difficulty (development_plan.md 16) ---------------------------------------------
+
+void GameSession::ReloadDifficulty() {
+    difficultyModel_ = DifficultyModel::FromRecords(ActiveRecords());
+    if (!difficultyLevel_.empty() && !difficultyModel_.Find(difficultyLevel_)) difficultyLevel_.clear();
+    difficultyDirty_ = true;
+}
+
+void GameSession::SetDifficulty(const std::string& level) {
+    if (!difficultyModel_.Find(level)) return;
+    const bool changed = level != difficultyLevel_;
+    difficultyLevel_ = level;
+    ApplyDifficultyNow();
+    if (changed) Emit({"difficulty_changed", entt::null, entt::null, 0.0, level});
+}
+
+void GameSession::SetAdaptive(bool on) {
+    adaptiveOn_ = on;
+    difficultyDirty_ = true;
+}
+
+void GameSession::ApplyDifficultyNow() {
+    if (difficultyLevel_.empty()) difficultyLevel_ = difficultyModel_.DefaultLevel();
+    const bool adaptive = adaptiveOn_ && ActiveSettings().difficulty.adaptive;
+    ApplyDifficulty(registry_, EngineReflection(), difficultyModel_, difficultyLevel_, adaptive ? adaptive_.shift : 0);
+    difficultyDirty_ = false;
+}
+
+float GameSession::XpScale() const {
+    const DifficultyLevel* level = difficultyModel_.Find(difficultyLevel_);
+    return level ? level->xp : 1.0f;
 }
 
 void GameSession::ResetClock() {
@@ -493,6 +527,7 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
             return sol::lua_nil;
         }
         auto entity = spawner_(prefab, x, y);
+        difficultyDirty_ = true; // scaled before the next step
         return entity ? sol::make_object(lua_.State(), ToId(*entity)) : sol::lua_nil;
     };
 
@@ -534,6 +569,18 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
         if (storyLibrary_) story_.OnUsed(thing, *storyLibrary_);
     };
     env["play_cutscene"] = [this](const std::string& id) { return PlayCutscene(id); };
+    // Difficulty (16): the level's id, a category's step (1-5), and changing it.
+    env["difficulty"] = [this]() { return difficultyLevel_.empty() ? difficultyModel_.DefaultLevel() : difficultyLevel_; };
+    env["difficulty_step"] = [this](const std::string& category) {
+        const DifficultyLevel* level = difficultyModel_.Find(difficultyLevel_.empty() ? difficultyModel_.DefaultLevel() : difficultyLevel_);
+        if (level == nullptr) return 3;
+        auto it = level->steps.find(category);
+        return it != level->steps.end() ? it->second : 3;
+    };
+    env["set_difficulty"] = [this](const std::string& id) {
+        SetDifficulty(id);
+        return difficultyLevel_ == id;
+    };
     env["skip_cutscene"] = [this]() { SkipCutscene(); };
     env["in_cutscene"] = [this]() { return cutscene_.Active(); };
     // The game clock: hours since midnight (fractional), and the day number from 1.
@@ -643,7 +690,7 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
         return std::make_tuple(why.empty(), why);
     };
     env["award_xp"] = [this](lua_Integer id, float amount) {
-        const int levels = registry_.valid(ToEntity(id)) ? AwardExperience(registry_, ToEntity(id), amount) : 0;
+        const int levels = registry_.valid(ToEntity(id)) ? AwardExperience(registry_, ToEntity(id), amount * XpScale()) : 0;
         if (levels > 0) Emit({"level_up", ToEntity(id), entt::null, static_cast<double>(LevelOf(ToEntity(id))), ""});
         return levels;
     };
@@ -794,7 +841,8 @@ void GameSession::SetScene(const std::string& scene) {
 }
 
 nlohmann::json GameSession::MakeSave() const {
-    nlohmann::json save = {{"version", 1}, {"scene", scene_}, {"clock", clockMinutes_}, {"story", story_.ToJson()}};
+    nlohmann::json save = {{"version", 1}, {"scene", scene_}, {"clock", clockMinutes_}, {"story", story_.ToJson()},
+                           {"difficulty", {{"level", difficultyLevel_}, {"adaptive", adaptive_.ToJson()}}}};
     if (auto player = FindPlayer(const_cast<Registry&>(registry_))) {
         const auto& at = registry_.get<WorldTransform2D>(*player);
         save["player"] = {{"x", at.x}, {"y", at.y}};
@@ -807,6 +855,11 @@ void GameSession::ApplySave(const nlohmann::json& save) {
     if (!save.is_object()) return;
     story_ = StoryState::FromJson(save.value("story", nlohmann::json::object()));
     WireStory();
+    if (const auto difficulty = save.value("difficulty", nlohmann::json::object()); difficulty.is_object()) {
+        if (difficultyModel_.Find(difficulty.value("level", ""))) difficultyLevel_ = difficulty.value("level", "");
+        adaptive_ = AdaptiveDifficulty::FromJson(difficulty.value("adaptive", nlohmann::json::object()));
+    }
+    difficultyDirty_ = true;
     cutscene_ = {};
     cutsceneMoves_.clear();
     fade_ = fadeTarget_ = letterbox_ = 0.0f;
@@ -836,6 +889,7 @@ void GameSession::OnSceneChanged() {
     events_.clear();
     gatewayArmed_ = false;
     travel_.reset();
+    difficultyDirty_ = true; // the new scene's entities, at the current level
     // A cutscene doesn't carry over (its actors were in the old scene).
     cutscene_.Stop();
     cutsceneMoves_.clear();
@@ -1118,6 +1172,19 @@ void GameSession::WireStory() {
             return from <= to ? hour >= from && hour < to : hour >= from || hour < to;
         }
         if (c.contains("day")) return Day() >= c.value("day", 1);
+        if (c.contains("difficulty")) {
+            // {"difficulty": "story"}: at that level; {"difficulty": {"enemies": {"atLeast": 4}}}: a step.
+            const std::string level = difficultyLevel_.empty() ? difficultyModel_.DefaultLevel() : difficultyLevel_;
+            if (c["difficulty"].is_string()) return c["difficulty"].get<std::string>() == level;
+            const DifficultyLevel* l = difficultyModel_.Find(level);
+            if (!l || !c["difficulty"].is_object()) return false;
+            for (const auto& [category, test] : c["difficulty"].items()) {
+                auto it = l->steps.find(category);
+                const int step = it == l->steps.end() ? 3 : it->second;
+                if (test.is_object() && (step < test.value("atLeast", 1) || step > test.value("atMost", 5))) return false;
+            }
+            return true;
+        }
         if (c.contains("faction")) {
             const nlohmann::json value = story_.Var("reputation." + c.value("faction", ""));
             const double reputation = value.is_number() ? value.get<double>() : 0.0;
@@ -1157,7 +1224,7 @@ void GameSession::ApplyWorldEffects() {
             if (amount > 0) Toast("Received " + std::to_string(amount) + " gold");
         } else if (e.op == "give_xp") {
             const float xp = e.value.is_number() ? e.value.get<float>() : 0.0f;
-            if (AwardExperience(registry_, *player, xp) > 0) {
+            if (AwardExperience(registry_, *player, xp * XpScale()) > 0) {
                 Emit({"level_up", *player, entt::null, static_cast<double>(LevelOf(*player)), ""});
                 Toast("Level " + std::to_string(LevelOf(*player)) + "!");
             }
@@ -1515,9 +1582,11 @@ void GameSession::StepGameplay(float dt, const SolidQueryFn& isSolid, bool first
     }
     // Spawners (13.7).
     if (spawner_ && !registry_.view<Spawner>().empty()) {
-        UpdateSpawners(registry_, dt, spawner_, [&](float x, float y) {
-            return !isSolid(static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)));
-        }, gameplayRng_);
+        if (!UpdateSpawners(registry_, dt, spawner_, [&](float x, float y) {
+                 return !isSolid(static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)));
+             }, gameplayRng_).empty()) {
+            difficultyDirty_ = true;
+        }
     }
 }
 
@@ -1526,9 +1595,21 @@ void GameSession::OnDeaths(size_t firstEvent) {
     for (size_t i = firstEvent; i < end; ++i) {
         const GameEvent event = events_[i]; // copied: pushing below may move the vector
         if (event.type != GameEvent::Type::Death) continue;
-        // Experience to the killer (13.2).
+        // Adaptive difficulty and growing assists (16.4) follow the player's deaths and wins.
+        if (const auto player = FindPlayer(registry_)) {
+            const int before = adaptive_.shift;
+            if (event.entity == *player) {
+                adaptive_.OnPlayerDeath();
+                ++ActiveAssists().deaths;
+            } else if (event.other == *player && event.team == Team::Enemy) {
+                adaptive_.OnFightWon(playerHurtSinceKill_);
+                playerHurtSinceKill_ = false;
+            }
+            if (adaptive_.shift != before && adaptiveOn_ && ActiveSettings().difficulty.adaptive) difficultyDirty_ = true;
+        }
+        // Experience to the killer (13.2), times the difficulty's reward.
         if (event.experience > 0.0f && registry_.valid(event.other)) {
-            const int levels = AwardExperience(registry_, event.other, event.experience);
+            const int levels = AwardExperience(registry_, event.other, event.experience * XpScale());
             if (levels > 0) {
                 Emit({"level_up", event.other, entt::null, static_cast<double>(LevelOf(event.other)), ""});
                 if (auto player = FindPlayer(registry_); player && *player == event.other) {
@@ -1755,6 +1836,8 @@ void GameSession::UpdateTimersAndTasks(float dt) {
 int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
     events_.clear();
     delivered_.clear();
+    frameSeconds *= std::clamp(ActiveAssists().gameSpeed, 0.25f, 1.0f); // the game-speed assist (16.4)
+    if (difficultyDirty_) ApplyDifficultyNow();
     accumulator_ += std::min(frameSeconds, 0.25);
     if (clockMinutes_ < 0.0) {
         clockMinutes_ = ActiveSettings().time.startHour * 60.0;
@@ -1852,6 +1935,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         // Hurt characters turn on their attacker; noises for the next step's ears.
         for (size_t i = firstEvent; i < events_.size(); ++i) {
             const GameEvent& event = events_[i];
+            if (event.type == GameEvent::Type::Hit && TeamOf(registry_, event.entity) == Team::Player) playerHurtSinceKill_ = true;
             if (event.type == GameEvent::Type::Hit && registry_.valid(event.entity) && registry_.all_of<Behaviour>(event.entity)) {
                 AlertActor(registry_, event.entity, event.other);
                 if (const auto* barks = registry_.try_get<Barks>(event.entity); barks && !barks->hit.empty()) {

@@ -1,5 +1,9 @@
 #include "gameplay/Encounters.h"
 
+#include "gameplay/GameSession.h"
+#include "gameplay/Attributes.h"
+#include "gameplay/Difficulty.h"
+
 #include "gameplay/Components.h"
 #include "physics2d/Components.h"
 #include "records/Records.h"
@@ -45,6 +49,10 @@ std::vector<Entity> UpdateSpawners(Registry& registry, float dt, const SpawnPref
     for (auto [entity, by] : registry.view<SpawnedBy>(entt::exclude<Dead>).each()) ++alive[by.spawner];
     std::vector<Entity> spawners;
     for (auto entity : registry.view<Spawner, WorldTransform2D>()) spawners.push_back(entity);
+    int playerLevel = 1;
+    if (auto player = FindPlayer(registry)) {
+        if (const auto* progression = registry.try_get<Progression>(*player)) playerLevel = progression->level;
+    }
     for (Entity entity : spawners) {
         if (!registry.valid(entity)) continue;
         auto& spawner = registry.get<Spawner>(entity);
@@ -61,7 +69,9 @@ std::vector<Entity> UpdateSpawners(Registry& registry, float dt, const SpawnPref
             }
         }
         for (int made_here = 0; want > 0 && alive[entity] < spawner.maxAlive && made_here < 32;) {
-            auto roll = RollEncounter(spawner.encounter, spawner.level, rng);
+            // The level by Project Settings ▸ Difficulty.scaling (16.3).
+            const int level = EncounterLevel(registry, spawner.level, playerLevel);
+            auto roll = RollEncounter(spawner.encounter, level, rng);
             if (!roll) break;
             for (int n = 0; n < roll->second && want > 0 && alive[entity] < spawner.maxAlive; ++n, ++made_here) {
                 // A free spot within the radius (a few tries), else the spawner's own cell.
@@ -79,6 +89,7 @@ std::vector<Entity> UpdateSpawners(Registry& registry, float dt, const SpawnPref
                 }
                 if (auto spawned = spawn(roll->first, x, y)) {
                     registry.emplace_or_replace<SpawnedBy>(*spawned, entity);
+                    if (auto* progression = registry.try_get<Progression>(*spawned)) progression->level = level;
                     made.push_back(*spawned);
                     ++alive[entity];
                     --want;

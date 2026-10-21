@@ -2,6 +2,7 @@
 
 #include "gameplay/Attributes.h"
 #include "gameplay/Behaviour.h"
+#include "gameplay/Difficulty.h"
 #include "gameplay/GameSession.h"
 #include "records/Records.h"
 #include "gameplay/Settings.h"
@@ -243,6 +244,12 @@ float DealDamage(Registry& registry, Entity target, float amount, Entity source,
             if (resources) resources->stamina -= cost;
             amount *= 1.0f - std::clamp(ActiveSettings().combat.blockReduction, 0.0f, 1.0f);
         }
+    }
+    // Assists (16.4): the player's own help, apart from the difficulty level.
+    if (TeamOf(registry, target) == Team::Player) {
+        const Assists& assists = ActiveAssists();
+        if (assists.invincible) return 0.0f;
+        amount *= 1.0f - assists.Reduction();
     }
     if (registry.valid(source) && source != target) {
         registry.emplace_or_replace<LastHit>(target, source);

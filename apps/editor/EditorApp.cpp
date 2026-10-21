@@ -36,6 +36,10 @@
 #include "gameplay/BootstrapLevel.h"
 #include "gameplay/CameraFollow.h"
 #include "gameplay/Components.h"
+#include "gameplay/Attributes.h"
+#include "gameplay/Combat.h"
+#include "gameplay/Difficulty.h"
+#include "gameplay/Encounters.h"
 #include "gameplay/Settings.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
@@ -171,6 +175,9 @@ nlohmann::json FieldJson(const FieldMeta& meta, const FieldValue& value) {
     }
     if (meta.max) {
         entry["max"] = *meta.max;
+    }
+    if (!meta.scalable.empty()) {
+        entry["scalable"] = meta.scalable; // the Inspector offers "by difficulty" (16.2)
     }
     return entry;
 }
@@ -470,11 +477,88 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
     return true;
 }
 
+// Difficulty (16.5): the Difficulty tab's requests.
+bool EditorApp::HandleDifficultyMessage(const std::string& type, const nlohmann::json& message) {
+    if (type == "difficulty:request") {
+        ActiveRecords().Refresh();
+        session_.ReloadDifficulty();
+        post_(DifficultyJson());
+    } else if (type == "difficulty:preview") {
+        // Every scalable field of an entity at every level (the Inspector's "by difficulty").
+        const auto entity = static_cast<Entity>(message.value("id", 0u));
+        post_({{"type", "difficulty:preview"},
+               {"id", message.value("id", 0u)},
+               {"fields", registry_.valid(entity) ? DifficultyPreview(registry_, EngineReflection(), entity, session_.Difficulty())
+                                                  : nlohmann::json::array()}});
+    } else if (type == "difficulty:override") {
+        // {id, field, level, value|null}: a hand-set value for one level, or back to the computed one.
+        const auto entity = static_cast<Entity>(message.value("id", 0u));
+        if (registry_.valid(entity) && !playing_) {
+            nlohmann::json values = nlohmann::json::object();
+            if (const auto* o = registry_.try_get<DifficultyOverrides>(entity); o && !o->values.empty()) {
+                values = nlohmann::json::parse(o->values, nullptr, false);
+                if (!values.is_object()) values = nlohmann::json::object();
+            }
+            const std::string field = message.value("field", ""), level = message.value("level", "");
+            if (message.contains("value") && message["value"].is_number()) {
+                values[field][level] = message["value"];
+            } else if (values.contains(field)) {
+                values[field].erase(level);
+                if (values[field].empty()) values.erase(field);
+            }
+            const std::string text = values.empty() ? std::string() : values.dump();
+            // One undoable edit: the component comes and goes with its values.
+            ApplyOneShotEdit([&] {
+                std::optional<std::string> failure;
+                if (text.empty()) {
+                    if (registry_.all_of<DifficultyOverrides>(entity)) {
+                        failure = EditRemoveComponent(EngineReflection(), registry_, entity, "DifficultyOverrides");
+                    }
+                } else {
+                    if (!registry_.all_of<DifficultyOverrides>(entity)) {
+                        failure = EditAddComponent(EngineReflection(), registry_, &prefabs_, entity, "DifficultyOverrides");
+                    }
+                    if (!failure) failure = EditField(EngineReflection(), registry_, entity, "DifficultyOverrides", "values", text);
+                }
+                return !failure.has_value();
+            });
+            inspectorStale_ = true;
+            post_({{"type", "difficulty:preview"},
+                   {"id", message.value("id", 0u)},
+                   {"fields", DifficultyPreview(registry_, EngineReflection(), entity, session_.Difficulty())}});
+        }
+    } else if (type == "difficulty:combat") {
+        // An enemy (the selection) against the scene's player at each level.
+        const auto enemy = static_cast<Entity>(message.value("id", 0u));
+        const auto player = FindPlayer(registry_);
+        nlohmann::json rows = nlohmann::json::array();
+        if (registry_.valid(enemy) && player) {
+            for (const auto& r : CombatPreview(registry_, EngineReflection(), enemy, *player, session_.Difficulty())) {
+                rows.push_back({{"level", r.level}, {"enemyHealth", r.enemyHealth}, {"enemyDamage", r.enemyDamage},
+                                {"playerHealth", r.playerHealth}, {"playerDamage", r.playerDamage},
+                                {"hitsToKillEnemy", r.hitsToKillEnemy}, {"hitsToKillPlayer", r.hitsToKillPlayer},
+                                {"secondsToKillEnemy", r.secondsToKillEnemy}, {"secondsToKillPlayer", r.secondsToKillPlayer}});
+            }
+        }
+        post_({{"type", "difficulty:combat"}, {"rows", rows}, {"error", !player ? "The scene has no player." :
+                                                                       !registry_.valid(enemy) ? "Select an enemy." : ""}});
+    } else if (type == "difficulty:curve") {
+        post_(DifficultyCurveJson());
+    } else if (type == "difficulty:play") {
+        playDifficulty_ = message.value("level", "");
+        if (playing_ && !playDifficulty_.empty()) session_.SetDifficulty(playDifficulty_);
+    } else {
+        return false;
+    }
+    return true;
+}
+
 void EditorApp::OnWebMessage(const nlohmann::json& message) {
     const std::string type = message.value("type", "");
     if (type.rfind("build:", 0) == 0 && HandleBuildMessage(type, message)) return;
     if (type.rfind("ontology:", 0) == 0 && HandleOntologyMessage(type, message)) return;
     if (type.rfind("library:", 0) == 0 && HandleLibraryMessage(type, message)) return;
+    if (type.rfind("difficulty:", 0) == 0 && HandleDifficultyMessage(type, message)) return;
 
     if (type == "viewport:bounds") {
         int width = message.value("width", 0);
@@ -3080,6 +3164,9 @@ void EditorApp::StartPlay() {
     world_.Refresh();
     session_.SetStory(&story_);
     session_.SetScene(OpenSceneRelative());
+    // Play at the chosen level (16.5), else the game's default.
+    session_.ReloadDifficulty();
+    session_.SetDifficulty(playDifficulty_.empty() ? session_.Difficulty().DefaultLevel() : playDifficulty_);
     schedules_.Refresh();
     session_.SetSchedules(&schedules_);
     session_.SetClockMinutes(-1.0); // each Play starts the day at Time.startHour
@@ -4671,6 +4758,84 @@ nlohmann::json EditorApp::StoryJson() {
 // The Records tab (12.1): every record type with its fields (for the forms),
 // every record (as written, and resolved with its base), what refers to each,
 // and the problems to fix.
+nlohmann::json EditorApp::DifficultyJson() {
+    const DifficultyModel& model = session_.Difficulty();
+    nlohmann::json levels = nlohmann::json::array();
+    for (const auto& level : model.Levels()) {
+        nlohmann::json modifiers = nlohmann::json::array();
+        for (const auto& m : level.modifiers) {
+            modifiers.push_back({{"target", m.target}, {"owner", m.owner}, {"tag", m.tag}, {"op", m.op}, {"value", m.value}});
+        }
+        levels.push_back({{"id", level.id}, {"name", level.name}, {"description", level.description}, {"order", level.order},
+                          {"categories", level.steps}, {"modifiers", modifiers}, {"xp", level.xp},
+                          {"permadeath", level.permadeath}});
+    }
+    // Every scalable field, for the modifier editor's targets.
+    nlohmann::json fields = nlohmann::json::array();
+    for (const auto& component : EngineReflection().Components()) {
+        for (const auto& field : component.fields) {
+            if (!field.scalable.empty()) fields.push_back({{"path", component.name + "." + field.name}, {"kind", field.scalable}});
+        }
+    }
+    const auto& settings = ActiveSettings().difficulty;
+    return {{"type", "difficulty:model"},
+            {"levels", levels},
+            {"builtIn", model.BuiltInLevels()},
+            {"table", model.Table().ToJson()["rows"]},
+            {"categories", DifficultyCategories()},
+            {"fields", fields},
+            {"defaultLevel", model.DefaultLevel()},
+            {"playLevel", playDifficulty_},
+            {"settings", {{"changeAnytime", settings.changeAnytime}, {"adaptive", settings.adaptive},
+                          {"scaling", static_cast<int>(settings.scaling)}, {"levelOffset", settings.levelOffset}}}};
+}
+
+// The scenes in the order the gateways lead from the start scene, each with its
+// Zone band and its enemies' levels, checked as a curve (difficulty.md §6).
+nlohmann::json EditorApp::DifficultyCurveJson() {
+    const Project& project = assets_.GetProject();
+    const std::string open = OpenSceneRelative();
+    std::vector<std::string> order;
+    std::vector<std::string> queue = {StartScene().empty() ? open : StartScene()};
+    std::map<std::string, CurveChapter> chapters;
+    while (!queue.empty()) {
+        const std::string scene = queue.front();
+        queue.erase(queue.begin());
+        if (scene.empty() || chapters.contains(scene)) continue;
+        Registry loaded;
+        Registry* r = &registry_;
+        if (scene != open) {
+            if (!LoadScene(loaded, project.Resolve(scene).string())) continue;
+            r = &loaded;
+        }
+        CurveChapter chapter;
+        chapter.scene = scene;
+        for (auto [entity, zone] : r->view<Zone>().each()) {
+            chapter.minLevel = zone.minLevel;
+            chapter.maxLevel = std::max(zone.minLevel, zone.maxLevel);
+            break;
+        }
+        for (auto [entity, spawner] : r->view<Spawner>().each()) chapter.enemyLevels.push_back(spawner.level);
+        for (auto [entity, progression] : r->view<Progression>().each()) {
+            if (TeamOf(*r, entity) == Team::Enemy) chapter.enemyLevels.push_back(progression.level);
+        }
+        for (auto [entity, gateway] : r->view<Gateway>().each()) {
+            if (!gateway.scene.empty()) queue.push_back(gateway.scene);
+        }
+        chapters[scene] = chapter;
+        order.push_back(scene);
+    }
+    std::vector<CurveChapter> path;
+    for (const auto& scene : order) path.push_back(chapters[scene]);
+    nlohmann::json list = nlohmann::json::array();
+    for (const auto& c : path) {
+        list.push_back({{"scene", c.scene}, {"minLevel", c.minLevel}, {"maxLevel", c.maxLevel}, {"enemyLevels", c.enemyLevels}});
+    }
+    nlohmann::json problems = nlohmann::json::array();
+    for (const auto& p : CheckDifficultyCurve(path)) problems.push_back({{"scene", p.scene}, {"message", p.message}});
+    return {{"type", "difficulty:curve"}, {"chapters", list}, {"problems", problems}};
+}
+
 nlohmann::json EditorApp::RecordsJson() {
     RecordDatabase& records = ActiveRecords();
     nlohmann::json types = nlohmann::json::array();

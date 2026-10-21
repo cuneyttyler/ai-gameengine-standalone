@@ -4,6 +4,7 @@
 #include "gameplay/Behaviour.h"
 #include "gameplay/Components.h"
 #include "gameplay/Cutscene.h"
+#include "gameplay/Difficulty.h"
 #include "gameplay/Items.h"
 #include "gameplay/Settings.h"
 #include "records/Records.h"
@@ -99,13 +100,13 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
 
     r.Component<Health>("Health", "Hit points. At 0 the entity dies (enemies are removed; the player stays, dead).")
         .Field("current", &Health::current, "Current hit points; entities start the game with this, so keep it equal to max unless they should start hurt.").Range(0, 100000)
-        .Field("max", &Health::max, "Maximum hit points; healing stops here.").Range(1, 100000);
+        .Field("max", &Health::max, "Maximum hit points; healing stops here.").Range(1, 100000).Scalable("health");
 
     r.Component<Stats>("Stats", "Combat numbers. Damage dealt = max(minimum, attack's damage + attack - "
                                 "target's defense).")
-        .Field("attack", &Stats::attack, "Added to every attack's damage.").Range(-1000, 1000)
-        .Field("defense", &Stats::defense, "Subtracted from damage taken.").Range(-1000, 1000)
-        .Field("moveSpeed", &Stats::moveSpeed, "Walking speed in cells per second (the player's).").Range(0, 50);
+        .Field("attack", &Stats::attack, "Added to every attack's damage.").Range(-1000, 1000).Scalable("damage")
+        .Field("defense", &Stats::defense, "Subtracted from damage taken.").Range(-1000, 1000).Scalable("defense")
+        .Field("moveSpeed", &Stats::moveSpeed, "Walking speed in cells per second (the player's).").Range(0, 50).Scalable("speed");
 
     r.Component<Hurtbox>("Hurtbox", "The area attacks can hit, centered on the position; brief invulnerability "
                                     "after each hit.")
@@ -118,7 +119,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
     r.Component<MeleeAttack>("MeleeAttack",
                              "A close-range swing: a short-lived hit area `reach` cells in front of the attacker, "
                              "optionally applying a status effect on hit.")
-        .Field("damage", &MeleeAttack::damage, "Damage per hit (before stats).").Range(0, 100000)
+        .Field("damage", &MeleeAttack::damage, "Damage per hit (before stats).").Range(0, 100000).Scalable("damage")
         .Field("reach", &MeleeAttack::reach, "How far in front the hit area appears, in cells.").Range(0, 10)
         .Field("radius", &MeleeAttack::radius, "Half-size of the hit area, in cells.").Range(0.05, 5)
         .Field("cooldown", &MeleeAttack::cooldown, "Seconds between swings.").Range(0, 60)
@@ -170,7 +171,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
     r.Component<Inventory>("Inventory", "What a character carries (13.3): items as \"potion*3, iron-sword\" (item "
                                         "record ids), and gold.")
         .Field("items", &Inventory::items, "Item ids, with *count for more than one.")
-        .Field("gold", &Inventory::gold, "Gold carried.").Min(0)
+        .Field("gold", &Inventory::gold, "Gold carried.").Min(0).Scalable("gold")
         .Field("slots", &Inventory::slots, "How many stacks fit (0: any number).").Min(0)
         .Field("maxWeight", &Inventory::maxWeight, "How much weight it carries (0: no limit).").Min(0);
     r.Component<Equipment>("Equipment", "What a character wears and wields (13.3): an item id per slot. The items' "
@@ -186,13 +187,13 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
     r.Component<ItemPickup>("ItemPickup", "An item lying in the world (13.3): picked up by walking over it, or with "
                                           "the interact action when onUse. The item \"gold\" is gold.")
         .Field("item", &ItemPickup::item, "An item record id, or gold.")
-        .Field("count", &ItemPickup::count, "How many.").Min(1)
+        .Field("count", &ItemPickup::count, "How many.").Min(1).Scalable("loot")
         .Field("onUse", &ItemPickup::onUse, "Picked up with the interact action rather than by walking over it.")
         .DependsOn({"WorldTransform2D"});
     r.Component<Container>("Container", "A chest, a crate, a corpse (13.3): opened with the interact action; filled "
                                         "from its loot table the first time.")
         .Field("items", &Container::items, "What's inside, as item ids with *count.")
-        .Field("gold", &Container::gold, "Gold inside.").Min(0)
+        .Field("gold", &Container::gold, "Gold inside.").Min(0).Scalable("gold")
         .Field("loot", &Container::loot, "A loot record rolled when it's first opened.")
         .Field("looted", &Container::looted, "Already opened and filled.")
         .DependsOn({"WorldTransform2D"});
@@ -201,8 +202,8 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("stock", &Merchant::stock, "A loot record their wares come from.")
         .Field("items", &Merchant::items, "What's for sale now.")
         .Field("gold", &Merchant::gold, "Gold they can pay for what they buy.").Min(0)
-        .Field("buyRate", &Merchant::buyRate, "The player pays an item's value times this.").Range(0, 100)
-        .Field("sellRate", &Merchant::sellRate, "The player gets an item's value times this.").Range(0, 100)
+        .Field("buyRate", &Merchant::buyRate, "The player pays an item's value times this.").Range(0, 100).Scalable("price")
+        .Field("sellRate", &Merchant::sellRate, "The player gets an item's value times this.").Range(0, 100).Scalable("loot")
         .DependsOn({"WorldTransform2D"});
     r.Component<Interactable>("Interactable", "Used with the interact action (13.5): a lever, a sign, a bed, a locked "
                                               "door or chest. Door, Container, Merchant and ItemPickup add what happens.")
@@ -226,7 +227,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .DependsOn({"Interactable"});
     r.Component<RangedAttack>("RangedAttack", "Shoots projectiles (13.6): arrows, bolts, thrown knives.")
         .Field("damageType", &RangedAttack::damageType, "The kind of damage.").Options(kDamageTypes)
-        .Field("damage", &RangedAttack::damage, "Damage per hit (before stats).").Range(0, 100000)
+        .Field("damage", &RangedAttack::damage, "Damage per hit (before stats).").Range(0, 100000).Scalable("damage")
         .Field("range", &RangedAttack::range, "How far it flies, in cells.").Range(0.5, 100)
         .Field("speed", &RangedAttack::speed, "Cells per second.").Range(0.5, 100)
         .Field("cooldown", &RangedAttack::cooldown, "Seconds between shots.").Range(0, 60)
@@ -242,7 +243,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                                     "again after respawnSeconds.")
         .Field("encounter", &Spawner::encounter, "An encounter record id.")
         .Field("radius", &Spawner::radius, "How far from it they appear, in cells.").Range(0, 50)
-        .Field("maxAlive", &Spawner::maxAlive, "How many at once.").Range(0, 100)
+        .Field("maxAlive", &Spawner::maxAlive, "How many at once.").Range(0, 100).Scalable("count")
         .Field("respawnSeconds", &Spawner::respawnSeconds, "Seconds until the next after one dies (0: never).")
         .Range(0, 100000)
         .Field("level", &Spawner::level, "The level the encounter is rolled at.").Range(1, 1000)
@@ -267,9 +268,9 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("speed", &Behaviour::speed, "Walking speed, cells per second.").Range(0.1, 20)
         .DependsOn({"WorldTransform2D"});
     r.Component<Perception>("Perception", "What a character notices (14.5): sight in a cone, hearing of noises.")
-        .Field("sight", &Perception::sight, "How far it sees, in cells.").Range(0, 50)
+        .Field("sight", &Perception::sight, "How far it sees, in cells.").Range(0, 50).Scalable("perception")
         .Field("angle", &Perception::angle, "The cone it sees in, in degrees.").Range(10, 360)
-        .Field("hearing", &Perception::hearing, "How far it hears an ordinary noise, in cells.").Range(0, 50);
+        .Field("hearing", &Perception::hearing, "How far it hears an ordinary noise, in cells.").Range(0, 50).Scalable("perception");
     r.Component<SmartObject>("SmartObject", "Something characters use (14.3): a bed, a chair, a counter, a forge. "
                                             "Packages find them by type and affordance.")
         .Field("type", &SmartObject::type, "bed, chair, table, counter, anvil, fireplace, well, bookshelf, altar...")
@@ -292,7 +293,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
 
     r.Component<Pickup>("Pickup", "Collected when the player walks over it (left alone at full health).")
         .Field("kind", &Pickup::kind, "What it does.").Options({"Heal"})
-        .Field("amount", &Pickup::amount, "Hit points restored.").Range(0, 100000)
+        .Field("amount", &Pickup::amount, "Hit points restored.").Range(0, 100000).Scalable("loot")
         .Field("radius", &Pickup::radius, "Pickup distance, in cells.").Range(0.05, 5)
         .DependsOn({"WorldTransform2D"});
 
@@ -339,6 +340,13 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "what 'talk to' quest objectives point at.")
         .Field("range", &Talk::range, "How close the player must be, in cells.").Range(0.3, 10)
         .DependsOn({"WorldTransform2D"});
+    r.Component<Zone>("Zone", "The scene's level band (16.3): enemies here are made at a level within it.")
+        .Field("minLevel", &Zone::minLevel, "The lowest level.").Range(1, 100)
+        .Field("maxLevel", &Zone::maxLevel, "The highest level.").Range(1, 100);
+    r.Component<DifficultyOverrides>("DifficultyOverrides",
+                                     "Values set by hand for some difficulty levels (16.2), as JSON: "
+                                     "{\"Health.max\": {\"hard\": 20}}. The Inspector's 'by difficulty' edits it.")
+        .Field("values", &DifficultyOverrides::values, "Per field, per level.");
     r.Component<CutsceneTrigger>("CutsceneTrigger", "Plays a cutscene when the player comes near (15.5).")
         .Field("cutscene", &CutsceneTrigger::cutscene, "The cutscene, cutscenes/<id>.json (its id).")
         .Field("radius", &CutsceneTrigger::radius, "How close the player must come, in cells.").Range(0.2, 50)
@@ -470,6 +478,16 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("minutesPerSecond", &TimeSettings::minutesPerSecond,
                "Game minutes per real second; 2 makes a day last 12 minutes.").Range(0.1, 600)
         .Field("showClock", &TimeSettings::showClock, "Always show the clock in play.");
+    r.Settings("Difficulty", "Difficulty levels and how enemies' levels are chosen (difficulty.md).",
+               &settings.difficulty)
+        .Field("defaultLevel", &DifficultySettings::defaultLevel, "The level a new game starts at (a difficulty record).")
+        .Field("changeAnytime", &DifficultySettings::changeAnytime, "The player can change the level during play.")
+        .Field("adaptive", &DifficultySettings::adaptive,
+               "Offer to adjust the enemies by one step to how the player does.")
+        .Field("scaling", &DifficultySettings::scaling, "How enemies' levels are chosen.")
+        .Options({"None", "FixedZones", "Scaled", "Hybrid"})
+        .Field("levelOffset", &DifficultySettings::levelOffset, "Scaled and Hybrid: the player's level plus this.")
+        .Range(-20, 20);
     r.Settings("Story", "Quest help on screen.", &settings.story)
         .Field("objectiveMarkers", &StorySettings::objectiveMarkers, "Point the way to the current objective.")
         .Field("journal", &StorySettings::journal, "The quest journal window (J).");

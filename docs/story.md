@@ -87,6 +87,7 @@ All of a list must hold.
 | `{"attribute": "strength", "atLeast": 5}` (or `"below"`) | the player's attribute |
 | `{"time": {"from": 20, "to": 6}}` | the time of day is in that range (hours; it may wrap past midnight) |
 | `{"faction": "watch", "atLeast": 10}` (or `"below"`) | the player's reputation with a faction |
+| `{"difficulty": "story"}`, `{"difficulty": {"enemies": {"atLeast": 4}}}` | the difficulty level, or a category's step |
 
 ### Effects
 

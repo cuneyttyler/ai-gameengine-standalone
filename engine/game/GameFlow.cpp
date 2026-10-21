@@ -61,7 +61,7 @@ GameFlow::Command GameFlow::Begin() {
 
 void GameFlow::Go(State state) {
     auto sub = [](State s) {
-        return s == State::Load || s == State::Save || s == State::Credits || s == State::Settings;
+        return s == State::Load || s == State::Save || s == State::Credits || s == State::Settings || s == State::Difficulty;
     };
     if (sub(state) && !sub(state_)) back_ = state_;
     state_ = state;
@@ -134,6 +134,14 @@ std::vector<GameFlow::Item> GameFlow::Items() const {
             return {{"new", Tr("menu.play_again", "Play again")}, {"title", Tr("menu.quit_to_title", "Quit to title")}};
         case State::Credits:
             return {{"back", Tr("menu.back", "Back")}};
+        case State::Difficulty: {
+            std::vector<Item> items;
+            for (const auto& level : levels_) {
+                items.push_back({"level:" + level.id, Tr("difficulty." + level.id + ".name", level.name)});
+            }
+            items.push_back({"back", Tr("menu.back", "Back")});
+            return items;
+        }
         case State::Settings: {
             std::vector<Item> items;
             if (!settings_) return {{"back", Tr("menu.back", "Back")}};
@@ -151,6 +159,24 @@ std::vector<GameFlow::Item> GameFlow::Items() const {
             }
             items.push_back({"set:fullscreen", Tr("settings.fullscreen", "Fullscreen") + "  " + onOff(settings_->fullscreen)});
             items.push_back({"set:subtitles", Tr("settings.subtitles", "Subtitles") + "  " + onOff(settings_->subtitles)});
+            // Difficulty and assists (16.4): offered plainly, without judgement.
+            if (levels_.size() > 1 && (changeAnytime_ || settingsFrom_ == State::Title)) {
+                std::string name = currentLevel_;
+                for (const auto& level : levels_) {
+                    if (level.id == currentLevel_) name = Tr("difficulty." + level.id + ".name", level.name);
+                }
+                items.push_back({"set:difficulty", Tr("settings.difficulty", "Difficulty") + "  " + name});
+            }
+            if (offerAdaptive_) {
+                items.push_back({"set:adaptive", Tr("settings.adaptive", "Adjust difficulty to how I play") + "  " +
+                                                     onOff(settings_->adaptive)});
+            }
+            items.push_back({"set:reduction", Tr("settings.damage_reduction", "Damage reduction") + "  " +
+                                                  percent(settings_->damageReduction)});
+            items.push_back({"set:growing", Tr("settings.growing_reduction", "More protection after each death") + "  " +
+                                                onOff(settings_->growingReduction)});
+            items.push_back({"set:speed", Tr("settings.game_speed", "Game speed") + "  " + percent(settings_->gameSpeed)});
+            items.push_back({"set:invincible", Tr("settings.invincible", "Invincible") + "  " + onOff(settings_->invincible)});
             items.push_back({"back", Tr("menu.back", "Back")});
             return items;
         }
@@ -170,8 +196,17 @@ GameFlow::Command GameFlow::Choose(int index) {
         return {Command::Kind::Load, slot};
     }
     if (id == "new") {
+        if (levels_.size() > 1) {
+            Go(State::Difficulty); // choose the level first
+            return {};
+        }
         Go(State::Playing);
         return {Command::Kind::NewGame};
+    }
+    if (id.rfind("level:", 0) == 0) {
+        currentLevel_ = id.substr(6);
+        Go(State::Playing);
+        return {Command::Kind::NewGame, "", currentLevel_};
     }
     if (id == "load") {
         Go(State::Load);
@@ -186,6 +221,7 @@ GameFlow::Command GameFlow::Choose(int index) {
         return {};
     }
     if (id == "settings") {
+        settingsFrom_ = state_;
         Go(State::Settings);
         return {};
     }
@@ -200,6 +236,18 @@ GameFlow::Command GameFlow::Choose(int index) {
         else if (what == "ambience") step(settings_->ambience);
         else if (what == "fullscreen") settings_->fullscreen = !settings_->fullscreen;
         else if (what == "subtitles") settings_->subtitles = !settings_->subtitles;
+        else if (what == "invincible") settings_->invincible = !settings_->invincible;
+        else if (what == "growing") settings_->growingReduction = !settings_->growingReduction;
+        else if (what == "adaptive") settings_->adaptive = !settings_->adaptive;
+        else if (what == "reduction") {
+            settings_->damageReduction = settings_->damageReduction >= 0.74f ? 0.0f : settings_->damageReduction + 0.25f;
+        } else if (what == "speed") {
+            settings_->gameSpeed = settings_->gameSpeed <= 0.51f ? 1.0f : settings_->gameSpeed - 0.25f;
+        } else if (what == "difficulty" && !levels_.empty()) {
+            auto it = std::find_if(levels_.begin(), levels_.end(), [&](const DifficultyChoice& l) { return l.id == currentLevel_; });
+            currentLevel_ = it == levels_.end() || it + 1 == levels_.end() ? levels_.front().id : (it + 1)->id;
+            return {Command::Kind::DifficultyChanged, "", currentLevel_};
+        }
         else if (what == "language") {
             std::vector<std::string> options = {""};
             options.insert(options.end(), languages_.begin(), languages_.end());
@@ -253,7 +301,8 @@ GameFlow::Command GameFlow::HandleInput(const InputState& input) {
             Go(State::Playing);
             return {Command::Kind::Resume};
         }
-        if (state_ == State::Load || state_ == State::Save || state_ == State::Credits || state_ == State::Settings) {
+        if (state_ == State::Load || state_ == State::Save || state_ == State::Credits || state_ == State::Settings ||
+            state_ == State::Difficulty) {
             Go(back_);
         }
     }
@@ -284,6 +333,14 @@ std::optional<MenuView> GameFlow::View() const {
             view.body = manifest_.credits;
             break;
         case State::Settings: view.title = Tr("menu.settings", "Settings"); break;
+        case State::Difficulty: {
+            view.title = Tr("menu.difficulty", "Choose a difficulty");
+            const int index = highlighted_;
+            if (index >= 0 && index < static_cast<int>(levels_.size())) {
+                view.body = Tr("difficulty." + levels_[index].id + ".description", levels_[index].description);
+            }
+            break;
+        }
         case State::Playing: break;
     }
     for (const auto& item : Items()) view.items.push_back({item.label, item.enabled});

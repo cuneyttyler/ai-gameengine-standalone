@@ -50,11 +50,13 @@ struct SaveSlotInfo {
 // quit) through commands.
 class GameFlow {
 public:
-    enum class State { Title, Playing, Paused, Load, Save, GameOver, Victory, Credits, Settings };
+    enum class State { Title, Playing, Paused, Load, Save, GameOver, Victory, Credits, Settings, Difficulty };
 
     struct Command {
-        enum class Kind { None, NewGame, Load, Save, Resume, QuitToTitle, Quit, SettingsChanged } kind = Kind::None;
-        std::string slot; // Load / Save
+        enum class Kind { None, NewGame, Load, Save, Resume, QuitToTitle, Quit, SettingsChanged, DifficultyChanged } kind =
+            Kind::None;
+        std::string slot;  // Load / Save
+        std::string level; // NewGame (when chosen) / DifficultyChanged: a difficulty level's id
     };
 
     void SetManifest(GameManifest manifest) { manifest_ = std::move(manifest); }
@@ -67,6 +69,22 @@ public:
         settings_ = settings;
         languages_ = std::move(languages);
     }
+
+    // Difficulty (16): the levels to offer at New game (with more than one) and in
+    // Settings (in play only when `changeAnytime`), the current one, and whether the
+    // game offers adaptive difficulty.
+    struct DifficultyChoice {
+        std::string id;
+        std::string name;
+        std::string description;
+    };
+    void SetDifficulties(std::vector<DifficultyChoice> levels, std::string current, bool changeAnytime, bool adaptive) {
+        levels_ = std::move(levels);
+        currentLevel_ = std::move(current);
+        changeAnytime_ = changeAnytime;
+        offerAdaptive_ = adaptive;
+    }
+    const std::string& CurrentDifficulty() const { return currentLevel_; }
 
     // Title screen, or straight into play (the host then starts a new game).
     Command Begin();
@@ -103,6 +121,11 @@ private:
     std::vector<SaveSlotInfo> slots_;
     PlayerSettings* settings_ = nullptr;
     std::vector<std::string> languages_;
+    std::vector<DifficultyChoice> levels_;
+    std::string currentLevel_;
+    bool changeAnytime_ = true;
+    bool offerAdaptive_ = false;
+    State settingsFrom_ = State::Title;
     State state_ = State::Title;
     State back_ = State::Title; // where Load, Save and Credits go back to
     int highlighted_ = 0;

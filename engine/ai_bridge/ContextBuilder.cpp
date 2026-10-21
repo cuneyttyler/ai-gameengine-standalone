@@ -12,6 +12,8 @@
 #include "renderer2d/Components.h"
 #include "scripting/Components.h"
 #include "gameplay/Cutscene.h"
+#include "gameplay/Difficulty.h"
+#include "gameplay/Settings.h"
 #include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
 #include "gameplay/TileLayer.h"
@@ -265,6 +267,20 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
                               {"settings", settings}, {"world", worldList},   {"dialogues", dialogues},
                               {"quests", quests},     {"markers", markers},   {"schedules", schedules},
                               {"records", records},   {"cutscenes", cutscenes}};
+    // Difficulty (16): the levels (built-in or the project's), their steps, and how
+    // enemies' levels are chosen; scalable fields are marked in the schema.
+    {
+        const DifficultyModel model = DifficultyModel::FromRecords(recordDb);
+        nlohmann::json levels = nlohmann::json::array();
+        for (const auto& level : model.Levels()) {
+            levels.push_back({{"id", level.id}, {"name", level.name}, {"categories", level.steps}, {"xp", level.xp}});
+        }
+        static const char* kScaling[] = {"None", "FixedZones", "Scaled", "Hybrid"};
+        context["difficulty"] = {{"levels", levels},
+                                 {"builtIn", model.BuiltInLevels()},
+                                 {"defaultLevel", model.DefaultLevel()},
+                                 {"scaling", kScaling[static_cast<int>(ActiveSettings().difficulty.scaling)]}};
+    }
     // A built place's ground (tile layers, not entities): which tile prefabs cover how many
     // cells, so a request like "use grass in place of cobble" names what's there (terrain.replace).
     if (const TileLayers* layers = FindLayers(registry); layers && !layers->layers.empty()) {

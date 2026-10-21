@@ -12,7 +12,9 @@ nlohmann::json PlayerSettings::ToJson() const {
             {"fullscreen", fullscreen},
             {"vsync", vsync},
             {"uiScale", uiScale},
-            {"subtitles", subtitles}};
+            {"subtitles", subtitles},
+            {"assists", {{"invincible", invincible}, {"damageReduction", damageReduction},
+                         {"growingReduction", growingReduction}, {"gameSpeed", gameSpeed}, {"adaptive", adaptive}}}};
 }
 
 PlayerSettings PlayerSettings::FromJson(const nlohmann::json& json) {
@@ -31,6 +33,14 @@ PlayerSettings PlayerSettings::FromJson(const nlohmann::json& json) {
     s.vsync = json.value("vsync", true);
     s.uiScale = std::clamp(json.value("uiScale", 1.0f), 0.5f, 2.0f);
     s.subtitles = json.value("subtitles", true);
+    const nlohmann::json assists = json.value("assists", nlohmann::json::object());
+    if (assists.is_object()) {
+        s.invincible = assists.value("invincible", false);
+        s.damageReduction = std::clamp(assists.value("damageReduction", 0.0f), 0.0f, 0.9f);
+        s.growingReduction = assists.value("growingReduction", false);
+        s.gameSpeed = std::clamp(assists.value("gameSpeed", 1.0f), 0.25f, 1.0f);
+        s.adaptive = assists.value("adaptive", false);
+    }
     return s;
 }
 

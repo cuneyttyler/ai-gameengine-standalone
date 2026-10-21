@@ -8,6 +8,7 @@ import { askAiAbout, editorState } from '../editorState'
 import { projectState } from '../projects'
 import { onHostMessage, sendToHost } from '../ipc'
 import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
+import { difficultyView, showTab } from '../paneltabs'
 
 interface ScriptProperty {
   name: string
@@ -34,6 +35,13 @@ interface InspectorData {
   components: ComponentData[]
   addable: { name: string; description: string }[]
   choices: Choices
+}
+
+
+// The Difficulty tab's preview of the selection at every level (16.2).
+function showDifficultyPreview(): void {
+  difficultyView.section = 'preview'
+  showTab('difficulty')
 }
 
 const current = ref<InspectorData | null>(null)
@@ -260,6 +268,14 @@ function numberFrom(event: Event): number {
                   @click="askAiAbout(`${current.label}.${component.name}.${field.name}`)"
                 >
                   ✦
+                </button>
+                <button
+                  v-if="field.scalable"
+                  class="ask-ai"
+                  :title="`Scaled by difficulty (${field.scalable}): see and set its value at every level`"
+                  @click="showDifficultyPreview"
+                >
+                  ⚖
                 </button>
                 <button
                   v-if="field.overridden && !editorState.playing"

@@ -26,6 +26,7 @@ export interface FieldData {
   min?: number
   max?: number
   overridden?: boolean
+  scalable?: string // difficulty scales it, as this kind (16.2)
 }
 
 export interface Choices {

@@ -16,7 +16,7 @@ OBJECTIVE_TYPES = {"defeat", "talk", "collect", "reach", "deliver", "use", "exam
                    "escort"}
 QUEST_STATES = {"inactive", "active", "completed", "failed"}
 # What a world condition may ask (15.2); the game answers them.
-WORLD_KEYS = {"item", "gold", "level", "attribute", "time", "day", "faction"}
+WORLD_KEYS = {"item", "gold", "level", "attribute", "time", "day", "faction", "difficulty"}
 MAX_CHOICES = 9
 TEAMS = {"Enemy", "Neutral"}
 SAFE_ID = re.compile(r"^[a-z0-9_-]+$")

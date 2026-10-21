@@ -105,6 +105,7 @@ Conditions: {"flag": "name"} | {"flag": "name", "is": false}
   | {"var": "name", "op": "=="|"!="|"<"|"<="|">"|">=", "value": <number or text>} | {"var": "name"} (set and not 0/"")
   | {"item": "<item id>", "count": n} | {"gold": n} | {"level": n} | {"attribute": "<name>", "atLeast": n}
   | {"time": {"from": <hour>, "to": <hour>}} | {"day": n} | {"faction": "<id>", "atLeast": <reputation>}
+  | {"difficulty": "<level id>"} | {"difficulty": {"<category>": {"atLeast": n, "atMost": n}}}
 Effects: {"op": "set_flag"|"clear_flag", "flag": "..."} | {"op": "start_quest"|"complete_quest"|"fail_quest", "quest": "<id>"}
   | {"op": "complete_objective", "quest": "<id>", "objective": "<objective id>"}
   | {"op": "set_stage", "quest": "<id>", "stage": <index>} | {"op": "set_var"|"add_var", "var": "name", "value": ...}
@@ -229,6 +230,26 @@ CUTSCENES (file cutscenes/<id>.json; context "cutscenes" lists the project's)
   or play_cutscene(id) in Lua. Write the cutscene in the same proposal as anything that plays it.
 """
 
+DIFFICULTY = """\
+DIFFICULTY (difficulty.md; context "difficulty" has the levels and how enemies' levels are chosen)
+- Files hold BASE values. A difficulty level scales every field marked "scalable" in the schema (Health.max,
+  MeleeAttack.damage, Perception.sight...) by its kind and its owner's side, so never write scaled numbers:
+  "make skeletons tougher" changes the base (set_prefab_field); "Hard is too easy" changes the level.
+- A level is a record: write_record type "difficulty" {"name", "description", "order",
+  "categories": {"player": 1-5, "enemies": 1-5, "allies": 1-5, "stealth": 1-5, "resources": 1-5} (3: as
+  designed, higher is harder), "modifiers": [{"target": "Health.max", "owner": "enemy"|"player"|"ally"|"any",
+  "tag": "<Name contains>", "op": "mul"|"add"|"set"|"min"|"max", "value": n}], "xp": <reward multiplier>}.
+  With no difficulty records the game has the built-in five (story, easy, normal, hard, nightmare); writing
+  any replaces them all. The multipliers per step are the record difficulty-table/default {"rows":
+  [{"category", "kind", "steps": [five numbers]}]}.
+- One entity's value at one level, set by hand (a boss's Hard health): add_component DifficultyOverrides
+  {"values": "{\"Health.max\": {\"hard\": 40}}"} (JSON text: field -> level id -> number).
+- Level bands: a Zone component {"minLevel", "maxLevel"} in a scene; Project Settings Difficulty.scaling
+  (None, FixedZones, Scaled, Hybrid) says how spawners pick their enemies' level.
+- Conditions can ask {"difficulty": "<level id>"} or {"difficulty": {"enemies": {"atLeast": 4}}}; Lua has
+  difficulty(), difficulty_step(category), set_difficulty(id).
+"""
+
 GAMEPLAY = """\
 GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
 - Items are records (records/item/<id>). Inventory.items, Container.items and Merchant.items are text lists:
@@ -274,6 +295,7 @@ second while playing). These are ALL the engine functions — there are no other
   get_var(name) / set_var(name, value)  story variables (numbers, text, booleans)
   used(name)                           counts as using something (use/examine objectives)
   play_cutscene(id) -> boolean / skip_cutscene() / in_cutscene() -> boolean
+  difficulty() -> level id / difficulty_step(category) -> 1..5 / set_difficulty(id) -> boolean
   time_of_day()                     -> hours since midnight (fractional), e.g. 13.5
   day()                             -> the day number, from 1
   play_sound(asset_path) / play_sound_at(asset_path, x, y) / play_music(asset_path, or "" for the scene's)
@@ -293,7 +315,8 @@ second while playing). These are ALL the engine functions — there are no other
   set_visible(id, visible) / face(id);  start_dialogue(path) -> boolean;  find_object(type[, radius]) -> id
   move_to(x, y)   (in a scripted package's run() coroutine: walks there around walls)
 Events: hit, death, pickup, attack, victory, talk, item_added, level_up, interact, bark, quest_started,
-quest_completed, quest_failed, quest_stage, objective_completed, cutscene_started, cutscene_ended.
+quest_completed, quest_failed, quest_stage, objective_completed, cutscene_started, cutscene_ended,
+difficulty_changed.
 Entity ids are always the first argument where one is taken; prefab values can't be read
 from scripts (remember a value in a local at load time if you need it later, e.g.
 `local normal_speed = nil` then set it on the first update). A top-level
@@ -383,6 +406,7 @@ def build_messages(
             ROUTINES,
             CUTSCENES,
             GAMEPLAY,
+            DIFFICULTY,
             RECORDS,
             SCENES,
             ART,

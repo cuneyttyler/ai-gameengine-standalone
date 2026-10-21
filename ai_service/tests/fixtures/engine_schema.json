@@ -686,6 +686,7 @@
           "max": 100000.0,
           "min": 1.0,
           "name": "max",
+          "scalable": "health",
           "type": "float"
         }
       ],
@@ -701,6 +702,7 @@
           "max": 1000.0,
           "min": -1000.0,
           "name": "attack",
+          "scalable": "damage",
           "type": "float"
         },
         {
@@ -708,6 +710,7 @@
           "max": 1000.0,
           "min": -1000.0,
           "name": "defense",
+          "scalable": "defense",
           "type": "float"
         },
         {
@@ -715,6 +718,7 @@
           "max": 50.0,
           "min": 0.0,
           "name": "moveSpeed",
+          "scalable": "speed",
           "type": "float"
         }
       ],
@@ -764,6 +768,7 @@
           "max": 100000.0,
           "min": 0.0,
           "name": "damage",
+          "scalable": "damage",
           "type": "float"
         },
         {
@@ -1043,6 +1048,7 @@
           "description": "Gold carried.",
           "min": 0.0,
           "name": "gold",
+          "scalable": "gold",
           "type": "int"
         },
         {
@@ -1124,6 +1130,7 @@
           "description": "How many.",
           "min": 1.0,
           "name": "count",
+          "scalable": "loot",
           "type": "int"
         },
         {
@@ -1150,6 +1157,7 @@
           "description": "Gold inside.",
           "min": 0.0,
           "name": "gold",
+          "scalable": "gold",
           "type": "int"
         },
         {
@@ -1193,6 +1201,7 @@
           "max": 100.0,
           "min": 0.0,
           "name": "buyRate",
+          "scalable": "price",
           "type": "float"
         },
         {
@@ -1200,6 +1209,7 @@
           "max": 100.0,
           "min": 0.0,
           "name": "sellRate",
+          "scalable": "loot",
           "type": "float"
         }
       ],
@@ -1326,6 +1336,7 @@
           "max": 100000.0,
           "min": 0.0,
           "name": "damage",
+          "scalable": "damage",
           "type": "float"
         },
         {
@@ -1406,6 +1417,7 @@
           "max": 100.0,
           "min": 0.0,
           "name": "maxAlive",
+          "scalable": "count",
           "type": "int"
         },
         {
@@ -1510,6 +1522,7 @@
           "max": 50.0,
           "min": 0.0,
           "name": "sight",
+          "scalable": "perception",
           "type": "float"
         },
         {
@@ -1524,6 +1537,7 @@
           "max": 50.0,
           "min": 0.0,
           "name": "hearing",
+          "scalable": "perception",
           "type": "float"
         }
       ],
@@ -1642,6 +1656,7 @@
           "max": 100000.0,
           "min": 0.0,
           "name": "amount",
+          "scalable": "loot",
           "type": "float"
         },
         {
@@ -1832,6 +1847,41 @@
         }
       ],
       "name": "Talk",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "The scene's level band (16.3): enemies here are made at a level within it.",
+      "fields": [
+        {
+          "description": "The lowest level.",
+          "max": 100.0,
+          "min": 1.0,
+          "name": "minLevel",
+          "type": "int"
+        },
+        {
+          "description": "The highest level.",
+          "max": 100.0,
+          "min": 1.0,
+          "name": "maxLevel",
+          "type": "int"
+        }
+      ],
+      "name": "Zone",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "Values set by hand for some difficulty levels (16.2), as JSON: {\"Health.max\": {\"hard\": 20}}. The Inspector's 'by difficulty' edits it.",
+      "fields": [
+        {
+          "description": "Per field, per level.",
+          "name": "values",
+          "type": "string"
+        }
+      ],
+      "name": "DifficultyOverrides",
       "userEditable": true
     },
     {
@@ -2729,6 +2779,165 @@
       "name": "combat-style"
     },
     {
+      "description": "A difficulty level (16.1): a step per category and modifiers on top.",
+      "fields": [
+        {
+          "description": "Shown to the player.",
+          "name": "name",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "description": "A line for the menu.",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "description": "Easiest first.",
+          "name": "order",
+          "type": "int"
+        },
+        {
+          "description": "A step per category (1-5, 3: as designed).",
+          "fields": [
+            {
+              "description": "1-5; 3 is as designed, higher is harder",
+              "max": 5.0,
+              "min": 1.0,
+              "name": "player",
+              "type": "int"
+            },
+            {
+              "description": "1-5; 3 is as designed, higher is harder",
+              "max": 5.0,
+              "min": 1.0,
+              "name": "enemies",
+              "type": "int"
+            },
+            {
+              "description": "1-5; 3 is as designed, higher is harder",
+              "max": 5.0,
+              "min": 1.0,
+              "name": "allies",
+              "type": "int"
+            },
+            {
+              "description": "1-5; 3 is as designed, higher is harder",
+              "max": 5.0,
+              "min": 1.0,
+              "name": "stealth",
+              "type": "int"
+            },
+            {
+              "description": "1-5; 3 is as designed, higher is harder",
+              "max": 5.0,
+              "min": 1.0,
+              "name": "resources",
+              "type": "int"
+            }
+          ],
+          "name": "categories",
+          "type": "object"
+        },
+        {
+          "description": "Changes on top of the category steps.",
+          "fields": [
+            {
+              "description": "A field: Component.field, e.g. Health.max",
+              "name": "target",
+              "type": "string"
+            },
+            {
+              "description": "Whose fields: player, enemy, ally or any",
+              "name": "owner",
+              "options": [
+                "any",
+                "player",
+                "enemy",
+                "ally"
+              ],
+              "type": "enum"
+            },
+            {
+              "description": "Only entities whose Name contains this (a boss)",
+              "name": "tag",
+              "type": "string"
+            },
+            {
+              "description": "mul, add, set, min or max",
+              "name": "op",
+              "options": [
+                "mul",
+                "add",
+                "set",
+                "min",
+                "max"
+              ],
+              "type": "enum"
+            },
+            {
+              "description": "The amount",
+              "name": "value",
+              "type": "float"
+            }
+          ],
+          "list": true,
+          "name": "modifiers",
+          "type": "object"
+        },
+        {
+          "default": 1,
+          "description": "Experience rewards times this.",
+          "min": 0.0,
+          "name": "xp",
+          "type": "float"
+        },
+        {
+          "description": "One life: death ends the run.",
+          "name": "permadeath",
+          "type": "bool"
+        }
+      ],
+      "name": "difficulty"
+    },
+    {
+      "description": "The game's multipliers per category, kind of value and step (16.1). Only records/difficulty-table/default.json is used.",
+      "fields": [
+        {
+          "description": "One row per category and kind; missing ones use the built-in table.",
+          "fields": [
+            {
+              "description": "The category",
+              "name": "category",
+              "options": [
+                "player",
+                "enemies",
+                "allies",
+                "stealth",
+                "resources"
+              ],
+              "type": "enum"
+            },
+            {
+              "description": "health, damage, defense, speed, perception, count, gold, loot, price, xp",
+              "name": "kind",
+              "type": "string"
+            },
+            {
+              "description": "Five multipliers, steps 1-5",
+              "list": true,
+              "name": "steps",
+              "type": "float"
+            }
+          ],
+          "list": true,
+          "name": "rows",
+          "type": "object"
+        }
+      ],
+      "name": "difficulty-table"
+    },
+    {
       "description": "An encounter (13.7): what a Spawner makes, picked by weight and level.",
       "fields": [
         {
@@ -2954,6 +3163,45 @@
         }
       ],
       "name": "Time"
+    },
+    {
+      "description": "Difficulty levels and how enemies' levels are chosen (difficulty.md).",
+      "fields": [
+        {
+          "description": "The level a new game starts at (a difficulty record).",
+          "name": "defaultLevel",
+          "type": "string"
+        },
+        {
+          "description": "The player can change the level during play.",
+          "name": "changeAnytime",
+          "type": "bool"
+        },
+        {
+          "description": "Offer to adjust the enemies by one step to how the player does.",
+          "name": "adaptive",
+          "type": "bool"
+        },
+        {
+          "description": "How enemies' levels are chosen.",
+          "name": "scaling",
+          "options": [
+            "None",
+            "FixedZones",
+            "Scaled",
+            "Hybrid"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "Scaled and Hybrid: the player's level plus this.",
+          "max": 20.0,
+          "min": -20.0,
+          "name": "levelOffset",
+          "type": "int"
+        }
+      ],
+      "name": "Difficulty"
     },
     {
       "description": "Quest help on screen.",

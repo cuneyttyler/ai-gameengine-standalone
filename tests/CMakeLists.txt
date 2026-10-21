@@ -50,6 +50,7 @@ add_executable(aige_tests
     gameplay_systems_test.cpp
     character_ai_test.cpp
     narrative_test.cpp
+    difficulty_test.cpp
     export_test.cpp
     flat_sprites_test.cpp
     scenes_test.cpp

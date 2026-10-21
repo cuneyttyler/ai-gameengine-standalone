@@ -9,7 +9,7 @@ import { reactive } from 'vue'
 import { setPanelVisible, type PanelId } from './layout'
 
 export type AssetsTab = 'prefabs' | 'assets' | 'catalog' | 'library' | 'web'
-export type ProjectTab = 'scenes' | 'world' | 'story' | 'records'
+export type ProjectTab = 'scenes' | 'world' | 'story' | 'records' | 'difficulty'
 export type GenerateTab = 'level' | 'art' | 'character' | 'animate'
 export type AnyTab = AssetsTab | ProjectTab | GenerateTab
 
@@ -29,11 +29,15 @@ const owner: Record<AnyTab, 'assets' | 'project' | 'generate'> = {
   world: 'project',
   story: 'project',
   records: 'project',
+  difficulty: 'project',
   level: 'generate',
   art: 'generate',
   character: 'generate',
   animate: 'generate',
 }
+
+// The Difficulty tab's section to open on (the Inspector's "by difficulty" asks for the preview).
+export const difficultyView = reactive({ section: 'levels' as 'levels' | 'table' | 'preview' | 'curve' })
 
 export function showTab(tab: AnyTab): void {
   const panel = owner[tab]
