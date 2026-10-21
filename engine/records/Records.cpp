@@ -750,6 +750,80 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
             .List();
     }
 
+    // Animation and effects (18): animators, particles, effects. Engine presets in data/fx.
+    {
+        r.RecordType("animator", "An animator (18.2): states that play clips and transitions between them.")
+            .Object("states",
+                    {MakeRecordValue("id", FieldType::String, "The state"),
+                     MakeRecordValue("clip", FieldType::String, "The clip it plays (in the entity's sheet)"),
+                     MakeRecordValue("exit", FieldType::String, "end: back to the default state when the clip ends"),
+                     MakeRecordValue("speed", FieldType::Float, "Playback rate")},
+                    "The states; the first is the default.")
+            .List()
+            .Object("transitions",
+                    {MakeRecordValue("from", FieldType::String, "A state, or *"),
+                     MakeRecordValue("to", FieldType::String, "A state"),
+                     MakeRecordValue("if", FieldType::String, "speed > 0.1, attacking, hurt, casting, using, dead, !dead, a && b"),
+                     MakeRecordValue("priority", FieldType::Int, "Higher wins")},
+                    "When to change state.")
+            .List()
+            .Field("default", FieldType::String, "The state it starts in (else the first).");
+        auto listOf = [](const char* name, FieldType type, const char* description) {
+            RecordField f = MakeRecordValue(name, type, description);
+            f.list = true;
+            return f;
+        };
+        RecordTypeInfo particles;
+        particles.name = "particles";
+        particles.description = "Particles (18.4): an emitter's settings. Presets: data/fx/particles.";
+        particles.fields = {
+            MakeRecordValue("rate", FieldType::Float, "Per second while playing"),
+            MakeRecordValue("burst", FieldType::Int, "At once when it starts"),
+            MakeRecordValue("duration", FieldType::Float, "Seconds it emits (0: until stopped)"),
+            listOf("lifetime", FieldType::Float, "Seconds: [min, max]"),
+            MakeRecordValue("shape", FieldType::String, "point, circle or box"),
+            MakeRecordValue("radius", FieldType::Float, "Circle radius or box half-size, in cells"),
+            listOf("speed", FieldType::Float, "Cells per second: [min, max]"),
+            MakeRecordValue("direction", FieldType::Float, "Degrees on screen: 0 right, -90 up"),
+            MakeRecordValue("spread", FieldType::Float, "Degrees around the direction"),
+            MakeRecordValue("gravity", FieldType::Float, "Pixels per second squared, down"),
+            MakeRecordValue("drag", FieldType::Float, "Slowing per second"),
+            MakeRecordValue("rise", FieldType::Float, "Pixels per second upward at the start"),
+            listOf("size", FieldType::Float, "Pixels: [start, end]"),
+            listOf("color", FieldType::String, "[start, end] as #rrggbb"),
+            listOf("alpha", FieldType::Float, "[start, end] opacity"),
+            MakeRecordValue("texture", FieldType::Texture, "A picture for each particle (empty: a soft dot)"),
+            MakeRecordValue("layer", FieldType::String, "world (sorted with everything) or above"),
+            MakeRecordValue("max", FieldType::Int, "Most alive at once")};
+        r.AddRecordTypeInfo(particles);
+        auto objectOf = [](const char* name, const char* description, std::vector<RecordField> fields) {
+            RecordField f = MakeRecordValue(name, FieldType::String, description);
+            f.kind = RecordFieldKind::Object;
+            f.fields = std::move(fields);
+            return f;
+        };
+        RecordField parts = objectOf("parts", "Each a particles, sound, light, flash, shake, hitstop or slowmo part", {
+            MakeRecordValue("particles", FieldType::String, "Particles to emit"),
+            MakeRecordValue("at", FieldType::String, "target (default) or source"),
+            MakeRecordValue("seconds", FieldType::Float, "Particles: keep emitting this long"),
+            MakeRecordValue("sound", FieldType::Audio, "A sound to play"),
+            MakeRecordValue("shake", FieldType::Float, "Screen shake (trauma 0-1)"),
+            MakeRecordValue("hitstop", FieldType::Float, "Seconds the world freezes"),
+            objectOf("light", "A short light", {MakeRecordValue("color", FieldType::String, "#rrggbb"),
+                                                 MakeRecordValue("radius", FieldType::Float, "Cells"),
+                                                 MakeRecordValue("seconds", FieldType::Float, "How long")}),
+            objectOf("flash", "A flash on the target", {MakeRecordValue("color", FieldType::String, "#rrggbb"),
+                                                         MakeRecordValue("time", FieldType::Float, "Seconds")}),
+            objectOf("slowmo", "Slow motion", {MakeRecordValue("scale", FieldType::Float, "Game speed (0.1-1)"),
+                                                MakeRecordValue("seconds", FieldType::Float, "How long")})});
+        parts.list = true;
+        RecordTypeInfo effect;
+        effect.name = "effect";
+        effect.description = "An effect (18.5): what something looks and sounds like. Presets: data/fx/effects.";
+        effect.fields = {parts};
+        r.AddRecordTypeInfo(effect);
+    }
+
     r.RecordType("encounter", "An encounter (13.7): what a Spawner makes, picked by weight and level.")
         .Field("name", FieldType::String, "A label for editors.")
         .Object("entries",

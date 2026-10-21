@@ -337,7 +337,8 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
                 const VkExtent2D extent = rhi.SwapchainExtent();
                 aige::CollectLayerSprites(registry, app.Iso(), app.Camera(), static_cast<float>(extent.width),
                                           static_cast<float>(extent.height), layerSprites);
-                renderer.Render(cmd, registry, app.Camera(), app.BuildOverlay(), app.BuildUi(), &app.Preview(), layerSprites);
+                const aige::Camera2D view = app.FxFrame(layerSprites); // particles, lights, shake (18)
+                renderer.Render(cmd, registry, view, app.BuildOverlay(), app.BuildUi(), &app.Preview(), layerSprites);
                 rhi.EndFrame();
             }
         }

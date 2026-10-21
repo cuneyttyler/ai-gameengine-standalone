@@ -170,6 +170,8 @@ class EditorContext(BaseModel):
     difficulty: dict[str, Any] = {}
     # Game UI (17): {themes, theme, files (the project's ui/ files), documents}.
     ui: dict[str, Any] = {}
+    # Animation and effects (18): {sheets [{path, texture, clips}], particles, effects, animators, lighting}.
+    fx: dict[str, Any] = {}
 
 
 # --- Proposals --------------------------------------------------------------------
@@ -265,6 +267,14 @@ class WriteUi(BaseModel):
     content: str
 
 
+class WriteAnim(BaseModel):
+    """Creates or replaces an animation sheet, assets/<name>.anim.json (docs/effects-animation.md)."""
+
+    op: Literal["write_anim"]
+    path: str
+    sheet: dict[str, Any]
+
+
 class WriteRecord(BaseModel):
     """Creates or replaces records/<type>/<id>.json (typed game data: items, ...)."""
 
@@ -285,7 +295,7 @@ class DeleteRecord(BaseModel):
 Operation = Annotated[
     Union[
         SetField, AddComponent, RemoveComponent, SetPrefabField, SetSetting, SetScriptProperty, RunCommand,
-        WriteDialogue, WriteQuest, WriteSchedule, WriteCutscene, WriteUi, WriteRecord, DeleteRecord,
+        WriteDialogue, WriteQuest, WriteSchedule, WriteCutscene, WriteUi, WriteAnim, WriteRecord, DeleteRecord,
     ],
     Field(discriminator="op"),
 ]

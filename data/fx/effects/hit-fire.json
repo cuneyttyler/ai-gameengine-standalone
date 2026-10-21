@@ -1,0 +1,29 @@
+{
+  "schema": "aige.effect/1",
+  "parts": [
+    {
+      "particles": "sparks-fire",
+      "at": "target"
+    },
+    {
+      "light": {
+        "color": "#ff9a3c",
+        "radius": 3,
+        "seconds": 0.4
+      }
+    },
+    {
+      "flash": {
+        "color": "#ffd0a0",
+        "time": 0.08
+      },
+      "at": "target"
+    },
+    {
+      "shake": 0.25
+    },
+    {
+      "hitstop": 0.05
+    }
+  ]
+}

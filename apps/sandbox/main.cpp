@@ -182,6 +182,7 @@ int main(int argc, char** argv) {
         aige::VulkanRHI rhi(window);
         aige::Renderer2D renderer(rhi, rhi.RenderPass()); // draws straight to the swapchain pass
         aige::RegisterGameUiFonts(renderer);
+        for (const auto& [name, image] : aige::FxTextures()) renderer.RegisterTexture(name, image); // particles, vignette (18)
 
         aige::AssetDatabase assets(project);
         renderer.SetTextureLoader([&assets](const std::string& path) { return assets.LoadTexture(path); });
@@ -339,7 +340,17 @@ int main(int argc, char** argv) {
                 const VkExtent2D extent = rhi.SwapchainExtent();
                 aige::CollectLayerSprites(registry, aige::BootstrapIso(), camera, static_cast<float>(extent.width),
                                           static_cast<float>(extent.height), layerSprites);
-                renderer.Render(cmd, registry, camera, overlay, ui, nullptr, layerSprites);
+                // Phase 18: particles with the world, the scene's lights, the camera's shake.
+                session.AppendFxSprites(layerSprites);
+                const aige::LightingFrame lighting = session.Lighting();
+                std::vector<aige::Renderer2D::SceneLight> lights;
+                for (const auto& l : lighting.lights) lights.push_back({l.x, l.y, l.radius, l.r, l.g, l.b, l.intensity});
+                renderer.SetLighting(lighting.enabled, lighting.ambient[0], lighting.ambient[1], lighting.ambient[2], std::move(lights));
+                aige::Camera2D view = camera;
+                const auto [shakeX, shakeY] = session.CameraShake();
+                view.offsetX += shakeX / view.zoom;
+                view.offsetY += shakeY / view.zoom;
+                renderer.Render(cmd, registry, view, overlay, ui, nullptr, layerSprites);
                 rhi.EndFrame();
             }
         }

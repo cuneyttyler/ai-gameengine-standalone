@@ -4,7 +4,9 @@
 #include "gameplay/Behaviour.h"
 #include "gameplay/Combat.h"
 #include "gameplay/Cutscene.h"
+#include "gameplay/Animation.h"
 #include "gameplay/Difficulty.h"
+#include "gameplay/Effects.h"
 #include "gameplay/InputMap.h"
 #include "gameplay/Isometric.h"
 #include "gameplay/Schedule.h"
@@ -231,6 +233,30 @@ public:
     void SetAdaptive(bool on);
     const AdaptiveDifficulty& Adaptive() const { return adaptive_; }
 
+    // Animation and effects (18): sheets and animators, particles, effects, juice,
+    // tweens and lights. The host draws AppendFxSprites with the world, lights the
+    // renderer with Lighting() and offsets its camera by CameraShake().
+    void ReloadAnimations() { animations_.Refresh(); }
+    const AnimLibrary& Animations() const { return animations_; }
+    ParticleSystem& Particles() { return particles_; }
+    // Plays an effect (a record or preset) at a point, on a target, from a source.
+    bool PlayEffect(const std::string& id, float x, float y, Entity target = entt::null, Entity source = entt::null);
+    void Shake(float trauma);
+    void HitStop(float seconds) { freeze_ = std::max(freeze_, static_cast<double>(seconds)); }
+    void SlowMotion(float scale, float seconds) {
+        slowScale_ = std::clamp(scale, 0.05f, 1.0f);
+        slowSeconds_ = seconds;
+    }
+    std::pair<float, float> CameraShake() const; // pixels
+    float Trauma() const { return trauma_; }
+    bool Frozen() const { return freeze_ > 0.0; }
+    LightingFrame Lighting() const;
+    void AppendFxSprites(std::vector<SpriteItem>& out) const { particles_.AppendSprites(out, iso_); }
+    int StartTween(Entity entity, const std::string& componentField, float to, float seconds, const std::string& ease);
+    // Outside play (the editor trying an effect): particles, short lights and shake move on.
+    void StepPreviewFx(float dt);
+    bool TweenDone(int id) const;
+
     // Objective markers (15.4): where the shown objective's target is (world
     // units), when the scene has it: a marker, a character, an item lying about.
     std::optional<std::pair<float, float>> ObjectiveLocation();
@@ -388,6 +414,22 @@ private:
     std::optional<std::pair<float, float>> cameraGoal_;
     std::optional<float> cameraZoom_;
     const DialogueNode* voicedNode_ = nullptr; // whose voice line has played
+    // Animation and effects (18).
+    AnimLibrary animations_;
+    ParticleSystem particles_;
+    std::vector<Tween> tweens_;
+    int nextTween_ = 1;
+    float trauma_ = 0.0f;
+    double shakeTime_ = 0.0;
+    double freeze_ = 0.0;
+    float slowScale_ = 1.0f;
+    double slowSeconds_ = 0.0;
+    struct TempLight {
+        float x, y, radius, r, g, b, seconds, age;
+    };
+    std::vector<TempLight> tempLights_;
+    void StepFx(float dt); // animators, particles, tweens, lights
+    void CueEffects(size_t firstEvent);
     NoticeSink noticeSink_;
     ScreenHook screenHook_;
     bool documentHud_ = false;

@@ -39,6 +39,10 @@ add_library(aige_gameplay STATIC
     Cutscene.cpp
     Difficulty.h
     Difficulty.cpp
+    Animation.h
+    Animation.cpp
+    Effects.h
+    Effects.cpp
     LevelGen.h
     LevelGen.cpp
     VillageGen.h
@@ -53,3 +57,4 @@ add_library(aige_gameplay STATIC
 target_include_directories(aige_gameplay PUBLIC ${CMAKE_SOURCE_DIR}/engine)
 target_link_libraries(aige_gameplay PUBLIC aige_ecs aige_reflection aige_records aige_modules aige_physics2d aige_renderer2d aige_ui aige_scripting)
 target_compile_features(aige_gameplay PUBLIC cxx_std_20)
+target_compile_definitions(aige_gameplay PRIVATE AIGE_FX_DATA_DIR="${CMAKE_SOURCE_DIR}/data/fx")

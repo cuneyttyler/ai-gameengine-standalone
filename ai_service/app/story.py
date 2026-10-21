@@ -210,7 +210,7 @@ def check_dialogue(dialogue_id: str, d: dict[str, Any], scope: StoryScope, where
 
 
 CUTSCENE_OPS = {
-    "actor": {"move", "face", "show", "hide", "place"},
+    "actor": {"move", "face", "show", "hide", "place", "tween", "animate"},
     "dialogue": {"line"},
     "camera": {"follow", "move", "shake", "zoom"},
     "audio": {"music", "sound"},

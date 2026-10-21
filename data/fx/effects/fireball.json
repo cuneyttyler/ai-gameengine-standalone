@@ -1,0 +1,21 @@
+{
+  "schema": "aige.effect/1",
+  "parts": [
+    {
+      "particles": "explosion"
+    },
+    {
+      "light": {
+        "color": "#ff8030",
+        "radius": 5,
+        "seconds": 0.6
+      }
+    },
+    {
+      "shake": 0.45
+    },
+    {
+      "hitstop": 0.06
+    }
+  ]
+}

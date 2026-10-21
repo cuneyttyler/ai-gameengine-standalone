@@ -30,10 +30,12 @@ from .models import (
     WriteSchedule,
     WriteCutscene,
     WriteUi,
+    WriteAnim,
     WriteRecord,
     DeleteRecord,
 )
 from .records import check_record
+from .fx import check_anim, check_fx_refs
 from .gameui import check_ui
 from .story import StoryScope, check_cutscene, check_dialogue, check_quest, check_schedule
 
@@ -196,6 +198,13 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
             errors += check_quest(op.id, op.quest, scope, f"operation {index} (write_quest {op.id})")
         elif isinstance(op, WriteCutscene):
             errors += check_cutscene(op.id, op.cutscene, scope, all_markers, f"operation {index} (write_cutscene {op.id})")
+
+    # Animation and effects (18): sheets, and the particles, effects and sheets components name.
+    for index, op in enumerate(proposal.operations, start=1):
+        if isinstance(op, WriteAnim):
+            errors += check_anim(op.path, op.sheet, {a.get("path") for a in context.assets},
+                                 f"operation {index} (write_anim {op.path})")
+    errors += check_fx_refs(proposal, context)
 
     # Game UI files (17).
     for index, op in enumerate(proposal.operations, start=1):

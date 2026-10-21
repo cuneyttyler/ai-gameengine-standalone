@@ -60,6 +60,17 @@ struct DifficultySettings {
     int levelOffset = 0;                 // Scaled and Hybrid: the player's level plus this
 };
 
+// 2D lighting and day and night (development_plan.md 18.6).
+struct LightingSettings {
+    bool enabled = false;                // light the scene (ambient plus lights)
+    bool dayNight = true;                // the ambient follows the game clock
+    std::string dayAmbient = "#ffffff";
+    std::string nightAmbient = "#36426e";
+    float dawnHour = 6.0f;
+    float duskHour = 19.0f;
+    bool vignette = false;               // darken the screen's edges
+};
+
 // The game's UI (development_plan.md 17, game-ui.md).
 struct UiSettings {
     bool documents = true; // menus, windows and the HUD as themed documents (off: the built-in overlays)
@@ -98,6 +109,7 @@ struct ProjectSettings {
     StorySettings story;
     DifficultySettings difficulty;
     UiSettings ui;
+    LightingSettings lighting;
 };
 
 ProjectSettings& ActiveSettings();

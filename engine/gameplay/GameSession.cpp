@@ -244,6 +244,8 @@ GameSession::GameSession(Registry& registry, LuaVM& lua, IsoParams iso, std::fil
     binder_ = [this](sol::environment& env, Entity self) { BindScriptApi(env, self); };
     WireStory();
     ReloadDifficulty();
+    animations_ = AnimLibrary(scriptRoot_);
+    animations_.Refresh();
 }
 
 // --- Difficulty (development_plan.md 16) ---------------------------------------------
@@ -578,6 +580,30 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
         if (screenHook_) screenHook_(id, 0);
     };
     env["is_open"] = [this](const std::string& id) { return screenHook_ && screenHook_(id, -1); };
+    // Animation and effects (18).
+    env["play_effect"] = [this](const std::string& id, sol::object a, sol::optional<float> y) {
+        if (a.is<float>() && y) return PlayEffect(id, a.as<float>(), *y);
+        if (a.get_type() == sol::type::number) {
+            const Entity target = ToEntity(a.as<lua_Integer>());
+            if (const auto* w = registry_.valid(target) ? registry_.try_get<WorldTransform2D>(target) : nullptr) {
+                return PlayEffect(id, w->x, w->y, target);
+            }
+        }
+        return false;
+    };
+    env["emit_particles"] = [this](const std::string& id, float x, float y, sol::optional<float> seconds) {
+        auto def = FindParticles(id);
+        if (def) particles_.Emit(*def, x, y, seconds.value_or(0.0f));
+        return def.has_value();
+    };
+    env["shake"] = [this](float trauma) { Shake(trauma); };
+    env["hitstop"] = [this](float seconds) { HitStop(seconds); };
+    env["slow_motion"] = [this](float scale, float seconds) { SlowMotion(scale, seconds); };
+    env["tween"] = [this](lua_Integer id, const std::string& field, float to, float seconds, sol::optional<std::string> ease) {
+        return StartTween(ToEntity(id), field, to, seconds, ease.value_or("ease_out"));
+    };
+    env["tween_done"] = [this](int id) { return TweenDone(id); };
+    env["anim_trigger"] = [this](lua_Integer id, const std::string& trigger) { TriggerAnimation(registry_, ToEntity(id), trigger); };
     // Difficulty (16): the level's id, a category's step (1-5), and changing it.
     env["difficulty"] = [this]() { return difficultyLevel_.empty() ? difficultyModel_.DefaultLevel() : difficultyLevel_; };
     env["difficulty_step"] = [this](const std::string& category) {
@@ -1155,6 +1181,15 @@ HudData GameSession::MakeHud(float viewportWidth, float viewportHeight) {
 }
 
 void GameSession::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float viewportHeight) {
+    // Post (18.6): a vignette under the UI.
+    if (ActiveSettings().lighting.vignette) {
+        UiQuad v;
+        v.x1 = viewportWidth;
+        v.y1 = viewportHeight;
+        v.u1 = v.v1 = 1.0f;
+        v.texture = "fx:vignette";
+        out.push_back(v);
+    }
     // With the UI documents (17), the HUD and dialogue are documents: only the
     // cutscene layers and the debug overlay are drawn here.
     const HudData hud = documentHud_ ? HudData{} : MakeHud(viewportWidth, viewportHeight);
@@ -1448,6 +1483,13 @@ void GameSession::FireCutsceneKey(const CutscenePlayer::Due& due) {
             }
         } else if (key.op == "show" || key.op == "hide") {
             if (auto* sprite = registry_.try_get<Sprite>(*entity)) sprite->a = key.op == "show" ? 1.0f : 0.0f;
+        } else if (key.op == "tween") {
+            // A field eased over the key's seconds (18.3): {"field": "Sprite.a", "to": 0}.
+            const int id = StartTween(*entity, d.value("field", ""), d.value("to", 0.0f), due.skipping ? 0.0f : key.seconds,
+                                      d.value("ease", "ease_in_out"));
+            (void)id;
+        } else if (key.op == "animate") {
+            TriggerAnimation(registry_, *entity, d.value("trigger", "using"));
         }
     } else if (track.type == "dialogue") {
         if (due.skipping) return;
@@ -1467,8 +1509,9 @@ void GameSession::FireCutsceneKey(const CutscenePlayer::Due& due) {
             cameraFollow_ = entt::null;
         } else if (key.op == "zoom") {
             cameraZoom_ = d.value("value", 1.0f);
+        } else if (key.op == "shake" && !due.skipping) {
+            Shake(d.value("trauma", 0.4f));
         }
-        // shake: with the effects of Phase 18
     } else if (track.type == "audio") {
         if (key.op == "music") musicOverride_ = d.value("path", "");
         else if (key.op == "sound" && !due.skipping && playSound_) playSound_(d.value("path", ""));
@@ -1480,6 +1523,14 @@ void GameSession::FireCutsceneKey(const CutscenePlayer::Due& due) {
         } else if (key.op == "title" && !due.skipping) {
             titleCard_ = Tr("cutscene/" + cutscene_.Current().id + "/title", d.value("text", ""));
             titleSeconds_ = key.seconds > 0.0f ? key.seconds : 3.0;
+        }
+    } else if (track.type == "effect") {
+        // An effect at a marker, an actor or a point (18.5); skipped when skipping.
+        if (key.op == "play" && !due.skipping) {
+            if (const auto at = placeOf(d)) {
+                const auto who = d.contains("actor") ? FindNamed(resolve(d.value("actor", ""))) : std::nullopt;
+                PlayEffect(d.value("effect", ""), at->first, at->second, who.value_or(Entity{entt::null}));
+            }
         }
     } else if (track.type == "logic") {
         if (key.op == "do" && storyLibrary_ != nullptr) {
@@ -1602,6 +1653,206 @@ std::optional<std::pair<float, float>> GameSession::ObjectiveLocation() {
         return std::nullopt;
     }
     return std::nullopt;
+}
+
+// --- Animation and effects (development_plan.md 18) ---------------------------------
+
+void GameSession::Shake(float trauma) {
+    trauma_ = std::clamp(trauma_ + trauma * ActiveFxAccessibility().shakeScale, 0.0f, 1.0f);
+}
+
+std::pair<float, float> GameSession::CameraShake() const {
+    // Trauma squared, from smooth noise (Eiserloh, GDC 2016): a few pixels at most.
+    const float k = trauma_ * trauma_ * 14.0f;
+    const double t = shakeTime_ * 24.0;
+    const float nx = static_cast<float>(std::sin(t * 1.3) * 0.6 + std::sin(t * 2.9 + 1.7) * 0.4);
+    const float ny = static_cast<float>(std::sin(t * 1.7 + 0.5) * 0.6 + std::sin(t * 3.3 + 2.1) * 0.4);
+    return {nx * k, ny * k};
+}
+
+bool GameSession::PlayEffect(const std::string& id, float x, float y, Entity target, Entity source) {
+    auto effect = FindEffect(id);
+    if (!effect) return false;
+    for (const auto& part : effect->parts) {
+        const auto& d = part.data;
+        float px = x, py = y;
+        Entity on = target;
+        if (d.value("at", "target") == "source" && registry_.valid(source)) {
+            on = source;
+            if (const auto* w = registry_.try_get<WorldTransform2D>(source)) {
+                px = w->x;
+                py = w->y;
+            }
+        }
+        if (part.kind == "particles") {
+            if (auto def = FindParticles(d.value("particles", ""))) particles_.Emit(*def, px, py, d.value("seconds", 0.0f), on);
+        } else if (part.kind == "sound") {
+            if (playSoundAt_) playSoundAt_(d.value("sound", ""), px, py);
+            else if (playSound_) playSound_(d.value("sound", ""));
+        } else if (part.kind == "light") {
+            const auto light = d.value("light", nlohmann::json::object());
+            float c[4] = {1, 0.8f, 0.5f, 1};
+            const std::string hex = light.value("color", "#ffcc88");
+            if (hex.size() >= 7) {
+                c[0] = std::stoi(hex.substr(1, 2), nullptr, 16) / 255.0f;
+                c[1] = std::stoi(hex.substr(3, 2), nullptr, 16) / 255.0f;
+                c[2] = std::stoi(hex.substr(5, 2), nullptr, 16) / 255.0f;
+            }
+            tempLights_.push_back({px, py, light.value("radius", 3.0f), c[0], c[1], c[2], light.value("seconds", 0.4f), 0.0f});
+        } else if (part.kind == "flash") {
+            if (ActiveFxAccessibility().flashes && registry_.valid(on)) {
+                const auto flash = d.value("flash", nlohmann::json::object());
+                const std::string hex = flash.value("color", "#ffffff");
+                HitFlash f;
+                f.remaining = flash.value("time", 0.08f);
+                if (hex.size() >= 7) {
+                    f.r = std::stoi(hex.substr(1, 2), nullptr, 16) / 255.0f;
+                    f.g = std::stoi(hex.substr(3, 2), nullptr, 16) / 255.0f;
+                    f.b = std::stoi(hex.substr(5, 2), nullptr, 16) / 255.0f;
+                }
+                registry_.emplace_or_replace<HitFlash>(on, f);
+            }
+        } else if (part.kind == "shake") {
+            Shake(d.value("shake", 0.2f));
+        } else if (part.kind == "hitstop") {
+            HitStop(d.value("hitstop", 0.05f));
+        } else if (part.kind == "slowmo") {
+            const auto slow = d.value("slowmo", nlohmann::json::object());
+            SlowMotion(slow.value("scale", 0.4f), slow.value("seconds", 0.6f));
+        }
+    }
+    Emit({"effect", target, source, 0.0, id});
+    return true;
+}
+
+void GameSession::CueEffects(size_t firstEvent) {
+    for (size_t i = firstEvent; i < events_.size(); ++i) {
+        const GameEvent event = events_[i];
+        const bool alive = registry_.valid(event.entity);
+        float x = event.x, y = event.y;
+        if (alive) {
+            if (const auto* w = registry_.try_get<WorldTransform2D>(event.entity)) {
+                x = w->x;
+                y = w->y;
+            }
+        }
+        const auto* cues = alive ? registry_.try_get<EffectCues>(event.entity) : nullptr;
+        if (event.type == GameEvent::Type::Attack && alive) {
+            TriggerAnimation(registry_, event.entity, "attacking");
+            if (cues && !cues->onAttack.empty()) PlayEffect(cues->onAttack, x, y, event.entity);
+        } else if (event.type == GameEvent::Type::Hit && alive) {
+            TriggerAnimation(registry_, event.entity, "hurt");
+            if (cues && !cues->onHit.empty()) PlayEffect(cues->onHit, x, y, event.entity, event.other);
+        } else if (event.type == GameEvent::Type::Death && cues && !cues->onDeath.empty()) {
+            PlayEffect(cues->onDeath, x, y, event.entity, event.other);
+        }
+    }
+}
+
+void GameSession::StepFx(float dt) {
+    // Animators (18.2) and the events on their frames.
+    for (const auto& fired : UpdateAnimators(registry_, animations_, dt)) {
+        float x = 0, y = 0;
+        if (const auto* w = registry_.valid(fired.entity) ? registry_.try_get<WorldTransform2D>(fired.entity) : nullptr) {
+            x = w->x;
+            y = w->y;
+        }
+        if (fired.event.rfind("effect:", 0) == 0) PlayEffect(fired.event.substr(7), x, y, fired.entity);
+        else if (fired.event.rfind("sound:", 0) == 0 && playSound_) playSound_(fired.event.substr(6));
+        else if (fired.event == "footstep" && FindEffect("footstep")) PlayEffect("footstep", x, y, fired.entity);
+        Emit({"anim_event", fired.entity, entt::null, 0.0, fired.event});
+    }
+    // Tweens (18.3).
+    for (auto& tween : tweens_) {
+        const ComponentInfo* component = EngineReflection().FindComponent(tween.component);
+        const FieldInfo* field = component ? component->Field(tween.field) : nullptr;
+        if (!field || !registry_.valid(tween.entity) || !component->has(registry_, tween.entity)) {
+            tween.elapsed = tween.seconds;
+            continue;
+        }
+        if (!tween.started) {
+            const FieldValue now = field->get(registry_, tween.entity);
+            tween.from = std::holds_alternative<float>(now) ? std::get<float>(now)
+                         : std::holds_alternative<int>(now) ? static_cast<float>(std::get<int>(now)) : 0.0f;
+            tween.started = true;
+        }
+        tween.elapsed += dt;
+        const float value = tween.from + (tween.to - tween.from) * Ease(tween.ease, tween.elapsed / std::max(0.001f, tween.seconds));
+        if (field->type == FieldType::Int) field->set(registry_, tween.entity, static_cast<int>(std::lround(value)));
+        else field->set(registry_, tween.entity, value);
+    }
+    std::erase_if(tweens_, [](const Tween& t) { return t.started && t.elapsed >= t.seconds; });
+    // Weather around the player (18.6).
+    for (auto [entity, weather] : registry_.view<Weather>().each()) {
+        static const char* presets[] = {"", "rain", "snow", "", "dust"};
+        if (weather.kind <= 0 || weather.kind > 4 || std::string(presets[weather.kind]).empty()) break;
+        if (const auto player = FindPlayer(registry_)) {
+            const auto& at = registry_.get<WorldTransform2D>(*player);
+            if (auto def = FindParticles(presets[weather.kind])) particles_.Stream(*def, at.x, at.y, dt, weather.intensity * 2.0f);
+        }
+        break;
+    }
+    particles_.Update(registry_, dt);
+    for (auto& light : tempLights_) light.age += dt;
+    std::erase_if(tempLights_, [](const TempLight& l) { return l.age >= l.seconds; });
+}
+
+void GameSession::StepPreviewFx(float dt) {
+    trauma_ = std::max(0.0f, trauma_ - dt * 1.1f);
+    shakeTime_ += dt;
+    freeze_ = 0.0;
+    particles_.Update(registry_, dt);
+    for (auto& light : tempLights_) light.age += dt;
+    std::erase_if(tempLights_, [](const TempLight& l) { return l.age >= l.seconds; });
+}
+
+int GameSession::StartTween(Entity entity, const std::string& componentField, float to, float seconds, const std::string& ease) {
+    const auto dot = componentField.find('.');
+    if (dot == std::string::npos || !registry_.valid(entity)) return 0;
+    Tween tween;
+    tween.id = nextTween_++;
+    tween.entity = entity;
+    tween.component = componentField.substr(0, dot);
+    tween.field = componentField.substr(dot + 1);
+    tween.to = to;
+    tween.seconds = std::max(0.0f, seconds);
+    tween.ease = ease;
+    tweens_.push_back(tween);
+    return tween.id;
+}
+
+bool GameSession::TweenDone(int id) const {
+    return std::none_of(tweens_.begin(), tweens_.end(), [&](const Tween& t) { return t.id == id; });
+}
+
+LightingFrame GameSession::Lighting() const {
+    LightingFrame frame;
+    const auto& settings = ActiveSettings().lighting;
+    frame.enabled = settings.enabled;
+    if (!frame.enabled) return frame;
+    AmbientAt(MinuteOfDay(), frame.ambient, &frame.darkness);
+    // Weather dims the day: fog and rain grey it a little.
+    for (auto [entity, weather] : registry_.view<Weather>().each()) {
+        const float dim = weather.kind == 3 ? 0.25f : weather.kind == 1 || weather.kind == 4 ? 0.15f : 0.0f;
+        for (float& c : frame.ambient) c *= 1.0f - dim * weather.intensity;
+        break;
+    }
+    const float pxPerCell = iso_.tileWidth * 0.6f;
+    for (auto [entity, light, world] : registry_.view<Light2D, WorldTransform2D>().each()) {
+        if (light.nightOnly && frame.darkness < 0.3f) continue;
+        float intensity = light.intensity * (light.nightOnly ? frame.darkness : 1.0f);
+        if (light.flicker > 0.0f) {
+            const double t = shakeTime_ * 9.0 + static_cast<double>(static_cast<uint32_t>(entity)) * 1.7;
+            intensity *= 1.0f - light.flicker * 0.35f * static_cast<float>(0.5 + 0.5 * std::sin(t) * std::sin(t * 2.3));
+        }
+        const ScreenPose pose = ProjectIso(world.x, world.y, iso_);
+        frame.lights.push_back({pose.x, pose.y, light.radius * pxPerCell, light.r, light.g, light.b, intensity});
+    }
+    for (const auto& l : tempLights_) {
+        const ScreenPose pose = ProjectIso(l.x, l.y, iso_);
+        frame.lights.push_back({pose.x, pose.y, l.radius * pxPerCell, l.r, l.g, l.b, 1.0f - l.age / std::max(0.01f, l.seconds)});
+    }
+    return frame;
 }
 
 // --- Gameplay systems (development_plan.md 13) ----------------------------------
@@ -1911,6 +2162,13 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
     events_.clear();
     delivered_.clear();
     frameSeconds *= std::clamp(ActiveAssists().gameSpeed, 0.25f, 1.0f); // the game-speed assist (16.4)
+    // Juice (18.5): shake decays; slow motion stretches time for a while.
+    trauma_ = std::max(0.0f, trauma_ - static_cast<float>(frameSeconds) * 1.1f);
+    shakeTime_ += frameSeconds;
+    if (slowSeconds_ > 0.0) {
+        slowSeconds_ -= frameSeconds;
+        frameSeconds *= slowScale_;
+    }
     if (difficultyDirty_) ApplyDifficultyNow();
     accumulator_ += std::min(frameSeconds, 0.25);
     if (clockMinutes_ < 0.0) {
@@ -1929,8 +2187,15 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         }
     }
     ShowNotices();
+    if (freeze_ > 0.0) {
+        // Hit-stop (18.5): the world holds for a moment.
+        freeze_ -= frameSeconds;
+        accumulator_ = std::fmod(accumulator_, kFixedDt);
+        return 0;
+    }
     if (cutscene_.Active()) {
-        // A cutscene runs instead of the world (15.5).
+        // A cutscene runs instead of the world (15.5); its actors still animate.
+        StepFx(static_cast<float>(std::min(frameSeconds, 0.25)));
         StepCutscene(static_cast<float>(std::min(frameSeconds, 0.25)));
         ShowNotices();
         DispatchEvents();
@@ -2023,6 +2288,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
             }
         }
         OnStoryEvents(firstEvent);
+        CueEffects(firstEvent); // animation triggers and effect cues for the step's hits, deaths, attacks
         // Events (12.2): combat's, then the story's, to the scripts' handlers;
         // then timers, waiting coroutines and the modules' systems.
         static const char* kNames[] = {"hit", "death", "pickup", "attack", "victory"};
@@ -2039,6 +2305,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
             });
         }
         UpdateSpriteFacing(registry_);
+        StepFx(dt); // Phase 18: animators, particles, tweens, lights
         UpdateWorldToScreen(registry_, iso_);
 
         for (; soundsPlayed < events_.size(); ++soundsPlayed) {

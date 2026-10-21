@@ -1,0 +1,16 @@
+{
+  "schema": "aige.effect/1",
+  "parts": [
+    {
+      "particles": "blood",
+      "at": "target"
+    },
+    {
+      "particles": "dust",
+      "at": "target"
+    },
+    {
+      "shake": 0.2
+    }
+  ]
+}

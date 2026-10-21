@@ -1,0 +1,9 @@
+{
+  "schema": "aige.effect/1",
+  "parts": [
+    {
+      "particles": "dust",
+      "at": "target"
+    }
+  ]
+}

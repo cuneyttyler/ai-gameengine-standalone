@@ -12,7 +12,9 @@
 #include "renderer2d/Components.h"
 #include "scripting/Components.h"
 #include "gameplay/Cutscene.h"
+#include "gameplay/Animation.h"
 #include "gameplay/Difficulty.h"
+#include "gameplay/Effects.h"
 #include "ui/Documents.h"
 #include "gameplay/Settings.h"
 #include "gameplay/Schedule.h"
@@ -270,6 +272,29 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
                               {"settings", settings}, {"world", worldList},   {"dialogues", dialogues},
                               {"quests", quests},     {"markers", markers},   {"schedules", schedules},
                               {"records", records},   {"cutscenes", cutscenes}};
+    // Animation and effects (18): the project's sheets and their clips, the particles and
+    // effects there are (presets and records), the built-in animators.
+    {
+        AnimLibrary anims(project.root);
+        anims.Refresh();
+        nlohmann::json sheets = nlohmann::json::array();
+        for (const auto& sheet : anims.Sheets()) {
+            nlohmann::json clips = nlohmann::json::array();
+            for (const auto& [name, clip] : sheet.clips) clips.push_back(name);
+            sheets.push_back({{"path", sheet.path}, {"texture", sheet.texture}, {"clips", clips}});
+        }
+        auto ids = [&](std::vector<std::string> presets, const char* type) {
+            for (const Record* r : recordDb.OfType(type)) presets.push_back(r->id);
+            std::sort(presets.begin(), presets.end());
+            presets.erase(std::unique(presets.begin(), presets.end()), presets.end());
+            return presets;
+        };
+        context["fx"] = {{"sheets", sheets},
+                         {"particles", ids(ParticlePresets(), "particles")},
+                         {"effects", ids(EffectPresets(), "effect")},
+                         {"animators", BuiltInAnimatorIds()},
+                         {"lighting", ActiveSettings().lighting.enabled}};
+    }
     // The game's UI (17): the built-in themes, the project's theme and its own UI files.
     {
         nlohmann::json themes = nlohmann::json::array();

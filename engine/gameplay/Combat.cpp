@@ -2,6 +2,7 @@
 
 #include "gameplay/Attributes.h"
 #include "gameplay/Behaviour.h"
+#include "gameplay/Animation.h"
 #include "gameplay/Difficulty.h"
 #include "gameplay/GameSession.h"
 #include "records/Records.h"
@@ -470,6 +471,10 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
     bool enemyDied = false;
     for (auto entity : died) {
         registry.emplace<Dead>(entity);
+        // An animated one stays a moment to play its death (18.2).
+        if (const auto* animator = registry.try_get<Animator>(entity); animator && animator->corpseSeconds > 0.0f) {
+            registry.emplace_or_replace<Corpse>(entity, animator->corpseSeconds);
+        }
         const auto* sounds = registry.try_get<Sounds>(entity);
         const auto* instance = registry.try_get<PrefabInstance>(entity);
         GameEvent death{GameEvent::Type::Death, entity, entt::null, 0.0f, sounds ? sounds->death : std::string(),
@@ -503,6 +508,7 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
     }
     auto player = FindPlayer(registry);
     for (auto entity : registry.view<Dead>()) {
+        if (auto* corpse = registry.try_get<Corpse>(entity); corpse && (corpse->remaining -= dt) > 0.0f) continue;
         if (!player || entity != *player) {
             expired.push_back(entity);
         }

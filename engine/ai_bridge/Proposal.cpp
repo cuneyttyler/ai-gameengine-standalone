@@ -10,6 +10,7 @@
 #include "assets/SceneFiles.h"
 #include "editing/LevelBuild.h"
 #include "editing/VillageBuild.h"
+#include "gameplay/Animation.h"
 #include "gameplay/Cutscene.h"
 #include "ui/Documents.h"
 #include "gameplay/Schedule.h"
@@ -321,6 +322,39 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             if (auto problem = EditScriptProperty(registry, *entity, name, op["value"])) {
                 error = *problem;
             }
+        }
+
+    } else if (kind == "write_anim") {
+        // An animation sheet (18.1): assets/<name>.anim.json, checked like the Effects tab checks it.
+        const std::string path = op.value("path", "");
+        const nlohmann::json content = op.value("sheet", nlohmann::json());
+        item.kind = "anim";
+        item.touchesFiles = true;
+        item.target = "Sheet · " + path;
+        item.detail = content.dump(2);
+        std::vector<std::string> problems;
+        const bool place = path.rfind("assets/", 0) == 0 && path.size() > 10 && path.substr(path.size() - 10) == ".anim.json" &&
+                           path.find("..") == std::string::npos;
+        if (!place) problems.push_back("sheets are assets/<name>.anim.json");
+        std::string parseError;
+        auto sheet = AnimSheetFromJson(content, path, &parseError);
+        if (!sheet) problems.push_back(parseError);
+        else for (auto& p : ValidateAnimSheet(*sheet)) problems.push_back(p);
+        if (sheet && !sheet->texture.empty() && !std::filesystem::exists(project.Resolve(sheet->texture))) {
+            problems.push_back("no picture " + sheet->texture);
+        }
+        if (!problems.empty()) {
+            error = JoinProblems(problems);
+            return item;
+        }
+        std::error_code ec;
+        if (std::filesystem::exists(project.Resolve(path), ec)) item.before = "(replaces the existing file)";
+        item.after = content;
+        if (apply) {
+            std::filesystem::create_directories(project.Resolve(path).parent_path(), ec);
+            std::ofstream out(project.Resolve(path), std::ios::binary | std::ios::trunc);
+            if (!out) error = "couldn't write " + path;
+            else out << content.dump(2) << "\n";
         }
 
     } else if (kind == "write_ui") {

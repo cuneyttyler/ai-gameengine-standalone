@@ -48,6 +48,7 @@ Operations (use exact component, field, setting and command names from the schem
   {"op": "write_schedule", "id": "<file id>", "schedule": {...see ROUTINES below...}}
   {"op": "write_cutscene", "id": "<file id>", "cutscene": {...see CUTSCENES below...}}
   {"op": "write_ui", "path": "ui/<file>", "content": "<the whole file>"}   (see GAME UI below)
+  {"op": "write_anim", "path": "assets/<name>.anim.json", "sheet": {...}}   (see ANIMATION AND EFFECTS below)
 
 Rules:
 - Only use components, fields, settings and commands that appear in the schema, and only
@@ -84,7 +85,7 @@ Rules:
   List it under "art": [{"name": "stone-floor", "kind": "tile"|"object"|"character",
   "description": "what it is, for this scene", "cells": <width in cells>}], and use "art:<name>"
   wherever its path goes (a prefab.create texture, ...). It's drawn before the change is applied.
-- Every operation is a JSON object with "op" set to one of the fourteen kinds above; commands
+- Every operation is a JSON object with "op" set to one of the fifteen kinds above; commands
   always use {"op": "command", "name": ..., "args": {...}}.
 - Make the smallest change that does what was asked. If the request can't be done with
   what's available, return no operations and explain why in "notes".
@@ -231,6 +232,30 @@ CUTSCENES (file cutscenes/<id>.json; context "cutscenes" lists the project's)
   or play_cutscene(id) in Lua. Write the cutscene in the same proposal as anything that plays it.
 """
 
+FX = """\
+ANIMATION AND EFFECTS (docs/effects-animation.md; context "fx")
+- An animated character: a sheet assets/<name>.anim.json (write it with {"op": "write_anim", "path":
+  "assets/<name>.anim.json", "sheet": {"texture": "<picture path from context assets>", "size": [w, h],
+  "grid": {"width": 32, "height": 32}, "fps": 8, "clips": {"idle": {"frames": [0, 1]}, "walk": {"directions":
+  {"s": [4,5,6,7], "e": [8,9,10,11], "n": [...], "w": "mirror:e"}}, "attack": {"frames": [12,13,14], "loop":
+  "once", "events": [{"frame": 1, "event": "effect:hit"}]}, "die": {"frames": [15], "loop": "hold"}}}} (frames
+  are grid indices, row by row, or {"region": [x, y, w, h], "duration": s}); then add_component Animator
+  {"sheet": "<path>", "animator": "humanoid"|"quadruped"|"flyer"|"prop"|"<animator record>"}. The humanoid
+  animator plays idle, walk, attack, cast, use, hurt, die from the entity's movement and combat by itself.
+- Particles: add_component ParticleEmitter {"particles": "<id from context fx.particles>"} (fire, smoke, embers,
+  fireflies...), or a "particles" record of your own. Effects (records "effect", presets in fx.effects): what a
+  hit, a death or a spell looks and sounds like: {"parts": [{"particles": "sparks"}, {"sound": "<audio>"},
+  {"light": {"color": "#ff9a3c", "radius": 3, "seconds": 0.4}}, {"flash": {"color": "#fff", "time": 0.08}},
+  {"shake": 0.25}, {"hitstop": 0.05}, {"slowmo": {"scale": 0.4, "seconds": 0.6}}]}. EffectCues {"onHit",
+  "onDeath", "onAttack"} plays effects on an entity's events; Lua play_effect(id, x, y).
+- Lighting (Project Settings Lighting.enabled, dayNight, nightAmbient): Light2D {"r", "g", "b", "intensity",
+  "radius" (cells), "flicker", "nightOnly"} on torches, lamps, windows; Sprite.emissive for things that glow in the
+  dark; a Weather component {"kind": "Rain"|"Snow"|"Fog"|"Sandstorm", "intensity"} on any entity of a scene.
+- Cutscene keys can also tween a field ({"op": "tween", "field": "Sprite.a", "to": 0, "seconds": 1}), trigger an
+  animation ({"op": "animate", "trigger": "casting"}), play an effect (an "effect" track: {"op": "play", "effect":
+  "fireball", "marker": "..."}), and shake the camera ({"op": "shake", "trauma": 0.5}).
+"""
+
 GAME_UI = """\
 GAME UI (docs/game-ui.md; the game's menus, windows, HUD and notifications are documents; context "ui")
 - Write files with {"op": "write_ui", "path": "ui/...", "content": "<the whole file>"}:
@@ -322,6 +347,9 @@ second while playing). These are ALL the engine functions — there are no other
   play_cutscene(id) -> boolean / skip_cutscene() / in_cutscene() -> boolean
   difficulty() -> level id / difficulty_step(category) -> 1..5 / set_difficulty(id) -> boolean
   notify(channel, text[, seconds]) / open_screen(id) -> boolean / close_screen(id) / is_open(id) -> boolean
+  play_effect(id, x, y) or play_effect(id, entity) -> boolean / emit_particles(id, x, y[, seconds])
+  shake(trauma) / hitstop(seconds) / slow_motion(scale, seconds) / anim_trigger(id, "attacking"|"casting"|...)
+  tween(id, "Component.field", to, seconds[, ease]) -> handle / tween_done(handle) -> boolean
   time_of_day()                     -> hours since midnight (fractional), e.g. 13.5
   day()                             -> the day number, from 1
   play_sound(asset_path) / play_sound_at(asset_path, x, y) / play_music(asset_path, or "" for the scene's)
@@ -342,7 +370,7 @@ second while playing). These are ALL the engine functions — there are no other
   move_to(x, y)   (in a scripted package's run() coroutine: walks there around walls)
 Events: hit, death, pickup, attack, victory, talk, item_added, level_up, interact, bark, quest_started,
 quest_completed, quest_failed, quest_stage, objective_completed, cutscene_started, cutscene_ended,
-difficulty_changed, ui_action (text: the action's name).
+difficulty_changed, ui_action (text: the action's name), anim_event (text: a frame event), effect.
 Entity ids are always the first argument where one is taken; prefab values can't be read
 from scripts (remember a value in a local at load time if you need it later, e.g.
 `local normal_speed = nil` then set it on the first update). A top-level
@@ -434,6 +462,7 @@ def build_messages(
             GAMEPLAY,
             DIFFICULTY,
             GAME_UI,
+            FX,
             RECORDS,
             SCENES,
             ART,

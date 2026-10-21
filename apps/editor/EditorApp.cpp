@@ -563,6 +563,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     if (type.rfind("library:", 0) == 0 && HandleLibraryMessage(type, message)) return;
     if (type.rfind("difficulty:", 0) == 0 && HandleDifficultyMessage(type, message)) return;
     if (type.rfind("ui:", 0) == 0 && HandleUiMessage(type, message)) return;
+    if (type.rfind("fx:", 0) == 0 && HandleFxMessage(type, message)) return;
 
     if (type == "viewport:bounds") {
         int width = message.value("width", 0);
@@ -3516,6 +3517,170 @@ bool EditorApp::HandleUiMessage(const std::string& type, const nlohmann::json& m
     return true;
 }
 
+nlohmann::json EditorApp::FxJson() {
+    session_.ReloadAnimations();
+    const AnimLibrary& library = session_.Animations();
+    nlohmann::json sheets = nlohmann::json::array();
+    for (const auto& sheet : library.Sheets()) {
+        nlohmann::json clips = nlohmann::json::array();
+        for (const auto& [name, clip] : sheet.clips) {
+            nlohmann::json directions = nlohmann::json::object();
+            for (const auto& [dir, frames] : clip.directions) {
+                nlohmann::json list = nlohmann::json::array();
+                for (const auto& f : frames) list.push_back({{"x", f.x}, {"y", f.y}, {"w", f.w}, {"h", f.h}, {"duration", f.duration}});
+                directions[dir.empty() ? "-" : dir] = list;
+            }
+            clips.push_back({{"name", name}, {"loop", clip.loop}, {"directions", directions}, {"mirrors", clip.mirrors},
+                             {"events", clip.events.size()}});
+        }
+        sheets.push_back({{"path", sheet.path}, {"texture", sheet.texture}, {"size", {sheet.textureWidth, sheet.textureHeight}},
+                          {"clips", clips}});
+    }
+    auto listOf = [](const std::vector<std::string>& presets, const std::string& type) {
+        nlohmann::json out = nlohmann::json::array();
+        std::set<std::string> seen;
+        for (const Record* r : ActiveRecords().OfType(type)) {
+            out.push_back({{"id", r->id}, {"source", "project"}});
+            seen.insert(r->id);
+        }
+        for (const auto& id : presets) {
+            if (!seen.contains(id)) out.push_back({{"id", id}, {"source", "engine"}});
+        }
+        return out;
+    };
+    nlohmann::json cutscenes = nlohmann::json::array();
+    for (const auto& id : ListCutscenes(assets_.GetProject().root)) {
+        std::string error;
+        auto c = LoadCutscene(assets_.GetProject().root, id, &error);
+        cutscenes.push_back({{"id", id}, {"name", c ? c->name : std::string()}, {"seconds", c ? c->Length() : 0.0f},
+                             {"problems", c ? ValidateCutscene(*c) : std::vector<std::string>{error}}});
+    }
+    return {{"type", "fx:model"},
+            {"sheets", sheets},
+            {"problems", library.Problems()},
+            {"animators", BuiltInAnimatorIds()},
+            {"particles", listOf(ParticlePresets(), "particles")},
+            {"effects", listOf(EffectPresets(), "effect")},
+            {"cutscenes", cutscenes}};
+}
+
+bool EditorApp::HandleFxMessage(const std::string& type, const nlohmann::json& message) {
+    const fs::path root = assets_.GetProject().root;
+    auto writeJson = [&](const std::string& relative, const nlohmann::json& json) -> std::optional<std::string> {
+        std::error_code ec;
+        fs::create_directories((root / relative).parent_path(), ec);
+        std::ofstream out(root / relative, std::ios::binary | std::ios::trunc);
+        if (!out) return "couldn't write " + relative;
+        out << json.dump(2) << "\n";
+        return std::nullopt;
+    };
+    if (type == "fx:request") {
+        ActiveRecords().Refresh();
+        post_(FxJson());
+    } else if (type == "fx:import-aseprite") {
+        // An Aseprite JSON export in the project: a sheet beside it (<name>.anim.json).
+        const std::string path = message.value("path", "");
+        std::ifstream in(root / path, std::ios::binary);
+        const nlohmann::json aseprite = nlohmann::json::parse(in, nullptr, false);
+        if (aseprite.is_discarded()) {
+            post_({{"type", "notify"}, {"text", path + " isn't JSON"}});
+            return true;
+        }
+        std::string texture = message.value("texture", "");
+        if (texture.empty()) {
+            const std::string image = aseprite.value("meta", nlohmann::json::object()).value("image", "");
+            texture = (fs::path(path).parent_path() / image).generic_string();
+        }
+        const std::string out = (fs::path(path).parent_path() / (fs::path(path).stem().string() + ".anim.json")).generic_string();
+        if (auto error = writeJson(out, AnimSheetFromAseprite(aseprite, texture))) post_({{"type", "notify"}, {"text", *error}});
+        post_(FxJson());
+    } else if (type == "fx:import-grid") {
+        const std::string texture = message.value("texture", "");
+        std::vector<std::string> rows;
+        for (const auto& r : message.value("rows", nlohmann::json::array())) rows.push_back(r.get<std::string>());
+        const std::string out = message.value("out", (fs::path(texture).parent_path() / (fs::path(texture).stem().string() + ".anim.json")).generic_string());
+        const auto sheet = AnimSheetFromGrid(texture, message.value("width", 32), message.value("height", 32),
+                                             message.value("columns", 4), rows, message.value("fps", 8.0f));
+        if (auto error = writeJson(out, sheet)) post_({{"type", "notify"}, {"text", *error}});
+        post_(FxJson());
+    } else if (type == "fx:try") {
+        // An effect or particles at the middle of the viewport, to see them while editing.
+        int width = 0, height = 0;
+        viewport_.GetFramebufferSize(width, height);
+        float sceneX = 0, sceneY = 0, worldX = 0, worldY = 0;
+        camera_.ViewportToScene(width * 0.5f, height * 0.5f, sceneX, sceneY);
+        UnprojectIso(sceneX, sceneY, iso_, worldX, worldY);
+        const std::string id = message.value("id", "");
+        bool ok = false;
+        if (message.value("kind", "effect") == "effect") {
+            ok = session_.PlayEffect(id, worldX, worldY);
+        } else if (auto def = FindParticles(id)) {
+            session_.Particles().Emit(*def, worldX, worldY, def->burst > 0 ? 0.0f : 2.0f);
+            ok = true;
+        }
+        if (!ok) post_({{"type", "notify"}, {"text", "No " + message.value("kind", "effect") + " '" + id + "'"}});
+    } else if (type == "fx:customise") {
+        // The engine's preset as the project's own record, to change in Records.
+        const std::string kind = message.value("kind", "particles");
+        const std::string id = message.value("id", "");
+        std::ifstream in(FxPresetPath(kind == "effect" ? "effects" : "particles", id), std::ios::binary);
+        nlohmann::json data = nlohmann::json::parse(in, nullptr, false);
+        if (data.is_discarded()) data = nlohmann::json::object();
+        data.erase("schema");
+        ActiveRecords().Refresh();
+        if (auto error = ActiveRecords().Write(kind == "effect" ? "effect" : "particles", id, data)) {
+            post_({{"type", "notify"}, {"text", *error}});
+        }
+        post_(FxJson());
+    } else if (type == "fx:cutscene") {
+        std::string error;
+        auto c = LoadCutscene(root, message.value("id", ""), &error);
+        post_({{"type", "fx:cutscene"}, {"id", message.value("id", "")},
+               {"cutscene", c ? CutsceneToJson(*c) : nlohmann::json(nullptr)}, {"error", error}});
+    } else if (type == "fx:cutscene-save") {
+        const std::string id = message.value("id", "");
+        if (auto error = WriteCutsceneFile(root, id, message.value("cutscene", nlohmann::json::object()))) {
+            post_({{"type", "notify"}, {"text", *error}});
+        }
+        post_(FxJson());
+    } else if (type == "fx:cutscene-play") {
+        // Play the game from here with the cutscene running (the timeline editor's Play).
+        if (!playing_) StartPlay();
+        if (playing_ && !session_.PlayCutscene(message.value("id", ""))) {
+            post_({{"type", "notify"}, {"text", "The cutscene didn't load."}});
+        }
+    } else {
+        return false;
+    }
+    return true;
+}
+
+Camera2D EditorApp::FxFrame(std::vector<SpriteItem>& items) {
+    static bool registered = false;
+    if (!registered) {
+        for (const auto& [name, image] : FxTextures()) renderer_.RegisterTexture(name, image);
+        registered = true;
+    }
+    session_.AppendFxSprites(items); // also an effect being tried while editing
+    if (!playing_) {
+        renderer_.SetLighting(false, 1, 1, 1, {});
+        Camera2D view = camera_;
+        const auto [x, y] = session_.CameraShake();
+        view.offsetX += x / view.zoom;
+        view.offsetY += y / view.zoom;
+        return view;
+    }
+    const LightingFrame lighting = session_.Lighting();
+    std::vector<Renderer2D::SceneLight> lights;
+    for (const auto& l : lighting.lights) lights.push_back({l.x, l.y, l.radius, l.r, l.g, l.b, l.intensity});
+    renderer_.SetLighting(lighting.enabled, lighting.ambient[0], lighting.ambient[1], lighting.ambient[2], std::move(lights));
+    Camera2D view = camera_;
+    const auto [x, y] = session_.CameraShake();
+    view.offsetX += x / view.zoom;
+    view.offsetY += y / view.zoom;
+    return view;
+}
+
 void EditorApp::AddStatsOverlay(std::vector<UiQuad>& ui) {
     if (!showStats_) {
         return;
@@ -3553,6 +3718,7 @@ void EditorApp::Tick(double frameSeconds) {
     }
     frameMs_ = frameMs_ * 0.9 + frameSeconds * 1000.0 * 0.1;
     if (uiDocs_) uiDocs_->Update(frameSeconds);
+    if (!playing_) session_.StepPreviewFx(static_cast<float>(frameSeconds)); // effects tried while editing
     if (playing_) {
         const auto updateStart = std::chrono::steady_clock::now();
         session_.Advance(frameSeconds, [this](Key key) { return viewport_.IsKeyDown(key); });

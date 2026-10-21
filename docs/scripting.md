@@ -49,6 +49,11 @@ Entities are referred to by integer **ids** (as returned by `find_nearest` or `s
 | `used(name)` | — | Counts as using something, for `use` and `examine` objectives. |
 | `notify(channel, text[, seconds])` | — | A notification: `toast`, `feed`, `banner` or `alert` ([game-ui.md](game-ui.md)). |
 | `open_screen(id)` / `close_screen(id)` / `is_open(id)` | boolean / — / boolean | The project's own screen, `ui/screens/<id>.rml`; its `action('…')` calls arrive as the `ui_action` event. |
+| `play_effect(id, x, y)` / `play_effect(id, entity)` | boolean | An effect (a record or preset) at a point or on an entity ([effects-animation.md](effects-animation.md)). |
+| `emit_particles(id, x, y[, seconds])` | boolean | A burst of particles, or that many seconds of them. |
+| `shake(trauma)` / `hitstop(seconds)` / `slow_motion(scale, seconds)` | — | Juice: screen shake (0-1, decays), freeze the world, slow it. |
+| `tween(id, "Component.field", to, seconds[, ease])` / `tween_done(handle)` | handle / boolean | Eases a number field: `linear`, `ease_in`, `ease_out` (default), `ease_in_out`, `bounce`. |
+| `anim_trigger(id, trigger)` | — | Plays an animator's state: `attacking`, `casting`, `using`, `hurt`. |
 | `difficulty()` / `difficulty_step(category)` / `set_difficulty(id)` | string / number / boolean | The difficulty level's id; a category's step, 1-5 (3: as designed); change the level. See [difficulty.md](difficulty.md). |
 | `play_cutscene(id)` / `skip_cutscene()` / `in_cutscene()` | boolean / — / boolean | Plays `cutscenes/<id>.json` (false if it doesn't load). See [story.md](story.md#cutscenes-cutscenesidjson). |
 | `set_flag(name[, value])` | — | Story flags shared with dialogue conditions; `value` defaults to true. |
@@ -92,6 +97,8 @@ Things that happen in the game are **events**, each with a name and a table `e`:
 | `quest_started`, `quest_completed`, `quest_failed`, `quest_stage`, `objective_completed` | — | — | — / the quest's id |
 | `cutscene_started`, `cutscene_ended` | — | — | — / the cutscene's id |
 | `ui_action` | — | — | — / the action's name (a document's `action('…')`) |
+| `anim_event` | the animated entity | — | — / the frame event's name |
+| `effect` | the target | the source | — / the effect's id |
 | `difficulty_changed` | — | — | — / the level's id |
 
 Handlers run at the end of each step, after combat. They, timers and `start` run as

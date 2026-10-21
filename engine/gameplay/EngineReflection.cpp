@@ -4,7 +4,9 @@
 #include "gameplay/Behaviour.h"
 #include "gameplay/Components.h"
 #include "gameplay/Cutscene.h"
+#include "gameplay/Animation.h"
 #include "gameplay/Difficulty.h"
+#include "gameplay/Effects.h"
 #include "gameplay/Items.h"
 #include "gameplay/Settings.h"
 #include "records/Records.h"
@@ -340,6 +342,36 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "what 'talk to' quest objectives point at.")
         .Field("range", &Talk::range, "How close the player must be, in cells.").Range(0.3, 10)
         .DependsOn({"WorldTransform2D"});
+    // --- Animation and effects (18) ---------------------------------------------------
+    r.Component<Animator>("Animator", "Animates the sprite (18.2): a sheet (assets/*.anim.json) and an animator "
+                                      "(humanoid, quadruped, flyer, prop, or an animator record).")
+        .Field("sheet", &Animator::sheet, "The sheet, assets/<name>.anim.json.")
+        .Field("animator", &Animator::animator, "humanoid, quadruped, flyer, prop, or an animator record's id.")
+        .Field("speed", &Animator::speed, "Playback rate.").Range(0, 10)
+        .Field("corpseSeconds", &Animator::corpseSeconds, "A dead one stays this long, for its death clip.").Range(0, 30)
+        .DependsOn({"Sprite"});
+    r.Component<ParticleEmitter>("ParticleEmitter", "Emits particles (18.4): a particles record or preset "
+                                                    "(fire, smoke, embers, fireflies...).")
+        .Field("particles", &ParticleEmitter::particles, "The particles' id.")
+        .Field("playing", &ParticleEmitter::playing, "Emitting now.")
+        .Field("scale", &ParticleEmitter::scale, "Rate and size.").Range(0.05, 20)
+        .DependsOn({"WorldTransform2D"});
+    r.Component<EffectCues>("EffectCues", "Effects played when this is hit, dies or attacks (18.5).")
+        .Field("onHit", &EffectCues::onHit, "An effect's id (hit, hit-fire...).")
+        .Field("onDeath", &EffectCues::onDeath, "An effect's id (death...).")
+        .Field("onAttack", &EffectCues::onAttack, "An effect's id.");
+    r.Component<Light2D>("Light2D", "A light (18.6): lights what's around it when Lighting is on.")
+        .Field("r", &Light2D::r, "Red (0-1).").Range(0, 1)
+        .Field("g", &Light2D::g, "Green (0-1).").Range(0, 1)
+        .Field("b", &Light2D::b, "Blue (0-1).").Range(0, 1)
+        .Field("intensity", &Light2D::intensity, "How bright.").Range(0, 4)
+        .Field("radius", &Light2D::radius, "How far, in cells.").Range(0.1, 50)
+        .Field("flicker", &Light2D::flicker, "Flicker (0-1): a torch.").Range(0, 1)
+        .Field("nightOnly", &Light2D::nightOnly, "On only in the dark (street lamps, windows).")
+        .DependsOn({"WorldTransform2D"});
+    r.Component<Weather>("Weather", "The scene's weather (18.6).")
+        .Field("kind", &Weather::kind, "None, rain, snow, fog or sandstorm.").Options({"None", "Rain", "Snow", "Fog", "Sandstorm"})
+        .Field("intensity", &Weather::intensity, "How strong (0-1).").Range(0, 1);
     r.Component<Zone>("Zone", "The scene's level band (16.3): enemies here are made at a level within it.")
         .Field("minLevel", &Zone::minLevel, "The lowest level.").Range(1, 100)
         .Field("maxLevel", &Zone::maxLevel, "The highest level.").Range(1, 100);
@@ -391,6 +423,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "(width x height) instead of standing upright.")
         .Field("rotation", &Sprite::rotation, "Quarter turns clockwise of a flat image (0-3).").Range(0, 3)
         .Field("lift", &Sprite::lift, "Raised off the ground by this many pixels (standing on high ground).").Range(-512, 512)
+        .Field("emissive", &Sprite::emissive, "Lit by itself (a lit window, glowing runes): darkness doesn't dim it.")
         .DependsOn({"ScreenTransform2D"});
 
     // --- Scripting -------------------------------------------------------------------
@@ -488,6 +521,14 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Options({"None", "FixedZones", "Scaled", "Hybrid"})
         .Field("levelOffset", &DifficultySettings::levelOffset, "Scaled and Hybrid: the player's level plus this.")
         .Range(-20, 20);
+    r.Settings("Lighting", "2D lighting, day and night (effects-animation.md §7).", &settings.lighting)
+        .Field("enabled", &LightingSettings::enabled, "Light the scene: ambient light plus Light2D lights.")
+        .Field("dayNight", &LightingSettings::dayNight, "The ambient light follows the game clock.")
+        .Field("dayAmbient", &LightingSettings::dayAmbient, "The light by day (#rrggbb).")
+        .Field("nightAmbient", &LightingSettings::nightAmbient, "The light at night (#rrggbb).")
+        .Field("dawnHour", &LightingSettings::dawnHour, "When day comes.").Range(0, 23.99)
+        .Field("duskHour", &LightingSettings::duskHour, "When night falls.").Range(0, 23.99)
+        .Field("vignette", &LightingSettings::vignette, "Darken the screen's edges.");
     r.Settings("UI", "The game's own UI (game-ui.md).", &settings.ui)
         .Field("documents", &UiSettings::documents,
                "Menus, windows and the HUD as themed documents (ui/); off: the built-in overlays.");

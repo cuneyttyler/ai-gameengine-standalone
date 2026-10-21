@@ -92,7 +92,10 @@ public:
     const Camera2D& Camera() const { return camera_; }
     const IsoParams& Iso() const { return iso_; }
     std::vector<OverlayLine> BuildOverlay();
-    std::vector<UiQuad> BuildUi(); // the game's own UI, in Play mode
+    std::vector<UiQuad> BuildUi();
+    // Phase 18: adds the particles to `items`, lights the renderer and returns the
+    // camera shaken (while playing; in editing the plain camera, unlit).
+    Camera2D FxFrame(std::vector<SpriteItem>& items); // the game's own UI, in Play mode
     Registry& Preview() { return preview_; } // drawn with the scene (Renderer2D extra)
 
     // True when the scene has unsaved edits (asked before closing).
@@ -385,6 +388,9 @@ private:
     bool HandleDifficultyMessage(const std::string& type, const nlohmann::json& message);
     // Game UI (17): the documents in Play and the UI tab's designer (preview, source, theme).
     bool HandleUiMessage(const std::string& type, const nlohmann::json& message);
+    // Animation and effects (18.7): sheets, particles and effects to try, cutscenes.
+    bool HandleFxMessage(const std::string& type, const nlohmann::json& message);
+    nlohmann::json FxJson();
     nlohmann::json UiJson();
     DocumentUi& UiDocs();
     void ShowUiPreview(std::vector<UiQuad>& ui, int width, int height);

@@ -83,6 +83,20 @@ public:
     // top-down one, 6.1). Hosts set it from the project's Grid setting.
     void SetFlatDiamonds(bool diamonds) { flatDiamonds_ = diamonds; }
 
+    // 2D lighting (development_plan.md 18.6): sprites are tinted per corner by the
+    // ambient light plus point lights (scene pixels); emissive sprites aren't.
+    struct SceneLight {
+        float x = 0, y = 0, radius = 64;
+        float r = 1, g = 1, b = 1, intensity = 1;
+    };
+    void SetLighting(bool enabled, float ambientR, float ambientG, float ambientB, std::vector<SceneLight> lights) {
+        lighting_ = enabled;
+        ambient_[0] = ambientR;
+        ambient_[1] = ambientG;
+        ambient_[2] = ambientB;
+        lights_ = std::move(lights);
+    }
+
     // What the last Render drew (the F3 stats overlay).
     const RenderStats& LastStats() const { return stats_; }
 
@@ -141,6 +155,9 @@ private:
     std::vector<Buffer> vertexBuffers_; // one per frame-in-flight
     RenderStats stats_;
     bool flatDiamonds_ = true;
+    bool lighting_ = false;
+    float ambient_[3] = {1, 1, 1};
+    std::vector<SceneLight> lights_;
 };
 
 } // namespace aige

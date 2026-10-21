@@ -1850,6 +1850,174 @@
       "userEditable": true
     },
     {
+      "dependencies": [
+        "Sprite"
+      ],
+      "description": "Animates the sprite (18.2): a sheet (assets/*.anim.json) and an animator (humanoid, quadruped, flyer, prop, or an animator record).",
+      "fields": [
+        {
+          "description": "The sheet, assets/<name>.anim.json.",
+          "name": "sheet",
+          "type": "string"
+        },
+        {
+          "description": "humanoid, quadruped, flyer, prop, or an animator record's id.",
+          "name": "animator",
+          "type": "string"
+        },
+        {
+          "description": "Playback rate.",
+          "max": 10.0,
+          "min": 0.0,
+          "name": "speed",
+          "type": "float"
+        },
+        {
+          "description": "A dead one stays this long, for its death clip.",
+          "max": 30.0,
+          "min": 0.0,
+          "name": "corpseSeconds",
+          "type": "float"
+        }
+      ],
+      "name": "Animator",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Emits particles (18.4): a particles record or preset (fire, smoke, embers, fireflies...).",
+      "fields": [
+        {
+          "description": "The particles' id.",
+          "name": "particles",
+          "type": "string"
+        },
+        {
+          "description": "Emitting now.",
+          "name": "playing",
+          "type": "bool"
+        },
+        {
+          "description": "Rate and size.",
+          "max": 20.0,
+          "min": 0.05,
+          "name": "scale",
+          "type": "float"
+        }
+      ],
+      "name": "ParticleEmitter",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "Effects played when this is hit, dies or attacks (18.5).",
+      "fields": [
+        {
+          "description": "An effect's id (hit, hit-fire...).",
+          "name": "onHit",
+          "type": "string"
+        },
+        {
+          "description": "An effect's id (death...).",
+          "name": "onDeath",
+          "type": "string"
+        },
+        {
+          "description": "An effect's id.",
+          "name": "onAttack",
+          "type": "string"
+        }
+      ],
+      "name": "EffectCues",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "A light (18.6): lights what's around it when Lighting is on.",
+      "fields": [
+        {
+          "description": "Red (0-1).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "r",
+          "type": "float"
+        },
+        {
+          "description": "Green (0-1).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "g",
+          "type": "float"
+        },
+        {
+          "description": "Blue (0-1).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "b",
+          "type": "float"
+        },
+        {
+          "description": "How bright.",
+          "max": 4.0,
+          "min": 0.0,
+          "name": "intensity",
+          "type": "float"
+        },
+        {
+          "description": "How far, in cells.",
+          "max": 50.0,
+          "min": 0.1,
+          "name": "radius",
+          "type": "float"
+        },
+        {
+          "description": "Flicker (0-1): a torch.",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "flicker",
+          "type": "float"
+        },
+        {
+          "description": "On only in the dark (street lamps, windows).",
+          "name": "nightOnly",
+          "type": "bool"
+        }
+      ],
+      "name": "Light2D",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "The scene's weather (18.6).",
+      "fields": [
+        {
+          "description": "None, rain, snow, fog or sandstorm.",
+          "name": "kind",
+          "options": [
+            "None",
+            "Rain",
+            "Snow",
+            "Fog",
+            "Sandstorm"
+          ],
+          "type": "int"
+        },
+        {
+          "description": "How strong (0-1).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "intensity",
+          "type": "float"
+        }
+      ],
+      "name": "Weather",
+      "userEditable": true
+    },
+    {
       "dependencies": [],
       "description": "The scene's level band (16.3): enemies here are made at a level within it.",
       "fields": [
@@ -2056,6 +2224,11 @@
           "min": -512.0,
           "name": "lift",
           "type": "float"
+        },
+        {
+          "description": "Lit by itself (a lit window, glowing runes): darkness doesn't dim it.",
+          "name": "emissive",
+          "type": "bool"
         }
       ],
       "name": "Sprite",
@@ -2938,6 +3111,274 @@
       "name": "difficulty-table"
     },
     {
+      "description": "An animator (18.2): states that play clips and transitions between them.",
+      "fields": [
+        {
+          "description": "The states; the first is the default.",
+          "fields": [
+            {
+              "description": "The state",
+              "name": "id",
+              "type": "string"
+            },
+            {
+              "description": "The clip it plays (in the entity's sheet)",
+              "name": "clip",
+              "type": "string"
+            },
+            {
+              "description": "end: back to the default state when the clip ends",
+              "name": "exit",
+              "type": "string"
+            },
+            {
+              "description": "Playback rate",
+              "name": "speed",
+              "type": "float"
+            }
+          ],
+          "list": true,
+          "name": "states",
+          "type": "object"
+        },
+        {
+          "description": "When to change state.",
+          "fields": [
+            {
+              "description": "A state, or *",
+              "name": "from",
+              "type": "string"
+            },
+            {
+              "description": "A state",
+              "name": "to",
+              "type": "string"
+            },
+            {
+              "description": "speed > 0.1, attacking, hurt, casting, using, dead, !dead, a && b",
+              "name": "if",
+              "type": "string"
+            },
+            {
+              "description": "Higher wins",
+              "name": "priority",
+              "type": "int"
+            }
+          ],
+          "list": true,
+          "name": "transitions",
+          "type": "object"
+        },
+        {
+          "description": "The state it starts in (else the first).",
+          "name": "default",
+          "type": "string"
+        }
+      ],
+      "name": "animator"
+    },
+    {
+      "description": "Particles (18.4): an emitter's settings. Presets: data/fx/particles.",
+      "fields": [
+        {
+          "description": "Per second while playing",
+          "name": "rate",
+          "type": "float"
+        },
+        {
+          "description": "At once when it starts",
+          "name": "burst",
+          "type": "int"
+        },
+        {
+          "description": "Seconds it emits (0: until stopped)",
+          "name": "duration",
+          "type": "float"
+        },
+        {
+          "description": "Seconds: [min, max]",
+          "list": true,
+          "name": "lifetime",
+          "type": "float"
+        },
+        {
+          "description": "point, circle or box",
+          "name": "shape",
+          "type": "string"
+        },
+        {
+          "description": "Circle radius or box half-size, in cells",
+          "name": "radius",
+          "type": "float"
+        },
+        {
+          "description": "Cells per second: [min, max]",
+          "list": true,
+          "name": "speed",
+          "type": "float"
+        },
+        {
+          "description": "Degrees on screen: 0 right, -90 up",
+          "name": "direction",
+          "type": "float"
+        },
+        {
+          "description": "Degrees around the direction",
+          "name": "spread",
+          "type": "float"
+        },
+        {
+          "description": "Pixels per second squared, down",
+          "name": "gravity",
+          "type": "float"
+        },
+        {
+          "description": "Slowing per second",
+          "name": "drag",
+          "type": "float"
+        },
+        {
+          "description": "Pixels per second upward at the start",
+          "name": "rise",
+          "type": "float"
+        },
+        {
+          "description": "Pixels: [start, end]",
+          "list": true,
+          "name": "size",
+          "type": "float"
+        },
+        {
+          "description": "[start, end] as #rrggbb",
+          "list": true,
+          "name": "color",
+          "type": "string"
+        },
+        {
+          "description": "[start, end] opacity",
+          "list": true,
+          "name": "alpha",
+          "type": "float"
+        },
+        {
+          "description": "A picture for each particle (empty: a soft dot)",
+          "name": "texture",
+          "type": "texture"
+        },
+        {
+          "description": "world (sorted with everything) or above",
+          "name": "layer",
+          "type": "string"
+        },
+        {
+          "description": "Most alive at once",
+          "name": "max",
+          "type": "int"
+        }
+      ],
+      "name": "particles"
+    },
+    {
+      "description": "An effect (18.5): what something looks and sounds like. Presets: data/fx/effects.",
+      "fields": [
+        {
+          "description": "Each a particles, sound, light, flash, shake, hitstop or slowmo part",
+          "fields": [
+            {
+              "description": "Particles to emit",
+              "name": "particles",
+              "type": "string"
+            },
+            {
+              "description": "target (default) or source",
+              "name": "at",
+              "type": "string"
+            },
+            {
+              "description": "Particles: keep emitting this long",
+              "name": "seconds",
+              "type": "float"
+            },
+            {
+              "description": "A sound to play",
+              "name": "sound",
+              "type": "audio"
+            },
+            {
+              "description": "Screen shake (trauma 0-1)",
+              "name": "shake",
+              "type": "float"
+            },
+            {
+              "description": "Seconds the world freezes",
+              "name": "hitstop",
+              "type": "float"
+            },
+            {
+              "description": "A short light",
+              "fields": [
+                {
+                  "description": "#rrggbb",
+                  "name": "color",
+                  "type": "string"
+                },
+                {
+                  "description": "Cells",
+                  "name": "radius",
+                  "type": "float"
+                },
+                {
+                  "description": "How long",
+                  "name": "seconds",
+                  "type": "float"
+                }
+              ],
+              "name": "light",
+              "type": "object"
+            },
+            {
+              "description": "A flash on the target",
+              "fields": [
+                {
+                  "description": "#rrggbb",
+                  "name": "color",
+                  "type": "string"
+                },
+                {
+                  "description": "Seconds",
+                  "name": "time",
+                  "type": "float"
+                }
+              ],
+              "name": "flash",
+              "type": "object"
+            },
+            {
+              "description": "Slow motion",
+              "fields": [
+                {
+                  "description": "Game speed (0.1-1)",
+                  "name": "scale",
+                  "type": "float"
+                },
+                {
+                  "description": "How long",
+                  "name": "seconds",
+                  "type": "float"
+                }
+              ],
+              "name": "slowmo",
+              "type": "object"
+            }
+          ],
+          "list": true,
+          "name": "parts",
+          "type": "object"
+        }
+      ],
+      "name": "effect"
+    },
+    {
       "description": "An encounter (13.7): what a Spawner makes, picked by weight and level.",
       "fields": [
         {
@@ -3202,6 +3643,51 @@
         }
       ],
       "name": "Difficulty"
+    },
+    {
+      "description": "2D lighting, day and night (effects-animation.md §7).",
+      "fields": [
+        {
+          "description": "Light the scene: ambient light plus Light2D lights.",
+          "name": "enabled",
+          "type": "bool"
+        },
+        {
+          "description": "The ambient light follows the game clock.",
+          "name": "dayNight",
+          "type": "bool"
+        },
+        {
+          "description": "The light by day (#rrggbb).",
+          "name": "dayAmbient",
+          "type": "string"
+        },
+        {
+          "description": "The light at night (#rrggbb).",
+          "name": "nightAmbient",
+          "type": "string"
+        },
+        {
+          "description": "When day comes.",
+          "max": 23.99,
+          "min": 0.0,
+          "name": "dawnHour",
+          "type": "float"
+        },
+        {
+          "description": "When night falls.",
+          "max": 23.99,
+          "min": 0.0,
+          "name": "duskHour",
+          "type": "float"
+        },
+        {
+          "description": "Darken the screen's edges.",
+          "name": "vignette",
+          "type": "bool"
+        }
+      ],
+      "name": "Lighting"
     },
     {
       "description": "The game's own UI (game-ui.md).",

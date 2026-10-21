@@ -2672,6 +2672,24 @@ Done when: characters walk, attack, cast and die with animations in 8 directions
 spell has its particles, light, sound and shake; a night falls with lit windows; a cutscene
 plays from the timeline editor.
 
+**Status (2026-10-22): built, to be tried** (`phase18-test-checklist.md`; "As built" in `effects-animation.md`).
+- 18.1 Sheets (`*.anim.json`): grid or region frames, directions with mirroring, frame events;
+  Aseprite JSON and grid import (`gameplay/Animation`).
+- 18.2 Animators (built-in humanoid, quadruped, flyer, prop; `animator` records) bound to movement,
+  facing, combat and death; animated corpses stay for their death clip.
+- 18.3 Tweens over reflected numbers (Lua, cutscene keys).
+- 18.4 CPU particles with presets and records, drawn y-sorted with the world (`gameplay/Effects`).
+- 18.5 Effects (particles, sound, light, flash, shake, hit-stop, slow motion) from cues, animation
+  events, cutscenes and Lua.
+- 18.6 Lighting by sprite corner (ambient by the clock, `Light2D`, emissive sprites), weather,
+  a vignette.
+- 18.7 Project ▸ Effects tab: sheets playing, grid and Aseprite import, particles and effects to try
+  and customise, the cutscene timeline with Play.
+- AI panel: `write_anim`; fx in the context; checks on the names components use. Tests:
+  `fx_test.cpp`, `test_fx.py`.
+- Not yet: skeletal animation, additive particles and collisions, shadows, colour grading and
+  bloom (render targets), an animator graph editor and an onion-skin clip editor.
+
 ## Phase 19 — Abilities and magic (`magic.md`)
 
 **19.1** Magic effects (archetypes, stacking, tags; the four status effects migrated).

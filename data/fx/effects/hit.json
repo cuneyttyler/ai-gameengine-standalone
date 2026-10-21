@@ -1,0 +1,19 @@
+{
+  "schema": "aige.effect/1",
+  "parts": [
+    {
+      "particles": "sparks",
+      "at": "target"
+    },
+    {
+      "flash": {
+        "color": "#ffffff",
+        "time": 0.08
+      },
+      "at": "target"
+    },
+    {
+      "shake": 0.15
+    }
+  ]
+}

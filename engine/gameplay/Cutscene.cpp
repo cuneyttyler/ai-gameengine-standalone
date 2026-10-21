@@ -12,7 +12,7 @@ namespace fs = std::filesystem;
 namespace {
 
 const std::map<std::string, std::set<std::string>> kOps = {
-    {"actor", {"move", "face", "show", "hide", "place"}},
+    {"actor", {"move", "face", "show", "hide", "place", "tween", "animate"}},
     {"dialogue", {"line"}},
     {"camera", {"follow", "move", "shake", "zoom"}},
     {"audio", {"music", "sound"}},

@@ -576,7 +576,23 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
             float vx = 0.0f;
             float vy = 0.0f;
             camera.SceneToViewport(corners.x[i], corners.y[i], vx, vy);
-            v[i] = {{vx, vy}, {corners.u[i], corners.v[i]}, {s.r, s.g, s.b, s.a}};
+            float light[3] = {1.0f, 1.0f, 1.0f};
+            if (lighting_ && !s.emissive) {
+                // Ambient plus each light's share, falling off to its radius (18.6).
+                for (int c = 0; c < 3; ++c) light[c] = ambient_[c];
+                for (const auto& l : lights_) {
+                    const float dx = corners.x[i] - l.x, dy = (corners.y[i] - l.y) * 2.0f; // the ground is foreshortened
+                    const float d = std::sqrt(dx * dx + dy * dy);
+                    if (d >= l.radius) continue;
+                    const float k = (1.0f - d / l.radius) * (1.0f - d / l.radius) * l.intensity;
+                    light[0] += l.r * k;
+                    light[1] += l.g * k;
+                    light[2] += l.b * k;
+                }
+                for (float& c : light) c = std::min(c, 1.6f);
+            }
+            v[i] = {{vx, vy}, {corners.u[i], corners.v[i]},
+                    {std::min(1.0f, s.r * light[0]), std::min(1.0f, s.g * light[1]), std::min(1.0f, s.b * light[2]), s.a}};
         }
         SpriteVertex quad[kVerticesPerSprite] = {v[0], v[1], v[2], v[0], v[2], v[3]};
         appendToBatch(inst.texture);

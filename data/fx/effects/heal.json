@@ -1,0 +1,16 @@
+{
+  "schema": "aige.effect/1",
+  "parts": [
+    {
+      "particles": "heal",
+      "at": "target"
+    },
+    {
+      "light": {
+        "color": "#80ff9a",
+        "radius": 3,
+        "seconds": 0.8
+      }
+    }
+  ]
+}

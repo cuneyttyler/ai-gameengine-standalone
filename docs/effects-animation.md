@@ -1,6 +1,6 @@
 # Animation and effects — sprites, particles, lighting, screen effects, cutscenes
 
-Status: **draft for review (2026-10-21)**. Phase 18 in `development_plan.md`. The AI
+Status: **built, to be tried (2026-10-22)**; see "As built" at the end. Phase 18 in `development_plan.md`. The AI
 Planner gets an **Animations** step once this exists (`ai-planner.md` §5.8); cutscene
 files are written from the story earlier (§8).
 
@@ -216,3 +216,38 @@ Once Phase 18 exists:
 3. For each place's mood: lighting, weather and grading.
 4. Cutscenes are already written from the story; this step adds their camera work and
    effects.
+
+## 12. As built (Phase 18)
+
+- **Sheets** are `assets/<name>.anim.json` (`aige.anim/1`): a texture, its `size`, an optional
+  frame `grid`, and `clips` with `frames` (grid indices or `{region, duration}`), `fps`, `loop`
+  (loop, once, pingpong, hold), `events` (`{frame, event}`: `effect:<id>`, `sound:<path>`,
+  `footstep`, or a name scripts hear as `anim_event`), and `directions` (s, se, e, ne, n, nw, w,
+  sw; `"mirror:e"` flips east for west; a missing one uses the nearest). Import: Aseprite's JSON
+  export (tags become clips, `walk_e` the east of `walk`) and a grid with named rows.
+- **Animators:** built-in humanoid, quadruped, flyer and prop, or `animator` records; transitions
+  by conditions over speed, dead, health and the triggers attacking, hurt, casting, using (set by
+  combat events, cutscenes and `anim_trigger`). An `Animator` component names the sheet and the
+  animator; an animated character that dies stays `corpseSeconds` for its death clip.
+- **Tweens** over any reflected number (Lua `tween`, cutscene `tween` keys), with linear,
+  ease_in, ease_out, ease_in_out and bounce.
+- **Particles** run on the CPU (a budget of 4000), drawn as sprites sorted with the world (or
+  above it); `particles` records or the presets in `data/fx/particles`; a `ParticleEmitter`
+  component; additive blending, collisions and sub-emitters are later work.
+- **Effects** are `effect` records or presets (`data/fx/effects`): particles, sound, a short light,
+  a flash, shake (trauma, Eiserloh's squared noise), hit-stop and slow motion; played by
+  `EffectCues`, animation events, cutscenes (`effect` tracks) and Lua `play_effect`.
+- **Lighting:** Project Settings ▸ Lighting turns on an ambient light that follows the clock
+  (day and night ambients, dawn and dusk) and `Light2D` lights (flicker, night only); the
+  renderer tints each sprite corner; `Sprite.emissive` glows in the dark. A `Weather` component
+  brings rain, snow or sand around the player and dims the light. A vignette is the only
+  post effect: shadows, normal maps, colour grading, bloom and CRT filters need render targets
+  and come with the renderer's next steps.
+- **Editor:** Project ▸ **Effects** tab: sheets with their clips playing, made from a grid or an
+  Aseprite export; particles and effects to Try in the viewport and Customise into records; the
+  cutscene timeline (tracks, keys by time, a key's JSON, Save, ▶ Play). Records edit animators,
+  particles and effects.
+- **The AI:** `write_anim` for sheets; the context lists sheets, particles, effects and animators;
+  components naming a missing one are flagged.
+- **Accessibility:** less shake and no flashes (`FxAccessibility`; the settings screen comes with
+  the settings tabs).

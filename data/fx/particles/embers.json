@@ -1,0 +1,29 @@
+{
+  "schema": "aige.particles/1",
+  "rate": 8,
+  "lifetime": [
+    1.0,
+    2.0
+  ],
+  "shape": "circle",
+  "radius": 0.2,
+  "speed": [
+    0.3,
+    0.8
+  ],
+  "direction": -90,
+  "spread": 60,
+  "rise": 20,
+  "size": [
+    3,
+    1
+  ],
+  "color": [
+    "#ffb347",
+    "#ff4500"
+  ],
+  "alpha": [
+    1,
+    0
+  ]
+}
