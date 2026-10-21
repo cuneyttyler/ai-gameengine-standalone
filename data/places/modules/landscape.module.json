@@ -7,31 +7,61 @@
   "quantity": {
     "trees": {
       "type": "density",
-      "levels": [0, 0.01, 0.03, 0.06, 0.12],
+      "levels": [
+        0,
+        0.01,
+        0.03,
+        0.06,
+        0.12
+      ],
       "unit": "per free cell",
       "default": "some"
     },
     "bushes": {
       "type": "density",
-      "levels": [0, 0.01, 0.035, 0.07, 0.12],
+      "levels": [
+        0,
+        0.01,
+        0.035,
+        0.07,
+        0.12
+      ],
       "unit": "per free cell",
       "default": "some"
     },
     "flowers": {
       "type": "density",
-      "levels": [0, 0.01, 0.03, 0.07, 0.15],
+      "levels": [
+        0,
+        0.01,
+        0.03,
+        0.07,
+        0.15
+      ],
       "unit": "per free cell",
       "default": "some"
     },
     "grass": {
       "type": "density",
-      "levels": [0, 0.02, 0.07, 0.15, 0.3],
+      "levels": [
+        0,
+        0.02,
+        0.07,
+        0.15,
+        0.3
+      ],
       "unit": "per free cell",
       "default": "some"
     },
     "rocks": {
       "type": "density",
-      "levels": [0, 0.004, 0.01, 0.02, 0.04],
+      "levels": [
+        0,
+        0.004,
+        0.01,
+        0.02,
+        0.04
+      ],
       "unit": "per free cell",
       "default": "some"
     }
@@ -67,23 +97,153 @@
   "compile": {
     "settings": {
       "wild": [
-        {"slot": "tree", "density": 0.05, "spacing": 0, "cluster": {"size": [4, 14], "fill": 0.55}},
-        {"slot": "bush", "density": 0.05, "spacing": 0, "cluster": {"size": [5, 16], "fill": 0.75}},
-        {"slot": "flower", "density": 0.04, "spacing": 0, "cluster": {"size": [6, 20], "fill": 0.85}},
-        {"slot": "grass", "density": 0.12, "spacing": 0, "cluster": {"size": [10, 40], "fill": 0.8}},
-        {"slot": "rock", "density": 0.01},
-        {"slot": "mound", "density": 0.005, "spacing": 3}
+        {
+          "slot": "tree",
+          "name": "woods",
+          "density": 0.2,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              40,
+              180
+            ],
+            "fill": 0.9,
+            "prefer": "edge",
+            "terrain": "forest-floor"
+          }
+        },
+        {
+          "slot": "tree",
+          "density": 0.05,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              4,
+              14
+            ],
+            "fill": 0.55
+          }
+        },
+        {
+          "slot": "bush",
+          "density": 0.05,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              5,
+              16
+            ],
+            "fill": 0.75
+          }
+        },
+        {
+          "slot": "flower",
+          "density": 0.04,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              6,
+              20
+            ],
+            "fill": 0.85
+          }
+        },
+        {
+          "slot": "grass",
+          "density": 0.12,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              10,
+              40
+            ],
+            "fill": 0.8
+          }
+        },
+        {
+          "slot": "rock",
+          "density": 0.01
+        },
+        {
+          "slot": "mound",
+          "density": 0.005,
+          "spacing": 3
+        }
       ],
       "yard": [
-        {"slot": "tree", "density": 0.015, "spacing": 1},
-        {"slot": "bush", "density": 0.04, "spacing": 0, "cluster": {"size": [3, 9], "fill": 0.85}},
-        {"slot": "flower", "density": 0.06, "spacing": 0, "cluster": {"size": [4, 12], "fill": 0.9}},
-        {"slot": "grass", "density": 0.08, "spacing": 0, "cluster": {"size": [6, 20], "fill": 0.8}},
-        {"slot": "rock", "density": 0.003}
+        {
+          "slot": "tree",
+          "density": 0.015,
+          "spacing": 1
+        },
+        {
+          "slot": "bush",
+          "density": 0.04,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              3,
+              9
+            ],
+            "fill": 0.85
+          }
+        },
+        {
+          "slot": "flower",
+          "density": 0.06,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              4,
+              12
+            ],
+            "fill": 0.9
+          }
+        },
+        {
+          "slot": "grass",
+          "density": 0.08,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              6,
+              20
+            ],
+            "fill": 0.8
+          }
+        },
+        {
+          "slot": "rock",
+          "density": 0.003
+        }
       ],
       "verge": [
-        {"slot": "grass", "density": 0.25, "radius": 1, "spacing": 0, "cluster": {"size": [4, 12], "fill": 0.85}},
-        {"slot": "flower", "density": 0.05, "radius": 1, "spacing": 0, "cluster": {"size": [3, 8], "fill": 0.9}}
+        {
+          "slot": "grass",
+          "density": 0.25,
+          "radius": 1,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              4,
+              12
+            ],
+            "fill": 0.85
+          }
+        },
+        {
+          "slot": "flower",
+          "density": 0.05,
+          "radius": 1,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              3,
+              8
+            ],
+            "fill": 0.9
+          }
+        }
       ]
     }
   }

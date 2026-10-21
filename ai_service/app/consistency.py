@@ -12,6 +12,7 @@ from typing import Any
 
 from .models import Usage
 from .providers import Provider, ProviderError
+from .story import quest_objectives
 
 SEVERITIES = ("contradiction", "possible")
 
@@ -88,9 +89,11 @@ def writing_from_operations(operations: list[dict[str, Any]]) -> str:
             lines = [f"[op {index}] Quest quests/{op.get('id')}.json: {q.get('name')} (given by {q.get('giver')})"]
             if q.get("description"):
                 lines.append(q["description"])
-            for o in q.get("objectives", []) or []:
-                if isinstance(o, dict):
-                    lines.append(f"- {o.get('text', '')}")
+            for stage in q.get("stages", []) or []:
+                if isinstance(stage, dict) and stage.get("journal"):
+                    lines.append(f"({stage.get('index')}) {stage['journal']}")
+            for o in quest_objectives(q):
+                lines.append(f"- {o.get('text', '')}")
             parts.append("\n".join(lines))
     return "\n\n".join(parts)
 

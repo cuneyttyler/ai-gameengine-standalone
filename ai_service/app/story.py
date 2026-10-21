@@ -8,9 +8,16 @@ from __future__ import annotations
 import re
 from typing import Any
 
-EFFECT_OPS = {"set_flag", "clear_flag", "start_quest", "complete_quest", "complete_objective"}
-OBJECTIVE_TYPES = {"defeat", "talk", "collect", "reach"}
-QUEST_STATES = {"inactive", "active", "completed"}
+EFFECT_OPS = {"set_flag", "clear_flag", "start_quest", "complete_quest", "complete_objective", "fail_quest",
+              "set_stage", "set_var", "add_var", "give_item", "take_item", "give_gold", "give_xp", "reputation",
+              "play_cutscene"}
+QUEST_OPS = {"start_quest", "complete_quest", "complete_objective", "fail_quest", "set_stage"}
+OBJECTIVE_TYPES = {"defeat", "talk", "collect", "reach", "deliver", "use", "examine", "have", "survive", "defend",
+                   "escort"}
+QUEST_STATES = {"inactive", "active", "completed", "failed"}
+# What a world condition may ask (15.2); the game answers them.
+WORLD_KEYS = {"item", "gold", "level", "attribute", "time", "day", "faction"}
+MAX_CHOICES = 9
 TEAMS = {"Enemy", "Neutral"}
 SAFE_ID = re.compile(r"^[a-z0-9_-]+$")
 
@@ -32,12 +39,28 @@ class StoryScope:
         q = self.quests.get(quest)
         if q is None:
             return None
-        return [o.get("id", "") for o in q.get("objectives", []) if isinstance(o, dict)]
+        return [o.get("id", "") for o in quest_objectives(q)]
+
+    def stages_of(self, quest: str) -> list[int] | None:
+        q = self.quests.get(quest)
+        if q is None:
+            return None
+        if isinstance(q.get("stages"), list):
+            return [st.get("index", (i + 1) * 10) for i, st in enumerate(q["stages"]) if isinstance(st, dict)]
+        return [(i + 1) * 10 for i, _ in enumerate(q.get("objectives", []) or [])]
 
     def known_character(self, who: Any) -> bool:
         if not isinstance(who, str) or not who or who == "player" or "/" not in who:
             return True  # plain names ("A guard") are allowed
         return who in self.world_keys
+
+
+def quest_objectives(q: dict[str, Any]) -> list[dict]:
+    """Every objective of a quest, v1 ("objectives") or v2 ("stages")."""
+    if isinstance(q.get("stages"), list):
+        return [o for st in q["stages"] if isinstance(st, dict)
+                for o in (st.get("objectives") or []) if isinstance(o, dict)]
+    return [o for o in (q.get("objectives") or []) if isinstance(o, dict)]
 
 
 def _check_effects(effects: Any, where: str, scope: StoryScope) -> list[str]:
@@ -55,12 +78,34 @@ def _check_effects(effects: Any, where: str, scope: StoryScope) -> list[str]:
             if not effect.get("flag"):
                 errors.append(f"{where}: {op} needs a \"flag\"")
             continue
+        if op in ("set_var", "add_var"):
+            if not effect.get("var"):
+                errors.append(f"{where}: {op} needs a \"var\"")
+            continue
+        if op in ("give_item", "take_item"):
+            if not effect.get("item"):
+                errors.append(f"{where}: {op} needs an \"item\" (a record id)")
+            continue
+        if op == "reputation":
+            if not effect.get("faction"):
+                errors.append(f"{where}: reputation needs a \"faction\"")
+            continue
+        if op == "play_cutscene":
+            if not effect.get("cutscene"):
+                errors.append(f"{where}: play_cutscene needs a \"cutscene\" id")
+            continue
+        if op in ("give_gold", "give_xp"):
+            if not isinstance(effect.get("amount", effect.get("value")), (int, float)):
+                errors.append(f"{where}: {op} needs an \"amount\"")
+            continue
         quest = effect.get("quest", "")
         objectives = scope.objectives_of(quest)
         if objectives is None:
             errors.append(f"{where}: no quest {quest!r} (write it with write_quest first)")
         elif op == "complete_objective" and effect.get("objective") not in objectives:
             errors.append(f"{where}: quest {quest!r} has no objective {effect.get('objective')!r}")
+        elif op == "set_stage" and effect.get("stage") not in (scope.stages_of(quest) or []):
+            errors.append(f"{where}: quest {quest!r} has no stage {effect.get('stage')!r}")
     return errors
 
 
@@ -75,10 +120,18 @@ def _check_conditions(conditions: Any, where: str, scope: StoryScope) -> list[st
             errors.append(f"{where}: a condition must be an object")
         elif "flag" in c:
             continue
+        elif "var" in c:
+            if c.get("op", "==") not in ("==", "!=", "<", "<=", ">", ">="):
+                errors.append(f"{where}: a variable's op is one of == != < <= > >=")
+        elif "quest" not in c:
+            if not WORLD_KEYS & set(c):
+                errors.append(f"{where}: a condition is a flag, a quest, a var or one of {', '.join(sorted(WORLD_KEYS))}")
         elif scope.objectives_of(c.get("quest", "")) is None:
             errors.append(f"{where}: condition on unknown quest {c.get('quest')!r}")
         elif c.get("is", "active") not in QUEST_STATES:
-            errors.append(f"{where}: quest state should be inactive, active or completed")
+            errors.append(f"{where}: quest state should be inactive, active, completed or failed")
+        elif "stage" in c and c["stage"] not in (scope.stages_of(c["quest"]) or []):
+            errors.append(f"{where}: quest {c['quest']!r} has no stage {c['stage']!r}")
     return errors
 
 
@@ -119,7 +172,7 @@ def check_dialogue(dialogue_id: str, d: dict[str, Any], scope: StoryScope, where
         choices = node.get("choices") or []
         if not choices and node.get("next"):
             stack.append(node["next"])
-        stack += [c.get("next") for c in choices if isinstance(c, dict) and c.get("next")]
+        stack += [c.get(k) for c in choices if isinstance(c, dict) for k in ("next", "fail") if c.get(k)]
 
     for node in nodes:
         if not isinstance(node, dict):
@@ -134,8 +187,8 @@ def check_dialogue(dialogue_id: str, d: dict[str, Any], scope: StoryScope, where
         choices = node.get("choices") or []
         if not choices and node.get("next") and node["next"] not in by_id:
             errors.append(f"{at} continues to {node['next']!r}, which isn't a node")
-        if len(choices) > 4:
-            errors.append(f"{at} has more than 4 choices")
+        if len(choices) > MAX_CHOICES:
+            errors.append(f"{at} has more than {MAX_CHOICES} choices")
         errors += _check_effects(node.get("do"), at, scope)
         for i, choice in enumerate(choices, start=1):
             c_at = f"{at} choice {i}"
@@ -144,6 +197,13 @@ def check_dialogue(dialogue_id: str, d: dict[str, Any], scope: StoryScope, where
                 continue
             if choice.get("next") and choice["next"] not in by_id:
                 errors.append(f"{c_at} goes to {choice['next']!r}, which isn't a node")
+            if choice.get("fail") and choice["fail"] not in by_id:
+                errors.append(f"{c_at} fails to {choice['fail']!r}, which isn't a node")
+            check = choice.get("check")
+            if check is not None and (not isinstance(check, dict) or not WORLD_KEYS & set(check)):
+                errors.append(f"{c_at}: a check is like {{\"attribute\": \"speech\", \"difficulty\": 5}}")
+            if choice.get("fail") and check is None:
+                errors.append(f"{c_at} has a \"fail\" node but no \"check\"")
             errors += _check_conditions(choice.get("if"), c_at, scope)
             errors += _check_effects(choice.get("do"), c_at, scope)
     return errors
@@ -193,6 +253,49 @@ def check_schedule(schedule_id: str, s: dict[str, Any], markers: set[str], where
     return errors
 
 
+def _check_objective(o: dict, at: str, scope: StoryScope, aliases: dict[str, str]) -> list[str]:
+    errors: list[str] = []
+    if not o.get("text"):
+        errors.append(f"{at} needs \"text\" (shown on screen)")
+    kind, scene = o.get("type"), o.get("scene", "")
+    target = o.get("target", "")
+    if isinstance(target, str) and target.startswith("@"):
+        if target[1:] not in aliases:
+            errors.append(f"{at}: no alias {target[1:]!r}")
+            return errors
+        target = aliases[target[1:]]
+    scenes = scope.scene_markers
+    if scene and scenes is not None and scene not in scenes:
+        errors.append(f"{at}: no scene {scene!r} (the context's \"scenes\" lists them)")
+    if kind not in OBJECTIVE_TYPES:
+        errors.append(f"{at}: type must be one of {', '.join(sorted(OBJECTIVE_TYPES))}")
+    elif kind == "reach":
+        if not target and not scene:
+            errors.append(f"{at}: a reach objective needs a marker (\"target\") or a \"scene\" to arrive in")
+        elif target and scenes is not None:
+            known = scenes.get(scene, set()) if scene else (set().union(*scenes.values()) if scenes else set())
+            if target not in known:
+                errors.append(f"{at}: no marker called {target!r} in " + (scene or "any scene"))
+    elif kind in ("talk", "deliver") and "/" in str(target) and target not in scope.world_keys:
+        errors.append(f"{at}: {target!r} isn't in the World Bible")
+    elif kind == "talk" and target not in scope.world_keys:
+        errors.append(f"{at}: {target!r} isn't in the World Bible")
+    elif kind in ("defeat", "collect") and target not in scope.prefabs and not (kind == "defeat" and target in TEAMS):
+        errors.append(f"{at}: {target!r} isn't a prefab" + (" or a team (Enemy)" if kind == "defeat" else ""))
+    elif kind not in ("survive", "reach") and not target:
+        errors.append(f"{at} has no target")
+    if kind == "deliver" and not o.get("item"):
+        errors.append(f"{at}: deliver needs an \"item\"")
+    if kind == "escort" and not o.get("to"):
+        errors.append(f"{at}: escort needs \"to\" (the marker to bring them to)")
+    if kind in ("survive", "defend") and not (isinstance(o.get("seconds"), (int, float)) and o["seconds"] > 0):
+        errors.append(f"{at}: {kind} needs \"seconds\"")
+    count = o.get("count", 1)
+    if not isinstance(count, int) or isinstance(count, bool) or count < 1:
+        errors.append(f"{at}: count must be a whole number ≥ 1")
+    return errors
+
+
 def check_quest(quest_id: str, q: dict[str, Any], scope: StoryScope, where: str) -> list[str]:
     errors: list[str] = []
     if not SAFE_ID.match(quest_id or ""):
@@ -201,42 +304,51 @@ def check_quest(quest_id: str, q: dict[str, Any], scope: StoryScope, where: str)
         errors.append(f"{where}: needs a \"name\"")
     if not scope.known_character(q.get("giver")):
         errors.append(f"{where}: giver {q.get('giver')!r} isn't in the World Bible")
-    objectives = q.get("objectives")
-    if not isinstance(objectives, list) or not objectives:
-        return errors + [f"{where}: needs a non-empty \"objectives\" list"]
+    aliases: dict[str, str] = {}
+    for a in q.get("aliases", []) or []:
+        if not isinstance(a, dict) or not a.get("id") or a.get("id") in aliases:
+            errors.append(f"{where}: alias ids must be present and unique")
+            continue
+        if not a.get("fill"):
+            errors.append(f"{where}: alias {a['id']!r} isn't filled")
+        aliases[a["id"]] = a.get("fill", "")
+    stages = q.get("stages")
+    if stages is not None:
+        if not isinstance(stages, list) or not stages:
+            return errors + [f"{where}: \"stages\" must be a non-empty list"]
+        indices = [st.get("index") for st in stages if isinstance(st, dict)]
+        if len(set(indices)) != len(indices) or None in indices:
+            errors.append(f"{where}: every stage needs a unique \"index\" (10, 20, ...)")
+        for st in stages:
+            if not isinstance(st, dict):
+                continue
+            st_at = f"{where} stage {st.get('index')!r}"
+            for target in [st.get("next")] + [b.get("stage") for b in st.get("branches", []) or [] if isinstance(b, dict)]:
+                if target not in (None, 0) and target not in indices:
+                    errors.append(f"{st_at}: goes to stage {target!r}, which isn't one")
+            for b in st.get("branches", []) or []:
+                if isinstance(b, dict):
+                    errors += _check_conditions(b.get("if"), st_at, scope)
+            if st.get("ends") not in (None, "", "complete", "fail"):
+                errors.append(f"{st_at}: \"ends\" is complete or fail")
+            errors += _check_effects(st.get("onEnter"), f"{st_at} onEnter", scope)
+        objectives = quest_objectives(q)
+    else:
+        objectives = q.get("objectives")
+        if not isinstance(objectives, list) or not objectives:
+            return errors + [f"{where}: needs a \"stages\" list (or a non-empty \"objectives\" list)"]
     ids = []
     for o in objectives:
         if not isinstance(o, dict):
             errors.append(f"{where}: objectives must be objects")
             continue
-        at = f"{where} objective {o.get('id')!r}"
         ids.append(o.get("id"))
-        if not o.get("text"):
-            errors.append(f"{at} needs \"text\" (shown on screen)")
-        kind, target, scene = o.get("type"), o.get("target", ""), o.get("scene", "")
-        scenes = scope.scene_markers
-        if scene and scenes is not None and scene not in scenes:
-            errors.append(f"{at}: no scene {scene!r} (the context's \"scenes\" lists them)")
-        if kind not in OBJECTIVE_TYPES:
-            errors.append(f"{at}: type must be defeat, talk, collect or reach")
-        elif kind == "reach":
-            if not target and not scene:
-                errors.append(f"{at}: a reach objective needs a marker (\"target\") or a \"scene\" to arrive in")
-            elif target and scenes is not None:
-                if scene:
-                    known = scenes.get(scene, set())
-                else:
-                    known = set().union(*scenes.values()) if scenes else set()
-                if target not in known:
-                    errors.append(f"{at}: no marker called {target!r} in " + (scene or "any scene"))
-        elif kind == "talk" and target not in scope.world_keys:
-            errors.append(f"{at}: {target!r} isn't in the World Bible")
-        elif kind in ("defeat", "collect") and target not in scope.prefabs and not (kind == "defeat" and target in TEAMS):
-            errors.append(f"{at}: {target!r} isn't a prefab" + (" or a team (Enemy)" if kind == "defeat" else ""))
-        count = o.get("count", 1)
-        if not isinstance(count, int) or isinstance(count, bool) or count < 1:
-            errors.append(f"{at}: count must be a whole number ≥ 1")
+        errors += _check_objective(o, f"{where} objective {o.get('id')!r}", scope, aliases)
     if None in ids or "" in ids or len(set(ids)) != len(ids):
         errors.append(f"{where}: objective ids must be present and unique")
+    rewards = q.get("rewards")
+    if rewards is not None and (not isinstance(rewards, dict) or (rewards.get("reputation") and not rewards.get("faction"))):
+        errors.append(f"{where}: rewards are {{experience, gold, items, faction, reputation}}; reputation needs a faction")
     errors += _check_effects(q.get("onComplete"), f"{where} onComplete", scope)
+    errors += _check_effects(q.get("onFail"), f"{where} onFail", scope)
     return errors

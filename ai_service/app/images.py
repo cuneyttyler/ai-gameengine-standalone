@@ -19,7 +19,8 @@ SAFE_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
 KINDS = {
     # What each kind asks the image model for: one subject, isometric, on a
     # background the pipeline can remove.
-    "object": "a single {description}, isometric 3/4 view, centered, whole object visible",
+    # One subject (a clump of flowers is one subject), however it's described.
+    "object": "one game sprite of {description}, isometric 3/4 view, centered, whole object visible",
     "character": "a single {description}, full body, standing, isometric 3/4 view facing the viewer, centered",
     # Ground for the grid (development_plan.md 5.2): drawn top-down and laid
     # flat onto the isometric cells by the engine, so it must fill the square.
@@ -133,6 +134,8 @@ def generate_sprites(
     height: int = 48,
     style: str = "pixel",
     variants: list[str] | None = None,
+    even_light: bool = False,
+    brief: dict | None = None,
 ) -> list[dict]:
     """Generates one sprite per variant (one if no variants) into
     <root>/assets/textures/generated/, each with a .gen.json sidecar.
@@ -154,7 +157,7 @@ def generate_sprites(
         prompt = build_prompt(description, kind, style, variant)
         started = time.time()
         image = generator.generate(prompt)
-        png, processing = make_sprite(image.data, SpriteOptions(height=height, style=style, tile=kind == "tile"))
+        png, processing = make_sprite(image.data, SpriteOptions(height=height, style=style, tile=kind == "tile", even_light=even_light and kind == "tile"))
         (folder / file_name).write_bytes(png)
         meta = {
             "description": description,
@@ -163,6 +166,7 @@ def generate_sprites(
             "kind": kind,
             "prompt": prompt,
             "providerPrompt": image.prompt,
+            "artBrief": brief,
             "provider": generator.name,
             "model": image.model,
             "seed": image.seed,  # None: not exposed by the provider

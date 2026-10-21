@@ -24,15 +24,75 @@ bool TileDef::operator==(const TileDef& o) const {
     const Sprite& b = o.sprite;
     return solid == o.solid && prefab == o.prefab && a.texture == b.texture && a.width == b.width && a.height == b.height &&
            a.u0 == b.u0 && a.v0 == b.v0 && a.u1 == b.u1 && a.v1 == b.v1 && a.r == b.r && a.g == b.g && a.b == b.b &&
-           a.a == b.a && a.flat == b.flat && a.rotation == b.rotation;
+           a.a == b.a && a.flat == b.flat && a.rotation == b.rotation && a.lift == b.lift && a.cornerLift[0] == b.cornerLift[0] &&
+           a.cornerLift[1] == b.cornerLift[1] && a.cornerLift[2] == b.cornerLift[2] && a.cornerLift[3] == b.cornerLift[3] &&
+           a.uvCells == b.uvCells && a.uvOriginX == b.uvOriginX && a.uvOriginY == b.uvOriginY;
 }
 
+namespace {
+
+size_t DefHash(const TileDef& d) {
+    const Sprite& s = d.sprite;
+    size_t h = std::hash<std::string>{}(s.texture) ^ (std::hash<std::string>{}(d.prefab) << 1);
+    for (const float f : {s.width, s.height, s.u0, s.v0, s.u1, s.v1, s.r, s.g, s.b, s.lift}) h = h * 31 + std::hash<float>{}(f);
+    return h * 31 + static_cast<size_t>(s.rotation * 7 + s.uvCells * 131 + s.uvOriginX * 8191 + s.uvOriginY * 131071 + (s.flat ? 1 : 0));
+}
+
+} // namespace
+
 uint16_t TileLayer::Intern(const TileDef& def) {
-    for (size_t i = 0; i < palette_.size(); ++i) {
-        if (palette_[i] == def) return static_cast<uint16_t>(i + 1);
+    // By its hash (a built place's ground has a kind per picture, a few hundred of them).
+    const size_t h = DefHash(def);
+    for (auto [it, end] = index_.equal_range(h); it != end; ++it) {
+        if (palette_[it->second - 1] == def) return it->second;
     }
+    if (palette_.size() >= 0xFFFF) return kEmpty; // full: nothing, rather than another kind's id
     palette_.push_back(def);
-    return static_cast<uint16_t>(palette_.size());
+    const auto id = static_cast<uint16_t>(palette_.size());
+    index_.emplace(h, id);
+    return id;
+}
+
+void TileLayer::SetPalette(std::vector<TileDef> palette) {
+    palette_ = std::move(palette);
+    index_.clear();
+    for (size_t i = 0; i < palette_.size(); ++i) index_.emplace(DefHash(palette_[i]), static_cast<uint16_t>(i + 1));
+}
+
+const TileLayer::CornerLift* TileLayer::Lift(int gx, int gy) const {
+    auto it = lifts_.find(LiftKey(gx, gy));
+    return it == lifts_.end() ? nullptr : &it->second;
+}
+
+TileLayer::CornerLift TileLayer::SetLift(int gx, int gy, const CornerLift& lift) {
+    const int64_t key = LiftKey(gx, gy);
+    CornerLift before{};
+    if (auto it = lifts_.find(key); it != lifts_.end()) before = it->second;
+    if (before == lift) return before;
+    if (lift == CornerLift{}) lifts_.erase(key);
+    else lifts_[key] = lift;
+    dirty_.insert({FloorDiv(FloorDiv(gx, kChunkSize), kRegionChunks), FloorDiv(FloorDiv(gy, kChunkSize), kRegionChunks)});
+    ++revision_;
+    return before;
+}
+
+Sprite CellSprite(const TileLayer& layer, int gx, int gy, const TileDef& def) {
+    Sprite s = def.sprite;
+    if (s.uvCells > 0) {
+        const int n = s.uvCells;
+        const int x = ((gx - s.uvOriginX) % n + n) % n, y = ((gy - s.uvOriginY) % n + n) % n;
+        s.u0 = static_cast<float>(x) / n, s.v0 = static_cast<float>(y) / n;
+        s.u1 = s.u0 + 1.0f / n, s.v1 = s.v0 + 1.0f / n;
+    }
+    if (const TileLayer::CornerLift* l = layer.Lift(gx, gy)) {
+        for (int i = 0; i < 4; ++i) s.cornerLift[i] += (*l)[i];
+        // Its slope's light: rising to the right and down (away from the light, upper left on
+        // screen) it faces the light.
+        const float slope = ((*l)[1] + (*l)[2]) - ((*l)[0] + (*l)[3]);
+        const float shade = std::clamp(1.0f + slope * 0.006f, 0.72f, 1.25f);
+        s.r *= shade, s.g *= shade, s.b *= shade;
+    }
+    return s;
 }
 
 const TileDef* TileLayer::Def(uint16_t id) const {
@@ -67,6 +127,7 @@ uint16_t TileLayer::Set(int gx, int gy, uint16_t id) {
 void TileLayer::Clear() {
     for (const auto& [key, chunk] : chunks_) dirty_.insert(RegionOfChunk(key));
     chunks_.clear();
+    lifts_.clear();
     ++revision_;
 }
 
@@ -221,14 +282,28 @@ void TileLayerEdit::Set(TileLayer& target, int gx, int gy, uint16_t id) {
     changes.push_back({gx, gy, before, id});
 }
 
+void TileLayerEdit::SetLift(TileLayer& target, int gx, int gy, const TileLayer::CornerLift& lift) {
+    const TileLayer::CornerLift before = target.SetLift(gx, gy, lift);
+    const int64_t key = TileLayer::LiftKey(gx, gy);
+    if (auto it = seenLift_.find(key); it != seenLift_.end()) {
+        lifts[it->second].after = lift;
+        return;
+    }
+    if (before == lift) return;
+    seenLift_[key] = lifts.size();
+    lifts.push_back({gx, gy, before, lift});
+}
+
 void TileLayerEdit::Apply(Registry& registry) const {
     TileLayer& target = LayersOf(registry).Get(layer);
     for (const auto& c : changes) target.Set(c.gx, c.gy, c.after);
+    for (const auto& l : lifts) target.SetLift(l.gx, l.gy, l.after);
 }
 
 void TileLayerEdit::Revert(Registry& registry) const {
     TileLayer& target = LayersOf(registry).Get(layer);
     for (auto it = changes.rbegin(); it != changes.rend(); ++it) target.Set(it->gx, it->gy, it->before);
+    for (auto it = lifts.rbegin(); it != lifts.rend(); ++it) target.SetLift(it->gx, it->gy, it->before);
 }
 
 } // namespace aige

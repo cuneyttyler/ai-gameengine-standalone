@@ -1,5 +1,7 @@
 #include "editor/ViewportWindow.h"
 
+#include <Xinput.h>
+
 #include <cstdint>
 
 #include <stdexcept>
@@ -82,29 +84,56 @@ HCURSOR CreateEraserCursor() {
 }
 
 int ToVirtualKey(Key key) {
+    if (key >= Key::A && key <= Key::Z) return 'A' + (static_cast<int>(key) - static_cast<int>(Key::A));
+    if (key >= Key::Num0 && key <= Key::Num9) return '0' + (static_cast<int>(key) - static_cast<int>(Key::Num0));
+    if (key >= Key::F1 && key <= Key::F12) return VK_F1 + (static_cast<int>(key) - static_cast<int>(Key::F1));
     switch (key) {
-        case Key::W: return 'W';
-        case Key::A: return 'A';
-        case Key::S: return 'S';
-        case Key::D: return 'D';
         case Key::Up: return VK_UP;
         case Key::Down: return VK_DOWN;
         case Key::Left: return VK_LEFT;
         case Key::Right: return VK_RIGHT;
-        case Key::Escape: return VK_ESCAPE;
-        case Key::F3: return VK_F3;
-        case Key::F5: return VK_F5;
-        case Key::F6: return VK_F6;
-        case Key::F9: return VK_F9;
         case Key::Space: return VK_SPACE;
-        case Key::E: return 'E';
         case Key::Enter: return VK_RETURN;
-        case Key::Num1: return '1';
-        case Key::Num2: return '2';
-        case Key::Num3: return '3';
-        case Key::Num4: return '4';
+        case Key::Escape: return VK_ESCAPE;
+        case Key::Tab: return VK_TAB;
+        case Key::Backspace: return VK_BACK;
+        // WM_KEYDOWN reports the generic codes for these.
+        case Key::LeftShift:
+        case Key::RightShift: return VK_SHIFT;
+        case Key::LeftCtrl:
+        case Key::RightCtrl: return VK_CONTROL;
+        case Key::LeftAlt:
+        case Key::RightAlt: return VK_MENU;
+        default: return 0;
     }
-    return 0;
+}
+
+// The first XInput gamepad, if one is connected (development_plan.md 12.3).
+bool PadState(XINPUT_STATE& state) {
+    for (DWORD i = 0; i < XUSER_MAX_COUNT; ++i) {
+        if (XInputGetState(i, &state) == ERROR_SUCCESS) return true;
+    }
+    return false;
+}
+
+WORD ToXInputButton(Key key) {
+    switch (key) {
+        case Key::PadA: return XINPUT_GAMEPAD_A;
+        case Key::PadB: return XINPUT_GAMEPAD_B;
+        case Key::PadX: return XINPUT_GAMEPAD_X;
+        case Key::PadY: return XINPUT_GAMEPAD_Y;
+        case Key::PadLB: return XINPUT_GAMEPAD_LEFT_SHOULDER;
+        case Key::PadRB: return XINPUT_GAMEPAD_RIGHT_SHOULDER;
+        case Key::PadBack: return XINPUT_GAMEPAD_BACK;
+        case Key::PadStart: return XINPUT_GAMEPAD_START;
+        case Key::PadLStick: return XINPUT_GAMEPAD_LEFT_THUMB;
+        case Key::PadRStick: return XINPUT_GAMEPAD_RIGHT_THUMB;
+        case Key::PadUp: return XINPUT_GAMEPAD_DPAD_UP;
+        case Key::PadDown: return XINPUT_GAMEPAD_DPAD_DOWN;
+        case Key::PadLeft: return XINPUT_GAMEPAD_DPAD_LEFT;
+        case Key::PadRight: return XINPUT_GAMEPAD_DPAD_RIGHT;
+        default: return 0;
+    }
 }
 
 } // namespace
@@ -158,7 +187,35 @@ void ViewportWindow::SetOcclusion(const std::vector<PixelRect>& rects) {
 }
 
 bool ViewportWindow::IsKeyDown(Key key) const {
-    return keyDown_[ToVirtualKey(key)];
+    if (!HasFocus()) return false; // the UI has the keyboard, mouse and gamepad aren't for the game either
+    if (IsMouseKey(key)) {
+        const int vk = key == Key::MouseLeft ? VK_LBUTTON : key == Key::MouseRight ? VK_RBUTTON : VK_MBUTTON;
+        return (GetAsyncKeyState(vk) & 0x8000) != 0;
+    }
+    if (IsPadKey(key)) {
+        XINPUT_STATE state{};
+        if (!PadState(state)) return false;
+        if (key == Key::PadLT) return state.Gamepad.bLeftTrigger > 128;
+        if (key == Key::PadRT) return state.Gamepad.bRightTrigger > 128;
+        return (state.Gamepad.wButtons & ToXInputButton(key)) != 0;
+    }
+    const int vk = ToVirtualKey(key);
+    return vk != 0 && keyDown_[vk];
+}
+
+float ViewportWindow::PadAxisValue(PadAxis axis) const {
+    XINPUT_STATE state{};
+    if (!HasFocus() || !PadState(state)) return 0.0f;
+    const auto& pad = state.Gamepad;
+    switch (axis) {
+        case PadAxis::LeftX: return pad.sThumbLX / 32767.0f;
+        case PadAxis::LeftY: return -pad.sThumbLY / 32767.0f; // XInput's up is positive; ours is down
+        case PadAxis::RightX: return pad.sThumbRX / 32767.0f;
+        case PadAxis::RightY: return -pad.sThumbRY / 32767.0f;
+        case PadAxis::LeftTrigger: return pad.bLeftTrigger / 255.0f;
+        case PadAxis::RightTrigger: return pad.bRightTrigger / 255.0f;
+    }
+    return 0.0f;
 }
 
 void ViewportWindow::SetMouseCallback(std::function<void(const ViewportMouseEvent&)> callback) {

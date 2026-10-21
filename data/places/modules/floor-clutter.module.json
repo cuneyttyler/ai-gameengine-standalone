@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "Things left lying about.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "quantity": {
     "items": {

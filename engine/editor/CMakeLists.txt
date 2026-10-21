@@ -34,7 +34,7 @@ add_library(aige_editor STATIC
     WebViewHost.cpp
 )
 target_include_directories(aige_editor PUBLIC ${CMAKE_SOURCE_DIR}/engine)
-target_link_libraries(aige_editor PUBLIC aige_platform webview2 wil nlohmann_json::nlohmann_json)
+target_link_libraries(aige_editor PUBLIC aige_platform webview2 wil nlohmann_json::nlohmann_json xinput9_1_0)
 target_compile_features(aige_editor PUBLIC cxx_std_20)
 # We call the explicit W-suffixed Win32 APIs everywhere, but predefined
 # resource macros (IDC_ARROW, etc.) are still UNICODE-macro-sensitive.

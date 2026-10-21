@@ -234,3 +234,31 @@ Phase 8's fixes are listed in `development_plan.md` (Phase 8, its status). From 
   web found nothing new: the art generated into the project counted as "the project's, fits well" and was
   used again. Now "web" counts only project art that came from the web, and "library" only library art;
   what the chosen source can't give still falls back to the project's (better than a placeholder).
+
+## 11. The viewport and the build's assets (2026-10-21)
+
+- **Erase** takes a built place's ground cells too (one undo step per stroke); **dragging** on empty ground
+  with Select box-selects the things and ground cells in it (Delete removes them all).
+- **Replace a prefab everywhere**: Edit ▸ Replace prefab…, or a prefab's menu ("Replace every copy in the
+  scene…"): each copy where it was, turned and mirrored as it was; ground tiles too (tile layers). The AI
+  panel has the same as `prefab.replace` and `terrain.replace`; it's told scripts never edit the scene, and its
+  context lists which tiles a built place's ground uses.
+- **④ Assets lists every piece of art correctly**: each with a name ("Cottage house") and a description of
+  what it's for (its part, its size), used by the web search and the Art tool; farm fields have their own
+  ground (`tilled`, a terrain of their own: listed and made like grass and dirt).
+- **How each is found**: a source per piece (auto, the project, the library, the web, generate, a
+  placeholder) and one control to set every piece's; a thumbnail of what it gets; **Pick…** to choose the art
+  yourself, from the project or your library (assets.json "overrides": `source`, `entry`).
+- **Nothing left unfound**: what one method can't give, another is asked for (the web found nothing: the Art
+  tool; the Art tool's tries failed: the web, when searching is on), in up to two more rounds on their own;
+  what's still missing is listed with Generate, Search the web, Pick… and Placeholder.
+- **Coherent art**: among art that fits as well, the pack (folder) most other pieces come from is preferred.
+- **Web search** (`websource.py`): several queries per piece (the phrase, then each word: the site wants every
+  word), view words ("isometric") rank instead of filtering, pages ranked by title and tags (single objects
+  before packs and sheets), the best-named file of a page, more candidates; every result still goes through the
+  vision check.
+- **Web Search tab** (Assets panel): search, see ranked results with their licence and author, add one to the
+  project's assets or a folder of them (credited), and it's kept in your library too.
+
+Not built yet; the published ontology (`ontology/*.ttl`) needs regenerating for the `tilled` terrain and the
+field's `surface` (run the tests with `AIGE_WRITE_ONTOLOGY=1`).

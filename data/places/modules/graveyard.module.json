@@ -6,7 +6,8 @@
   "description": "Graves and headstones, fenced, with a few trees.",
   "buildTypes": [
     "settlement",
-    "castle"
+    "castle",
+    "wilderness"
   ],
   "quantity": {
     "size": {

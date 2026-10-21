@@ -4,6 +4,7 @@
 #include "editing/Edits.h"
 #include "assets/Project.h"
 #include "gameplay/Components.h"
+#include "records/Records.h"
 #include "reflection/Reflection.h"
 #include "scripting/Components.h"
 #include "assets/SceneFiles.h"
@@ -29,6 +30,7 @@ struct ProposalScope {
     std::map<std::string, Quest> quests; // write_quest, by id
     std::set<std::string> worldKeys;     // world.write, "<kind>/<id>"
     std::set<std::string> markers;       // scene.addMarker, by name
+    std::map<std::pair<std::string, std::string>, nlohmann::json> records; // write_record, (type, id) -> its fields
 };
 
 ProposalScope ScanProposal(const std::vector<nlohmann::json>& operations) {
@@ -40,6 +42,8 @@ ProposalScope ScanProposal(const std::vector<nlohmann::json>& operations) {
             if (auto quest = QuestFromJson(op.value("quest", nlohmann::json()), op.value("id", ""), &error)) {
                 scope.quests[quest->id] = *quest;
             }
+        } else if (kind == "write_record") {
+            scope.records[{op.value("type", ""), op.value("id", "")}] = op.value("record", nlohmann::json::object());
         } else if (kind == "command" && op.value("name", "") == "scene.addMarker") {
             scope.markers.insert(op.value("args", nlohmann::json::object()).value("name", ""));
         } else if (kind == "command" && op.value("name", "") == "world.write") {
@@ -428,6 +432,82 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             if (auto problem = WriteStoryFile(project.root, folder, id, content)) {
                 error = *problem;
             }
+        }
+
+    } else if (kind == "write_record" || kind == "delete_record") {
+        // Records (development_plan.md 12.1): whole files under records/<type>/,
+        // checked against the type's fields; references may name records this
+        // proposal writes.
+        const std::string type = op.value("type", "");
+        const std::string id = op.value("id", "");
+        item.kind = "record";
+        item.touchesFiles = true;
+        item.target = "Record · " + type + "/" + id;
+        const RecordTypeInfo* info = reflection.FindRecordType(type);
+        if (info == nullptr) {
+            error = "unknown record type '" + type + "'";
+            return item;
+        }
+        if (!IsRecordId(id)) {
+            error = "'" + id + "' isn't a valid record id (a-z, 0-9, - and _)";
+            return item;
+        }
+        RecordDatabase records;
+        records.Open(reflection, project.root);
+        const Record* existing = records.Find(type, id);
+        if (kind == "delete_record") {
+            if (existing == nullptr) {
+                error = "no " + type + " '" + id + "' to delete";
+                return item;
+            }
+            item.before = existing->data;
+            item.after = "(deleted)";
+            if (auto users = records.ReferencesTo(type, id); !users.empty()) {
+                std::string list;
+                for (const auto& key : users) list += (list.empty() ? "" : ", ") + key;
+                item.detail = "Still referred to by " + list;
+            }
+            if (apply) {
+                if (auto problem = records.Remove(type, id)) error = *problem;
+            }
+        } else {
+            const nlohmann::json content = op.value("record", nlohmann::json());
+            auto exists = [&](const std::string& t, const std::string& i) {
+                return records.Find(t, i) != nullptr || scope.records.contains({t, i});
+            };
+            nlohmann::json resolved = DefaultRecord(*info);
+            if (content.is_object()) {
+                const std::string base = content.value("base", "");
+                if (const Record* parent = base.empty() ? nullptr : records.Find(type, base)) {
+                    resolved = parent->resolved;
+                } else if (auto written = scope.records.find({type, base}); !base.empty() && written != scope.records.end() &&
+                                                                              written->second.is_object()) {
+                    for (const auto& [key, value] : written->second.items()) {
+                        if (key != "base" && key != "provenance") resolved[key] = value;
+                    }
+                }
+                for (const auto& [key, value] : content.items()) {
+                    if (key != "base" && key != "provenance") resolved[key] = value;
+                }
+                if (!base.empty() && !exists(type, base)) {
+                    error = "base: no " + type + " '" + base + "'";
+                    return item;
+                }
+            }
+            if (auto problems = ValidateRecord(*info, content, exists, &resolved); !problems.empty()) {
+                error = JoinProblems(problems);
+                return item;
+            }
+            item.detail = content.dump(2);
+            if (existing) item.before = existing->data;
+            item.after = content;
+            if (apply) {
+                if (auto problem = records.Write(type, id, content)) error = *problem;
+            }
+        }
+        // The running editor's copy follows the files.
+        if (apply && error.empty() && ActiveRecords().IsOpen() && ActiveRecords().Root() == project.root) {
+            ActiveRecords().Refresh();
         }
 
     } else if (kind == "command") {

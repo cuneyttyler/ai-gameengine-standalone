@@ -169,6 +169,9 @@ public:
     // (3 tries). While sourcing, in its place; after the build, then the place is built again
     // with it (the editor goes on as after sourcing). Returns why not, or "".
     std::string RefineArt(const std::string& key, const std::string& text);
+    // The user's check of the art made for a need: "kept" (it's right) or "rejected" (it isn't:
+    // the need goes to its other sources). Returns the paths it was about, or why not.
+    std::string SetArtVerdict(const std::string& key, const std::string& verdict, std::vector<std::string>* paths = nullptr);
     // The new assets' descriptions and provenance, for their .meta: [{path, fields}], then cleared.
     nlohmann::json TakeNewAssets();
     // A region's sites (7.10), each built later as a place of its own:
@@ -254,6 +257,13 @@ private:
     nlohmann::json ExamplesLikeThis() const;
     // Whether a request names a zone (its id, or its module's name).
     bool Mentions(const std::string& request, const std::string& zoneId) const;
+    // The revision language's exact ops (place-layout.md §10): swap, occupy, shift, run on the
+    // zones' land as it is now. Adds to `moving` a zone that has to be placed again; returns
+    // the zones it placed exactly. `notes` says what it did.
+    std::set<std::string> RunExactOps(const nlohmann::json& ops, std::set<std::string>& moving, nlohmann::json& notes);
+    // "Swap A and B", "move A to where B is (and B to where A is)": the two zones the request
+    // has change places. Empty when it isn't that.
+    std::pair<std::string, std::string> SwapAsked(const std::string& request) const;
     bool IsSubject(const std::string& request, const std::string& zoneId) const; // named as what moves, not as where
     void RelayoutMoving(const std::set<std::string>& moving);
     // A moved zone's place on the axes its relations don't move along, from its references
@@ -301,6 +311,7 @@ private:
         bool passed = false;
         nlohmann::json made = nlohmann::json::array(); // what came, try by try: {path, attempt, seen?, ok?}
         std::string request;      // the user's words for it (Refine)
+        std::string verdict;      // the user's check of what was made: "kept", "rejected", or "" (not looked at)
         nlohmann::json superseded = nlohmann::json::array(); // what a refined piece replaces
     };
     // The sourcing as it goes, for the panel: [{key, role, description, action, attempts, done, passed, made}].
@@ -345,6 +356,11 @@ private:
     void UnfreezeLayout(bool keepPlaces, const std::set<std::string>& moving = {}, bool keepOthersCells = false);
     bool LayoutFrozen() const;
     void FitToRoom();
+    // A revision asked a zone for more than it holds: it grows into the open land beside it (no
+    // other zone's, not water or a road) by what the missing parts need. True if any grew.
+    bool GrowShortZones();
+    bool growing_ = false;
+    std::string ArtDirection() const; // the look every piece of the place is asked for in
     // History (8.2): each action's state before it, restored exactly by Undo; Redo's after.
     nlohmann::json Snapshot() const;
     void Checkpoint(const std::string& what);

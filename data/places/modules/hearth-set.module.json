@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "A fireplace on the wall, chairs and a rug before it.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "FurnitureGroup"

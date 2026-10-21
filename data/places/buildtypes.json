@@ -298,7 +298,25 @@
       "woods",
       "woodland",
       "forest",
-      "nature"
+      "nature",
+      "swamp",
+      "marsh",
+      "bog",
+      "island",
+      "oasis",
+      "desert",
+      "mountain",
+      "mountains",
+      "pass",
+      "gorge",
+      "ruins",
+      "ruin",
+      "graveyard",
+      "cemetery",
+      "battlefield",
+      "jungle",
+      "glade",
+      "meadow"
     ],
     "unit": {
       "field": "pois",
@@ -329,7 +347,8 @@
       "river",
       "lake",
       "pond",
-      "nature-scatter"
+      "nature-scatter",
+      "graveyard"
     ],
     "scale": [
       {
@@ -768,8 +787,8 @@
           8
         ],
         "side": [
-          30,
-          45
+          45,
+          68
         ],
         "zones": [
           1,
@@ -783,8 +802,8 @@
           16
         ],
         "side": [
-          45,
-          70
+          68,
+          105
         ],
         "zones": [
           1,
@@ -798,8 +817,8 @@
           32
         ],
         "side": [
-          70,
-          100
+          105,
+          150
         ],
         "zones": [
           2,
@@ -813,8 +832,8 @@
           80
         ],
         "side": [
-          100,
-          150
+          150,
+          225
         ],
         "zones": [
           3,
@@ -828,6 +847,21 @@
         "condition": "condition"
       },
       "features": []
+    },
+    "look": {
+      "lighting": "indoor",
+      "parts": [
+        {
+          "key": "wall-block",
+          "role": "wall-block",
+          "at": "wall-edge"
+        },
+        {
+          "key": "wall-torch",
+          "role": "wall-torch",
+          "at": "lights"
+        }
+      ]
     }
   },
   {
@@ -844,7 +878,10 @@
       "house interior",
       "tavern interior",
       "inn interior",
-      "inside of"
+      "inside of",
+      "inside",
+      "tower",
+      "wizard tower"
     ],
     "unit": {
       "field": "rooms",
@@ -965,6 +1002,137 @@
         "zones": [
           2,
           4
+        ]
+      }
+    ],
+    "briefFields": {
+      "style": {
+        "wealth": "wealth",
+        "condition": "condition"
+      },
+      "features": []
+    },
+    "look": {
+      "lighting": "indoor"
+    }
+  },
+  {
+    "id": "courtyard",
+    "name": "Courtyard",
+    "root": "courtyard-complex",
+    "layout": "interior",
+    "rank": 0,
+    "words": [
+      "courtyard",
+      "court",
+      "cloister",
+      "atrium",
+      "patio",
+      "quadrangle",
+      "inner court",
+      "walled court",
+      "palace",
+      "palace courtyard",
+      "riad"
+    ],
+    "unit": {
+      "field": "rooms",
+      "class": "Room",
+      "label": "rooms"
+    },
+    "stages": [
+      "room programme",
+      "court and rooms",
+      "doors and gates",
+      "the court's fountain, benches and plants",
+      "furniture",
+      "lights and decor"
+    ],
+    "components": [
+      "floor-level",
+      "court",
+      "chamber",
+      "hall",
+      "storage",
+      "cellar",
+      "living-room",
+      "kitchen",
+      "bedroom",
+      "dining-room",
+      "guest-room",
+      "great-hall",
+      "throne-room",
+      "library",
+      "study",
+      "treasury",
+      "cells",
+      "nave",
+      "sanctuary",
+      "vestry",
+      "dining-set",
+      "bed-set",
+      "hearth-set",
+      "work-set",
+      "shelf-wall",
+      "display-set",
+      "altar-set",
+      "throne-set",
+      "storage-set",
+      "desk-set",
+      "wardrobe-set",
+      "kitchen-set",
+      "pews",
+      "room-lights",
+      "wall-decor",
+      "floor-clutter",
+      "fountain",
+      "bench",
+      "nature-scatter"
+    ],
+    "scale": [
+      {
+        "class": "small",
+        "buildings": [
+          2,
+          4
+        ],
+        "side": [
+          12,
+          16
+        ],
+        "zones": [
+          1,
+          1
+        ]
+      },
+      {
+        "class": "medium",
+        "buildings": [
+          4,
+          8
+        ],
+        "side": [
+          16,
+          22
+        ],
+        "zones": [
+          1,
+          2
+        ]
+      },
+      {
+        "class": "large",
+        "buildings": [
+          8,
+          16
+        ],
+        "side": [
+          22,
+          32
+        ],
+        "zones": [
+          1,
+          3
         ]
       }
     ],

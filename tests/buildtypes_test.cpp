@@ -451,7 +451,7 @@ TEST(BuildTypesTest, TheChoicesComeFromTheOntology) {
     const json options = BuildChoices(Library());
     std::map<std::string, json> byId;
     for (const auto& t : options["types"]) byId[t["id"]] = t;
-    ASSERT_EQ(byId.size(), 8u);
+    ASSERT_EQ(byId.size(), 9u);
     EXPECT_EQ(options["types"][0]["id"], "settlement"); // the default first
     auto paths = [&](const std::string& type) {
         std::set<std::string> out;

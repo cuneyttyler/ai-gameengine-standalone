@@ -16,6 +16,8 @@ interface Choice {
   next: string
   if?: Condition[]
   do?: Effect[]
+  check?: { attribute: string; difficulty: number } // a skill check (15.3)
+  fail?: string // where a failed check goes
 }
 interface Node {
   id: string
@@ -24,6 +26,8 @@ interface Node {
   choices?: Choice[]
   next?: string
   do?: Effect[]
+  portrait?: string
+  voice?: string
 }
 interface DialogueContent {
   speaker: string
@@ -38,13 +42,44 @@ interface Objective {
   target: string
   count?: number
   scene?: string // only counts in this scene (6.9)
+  optional?: boolean
+  item?: string // deliver
+  to?: string // escort: the marker
+  seconds?: number // survive, defend
 }
+interface Stage {
+  index: number
+  journal?: string
+  objectives: Objective[]
+  onEnter?: Effect[]
+  branches?: { if: Condition[]; stage: number }[]
+  next?: number
+  ends?: string
+}
+interface Alias {
+  id: string
+  kind: string
+  fill: string
+}
+interface Rewards {
+  experience?: number
+  gold?: number
+  items?: string
+  faction?: string
+  reputation?: number
+}
+// Quests v2 (15.1). The panel always edits stages; a quest with one plain
+// objective per stage is saved in the older "objectives" shape.
 interface QuestContent {
   name: string
   description: string
   giver: string
-  objectives: Objective[]
+  objectives?: Objective[]
+  stages: Stage[]
+  aliases: Alias[]
+  rewards: Rewards
   onComplete?: Effect[]
+  onFail?: Effect[]
 }
 interface ScheduleEntry {
   from: string
@@ -77,7 +112,18 @@ const kind = ref<'dialogue' | 'quest' | 'schedule' | null>(null)
 const draftId = ref('')
 const originalId = ref('')
 const dialogue = reactive<DialogueContent>({ speaker: '', start: '', starts: [], nodes: [] })
-const quest = reactive<QuestContent>({ name: '', description: '', giver: '', objectives: [], onComplete: [] })
+const quest = reactive<QuestContent>({
+  name: '',
+  description: '',
+  giver: '',
+  stages: [],
+  aliases: [],
+  rewards: {},
+  onComplete: [],
+  onFail: [],
+})
+const dialogueView = ref<'list' | 'graph'>('list')
+const selectedNode = ref('')
 const schedule = reactive<ScheduleContent>({ name: '', entries: [] })
 const saved = ref('')
 const saveError = ref('')
@@ -111,8 +157,67 @@ const questIds = computed(() => quests.value.map((q) => q.id))
 const folderOf = { dialogue: 'dialogue', quest: 'quests', schedule: 'schedules' } as const
 const currentFile = computed(() => `${folderOf[kind.value ?? 'dialogue']}/${originalId.value || draftId.value}.json`)
 
+function stagesIn(content: QuestContent | undefined): Stage[] {
+  if (!content) return []
+  if (content.stages?.length) return content.stages
+  return (content.objectives ?? []).map((o, i) => ({ index: (i + 1) * 10, objectives: [o] }))
+}
+
 function objectivesOf(id: string): string[] {
-  return quests.value.find((q) => q.id === id)?.content.objectives.map((o) => o.id) ?? []
+  const content = id === originalId.value && kind.value === 'quest' ? quest : quests.value.find((q) => q.id === id)?.content
+  return stagesIn(content).flatMap((st) => st.objectives.map((o) => o.id))
+}
+
+function stagesOf(id: string): number[] {
+  const content = id === originalId.value && kind.value === 'quest' ? quest : quests.value.find((q) => q.id === id)?.content
+  return stagesIn(content).map((st) => st.index)
+}
+
+// Everything the editors bind to, present (the engine drops what's empty).
+function normalizeQuest(content: QuestContent): QuestContent {
+  content.stages = stagesIn(content).map((st) => ({
+    ...st,
+    journal: st.journal ?? (content.stages?.length ? '' : st.objectives[0]?.text ?? ''),
+    onEnter: st.onEnter ?? [],
+    branches: st.branches ?? [],
+  }))
+  delete content.objectives
+  content.aliases ??= []
+  content.rewards ??= {}
+  content.onComplete ??= []
+  content.onFail ??= []
+  for (const st of content.stages) for (const b of st.branches ?? []) b.if ??= []
+  return content
+}
+
+// The file to save: v2 with stages, or the older shape when that says it all.
+function questFile(content: QuestContent): Record<string, unknown> {
+  const copy = JSON.parse(JSON.stringify(content)) as QuestContent
+  const plain =
+    copy.aliases.length === 0 &&
+    !copy.onFail?.length &&
+    Object.values(copy.rewards).every((v) => !v) &&
+    copy.stages.every(
+      (st, i) =>
+        st.index === (i + 1) * 10 &&
+        st.objectives.length === 1 &&
+        !st.objectives[0]!.optional &&
+        (!st.journal || st.journal === st.objectives[0]!.text) &&
+        !st.onEnter?.length &&
+        !st.branches?.length &&
+        !st.next &&
+        !st.ends,
+    )
+  const out: Record<string, unknown> = { name: copy.name, description: copy.description, giver: copy.giver }
+  if (plain) out.objectives = copy.stages.map((st) => st.objectives[0])
+  else {
+    out.stages = copy.stages
+    if (copy.aliases.length) out.aliases = copy.aliases
+    out.rewards = copy.rewards
+  }
+  out.onComplete = copy.onComplete
+  if (copy.onFail?.length) out.onFail = copy.onFail
+  return out
 }
 
 function problemsFor(file: string): string[] {
@@ -132,6 +237,8 @@ function normalize(content: DialogueContent): DialogueContent {
       choice.if ??= []
       choice.do ??= []
     }
+    node.portrait ??= ''
+    node.voice ??= ''
   }
   content.starts ??= []
   return content
@@ -172,8 +279,8 @@ async function open(file: string, force = false): Promise<void> {
   } else if (q) {
     kind.value = 'quest'
     draftId.value = originalId.value = q.id
-    const copy = JSON.parse(JSON.stringify(q.content)) as QuestContent
-    Object.assign(quest, { ...copy, onComplete: copy.onComplete ?? [] })
+    const copy = normalizeQuest(JSON.parse(JSON.stringify(q.content)) as QuestContent)
+    Object.assign(quest, copy)
   } else {
     return
   }
@@ -204,8 +311,13 @@ async function newQuest(): Promise<void> {
     name: '',
     description: '',
     giver: characters.value[0]?.key ?? '',
-    objectives: [{ id: 'first', text: '', type: 'defeat', target: 'Enemy', count: 1 }],
+    stages: [
+      { index: 10, journal: '', objectives: [{ id: 'first', text: '', type: 'defeat', target: 'Enemy', count: 1 }], onEnter: [], branches: [] },
+    ],
+    aliases: [],
+    rewards: {},
     onComplete: [],
+    onFail: [],
   })
   saved.value = ''
   saveError.value = ''
@@ -235,7 +347,7 @@ function save(): void {
     kind: kind.value,
     id: draftId.value.trim(),
     originalId: originalId.value,
-    content: JSON.parse(JSON.stringify(draftContent())),
+    content: kind.value === 'quest' ? questFile(quest) : JSON.parse(JSON.stringify(draftContent())),
   })
 }
 
@@ -276,9 +388,117 @@ function renameNode(node: Node, id: string): void {
   for (const s of dialogue.starts ?? []) if (s.node === old) s.node = id
   for (const n of dialogue.nodes) {
     if (n.next === old) n.next = id
-    for (const c of n.choices ?? []) if (c.next === old) c.next = id
+    for (const c of n.choices ?? []) {
+      if (c.next === old) c.next = id
+      if (c.fail === old) c.fail = id
+    }
+  }
+  if (selectedNode.value === old) selectedNode.value = id
+}
+
+function useCheck(choice: Choice, on: boolean): void {
+  if (on) choice.check = { attribute: 'speech', difficulty: 5 }
+  else {
+    delete choice.check
+    delete choice.fail
   }
 }
+
+// --- The dialogue graph (15.3): nodes in columns by distance from the start --
+
+const graph = computed(() => {
+  const depth = new Map<string, number>()
+  const queue = [dialogue.start, ...(dialogue.starts ?? []).map((s) => s.node)]
+  for (const id of queue) if (!depth.has(id)) depth.set(id, 0)
+  while (queue.length) {
+    const id = queue.shift()!
+    const node = dialogue.nodes.find((n) => n.id === id)
+    if (!node) continue
+    const links = node.choices ? node.choices.flatMap((c) => [c.next, c.fail ?? '']) : [node.next ?? '']
+    for (const to of links) {
+      if (to && !depth.has(to)) {
+        depth.set(to, depth.get(id)! + 1)
+        queue.push(to)
+      }
+    }
+  }
+  const columns: string[][] = []
+  for (const node of dialogue.nodes) {
+    const d = depth.get(node.id) ?? columns.length // unreachable: a column of its own at the end
+    ;(columns[d] ??= []).push(node.id)
+  }
+  const width = 170
+  const height = 54
+  const pos = new Map<string, { x: number; y: number }>()
+  columns.forEach((col, x) => col?.forEach((id, y) => pos.set(id, { x: 12 + x * (width + 46), y: 12 + y * (height + 18) })))
+  const edges: { from: string; to: string; label: string; fail: boolean }[] = []
+  for (const node of dialogue.nodes) {
+    if (node.choices) {
+      node.choices.forEach((c, i) => {
+        if (c.next) edges.push({ from: node.id, to: c.next, label: String(i + 1), fail: false })
+        if (c.fail) edges.push({ from: node.id, to: c.fail, label: `${i + 1}✗`, fail: true })
+      })
+    } else if (node.next) edges.push({ from: node.id, to: node.next, label: '', fail: false })
+  }
+  let w = 0
+  let h = 0
+  for (const p of pos.values()) {
+    w = Math.max(w, p.x + width + 12)
+    h = Math.max(h, p.y + height + 12)
+  }
+  return { pos, edges, width, height, w, h }
+})
+
+function edgePath(from: string, to: string): string {
+  const a = graph.value.pos.get(from)
+  const b = graph.value.pos.get(to)
+  if (!a || !b) return ''
+  const { width, height } = graph.value
+  const x1 = a.x + width
+  const y1 = a.y + height / 2
+  const x2 = b.x
+  const y2 = b.y + height / 2
+  if (x2 > x1) return `M${x1},${y1} C${x1 + 30},${y1} ${x2 - 30},${y2} ${x2},${y2}`
+  // Back or sideways: around below.
+  const below = Math.max(a.y, b.y) + height + 10
+  return `M${a.x + width / 2},${a.y + height} C${a.x + width / 2},${below} ${b.x + width / 2},${below} ${b.x + width / 2},${b.y + height}`
+}
+
+function edgeLabelAt(from: string, to: string): { x: number; y: number } {
+  const a = graph.value.pos.get(from)
+  const b = graph.value.pos.get(to)
+  if (!a || !b) return { x: 0, y: 0 }
+  return { x: (a.x + graph.value.width + b.x) / 2, y: (a.y + b.y + graph.value.height) / 2 - 3 }
+}
+
+const shownNodes = computed(() =>
+  dialogueView.value === 'graph' ? dialogue.nodes.filter((n) => n.id === selectedNode.value) : dialogue.nodes,
+)
+
+function selectNode(id: string): void {
+  selectedNode.value = id
+}
+
+function addNodeInGraph(): void {
+  addNode()
+  selectedNode.value = dialogue.nodes[dialogue.nodes.length - 1]!.id
+}
+
+// --- Quest stages ----------------------------------------------------------
+
+function addStage(): void {
+  const last = quest.stages[quest.stages.length - 1]?.index ?? 0
+  quest.stages.push({
+    index: Math.floor(last / 10) * 10 + 10,
+    journal: '',
+    objectives: [{ id: `step-${objectivesOf(originalId.value).length + quest.stages.length + 1}`, text: '', type: 'talk', target: quest.giver }],
+    onEnter: [],
+    branches: [],
+  })
+}
+
+const stageIndices = computed(() => quest.stages.map((st) => st.index))
+const allObjectiveIds = computed(() => quest.stages.flatMap((st) => st.objectives.map((o) => o.id)))
 
 function useChoices(node: Node, on: boolean): void {
   if (on) {
@@ -291,6 +511,10 @@ function useChoices(node: Node, on: boolean): void {
 }
 
 function goTo(id: string): void {
+  if (dialogueView.value === 'graph') {
+    selectedNode.value = id
+    return
+  }
   document.getElementById(`story-node-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
@@ -304,8 +528,17 @@ function markersOf(scene: string | undefined): string[] {
   return entry?.markers ?? []
 }
 
+// Objective types whose target is typed in (an item id, a Name) rather than picked.
+const freeTargets = ['use', 'examine', 'have']
+
+function aliasTargets(): { value: string; label: string }[] {
+  return quest.aliases.filter((a) => a.id).map((a) => ({ value: `@${a.id}`, label: `@${a.id} (${a.fill || '?'})` }))
+}
+
 function targetsFor(type: string, scene?: string): { value: string; label: string }[] {
-  if (type === 'talk') return world.value.filter((e) => e.kind === 'character').map((e) => ({ value: e.key, label: e.name }))
+  if (['talk', 'deliver', 'escort', 'defend'].includes(type)) {
+    return [...aliasTargets(), ...world.value.filter((e) => e.kind === 'character').map((e) => ({ value: e.key, label: e.name }))]
+  }
   if (type === 'reach') {
     const names = scene ? markersOf(scene) : [...new Set(sceneList.scenes.flatMap((s) => (s.open ? markers.value : s.markers)))]
     return [...(scene ? [{ value: '', label: '(arrive in the scene)' }] : []), ...names.map((m) => ({ value: m, label: m }))]
@@ -392,6 +625,52 @@ function targetsFor(type: string, scene?: string): { value: string; label: strin
           <select v-model="dialogue.start">
             <option v-for="id in nodeIds" :key="id" :value="id">{{ id }}</option>
           </select>
+          <span class="spacer"></span>
+          <div class="view-switch">
+            <button :class="{ on: dialogueView === 'list' }" @click="dialogueView = 'list'">List</button>
+            <button
+              :class="{ on: dialogueView === 'graph' }"
+              @click="dialogueView = 'graph'; selectedNode = selectedNode || dialogue.start"
+            >
+              Graph
+            </button>
+          </div>
+        </div>
+        <div v-if="dialogueView === 'graph'" class="graph">
+          <svg :width="graph.w" :height="graph.h">
+            <defs>
+              <marker id="story-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M0,0 L8,4 L0,8 z" fill="#6b7280" />
+              </marker>
+            </defs>
+            <g v-for="(e, i) in graph.edges" :key="'e' + i">
+              <path :d="edgePath(e.from, e.to)" class="edge" :class="{ fail: e.fail }" marker-end="url(#story-arrow)" />
+              <text v-if="e.label" :x="edgeLabelAt(e.from, e.to).x" :y="edgeLabelAt(e.from, e.to).y" class="edge-label">
+                {{ e.label }}
+              </text>
+            </g>
+            <g
+              v-for="node in dialogue.nodes"
+              :key="node.id"
+              class="gnode"
+              :class="{ on: node.id === selectedNode, start: node.id === dialogue.start }"
+              @click="selectNode(node.id)"
+            >
+              <rect
+                :x="graph.pos.get(node.id)?.x"
+                :y="graph.pos.get(node.id)?.y"
+                :width="graph.width"
+                :height="graph.height"
+              />
+              <text :x="(graph.pos.get(node.id)?.x ?? 0) + 8" :y="(graph.pos.get(node.id)?.y ?? 0) + 17" class="gid">
+                {{ node.id }}
+              </text>
+              <text :x="(graph.pos.get(node.id)?.x ?? 0) + 8" :y="(graph.pos.get(node.id)?.y ?? 0) + 36" class="gtext">
+                {{ node.text.length > 24 ? node.text.slice(0, 23) + '…' : node.text || '(no text)' }}
+              </text>
+            </g>
+          </svg>
+          <button class="small-button" @click="addNodeInGraph">+ Node</button>
         </div>
         <div class="starts">
           <div v-for="(s, i) in dialogue.starts" :key="i" class="start-row">
@@ -399,7 +678,7 @@ function targetsFor(type: string, scene?: string): { value: string; label: strin
             <select v-model="s.node">
               <option v-for="id in nodeIds" :key="id" :value="id">{{ id }}</option>
             </select>
-            <ConditionList :conditions="s.if" :quests="questIds" />
+            <ConditionList :conditions="s.if" :quests="questIds" :stages-of="stagesOf" />
             <button title="Remove" @click="dialogue.starts!.splice(i, 1)">×</button>
           </div>
           <button class="small-button" @click="dialogue.starts!.push({ if: [], node: dialogue.start })">
@@ -407,7 +686,7 @@ function targetsFor(type: string, scene?: string): { value: string; label: strin
           </button>
         </div>
 
-        <div v-for="(node, n) in dialogue.nodes" :id="`story-node-${node.id}`" :key="n" class="node">
+        <div v-for="node in shownNodes" :id="`story-node-${node.id}`" :key="dialogue.nodes.indexOf(node)" class="node">
           <div class="node-head">
             <input
               :value="node.id"
@@ -429,9 +708,15 @@ function targetsFor(type: string, scene?: string): { value: string; label: strin
               <input type="checkbox" :checked="!!node.choices" @change="useChoices(node, ($event.target as HTMLInputElement).checked)" />
               choices
             </label>
-            <button title="Delete this node" @click="dialogue.nodes.splice(n, 1)">×</button>
+            <button title="Delete this node" @click="dialogue.nodes.splice(dialogue.nodes.indexOf(node), 1)">×</button>
           </div>
           <textarea v-model="node.text" rows="2" placeholder="What they say"></textarea>
+          <div class="media-row">
+            <span class="muted small">portrait</span>
+            <input v-model="node.portrait" class="grow" placeholder="assets/… (optional)" spellcheck="false" />
+            <span class="muted small">voice</span>
+            <input v-model="node.voice" class="grow" placeholder="assets/….wav (optional)" spellcheck="false" />
+          </div>
           <div v-if="!node.choices" class="next-row">
             <span class="muted">then</span>
             <select v-model="node.next">
@@ -453,17 +738,33 @@ function targetsFor(type: string, scene?: string): { value: string; label: strin
                 <button title="Remove this choice" @click="node.choices!.splice(ci, 1)">×</button>
               </div>
               <div class="choice-extra">
-                <ConditionList :conditions="c.if!" :quests="questIds" />
-                <EffectList :effects="c.do!" :quests="questIds" :objectives-of="objectivesOf" />
+                <ConditionList :conditions="c.if!" :quests="questIds" :stages-of="stagesOf" />
+                <div class="check-row">
+                  <label class="toggle">
+                    <input type="checkbox" :checked="!!c.check" @change="useCheck(c, ($event.target as HTMLInputElement).checked)" />
+                    skill check
+                  </label>
+                  <template v-if="c.check">
+                    <input v-model="c.check.attribute" class="short" spellcheck="false" title="The player's attribute" />
+                    <span class="muted small">≥</span>
+                    <input v-model.number="c.check.difficulty" type="number" class="count" title="Difficulty" />
+                    <span class="muted small">else</span>
+                    <select v-model="c.fail" title="Where a failed check goes">
+                      <option :value="undefined">ends</option>
+                      <option v-for="id in nodeIds" :key="id" :value="id">→ {{ id }}</option>
+                    </select>
+                  </template>
+                </div>
+                <EffectList :effects="c.do!" :quests="questIds" :objectives-of="objectivesOf" :stages-of="stagesOf" />
               </div>
             </div>
-            <button class="small-button" :disabled="node.choices.length >= 4" @click="node.choices.push({ text: '', next: '', if: [], do: [] })">
+            <button class="small-button" :disabled="node.choices.length >= 9" @click="node.choices.push({ text: '', next: '', if: [], do: [] })">
               + Choice
             </button>
           </div>
-          <EffectList :effects="node.do!" :quests="questIds" :objectives-of="objectivesOf" />
+          <EffectList :effects="node.do!" :quests="questIds" :objectives-of="objectivesOf" :stages-of="stagesOf" />
         </div>
-        <button class="small-button" @click="addNode">+ Node</button>
+        <button v-if="dialogueView === 'list'" class="small-button" @click="addNode">+ Node</button>
       </template>
 
       <!-- Routine ------------------------------------------------------------->
@@ -528,38 +829,137 @@ function targetsFor(type: string, scene?: string): { value: string; label: strin
           <label>Description</label>
           <textarea v-model="quest.description" rows="2" class="grow"></textarea>
         </div>
-        <div class="section-label">Objectives, in order</div>
-        <div v-for="(o, i) in quest.objectives" :key="i" class="objective">
-          <span class="num">{{ i + 1 }}.</span>
-          <input v-model="o.id" class="id" spellcheck="false" title="Objective id" />
-          <input v-model="o.text" class="grow" placeholder="Shown on screen" />
-          <select v-model="o.type">
-            <option value="defeat">defeat</option>
-            <option value="collect">collect</option>
-            <option value="talk">talk to</option>
-            <option value="reach">reach</option>
+        <div class="section-label">Roles (aliases)</div>
+        <p class="muted small">A role is written "@thief" in a target and filled here, so the quest works with whoever plays it.</p>
+        <div v-for="(a, i) in quest.aliases" :key="'a' + i" class="objective">
+          <span class="muted">@</span>
+          <input v-model="a.id" class="id" spellcheck="false" placeholder="thief" />
+          <select v-model="a.kind">
+            <option value="character">character</option>
+            <option value="item">item</option>
+            <option value="location">location</option>
+            <option value="entity">entity</option>
           </select>
-          <select v-model="o.target">
-            <option v-for="t in targetsFor(o.type, o.scene)" :key="t.value" :value="t.value">{{ t.label }}</option>
-            <option v-if="o.target && !targetsFor(o.type, o.scene).some((t) => t.value === o.target)" :value="o.target">
-              {{ o.target }} (missing)
-            </option>
+          <select v-if="a.kind === 'character'" v-model="a.fill">
+            <option v-for="c in characters" :key="c.key" :value="c.key">{{ c.name }}</option>
           </select>
-          <select v-model="o.scene" class="scene-pick" title="Only counts in this scene (empty: anywhere)">
-            <option :value="undefined">anywhere</option>
-            <option v-for="s in sceneList.scenes" :key="s.path" :value="s.path">in {{ s.name }}</option>
-          </select>
-          <input v-if="o.type !== 'talk' && o.type !== 'reach'" v-model.number="o.count" type="number" min="1" class="count" title="How many" />
-          <button title="Remove" @click="quest.objectives.splice(i, 1)">×</button>
+          <input v-else v-model="a.fill" class="grow" spellcheck="false" placeholder="item id, marker or name" />
+          <button title="Remove" @click="quest.aliases.splice(i, 1)">×</button>
         </div>
-        <button
-          class="small-button"
-          @click="quest.objectives.push({ id: `step-${quest.objectives.length + 1}`, text: '', type: 'defeat', target: 'Enemy', count: 1 })"
-        >
-          + Objective
+        <button class="small-button" @click="quest.aliases.push({ id: '', kind: 'character', fill: characters[0]?.key ?? '' })">
+          + Role
         </button>
+
+        <div class="section-label">Stages</div>
+        <p class="muted small">
+          A stage's objectives can be done in any order (optional ones don't hold it back). Then the first branch that
+          holds picks the next stage, else "then", else the next one below.
+        </p>
+        <div v-for="(st, si) in quest.stages" :key="'s' + si" class="node stage">
+          <div class="node-head">
+            <span class="muted">Stage</span>
+            <input v-model.number="st.index" type="number" class="count" title="Stage number (10, 20…)" />
+            <input v-model="st.journal" class="grow" placeholder="The journal's line for this stage" />
+            <select v-model="st.ends" title="The quest ends on reaching this stage">
+              <option :value="undefined">goes on</option>
+              <option value="complete">completes the quest</option>
+              <option value="fail">fails the quest</option>
+            </select>
+            <button title="Remove this stage" @click="quest.stages.splice(si, 1)">×</button>
+          </div>
+          <template v-if="!st.ends">
+            <div v-for="(o, i) in st.objectives" :key="i" class="objective">
+              <input v-model="o.id" class="id" spellcheck="false" title="Objective id" />
+              <input v-model="o.text" class="grow" placeholder="Shown on screen" />
+              <select v-model="o.type">
+                <option value="defeat">defeat</option>
+                <option value="collect">collect</option>
+                <option value="talk">talk to</option>
+                <option value="reach">reach</option>
+                <option value="deliver">deliver to</option>
+                <option value="use">use</option>
+                <option value="examine">examine</option>
+                <option value="have">have item</option>
+                <option value="survive">survive</option>
+                <option value="defend">defend</option>
+                <option value="escort">escort</option>
+              </select>
+              <input v-if="freeTargets.includes(o.type)" v-model="o.target" class="short" spellcheck="false"
+                     :placeholder="o.type === 'have' ? 'item id' : 'its Name'" />
+              <select v-else-if="o.type !== 'survive'" v-model="o.target">
+                <option v-for="t in targetsFor(o.type, o.scene)" :key="t.value" :value="t.value">{{ t.label }}</option>
+                <option v-if="o.target && !targetsFor(o.type, o.scene).some((t) => t.value === o.target)" :value="o.target">
+                  {{ o.target }} (missing)
+                </option>
+              </select>
+              <input v-if="o.type === 'deliver'" v-model="o.item" class="short" spellcheck="false" placeholder="item id" />
+              <template v-if="o.type === 'escort'">
+                <span class="muted small">to</span>
+                <select v-model="o.to">
+                  <option v-for="m in markersOf(o.scene)" :key="m" :value="m">{{ m }}</option>
+                </select>
+              </template>
+              <template v-if="o.type === 'survive' || o.type === 'defend'">
+                <input v-model.number="o.seconds" type="number" min="1" class="count" title="Seconds" />
+                <span class="muted small">s</span>
+              </template>
+              <select v-model="o.scene" class="scene-pick" title="Only counts in this scene (empty: anywhere)">
+                <option :value="undefined">anywhere</option>
+                <option v-for="sc in sceneList.scenes" :key="sc.path" :value="sc.path">in {{ sc.name }}</option>
+              </select>
+              <input v-if="['defeat', 'collect', 'have', 'deliver'].includes(o.type)" v-model.number="o.count" type="number"
+                     min="1" class="count" title="How many" />
+              <label class="toggle" title="Doesn't hold the stage back">
+                <input v-model="o.optional" type="checkbox" />optional
+              </label>
+              <button title="Remove" @click="st.objectives.splice(i, 1)">×</button>
+            </div>
+            <button
+              class="small-button"
+              @click="st.objectives.push({ id: `step-${allObjectiveIds.length + 1}`, text: '', type: 'defeat', target: 'Enemy', count: 1 })"
+            >
+              + Objective
+            </button>
+            <div v-for="(b, bi) in st.branches" :key="'b' + bi" class="start-row">
+              <span class="muted">go to stage</span>
+              <select v-model.number="b.stage">
+                <option v-for="ix in stageIndices.filter((x) => x !== st.index)" :key="ix" :value="ix">{{ ix }}</option>
+              </select>
+              <ConditionList :conditions="b.if" :quests="questIds" :stages-of="stagesOf" />
+              <button title="Remove" @click="st.branches!.splice(bi, 1)">×</button>
+            </div>
+            <div class="next-row">
+              <button class="small-button" @click="st.branches!.push({ if: [], stage: stageIndices.find((x) => x > st.index) ?? st.index })">
+                + Branch
+              </button>
+              <span class="muted small">then</span>
+              <select v-model.number="st.next">
+                <option :value="undefined">the next stage</option>
+                <option v-for="ix in stageIndices.filter((x) => x !== st.index)" :key="ix" :value="ix">stage {{ ix }}</option>
+              </select>
+            </div>
+          </template>
+          <div class="muted small">On reaching it</div>
+          <EffectList :effects="st.onEnter!" :quests="questIds" :objectives-of="objectivesOf" :stages-of="stagesOf" />
+        </div>
+        <button class="small-button" @click="addStage">+ Stage</button>
+
+        <div class="section-label">Rewards</div>
+        <div class="objective">
+          <span class="muted small">experience</span>
+          <input v-model.number="quest.rewards.experience" type="number" min="0" class="count" />
+          <span class="muted small">gold</span>
+          <input v-model.number="quest.rewards.gold" type="number" min="0" class="count" />
+          <span class="muted small">items</span>
+          <input v-model="quest.rewards.items" class="short" spellcheck="false" placeholder="potion*2, iron-sword" />
+          <span class="muted small">reputation</span>
+          <input v-model="quest.rewards.faction" class="short" spellcheck="false" placeholder="faction" />
+          <input v-model.number="quest.rewards.reputation" type="number" class="count" />
+        </div>
         <div class="section-label">When completed</div>
-        <EffectList :effects="quest.onComplete!" :quests="questIds" :objectives-of="objectivesOf" />
+        <EffectList :effects="quest.onComplete!" :quests="questIds" :objectives-of="objectivesOf" :stages-of="stagesOf" />
+        <div class="section-label">When failed</div>
+        <EffectList :effects="quest.onFail!" :quests="questIds" :objectives-of="objectivesOf" :stages-of="stagesOf" />
       </template>
 
       <div class="actions">
@@ -749,6 +1149,75 @@ function targetsFor(type: string, scene?: string): { value: string; label: strin
 }
 .spacer {
   flex: 1;
+}
+.view-switch {
+  display: flex;
+}
+.view-switch button {
+  padding: 2px 10px;
+}
+.view-switch button.on {
+  background: #313148;
+  border-color: #3b82f6;
+}
+.graph {
+  overflow: auto;
+  max-height: 340px;
+  border: 1px solid #2a2a3a;
+  background: #11111a;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.graph .edge {
+  fill: none;
+  stroke: #6b7280;
+  stroke-width: 1.5;
+}
+.graph .edge.fail {
+  stroke: #ef4444;
+  stroke-dasharray: 4 3;
+}
+.graph .edge-label {
+  fill: #9ca3af;
+  font-size: 10px;
+}
+.gnode {
+  cursor: pointer;
+}
+.gnode rect {
+  fill: #1c1c2a;
+  stroke: #3a3a50;
+}
+.gnode.start rect {
+  stroke: #3b82f6;
+}
+.gnode.on rect {
+  fill: #2a2a40;
+  stroke: #fbbf24;
+}
+.gnode .gid {
+  fill: #e5e7eb;
+  font-size: 12px;
+  font-weight: 600;
+}
+.gnode .gtext {
+  fill: #9ca3af;
+  font-size: 11px;
+}
+.media-row,
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.short {
+  width: 110px;
+}
+.stage {
+  gap: 4px;
 }
 .muted {
   opacity: 0.6;

@@ -5,7 +5,8 @@
   "level": "parcel",
   "description": "A room to rent.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "InteriorRoom"

@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "Rows of benches facing the altar.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "FurnitureGroup"

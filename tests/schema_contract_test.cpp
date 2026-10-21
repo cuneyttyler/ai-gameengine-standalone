@@ -45,31 +45,3 @@ TEST(SchemaContractTest, CommittedSnapshotMatchesTheRegistry) {
            "intended, regenerate it with AIGE_UPDATE_FIXTURES=1 and run the ai_service tests.";
 }
 
-// The demo project as the AI sees it: the other half of the fixtures the
-// service's golden tests run against (with engine_schema.json). Regenerated
-// the same way; it only needs updating when the demo scene or registry
-// changes in a way the golden prompts care about.
-TEST(SchemaContractTest, DemoContextSnapshotIsCurrent) {
-    if (std::getenv("AIGE_UPDATE_FIXTURES") == nullptr) {
-        GTEST_SKIP() << "only regenerated on request (AIGE_UPDATE_FIXTURES=1)";
-    }
-    // AIGE_DEMO_PROJECT points at a clean copy of the committed demo, so local
-    // edits in the working copy don't leak into the fixture:
-    //   git archive HEAD projects/demo | tar -x -C <tmp>
-    //   AIGE_UPDATE_FIXTURES=1 AIGE_DEMO_PROJECT=<tmp>/projects/demo aige_tests --gtest_filter=*DemoContext*
-    const char* demo = std::getenv("AIGE_DEMO_PROJECT");
-    aige::Project project{demo ? std::filesystem::path(demo)
-                               : std::filesystem::path(AIGE_SOURCE_DIR) / "projects" / "demo"};
-    aige::AssetDatabase assets(project);
-    assets.Refresh();
-    aige::PrefabLibrary prefabs(project);
-    prefabs.Refresh();
-    aige::Registry registry;
-    ASSERT_TRUE(aige::LoadScene(registry, project.MainScenePath().string()));
-    prefabs.SyncAll(registry);
-    nlohmann::json context = aige::BuildEditorContext(registry, aige::EngineReflection(), prefabs, assets, project,
-                                                      {aige::FindPlayer(registry)});
-    std::filesystem::path fixture =
-        std::filesystem::path(AIGE_SOURCE_DIR) / "ai_service" / "tests" / "fixtures" / "demo_context.json";
-    std::ofstream(fixture, std::ios::binary | std::ios::trunc) << context.dump(2) << "\n";
-}

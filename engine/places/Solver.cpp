@@ -157,6 +157,7 @@ private:
     std::map<std::string, std::vector<int>> objectsByStatement_;
     std::map<std::string, int> objectById_;
     std::vector<PathResult> paths_;
+    std::vector<std::pair<int, std::string>> groundUnder_; // a patch's own ground (a wood's forest floor)
     std::vector<LineResult> lines_;
     std::map<std::string, AnchorResult> anchors_;
     std::map<std::string, int> instancesOf_; // statement id -> how many it produced
@@ -1991,6 +1992,19 @@ void Solver::Scatter(const json& s, int container) {
     if (const json cluster = s.value("cluster", json()); cluster.is_object() && target > 0 && !free.empty()) {
         const IntRange size = RangeOf(cluster.value("size", json::array({4, 16})), 8);
         const double fill = std::clamp(cluster.value("fill", 0.8), 0.1, 1.0);
+        // Woods at the edge of the place (place-refine.md §7): the seeds nearest the site's
+        // border first (a little shuffled), so the land round a village is wooded and its
+        // middle open, as in a strategy game's map.
+        if (cluster.value("prefer", "") == "edge") {
+            std::vector<std::pair<double, int>> ranked;
+            for (int c : free) {
+                const int x = c % W, y = c / W;
+                ranked.push_back({std::min(std::min(x, y), std::min(W - 1 - x, H - 1 - y)) + rng.Unit() * 6.0, c});
+            }
+            std::sort(ranked.begin(), ranked.end());
+            for (size_t i = 0; i < ranked.size(); ++i) free[i] = ranked[i].second;
+        }
+        const std::string under = cluster.value("terrain", "");
         std::vector<uint8_t> isFree(W * H, 0), used(W * H, 0);
         for (int c : free) isFree[c] = 1;
         std::vector<int> chosen;
@@ -2027,6 +2041,7 @@ void Solver::Scatter(const json& s, int container) {
             }
             for (int c : grown) {
                 if (rng.Unit() < fill) chosen.push_back(c);
+                if (!under.empty()) groundUnder_.push_back({c, under});
             }
         }
         free = chosen;
@@ -2262,7 +2277,7 @@ void Solver::Rooms(const json& s, int container) {
         return a.w * a.h > b.w * b.h;
     });
     std::vector<uint8_t> taken(W * H, 0); // rooms and their margins
-    const int margin = cave ? 1 : 2;
+    const int margin = cave ? 2 : 3; // and corridors between them a real walk (place-refine.md §12)
     int made = 0;
     for (auto& room : rooms) {
         bool placed = false;
@@ -2289,7 +2304,7 @@ void Solver::Rooms(const json& s, int container) {
                             if (other.region < 0) continue;
                             nearest = std::min(nearest, std::hypot(other.cx() - cx, other.cy() - cy));
                         }
-                        score -= std::abs(nearest - (w + h) * 0.9);
+                        score -= std::abs(nearest - ((w + h) * 1.3 + 4.0));
                         if (room.id == goal && !rooms.empty() && rooms.front().region >= 0) {
                             score += 0.6 * std::hypot(rooms.front().cx() - cx, rooms.front().cy() - cy); // far from the start
                         }
@@ -3194,6 +3209,7 @@ json Solver::Terrain() {
         const int t = indexOf(s->value("terrain", "grass"));
         for (int c : Cells(s->value("in", ""))) grid[c] = t;
     }
+    for (const auto& [c, t] : groundUnder_) grid[c] = indexOf(t); // a wood's floor
     // Road cells take the surface of their class (the first path of that class says it).
     std::array<int, 5> surface{};
     for (const auto& p : paths_) {

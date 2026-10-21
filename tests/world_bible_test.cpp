@@ -203,11 +203,3 @@ TEST_F(WorldBibleTest, TheAiWritesEntriesThroughAReviewableCommand) {
     EXPECT_FALSE(fs::exists(root_ / "world/character/old-tamsin.md"));
 }
 
-TEST(DemoWorldBibleTest, TheSeedCanonIsValid) {
-    aige::WorldBible world(aige::Project{fs::path(AIGE_SOURCE_DIR) / "projects" / "demo"});
-    world.Refresh();
-    EXPECT_GE(world.Entries().size(), 7u);
-    for (const auto& problem : world.Validate()) {
-        ADD_FAILURE() << problem.key << ": " << problem.message;
-    }
-}

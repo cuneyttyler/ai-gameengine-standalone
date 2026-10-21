@@ -8,6 +8,7 @@ import { onHostMessage, sendToHost } from '../ipc'
 import { trackOverlay, untrackOverlay } from '../overlay'
 import { projectState } from '../projects'
 import FieldEditor, { type FieldData } from './FieldEditor.vue'
+import InputSettings from './InputSettings.vue'
 
 interface SettingsSection {
   name: string
@@ -99,6 +100,13 @@ function askAi(section: string, field: string): void {
               </div>
             </template>
           </div>
+        </section>
+        <section>
+          <button class="collapse" title="What the player presses for each action" @click="collapsed.Input = !collapsed.Input">
+            {{ collapsed.Input ? '▸' : '▾' }} Input
+            <span class="muted">Actions and their keys, mouse and gamepad buttons (input.json).</span>
+          </button>
+          <InputSettings v-if="!collapsed.Input" class="fields" />
         </section>
       </div>
     </div>

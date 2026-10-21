@@ -39,6 +39,8 @@ interface InspectorData {
 const current = ref<InspectorData | null>(null)
 // A ground cell of a tile layer (a built place's ground), selected with the Select tool.
 const cell = ref<{ layer: string; x: number; y: number; prefab: string; texture: string; solid: boolean } | null>(null)
+// A box selection (drag on the ground): how many things and ground cells.
+const many = ref<{ entities: number; cells: number } | null>(null)
 const collapsed = reactive<Record<string, boolean>>({})
 // Last validation error per "Component.field" (or "Section.field").
 const errors = reactive<Record<string, string>>({})
@@ -64,9 +66,15 @@ onHostMessage((message) => {
   } else if (message.type === 'inspector:cell') {
     cell.value = message as unknown as NonNullable<typeof cell.value>
     current.value = null
+    many.value = null
+  } else if (message.type === 'inspector:many') {
+    many.value = { entities: Number(message.entities ?? 0), cells: Number(message.cells ?? 0) }
+    current.value = null
+    cell.value = null
   } else if (message.type === 'inspector:clear') {
     current.value = null
     cell.value = null
+    many.value = null
   } else if (message.type === 'inspector:fieldError') {
     const key = `${message.component}.${message.field}`
     if (message.error) {
@@ -152,8 +160,15 @@ function numberFrom(event: Event): number {
   <div class="panel inspector">
     <h2>Inspector</h2>
 
+    <!-- A box selection: how much is in it, and delete it all. -->
+    <template v-if="many && !current && !cell">
+      <div class="entity-label">{{ many.entities }} thing(s), {{ many.cells }} ground cell(s)</div>
+      <p class="hint">Selected by dragging on the ground. Delete removes them all (one undo step each for things and ground).</p>
+      <button :disabled="!many.entities && !many.cells" @click="sendToHost({ type: 'edit:delete' })">Delete them (Delete)</button>
+    </template>
+
     <!-- A ground cell (a built place's tile layer): what's there, and erase it. -->
-    <template v-if="cell && !current">
+    <template v-else-if="cell && !current">
       <div class="entity-label">Ground cell ({{ cell.x }}, {{ cell.y }})</div>
       <p class="hint">In the tile layer “{{ cell.layer }}”{{ cell.solid ? ', blocking' : '' }}.</p>
       <p v-if="cell.prefab" class="hint">Tile: {{ cell.prefab }}</p>

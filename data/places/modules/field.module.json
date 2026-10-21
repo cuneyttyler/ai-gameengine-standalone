@@ -55,6 +55,12 @@
       ],
       "default": "wheat"
     },
+    "surface": {
+      "type": "enum",
+      "vocabulary": "terrain-kind",
+      "default": "tilled",
+      "description": "The ground of the field: tilled soil, its own tile (made or found like grass and dirt)"
+    },
     "season": {
       "type": "enum",
       "values": [

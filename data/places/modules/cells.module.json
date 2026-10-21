@@ -5,7 +5,8 @@
   "level": "parcel",
   "description": "Small cells behind bars.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "InteriorRoom"

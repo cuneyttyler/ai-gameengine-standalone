@@ -1,6 +1,7 @@
 # Lua modules
 
-A project can add its own components and commands without touching C++
+A project can add its own components, commands, record types and per-frame systems
+without touching C++
 (development_plan.md 4.8). Each module is a folder:
 
 ```
@@ -82,5 +83,47 @@ where the command was run.
 The demo project includes a sample, `modules/lantern`: a `Lantern` component and
 two commands, `lantern.setAll` and `lantern.scaleRadius`.
 
-Not yet: per-frame module systems (use a component's `LuaScript` for behaviour),
-and reloading modules without restarting the editor.
+## Record types
+
+A module can add record types (development_plan.md 12.1, [records.md](records.md)):
+
+```json
+"records": [
+  {
+    "name": "spell",
+    "description": "A spell the player can learn",
+    "fields": [
+      { "name": "name", "type": "string", "required": true },
+      { "name": "school", "type": "enum", "options": ["fire", "frost"] },
+      { "name": "reagent", "type": "record", "recordType": "item" },
+      { "name": "effects", "type": "object", "list": true,
+        "fields": [{ "name": "magnitude", "type": "float", "min": 0 }] }
+    ]
+  }
+]
+```
+
+A record type's name is lower-case (it's the folder, `records/spell/`). Fields take the
+component field types, plus `record` (with `recordType`), `object` (with `fields`),
+`"list": true`, `"required": true` and a `default`.
+
+## Systems
+
+A module can run code every step of play (12.2):
+
+```json
+"systems": [{ "function": "update_lanterns" }]
+```
+
+```lua
+function update_lanterns(dt)
+  for _, id in ipairs(entities_with("Lantern")) do
+    set_field(id, "Lantern", "radius", get_field(id, "Lantern", "radius") + dt * 0.1)
+  end
+end
+```
+
+Systems run after the entities' scripts and combat, in module order, with the same
+functions as commands. An error is reported in the console and the game goes on.
+
+Not yet: reloading modules without restarting the editor.

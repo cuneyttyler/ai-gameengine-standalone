@@ -48,8 +48,15 @@ void CollectLayerSprites(const Registry& registry, const IsoParams& iso, const C
                              const TileDef* def = layer->Def(id);
                              if (def == nullptr) return;
                              const ScreenTransform2D t = LayerCellTransform(gx, gy, def->sprite, iso);
-                             if (SpriteOnScreen(t, def->sprite, camera, viewportWidth, viewportHeight)) {
-                                 out.push_back({t, &def->sprite});
+                             // Its own square of a picture, or its height: a sprite of its own.
+                             const bool own = def->sprite.uvCells > 0 || layer->Lift(gx, gy) != nullptr;
+                             SpriteItem item{t, &def->sprite};
+                             if (own) {
+                                 item.value = CellSprite(*layer, gx, gy, *def);
+                                 item.owned = true;
+                             }
+                             if (SpriteOnScreen(t, *item.Drawn(), camera, viewportWidth, viewportHeight)) {
+                                 out.push_back(std::move(item));
                              } else {
                                  ++skipped;
                              }

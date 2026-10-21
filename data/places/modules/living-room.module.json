@@ -5,7 +5,8 @@
   "level": "parcel",
   "description": "Where the household sits by the fire.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "InteriorRoom"

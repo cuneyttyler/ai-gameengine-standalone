@@ -17,6 +17,14 @@ namespace {
 
 ModuleLoadResult g_lastLoad;
 
+struct ModuleScript;
+struct ModuleSystem {
+    std::string module;
+    std::string function;
+    std::shared_ptr<ModuleScript> script;
+};
+std::vector<ModuleSystem> g_systems;
+
 // One Lua state per module's script. The environment is declared after the
 // VM so it is released first (whatever outlives whom at exit).
 struct ModuleScript {
@@ -97,6 +105,54 @@ std::variant<std::pair<FieldMeta, FieldValue>, std::string> ParseField(const nlo
         return "field " + meta.name + ": default " + *problem;
     }
     return std::pair{meta, value};
+}
+
+// A record type's field (12.1): the component field types, plus "record"
+// (with "recordType"), "object" (with "fields"), "list", "required".
+std::optional<RecordField> ParseRecordField(const nlohmann::json& j, std::string& error) {
+    if (!j.is_object() || !j.contains("name") || !j["name"].is_string() || j["name"].get<std::string>().empty()) {
+        error = "a field needs a \"name\"";
+        return std::nullopt;
+    }
+    RecordField field;
+    field.name = j["name"].get<std::string>();
+    field.description = j.value("description", "");
+    const std::string type = j.value("type", "float");
+    if (type == "record") {
+        field.kind = RecordFieldKind::Record;
+        field.recordType = j.value("recordType", "");
+        if (field.recordType.empty()) {
+            error = "field " + field.name + ": a record field needs \"recordType\"";
+            return std::nullopt;
+        }
+    } else if (type == "object") {
+        field.kind = RecordFieldKind::Object;
+        for (const auto& sub : j.value("fields", nlohmann::json::array())) {
+            auto parsed = ParseRecordField(sub, error);
+            if (!parsed) return std::nullopt;
+            field.fields.push_back(std::move(*parsed));
+        }
+    } else {
+        auto parsed = ParseType(type, false);
+        if (!parsed) {
+            error = "field " + field.name + ": unknown type \"" + type + "\"";
+            return std::nullopt;
+        }
+        field.type = *parsed;
+        if (j.contains("min") && j["min"].is_number()) field.min = j["min"].get<double>();
+        if (j.contains("max") && j["max"].is_number()) field.max = j["max"].get<double>();
+        for (const auto& option : j.value("options", nlohmann::json::array())) {
+            if (option.is_string()) field.options.push_back(option.get<std::string>());
+        }
+        if (field.type == FieldType::Enum && field.options.empty()) {
+            error = "field " + field.name + ": an enum needs \"options\"";
+            return std::nullopt;
+        }
+    }
+    field.list = j.value("list", false);
+    field.required = j.value("required", false);
+    if (j.contains("default")) field.defaultValue = j["default"];
+    return field;
 }
 
 ComponentInfo MakeComponent(const std::string& name, const std::string& description,
@@ -263,6 +319,7 @@ CommandResult RunLuaCommand(const std::shared_ptr<ModuleScript>& script, const s
 
 ModuleLoadResult LoadModules(ReflectionRegistry& reflection, const fs::path& projectRoot) {
     ModuleLoadResult result;
+    g_systems.clear(); // the systems of the project being loaded, only
     std::error_code ec;
     const fs::path dir = projectRoot / "modules";
     std::vector<fs::path> folders;
@@ -283,6 +340,36 @@ ModuleLoadResult LoadModules(ReflectionRegistry& reflection, const fs::path& pro
         LoadedModule loaded;
         loaded.name = moduleName;
         loaded.description = j.value("description", "");
+
+        for (const auto& t : j.value("records", nlohmann::json::array())) {
+            const std::string name = t.is_object() ? t.value("name", "") : "";
+            if (name.empty() || !std::all_of(name.begin(), name.end(), [](char ch) {
+                    return (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_';
+                })) {
+                result.errors.push_back(where + ": a record type needs a lower-case \"name\"");
+                continue;
+            }
+            if (reflection.FindRecordType(name)) {
+                result.errors.push_back(where + ": record type " + name + " already exists");
+                continue;
+            }
+            RecordTypeInfo info;
+            info.name = name;
+            info.description = t.value("description", "");
+            info.source = moduleName;
+            std::string error;
+            for (const auto& f : t.value("fields", nlohmann::json::array())) {
+                auto field = ParseRecordField(f, error);
+                if (!field) break;
+                info.fields.push_back(std::move(*field));
+            }
+            if (!error.empty()) {
+                result.errors.push_back(where + ": record type " + name + ": " + error);
+                continue;
+            }
+            reflection.AddRecordTypeInfo(std::move(info));
+            loaded.records.push_back(name);
+        }
 
         for (const auto& c : j.value("components", nlohmann::json::array())) {
             const std::string name = c.is_object() ? c.value("name", "") : "";
@@ -312,7 +399,8 @@ ModuleLoadResult LoadModules(ReflectionRegistry& reflection, const fs::path& pro
 
         std::shared_ptr<ModuleScript> script;
         const auto commands = j.value("commands", nlohmann::json::array());
-        if (!commands.empty()) {
+        const auto systems = j.value("systems", nlohmann::json::array());
+        if (!commands.empty() || !systems.empty()) {
             const fs::path scriptPath = folder / j.value("script", "module.lua");
             script = std::make_shared<ModuleScript>();
             script->vm = std::make_shared<LuaVM>();
@@ -373,6 +461,25 @@ ModuleLoadResult LoadModules(ReflectionRegistry& reflection, const fs::path& pro
             reflection.AddCommandInfo(std::move(info));
             loaded.commands.push_back(name);
         }
+        // Per-frame systems (12.2): a function of the script called every step
+        // of play with dt, over the module's components.
+        for (const auto& s : systems) {
+            const std::string function = s.is_object() ? s.value("function", "") : "";
+            if (function.empty()) {
+                result.errors.push_back(where + ": a system needs a \"function\"");
+                continue;
+            }
+            if (!script) {
+                result.errors.push_back(where + ": system " + function + " has no script to run");
+                continue;
+            }
+            if (!sol::object(script->env[function]).is<sol::function>()) {
+                result.errors.push_back(where + ": system: the script has no function " + function);
+                continue;
+            }
+            g_systems.push_back({moduleName, function, script});
+            loaded.systems.push_back(function);
+        }
         result.modules.push_back(std::move(loaded));
     }
     g_lastLoad = result;
@@ -380,5 +487,22 @@ ModuleLoadResult LoadModules(ReflectionRegistry& reflection, const fs::path& pro
 }
 
 const ModuleLoadResult& LastModuleLoad() { return g_lastLoad; }
+
+size_t ModuleSystemCount() { return g_systems.size(); }
+
+void RunModuleSystems(Registry& registry, float dt, const std::function<void(const std::string&)>& onError) {
+    CommandContext context{registry};
+    for (const auto& system : g_systems) {
+        sol::protected_function fn = system.script->env[system.function];
+        if (!fn.valid()) continue;
+        system.script->current = &context;
+        sol::protected_function_result result = fn(dt);
+        system.script->current = nullptr;
+        if (!result.valid() && onError) {
+            sol::error error = result;
+            onError("modules/" + system.module + " " + system.function + ": " + error.what());
+        }
+    }
+}
 
 } // namespace aige

@@ -47,6 +47,35 @@ struct AiClient::ProcessHandle {
 #endif
 };
 
+namespace {
+
+// A port nothing listens on (the system's pick), for this editor's own service.
+int FreePort(int fallback) {
+#ifdef _WIN32
+    WSADATA data;
+    if (WSAStartup(MAKEWORD(2, 2), &data) != 0) return fallback;
+    int port = fallback;
+    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s != INVALID_SOCKET) {
+        sockaddr_in at{};
+        at.sin_family = AF_INET;
+        at.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        at.sin_port = 0;
+        int length = sizeof(at);
+        if (bind(s, reinterpret_cast<sockaddr*>(&at), sizeof(at)) == 0 && getsockname(s, reinterpret_cast<sockaddr*>(&at), &length) == 0) {
+            port = ntohs(at.sin_port);
+        }
+        closesocket(s);
+    }
+    WSACleanup();
+    return port;
+#else
+    return fallback + 1;
+#endif
+}
+
+} // namespace
+
 AiClient::AiClient(Options options) : options_(std::move(options)) {
     // A fresh secret each session (128 bits).
     std::random_device random;
@@ -202,6 +231,15 @@ void AiClient::RunStart(nlohmann::json schema) {
     // Reuse a service that's already running (started by hand, or a
     // previous editor), otherwise launch one and wait for it to come up.
     std::optional<nlohmann::json> health = GetJson("/health", 1);
+    // One that answers to another token is another editor's (each has its own, and its own
+    // project open there): this one starts its own, on a port of its own.
+    if (health) {
+        std::string refused;
+        if (!Send("PUT", "/schema", &schema, 10, &refused) && (refused.find("401") != std::string::npos || refused.find("403") != std::string::npos)) {
+            options_.port = FreePort(options_.port + 1);
+            health.reset();
+        }
+    }
     if (!health) {
         if (options_.serviceDir.empty()) {
             setStatus(State::Failed, "AI service isn't running and no service folder is configured");

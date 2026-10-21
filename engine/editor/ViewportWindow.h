@@ -60,6 +60,7 @@ public:
     // can't move the player. Clicking the viewport focuses it; losing focus
     // releases every key, so nothing sticks "held" after alt-tabbing away.
     bool IsKeyDown(Key key) const;
+    float PadAxisValue(PadAxis axis) const; // the first gamepad (XInput), 12.3
     bool HasFocus() const { return GetFocus() == hwnd_; }
     void Focus() { SetFocus(hwnd_); }
 

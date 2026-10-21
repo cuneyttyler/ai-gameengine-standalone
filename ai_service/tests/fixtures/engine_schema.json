@@ -222,7 +222,44 @@
       ]
     },
     {
-      "description": "Creates or replaces a Lua script (see docs/scripting.md for the API scripts can use). Attach it with a LuaScript component.",
+      "description": "Replaces every copy of one prefab in the scene with another, each where it was, keeping how it was turned and mirrored (so a fence piece mirrored for the other isometric direction stays so), and which built place it belongs to. Use it for any 'replace all X with Y'. For ground tiles, use terrain.replace.",
+      "name": "prefab.replace",
+      "params": [
+        {
+          "description": "The prefab now in the scene, e.g. prefabs/placeholders/fence-fence.prefab.",
+          "name": "from",
+          "type": "string"
+        },
+        {
+          "description": "The prefab to put in its place, e.g. prefabs/a-diagonal-fence.prefab.",
+          "name": "to",
+          "type": "string"
+        },
+        {
+          "description": "keep (as each copy was turned and mirrored), mirror (the other way), or none.",
+          "name": "orient",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "description": "Replaces one ground tile with another everywhere: hand-painted tiles and a built place's ground (its tile layers) alike, however many cells. Use it for 'use grass in place of cobble'.",
+      "name": "terrain.replace",
+      "params": [
+        {
+          "description": "The tile prefab now on the ground, e.g. prefabs/generated/tile-terrain-cobble-1-seamless.prefab.",
+          "name": "from",
+          "type": "string"
+        },
+        {
+          "description": "The tile prefab to use instead.",
+          "name": "to",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "description": "Creates or replaces a Lua script (see docs/scripting.md for the API scripts can use). Attach it with a LuaScript component. Scripts are the game's behaviour: they run while playing, never while editing, so never write one to change the scene (use the scene commands: scene.spawn, entity.delete, prefab.replace, terrain.replace).",
       "name": "script.write",
       "params": [
         {
@@ -782,9 +819,807 @@
           "min": 0.0,
           "name": "effectMagnitude",
           "type": "float"
+        },
+        {
+          "description": "The kind of damage (resistances apply).",
+          "name": "damageType",
+          "options": [
+            "Physical",
+            "Fire",
+            "Frost",
+            "Shock",
+            "Poison"
+          ],
+          "type": "enum"
         }
       ],
       "name": "MeleeAttack",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "A character's numbers (13.1): base values that equipment, perks and effects modify. With it, Stats, Health.max and Resources are worked out from these each step.",
+      "fields": [
+        {
+          "description": "Maximum health.",
+          "max": 1000000.0,
+          "min": 1.0,
+          "name": "maxHealth",
+          "type": "float"
+        },
+        {
+          "description": "Maximum mana (0: none).",
+          "max": 1000000.0,
+          "min": 0.0,
+          "name": "maxMana",
+          "type": "float"
+        },
+        {
+          "description": "Maximum stamina (0: none; blocking and dodging cost it).",
+          "max": 1000000.0,
+          "min": 0.0,
+          "name": "maxStamina",
+          "type": "float"
+        },
+        {
+          "description": "Added to every hit's damage.",
+          "max": 100000.0,
+          "min": -1000.0,
+          "name": "attack",
+          "type": "float"
+        },
+        {
+          "description": "Taken from every hit's damage.",
+          "max": 100000.0,
+          "min": -1000.0,
+          "name": "defense",
+          "type": "float"
+        },
+        {
+          "description": "Walking speed, cells per second.",
+          "max": 50.0,
+          "min": 0.0,
+          "name": "moveSpeed",
+          "type": "float"
+        },
+        {
+          "description": "Health per second.",
+          "max": 1000.0,
+          "min": 0.0,
+          "name": "healthRegen",
+          "type": "float"
+        },
+        {
+          "description": "Mana per second.",
+          "max": 1000.0,
+          "min": 0.0,
+          "name": "manaRegen",
+          "type": "float"
+        },
+        {
+          "description": "Stamina per second.",
+          "max": 1000.0,
+          "min": 0.0,
+          "name": "staminaRegen",
+          "type": "float"
+        },
+        {
+          "description": "Share of fire damage taken away (0-0.9).",
+          "max": 0.9,
+          "min": -1.0,
+          "name": "resistFire",
+          "type": "float"
+        },
+        {
+          "description": "Share of frost damage taken away.",
+          "max": 0.9,
+          "min": -1.0,
+          "name": "resistFrost",
+          "type": "float"
+        },
+        {
+          "description": "Share of shock damage taken away.",
+          "max": 0.9,
+          "min": -1.0,
+          "name": "resistShock",
+          "type": "float"
+        },
+        {
+          "description": "Share of poison damage taken away.",
+          "max": 0.9,
+          "min": -1.0,
+          "name": "resistPoison",
+          "type": "float"
+        }
+      ],
+      "name": "Attributes",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "Mana and stamina now (13.1); their maxima come from Attributes.",
+      "fields": [
+        {
+          "description": "Mana now.",
+          "min": 0.0,
+          "name": "mana",
+          "type": "float"
+        },
+        {
+          "description": "Stamina now.",
+          "min": 0.0,
+          "name": "stamina",
+          "type": "float"
+        },
+        {
+          "description": "Maximum mana (worked out from Attributes).",
+          "min": 0.0,
+          "name": "maxMana",
+          "type": "float"
+        },
+        {
+          "description": "Maximum stamina (worked out from Attributes).",
+          "min": 0.0,
+          "name": "maxStamina",
+          "type": "float"
+        }
+      ],
+      "name": "Resources",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "Experience, level and perks (13.2). The curve and each level's gains come from the progression record \"default\".",
+      "fields": [
+        {
+          "description": "The level now.",
+          "max": 1000.0,
+          "min": 1.0,
+          "name": "level",
+          "type": "int"
+        },
+        {
+          "description": "Experience towards the next level.",
+          "min": 0.0,
+          "name": "experience",
+          "type": "float"
+        },
+        {
+          "description": "Perks that can still be taken.",
+          "min": 0.0,
+          "name": "perkPoints",
+          "type": "int"
+        },
+        {
+          "description": "Perks taken: perk record ids, comma-separated.",
+          "name": "perks",
+          "type": "string"
+        }
+      ],
+      "name": "Progression",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "What killing this gives (13.2, 13.4): experience to the killer, gold and loot dropped where it fell.",
+      "fields": [
+        {
+          "description": "Experience for the killer.",
+          "min": 0.0,
+          "name": "experience",
+          "type": "float"
+        },
+        {
+          "description": "Gold dropped, at least.",
+          "min": 0.0,
+          "name": "goldMin",
+          "type": "int"
+        },
+        {
+          "description": "Gold dropped, at most.",
+          "min": 0.0,
+          "name": "goldMax",
+          "type": "int"
+        },
+        {
+          "description": "A loot record rolled for what's dropped.",
+          "name": "loot",
+          "type": "string"
+        }
+      ],
+      "name": "Rewards",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "What a character carries (13.3): items as \"potion*3, iron-sword\" (item record ids), and gold.",
+      "fields": [
+        {
+          "description": "Item ids, with *count for more than one.",
+          "name": "items",
+          "type": "string"
+        },
+        {
+          "description": "Gold carried.",
+          "min": 0.0,
+          "name": "gold",
+          "type": "int"
+        },
+        {
+          "description": "How many stacks fit (0: any number).",
+          "min": 0.0,
+          "name": "slots",
+          "type": "int"
+        },
+        {
+          "description": "How much weight it carries (0: no limit).",
+          "min": 0.0,
+          "name": "maxWeight",
+          "type": "float"
+        }
+      ],
+      "name": "Inventory",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "What a character wears and wields (13.3): an item id per slot. The items' damage, armour and modifiers count towards its Attributes.",
+      "fields": [
+        {
+          "description": "A weapon item.",
+          "name": "weapon",
+          "type": "string"
+        },
+        {
+          "description": "A shield, a torch, a second weapon.",
+          "name": "offhand",
+          "type": "string"
+        },
+        {
+          "description": "A helmet.",
+          "name": "head",
+          "type": "string"
+        },
+        {
+          "description": "Armour.",
+          "name": "body",
+          "type": "string"
+        },
+        {
+          "description": "Gloves.",
+          "name": "hands",
+          "type": "string"
+        },
+        {
+          "description": "Boots.",
+          "name": "feet",
+          "type": "string"
+        },
+        {
+          "description": "A ring.",
+          "name": "ring",
+          "type": "string"
+        },
+        {
+          "description": "An amulet.",
+          "name": "amulet",
+          "type": "string"
+        }
+      ],
+      "name": "Equipment",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "An item lying in the world (13.3): picked up by walking over it, or with the interact action when onUse. The item \"gold\" is gold.",
+      "fields": [
+        {
+          "description": "An item record id, or gold.",
+          "name": "item",
+          "type": "string"
+        },
+        {
+          "description": "How many.",
+          "min": 1.0,
+          "name": "count",
+          "type": "int"
+        },
+        {
+          "description": "Picked up with the interact action rather than by walking over it.",
+          "name": "onUse",
+          "type": "bool"
+        }
+      ],
+      "name": "ItemPickup",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "A chest, a crate, a corpse (13.3): opened with the interact action; filled from its loot table the first time.",
+      "fields": [
+        {
+          "description": "What's inside, as item ids with *count.",
+          "name": "items",
+          "type": "string"
+        },
+        {
+          "description": "Gold inside.",
+          "min": 0.0,
+          "name": "gold",
+          "type": "int"
+        },
+        {
+          "description": "A loot record rolled when it's first opened.",
+          "name": "loot",
+          "type": "string"
+        },
+        {
+          "description": "Already opened and filled.",
+          "name": "looted",
+          "type": "bool"
+        }
+      ],
+      "name": "Container",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Someone who trades (13.4): the interact action opens their shop. Stock comes from a loot table, filled again each day.",
+      "fields": [
+        {
+          "description": "A loot record their wares come from.",
+          "name": "stock",
+          "type": "string"
+        },
+        {
+          "description": "What's for sale now.",
+          "name": "items",
+          "type": "string"
+        },
+        {
+          "description": "Gold they can pay for what they buy.",
+          "min": 0.0,
+          "name": "gold",
+          "type": "int"
+        },
+        {
+          "description": "The player pays an item's value times this.",
+          "max": 100.0,
+          "min": 0.0,
+          "name": "buyRate",
+          "type": "float"
+        },
+        {
+          "description": "The player gets an item's value times this.",
+          "max": 100.0,
+          "min": 0.0,
+          "name": "sellRate",
+          "type": "float"
+        }
+      ],
+      "name": "Merchant",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Used with the interact action (13.5): a lever, a sign, a bed, a locked door or chest. Door, Container, Merchant and ItemPickup add what happens.",
+      "fields": [
+        {
+          "description": "The prompt's verb: Open, Read, Pull, Sleep.",
+          "name": "verb",
+          "type": "string"
+        },
+        {
+          "description": "What it's called on the prompt (empty: its Name).",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "How close the player must be, in cells.",
+          "max": 10.0,
+          "min": 0.3,
+          "name": "range",
+          "type": "float"
+        },
+        {
+          "description": "Locked until opened with its key.",
+          "name": "locked",
+          "type": "bool"
+        },
+        {
+          "description": "The item that unlocks it.",
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "description": "The key is used up.",
+          "name": "consumeKey",
+          "type": "bool"
+        },
+        {
+          "description": "A story flag that must be set first.",
+          "name": "requiresFlag",
+          "type": "string"
+        },
+        {
+          "description": "A story flag set when it's used.",
+          "name": "setFlag",
+          "type": "string"
+        },
+        {
+          "description": "Shown when it's used (a sign, a book).",
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "description": "An event emitted when it's used, for scripts.",
+          "name": "event",
+          "type": "string"
+        },
+        {
+          "description": "Works only once.",
+          "name": "once",
+          "type": "bool"
+        },
+        {
+          "description": "Already used (with once).",
+          "name": "used",
+          "type": "bool"
+        }
+      ],
+      "name": "Interactable",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "Interactable"
+      ],
+      "description": "A door (13.5): the interact action opens and closes it; open, it doesn't block.",
+      "fields": [
+        {
+          "description": "Open now.",
+          "name": "open",
+          "type": "bool"
+        },
+        {
+          "description": "The picture when open (empty: unchanged).",
+          "name": "openTexture",
+          "type": "texture"
+        },
+        {
+          "description": "The picture when closed.",
+          "name": "closedTexture",
+          "type": "texture"
+        }
+      ],
+      "name": "Door",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Shoots projectiles (13.6): arrows, bolts, thrown knives.",
+      "fields": [
+        {
+          "description": "The kind of damage.",
+          "name": "damageType",
+          "options": [
+            "Physical",
+            "Fire",
+            "Frost",
+            "Shock",
+            "Poison"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "Damage per hit (before stats).",
+          "max": 100000.0,
+          "min": 0.0,
+          "name": "damage",
+          "type": "float"
+        },
+        {
+          "description": "How far it flies, in cells.",
+          "max": 100.0,
+          "min": 0.5,
+          "name": "range",
+          "type": "float"
+        },
+        {
+          "description": "Cells per second.",
+          "max": 100.0,
+          "min": 0.5,
+          "name": "speed",
+          "type": "float"
+        },
+        {
+          "description": "Seconds between shots.",
+          "max": 60.0,
+          "min": 0.0,
+          "name": "cooldown",
+          "type": "float"
+        },
+        {
+          "description": "The projectile's picture (empty: a plain bolt).",
+          "name": "projectile",
+          "type": "texture"
+        },
+        {
+          "description": "Flies on through what it hits.",
+          "name": "pierce",
+          "type": "bool"
+        }
+      ],
+      "name": "RangedAttack",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "Belongs to a faction record (13.7). Below 0, its disposition makes it hostile to the player; attacking it lowers it.",
+      "fields": [
+        {
+          "description": "A faction record id.",
+          "name": "faction",
+          "type": "string"
+        },
+        {
+          "description": "How it feels about the player.",
+          "max": 100.0,
+          "min": -100.0,
+          "name": "disposition",
+          "type": "int"
+        }
+      ],
+      "name": "FactionMember",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Makes enemies from an encounter record around it (13.7), up to maxAlive, again after respawnSeconds.",
+      "fields": [
+        {
+          "description": "An encounter record id.",
+          "name": "encounter",
+          "type": "string"
+        },
+        {
+          "description": "How far from it they appear, in cells.",
+          "max": 50.0,
+          "min": 0.0,
+          "name": "radius",
+          "type": "float"
+        },
+        {
+          "description": "How many at once.",
+          "max": 100.0,
+          "min": 0.0,
+          "name": "maxAlive",
+          "type": "int"
+        },
+        {
+          "description": "Seconds until the next after one dies (0: never).",
+          "max": 100000.0,
+          "min": 0.0,
+          "name": "respawnSeconds",
+          "type": "float"
+        },
+        {
+          "description": "The level the encounter is rolled at.",
+          "max": 1000.0,
+          "min": 1.0,
+          "name": "level",
+          "type": "int"
+        }
+      ],
+      "name": "Spawner",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "What a character does on its own (14): its packages (records/package), first that holds runs; how it fights and helps.",
+      "fields": [
+        {
+          "description": "Package record ids, comma-separated; the first whose schedule and conditions hold runs.",
+          "name": "packages",
+          "type": "string"
+        },
+        {
+          "description": "A marker: where @home is.",
+          "name": "home",
+          "type": "string"
+        },
+        {
+          "description": "A marker: where @work is.",
+          "name": "work",
+          "type": "string"
+        },
+        {
+          "description": "A marker: where @bed is (else the nearest free bed).",
+          "name": "bed",
+          "type": "string"
+        },
+        {
+          "description": "Peaceful: never fights. Defensive: fights when attacked. Aggressive: attacks enemies it notices. Frenzied: attacks anyone.",
+          "name": "aggression",
+          "options": [
+            "Peaceful",
+            "Defensive",
+            "Aggressive",
+            "Frenzied"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "How soon it runs when hurt.",
+          "name": "confidence",
+          "options": [
+            "Cowardly",
+            "Cautious",
+            "Average",
+            "Brave",
+            "Foolhardy"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "Who it helps in a fight.",
+          "name": "assistance",
+          "options": [
+            "Nobody",
+            "Allies",
+            "Friends"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "A combat-style record (empty: melee, runs at 20% health).",
+          "name": "combatStyle",
+          "type": "string"
+        },
+        {
+          "description": "Walking speed, cells per second.",
+          "max": 20.0,
+          "min": 0.1,
+          "name": "speed",
+          "type": "float"
+        }
+      ],
+      "name": "Behaviour",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "What a character notices (14.5): sight in a cone, hearing of noises.",
+      "fields": [
+        {
+          "description": "How far it sees, in cells.",
+          "max": 50.0,
+          "min": 0.0,
+          "name": "sight",
+          "type": "float"
+        },
+        {
+          "description": "The cone it sees in, in degrees.",
+          "max": 360.0,
+          "min": 10.0,
+          "name": "angle",
+          "type": "float"
+        },
+        {
+          "description": "How far it hears an ordinary noise, in cells.",
+          "max": 50.0,
+          "min": 0.0,
+          "name": "hearing",
+          "type": "float"
+        }
+      ],
+      "name": "Perception",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Something characters use (14.3): a bed, a chair, a counter, a forge. Packages find them by type and affordance.",
+      "fields": [
+        {
+          "description": "bed, chair, table, counter, anvil, fireplace, well, bookshelf, altar...",
+          "name": "type",
+          "type": "string"
+        },
+        {
+          "description": "What can be done with it: sleep, sit, eat, drink, work, read, pray, warm (comma-separated).",
+          "name": "affordances",
+          "type": "string"
+        },
+        {
+          "description": "How many can use it at once.",
+          "max": 32.0,
+          "min": 1.0,
+          "name": "slots",
+          "type": "int"
+        },
+        {
+          "description": "Only this character uses it (a name or World Bible key; empty: anyone).",
+          "name": "owner",
+          "type": "string"
+        },
+        {
+          "description": "A use lasts at least this many seconds.",
+          "max": 100000.0,
+          "min": 0.0,
+          "name": "minDuration",
+          "type": "float"
+        },
+        {
+          "description": "A use lasts at most this many seconds.",
+          "max": 100000.0,
+          "min": 0.0,
+          "name": "maxDuration",
+          "type": "float"
+        }
+      ],
+      "name": "SmartObject",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "One-line remarks (14.5); alternatives separated by |.",
+      "fields": [
+        {
+          "description": "When it notices the player as an enemy.",
+          "name": "alert",
+          "type": "string"
+        },
+        {
+          "description": "When it's hurt.",
+          "name": "hit",
+          "type": "string"
+        },
+        {
+          "description": "Now and then, near the player.",
+          "name": "idle",
+          "type": "string"
+        },
+        {
+          "description": "When it runs.",
+          "name": "flee",
+          "type": "string"
+        }
+      ],
+      "name": "Barks",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "The same character in every scene (14.4): its key, and the prefab it's made from when it walks into a scene it wasn't placed in.",
+      "fields": [
+        {
+          "description": "A World Bible key or a unique name.",
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "description": "Its prefab.",
+          "name": "prefab",
+          "type": "prefab"
+        }
+      ],
+      "name": "Actor",
       "userEditable": true
     },
     {
@@ -1000,6 +1835,29 @@
     },
     {
       "dependencies": [],
+      "description": "The scene's music and ambience (development_plan.md 12.6): while the player is in this scene, the first entity with Music sets what plays. Changing scene cross-fades to the next scene's.",
+      "fields": [
+        {
+          "description": "A looping music track (WAV, MP3 or FLAC). Empty: silence.",
+          "name": "track",
+          "type": "audio"
+        },
+        {
+          "description": "A looping ambience under the music: wind, a crowd, the sea.",
+          "name": "ambience",
+          "type": "audio"
+        },
+        {
+          "description": "Music while an enemy is chasing the player. Empty: the game's (game.json).",
+          "name": "combat",
+          "type": "audio"
+        }
+      ],
+      "name": "Music",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
       "description": "Screen position in scene pixels and draw order. Computed from the world position for characters and tiles.",
       "fields": [
         {
@@ -1113,6 +1971,13 @@
           "min": 0.0,
           "name": "rotation",
           "type": "int"
+        },
+        {
+          "description": "Raised off the ground by this many pixels (standing on high ground).",
+          "max": 512.0,
+          "min": -512.0,
+          "name": "lift",
+          "type": "float"
         }
       ],
       "name": "Sprite",
@@ -1153,6 +2018,736 @@
       ],
       "name": "PlaceNode",
       "userEditable": true
+    }
+  ],
+  "records": [
+    {
+      "description": "Something that can be picked up, carried, sold or used. Pickups and inventories refer to items by id.",
+      "fields": [
+        {
+          "description": "The name shown to the player.",
+          "name": "name",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "description": "A line or two shown in the inventory.",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "description": "What sort of item it is.",
+          "name": "kind",
+          "options": [
+            "misc",
+            "weapon",
+            "armor",
+            "consumable",
+            "key",
+            "quest",
+            "material",
+            "currency",
+            "book"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "The picture shown in the inventory and on the ground.",
+          "name": "icon",
+          "type": "texture"
+        },
+        {
+          "description": "Its price in the game's currency.",
+          "min": 0.0,
+          "name": "value",
+          "type": "int"
+        },
+        {
+          "description": "How heavy it is (for weight-limited inventories).",
+          "min": 0.0,
+          "name": "weight",
+          "type": "float"
+        },
+        {
+          "default": 1,
+          "description": "How many fit in one inventory slot.",
+          "min": 1.0,
+          "name": "stack",
+          "type": "int"
+        },
+        {
+          "description": "Only one exists in the game (story items).",
+          "name": "unique",
+          "type": "bool"
+        },
+        {
+          "description": "Labels for searching, loot tables and conditions.",
+          "list": true,
+          "name": "tags",
+          "type": "string"
+        },
+        {
+          "description": "Where it's worn or wielded (none: carried only).",
+          "name": "slot",
+          "options": [
+            "none",
+            "weapon",
+            "offhand",
+            "head",
+            "body",
+            "hands",
+            "feet",
+            "ring",
+            "amulet"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "Added to attack while wielded.",
+          "min": 0.0,
+          "name": "damage",
+          "type": "float"
+        },
+        {
+          "description": "Added to defense while worn.",
+          "min": 0.0,
+          "name": "armor",
+          "type": "float"
+        },
+        {
+          "description": "What it does to attributes while worn or wielded.",
+          "fields": [
+            {
+              "description": "An attribute: maxHealth, attack, moveSpeed, resistFire...",
+              "name": "attribute",
+              "type": "string"
+            },
+            {
+              "description": "add, or multiply (1.1 = +10%)",
+              "name": "op",
+              "options": [
+                "add",
+                "multiply"
+              ],
+              "type": "enum"
+            },
+            {
+              "description": "How much",
+              "name": "value",
+              "type": "float"
+            }
+          ],
+          "list": true,
+          "name": "modifiers",
+          "type": "object"
+        },
+        {
+          "description": "What using it does (a potion, food, a scroll).",
+          "fields": [
+            {
+              "description": "Health restored",
+              "name": "heal",
+              "type": "float"
+            },
+            {
+              "description": "Mana restored",
+              "name": "mana",
+              "type": "float"
+            },
+            {
+              "description": "Stamina restored",
+              "name": "stamina",
+              "type": "float"
+            },
+            {
+              "description": "A status effect on the user",
+              "name": "effect",
+              "options": [
+                "none",
+                "burn",
+                "poison",
+                "slow",
+                "regen"
+              ],
+              "type": "enum"
+            },
+            {
+              "description": "Seconds the effect or boost lasts",
+              "name": "duration",
+              "type": "float"
+            },
+            {
+              "description": "The effect's strength",
+              "name": "magnitude",
+              "type": "float"
+            },
+            {
+              "description": "An attribute boosted for a while",
+              "name": "attribute",
+              "type": "string"
+            },
+            {
+              "description": "How much it's boosted",
+              "name": "value",
+              "type": "float"
+            },
+            {
+              "default": true,
+              "description": "Used up when used",
+              "name": "consumed",
+              "type": "bool"
+            }
+          ],
+          "name": "use",
+          "type": "object"
+        }
+      ],
+      "name": "item"
+    },
+    {
+      "description": "A loot table (13.4): what a chest, an enemy or a merchant's stock gives, rolled from weighted entries.",
+      "fields": [
+        {
+          "description": "A label for editors.",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "default": 1,
+          "description": "How many picks are made.",
+          "min": 0.0,
+          "name": "rolls",
+          "type": "int"
+        },
+        {
+          "description": "Gold given, at least.",
+          "min": 0.0,
+          "name": "goldMin",
+          "type": "int"
+        },
+        {
+          "description": "Gold given, at most.",
+          "min": 0.0,
+          "name": "goldMax",
+          "type": "int"
+        },
+        {
+          "description": "What can be given.",
+          "fields": [
+            {
+              "description": "An item (or leave empty and name a table)",
+              "name": "item",
+              "recordType": "item",
+              "type": "record"
+            },
+            {
+              "description": "Another loot table rolled instead",
+              "name": "table",
+              "recordType": "loot",
+              "type": "record"
+            },
+            {
+              "description": "How likely, against the other entries",
+              "name": "weight",
+              "type": "float"
+            },
+            {
+              "description": "How many, at least",
+              "name": "min",
+              "type": "int"
+            },
+            {
+              "description": "How many, at most",
+              "name": "max",
+              "type": "int"
+            },
+            {
+              "description": "The chance it's given when picked (0-1)",
+              "name": "chance",
+              "type": "float"
+            },
+            {
+              "description": "Only from this level (0: any)",
+              "name": "levelMin",
+              "type": "int"
+            },
+            {
+              "description": "Only up to this level (0: any)",
+              "name": "levelMax",
+              "type": "int"
+            }
+          ],
+          "list": true,
+          "name": "entries",
+          "type": "object"
+        }
+      ],
+      "name": "loot"
+    },
+    {
+      "description": "A perk (13.2): taken with a perk point at a level, it changes attributes from then on.",
+      "fields": [
+        {
+          "description": "Shown to the player.",
+          "name": "name",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "description": "What it does, in a line.",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "default": 1,
+          "description": "The level it can be taken from.",
+          "min": 1.0,
+          "name": "level",
+          "type": "int"
+        },
+        {
+          "description": "Perks that must be taken first.",
+          "list": true,
+          "name": "requires",
+          "recordType": "perk",
+          "type": "record"
+        },
+        {
+          "description": "What it changes.",
+          "fields": [
+            {
+              "description": "An attribute",
+              "name": "attribute",
+              "type": "string"
+            },
+            {
+              "description": "add or multiply",
+              "name": "op",
+              "options": [
+                "add",
+                "multiply"
+              ],
+              "type": "enum"
+            },
+            {
+              "description": "How much",
+              "name": "value",
+              "type": "float"
+            }
+          ],
+          "list": true,
+          "name": "modifiers",
+          "type": "object"
+        }
+      ],
+      "name": "perk"
+    },
+    {
+      "description": "How characters grow (13.2). The record \"default\" is used: the experience curve, what each level gives, perk points.",
+      "fields": [
+        {
+          "default": 100,
+          "description": "Experience from level 1 to 2.",
+          "min": 1.0,
+          "name": "baseExperience",
+          "type": "float"
+        },
+        {
+          "default": 1.5,
+          "description": "Each next level needs this many times more.",
+          "min": 1.0,
+          "name": "growth",
+          "type": "float"
+        },
+        {
+          "default": 50,
+          "description": "The highest level.",
+          "min": 1.0,
+          "name": "maxLevel",
+          "type": "int"
+        },
+        {
+          "default": 1,
+          "description": "Perk points per level.",
+          "min": 0.0,
+          "name": "perkPointsPerLevel",
+          "type": "int"
+        },
+        {
+          "description": "What every level adds to the base attributes.",
+          "fields": [
+            {
+              "description": "An attribute",
+              "name": "attribute",
+              "type": "string"
+            },
+            {
+              "description": "Added at each level",
+              "name": "value",
+              "type": "float"
+            }
+          ],
+          "list": true,
+          "name": "perLevel",
+          "type": "object"
+        }
+      ],
+      "name": "progression"
+    },
+    {
+      "description": "A faction (13.7): who belongs together, and how it stands with the others.",
+      "fields": [
+        {
+          "description": "Shown to the player.",
+          "name": "name",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "description": "Who they are.",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "description": "How members feel about the player at the start (-100..100).",
+          "max": 100.0,
+          "min": -100.0,
+          "name": "playerStanding",
+          "type": "int"
+        },
+        {
+          "description": "How it stands with other factions.",
+          "fields": [
+            {
+              "description": "Another faction",
+              "name": "faction",
+              "recordType": "faction",
+              "type": "record"
+            },
+            {
+              "description": "-100 (war) to 100 (allies); below 0 they fight",
+              "name": "standing",
+              "type": "int"
+            }
+          ],
+          "list": true,
+          "name": "relations",
+          "type": "object"
+        }
+      ],
+      "name": "faction"
+    },
+    {
+      "description": "An AI package (14.2): what a character does, where and when. A Behaviour lists packages; the first whose schedule and conditions hold runs its template.",
+      "fields": [
+        {
+          "description": "What it does.",
+          "name": "template",
+          "options": [
+            "stay",
+            "travel",
+            "wander",
+            "sandbox",
+            "sleep",
+            "eat",
+            "work",
+            "vendor",
+            "patrol",
+            "guard",
+            "follow",
+            "accompany",
+            "escort",
+            "flee",
+            "hide",
+            "ambush",
+            "wait",
+            "use-object",
+            "approach-player",
+            "script"
+          ],
+          "required": true,
+          "type": "enum"
+        },
+        {
+          "description": "What it's for, in a line.",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "description": "Where.",
+          "fields": [
+            {
+              "description": "A marker's name",
+              "name": "marker",
+              "type": "string"
+            },
+            {
+              "description": "Or the character's own place",
+              "name": "alias",
+              "options": [
+                "none",
+                "home",
+                "work",
+                "bed"
+              ],
+              "type": "enum"
+            },
+            {
+              "description": "Or a point: x",
+              "name": "x",
+              "type": "float"
+            },
+            {
+              "description": "and y",
+              "name": "y",
+              "type": "float"
+            },
+            {
+              "description": "The scene it's in (empty: wherever the character is)",
+              "name": "scene",
+              "type": "string"
+            }
+          ],
+          "name": "location",
+          "type": "object"
+        },
+        {
+          "description": "Whom: player, a character's name or World Bible key, or a marker.",
+          "name": "target",
+          "type": "string"
+        },
+        {
+          "description": "When.",
+          "fields": [
+            {
+              "description": "From HH:MM (empty: all day)",
+              "name": "from",
+              "type": "string"
+            },
+            {
+              "description": "To HH:MM",
+              "name": "to",
+              "type": "string"
+            },
+            {
+              "description": "Days of the week 1-7, e.g. 1,2,3,4,5 (empty: every day)",
+              "name": "days",
+              "type": "string"
+            }
+          ],
+          "name": "schedule",
+          "type": "object"
+        },
+        {
+          "description": "Only while all of these hold.",
+          "fields": [
+            {
+              "description": "A story flag",
+              "name": "flag",
+              "type": "string"
+            },
+            {
+              "default": true,
+              "description": "that is set (or not)",
+              "name": "flagValue",
+              "type": "bool"
+            },
+            {
+              "description": "Or a quest",
+              "name": "quest",
+              "type": "string"
+            },
+            {
+              "description": "in this state",
+              "name": "questState",
+              "options": [
+                "active",
+                "inactive",
+                "completed"
+              ],
+              "type": "enum"
+            }
+          ],
+          "list": true,
+          "name": "conditions",
+          "type": "object"
+        },
+        {
+          "description": "How it behaves.",
+          "fields": [
+            {
+              "default": true,
+              "description": "Combat and reactions may stop it",
+              "name": "interruptible",
+              "type": "bool"
+            },
+            {
+              "description": "Finishes before another package takes over",
+              "name": "mustComplete",
+              "type": "bool"
+            },
+            {
+              "description": "Runs rather than walks",
+              "name": "run",
+              "type": "bool"
+            }
+          ],
+          "name": "flags",
+          "type": "object"
+        },
+        {
+          "description": "What the template needs.",
+          "fields": [
+            {
+              "description": "Cells around the place (wander, sandbox, ambush)",
+              "name": "radius",
+              "type": "float"
+            },
+            {
+              "description": "Seconds (waits, patrol stops)",
+              "name": "duration",
+              "type": "float"
+            },
+            {
+              "description": "A smart object type (work, use-object)",
+              "name": "object",
+              "type": "string"
+            },
+            {
+              "description": "A dialogue file (approach-player)",
+              "name": "dialogue",
+              "type": "string"
+            },
+            {
+              "description": "Markers in order (patrol)",
+              "list": true,
+              "name": "path",
+              "type": "string"
+            },
+            {
+              "description": "Cells (follow, escort, flee)",
+              "name": "distance",
+              "type": "float"
+            },
+            {
+              "description": "A Lua file with run() (script)",
+              "name": "script",
+              "type": "script"
+            }
+          ],
+          "name": "data",
+          "type": "object"
+        }
+      ],
+      "name": "package"
+    },
+    {
+      "description": "A procedure (14.1): a behaviour tree a package template can be, written by hand. Nodes: sequence, selector, random, parallel, loop, condition, cooldown, invert; move-to, wander, wait, idle, face, bark, use-object, talk-to-player, follow, flee, patrol, ambush, escort, set, emit, script.",
+      "fields": [
+        {
+          "description": "What it does.",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "description": "The tree as JSON: {\"type\": \"sequence\", \"children\": [...]}.",
+          "name": "tree",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "name": "procedure"
+    },
+    {
+      "description": "How a character fights (14.5).",
+      "fields": [
+        {
+          "description": "A label for editors.",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "Melee closes in; ranged and kiting keep their distance and shoot.",
+          "name": "range",
+          "options": [
+            "melee",
+            "ranged",
+            "kiting"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "Cells a ranged fighter keeps from its target (0: most of its range).",
+          "min": 0.0,
+          "name": "keepDistance",
+          "type": "float"
+        },
+        {
+          "default": 0.2,
+          "description": "Runs below this share of its health (confidence changes it).",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "fleeAt",
+          "type": "float"
+        },
+        {
+          "default": 6,
+          "description": "Cells within which allies join the fight.",
+          "min": 0.0,
+          "name": "callForHelp",
+          "type": "float"
+        }
+      ],
+      "name": "combat-style"
+    },
+    {
+      "description": "An encounter (13.7): what a Spawner makes, picked by weight and level.",
+      "fields": [
+        {
+          "description": "A label for editors.",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "What can appear.",
+          "fields": [
+            {
+              "description": "What appears",
+              "name": "prefab",
+              "type": "prefab"
+            },
+            {
+              "description": "How likely",
+              "name": "weight",
+              "type": "float"
+            },
+            {
+              "description": "How many, at least",
+              "name": "min",
+              "type": "int"
+            },
+            {
+              "description": "How many, at most",
+              "name": "max",
+              "type": "int"
+            },
+            {
+              "description": "Only from this level (0: any)",
+              "name": "levelMin",
+              "type": "int"
+            },
+            {
+              "description": "Only up to this level (0: any)",
+              "name": "levelMax",
+              "type": "int"
+            }
+          ],
+          "list": true,
+          "name": "entries",
+          "type": "object"
+        }
+      ],
+      "name": "encounter"
     }
   ],
   "settings": [
@@ -1199,6 +2794,25 @@
           "min": 0.25,
           "name": "playZoom",
           "type": "float"
+        },
+        {
+          "description": "How far from the centre (a share of the screen) the player walks before the camera follows.",
+          "max": 0.45,
+          "min": 0.0,
+          "name": "deadZone",
+          "type": "float"
+        },
+        {
+          "description": "Cells the camera leads the player by, the way they move.",
+          "max": 6.0,
+          "min": 0.0,
+          "name": "lookAhead",
+          "type": "float"
+        },
+        {
+          "description": "Never show beyond the edges of the level.",
+          "name": "clampToLevel",
+          "type": "bool"
         }
       ],
       "name": "Camera"
@@ -1225,6 +2839,27 @@
           "max": 10.0,
           "min": 0.0,
           "name": "knockbackScale",
+          "type": "float"
+        },
+        {
+          "description": "The share of a blocked hit that's stopped.",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "blockReduction",
+          "type": "float"
+        },
+        {
+          "description": "Cells a dodge covers.",
+          "max": 10.0,
+          "min": 0.0,
+          "name": "dodgeDistance",
+          "type": "float"
+        },
+        {
+          "description": "Stamina a dodge costs (for those with stamina).",
+          "max": 1000.0,
+          "min": 0.0,
+          "name": "dodgeStamina",
           "type": "float"
         }
       ],

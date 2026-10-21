@@ -77,8 +77,14 @@ struct TileChoice {
 
 // The best tile for a target: fewest mismatching points, an exact middle
 // required; unturned preferred over turned; then the set's order. Nothing
-// when no tile has that middle.
-std::optional<TileChoice> ChooseTile(const TerrainSet& set, const EdgeSignature& target, const std::string& center);
+// when no tile has that middle. With a `variety` (a hash of the cell), the
+// equally good tiles take turns, and a tile that's the same ground on every
+// side turns freely: a field of one grass doesn't show its repeat
+// (place-refine.md §1).
+std::optional<TileChoice> ChooseTile(const TerrainSet& set, const EdgeSignature& target, const std::string& center,
+                                     unsigned variety = 0);
+// A cell's variety, for ChooseTile.
+unsigned CellVariety(int gx, int gy);
 
 // Paints `terrain` onto `cells` and re-fits them and their neighbours. Cells
 // without a set tile count as `background` (the pack's grass, say), and stay

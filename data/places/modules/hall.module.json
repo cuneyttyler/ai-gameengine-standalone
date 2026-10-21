@@ -5,7 +5,8 @@
   "level": "parcel",
   "description": "The entrance hall.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "InteriorRoom"

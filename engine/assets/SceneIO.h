@@ -26,6 +26,9 @@ bool LoadScene(Registry& registry, const std::string& path);
 // nothing that happens during a playtest leaks into the edited scene.
 // DeserializeScene clears `registry` first, like LoadScene.
 std::string SerializeScene(Registry& registry);
+// Each entity's SceneOrigin set to its place in SerializeScene's order, as if the
+// scene had just been read from that text (the editor's Play, 12.5).
+void TagSceneOrigins(Registry& registry);
 void DeserializeScene(Registry& registry, const std::string& text);
 
 // Rewrites the scene through its text form, keeping every entity's id

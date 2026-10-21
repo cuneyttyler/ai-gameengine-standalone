@@ -239,6 +239,54 @@ std::string UserLibrary::SetSharing(const std::string& choice) {
     return {};
 }
 
+Catalog UserLibrary::AsCatalog() const {
+    Catalog catalog;
+    const json library = Load();
+    auto split = [](const std::string& text) {
+        std::vector<std::string> out;
+        std::string part;
+        for (const char c : text + ",") {
+            if (c == ',') {
+                while (!part.empty() && part.front() == ' ') part.erase(part.begin());
+                while (!part.empty() && part.back() == ' ') part.pop_back();
+                if (!part.empty()) out.push_back(part);
+                part.clear();
+            } else {
+                part += c;
+            }
+        }
+        return out;
+    };
+    for (const auto& item : library.value("items", json::array())) {
+        const json meta = item.value("meta", json::object());
+        auto field = [&](const char* key) { return meta.contains(key) && meta[key].is_string() ? meta[key].get<std::string>() : std::string(); };
+        if (field("roles").empty()) continue; // not analysed: nothing says what it's for
+        CatalogEntry e;
+        e.id = "user:" + item.value("id", "");
+        e.path = (dir_ / "files" / item.value("file", "")).generic_string();
+        e.name = item.value("name", "");
+        e.kind = field("kind");
+        e.description = field("description");
+        e.tags = split(field("tags"));
+        e.roles = split(field("roles"));
+        e.perspective = field("perspective");
+        e.layer = field("layer");
+        e.flat = field("flat") == "1" || e.kind == "ground";
+        if (const std::string cells = field("cells"); !cells.empty()) {
+            const float c = std::max(0.1f, static_cast<float>(std::atof(cells.c_str())));
+            e.footprint.w = e.footprint.h = c;
+            e.footprint.cellsW = e.footprint.cellsH = std::max(1, static_cast<int>(c + 0.5f));
+            e.spriteW = c;
+        }
+        e.source = "library";
+        e.licence = item.value("licence", "");
+        e.author = item.value("author", "");
+        e.url = item.value("url", "");
+        catalog.entries.push_back(e);
+    }
+    return catalog;
+}
+
 std::string UserLibrary::CopyToProject(const std::string& item, const fs::path& projectRoot) const {
     json library = Load();
     const json* i = Find(library["items"], item);

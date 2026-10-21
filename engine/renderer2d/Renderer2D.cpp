@@ -509,7 +509,7 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
     std::vector<Instance> instances;
     instances.reserve(items.size());
     for (const auto& item : items) {
-        if (item.sprite) instances.push_back({&item.transform, item.sprite, &Resolve(item.sprite->texture)});
+        if (const Sprite* s = item.Drawn()) instances.push_back({&item.transform, s, &Resolve(s->texture)});
     }
 
     // Only what the camera sees, in painter's order (4.6), the scene's and
@@ -628,19 +628,20 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
         vertexCount += kVerticesPerSprite;
     }
 
-    // In-game UI: already in viewport pixels. A named texture must have been
-    // registered (RegisterTexture); untextured quads use UV -1 like overlays.
+    // In-game UI: already in viewport pixels. A named texture is a registered
+    // one or an asset loaded on first use (a portrait); untextured quads use
+    // UV -1 like overlays.
     for (const auto& q : ui) {
         if (vertexCount + kVerticesPerSprite > maxVertices) {
             break;
         }
         const Texture* texture = &builtinAtlas_;
         if (!q.texture.empty()) {
-            auto it = textures_.find(q.texture);
-            if (it == textures_.end() || it->second.image == VK_NULL_HANDLE) {
+            const Texture& resolved = Resolve(q.texture);
+            if (&resolved == &builtinAtlas_) {
                 continue;
             }
-            texture = &it->second;
+            texture = &resolved;
         }
         SpriteVertex quad[kVerticesPerSprite] = {
             {{q.x0, q.y0}, {q.u0, q.v0}, {q.r, q.g, q.b, q.a}}, {{q.x1, q.y0}, {q.u1, q.v0}, {q.r, q.g, q.b, q.a}},

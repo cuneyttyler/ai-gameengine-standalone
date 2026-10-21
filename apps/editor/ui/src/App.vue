@@ -17,6 +17,7 @@ import ContextMenuHost from './components/ContextMenuHost.vue'
 import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import PreferencesDialog from './components/PreferencesDialog.vue'
 import OntologyDialog from './components/OntologyDialog.vue'
+import ReplacePrefabDialog from './components/ReplacePrefabDialog.vue'
 import ProjectSettingsDialog from './components/ProjectSettingsDialog.vue'
 import PackImportDialog from './components/PackImportDialog.vue'
 import DockNode from './components/DockNode.vue'
@@ -148,6 +149,7 @@ onBeforeUnmount(() => setShell(null))
   <ShortcutsDialog />
   <PreferencesDialog />
   <OntologyDialog />
+  <ReplacePrefabDialog />
   <ProjectSettingsDialog />
   <PackImportDialog />
   <DialogHost />

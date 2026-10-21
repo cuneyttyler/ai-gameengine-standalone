@@ -14,7 +14,7 @@ import io
 from collections import deque
 from dataclasses import dataclass
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageFilter, ImageStat
 
 
 @dataclass
@@ -25,6 +25,7 @@ class SpriteOptions:
     tolerance: int = 40        # how far from the background colour still counts as background (0-255 per channel)
     padding: int = 1           # transparent pixels kept around the object
     tile: bool = False         # a top-down ground tile (5.2): kept opaque and square, height x height
+    even_light: bool = False   # a tile of one ground: its frame trimmed and its light evened (flatten_tile)
 
 
 def _distance(a: tuple[int, int, int], b: tuple[int, int, int]) -> int:
@@ -119,6 +120,25 @@ def reduce_palette(image: Image.Image, colors: int) -> Image.Image:
     return out
 
 
+def flatten_tile(image: Image.Image) -> Image.Image:
+    """A ground tile with even light (place-refine.md §1): the image model often frames a
+    texture or lights it from the middle, and a dark frame or a bright middle shows on every
+    cell as a grid. The frame is trimmed; the slow change of light (a blur that wraps round,
+    as the tile does) is taken out, and the fine detail kept."""
+    w, h = image.size
+    inset = max(1, round(min(w, h) * 0.1))
+    rgb = image.convert("RGB").crop((inset, inset, w - inset, h - inset)).resize((w, h), Image.Resampling.LANCZOS)
+    mosaic = Image.new("RGB", (3 * w, 3 * h))
+    for i in range(3):
+        for j in range(3):
+            mosaic.paste(rgb, (i * w, j * h))
+    low = mosaic.filter(ImageFilter.GaussianBlur(min(w, h) / 10)).crop((w, h, 2 * w, 2 * h))
+    mean = ImageStat.Stat(low).mean
+    detail = ImageChops.subtract(rgb, low, 1.0, 128)  # rgb - low + 128
+    bands = [b.point(lambda v, shift=round(m) - 128: max(0, min(255, v + shift))) for b, m in zip(detail.split(), mean)]
+    return Image.merge("RGB", bands).convert("RGBA")
+
+
 def make_sprite(data: bytes, options: SpriteOptions) -> tuple[bytes, dict]:
     """Generated picture (any format Pillow reads) -> PNG bytes, and what was done."""
     source = Image.open(io.BytesIO(data))
@@ -129,6 +149,8 @@ def make_sprite(data: bytes, options: SpriteOptions) -> tuple[bytes, dict]:
         side = min(w, h)
         left, top = (w - side) // 2, (h - side) // 2
         sprite = source.convert("RGBA").crop((left, top, left + side, top + side))
+        if options.even_light:
+            sprite = flatten_tile(sprite)
         cropped = sprite.size
         resample = Image.Resampling.BOX if options.style == "pixel" else Image.Resampling.LANCZOS
         sprite = sprite.resize((options.height, options.height), resample=resample)
@@ -150,5 +172,6 @@ def make_sprite(data: bytes, options: SpriteOptions) -> tuple[bytes, dict]:
         "colors": options.colors if options.style == "pixel" else None,
         "tolerance": options.tolerance,
         "tile": options.tile,
+        "evenLight": options.even_light,
     }
     return out.getvalue(), info

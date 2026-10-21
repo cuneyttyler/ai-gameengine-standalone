@@ -3,20 +3,52 @@
 #include "gameplay/EngineReflection.h"
 #include "scripting/LuaVM.h"
 #include "gameplay/Components.h"
+#include "gameplay/Attributes.h"
+#include "gameplay/Encounters.h"
+#include "gameplay/Interact.h"
+#include "gameplay/Items.h"
+#include "gameplay/Localization.h"
 #include "gameplay/Settings.h"
 #include "gameplay/TileGrid.h"
 #include "gameplay/Schedule.h"
 #include "scripting/Components.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
+#include "modules/Modules.h"
+#include "records/Records.h"
 #include "ui/GameUi.h"
 
 #include <algorithm>
 #include <cmath>
+#include <sstream>
 #include <tuple>
 #include <type_traits>
 
 namespace aige {
+
+// A JSON value as Lua: objects become tables by key, arrays tables from 1.
+sol::object JsonToLua(lua_State* L, const nlohmann::json& value) {
+    switch (value.type()) {
+        case nlohmann::json::value_t::boolean: return sol::make_object(L, value.get<bool>());
+        case nlohmann::json::value_t::number_integer:
+        case nlohmann::json::value_t::number_unsigned:
+            return sol::make_object(L, static_cast<lua_Integer>(value.get<int64_t>()));
+        case nlohmann::json::value_t::number_float: return sol::make_object(L, value.get<double>());
+        case nlohmann::json::value_t::string: return sol::make_object(L, value.get<std::string>());
+        case nlohmann::json::value_t::array: {
+            sol::table table = sol::state_view(L).create_table();
+            int i = 1;
+            for (const auto& item : value) table[i++] = JsonToLua(L, item);
+            return table;
+        }
+        case nlohmann::json::value_t::object: {
+            sol::table table = sol::state_view(L).create_table();
+            for (const auto& [key, item] : value.items()) table[key] = JsonToLua(L, item);
+            return table;
+        }
+        default: return sol::lua_nil;
+    }
+}
 
 std::optional<Entity> FindPlayer(Registry& registry) {
     auto view = registry.view<Velocity2D, Collider2D>();
@@ -28,6 +60,17 @@ std::optional<Entity> FindPlayer(Registry& registry) {
 
 void UpdatePlayer(Registry& registry, Entity player, const KeyQueryFn& isKeyDown, const SolidQueryFn& isSolid,
                   float dt) {
+    float inputRight = 0.0f;
+    float inputDown = 0.0f;
+    if (isKeyDown(Key::D) || isKeyDown(Key::Right)) inputRight += 1.0f;
+    if (isKeyDown(Key::A) || isKeyDown(Key::Left)) inputRight -= 1.0f;
+    if (isKeyDown(Key::S) || isKeyDown(Key::Down)) inputDown += 1.0f;
+    if (isKeyDown(Key::W) || isKeyDown(Key::Up)) inputDown -= 1.0f;
+    UpdatePlayerMove(registry, player, inputRight, inputDown, isSolid, dt);
+}
+
+void UpdatePlayerMove(Registry& registry, Entity player, float inputRight, float inputDown, const SolidQueryFn& isSolid,
+                      float dt) {
     if (registry.all_of<Dead>(player)) {
         registry.get<Velocity2D>(player) = {};
         return;
@@ -38,20 +81,8 @@ void UpdatePlayer(Registry& registry, Entity player, const KeyQueryFn& isKeyDown
     // Screen-relative input is world-diagonal (ProjectIso maps world
     // diagonals to screen cardinals), so rotate the (right, down) input pair
     // 45° into world space rather than driving WorldTransform2D's axes directly.
-    float inputRight = 0.0f;
-    float inputDown = 0.0f;
-    if (isKeyDown(Key::D) || isKeyDown(Key::Right)) {
-        inputRight += 1.0f;
-    }
-    if (isKeyDown(Key::A) || isKeyDown(Key::Left)) {
-        inputRight -= 1.0f;
-    }
-    if (isKeyDown(Key::S) || isKeyDown(Key::Down)) {
-        inputDown += 1.0f;
-    }
-    if (isKeyDown(Key::W) || isKeyDown(Key::Up)) {
-        inputDown -= 1.0f;
-    }
+    // A gamepad stick pushed part way walks slower (its length, up to 1).
+    const float strength = std::min(1.0f, std::sqrt(inputRight * inputRight + inputDown * inputDown));
     // Rotated into world space, then normalized so every direction moves at
     // exactly moveSpeed cells/s (unnormalized, screen-cardinal input would
     // move √2 faster in world space than intended).
@@ -64,8 +95,8 @@ void UpdatePlayer(Registry& registry, Entity player, const KeyQueryFn& isKeyDown
     if (length > 1e-4f) {
         dirX /= length;
         dirY /= length;
-        velocity.x = dirX * moveSpeed;
-        velocity.y = dirY * moveSpeed;
+        velocity.x = dirX * moveSpeed * strength;
+        velocity.y = dirY * moveSpeed * strength;
         registry.emplace_or_replace<Facing>(player, dirX, dirY);
     } else {
         velocity = {};
@@ -211,11 +242,12 @@ lua_Integer ToId(Entity entity) {
 GameSession::GameSession(Registry& registry, LuaVM& lua, IsoParams iso, std::filesystem::path scriptRoot)
     : registry_(registry), lua_(lua), iso_(iso), scriptRoot_(std::move(scriptRoot)) {
     binder_ = [this](sol::environment& env, Entity self) { BindScriptApi(env, self); };
+    WireStory();
 }
 
 void GameSession::ResetClock() {
     accumulator_ = 0.0;
-    attackKeyWasDown_ = false;
+    input_.Reset();
     requestedAttack_.reset();
     events_.clear();
 }
@@ -478,30 +510,253 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
         story_.SetFlag(name, value.value_or(true));
     };
     env["get_flag"] = [this](const std::string& name) { return story_.Flag(name); };
+    // Quests v2 and story variables (15.1-15.2), cutscenes (15.5).
+    env["fail_quest"] = [this](const std::string& id) {
+        if (storyLibrary_) story_.FailQuest(id, *storyLibrary_);
+    };
+    env["set_stage"] = [this](const std::string& id, int stage) {
+        if (storyLibrary_) story_.SetStage(id, stage, *storyLibrary_);
+    };
+    env["quest_stage"] = [this](const std::string& id) {
+        return storyLibrary_ ? story_.StageOf(id, *storyLibrary_) : 0;
+    };
+    env["get_var"] = [this, L](const std::string& name) -> sol::object { return JsonToLua(L, story_.Var(name)); };
+    env["set_var"] = [this](const std::string& name, sol::object value) {
+        if (value.is<bool>()) story_.SetVar(name, value.as<bool>());
+        else if (value.get_type() == sol::type::number) {
+            const double number = value.as<double>();
+            if (number == static_cast<double>(static_cast<long long>(number))) story_.SetVar(name, static_cast<long long>(number));
+            else story_.SetVar(name, number);
+        } else if (value.is<std::string>()) story_.SetVar(name, value.as<std::string>());
+        else story_.SetVar(name, nullptr);
+    };
+    env["used"] = [this](const std::string& thing) {
+        if (storyLibrary_) story_.OnUsed(thing, *storyLibrary_);
+    };
+    env["play_cutscene"] = [this](const std::string& id) { return PlayCutscene(id); };
+    env["skip_cutscene"] = [this]() { SkipCutscene(); };
+    env["in_cutscene"] = [this]() { return cutscene_.Active(); };
     // The game clock: hours since midnight (fractional), and the day number from 1.
     env["time_of_day"] = [this]() { return MinuteOfDay() / 60.0f; };
     env["day"] = [this]() { return Day(); };
+
+    // Events, timers and coroutines (12.2). A reloaded script starts afresh.
+    ForgetScript(self);
+    // on("death", function(e) ... end) -> handle; e = {name, entity, other, amount, text}.
+    // "*" receives every event. Handlers run as coroutines, so they may wait().
+    env["on"] = [this, self](const std::string& name, sol::protected_function fn) {
+        const int id = nextScriptId_++;
+        handlers_.push_back({id, self, name, std::move(fn)});
+        return id;
+    };
+    // emit("door_opened", {entity = id, other = id, amount = n, text = "..."})
+    env["emit"] = [this](const std::string& name, sol::optional<sol::table> data) {
+        ScriptEvent event{name};
+        if (data) {
+            if (auto entity = (*data).get<sol::optional<lua_Integer>>("entity")) event.entity = ToEntity(*entity);
+            if (auto other = (*data).get<sol::optional<lua_Integer>>("other")) event.other = ToEntity(*other);
+            event.amount = (*data).get_or("amount", 0.0);
+            event.text = (*data).get_or<std::string>("text", "");
+        }
+        Emit(std::move(event));
+    };
+    // after(seconds, fn) / every(seconds, fn) -> handle; cancel(handle) stops a timer or handler.
+    env["after"] = [this, self](double seconds, sol::protected_function fn) {
+        const int id = nextScriptId_++;
+        timers_.push_back({id, self, std::max(0.0, seconds), 0.0, std::move(fn)});
+        return id;
+    };
+    env["every"] = [this, self](double seconds, sol::protected_function fn) {
+        const int id = nextScriptId_++;
+        const double interval = std::max(1.0 / 60.0, seconds);
+        timers_.push_back({id, self, interval, interval, std::move(fn)});
+        return id;
+    };
+    env["cancel"] = [this](int id) {
+        std::erase_if(timers_, [id](const ScriptTimer& t) { return t.id == id; });
+        std::erase_if(handlers_, [id](const ScriptHandler& h) { return h.id == id; });
+    };
+    // start(fn) runs fn as a coroutine now; inside, wait(seconds) pauses it.
+    env["start"] = [this, self](sol::protected_function fn) { StartTask(self, fn, sol::lua_nil); };
+    env["wait"] = sol::yielding([](sol::optional<double> seconds) { return seconds.value_or(0.0); });
+
+    // Audio (12.6): a sound placed in the world; music instead of the scene's.
+    env["play_sound_at"] = [this](const std::string& path, float x, float y) {
+        if (playSoundAt_) playSoundAt_(path, x, y);
+        else if (playSound_) playSound_(path);
+    };
+    env["play_music"] = [this](const std::string& path) { musicOverride_ = path; };
+
+    // Input actions (12.3): action_down("attack"), action_pressed("interact")
+    // (this frame only), axis("move_x") in [-1, 1]. See input.json.
+    env["action_down"] = [this](const std::string& action) { return input_.Down(action); };
+    env["action_pressed"] = [this](const std::string& action) { return input_.Pressed(action); };
+    env["axis"] = [this](const std::string& action) { return input_.Value(action); };
+
+    // Gameplay systems (13): attributes, items, experience, ranged, factions.
+    env["attribute"] = [this](lua_Integer id, const std::string& name) {
+        return EffectiveAttribute(registry_, ToEntity(id), name);
+    };
+    // add_modifier(id, "attack", 2, seconds, "source"[, "multiply"]): seconds < 0 lasts until removed.
+    env["add_modifier"] = [this](lua_Integer id, const std::string& attribute, float value, sol::optional<float> seconds,
+                                 sol::optional<std::string> source, sol::optional<std::string> op) {
+        if (!registry_.valid(ToEntity(id))) return;
+        AddModifier(registry_, ToEntity(id), {attribute, op && *op == "multiply" ? ModifierOp::Multiply : ModifierOp::Add,
+                                              value, source.value_or("script"), seconds.value_or(-1.0f)});
+    };
+    env["remove_modifiers"] = [this](lua_Integer id, const std::string& source) {
+        if (registry_.valid(ToEntity(id))) RemoveModifiers(registry_, ToEntity(id), source);
+    };
+    env["give_item"] = [this](lua_Integer id, const std::string& item, sol::optional<int> count) {
+        const Entity entity = ToEntity(id);
+        if (!registry_.valid(entity)) return 0;
+        auto& inventory = registry_.get_or_emplace<Inventory>(entity);
+        if (item == "gold") {
+            inventory.gold += count.value_or(1);
+            return count.value_or(1);
+        }
+        const int n = AddItem(inventory, item, count.value_or(1));
+        if (n > 0) Emit({"item_added", entity, entt::null, static_cast<double>(n), item});
+        return n;
+    };
+    env["take_item"] = [this](lua_Integer id, const std::string& item, sol::optional<int> count) {
+        auto* inventory = registry_.valid(ToEntity(id)) ? registry_.try_get<Inventory>(ToEntity(id)) : nullptr;
+        if (!inventory) return 0;
+        if (item == "gold") {
+            const int n = std::min(inventory->gold, count.value_or(1));
+            inventory->gold -= n;
+            return n;
+        }
+        return RemoveItem(*inventory, item, count.value_or(1));
+    };
+    env["count_item"] = [this](lua_Integer id, const std::string& item) {
+        auto* inventory = registry_.valid(ToEntity(id)) ? registry_.try_get<Inventory>(ToEntity(id)) : nullptr;
+        if (!inventory) return 0;
+        return item == "gold" ? inventory->gold : CountItem(*inventory, item);
+    };
+    env["equip"] = [this](lua_Integer id, const std::string& item) {
+        const std::string why = registry_.valid(ToEntity(id)) ? Equip(registry_, ToEntity(id), item) : "no such entity";
+        return std::make_tuple(why.empty(), why);
+    };
+    env["use_item"] = [this](lua_Integer id, const std::string& item) {
+        const std::string why = registry_.valid(ToEntity(id)) ? UseItem(registry_, ToEntity(id), item) : "no such entity";
+        return std::make_tuple(why.empty(), why);
+    };
+    env["award_xp"] = [this](lua_Integer id, float amount) {
+        const int levels = registry_.valid(ToEntity(id)) ? AwardExperience(registry_, ToEntity(id), amount) : 0;
+        if (levels > 0) Emit({"level_up", ToEntity(id), entt::null, static_cast<double>(LevelOf(ToEntity(id))), ""});
+        return levels;
+    };
+    env["level"] = [this](lua_Integer id) { return LevelOf(ToEntity(id)); };
+    env["take_perk"] = [this](lua_Integer id, const std::string& perk) {
+        const std::string why = registry_.valid(ToEntity(id)) ? TakePerk(registry_, ToEntity(id), perk) : "no such entity";
+        return std::make_tuple(why.empty(), why);
+    };
+    // drop_loot(x, y, "loot-table"[, level]): rolls a loot table onto the ground.
+    env["drop_loot"] = [this](float x, float y, const std::string& table, sol::optional<int> level) {
+        const LootResult loot = RollLoot(table, level.value_or(1), gameplayRng_);
+        return static_cast<int>(DropLoot(registry_, x, y, loot.items, loot.gold, gameplayRng_).size());
+    };
+    env["shoot"] = [this, self](float x, float y) {
+        const auto* at = registry_.try_get<WorldTransform2D>(self);
+        return at && TryRangedAttack(registry_, self, x - at->x, y - at->y).has_value();
+    };
+    env["dodge"] = [this, self](float dx, float dy) { return StartDodge(registry_, self, dx, dy); };
+    env["is_hostile"] = [this](lua_Integer a, lua_Integer b) { return AreHostile(registry_, ToEntity(a), ToEntity(b)); };
+    env["set_disposition"] = [this](lua_Integer id, int value) {
+        if (auto* member = registry_.valid(ToEntity(id)) ? registry_.try_get<FactionMember>(ToEntity(id)) : nullptr) {
+            member->disposition = std::clamp(value, -100, 100);
+        }
+    };
+
+    // Character AI (14): packages, remarks, awareness, and a scripted package's moves.
+    env["push_package"] = [this](lua_Integer id, const std::string& package) {
+        if (registry_.valid(ToEntity(id))) PushPackage(registry_, ToEntity(id), package);
+    };
+    env["pop_package"] = [this](lua_Integer id, const std::string& package) {
+        if (registry_.valid(ToEntity(id))) PopPackage(registry_, ToEntity(id), package);
+    };
+    env["bark"] = [this, self](const std::string& text) { ShowBark(self, text); };
+    env["awareness_of"] = [this, self](sol::optional<lua_Integer> id) {
+        const Entity who = id ? ToEntity(*id) : self;
+        const auto* state = registry_.valid(who) ? registry_.try_get<BehaviourState>(who) : nullptr;
+        return state ? state->awareness : 0.0f;
+    };
+    env["set_visible"] = [this](lua_Integer id, bool visible) {
+        if (auto* sprite = registry_.valid(ToEntity(id)) ? registry_.try_get<Sprite>(ToEntity(id)) : nullptr) {
+            sprite->a = visible ? 1.0f : 0.0f;
+        }
+    };
+    env["face"] = [this, self](lua_Integer id) {
+        const auto* a = registry_.try_get<WorldTransform2D>(self);
+        const auto* b = registry_.valid(ToEntity(id)) ? registry_.try_get<WorldTransform2D>(ToEntity(id)) : nullptr;
+        if (!a || !b) return;
+        const float dx = b->x - a->x, dy = b->y - a->y, l = std::max(0.001f, std::sqrt(dx * dx + dy * dy));
+        registry_.emplace_or_replace<Facing>(self, dx / l, dy / l);
+    };
+    env["start_dialogue"] = [this, self](const std::string& path) {
+        if (!storyLibrary_ || conversation_.Active()) return false;
+        const Dialogue* dialogue = storyLibrary_->FindDialogue(path);
+        if (!dialogue || !conversation_.Start(*dialogue, story_, *storyLibrary_)) return false;
+        talkingTo_ = self;
+        return true;
+    };
+    env["find_object"] = [this, self, L](const std::string& type, sol::optional<float> radius) -> sol::object {
+        const auto* at = registry_.try_get<WorldTransform2D>(self);
+        if (!at) return sol::lua_nil;
+        std::optional<Entity> best;
+        float bestD = radius.value_or(10.0f);
+        for (auto [e, so, w] : registry_.view<SmartObject, WorldTransform2D>().each()) {
+            if (!type.empty() && so.type != type) continue;
+            const float d = std::hypot(w.x - at->x, w.y - at->y);
+            if (d <= bestD) bestD = d, best = e;
+        }
+        return best ? sol::make_object(L, ToId(*best)) : sol::lua_nil;
+    };
+    // ai_step_to(x, y) -> arrived: a scripted package's walking (move_to below loops on it).
+    env["ai_step_to"] = [this, self](float x, float y) {
+        auto& state = registry_.get_or_emplace<BehaviourState>(self);
+        const nlohmann::json goal = {x, y};
+        if (state.blackboard["scriptGoal"] != goal) {
+            state.blackboard["scriptGoal"] = goal;
+            state.blackboard["scriptArrived"] = false;
+            return false;
+        }
+        auto arrived = state.blackboard.find("scriptArrived");
+        return arrived != state.blackboard.end() && arrived->second.is_boolean() && arrived->second.get<bool>();
+    };
+    lua_.State().safe_script("function move_to(x, y) while not ai_step_to(x, y) do wait() end end", env,
+                             sol::script_pass_on_error);
+
+    // Records (12.1): record("item", "iron-sword") -> a table of its fields
+    // (with its base and defaults applied), or nil; records("item") -> ids.
+    env["record"] = [L](const std::string& type, const std::string& id) -> sol::object {
+        const Record* record = ActiveRecords().Find(type, id);
+        return record ? JsonToLua(L, record->resolved) : sol::lua_nil;
+    };
+    env["records"] = [L](const std::string& type) {
+        sol::table ids = sol::state_view(L).create_table();
+        int i = 1;
+        for (const Record* record : ActiveRecords().OfType(type)) ids[i++] = record->id;
+        return ids;
+    };
 }
 
 // --- Story -------------------------------------------------------------------
 
 void GameSession::SetStory(const StoryLibrary* library) {
     storyLibrary_ = library;
+    musicOverride_.clear(); // a new run plays the scenes' own music
     story_ = {};
+    WireStory();
     conversation_.End();
     talkingTo_ = entt::null;
     notice_.clear();
-}
-
-bool GameSession::Pressed(Key key, const KeyQueryFn& isKeyDown) {
-    bool down = isKeyDown(key);
-    bool was = std::find(keysDown_.begin(), keysDown_.end(), key) != keysDown_.end();
-    if (down && !was) {
-        keysDown_.push_back(key);
-    } else if (!down && was) {
-        keysDown_.erase(std::remove(keysDown_.begin(), keysDown_.end(), key), keysDown_.end());
-    }
-    return down && !was;
+    cutscene_ = {};
+    cutsceneMoves_.clear();
+    subtitle_.clear();
+    titleCard_.clear();
+    fade_ = fadeTarget_ = letterbox_ = 0.0f;
 }
 
 bool GameSession::CheckGateways() {
@@ -551,6 +806,10 @@ nlohmann::json GameSession::MakeSave() const {
 void GameSession::ApplySave(const nlohmann::json& save) {
     if (!save.is_object()) return;
     story_ = StoryState::FromJson(save.value("story", nlohmann::json::object()));
+    WireStory();
+    cutscene_ = {};
+    cutsceneMoves_.clear();
+    fade_ = fadeTarget_ = letterbox_ = 0.0f;
     if (save.contains("clock") && save["clock"].is_number()) clockMinutes_ = save["clock"].get<double>();
     scene_ = save.value("scene", scene_);
     if (auto player = FindPlayer(registry_); player && save.contains("player") && save["player"].is_object()) {
@@ -573,10 +832,19 @@ void GameSession::OnSceneChanged() {
     conversation_ = DialogueRunner{};
     talkingTo_ = entt::null;
     requestedAttack_.reset();
-    attackKeyWasDown_ = true; // a held Space doesn't swing on arrival
+    input_.HoldCurrent(); // a held attack doesn't swing on arrival
     events_.clear();
     gatewayArmed_ = false;
     travel_.reset();
+    // A cutscene doesn't carry over (its actors were in the old scene).
+    cutscene_.Stop();
+    cutsceneMoves_.clear();
+    cameraFocus_ = cameraFollow_ = entt::null;
+    cameraGoal_.reset();
+    cameraZoom_.reset();
+    subtitle_.clear();
+    titleCard_.clear();
+    fade_ = fadeTarget_ = letterbox_ = 0.0f;
 }
 
 std::optional<Entity> GameSession::TalkTarget() {
@@ -616,19 +884,22 @@ std::string GameSession::NameOf(const std::string& key, Entity fallback) const {
 }
 
 void GameSession::HandleStoryInput(const KeyQueryFn& isKeyDown) {
-    // Read every edge once per frame, so a press isn't seen twice.
-    const bool e = Pressed(Key::E, isKeyDown);
-    const bool enter = Pressed(Key::Enter, isKeyDown);
-    const bool space = Pressed(Key::Space, isKeyDown);
-    const bool up = Pressed(Key::Up, isKeyDown);
-    const bool down = Pressed(Key::Down, isKeyDown);
+    (void)isKeyDown; // read through the input actions (12.3), updated once per frame
+    const bool interact = input_.Pressed("interact");
+    const bool confirm = input_.Pressed("confirm");
+    const bool up = input_.Pressed("nav_up");
+    const bool down = input_.Pressed("nav_down");
     int number = 0;
-    for (int i = 0; i < 4; ++i) {
-        if (Pressed(static_cast<Key>(static_cast<int>(Key::Num1) + i), isKeyDown)) {
-            number = i + 1;
-        }
+    for (int i = 1; i <= 9; ++i) {
+        if (input_.Pressed("choice_" + std::to_string(i))) number = i;
     }
     if (storyLibrary_ == nullptr) {
+        // No dialogue in this game: the interact action still uses things (13.5).
+        if (interact && !conversation_.Active()) {
+            if (const auto player = FindPlayer(registry_)) {
+                if (auto thing = FindInteractable(registry_, *player)) UseInteractable(*thing);
+            }
+        }
         return;
     }
     if (conversation_.Active()) {
@@ -636,24 +907,37 @@ void GameSession::HandleStoryInput(const KeyQueryFn& isKeyDown) {
             conversation_.Choose(static_cast<size_t>(number - 1), story_, *storyLibrary_);
         } else if (up || down) {
             conversation_.MoveHighlight(up ? -1 : 1);
-        } else if (enter || space || e) {
+        } else if (confirm) {
             conversation_.Continue(story_, *storyLibrary_);
+        }
+        if ((number > 0 || confirm) && conversation_.LastCheck()) {
+            Toast(*conversation_.LastCheck() ? "Success" : "Failure"); // a skill check (15.3)
         }
         if (!conversation_.Active()) {
             talkingTo_ = entt::null;
-            attackKeyWasDown_ = isKeyDown(Key::Space); // the closing Space isn't a swing
         }
         return;
     }
-    if (e) {
+    if (interact) {
         if (auto npc = TalkTarget()) {
             const Talk& talk = registry_.get<Talk>(*npc);
+            // Deliver objectives (15.1): what they're owed changes hands on talking.
+            story_.OnDelivered(talk.character, [this](const std::string& item, int count) {
+                const auto player = FindPlayer(registry_);
+                auto* inventory = player ? registry_.try_get<Inventory>(*player) : nullptr;
+                if (!inventory || CountItem(*inventory, item) < count) return false;
+                RemoveItem(*inventory, item, count);
+                return true;
+            }, *storyLibrary_);
             if (const Dialogue* dialogue = storyLibrary_->FindDialogue(talk.dialogue)) {
                 story_.OnTalkedTo(talk.character, *storyLibrary_);
                 if (conversation_.Start(*dialogue, story_, *storyLibrary_)) {
                     talkingTo_ = *npc;
+                    Emit({"talk", *npc, FindPlayer(registry_).value_or(Entity{entt::null}), 0.0, talk.character});
                 }
             }
+        } else if (auto target = CurrentInteraction(); target && !target->talk) {
+            UseInteractable(target->entity); // a door, a chest, a lever, a merchant (13.5)
         }
     }
 }
@@ -666,6 +950,10 @@ void GameSession::OnStoryEvents(size_t firstEvent) {
         const GameEvent& event = events_[i];
         if (event.type == GameEvent::Type::Death) {
             story_.OnDefeated(event.prefab, event.team == Team::Enemy ? "Enemy" : "", *storyLibrary_);
+            // An escort or defend objective's charge died: the quest fails (15.1).
+            std::vector<std::string> names = NamesOf(event.entity);
+            if (!event.actor.empty()) names.push_back(event.actor);
+            for (const auto& name : names) story_.OnLost(name, *storyLibrary_);
         } else if (event.type == GameEvent::Type::Pickup) {
             story_.OnCollected(event.prefab, *storyLibrary_);
         }
@@ -687,14 +975,59 @@ void GameSession::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float v
         AddClock(out, "Day " + std::to_string(Day()) + "  " + FormatClockTime(static_cast<int>(MinuteOfDay())),
                  viewportWidth, viewportHeight);
     }
+    if (!notice_.empty()) {
+        AddToast(out, notice_, viewportWidth, viewportHeight);
+    }
+    if (cutscene_.Active() || letterbox_ > 0.0f || fade_ > 0.0f) {
+        // A cutscene (15.5): bars, its lines and title, its fades; nothing of play.
+        AddLetterbox(out, letterbox_, viewportWidth, viewportHeight);
+        if (!subtitle_.empty()) AddSubtitle(out, subtitle_, viewportWidth, viewportHeight);
+        if (!titleCard_.empty()) {
+            AddTitleCard(out, titleCard_, static_cast<float>(std::min(1.0, titleSeconds_)), viewportWidth, viewportHeight);
+        }
+        AddScreenFade(out, fade_, viewportWidth, viewportHeight);
+        if (cutscene_.Active()) {
+            if (cutscene_.WaitingForInput()) AddPrompt(out, "Space", "Continue", viewportWidth, viewportHeight);
+            return;
+        }
+    }
+    if (!barkText_.empty() && !conversation_.Active()) AddSubtitle(out, barkText_, viewportWidth, viewportHeight);
+    if (showAiDebug_) {
+        // What every character is doing (F4).
+        std::vector<std::string> lines;
+        for (auto [entity, behaviour] : registry_.view<Behaviour>().each()) {
+            const auto* name = registry_.try_get<Name>(entity);
+            const auto* state = registry_.try_get<BehaviourState>(entity);
+            char line[160];
+            std::snprintf(line, sizeof(line), "%s: %s  aware %.0f%%", name && !name->value.empty() ? name->value.c_str() : "?",
+                          DescribeBehaviour(registry_, entity).c_str(), state ? state->awareness * 100.0f : 0.0f);
+            lines.push_back(line);
+            if (lines.size() >= 24) break;
+        }
+        if (lines.empty()) lines.push_back("No characters with Behaviour");
+        AddDebugLines(out, lines, viewportWidth, viewportHeight);
+    }
     if (storyLibrary_ == nullptr) {
+        if (auto target = CurrentInteraction(); target && !target->talk) {
+            AddPrompt(out, "E", InteractPrompt(registry_, target->entity), viewportWidth, viewportHeight);
+        }
         return;
     }
     if (auto shown = story_.CurrentObjective(*storyLibrary_)) {
         AddObjective(out, shown->quest, shown->text, viewportWidth, viewportHeight);
-    }
-    if (!notice_.empty()) {
-        AddToast(out, notice_, viewportWidth, viewportHeight);
+        // The marker (15.4): which way the objective lies, when it's more than a few steps off.
+        const auto player = FindPlayer(registry_);
+        const auto target = ObjectiveLocation();
+        if (player && target && !conversation_.Active() && ActiveSettings().story.objectiveMarkers) {
+            const auto& at = registry_.get<WorldTransform2D>(*player);
+            const float dx = target->first - at.x, dy = target->second - at.y;
+            const float distance = std::sqrt(dx * dx + dy * dy);
+            if (distance > 3.0f) {
+                const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
+                AddObjectiveMarker(out, topDown ? dx : dx - dy, topDown ? dy : (dx + dy) * 0.5f,
+                                   std::to_string(static_cast<int>(distance + 0.5f)) + " m", viewportWidth, viewportHeight);
+            }
+        }
     }
     if (const DialogueNode* node = conversation_.Node()) {
         const Dialogue* dialogue = conversation_.Current();
@@ -709,36 +1042,728 @@ void GameSession::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float v
         } else {
             view.speaker = NameOf(speaker, talkingTo_);
         }
-        view.text = node->text;
+        // Translated when the game's language has the line (12.7).
+        const std::string key = "dialogue/" + std::filesystem::path(dialogue->path).stem().string() + "/" + node->id;
+        view.text = Tr(key, node->text);
         for (size_t index : conversation_.VisibleChoices()) {
-            view.choices.push_back(node->choices[index].text);
+            const DialogueChoice& choice = node->choices[index];
+            std::string label = Tr(key + "/" + std::to_string(index + 1), choice.text);
+            // A skill check shows what it tests: "[Speech 5] Surely you can spare it."
+            if (choice.check.is_object() && choice.check.contains("attribute")) {
+                std::string attribute = choice.check.value("attribute", "");
+                if (!attribute.empty()) attribute[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(attribute[0])));
+                const nlohmann::json level = choice.check.contains("difficulty") ? choice.check["difficulty"]
+                                                                                 : choice.check.value("atLeast", nlohmann::json(0));
+                label = "[" + attribute + " " + (level.is_number() ? std::to_string(level.get<int>()) : std::string("?")) +
+                        "] " + label;
+            }
+            view.choices.push_back(label);
         }
         view.highlighted = conversation_.Highlighted();
+        view.portrait = node->portrait;
         AddDialogueBox(out, view, viewportWidth, viewportHeight);
     } else if (auto npc = TalkTarget()) {
         const Talk& talk = registry_.get<Talk>(*npc);
         if (storyLibrary_->FindDialogue(talk.dialogue) != nullptr) {
             AddPrompt(out, "E", "Talk to " + NameOf(talk.character, *npc), viewportWidth, viewportHeight);
         }
+    } else if (auto target = CurrentInteraction(); target && !target->talk) {
+        AddPrompt(out, "E", InteractPrompt(registry_, target->entity), viewportWidth, viewportHeight);
     }
 }
 
 void GameSession::ShowNotices() {
+    ApplyWorldEffects(); // the story's items, gold, experience, reputation, cutscenes
     for (const auto& notice : story_.TakeNotices()) {
         using Kind = StoryState::Notice::Kind;
         notice_ = notice.kind == Kind::QuestStarted     ? "New quest: " + notice.text
                   : notice.kind == Kind::QuestCompleted ? "Quest complete: " + notice.text
+                  : notice.kind == Kind::QuestFailed    ? "Quest failed: " + notice.text
+                  : notice.kind == Kind::StageChanged   ? "Journal: " + notice.text
                                                         : "Done: " + notice.text;
         noticeSeconds_ = 3.0;
+        Emit({notice.kind == Kind::QuestStarted     ? "quest_started"
+              : notice.kind == Kind::QuestCompleted ? "quest_completed"
+              : notice.kind == Kind::QuestFailed    ? "quest_failed"
+              : notice.kind == Kind::StageChanged   ? "quest_stage"
+                                                    : "objective_completed",
+              entt::null, entt::null, 0.0, notice.quest});
     }
+    ApplyWorldEffects(); // and any the notices caused
+}
+
+// --- Narrative v2 (development_plan.md 15) ----------------------------------------
+
+void GameSession::WireStory() {
+    // The story asks about the world (15.2): items, gold, level, attributes, the
+    // time, the day, reputation with a faction.
+    story_.SetWorldConditions([this](const nlohmann::json& c) {
+        const auto player = FindPlayer(registry_);
+        const auto* inventory = player ? registry_.try_get<Inventory>(*player) : nullptr;
+        if (c.contains("item")) {
+            const int have = inventory ? CountItem(*inventory, c.value("item", "")) : 0;
+            return have >= c.value("count", 1);
+        }
+        if (c.contains("gold")) return (inventory ? inventory->gold : 0) >= c.value("gold", 0);
+        if (c.contains("level")) return player && LevelOf(*player) >= c.value("level", 1);
+        if (c.contains("attribute")) {
+            if (!player) return false;
+            const float value = EffectiveAttribute(registry_, *player, c.value("attribute", ""));
+            if (c.contains("below")) return value < c.value("below", 0.0f);
+            return value >= c.value("atLeast", 1.0f);
+        }
+        if (c.contains("time") && c["time"].is_object()) {
+            const float hour = MinuteOfDay() / 60.0f;
+            const float from = c["time"].value("from", 0.0f), to = c["time"].value("to", 24.0f);
+            return from <= to ? hour >= from && hour < to : hour >= from || hour < to;
+        }
+        if (c.contains("day")) return Day() >= c.value("day", 1);
+        if (c.contains("faction")) {
+            const nlohmann::json value = story_.Var("reputation." + c.value("faction", ""));
+            const double reputation = value.is_number() ? value.get<double>() : 0.0;
+            if (c.contains("below")) return reputation < c.value("below", 0.0);
+            return reputation >= c.value("atLeast", 0.0);
+        }
+        return false;
+    });
+}
+
+void GameSession::ApplyWorldEffects() {
+    const auto player = FindPlayer(registry_);
+    for (const StoryEffect& e : story_.TakeWorldEffects()) {
+        const int amount = e.value.is_number() ? static_cast<int>(e.value.get<double>()) : 1;
+        if (e.op == "play_cutscene") {
+            PlayCutscene(e.name);
+            continue;
+        }
+        if (e.op == "reputation") {
+            const nlohmann::json now = story_.Var("reputation." + e.name);
+            story_.SetVar("reputation." + e.name, (now.is_number() ? now.get<int>() : 0) + amount);
+            for (auto [entity, member] : registry_.view<FactionMember>().each()) {
+                if (member.faction == e.name) member.disposition = std::clamp(member.disposition + amount, -100, 100);
+            }
+            continue;
+        }
+        if (!player) continue;
+        auto& inventory = registry_.get_or_emplace<Inventory>(*player);
+        if (e.op == "give_item") {
+            AddItem(inventory, e.name, std::max(1, amount));
+            Toast("Received " + e.name + (amount > 1 ? " x" + std::to_string(amount) : ""));
+            Emit({"item_added", *player, entt::null, static_cast<double>(amount), e.name});
+        } else if (e.op == "take_item") {
+            RemoveItem(inventory, e.name, std::max(1, amount));
+        } else if (e.op == "give_gold") {
+            inventory.gold = std::max(0, inventory.gold + amount);
+            if (amount > 0) Toast("Received " + std::to_string(amount) + " gold");
+        } else if (e.op == "give_xp") {
+            const float xp = e.value.is_number() ? e.value.get<float>() : 0.0f;
+            if (AwardExperience(registry_, *player, xp) > 0) {
+                Emit({"level_up", *player, entt::null, static_cast<double>(LevelOf(*player)), ""});
+                Toast("Level " + std::to_string(LevelOf(*player)) + "!");
+            }
+        }
+    }
+}
+
+std::vector<std::string> GameSession::NamesOf(Entity entity) const {
+    std::vector<std::string> names;
+    if (!registry_.valid(entity)) return names;
+    if (const auto* actor = registry_.try_get<Actor>(entity); actor && !actor->key.empty()) names.push_back(actor->key);
+    if (const auto* talk = registry_.try_get<Talk>(entity); talk && !talk->character.empty()) names.push_back(talk->character);
+    if (const auto* name = registry_.try_get<Name>(entity); name && !name->value.empty()) names.push_back(name->value);
+    if (const auto* thing = registry_.try_get<Interactable>(entity); thing && !thing->name.empty()) names.push_back(thing->name);
+    return names;
+}
+
+std::optional<Entity> GameSession::FindNamed(const std::string& who) const {
+    if (who.empty()) return std::nullopt;
+    if (who == "player") return FindPlayer(const_cast<Registry&>(registry_));
+    for (auto [entity, world] : registry_.view<WorldTransform2D>(entt::exclude<Dead>).each()) {
+        for (const auto& name : NamesOf(entity)) {
+            if (name == who) return entity;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<std::pair<float, float>> GameSession::MarkerPosition(const std::string& name) const {
+    for (auto [entity, marker, world] : registry_.view<Marker, WorldTransform2D>().each()) {
+        if (marker.name == name) return std::pair{world.x, world.y};
+    }
+    return std::nullopt;
+}
+
+void GameSession::StepStory(float dt) {
+    if (storyLibrary_ == nullptr || !story_.AnyQuestActive()) return;
+    story_.OnTime(dt, *storyLibrary_);
+    const auto player = FindPlayer(registry_);
+    const auto* inventory = player ? registry_.try_get<Inventory>(*player) : nullptr;
+    story_.OnHave([&](const std::string& item) { return inventory ? CountItem(*inventory, item) : 0; }, *storyLibrary_);
+    story_.OnEscorted(
+        [&](const std::string& who, const std::string& marker) {
+            const auto entity = FindNamed(who);
+            const auto at = MarkerPosition(marker);
+            if (!entity || !at) return false;
+            const auto& world = registry_.get<WorldTransform2D>(*entity);
+            return std::hypot(world.x - at->first, world.y - at->second) <= 1.5f;
+        },
+        *storyLibrary_);
+}
+
+void GameSession::StepTriggers() {
+    const auto player = FindPlayer(registry_);
+    if (!player || cutscene_.Active()) return;
+    const auto& at = registry_.get<WorldTransform2D>(*player);
+    for (auto [entity, trigger, world] : registry_.view<CutsceneTrigger, WorldTransform2D>().each()) {
+        if (trigger.cutscene.empty() || std::hypot(world.x - at.x, world.y - at.y) > trigger.radius) continue;
+        const std::string flag = "cutscene:" + trigger.cutscene;
+        if (story_.Flag(flag)) continue;
+        story_.SetFlag(flag, true); // a repeating one: until the player leaves (cleared below)
+        PlayCutscene(trigger.cutscene);
+        return;
+    }
+    // A repeating trigger plays again once the player has left its area.
+    for (auto [entity, trigger, world] : registry_.view<CutsceneTrigger, WorldTransform2D>().each()) {
+        if (!trigger.once && std::hypot(world.x - at.x, world.y - at.y) > trigger.radius + 0.5f) {
+            story_.SetFlag("cutscene:" + trigger.cutscene, false);
+        }
+    }
+}
+
+bool GameSession::PlayCutscene(const std::string& id, const std::string& quest) {
+    std::string error;
+    auto cutscene = LoadCutscene(scriptRoot_, id, &error);
+    if (!cutscene) {
+        if (scriptErrors_.size() < 64) scriptErrors_.push_back({entt::null, "cutscenes/" + id + ".json", error});
+        return false;
+    }
+    if (cutscene_.Active()) SkipCutscene(); // one at a time: the old one jumps to its end
+    conversation_.End();
+    talkingTo_ = entt::null;
+    cutsceneQuest_ = quest;
+    cutsceneMoves_.clear();
+    cameraFollow_ = entt::null;
+    cameraGoal_.reset();
+    cameraZoom_.reset();
+    cutscene_.Start(std::move(*cutscene));
+    Emit({"cutscene_started", entt::null, entt::null, 0.0, id});
+    return true;
+}
+
+void GameSession::SkipCutscene() {
+    if (!cutscene_.Active()) return;
+    cutscene_.Skip([this](const CutscenePlayer::Due& due) { FireCutsceneKey(due); });
+    StepCutscene(0.0f); // finishes moves and cleans up
+}
+
+void GameSession::FireCutsceneKey(const CutscenePlayer::Due& due) {
+    const CutsceneTrack& track = *due.track;
+    const CutsceneKey& key = *due.key;
+    const nlohmann::json& d = key.data;
+    // "@thief": the quest that started it, else any quest under way that has the alias.
+    auto resolve = [this](const std::string& name) {
+        if (name.size() < 2 || name[0] != '@' || storyLibrary_ == nullptr) return name;
+        std::vector<std::string> quests = story_.StartedOrder();
+        if (!cutsceneQuest_.empty()) quests.insert(quests.begin(), cutsceneQuest_);
+        for (const auto& id : quests) {
+            if (const Quest* quest = storyLibrary_->FindQuest(id); quest && quest->Resolve(name) != name) return quest->Resolve(name);
+        }
+        return name;
+    };
+    auto placeOf = [&](const nlohmann::json& data) -> std::optional<std::pair<float, float>> {
+        if (data.contains("marker")) return MarkerPosition(resolve(data.value("marker", "")));
+        if (data.contains("x") && data.contains("y")) return std::pair{data.value("x", 0.0f), data.value("y", 0.0f)};
+        if (data.contains("actor") || data.contains("target")) {
+            const std::string who = resolve(data.value("actor", data.value("target", "")));
+            if (auto entity = FindNamed(who)) {
+                const auto& w = registry_.get<WorldTransform2D>(*entity);
+                return std::pair{w.x, w.y};
+            }
+        }
+        return std::nullopt;
+    };
+    if (track.type == "actor") {
+        const auto entity = FindNamed(resolve(track.actor));
+        if (!entity) return;
+        auto& world = registry_.get<WorldTransform2D>(*entity);
+        if (key.op == "move" || key.op == "place") {
+            const auto to = placeOf(d);
+            if (!to) return;
+            std::erase_if(cutsceneMoves_, [&](const CutsceneMove& m) { return m.entity == *entity; });
+            if (key.op == "place" || due.skipping) {
+                world.x = to->first;
+                world.y = to->second;
+            } else {
+                cutsceneMoves_.push_back({*entity, to->first, to->second, d.value("speed", 2.0f)});
+            }
+        } else if (key.op == "face") {
+            if (const auto to = placeOf(d)) {
+                const float dx = to->first - world.x, dy = to->second - world.y, l = std::sqrt(dx * dx + dy * dy);
+                if (l > 0.001f) registry_.emplace_or_replace<Facing>(*entity, dx / l, dy / l);
+            }
+        } else if (key.op == "show" || key.op == "hide") {
+            if (auto* sprite = registry_.try_get<Sprite>(*entity)) sprite->a = key.op == "show" ? 1.0f : 0.0f;
+        }
+    } else if (track.type == "dialogue") {
+        if (due.skipping) return;
+        const std::string speaker = resolve(d.value("speaker", ""));
+        const std::string text = Tr("cutscene/" + cutscene_.Current().id + "/" + std::to_string(static_cast<int>(key.at * 10)),
+                                    d.value("text", ""));
+        const std::string who = speaker.empty() ? std::string() : NameOf(speaker, FindNamed(speaker).value_or(Entity{entt::null}));
+        subtitle_ = who.empty() ? text : who + ": " + text;
+        subtitleSeconds_ = key.seconds > 0.0f ? key.seconds : 2.0 + text.size() / 20.0;
+        if (playSound_ && !d.value("voice", "").empty()) playSound_(d.value("voice", ""));
+    } else if (track.type == "camera") {
+        if (key.op == "follow") {
+            cameraFollow_ = FindNamed(resolve(d.value("actor", ""))).value_or(Entity{entt::null});
+            cameraGoal_.reset();
+        } else if (key.op == "move") {
+            cameraGoal_ = placeOf(d);
+            cameraFollow_ = entt::null;
+        } else if (key.op == "zoom") {
+            cameraZoom_ = d.value("value", 1.0f);
+        }
+        // shake: with the effects of Phase 18
+    } else if (track.type == "audio") {
+        if (key.op == "music") musicOverride_ = d.value("path", "");
+        else if (key.op == "sound" && !due.skipping && playSound_) playSound_(d.value("path", ""));
+    } else if (track.type == "screen") {
+        if (key.op == "fade_out" || key.op == "fade_in") {
+            fadeTarget_ = key.op == "fade_out" ? 1.0f : 0.0f;
+            fadeRate_ = key.seconds > 0.0f ? 1.0f / key.seconds : 1000.0f;
+            if (due.skipping) fade_ = fadeTarget_;
+        } else if (key.op == "title" && !due.skipping) {
+            titleCard_ = Tr("cutscene/" + cutscene_.Current().id + "/title", d.value("text", ""));
+            titleSeconds_ = key.seconds > 0.0f ? key.seconds : 3.0;
+        }
+    } else if (track.type == "logic") {
+        if (key.op == "do" && storyLibrary_ != nullptr) {
+            story_.Apply(StoryEffectsFromJson(d.value("do", nlohmann::json::array())), *storyLibrary_);
+        } else if (key.op == "emit") {
+            Emit({d.value("event", ""), entt::null, entt::null, d.value("amount", 0.0), d.value("text", "")});
+        }
+    }
+}
+
+void GameSession::StepCutscene(float dt) {
+    if (cutscene_.Active()) {
+        if (input_.Pressed("skip")) {
+            if (cutscene_.WaitingForInput()) cutscene_.Continue();
+            else if (cutscene_.Current().skippable) {
+                SkipCutscene();
+                return;
+            }
+        }
+        cutscene_.Update(dt, [this](const CutscenePlayer::Due& due) { FireCutsceneKey(due); });
+    }
+    const bool ended = !cutscene_.Active();
+    // Moves under way (a skip or the end puts everyone at their mark).
+    for (auto it = cutsceneMoves_.begin(); it != cutsceneMoves_.end();) {
+        auto* world = registry_.valid(it->entity) ? registry_.try_get<WorldTransform2D>(it->entity) : nullptr;
+        if (world == nullptr) {
+            it = cutsceneMoves_.erase(it);
+            continue;
+        }
+        const float dx = it->x - world->x, dy = it->y - world->y, distance = std::sqrt(dx * dx + dy * dy);
+        const float step = it->speed * dt;
+        if (ended || distance <= step || distance < 0.001f) {
+            world->x = it->x;
+            world->y = it->y;
+            it = cutsceneMoves_.erase(it);
+            continue;
+        }
+        world->x += dx / distance * step;
+        world->y += dy / distance * step;
+        registry_.emplace_or_replace<Facing>(it->entity, dx / distance, dy / distance);
+        ++it;
+    }
+    // The camera's point of focus eases toward where it was sent.
+    if (cameraGoal_) {
+        if (!registry_.valid(cameraFocus_)) {
+            cameraFocus_ = registry_.create();
+            const auto player = FindPlayer(registry_);
+            const auto start = player ? registry_.get<WorldTransform2D>(*player) : WorldTransform2D{};
+            registry_.emplace<WorldTransform2D>(cameraFocus_, start);
+            registry_.emplace<ScreenTransform2D>(cameraFocus_);
+        }
+        auto& focus = registry_.get<WorldTransform2D>(cameraFocus_);
+        const float t = 1.0f - std::exp(-3.0f * dt);
+        focus.x += (cameraGoal_->first - focus.x) * t;
+        focus.y += (cameraGoal_->second - focus.y) * t;
+    }
+    if (fade_ != fadeTarget_) {
+        const float step = fadeRate_ * dt;
+        fade_ = fade_ < fadeTarget_ ? std::min(fadeTarget_, fade_ + step) : std::max(fadeTarget_, fade_ - step);
+    }
+    const float bars = !ended && cutscene_.Current().letterbox ? 1.0f : 0.0f;
+    letterbox_ = letterbox_ < bars ? std::min(bars, letterbox_ + dt * 3.0f) : std::max(bars, letterbox_ - dt * 3.0f);
+    if (subtitleSeconds_ > 0.0 && (subtitleSeconds_ -= dt) <= 0.0) subtitle_.clear();
+    if (titleSeconds_ > 0.0 && (titleSeconds_ -= dt) <= 0.0) titleCard_.clear();
+    UpdateSpriteFacing(registry_);
+    UpdateWorldToScreen(registry_, iso_);
+    if (ended) {
+        // Back to play: the camera on the player, nothing left on screen.
+        if (registry_.valid(cameraFocus_)) registry_.destroy(cameraFocus_);
+        cameraFocus_ = entt::null;
+        cameraFollow_ = entt::null;
+        cameraGoal_.reset();
+        cameraZoom_.reset();
+        subtitle_.clear();
+        titleCard_.clear();
+        fade_ = fadeTarget_ = 0.0f;
+        letterbox_ = 0.0f;
+        Emit({"cutscene_ended", entt::null, entt::null, 0.0, cutscene_.Current().id});
+        ResetClock();
+    }
+}
+
+std::optional<Entity> GameSession::CameraTarget() {
+    if (cutscene_.Active()) {
+        if (registry_.valid(cameraFollow_)) return cameraFollow_;
+        if (cameraGoal_ && registry_.valid(cameraFocus_)) return cameraFocus_;
+    }
+    return FindPlayer(registry_);
+}
+
+std::optional<std::pair<float, float>> GameSession::ObjectiveLocation() {
+    if (storyLibrary_ == nullptr) return std::nullopt;
+    for (const auto& id : story_.StartedOrder()) {
+        const Quest* quest = storyLibrary_->FindQuest(id);
+        const auto open = story_.OpenObjectives(id, *storyLibrary_);
+        if (quest == nullptr || open.empty()) continue;
+        const QuestObjective* objective = open.front();
+        for (const QuestObjective* o : open) {
+            if (!o->optional) {
+                objective = o;
+                break;
+            }
+        }
+        if (!objective->scene.empty() && objective->scene != scene_) return std::nullopt; // elsewhere
+        const std::string target = quest->Resolve(objective->target);
+        if (objective->type == "reach") return MarkerPosition(target);
+        if (objective->type == "escort") {
+            // Bring them to the marker once they're with you.
+            return MarkerPosition(quest->Resolve(objective->to));
+        }
+        if (auto entity = FindNamed(target)) {
+            const auto& w = registry_.get<WorldTransform2D>(*entity);
+            return std::pair{w.x, w.y};
+        }
+        if (objective->type == "collect") {
+            for (auto [entity, pickup, w] : registry_.view<ItemPickup, WorldTransform2D>().each()) {
+                if (pickup.item == target) return std::pair{w.x, w.y};
+            }
+        }
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+// --- Gameplay systems (development_plan.md 13) ----------------------------------
+
+int GameSession::LevelOf(Entity entity) const {
+    if (const auto* progression = registry_.try_get<Progression>(entity)) return progression->level;
+    return 1;
+}
+
+void GameSession::StepGameplay(float dt, const SolidQueryFn& isSolid, bool firstStep) {
+    UpdateAttributes(registry_, dt);
+    const auto player = FindPlayer(registry_);
+    if (player && !registry_.all_of<Dead>(*player)) {
+        // Block while held; dodge, fire on press (once a frame).
+        if (input_.Down("block") && !registry_.all_of<Dodging>(*player)) registry_.emplace_or_replace<Blocking>(*player);
+        else registry_.remove<Blocking>(*player);
+        if (firstStep && input_.Pressed("dodge")) {
+            // The way the player walks (screen directions to the world's).
+            const float right = input_.Value("move_x"), down = input_.Value("move_y");
+            const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
+            StartDodge(registry_, *player, topDown ? right : right + down, topDown ? down : down - right);
+        }
+        const bool shoots = registry_.all_of<RangedAttack>(*player);
+        if (firstStep && shoots &&
+            (input_.Pressed("fire") || (input_.Pressed("attack") && !registry_.all_of<MeleeAttack>(*player)))) {
+            if (TryRangedAttack(registry_, *player, 0.0f, 0.0f)) events_.push_back({GameEvent::Type::Attack, *player});
+        }
+        // Walking over items picks them up.
+        for (const auto& taken : CollectItemPickups(registry_, *player)) {
+            notice_ = "Picked up " + taken;
+            noticeSeconds_ = 2.0;
+            Emit({"item_added", *player, entt::null, 0.0, taken});
+        }
+    }
+    // Archers: a hostile with a ranged attack shoots at the player in range, in sight.
+    if (player && !registry_.all_of<Dead>(*player)) {
+        const auto target = registry_.get<WorldTransform2D>(*player);
+        for (auto [entity, ranged, world] : registry_.view<RangedAttack, WorldTransform2D>(entt::exclude<Dead>).each()) {
+            if (entity == *player || ranged.cooldownRemaining > 0.0f || !AreHostile(registry_, entity, *player)) continue;
+            const float dx = target.x - world.x, dy = target.y - world.y;
+            const float distance = std::sqrt(dx * dx + dy * dy);
+            if (distance > ranged.range * 0.9f || distance < 0.3f) continue;
+            bool clear = true; // line of sight over the grid
+            for (float t = 0.5f; t < distance; t += 0.5f) {
+                if (isSolid(static_cast<int>(std::floor(world.x + dx / distance * t)),
+                            static_cast<int>(std::floor(world.y + dy / distance * t)))) {
+                    clear = false;
+                    break;
+                }
+            }
+            if (clear && TryRangedAttack(registry_, entity, dx, dy)) {
+                const auto* sounds = registry_.try_get<Sounds>(entity);
+                events_.push_back({GameEvent::Type::Attack, entity, entt::null, 0.0f, sounds ? sounds->attack : std::string()});
+            }
+        }
+    }
+    // Spawners (13.7).
+    if (spawner_ && !registry_.view<Spawner>().empty()) {
+        UpdateSpawners(registry_, dt, spawner_, [&](float x, float y) {
+            return !isSolid(static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)));
+        }, gameplayRng_);
+    }
+}
+
+void GameSession::OnDeaths(size_t firstEvent) {
+    const size_t end = events_.size();
+    for (size_t i = firstEvent; i < end; ++i) {
+        const GameEvent event = events_[i]; // copied: pushing below may move the vector
+        if (event.type != GameEvent::Type::Death) continue;
+        // Experience to the killer (13.2).
+        if (event.experience > 0.0f && registry_.valid(event.other)) {
+            const int levels = AwardExperience(registry_, event.other, event.experience);
+            if (levels > 0) {
+                Emit({"level_up", event.other, entt::null, static_cast<double>(LevelOf(event.other)), ""});
+                if (auto player = FindPlayer(registry_); player && *player == event.other) {
+                    notice_ = "Level " + std::to_string(LevelOf(event.other)) + "!";
+                    noticeSeconds_ = 3.0;
+                }
+            }
+        }
+        // Loot where it fell (13.4).
+        if (!event.loot.empty() || event.gold > 0) {
+            const int level = registry_.valid(event.other) ? LevelOf(event.other) : 1;
+            LootResult loot = event.loot.empty() ? LootResult{} : RollLoot(event.loot, level, gameplayRng_);
+            loot.gold += event.gold;
+            if (!loot.items.empty() || loot.gold > 0) DropLoot(registry_, event.x, event.y, loot.items, loot.gold, gameplayRng_);
+        }
+    }
+}
+
+// --- Character AI (development_plan.md 14) ------------------------------------------
+
+void GameSession::ShowBark(Entity speaker, const std::string& text) {
+    if (text.empty()) return;
+    // One of the '|' alternatives.
+    std::vector<std::string> options;
+    std::stringstream in(text);
+    std::string part;
+    while (std::getline(in, part, '|')) {
+        if (!part.empty()) options.push_back(part);
+    }
+    if (options.empty()) return;
+    const std::string line = options[std::uniform_int_distribution<size_t>(0, options.size() - 1)(gameplayRng_)];
+    const auto* name = registry_.valid(speaker) ? registry_.try_get<Name>(speaker) : nullptr;
+    const auto* talk = registry_.valid(speaker) ? registry_.try_get<Talk>(speaker) : nullptr;
+    std::string who = talk ? NameOf(talk->character, speaker) : name ? name->value : std::string();
+    barkText_ = who.empty() ? line : who + ": " + line;
+    barkSeconds_ = 2.5 + line.size() / 25.0;
+    Emit({"bark", speaker, entt::null, 0.0, line});
+}
+
+bool GameSession::RunScriptedPackage(Entity actor, const std::string& script, float dt) {
+    (void)dt;
+    auto known = scriptedPackages_.find(actor);
+    if (known == scriptedPackages_.end() || known->second != script) {
+        // Load it into the actor's own environment, with the whole API, and run run().
+        // (Binding forgets the actor's earlier handlers and tasks, so it comes first.)
+        sol::state& lua = lua_.State();
+        sol::environment env(lua, sol::create, lua.globals());
+        BindScriptApi(env, actor);
+        scriptedPackages_[actor] = script;
+        auto result = lua.safe_script_file((scriptRoot_ / script).string(), env, sol::script_pass_on_error);
+        if (!result.valid()) {
+            sol::error error = result;
+            ScriptFailed(actor, error.what());
+            return false;
+        }
+        sol::protected_function run = env["run"];
+        if (!run.valid()) {
+            ScriptFailed(actor, script + ": a scripted package needs a run() function");
+            return false;
+        }
+        StartTask(actor, run, sol::lua_nil);
+        scriptEnvs_[actor] = env;
+    }
+    for (const auto& task : tasks_) {
+        if (task->owner == actor) return true;
+    }
+    return false;
+}
+
+void GameSession::StepCharacters(float dt, const SolidQueryFn& isSolid) {
+    if (barkSeconds_ > 0.0) {
+        barkSeconds_ -= dt;
+        if (barkSeconds_ <= 0.0) barkText_.clear();
+    }
+    if (registry_.view<Behaviour>().empty()) {
+        noises_.clear();
+        return;
+    }
+    AiContext context{registry_, isSolid};
+    context.minuteOfDay = MinuteOfDay();
+    context.day = Day();
+    context.story = &story_;
+    context.scene = scene_;
+    context.rng = &gameplayRng_;
+    context.noises = std::move(noises_);
+    noises_.clear();
+    context.bark = [this](Entity speaker, const std::string& text) { ShowBark(speaker, text); };
+    context.startDialogue = [this](Entity speaker, const std::string& path) {
+        if (!storyLibrary_ || conversation_.Active()) return;
+        if (const Dialogue* dialogue = storyLibrary_->FindDialogue(path)) {
+            if (conversation_.Start(*dialogue, story_, *storyLibrary_)) talkingTo_ = speaker;
+        }
+    };
+    context.emit = [this](const std::string& event, Entity entity) { Emit({event, entity}); };
+    context.runScript = [this](Entity actor, const std::string& script, float stepDt) {
+        return RunScriptedPackage(actor, script, stepDt);
+    };
+    UpdateBehaviours(context, dt);
+}
+
+std::optional<GameSession::InteractTarget> GameSession::CurrentInteraction() {
+    const auto player = FindPlayer(registry_);
+    if (!player || conversation_.Active()) return std::nullopt;
+    if (auto npc = TalkTarget()) return InteractTarget{*npc, true};
+    if (auto thing = FindInteractable(registry_, *player)) return InteractTarget{*thing, false};
+    return std::nullopt;
+}
+
+void GameSession::UseInteractable(Entity target) {
+    const auto player = FindPlayer(registry_);
+    if (!player) return;
+    const InteractResult result = Interact(registry_, *player, target, story_, LevelOf(*player), gameplayRng_);
+    if (!result.text.empty()) {
+        notice_ = result.text;
+        noticeSeconds_ = 4.0 + result.text.size() / 30.0; // time to read it
+    } else if (!result.message.empty()) {
+        notice_ = result.message;
+        noticeSeconds_ = 2.5;
+    }
+    if (!result.event.empty()) Emit({result.event, target, *player, 0.0, ""});
+    if (result.used) Emit({"interact", registry_.valid(target) ? target : Entity{entt::null}, *player, 0.0, ""});
+    if (result.used && storyLibrary_ != nullptr) {
+        for (const auto& name : NamesOf(target)) story_.OnUsed(name, *storyLibrary_); // use/examine objectives
+    }
+    if (result.openShop) shopRequest_ = target;
+}
+
+// --- Events, timers and coroutines (12.2) -------------------------------------
+
+void GameSession::ScriptFailed(Entity owner, const std::string& message) {
+    std::string path;
+    if (registry_.valid(owner)) {
+        if (const auto* script = registry_.try_get<LuaScript>(owner)) path = script->path;
+    }
+    if (scriptErrors_.size() < 64) scriptErrors_.push_back({owner, path, message});
+}
+
+void GameSession::ForgetScript(Entity owner) {
+    scriptedPackages_.erase(owner);
+    scriptEnvs_.erase(owner);
+    std::erase_if(handlers_, [&](const ScriptHandler& h) { return h.owner == owner; });
+    std::erase_if(timers_, [&](const ScriptTimer& t) { return t.owner == owner; });
+    std::erase_if(tasks_, [&](const std::unique_ptr<ScriptTask>& t) { return t->owner == owner; });
+}
+
+void GameSession::StartTask(Entity owner, const sol::protected_function& fn, const sol::object& argument) {
+    auto task = std::make_unique<ScriptTask>();
+    task->owner = owner;
+    task->thread = sol::thread::create(lua_.State().lua_state());
+    task->co = sol::coroutine(task->thread.thread_state(), fn);
+    ResumeTask(*task, argument);
+    if (task->co.status() == sol::call_status::yielded) tasks_.push_back(std::move(task));
+}
+
+void GameSession::ResumeTask(ScriptTask& task, const sol::object& argument) {
+    auto result = argument.valid() && argument.get_type() != sol::type::lua_nil ? task.co(argument) : task.co();
+    if (!result.valid()) {
+        sol::error error = result;
+        ScriptFailed(task.owner, error.what());
+        return;
+    }
+    if (task.co.status() == sol::call_status::yielded) {
+        // wait(seconds) yields how long; anything else waits one step.
+        task.wait = result.return_count() >= 1 && result.get<sol::object>(0).is<double>() ? result.get<double>(0) : 0.0;
+    }
+}
+
+void GameSession::DispatchEvents() {
+    // Handlers may emit more; a cap keeps a loop of events from hanging the game.
+    for (int round = 0; round < 8 && !pendingEvents_.empty(); ++round) {
+        std::vector<ScriptEvent> batch;
+        batch.swap(pendingEvents_);
+        for (const auto& event : batch) {
+            delivered_.push_back(event);
+            const std::vector<ScriptHandler> handlers = handlers_; // a handler may add or remove handlers
+            for (const auto& handler : handlers) {
+                if (handler.event != event.name && handler.event != "*") continue;
+                if (handler.owner != entt::null && !registry_.valid(handler.owner)) continue;
+                sol::table e = lua_.State().create_table();
+                e["name"] = event.name;
+                if (registry_.valid(event.entity)) e["entity"] = static_cast<lua_Integer>(static_cast<uint32_t>(event.entity));
+                if (registry_.valid(event.other)) e["other"] = static_cast<lua_Integer>(static_cast<uint32_t>(event.other));
+                e["amount"] = event.amount;
+                e["text"] = event.text;
+                StartTask(handler.owner, handler.fn, e);
+            }
+        }
+    }
+    pendingEvents_.clear();
+}
+
+void GameSession::UpdateTimersAndTasks(float dt) {
+    // Scripts whose entity is gone stop.
+    std::vector<Entity> gone;
+    auto check = [&](Entity owner) {
+        if (owner != entt::null && !registry_.valid(owner)) gone.push_back(owner);
+    };
+    for (const auto& h : handlers_) check(h.owner);
+    for (const auto& t : timers_) check(t.owner);
+    for (const auto& t : tasks_) check(t->owner);
+    for (Entity owner : gone) ForgetScript(owner);
+
+    std::vector<ScriptTimer> due;
+    for (auto& timer : timers_) {
+        timer.remaining -= dt;
+        if (timer.remaining <= 0.0) {
+            due.push_back(timer);
+            timer.remaining += timer.interval > 0.0 ? timer.interval : 0.0;
+        }
+    }
+    std::erase_if(timers_, [](const ScriptTimer& t) { return t.remaining <= 0.0 && t.interval <= 0.0; });
+    for (const auto& timer : due) StartTask(timer.owner, timer.fn, sol::lua_nil);
+
+    for (size_t i = 0; i < tasks_.size(); ++i) {
+        ScriptTask& task = *tasks_[i];
+        task.wait -= dt;
+        if (task.wait <= 0.0) ResumeTask(task, sol::lua_nil);
+    }
+    std::erase_if(tasks_, [](const std::unique_ptr<ScriptTask>& t) {
+        return t->co.status() != sol::call_status::yielded;
+    });
 }
 
 int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
     events_.clear();
+    delivered_.clear();
     accumulator_ += std::min(frameSeconds, 0.25);
     if (clockMinutes_ < 0.0) {
         clockMinutes_ = ActiveSettings().time.startHour * 60.0;
     }
+    // Input actions (12.3): once per frame, in the context of what's on screen.
+    input_.SetContext(cutscene_.Active() ? "cutscene" : conversation_.Active() ? "dialogue" : "gameplay");
+    input_.Update(ActiveInputMap(), isKeyDown, axisQuery_);
+    bool attackPressed = input_.Pressed("attack");
+    if (input_.Pressed("debug_ai")) showAiDebug_ = !showAiDebug_;
     HandleStoryInput(isKeyDown);
     if (noticeSeconds_ > 0.0) {
         noticeSeconds_ -= frameSeconds;
@@ -747,11 +1772,24 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         }
     }
     ShowNotices();
-    if (conversation_.Active()) {
-        // A conversation pauses the world.
+    if (cutscene_.Active()) {
+        // A cutscene runs instead of the world (15.5).
+        StepCutscene(static_cast<float>(std::min(frameSeconds, 0.25)));
+        ShowNotices();
+        DispatchEvents();
         accumulator_ = std::fmod(accumulator_, kFixedDt);
         return 0;
     }
+    if (conversation_.Active()) {
+        // A conversation pauses the world.
+        if (const DialogueNode* node = conversation_.Node(); node != voicedNode_) {
+            voicedNode_ = node;
+            if (node && !node->voice.empty() && playSound_) playSound_(node->voice); // its voice line (15.3)
+        }
+        accumulator_ = std::fmod(accumulator_, kFixedDt);
+        return 0;
+    }
+    voicedNode_ = nullptr;
     if (travel_) {
         return 0; // waiting for the host to change scene
     }
@@ -763,19 +1801,19 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
     auto isSolid = [this](int gx, int gy) { return grid_.IsSolid(gx, gy); };
 
     int steps = 0;
+    bool firstStep = true; // this frame's presses act once
     size_t soundsPlayed = 0;
-    while (accumulator_ >= kFixedDt) {
+    while (accumulator_ >= kFixedDt && !cutscene_.Active()) { // a cutscene started mid-frame takes over
         const float dt = static_cast<float>(kFixedDt);
         if (auto player = FindPlayer(registry_)) {
-            UpdatePlayer(registry_, *player, isKeyDown, isSolid, dt);
+            UpdatePlayerMove(registry_, *player, input_.Value("move_x"), input_.Value("move_y"), isSolid, dt);
 
-            // Attacks: Space swings toward the facing direction (on press,
-            // not while held); a click swings toward the clicked point.
-            bool attackKeyDown = isKeyDown(Key::Space);
-            if (attackKeyDown && !attackKeyWasDown_) {
+            // Attacks: the attack action swings toward the facing direction (on
+            // press, once per frame); a click swings toward the clicked point.
+            if (attackPressed) {
                 Swing(*player, 0.0f, 0.0f);
+                attackPressed = false;
             }
-            attackKeyWasDown_ = attackKeyDown;
             if (requestedAttack_) {
                 const auto& world = registry_.get<WorldTransform2D>(*player);
                 Swing(*player, requestedAttack_->first - world.x,
@@ -804,9 +1842,44 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
                 scriptErrors_.push_back({entity, path, message});
             }
         });
+        StepGameplay(dt, isSolid, firstStep); // Phase 13: attributes, actions, archers, spawners, pickups
+        StepCharacters(dt, isSolid);           // Phase 14: packages, perception, combat behaviour
+        StepStory(dt);                         // Phase 15: timed, carried and escort objectives
+        firstStep = false;
         const size_t firstEvent = events_.size();
         UpdateCombat(registry_, isSolid, dt, events_);
+        OnDeaths(firstEvent);
+        // Hurt characters turn on their attacker; noises for the next step's ears.
+        for (size_t i = firstEvent; i < events_.size(); ++i) {
+            const GameEvent& event = events_[i];
+            if (event.type == GameEvent::Type::Hit && registry_.valid(event.entity) && registry_.all_of<Behaviour>(event.entity)) {
+                AlertActor(registry_, event.entity, event.other);
+                if (const auto* barks = registry_.try_get<Barks>(event.entity); barks && !barks->hit.empty()) {
+                    ShowBark(event.entity, barks->hit);
+                }
+            }
+            if ((event.type == GameEvent::Type::Hit || event.type == GameEvent::Type::Attack) && registry_.valid(event.entity)) {
+                if (const auto* w = registry_.try_get<WorldTransform2D>(event.entity)) {
+                    noises_.push_back({w->x, w->y, event.type == GameEvent::Type::Hit ? 1.4f : 1.0f, event.entity});
+                }
+            }
+        }
         OnStoryEvents(firstEvent);
+        // Events (12.2): combat's, then the story's, to the scripts' handlers;
+        // then timers, waiting coroutines and the modules' systems.
+        static const char* kNames[] = {"hit", "death", "pickup", "attack", "victory"};
+        for (size_t i = firstEvent; i < events_.size(); ++i) {
+            const GameEvent& event = events_[i];
+            Emit({kNames[static_cast<int>(event.type)], event.entity, event.other, event.amount, event.prefab});
+        }
+        ShowNotices();
+        DispatchEvents();
+        UpdateTimersAndTasks(dt);
+        if (ModuleSystemCount() > 0) {
+            RunModuleSystems(registry_, dt, [this](const std::string& message) {
+                if (scriptErrors_.size() < 64) scriptErrors_.push_back({entt::null, "modules", message});
+            });
+        }
         UpdateSpriteFacing(registry_);
         UpdateWorldToScreen(registry_, iso_);
 
@@ -817,6 +1890,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         }
         accumulator_ -= kFixedDt;
         ++steps;
+        StepTriggers(); // cutscene trigger areas
         if (CheckGateways()) {
             accumulator_ = std::fmod(accumulator_, kFixedDt);
             break; // the host changes scene before the next step
@@ -830,6 +1904,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
                       events_.end());
     }
     ShowNotices();
+    if (cutscene_.Active()) accumulator_ = std::fmod(accumulator_, kFixedDt);
     return steps;
 }
 

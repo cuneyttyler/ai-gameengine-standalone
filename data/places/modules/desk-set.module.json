@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "A desk and its chair, a bookcase near.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "FurnitureGroup"

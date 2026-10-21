@@ -27,6 +27,10 @@
 #include "assets/ProjectMove.h"
 #include "rhi/ShaderUtil.h"
 #include "modules/Modules.h"
+#include "records/Records.h"
+#include "game/SaveGames.h"
+#include "game/GameAudio.h"
+#include "gameplay/InputMap.h"
 #include "world/StoryReferences.h"
 #include "editing/SceneEditing.h"
 #include "gameplay/BootstrapLevel.h"
@@ -62,7 +66,7 @@ constexpr float kMaxZoom = 4.0f;
 constexpr double kPlayInspectorRefreshSeconds = 0.1;
 
 // Ids shared with the UI's toolbar (apps/editor/ui/src/components/Toolbar.vue).
-constexpr const char* kToolIds[] = {"select", "erase", "prefab"};
+constexpr const char* kToolIds[] = {"select", "erase", "prefab", "height"};
 
 // Accent colors for viewport overlays, matching the UI's accent.
 constexpr float kAccent[3] = {0.231f, 0.510f, 0.965f};
@@ -181,6 +185,23 @@ nlohmann::json AssetRows(const nlohmann::json& assets) {
         if (g.value("why", "") == "to be made by the Art tool") row["decision"] = {{"action", "generate"}, {"reason", "no " + t + " ground tiles in the project"}};
         needs.push_back(row);
     }
+    // A dungeon's standing parts: its wall block and its torch.
+    const nlohmann::json parts = assets.value("parts", nlohmann::json::object());
+    for (const auto& [part, p] : parts.items()) {
+        nlohmann::json row = {{"key", "part|" + part}, {"role", p.value("role", part)}, {"concepts", nlohmann::json::array({part})},
+                              {"source", p.value("source", "")}, {"entry", p.value("entry", "")}, {"why", p.value("why", "")}, {"title", part}};
+        if (p.value("why", "") == "to be made by the Art tool") row["decision"] = {{"action", "generate"}, {"reason", "none in the project"}};
+        needs.push_back(row);
+    }
+    // The lines' pieces: a fence, wall or hedge section.
+    const nlohmann::json pieces = assets.value("pieces", nlohmann::json::object());
+    for (const auto& [slot, p] : pieces.items()) {
+        nlohmann::json row = {{"key", "piece|" + slot}, {"role", p.value("role", slot)}, {"concepts", nlohmann::json::array({slot})},
+                              {"source", p.value("source", "")}, {"entry", p.value("entry", p.value("set", ""))}, {"why", p.value("why", "")},
+                              {"title", slot + " section"}};
+        if (p.value("why", "") == "to be made by the Art tool") row["decision"] = {{"action", "generate"}, {"reason", "no " + slot + " pieces in the project"}};
+        needs.push_back(row);
+    }
     return needs;
 }
 
@@ -206,6 +227,7 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
       iso_(BootstrapIso()),
       session_(registry, lua, iso_, assets.GetProject().root) {
     session_.SetSoundPlayer([this](const std::string& path) { audio_.Play(assets_.GetProject().Resolve(path)); });
+    session_.SetAxisQuery([this](PadAxis axis) { return viewport_.PadAxisValue(axis); });
     // The AI chat and Art history come back with the project (4.5): every chat
     // message the panel is sent is also kept in .cache.
     transcript_.Load();
@@ -250,7 +272,8 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         PostBuild();
     } else if (type == "build:sourcingRequest") {
         const SourcingSettings settings = ReadSourcingSettings(assets_.GetProject().root);
-        post_({{"type", "build:sourcing"}, {"webSearch", settings.webSearch}, {"shareAlike", settings.licences.shareAlike}});
+        post_({{"type", "build:sourcing"}, {"webSearch", settings.webSearch}, {"shareAlike", settings.licences.shareAlike},
+               {"defaultSource", settings.defaultSource}});
     } else if (type == "build:nested") {
         // A region's site, built as a place of its own where the region put it.
         if (!build_) return true;
@@ -361,11 +384,42 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         SourcingSettings settings = ReadSourcingSettings(assets_.GetProject().root);
         if (message.contains("webSearch")) settings.webSearch = message.value("webSearch", false);
         if (message.contains("shareAlike")) settings.licences.shareAlike = message.value("shareAlike", false);
+        if (message.contains("defaultSource") && message["defaultSource"].is_string()) settings.defaultSource = message["defaultSource"].get<std::string>();
         WriteSourcingSettings(assets_.GetProject().root, settings);
-        post_({{"type", "build:sourcing"}, {"webSearch", settings.webSearch}, {"shareAlike", settings.licences.shareAlike}});
+        post_({{"type", "build:sourcing"}, {"webSearch", settings.webSearch}, {"shareAlike", settings.licences.shareAlike},
+               {"defaultSource", settings.defaultSource}});
     } else if (type == "build:findAssets") {
         if (build_) build_->ForgetTried(); // asked again: what's still missing is made again
+        autoRounds_ = 0;
         FindAssets();
+        PostBuild();
+    } else if (type == "build:needSource" || type == "build:allSources" || type == "build:pickArt") {
+        // ④ Assets: a need's own source (or every need's), or a piece of art picked for it.
+        if (!build_) return true;
+        if (type == "build:allSources") {
+            const std::string source = message.value("source", "");
+            for (const auto& n : build_->State().value("assetNeeds", nlohmann::json::array())) {
+                const std::string key = n.value("key", "");
+                if (key.empty() || key.rfind("terrain|", 0) == 0) continue;
+                SetNeedChoice(key, source.empty() || source == "auto" ? nlohmann::json() : nlohmann::json{{"source", source}});
+            }
+        } else if (type == "build:needSource") {
+            const std::string source = message.value("source", "");
+            SetNeedChoice(message.value("key", ""), source.empty() || source == "auto" ? nlohmann::json() : nlohmann::json{{"source", source}});
+        } else {
+            // From the project (a path), or the user's library (copied into the project first).
+            std::string path = message.value("path", "");
+            if (const std::string item = message.value("libraryItem", ""); !item.empty()) {
+                path = UserLibrary(UserLibraryDir()).CopyToProject(item, assets_.GetProject().root);
+                if (!path.empty()) RefreshAssets();
+            }
+            if (path.empty() || !Project::IsInside(path)) {
+                post_({{"type", "notify"}, {"text", "Couldn't use that art"}});
+                return true;
+            }
+            SetNeedChoice(message.value("key", ""), {{"entry", path}});
+        }
+        PreviewAssets();
         PostBuild();
     } else if (type == "build:build") {
         BuildIntoScene();
@@ -378,6 +432,22 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
             build_.reset();
             buildShown_ = nlohmann::json();
             post_({{"type", "notify"}, {"text", name + " is in the scene, and the scene is saved"}});
+        }
+        PostBuild();
+    } else if (type == "build:artVerdict") {
+        // ④ Assets: the user's own check of a piece the Art tool made. Rejected, it's no longer art
+        // to choose (the catalog forgets what it's for), and the need goes to its other sources.
+        if (build_) {
+            std::vector<std::string> paths;
+            const std::string verdict = message.value("verdict", "");
+            const std::string why = build_->SetArtVerdict(message.value("key", ""), verdict, &paths);
+            if (!why.empty()) {
+                post_({{"type", "notify"}, {"text", "Can't: " + why}});
+            } else if (verdict == "rejected") {
+                for (const auto& path : paths) SetCatalogFields(assets_, path, {{"roles", ""}, {"rejected", "1"}});
+                assets_.Refresh();
+                post_({{"type", "notify"}, {"text", "Rejected: the next round finds it another way (Find the art again)"}});
+            }
         }
         PostBuild();
     } else if (type == "build:refineArt") {
@@ -582,6 +652,12 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         SwitchProject(to, /*askAboutChanges=*/false);
     } else if (type == "app:quit") {
         PostMessageW(mainWindow_, WM_CLOSE, 0, 0); // asks about unsaved changes first
+    } else if (type == "web:open") {
+        // A free-art site's search, in the browser (the Web Search tab's Sources): web links only.
+        const std::string url = message.value("url", "");
+        if (url.rfind("https://", 0) == 0 && url.find_first_of(" \"\r\n") == std::string::npos) {
+            ShellExecuteW(mainWindow_, L"open", Utf8ToWide(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        }
     } else if (type == "help:docs") {
         ShellExecuteW(mainWindow_, L"open", Utf8ToWide(AIGE_EDITOR_DOCS_DIR).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     } else if (type == "scene:placeAt" || type == "scene:addMarker") {
@@ -735,6 +811,15 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             autotile_ = message["autotile"].get<bool>();
             editorStateStale_ = true;
         }
+        if (message.contains("heightMode") && message["heightMode"].is_string()) {
+            const std::string mode = message["heightMode"].get<std::string>();
+            if (mode == "raise" || mode == "lower" || mode == "flatten") heightMode_ = mode;
+            editorStateStale_ = true;
+        }
+        if (message.contains("heightRadius") && message["heightRadius"].is_number()) {
+            heightRadius_ = std::clamp(message["heightRadius"].get<int>(), 0, 12);
+            editorStateStale_ = true;
+        }
         std::string id = message.value("tool", "");
         for (int i = 0; i < static_cast<int>(std::size(kToolIds)); ++i) {
             if (id == kToolIds[i]) {
@@ -796,6 +881,60 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
                {"key", entry.Key()},
                {"error", error ? nlohmann::json(*error) : nlohmann::json(nullptr)}});
         post_(WorldJson());
+    } else if (type == "input:request" || type == "input:reset" || type == "input:save") {
+        // Project Settings ▸ Input (12.3): the project's actions and bindings, input.json.
+        const auto root = assets_.GetProject().root;
+        std::vector<std::string> errors;
+        std::optional<std::string> error;
+        if (type == "input:reset") {
+            ActiveInputMap() = InputMap::Defaults();
+            if (!SaveInputMap(root, ActiveInputMap())) error = "can't write input.json";
+        } else if (type == "input:save") {
+            InputMap map = InputMap::FromJson(message.value("map", nlohmann::json::object()), &errors);
+            if (errors.empty()) {
+                ActiveInputMap() = map;
+                if (!SaveInputMap(root, map)) error = "can't write input.json";
+            } else {
+                error = errors.front();
+            }
+        } else {
+            ActiveInputMap() = LoadInputMap(root, &errors);
+        }
+        nlohmann::json keys = nlohmann::json::array();
+        for (int i = 1; i < static_cast<int>(Key::Count); ++i) keys.push_back(KeyName(static_cast<Key>(i)));
+        nlohmann::json axes = nlohmann::json::array();
+        for (int i = 0; i <= static_cast<int>(PadAxis::RightTrigger); ++i) axes.push_back(PadAxisName(static_cast<PadAxis>(i)));
+        if (type == "input:save") {
+            post_({{"type", "input:saved"}, {"error", error ? nlohmann::json(*error) : nlohmann::json(nullptr)}});
+        }
+        post_({{"type", "input:data"}, {"map", ActiveInputMap().ToJson()}, {"keys", keys}, {"axes", axes}, {"errors", errors}});
+    } else if (type == "records:request") {
+        ActiveRecords().Refresh();
+        post_(RecordsJson());
+    } else if (type == "records:save") {
+        // The panel sends the whole record; a changed id is a rename (references follow).
+        const std::string recordType = message.value("recordType", "");
+        const std::string id = message.value("id", "");
+        const std::string original = message.value("originalId", "");
+        ActiveRecords().Refresh();
+        std::optional<std::string> error;
+        if (!original.empty() && original != id) {
+            error = ActiveRecords().Rename(recordType, original, id);
+        }
+        if (!error) {
+            error = ActiveRecords().Write(recordType, id, message.value("data", nlohmann::json::object()));
+        }
+        post_({{"type", "records:saved"},
+               {"recordType", recordType},
+               {"id", id},
+               {"error", error ? nlohmann::json(*error) : nlohmann::json(nullptr)}});
+        post_(RecordsJson());
+    } else if (type == "records:delete") {
+        ActiveRecords().Refresh();
+        if (auto error = ActiveRecords().Remove(message.value("recordType", ""), message.value("id", ""))) {
+            post_({{"type", "notify"}, {"text", *error}});
+        }
+        post_(RecordsJson());
     } else if (type == "world:delete") {
         world_.Refresh();
         if (auto error = world_.Remove(message.value("key", ""))) {
@@ -1062,8 +1201,48 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         Undo();
     } else if (type == "edit:redo") {
         Redo();
+    } else if (type == "web:search") {
+        // The Assets panel's Web Search: ranked results with previews, nothing downloaded yet.
+        if (!Ai() || Ai()->GetState() != AiClient::State::Ready) {
+            post_({{"type", "web:results"}, {"ok", false}, {"errors", {"the AI service isn't running (Preferences ▸ AI)"}}});
+            return;
+        }
+        const SourcingSettings settings = ReadSourcingSettings(assets_.GetProject().root);
+        webPreviewRequest_ = Ai()->Request("POST", "/assets/web-preview",
+                                           {{"query", message.value("query", "")}, {"maxResults", 18}, {"shareAlike", settings.licences.shareAlike}}, 180);
+        post_({{"type", "web:searching"}, {"query", message.value("query", "")}});
+    } else if (type == "web:add") {
+        // One result into the project (assets/web/<folder>), described, and into the user's library.
+        if (!Ai() || Ai()->GetState() != AiClient::State::Ready) return;
+        const nlohmann::json result = message.value("result", nlohmann::json::object());
+        std::string folder = message.value("folder", "");
+        if (folder.empty() || !Project::IsInside(folder) || folder.rfind("assets/", 0) != 0) folder = "assets/web/search";
+        const int id = Ai()->Request("POST", "/assets/web-fetch", {{"url", result.value("file", "")}, {"folder", folder}}, 120);
+        webFetchRequests_[id] = {{"result", result}, {"libraryFolder", message.value("libraryFolder", "")}};
+    } else if (type == "scene:replacePrefab") {
+        // Every copy of a prefab, replaced (Edit ▸ Replace prefab…): the same command the AI uses.
+        if (playing_) return;
+        const bool tile = message.value("tile", false);
+        const std::string command = tile ? "terrain.replace" : "prefab.replace";
+        std::vector<FieldValue> values = {message.value("from", std::string()), message.value("to", std::string())};
+        if (!tile) values.push_back(message.value("orient", std::string("keep")));
+        std::vector<TileLayerEdit> layerEdits;
+        CommandResult result;
+        ApplyOneShotEdit([&] {
+            CommandContext context{registry_, &prefabs_, &assets_.GetProject()};
+            context.layerEdits = &layerEdits;
+            result = EngineReflection().Run(context, command, values);
+            return result.ok;
+        });
+        if (!layerEdits.empty()) history_.PushCommand(std::make_unique<TileLayerCommand>(std::move(layerEdits), "Replace a ground tile"));
+        post_({{"type", "notify"}, {"text", result.ok ? "Replaced every copy of " + message.value("from", std::string())
+                                                      : "Couldn't replace it: " + result.error}});
+        sceneTreeStale_ = true;
+        editorStateStale_ = true;
+        dirty_ = true;
     } else if (type == "edit:delete") {
-        if (selectedCell_ && !selected_) EraseSelectedCell();
+        if (!selectedMany_.empty() || !selectedCells_.empty()) DeleteBoxSelection();
+        else if (selectedCell_ && !selected_) EraseSelectedCell();
         else DeleteSelected();
     } else if (type == "edit:duplicate") {
         DuplicateSelected();
@@ -1147,6 +1326,9 @@ void EditorApp::UpdateCursor() {
                 break;
             case Tool::Erase:
                 cursor = Cursor::Erase;
+                break;
+            case Tool::Height:
+                cursor = Cursor::Brush;
                 break;
             case Tool::Select:
                 // The Select tool's hand; over something that can be picked up
@@ -1814,15 +1996,18 @@ void EditorApp::HandleTravel() {
         return;
     }
     Select(std::nullopt);
+    CapturePlayWorld(); // the scene left behind is remembered as it is (12.5)
     const std::string warning = TravelToScene(registry_, text, travel->marker);
     PlayLayersFor(travel->scene);
     prefabs_.SyncAll(registry_);
+    ApplyPlayWorld(travel->scene);
     session_.OnSceneChanged();
     session_.SetScene(travel->scene);
     UpdateWorldToScreen(registry_, iso_);
     if (auto player = FindPlayer(registry_)) {
         int width = 0, height = 0;
         viewport_.GetFramebufferSize(width, height);
+        cameraRig_.MeasureLevel(registry_, iso_); // the level's edges for the play camera (12.7)
         SnapCameraTo(camera_, registry_, *player, static_cast<float>(width), static_cast<float>(height));
     }
     sceneTreeStale_ = true;
@@ -2017,8 +2202,10 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                     dragFromX_ = sceneX;
                     dragFromY_ = sceneY;
                     BeginEdit();
-                } else if (auto cell = PickLayerCell(sceneX, sceneY)) {
-                    SelectCell(*cell);
+                } else {
+                    boxing_ = true;
+                    boxFromX_ = boxToX_ = sceneX;
+                    boxFromY_ = boxToY_ = sceneY;
                 }
             } else {
                 stroking_ = true;
@@ -2070,8 +2257,18 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                 if (dragging_ || stroking_) {
                     EndEdit();
                 }
+                if (stroking_) FlushStrokeLayerEdits();
                 dragging_ = false;
                 stroking_ = false;
+                if (boxing_) {
+                    boxing_ = false;
+                    // A click, not a drag: the ground cell under it.
+                    if (std::hypot(boxToX_ - boxFromX_, boxToY_ - boxFromY_) * camera_.zoom < 6.0f) {
+                        if (auto cell = PickLayerCell(boxFromX_, boxFromY_)) SelectCell(*cell);
+                    } else {
+                        SelectBox();
+                    }
+                }
             }
             return;
         case Type::Move:
@@ -2097,6 +2294,10 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                 ToolStroke(sceneX, sceneY, false);
             }
             if (brushing_) CellAt(sceneX, sceneY, iso_, brushToX_, brushToY_);
+            if (boxing_) {
+                boxToX_ = sceneX;
+                boxToY_ = sceneY;
+            }
             return;
     }
 }
@@ -2256,9 +2457,13 @@ void EditorApp::ToolStroke(float sceneX, float sceneY, bool first) {
             }
             break;
         }
+        case Tool::Height:
+            ShapeGround(gx, gy);
+            break;
         case Tool::Erase: {
             auto picked = PickEntity(registry_, sceneX, sceneY, iso_);
             if (!picked) {
+                if (auto cell = PickLayerCell(sceneX, sceneY)) EraseLayerCell(*cell);
                 return;
             }
             if (selected_ == picked) {
@@ -2351,6 +2556,181 @@ void EditorApp::SelectCell(const CellPick& cell) {
            {"solid", def ? def->solid : false}});
 }
 
+void EditorApp::EraseLayerCell(const CellPick& cell) {
+    TileLayer* layer = LayersOf(registry_).Find(cell.layer);
+    if (layer == nullptr || layer->Get(cell.gx, cell.gy) == TileLayer::kEmpty) return;
+    auto it = std::find_if(strokeLayerEdits_.begin(), strokeLayerEdits_.end(), [&](const TileLayerEdit& e) { return e.layer == cell.layer; });
+    if (it == strokeLayerEdits_.end()) {
+        strokeLayerEdits_.emplace_back(cell.layer);
+        it = std::prev(strokeLayerEdits_.end());
+    }
+    it->Set(*layer, cell.gx, cell.gy, TileLayer::kEmpty);
+    if (selectedCell_ && selectedCell_->layer == cell.layer && selectedCell_->gx == cell.gx && selectedCell_->gy == cell.gy) {
+        selectedCell_.reset();
+        post_({{"type", "inspector:clear"}});
+    }
+    dirty_ = true;
+}
+
+void EditorApp::ShapeGround(int gx, int gy) {
+    strokeLabel_ = heightMode_ == "raise" ? "Raise ground" : heightMode_ == "lower" ? "Lower ground" : "Level ground";
+    TileLayers& layers = LayersOf(registry_);
+    std::vector<std::string> names;
+    for (const TileLayer* l : layers.Ordered()) names.push_back(l->name);
+    const float cx = gx + 0.5f, cy = gy + 0.5f, reach = heightRadius_ + 0.75f;
+    const float step = iso_.tileHeight * 0.25f; // a quarter of a cell's height each time the brush passes
+    auto liftOf = [](const TileLayer& l, int x, int y) {
+        const TileLayer::CornerLift* p = l.Lift(x, y);
+        return p ? *p : TileLayer::CornerLift{};
+    };
+    // Levelling: towards the height under the brush's middle (the topmost tile there).
+    float target = 0.0f;
+    for (auto n = names.rbegin(); n != names.rend(); ++n) {
+        const TileLayer* l = layers.Find(*n);
+        if (l && l->Get(gx, gy) != TileLayer::kEmpty) {
+            const auto c = liftOf(*l, gx, gy);
+            target = (c[0] + c[1] + c[2] + c[3]) / 4;
+            break;
+        }
+    }
+    auto edited = [&](TileLayer& layer) -> TileLayerEdit& {
+        auto it = std::find_if(strokeLayerEdits_.begin(), strokeLayerEdits_.end(), [&](const TileLayerEdit& e) { return e.layer == layer.name; });
+        if (it == strokeLayerEdits_.end()) {
+            strokeLayerEdits_.emplace_back(layer.name);
+            it = std::prev(strokeLayerEdits_.end());
+        }
+        return *it;
+    };
+    const int r = heightRadius_ + 1;
+    for (const auto& name : names) {
+        TileLayer* layer = layers.Find(name);
+        if (layer == nullptr) continue;
+        for (int y = gy - r; y <= gy + r; ++y) {
+            for (int x = gx - r; x <= gx + r; ++x) {
+                const TileDef* def = layer->Def(layer->Get(x, y));
+                if (def == nullptr || !def->sprite.flat) continue;
+                // Each corner (top, right, bottom, left) by its own distance: a shared corner moves
+                // the same in every cell round it, so the ground stays whole.
+                TileLayer::CornerLift lift = liftOf(*layer, x, y);
+                const float px[4] = {0, 1, 1, 0}, py[4] = {0, 0, 1, 1};
+                bool changed = false;
+                for (int i = 0; i < 4; ++i) {
+                    const float d = std::hypot(x + px[i] - cx, y + py[i] - cy);
+                    if (d >= reach) continue;
+                    const float t = 1.0f - d / reach, f = t * t * (3 - 2 * t);
+                    const float before = lift[i];
+                    if (heightMode_ == "raise") lift[i] += step * f;
+                    else if (heightMode_ == "lower") lift[i] -= step * f;
+                    else lift[i] += (target - lift[i]) * f * 0.6f;
+                    lift[i] = std::clamp(lift[i], -iso_.tileHeight, iso_.tileHeight * 4);
+                    changed = changed || std::abs(lift[i] - before) > 0.01f;
+                }
+                if (changed) edited(*layer).SetLift(*layer, x, y, lift);
+            }
+        }
+    }
+    // What stands there rides with the ground: its lift, the height under its foot.
+    auto heightAt = [&](float wx, float wy) -> std::optional<float> {
+        const int x = static_cast<int>(std::floor(wx)), y = static_cast<int>(std::floor(wy));
+        for (auto n = names.rbegin(); n != names.rend(); ++n) {
+            const TileLayer* l = layers.Find(*n);
+            if (l == nullptr || l->Get(x, y) == TileLayer::kEmpty) continue;
+            const float fx = wx - x, fy = wy - y;
+            const auto c = liftOf(*l, x, y); // top (x,y), right (x+1,y), bottom (x+1,y+1), left (x,y+1)
+            return (c[0] * (1 - fx) + c[1] * fx) * (1 - fy) + (c[3] * (1 - fx) + c[2] * fx) * fy;
+        }
+        return std::nullopt;
+    };
+    std::vector<Entity> riders;
+    for (auto [e, at, sprite] : registry_.view<WorldTransform2D, Sprite>().each()) {
+        if (registry_.all_of<Tile>(e) || std::abs(at.x - cx) > r + 1 || std::abs(at.y - cy) > r + 1) continue;
+        riders.push_back(e);
+    }
+    for (Entity e : riders) {
+        const auto& at = registry_.get<WorldTransform2D>(e);
+        if (auto h = heightAt(at.x, at.y); h && std::abs(registry_.get<Sprite>(e).lift - *h) > 0.1f) {
+            EditField(EngineReflection(), registry_, e, "Sprite", "lift", *h);
+        }
+    }
+    dirty_ = true;
+}
+
+void EditorApp::FlushStrokeLayerEdits() {
+    if (strokeLayerEdits_.empty()) return;
+    history_.PushCommand(std::make_unique<TileLayerCommand>(std::move(strokeLayerEdits_), strokeLabel_));
+    strokeLayerEdits_.clear();
+    strokeLabel_ = "Erase ground";
+    dirty_ = true;
+    editorStateStale_ = true;
+}
+
+void EditorApp::ClearBoxSelection() {
+    selectedMany_.clear();
+    selectedCells_.clear();
+}
+
+void EditorApp::SelectBox() {
+    // What the dragged rectangle covers on screen: the things standing in it, and (where no
+    // thing is) the ground cells of the tile layers whose middle is in it.
+    ClearBoxSelection();
+    const float x0 = std::min(boxFromX_, boxToX_), x1 = std::max(boxFromX_, boxToX_);
+    const float y0 = std::min(boxFromY_, boxToY_), y1 = std::max(boxFromY_, boxToY_);
+    for (auto [entity, t] : registry_.view<ScreenTransform2D>(entt::exclude<Tile>).each()) {
+        if (!registry_.all_of<Sprite>(entity)) continue;
+        if (t.x >= x0 && t.x <= x1 && t.y >= y0 && t.y <= y1) selectedMany_.push_back(entity);
+    }
+    for (auto [entity, t, tile] : registry_.view<ScreenTransform2D, Tile>().each()) {
+        if (t.x >= x0 && t.x <= x1 && t.y >= y0 && t.y <= y1) selectedMany_.push_back(entity);
+    }
+    if (const TileLayers* layers = FindLayers(registry_)) {
+        // The world cells the rectangle can reach (its corners unprojected), each tested on screen.
+        float wx[4], wy[4];
+        UnprojectIso(x0, y0, iso_, wx[0], wy[0]);
+        UnprojectIso(x1, y0, iso_, wx[1], wy[1]);
+        UnprojectIso(x0, y1, iso_, wx[2], wy[2]);
+        UnprojectIso(x1, y1, iso_, wx[3], wy[3]);
+        const int gx0 = static_cast<int>(std::floor(*std::min_element(wx, wx + 4))) - 1, gx1 = static_cast<int>(std::ceil(*std::max_element(wx, wx + 4))) + 1;
+        const int gy0 = static_cast<int>(std::floor(*std::min_element(wy, wy + 4))) - 1, gy1 = static_cast<int>(std::ceil(*std::max_element(wy, wy + 4))) + 1;
+        if (static_cast<long>(gx1 - gx0) * (gy1 - gy0) <= 400000) {
+            const auto ordered = layers->Ordered();
+            for (int gy = gy0; gy <= gy1; ++gy) {
+                for (int gx = gx0; gx <= gx1; ++gx) {
+                    const ScreenPose p = ProjectIso(gx + 0.5f, gy + 0.5f, iso_);
+                    if (p.x < x0 || p.x > x1 || p.y < y0 || p.y > y1) continue;
+                    for (auto it = ordered.rbegin(); it != ordered.rend(); ++it) {
+                        if ((*it)->Get(gx, gy) != TileLayer::kEmpty) {
+                            selectedCells_.push_back({(*it)->name, gx, gy});
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    post_({{"type", "inspector:many"}, {"entities", selectedMany_.size()}, {"cells", selectedCells_.size()}});
+}
+
+void EditorApp::DeleteBoxSelection() {
+    if (playing_) return;
+    if (!selectedMany_.empty()) {
+        ApplyOneShotEdit([&] {
+            bool any = false;
+            for (Entity e : selectedMany_) {
+                if (registry_.valid(e)) {
+                    DeleteEntity(registry_, e);
+                    any = true;
+                }
+            }
+            return any;
+        });
+        sceneTreeStale_ = true;
+    }
+    for (const auto& cell : selectedCells_) EraseLayerCell(cell);
+    FlushStrokeLayerEdits();
+    ClearBoxSelection();
+    post_({{"type", "inspector:clear"}});
+}
+
 void EditorApp::EraseSelectedCell() {
     if (!selectedCell_ || playing_) return;
     TileLayer* layer = LayersOf(registry_).Find(selectedCell_->layer);
@@ -2369,6 +2749,7 @@ void EditorApp::Select(std::optional<Entity> entity) {
         entity.reset();
     }
     selectedCell_.reset(); // a cell or an entity, not both
+    ClearBoxSelection();
     selected_ = entity;
     post_({{"type", "selection:changed"},
            {"id", entity ? nlohmann::json(static_cast<uint32_t>(*entity)) : nlohmann::json(nullptr)}});
@@ -2406,6 +2787,7 @@ void EditorApp::UpdateBuiltParts() {
     std::tie(options.originX, options.originY) = build_->Origin();
     options.iso = iso_;
     options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
+    options.hills = HillsFor(build_->Brief());
     options.only = changed;
     options.locked = build_->Locks();
     const TerrainSet terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
@@ -2414,6 +2796,12 @@ void EditorApp::UpdateBuiltParts() {
     nlohmann::json report;
     auto command = BuildPlaceScene(registry_, prefabs_, build_->Solved(), assets, terrains, options, &report);
     history_.PushCommand(std::move(command));
+    for (const auto& picture : report.value("groundPictures", nlohmann::json::array())) {
+        if (picture.is_string()) renderer_.InvalidateTexture(picture.get<std::string>());
+    }
+    for (const auto& picture : report.value("groundPictures", nlohmann::json::array())) {
+        if (picture.is_string()) renderer_.InvalidateTexture(picture.get<std::string>());
+    }
     prefabs_.SyncAll(registry_);
     UpdateWorldToScreen(registry_, iso_);
     dirty_ = true;
@@ -2549,7 +2937,31 @@ void EditorApp::Save() {
 }
 
 std::filesystem::path EditorApp::SaveGamePath() const {
-    return assets_.GetProject().CacheDir() / "saves" / "quicksave.json";
+    return assets_.GetProject().CacheDir() / "saves";
+}
+
+// The text a scene starts from in Play: the one being edited as it is now, others as saved.
+std::string EditorApp::SceneTextForPlay(const std::string& scene) const {
+    if (scene == OpenSceneRelative()) return playSnapshot_;
+    std::ifstream in(assets_.GetProject().Resolve(scene), std::ios::binary);
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    return buffer.str();
+}
+
+void EditorApp::CapturePlayWorld() {
+    const std::string scene = session_.Scene();
+    const std::string text = SceneTextForPlay(scene);
+    if (scene.empty() || text.empty()) return;
+    Registry pristine;
+    DeserializeScene(pristine, text);
+    playWorlds_[scene] = CaptureSceneState(registry_, pristine, EngineReflection());
+}
+
+void EditorApp::ApplyPlayWorld(const std::string& scene) {
+    if (auto it = playWorlds_.find(scene); it != playWorlds_.end()) {
+        ApplySceneState(registry_, it->second, EngineReflection());
+    }
 }
 
 void EditorApp::SaveGame() {
@@ -2557,40 +2969,37 @@ void EditorApp::SaveGame() {
         post_({{"type", "notify"}, {"text", "Saving the game works while playing (F5, then F6)"}});
         return;
     }
-    std::error_code ec;
-    std::filesystem::create_directories(SaveGamePath().parent_path(), ec);
-    std::ofstream out(SaveGamePath(), std::ios::trunc | std::ios::binary);
-    if (!out) {
+    // A v2 save (12.5): the session, the player whole, and what changed in every scene visited.
+    CapturePlayWorld();
+    nlohmann::json save;
+    save["session"] = session_.MakeSave();
+    if (auto player = FindPlayer(registry_)) save["player"] = SerializeEntities(registry_, {*player});
+    nlohmann::json worlds = nlohmann::json::object();
+    for (const auto& [scene, state] : playWorlds_) worlds[scene] = state;
+    save["worlds"] = worlds;
+    save["meta"] = {{"place", std::filesystem::path(session_.Scene()).stem().string()}};
+    if (!SaveGames(SaveGamePath()).Write("quick", save)) {
         post_({{"type", "notify"}, {"text", "Couldn't write the saved game"}});
         return;
     }
-    out << session_.MakeSave().dump(2) << "\n";
     session_.Toast("Game saved");
     editorStateStale_ = true;
 }
 
 void EditorApp::LoadGame() {
-    std::ifstream in(SaveGamePath(), std::ios::binary);
-    nlohmann::json save = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
-    if (!in || save.is_discarded() || !save.is_object()) {
+    auto read = SaveGames(SaveGamePath()).Read("quick");
+    if (!read) {
         post_({{"type", "notify"}, {"text", "No saved game yet: press F6 while playing to save one"}});
         return;
     }
     if (!playing_) {
         StartPlay(); // Play ▸ Continue from save
     }
-    // The saved scene as it is on disk (the one being edited: as it is now),
-    // then the player, the clock and the story as they were saved.
+    // The saved scene as it starts in Play, what changed in it, then the player,
+    // the clock and the story as they were saved.
+    const nlohmann::json save = read->value("session", nlohmann::json::object());
     const std::string scene = save.value("scene", OpenSceneRelative());
-    std::string text;
-    if (scene == OpenSceneRelative()) {
-        text = playSnapshot_;
-    } else {
-        std::ifstream sceneIn(assets_.GetProject().Resolve(scene), std::ios::binary);
-        std::ostringstream buffer;
-        buffer << sceneIn.rdbuf();
-        text = buffer.str();
-    }
+    const std::string text = SceneTextForPlay(scene);
     if (text.empty()) {
         post_({{"type", "notify"}, {"text", "The saved game is in " + scene + ", which doesn't exist any more"}});
         return;
@@ -2599,6 +3008,11 @@ void EditorApp::LoadGame() {
     DeserializeScene(registry_, text);
     PlayLayersFor(scene);
     prefabs_.SyncAll(registry_);
+    playWorlds_.clear();
+    const nlohmann::json worlds = read->value("worlds", nlohmann::json::object());
+    for (const auto& [name, state] : worlds.items()) playWorlds_[name] = state;
+    ApplyPlayWorld(scene);
+    if (read->contains("player") && (*read)["player"].is_string()) ReplacePlayer(registry_, (*read)["player"].get<std::string>());
     session_.OnSceneChanged();
     session_.ApplySave(save);
     session_.SetScene(scene);
@@ -2606,6 +3020,7 @@ void EditorApp::LoadGame() {
     if (auto player = FindPlayer(registry_)) {
         int width = 0, height = 0;
         viewport_.GetFramebufferSize(width, height);
+        cameraRig_.MeasureLevel(registry_, iso_); // the level's edges for the play camera (12.7)
         SnapCameraTo(camera_, registry_, *player, static_cast<float>(width), static_cast<float>(height));
     }
     sceneTreeStale_ = true;
@@ -2628,6 +3043,9 @@ void EditorApp::StartPlay() {
     dragging_ = false;
     stroking_ = false;
     playSnapshot_ = SerializeScene(registry_);
+    TagSceneOrigins(registry_); // which entity of the scene each is, for the world's memory (12.5)
+    playWorlds_.clear();
+    playManifest_ = LoadGameManifest(assets_.GetProject().root); // its music (12.6)
     selectionIndexAtPlay_ = selected_ ? IndexOfEntity(registry_, *selected_) : std::nullopt;
     session_.ResetClock();
     session_.OnSceneChanged(); // no gateway fires under a player who starts on one
@@ -2654,6 +3072,7 @@ void EditorApp::StartPlay() {
         int height = 0;
         viewport_.GetFramebufferSize(width, height);
         UpdateWorldToScreen(registry_, iso_);
+        cameraRig_.MeasureLevel(registry_, iso_); // the level's edges for the play camera (12.7)
         SnapCameraTo(camera_, registry_, *player, static_cast<float>(width), static_cast<float>(height));
     }
     viewport_.Focus(); // so WASD works without first clicking the viewport
@@ -2670,6 +3089,8 @@ void EditorApp::StopPlay() {
     playSnapshot_.clear();
     playing_ = false;
     banner_ = {};
+    audio_.PlayMusic({}, 0.5f); // Play's music fades out
+    audio_.PlayAmbience({}, 0.5f);
     RestoreSelection(selectionIndexAtPlay_);
     camera_ = cameraBeforePlay_;
     sceneTreeStale_ = true;
@@ -2752,6 +3173,8 @@ void EditorApp::Tick(double frameSeconds) {
         const auto updateStart = std::chrono::steady_clock::now();
         session_.Advance(frameSeconds, [this](Key key) { return viewport_.IsKeyDown(key); });
         HandleTravel();
+        ApplyAudio(audio_, assets_.GetProject(), DirectAudio(registry_, session_, playManifest_, false), registry_,
+                   static_cast<float>(frameSeconds));
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - updateStart).count();
         updateMs_ = updateMs_ * 0.9 + ms * 0.1;
         auto player = FindPlayer(registry_);
@@ -2764,12 +3187,12 @@ void EditorApp::Tick(double frameSeconds) {
                 banner_ = {"Victory!", "All enemies defeated"};
             }
         }
-        if (player && !panning_) {
+        if (const auto target = session_.CameraTarget(); target && !panning_) {
             int width = 0;
             int height = 0;
             viewport_.GetFramebufferSize(width, height);
-            FollowWithCamera(camera_, registry_, *player, static_cast<float>(width), static_cast<float>(height),
-                             static_cast<float>(frameSeconds), ActiveSettings().camera.followStiffness);
+            UpdatePlayCamera(camera_, cameraRig_, registry_, *target, static_cast<float>(width), static_cast<float>(height),
+                             static_cast<float>(frameSeconds), ActiveSettings().camera); // a cutscene's, or the player
         }
         sinceInspectorRefresh_ += frameSeconds;
         if (sinceInspectorRefresh_ >= kPlayInspectorRefreshSeconds) {
@@ -2780,6 +3203,7 @@ void EditorApp::Tick(double frameSeconds) {
         // Edit mode runs no simulation, only the projection, so edits to
         // WorldTransform2D or Tile show up immediately.
         UpdateWorldToScreen(registry_, iso_);
+        audio_.Update(static_cast<float>(frameSeconds)); // fades, finished sounds
     }
     UpdatePreview();
     UpdateCursor();
@@ -2885,6 +3309,16 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
     }
 
     if (selectedCell_) AddCellOutline(overlay, selectedCell_->gx, selectedCell_->gy, iso_, kAccent, 0.95f, 2.0f);
+    if (boxing_) AddRectOutline(overlay, boxFromX_, boxFromY_, boxToX_, boxToY_, kAccent, 0.9f, 1.5f);
+    {
+        size_t drawn = 0; // at most a few thousand outlines a frame
+        for (Entity e : selectedMany_) {
+            if (registry_.valid(e) && ++drawn < 3000) AddEntityOutline(overlay, registry_, e, iso_, kAccent, 0.8f, 1.5f);
+        }
+        for (const auto& c : selectedCells_) {
+            if (++drawn < 3000) AddCellOutline(overlay, c.gx, c.gy, iso_, kAccent, 0.6f, 1.0f);
+        }
+    }
     if (hasHover_ && !panning_ && !dragging_) {
         int gx = 0;
         int gy = 0;
@@ -2908,6 +3342,16 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
             case Tool::Erase:
                 if (auto hovered = PickEntity(registry_, hoverX_, hoverY_, iso_)) {
                     AddEntityOutline(overlay, registry_, *hovered, iso_, kErase, 0.9f, 2.0f);
+                }
+                break;
+            case Tool::Height:
+                // The brush's reach: the cells it moves, fainter towards its edge.
+                for (int y = gy - heightRadius_; y <= gy + heightRadius_; ++y) {
+                    for (int x = gx - heightRadius_; x <= gx + heightRadius_; ++x) {
+                        const float d = std::hypot(static_cast<float>(x - gx), static_cast<float>(y - gy));
+                        if (d > heightRadius_ + 0.5f) continue;
+                        AddCellOutline(overlay, x, y, iso_, kWhite, 0.85f - 0.5f * d / (heightRadius_ + 1.0f), 1.0f);
+                    }
                 }
                 break;
         }
@@ -3073,6 +3517,38 @@ void EditorApp::PollAi() {
                        {"text", "Analyzed " + std::to_string(described) + " asset(s)" +
                                     (errors.empty() ? "" : "; " + std::to_string(errors.size()) + " problem(s): " +
                                                                errors.front().get<std::string>())}});
+            } else if (result->requestId == webPreviewRequest_) {
+                webPreviewRequest_ = 0;
+                nlohmann::json shown = result->body;
+                shown["type"] = "web:results";
+                post_(shown);
+            } else if (auto web = webFetchRequests_.find(result->requestId); web != webFetchRequests_.end()) {
+                const nlohmann::json asked = web->second;
+                webFetchRequests_.erase(web);
+                const std::string path = result->body.value("path", "");
+                if (!result->body.value("ok", false) || path.empty()) {
+                    const auto errors = result->body.value("errors", nlohmann::json::array());
+                    post_({{"type", "notify"}, {"text", "Couldn't add it: " + (errors.empty() ? std::string("no answer") : errors.front().get<std::string>())}});
+                } else {
+                    // What it is and whose: the catalog's fields (credits come from them), then the library.
+                    const nlohmann::json r = asked.value("result", nlohmann::json::object());
+                    RefreshAssets();
+                    std::map<std::string, std::string> fields = {{"source", "web"},
+                                                                 {"licence", r.value("licence", "")},
+                                                                 {"author", r.value("author", "")},
+                                                                 {"url", r.value("page", "")},
+                                                                 {"name", r.value("title", "")}};
+                    SetCatalogFields(assets_, path, fields);
+                    RefreshAssets();
+                    UserLibrary(UserLibraryDir()).Add(assets_.GetProject().Resolve(path),
+                                                      {{"source", "web"}, {"licence", r.value("licence", "")}, {"author", r.value("author", "")},
+                                                       {"url", r.value("page", "")}, {"name", r.value("title", "")},
+                                                       {"origin", assets_.GetProject().root.filename().string()}},
+                                                      asked.value("libraryFolder", ""));
+                    PostLibrary();
+                    post_({{"type", "web:added"}, {"path", path}, {"file", r.value("file", "")}});
+                    post_({{"type", "notify"}, {"text", "Added " + path + " (" + r.value("licence", "") + ", " + r.value("author", "") + ")"}});
+                }
             } else if (result->requestId == artRequest_) {
                 artRequest_ = 0;
                 artHistory_.Finish(artHistoryId_, result->body);
@@ -3101,7 +3577,8 @@ void EditorApp::PollAi() {
 
 bool EditorApp::KnownRequest(int requestId) const {
     return requestId == worldSearchRequest_ || requestId == analyzeRequest_ || requestId == artRequest_ ||
-           requestId == worldCheckRequest_ || consistencyRequests_.contains(requestId);
+           requestId == worldCheckRequest_ || consistencyRequests_.contains(requestId) ||
+           (requestId != 0 && requestId == webPreviewRequest_) || webFetchRequests_.contains(requestId);
 }
 
 void EditorApp::OnBuildResult(int requestId, const nlohmann::json& body) {
@@ -3137,15 +3614,24 @@ void EditorApp::AfterSourcing() {
             // What each part now gets, with the new art in the catalog.
             const TerrainSet terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
             const Catalog catalog = BuildCatalog(assets_, &Places(), CatalogOptionsNow());
-            AssetSourcing sourcing = SourcingNow();
-            sourcing.canGenerate = false;
+            AssetSourcing sourcing = SourcingNow(); // what was tried is known: only other methods are left
             PlaceSceneOptions options;
             options.place = build_->Id();
             std::tie(options.originX, options.originY) = build_->Origin();
             options.iso = iso_;
             options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
+            options.hills = HillsFor(build_->Brief());
             const nlohmann::json assets = PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), catalog, prefabs_, assets_, terrains, options, &sourcing);
             build_->MarkSourced(AssetRows(assets));
+            // Some still missing, and a method not tried for them yet (the web failed: the Art tool;
+            // the Art tool failed: the web): another round, on its own.
+            const nlohmann::json more = assets.value("pending", nlohmann::json::array());
+            if (!more.empty() && autoRounds_ < 2) {
+                ++autoRounds_;
+                if (build_->StartSourcing(more, sourcing.settings)) {
+                    post_({{"type", "notify"}, {"text", "Trying another way for " + std::to_string(more.size()) + " piece(s) still missing"}});
+                }
+            }
         }
         PostBuild();
     }
@@ -3272,6 +3758,12 @@ AssetSourcing EditorApp::SourcingNow() {
     sourcing.canGenerate = Ai() && Ai()->GetState() == AiClient::State::Ready;
     sourcing.tried = build_->TriedSources();
     sourcing.library = LoadAssetLibrary(root);
+    // The user's own library too, before anything is made or searched for.
+    {
+        const UserLibrary library(UserLibraryDir());
+        for (auto& e : library.AsCatalog().entries) sourcing.library.entries.push_back(std::move(e));
+        sourcing.importLibrary = [dir = UserLibraryDir(), root](const std::string& item) { return UserLibrary(dir).CopyToProject(item, root); };
+    }
     std::ifstream in(build_->Folder() / "assets.json");
     const nlohmann::json saved = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
     if (saved.is_object()) sourcing.overrides = saved.value("overrides", nlohmann::json::object());
@@ -3285,11 +3777,26 @@ void EditorApp::PreviewAssets() {
     std::tie(options.originX, options.originY) = build_->Origin();
     options.iso = iso_;
     options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
+    options.hills = HillsFor(build_->Brief());
     const TerrainSet terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
     const Catalog catalog = BuildCatalog(assets_, &Places(), CatalogOptionsNow());
     const AssetSourcing sourcing = SourcingNow();
     const nlohmann::json assets = PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), catalog, prefabs_, assets_, terrains, options, &sourcing);
     build_->SetAssetNeeds(AssetRows(assets));
+}
+
+void EditorApp::SetNeedChoice(const std::string& key, const nlohmann::json& choice) {
+    const std::filesystem::path file = build_->Folder() / "assets.json";
+    nlohmann::json saved;
+    {
+        std::ifstream in(file);
+        saved = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+    }
+    if (!saved.is_object()) saved = nlohmann::json::object();
+    if (!saved.contains("overrides") || !saved["overrides"].is_object()) saved["overrides"] = nlohmann::json::object();
+    if (choice.is_null() || (choice.is_object() && choice.empty())) saved["overrides"].erase(key);
+    else saved["overrides"][key] = choice;
+    std::ofstream(file) << saved.dump(2) << "\n";
 }
 
 void EditorApp::FindAssets() {
@@ -3310,6 +3817,7 @@ void EditorApp::FindAssets() {
     std::tie(options.originX, options.originY) = build_->Origin();
     options.iso = iso_;
     options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
+    options.hills = HillsFor(build_->Brief());
     const TerrainSet terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
     const Catalog catalog = BuildCatalog(assets_, &Places(), CatalogOptionsNow());
     const AssetSourcing sourcing = SourcingNow();
@@ -3338,6 +3846,7 @@ void EditorApp::BuildIntoScene() {
     std::tie(buildRun_->options.originX, buildRun_->options.originY) = build_->Origin();
     buildRun_->options.iso = iso_;
     buildRun_->options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
+    buildRun_->options.hills = HillsFor(build_->Brief());
     build_->SetBuildProgress(0, 5, "Choosing the art for each part…");
     PostBuild(); // ④ Build shows while it works
 }
@@ -3383,6 +3892,10 @@ void EditorApp::StepBuildRun() {
         }
         default: {
             history_.PushCommand(std::move(run.command));
+            // The ground's pictures were painted again under the same names: drawn anew.
+            for (const auto& picture : run.report.value("groundPictures", nlohmann::json::array())) {
+                if (picture.is_string()) renderer_.InvalidateTexture(picture.get<std::string>());
+            }
             prefabs_.SyncAll(registry_);
             UpdateWorldToScreen(registry_, iso_);
             dirty_ = true;
@@ -3403,6 +3916,32 @@ void EditorApp::StepBuildRun() {
                 if (!used.empty()) WriteCredits(root, used, run.sourcing.settings.licences);
             }
             // What it looks like in the scene, drawn as the renderer draws it: for the Result step.
+            // A few of its pieces kept as the project's style references (place-refine.md §15): its
+            // buildings, its ground, a few things; later art is briefed and ranked to match them.
+            if (Ai() && Ai()->GetState() == AiClient::State::Ready) {
+                nlohmann::json pieces = nlohmann::json::array();
+                auto keep = [&](const nlohmann::json& n, int most) {
+                    int taken = 0;
+                    for (const auto& p : pieces) taken += p.value("layer", "") == n.value("layer", "");
+                    const std::string entry = n.value("entry", "");
+                    if (taken >= most || entry.empty() || entry.find('#') != std::string::npos || n.value("source", "") == "placeholder") return;
+                    pieces.push_back({{"path", entry}, {"role", n.value("role", "")}, {"name", n.value("title", "")}, {"layer", n.value("layer", "")}});
+                };
+                for (const auto& n : run.assets.value("needs", nlohmann::json::array())) {
+                    if (n.value("layer", "") == "building") keep(n, 3);
+                }
+                for (const auto& n : run.assets.value("needs", nlohmann::json::array())) {
+                    if (n.value("layer", "") == "prop") keep(n, 3);
+                }
+                const nlohmann::json terrains = run.assets.value("terrains", nlohmann::json::object());
+                for (const auto& [t, g] : terrains.items()) {
+                    if (g.value("source", "") == "generated" && !g.value("entry", "").empty()) {
+                        pieces.push_back({{"path", g.value("entry", "")}, {"role", t + " ground"}, {"layer", "ground"}});
+                        break;
+                    }
+                }
+                if (!pieces.empty()) Ai()->Request("POST", "/assets/references", {{"pieces", pieces}}, 60);
+            }
             const int built = build_->SiteSide();
             const ImageData picture = RenderScenePreview(registry_, assets_.GetProject(), iso_, run.options.originX, run.options.originY,
                                                          run.options.originX + built, run.options.originY + built, 1600);
@@ -3442,8 +3981,10 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool
         post_({{"type", "ai:message"}, {"role", "error"}, {"text", "Stop Play mode before asking for changes."}});
         return;
     }
-    // A change to the place the Build panel has open goes there, as a revision (7.8).
-    if (!asChange && build_ && !buildJob_ && (build_->Stage() == "plan" || build_->Stage() == "planned" || build_->Stage() == "built") &&
+    // A change to the place the Build panel has open goes there, as a revision (7.8), while it's
+    // being planned. Once it's built it's the scene's: the AI panel edits it (adds things, changes
+    // them) like any other part of the scene.
+    if (!asChange && build_ && !buildJob_ && (build_->Stage() == "plan" || build_->Stage() == "planned") &&
         build_->AboutThisPlace(text)) {
         conversation_.emplace_back("user", text);
         post_({{"type", "ai:message"}, {"role", "user"}, {"text", text}});
@@ -3457,7 +3998,8 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool
         return;
     }
     // Building a place goes to the Build panel, not a proposal card.
-    if (!asChange && LooksLikeBuildRequest(Places(), text)) {
+    const bool aboutBuilt = build_ && build_->Stage() == "built" && build_->AboutThisPlace(text); // "add a well to the village"
+    if (!asChange && !aboutBuilt && LooksLikeBuildRequest(Places(), text)) {
         conversation_.emplace_back("user", text);
         post_({{"type", "ai:message"}, {"role", "user"}, {"text", text}});
         StartBuild(text);
@@ -4076,6 +4618,39 @@ nlohmann::json EditorApp::StoryJson() {
             {"world", characters},
             {"prefabs", prefabPaths},
             {"usedBy", usedBy}};
+}
+
+// The Records tab (12.1): every record type with its fields (for the forms),
+// every record (as written, and resolved with its base), what refers to each,
+// and the problems to fix.
+nlohmann::json EditorApp::RecordsJson() {
+    RecordDatabase& records = ActiveRecords();
+    nlohmann::json types = nlohmann::json::array();
+    for (const auto& type : EngineReflection().RecordTypes()) {
+        nlohmann::json fields = nlohmann::json::array();
+        for (const auto& field : type.fields) fields.push_back(RecordFieldToJson(field));
+        types.push_back({{"name", type.name},
+                         {"description", type.description},
+                         {"source", type.source},
+                         {"fields", fields},
+                         {"defaults", DefaultRecord(type)}});
+    }
+    nlohmann::json list = nlohmann::json::array();
+    for (const auto& type : EngineReflection().RecordTypes()) {
+        for (const Record* record : records.OfType(type.name)) {
+            list.push_back({{"type", record->type},
+                            {"id", record->id},
+                            {"path", record->path},
+                            {"data", record->data},
+                            {"resolved", record->resolved},
+                            {"usedBy", records.ReferencesTo(record->type, record->id)}});
+        }
+    }
+    nlohmann::json problems = nlohmann::json::array();
+    for (const auto& problem : records.Problems()) {
+        problems.push_back({{"key", problem.key}, {"message", problem.message}});
+    }
+    return {{"type", "records:list"}, {"types", types}, {"records", list}, {"problems", problems}};
 }
 
 // The World Bible for the World panel: every entry, plus problems to fix.
@@ -4739,6 +5314,8 @@ nlohmann::json EditorApp::SceneJson() {
 nlohmann::json EditorApp::EditorStateJson() {
     return {{"type", "editor:state"},
             {"tool", kToolIds[static_cast<int>(tool_)]},
+            {"heightMode", heightMode_},
+            {"heightRadius", heightRadius_},
             {"brush", brushPrefab_},
             {"playing", playing_},
             {"dirty", dirty_ || settingsDirty_},
@@ -4749,7 +5326,7 @@ nlohmann::json EditorApp::EditorStateJson() {
             {"brushScale", brushScale_},
             {"brushRotation", brushRotation_},
             {"autotile", autotile_},
-            {"hasSave", std::filesystem::exists(SaveGamePath())}};
+            {"hasSave", std::filesystem::exists(SaveGamePath() / "quick.json") || std::filesystem::exists(SaveGamePath() / "quicksave.json")}};
 }
 
 nlohmann::json EditorApp::InspectorJson(Entity entity) {

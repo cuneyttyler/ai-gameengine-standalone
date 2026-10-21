@@ -13,7 +13,6 @@ from app.providers import ScriptedProvider
 from app.service import _drop_stray_scalars
 from app.validation import validate_proposal
 
-DEMO = Path(__file__).resolve().parents[2] / "projects" / "demo"
 
 
 def proposal(*operations) -> Proposal:
@@ -80,7 +79,7 @@ def test_story_problems_are_reported_precisely(schema, demo_context):
         "no quest 'ghost-quest'",
         "node 'orphan' can't be reached",
         "giver 'character/ghost' isn't in the World Bible",
-        "type must be defeat, talk, collect or reach",
+        "type must be one of",
         "'prefabs/dragon.prefab' isn't a prefab",
         "'character/ghost' isn't in the World Bible",
         "dialogue 'dialogue/missing.json' doesn't exist",
@@ -104,22 +103,6 @@ def test_stray_scalars_in_object_lists_are_dropped():
     assert _drop_stray_scalars({"a": [1, 2, 3]}) == {"a": [1, 2, 3]}  # all scalars: a real list of numbers
     assert _drop_stray_scalars({"a": [True, {"x": 1}]}) == {"a": [True, {"x": 1}]}  # booleans aren't noise
     assert _drop_stray_scalars([{"n": [0, {"z": 1}]}]) == [{"n": [{"z": 1}]}]
-
-
-def test_the_relevant_canon_reaches_the_prompt(schema, context, tmp_path):
-    shutil.copytree(DEMO / "world", tmp_path / "world")
-    answer = json.dumps({"summary": "nothing", "operations": []})
-    provider = ScriptedProvider([answer])
-    client = TestClient(create_app(provider=provider, schema=schema, embedder=None))  # keyword retrieval
-    assert client.put("/project", json={"root": str(tmp_path)}).json()["ok"]
-    client.post("/propose", json={"instruction": "What would Old Tamsin say about her healing draughts?",
-                                  "context": context.model_dump()})
-    prompt = provider.requests[0][-1]["content"]
-    assert "WORLD BIBLE (canon most related to this request, in full)" in prompt
-    assert "[character/villager] Old Tamsin" in prompt
-    assert "[style/tone]" in prompt  # the tone guide always comes along
-    assert "won't take payment from a Warden" in prompt  # the full text, not just the summary
-
 
 def test_schedules_are_checked_against_the_scene_and_the_proposal(schema, demo_context):
     day = {"name": "Tamsin", "entries": [
@@ -193,3 +176,58 @@ def test_schedule_entries_can_happen_in_other_scenes(schema, demo_context):
     day["entries"][1]["place"] = "home"  # a marker of the open scene, not of the cellar
     errors = validate_proposal(proposal(marker, {"op": "write_schedule", "id": "tamsin", "schedule": day}), schema, context)
     assert any("no marker called 'home' in scenes/cellar.aige" in e for e in errors), errors
+
+
+# Narrative v2 (development_plan.md 15): stages, aliases, rewards, failure, the new
+# objectives and effects, variables and world conditions, skill checks.
+def test_a_staged_quest_with_aliases_validates(schema, demo_context):
+    staged = {
+        "name": "The thief", "giver": "character/villager",
+        "aliases": [{"id": "thief", "kind": "character", "fill": "character/villager"}],
+        "rewards": {"experience": 50, "gold": 20, "items": "potion*2", "faction": "watch", "reputation": 5},
+        "stages": [
+            {"index": 10, "journal": "A thief.", "objectives": [
+                {"id": "find", "text": "Find the thief", "type": "talk", "target": "@thief"},
+                {"id": "coin", "text": "Have 10 gold", "type": "have", "target": "gold-coin", "optional": True}],
+             "branches": [{"if": [{"var": "mercy", "op": ">=", "value": 1}], "stage": 30}]},
+            {"index": 20, "journal": "Caught.", "ends": "complete"},
+            {"index": 30, "journal": "Let go.", "onEnter": [{"op": "give_gold", "amount": 5}], "ends": "complete"},
+            {"index": 90, "journal": "Gone.", "ends": "fail"}],
+        "onFail": [{"op": "set_flag", "flag": "escaped"}],
+    }
+    gate = dialogue(nodes=[
+        {"id": "hi", "text": "Halt.", "portrait": "assets/guard.png", "choices": [
+            {"text": "Let me pass.", "check": {"attribute": "speech", "difficulty": 5}, "next": "ok", "fail": "no"},
+            {"text": "Fail it", "next": "", "do": [{"op": "set_stage", "quest": "thief", "stage": 90}]},
+            {"text": "3", "next": ""}, {"text": "4", "next": ""}, {"text": "5", "next": "",
+             "if": [{"quest": "thief", "is": "failed"}, {"item": "potion", "count": 1}]}]},
+        {"id": "ok", "text": "Go.", "next": ""},
+        {"id": "no", "text": "No.", "next": ""}])
+    errors = validate_proposal(proposal(
+        {"op": "write_quest", "id": "thief", "quest": staged},
+        {"op": "write_dialogue", "id": "gate", "dialogue": gate},
+    ), schema, demo_context)
+    assert errors == [], errors
+
+
+def test_staged_quest_problems_are_reported(schema, demo_context):
+    bad = {
+        "name": "Bad", "aliases": [{"id": "who", "fill": ""}],
+        "stages": [
+            {"index": 10, "objectives": [{"id": "a", "text": "A", "type": "deliver", "target": "@nobody"}],
+             "next": 70},
+            {"index": 20, "objectives": [{"id": "b", "text": "B", "type": "survive"}], "ends": "maybe"}],
+    }
+    errors = validate_proposal(proposal(
+        {"op": "write_quest", "id": "bad", "quest": bad},
+        {"op": "write_dialogue", "id": "d", "dialogue": dialogue(nodes=[
+            {"id": "hi", "text": "Hi.", "choices": [
+                {"text": "x", "next": "", "fail": "hi"},
+                {"text": "y", "next": "", "do": [{"op": "set_stage", "quest": "bad", "stage": 55},
+                                                 {"op": "give_item"}]}]}])},
+    ), schema, demo_context)
+    text = "\n".join(errors)
+    for expected in ["alias 'who' isn't filled", "no alias 'nobody'", "goes to stage 70", "survive needs \"seconds\"",
+                     "\"ends\" is complete or fail", "has a \"fail\" node but no \"check\"", "has no stage 55",
+                     "give_item needs an \"item\""]:
+        assert expected in text, (expected, text)

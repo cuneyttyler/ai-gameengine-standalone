@@ -6,8 +6,9 @@ import { onHostMessage, sendToHost } from './ipc'
 import { setPanelVisible } from './layout'
 
 // Everything placeable is a prefab, so there are three tools: pick, erase,
-// and the prefab brush (paints tile prefabs, places everything else).
-export type ToolId = 'select' | 'erase' | 'prefab'
+// and the prefab brush (paints tile prefabs, places everything else); and the
+// height brush, which raises, lowers or levels the ground.
+export type ToolId = 'select' | 'erase' | 'prefab' | 'height'
 
 export interface Prefab {
   path: string
@@ -26,6 +27,8 @@ export interface Prefab {
 export const editorState = reactive({
   tool: 'select' as ToolId,
   brush: '', // prefab path for the 'prefab' tool
+  heightMode: 'raise' as 'raise' | 'lower' | 'flatten', // the height brush
+  heightRadius: 2,
   playing: false,
   dirty: false,
   canUndo: false,
@@ -51,6 +54,7 @@ export const editorState = reactive({
   aiAsk: { focus: '', n: 0 },
   showShortcuts: false, // Help ▸ Keyboard Shortcuts
   showOntology: false, // File ▸ Ontology…, the Build panel's menu (development_plan.md 9)
+  replacePrefab: null as string | null, // Edit ▸ Replace prefab…: the prefab to replace ('' : choose)
   grid: false, // tile borders on empty ground (G)
   brushScale: 1, // the prefab brush places copies at this size
   brushRotation: 0, // quarter turns for flat things the brush places (R)
@@ -83,6 +87,8 @@ onHostMessage((message) => {
   if (message.type === 'editor:state') {
     editorState.tool = message.tool as ToolId
     editorState.brush = message.brush as string
+    editorState.heightMode = ((message.heightMode as string) ?? 'raise') as 'raise' | 'lower' | 'flatten'
+    editorState.heightRadius = (message.heightRadius as number) ?? 2
     editorState.playing = message.playing as boolean
     editorState.dirty = message.dirty as boolean
     editorState.canUndo = message.canUndo as boolean

@@ -4,6 +4,7 @@
 #include "reflection/Reflection.h"
 
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -46,6 +47,8 @@ struct LoadedModule {
     std::string description;
     std::vector<std::string> components;
     std::vector<std::string> commands;
+    std::vector<std::string> records; // record types (12.1)
+    std::vector<std::string> systems; // per-frame system functions (12.2)
 };
 
 struct ModuleLoadResult {
@@ -60,5 +63,12 @@ ModuleLoadResult LoadModules(ReflectionRegistry& reflection, const std::filesyst
 
 // What the last LoadModules call in this process did (for hosts to report).
 const ModuleLoadResult& LastModuleLoad();
+
+// Per-frame module systems (12.2): `"systems": [{"function": "update"}]` in
+// module.json calls update(dt) from the module's script every step of play,
+// with the same API as its commands (get_field, set_field, entities_with,
+// log). The last LoadModules call's systems; errors go to `onError`.
+void RunModuleSystems(Registry& registry, float dt, const std::function<void(const std::string&)>& onError = {});
+size_t ModuleSystemCount();
 
 } // namespace aige

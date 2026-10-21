@@ -464,26 +464,53 @@ std::pair<const BuildType*, int> NamedBuild(const Ontology& ontology, const std:
     std::string text;
     for (const auto& w : Words(query)) text += " " + w;
     text += " ";
-    auto says = [&](const std::string& phrase) { return text.find(" " + phrase + " ") != std::string::npos; };
-    auto saysWord = [&](const std::string& word) { return says(word) || says(word + "s"); };
-    const BuildType* chosen = ontology.DefaultBuild();
-    int best = 0;
+    // Where a phrase is first said (npos: not said).
+    auto at = [&](const std::string& phrase) {
+        const size_t a = text.find(" " + phrase + " "), b = text.find(" " + phrase + "s ");
+        return std::min(a, b);
+    };
+    // The build type the request names: its words (its id the most), and the place it names
+    // first: "the sewers under a city" is a dungeon, "a village with a castle" a village. A
+    // size alone ("a small courtyard") names none. Rank breaks a tie (an interior over a house).
+    struct Score {
+        const BuildType* build = nullptr;
+        int score = 0;
+        size_t first = std::string::npos;
+    };
+    std::vector<Score> scores;
     for (const auto& [id, b] : ontology.Builds()) {
-        int score = saysWord(id) ? 3 : 0;
+        Score s{&b};
+        auto count = [&](const std::string& phrase, int points) {
+            const size_t p = at(phrase);
+            if (p == std::string::npos) return;
+            s.score += points;
+            s.first = std::min(s.first, p);
+        };
+        count(id, 3);
         for (const auto& w : b.words) {
             std::string spaced = w;
             std::replace(spaced.begin(), spaced.end(), '-', ' ');
-            score += saysWord(spaced) ? 2 : 0;
+            count(spaced, 2);
         }
-        for (const auto& s : b.scale) {
-            std::string words = s.id;
+        for (const auto& c : b.scale) {
+            std::string words = c.id;
             std::replace(words.begin(), words.end(), '-', ' ');
-            score += says(words) ? 1 : 0;
+            if (words == "small" || words == "medium" || words == "large" || words == "huge" || words == "tiny") continue;
+            count(words, 1);
         }
-        if (score > 0) score += 10 * b.rank;
-        if (score > best || (score == best && score > 0 && b.isDefault)) {
-            best = score;
-            chosen = &b;
+        scores.push_back(s);
+    }
+    size_t earliest = std::string::npos;
+    for (const auto& s : scores) earliest = std::min(earliest, s.first);
+    const BuildType* chosen = ontology.DefaultBuild();
+    int best = 0, bestRank = -1;
+    for (auto& s : scores) {
+        if (s.score == 0) continue;
+        if (s.first == earliest) s.score += 3; // the place it names first is the subject
+        if (s.score > best || (s.score == best && s.build->rank > bestRank)) {
+            best = s.score;
+            bestRank = s.build->rank;
+            chosen = s.build;
         }
     }
     return {chosen, best};
@@ -502,27 +529,9 @@ json FallbackDraft(const Ontology& ontology, const std::string& query) {
     text += " ";
     auto says = [&](const std::string& phrase) { return text.find(" " + phrase + " ") != std::string::npos; };
     auto saysWord = [&](const std::string& word) { return says(word) || says(word + "s"); };
-    // The build type: the one the request names most (its id, its words, its size classes); else the default.
-    const BuildType* chosen = ontology.DefaultBuild();
-    int best = 0;
-    for (const auto& [id, b] : ontology.Builds()) {
-        int score = saysWord(id) ? 3 : 0;
-        for (const auto& w : b.words) {
-            std::string spaced = w;
-            std::replace(spaced.begin(), spaced.end(), '-', ' ');
-            score += saysWord(spaced) ? 2 : 0;
-        }
-        for (const auto& s : b.scale) {
-            std::string words = s.id;
-            std::replace(words.begin(), words.end(), '-', ' ');
-            score += says(words) ? 1 : 0;
-        }
-        if (score > 0) score += 10 * b.rank;
-        if (score > best || (score == best && score > 0 && b.isDefault)) {
-            best = score;
-            chosen = &b;
-        }
-    }
+    // The build type: the one the request names (NamedBuild); else the default.
+    const BuildType* chosen = NamedBuild(ontology, query).first;
+    if (chosen == nullptr) chosen = ontology.DefaultBuild();
     const BuildType& build = *chosen;
     // The size class: the longest one named ("large village" before "village").
     std::string cls;

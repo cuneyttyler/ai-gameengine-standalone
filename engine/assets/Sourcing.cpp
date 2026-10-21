@@ -64,6 +64,7 @@ SourcingSettings ReadSourcingSettings(const fs::path& projectRoot) {
     const json j = json::parse(in, nullptr, false);
     if (!j.is_object()) return s;
     s.webSearch = j.value("webSearch", false);
+    s.defaultSource = j.value("defaultSource", std::string("search"));
     s.licences.shareAlike = j.value("shareAlike", false);
     for (const auto& l : j.value("extraLicences", json::array())) {
         if (l.is_string()) s.licences.extra.insert(LicencePolicy::Normalise(l.get<std::string>()));
@@ -77,7 +78,8 @@ void WriteSourcingSettings(const fs::path& projectRoot, const SourcingSettings& 
     json extra = json::array();
     for (const auto& l : settings.licences.extra) extra.push_back(l);
     std::ofstream(projectRoot / "places" / "sourcing.json")
-        << json{{"webSearch", settings.webSearch}, {"shareAlike", settings.licences.shareAlike}, {"extraLicences", extra}}.dump(2) << "\n";
+        << json{{"webSearch", settings.webSearch}, {"shareAlike", settings.licences.shareAlike}, {"extraLicences", extra},
+                {"defaultSource", settings.defaultSource}}.dump(2) << "\n";
 }
 
 std::vector<Candidate> Licensed(const std::vector<Candidate>& candidates, const LicencePolicy& licences) {
@@ -171,6 +173,16 @@ Decision Decide(const std::string& policy, const NeedProfile& profile, const Sou
         if (const Candidate* g = Best(c.library, "good")) return use("A2", "import", g, "library", "from the AIGE library");
         return fallback({&c.project, &c.library}, {"project", "library"});
     }
+    if (policy == "search") {
+        // Found art first (the most reliable): what the project has that fits, the user's library,
+        // then the web; the Art tool when nothing found fits.
+        if (const Candidate* g = Best(c.project, "good")) return use("S1", "use", g, "project", "fits well, already in the project");
+        if (const Candidate* g = Best(c.library, "good")) return use("S2", "import", g, "library", "from your library");
+        if (const Candidate* g = Best(c.web, "good")) return use("S3", "import", g, "web", "free art from the web, licence checked");
+        if (!tried.web) return pending("S3", "web", "searching approved sites for art that fits");
+        if (canGenerate && !tried.generate) return pending("S4", "generate", "nothing found fits: made by the Art tool");
+        return fallback({&c.project, &c.library, &c.web}, {"project", "library", "web"});
+    }
     if (policy == "web") {
         const auto fromWeb = fromSource(c.project, {"web"});
         if (const Candidate* g = Best(fromWeb, "good")) return use("A1", "use", g, "web", "from the web, already in the project");
@@ -184,6 +196,8 @@ Decision Decide(const std::string& policy, const NeedProfile& profile, const Sou
             d.warn = profile.styleCritical;
             return d;
         }
+        // The web had nothing that fits: the Art tool makes it.
+        if (canGenerate && !tried.generate) return pending("A5", "generate", "nothing fitting on the web: made by the Art tool");
         return fallback({&c.project, &c.web}, {"project", "web"});
     }
     if (policy == "generate") {
@@ -194,6 +208,12 @@ Decision Decide(const std::string& policy, const NeedProfile& profile, const Sou
             return fallback({&c.project}, {"project"});
         }
         if (canGenerate) return pending("G", "generate", "made by the Art tool in the place's style");
+        // Couldn't be made: free art from the web, if searching is on.
+        if (webEnabled) {
+            const auto fromWeb = fromSource(c.project, {"web"});
+            if (const Candidate* g = Best(fromWeb, "good")) return use("A4", "use", g, "web", "made art failed: from the web");
+            if (!tried.web) return pending("A4", "web", "the Art tool's tries failed: searching approved sites");
+        }
         return fallback({&c.project}, {"project"});
     }
     // auto
@@ -207,6 +227,8 @@ Decision Decide(const std::string& policy, const NeedProfile& profile, const Sou
         if (!tried.web) return pending("A4", "web", "searching approved sites for free art");
     }
     if (canGenerate && !tried.generate) return pending("A5", "generate", "nothing fits: made by the Art tool");
+    // Made and checked, and it failed: the web, if searching is on.
+    if (webEnabled && !tried.web) return pending("A4", "web", "the Art tool's tries failed: searching approved sites");
     std::vector<const std::vector<Candidate>*> lists = {&c.project, &c.library};
     std::vector<std::string> names = {"project", "library"};
     if (webEnabled) lists.push_back(&c.web), names.push_back("web");

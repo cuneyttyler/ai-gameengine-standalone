@@ -87,14 +87,27 @@ public:
     // Bumped on every change (renderers and grids can cache by it).
     uint64_t Revision() const { return revision_; }
 
+    // High ground (place-refine.md §10): a cell's corners (top, right, bottom,
+    // left) raised, in screen pixels. Kept with the layer, not its tile kinds,
+    // so a hill doesn't make every cell a kind of its own.
+    using CornerLift = std::array<float, 4>;
+    const CornerLift* Lift(int gx, int gy) const;
+    // Returns what it was (all zero: none). All zero clears it.
+    CornerLift SetLift(int gx, int gy, const CornerLift& lift);
+    const std::unordered_map<int64_t, CornerLift>& Lifts() const { return lifts_; }
+    static int64_t LiftKey(int gx, int gy) { return (static_cast<int64_t>(gx) << 32) ^ static_cast<uint32_t>(gy); }
+    static std::pair<int, int> LiftCell(int64_t key) { return {static_cast<int>(key >> 32), static_cast<int>(static_cast<int32_t>(key & 0xffffffff))}; }
+
     // For loading: put a palette in place as saved, and a whole chunk.
-    void SetPalette(std::vector<TileDef> palette) { palette_ = std::move(palette); }
+    void SetPalette(std::vector<TileDef> palette);
     void SetChunk(int cx, int cy, const Chunk& chunk);
 
     static int FloorDiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
 
 private:
     std::vector<TileDef> palette_;
+    std::unordered_multimap<size_t, uint16_t> index_; // a tile kind's hash -> its ids (Intern)
+    std::unordered_map<int64_t, CornerLift> lifts_;
     std::map<std::pair<int, int>, Chunk> chunks_;
     std::set<std::pair<int, int>> dirty_;
     uint64_t revision_ = 1;
@@ -132,6 +145,17 @@ struct TileChange {
     uint16_t after = 0;
 };
 
+struct LiftChange {
+    int gx = 0;
+    int gy = 0;
+    TileLayer::CornerLift before{};
+    TileLayer::CornerLift after{};
+};
+
+// The sprite a layer's cell is drawn with: its kind's, with its square of the
+// kind's picture, its height, and its slope's light (the upper left lit).
+Sprite CellSprite(const TileLayer& layer, int gx, int gy, const TileDef& def);
+
 // A bulk edit of one layer, as a command: Apply and Revert set the cells to
 // `after` or `before`. Layers are found by name, so the edit survives a
 // whole-scene snapshot undo in between (entity ids don't).
@@ -140,15 +164,18 @@ struct TileLayerEdit {
 
     std::string layer;
     std::vector<TileChange> changes;
+    std::vector<LiftChange> lifts;
 
     // Sets a cell through the edit, recording it (the first `before` of a
     // cell is kept if the cell is set twice).
     void Set(TileLayer& target, int gx, int gy, uint16_t id);
+    void SetLift(TileLayer& target, int gx, int gy, const TileLayer::CornerLift& lift);
     void Apply(Registry& registry) const;
     void Revert(Registry& registry) const;
 
 private:
     std::unordered_map<int64_t, size_t> seen_; // cell -> its index in changes
+    std::unordered_map<int64_t, size_t> seenLift_;
 };
 
 } // namespace aige

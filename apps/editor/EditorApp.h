@@ -18,6 +18,8 @@
 #include "editing/EditHistory.h"
 #include "editor/ViewportWindow.h"
 #include "gameplay/Archetypes.h"
+#include "game/GameFlow.h"
+#include "gameplay/CameraFollow.h"
 #include "gameplay/GameSession.h"
 #include "gameplay/Isometric.h"
 #include "gameplay/TileLayer.h"
@@ -102,14 +104,20 @@ public:
     std::filesystem::path LayoutPath() const;
     // Saved games while playing (6.9): F6 saves, F9 (or Play ▸ Continue from
     // save) loads. Kept in the project's .cache, apart from players' saves.
-    std::filesystem::path SaveGamePath() const;
+    std::filesystem::path SaveGamePath() const; // the Play save slots' folder
+    std::string SceneTextForPlay(const std::string& scene) const;
+    void CapturePlayWorld();
+    void ApplyPlayWorld(const std::string& scene);
+    std::map<std::string, nlohmann::json> playWorlds_; // what changed in each scene visited in Play (12.5)
+    GameManifest playManifest_;                        // game.json, read when Play starts
+    CameraRig cameraRig_;                              // the play camera's level edges (12.7)
     void SaveGame();
     void LoadGame();
 
 private:
     // Everything placeable is a prefab, so there are only three tools: pick,
     // erase, and the prefab brush (paints tile prefabs, places the others).
-    enum class Tool { Select, Erase, Prefab };
+    enum class Tool { Select, Erase, Prefab, Height };
 
     // Edit transactions: BeginEdit snapshots the scene; the snapshot only
     // becomes an undo step once MarkChanged reports a real change, so clicks
@@ -159,6 +167,9 @@ private:
     void StartBuild(const std::string& query, const nlohmann::json& choices = nlohmann::json::object());
     void ResumeBuild(const std::string& id); // a build of the project, from places/<id>/
     void PreviewAssets();                    // ③ Assets: each part's art decided, nothing fetched yet
+    // Each need's own choice (④ Assets): a source, a picked piece of art, a placeholder (assets.json "overrides").
+    void SetNeedChoice(const std::string& key, const nlohmann::json& choice);
+    int autoRounds_ = 0; // sourcing rounds started on their own (another method for what's still missing)
     void FindAssets();
     // A ground cell of a tile layer (a built place's ground), selected with the Select tool.
     struct CellPick {
@@ -166,6 +177,24 @@ private:
         int gx = 0, gy = 0;
     };
     std::optional<CellPick> selectedCell_;
+    // Erasing a built place's ground: the cells a stroke took, one undo step when it ends.
+    std::vector<TileLayerEdit> strokeLayerEdits_;
+    void EraseLayerCell(const CellPick& cell);
+    void FlushStrokeLayerEdits();
+    // The height brush (place-refine.md §10): the ground round a cell raised, lowered or
+    // levelled, its tiles' corners and what stands on it moved with it.
+    void ShapeGround(int gx, int gy);
+    std::string heightMode_ = "raise"; // raise, lower, flatten
+    int heightRadius_ = 2;             // cells
+    std::string strokeLabel_ = "Erase ground";
+    // Box selection (drag on empty ground with the Select tool): the things and ground cells in it.
+    bool boxing_ = false;
+    float boxFromX_ = 0, boxFromY_ = 0, boxToX_ = 0, boxToY_ = 0;
+    std::vector<Entity> selectedMany_;
+    std::vector<CellPick> selectedCells_;
+    void SelectBox();
+    void DeleteBoxSelection();
+    void ClearBoxSelection();
     std::optional<CellPick> PickLayerCell(float sceneX, float sceneY) const;
     void SelectCell(const CellPick& cell);
     void EraseSelectedCell();
@@ -255,6 +284,9 @@ private:
     std::map<int, int> consistencyRequests_;
     int worldCheckRequest_ = 0;
     int artRequest_ = 0; // the Art tab's generation in flight (development_plan.md 3.6)
+    // The Assets panel's Web Search: the search in flight, and each file being fetched (its result).
+    int webPreviewRequest_ = 0;
+    std::map<int, nlohmann::json> webFetchRequests_;
     // Asset analysis (6.2): border terrains now, descriptions from the AI service.
     int analyzeRequest_ = 0;
     void AnalyzeAssets(const std::vector<std::string>& paths);
@@ -341,6 +373,7 @@ private:
     std::string worldCheckKey_;
     bool RequestConsistencyCheck(int proposalId, const nlohmann::json& operations);
     nlohmann::json WorldJson();
+    nlohmann::json RecordsJson();
     nlohmann::json StoryJson(); // the Story tab: dialogues, quests, problems, what can be referenced
     std::optional<std::string> SaveStoryFile(const std::string& folder, const std::string& id,
                                              const std::string& originalId, const nlohmann::json& content);

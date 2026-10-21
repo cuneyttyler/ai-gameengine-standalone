@@ -15,6 +15,8 @@
 #include "gameplay/EngineReflection.h"
 #include "assets/SceneFiles.h"
 #include "modules/Modules.h"
+#include "records/Records.h"
+#include "gameplay/InputMap.h"
 
 #include <iostream>
 #include "gameplay/Settings.h"
@@ -243,6 +245,10 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
         for (const auto& error : aige::LoadModules(aige::EngineReflection(), project.root).errors) {
             std::cerr << "[modules] " << error << std::endl;
         }
+        // The project's records (12.1), once module record types are known.
+        aige::ActiveRecords().Open(aige::EngineReflection(), project.root);
+        // Its input actions (12.3): input.json, or the defaults.
+        aige::ActiveInputMap() = aige::LoadInputMap(project.root);
         aige::AssetDatabase assets(project);
         assets.Refresh();
         renderer.SetTextureLoader([&assets](const std::string& path) { return assets.LoadTexture(path); });

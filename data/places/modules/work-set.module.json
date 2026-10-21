@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "A workbench with its tools and a stool.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "FurnitureGroup"

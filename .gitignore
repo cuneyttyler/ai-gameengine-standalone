@@ -17,3 +17,7 @@ __pycache__/
 .pytest_cache/
 # The AI audit trail is per user/session, not part of the shared demo project
 projects/*/ai_log.jsonl
+
+# Live build quality runs: the pictures and data are kept, the generated test projects are not.
+tests/quality/**/project/
+tests/quality/*.out

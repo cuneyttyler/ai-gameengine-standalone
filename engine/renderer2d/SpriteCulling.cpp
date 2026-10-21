@@ -10,7 +10,7 @@ namespace aige {
 bool SpriteOnScreen(const ScreenTransform2D& t, const Sprite& s, const Camera2D& camera, float viewportWidth,
                     float viewportHeight) {
     float x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
-    camera.SceneToViewport(t.x - s.width * 0.5f, t.y - s.height * 0.5f, x0, y0);
+    camera.SceneToViewport(t.x - s.width * 0.5f, t.y - s.height * 0.5f - s.lift - 64.0f, x0, y0);
     camera.SceneToViewport(t.x + s.width * 0.5f, t.y + s.height * 0.5f, x1, y1);
     if (x0 > x1) std::swap(x0, x1);
     if (y0 > y1) std::swap(y0, y1);
@@ -34,6 +34,8 @@ SpriteQuad SpriteQuadOf(const ScreenTransform2D& t, const Sprite& s, bool diamon
         std::copy(xs, xs + 4, q.x);
         std::copy(ys, ys + 4, q.y);
     }
+    // High ground: raised, a flat tile's corners each by its own.
+    for (int i = 0; i < 4; ++i) q.y[i] -= s.lift + (s.flat && diamond ? s.cornerLift[i] : 0.0f);
     // The image's corners, clockwise from its top-left.
     const float us[4] = {s.u0, s.u1, s.u1, s.u0};
     const float vs[4] = {s.v0, s.v0, s.v1, s.v1};

@@ -1,0 +1,738 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+%Template version as of 6/27/2024
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\newcommand{\pll}[1]{\texttt{#1}}
+\begin{document}
+
+\title{An Ontology Based Approach to Scene Generation\\
+% \thanks{Identify applicable funding agency here. If none, delete this.}
+}
+
+\author{\IEEEauthorblockN{C\"uneyt Yavuz}
+\IEEEauthorblockA{Semantic Space \\
+Istanbul, Turkey \\
+cuneyt.tyler@semanticspace.io}
+}
+
+\maketitle
+
+\begin{abstract}
+Scene generation for game development with large language models (LLMs) has attracted
+growing attention. Recent methods use fine-tuning and reinforcement learning on
+generation tasks, or extensive prompting over well-defined modules that describe the
+scene to be generated. These works have improved generation quality considerably, but
+they lack a structured schema for the vocabulary of the environment and of the objects
+placed in it. We propose GBO, the GenBuilding Ontology, which provides the vocabulary and
+definitions for building a 2D scene: build types, place modules with typed quantity and
+quality fields, asset roles, spatial relations with score functions, and design rules,
+each fact with its source. Our generation procedure is built on this ontology. It turns a
+request into a sequence of typed, validated documents: a Brief confirmed by the user, a
+Spec plan tree, and a program in the Place Layout Language (PLL), a declarative
+constraint language that extends GLDL with hierarchy, n-ary group relations, networks,
+linear features, subdivision, scatter and terrain. Seeded solvers turn the program into
+cells and entities, and each level is verified and repaired locally before the next is
+built inside it. An asset manager fills every slot from the project, a curated library,
+the web or image generation, according to a fixed decision procedure. We evaluate the
+method by ablating components and ranking the generated places by human judgment.
+\end{abstract}
+
+\begin{IEEEkeywords}
+2D scene generation, game development, ontology, large language models, procedural content generation
+\end{IEEEkeywords}
+
+\section{Introduction}
+Computational creation of 2D and 3D assets and scenes has been an active area since the
+early 2000s. Early methods rely on rule-based mechanisms such as grammars, L-systems and
+tile constraint solvers to generate artificial content \cite{parish2001,shaker2016pcg}.
+These methods need hand-written rules for every kind of place, and human intervention
+and validation of their output, which makes them time-consuming for large tasks. Since
+the arrival of LLMs, methods have explored prompt engineering \cite{todd2023,sudhakaran2023},
+dividing the building task into separate modules \cite{holodeck}, constraining the
+generation to narrow down the work \cite{scenecraft}, and using an intermediate
+language that a solver evaluates \cite{gldl}.
+
+These works share one principle: the language model should decide \emph{what} a place
+contains and how its parts relate, while numerical solvers decide \emph{where} things
+go. LLMs are poor at coordinates and good at relations. What they lack is a shared,
+explicit account of the domain. Each system defines its own vocabulary of objects,
+relations and parameters inside prompts or learned programs, so the meaning of
+``a large village'', ``a garden behind each house'' or ``common flowers'' is implicit,
+untyped and not checkable.
+
+Our work proposes a well-defined methodology, a prompting schema, GBO (the GenBuilding
+Ontology), PLL (the Place Layout Language) and an asset management procedure for
+building a game environment. The methodology is a fixed sequence of steps,
+\emph{interpret, confirm, plan, compile, solve, verify}, each of which writes a typed,
+constrained document. The prompting schema is the structured output of the LLM during
+consecutive steps of the building procedure, with a free-text reasoning phase followed by
+a strict answer that is validated against the schema. GBO defines the vocabulary and
+properties for the building task; it is consulted at every step of the generation
+pipeline. PLL is based on GLDL \cite{gldl} but extends it with a hierarchy of regions,
+nested places, n-ary group relations, road and river networks, area subdivision, linear
+features on cell edges, scatter and terrain, and provenance links back to the plan.
+Asset management takes into account the design principles of the scene to be generated
+and makes use of existing web sources as well as generation of assets with AI.
+
+Our contributions are:
+\begin{itemize}
+\item An explicit place ontology that both \emph{grounds the LLM's planning} (only the
+  relevant subgraph is given to each call) and \emph{defines the constraints that are
+  compiled and checked}. To our knowledge, no prior system uses one shared ontology for
+  both purposes.
+\item A planning scheme in which the LLM decides only the upper levels of a place, and
+  ontology-driven expansion rules fill the lower levels, so a town needs tens of model
+  calls rather than thousands.
+\item PLL, a declarative layout language for 2D grid worlds with a fixed, deterministic
+  solving order, relation score functions and in-document checks.
+\item An asset procedure that matches catalogued sprites to ontology roles with hard
+  filters (perspective, footprint, licence) and a fit score, and generates or fetches the
+  rest.
+\end{itemize}
+We evaluated our method by removing certain components from our algorithm and
+generating places with the same query. We used human evaluation to rank the generated
+scenes.
+
+\section{Related Work}
+
+\subsection{Procedural Generation of Places}
+Procedural content generation has developed strong algorithms for the geometric layer
+of places \cite{shaker2016pcg,togelius2011}. Parish and M\"uller grow street networks
+with extended L-systems \cite{parish2001}. Emilien et al.\ grow villages on arbitrary
+terrain from \emph{interest functions}: weighted sums of criteria such as slope, water,
+road access and sociability, in which any criterion of $-1$ vetoes a site; roads are
+least-cost paths on which reusing an existing road is nearly free \cite{emilien2012}.
+Vanegas et al.\ subdivide blocks into parcels with straight-skeleton and
+oriented-bounding-box splits that guarantee street access, and map parcels across edits
+so that user customisations survive \cite{vanegas2012}. Wave Function Collapse treats
+tile synthesis as constraint solving \cite{karth2017}; its hierarchical semantic variant
+collapses a weighted ``consists-of'' DAG of meta-tiles from the root down and stores the
+collapse paths, so all instances of one meta-tile can be selected and regenerated
+\cite{alaka2023}. Dormans generates action-adventure levels as two structures, a mission
+graph of what the player does and a space graph of where it happens \cite{dormans2010}.
+These algorithms produce good geometry, but each needs its parameters set by hand for
+every kind of place.
+
+\subsection{LLM-Driven Scene and Level Generation}
+Text-to-level work first prompted or fine-tuned language models to emit tile maps
+directly \cite{todd2023,sudhakaran2023}. Later systems separate semantics from geometry.
+LayoutGPT asks the model for layouts in a CSS-like format \cite{layoutgpt}. Holodeck runs
+a fixed chain of modules (floor and walls, doors and windows, object selection, layout),
+one LLM query per module; the model writes spatial \emph{relations}, not coordinates, and
+a depth-first grid solver places large anchor objects first \cite{holodeck}. Infinigen
+Indoors states constraints over abstract object classes, including accessibility
+\cite{infinigen}. SceneCraft represents a scene as a bipartite graph of assets and
+relation nodes, each relation linking any subset of assets and having a score function
+in $[0,1]$; removing the graph was its most damaging ablation \cite{scenecraft}.
+3D-GPT drives documented procedural generators whose outputs remain editable parameters
+\cite{3dgpt}, and WorldCraft splits a request into sub-spaces handled by specialist
+agents, keeping a manual of verified examples \cite{worldcraft}. CityGenAgent generates
+cities as block and building programs, trained with supervised fine-tuning and
+reinforcement learning, and edits them by language after generation
+\cite{citygenagent}.
+
+Closest to our language, GLDL (\emph{Constraint Is All You Need}) turns a narrative into
+definition sentences (predefined facilities, new facilities, points) and constraint
+sentences (around a position, by a wall, near, far, can-see, alignment) and solves them
+as a facility layout problem with penalties for overlap, a cluster term and a sparsity
+term; agent simulation still found unreachable keys in 9.5\% of levels \cite{gldl}.
+The same authors' database-driven framework moves the LLM's knowledge into
+offline databases of facilities, rooms and mechanics reviewed by experts, so that
+assembly itself needs no model calls, and repairs levels in two phases
+\cite{xu2025database}. For 2D games, Narrative-to-Scene builds layered tile scenes from
+stories and reports that without conflict resolution only 72\% of relations held
+\cite{chen2025narrative}, and GameTileNet labels low-resolution tiles with affordances
+and tile types \cite{gametilenet}.
+
+\subsection{Semantics and Ontologies for Game Worlds}
+Semantic game worlds attach classes, attributes and placement rules to objects.
+Tutenel et al.\ use such a semantic library to guide layout solving \cite{tutenel2009},
+and SketchaWorld declares a virtual world through a semantic model that procedural
+methods then realise \cite{smelik2011}. These libraries are tied to their solvers and
+were not designed to ground a language model. On the LLM side, the systems above use
+ad-hoc prompts or learned programs. GBO places one ontology between the two: published
+in OWL~2 \cite{owl2}, SKOS \cite{skos} and SHACL \cite{shacl}, it is both the vocabulary
+the LLM plans with and the source of the constraints the compiler emits and the
+verifier checks.
+
+\subsection{Clarification and Structured Output}
+Under-specified requests are common in generation. ClarEval classifies ambiguity into
+missing goals, missing premises and ambiguous terminology, and finds that agents usually
+guess silently \cite{clareval}. Active task disambiguation samples several
+interpretations and asks the questions whose answers split them most evenly
+\cite{kobalczyk2025}. On output format, Tam et al.\ show that strict format restrictions
+during reasoning degrade it \cite{tam2024}. Our confirmation and prompting schemes build
+on both findings.
+
+\section{Method}
+
+\subsection{Methodology}
+
+Every build runs the same procedure (Fig.~\ref{fig:pipeline}). Each step reads only
+documents written before it and writes one typed document, kept with the place, so any
+step can be re-run alone and every built entity can be traced back to the plan node that
+made it.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  step/.style={draw, rectangle, minimum width=1.75cm, minimum height=0.85cm,
+               align=center, font=\footnotesize},
+  arr/.style={-{Stealth[length=1.6mm]}},
+  doc/.style={font=\tiny\itshape}]
+\node[step] (int) at (0,0)    {Interpret\\[-1pt]{\tiny Brief drafts}};
+\node[step] (con) at (2.25,0) {Confirm\\[-1pt]{\tiny Brief}};
+\node[step] (ast) at (4.5,0)  {Assets\\[-1pt]{\tiny asset plan}};
+\node[step] (pln) at (6.75,0) {Plan\\[-1pt]{\tiny Spec tree}};
+\node[step] (cmp) at (6.75,-1.5) {Compile\\[-1pt]{\tiny PLL program}};
+\node[step] (slv) at (4.5,-1.5)  {Solve \& build\\[-1pt]{\tiny scene}};
+\node[step] (ver) at (2.25,-1.5) {Verify\\[-1pt]{\tiny report}};
+\node[font=\footnotesize, align=center] (out) at (0,-1.5) {place +\\report};
+\draw[arr] ([xshift=0.2cm, yshift=0.55cm]int.north west) node[above, font=\footnotesize]{query}
+  -- ([xshift=0.2cm]int.north west);
+\draw[arr] (int) -- (con);
+\draw[arr] (con) -- (ast);
+\draw[arr] (ast) -- (pln);
+\draw[arr] (pln) -- (cmp);
+\draw[arr] (cmp) -- (slv);
+\draw[arr] (slv) -- (ver);
+\draw[arr] (ver) -- (out);
+\draw[arr, dashed] (con.north) to[bend right=35] node[above, font=\tiny]{questions} (int.north);
+\draw[arr, dashed] (ver.south) to[bend right=25] node[below, font=\tiny]{local repair} (cmp.south);
+\node[draw, rectangle, minimum width=8.5cm, minimum height=0.6cm, font=\footnotesize,
+      fill=gray!12] (gbo) at (3.375,-3.05)
+      {GBO: build types, modules, fields, roles, relations, rules};
+\foreach \n in {ver,slv,cmp} \draw[dotted] (\n.south) -- (\n.south |- gbo.north);
+\end{tikzpicture}
+\caption{The building procedure. Each step writes a typed document; every step queries
+the GBO ontology. Verification failures are repaired locally at the node that caused
+them.}
+\label{fig:pipeline}
+\end{figure}
+
+\paragraph{Interpret} The LLM reads the query and drafts several candidate Briefs. A
+Brief holds the build type, the scale as a class \emph{and} numbers, the style (era,
+culture, biome, condition), the components (the top-level modules of the build type, each
+with a count or density and an asset policy), the layout, terrain features and gameplay
+hooks. Each field carries a confidence and its source (user, AI, default or derived).
+
+\paragraph{Confirm} Following the clarification results above, the user confirms the
+Brief in a window generated from its schema, in at most two batched rounds. Fields on
+which the drafts disagree, or with low confidence, are highlighted as questions, and
+fields on which they agree are pre-filled. Vague size words are always shown with their
+numbers: the scale table of a settlement maps \emph{village} to 15--60 buildings,
+\emph{large village} to 60--150 and \emph{town} to 150--500, and if the user asks for 200
+buildings in a ``village'', the class follows the numbers.
+
+\paragraph{Assets} From the confirmed Brief, the asset manager collects every asset the
+build will need and decides its source (Section~\ref{sec:assets}).
+
+\paragraph{Plan} The plan is a \emph{Spec}: a tree of module instances, each carrying the
+module's quantity fields (counts, areas, sizes, shares, densities with numeric meaning)
+and quality fields (values of closed vocabularies). The LLM decides the upper levels in
+the Brief's terms, for example the settlement, its wards and per-ward totals and
+qualities. Lower levels are filled by the modules' \emph{expansion rules}: defaults and
+weighted distributions from the ontology, keyed on the build type, scale and the
+parent's qualities, in the spirit of the offline databases of \cite{xu2025database} and
+Emilien's building encyclopedia \cite{emilien2012}. A Spec node may be a template:
+\texttt{repeat} gives $n$ instances and \texttt{share} assigns a child to a fraction of the
+parent's instances, so 28 house plots are one node until the solver must tell them
+apart. The LLM is called for a lower node only where its quality fields need judgment,
+such as a named landmark.
+
+\paragraph{Compile} Each module has a compile template written in PLL with placeholders
+for the node's values. Compiling instantiates the templates top-down, emits the module's
+default relations, and adds the relations the LLM proposed for the upper levels. Every
+statement records the Spec node it came from.
+
+\paragraph{Solve and build} Seeded solvers evaluate the PLL program region by region
+(Section~\ref{sec:pll}) and write a solved layout, which the engine applies as bulk,
+undoable commands on chunked tile layers.
+
+\paragraph{Verify and repair} Each level is verified before the next is built inside it.
+Hard rules are checked exactly: footprints inside parents, no overlaps on a layer,
+allowed terrain, reachability of every door and gate, connected roads, continuous linear
+features, perspective compatibility and allowed licences. Conformity with the Spec is
+measured against tolerances: counts within $\pm5\%$ (exact below 10), areas within
+$\pm10\%$, densities within one level. Finally, the part is rendered headless and a
+vision model answers the module's checklist, since the render--critique loop gave
+SceneCraft its largest gain \cite{scenecraft}. A failure returns to the stage that made
+the part, with the violated rule as the reason, and is repaired at that node only, in
+the two-phase order of \cite{xu2025database}: move adaptable results, remove adaptable
+results that block a hard rule, re-solve the subtree with a new seed, and finally
+re-plan the node. Every approved module build is stored as a verified example for later
+prompts, as in WorldCraft's manual \cite{worldcraft}.
+
+\paragraph{Editing after generation} Every built entity keeps a link to its place, Spec
+node, PLL statement and instance. Changing a field of a node changes the Spec and
+recompiles only that subtree, with siblings and parents held fixed. A hand edit inside a
+node locks it, and its entities become fixed statements on the next regeneration. When a
+parent is regenerated, old children are matched to new ones by id and position, as in
+parcel persistence \cite{vanegas2012}, so locks and edits survive.
+
+\paragraph{Build types} Plan and Compile proceed through stages that are fixed per build
+type, in the manner of Holodeck's modules \cite{holodeck}. A settlement runs \emph{site
+and terrain $\rightarrow$ networks (main roads, river, walls and gates) $\rightarrow$
+wards $\rightarrow$ streets and plots $\rightarrow$ parcel contents $\rightarrow$
+dressing}; an interior runs \emph{room programme $\rightarrow$ floor plan $\rightarrow$
+doors and windows $\rightarrow$ furniture groups $\rightarrow$ small objects $\rightarrow$
+decor and lights}; a dungeon runs \emph{mission graph $\rightarrow$ space graph
+$\rightarrow$ geometry $\rightarrow$ room contents $\rightarrow$ encounters}
+\cite{dormans2010}. A region plans its settlements, castles and dungeons as nested places,
+each with its own documents, solved inside the boundary and entry anchors its parent
+found for it. The style is fixed in the Brief before any stage, so every module and
+asset choice agrees.
+
+\subsection{Prompting Schema}
+
+Every LLM call in the procedure has the same shape:
+\begin{equation*}
+\text{inputs} \rightarrow \text{think} \rightarrow \text{answer} \rightarrow
+\text{validate} \rightarrow \text{(repair once)}.
+\end{equation*}
+
+\paragraph{Inputs} The builder assembles, per call: the step's task description and its
+output schema; a one-shot example, following Holodeck's prompt structure \cite{holodeck};
+the \emph{relevant ontology subgraph} (the node's module, its allowed children with
+weights, the rules and relations that apply to it, and the matching concepts and roles);
+the documents written so far (the Brief and the parent Spec node); and verified examples
+of similar nodes. The whole ontology is never placed in a prompt.
+
+\paragraph{Think, then answer} Planning a place is multi-step arithmetic and rule
+checking: child areas must fit their parent, shares must match counts, and design rules
+interact. Because strict formats degrade reasoning \cite{tam2024}, the model first
+reasons in free text: what the request implies, which rules from the subgraph apply,
+the numbers worked through, and the alternatives considered. Only then does it write the
+step's document in its strict schema. The task description ends with a self-check list
+that the model works through while thinking; for the Plan step it asks whether the
+children's areas fit within 85\% of the parent, whether counts sum to the Brief's numbers,
+whether every enabled component is placed, and whether each zone follows the ontology's
+site preferences. The answer includes a short \emph{rationale} for each decided part,
+which the editor shows when the user asks why a part was built as it was, together with
+the ontology facts the call used. The raw reasoning is logged but never shown.
+
+The reasoning is produced in one of three modes, chosen per provider: \emph{native}, when
+a reasoning model returns its thinking separately; \emph{two-pass}, the default, in which a
+first call reasons without a format and a second call writes the answer given the inputs
+and the reasoning; and \emph{one-pass}, in which the schema's first field is a
+\texttt{thinking} string. Steps that resolve ambiguity or plan (Interpret, the upper Plan
+levels, upper-level relations in Compile, visual critique and re-planning) think;
+expansion of lower levels makes no model call at all.
+
+\paragraph{Validate and repair} Each answer is validated against the schema, the tree
+structure and the aggregate constraints. A failed answer gets one retry with the exact
+violations listed; if that also fails, the step reports the problem rather than
+guessing.
+
+\paragraph{Typed fields} The schemas restrict what an answer may express. Every field has
+a unit, a range or a vocabulary, a default and the bookkeeping flags \texttt{source},
+\texttt{confidence} and \texttt{locked}. Quantity types are \texttt{count}, \texttt{area},
+\texttt{size}, \texttt{length}, \texttt{width}, \texttt{spacing}, \texttt{ratio},
+\texttt{share} and \texttt{density}. A density is one of five words (\emph{none, rare,
+some, common, abundant}) that each field maps to numbers, for instance $0, 0.05, 0.15,
+0.3, 0.5$ flowers per free cell, so the word is never ambiguous. Quality types are
+\texttt{enum}, \texttt{enumSet}, \texttt{mix} (weighted vocabulary values summing to 1)
+and \texttt{bool}, plus \texttt{tags} and free \texttt{description}. The central rule of
+the schema is that \emph{decisions that change the layout are made only through
+quantity, enum, enumSet, mix or bool fields}, which are closed and checkable; tags and
+descriptions are used only for asset retrieval, generation and the critic.
+
+Aggregate constraints across the tree are written in a small expression language with
+paths (\texttt{self}, \texttt{parent}, \texttt{children(m)}, \texttt{descendants(class: C)}),
+aggregates, arithmetic, comparison and logic, for example
+\begin{equation*}
+\texttt{sum(children().area) <= 0.85 * self.area}
+\end{equation*}
+for a settlement, which leaves room for streets. During planning a field may still hold a
+range; a constraint over ranges is satisfiable when some choice within the ranges meets
+it, which is checked with interval arithmetic. The compiler then picks seeded values that
+meet every constraint of the node and records them. Constraints that depend on where
+things land, such as footprint density or reachability, are not plan-time constraints;
+they become PLL checks.
+
+\subsection{GBO: GenBuilding Ontology}
+
+Module definitions describe each part on its own, but the builder also needs facts that
+cross modules: a water mill \emph{requires} a river; a tannery is \emph{typically
+downstream of} houses; \emph{smithy}, \emph{forge} and \emph{blacksmith} name the same
+concept; a well is \emph{a kind of} water source; an asset showing a rose \emph{can fill}
+the flower role; patricians \emph{prefer} high ground. GBO holds all of them in one
+queryable graph.
+
+\paragraph{Classes} The terminology contains nine classes. \texttt{BuildType} is a kind
+of place (settlement, interior, dungeon, region) with its stages, Brief schema and scale
+table of \texttt{ScaleClass} entries. \texttt{Module} is a part at a \emph{level}, from
+outer to inner \emph{site, zone, parcel, feature, dressing}; for example
+\texttt{Garden}~$\sqsubseteq$~\texttt{Feature} and
+\texttt{ResidentialWard}~$\sqsubseteq$~\texttt{Zone}. Modules are further grouped into
+module classes such as \texttt{BuildingParcel} or \texttt{PlantedArea}, so constraints can
+count ``all parcels whose primary object is a building'' without listing module names.
+\texttt{Field} is a quantity or quality field of a module, \texttt{Concept} a vocabulary
+value (\texttt{Rose}~$\sqsubseteq$~\texttt{Flower}), \texttt{Role} an asset role a slot
+needs (\texttt{FencePieceSet}, \texttt{HouseBody}), \texttt{Asset} a catalogued asset of
+the project, \texttt{Relation} a spatial relation type with its score function, and
+\texttt{Rule} a design rule with its source.
+
+\paragraph{Properties} Table~\ref{tab:gbo} lists the main properties. The
+\texttt{consistsOf} edges with weights and cardinalities form the weighted DAG of
+hierarchical WFC \cite{alaka2023}: densities are edge weights, and constraints written
+at a parent apply to its subtree. \texttt{prefersSite} carries Emilien's interest
+criteria \cite{emilien2012}. \texttt{canFill} links the project's catalogued assets to
+roles. Every fact carries a \texttt{source}: a paper, a design rule, a user or a
+verified build.
+
+\begin{table}[t]
+\caption{Main GBO properties}
+\label{tab:gbo}
+\centering
+\footnotesize
+\begin{tabular}{@{}>{\ttfamily}p{1.75cm} p{1.75cm} p{4.1cm}@{}}
+\hline
+\textrm{\textbf{Property}} & \textbf{Between} & \textbf{Carries} \\
+\hline
+subClassOf & classes & taxonomy (Garden $\sqsubseteq$ Feature) \\
+consistsOf & module $\rightarrow$ module & weight (typical share), min/max cardinality, condition \\
+requires, excludes & module, feature & WaterMill requires River \\
+typically\-Related & module $\times$ module & a relation with a weight (Tannery downstream-of houses) \\
+prefersSite & module $\rightarrow$ criterion & signed weight (Church: high ground $+0.8$) \\
+hasField & module $\rightarrow$ field & type, range, default, density map \\
+needsRole & module $\rightarrow$ role & essential or adaptable; joins \\
+canFill & asset $\rightarrow$ role & confidence, perspective, footprint \\
+label, altLabel & any $\rightarrow$ text & names and synonyms, for interpretation \\
+broader, narrower & concept $\leftrightarrow$ concept & SKOS hierarchy of values \\
+source & fact $\rightarrow$ source & paper, rule, user or verified build \\
+\hline
+\end{tabular}
+\end{table}
+
+\paragraph{Modules} A place module is data: its quantity and quality fields, its asset
+\emph{slots}, its allowed children with typical weights, its aggregate constraints, its
+default relations and its compile template. A slot binds to an ontology role and names
+the quality field whose values say which concepts the art must show; bindings may be
+conditional. The garden module, for example, binds its \texttt{plant} slot to the
+\texttt{crop} role when its \texttt{kind} is \emph{vegetable} and to \texttt{flower}
+with the concepts of its \texttt{flower-mix} when it is \emph{flower}; its \texttt{bed}
+slot is adaptable, with tilled ground as the fallback. Each slot is marked
+\emph{essential} or \emph{adaptable}, which tells repair what it may move or drop. A
+module lists its children; its possible parents are derived, never written twice.
+The first essential slot of a parcel or feature (a house, a well, a dining table) is its
+\emph{primary} object, which children refer to as \texttt{parent.primary}.
+
+\paragraph{How each step uses it} The interpreter maps the query's words to concepts
+through labels, synonyms and \texttt{broader} links, and chooses the build type. Confirm
+takes from it the allowed components, the fields to ask and the meaning of size words.
+Plan draws allowed children, weights, requirements, exclusions and site preferences.
+Compile takes the geometric meaning of each relation. Asset retrieval asks which assets
+fill a role in the grid's perspective. Verification asks which rules apply to a node and
+its subtree, inherited through the class hierarchy. Explanations cite the facts a
+decision used.
+
+\paragraph{Representation} Inside the engine, GBO is a typed property graph loaded from
+JSON files with stable identifiers; module files are read as \texttt{Module} classes, so
+there is one source of truth. It is published in three Turtle files under a persistent
+namespace: the core vocabulary in OWL~2, written by hand; the library in OWL~2 and SKOS,
+with modules punned as classes under their level, child cardinalities as OWL
+restrictions on \texttt{hasPart}, and vocabularies and roles as SKOS concept schemes; and
+SHACL shapes for the library itself and for built places. The library and shapes are
+generated from the JSON, and a test fails when the published files fall behind. The
+aggregate arithmetic and conditional bindings go beyond SHACL Core, so they are carried
+as expression strings and evaluated by the engine.
+
+The current settlement library holds 72 modules with 202 fields, 99 slots and 120 child
+rules; 77 asset roles; 20 vocabularies with 107 concepts; 26 relation types; and 14
+design rules, each with its source (for example ``the market sits at the centre, on the
+main road'' from Watabou's city generator \cite{watabou}, and ``patricians live on high
+ground'' from \cite{emilien2012}; others follow Lynch's elements of the city image
+\cite{lynch1960}).
+
+\paragraph{Growth} The core is authored by hand from the literature. New modules or
+concepts (a lighthouse, say) can be proposed by the AI as small subgraphs, validated like
+any document and added after review, which is the offline authoring of
+\cite{xu2025database}. Approved builds adjust the \texttt{consistsOf} and
+\texttt{typicallyRelated} weights; such facts are marked \texttt{source: learned} and kept
+separable from authored ones. Projects may add their own concepts, modules and roles
+without changing the engine's core.
+
+\subsection{Place Layout Language (PLL)}
+\label{sec:pll}
+
+PLL is the intermediate language between the Spec (\emph{what and how much}) and the
+scene (\emph{cells and entities}). A PLL document says where things go and by which
+rules. Its design goals are: declarative statements; static checkability before solving
+(every reference resolves, every value has a type and unit, and children too large for
+their parent are caught); determinism (the same document and seed give the same place);
+traceability to Spec nodes; hierarchy and locality (a subtree can be re-solved alone with
+everything outside it fixed); native 2D grid semantics; and a small core extended
+through the ontology.
+
+\paragraph{Space} Positions are integer cells; an \emph{edge} is the boundary between two
+adjacent cells, on which fences and walls lie. Directions are grid directions, also on
+isometric grids. Objects have a footprint taken from the catalog (the opaque base of
+their art, not the image size), a facing and a layer (\emph{ground, decal, prop,
+building, overhead}); footprints may overlap only across layers. Distance is the
+smallest Chebyshev distance between the cells of two results.
+
+\paragraph{Statements} A document is a flat, unordered list of nineteen statement kinds
+(Table~\ref{tab:pll}). Each has an id and the Spec \texttt{node} it came from, and may be
+marked essential. A reference names a statement's solved result and may be narrowed by
+selectors: \texttt{x.edge}, \texttt{x.inner}, \texttt{x.side(toward: y)},
+\texttt{x.front}, \texttt{x.door} (a door anchor recorded on the art), or
+\texttt{x[*]} for all instances. A statement whose region is \texttt{p[*]} is replicated
+per instance, so \texttt{place p[*].house in p[*]} gives every parcel its own house.
+Region expressions combine cell sets by union, intersection and difference.
+
+\begin{table}[t]
+\caption{PLL statements and their solving step}
+\label{tab:pll}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{1.25cm} >{\ttfamily}p{2.85cm} p{3.5cm}@{}}
+\hline
+\textbf{Kind} & \textrm{\textbf{Statements}} & \textbf{Meaning (step)} \\
+\hline
+givens & fixed, anchor & existing or locked content; named points (a) \\
+networks & path, network & least-cost roads and rivers; street networks (b) \\
+areas & partition, subdivide, floorplan, graph & zones by interest maps; parcels; rooms; mission graphs (c) \\
+objects & place (primary) & a region's main object (d) \\
+areas & region, connect & nested areas; doors and openings (e) \\
+objects & place & other objects by relations (f) \\
+linear & line & fences, walls, hedges on edges (g) \\
+patterns & rows, grid & beds, crops, pews; orchards (h) \\
+dressing & scatter & density-driven Poisson-disk scatter (i) \\
+ground & fill & autotiled terrain (j) \\
+rules & relation, objective, check & constraints; soft costs; post-solve checks (k) \\
+\hline
+\end{tabular}
+\end{table}
+
+\paragraph{Relations} Relations are n-ary, as in SceneCraft \cite{scenecraft}, and each
+has a score $s \in [0,1]$ computed from solved results. The vocabulary covers
+containment (\texttt{inside}, \texttt{outside}), global position (\texttt{center},
+\texttt{edge}, \texttt{corner}), distance (\texttt{adjacent}, \texttt{near},
+\texttt{far}), relative position in the facing frame of an object
+(\texttt{in-front-of}, \texttt{behind}, \texttt{beside}, \texttt{between}), facing
+(\texttt{faces}), groups (\texttt{aligned}, \texttt{in-row}, \texttt{symmetric},
+\texttt{repeat}), linear features and networks (\texttt{along}, \texttt{encloses},
+\texttt{crosses}), reachability and visibility (\texttt{path-between},
+\texttt{visible-from}, \texttt{focus}), stacking (\texttt{on}) and interest maps
+(\texttt{interest}). For example, with $d$ the distance between members,
+\begin{equation}
+s_{\text{near}}(d; d_0, d_1) =
+\begin{cases} 1 & d \le d_0 \\ \dfrac{d_1 - d}{d_1 - d_0} & d_0 < d < d_1 \\ 0 & d \ge d_1, \end{cases}
+\end{equation}
+and \texttt{interest} maps a criterion value in $[-1,1]$ to $[0,1]$, with $-1$ a hard
+veto \cite{emilien2012}. Containment, enclosure, reachability, stacking and vetoes are
+hard by default; any relation can be made hard. New relation types are registered in the
+ontology with their arity, arguments and score function, so adding one does not change
+the parser.
+
+\paragraph{Solving order} A fixed order is necessary because some relations refer to
+objects that must exist first: a garden region lies \emph{behind} the house of its plot,
+so the house must be placed before the garden is solved. The solver therefore works
+top-down through the region tree, and inside each region it takes statements in the
+fixed steps of Table~\ref{tab:pll}: givens; paths (rivers, then main roads, streets,
+lanes and trails); the region's areas; its primary objects, large before small; nested
+regions and openings, which can now relate to the primary objects; other objects by a
+greedy, anchor-first and large-first placement \cite{holodeck} followed by simulated
+annealing, which outperformed greedy and genetic search for GLDL \cite{gldl}; lines;
+rows and grids; and scatter on the remaining free cells. It then recurses into each area
+produced, largest first. Terrain fill and checks run once the tree is complete. A
+reference to a result solved later is a static error. Each statement's random stream is
+seeded with a hash of the document seed and its id, so adding or removing one statement
+does not change the others.
+
+\paragraph{Objective} Within a region, the soft objective combines the relation scores
+with GLDL's cluster and sparsity terms \cite{gldl}, a variety term and a coverage term:
+\begin{equation}
+\begin{aligned}
+\text{cost} = &\textstyle\sum_{r \in \text{soft}} w_r (1 - s_r)
+  + w_c \sum_{i<j} \frac{1}{d_{ij} + 1}
+  + w_s \max_{c \in F} d(c) \\
+ &+ w_v V + w_k \,|\rho - \rho^{*}|,
+\end{aligned}
+\end{equation}
+where $F$ is the set of free cells and $d(c)$ the distance from a free cell to the
+nearest object, so large empty voids are penalised; $V$ is the share of neighbouring
+instances that use the same asset; and $\rho$ is the region's footprint density against
+its target band $\rho^{*}$, as in CityGenAgent \cite{citygenagent}. Default weights come
+from the module via the ontology.
+
+\paragraph{Hard rules and checks} For every statement: results lie inside their region,
+no two footprints overlap on a layer (fixed cells included), objects stand on terrain
+their asset allows, cells marked \texttt{keepFree} (the front of a door, a stall or a
+chest) stay walkable, every entrance, gate and door is reachable from the main entrance,
+locked openings open only once their key is reachable, lines are continuous with valid
+joins, and every asset is perspective-compatible and has an allowed licence. Because GLDL
+found unplayable levels despite its constraints \cite{gldl}, reachability is tested by
+pathfinding, never assumed. \texttt{check} statements add post-solve predicates
+(\texttt{count}, \texttt{density}, \texttt{area}, \texttt{footprint-density},
+\texttt{reachable}, \texttt{closed}, \texttt{score}, \texttt{filled}). Each error carries
+a code, the statement id and its Spec node, which routes repair to the right place.
+
+\paragraph{Example} Fig.~\ref{fig:garden} shows the text form of one garden compiled
+from the garden module's template. The canonical form is JSON; the text form maps to it
+one-to-one and is used in review and logs.
+
+\begin{figure}[t]
+\scriptsize
+\begin{verbatim}
+region   g14 in p14 shape rect size 4x3   @plot#14/garden
+relation behind(g14, p14.house) weight 3
+relation adjacent(g14, p14.house.back) weight 2
+anchor   g14.gate at g14.side(toward: p14.house.back)
+         kind gate
+line     g14.fence slot fence along g14.edge
+         gaps [g14.gate] essential false
+rows     g14.beds in g14.inner slot bed count 2
+scatter  g14.flowers in g14.inner - g14.beds slot plant
+         mix {rose:.5, tulip:.3, daisy:.2} density 0.3
+relation path-between(g14.gate, p14.house.back) hard
+check    count(g14.beds, [1, 3])
+check    closed(g14.fence)
+\end{verbatim}
+\vspace{-6pt}
+\caption{A garden behind the house of plot 14, in PLL text form. The density 0.3 is the
+numeric value of the Spec's \emph{common}.}
+\label{fig:garden}
+\end{figure}
+
+\paragraph{Relation to GLDL} PLL keeps GLDL's core terms with the same meaning:
+\emph{PredefinedFacility} is \pll{fixed}, \emph{NewFacility} is \pll{place} (with
+\pll{region} for areas), \emph{Points} are \pll{anchor}s, its basic and relationship
+constraints map to \pll{near}, \pll{inside}, \pll{edge}, \pll{far},
+\pll{visible-from}, \pll{focus}, \pll{aligned} and \pll{faces}, and its objective is
+the cluster and sparsity part of ours. GLDL, however, describes one 3D room of cuboid
+facilities, without a hierarchy of parts, quantities or qualities, linear features,
+networks, subdivision, scatter, terrain, tiles, perspectives, group relations or
+provenance. PLL adds these, together with rooms, mission graphs and openings with
+lock--key reachability, and in-document checks. A single room without nesting can be
+exported to GLDL for comparison.
+
+\subsection{Asset Management}
+\label{sec:assets}
+
+\paragraph{Understanding the art} Every asset in the project is analysed into a catalog
+entry. Pixel analysis of the alpha mask gives the \emph{footprint} in cells (the opaque
+base, not the image size) and the \emph{anchor} (the lowest opaque row and its shadow);
+edge analysis groups fence, wall and hedge sprites into \emph{piece sets} (straight,
+corner, end, T, cross, gate); a vision model, run on an upscaled image as recommended by
+GameTileNet \cite{gametilenet}, gives the category, tags, the anchors on the art (door,
+gate, seat) and the \emph{perspective} (top-down, three-quarter or isometric). Each entry
+also records the facings the art supports, its palette, layer, passability, its
+affordance and tile type from GameTileNet's taxonomy, and its licence, author and source.
+Tilesheets are segmented into whole objects before analysis. Flat top-down art and
+upright art may be mixed in one project, as most packs do; what must match is the grid,
+since top-down linear pieces join only on a square grid and isometric pieces only on an
+isometric one.
+
+\paragraph{Needs} From the confirmed Brief, the asset manager walks the slots of every
+enabled component and its descendants, resolves each slot's role and concepts from the
+component's quality fields (a flower garden with a rose and tulip mix needs
+\texttt{flower:rose} and \texttt{flower:tulip}), and merges identical needs across
+components. Each need gets an importance: \emph{critical} (essential and large or
+structural: buildings, terrain, roads, walls, fences), \emph{normal} (essential, small)
+or \emph{optional} (adaptable). Buildings, terrain, piece sets and things seen many times
+are \emph{style-critical}.
+
+\paragraph{Fit} A candidate is any asset from a source that passes the hard filters: it
+fills the role and shows the concept (any rose fills \emph{flower} through
+\texttt{broader}); its perspective is compatible with the grid; its footprint fits the
+need's range; its layer is right; its licence is known and allowed; and, for a piece
+set, the pieces a line needs are present or can be generated. Because text similarity
+alone matched affordances poorly in \cite{chen2025narrative}, these filters come before
+any similarity. The remaining candidates are scored
+\begin{equation}
+\text{fit} = 0.40\,\sigma_{\text{sem}} + 0.35\,\sigma_{\text{style}} + 0.15\,\sigma_{\text{size}} + 0.10\,\sigma_{\text{qual}},
+\end{equation}
+where $\sigma_{\text{sem}}$ measures how well the asset shows the concept,
+$\sigma_{\text{style}}$ its closeness to the place's \emph{style profile} (palette
+distance, pixels per cell, outline weight and shading, measured from the assets the place
+already uses), $\sigma_{\text{size}}$ how little rescaling it needs and
+$\sigma_{\text{qual}}$ its cleanliness and completeness. For style-critical needs,
+$\sigma_{\text{style}} \ge 0.7$ is also required. A fit of at least 0.75 is \emph{good};
+from 0.55 it is \emph{usable} after adaptation (recolouring to the palette, rescaling,
+mirroring); below that it is rejected.
+
+\paragraph{Sources and decision procedure} Four sources share one interface: the
+\emph{project}; a curated, pre-analysed \emph{library} organised in style families;
+the \emph{web}, restricted to approved free game-art sites; and \emph{generation} with
+the editor's image tool. Under the default \emph{auto} policy, needs are resolved in
+order of importance as follows: use a good project candidate; otherwise import a good
+library candidate; otherwise, for a style-critical need, generate it, since buildings,
+terrain and piece sets fetched from the web rarely match a pack; otherwise search the web
+if the project allows it, and else generate. If nothing good was found, the best usable
+candidate is adapted and reported; failing that, an optional need is dropped and an
+essential one receives a labelled placeholder, so the part still builds and the report
+lists it. The user can narrow the order per component (project only, library, web or
+generate) in the second confirmation round, where the asset plan is shown as a table of
+needs with their proposed sources, thumbnails and alternatives.
+
+Generation prompts the image model with the need (role, concept, the module's and
+Brief's descriptions, footprint, perspective and layer), the style profile and one to
+three reference images from the project closest in role. The result is analysed like any
+asset and judged by a critic for concept, style, footprint and perspective, with up to
+three attempts, each including the critic's reasons. For partial piece sets, the missing
+pieces are generated from an existing piece as reference, and their joins are verified
+by edge analysis. Web retrieval builds queries from the concept, its ontology synonyms,
+the perspective and style words; downloads candidates into an isolated folder; reads the
+licence and author from the asset's page; segments and analyses them; and scores them as
+above. A candidate whose licence cannot be read is rejected. Allowed licences are a
+project setting (by default CC0, CC-BY and OGA-BY), assets that need attribution are
+added to the project's credits automatically, and verification checks that every built
+entity's asset has an allowed licence. All needs are resolved before compiling, and
+independent generation and web requests run in parallel.
+
+\section{Evaluation}
+% To be written: ablation of components (ontology subgraph, confirmation, expansion
+% rules, verification and repair, asset procedure) on the same queries, with
+% human ranking of the generated places.
+
+% \section*{Acknowledgment}
+
+\begin{thebibliography}{00}
+\bibitem{parish2001} Y. I. H. Parish and P. M\"uller, ``Procedural modeling of cities,'' in \textit{Proc. SIGGRAPH}, 2001, pp. 301--308.
+\bibitem{shaker2016pcg} N. Shaker, J. Togelius, and M. J. Nelson, \textit{Procedural Content Generation in Games}. Cham, Switzerland: Springer, 2016.
+\bibitem{todd2023} G. Todd, S. Earle, M. U. Nasir, M. C. Green, and J. Togelius, ``Level generation through large language models,'' in \textit{Proc. Int. Conf. Foundations of Digital Games (FDG)}, 2023.
+\bibitem{sudhakaran2023} S. Sudhakaran, M. Gonz\'alez-Duque, M. Freiberger, C. Glanois, E. Najarro, and S. Risi, ``MarioGPT: Open-ended text2level generation through large language models,'' in \textit{Proc. NeurIPS}, 2023.
+\bibitem{holodeck} Y. Yang \textit{et al.}, ``Holodeck: Language guided generation of 3D embodied AI environments,'' in \textit{Proc. IEEE/CVF Conf. Computer Vision and Pattern Recognition (CVPR)}, 2024.
+\bibitem{scenecraft} Z. Hu, A. Iscen, A. Jain, T. Kipf, Y. Yue, D. A. Ross, C. Schmid, and A. Fathi, ``SceneCraft: An LLM agent for synthesizing 3D scenes as Blender code,'' in \textit{Proc. Int. Conf. Machine Learning (ICML)}, 2024.
+\bibitem{gldl} K. Xu and C. Verbrugge, ``Constraint is all you need: Optimization-based 3D level generation with LLMs,'' in \textit{Proc. Int. Conf. Foundations of Digital Games (FDG)}, 2025.
+\bibitem{togelius2011} J. Togelius, G. N. Yannakakis, K. O. Stanley, and C. Browne, ``Search-based procedural content generation: A taxonomy and survey,'' \textit{IEEE Trans. Comput. Intell. AI Games}, vol. 3, no. 3, pp. 172--186, 2011.
+\bibitem{emilien2012} A. Emilien, A. Bernhardt, A. Peytavie, M.-P. Cani, and E. Galin, ``Procedural generation of villages on arbitrary terrains,'' \textit{The Visual Computer}, vol. 28, pp. 809--818, 2012.
+\bibitem{vanegas2012} C. A. Vanegas, T. Kelly, B. Weber, J. Halatsch, D. G. Aliaga, and P. M\"uller, ``Procedural generation of parcels in urban modeling,'' \textit{Computer Graphics Forum}, vol. 31, no. 2, pp. 681--690, 2012.
+\bibitem{karth2017} I. Karth and A. M. Smith, ``WaveFunctionCollapse is constraint solving in the wild,'' in \textit{Proc. Int. Conf. Foundations of Digital Games (FDG)}, 2017.
+\bibitem{alaka2023} S. Alaka and R. Bidarra, ``Hierarchical semantic wave function collapse,'' in \textit{Proc. Int. Conf. Foundations of Digital Games (FDG)}, 2023.
+\bibitem{dormans2010} J. Dormans, ``Adventures in level design: Generating missions and spaces for action adventure games,'' in \textit{Proc. Workshop on Procedural Content Generation in Games (PCG)}, 2010.
+\bibitem{layoutgpt} W. Feng \textit{et al.}, ``LayoutGPT: Compositional visual planning and generation with large language models,'' in \textit{Proc. NeurIPS}, 2023.
+\bibitem{infinigen} A. Raistrick \textit{et al.}, ``Infinigen Indoors: Photorealistic indoor scenes using procedural generation,'' in \textit{Proc. IEEE/CVF Conf. Computer Vision and Pattern Recognition (CVPR)}, 2024.
+\bibitem{3dgpt} C. Sun, J. Han, W. Deng, X. Wang, Z. Qin, and S. Gould, ``3D-GPT: Procedural 3D modeling with large language models,'' in \textit{Proc. Int. Conf. 3D Vision (3DV)}, 2025.
+\bibitem{worldcraft} X. Liu, C.-K. Tang, and Y.-W. Tai, ``WorldCraft: Photo-realistic 3D world creation and customization via LLM agents,'' 2025, arXiv:2502.15601.
+\bibitem{citygenagent} Z. Liu \textit{et al.}, ``Imagine a city: CityGenAgent for procedural 3D city generation,'' 2026, arXiv:2602.05362.
+\bibitem{xu2025database} K. Xu and C. Verbrugge, ``A database-driven framework for 3D level generation with LLMs,'' in \textit{Proc. AAAI Conf. Artificial Intelligence and Interactive Digital Entertainment (AIIDE)}, vol. 21, 2025, pp. 367--376.
+\bibitem{chen2025narrative} Y.-C. Chen and A. Jhala, ``Narrative-to-scene generation: An LLM-driven pipeline for 2D game environments,'' 2025, arXiv:2509.04481.
+\bibitem{gametilenet} Y.-C. Chen and A. Jhala, ``GameTileNet: A semantic dataset for low-resolution game art in procedural content generation,'' in \textit{Proc. AAAI Conf. Artificial Intelligence and Interactive Digital Entertainment (AIIDE)}, vol. 21, 2025, pp. 12--21.
+\bibitem{tutenel2009} T. Tutenel, R. M. Smelik, R. Bidarra, and K. J. de Kraker, ``Using semantics to improve the design of game worlds,'' in \textit{Proc. AAAI Conf. Artificial Intelligence and Interactive Digital Entertainment (AIIDE)}, 2009.
+\bibitem{smelik2011} R. M. Smelik, T. Tutenel, K. J. de Kraker, and R. Bidarra, ``A declarative approach to procedural modeling of virtual worlds,'' \textit{Computers \& Graphics}, vol. 35, no. 2, pp. 352--363, 2011.
+\bibitem{owl2} W3C OWL Working Group, ``OWL 2 Web Ontology Language document overview (second edition),'' W3C Recommendation, Dec. 2012.
+\bibitem{skos} A. Miles and S. Bechhofer, Eds., ``SKOS Simple Knowledge Organization System reference,'' W3C Recommendation, Aug. 2009.
+\bibitem{shacl} H. Knublauch and D. Kontokostas, Eds., ``Shapes Constraint Language (SHACL),'' W3C Recommendation, Jul. 2017.
+\bibitem{clareval} J. Li, Y. Wu, and Y. Chang, ``ClarEval: A benchmark for evaluating clarification skills of code agents under ambiguous instructions,'' 2026, arXiv:2603.00187.
+\bibitem{kobalczyk2025} K. Kobalczyk, N. Astorga, T. Liu, and M. van der Schaar, ``Active task disambiguation with LLMs,'' in \textit{Proc. Int. Conf. Learning Representations (ICLR)}, 2025.
+\bibitem{tam2024} Z. R. Tam \textit{et al.}, ``Let me speak freely? A study on the impact of format restrictions on performance of large language models,'' in \textit{Proc. EMNLP: Industry Track}, 2024.
+\bibitem{watabou} Watabou, ``Medieval fantasy city generator,'' 2016. [Online]. Available: https://watabou.itch.io/medieval-fantasy-city-generator
+\bibitem{lynch1960} K. Lynch, \textit{The Image of the City}. Cambridge, MA: MIT Press, 1960.
+\end{thebibliography}
+
+\end{document}

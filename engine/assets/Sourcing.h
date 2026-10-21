@@ -45,6 +45,10 @@ struct LicencePolicy {
 struct SourcingSettings {
     bool webSearch = false; // search the web for free art (off unless the project turns it on)
     LicencePolicy licences;
+    // How a build finds its art when a part says "auto" (the Build panel's default): "search"
+    // (the project, the user's library, the web, then the Art tool: found art is the most
+    // reliable), "generate", "library", "project" or "auto".
+    std::string defaultSource = "search";
 };
 SourcingSettings ReadSourcingSettings(const std::filesystem::path& projectRoot);
 void WriteSourcingSettings(const std::filesystem::path& projectRoot, const SourcingSettings& settings);

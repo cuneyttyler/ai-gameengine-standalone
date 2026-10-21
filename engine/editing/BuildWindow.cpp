@@ -283,6 +283,7 @@ json BriefWindow(const Ontology& ontology, const json& brief, const BriefMerge* 
     json features = json::array();
     for (const auto& f : brief.value("features", json::array())) {
         if (f.is_object()) features.push_back(f.value("module", ""));
+        else if (f.is_string()) features.push_back(f);
     }
     window["features"] = {{"value", features}, {"options", fields.value("features", json::array())}};
     json style = json::object();
@@ -515,7 +516,8 @@ json BuildChoices(const Ontology& ontology) {
         }
         json features = json::array();
         for (const auto& f : bf.value("features", json::array())) {
-            if (f.is_string() && ontology.Module(f.get<std::string>())) features.push_back({{"id", f}, {"label", Label(f.get<std::string>())}});
+            const std::string id = f.is_object() ? f.value("module", "") : f.is_string() ? f.get<std::string>() : "";
+            if (ontology.Module(id)) features.push_back({{"id", id}, {"label", Label(id)}});
         }
         // Its main parts: zones and networks first, then the distinctive parcels and
         // features (not the many alike: houses, an interior's rooms, fences, dressing).

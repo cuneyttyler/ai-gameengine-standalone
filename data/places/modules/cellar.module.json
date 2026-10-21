@@ -5,7 +5,8 @@
   "level": "parcel",
   "description": "Below ground: barrels and stores.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "InteriorRoom"

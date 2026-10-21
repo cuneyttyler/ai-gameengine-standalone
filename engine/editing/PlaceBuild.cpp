@@ -1,5 +1,6 @@
 #include "editing/PlaceBuild.h"
 
+#include "assets/ArtAnalysis.h"
 #include "assets/LayoutImage.h"
 #include "assets/TextureCook.h"
 #include "editing/BuildWindow.h"
@@ -13,6 +14,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <deque>
 #include <fstream>
 #include <functional>
 #include <set>
@@ -422,7 +424,7 @@ json PlaceBuild::SourcingJson(const std::map<std::string, Sourcing>& pieces) {
     json out = json::object();
     for (const auto& [key, s] : pieces) {
         out[key] = {{"need", s.need}, {"attempts", s.attempts}, {"reasons", s.reasons}, {"done", s.done}, {"passed", s.passed},
-                    {"made", s.made}, {"request", s.request}, {"superseded", s.superseded}};
+                    {"made", s.made}, {"request", s.request}, {"superseded", s.superseded}, {"verdict", s.verdict}};
     }
     return out;
 }
@@ -440,6 +442,7 @@ std::map<std::string, PlaceBuild::Sourcing> PlaceBuild::SourcingFrom(const json&
         s.passed = v.value("passed", false);
         s.made = v.value("made", json::array());
         s.request = v.value("request", "");
+        s.verdict = v.value("verdict", "");
         s.superseded = v.value("superseded", json::array());
         out[key] = s;
     }
@@ -2043,10 +2046,81 @@ void PlaceBuild::Solve() {
     }
     (void)rounds;
     assetNeeds_ = json::array();
+    // A revision that asks a zone for more ("10 more houses"): the zone takes the open land
+    // beside it first, and the plan is solved again; only what still doesn't fit is cut.
+    if (frozen && roomToRevision_ && !growing_ && GrowShortZones()) {
+        growing_ = true;
+        Solve();
+        growing_ = false;
+        return;
+    }
     if (frozen) FitToRoom();
     RenderMap();
     Log({{"step", "solved"}, {"rounds", rounds}, {"irProblems", ProblemsJson(irProblems)}, {"problems", bestProblems},
          {"stats", solved_.value("stats", json())}});
+}
+
+bool PlaceBuild::GrowShortZones() {
+    if (!spec_.contains("root")) return false;
+    const Ontology& ontology = host_.ontology();
+    const int W = std::max(1, SiteSide());
+    // Whose each cell is: the zones' land, and the river's and roads' (never given).
+    std::vector<int> owner(static_cast<size_t>(W) * W, -1);
+    std::map<std::string, std::vector<int>> land;
+    for (const auto& r : solved_.value("regions", json::array())) {
+        if (r.value("statement", "") != "site/zones") continue;
+        auto& cells = land[r.value("id", "")];
+        for (int c : DecodeCells(r.value("cells", json::array()), W)) {
+            if (c >= 0 && c < W * W) owner[c] = 1, cells.push_back(c);
+        }
+    }
+    for (const auto& path : solved_.value("paths", json::array())) {
+        for (const auto& cell : path.value("cells", json::array())) {
+            if (cell.is_array() && cell.size() >= 2) {
+                const int x = cell[0].get<int>(), y = cell[1].get<int>();
+                if (x >= 0 && y >= 0 && x < W && y < W) owner[y * W + x] = 2;
+            }
+        }
+    }
+    bool grew = false;
+    for (const auto& row : VerifyLayout(ontology, brief_, spec_, solved_)) {
+        if (!row.value("zone", false)) continue;
+        const int planned = row.value("planned", 0), built = row.value("built", 0);
+        if (built >= planned || planned <= 0) continue;
+        const std::string id = row.value("id", "");
+        json* zone = SpecNode(spec_, id);
+        if (zone == nullptr || !land.contains(id)) continue;
+        std::set<int> mine(land[id].begin(), land[id].end());
+        // What the missing parts need: the zone's land per part it holds, for each one missing.
+        const int want = static_cast<int>(std::ceil(1.15 * mine.size() * (planned - built) / std::max(1, built)));
+        std::deque<int> frontier(mine.begin(), mine.end());
+        int added = 0;
+        while (!frontier.empty() && added < want) {
+            const int c = frontier.front();
+            frontier.pop_front();
+            const int x = c % W, y = c / W;
+            for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                const int nx = x + dx, ny = y + dy;
+                if (nx < 0 || ny < 0 || nx >= W || ny >= W) continue;
+                const int n = ny * W + nx;
+                if (owner[n] != -1 || mine.contains(n)) continue;
+                mine.insert(n);
+                owner[n] = 1;
+                frontier.push_back(n);
+                if (++added >= want) break;
+            }
+        }
+        if (added == 0) continue;
+        (*zone)["layoutCells"] = EncodeCells(std::vector<int>(mine.begin(), mine.end()), W);
+        (*zone)["quantity"]["area"] = {{"area", static_cast<int>(mine.size())}};
+        if (!revisions_.empty()) {
+            revisions_.back()["notes"].push_back(id + " took " + std::to_string(added) + " cells of the open land beside it, for the " +
+                                                 std::to_string(planned - built) + " more it was asked for");
+        }
+        grew = true;
+    }
+    if (grew) Log({{"step", "grow zones"}});
+    return grew;
 }
 
 void PlaceBuild::FitToRoom() {
@@ -2219,6 +2293,25 @@ json PlaceBuild::RevisionBody() const {
 std::string PlaceBuild::Revise(const std::string& request) {
     if (stage_ != "plan" && stage_ != "planned" && stage_ != "built" && stage_ != "layout") return "there's no plan to revise yet";
     if (request.find_first_not_of(" \t\r\n") == std::string::npos) return "say what to change";
+    // Two zones changing places (place-layout.md §10): said in the request's own words, run
+    // exactly, with no AI: where each goes is where the other is now, which relations can't say.
+    if (stage_ == "layout") {
+        if (const auto [a, b] = SwapAsked(request); !a.empty()) {
+            beforeRevision_ = stage_;
+            Pending what{"revise", -1, request, "", json::object()};
+            auto name = [](std::string id) {
+                std::replace(id.begin(), id.end(), '-', ' ');
+                if (!id.empty()) id[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(id[0])));
+                return id;
+            };
+            const json answer = {{"summary", name(a) + " and " + name(b) + " change places."},
+                                 {"changes", json::array({{{"op", "swap"}, {"a", a}, {"b", b}}})}};
+            Log({{"step", "revise"}, {"request", request}, {"program", answer["changes"]}, {"by", "the request's words"}});
+            OnRevision(what, {{"ok", true}, {"answer", answer}});
+            Save();
+            return {};
+        }
+    }
     json body = RevisionBody();
     body["instruction"] = request;
     if (stage_ == "layout") body["stage"] = "layout";
@@ -2230,6 +2323,144 @@ std::string PlaceBuild::Revise(const std::string& request) {
     Log({{"step", "revise"}, {"request", request}});
     Save();
     return {};
+}
+
+std::pair<std::string, std::string> PlaceBuild::SwapAsked(const std::string& request) const {
+    std::string t = request;
+    for (auto& ch : t) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    // The zones it names, by where they're first named.
+    std::vector<std::pair<size_t, std::string>> named;
+    const Ontology& ontology = host_.ontology();
+    if (!spec_.contains("root")) return {};
+    for (const auto& c : spec_["root"].value("children", json::array())) {
+        const std::string id = c.value("id", "");
+        const ModuleDef* m = ontology.Module(c.value("module", ""));
+        if (m == nullptr || m->level != PlaceLevel::Zone || !Mentions(request, id)) continue;
+        std::string spaced = id;
+        std::replace(spaced.begin(), spaced.end(), '-', ' ');
+        size_t at = t.find(spaced);
+        if (at == std::string::npos) at = t.find(id);
+        named.push_back({at == std::string::npos ? t.size() : at, id});
+    }
+    if (named.size() != 2) return {};
+    std::sort(named.begin(), named.end());
+    const auto& [atA, a] = named[0];
+    const auto& [atB, b] = named[1];
+    for (const char* w : {"swap", "exchange", "switch", "change places", "trade places", "change place", "each other's place",
+                          "places with", "place of each other"}) {
+        if (t.find(w) != std::string::npos) return {a, b};
+    }
+    // "Move A to where B is": A named before a "where", B after it (and, both ways, the other
+    // way round too). A "where" with no zone after it ("where the river bends") isn't one.
+    const size_t where = t.find("where");
+    if (where != std::string::npos && atA < where && atB > where) return {a, b};
+    return {};
+}
+
+std::set<std::string> PlaceBuild::RunExactOps(const json& ops, std::set<std::string>& moving, json& notes) {
+    std::set<std::string> placed;
+    if (!spec_.contains("root")) return placed;
+    const Ontology& ontology = host_.ontology();
+    const int W = std::max(1, SiteSide());
+    // A zone's land now: what the layout gave it.
+    auto landOf = [&](const std::string& id) {
+        std::set<int> out;
+        for (const auto& r : solved_.value("regions", json::array())) {
+            if (r.value("statement", "") != "site/zones" || r.value("id", "") != id) continue;
+            for (int c : DecodeCells(r.value("cells", json::array()), W)) out.insert(c);
+        }
+        return out;
+    };
+    auto zone = [&](const std::string& id) -> json* {
+        json* node = SpecNode(spec_, id);
+        const ModuleDef* m = node ? ontology.Module(node->value("module", "")) : nullptr;
+        return m && m->level == PlaceLevel::Zone ? node : nullptr;
+    };
+    // Its land, held exactly (as painted land is).
+    auto give = [&](json& node, const std::set<int>& land) {
+        node.erase("layoutCells");
+        node.erase("at");
+        if (land.empty()) {
+            node.erase("paint");
+            return;
+        }
+        node["paint"] = EncodeCells(std::vector<int>(land.begin(), land.end()), W);
+        node["quantity"]["area"] = {{"area", static_cast<int>(land.size())}};
+    };
+    // Where one stood, the other stands: their relations and placement go with the place (one's
+    // relation to the other turned round).
+    auto tradeRelations = [&](json& x, json& y, const std::string& a, const std::string& b) {
+        auto turned = [&](json rel, const std::string& self, const std::string& other) {
+            for (auto& r : rel) {
+                if (r.value("to", "") == self) r["to"] = other;
+            }
+            return rel;
+        };
+        const json relX = x.value("rel", json::array()), relY = y.value("rel", json::array());
+        x["rel"] = turned(relY, a, b);
+        y["rel"] = turned(relX, b, a);
+        const json px = x.value("placement", json()), py = y.value("placement", json());
+        if (py.is_null()) x.erase("placement"); else x["placement"] = py;
+        if (px.is_null()) y.erase("placement"); else y["placement"] = px;
+    };
+    for (const auto& op : ops) {
+        const std::string kind = op.value("op", "");
+        if (kind == "swap" || kind == "occupy") {
+            const std::string a = kind == "swap" ? op.value("a", "") : op.value("zone", "");
+            const std::string b = kind == "swap" ? op.value("b", "") : op.value("where", json::object()).value("zone", "");
+            json* x = zone(a);
+            json* y = zone(b);
+            if (x == nullptr || y == nullptr || a == b) {
+                notes.push_back(kind + ": " + a + " / " + b + " isn't two zones of the place");
+                continue;
+            }
+            const std::set<int> landA = landOf(a), landB = landOf(b);
+            give(*x, landB);
+            placed.insert(a);
+            moving.erase(a);
+            if (kind == "swap" || op.value("then", "swap") == "swap") {
+                give(*y, landA);
+                tradeRelations(*x, *y, a, b);
+                placed.insert(b);
+                moving.erase(b);
+                notes.push_back(a + " and " + b + " changed places, each on the other's land exactly");
+            } else {
+                y->erase("paint");
+                y->erase("layoutCells");
+                y->erase("at");
+                moving.insert(b); // placed again, by its relations
+                notes.push_back(a + " took " + b + "'s land; " + b + " was placed again");
+            }
+        } else if (kind == "shift") {
+            const std::string id = op.value("zone", "");
+            json* x = zone(id);
+            const int dx = op.value("dx", 0), dy = op.value("dy", 0);
+            if (x == nullptr || (dx == 0 && dy == 0)) continue;
+            std::set<int> land;
+            for (int c : landOf(id)) {
+                const int nx = c % W + dx, ny = c / W + dy;
+                if (nx >= 0 && ny >= 0 && nx < W && ny < W) land.insert(ny * W + nx);
+            }
+            give(*x, land);
+            // The zones under it give way; the land it leaves is open.
+            for (auto& c : spec_["root"]["children"]) {
+                if (c.value("id", "") == id) continue;
+                for (const char* key : {"paint", "layoutCells"}) {
+                    if (!c.contains(key)) continue;
+                    std::vector<int> theirs;
+                    for (int cell : DecodeCells(c[key], W)) {
+                        if (!land.contains(cell)) theirs.push_back(cell);
+                    }
+                    c[key] = EncodeCells(theirs, W);
+                }
+            }
+            placed.insert(id);
+            moving.erase(id);
+            notes.push_back(id + " moved " + std::to_string(std::abs(dx)) + (dx >= 0 ? " east" : " west") + ", " +
+                            std::to_string(std::abs(dy)) + (dy >= 0 ? " south" : " north") + " (cells)");
+        }
+    }
+    return placed;
 }
 
 std::string PlaceBuild::Review() {
@@ -2408,6 +2639,17 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
             notes.push_back("Kept the Brief as it was: " + errors.front().where + " " + errors.front().message);
         }
     }
+    // The revision language's exact ops (swap, occupy, shift: place-layout.md §10) are run on
+    // the land as it is; the rest (move, set, zone, add, remove) as before.
+    json exactOps = json::array();
+    {
+        json rest = json::array();
+        for (const auto& c : changesKept) {
+            const std::string op = c.value("op", "");
+            (op == "swap" || op == "occupy" || op == "shift" ? exactOps : rest).push_back(c);
+        }
+        changesKept = rest;
+    }
     // A request about one part changes that part: re-planning or removing a
     // zone it doesn't name is left out (the AI review may touch any). A request
     // about "the others", "the rest" or "all" is about every zone.
@@ -2447,6 +2689,54 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
         for (const auto& c : spec_["root"].value("children", json::array())) {
             const std::string id = c.value("id", "");
             if (!moving.contains(id) && Mentions(what.node, id) && !IsSubject(what.node, id)) anchored_.insert(id);
+        }
+    }
+    // Where a moved zone goes is what the request says (place-layout.md §8.3): a relation to a
+    // part the request doesn't name is the AI's own (the docks, a road), and pulls the zone away
+    // from what was asked; it goes. A part of the map ("in the west") only when a direction is
+    // said. What follows from the named references is composed below.
+    if (!review && !aboutAll) {
+        std::string said = what.node;
+        for (auto& ch : said) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        bool direction = false;
+        for (const char* w : {"north", "south", "east", "west", "left", "right", "top", "bottom", "above", "below", "upper", "lower"}) {
+            direction = direction || said.find(w) != std::string::npos;
+        }
+        auto named = [&](const std::string& to) { return to == "site" ? direction : Mentions(what.node, to); };
+        for (auto& c : kept) {
+            if (!c.contains("rel") || !c["rel"].is_array()) continue;
+            json rel = json::array();
+            for (const auto& r : c["rel"]) {
+                if (named(r.value("to", ""))) rel.push_back(r);
+                else notes.push_back(c.value("node", json("")).is_string() ? c["node"].get<std::string>() + ": left out " + r.value("type", "") + " " +
+                                                                                 r.value("to", "") + " (the request doesn't say it)"
+                                                                           : std::string());
+            }
+            c["rel"] = rel;
+        }
+        json facts = json::array();
+        for (const auto& e : expect_) {
+            if (named(e.value("to", ""))) facts.push_back(e);
+        }
+        expect_ = facts;
+        json clean = json::array();
+        for (const auto& n : notes) {
+            if (!n.is_string() || !n.get<std::string>().empty()) clean.push_back(n);
+        }
+        notes = clean;
+    }
+    if (!exactOps.empty()) {
+        if (beforeRevision_ == "layout") {
+            const std::set<std::string> placed = RunExactOps(exactOps, moving, notes);
+            // Placed exactly: their relations' checks don't apply (they stand where they were put).
+            json facts = json::array();
+            for (const auto& e : expect_) {
+                if (!placed.contains(e.value("node", ""))) facts.push_back(e);
+            }
+            expect_ = facts;
+            for (const auto& id : placed) anchored_.erase(id);
+        } else {
+            notes.push_back("Where the zones lie is changed in ① Confirm → Layout, so the swap or move was left out.");
         }
     }
     // A small edit (parts taken out of a zone) edits the layout itself: the
@@ -2665,6 +2955,34 @@ void PlaceBuild::MeetExpectations() {
             Solve();
         }
         checks = CheckExpectations(solved_, expect_);
+    }
+    // Still not there at the layout: the land it asks for (the river's bank) is another zone's.
+    // Once more, with the zones the request didn't name giving way; kept if it meets more.
+    if (stage_ == "layout" && !failing(checks).empty()) {
+        const json spec = spec_, solved = solved_;
+        const size_t before = failing(checks).size();
+        std::set<std::string> pulled;
+        for (const auto& c : failing(checks)) pulled.insert(c.value("node", ""));
+        keepSeeds_ = revisionKeep_;
+        UnfreezeLayout(true, pulled, false);
+        // What the request named as where it goes, or as staying, keeps its land.
+        for (const auto& id : anchored_) {
+            json copy = spec;
+            const json* was = SpecNode(copy, id);
+            json* node = SpecNode(spec_, id);
+            if (was && node && was->contains("layoutCells") && !pulled.contains(id)) (*node)["layoutCells"] = (*was)["layoutCells"];
+        }
+        LayoutZones();
+        const json after = CheckExpectations(solved_, expect_);
+        Log({{"step", "expect"}, {"round", "give way"}, {"failing", failing(after)}});
+        if (failing(after).size() < before) {
+            checks = after;
+            if (!revisions_.empty()) revisions_.back()["notes"].push_back("To make room, the zones the request didn't name moved.");
+        } else {
+            spec_ = spec; // as it was: laid out again from its kept land (the same layout, and its map)
+            (void)solved;
+            LayoutZones();
+        }
     }
     if (!revisions_.empty()) {
         json& entry = revisions_.back();
@@ -2989,8 +3307,8 @@ bool PlaceBuild::StartSourcing(const json& pending, const SourcingSettings& sett
             std::string folder = "assets/web/";
             for (const char c : need.value("query", key)) folder += std::isalnum(static_cast<unsigned char>(c)) ? static_cast<char>(std::tolower(c)) : '-';
             sent = Send({"web", -1, key, "/assets/web-search",
-                         {{"query", need.value("query", "")}, {"folder", folder.substr(0, 60)}, {"maxAssets", 3},
-                          {"shareAlike", settings.licences.shareAlike}},
+                         {{"query", need.value("query", "")}, {"folder", folder.substr(0, 60)}, {"maxAssets", 4},
+                          {"shareAlike", settings.licences.shareAlike}, {"queries", need.value("queries", json::array())}},
                          300}) || sent;
         } else {
             sent = SendArt(key) || sent;
@@ -3017,12 +3335,97 @@ bool PlaceBuild::SendArt(const std::string& key) {
     name = name.substr(0, 40) + "-" + std::to_string(s.attempts);
     while (!name.empty() && name.front() == '-') name.erase(0, 1);
     const std::string kind = need.value("layer", "") == "ground" ? "tile" : "object";
-    const int height = need.value("kind", "") == "building" ? 128 : need.value("kind", "") == "decal" ? 32 : 64;
+    // What to draw, at its size (place-refine.md §2): a role's own words ("a small clump of
+    // wildflowers"), at a height in pixels that follows how big it is (a lantern isn't a house).
+    const Ontology& ontology = host_.ontology();
+    const std::string role = need.value("role", "");
+    const bool building = need.value("kind", "") == "building";
+    const float size = ontology.RoleSize(role), tall = ontology.RoleTall(role);
+    int height = building ? std::clamp(96 + 16 * need.value("w", 3), 112, 192) : need.value("kind", "") == "decal" ? 32 : 64;
+    if (!building && size > 0) height = std::clamp(static_cast<int>(std::lround(96.0f * size * std::max(0.5f, tall))), 24, 160);
     std::string description = need.value("description", "");
+    if (const std::string draw = ontology.RoleDraw(role); !draw.empty() && !building && kind != "tile") {
+        std::string concepts;
+        for (const auto& c : need.value("concepts", json::array())) concepts += (concepts.empty() ? "" : ", ") + c.get<std::string>();
+        // Alone: a thing drawn on its own square of ground looks pasted onto the scene's ground.
+        description = draw + (concepts.empty() ? std::string() : " (" + concepts + ")") + " for a game, " +
+                      (host_.isoGrid && !host_.isoGrid() ? "top-down" : "isometric") +
+                      " view, standing alone with no square of ground, base or plinth under it";
+    }
+    // One art direction for every piece of the place: the same light, palette and outline.
+    description += ". " + ArtDirection();
     if (!s.request.empty()) description += ". The user asks for this change: " + s.request;
     if (!s.reasons.empty()) description += ". Last time it came out wrong: " + s.reasons + "; fix that.";
-    return Send({"art", -1, key, "/assets/generate",
-                 {{"name", name}, {"description", description}, {"kind", kind}, {"height", height}, {"style", "pixel"}}, 600});
+    json body = {{"name", name}, {"description", description}, {"kind", kind}, {"height", height}, {"style", "pixel"}};
+    // The piece's place (place-refine.md §14): the text model first writes what exactly to draw
+    // for it there (a dungeon's light is a wall torch, not a street lamp), its view and the way it
+    // faces, its proportions; the image model draws that.
+    {
+        const bool iso = !host_.isoGrid || host_.isoGrid();
+        const Role* r = ontology.FindRole(role);
+        json around = json::array();
+        for (const auto& [k, other] : sourcing_) {
+            if (k != key && around.size() < 12) around.push_back(other.need.value("title", other.need.value("role", "")));
+        }
+        json context = {{"place", {{"name", brief_.value("name", "")}, {"type", brief_.value("buildType", "")},
+                                   {"style", brief_.value("style", json::object())}, {"about", BriefValue(brief_, "shape.description")}}},
+                        {"role", r ? r->label : role}, {"roleWords", ontology.RoleDraw(role)}, {"concepts", need.value("concepts", json::array())},
+                        {"title", need.value("title", "")}, {"partOf", need.value("component", "")}, {"about", need.value("about", "")},
+                        {"view", iso ? "isometric" : "top-down"}, {"cells", size > 0 ? size : static_cast<float>(need.value("w", 1))},
+                        {"tallForWidth", tall > 0 ? tall : 1.0f}, {"artDirection", ArtDirection()}, {"otherPieces", around}};
+        if (const BuildType* type = ontology.Build(brief_.value("buildType", ""))) {
+            context["place"]["kind"] = type->name; // a Dungeon, a Village, a Courtyard
+            context["place"]["light"] = type->look.is_object() ? type->look.value("lighting", "sun") : "sun";
+            if (const ModuleDef* rm = ontology.Module(type->root)) context["place"]["is"] = rm->description;
+        }
+        const std::string along = iso ? "diagonally, from the upper left down to the lower right (along the isometric grid)" : "from left to right";
+        if (ontology.RoleLook(role, "doorway").is_boolean() && ontology.RoleLook(role, "doorway").get<bool>()) {
+            context["runs"] = "the wall it stands in runs " + along + "; the door is seen at that angle, set flush in it";
+        } else if (!need.value("piece", "").empty()) {
+            context["runs"] = "the section runs " + along + "; copies join end to end";
+        } else if (!need.value("part", "").empty()) {
+            context["runs"] = "a piece of the place's structure, one cell across, standing on its cell";
+        }
+        if (const std::string style = need.value("style", ""); !style.empty()) context["wished"] = style; // the Brief's words for its look
+        if (!s.reasons.empty()) context["lastAttemptWrong"] = s.reasons;
+        if (!s.request.empty()) context["userAsks"] = s.request;
+        body["context"] = context;
+    }
+    // Ground covers hundreds of cells: two takes of it, mixed by cell, don't show a repeat.
+    // The Brief asks for more than one look for its things: so many takes (each checked).
+    if (const int n = need.value("variants", 1); n > 1) {
+        json takes = json::array({""});
+        for (int k = 1; k < n; ++k) {
+            takes.push_back(kind == "tile" ? "another patch of the same kind of ground, clearly different from the first (another crop, another colour or stage), take " + std::to_string(k + 1)
+                                           : "another one of the same kind, different in its shape and details (take " + std::to_string(k + 1) + ")");
+        }
+        body["variants"] = takes;
+    }
+    if (kind == "tile") {
+        // One ground, large (it spans about four cells, so the painted ground repeats rarely),
+        // its frame trimmed and its light evened (no grid).
+        body["height"] = 256;
+        body["evenLight"] = true;
+    }
+    return Send({"art", -1, key, "/assets/generate", body, 600});
+}
+
+std::string PlaceBuild::ArtDirection() const {
+    // A hand-made 2D game of the 90s keeps one look across its art: one light, one palette, one
+    // outline. Every piece of a build is asked for in the same words (and the Brief's style).
+    // Its light: the build type's (place-refine.md §13). Indoors, a dark place lit by its fires.
+    const BuildType* type = host_.ontology().Build(brief_.value("buildType", ""));
+    const bool indoor = type && type->look.is_object() && type->look.value("lighting", "") == "indoor";
+    std::string look = std::string("Art direction shared by every piece of this place: a 16-bit 1990s 2D RPG pixel-art look, ") +
+                       (indoor ? "lit from nearby torches and fires in the dark: warm orange highlights, deep cold shadows, dark and muted colours, "
+                               : "soft daylight from the upper left, a warm, muted, earthy palette, ") +
+                       "gentle shading, a crisp darker outline, readable at small size, no text";
+    for (const char* field : {"style.theme", "style.condition", "style.era", "style.climate", "style.mood"}) {
+        if (const json v = BriefValue(brief_, field); v.is_string() && !v.get<std::string>().empty()) {
+            look += std::string("; ") + (field + 6) + ": " + v.get<std::string>();
+        }
+    }
+    return look;
 }
 
 void PlaceBuild::SourcingStep(const Pending& what, const json& body) {
@@ -3084,7 +3487,17 @@ void PlaceBuild::SourcingStep(const Pending& what, const json& body) {
             if (s.need.value("action", "") == "generate") {
                 if (const std::string terrain = s.need.value("terrain", ""); !terrain.empty()) fields["terrain"] = terrain;
                 if (const std::string layer = s.need.value("layer", ""); !layer.empty()) fields["layer"] = layer;
-                if (const int w = s.need.value("w", 0); w > 0) fields["cells"] = std::to_string(w) + ".00";
+                // A fence or wall section: found again as its line's piece, a cell long.
+                if (const std::string piece = s.need.value("piece", ""); !piece.empty()) fields["pieceSlot"] = s.need.value("pieceSlot", "");
+                if (const std::string part = s.need.value("part", ""); !part.empty()) fields["partOf"] = part;
+                const float roleSize = ontology.RoleSize(role);
+                if (s.need.value("kind", "") != "building" && roleSize > 0) {
+                    char across[32];
+                    std::snprintf(across, sizeof(across), "%.2f", roleSize);
+                    fields["cells"] = across;
+                } else if (const int w = s.need.value("w", 0); w > 0) {
+                    fields["cells"] = std::to_string(w) + ".00";
+                }
                 if (s.need.value("kind", "") == "building") fields["blocks"] = "1";
             }
             newAssets_.push_back({{"path", path}, {"fields", fields}});
@@ -3113,6 +3526,37 @@ void PlaceBuild::SourcingStep(const Pending& what, const json& body) {
             // Or what it says it is names one of them (the model's role may be broader: "prop").
             for (const auto& w : wanted) {
                 if (text.find(w) != std::string::npos && (seen.empty() || seen == "prop" || seen == "building")) fills = true;
+            }
+            // Its view must be the scene's (place-refine.md §4): an isometric scene's buildings and
+            // things aren't seen from straight above; its ground is.
+            const bool iso = !host_.isoGrid || host_.isoGrid();
+            const bool ground = !s.need.value("terrain", "").empty();
+            std::string wrongView;
+            if (iso && !ground && perspective == "top-down") wrongView = "drawn from straight above, not in the scene's isometric view";
+            // What runs along a line (a door in its wall, a fence or wall section) is seen at an angle
+            // in an isometric scene: drawn facing the viewer, it can't sit in a diagonal wall.
+            const bool runs = !s.need.value("piece", "").empty() || ontology.RoleLook(role, "doorway") == json(true);
+            if (iso && runs && (perspective == "front" || perspective == "side" || perspective == "three-quarter" || perspective == "unknown")) {
+                wrongView = "drawn facing the viewer, not at an angle along a wall that runs diagonally (isometric)";
+            }
+            if (ground && (perspective == "isometric" || perspective == "three-quarter")) wrongView = "a ground tile drawn in perspective, not flat from above";
+            if (fills && !wrongView.empty()) {
+                fills = false;
+                reasons += (reasons.empty() ? "" : "; ") + wrongView;
+            }
+            // A fence or wall section must join end to end: one straight run, along a diagonal
+            // of the isometric grid (or across, top-down). Measured from its pixels; the image
+            // model often draws a little closed enclosure instead.
+            if (fills && !s.need.value("piece", "").empty()) {
+                const auto image = DecodeImage(host_.projectRoot / path);
+                const std::string kind = image ? PieceKind(AnalyzeShape(*image), false) : "";
+                const bool straight = iso ? (kind == "straight-x" || kind == "straight-y") : (kind == "straight-h" || kind == "straight-v");
+                if (image && !straight) {
+                    fills = false;
+                    reasons += std::string(reasons.empty() ? "" : "; ") +
+                               "not one straight section that joins end to end (it reads as " + (kind.empty() ? std::string("something else") : kind) +
+                               "): draw a single straight run of fence, two posts and its rails, no corners, not a closed square";
+                }
             }
             // It passed, but the model named no role (or a broader one): it's the slot's, for the catalog.
             if (fills && !isWanted(seen) && !wanted.empty()) newAssets_.back()["fields"]["roles"] = wanted.front();
@@ -3160,9 +3604,28 @@ json PlaceBuild::SourcingProgress(const std::map<std::string, Sourcing>& pieces)
         std::replace(others.begin(), others.end(), '|', ',');
         out.push_back({{"key", key}, {"role", title}, {"alternatives", others}, {"description", s.need.value("description", "")},
                        {"action", s.need.value("action", "generate")}, {"attempts", s.attempts}, {"done", s.done}, {"passed", s.passed},
-                       {"made", s.made}, {"request", s.request}});
+                       {"made", s.made}, {"request", s.request}, {"verdict", s.verdict}});
     }
     return out;
+}
+
+std::string PlaceBuild::SetArtVerdict(const std::string& key, const std::string& verdict, std::vector<std::string>* paths) {
+    if (verdict != "kept" && verdict != "rejected" && !verdict.empty()) return "a verdict is kept or rejected";
+    auto it = sourced_.find(key);
+    if (it == sourced_.end()) return "no art was made for that here";
+    it->second.verdict = verdict;
+    if (verdict == "rejected") {
+        it->second.passed = false;
+        tried_[key].generate = true; // made and refused: its other sources next
+    }
+    if (paths) {
+        for (const auto& m : it->second.made) {
+            if (m.value("ok", true)) paths->push_back(m.value("path", ""));
+        }
+    }
+    Log({{"step", "art verdict"}, {"need", key}, {"verdict", verdict}});
+    Save();
+    return {};
 }
 
 std::string PlaceBuild::RefineArt(const std::string& key, const std::string& text) {
@@ -3233,7 +3696,8 @@ void PlaceBuild::SetAssetNeeds(const json& needs) {
         json row = {{"key", n.value("key", "")}, {"role", n.value("role", "")}, {"concepts", n.value("concepts", json::array())},
                     {"source", n.value("source", "")}, {"entry", n.value("entry", "")}, {"name", n.value("name", "")},
                     {"why", n.value("why", "")}, {"uses", n.value("uses", 1)}, {"component", n.value("component", "")},
-                    {"policy", n.value("policy", "auto")}};
+                    {"policy", n.value("policy", "auto")}, {"override", n.value("override", "")},
+                    {"title", n.value("title", "")}, {"description", n.value("description", "")}};
         if (n.contains("decision")) row["decision"] = n["decision"];
         if (const ModuleDef* m = host_.ontology().Module(n.value("component", ""))) row["componentName"] = m->name;
         assetNeeds_.push_back(row);

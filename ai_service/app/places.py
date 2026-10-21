@@ -54,10 +54,14 @@ BRIEF_SHAPE = """The Brief (schema aige.brief/1), as JSON:
               when the place combines patterns, e.g. a grid core with organic outskirts),
               "description": "<one sentence: where each pattern goes, if the request says>"},
     "walled": "<none|palisade|stone>",
+    "root": {"relief": "<flat|gentle|hilly: the lie of the wild land>", "woods": "<none|few|some|dense: woods round the place>"},
     "features": [{"module": "<e.g. river>"}],
     "components": {
       "<component module id>": {"enabled": true, "count": [low, high] or n, "density": "<none|rare|some|common|abundant>",
-                                "assets": {"source": "auto"}, "params": {"<field>": <value of its type>}}
+                                "assets": {"source": "auto", "variants": <1-4: how many different looks its things get, when the
+                                           request asks for variety ("more than one kind of field")>, "style": "<words for how its
+                                           things look, if the request says (weathered, red-roofed)>"},
+                                "params": {"<field>": <value of its type>}}
     }
   },
   "confidence": {"<field path, e.g. scale.class or components.garden.density>": <0 to 1>},
@@ -428,9 +432,17 @@ REVISE_SHAPE = """The changes, as JSON:
      "children": [<all of the zone's parcels afterwards, as in the plan: id, module, repeat, quantity, quality>]},
     {"op": "add", "node": {"id": "<new id>", "module": "<a zone, network or site module>", "quantity": {...},
                            "quality": {...}, "rel": [...], "children": [<its parcels, for a zone>]}},
-    {"op": "remove", "node": "<id>"}
+    {"op": "remove", "node": "<id>"},
+    {"op": "swap", "a": "<zone id>", "b": "<zone id>"},
+    {"op": "occupy", "zone": "<zone id>", "where": {"zone": "<zone id>"}, "then": "swap|place"},
+    {"op": "shift", "zone": "<zone id>", "dx": <cells east, negative west>, "dy": <cells south, negative north>}
   ]
 }
+"swap", "occupy" and "shift" work on the zones' land as it is now, exactly (at the layout): "swap" when two zones
+change places ("move A to where B is and B to where A is"); "occupy" when one goes where another is now (that one
+then takes the first one's old land, "then": "swap", or is placed again, "then": "place"); "shift" to move a zone by
+so many cells, keeping its shape ("5 cells east", "a little further north": about a fifth of its extent). Use them
+whenever the request is about where things are now; "move" (relations) is for a new place said in words.
 "move" says where a part goes, and nothing else: use it when the request is about place ("put X south of Y", "near
 the river"). The relations there are: near, adjacent, along, far, north-of, south-of, east-of, west-of (from another
 part, "to" its id or river / a road's id), and in-north, in-south, in-east, in-west (in that part of the map itself,
@@ -451,6 +463,8 @@ The request may change the settings too, as the user would in the Contents and L
 - a zone's own pattern: "set" its quality "street-style"; its size: "set" its quantity "area" ({"area": cells}) or
   "plots" ({"count": n}, how many buildings it holds);
 - the place's size: "brief": {"scale.buildings.count": [low, high]} or {"scale.class": "..."};
+- how a part's things look: "brief": {"components.<id>.assets.variants": <1-4, more than one kind of art for them>,
+  "components.<id>.assets.style": "<words for their look>"};
 - a part turned on or off, or how many of it: "brief": {"components.<id>.enabled": true|false,
   "components.<id>.count": n, "components.<id>.density": "<none|rare|some|common|abundant>"}; a zone turned on
   also needs its "add" (a new zone in the plan), one turned off its "remove".
@@ -513,10 +527,10 @@ def revise_plan(provider: Provider, brief: dict, plan: dict, result: dict, instr
         if room:
             at_layout += ("Each zone's land and about how many parcels it holds (\"holds about\"; \"has\": placed now):\n"
                           f"{json.dumps(room, ensure_ascii=False)}\n"
-                          "When the request asks a zone for more than it holds, first fit more in: smaller parcels or "
-                          "building kinds (cottages for houses), a denser street-style (a grid), less open land between "
-                          "plots. Ask for no more than it then holds, and say in the summary how many fit and that the "
-                          "zone is made bigger on the layout page.\n\n")
+                          "When the request names how many to add (\"10 more houses\"), add exactly that many: keep every "
+                          "parcel it has and raise the counts by the number asked (a repeat of 6 asked for 10 more is 16). "
+                          "Where the zone holds fewer, the engine gives it the open land beside it; you may also fit more "
+                          "in (smaller kinds, a denser street-style). Change nothing the request doesn't name.\n\n")
     if stage == "layout":
         at_layout = ("The plan is at its layout: only the zones, networks and where they go are planned so far; what's "
                      "inside each zone comes later. Change where zones lie (\"move\" with relations, and their "
@@ -540,7 +554,7 @@ def _revision_result(step: StepResult) -> dict:
     if not isinstance(changes, list):
         out["errors"].append("changes is a list")
         return out
-    answer["changes"] = [c for c in changes if isinstance(c, dict) and c.get("op") in ("move", "set", "zone", "add", "remove")]
+    answer["changes"] = [c for c in changes if isinstance(c, dict) and c.get("op") in ("move", "set", "zone", "add", "remove", "swap", "occupy", "shift")]
     expect = answer.get("expect", [])
     answer["expect"] = [e for e in expect if isinstance(e, dict) and e.get("node") and e.get("type") and e.get("to")] if isinstance(expect, list) else []
     if not isinstance(answer.get("brief", {}), dict):

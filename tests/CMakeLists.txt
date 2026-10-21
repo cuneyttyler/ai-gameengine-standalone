@@ -27,8 +27,6 @@ add_executable(aige_tests
     schema_contract_test.cpp
     ai_bridge_test.cpp
     proposal_test.cpp
-    ai_gameplay_test.cpp
-    edit_parity_test.cpp
     ai_connection_test.cpp
     review_policy_test.cpp
     task_runner_test.cpp
@@ -44,6 +42,14 @@ add_executable(aige_tests
     ai_transcript_test.cpp
     perf_test.cpp
     modules_test.cpp
+    records_test.cpp
+    events_test.cpp
+    input_test.cpp
+    game_flow_test.cpp
+    runtime_settings_test.cpp
+    gameplay_systems_test.cpp
+    character_ai_test.cpp
+    narrative_test.cpp
     export_test.cpp
     flat_sprites_test.cpp
     scenes_test.cpp
@@ -57,6 +63,8 @@ add_executable(aige_tests
     places_test.cpp
     ontology_edit_test.cpp
     user_library_test.cpp
+    live_build_test.cpp
+    place_flow_test.cpp
     big_scene_test.cpp
     catalog_test.cpp
     brief_test.cpp
@@ -70,7 +78,7 @@ add_executable(aige_tests
     sourcing_test.cpp
     solve_test.cpp
 )
-target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets aige_gameplay aige_editing aige_world aige_ai_bridge aige_ui aige_editor aige_modules aige_places gtest_main)
+target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets aige_gameplay aige_editing aige_world aige_ai_bridge aige_ui aige_editor aige_modules aige_places aige_game gtest_main)
 target_compile_definitions(aige_tests PRIVATE AIGE_SOURCE_DIR="${CMAKE_SOURCE_DIR}" AIGE_PLAYER_DIR="$<TARGET_FILE_DIR:sandbox>")
 add_dependencies(aige_tests sandbox) # the export smoke test runs the player
 

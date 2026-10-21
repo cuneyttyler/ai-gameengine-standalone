@@ -2,6 +2,7 @@
 
 #include "assets/TileLayerIO.h"
 
+#include "gameplay/Components.h"
 #include "gameplay/EngineReflection.h"
 #include "scripting/Components.h"
 
@@ -106,7 +107,10 @@ void WriteScene(Registry& registry, std::ostream& out, const std::vector<Entity>
 
 // `ids`, when given, are the identifiers to create the entities with, in file
 // order (CloneScene); otherwise the registry picks.
-std::vector<Entity> ReadScene(Registry& registry, std::istream& in, const std::vector<Entity>* ids = nullptr) {
+// `tagOrigins`: each entity remembers its place in the file (SceneOrigin), which
+// saved games use to say which of a scene's entities changed (12.5).
+std::vector<Entity> ReadScene(Registry& registry, std::istream& in, const std::vector<Entity>* ids = nullptr,
+                              bool tagOrigins = true) {
 
     // Entity references point at entities later in the file too, so they're
     // resolved after everything is created.
@@ -128,6 +132,7 @@ std::vector<Entity> ReadScene(Registry& registry, std::istream& in, const std::v
         if (trimmed == "entity") {
             current = ids && created.size() < ids->size() ? registry.create((*ids)[created.size()]) : registry.create();
             created.push_back(current);
+            if (tagOrigins) registry.emplace<SceneOrigin>(current, static_cast<int>(created.size()) - 1);
             continue;
         }
         if (current == entt::null) {
@@ -247,7 +252,7 @@ std::string SerializeEntities(Registry& registry, const std::vector<Entity>& ent
 
 std::vector<Entity> AppendEntities(Registry& registry, const std::string& text) {
     std::istringstream in(text);
-    return ReadScene(registry, in);
+    return ReadScene(registry, in, nullptr, false); // not part of the scene's file
 }
 
 void SaveSettings(const ReflectionRegistry& reflection, const std::string& path) {
@@ -297,6 +302,15 @@ bool LoadSettings(const ReflectionRegistry& reflection, const std::string& path)
         }
     }
     return true;
+}
+
+} // namespace aige
+
+namespace aige {
+
+void TagSceneOrigins(Registry& registry) {
+    int index = 0;
+    for (Entity entity : EntitiesInOrder(registry)) registry.emplace_or_replace<SceneOrigin>(entity, index++);
 }
 
 } // namespace aige

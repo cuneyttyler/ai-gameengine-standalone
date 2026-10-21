@@ -5,7 +5,8 @@
   "level": "parcel",
   "description": "Chests behind a strong door.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "InteriorRoom"

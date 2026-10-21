@@ -121,6 +121,7 @@ struct Concept {
     std::string label;
     std::vector<std::string> alt; // synonyms
     std::string broader;          // a concept id in the same scheme, or ""
+    nlohmann::json look;          // how it shows (a terrain's tone, made, water, solid, blocksLight, hills)
 };
 
 struct Role {
@@ -128,6 +129,13 @@ struct Role {
     std::string label;
     std::string broader;
     std::string affordance; // terrain, environmental-object, interactive-object, item, character
+    // How big a thing of this role is (cells across; a cell is about a metre) and how tall for its
+    // width, and what to draw for it ("a small clump of wildflowers", not "a flower"); 0 and
+    // "": its broader role's (place-refine.md §2).
+    float size = 0.0f;
+    float tall = 0.0f;
+    std::string draw;
+    nlohmann::json look; // how it shows (vary, light {radius, strength}, doorway): place-refine.md §13
 };
 
 struct RelationType {
@@ -168,6 +176,7 @@ struct BuildType {
     std::vector<std::string> words;      // words a request names it by ("cave", "fortress")
     bool isDefault = false;              // the one a request that names none gets
     int rank = 0;                        // a request naming several: the one holding the others wins (a region's towns)
+    nlohmann::json look;                 // how it shows: lighting (sun, indoor), parts ([{key, role, at}])
 
     const ScaleClass* Scale(const std::string& id) const;
 };
@@ -221,6 +230,13 @@ public:
     const std::map<std::string, RelationType>& Relations() const { return relations_; }
 
     // Class membership: a module is in its classes and their superclasses.
+    // A role's size, height for its width and what to draw, its own or its nearest broader role's.
+    float RoleSize(const std::string& role) const;
+    // A look property of a role or a concept: its own, else its nearest broader one's (null if none).
+    nlohmann::json RoleLook(const std::string& role, const std::string& key) const;
+    nlohmann::json ConceptLook(const std::string& scheme, const std::string& id, const std::string& key) const;
+    float RoleTall(const std::string& role) const;
+    std::string RoleDraw(const std::string& role) const;
     bool IsA(const std::string& module, const std::string& cls) const;
     // Concept hierarchy: `id` is `ancestor` or narrower than it (rose IsKindOf flower).
     bool IsKindOf(const std::string& scheme, const std::string& id, const std::string& ancestor) const;

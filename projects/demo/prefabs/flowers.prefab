@@ -1,6 +1,0 @@
-# AIGE Scene v1
-
-entity
-  Tile gx=0 gy=0 solid=0
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite texture=assets/textures/ground.png width=64 height=64 u0=0.25 v0=0 u1=0.5 v1=0.5 r=1 g=1 b=1 a=1

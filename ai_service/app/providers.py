@@ -4,6 +4,8 @@ adapter hides one vendor's SDK. Cloud first (Mistral); local models later
 
 from __future__ import annotations
 
+import time
+
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
@@ -57,19 +59,46 @@ class MistralProvider:
         """Free text: the thinking pass of a two-pass call."""
         return self._call(messages, json_mode=False, max_tokens=self.MAX_THINKING_TOKENS)
 
+    # Mistral at capacity ("Service unavailable", 503; too many requests, 429): wait and ask
+    # again, then ask a less loaded model, before saying there's no answer (2026-10-21).
+    BACKOFF_S = (2.0, 5.0, 10.0)
+    FALLBACK_MODELS = {"mistral-large-latest": "mistral-medium-latest", "magistral-medium-latest": "mistral-medium-latest"}
+
+    @staticmethod
+    def _busy(error: Exception) -> bool:
+        text = str(error)
+        return any(s in text for s in ("Status 503", "Status 429", "Service unavailable", "status_code=503", "status_code=429",
+                                       "rate limit", "capacity"))
+
     def _call(self, messages: list[dict], json_mode: bool, max_tokens: int = 6000) -> Completion:
-        try:
-            options = {"response_format": {"type": "json_object"}} if json_mode else {}  # the prompt spells out the shape
-            response = self._client.chat.complete(
-                model=self.model,
-                messages=messages,
-                temperature=0.2,
-                max_tokens=max_tokens,
-                timeout_ms=self._timeout_ms,
-                **options,
-            )
-        except Exception as error:  # the SDK raises several types; all mean "no answer"
-            raise ProviderError(f"Mistral request failed: {error}") from error
+        options = {"response_format": {"type": "json_object"}} if json_mode else {}  # the prompt spells out the shape
+        models = [self.model] + ([self.FALLBACK_MODELS[self.model]] if self.model in self.FALLBACK_MODELS else [])
+        last: Exception | None = None
+        response = None
+        used = self.model
+        for model in models:
+            used = model
+            for wait in (0.0,) + self.BACKOFF_S:
+                if wait:
+                    time.sleep(wait)
+                try:
+                    response = self._client.chat.complete(
+                        model=model,
+                        messages=messages,
+                        temperature=0.2,
+                        max_tokens=max_tokens,
+                        timeout_ms=self._timeout_ms,
+                        **options,
+                    )
+                    break
+                except Exception as error:  # the SDK raises several types; all mean "no answer"
+                    last = error
+                    if not self._busy(error):
+                        raise ProviderError(f"Mistral request failed: {error}") from error
+            if response is not None:
+                break
+        if response is None:
+            raise ProviderError(f"Mistral request failed: busy after retries and {', '.join(models)}: {last}") from last
         choice = response.choices[0]
         content = choice.message.content
         thinking = ""
@@ -91,7 +120,7 @@ class MistralProvider:
             outputTokens=getattr(response.usage, "completion_tokens", 0) or 0,
             requests=1,
         )
-        return Completion(text=text, usage=usage, model=response.model or self.model, thinking=thinking)
+        return Completion(text=text, usage=usage, model=response.model or used, thinking=thinking)
 
 
 class ClaudeProvider:

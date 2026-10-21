@@ -49,7 +49,22 @@ struct PlaceSceneOptions {
     // the place), and locked parts never are: a hand-edited house stays as edited.
     std::set<std::string> only;
     std::set<std::string> locked;
+    // The ground made by the Art tool painted as one picture, its grounds blended where they
+    // meet (place-refine.md §1); else a tile per cell.
+    bool paintGround = true;
+    // High ground (place-refine.md §10): the wild land rises in low hills, up to this many
+    // pixels; the built land, roads, water and fields stay level. 0: flat.
+    float hills = 40.0f;
+    // The light (place-refine.md §12): "sun" (outdoors: one light from the upper left) or
+    // "indoor" (dark, lit by what gives light, walls in the way). Empty: the build type's look.
+    std::string lighting;
+    // Whether the corridor at a door cell runs along x (its door then stands across it, along
+    // y); set by BuildPlaceScene from the layout.
+    std::function<bool(int x, int y)> doorAcrossX;
 };
+
+// The hills' height (PlaceSceneOptions::hills) for a Brief's `root.relief`: flat, gentle, hilly.
+float HillsFor(const nlohmann::json& brief);
 
 // Where a site of `side` cells can go without covering what's in the scene:
 // beside it (to its right, `gap` cells off), or at 0,0 in an empty scene. The
@@ -64,7 +79,9 @@ struct AssetSourcing {
     SourcingSettings settings; // web search on or off, the licences allowed
     bool canGenerate = false;  // the AI is there to make art
     std::map<std::string, Tried> tried;
-    Catalog library;           // LoadLibrary
+    Catalog library;           // LoadLibrary, and the user's library (UserLibrary::AsCatalog)
+    // Copies the user's library item (its id, after "user:") into the project; its project path.
+    std::function<std::string(const std::string& item)> importLibrary;
 };
 
 // {"needs": [{key, role, concepts, layer, w, h, uses, importance, styleCritical,

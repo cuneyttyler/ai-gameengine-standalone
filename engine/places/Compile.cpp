@@ -128,6 +128,7 @@ private:
     const json& spec_;
     const CompileOptions& options_;
     json statements_ = json::array();
+    double woods_ = -1; // the root's `woods` (a density for the landscape's woods); -1: the module's own
     std::set<std::string> ids_;
     int side_ = 64;
     int width_ = 0, height_ = 0; // a dungeon's or a building's grid (its levels side by side); 0: the square site
@@ -445,6 +446,12 @@ void Compiler::ScatteredZone(const json& zone, const ModuleDef& m, const json& h
 void Compiler::Root(const json& root) {
     const ModuleDef* m = ontology_.Module(root.value("module", ""));
     const std::string id = root.value("id", "site");
+    if (m) {
+        if (const json w = FieldOf(root, *m, "woods"); w.is_string()) {
+            static const std::map<std::string, double> density = {{"none", 0.0}, {"few", 0.08}, {"some", 0.2}, {"dense", 0.38}};
+            if (auto it = density.find(w.get<std::string>()); it != density.end()) woods_ = it->second;
+        }
+    }
     if (const BuildType* build = m ? ontology_.BuildOfRoot(m->id) : nullptr) {
         if (build->layout == "dungeon") return DungeonRoot(root, *m);
         if (build->layout == "interior") return InteriorRoot(root, *m);
@@ -514,6 +521,23 @@ void Compiler::Root(const json& root) {
             const auto width = Range(c, *cm, "width");
             const std::string surface = Text(FieldOf(c, *cm, "surface"), "dirt");
             const std::string pathId = mainRoads == 0 ? "site/main-road" : "site/main-road-" + std::to_string(mainRoads + 1);
+            if (mainRoads > 0) {
+                // Another road (a branch north to the outskirts, south to the docks): from its side
+                // of the site to the middle, where the main road runs; not the main road again.
+                std::string placement = c.value("placement", "");
+                for (auto& ch : placement) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                const bool north = placement.find("north") != std::string::npos, south = placement.find("south") != std::string::npos;
+                const std::string side = north && !south ? "n" : south && !north ? "s" : mainRoads % 2 == 1 ? "n" : "s";
+                const std::string entrance = "site/entrance-" + side;
+                if (!ids_.contains(entrance)) {
+                    Emit({{"op", "anchor"}, {"id", entrance}, {"node", id},
+                          {"at", side == "n" ? json::array({s / 2 + s / 12, 0}) : json::array({s / 2 - s / 12, s - 1})}, {"kind", "entrance"}});
+                }
+                Emit({{"op", "path"}, {"id", pathId}, {"node", node}, {"in", "site"}, {"from", entrance}, {"to", "site.center"}, {"class", "main"},
+                      {"width", width ? static_cast<int>(std::lround(width->first)) : 2}, {"terrain", surface}, {"wiggle", 0.5}});
+                ++mainRoads;
+                continue;
+            }
             Emit({{"op", "path"}, {"id", pathId}, {"node", node}, {"in", "site"}, {"from", "site/entrance-w"}, {"to", "site/entrance-e"},
                   {"via", json::array({"site.center"})}, {"class", "main"}, {"width", width ? static_cast<int>(std::lround(width->first)) : 2},
                   {"terrain", surface}, {"wiggle", 0.5}});
@@ -560,6 +584,7 @@ void Compiler::Root(const json& root) {
         const ModuleDef* wm = ontology_.Module(wallNode->value("module", ""));
         json gaps = json::array({"site/main-road"});
         if (ids_.contains("site/cross-road")) gaps.push_back("site/cross-road");
+        for (int r = 2; r <= mainRoads; ++r) gaps.push_back("site/main-road-" + std::to_string(r)); // the branch roads' gates
         Emit({{"op", "line"}, {"id", wallId}, {"node", wallId}, {"slot", "wall"}, {"along", "site/inner.edge"}, {"gaps", gaps}, {"closed", true}});
         Emit({{"op", "check"}, {"id", wallId + "/closed"}, {"node", wallId}, {"predicate", "closed"}, {"args", {{"ref", wallId}}}});
         const auto towers = wm ? Range(*wallNode, *wm, "towers") : std::nullopt;
@@ -636,6 +661,7 @@ void Compiler::Root(const json& root) {
         const std::string node = c.value("id", "wall");
         json gaps = json::array({"site/main-road"});
         if (ids_.contains("site/cross-road")) gaps.push_back("site/cross-road");
+        for (int r = 2; r <= mainRoads; ++r) gaps.push_back("site/main-road-" + std::to_string(r)); // the branch roads' gates
         Emit({{"op", "line"}, {"id", node}, {"node", node}, {"slot", "wall"}, {"along", "site.edge"}, {"gaps", gaps}, {"closed", true}});
         Emit({{"op", "check"}, {"id", node + "/closed"}, {"node", node}, {"predicate", "closed"}, {"args", {{"ref", node}}}});
     }
@@ -657,9 +683,10 @@ void Compiler::Landscape(const std::string& root, const std::string& zonesIn, co
             for (const auto& sd : lm->slots) {
                 if (sd.name == slotName) slot = &sd;
             }
-            const double density = b.value("density", 0.0);
+            double density = b.value("density", 0.0);
+            if (b.value("name", "") == "woods" && woods_ >= 0) density = woods_; // the Brief's woods
             if (slot == nullptr || density <= 0) continue;
-            json st = {{"op", "scatter"}, {"id", in + "/landscape-" + tag + "-" + slotName}, {"node", root}, {"in", in}, {"slot", slotName},
+            json st = {{"op", "scatter"}, {"id", in + "/landscape-" + tag + "-" + b.value("name", slotName)}, {"node", root}, {"in", in}, {"slot", slotName},
                        {"density", density}, {"own", true}, {"spacing", {{"min", b.value("spacing", 1)}}}, {"layer", LayerForSlot(ontology_, *slot)},
                        {"dressing", "landscape"}};
             if (!near.empty()) {
@@ -975,9 +1002,25 @@ void Compiler::Feature(const json& node, const ModuleDef& m, const std::string& 
                     }
                     return nullptr;
                 }()) {
-                Emit({{"op", "line"}, {"id", self + "/fence"}, {"node", nodeId}, {"slot", fence->name}, {"along", self + ".edge"},
-                      {"gaps", json::array({parentPrimary.empty() ? "front" : "toward:" + parentPrimary})}, {"closed", true}});
-                fenceLine = true;
+                // Where the fence goes (place-refine.md §5). A garden by a house is fenced as its
+                // yard: one fence round the plot, open at the front, as a village yard is; not a
+                // fence round each bed. A garden of its own is fenced when it's big enough to
+                // read as an enclosure (3 x 3 and more): round a bed of two cells it's clutter.
+                auto least = [](const json& v) {
+                    return v.is_number() ? v.get<int>() : v.is_array() && !v.empty() && v[0].is_number() ? v[0].get<int>() : 3;
+                };
+                const bool big = least(size.value("w", json(3))) >= 3 && least(size.value("h", json(3))) >= 3;
+                if (!parentPrimary.empty()) {
+                    const std::string yard = parentInstance + "/yard-fence";
+                    if (!ids_.contains(yard)) {
+                        Emit({{"op", "line"}, {"id", yard}, {"node", nodeId}, {"slot", fence->name}, {"along", parentInstance + ".edge"},
+                              {"gaps", json::array({"front"})}, {"closed", true}});
+                    }
+                } else if (big) {
+                    Emit({{"op", "line"}, {"id", self + "/fence"}, {"node", nodeId}, {"slot", fence->name}, {"along", self + ".edge"},
+                          {"gaps", json::array({"front"})}, {"closed", true}});
+                    fenceLine = true;
+                }
             }
         }
         bool beds = false;

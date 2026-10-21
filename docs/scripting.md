@@ -42,12 +42,76 @@ Entities are referred to by integer **ids** (as returned by `find_nearest` or `s
 | `set_field(id, component, field, value)` | boolean | The reverse; enums accept the option name or index. False if the entity lacks the component or the value has the wrong type. |
 | `spawn(prefab, x, y)` | id or nil | Places a copy of a prefab, e.g. `spawn("prefabs/skeleton.prefab", 4.5, 2.5)`. Tile prefabs paint the cell under the point. |
 | `start_quest(id)` | — | Starts `quests/<id>.json` (if it hasn't been started). See [story.md](story.md). |
-| `complete_objective(quest, objective)` | — | Completes the quest's current objective if it's that one. |
-| `quest_state(id)` | string | `"inactive"`, `"active"` or `"completed"`. |
+| `complete_objective(quest, objective)` | — | Completes that objective if it's open in the quest's current stage. |
+| `quest_state(id)` | string | `"inactive"`, `"active"`, `"completed"` or `"failed"`. |
+| `quest_stage(id)` / `set_stage(id, stage)` / `fail_quest(id)` | number / — / — | A quest's current stage (0 when not active); move it to a stage; fail it. See [story.md](story.md#questsidjson). |
+| `get_var(name)` / `set_var(name, value)` | value / — | Story variables, shared with dialogue and quest conditions (numbers, text, booleans; `nil` removes). |
+| `used(name)` | — | Counts as using something, for `use` and `examine` objectives. |
+| `play_cutscene(id)` / `skip_cutscene()` / `in_cutscene()` | boolean / — / boolean | Plays `cutscenes/<id>.json` (false if it doesn't load). See [story.md](story.md#cutscenes-cutscenesidjson). |
 | `set_flag(name[, value])` | — | Story flags shared with dialogue conditions; `value` defaults to true. |
 | `get_flag(name)` | boolean | |
 | `time_of_day()` | number | Hours since midnight on the game clock, e.g. `13.5`. See [story.md](story.md#routines-schedulesidjson). |
 | `day()` | number | The day number, from 1. |
+| `record(type, id)` | table or nil | A record's fields (`records/<type>/<id>.json`), with its base and defaults applied, e.g. `record("item", "iron-sword").value`. See [records.md](records.md). |
+| `records(type)` | table | The ids of every record of a type. |
+| `on(event, fn)` | handle | Calls `fn(e)` whenever `event` happens; `"*"` for every event. See [Events](#events-timers-and-coroutines). |
+| `emit(event[, data])` | — | Sends your own event; `data` may have `entity`, `other`, `amount`, `text`. |
+| `after(seconds, fn)` / `every(seconds, fn)` | handle | Calls `fn` once after a delay, or repeatedly. |
+| `cancel(handle)` | — | Stops a timer or a handler. |
+| `start(fn)` | — | Runs `fn` as a coroutine now; inside it `wait(seconds)` pauses it. |
+| `wait(seconds)` | — | Pauses the running coroutine (handlers, timers and `start` run as coroutines). |
+| `action_down(name)` / `action_pressed(name)` | boolean | An input action held, or pressed this frame (`input.json`: `attack`, `interact`, `menu`…). Rebinding keys changes nothing in scripts. |
+| `axis(name)` | number | An axis action in [-1, 1], e.g. `axis("move_x")` (keys or a gamepad stick). |
+| `play_sound_at(path, x, y)` | — | A sound at a point in the world: quieter with distance, panned left or right. |
+| `play_music(path)` | — | Music instead of the scene's (a boss fight); `play_music("")` goes back to the scene's. |
+| attributes, items, experience, ranged attacks, factions | | `attribute`, `add_modifier`, `give_item`, `take_item`, `count_item`, `equip`, `use_item`, `award_xp`, `level`, `take_perk`, `drop_loot`, `shoot`, `dodge`, `is_hostile`, `set_disposition`: see [gameplay-systems.md](gameplay-systems.md#lua). |
+| `push_package(id, package)` / `pop_package(id, package)` | — | A character AI package on top of its stack, until popped ([ai-packages.md](ai-packages.md)). |
+| `bark(text)` | — | A one-line remark from this entity, shown at the bottom (`a|b` picks one). |
+| `awareness_of([id])` | number | How aware a character is of the player, 0-1. |
+| `set_visible(id, visible)` / `face(id)` | — | Show or hide an entity; turn this one toward another. |
+| `start_dialogue(path)` | boolean | Starts a conversation with this entity as the speaker. |
+| `find_object(type[, radius])` | id or nil | The nearest smart object of a type. |
+| `move_to(x, y)` | — | In a coroutine (a scripted package's `run()`): walks there, around walls, and returns on arrival. |
+
+## Events, timers and coroutines
+
+Things that happen in the game are **events**, each with a name and a table `e`:
+`e.name`, `e.entity` (who it happened to), `e.other` (who did it), `e.amount`, `e.text`.
+
+| Event | `entity` | `other` | `amount` / `text` |
+|---|---|---|---|
+| `hit` | who was hit | the attacker | damage / — |
+| `death` | who died | the killer | — / their prefab |
+| `pickup` | who picked it up | the pickup | healing / the pickup's prefab |
+| `attack` | who swung | — | — |
+| `victory` | — | — | — (the last enemy died) |
+| `talk` | who was talked to | the player | — / their World Bible key |
+| `quest_started`, `quest_completed`, `quest_failed`, `quest_stage`, `objective_completed` | — | — | — / the quest's id |
+| `cutscene_started`, `cutscene_ended` | — | — | — / the cutscene's id |
+
+Handlers run at the end of each step, after combat. They, timers and `start` run as
+coroutines, so they can `wait`:
+
+```lua
+on("death", function(e)
+    if e.entity == self_id() then return end
+    wait(1.5)
+    play_sound("assets/audio/bell.wav")
+end)
+
+every(2, function() apply_status(self_id(), "regen", 2, 1) end)
+
+start(function()
+    while true do
+        move_toward(4.5, 4.5, 2)  -- one step
+        wait()                     -- until the next step
+    end
+end)
+```
+
+Reloading a script stops its handlers, timers and coroutines and its top-level code runs
+again; when an entity is removed, its scripts' handlers stop too. An error in a handler is
+reported like any script error and doesn't stop the others.
 
 ## Script properties
 

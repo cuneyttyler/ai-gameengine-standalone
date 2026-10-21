@@ -45,6 +45,7 @@ const menus = computed<Record<string, MenuItem[]>>(() => ({
   Edit: [
     { label: 'Undo', shortcut: keyLabel('edit.undo'), disabled: !editorState.canUndo, action: () => sendToHost({ type: 'edit:undo' }) },
     { label: 'Redo', shortcut: keyLabel('edit.redo'), disabled: !editorState.canRedo, action: () => sendToHost({ type: 'edit:redo' }) },
+    { label: 'Replace prefab…', disabled: editorState.playing, action: () => (editorState.replacePrefab = '') },
     separator,
     ...menuExtensions.edit,
     {

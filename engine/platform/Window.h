@@ -38,7 +38,11 @@ public:
     void GetFramebufferSize(int& width, int& height) const;
     void SetResizeCallback(std::function<void(int, int)> callback);
 
+    // Keys, mouse buttons and the first gamepad's buttons (development_plan.md 12.3).
     bool IsKeyDown(Key key) const;
+    float PadAxisValue(PadAxis axis) const;
+    // The whole primary monitor, or back to the window it was (12.7).
+    void SetFullscreen(bool fullscreen);
     bool IsFocused() const;
 
     GLFWwindow* NativeHandle() const;
@@ -47,6 +51,7 @@ private:
     static void FramebufferResizeTrampoline(GLFWwindow* handle, int width, int height);
 
     GLFWwindow* handle_ = nullptr;
+    int windowedX_ = 100, windowedY_ = 100, windowedWidth_ = 1280, windowedHeight_ = 720;
     std::function<void(int, int)> resizeCallback_;
 };
 

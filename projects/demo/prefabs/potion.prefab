@@ -1,9 +1,0 @@
-# AIGE Scene v1
-
-entity
-  Name value="Health Potion"
-  WorldTransform2D x=0 y=0
-  Pickup kind=Heal amount=8 radius=0.5
-  Sounds attack="" hurt="" death="" collect=assets/audio/pickup.wav
-  ScreenTransform2D x=0 y=0 depth=0
-  Sprite texture=assets/textures/potion.png width=16 height=20 u0=0 v0=0 u1=1 v1=1 r=1 g=1 b=1 a=1

@@ -90,6 +90,37 @@ function send(type: string): void {
       >
         Erase
       </button>
+      <button
+        :class="{ active: editorState.tool === 'height' }"
+        title="Height: drag over the ground to raise it, lower it or level it (a built place's ground)"
+        :disabled="editorState.playing"
+        @click="setTool('height')"
+      >
+        Height
+      </button>
+      <template v-if="editorState.tool === 'height'">
+        <select
+          class="height-mode"
+          title="What the height brush does to the ground it passes over"
+          :value="editorState.heightMode"
+          @change="sendToHost({ type: 'tool:set', tool: 'height', heightMode: ($event.target as HTMLSelectElement).value })"
+        >
+          <option value="raise">Raise</option>
+          <option value="lower">Lower</option>
+          <option value="flatten">Level</option>
+        </select>
+        <label class="size" title="How far round the cursor the ground moves, in cells">
+          Radius
+          <input
+            type="number"
+            min="0"
+            max="12"
+            step="1"
+            :value="editorState.heightRadius"
+            @change="sendToHost({ type: 'tool:set', tool: 'height', heightRadius: Number(($event.target as HTMLInputElement).value) })"
+          />
+        </label>
+      </template>
     </div>
 
     <div class="group">
@@ -188,6 +219,15 @@ button.active {
   color: #eee;
   font: inherit;
   padding: 0 4px;
+}
+.height-mode {
+  height: 22px;
+  border: 1px solid #333;
+  border-radius: 0;
+  background: #11111b;
+  color: #eee;
+  font: inherit;
+  font-size: 0.8em;
 }
 .dirty-dot {
   width: 6px;

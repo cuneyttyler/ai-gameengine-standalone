@@ -57,8 +57,9 @@ struct FieldMeta {
     std::vector<std::string> options; // Enum
     std::optional<double> min;        // Float/Int
     std::optional<double> max;
-    // Command parameters only: may be left out (it then takes its type's
-    // empty value: "", 0, false), so adding one keeps older proposals valid.
+    // A command parameter that may be left out (it then takes its type's
+    // empty value: "", 0, false), so adding one keeps older proposals valid;
+    // a prefab or component field that may be empty.
     bool optional = false;
 };
 
@@ -145,7 +146,46 @@ struct CommandInfo {
     std::function<CommandResult(CommandContext&, const std::vector<FieldValue>&)> run;
 };
 
+// --- Records (development_plan.md 12.1) ----------------------------------------------
+//
+// Typed game data that isn't an entity in a scene: items, loot tables,
+// factions, abilities, difficulty presets... Each record is a JSON file,
+// records/<type>/<id>.json, checked against its type's fields here (the
+// engine's records module loads and validates them). Record fields go beyond
+// component fields: they can refer to another record, hold a list, or group
+// sub-fields as an object.
+
+enum class RecordFieldKind {
+    Value,  // a FieldMeta value (float, int, bool, string, enum, texture, audio, script, prefab)
+    Record, // the id of another record, of `recordType`
+    Object, // sub-fields, `fields`
+};
+
+struct RecordField : FieldMeta {
+    RecordFieldKind kind = RecordFieldKind::Value;
+    std::string recordType;          // Record
+    std::vector<RecordField> fields; // Object
+    bool list = false;               // a JSON array of such values
+    bool required = false;           // must be present (after the base is applied)
+    nlohmann::json defaultValue;     // null: the type's empty value
+
+    const RecordField* Field(const std::string& fieldName) const;
+};
+
+struct RecordTypeInfo {
+    std::string name; // the folder under records/: lower-case, e.g. "item"
+    std::string description;
+    std::vector<RecordField> fields;
+    std::string source = "engine"; // or the module that declares it
+
+    const RecordField* Field(const std::string& fieldName) const;
+};
+
+// A record field's JSON form for schemas (the editor's forms, the AI service).
+nlohmann::json RecordFieldToJson(const RecordField& field);
+
 class ReflectionRegistry;
+class RecordTypeBuilder;
 
 template <typename C>
 class ComponentBuilder;
@@ -162,6 +202,14 @@ public:
     SettingsBuilder<S> Settings(std::string name, std::string description, S* instance);
 
     CommandBuilder Command(std::string name, std::string description);
+
+    RecordTypeBuilder RecordType(std::string name, std::string description);
+    const std::vector<RecordTypeInfo>& RecordTypes() const { return recordTypes_; }
+    const RecordTypeInfo* FindRecordType(const std::string& name) const;
+    void AddRecordTypeInfo(RecordTypeInfo info) { recordTypes_.push_back(std::move(info)); }
+    void RemoveRecordTypeInfo(const std::string& name) {
+        std::erase_if(recordTypes_, [&](const RecordTypeInfo& t) { return t.name == name; });
+    }
 
     const std::vector<ComponentInfo>& Components() const { return components_; }
     const ComponentInfo* FindComponent(const std::string& name) const;
@@ -193,6 +241,7 @@ public:
 
 private:
     friend class CommandBuilder;
+    friend class RecordTypeBuilder;
     template <typename C>
     friend class ComponentBuilder;
     template <typename S>
@@ -201,7 +250,41 @@ private:
     std::vector<ComponentInfo> components_;
     std::vector<SettingsInfo> settings_;
     std::vector<CommandInfo> commands_;
+    std::vector<RecordTypeInfo> recordTypes_;
 };
+
+// Builds a record type field by field:
+//
+//   r.RecordType("item", "Something that can be carried")
+//       .Field("name", FieldType::String, "Shown to the player").Required()
+//       .Field("value", FieldType::Int, "Price in gold").Min(0)
+//       .Ref("ammo", "item", "What it fires")
+//       .Field("tags", FieldType::String, "Labels").List();
+class RecordTypeBuilder {
+public:
+    RecordTypeBuilder(ReflectionRegistry& registry, size_t index) : registry_(registry), index_(index) {}
+
+    RecordTypeBuilder& Field(std::string name, FieldType type, std::string description);
+    RecordTypeBuilder& Ref(std::string name, std::string recordType, std::string description);
+    RecordTypeBuilder& Object(std::string name, std::vector<RecordField> fields, std::string description);
+
+    // Constraints on the field added last.
+    RecordTypeBuilder& Min(double value);
+    RecordTypeBuilder& Max(double value);
+    RecordTypeBuilder& Options(std::vector<std::string> options);
+    RecordTypeBuilder& List();
+    RecordTypeBuilder& Required();
+    RecordTypeBuilder& Default(nlohmann::json value);
+
+private:
+    RecordField& Last();
+    ReflectionRegistry& registry_;
+    size_t index_;
+};
+
+// Shorthands for nested fields (Object's sub-fields).
+RecordField MakeRecordValue(std::string name, FieldType type, std::string description);
+RecordField MakeRecordRef(std::string name, std::string recordType, std::string description);
 
 // --- Value conversion ---------------------------------------------------------
 

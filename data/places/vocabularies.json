@@ -428,22 +428,152 @@
   ],
   "terrain-kind": [
     {
-      "id": "grass"
+      "id": "grass",
+      "look": {
+        "hills": true,
+        "tone": [
+          104,
+          132,
+          58
+        ]
+      }
     },
     {
-      "id": "dirt"
+      "id": "tilled",
+      "label": "tilled soil",
+      "alt": [
+        "farmland",
+        "ploughed field",
+        "furrows"
+      ],
+      "look": {
+        "made": true,
+        "tone": [
+          122,
+          92,
+          60
+        ]
+      }
     },
     {
-      "id": "sand"
+      "id": "forest-floor",
+      "label": "forest floor",
+      "alt": [
+        "woodland floor",
+        "leaf litter",
+        "moss"
+      ],
+      "look": {
+        "hills": true,
+        "tone": [
+          72,
+          86,
+          44
+        ]
+      }
     },
     {
-      "id": "snow"
+      "id": "dirt",
+      "look": {
+        "tone": [
+          146,
+          112,
+          72
+        ]
+      }
+    },
+    {
+      "id": "sand",
+      "look": {
+        "hills": true,
+        "tone": [
+          190,
+          170,
+          120
+        ],
+        "shore": true
+      }
+    },
+    {
+      "id": "snow",
+      "look": {
+        "hills": true,
+        "tone": [
+          222,
+          228,
+          232
+        ]
+      }
     },
     {
       "id": "stone"
     },
     {
       "id": "mud"
+    },
+    {
+      "id": "cobble",
+      "look": {
+        "made": true,
+        "tone": [
+          128,
+          118,
+          102
+        ]
+      }
+    },
+    {
+      "id": "water",
+      "look": {
+        "water": true,
+        "solid": true,
+        "tone": [
+          54,
+          112,
+          128
+        ]
+      }
+    },
+    {
+      "id": "water-shallow",
+      "look": {
+        "water": true
+      }
+    },
+    {
+      "id": "stone-floor",
+      "look": {
+        "made": true,
+        "tone": [
+          104,
+          100,
+          104
+        ]
+      }
+    },
+    {
+      "id": "wood-floor",
+      "look": {
+        "made": true,
+        "tone": [
+          120,
+          88,
+          58
+        ]
+      }
+    },
+    {
+      "id": "rock-wall",
+      "look": {
+        "made": true,
+        "solid": true,
+        "blocksLight": true,
+        "tone": [
+          54,
+          50,
+          54
+        ]
+      }
     }
   ],
   "road-class": [
@@ -549,6 +679,24 @@
       "alt": [
         "coastal",
         "seaside"
+      ]
+    },
+    {
+      "id": "tropical",
+      "label": "tropical",
+      "alt": [
+        "jungle",
+        "island",
+        "palms"
+      ]
+    },
+    {
+      "id": "mountain",
+      "label": "mountain",
+      "alt": [
+        "alpine",
+        "highlands",
+        "peaks"
       ]
     }
   ],
@@ -968,6 +1116,40 @@
     },
     {
       "id": "rune"
+    }
+  ],
+  "courtyard-kind": [
+    {
+      "id": "courtyard",
+      "label": "courtyard",
+      "alt": [
+        "walled courtyard",
+        "inner court"
+      ]
+    },
+    {
+      "id": "cloister",
+      "label": "cloister",
+      "alt": [
+        "monastery court",
+        "abbey cloister"
+      ]
+    },
+    {
+      "id": "manor-court",
+      "label": "manor courtyard",
+      "alt": [
+        "house round a court",
+        "riad"
+      ]
+    },
+    {
+      "id": "palace-court",
+      "label": "palace courtyard",
+      "alt": [
+        "royal court",
+        "palace"
+      ]
     }
   ]
 }

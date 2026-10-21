@@ -1,0 +1,82 @@
+{
+  "schema": "aige.module/1",
+  "id": "court",
+  "name": "Court",
+  "level": "parcel",
+  "description": "The open court in the middle of a courtyard: paved, open to the sky, with a fountain or well, benches and plants.",
+  "buildTypes": [
+    "courtyard"
+  ],
+  "classes": [
+    "InteriorRoom"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          10
+        ],
+        "h": [
+          6,
+          10
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    }
+  },
+  "quality": {
+    "surface": {
+      "type": "enum",
+      "vocabulary": "floor-surface",
+      "default": "stone-floor"
+    }
+  },
+  "slots": {
+    "floor": {
+      "role": "floor-tile",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "fountain": {
+      "min": 0,
+      "weight": 0.8,
+      "max": 1
+    },
+    "bench": {
+      "min": 0,
+      "weight": 0.7,
+      "max": 4
+    },
+    "nature-scatter": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 1
+    },
+    "room-lights": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 1
+    },
+    "floor-clutter": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 1
+    }
+  },
+  "compile": {
+    "room": true,
+    "public": true
+  }
+}

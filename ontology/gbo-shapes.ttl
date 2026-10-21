@@ -1028,9 +1028,17 @@ gbs:CampShape
         sh:maxCount 1 ;
         sh:datatype xsd:string
     ], [
+        sh:path gbl:Camp.relief ;
+        sh:maxCount 1 ;
+        sh:in ( "flat" "gentle" "hilly" )
+    ], [
         sh:path gbl:Camp.walled ;
         sh:maxCount 1 ;
         sh:in ( "none" "palisade" )
+    ], [
+        sh:path gbl:Camp.woods ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "few" "some" "dense" )
     ], [
         sh:path gbo:hasPart ;
         sh:qualifiedValueShape [
@@ -1280,6 +1288,14 @@ gbs:CastleShape
         sh:path gbl:Castle.notes ;
         sh:maxCount 1 ;
         sh:datatype xsd:string
+    ], [
+        sh:path gbl:Castle.relief ;
+        sh:maxCount 1 ;
+        sh:in ( "flat" "gentle" "hilly" )
+    ], [
+        sh:path gbl:Castle.woods ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "few" "some" "dense" )
     ], [
         sh:path gbo:hasPart ;
         sh:qualifiedValueShape [
@@ -2599,6 +2615,14 @@ gbs:FarmlandShape
         sh:maxCount 1 ;
         sh:datatype xsd:string
     ], [
+        sh:path gbl:Farmland.relief ;
+        sh:maxCount 1 ;
+        sh:in ( "flat" "gentle" "hilly" )
+    ], [
+        sh:path gbl:Farmland.woods ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "few" "some" "dense" )
+    ], [
         sh:path gbo:hasPart ;
         sh:qualifiedValueShape [
             sh:class gbl:FarmlandRing
@@ -2938,6 +2962,10 @@ gbs:FieldShape
         sh:path gbl:Field.season ;
         sh:maxCount 1 ;
         sh:in ( "spring" "summer" "harvest" )
+    ], [
+        sh:path gbl:Field.surface ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:terrain-kind.grass gbv:terrain-kind.tilled gbv:terrain-kind.forest-floor gbv:terrain-kind.dirt gbv:terrain-kind.sand gbv:terrain-kind.snow gbv:terrain-kind.stone gbv:terrain-kind.mud )
     ], [
         sh:path gbo:hasPart ;
         sh:maxCount 0
@@ -3550,7 +3578,7 @@ gbs:GroundShape
     ], [
         sh:path gbl:Ground.terrain ;
         sh:maxCount 1 ;
-        sh:in ( gbv:terrain-kind.grass gbv:terrain-kind.dirt gbv:terrain-kind.sand gbv:terrain-kind.snow gbv:terrain-kind.stone gbv:terrain-kind.mud )
+        sh:in ( gbv:terrain-kind.grass gbv:terrain-kind.tilled gbv:terrain-kind.forest-floor gbv:terrain-kind.dirt gbv:terrain-kind.sand gbv:terrain-kind.snow gbv:terrain-kind.stone gbv:terrain-kind.mud )
     ], [
         sh:path gbl:Ground.variation ;
         sh:maxCount 1 ;
@@ -5443,6 +5471,14 @@ gbs:RegionShape
         sh:maxCount 1 ;
         sh:datatype xsd:string
     ], [
+        sh:path gbl:Region.relief ;
+        sh:maxCount 1 ;
+        sh:in ( "flat" "gentle" "hilly" )
+    ], [
+        sh:path gbl:Region.woods ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "few" "some" "dense" )
+    ], [
         sh:path gbo:hasPart ;
         sh:qualifiedValueShape [
             sh:class gbl:BiomeZone
@@ -5876,12 +5912,20 @@ gbs:SettlementShape
         sh:maxCount 1 ;
         sh:datatype xsd:string
     ], [
+        sh:path gbl:Settlement.relief ;
+        sh:maxCount 1 ;
+        sh:in ( "flat" "gentle" "hilly" )
+    ], [
         sh:path gbl:Settlement.style ;
         sh:datatype xsd:string
     ], [
         sh:path gbl:Settlement.walled ;
         sh:maxCount 1 ;
         sh:in ( "none" "palisade" "stone" )
+    ], [
+        sh:path gbl:Settlement.woods ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "few" "some" "dense" )
     ], [
         sh:path gbo:hasPart ;
         sh:qualifiedValueShape [
@@ -7741,6 +7785,14 @@ gbs:WildernessShape
         sh:path gbl:Wilderness.notes ;
         sh:maxCount 1 ;
         sh:datatype xsd:string
+    ], [
+        sh:path gbl:Wilderness.relief ;
+        sh:maxCount 1 ;
+        sh:in ( "flat" "gentle" "hilly" )
+    ], [
+        sh:path gbl:Wilderness.woods ;
+        sh:maxCount 1 ;
+        sh:in ( "none" "few" "some" "dense" )
     ], [
         sh:path gbo:hasPart ;
         sh:qualifiedValueShape [

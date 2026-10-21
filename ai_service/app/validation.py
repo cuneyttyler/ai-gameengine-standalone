@@ -27,7 +27,10 @@ from .models import (
     WriteDialogue,
     WriteQuest,
     WriteSchedule,
+    WriteRecord,
+    DeleteRecord,
 )
+from .records import check_record
 from .story import StoryScope, check_dialogue, check_quest, check_schedule
 
 _SAFE_SCRIPT = re.compile(r"^scripts/[A-Za-z0-9_\-/]+\.lua$")
@@ -234,5 +237,32 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
             value = op.fields.get("path")
         if isinstance(value, str) and value and value not in known_scripts:
             errors.append(f"operation {index} ({op.op}): script {value!r} doesn't exist and isn't written here")
+
+    # Records (12.1): checked against their types; references may name records
+    # the project has or this proposal writes.
+    existing_records = {(str(r.get("type", "")), str(r.get("id", ""))): r.get("record") for r in context.records}
+    written_records = {(op.type, op.id): op.record for op in proposal.operations if isinstance(op, WriteRecord)}
+
+    def record_exists(record_type: str, record_id: str) -> bool:
+        return (record_type, record_id) in existing_records or (record_type, record_id) in written_records
+
+    for index, op in enumerate(proposal.operations, start=1):
+        if isinstance(op, WriteRecord):
+            where = f"operation {index} (write_record {op.type}/{op.id})"
+            spec = schema.record_type(op.type)
+            if spec is None:
+                known = ", ".join(r.name for r in schema.records) or "none"
+                errors.append(f"{where}: unknown record type {op.type!r} (types: {known})")
+                continue
+            base_id = op.record.get("base") if isinstance(op.record, dict) else None
+            base = None
+            if isinstance(base_id, str):
+                base = written_records.get((op.type, base_id)) or existing_records.get((op.type, base_id))
+            errors += check_record(spec, op.id, op.record, record_exists, base if isinstance(base, dict) else None,
+                                   where)
+        elif isinstance(op, DeleteRecord):
+            where = f"operation {index} (delete_record {op.type}/{op.id})"
+            if (op.type, op.id) not in existing_records:
+                errors.append(f"{where}: there is no {op.type} {op.id!r} to delete")
 
     return errors

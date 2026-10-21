@@ -102,7 +102,7 @@ ImageData RenderScenePreview(Registry& registry, const Project& project, const I
                 if (def == nullptr) return;
                 const ScreenPose p = ProjectIso(gx + 0.5f, gy + 0.5f, iso);
                 ScreenTransform2D t{p.x, p.y, p.depth};
-                Sprite s = def->sprite;
+                Sprite s = CellSprite(*layer, gx, gy, *def);
                 s.width = iso.tileWidth, s.height = iso.tileHeight;
                 DrawQuad(canvas, SpriteQuadOf(t, s, !iso.topDown), texture(s.texture), s);
             });

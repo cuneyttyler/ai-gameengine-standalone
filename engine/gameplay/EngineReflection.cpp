@@ -1,7 +1,12 @@
 #include "gameplay/EngineReflection.h"
 
+#include "gameplay/Attributes.h"
+#include "gameplay/Behaviour.h"
 #include "gameplay/Components.h"
+#include "gameplay/Cutscene.h"
+#include "gameplay/Items.h"
 #include "gameplay/Settings.h"
+#include "records/Records.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 #include "scripting/Components.h"
@@ -45,6 +50,7 @@ std::optional<ScriptValue> DecodeScriptValue(const std::string& text) {
 }
 
 const std::vector<std::string> kEffects = {"None", "Burn", "Poison", "Slow", "Regen"};
+const std::vector<std::string> kDamageTypes = {"Physical", "Fire", "Frost", "Shock", "Poison"};
 
 } // namespace
 
@@ -123,7 +129,166 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("effectMagnitude", &MeleeAttack::effectMagnitude,
                "Burn/Poison: damage per tick. Regen: healing per tick. Slow: fraction of speed removed (0-1).")
         .Range(0, 100000)
+        .Field("damageType", &MeleeAttack::damageType, "The kind of damage (resistances apply).").Options(kDamageTypes)
         .DependsOn({"WorldTransform2D"});
+
+    // --- Character and gameplay systems (development_plan.md 13) --------------------
+    r.Component<Attributes>("Attributes",
+                            "A character's numbers (13.1): base values that equipment, perks and effects modify. "
+                            "With it, Stats, Health.max and Resources are worked out from these each step.")
+        .Field("maxHealth", &Attributes::maxHealth, "Maximum health.").Range(1, 1000000)
+        .Field("maxMana", &Attributes::maxMana, "Maximum mana (0: none).").Range(0, 1000000)
+        .Field("maxStamina", &Attributes::maxStamina, "Maximum stamina (0: none; blocking and dodging cost it).")
+        .Range(0, 1000000)
+        .Field("attack", &Attributes::attack, "Added to every hit's damage.").Range(-1000, 100000)
+        .Field("defense", &Attributes::defense, "Taken from every hit's damage.").Range(-1000, 100000)
+        .Field("moveSpeed", &Attributes::moveSpeed, "Walking speed, cells per second.").Range(0, 50)
+        .Field("healthRegen", &Attributes::healthRegen, "Health per second.").Range(0, 1000)
+        .Field("manaRegen", &Attributes::manaRegen, "Mana per second.").Range(0, 1000)
+        .Field("staminaRegen", &Attributes::staminaRegen, "Stamina per second.").Range(0, 1000)
+        .Field("resistFire", &Attributes::resistFire, "Share of fire damage taken away (0-0.9).").Range(-1, 0.9)
+        .Field("resistFrost", &Attributes::resistFrost, "Share of frost damage taken away.").Range(-1, 0.9)
+        .Field("resistShock", &Attributes::resistShock, "Share of shock damage taken away.").Range(-1, 0.9)
+        .Field("resistPoison", &Attributes::resistPoison, "Share of poison damage taken away.").Range(-1, 0.9);
+    r.Component<Resources>("Resources", "Mana and stamina now (13.1); their maxima come from Attributes.")
+        .Field("mana", &Resources::mana, "Mana now.").Min(0)
+        .Field("stamina", &Resources::stamina, "Stamina now.").Min(0)
+        .Field("maxMana", &Resources::maxMana, "Maximum mana (worked out from Attributes).").Min(0)
+        .Field("maxStamina", &Resources::maxStamina, "Maximum stamina (worked out from Attributes).").Min(0);
+    r.Component<Progression>("Progression", "Experience, level and perks (13.2). The curve and each level's gains "
+                                            "come from the progression record \"default\".")
+        .Field("level", &Progression::level, "The level now.").Range(1, 1000)
+        .Field("experience", &Progression::experience, "Experience towards the next level.").Min(0)
+        .Field("perkPoints", &Progression::perkPoints, "Perks that can still be taken.").Min(0)
+        .Field("perks", &Progression::perks, "Perks taken: perk record ids, comma-separated.");
+    r.Component<Rewards>("Rewards", "What killing this gives (13.2, 13.4): experience to the killer, gold and loot "
+                                    "dropped where it fell.")
+        .Field("experience", &Rewards::experience, "Experience for the killer.").Min(0)
+        .Field("goldMin", &Rewards::goldMin, "Gold dropped, at least.").Min(0)
+        .Field("goldMax", &Rewards::goldMax, "Gold dropped, at most.").Min(0)
+        .Field("loot", &Rewards::loot, "A loot record rolled for what's dropped.");
+    r.Component<Inventory>("Inventory", "What a character carries (13.3): items as \"potion*3, iron-sword\" (item "
+                                        "record ids), and gold.")
+        .Field("items", &Inventory::items, "Item ids, with *count for more than one.")
+        .Field("gold", &Inventory::gold, "Gold carried.").Min(0)
+        .Field("slots", &Inventory::slots, "How many stacks fit (0: any number).").Min(0)
+        .Field("maxWeight", &Inventory::maxWeight, "How much weight it carries (0: no limit).").Min(0);
+    r.Component<Equipment>("Equipment", "What a character wears and wields (13.3): an item id per slot. The items' "
+                                        "damage, armour and modifiers count towards its Attributes.")
+        .Field("weapon", &Equipment::weapon, "A weapon item.")
+        .Field("offhand", &Equipment::offhand, "A shield, a torch, a second weapon.")
+        .Field("head", &Equipment::head, "A helmet.")
+        .Field("body", &Equipment::body, "Armour.")
+        .Field("hands", &Equipment::hands, "Gloves.")
+        .Field("feet", &Equipment::feet, "Boots.")
+        .Field("ring", &Equipment::ring, "A ring.")
+        .Field("amulet", &Equipment::amulet, "An amulet.");
+    r.Component<ItemPickup>("ItemPickup", "An item lying in the world (13.3): picked up by walking over it, or with "
+                                          "the interact action when onUse. The item \"gold\" is gold.")
+        .Field("item", &ItemPickup::item, "An item record id, or gold.")
+        .Field("count", &ItemPickup::count, "How many.").Min(1)
+        .Field("onUse", &ItemPickup::onUse, "Picked up with the interact action rather than by walking over it.")
+        .DependsOn({"WorldTransform2D"});
+    r.Component<Container>("Container", "A chest, a crate, a corpse (13.3): opened with the interact action; filled "
+                                        "from its loot table the first time.")
+        .Field("items", &Container::items, "What's inside, as item ids with *count.")
+        .Field("gold", &Container::gold, "Gold inside.").Min(0)
+        .Field("loot", &Container::loot, "A loot record rolled when it's first opened.")
+        .Field("looted", &Container::looted, "Already opened and filled.")
+        .DependsOn({"WorldTransform2D"});
+    r.Component<Merchant>("Merchant", "Someone who trades (13.4): the interact action opens their shop. Stock comes "
+                                      "from a loot table, filled again each day.")
+        .Field("stock", &Merchant::stock, "A loot record their wares come from.")
+        .Field("items", &Merchant::items, "What's for sale now.")
+        .Field("gold", &Merchant::gold, "Gold they can pay for what they buy.").Min(0)
+        .Field("buyRate", &Merchant::buyRate, "The player pays an item's value times this.").Range(0, 100)
+        .Field("sellRate", &Merchant::sellRate, "The player gets an item's value times this.").Range(0, 100)
+        .DependsOn({"WorldTransform2D"});
+    r.Component<Interactable>("Interactable", "Used with the interact action (13.5): a lever, a sign, a bed, a locked "
+                                              "door or chest. Door, Container, Merchant and ItemPickup add what happens.")
+        .Field("verb", &Interactable::verb, "The prompt's verb: Open, Read, Pull, Sleep.")
+        .Field("name", &Interactable::name, "What it's called on the prompt (empty: its Name).")
+        .Field("range", &Interactable::range, "How close the player must be, in cells.").Range(0.3, 10)
+        .Field("locked", &Interactable::locked, "Locked until opened with its key.")
+        .Field("key", &Interactable::key, "The item that unlocks it.")
+        .Field("consumeKey", &Interactable::consumeKey, "The key is used up.")
+        .Field("requiresFlag", &Interactable::requiresFlag, "A story flag that must be set first.")
+        .Field("setFlag", &Interactable::setFlag, "A story flag set when it's used.")
+        .Field("text", &Interactable::text, "Shown when it's used (a sign, a book).")
+        .Field("event", &Interactable::event, "An event emitted when it's used, for scripts.")
+        .Field("once", &Interactable::once, "Works only once.")
+        .Field("used", &Interactable::used, "Already used (with once).")
+        .DependsOn({"WorldTransform2D"});
+    r.Component<Door>("Door", "A door (13.5): the interact action opens and closes it; open, it doesn't block.")
+        .Field("open", &Door::open, "Open now.")
+        .Field("openTexture", &Door::openTexture, "The picture when open (empty: unchanged).").As(FieldType::Texture)
+        .Field("closedTexture", &Door::closedTexture, "The picture when closed.").As(FieldType::Texture)
+        .DependsOn({"Interactable"});
+    r.Component<RangedAttack>("RangedAttack", "Shoots projectiles (13.6): arrows, bolts, thrown knives.")
+        .Field("damageType", &RangedAttack::damageType, "The kind of damage.").Options(kDamageTypes)
+        .Field("damage", &RangedAttack::damage, "Damage per hit (before stats).").Range(0, 100000)
+        .Field("range", &RangedAttack::range, "How far it flies, in cells.").Range(0.5, 100)
+        .Field("speed", &RangedAttack::speed, "Cells per second.").Range(0.5, 100)
+        .Field("cooldown", &RangedAttack::cooldown, "Seconds between shots.").Range(0, 60)
+        .Field("projectile", &RangedAttack::projectile, "The projectile's picture (empty: a plain bolt).")
+        .As(FieldType::Texture)
+        .Field("pierce", &RangedAttack::pierce, "Flies on through what it hits.")
+        .DependsOn({"WorldTransform2D"});
+    r.Component<FactionMember>("FactionMember", "Belongs to a faction record (13.7). Below 0, its disposition makes "
+                                                "it hostile to the player; attacking it lowers it.")
+        .Field("faction", &FactionMember::faction, "A faction record id.")
+        .Field("disposition", &FactionMember::disposition, "How it feels about the player.").Range(-100, 100);
+    r.Component<Spawner>("Spawner", "Makes enemies from an encounter record around it (13.7), up to maxAlive, "
+                                    "again after respawnSeconds.")
+        .Field("encounter", &Spawner::encounter, "An encounter record id.")
+        .Field("radius", &Spawner::radius, "How far from it they appear, in cells.").Range(0, 50)
+        .Field("maxAlive", &Spawner::maxAlive, "How many at once.").Range(0, 100)
+        .Field("respawnSeconds", &Spawner::respawnSeconds, "Seconds until the next after one dies (0: never).")
+        .Range(0, 100000)
+        .Field("level", &Spawner::level, "The level the encounter is rolled at.").Range(1, 1000)
+        .DependsOn({"WorldTransform2D"});
+
+    // --- Character AI (development_plan.md 14, ai-packages.md) ------------------------
+    r.Component<Behaviour>("Behaviour", "What a character does on its own (14): its packages (records/package), "
+                                        "first that holds runs; how it fights and helps.")
+        .Field("packages", &Behaviour::packages, "Package record ids, comma-separated; the first whose schedule and "
+                                                 "conditions hold runs.")
+        .Field("home", &Behaviour::home, "A marker: where @home is.")
+        .Field("work", &Behaviour::work, "A marker: where @work is.")
+        .Field("bed", &Behaviour::bed, "A marker: where @bed is (else the nearest free bed).")
+        .Field("aggression", &Behaviour::aggression, "Peaceful: never fights. Defensive: fights when attacked. "
+                                                     "Aggressive: attacks enemies it notices. Frenzied: attacks anyone.")
+        .Options({"Peaceful", "Defensive", "Aggressive", "Frenzied"})
+        .Field("confidence", &Behaviour::confidence, "How soon it runs when hurt.")
+        .Options({"Cowardly", "Cautious", "Average", "Brave", "Foolhardy"})
+        .Field("assistance", &Behaviour::assistance, "Who it helps in a fight.")
+        .Options({"Nobody", "Allies", "Friends"})
+        .Field("combatStyle", &Behaviour::combatStyle, "A combat-style record (empty: melee, runs at 20% health).")
+        .Field("speed", &Behaviour::speed, "Walking speed, cells per second.").Range(0.1, 20)
+        .DependsOn({"WorldTransform2D"});
+    r.Component<Perception>("Perception", "What a character notices (14.5): sight in a cone, hearing of noises.")
+        .Field("sight", &Perception::sight, "How far it sees, in cells.").Range(0, 50)
+        .Field("angle", &Perception::angle, "The cone it sees in, in degrees.").Range(10, 360)
+        .Field("hearing", &Perception::hearing, "How far it hears an ordinary noise, in cells.").Range(0, 50);
+    r.Component<SmartObject>("SmartObject", "Something characters use (14.3): a bed, a chair, a counter, a forge. "
+                                            "Packages find them by type and affordance.")
+        .Field("type", &SmartObject::type, "bed, chair, table, counter, anvil, fireplace, well, bookshelf, altar...")
+        .Field("affordances", &SmartObject::affordances, "What can be done with it: sleep, sit, eat, drink, work, "
+                                                         "read, pray, warm (comma-separated).")
+        .Field("slots", &SmartObject::slots, "How many can use it at once.").Range(1, 32)
+        .Field("owner", &SmartObject::owner, "Only this character uses it (a name or World Bible key; empty: anyone).")
+        .Field("minDuration", &SmartObject::minDuration, "A use lasts at least this many seconds.").Range(0, 100000)
+        .Field("maxDuration", &SmartObject::maxDuration, "A use lasts at most this many seconds.").Range(0, 100000)
+        .DependsOn({"WorldTransform2D"});
+    r.Component<Barks>("Barks", "One-line remarks (14.5); alternatives separated by |.")
+        .Field("alert", &Barks::alert, "When it notices the player as an enemy.")
+        .Field("hit", &Barks::hit, "When it's hurt.")
+        .Field("idle", &Barks::idle, "Now and then, near the player.")
+        .Field("flee", &Barks::flee, "When it runs.");
+    r.Component<Actor>("Actor", "The same character in every scene (14.4): its key, and the prefab it's made from "
+                                "when it walks into a scene it wasn't placed in.")
+        .Field("key", &Actor::key, "A World Bible key or a unique name.")
+        .Field("prefab", &Actor::prefab, "Its prefab.").As(FieldType::Prefab).Optional();
 
     r.Component<Pickup>("Pickup", "Collected when the player walks over it (left alone at full health).")
         .Field("kind", &Pickup::kind, "What it does.").Options({"Heal"})
@@ -174,6 +339,19 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "what 'talk to' quest objectives point at.")
         .Field("range", &Talk::range, "How close the player must be, in cells.").Range(0.3, 10)
         .DependsOn({"WorldTransform2D"});
+    r.Component<CutsceneTrigger>("CutsceneTrigger", "Plays a cutscene when the player comes near (15.5).")
+        .Field("cutscene", &CutsceneTrigger::cutscene, "The cutscene, cutscenes/<id>.json (its id).")
+        .Field("radius", &CutsceneTrigger::radius, "How close the player must come, in cells.").Range(0.2, 50)
+        .Field("once", &CutsceneTrigger::once, "Only the first time (remembered in saves).")
+        .DependsOn({"WorldTransform2D"});
+    r.Component<Music>("Music", "The scene's music and ambience (development_plan.md 12.6): while the player is in "
+                                "this scene, the first entity with Music sets what plays. Changing scene "
+                                "cross-fades to the next scene's.")
+        .Field("track", &Music::track, "A looping music track (WAV, MP3 or FLAC). Empty: silence.").As(FieldType::Audio)
+        .Field("ambience", &Music::ambience, "A looping ambience under the music: wind, a crowd, the sea.")
+        .As(FieldType::Audio)
+        .Field("combat", &Music::combat, "Music while an enemy is chasing the player. Empty: the game's (game.json).")
+        .As(FieldType::Audio);
 
     // --- Rendering -------------------------------------------------------------------
 
@@ -204,6 +382,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "Lies flat on the ground: for art drawn top-down. The image is mapped onto the cell's diamond "
                "(width x height) instead of standing upright.")
         .Field("rotation", &Sprite::rotation, "Quarter turns clockwise of a flat image (0-3).").Range(0, 3)
+        .Field("lift", &Sprite::lift, "Raised off the ground by this many pixels (standing on high ground).").Range(-512, 512)
         .DependsOn({"ScreenTransform2D"});
 
     // --- Scripting -------------------------------------------------------------------
@@ -258,13 +437,24 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("followStiffness", &CameraSettings::followStiffness,
                "How quickly the camera catches up with the player; higher is snappier.")
         .Range(0.5, 50)
-        .Field("playZoom", &CameraSettings::playZoom, "Zoom while playing.").Range(0.25, 4);
+        .Field("playZoom", &CameraSettings::playZoom, "Zoom while playing.").Range(0.25, 4)
+        .Field("deadZone", &CameraSettings::deadZone,
+               "How far from the centre (a share of the screen) the player walks before the camera follows.")
+        .Range(0, 0.45)
+        .Field("lookAhead", &CameraSettings::lookAhead, "Cells the camera leads the player by, the way they move.")
+        .Range(0, 6)
+        .Field("clampToLevel", &CameraSettings::clampToLevel, "Never show beyond the edges of the level.");
     r.Settings("Combat", "Rules shared by every attack.", &settings.combat)
         .Field("minimumDamage", &CombatSettings::minimumDamage, "A hit never deals less than this.").Range(0, 1000)
         .Field("hitFlashSeconds", &CombatSettings::hitFlashSeconds, "How long a hit sprite flashes red.")
         .Range(0, 2)
         .Field("knockbackScale", &CombatSettings::knockbackScale, "Multiplies every attack's knockback.")
-        .Range(0, 10);
+        .Range(0, 10)
+        .Field("blockReduction", &CombatSettings::blockReduction, "The share of a blocked hit that's stopped.")
+        .Range(0, 1)
+        .Field("dodgeDistance", &CombatSettings::dodgeDistance, "Cells a dodge covers.").Range(0, 10)
+        .Field("dodgeStamina", &CombatSettings::dodgeStamina, "Stamina a dodge costs (for those with stamina).")
+        .Range(0, 1000);
     r.Settings("Physics", "Movement and collision.", &settings.physics)
         .Field("playerCollides", &PhysicsSettings::playerCollides, "Off lets the player walk through walls.");
     r.Settings("Grid", "How the world is laid out: diamond cells seen at an angle, or square cells seen from above.",
@@ -280,6 +470,11 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("minutesPerSecond", &TimeSettings::minutesPerSecond,
                "Game minutes per real second; 2 makes a day last 12 minutes.").Range(0.1, 600)
         .Field("showClock", &TimeSettings::showClock, "Always show the clock in play.");
+    r.Settings("Story", "Quest help on screen.", &settings.story)
+        .Field("objectiveMarkers", &StorySettings::objectiveMarkers, "Point the way to the current objective.")
+        .Field("journal", &StorySettings::journal, "The quest journal window (J).");
+
+    RegisterEngineRecordTypes(r);
 }
 
 ReflectionRegistry& EngineReflection() {

@@ -5,7 +5,8 @@
   "level": "parcel",
   "description": "Cooking: the stove, a table, the stores.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "InteriorRoom"

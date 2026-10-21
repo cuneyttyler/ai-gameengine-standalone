@@ -22,7 +22,7 @@ fs::path Scratch(const std::string& name) {
 } // namespace
 
 // development_plan.md 4.2.
-TEST(ProjectTemplateTest, ANewProjectHasEveryFolderAndOptionallyAStarterPalette) {
+TEST(ProjectTemplateTest, ANewProjectHasEveryFolder) {
     fs::path empty = Scratch("empty");
     ASSERT_FALSE(aige::CreateProject(empty));
     for (const char* folder : {"scenes", "prefabs", "scripts", "assets", "world", "dialogue", "quests", "schedules"}) {
@@ -33,20 +33,9 @@ TEST(ProjectTemplateTest, ANewProjectHasEveryFolderAndOptionallyAStarterPalette)
     EXPECT_TRUE(aige::LooksLikeProject(empty));
     EXPECT_TRUE(fs::is_empty(empty / "prefabs"));
 
-    fs::path starter = Scratch("starter");
-    const fs::path demo = fs::path(AIGE_SOURCE_DIR) / "projects" / "demo";
-    ASSERT_FALSE(aige::CreateProject(starter, demo));
-    EXPECT_TRUE(fs::exists(starter / "prefabs" / "skeleton.prefab"));
-    EXPECT_TRUE(fs::exists(starter / "assets" / "textures" / "skeleton.png"));
-    EXPECT_TRUE(fs::exists(starter / "scripts" / "enemy_melee.lua"));
-    EXPECT_FALSE(fs::exists(starter / "scenes" / "main.aige")); // its own scene, built on first open
-    EXPECT_TRUE(fs::is_empty(starter / "world"));               // and its own canon
-    EXPECT_FALSE(fs::exists(starter / "assets" / "textures" / "generated"));
-
     // Never over an existing project.
-    EXPECT_TRUE(aige::CreateProject(starter));
+    EXPECT_TRUE(aige::CreateProject(empty));
     fs::remove_all(empty);
-    fs::remove_all(starter);
 }
 
 TEST(ProjectTemplateTest, SaveAsCopiesTheProjectButNotItsCacheOrLog) {

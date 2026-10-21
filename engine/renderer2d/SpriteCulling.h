@@ -40,6 +40,10 @@ SpriteQuad SpriteQuadOf(const ScreenTransform2D& transform, const Sprite& sprite
 struct SpriteItem {
     ScreenTransform2D transform;
     const Sprite* sprite = nullptr;
+    // A sprite made for this cell (its square of a picture, its height): drawn instead.
+    Sprite value;
+    bool owned = false;
+    const Sprite* Drawn() const { return owned ? &value : sprite; }
 };
 
 // The last frame, for the stats overlay (F3).

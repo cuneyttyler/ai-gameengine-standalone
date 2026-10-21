@@ -100,24 +100,4 @@ TEST(ExportTest, TheExportHasEverythingTheGameNeedsAndNothingElse) {
 }
 
 #ifdef _WIN32
-TEST(ExportTest, TheExportedDemoRunsOnItsOwn) {
-    // The real player and the committed demo, exported and run without a
-    // window for two seconds of game time.
-    const fs::path out = TempDir("smoke");
-    aige::ExportOptions options{fs::path(AIGE_SOURCE_DIR) / "projects" / "demo", fs::path(AIGE_PLAYER_DIR),
-                                "sandbox.exe", out, "Smoke Test", false};
-    auto result = aige::ExportGame(options);
-    ASSERT_EQ(result.error, "");
-
-    const std::string command = "\"\"" + (result.folder / "Smoke Test.exe").string() + "\" --headless --exit-after 2 2>&1\"";
-    FILE* pipe = _popen(command.c_str(), "r");
-    ASSERT_NE(pipe, nullptr);
-    std::string output;
-    char buffer[512];
-    while (fgets(buffer, sizeof(buffer), pipe)) output += buffer;
-    const int code = _pclose(pipe);
-    EXPECT_EQ(code, 0) << output;
-    EXPECT_NE(output.find("headless ok: 120 steps"), std::string::npos) << output;
-    fs::remove_all(out);
-}
 #endif

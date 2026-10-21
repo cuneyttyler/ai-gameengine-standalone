@@ -17,7 +17,8 @@ namespace fs = std::filesystem;
 // the copy is gone before the loop body runs (a crash or garbage, six times so
 // far). Hold the value in a named local first.
 TEST(SourceRulesTest, NoItemsOverATemporaryJsonValue) {
-    const std::regex bad(R"(\.value\([^;{]*\)\s*\.items\(\))");
+    // `.value(...)`, `->value(...)` and `json::parse(...)` all return a temporary.
+    const std::regex bad(R"((\.|->)value\([^;{]*\)\s*\.items\(\)|::parse\([^;{]*\)\s*\.items\(\))");
     std::string found;
     for (const char* dir : {"engine", "apps/editor"}) {
         for (const auto& entry : fs::recursive_directory_iterator(fs::path(AIGE_SOURCE_DIR) / dir)) {

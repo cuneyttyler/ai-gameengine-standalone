@@ -183,6 +183,7 @@ interface BuildState {
     made: { path: string; attempt: number; seen?: string; ok?: boolean }[]
     request?: string
     alternatives?: string
+    verdict?: string // kept | rejected, the user's word on generated art
   }[]
   sourced?: NonNullable<BuildState['sourcing']> // what was made for this build (Refine after it)
   // ③ Assets: what each part's art is (the project's, the library's, made, or a placeholder).
@@ -198,6 +199,9 @@ interface BuildState {
     component?: string
     componentName?: string
     policy?: string
+    override?: string // this need's own source ('' : its component's)
+    title?: string // its name, e.g. "Cottage house"
+    description?: string // what it's for (the search and the Art tool use it)
     decision?: { action?: string; reason?: string }
   }[]
   buildProgress?: { done?: number; total?: number; text?: string } // ④ Build, as it goes
@@ -319,8 +323,8 @@ interface BuildEntry {
 
 const state = ref<BuildState | null>(null)
 // Asset sourcing (7.9): the project's settings.
-const sourcingSettings = ref({ webSearch: false, shareAlike: false })
-function setSourcing(change: { webSearch?: boolean; shareAlike?: boolean }): void {
+const sourcingSettings = ref({ webSearch: false, shareAlike: false, defaultSource: 'search' })
+function setSourcing(change: { webSearch?: boolean; shareAlike?: boolean; defaultSource?: string }): void {
   sendToHost({ type: 'build:sourcing', ...change })
 }
 sendToHost({ type: 'build:sourcingRequest' })
@@ -426,7 +430,11 @@ onHostMessage((message) => {
   } else if (message.type === 'build:advanced') {
     advancedDoc.value = message as unknown as { what?: string; file?: string; text?: string; cut?: boolean }
   } else if (message.type === 'build:sourcing') {
-    sourcingSettings.value = { webSearch: Boolean(message.webSearch), shareAlike: Boolean(message.shareAlike) }
+    sourcingSettings.value = {
+      webSearch: Boolean(message.webSearch),
+      shareAlike: Boolean(message.shareAlike),
+      defaultSource: (message.defaultSource as string) || 'search',
+    }
   } else if (message.type === 'build:choices') {
     choiceTypes.value = (message.types as ChoiceType[]) ?? []
   } else if (message.type === 'build:list') {
@@ -799,6 +807,73 @@ function showAdvanced(what: string): void {
 }
 // Removing older builds, asked first.
 const removeAsk = ref(false)
+// ④ Assets: each need's own source; every need's at once.
+const NEED_SOURCES = [
+  { id: 'auto', label: 'auto' },
+  { id: 'project', label: 'the project' },
+  { id: 'library', label: 'the library' },
+  { id: 'web', label: 'the web' },
+  { id: 'search', label: 'search (project, library, web)' },
+  { id: 'generate', label: 'generate' },
+  { id: 'placeholder', label: 'a placeholder' },
+]
+function setNeedSource(key: string, source: string): void {
+  sendToHost({ type: 'build:needSource', key, source })
+}
+function setAllSources(source: string): void {
+  if (source) sendToHost({ type: 'build:allSources', source })
+}
+// What's still a placeholder once the art was looked for: another way, at once.
+function retryNeed(key: string, source: string): void {
+  sendToHost({ type: 'build:needSource', key, source })
+  sendToHost({ type: 'build:findAssets' })
+}
+const unfound = computed(() =>
+  (state.value?.assetNeeds ?? []).filter((n) => n.source === 'placeholder' && n.decision?.action !== 'placeholder'),
+)
+// Picking a piece of art for a need by hand: from the project's images, or the user's library.
+const pickFor = ref('')
+const pickTab = ref<'project' | 'library'>('library')
+const pickFilter = ref('')
+type PickMeta = { roles?: string; tags?: string; description?: string; kind?: string; name?: string }
+const projectImages = ref<{ path: string; name?: string; analysis?: PickMeta }[]>([])
+const libraryItems = ref<{ id: string; name: string; path: string; source: string; meta?: PickMeta }[]>([])
+onHostMessage((message) => {
+  if (message.type === 'assets:list') {
+    const list = (message.assets as { path: string; type?: string; name?: string; analysis?: PickMeta }[]) ?? []
+    projectImages.value = list.filter((a) => /\.(png|jpg|jpeg)$/i.test(a.path) && !a.path.includes('/placeholders/'))
+  } else if (message.type === 'library:state') {
+    libraryItems.value = (message.items as typeof libraryItems.value) ?? []
+  }
+})
+function openPicker(key: string): void {
+  pickFor.value = key
+  // The need in plain words ("light prop" for light-prop): what it's for, not its id.
+  const need = (state.value?.assetNeeds ?? []).find((n) => n.key === key)
+  pickFilter.value = (need?.role.split('|')[0] ?? '').replace(/-/g, ' ')
+  sendToHost({ type: 'library:get' })
+}
+// A search over what each piece is for: its name, its roles, tags, kind and description, every
+// word of the search in one of them ("wall torch" finds a torch whose role is wall-torch).
+function hay(name: string, path: string, m?: PickMeta): string {
+  return [name, path, m?.name, m?.roles, m?.tags, m?.kind, m?.description].filter(Boolean).join(' ').toLowerCase().replace(/[-_]/g, ' ')
+}
+function rolesOf(c: unknown): string {
+  const m = (c as { meta?: PickMeta; analysis?: PickMeta }).meta ?? (c as { analysis?: PickMeta }).analysis
+  return m?.roles ?? ''
+}
+const pickChoices = computed(() => {
+  const words = pickFilter.value.trim().toLowerCase().replace(/[-_]/g, ' ').split(/\s+/).filter(Boolean)
+  const match = (h: string) => words.every((w) => h.includes(w))
+  return pickTab.value === 'project'
+    ? projectImages.value.filter((a) => match(hay(a.name ?? '', a.path, a.analysis))).slice(0, 200)
+    : libraryItems.value.filter((i) => match(hay(i.name, i.path, i.meta))).slice(0, 200)
+})
+function pick(choice: { path: string; id?: string }): void {
+  if (pickTab.value === 'library' && choice.id) sendToHost({ type: 'build:pickArt', key: pickFor.value, libraryItem: choice.id })
+  else sendToHost({ type: 'build:pickArt', key: pickFor.value, path: choice.path })
+  pickFor.value = ''
+}
 function revise(text?: string): void {
   const request = (text ?? revision.value).trim()
   if (!request) return
@@ -1033,6 +1108,25 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       </div>
     </div>
 
+    <div v-if="pickFor" class="lightbox ask" @click.self="pickFor = ''">
+      <div class="ask-box picker">
+        <strong>Pick the art for {{ (state?.assetNeeds ?? []).find((n) => n.key === pickFor)?.title || pickFor }}</strong>
+        <div class="row">
+          <button :class="{ primary: pickTab === 'project' }" @click="pickTab = 'project'">The project</button>
+          <button :class="{ primary: pickTab === 'library' }" @click="pickTab = 'library'">My library</button>
+          <input v-model="pickFilter" placeholder="Search: a name, what it's for (wall torch), a tag" />
+        </div>
+        <div class="pick-grid">
+          <button v-for="c in pickChoices" :key="c.path" class="pick" :title="c.path" @click="pick(c)">
+            <img :src="pickTab === 'project' ? urlOf(c.path) : 'https://aige-library.local/' + c.path" alt="" loading="lazy" />
+            <span>{{ ('name' in c && c.name) || c.path.split('/').pop() }}</span>
+            <span v-if="rolesOf(c)" class="dim roles">{{ rolesOf(c) }}</span>
+          </button>
+          <p v-if="!pickChoices.length" class="dim">Nothing matches. Search the web (Assets panel ▸ Web Search) or generate it (Generate ▸ Art).</p>
+        </div>
+        <div class="actions"><button @click="pickFor = ''">Cancel</button></div>
+      </div>
+    </div>
     <section v-if="advanced && state && !browsing" class="advanced">
       <div class="confirm-tabs">
         <button v-for="a in ADVANCED" :key="a.id" :class="{ active: advancedWhat === a.id }" @click="showAdvanced(a.id)">{{ a.label }}</button>
@@ -1336,7 +1430,13 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <button
           class="primary"
           :disabled="stage === 'revising' || state.layout.stale || errors.length > 0"
-          :title="state.layout.stale ? 'Lay the zones out again first' : 'Plans what is inside each zone, the zones kept where they are'"
+          :title="
+            state.layout.stale
+              ? 'Lay the zones out again first'
+              : errors.length
+                ? 'Fix this in ① Confirm first: ' + (errors[0]?.where ?? '') + ' ' + (errors[0]?.message ?? '')
+                : 'Plans what is inside each zone, the zones kept where they are'
+          "
           @click="sendToHost({ type: 'build:planFromLayout' })"
         >
           Plan the zones →
@@ -1370,21 +1470,46 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             {{ state.assetNeeds.filter((n) => n.decision?.action === 'web' && n.source === 'placeholder').length }} to search for,
             {{ state.assetNeeds.filter((n) => n.source !== 'placeholder').length }} found</span>
         </h4>
-        <table class="components">
-          <thead><tr><th>Needed</th><th>For</th><th>Gets</th><th>Source</th><th>Why</th></tr></thead>
+        <div class="row set-all">
+          <span class="dim" title="How a piece set to auto is found: Search looks in the project, your library and the web first (found art is the most reliable), and makes it only when nothing found fits">Default for this build</span>
+          <select :value="sourcingSettings.defaultSource" @change="setSourcing({ defaultSource: ($event.target as HTMLSelectElement).value }); sendToHost({ type: 'build:findAssets' })">
+            <option value="search">Search (project, library, web, then make)</option>
+            <option value="generate">Generate (the Art tool)</option>
+            <option value="library">Library only</option>
+            <option value="project">The project only</option>
+            <option value="auto">Auto (by each piece's importance)</option>
+          </select>
+        </div>
+        <div class="row set-all">
+          <span class="dim">Every piece from</span>
+          <select value="" @change="setAllSources(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''">
+            <option value="">choose…</option>
+            <option v-for="s in NEED_SOURCES" :key="s.id" :value="s.id">{{ s.label }}</option>
+          </select>
+          <span class="dim">(each piece can still be set on its own below)</span>
+        </div>
+        <table class="components needs">
+          <thead><tr><th></th><th>Needed</th><th>For</th><th>Gets</th><th>From</th><th>Why</th><th></th></tr></thead>
           <tbody>
-            <tr v-for="n in state.assetNeeds" :key="n.key">
-              <td>{{ n.concepts?.length ? n.concepts.join(', ') + ' ' : '' }}{{ n.role }}<span v-if="(n.uses ?? 1) > 1" class="dim"> ×{{ n.uses }}</span></td>
+            <tr v-for="n in state.assetNeeds" :key="n.key" :title="n.description">
+              <td class="thumb">
+                <img v-if="n.entry && n.source !== 'placeholder' && /\.(png|jpg|jpeg)$/i.test(n.entry)" :src="urlOf(n.entry)" alt="" />
+              </td>
+              <td>
+                {{ n.title || (n.concepts?.length ? n.concepts.join(', ') + ' ' : '') + n.role }}
+                <span v-if="(n.uses ?? 1) > 1" class="dim"> ×{{ n.uses }}</span>
+                <div v-if="n.description" class="dim small desc">{{ n.description }}</div>
+              </td>
               <td class="dim">{{ n.componentName || n.component }}</td>
               <td :class="{ warning: n.source === 'placeholder' && !['generate', 'web'].includes(n.decision?.action ?? '') }">{{ willGet(n) }}
                 <span v-if="n.name" class="dim">· {{ n.name }}</span></td>
               <td>
-                <select v-if="n.component && n.component !== 'ground'" :value="n.policy ?? 'auto'"
-                        @change="edit(`components.${n.component}.assets.source`, ($event.target as HTMLSelectElement).value)">
-                  <option v-for="s in SOURCES" :key="s.id" :value="s.id" :title="s.title">{{ s.label }}</option>
+                <select v-if="!n.key.startsWith('terrain|')" :value="n.override || 'auto'" @change="setNeedSource(n.key, ($event.target as HTMLSelectElement).value)">
+                  <option v-for="s in NEED_SOURCES" :key="s.id" :value="s.id">{{ s.id === 'auto' && n.policy && n.policy !== 'auto' ? 'as its part (' + n.policy + ')' : s.label }}</option>
                 </select>
               </td>
               <td class="dim">{{ n.decision?.reason || n.why }}</td>
+              <td><button v-if="!n.key.startsWith('terrain|')" class="small" title="Choose the art yourself: from the project or your library" @click="openPicker(n.key)">Pick…</button></td>
             </tr>
           </tbody>
         </table>
@@ -1476,6 +1601,19 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             </tbody>
           </table>
         </section>
+        <section v-if="stage !== 'sourcing' && unfound.length" class="note warning unfound">
+          <strong>{{ unfound.length }} still missing</strong>
+          <span class="dim"> · nothing found or made yet; another way for each:</span>
+          <div v-for="n in unfound" :key="n.key" class="unfound-row">
+            <span>{{ n.title || n.role }}</span>
+            <span class="dim small">{{ n.decision?.reason || n.why }}</span>
+            <span class="spacer"></span>
+            <button class="small" title="Made by the Art tool" @click="retryNeed(n.key, 'generate')">Generate</button>
+            <button class="small" title="Free art from approved sites" @click="retryNeed(n.key, 'web')">Search the web</button>
+            <button class="small" title="From the project or your library" @click="openPicker(n.key)">Pick…</button>
+            <button class="small" title="Keep the placeholder" @click="setNeedSource(n.key, 'placeholder')">Placeholder</button>
+          </div>
+        </section>
         <section v-if="stage !== 'sourcing' && state?.sourced?.length" class="sourcing">
           <h4>Art made for this build</h4>
           <div class="art-grid">
@@ -1491,7 +1629,13 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
                 <span v-if="n.alternatives" class="dim">or any of: {{ n.alternatives.replace(/,/g, ', ') }}</span>
                 <span class="dim">{{ n.description }}</span>
                 <span v-if="n.request" class="dim">asked: {{ n.request }}</span>
-                <button class="small" @click="openRefine(n.key)">Refine</button>
+                <span v-if="n.verdict === 'kept'" class="verdict kept">✓ kept by you</span>
+                <span v-else-if="n.verdict === 'rejected'" class="verdict rejected">✗ rejected: found another way</span>
+                <div class="row">
+                  <button class="small" title="It's right: keep it" :disabled="n.verdict === 'kept'" @click="sendToHost({ type: 'build:artVerdict', key: n.key, verdict: 'kept' })">Keep</button>
+                  <button class="small" title="Describe what to change, and it's made again" @click="openRefine(n.key)">Refine</button>
+                  <button class="small" title="It's wrong: not used, the need is found another way (your library, the web, a placeholder)" :disabled="n.verdict === 'rejected'" @click="sendToHost({ type: 'build:artVerdict', key: n.key, verdict: 'rejected' })">Reject</button>
+                </div>
               </div>
               <div v-if="refining === n.key" class="refine">
                 <textarea v-model="refineText" rows="2" placeholder="What to change, e.g. a thatched roof, warmer colours, smaller" @keydown.enter.ctrl="refine(n.key)" />
@@ -2770,6 +2914,65 @@ button.link {
   padding: 0 4px;
   font-weight: normal;
 }
+.set-all {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0 6px;
+}
+.needs .thumb img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.needs .desc {
+  max-width: 340px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.unfound-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 0;
+}
+.unfound-row .spacer {
+  flex: 1;
+}
+.picker {
+  max-width: 760px !important;
+  width: min(760px, 92vw);
+}
+.pick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px;
+  max-height: 55vh;
+  overflow: auto;
+  margin: 8px 0;
+}
+.pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+}
+.pick img {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.pick span {
+  font-size: 0.75em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .view-note {
   display: flex;
   gap: 10px;
@@ -3027,5 +3230,14 @@ table.decisions input {
 }
 .confirm-row > .decide {
   flex: 2;
+}
+.verdict {
+  font-size: 0.85em;
+}
+.verdict.kept {
+  color: #7fd07f;
+}
+.verdict.rejected {
+  color: #e08080;
 }
 </style>

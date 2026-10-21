@@ -5,7 +5,8 @@
   "level": "parcel",
   "description": "The throne at the far end.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "InteriorRoom"

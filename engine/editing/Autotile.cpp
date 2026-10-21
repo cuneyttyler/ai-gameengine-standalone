@@ -95,11 +95,19 @@ EdgeSignature Rotated(const EdgeSignature& signature, int turns) {
     return out;
 }
 
-std::optional<TileChoice> ChooseTile(const TerrainSet& set, const EdgeSignature& target, const std::string& center) {
-    std::optional<TileChoice> best;
-    float bestScore = 1e9f;
+unsigned CellVariety(int gx, int gy) {
+    unsigned h = static_cast<unsigned>(gx) * 73856093u ^ static_cast<unsigned>(gy) * 19349663u;
+    h ^= h >> 13;
+    h *= 0x5bd1e995u;
+    return (h ^ (h >> 15)) | 1u; // never 0 (0 is "no variety")
+}
+
+std::optional<TileChoice> ChooseTile(const TerrainSet& set, const EdgeSignature& target, const std::string& center, unsigned variety) {
+    std::vector<std::pair<float, TileChoice>> scored;
     for (const TerrainTile& tile : set.tiles) {
         if (tile.center != center) continue;
+        bool plain = true; // the same ground on every side: any turn is as good
+        for (int p = 0; p < kBorderPoints; ++p) plain = plain && tile.edges[p] == center;
         for (int turns = 0; turns < 4; ++turns) {
             const EdgeSignature edges = Rotated(tile.edges, turns);
             int mismatches = 0;
@@ -107,14 +115,19 @@ std::optional<TileChoice> ChooseTile(const TerrainSet& set, const EdgeSignature&
                 // An edge midpoint counts double: a wrong edge shows a seam.
                 if (edges[p] != target[p]) mismatches += p % 2 == 1 ? 2 : 1;
             }
-            const float score = static_cast<float>(mismatches) + (turns > 0 ? 0.25f : 0.0f);
-            if (score < bestScore) {
-                bestScore = score;
-                best = TileChoice{tile.prefab, turns, mismatches};
-            }
+            const bool free = variety != 0 && plain;
+            const float score = static_cast<float>(mismatches) + (turns > 0 && !free ? 0.25f : 0.0f);
+            scored.push_back({score, TileChoice{tile.prefab, turns, mismatches}});
         }
     }
-    return best;
+    if (scored.empty()) return std::nullopt;
+    float bestScore = 1e9f;
+    for (const auto& entry : scored) bestScore = std::min(bestScore, entry.first);
+    std::vector<TileChoice> best;
+    for (const auto& entry : scored) {
+        if (entry.first <= bestScore + 1e-4f) best.push_back(entry.second);
+    }
+    return best[variety == 0 ? 0 : variety % best.size()];
 }
 
 int PaintTerrain(Registry& registry, PrefabLibrary& prefabs, const TerrainSet& set,
@@ -154,7 +167,8 @@ int PaintTerrain(Registry& registry, PrefabLibrary& prefabs, const TerrainSet& s
         }
         const std::string center = terrainAt(cell.first, cell.second);
         const EdgeSignature target = TargetSignature(terrainAt, cell.first, cell.second, background);
-        auto choice = ChooseTile(set, target, center);
+        // Variety only where it paints: a neighbour that still fits keeps its tile and turn.
+        auto choice = ChooseTile(set, target, center, painted.contains(cell) ? CellVariety(cell.first, cell.second) : 0u);
         if (!choice) continue;
         // Already right? Leave it (no churn in undo or the file).
         if (existing != tileAt.end()) {

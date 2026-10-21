@@ -1,0 +1,34 @@
+# Scene prompts for checking the ontology (docs/ontology-eval.md). One per line:
+# <what it is>|<prompt>. A leading * : also read by the AI (kept to a few, for cost).
+*village|a fishing village by a river with a market, cottages, gardens and farm fields
+town|a walled market town on a crossroads with a church and an inn
+*city|a large port city with docks, warehouses, a noble quarter and slums
+hamlet|a tiny hamlet of three farmhouses in the hills
+*castle|a stone castle on a hill with a keep, a courtyard, stables and a moat
+fort|a wooden palisade fort on the frontier with watchtowers
+*courtyard|a small courtyard with an inner chamber
+cloister|a monastery cloister with a garden in the middle and cells around it
+*palace|a desert palace courtyard with a fountain and a throne room
+*tavern|the inside of a busy tavern with a bar, tables and rooms upstairs
+house|the interior of a peasant cottage with one room and a loft
+temple|inside a temple with a nave, an altar and a vestry
+shop|a blacksmith's workshop interior with a forge
+*dungeon|a dungeon with a boss room, traps and a treasure room
+*cave|a cave system with an underground lake and a bear den
+crypt|a crypt beneath a church with tombs and a secret room
+mine|an abandoned dwarven mine with collapsed tunnels
+sewer|the sewers under a city with a smugglers' hideout
+*camp|a bandit camp in a forest clearing with tents and a campfire
+military camp|an army camp with tents, a command tent and horse lines
+*farm|a farmstead with a barn, fields, an orchard and a pond
+forest|a dense old forest with a stream and a hunter's hut
+swamp|a misty swamp with a witch's hut on stilts
+graveyard|a haunted graveyard with a mausoleum
+ruins|ancient temple ruins overgrown with vines
+oasis|a desert oasis with palm trees and a trading post
+*island|a small tropical island with a shipwreck and a lighthouse
+mountain pass|a mountain pass with a stone bridge over a gorge
+battlefield|a battlefield after the battle with broken siege engines
+garden|a formal palace garden with hedges, statues and a fountain
+market|a busy market square with stalls and a well
+tower|a wizard's tower, three floors, with a library at the top

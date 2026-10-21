@@ -4,6 +4,7 @@
 // quests, routines). None of it belongs to one scene.
 import { panelTab, type ProjectTab } from '../paneltabs'
 import ScenesPanel from './ScenesPanel.vue'
+import RecordsPanel from './RecordsPanel.vue'
 import StoryPanel from './StoryPanel.vue'
 import WorldPanel from './WorldPanel.vue'
 
@@ -11,6 +12,7 @@ const tabs: { id: ProjectTab; label: string; title: string }[] = [
   { id: 'scenes', label: 'Scenes', title: "The project's scenes, the start scene, and gateways that lead nowhere" },
   { id: 'world', label: 'World', title: "World Bible: the game's canon (characters, places, factions…)" },
   { id: 'story', label: 'Story', title: 'Dialogue, quests and daily routines' },
+  { id: 'records', label: 'Records', title: "Typed game data: items and the project's other record types" },
 ]
 </script>
 
@@ -31,6 +33,7 @@ const tabs: { id: ProjectTab; label: string; title: string }[] = [
     </div>
     <ScenesPanel v-if="panelTab.project === 'scenes'" class="body" />
     <WorldPanel v-else-if="panelTab.project === 'world'" class="body" />
+    <RecordsPanel v-else-if="panelTab.project === 'records'" class="body" />
     <StoryPanel v-else class="body" />
   </div>
 </template>

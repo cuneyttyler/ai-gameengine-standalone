@@ -194,8 +194,17 @@ std::string TravelToScene(Registry& registry, const std::string& sceneText, cons
 
     // The traveller replaces the scene's own player; whatever pointed at that
     // one now points at the arrival.
-    const std::vector<Entity> arrived = AppendEntities(registry, carried);
-    if (arrived.empty()) return "the player couldn't be carried over";
+    const Entity player = ReplacePlayer(registry, carried);
+    if (player == entt::null) return "the player couldn't be carried over";
+    if (auto* world = registry.try_get<WorldTransform2D>(player)) *world = {at->first, at->second};
+    if (auto* velocity = registry.try_get<Velocity2D>(player)) *velocity = {};
+    return warning;
+}
+
+Entity ReplacePlayer(Registry& registry, const std::string& playerText) {
+    const auto local = FindPlayer(registry);
+    const std::vector<Entity> arrived = AppendEntities(registry, playerText);
+    if (arrived.empty()) return entt::null;
     const Entity player = arrived.front();
     if (local && *local != player) {
         for (const ComponentInfo& component : EngineReflection().Components()) {
@@ -209,9 +218,7 @@ std::string TravelToScene(Registry& registry, const std::string& sceneText, cons
         }
         registry.destroy(*local);
     }
-    if (auto* world = registry.try_get<WorldTransform2D>(player)) *world = {at->first, at->second};
-    if (auto* velocity = registry.try_get<Velocity2D>(player)) *velocity = {};
-    return warning;
+    return player;
 }
 
 } // namespace aige

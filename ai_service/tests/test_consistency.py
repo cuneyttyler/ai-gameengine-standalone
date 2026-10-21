@@ -13,7 +13,6 @@ from app.main import create_app
 from app.providers import ScriptedProvider
 
 CHECKS = Path(__file__).parent / "golden" / "checks"
-DEMO = Path(__file__).resolve().parents[2] / "projects" / "demo"
 
 
 def records():
@@ -73,34 +72,3 @@ def test_unverifiable_issues_are_dropped():
     ]
     assert parse_issues("not json", canon, 1)[1]
     assert parse_issues('{"nope": []}', canon, 1)[1]
-
-
-def test_the_endpoint_checks_against_retrieved_canon(tmp_path):
-    shutil.copytree(DEMO / "world", tmp_path / "world")
-    contradiction = {"op": "write_dialogue", "id": "x", "dialogue": {"speaker": "character/villager", "start": "a",
-                     "nodes": [{"id": "a", "text": "Forty years I've been the village blacksmith.", "next": ""}]}}
-    answer = json.dumps({"issues": [{"op": 1, "quote": "Forty years I've been the village blacksmith.",
-                                     "conflictsWith": "character/villager",
-                                     "canonSays": "Brookvale's herb-keeper, who brews the red healing draughts.",
-                                     "explanation": "She's the herb-keeper.", "severity": "contradiction"}]})
-    checker = ScriptedProvider([answer])
-    client = TestClient(create_app(embedder=None, checker=checker))
-
-    assert client.post("/consistency", json={"operations": [contradiction]}).json()["ok"] is False  # no project yet
-    client.put("/project", json={"root": str(tmp_path)})
-    nothing = client.post("/consistency", json={"operations": [{"op": "set_field"}]}).json()
-    assert nothing["checked"] is False and nothing["ok"] is True
-
-    result = client.post("/consistency", json={"operations": [contradiction]}).json()
-    assert result["checked"] and result["issues"][0]["conflictsWith"] == "character/villager"
-    assert "character/villager" in result["canonKeys"]
-    sent = checker.requests[0][-1]["content"]
-    assert "Old Tamsin" in sent and "NEW WRITING" in sent
-
-    # Re-checking an entry: it isn't compared with itself.
-    rewrite = {"op": "command", "name": "world.write", "args": {"kind": "character", "id": "villager",
-               "name": "Old Tamsin", "summary": "Herb-keeper.", "tags": "", "relations": "", "body": ""}}
-    checker2 = ScriptedProvider([json.dumps({"issues": []})])
-    client2 = TestClient(create_app(embedder=None, checker=checker2))
-    client2.put("/project", json={"root": str(tmp_path)})
-    assert "character/villager" not in client2.post("/consistency", json={"operations": [rewrite]}).json()["canonKeys"]

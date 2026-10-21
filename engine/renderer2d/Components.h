@@ -43,6 +43,16 @@ struct Sprite {
     // Quarter turns clockwise of a flat image (0-3), so one road piece can
     // run either way along the grid. Upright sprites ignore it.
     int rotation = 0;
+    // Raised off the ground, in screen pixels (high ground, place-refine.md
+    // §10): the whole sprite by `lift`, and a flat one's corners (top, right,
+    // bottom, left) each by its own, so a tile lies on a slope.
+    float lift = 0.0f;
+    float cornerLift[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    // A tile kind whose picture covers uvCells x uvCells cells, from the cell
+    // (uvOriginX, uvOriginY): each cell shows its own square of it (a built
+    // place's painted ground). 0: the uv above, the same on every cell.
+    int uvCells = 0;
+    int uvOriginX = 0, uvOriginY = 0;
 };
 
 } // namespace aige

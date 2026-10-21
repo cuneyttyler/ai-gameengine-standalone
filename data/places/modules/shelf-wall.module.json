@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "Shelves along a wall.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "FurnitureGroup"

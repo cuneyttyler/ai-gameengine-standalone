@@ -44,6 +44,29 @@
       "vocabulary": "climate",
       "default": "temperate"
     },
+    "relief": {
+      "type": "enum",
+      "values": [
+        "flat",
+        "gentle",
+        "hilly"
+      ],
+      "default": "gentle",
+      "ask": true,
+      "description": "The lie of the land outside what's built: level, low rolling hills, or high ground (place-refine.md §10)."
+    },
+    "woods": {
+      "type": "enum",
+      "values": [
+        "none",
+        "few",
+        "some",
+        "dense"
+      ],
+      "default": "some",
+      "ask": true,
+      "description": "How wooded the wild land is: stands of trees towards the edges of the place, on a forest floor (place-refine.md §7)."
+    },
     "notes": {
       "type": "description"
     }

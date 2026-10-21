@@ -248,6 +248,7 @@ std::vector<std::string> Ontology::Load(const std::vector<fs::path>& dirs) {
                 build.words = Strings(b.value("words", json::array()));
                 build.isDefault = b.value("default", false);
                 build.rank = b.value("rank", 0);
+                build.look = b.value("look", json::object());
                 for (const auto& s : b.value("scale", json::array())) {
                     if (!s.is_object()) continue;
                     ScaleClass scale;
@@ -273,6 +274,7 @@ std::vector<std::string> Ontology::Load(const std::vector<fs::path>& dirs) {
                         c.label = v.value("label", "");
                         c.alt = Strings(v.value("alt", json::array()));
                         c.broader = v.value("broader", "");
+                        c.look = v.value("look", json::object());
                     }
                     if (c.id.empty()) continue;
                     if (c.label.empty()) c.label = c.id;
@@ -288,6 +290,10 @@ std::vector<std::string> Ontology::Load(const std::vector<fs::path>& dirs) {
                 role.label = spec.is_object() ? spec.value("label", id) : id;
                 role.broader = spec.is_object() ? spec.value("broader", "") : "";
                 role.affordance = spec.is_object() ? spec.value("affordance", "") : "";
+                role.size = spec.is_object() ? spec.value("size", 0.0f) : 0.0f;
+                role.tall = spec.is_object() ? spec.value("tall", 0.0f) : 0.0f;
+                role.draw = spec.is_object() ? spec.value("draw", "") : "";
+                role.look = spec.is_object() ? spec.value("look", nlohmann::json::object()) : nlohmann::json::object();
                 roles_[id] = role;
             }
         }
@@ -424,6 +430,46 @@ void Ontology::ApplyExtensions(const json& extensions, std::vector<std::string>&
             }
         }
     }
+}
+
+nlohmann::json Ontology::RoleLook(const std::string& role, const std::string& key) const {
+    int guard = 0;
+    for (const Role* r = FindRole(role.substr(0, role.find('|'))); r && guard++ < 12; r = FindRole(r->broader)) {
+        if (r->look.is_object() && r->look.contains(key)) return r->look[key];
+    }
+    return nullptr;
+}
+
+nlohmann::json Ontology::ConceptLook(const std::string& scheme, const std::string& id, const std::string& key) const {
+    int guard = 0;
+    for (const Concept* c = FindConcept(scheme, id); c && guard++ < 12; c = c->broader.empty() ? nullptr : FindConcept(scheme, c->broader)) {
+        if (c->look.is_object() && c->look.contains(key)) return c->look[key];
+    }
+    return nullptr;
+}
+
+float Ontology::RoleSize(const std::string& role) const {
+    int guard = 0;
+    for (const Role* r = FindRole(role.substr(0, role.find('|'))); r && guard++ < 12; r = FindRole(r->broader)) {
+        if (r->size > 0) return r->size;
+    }
+    return 0.0f;
+}
+
+float Ontology::RoleTall(const std::string& role) const {
+    int guard = 0;
+    for (const Role* r = FindRole(role.substr(0, role.find('|'))); r && guard++ < 12; r = FindRole(r->broader)) {
+        if (r->tall > 0) return r->tall;
+    }
+    return 0.0f;
+}
+
+std::string Ontology::RoleDraw(const std::string& role) const {
+    int guard = 0;
+    for (const Role* r = FindRole(role.substr(0, role.find('|'))); r && guard++ < 12; r = FindRole(r->broader)) {
+        if (!r->draw.empty()) return r->draw;
+    }
+    return {};
 }
 
 std::vector<std::string> Ontology::Check() const {

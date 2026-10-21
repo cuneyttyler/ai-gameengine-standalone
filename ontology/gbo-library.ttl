@@ -1523,7 +1523,7 @@ gbl:Camp
     gbo:moduleId "camp" ;
     gbo:level gbo:Site ;
     gbo:allowedIn gbb:camp ;
-    gbo:hasField gbl:Camp.area, gbl:Camp.tents, gbl:Camp.condition, gbl:Camp.kind, gbl:Camp.notes, gbl:Camp.walled ;
+    gbo:hasField gbl:Camp.area, gbl:Camp.tents, gbl:Camp.condition, gbl:Camp.kind, gbl:Camp.notes, gbl:Camp.relief, gbl:Camp.walled, gbl:Camp.woods ;
     gbo:hasChildRule gbl:Camp.child.camp-ground, gbl:Camp.child.forest, gbl:Camp.child.ground, gbl:Camp.child.lake, gbl:Camp.child.meadow, gbl:Camp.child.river, gbl:Camp.child.road, gbl:Camp.child.wall ;
     gbo:constraint "within(self.tents, count(descendants(class: BuildingParcel)), tol: 'count')"^^gbo:Expression, "walled != 'none' implies count(children(wall)) >= 1"^^gbo:Expression ;
     gbo:origin "engine" .
@@ -1575,6 +1575,17 @@ gbl:Camp.notes
     gbo:fieldName "notes" ;
     gbo:fieldType gbo:description .
 
+gbl:Camp.relief
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "relief"@en ;
+    rdfs:comment "The lie of the land outside what's built: level, low rolling hills, or high ground (place-refine.md §10)."@en ;
+    rdfs:domain gbl:Camp ;
+    gbo:fieldName "relief" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"gentle\""^^rdf:JSON ;
+    gbo:allowedValue "flat", "gentle", "hilly" ;
+    gbo:askedInConfirmation true .
+
 gbl:Camp.walled
     a gbo:QualityField, owl:DatatypeProperty ;
     rdfs:label "walled"@en ;
@@ -1583,6 +1594,17 @@ gbl:Camp.walled
     gbo:fieldType gbo:enum ;
     gbo:defaultValue "\"none\""^^rdf:JSON ;
     gbo:allowedValue "none", "palisade" ;
+    gbo:askedInConfirmation true .
+
+gbl:Camp.woods
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "woods"@en ;
+    rdfs:comment "How wooded the wild land is: stands of trees towards the edges of the place, on a forest floor (place-refine.md §7)."@en ;
+    rdfs:domain gbl:Camp ;
+    gbo:fieldName "woods" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"some\""^^rdf:JSON ;
+    gbo:allowedValue "none", "few", "some", "dense" ;
     gbo:askedInConfirmation true .
 
 gbl:Camp.child.camp-ground
@@ -1965,7 +1987,7 @@ gbl:Castle
     gbo:moduleId "castle" ;
     gbo:level gbo:Site ;
     gbo:allowedIn gbb:castle ;
-    gbo:hasField gbl:Castle.area, gbl:Castle.buildings, gbl:Castle.rings, gbl:Castle.condition, gbl:Castle.kind, gbl:Castle.notes ;
+    gbo:hasField gbl:Castle.area, gbl:Castle.buildings, gbl:Castle.rings, gbl:Castle.condition, gbl:Castle.kind, gbl:Castle.notes, gbl:Castle.relief, gbl:Castle.woods ;
     gbo:hasChildRule gbl:Castle.child.bailey, gbl:Castle.child.curtain-wall, gbl:Castle.child.forest, gbl:Castle.child.ground, gbl:Castle.child.lake, gbl:Castle.child.meadow, gbl:Castle.child.moat, gbl:Castle.child.river, gbl:Castle.child.road ;
     gbo:constraint "within(self.buildings, count(descendants(class: BuildingParcel)), tol: 'count')"^^gbo:Expression ;
     gbo:origin "engine" .
@@ -2027,6 +2049,28 @@ gbl:Castle.notes
     rdfs:domain gbl:Castle ;
     gbo:fieldName "notes" ;
     gbo:fieldType gbo:description .
+
+gbl:Castle.relief
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "relief"@en ;
+    rdfs:comment "The lie of the land outside what's built: level, low rolling hills, or high ground (place-refine.md §10)."@en ;
+    rdfs:domain gbl:Castle ;
+    gbo:fieldName "relief" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"gentle\""^^rdf:JSON ;
+    gbo:allowedValue "flat", "gentle", "hilly" ;
+    gbo:askedInConfirmation true .
+
+gbl:Castle.woods
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "woods"@en ;
+    rdfs:comment "How wooded the wild land is: stands of trees towards the edges of the place, on a forest floor (place-refine.md §7)."@en ;
+    rdfs:domain gbl:Castle ;
+    gbo:fieldName "woods" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"some\""^^rdf:JSON ;
+    gbo:allowedValue "none", "few", "some", "dense" ;
+    gbo:askedInConfirmation true .
 
 gbl:Castle.child.bailey
     a gbo:ChildRule ;
@@ -4333,7 +4377,7 @@ gbl:Farmland
     gbo:moduleId "farmland" ;
     gbo:level gbo:Site ;
     gbo:allowedIn gbb:farmland ;
-    gbo:hasField gbl:Farmland.area, gbl:Farmland.farmsteads, gbl:Farmland.condition, gbl:Farmland.crop-mix, gbl:Farmland.livestock-mix, gbl:Farmland.notes ;
+    gbo:hasField gbl:Farmland.area, gbl:Farmland.farmsteads, gbl:Farmland.condition, gbl:Farmland.crop-mix, gbl:Farmland.livestock-mix, gbl:Farmland.notes, gbl:Farmland.relief, gbl:Farmland.woods ;
     gbo:hasChildRule gbl:Farmland.child.farmland-ring, gbl:Farmland.child.forest, gbl:Farmland.child.ground, gbl:Farmland.child.lake, gbl:Farmland.child.meadow, gbl:Farmland.child.pasture-land, gbl:Farmland.child.river, gbl:Farmland.child.road ;
     gbo:constraint "within(self.farmsteads, count(descendants(class: BuildingParcel)), tol: 'count')"^^gbo:Expression ;
     gbo:origin "engine" .
@@ -4394,6 +4438,28 @@ gbl:Farmland.notes
     rdfs:domain gbl:Farmland ;
     gbo:fieldName "notes" ;
     gbo:fieldType gbo:description .
+
+gbl:Farmland.relief
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "relief"@en ;
+    rdfs:comment "The lie of the land outside what's built: level, low rolling hills, or high ground (place-refine.md §10)."@en ;
+    rdfs:domain gbl:Farmland ;
+    gbo:fieldName "relief" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"gentle\""^^rdf:JSON ;
+    gbo:allowedValue "flat", "gentle", "hilly" ;
+    gbo:askedInConfirmation true .
+
+gbl:Farmland.woods
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "woods"@en ;
+    rdfs:comment "How wooded the wild land is: stands of trees towards the edges of the place, on a forest floor (place-refine.md §7)."@en ;
+    rdfs:domain gbl:Farmland ;
+    gbo:fieldName "woods" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"some\""^^rdf:JSON ;
+    gbo:allowedValue "none", "few", "some", "dense" ;
+    gbo:askedInConfirmation true .
 
 gbl:Farmland.child.farmland-ring
     a gbo:ChildRule ;
@@ -4912,7 +4978,7 @@ gbl:Field
     gbo:moduleId "field" ;
     gbo:level gbo:Feature ;
     gbo:allowedIn gbb:settlement, gbb:farmland ;
-    gbo:hasField gbl:Field.rows, gbl:Field.size, gbl:Field.crop, gbl:Field.season ;
+    gbo:hasField gbl:Field.rows, gbl:Field.size, gbl:Field.crop, gbl:Field.season, gbl:Field.surface ;
     gbo:hasSlot gbl:Field.slot.crop, gbl:Field.slot.tilled ;
     gbo:constraint "rows <= size.h"^^gbo:Expression ;
     gbo:typicallyRelated [
@@ -4964,6 +5030,16 @@ gbl:Field.season
     gbo:fieldType gbo:enum ;
     gbo:defaultValue "\"summer\""^^rdf:JSON ;
     gbo:allowedValue "spring", "summer", "harvest" .
+
+gbl:Field.surface
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "surface"@en ;
+    rdfs:comment "The ground of the field: tilled soil, its own tile (made or found like grass and dirt)"@en ;
+    rdfs:domain gbl:Field ;
+    gbo:fieldName "surface" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"tilled\""^^rdf:JSON ;
+    gbo:vocabulary gbv:terrain-kind .
 
 gbl:Field.slot.crop
     a gbo:Slot ;
@@ -9883,7 +9959,7 @@ gbl:Region
     gbo:moduleId "region" ;
     gbo:level gbo:Site ;
     gbo:allowedIn gbb:region ;
-    gbo:hasField gbl:Region.area, gbl:Region.sites, gbl:Region.biome-mix, gbl:Region.climate, gbl:Region.notes ;
+    gbo:hasField gbl:Region.area, gbl:Region.sites, gbl:Region.biome-mix, gbl:Region.climate, gbl:Region.notes, gbl:Region.relief, gbl:Region.woods ;
     gbo:hasChildRule gbl:Region.child.biome-zone, gbl:Region.child.ground, gbl:Region.child.heartland, gbl:Region.child.lake, gbl:Region.child.river, gbl:Region.child.road ;
     gbo:constraint "within(self.sites, count(descendants(class: Site)), tol: 'count')"^^gbo:Expression ;
     gbo:origin "engine" .
@@ -9934,6 +10010,28 @@ gbl:Region.notes
     rdfs:domain gbl:Region ;
     gbo:fieldName "notes" ;
     gbo:fieldType gbo:description .
+
+gbl:Region.relief
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "relief"@en ;
+    rdfs:comment "The lie of the land outside what's built: level, low rolling hills, or high ground (place-refine.md §10)."@en ;
+    rdfs:domain gbl:Region ;
+    gbo:fieldName "relief" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"gentle\""^^rdf:JSON ;
+    gbo:allowedValue "flat", "gentle", "hilly" ;
+    gbo:askedInConfirmation true .
+
+gbl:Region.woods
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "woods"@en ;
+    rdfs:comment "How wooded the wild land is: stands of trees towards the edges of the place, on a forest floor (place-refine.md §7)."@en ;
+    rdfs:domain gbl:Region ;
+    gbo:fieldName "woods" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"some\""^^rdf:JSON ;
+    gbo:allowedValue "none", "few", "some", "dense" ;
+    gbo:askedInConfirmation true .
 
 gbl:Region.child.biome-zone
     a gbo:ChildRule ;
@@ -10733,7 +10831,7 @@ gbl:Settlement
     gbo:moduleId "settlement" ;
     gbo:level gbo:Site ;
     gbo:allowedIn gbb:settlement ;
-    gbo:hasField gbl:Settlement.area, gbl:Settlement.buildings, gbl:Settlement.condition, gbl:Settlement.layout, gbl:Settlement.notes, gbl:Settlement.style, gbl:Settlement.walled ;
+    gbo:hasField gbl:Settlement.area, gbl:Settlement.buildings, gbl:Settlement.condition, gbl:Settlement.layout, gbl:Settlement.notes, gbl:Settlement.relief, gbl:Settlement.style, gbl:Settlement.walled, gbl:Settlement.woods ;
     gbo:hasChildRule gbl:Settlement.child.Ward, gbl:Settlement.child.forest, gbl:Settlement.child.ground, gbl:Settlement.child.lake, gbl:Settlement.child.meadow, gbl:Settlement.child.river, gbl:Settlement.child.road, gbl:Settlement.child.rock-field, gbl:Settlement.child.wall ;
     gbo:constraint "within(self.buildings, count(descendants(class: BuildingParcel)), tol: 'count')"^^gbo:Expression, "sum(children().area) <= 0.85 * self.area"^^gbo:Expression, "walled != 'none' implies count(children(wall)) >= 1"^^gbo:Expression ;
     gbo:origin "engine" .
@@ -10787,6 +10885,17 @@ gbl:Settlement.notes
     gbo:fieldName "notes" ;
     gbo:fieldType gbo:description .
 
+gbl:Settlement.relief
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "relief"@en ;
+    rdfs:comment "The lie of the land outside what's built: level, low rolling hills, or high ground (place-refine.md §10)."@en ;
+    rdfs:domain gbl:Settlement ;
+    gbo:fieldName "relief" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"gentle\""^^rdf:JSON ;
+    gbo:allowedValue "flat", "gentle", "hilly" ;
+    gbo:askedInConfirmation true .
+
 gbl:Settlement.style
     a gbo:QualityField, owl:DatatypeProperty ;
     rdfs:label "style"@en ;
@@ -10803,6 +10912,17 @@ gbl:Settlement.walled
     gbo:fieldType gbo:enum ;
     gbo:defaultValue "\"none\""^^rdf:JSON ;
     gbo:allowedValue "none", "palisade", "stone" ;
+    gbo:askedInConfirmation true .
+
+gbl:Settlement.woods
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "woods"@en ;
+    rdfs:comment "How wooded the wild land is: stands of trees towards the edges of the place, on a forest floor (place-refine.md §7)."@en ;
+    rdfs:domain gbl:Settlement ;
+    gbo:fieldName "woods" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"some\""^^rdf:JSON ;
+    gbo:allowedValue "none", "few", "some", "dense" ;
     gbo:askedInConfirmation true .
 
 gbl:Settlement.child.Ward
@@ -13998,7 +14118,7 @@ gbl:Wilderness
     gbo:moduleId "wilderness" ;
     gbo:level gbo:Site ;
     gbo:allowedIn gbb:wilderness ;
-    gbo:hasField gbl:Wilderness.area, gbl:Wilderness.pois, gbl:Wilderness.biome, gbl:Wilderness.notes ;
+    gbo:hasField gbl:Wilderness.area, gbl:Wilderness.pois, gbl:Wilderness.biome, gbl:Wilderness.notes, gbl:Wilderness.relief, gbl:Wilderness.woods ;
     gbo:hasChildRule gbl:Wilderness.child.forest, gbl:Wilderness.child.ground, gbl:Wilderness.child.lake, gbl:Wilderness.child.meadow, gbl:Wilderness.child.river, gbl:Wilderness.child.rock-field, gbl:Wilderness.child.trail-network, gbl:Wilderness.child.wilds ;
     gbo:constraint "within(self.pois, count(descendants(class: PointOfInterest)), tol: 'count')"^^gbo:Expression ;
     gbo:origin "engine" .
@@ -14041,6 +14161,28 @@ gbl:Wilderness.notes
     rdfs:domain gbl:Wilderness ;
     gbo:fieldName "notes" ;
     gbo:fieldType gbo:description .
+
+gbl:Wilderness.relief
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "relief"@en ;
+    rdfs:comment "The lie of the land outside what's built: level, low rolling hills, or high ground (place-refine.md §10)."@en ;
+    rdfs:domain gbl:Wilderness ;
+    gbo:fieldName "relief" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"gentle\""^^rdf:JSON ;
+    gbo:allowedValue "flat", "gentle", "hilly" ;
+    gbo:askedInConfirmation true .
+
+gbl:Wilderness.woods
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "woods"@en ;
+    rdfs:comment "How wooded the wild land is: stands of trees towards the edges of the place, on a forest floor (place-refine.md §7)."@en ;
+    rdfs:domain gbl:Wilderness ;
+    gbo:fieldName "woods" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"some\""^^rdf:JSON ;
+    gbo:allowedValue "none", "few", "some", "dense" ;
+    gbo:askedInConfirmation true .
 
 gbl:Wilderness.child.forest
     a gbo:ChildRule ;
@@ -16409,13 +16551,29 @@ gbv:surface.plank
 gbv:terrain-kind
     a skos:ConceptScheme ;
     skos:prefLabel "terrain-kind"@en ;
-    skos:hasTopConcept gbv:terrain-kind.grass, gbv:terrain-kind.dirt, gbv:terrain-kind.sand, gbv:terrain-kind.snow, gbv:terrain-kind.stone, gbv:terrain-kind.mud .
+    skos:hasTopConcept gbv:terrain-kind.grass, gbv:terrain-kind.tilled, gbv:terrain-kind.forest-floor, gbv:terrain-kind.dirt, gbv:terrain-kind.sand, gbv:terrain-kind.snow, gbv:terrain-kind.stone, gbv:terrain-kind.mud .
 
 gbv:terrain-kind.grass
     a skos:Concept ;
     skos:inScheme gbv:terrain-kind ;
     skos:prefLabel "grass"@en ;
     skos:notation "grass" ;
+    skos:topConceptOf gbv:terrain-kind .
+
+gbv:terrain-kind.tilled
+    a skos:Concept ;
+    skos:inScheme gbv:terrain-kind ;
+    skos:prefLabel "tilled soil"@en ;
+    skos:altLabel "farmland"@en, "ploughed field"@en, "furrows"@en ;
+    skos:notation "tilled" ;
+    skos:topConceptOf gbv:terrain-kind .
+
+gbv:terrain-kind.forest-floor
+    a skos:Concept ;
+    skos:inScheme gbv:terrain-kind ;
+    skos:prefLabel "forest floor"@en ;
+    skos:altLabel "woodland floor"@en, "leaf litter"@en, "moss"@en ;
+    skos:notation "forest-floor" ;
     skos:topConceptOf gbv:terrain-kind .
 
 gbv:terrain-kind.dirt

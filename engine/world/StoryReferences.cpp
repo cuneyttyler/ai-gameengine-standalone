@@ -30,7 +30,8 @@ std::vector<StoryLibrary::Problem> ValidateStoryReferences(const StoryLibrary& s
     for (const auto& quest : story.Quests()) {
         const std::string file = "quests/" + quest.id + ".json";
         checkCharacter(file, "giver", quest.giver);
-        for (const auto& objective : quest.objectives) {
+        for (QuestObjective objective : quest.objectives) {
+            objective.target = quest.Resolve(objective.target); // "@thief" -> its fill
             const std::string where = "objective '" + objective.id + "'";
             if (sceneMarkers != nullptr) {
                 if (!objective.scene.empty() && !sceneMarkers->contains(objective.scene)) {

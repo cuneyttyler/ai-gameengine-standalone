@@ -19,8 +19,24 @@ add_library(aige_gameplay STATIC
     TileLayerView.cpp
     GameSession.h
     GameSession.cpp
+    InputMap.h
+    InputMap.cpp
+    Localization.h
+    Localization.cpp
+    Attributes.h
+    Attributes.cpp
+    Items.h
+    Items.cpp
+    Interact.h
+    Interact.cpp
+    Encounters.h
+    Encounters.cpp
+    Behaviour.h
+    Behaviour.cpp
     Story.h
     Story.cpp
+    Cutscene.h
+    Cutscene.cpp
     LevelGen.h
     LevelGen.cpp
     VillageGen.h
@@ -33,5 +49,5 @@ add_library(aige_gameplay STATIC
     Benchmark.cpp
 )
 target_include_directories(aige_gameplay PUBLIC ${CMAKE_SOURCE_DIR}/engine)
-target_link_libraries(aige_gameplay PUBLIC aige_ecs aige_reflection aige_physics2d aige_renderer2d aige_ui aige_scripting)
+target_link_libraries(aige_gameplay PUBLIC aige_ecs aige_reflection aige_records aige_modules aige_physics2d aige_renderer2d aige_ui aige_scripting)
 target_compile_features(aige_gameplay PUBLIC cxx_std_20)

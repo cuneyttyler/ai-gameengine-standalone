@@ -532,7 +532,15 @@ std::vector<PlaceProblem> ValidateBrief(const Ontology& ontology, const json& br
     for (const auto& [id, c] : components.items()) {
         const std::string where = "components." + id;
         if (std::find(build->components.begin(), build->components.end(), id) == build->components.end()) {
-            problem(where, "isn't a component of a " + build->id);
+            // Only where its art comes from (set in ④ Assets for the place itself, before that was
+            // stopped): harmless, and ignored; anything else about a non-component is wrong.
+            bool onlyAssets = c.is_object() && !c.empty();
+            if (c.is_object()) {
+                for (const auto& [key, value] : c.items()) onlyAssets = onlyAssets && key == "assets";
+            }
+            problem(where, onlyAssets ? "isn't a component of a " + build->id + ": its art source is ignored"
+                                      : "isn't a component of a " + build->id,
+                    onlyAssets);
             continue;
         }
         const ModuleDef* module = ontology.Module(id);
@@ -582,7 +590,7 @@ std::vector<PlaceProblem> ValidateBrief(const Ontology& ontology, const json& br
         }
     }
     for (const auto& feature : brief.value("features", json::array())) {
-        const std::string id = feature.is_object() ? feature.value("module", "") : "";
+        const std::string id = feature.is_object() ? feature.value("module", "") : feature.is_string() ? feature.get<std::string>() : "";
         const ModuleDef* module = ontology.Module(id);
         if (module == nullptr) {
             problem("features", "unknown feature '" + id + "'");

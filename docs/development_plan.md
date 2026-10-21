@@ -2400,11 +2400,315 @@ specificity so panels' own rules still apply).
 
 ---
 
+## Phases 12–24 — A complete engine, then the AI Planner
+
+**Status: designed, for review (2026-10-21).** The goal is a finished product: after these
+phases, real games can be made with AIGE, by hand or by the AI Planner, which designs a
+whole game from a request. The gap analysis is `engine-gaps.md`; the order:
+
+- **12–20 fill the engine's gaps** (records, events, game flow, saves, audio, items,
+  character AI, quests v2, difficulty, game UI, animation and effects, abilities and magic,
+  physics). The Planner can only generate what the engine can run, and every system's
+  schema must exist first (the rule Phase 7 followed: schemas before generators).
+- **21–23 are the AI Planner**: the story ontology, then designing a game, then building it.
+- **24 is shipping quality.**
+
+Phases 0–24 make **v1.0** of the product (`roadmap.md`): 2D isometric and top-down games
+with AI. Later versions (v1.1–v2.0) add genres in the order games appeared, then early 3D,
+then advanced graphics.
+
+Design documents:
+
+| Document | Subject |
+|---|---|
+| `engine-gaps.md` | what's missing for a finished game, by phase |
+| `ai-planner.md` | the AI Planner: procedure, panel, multi-scene builds, quest binding, audit |
+| `planner-schema.md` | the Game Brief (input schema) and the Planner's documents |
+| `story-ontology.md` | GSO, the story ontology, and the story knowledge graph |
+| `ai-packages.md` | character AI: packages, behaviour, perception, scripted AI |
+| `difficulty.md` | difficulty levels, scaling, assists, the curve |
+| `game-ui.md` | menus, windows, HUD, notifications, themes, the UI designer |
+| `effects-animation.md` | sprite animation, particles, effects, lighting, cutscenes |
+| `magic.md` | abilities, magic effects, spells |
+| `physics.md` | kinematic layer, Box2D for rigid bodies, controllers |
+| `game-types.md` | the kinds of game AIGE aims to support |
+
+Each phase ends with its reflection registrations (Inspector, Lua, AI see everything new),
+validators, tests, docs, and the AI panel able to propose changes to the new data.
+
+## Phase 12 — Game foundations
+
+**12.1 Records** — typed game data (`records/<type>/<id>.json`), schemas in the reflection
+registry, references between records checked, a **Records panel** (browse, filter, edit
+from the schema, duplicate, find references). Prefab-like inheritance (`base` + overrides).
+**12.2 Events** — a typed event bus (`on_death`, `on_hit`, `on_pickup`, `on_enter`,
+`on_interact`, `quest_stage`…); Lua `on(event, fn)`, `after(s, fn)`, coroutines with
+`wait(s)`; per-frame module systems (`modules.md` "Not yet").
+**12.3 Input actions** — named actions, bindings for keyboard, mouse and gamepad, contexts
+(gameplay, menu, dialogue), rebinding at run time; `Key` stays as the device layer.
+**12.4 Game flow** — `game.json` (title, genre, systems on, start scene, flow); title →
+new/continue/load → play → pause → game over / victory → credits; scene transitions with
+fades; Escape opens pause instead of quitting.
+**12.5 Saves v2** — slots, autosave, metadata (place, time, thumbnail), versioned; **world
+state persists** per scene (dead stay dead, opened stays open, moved stays moved).
+**12.6 Audio v2** — music (streaming, loops, cross-fades by place and state), ambience, buses
+with volumes, 2D positional sound, ducking.
+**12.7 Camera v2, localisation, runtime settings** — bounds, dead zone, look-ahead, zoom;
+string tables (`loc/<lang>.json`) used by every player-facing string; video, audio,
+language and controls settings saved per player.
+
+Done when: the demo-sized game has a title screen, rebindable controls with a gamepad,
+music, three save slots that keep killed enemies dead, and items defined as records.
+
+**Status (2026-10-21): built, to be tried** (`phase12-test-checklist.md`).
+- 12.1 Records: record types in the reflection registry (`RecordTypeInfo`: values, references
+  to other records, objects, lists, required, defaults), in the schema the AI gets;
+  `engine/records` (`RecordDatabase`: load, validate, bases, references, write, rename with
+  references rewritten, delete); the engine's `item` type; module record types; Lua
+  `record()` / `records()`; the AI's `write_record` / `delete_record` (Diff Review, the
+  service's mirror in `records.py`); the Project panel's **Records** tab; exported. `records.md`.
+- 12.2 Events: `on`, `emit`, `after`, `every`, `cancel`, `start`, `wait` (handlers and timers
+  run as coroutines); combat, story and talk events; per-frame module systems.
+- 12.3 Input actions: every key, mouse and gamepad button (`platform/Input.h`), GLFW and
+  XInput gamepads, `InputMap` (input.json, defaults, contexts: gameplay, dialogue, menu, any),
+  the game reads actions; Project Settings ▸ Input to rebind; Lua `action_down`,
+  `action_pressed`, `axis`.
+- 12.4–12.5 `engine/game`: `GameFlow` (title, pause, load, save, settings, game over, victory,
+  credits), `game.json`, `SaveGames` (quick, auto, six slots; v2 files; v1 still loads),
+  world memory per scene (`SceneOrigin`), `GameRunner` (the player runs every game through it;
+  fades between scenes, autosave). The editor's Play keeps its own loop with the same saves
+  and world memory. `game-flow.md`.
+- 12.6 Audio v2: buses, positional sounds, streamed music and ambience with cross-fades,
+  ducking in dialogue; the `Music` component; combat music; Lua `play_sound_at`,
+  `play_music`.
+- 12.7 Camera rig (dead zone, look-ahead, level edges); localization (`loc/<lang>.json`,
+  keys for dialogue, quests, records, menus); player settings (volumes, language,
+  fullscreen, subtitles) on a Settings screen; player rebinding file.
+- Not yet: a thumbnail per save slot (with the game UI, Phase 17); rebinding inside the game
+  (Phase 17's settings screen); UI scale and vsync are stored but not applied yet.
+
+## Phase 13 — Gameplay systems
+
+**13.1 Attributes** (base + modifiers; `Stats` and `Health` become attributes, scripts keep
+working). **13.2 Progression** (experience, levels, skills or perks, as records).
+**13.3 Items, inventory, equipment** (item records, equip slots changing attributes and
+visuals, containers, currency). **13.4 Loot and economy** (levelled loot tables, merchants,
+prices). **13.5 Interactables** (doors with locks and keys, levers, chests, beds, signs,
+readables; the dungeon builder's locks and keys now work in play). **13.6 Combat v2**
+(ranged, projectiles, damage types and resistances, block and dodge, combat styles as
+records). **13.7 Factions** (records with relations and dispositions; replaces the three
+teams with a mapping) and **spawners/encounter tables**.
+
+Done when: a dungeon built by the place builder plays with its locks and keys, chests with
+loot, an archer enemy, a merchant, and a level-up.
+
+**Status (2026-10-21): built, to be tried** (`phase13-test-checklist.md`, `gameplay-systems.md`).
+- 13.1 `Attributes` (base values; effective = (base + adds) x multiplies from equipment, perks,
+  timed modifiers) written to Stats, Health.max and `Resources` (mana, stamina, regeneration).
+- 13.2 `Progression` (experience, levels, perk points, perks) from the progression record
+  "default"; `Rewards` give the killer experience; `level_up`.
+- 13.3 item records gain slot, damage, armour, modifiers, use; `Inventory` (text contents,
+  gold, slots, weight), `Equipment`, `ItemPickup`, `Container`; the in-play inventory window.
+- 13.4 loot records (weighted, nested, level bands, gold), drops where enemies fall;
+  `Merchant` and the shop window (buy, sell, daily restock).
+- 13.5 `Interactable` and `Door` (locks, keys, flags, readable text, events); the place
+  builder's dungeon locks and keys now work in play.
+- 13.6 damage types and resistances; `RangedAttack` and projectiles, enemy archers; block
+  and dodge (stamina); the killer recorded for experience.
+- 13.7 faction records and `FactionMember` (relations, dispositions); encounter records and
+  `Spawner`.
+- Engine record types: item (extended), loot, perk, progression, faction, encounter. Lua
+  functions for all of it. Tests: `gameplay_systems_test.cpp`.
+- Not yet: combat styles as records (with character AI, Phase 14); a perk screen and a
+  character sheet (the game UI, Phase 17).
+
+## Phase 14 — Character AI (`ai-packages.md`)
+
+**14.1** The behaviour runtime (procedure trees with a blackboard). **14.2** Packages,
+the stack, the template library; schedules read as packages (old projects work).
+**14.3** Smart objects; **module anchors and actor slots** in `aige.module/1`, written as
+markers and smart objects by the scene build. **14.4** Persistent actors across scenes.
+**14.5** Perception, awareness, combat styles, reactions, barks. **14.6** Scripted
+packages (Lua AI API). **14.7** Editor: Behaviour section with the day timeline, debug
+overlay, simulate a day.
+
+Done when: in a built village, the innkeeper works, eats and sleeps on their own; guards
+patrol and challenge; a bandit ambushes and flees when hurt; a scripted ghost appears only
+to the amulet's bearer; a killed NPC stays dead across scenes.
+
+**Status (2026-10-21): built, to be tried** (`phase14-test-checklist.md`; design in `ai-packages.md`).
+- 14.1 The procedure runtime (`gameplay/Behaviour`): composites (sequence, selector, random,
+  parallel, loop), decorators (condition, cooldown, invert) and leaves (move-to with A*,
+  wander, wait, idle, face, bark, use-object, talk-to-player, follow, flee, patrol, ambush,
+  escort, set, emit, script), with a blackboard; procedure records for the project's own.
+- 14.2 Package records (template, location, target, schedule, conditions, flags, data) and
+  the `Behaviour` stack (first that holds runs; re-checked each second); 20 built-in templates.
+- 14.3 `SmartObject` (type, affordances, slots, owner, durations); the place builder makes
+  its beds, chairs, tables, counters, forges, wells, altars into smart objects.
+- 14.4 `Actor` and the roster (`game/Actors`): one person across scenes, dead stays dead,
+  a package in another scene takes the character there; kept in saves.
+- 14.5 `Perception` (sight cone with line of sight, hearing of noises), awareness, combat
+  behaviour by combat-style records (melee, ranged, kiting, fleeing by confidence, calling
+  for help), reactions to being hurt, `Barks` shown at the bottom.
+- 14.6 Scripted packages: a Lua `run()` coroutine with `move_to`, `bark`, `face`,
+  `start_dialogue`, `push_package` and the rest.
+- 14.7 F4 shows what every character is doing. Tests: `character_ai_test.cpp`.
+- Not yet: the Behaviour section's day timeline in the Inspector and "simulate a day" (the
+  packages are edited as records and as the component's text); module anchors and actor
+  slots beyond the role-based smart objects (the AI Planner's needs, Phase 22).
+
+## Phase 15 — Narrative runtime v2
+
+**15.1** Quests v2: stages with several objectives, optional objectives, branches, failure,
+**aliases** filled at start, rewards, more objective types (deliver, escort, use, defend,
+examine, survive). Old quest files load as v2. **15.2** Story variables (typed) and the
+condition language over attributes, items, factions, time and stages. **15.3** Dialogue v2:
+the new conditions and effects, skill checks, more than four choices, portraits, barks,
+voice lines; a node-graph editor in the Story panel. **15.4** Journal and objective markers.
+**15.5** Cutscenes (`effects-animation.md` §8) — the timeline format and runtime first; the
+timeline editor with Phase 18.
+
+Done when: a branching quest with aliases, a reward and a failure path plays end to end,
+with its journal, markers and a cutscene.
+
+**Status (2026-10-21): built, to be tried** (`phase15-test-checklist.md`; formats in `story.md`).
+- 15.1 Quests v2 (`gameplay/Story`): numbered stages with several objectives (any order,
+  optional ones), branches by condition, `next`, stages that complete or fail the quest,
+  aliases (`@thief`), rewards (experience, gold, items, reputation), `onFail`; objectives
+  deliver, use, examine, have, survive, defend, escort; an escorted or defended character's
+  death fails the quest. v1 files load as one stage per objective and save back as they were.
+- 15.2 Story variables (`set_var`, `add_var`, compared in conditions) and world conditions
+  answered by the game: items, gold, level, attributes, time, day, reputation; quest stage
+  conditions; world effects (items, gold, experience, reputation, cutscenes) applied by the
+  session.
+- 15.3 Dialogue v2: up to nine choices, skill checks with a fail node ("[Speech 5]"),
+  portraits (UI textures load by path now), voice lines; the Story panel edits stages, roles,
+  rewards and the new conditions and effects, and shows a dialogue as a graph.
+- 15.4 The journal window (J, `PlayWindows`), journal lines per stage, the objective marker;
+  Project Settings ▸ Story turns them off.
+- 15.5 Cutscenes (`gameplay/Cutscene`): `cutscenes/<id>.json` tracks (actor, dialogue, camera,
+  audio, screen, logic), skipping to the end state, `wait_input`, letterbox and title cards,
+  `CutsceneTrigger`, `play_cutscene` in effects and Lua; hosts follow the session's camera target.
+- The AI service checks v2 quests and dialogue and its prompt describes them. Tests:
+  `narrative_test.cpp`, `test_story_validation.py`.
+- Not yet: the cutscene timeline editor and camera shake (Phase 18); bark lines in dialogue
+  nodes beyond the Phase 14 `Barks`; aliases are filled by the author (the Planner fills
+  them in Phase 22); the editor's own Play has no journal window (the game and the sandbox do).
+
+## Phase 16 — Difficulty (`difficulty.md`)
+
+**16.1** Scalable fields and categories; level records; effective values. **16.2** Per-entity
+overrides in the Inspector. **16.3** Level scaling and zone bands. **16.4** Assists; adaptive
+difficulty (optional). **16.5** Difficulty panel with previews, the combat preview and the
+curve view; play at a level.
+
+Done when: switching from Normal to Hard during play changes enemies as the panel predicts,
+a boss's hand-set Hard health is kept, and the curve view flags a chapter that's too hard.
+
+## Phase 17 — Game UI (`game-ui.md`)
+
+**17.1** RmlUi on our RHI and input actions; layers and the screen stack. **17.2** Data models
+from reflection and game state; UI actions as commands. **17.3** Built-in screens, windows,
+HUD widgets and the six current overlays as documents. **17.4** Themes (built-in set, tokens,
+9-slice frames, sounds) and the theme editor. **17.5** Notifications (channels, rules,
+coalescing, history) and pop-ups. **17.6** Navigation and glyphs for gamepad, keyboard,
+mouse. **17.7** The UI designer panel with checks.
+
+Done when: a game has a themed title, pause, settings (with rebinding), save/load, inventory,
+journal and map, a customised HUD, and notifications by rule; changing the theme restyles
+all of it.
+
+## Phase 18 — Animation and effects (`effects-animation.md`)
+
+**18.1** Clips, directional sets, Aseprite and sheet import. **18.2** Animators bound to
+components; templates. **18.3** Tweens and property tracks. **18.4** Particles (CPU, module
+stack, presets). **18.5** Effects (cues) and juice (shake, hit-stop, flash, slow motion).
+**18.6** 2D lighting, day–night, weather, post-processing. **18.7** Editors: animation,
+particles, effects, cutscene timeline.
+
+Done when: characters walk, attack, cast and die with animations in 8 directions; a fire
+spell has its particles, light, sound and shake; a night falls with lit windows; a cutscene
+plays from the timeline editor.
+
+## Phase 19 — Abilities and magic (`magic.md`)
+
+**19.1** Magic effects (archetypes, stacking, tags; the four status effects migrated).
+**19.2** Abilities (activation, delivery, costs, cooldowns), projectiles. **19.3** Items:
+potions, scrolls, enchantments; perks as tag modifiers. **19.4** Cost and balance figures;
+the ability editor with Try. **19.5** Character AI uses abilities by their hints.
+
+Done when: a player learns spells from a book, casts a fire projectile, a heal and an aura,
+drinks a potion, wields an enchanted sword; an enemy mage heals itself when hurt.
+
+## Phase 20 — Physics v2 (`physics.md`)
+
+**20.1** Layers and masks, shapes, sensors, queries, swept movement. **20.2** Character
+controllers: top-down (current, refactored) and grid-step. **20.3** Box2D v3 for dynamic
+bodies and joints. **20.4** Editor gizmos, debug draw.
+
+Moved to v1.2 (`roadmap.md`): side-view games (gravity, parallax, one-way and moving
+platforms), the platformer and free-flight controllers, the jump preview.
+
+Done when: projectiles and triggers use layers and sensors, a stack of crates topples, a
+grid-step game moves tile by tile, and existing top-down games behave as before.
+
+## Phase 21 — The story ontology (`story-ontology.md`)
+
+**21.1** GSO in `data/story/` (classes, properties, vocabularies, templates) loaded by
+`engine/story/`; published Turtle with alignments and a staleness test. **21.2** The story
+knowledge graph (`planner/kg.json`): temporal facts, branches, world state at a scene,
+subgraph retrieval; identity with the World Bible (`rel:` lines derived). **21.3** The rules
+(§7) as checks, with messages and severities. **21.4** A viewer in the editor (a node's facts
+over time, dependents, decisions). **21.5** The competency questions as tests.
+
+Done when: a hand-written test story's graph answers every competency question, and each
+rule catches its planted error.
+
+## Phase 22 — AI Planner I: designing the game (`ai-planner.md` §5.1–5.9)
+
+**22.1** The Planner panel, documents, decision log, job engine (resumable), dependencies and
+staleness, history and baseline. **22.2** ① Concept: the Game Brief, three readings, the
+confirmation window with Difficulty and Visuals tabs, genre profiles, scope tables.
+**22.3** ② Outline and the graph seeded. **22.4** ③ Story scene by scene with the main quest's
+skeleton; act critic. **22.5** ④ Characters (biographies, classes, packages). **22.6** ⑤
+Quests (main in full, side quests from motivations). **22.7** ⑥ Places (descriptions →
+Briefs with story anchors and exits). **22.8** ⑦ Systems and ⑧ Visuals. **22.9** ⑨ Validate.
+**22.10** Build panel: **pre-filled Briefs** and the **automatic driver**.
+
+Done when: a request for a short ARPG gives a validated design (story, cast, quests, places
+with Briefs, records, UI documents) whose every item answers Why?, survives closing the
+editor mid-plan, and regenerates only stale parts after an edit.
+
+## Phase 23 — AI Planner II: building the game (`ai-planner.md` §5.10–5.13, §8–§11)
+
+**23.1** ⑩ The build plan; manual and automatic building; gateways from the world graph;
+failures and placeholder places. **23.2** ⑪ Binding: aliases by story anchor, query, AI
+choice among candidates, or local build edit; characters, objects, triggers placed.
+**23.3** ⑫ Dialogue trees and cutscenes written against the bound world; the game's files
+with provenance; the automated playtest. **23.4** ⑬ The
+Result page. **23.5** Genre profiles for v1.0's genres: isometric action RPG, top-down RPG,
+action-adventure, life-sim. (Games without a story come in v1.1, `roadmap.md`.)
+
+Done when: from one request, a short ARPG is planned, built (9 places, automatic), bound and
+playtested with every quest completable; the same flow makes a playable top-down life-sim.
+
+## Phase 24 — Shipping quality
+
+Accessibility options, an in-game debug console, a profiler overlay, achievements (local,
+with a platform layer), export polish (icon, splash, version, crash log), streaming of big
+scenes, and a template project per supported game type (`game-types.md`).
+
+Done when: an exported game passes an accessibility checklist and ships with its template's
+features.
+
+---
+
 ## Later
 
 Phases after 5 are planned as development goes (2026-10-17): each new phase is written
 when we start it, pulling in what it needs from this list and from testing. Nothing here
-is scheduled or numbered.
+is scheduled or numbered. (Phases 12–24 above, added 2026-10-21, are planned ahead because
+they define the finished product; their milestones will still be refined when each starts.)
 
 ### AIGE asset library
 

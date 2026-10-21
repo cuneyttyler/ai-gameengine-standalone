@@ -472,6 +472,7 @@ Catalog BuildCatalog(const AssetDatabase& assets, const Ontology* ontology, cons
     for (const AssetInfo& asset : assets.Assets()) {
         // A build's labelled placeholders stand in for art: they're never art to choose.
         if (asset.path.find("generated/placeholders/") != std::string::npos) continue;
+        if (asset.path.find("generated/ground/") != std::string::npos) continue; // a built place's painted ground
         auto entries = CatalogEntriesFor(asset, ontology, options);
         catalog.entries.insert(catalog.entries.end(), std::make_move_iterator(entries.begin()), std::make_move_iterator(entries.end()));
     }

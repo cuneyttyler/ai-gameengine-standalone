@@ -21,6 +21,7 @@ TileGrid TileGrid::Build(Registry& registry) {
     // Obstacles make the cell they stand in solid (the tile entity stays
     // what At() reports).
     for (auto [entity, obstacle, world] : registry.view<Obstacle, WorldTransform2D>().each()) {
+        if (const auto* door = registry.try_get<Door>(entity); door && door->open) continue; // an open door (13.5)
         const int sx = static_cast<int>(std::floor(world.x));
         const int sy = static_cast<int>(std::floor(world.y));
         for (int gy = sy - std::max(0, obstacle.back); gy <= sy; ++gy) {

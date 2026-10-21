@@ -4,6 +4,7 @@ import { armPrefab, editorState } from '../editorState'
 import PrefabThumb from './PrefabThumb.vue'
 import CatalogReview from './CatalogReview.vue'
 import LibraryTab from './LibraryTab.vue'
+import WebSearchTab from './WebSearchTab.vue'
 import { openContextMenu, separator, type MenuItem } from '../contextMenu'
 import { prefabMenuExtensions } from '../assetMenus'
 import { panelTab } from '../paneltabs'
@@ -251,6 +252,7 @@ function prefabMenu(prefab: (typeof editorState.prefabs)[number], event: MouseEv
     { label: 'Rename…', disabled: editorState.playing, action: () => renameItem(prefab.path) },
     { label: 'Move to folder…', disabled: editorState.playing, action: () => askMoveToFolder(prefab.path, 'prefabs') },
     { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: prefab.path }) },
+    { label: 'Replace every copy in the scene…', disabled: editorState.playing, action: () => (editorState.replacePrefab = prefab.path) },
     separator,
     ...prefabMenuExtensions.flatMap((extend) => extend(prefab)),
   ]
@@ -500,6 +502,7 @@ onMounted(() => {
       <div class="tabs">
         <button :class="{ active: tab === 'prefabs' }" @click="tab = 'prefabs'">Prefabs</button>
         <button :class="{ active: tab === 'assets' }" @click="tab = 'assets'">Assets</button>
+        <button :class="{ active: tab === 'web' }" title="Free art from the web (OpenGameArt, licence-checked): search, pick, add" @click="tab = 'web'">Web Search</button>
         <button :class="{ active: tab === 'library' }" title="Your own art, for every project: generated, from the web and the AIGE library, in your folders" @click="tab = 'library'">Library</button>
         <button
           :class="{ active: tab === 'catalog' }"
@@ -548,6 +551,7 @@ onMounted(() => {
     </div>
 
     <div v-if="tab === 'library'" class="body library-body"><LibraryTab :filter="filter" /></div>
+    <div v-if="tab === 'web'" class="body library-body"><WebSearchTab /></div>
     <div v-if="tab === 'prefabs'" class="body">
       <nav class="folders" title="Folders inside prefabs/ — drop a card on one to move it">
         <button

@@ -1018,7 +1018,7 @@ json SpecFromRoot(const Ontology& ontology, const json& brief, const json& answe
     }
     if (const json walled = BriefValue(brief, "walled"); walled.is_string() && walled != "none" && !has("wall")) add("wall");
     for (const auto& f : brief.value("features", json::array())) {
-        const std::string id = f.is_object() ? f.value("module", "") : "";
+        const std::string id = f.is_object() ? f.value("module", "") : f.is_string() ? f.get<std::string>() : "";
         if (ontology.Module(id) && ontology.ChildRule(build->root, id) && !has(id)) add(id);
     }
     if (rootModule) {
@@ -1130,7 +1130,8 @@ void ApplyZoneAnswer(const Ontology& ontology, const json& brief, json& spec, co
         children.push_back(node);
     }
     // The kinds the user set, exactly: added, removed or recounted.
-    for (const auto& [kind, nv] : zone->value("kinds", json::object()).items()) {
+    const json kinds = zone->value("kinds", json::object());
+    for (const auto& [kind, nv] : kinds.items()) {
         if (!nv.is_number()) continue;
         const int want = nv.get<int>();
         int have = 0;

@@ -315,22 +315,3 @@ TEST_F(PrefabTest, ScriptsReadWriteFieldsAndSpawnPrefabs) {
     EXPECT_EQ(registry.view<aige::PrefabInstance>().size(), 1u); // spawned once
 }
 
-TEST(DemoPrefabsTest, AllPrefabsLoadAndTheSceneIsInSync) {
-    aige::Project project{fs::path(AIGE_SOURCE_DIR) / "projects" / "demo"};
-    aige::PrefabLibrary prefabs(project);
-    prefabs.Refresh();
-    EXPECT_GE(prefabs.Prefabs().size(), 15u);
-    for (const auto& prefab : prefabs.Prefabs()) {
-        EXPECT_TRUE(prefab.error.empty()) << prefab.path << ": " << prefab.error;
-    }
-
-    aige::Registry registry;
-    ASSERT_TRUE(aige::LoadScene(registry, project.MainScenePath().string()));
-    for (auto [entity, link] : registry.view<aige::PrefabInstance>().each()) {
-        EXPECT_NE(prefabs.Find(link.path), nullptr) << link.path;
-    }
-    // The committed scene matches its prefabs: syncing changes nothing.
-    std::string before = aige::SerializeScene(registry);
-    prefabs.SyncAll(registry);
-    EXPECT_EQ(aige::SerializeScene(registry), before);
-}

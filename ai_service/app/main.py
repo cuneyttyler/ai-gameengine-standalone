@@ -17,6 +17,7 @@ Run: uv run uvicorn app.main:app --port 8765
 from __future__ import annotations
 
 import hmac
+import re
 import os
 from pathlib import Path
 
@@ -30,7 +31,9 @@ from .consistency import check_consistency, writing_from_operations
 from .images import ImageGenerator, MistralImageGenerator, generate_sprites
 from .places import ask_questions, interpret, plan_root, plan_zone, repair_brief, repair_node, review_layout, revise_plan
 from .vision import describe_assets, map_chunk
-from .websource import search_web
+from .websource import all_candidates, candidates, fetch_file, search_web
+from .art_brief import better_queries, write_art_prompt
+from . import style as project_style
 from .providers import ClaudeProvider, MistralEmbedder, MistralProvider, Provider, ProviderError
 from .service import propose
 from .world import Embedder, WorldIndex, format_entry, load_entries
@@ -142,6 +145,22 @@ class WebSearchRequest(BaseModel):
     folder: str            # where its downloads go, inside the project (assets/web/<need>)
     maxAssets: int = 4
     shareAlike: bool = False
+    queries: list[str] = []  # more ways to say it, tried after `query` ("cottage", "house")
+
+
+class WebPreviewRequest(BaseModel):
+    query: str
+    maxResults: int = 12
+    shareAlike: bool = False
+
+
+class WebFetchRequest(BaseModel):
+    url: str               # one file a preview listed
+    folder: str = "assets/web/search"
+
+
+class ReferencesRequest(BaseModel):
+    pieces: list[dict] = []  # {path, role?, name?}
 
 
 class GenerateAssetRequest(BaseModel):
@@ -151,6 +170,12 @@ class GenerateAssetRequest(BaseModel):
     height: int = 48
     style: str = "pixel"
     variants: list[str] = []
+    # A tile of one ground (a build's grass, dirt, water): its frame trimmed and its light
+    # evened, so it repeats without a grid (place-refine.md §1). Not for a tile with a feature.
+    evenLight: bool = False
+    # The piece's place (place-refine.md §14): what it is for and where it goes, its view, size and
+    # style. Given, the text model first writes what exactly to draw for it there (art_brief).
+    context: dict = {}
 
 
 class ProposeResponse(BaseModel):
@@ -307,9 +332,33 @@ def create_app(
         if index is not None:
             # Retrieval: the canon related to what's asked (and about what).
             canon = index.canon_for(" ".join(filter(None, [request.instruction, request.context.focus])))
+        def make_art(requests) -> dict:
+            """A proposal's art, drawn by the Art tool (with its brief), into the project."""
+            root, images = state["root"], state["images"]
+            made: dict[str, str] = {}
+            if root is None or images is None:
+                return made
+            for a in requests[:6]:
+                name = re.sub(r"[^a-z0-9-]+", "-", a.name.lower()).strip("-")[:40] or "art"
+                context = {"view": "isometric", "cells": a.cells, "place": {"about": request.instruction}}
+                description, brief = a.description, None
+                try:
+                    description, brief = write_art_prompt(state["provider"], a.description, context, a.kind)
+                except ProviderError:
+                    pass
+                height = 64 if a.kind == "tile" else max(24, min(160, round(96 * a.cells)))
+                try:
+                    out = generate_sprites(images, root, "ai-" + name, description, a.kind, 256 if a.kind == "tile" else height,
+                                           "pixel", None, a.kind == "tile", brief)
+                except (ValueError, ProviderError):
+                    continue
+                if out:
+                    made[a.name] = out[0]["path"]
+            return made
+
         try:
             result = propose(
-                writer, state["schema"], request.context, request.instruction, request.history, canon
+                writer, state["schema"], request.context, request.instruction, request.history, canon, make_art
             )
         except ProviderError as error:
             return ProposeResponse(ok=False, errors=[str(error)])
@@ -451,7 +500,50 @@ def create_app(
             return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
         if not request.query.strip():
             return {"ok": False, "errors": ["Say what to look for"]}
-        return search_web(root, request.query, request.folder, max(1, min(request.maxAssets, 8)), share_alike=request.shareAlike)
+        return search_web(root, request.query, request.folder, max(1, min(request.maxAssets, 8)), share_alike=request.shareAlike,
+                          queries=request.queries)
+
+    @app.post("/assets/web-preview")
+    def assets_web_preview(request: WebPreviewRequest) -> dict:
+        """The Assets panel's Web Search: ranked results with their previews, nothing downloaded."""
+        if not request.query.strip():
+            return {"ok": False, "errors": ["Say what to look for"]}
+        rejected: list = []
+        root: Path | None = state["root"]
+        palette = project_style.project_palette(root) if root else []
+        found = all_candidates(request.query, max(1, min(request.maxResults, 24)), request.shareAlike, request.queries or None,
+                               rejected=rejected, pause=0.2, palette=palette)
+        revised: list[str] = []
+        # Few that fit: the AI writes better searches from what came back, and they're run too.
+        if len([c for c in found if c["score"] >= 0.5]) < 3 and state["provider"] is not None:
+            revised = better_queries(state["provider"], request.query, [c["title"] for c in found[:10]])
+            if revised:
+                more = all_candidates(request.query, max(1, min(request.maxResults, 24)), request.shareAlike, revised,
+                                      rejected=rejected, pause=0.2, palette=palette)
+                seen = {c["page"] for c in found}
+                found = sorted(found + [c for c in more if c["page"] not in seen], key=lambda c: -c["score"])[: max(1, min(request.maxResults, 24))]
+        return {"ok": True, "results": found, "rejected": rejected[:20], "revisedQueries": revised,
+                "sources": sorted({c.get("source", "") for c in found}), "palette": palette}
+
+    @app.post("/assets/references")
+    def assets_references(request: ReferencesRequest) -> dict:
+        """A built place's chosen pieces kept as the project's style references (place-refine.md §15)."""
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        refs = project_style.add(root, request.pieces[:8])
+        return {"ok": True, "references": len(refs), "palette": project_style.project_palette(root)}
+
+    @app.post("/assets/web-fetch")
+    def assets_web_fetch(request: WebFetchRequest) -> dict:
+        """One file a preview listed, into the project."""
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        path, why, pixels = fetch_file(root, request.url, request.folder)
+        if path is None:
+            return {"ok": False, "errors": [why]}
+        return {"ok": True, "path": path, "pixels": pixels}
 
     @app.post("/assets/generate")
     def assets_generate(request: GenerateAssetRequest) -> dict:
@@ -461,9 +553,19 @@ def create_app(
             return {"ok": False, "errors": ["No project or image generator available (MISTRAL_API_KEY)"]}
         if len(request.variants) > 6:
             return {"ok": False, "errors": ["At most 6 variants at a time"]}
+        description, brief = request.description, None
+        # The project's look, so new art matches what's there.
+        if request.context and root is not None:
+            if references := project_style.brief_context(root):
+                request.context["matchProjectStyle"] = references
+        if request.context and state["provider"] is not None:
+            try:
+                description, brief = write_art_prompt(state["provider"], request.description, request.context, request.kind)
+            except ProviderError as error:
+                brief = {"error": str(error)}  # drawn from the plain description
         try:
-            results = generate_sprites(images, root, request.name, request.description, request.kind,
-                                       request.height, request.style, request.variants)
+            results = generate_sprites(images, root, request.name, description, request.kind,
+                                       request.height, request.style, request.variants, request.evenLight, brief)
         except ValueError as error:
             return {"ok": False, "errors": [str(error)]}
         except ProviderError as error:

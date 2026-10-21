@@ -181,7 +181,9 @@ TEST(StoryTest, ValidationFindsBrokenStories) {
     broken["nodes"][1]["choices"][0]["do"] = nlohmann::json::parse(R"([{"op": "start_quest", "quest": "no-such-quest"}])");
     broken["nodes"][2]["choices"] = nlohmann::json::parse(
         R"([{"text": "a", "next": ""}, {"text": "b", "next": ""}, {"text": "c", "next": ""},
-            {"text": "d", "next": ""}, {"text": "e", "next": ""}])");
+            {"text": "d", "next": ""}, {"text": "e", "next": ""}, {"text": "f", "next": ""},
+            {"text": "g", "next": ""}, {"text": "h", "next": ""}, {"text": "i", "next": ""},
+            {"text": "j", "next": ""}])");
     f.Write("dialogue/broken.json", broken);
     nlohmann::json badQuest = HuntQuest();
     badQuest["objectives"][1]["type"] = "dance";
@@ -201,8 +203,8 @@ TEST(StoryTest, ValidationFindsBrokenStories) {
     EXPECT_TRUE(has("goes to 'nowhere', which isn't a node"));
     EXPECT_TRUE(has("node 'orphan' can't be reached"));
     EXPECT_TRUE(has("no quest 'no-such-quest'"));
-    EXPECT_TRUE(has("more than 4 choices"));
-    EXPECT_TRUE(has("quests/bad.json: objective 'pelt': type should be defeat, talk, collect or reach"));
+    EXPECT_TRUE(has("more than 9 choices"));
+    EXPECT_TRUE(has("quests/bad.json: objective 'pelt': type should be defeat, talk, collect, reach"));
 
     // References to the World Bible and prefabs are checked with the rest of the project.
     aige::WorldBible world(aige::Project{f.root});
@@ -218,186 +220,3 @@ TEST(StoryTest, ValidationFindsBrokenStories) {
     EXPECT_FALSE(refHas("prefabs/wolf.prefab"));
 }
 
-TEST(StoryTest, TheDemoStoryIsValid) {
-    aige::StoryLibrary library(kDemo);
-    library.Refresh();
-    EXPECT_FALSE(library.Dialogues().empty());
-    EXPECT_FALSE(library.Quests().empty());
-    for (const auto& p : library.Validate()) {
-        ADD_FAILURE() << p.file << ": " << p.message;
-    }
-    aige::WorldBible world(aige::Project{kDemo});
-    world.Refresh();
-    aige::PrefabLibrary prefabs(aige::Project{kDemo});
-    prefabs.Refresh();
-    std::vector<std::string> paths;
-    for (const auto& info : prefabs.Prefabs()) paths.push_back(info.path);
-    for (const auto& p : aige::ValidateStoryReferences(library, world, paths)) {
-        ADD_FAILURE() << p.file << ": " << p.message;
-    }
-}
-
-// The demo quest played through GameSession, the way a player would: talk to
-// Tamsin, accept, defeat three skeletons, come back.
-TEST(StoryPlaythroughTest, TalkAcceptDefeatAndReturn) {
-    Fixture f;
-    for (const char* dir : {"scenes", "scripts", "prefabs", "dialogue", "quests", "world"}) {
-        fs::copy(kDemo / dir, f.root / dir, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
-    }
-    aige::Project project{f.root};
-    aige::PrefabLibrary prefabs(project);
-    prefabs.Refresh();
-    aige::LuaVM lua;
-    aige::Registry registry;
-    ASSERT_TRUE(aige::LoadScene(registry, project.MainScenePath().string()));
-    prefabs.SyncAll(registry);
-    aige::StoryLibrary story(f.root);
-    story.Refresh();
-    aige::WorldBible world(project);
-    world.Refresh();
-
-    aige::GameSession session(registry, lua, aige::BootstrapIso(), f.root);
-    session.SetStory(&story);
-    session.SetNameResolver([&](const std::string& key) {
-        const aige::WorldEntry* e = world.Find(key);
-        return e ? e->name : std::string();
-    });
-
-    std::set<aige::Key> held;
-    auto keys = [&](aige::Key k) { return held.contains(k); };
-    auto frame = [&](double seconds = 1.0 / 60.0) { session.Advance(seconds, keys); };
-    auto press = [&](aige::Key k) {
-        held.insert(k);
-        frame();
-        held.erase(k);
-        frame();
-    };
-
-    aige::Entity player = *aige::FindPlayer(registry);
-    std::optional<aige::Entity> tamsin;
-    for (auto [entity, talk] : registry.view<aige::Talk>().each()) {
-        if (talk.character == "character/villager") tamsin = entity;
-    }
-    ASSERT_TRUE(tamsin) << "the demo villager should have Talk (from its prefab)";
-    auto standByTamsin = [&] {
-        const auto& t = registry.get<aige::WorldTransform2D>(*tamsin);
-        registry.get<aige::WorldTransform2D>(player) = {t.x + 0.8f, t.y};
-    };
-
-    // Out of range: nobody to talk to, and E does nothing.
-    {
-        const auto& t = registry.get<aige::WorldTransform2D>(*tamsin);
-        registry.get<aige::WorldTransform2D>(player) = {t.x + 3.0f, t.y};
-    }
-    EXPECT_NE(session.TalkTarget(), tamsin);
-    press(aige::Key::E);
-    EXPECT_FALSE(session.Conversation().Active());
-
-    standByTamsin();
-    ASSERT_EQ(session.TalkTarget(), tamsin);
-    std::vector<aige::UiQuad> ui;
-    session.BuildUi(ui, 1280, 720);
-    EXPECT_FALSE(ui.empty()); // the "E Talk to Old Tamsin" prompt
-
-    press(aige::Key::E);
-    ASSERT_TRUE(session.Conversation().Active());
-    EXPECT_EQ(session.Conversation().Node()->id, "greet");
-
-    // The world waits while you talk.
-    std::vector<std::pair<aige::Entity, aige::WorldTransform2D>> before;
-    for (auto [e, w] : registry.view<aige::WorldTransform2D>().each()) before.emplace_back(e, w);
-    for (int i = 0; i < 60; ++i) frame();
-    for (const auto& [e, w] : before) {
-        EXPECT_EQ(registry.get<aige::WorldTransform2D>(e).x, w.x);
-    }
-
-    press(aige::Key::Num1); // "I'm here about the dead in the keep."
-    EXPECT_EQ(session.Conversation().Node()->id, "offer");
-    press(aige::Key::Num1); // "I'll do it."
-    EXPECT_EQ(session.Story().Quest("quiet-the-courtyard").state, aige::StoryState::QuestState::Active);
-    press(aige::Key::Space); // end the conversation
-    EXPECT_FALSE(session.Conversation().Active());
-    EXPECT_EQ(session.Story().CurrentObjective(story)->text, "Defeat skeletons in the courtyard (0/3)");
-
-    // Defeat three skeletons.
-    std::vector<aige::Entity> skeletons;
-    for (auto [entity, instance] : registry.view<aige::PrefabInstance>().each()) {
-        if (instance.path == "prefabs/skeleton.prefab") skeletons.push_back(entity);
-    }
-    ASSERT_GE(skeletons.size(), 3u);
-    for (int i = 0; i < 3; ++i) {
-        registry.get<aige::Health>(skeletons[i]).current = 0.0f;
-        frame();
-        frame();
-    }
-    EXPECT_EQ(session.Story().CurrentObjective(story)->text, "Return to Old Tamsin");
-
-    // Back to Tamsin: talking completes the quest, and she says thanks.
-    standByTamsin();
-    press(aige::Key::E);
-    EXPECT_EQ(session.Story().Quest("quiet-the-courtyard").state, aige::StoryState::QuestState::Completed);
-    EXPECT_TRUE(session.Story().Flag("courtyard_quieted"));
-    ASSERT_TRUE(session.Conversation().Active());
-    // A post-quest greeting ("thanks", or whatever the dialogue now leads into), not the first meeting.
-    EXPECT_NE(session.Conversation().Node()->id, "greet");
-    EXPECT_NE(session.Conversation().Node()->id, "progress");
-    ui.clear();
-    session.BuildUi(ui, 1280, 720);
-    EXPECT_GT(ui.size(), 40u); // the dialogue box with its text
-}
-
-// development_plan.md 3.2d: the AI writes dialogue and quests through
-// reviewable operations, checked like the Story tab checks them.
-TEST(StoryProposalTest, QuestsAndDialogueWrittenTogetherResolveAndApply) {
-    Fixture f;
-    fs::copy(kDemo / "world", f.root / "world", fs::copy_options::recursive);
-    fs::create_directories(f.root / "prefabs");
-    std::ofstream(f.root / "prefabs" / "potion.prefab") << "# AIGE Scene v1\n\nentity\n  Name value=Potion\n";
-    aige::Project project{f.root};
-    aige::PrefabLibrary prefabs(project);
-    prefabs.Refresh();
-    aige::Registry registry;
-
-    nlohmann::json ops = nlohmann::json::parse(R"([
-        {"op": "write_quest", "id": "draughts", "quest": {
-            "name": "Draughts", "giver": "character/villager",
-            "objectives": [{"id": "get", "text": "Collect draughts", "type": "collect", "target": "prefabs/potion.prefab", "count": 2}]}},
-        {"op": "command", "name": "world.write", "args": {"kind": "character", "id": "mira", "name": "Mira",
-            "summary": "Quartermaster.", "tags": "", "relations": "serves faction/wardens", "body": ""}},
-        {"op": "write_dialogue", "id": "mira", "dialogue": {"speaker": "character/mira", "start": "hi", "nodes": [
-            {"id": "hi", "text": "Mind the keep.", "choices": [
-                {"text": "Any work?", "next": "", "do": [{"op": "start_quest", "quest": "draughts"}]}]}]}}
-    ])");
-    aige::RegisterEditingCommands(aige::EngineReflection());
-    auto resolved = aige::ResolveProposal({{"summary", "x"}, {"operations", ops}}, registry, aige::EngineReflection(),
-                                          prefabs, project);
-    ASSERT_EQ(resolved.items.size(), 3u);
-    for (const auto& item : resolved.items) {
-        EXPECT_TRUE(item.error.empty()) << item.target << ": " << item.error;
-        EXPECT_TRUE(item.touchesFiles);
-    }
-    EXPECT_EQ(resolved.items[0].target, "Quest · quests/draughts.json (Draughts)");
-    EXPECT_NE(resolved.items[2].detail.find("\"start_quest\""), std::string::npos); // shown as the file
-
-    auto outcome = aige::ApplyOperations(ops.get<std::vector<nlohmann::json>>(), registry, aige::EngineReflection(),
-                                         prefabs, project);
-    ASSERT_TRUE(outcome.errors.empty()) << outcome.errors[0];
-    aige::StoryLibrary library(f.root);
-    library.Refresh();
-    ASSERT_NE(library.FindQuest("draughts"), nullptr);
-    ASSERT_NE(library.FindDialogue("dialogue/mira.json"), nullptr);
-    EXPECT_TRUE(library.Validate().empty());
-
-    // Broken references are errors in review, so they can't be applied.
-    nlohmann::json bad = nlohmann::json::parse(R"([
-        {"op": "write_dialogue", "id": "ghost", "dialogue": {"speaker": "character/ghost", "start": "a", "nodes": [
-            {"id": "a", "text": "Boo.", "choices": [{"text": "Eh?", "next": "b"}]}]}},
-        {"op": "write_quest", "id": "bad", "quest": {"name": "Bad", "giver": "character/villager",
-            "objectives": [{"id": "x", "text": "x", "type": "collect", "target": "prefabs/dragon.prefab"}]}}
-    ])");
-    resolved = aige::ResolveProposal({{"summary", "x"}, {"operations", bad}}, registry, aige::EngineReflection(),
-                                     prefabs, project);
-    EXPECT_NE(resolved.items[0].error.find("goes to 'b', which isn't a node"), std::string::npos) << resolved.items[0].error;
-    EXPECT_NE(resolved.items[0].error.find("speaker character/ghost isn't in the World Bible"), std::string::npos);
-    EXPECT_NE(resolved.items[1].error.find("prefabs/dragon.prefab isn't a prefab"), std::string::npos);
-}

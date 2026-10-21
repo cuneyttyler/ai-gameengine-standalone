@@ -8,7 +8,7 @@ sync. `EditorContext` is what the editor sends about the open project.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Union
+from typing import List, Annotated, Any, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -55,11 +55,44 @@ class CommandSpec(BaseModel):
     params: list[FieldSpec] = []
 
 
+class RecordFieldSpec(BaseModel):
+    """A record type's field (development_plan.md 12.1): a component field type, or
+    "record" (the id of a record of `recordType`) or "object" (sub-`fields`)."""
+
+    name: str
+    type: str
+    description: str = ""
+    options: List[str] | None = None
+    min: float | None = None
+    max: float | None = None
+    recordType: str | None = None
+    fields: List["RecordFieldSpec"] = []
+    list: bool = False
+    required: bool = False
+    default: Any = None
+
+    def field(self, name: str) -> "RecordFieldSpec | None":
+        return next((f for f in self.fields if f.name == name), None)
+
+
+class RecordTypeSpec(BaseModel):
+    name: str
+    description: str = ""
+    fields: list[RecordFieldSpec] = []
+
+    def field(self, name: str) -> RecordFieldSpec | None:
+        return next((f for f in self.fields if f.name == name), None)
+
+
 class EngineSchema(BaseModel):
     version: int
     components: list[ComponentSpec]
     settings: list[SettingsSpec] = []
     commands: list[CommandSpec] = []
+    records: list[RecordTypeSpec] = []
+
+    def record_type(self, name: str) -> RecordTypeSpec | None:
+        return next((r for r in self.records if r.name == name), None)
 
     def component(self, name: str) -> ComponentSpec | None:
         return next((c for c in self.components if c.name == name), None)
@@ -127,6 +160,9 @@ class EditorContext(BaseModel):
     # Scenes (development_plan.md 5.3): every scene {path, start, markers}, and the open one.
     scenes: list[dict[str, Any]] = []
     scene: str | None = None
+    # Records (12.1): {type, id, record} each ("record" is left out when the
+    # project's are too many to include in full).
+    records: list[dict[str, Any]] = []
 
 
 # --- Proposals --------------------------------------------------------------------
@@ -205,17 +241,44 @@ class WriteQuest(BaseModel):
     quest: dict[str, Any]
 
 
+class WriteRecord(BaseModel):
+    """Creates or replaces records/<type>/<id>.json (typed game data: items, ...)."""
+
+    op: Literal["write_record"]
+    type: str
+    id: str
+    record: dict[str, Any]
+
+
+class DeleteRecord(BaseModel):
+    """Deletes records/<type>/<id>.json."""
+
+    op: Literal["delete_record"]
+    type: str
+    id: str
+
+
 Operation = Annotated[
     Union[
         SetField, AddComponent, RemoveComponent, SetPrefabField, SetSetting, SetScriptProperty, RunCommand,
-        WriteDialogue, WriteQuest, WriteSchedule,
+        WriteDialogue, WriteQuest, WriteSchedule, WriteRecord, DeleteRecord,
     ],
     Field(discriminator="op"),
 ]
 
 
+class ArtRequest(BaseModel):
+    """A piece of art the change needs that the project doesn't have (the Art tool makes it)."""
+    name: str                      # lowercase-with-dashes; operations refer to it as "art:<name>"
+    description: str               # what it is, for this scene
+    kind: Literal["object", "character", "tile"] = "object"
+    cells: float = 1.0             # how wide, in cells
+
+
 class Proposal(BaseModel):
     summary: str
+    # Art to make first: the service draws each, and "art:<name>" in the operations becomes its path.
+    art: list[ArtRequest] = []
     operations: list[Operation] = []
     notes: str = ""
     # How big the request is, decided by the model (development_plan.md 2.9):

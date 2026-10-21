@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "A table and the chairs round it.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "FurnitureGroup"

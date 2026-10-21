@@ -56,4 +56,9 @@ std::vector<std::string> SceneMarkers(const Project& project, const std::string&
 std::string TravelToScene(Registry& registry, const std::string& sceneText, const std::string& marker,
                           const std::filesystem::path& scenePath = {});
 
+// Puts the player entity in `playerText` (scene text, as SerializeEntities
+// writes it) in place of the scene's own player, re-pointing references to it.
+// The new player, or null if the text held no entity.
+Entity ReplacePlayer(Registry& registry, const std::string& playerText);
+
 } // namespace aige

@@ -66,3 +66,15 @@ def test_licence_names():
     assert normalise_licence("CC-BY 4.0") == "CC-BY" and normalise_licence("CC-BY-SA 3.0") == "CC-BY-SA"
     info = read_page(page("CC0").decode())
     assert info["files"] == ["https://opengameart.org/sites/default/files/house.png"] and info["title"] == "A house"
+
+
+def test_queries_and_ranking():
+    from app.websource import pick_file, queries_for, score_page
+    tried, prefer = queries_for("isometric cottage house")
+    assert tried[0] == "cottage house" and "house" in tried and "cottage" in tried  # each word alone too
+    assert prefer == {"isometric"}  # ranks, doesn't filter
+    single = {"title": "Isometric cottage", "tags": []}
+    pack = {"title": "Medieval buildings pack", "tags": ["house"]}
+    assert score_page(single, ["cottage", "house"], prefer) > score_page(pack, ["cottage", "house"], prefer)
+    files = ["https://opengameart.org/sites/default/files/sheet.png", "https://opengameart.org/sites/default/files/cottage_1.png"]
+    assert pick_file(files, ["cottage"]).endswith("cottage_1.png")

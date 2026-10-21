@@ -32,7 +32,27 @@ struct GameEvent {
     // Quest objectives count by prefab (gameplay/Story).
     std::string prefab;
     Team team = Team::Neutral; // Death: the dead entity's team
+    // Death (13.2, 13.4): where it fell and what it gives, captured before it's
+    // removed; `other` is its killer (the last to hit it).
+    float x = 0.0f, y = 0.0f;
+    float experience = 0.0f;
+    int gold = 0;
+    std::string loot;
+    std::string actor; // Death: its Actor key (14.4), so the roster knows who died
 };
+
+// Whether `attacker` may hurt `target` (13.7): factions decide when both belong
+// to one (their records' relations; the player by each member's disposition),
+// else teams (IsHostile).
+bool AreHostile(Registry& registry, Entity attacker, Entity target);
+
+// Fires `attacker`'s RangedAttack toward (dirX, dirY) (13.6). The projectile, or
+// nullopt while on cooldown or without one.
+std::optional<Entity> TryRangedAttack(Registry& registry, Entity attacker, float dirX, float dirY);
+
+// A dodge (13.6): a dash the way it faces (or moves), untouchable for its
+// length, costing stamina when it has Resources. False when it can't.
+bool StartDodge(Registry& registry, Entity entity, float dirX, float dirY);
 
 Team TeamOf(Registry& registry, Entity entity);
 
@@ -58,7 +78,7 @@ float SpeedMultiplier(Registry& registry, Entity entity);
 // `applyDefense`), with hit flash; health reaching 0 marks it Dead on the
 // next UpdateCombat. Returns the damage actually dealt.
 float DealDamage(Registry& registry, Entity target, float amount, Entity source, std::vector<GameEvent>* events,
-                 bool applyDefense = true, bool cannotKill = false);
+                 bool applyDefense = true, bool cannotKill = false, DamageType type = DamageType::Physical);
 
 void Heal(Registry& registry, Entity target, float amount);
 

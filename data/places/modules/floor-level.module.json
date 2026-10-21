@@ -5,7 +5,8 @@
   "level": "zone",
   "description": "One floor of the building: its rooms, the hall between them, the stairs.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "Level"
@@ -154,6 +155,75 @@
           ],
           "cellar": [
             "cellar"
+          ]
+        },
+        "courtyard": {
+          "ground": [
+            "court",
+            "hall",
+            "chamber",
+            "storage"
+          ],
+          "upper": [
+            "chamber",
+            "bedroom"
+          ],
+          "cellar": [
+            "cellar",
+            "storage"
+          ]
+        },
+        "cloister": {
+          "ground": [
+            "court",
+            "nave",
+            "library",
+            "cells",
+            "storage"
+          ],
+          "upper": [
+            "cells",
+            "study"
+          ],
+          "cellar": [
+            "storage"
+          ]
+        },
+        "manor-court": {
+          "ground": [
+            "court",
+            "living-room",
+            "chamber",
+            "kitchen",
+            "storage"
+          ],
+          "upper": [
+            "bedroom",
+            "chamber",
+            "study"
+          ],
+          "cellar": [
+            "cellar"
+          ]
+        },
+        "palace-court": {
+          "ground": [
+            "court",
+            "great-hall",
+            "chamber",
+            "chamber",
+            "kitchen",
+            "storage"
+          ],
+          "upper": [
+            "throne-room",
+            "bedroom",
+            "library",
+            "treasury"
+          ],
+          "cellar": [
+            "cellar",
+            "cells"
           ]
         }
       }

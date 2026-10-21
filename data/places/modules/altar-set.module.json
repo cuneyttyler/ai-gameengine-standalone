@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "An altar at the far end, candles and a lectern.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "FurnitureGroup"

@@ -68,6 +68,15 @@ enum class EffectKind {
 
 // A close-range swing: spawns a short-lived hitbox `reach` cells in front
 // of the attacker. Optionally applies a status effect on hit.
+// Kinds of damage (development_plan.md 13.6); resistances to each are attributes.
+enum class DamageType {
+    Physical,
+    Fire,
+    Frost,
+    Shock,
+    Poison,
+};
+
 struct MeleeAttack {
     float damage = 2.0f;
     float reach = 0.7f;
@@ -78,6 +87,7 @@ struct MeleeAttack {
     float effectDuration = 3.0f;
     float effectMagnitude = 1.0f;
     float cooldownRemaining = 0.0f; // runtime
+    DamageType damageType = DamageType::Physical;
 };
 
 enum class PickupKind {
@@ -102,6 +112,7 @@ struct Facing {
 struct Hitbox {
     Entity owner = entt::null;
     Team team = Team::Neutral;
+    DamageType damageType = DamageType::Physical;
     float damage = 1.0f;
     float halfWidth = 0.45f;
     float halfHeight = 0.45f;
@@ -169,6 +180,112 @@ struct PrefabInstance {
 // Made by a place build (development_plan.md 7.2): which build, which Spec
 // node and which PLL statement. Lets a built part be found, explained
 // ("Why?") and regenerated or removed as a unit.
+// --- Combat v2 (development_plan.md 13.6) --------------------------------------
+
+// Shoots projectiles: arrows, bolts, thrown knives.
+struct RangedAttack {
+    DamageType damageType = DamageType::Physical;
+    float damage = 2.0f;
+    float range = 7.0f;   // cells the projectile flies
+    float speed = 9.0f;   // cells per second
+    float cooldown = 0.9f;
+    std::string projectile; // its texture ("" = a plain bolt)
+    bool pierce = false;    // flies on through what it hits
+    float cooldownRemaining = 0.0f; // runtime
+};
+
+// A projectile in flight (runtime, made by RangedAttack).
+struct Projectile {
+    Entity owner = entt::null;
+    Team team = Team::Neutral;
+    DamageType damageType = DamageType::Physical;
+    float damage = 1.0f;
+    float vx = 0.0f, vy = 0.0f;
+    float remaining = 1.0f; // seconds left
+    bool pierce = false;
+    std::vector<Entity> alreadyHit;
+};
+
+// Holding block: hits from the front are reduced, at a stamina cost (runtime).
+struct Blocking {};
+
+// A dodge in progress: a quick dash, untouchable (runtime).
+struct Dodging {
+    float vx = 0.0f, vy = 0.0f;
+    float remaining = 0.0f;
+};
+
+// Who hit this last (runtime): the killer, for experience.
+struct LastHit {
+    Entity source = entt::null;
+};
+
+// --- Factions and spawners (13.7) ----------------------------------------------
+
+// Belongs to a faction (a record); `disposition` is how it feels about the
+// player (-100..100: below 0 it's hostile). Attacking it lowers it.
+struct FactionMember {
+    std::string faction;
+    int disposition = 0;
+};
+
+// Makes enemies from an encounter record around itself, up to `maxAlive`,
+// again after `respawnSeconds` (0: once).
+struct Spawner {
+    std::string encounter;
+    float radius = 3.0f;
+    int maxAlive = 3;
+    float respawnSeconds = 0.0f;
+    int level = 1;
+    bool started = false; // runtime
+    float timer = 0.0f;   // runtime
+};
+
+struct SpawnedBy {
+    Entity spawner = entt::null;
+};
+
+// --- Interactables (13.5) -------------------------------------------------------
+
+// Something the player uses with the interact action: a lever, a sign, a bed, a
+// locked chest or door. What happens comes from its other components (Door,
+// Container, Merchant, ItemPickup) and its own fields.
+struct Interactable {
+    std::string verb = "Use";       // the prompt's verb: Open, Read, Pull, Sleep
+    std::string name;               // what it's called on the prompt ("" = its Name)
+    float range = 1.3f;
+    bool locked = false;
+    std::string key;                // an item id that unlocks it
+    bool consumeKey = false;
+    std::string requiresFlag;       // a story flag that must be set
+    std::string setFlag;            // a story flag set when used
+    std::string text;               // shown when used (a sign, a book)
+    std::string event;              // emitted when used (scripts listen)
+    bool once = false;
+    bool used = false;
+};
+
+// A door: open, it doesn't block its cell.
+struct Door {
+    bool open = false;
+    std::string openTexture;   // "" = keep the sprite
+    std::string closedTexture;
+};
+
+// The scene's music (development_plan.md 12.6).
+struct Music {
+    std::string track;
+    std::string ambience;
+    std::string combat;
+};
+
+// Which entity of its scene file this is (its order there), set when a scene is
+// read. Saved games list what changed in each scene by it (development_plan.md
+// 12.5). Not reflected, so never written to scene files.
+struct SceneOrigin {
+    int index = -1;
+};
+
 struct PlaceNode {
     std::string place;     // the build's id (places/<id>/)
     std::string node;      // Spec node id ("w-old/plots#14")

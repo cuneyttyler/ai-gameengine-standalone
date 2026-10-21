@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "Paintings, banners and trophies on the walls.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "quantity": {
     "items": {

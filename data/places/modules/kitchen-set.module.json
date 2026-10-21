@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "A stove, a table to work at, a cupboard.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "FurnitureGroup"

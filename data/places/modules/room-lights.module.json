@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "Candles, lamps and a chandelier.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "quantity": {
     "lights": {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "assets/Catalog.h"
+
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
@@ -46,6 +48,9 @@ public:
 
     // An item into a project (assets/library/<file>, with its .meta): the project path, or "".
     std::string CopyToProject(const std::string& item, const std::filesystem::path& projectRoot) const;
+    // Its items as catalog entries (id "user:<item>", source "library", their analysis: roles,
+    // kind, view, size), for a build to choose from before it makes or searches for art.
+    Catalog AsCatalog() const;
 
     // The project's generated art (assets/textures/generated) that isn't in the library yet,
     // kept in the "Generated" folder; how many were added.

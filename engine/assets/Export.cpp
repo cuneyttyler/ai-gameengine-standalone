@@ -56,13 +56,16 @@ std::string ReadAll(const fs::path& path) {
 
 bool IsRuntimeContent(const std::string& relative) {
     static const std::set<std::string> folders = {"scenes", "prefabs", "scripts", "assets", "dialogue",
-                                                  "quests", "schedules", "world",   "modules"};
+                                                  "quests", "schedules", "world",   "modules", "records",
+                                                  "loc",    "ui",       "cutscenes"};
     if (relative.empty() || relative.find("..") != std::string::npos) return false;
     // Hidden files and folders anywhere (.cache, .git, ...).
     if (relative.front() == '.' || relative.find("/.") != std::string::npos) return false;
     if (EndsWith(relative, ".gen.json")) return false;
     const auto slash = relative.find('/');
-    if (slash == std::string::npos) return relative == "settings.aige";
+    if (slash == std::string::npos) {
+        return relative == "settings.aige" || relative == "input.json" || relative == "game.json";
+    }
     return folders.contains(relative.substr(0, slash));
 }
 

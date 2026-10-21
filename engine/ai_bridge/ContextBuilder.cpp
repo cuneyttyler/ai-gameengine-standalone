@@ -7,6 +7,7 @@
 #include "assets/Project.h"
 #include "gameplay/Components.h"
 #include "physics2d/Components.h"
+#include "records/Records.h"
 #include "reflection/Reflection.h"
 #include "renderer2d/Components.h"
 #include "scripting/Components.h"
@@ -220,6 +221,26 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
         schedules.push_back(json);
     }
 
+    // Records (12.1), in full while they fit; beyond that, by id only.
+    constexpr size_t kMaxRecordChars = 16000;
+    size_t recordChars = 0;
+    nlohmann::json records = nlohmann::json::array();
+    RecordDatabase recordDb;
+    recordDb.Open(reflection, project.root);
+    for (const auto& type : reflection.RecordTypes()) {
+        for (const Record* record : recordDb.OfType(type.name)) {
+            nlohmann::json json = {{"type", record->type}, {"id", record->id}};
+            const size_t size = record->data.dump().size();
+            if (recordChars + size <= kMaxRecordChars) {
+                json["record"] = record->data;
+                recordChars += size;
+            } else if (record->resolved.contains("name")) {
+                json["name"] = record->resolved["name"];
+            }
+            records.push_back(json);
+        }
+    }
+
     // The project's scenes and their markers (5.3), for gateways.
     nlohmann::json scenes = nlohmann::json::array();
     for (const std::string& scene : ListScenes(project)) {
@@ -232,7 +253,8 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
     nlohmann::json context = {{"entities", entities}, {"tiles", tiles},       {"prefabs", prefabList},
                               {"assets", assetList},  {"scripts", scripts},   {"scriptSources", scriptSources},
                               {"settings", settings}, {"world", worldList},   {"dialogues", dialogues},
-                              {"quests", quests},     {"markers", markers},   {"schedules", schedules}};
+                              {"quests", quests},     {"markers", markers},   {"schedules", schedules},
+                              {"records", records}};
     // A built place's ground (tile layers, not entities): which tile prefabs cover how many
     // cells, so a request like "use grass in place of cobble" names what's there (terrain.replace).
     if (const TileLayers* layers = FindLayers(registry); layers && !layers->layers.empty()) {

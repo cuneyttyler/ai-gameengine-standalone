@@ -5,7 +5,8 @@
   "level": "parcel",
   "description": "A desk and its books.",
   "buildTypes": [
-    "interior"
+    "interior",
+    "courtyard"
   ],
   "classes": [
     "InteriorRoom"

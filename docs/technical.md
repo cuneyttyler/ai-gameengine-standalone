@@ -118,7 +118,10 @@ so the engine is split into modules from day one, not refactored into them later
 | `physics2d` / `physics3d` | Custom lightweight 2D physics now; Jolt-backed 3D physics later |
 | `audio` | miniaudio-backed mixer/playback |
 | `scripting` | Lua VM embedding, hot reload, sandboxing |
-| `behavior_graph` | Runtime for the data-driven quest/dialogue/behavior-tree format |
+| `behavior_graph` | Runtime for the data-driven quest/dialogue/behavior-tree format. Not built yet; Phase 14 builds it as the procedure runtime of character AI packages (`ai-packages.md`) |
+| `records`, `events` *(Phase 12)* | Typed game data records and the event bus (`engine-gaps.md` §2.1) |
+| `story` *(Phase 21)* | The story ontology (GSO) and knowledge graph (`story-ontology.md`) |
+| `planner` *(Phases 22–23)* | The AI Planner's documents, validators and job engine (`ai-planner.md`) |
 | `assets` | Import/cook pipeline, on-disk formats, hot reload |
 | `world` | The World Bible: canon entries as `world/<kind>/<id>.md` files — parse, write, validate, rename |
 | `editor` | Native viewport window + webview host, all editor-only code (stripped from shipped games) |

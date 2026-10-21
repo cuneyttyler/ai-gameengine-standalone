@@ -1,12 +1,16 @@
 #include "gameplay/Combat.h"
 
+#include "gameplay/Attributes.h"
+#include "gameplay/Behaviour.h"
 #include "gameplay/GameSession.h"
+#include "records/Records.h"
 #include "gameplay/Settings.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 
 #include <algorithm>
 #include <cmath>
+#include <random>
 
 namespace aige {
 
@@ -90,7 +94,97 @@ std::optional<Entity> TryMeleeAttack(Registry& registry, Entity attacker, float 
     box.effect = attack->effect;
     box.effectDuration = attack->effectDuration;
     box.effectMagnitude = attack->effectMagnitude;
+    box.damageType = attack->damageType;
     return hitbox;
+}
+
+bool AreHostile(Registry& registry, Entity attacker, Entity target) {
+    if (attacker == target) return false;
+    const auto* a = registry.valid(attacker) ? registry.try_get<FactionMember>(attacker) : nullptr;
+    const auto* b = registry.valid(target) ? registry.try_get<FactionMember>(target) : nullptr;
+    const Team at = TeamOf(registry, attacker), bt = TeamOf(registry, target);
+    // The player and a faction member: by the member's disposition.
+    if (at == Team::Player && b) return b->disposition < 0;
+    if (bt == Team::Player && a) return a->disposition < 0;
+    if (a && b && !a->faction.empty() && !b->faction.empty()) {
+        if (a->faction == b->faction) return false;
+        // The relation in either faction's record: below zero is war.
+        auto standing = [](const std::string& from, const std::string& to) -> std::optional<int> {
+            const Record* record = ActiveRecords().Find("faction", from);
+            if (!record) return std::nullopt;
+            for (const auto& r : record->resolved.value("relations", nlohmann::json::array())) {
+                if (r.value("faction", "") == to) return r.value("standing", 0);
+            }
+            return std::nullopt;
+        };
+        auto s = standing(a->faction, b->faction);
+        if (!s) s = standing(b->faction, a->faction);
+        if (s) return *s < 0;
+    }
+    return IsHostile(at, bt);
+}
+
+std::optional<Entity> TryRangedAttack(Registry& registry, Entity attacker, float dirX, float dirY) {
+    if (!registry.valid(attacker) || registry.all_of<Dead>(attacker)) return std::nullopt;
+    auto* ranged = registry.try_get<RangedAttack>(attacker);
+    const auto* world = registry.try_get<WorldTransform2D>(attacker);
+    if (!ranged || !world || ranged->cooldownRemaining > 0.0f) return std::nullopt;
+    float length = std::sqrt(dirX * dirX + dirY * dirY);
+    if (length < 1e-4f) {
+        const auto* facing = registry.try_get<Facing>(attacker);
+        dirX = facing ? facing->x : 1.0f;
+        dirY = facing ? facing->y : 0.0f;
+        length = std::max(1e-4f, std::sqrt(dirX * dirX + dirY * dirY));
+    }
+    dirX /= length;
+    dirY /= length;
+    registry.emplace_or_replace<Facing>(attacker, dirX, dirY);
+    ranged->cooldownRemaining = ranged->cooldown;
+    const auto* stats = registry.try_get<Stats>(attacker);
+    Entity shot = registry.create();
+    registry.emplace<WorldTransform2D>(shot, world->x + dirX * 0.5f, world->y + dirY * 0.5f);
+    Projectile& p = registry.emplace<Projectile>(shot);
+    p.owner = attacker;
+    p.team = TeamOf(registry, attacker);
+    p.damageType = ranged->damageType;
+    p.damage = ranged->damage + (stats ? stats->attack * 0.5f : 0.0f);
+    p.vx = dirX * ranged->speed;
+    p.vy = dirY * ranged->speed;
+    p.remaining = ranged->range / std::max(0.1f, ranged->speed);
+    p.pierce = ranged->pierce;
+    Sprite& sprite = registry.emplace<Sprite>(shot);
+    sprite.width = 16.0f;
+    sprite.height = 16.0f;
+    sprite.texture = ranged->projectile;
+    if (ranged->projectile.empty()) {
+        sprite.width = 8.0f;
+        sprite.height = 8.0f;
+        sprite.r = 1.0f;
+        sprite.g = 0.85f;
+        sprite.b = 0.4f;
+    }
+    registry.emplace<ScreenTransform2D>(shot);
+    return shot;
+}
+
+bool StartDodge(Registry& registry, Entity entity, float dirX, float dirY) {
+    if (!registry.valid(entity) || registry.all_of<Dead>(entity) || registry.all_of<Dodging>(entity)) return false;
+    const float cost = ActiveSettings().combat.dodgeStamina;
+    if (auto* resources = registry.try_get<Resources>(entity); resources && resources->maxStamina > 0.0f) {
+        if (resources->stamina < cost) return false;
+        resources->stamina -= cost;
+    }
+    float length = std::sqrt(dirX * dirX + dirY * dirY);
+    if (length < 1e-4f) {
+        const auto* facing = registry.try_get<Facing>(entity);
+        dirX = facing ? facing->x : 1.0f;
+        dirY = facing ? facing->y : 0.0f;
+        length = std::max(1e-4f, std::sqrt(dirX * dirX + dirY * dirY));
+    }
+    const float seconds = 0.22f;
+    const float distance = ActiveSettings().combat.dodgeDistance;
+    registry.emplace_or_replace<Dodging>(entity, dirX / length * distance / seconds, dirY / length * distance / seconds, seconds);
+    return true;
 }
 
 Entity ApplyStatus(Registry& registry, Entity target, EffectKind kind, float duration, float magnitude,
@@ -122,14 +216,40 @@ float SpeedMultiplier(Registry& registry, Entity entity) {
 }
 
 float DealDamage(Registry& registry, Entity target, float amount, Entity source, std::vector<GameEvent>* events,
-                 bool applyDefense, bool cannotKill) {
+                 bool applyDefense, bool cannotKill, DamageType type) {
     auto* health = registry.try_get<Health>(target);
     if (health == nullptr || registry.all_of<Dead>(target) || health->current <= 0.0f) {
         return 0.0f;
     }
+    // A dodge in progress can't be hit (13.6).
+    if (registry.all_of<Dodging>(target)) return 0.0f;
+    // Resistances (13.6): the share of that kind of damage taken away.
+    if (type != DamageType::Physical && registry.all_of<Attributes>(target)) {
+        const char* name = type == DamageType::Fire    ? "resistFire"
+                           : type == DamageType::Frost ? "resistFrost"
+                           : type == DamageType::Shock ? "resistShock"
+                                                       : "resistPoison";
+        amount *= 1.0f - std::clamp(EffectiveAttribute(registry, target, name), 0.0f, 0.9f);
+    }
     if (applyDefense) {
         const auto* stats = registry.try_get<Stats>(target);
         amount = std::max(ActiveSettings().combat.minimumDamage, amount - (stats ? stats->defense : 0.0f));
+    }
+    // Blocking: most of the hit is stopped while there's stamina for it.
+    if (registry.all_of<Blocking>(target)) {
+        auto* resources = registry.try_get<Resources>(target);
+        const float cost = amount * 2.0f;
+        if (!resources || resources->stamina >= cost) {
+            if (resources) resources->stamina -= cost;
+            amount *= 1.0f - std::clamp(ActiveSettings().combat.blockReduction, 0.0f, 1.0f);
+        }
+    }
+    if (registry.valid(source) && source != target) {
+        registry.emplace_or_replace<LastHit>(target, source);
+        // Attacking a faction member turns it (and its feelings) against the attacker.
+        if (auto* member = registry.try_get<FactionMember>(target); member && TeamOf(registry, source) == Team::Player) {
+            member->disposition = std::min(member->disposition, 0) - 25;
+        }
     }
     if (cannotKill) {
         amount = std::min(amount, health->current - 1.0f);
@@ -160,6 +280,22 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
     for (auto [entity, hurtbox] : registry.view<Hurtbox>().each()) {
         hurtbox.invulnerableRemaining = std::max(0.0f, hurtbox.invulnerableRemaining - dt);
     }
+    for (auto [entity, ranged] : registry.view<RangedAttack>().each()) {
+        ranged.cooldownRemaining = std::max(0.0f, ranged.cooldownRemaining - dt);
+    }
+
+    // Dodges (13.6): the dash, against walls.
+    std::vector<Entity> dodgesDone;
+    for (auto [entity, dodge, world] : registry.view<Dodging, WorldTransform2D>().each()) {
+        Vec2 half{0.3f, 0.3f};
+        if (const auto* collider = registry.try_get<Collider2D>(entity)) half = {collider->halfWidth, collider->halfHeight};
+        const Vec2 moved = ResolveAabbMovement({world.x, world.y}, half, {dodge.vx * dt, dodge.vy * dt}, isSolid);
+        world.x = moved.x;
+        world.y = moved.y;
+        dodge.remaining -= dt;
+        if (dodge.remaining <= 0.0f) dodgesDone.push_back(entity);
+    }
+    for (auto entity : dodgesDone) registry.remove<Dodging>(entity);
 
     // Hitboxes against hurtboxes.
     auto hitboxes = registry.view<Hitbox, WorldTransform2D>();
@@ -168,7 +304,9 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
         auto& box = hitboxes.get<Hitbox>(hitEntity);
         const auto& at = hitboxes.get<WorldTransform2D>(hitEntity);
         for (auto target : targets) {
-            if (target == box.owner || !IsHostile(box.team, TeamOf(registry, target)) ||
+            const bool hostile = registry.valid(box.owner) ? AreHostile(registry, box.owner, target)
+                                                           : IsHostile(box.team, TeamOf(registry, target));
+            if (target == box.owner || !hostile ||
                 std::find(box.alreadyHit.begin(), box.alreadyHit.end(), target) != box.alreadyHit.end()) {
                 continue;
             }
@@ -180,7 +318,7 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
                 continue;
             }
             box.alreadyHit.push_back(target);
-            DealDamage(registry, target, box.damage, box.owner, &events);
+            DealDamage(registry, target, box.damage, box.owner, &events, true, false, box.damageType);
             hurtbox.invulnerableRemaining = hurtbox.invulnerableTime;
             if (box.effect != EffectKind::None) {
                 ApplyStatus(registry, target, box.effect, box.effectDuration, box.effectMagnitude);
@@ -209,6 +347,40 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
         }
     }
     std::vector<Entity> expired;
+
+    // Projectiles (13.6): fly, stop at walls, hit the first hostile hurtbox.
+    for (auto [shot, projectile, at] : registry.view<Projectile, WorldTransform2D>().each()) {
+        at.x += projectile.vx * dt;
+        at.y += projectile.vy * dt;
+        projectile.remaining -= dt;
+        if (projectile.remaining <= 0.0f || isSolid(static_cast<int>(std::floor(at.x)), static_cast<int>(std::floor(at.y)))) {
+            expired.push_back(shot);
+            continue;
+        }
+        for (auto target : targets) {
+            if (target == projectile.owner ||
+                std::find(projectile.alreadyHit.begin(), projectile.alreadyHit.end(), target) != projectile.alreadyHit.end()) {
+                continue;
+            }
+            const bool hostile = registry.valid(projectile.owner) ? AreHostile(registry, projectile.owner, target)
+                                                                  : IsHostile(projectile.team, TeamOf(registry, target));
+            if (!hostile) continue;
+            auto& hurtbox = targets.get<Hurtbox>(target);
+            const auto& world = targets.get<WorldTransform2D>(target);
+            if (hurtbox.invulnerableRemaining > 0.0f ||
+                !Overlaps(at.x, at.y, 0.15f, 0.15f, world.x, world.y, hurtbox.halfWidth, hurtbox.halfHeight)) {
+                continue;
+            }
+            projectile.alreadyHit.push_back(target);
+            DealDamage(registry, target, projectile.damage, projectile.owner, &events, true, false, projectile.damageType);
+            hurtbox.invulnerableRemaining = hurtbox.invulnerableTime;
+            if (!projectile.pierce) {
+                expired.push_back(shot);
+                break;
+            }
+        }
+    }
+
     for (auto [entity, box] : registry.view<Hitbox>().each()) {
         box.lifetime -= dt;
         if (box.lifetime <= 0.0f) {
@@ -293,8 +465,24 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
         registry.emplace<Dead>(entity);
         const auto* sounds = registry.try_get<Sounds>(entity);
         const auto* instance = registry.try_get<PrefabInstance>(entity);
-        events.push_back({GameEvent::Type::Death, entity, entt::null, 0.0f, sounds ? sounds->death : std::string(),
-                          instance ? instance->path : std::string(), TeamOf(registry, entity)});
+        GameEvent death{GameEvent::Type::Death, entity, entt::null, 0.0f, sounds ? sounds->death : std::string(),
+                        instance ? instance->path : std::string(), TeamOf(registry, entity)};
+        // Who killed it, where it fell and what it gives (13.2, 13.4).
+        if (const auto* last = registry.try_get<LastHit>(entity); last && registry.valid(last->source)) death.other = last->source;
+        if (const auto* world = registry.try_get<WorldTransform2D>(entity)) {
+            death.x = world->x;
+            death.y = world->y;
+        }
+        if (const auto* rewards = registry.try_get<Rewards>(entity)) {
+            death.experience = rewards->experience;
+            static std::mt19937 rng{0xC0FFEE};
+            death.gold = rewards->goldMax > rewards->goldMin
+                             ? std::uniform_int_distribution<int>(rewards->goldMin, rewards->goldMax)(rng)
+                             : rewards->goldMin;
+            death.loot = rewards->loot;
+        }
+        if (const auto* actor = registry.try_get<Actor>(entity)) death.actor = actor->key;
+        events.push_back(death);
         enemyDied |= TeamOf(registry, entity) == Team::Enemy;
     }
     if (enemyDied) {

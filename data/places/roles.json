@@ -119,37 +119,73 @@
   },
   "plant": {
     "label": "plant",
-    "affordance": "environmental-object"
+    "affordance": "environmental-object",
+    "size": 0.6,
+    "tall": 0.8,
+    "draw": "a leafy green plant",
+    "look": {
+      "vary": true
+    }
   },
   "tree": {
     "label": "tree",
     "affordance": "environmental-object",
-    "broader": "plant"
+    "broader": "plant",
+    "size": 1.2,
+    "tall": 1.6,
+    "draw": "a leafy deciduous tree with a full round crown and a short brown trunk"
   },
   "bush": {
     "label": "bush",
     "affordance": "environmental-object",
-    "broader": "plant"
+    "broader": "plant",
+    "size": 0.6,
+    "tall": 0.8,
+    "draw": "a round, dense, leafy green bush"
   },
   "flower": {
     "label": "flower",
     "affordance": "environmental-object",
-    "broader": "plant"
+    "broader": "plant",
+    "size": 0.45,
+    "tall": 0.5,
+    "draw": "a small loose clump of wildflowers among their green leaves, low to the ground, with no pot and no planter",
+    "look": {
+      "vary": true
+    }
   },
   "crop": {
     "label": "crop",
     "affordance": "environmental-object",
-    "broader": "plant"
+    "broader": "plant",
+    "size": 0.6,
+    "tall": 0.6,
+    "draw": "a few young green crop plants sprouting straight from the earth, with no box, no planter and no square of soil around them",
+    "look": {
+      "vary": true
+    }
   },
   "herb": {
     "label": "herb",
     "affordance": "environmental-object",
-    "broader": "plant"
+    "broader": "plant",
+    "size": 0.4,
+    "tall": 0.5,
+    "draw": "a small loose clump of garden herbs, with no pot and no planter",
+    "look": {
+      "vary": true
+    }
   },
   "grass": {
     "label": "grass",
     "affordance": "environmental-object",
-    "broader": "plant"
+    "broader": "plant",
+    "size": 0.5,
+    "tall": 0.5,
+    "draw": "a small tuft of tall green grass blades",
+    "look": {
+      "vary": true
+    }
   },
   "hedge": {
     "label": "hedge",
@@ -159,7 +195,10 @@
   "fruit-tree": {
     "label": "fruit tree",
     "affordance": "environmental-object",
-    "broader": "tree"
+    "broader": "tree",
+    "size": 1.1,
+    "tall": 1.4,
+    "draw": "a small fruit tree with red fruit in its leaves"
   },
   "piece-set": {
     "label": "piece set",
@@ -183,7 +222,10 @@
   "pier-piece": {
     "label": "pier piece",
     "affordance": "environmental-object",
-    "broader": "piece-set"
+    "broader": "piece-set",
+    "size": 1.0,
+    "tall": 0.4,
+    "draw": "a section of wooden pier planks on posts"
   },
   "bank-piece": {
     "label": "bank piece",
@@ -202,32 +244,68 @@
   "reed": {
     "label": "reed",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.4,
+    "tall": 1.0,
+    "draw": "a clump of reeds and cattails at the water's edge",
+    "look": {
+      "vary": true
+    }
   },
   "log": {
     "label": "log",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.7,
+    "tall": 0.4,
+    "draw": "a fallen mossy log",
+    "look": {
+      "vary": true
+    }
   },
   "mushroom": {
     "label": "mushroom",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.25,
+    "tall": 0.4,
+    "draw": "a few small brown mushrooms",
+    "look": {
+      "vary": true
+    }
   },
   "rock": {
     "label": "rock",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.5,
+    "tall": 0.5,
+    "draw": "a small mossy grey rock",
+    "look": {
+      "vary": true
+    }
   },
   "mound": {
     "label": "mound",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 1.2,
+    "tall": 0.4,
+    "draw": "a low, rounded, grassy hump of earth with soft sloping sides, not a block, no straight edges",
+    "look": {
+      "vary": true
+    }
   },
   "boulder": {
     "label": "boulder",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.9,
+    "tall": 0.8,
+    "draw": "a large weathered grey boulder",
+    "look": {
+      "vary": true
+    }
   },
   "bridge": {
     "label": "bridge",
@@ -247,7 +325,14 @@
   "light-prop": {
     "label": "light prop",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "light": {
+        "radius": 5.5,
+        "strength": 1.0
+      }
+    },
+    "draw": "a light that suits the place: a burning torch in an iron wall bracket, a brazier, a candle stand or a lantern, whichever such a place has"
   },
   "decal": {
     "label": "decal",
@@ -257,22 +342,34 @@
   "well": {
     "label": "well",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 1.0,
+    "tall": 1.2,
+    "draw": "a round stone village well with a small wooden roof and a bucket"
   },
   "fountain": {
     "label": "fountain",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 1.5,
+    "tall": 1.0,
+    "draw": "a round stone fountain with water"
   },
   "statue": {
     "label": "statue",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.8,
+    "tall": 1.6,
+    "draw": "a stone statue on a plinth"
   },
   "garden-bed": {
     "label": "garden bed",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 1.0,
+    "tall": 0.4,
+    "draw": "a raised wooden garden bed with vegetables"
   },
   "garden-prop": {
     "label": "garden prop",
@@ -282,12 +379,18 @@
   "grave": {
     "label": "grave",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.6,
+    "tall": 0.5,
+    "draw": "a grave with a small stone"
   },
   "headstone": {
     "label": "headstone",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.45,
+    "tall": 0.7,
+    "draw": "a weathered stone headstone"
   },
   "crypt": {
     "label": "crypt",
@@ -302,7 +405,10 @@
   "log-pile": {
     "label": "log pile",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.8,
+    "tall": 0.6,
+    "draw": "a neat stack of chopped firewood"
   },
   "saw": {
     "label": "saw",
@@ -312,72 +418,120 @@
   "boat": {
     "label": "boat",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 1.5,
+    "tall": 0.6,
+    "draw": "a small wooden rowing boat"
   },
   "trough": {
     "label": "trough",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.8,
+    "tall": 0.4,
+    "draw": "a wooden water trough"
   },
   "hay": {
     "label": "hay",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.8,
+    "tall": 0.7,
+    "draw": "a round bale of hay"
   },
   "shore-prop": {
     "label": "shore prop",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.6,
+    "tall": 0.5,
+    "draw": "a few smooth stones and reeds at a riverbank"
   },
   "stall": {
     "label": "stall",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 1.4,
+    "tall": 1.0,
+    "draw": "a market stall with a striped cloth awning and goods on its table"
   },
   "sign": {
     "label": "sign",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.35,
+    "tall": 1.0,
+    "draw": "a small wooden signpost"
   },
   "lamp": {
     "label": "lamp",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.25,
+    "tall": 1.6,
+    "draw": "a street lantern on a wooden post",
+    "look": {
+      "light": {
+        "radius": 5.5,
+        "strength": 1.0
+      }
+    }
   },
   "barrel": {
     "label": "barrel",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.35,
+    "tall": 0.8,
+    "draw": "a wooden barrel with iron hoops"
   },
   "crate": {
     "label": "crate",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.4,
+    "tall": 0.7,
+    "draw": "a wooden crate"
   },
   "sack": {
     "label": "sack",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.3,
+    "tall": 0.6,
+    "draw": "a burlap sack of grain"
   },
   "cart": {
     "label": "cart",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 1.2,
+    "tall": 0.8,
+    "draw": "a wooden hand cart with two wheels"
   },
   "tool": {
     "label": "tool",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.4,
+    "tall": 0.8,
+    "draw": "a farming tool leaning on a post"
   },
   "pot": {
     "label": "pot",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.3,
+    "tall": 0.6,
+    "draw": "a clay pot with a small plant"
   },
   "bench": {
     "label": "bench",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.6,
+    "tall": 0.5,
+    "draw": "a simple wooden bench"
   },
   "animal": {
     "label": "animal",
@@ -386,7 +540,10 @@
   "tent": {
     "label": "tent",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "size": 2.0,
+    "tall": 1.0,
+    "draw": "a canvas tent"
   },
   "command-tent": {
     "label": "command tent",
@@ -486,7 +643,13 @@
   "door": {
     "label": "door",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 1.0,
+    "tall": 1.4,
+    "draw": "an old heavy door of dark oak planks bound with rusted iron, closed, set in its stone arch, seen in isometric view: the wall it stands in runs diagonally, from the upper left down to the lower right",
+    "look": {
+      "doorway": true
+    }
   },
   "stairs": {
     "label": "stairs",
@@ -646,7 +809,13 @@
   "locked-door": {
     "label": "locked door",
     "affordance": "interactive-object",
-    "broader": "door"
+    "broader": "door",
+    "size": 1.0,
+    "tall": 1.4,
+    "draw": "an old heavy door of dark oak planks bound with rusted iron, closed, set in its stone arch, seen in isometric view: the wall it stands in runs diagonally, from the upper left down to the lower right, with a big iron padlock on it",
+    "look": {
+      "doorway": true
+    }
   },
   "secret-door": {
     "label": "secret door",
@@ -715,5 +884,27 @@
     "label": "window",
     "affordance": "environmental-object",
     "broader": "prop"
+  },
+  "wall-block": {
+    "label": "wall block",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 1.0,
+    "tall": 1.7,
+    "draw": "one block of old, rough-hewn dungeon wall: irregular dark stones, cracks, moss and soot, an isometric block one cell wide and at least one and a half times as tall as it is wide, its top dark rock, nothing on it and nothing around it"
+  },
+  "wall-torch": {
+    "label": "wall torch",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.3,
+    "tall": 2.0,
+    "draw": "a burning torch in an iron wall bracket, a small bright orange flame",
+    "look": {
+      "light": {
+        "radius": 5.5,
+        "strength": 1.0
+      }
+    }
   }
 }

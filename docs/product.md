@@ -218,6 +218,11 @@ decisions are made "general from day one" vs. "deferred but not designed away."
 
 ## 10. Roadmap (product-level; see `development_plan.md` for engineering detail)
 
+The product versions (v1.0 for 2D isometric and top-down games, v1.1–v1.9 adding genres in
+the order games appeared up to the early-3D era, v2.0 the finished engine with advanced
+graphics) are in `roadmap.md`. AI is part of every version: each one extends the AI to
+everything it adds. The table below is the phase history behind v1.0.
+
 | Phase | Product-level focus |
 |---|---|
 | **0 — Engine Bootstrap** | No AI yet. A window opens, a triangle/sprite renders, an entity moves, a project can be saved/loaded. Proves the from-scratch foundation before any AI investment. |
@@ -227,6 +232,10 @@ decisions are made "general from day one" vs. "deferred but not designed away."
 | **4 — Polish & Ecosystem** | Editor shell and workflow, performance passes, plugin/module groundwork. |
 | **5 — Shipping & Workflow** | Desktop export, top-down art on the isometric grid, multiple connected scenes, a start window, editor refinements from testing. |
 | **6 — AI that understands the art** | Image analysis, pack import at the right scale, autotiled roads, a settlement generator, rotation; an optional top-down grid for top-down art. |
+| **7–11 — AI building, ontology, library, polish** | A request becomes a built place of any size (village to region, interiors, dungeons) through a confirmed Brief, a plan, a layout language and solvers; the place ontology, editable per user; the user asset library; a security review. |
+| **12–20 — A complete engine** | Records, events, game flow, saves, audio, items, character AI packages, quests v2, difficulty, a customisable game UI, animation and effects, abilities and magic, physics v2 (`engine-gaps.md`). |
+| **21–23 — The AI Planner** | A request becomes a whole game: story, characters, quests, places, systems, difficulty and UI designed against a story ontology, validated, built scene by scene and playtested (`ai-planner.md`). |
+| **24 — Shipping quality** | Accessibility, debug tools, achievements, export polish, a template per game type (`game-types.md`). |
 | **Later** | Phases after 5 are planned as development goes. On the list: local-model support, mobile export hardening, a full 3D rendering path, broader genre support — the "become a general-purpose engine" direction. |
 
 Phases 0-2 are the load-bearing ones: nothing AI-native is credible until there's a real

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 
-from .models import EditorContext, EngineSchema, FieldSpec
+from .models import EditorContext, EngineSchema, FieldSpec, RecordFieldSpec
 
 OUTPUT_FORMAT = """\
 Answer with ONE JSON object and nothing else:
@@ -78,7 +78,11 @@ Rules:
 - A new prefab: set up an existing entity first (set_field/add_component, in an earlier
   step if it was just spawned), then prefab.createFromEntity — the prefab copies the
   entity as it is. Don't set_prefab_field on a prefab created in the same answer.
-- Every operation is a JSON object with "op" set to one of the ten kinds above; commands
+- Art the project doesn't have (a texture no asset in the context gives): never invent a file path.
+  List it under "art": [{"name": "stone-floor", "kind": "tile"|"object"|"character",
+  "description": "what it is, for this scene", "cells": <width in cells>}], and use "art:<name>"
+  wherever its path goes (a prefab.create texture, ...). It's drawn before the change is applied.
+- Every operation is a JSON object with "op" set to one of the twelve kinds above; commands
   always use {"op": "command", "name": ..., "args": {...}}.
 - Make the smallest change that does what was asked. If the request can't be done with
   what's available, return no operations and explain why in "notes".
@@ -89,29 +93,63 @@ STORY (dialogue and quests; files dialogue/<id>.json and quests/<id>.json, ids l
 Dialogue: {"speaker": "<World Bible key>", "start": "<node id>",
   "starts": [{"if": [<condition>], "node": "<node id>"}],   (optional: checked before "start", first match wins)
   "nodes": [{"id": "...", "speaker": "<key or 'player'>" (optional), "text": "...",
-             "choices": [{"text": "...", "next": "<node id or '' to end>", "if": [<condition>], "do": [<effect>]}]
+             "portrait": "<image asset>" (optional), "voice": "<audio asset>" (optional),
+             "choices": [{"text": "...", "next": "<node id or '' to end>", "if": [<condition>], "do": [<effect>],
+                          "check": {"attribute": "<name>", "difficulty": <n>}, "fail": "<node id>"}]  (check/fail optional)
              OR "next": "<node id or ''>", "do": [<effect>] (optional, runs when shown)}]}
-  At most 4 choices per node; every node must be reachable; keep lines short (one or two sentences).
-Conditions: {"flag": "name"} | {"flag": "name", "is": false} | {"quest": "<id>", "is": "inactive"|"active"|"completed"}
-Effects: {"op": "set_flag"|"clear_flag", "flag": "..."} | {"op": "start_quest"|"complete_quest", "quest": "<id>"}
-         | {"op": "complete_objective", "quest": "<id>", "objective": "<objective id>"}
+  At most 9 choices per node; every node must be reachable; keep lines short (one or two sentences). A skill
+  check passes when the player's attribute is at least the difficulty: "next" and "do" then, else "fail".
+Conditions: {"flag": "name"} | {"flag": "name", "is": false}
+  | {"quest": "<id>", "is": "inactive"|"active"|"completed"|"failed", "stage": <index> (optional)}
+  | {"var": "name", "op": "=="|"!="|"<"|"<="|">"|">=", "value": <number or text>} | {"var": "name"} (set and not 0/"")
+  | {"item": "<item id>", "count": n} | {"gold": n} | {"level": n} | {"attribute": "<name>", "atLeast": n}
+  | {"time": {"from": <hour>, "to": <hour>}} | {"day": n} | {"faction": "<id>", "atLeast": <reputation>}
+Effects: {"op": "set_flag"|"clear_flag", "flag": "..."} | {"op": "start_quest"|"complete_quest"|"fail_quest", "quest": "<id>"}
+  | {"op": "complete_objective", "quest": "<id>", "objective": "<objective id>"}
+  | {"op": "set_stage", "quest": "<id>", "stage": <index>} | {"op": "set_var"|"add_var", "var": "name", "value": ...}
+  | {"op": "give_item"|"take_item", "item": "<item id>", "count": n} | {"op": "give_gold"|"give_xp", "amount": n}
+  | {"op": "reputation", "faction": "<id>", "value": n} | {"op": "play_cutscene", "cutscene": "<id>"}
 Quest: {"name": "...", "description": "...", "giver": "<World Bible key>",
-  "objectives": [{"id": "...", "text": "shown on screen", "type": "defeat"|"collect"|"talk"|"reach",
-                  "target": "<prefab path, or 'Enemy' for defeat; World Bible key for talk; marker name for reach>",
-                  "count": 1, "scene": "<optional: scenes/<name>.aige, only counts there>"}],
-  "onComplete": [<effect>]}
+  "aliases": [{"id": "thief", "kind": "character"|"item"|"location"|"entity", "fill": "<key, item id, marker, name>"}],
+  "stages": [{"index": 10, "journal": "the journal's line for this stage",
+              "objectives": [<objective>], "onEnter": [<effect>],
+              "branches": [{"if": [<condition>], "stage": <index>}], "next": <index> (optional),
+              "ends": "complete"|"fail" (optional: the quest ends on entering this stage)}],
+  "rewards": {"experience": n, "gold": n, "items": "potion*2, iron-sword", "faction": "<id>", "reputation": n},
+  "onComplete": [<effect>], "onFail": [<effect>]}
+  <objective>: {"id": "...", "text": "shown on screen", "type": "defeat"|"collect"|"talk"|"reach"|"deliver"|"use"
+               |"examine"|"have"|"survive"|"defend"|"escort", "target": "...", "count": 1, "optional": false,
+               "scene": "<optional: scenes/<name>.aige, only counts there>",
+               "item": "<deliver: what to hand over>", "to": "<escort: the marker>", "seconds": <survive/defend>}
+  Targets: defeat/collect a prefab path ('Enemy' for any enemy); talk/deliver/escort/defend a World Bible key;
+  reach a marker name; use/examine an entity's Name or Interactable name; have an item id. "@thief" in a target
+  is the alias's fill. A stage's objectives can be done in any order; optional ones don't hold it back. When a
+  stage's required objectives are done, the first branch whose conditions hold picks the next stage, else
+  "next", else the following stage. A defend or escort quest fails if that character dies.
+  The older shape {"objectives": [...]} (done one after another) is still accepted.
   Quests, dialogue and the World Bible belong to the whole project, not to a scene: progress carries across
   gateways. "reach" completes when the player stands at that Marker; with a "scene" and no target it
   completes on arriving in that scene ("Go down to the cellar"). Give "scene" to an objective that only
   makes sense in one place ("defeat the rats in the cellar"). Use only scenes and markers in context "scenes".
-  Objectives are done in order. A "talk" objective completes when the player talks to an entity whose
-  Talk.character is that key — usually the giver, as the last objective ("Return to ...").
+  A "talk" objective completes when the player talks to an entity whose Talk.character is that key —
+  usually the giver, as the last stage ("Return to ...").
 To make someone talkable: add_component Talk {"dialogue": "dialogue/<id>.json", "character": "<World Bible key>"}
 on their entity (or set_prefab_field on their prefab). Write a quest before a dialogue that starts it. To
 change an existing dialogue, write it again whole with the same id (its current content is in the context).
 CANON: everything in the WORLD BIBLE is true in this game. Use its names, places, factions and history; never
 contradict it; write in the voice its style entries describe. A new named character, place or faction must
 also be added to the canon with the world.write command in the same proposal.
+"""
+
+RECORDS = """\
+RECORDS (typed game data that isn't an entity in a scene: items, and the other types in the schema's
+RECORD TYPES; one file each, records/<type>/<id>.json, ids lowercase-with-dashes)
+  A record holds its type's fields (only those; types, ranges and options as listed), plus optionally
+  "base": "<id of another record of the same type>" to inherit its fields (its own win, field by field).
+  A "record" field holds the id of a record of the named type; "object" fields hold their sub-fields;
+  "list" fields hold a JSON list. Required fields must be set (here or in the base).
+  The project's records are in context "records" ({type, id, record}). To change one, write it again
+  whole with the same id. Write a record before (or in the same proposal as) anything that refers to it.
 """
 
 ROUTINES = """\
@@ -237,7 +275,35 @@ def describe_schema(schema: EngineSchema) -> str:
     for command in schema.commands:
         params = ", ".join(_field_line(p) for p in command.params)
         lines.append(f"- {command.name}({params}): {command.description}")
+    if schema.records:
+        lines.append("RECORD TYPES")
+        for record_type in schema.records:
+            lines.append(f"- {record_type.name}: {record_type.description}")
+            for field in record_type.fields:
+                lines.append(f"    {_record_field_line(field)}")
     return "\n".join(lines)
+
+
+def _record_field_line(spec: RecordFieldSpec, indent: str = "") -> str:
+    kind = spec.type
+    if spec.type == "record":
+        kind = f"record of {spec.recordType}"
+    if spec.list:
+        kind = f"list of {kind}"
+    parts = [f"{spec.name}: {kind}"]
+    if spec.options:
+        parts.append("one of " + "|".join(spec.options))
+    if spec.min is not None or spec.max is not None:
+        low = "" if spec.min is None else f"{spec.min:g}"
+        high = "" if spec.max is None else f"{spec.max:g}"
+        parts.append(f"[{low}..{high}]")
+    if spec.required:
+        parts.append("(required)")
+    line = " ".join(parts)
+    line = f"{line} — {spec.description}" if spec.description else line
+    for sub in spec.fields:
+        line += f"\n    {indent}  {_record_field_line(sub, indent + '  ')}"
+    return line
 
 
 def build_messages(
@@ -256,6 +322,7 @@ def build_messages(
             OUTPUT_FORMAT,
             STORY,
             ROUTINES,
+            RECORDS,
             SCENES,
             ART,
             LUA_API,

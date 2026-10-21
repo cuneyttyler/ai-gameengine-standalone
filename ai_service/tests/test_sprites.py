@@ -155,3 +155,33 @@ def test_tile_prompts_ask_for_top_down_ground():
     text = _prompt("cobblestone road", "tile", "pixel")
     assert "top-down" in text and "seamless" in text
     assert "white background" not in text
+
+
+def test_a_framed_ground_tile_gets_even_light():
+    """A ground tile the image model framed (a dark border, a bright middle) would show a grid
+    on every cell; with even_light its edges are as bright as its middle (place-refine.md §1)."""
+    import io as _io
+
+    from PIL import Image as _Image
+
+    from app.sprites import SpriteOptions as _Options, make_sprite as _make
+
+    picture = _Image.new("RGB", (256, 256), (90, 150, 60))
+    for x in range(256):
+        for y in range(256):
+            edge = min(x, y, 255 - x, 255 - y)
+            if edge < 40:  # a dark vignette towards the frame
+                f = 0.35 + 0.65 * edge / 40
+                picture.putpixel((x, y), (round(90 * f), round(150 * f), round(60 * f)))
+    data = _io.BytesIO()
+    picture.save(data, format="PNG")
+
+    def seam(even):
+        png, _ = _make(data.getvalue(), _Options(height=64, style="smooth", tile=True, even_light=even))
+        tile = _Image.open(_io.BytesIO(png)).convert("L")
+        ring = [tile.getpixel((x, y)) for x in range(64) for y in range(64) if min(x, y, 63 - x, 63 - y) < 6]
+        core = [tile.getpixel((x, y)) for x in range(20, 44) for y in range(20, 44)]
+        return abs(sum(ring) / len(ring) - sum(core) / len(core))
+
+    assert seam(False) > 20
+    assert seam(True) < 6

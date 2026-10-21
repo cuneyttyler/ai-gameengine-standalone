@@ -135,7 +135,7 @@ std::optional<std::string> Validate(const FieldMeta& meta, const FieldValue& val
             if (!std::holds_alternative<std::string>(value)) {
                 return meta.name + " must be text";
             }
-            if ((meta.type == FieldType::Prefab || meta.type == FieldType::Component) &&
+            if ((meta.type == FieldType::Prefab || meta.type == FieldType::Component) && !meta.optional &&
                 std::get<std::string>(value).empty()) {
                 return meta.name + " is required";
             }
@@ -204,6 +204,113 @@ CommandBuilder ReflectionRegistry::Command(std::string name, std::string descrip
     return CommandBuilder(*this, commands_.size() - 1);
 }
 
+// --- Record types ------------------------------------------------------------------------
+
+const RecordField* RecordField::Field(const std::string& fieldName) const {
+    for (const auto& field : fields) {
+        if (field.name == fieldName) return &field;
+    }
+    return nullptr;
+}
+
+const RecordField* RecordTypeInfo::Field(const std::string& fieldName) const {
+    for (const auto& field : fields) {
+        if (field.name == fieldName) return &field;
+    }
+    return nullptr;
+}
+
+nlohmann::json RecordFieldToJson(const RecordField& field) {
+    nlohmann::json json = MetaToJson(field);
+    if (field.kind == RecordFieldKind::Record) {
+        json["type"] = "record";
+        json["recordType"] = field.recordType;
+    } else if (field.kind == RecordFieldKind::Object) {
+        json["type"] = "object";
+        nlohmann::json fields = nlohmann::json::array();
+        for (const auto& sub : field.fields) fields.push_back(RecordFieldToJson(sub));
+        json["fields"] = fields;
+    }
+    if (field.list) json["list"] = true;
+    if (field.required) json["required"] = true;
+    if (!field.defaultValue.is_null()) json["default"] = field.defaultValue;
+    return json;
+}
+
+const RecordTypeInfo* ReflectionRegistry::FindRecordType(const std::string& name) const {
+    for (const auto& type : recordTypes_) {
+        if (type.name == name) return &type;
+    }
+    return nullptr;
+}
+
+RecordTypeBuilder ReflectionRegistry::RecordType(std::string name, std::string description) {
+    RecordTypeInfo info;
+    info.name = std::move(name);
+    info.description = std::move(description);
+    recordTypes_.push_back(std::move(info));
+    return RecordTypeBuilder(*this, recordTypes_.size() - 1);
+}
+
+RecordField MakeRecordValue(std::string name, FieldType type, std::string description) {
+    RecordField field;
+    field.name = std::move(name);
+    field.type = type;
+    field.description = std::move(description);
+    return field;
+}
+
+RecordField MakeRecordRef(std::string name, std::string recordType, std::string description) {
+    RecordField field = MakeRecordValue(std::move(name), FieldType::String, std::move(description));
+    field.kind = RecordFieldKind::Record;
+    field.recordType = std::move(recordType);
+    return field;
+}
+
+RecordField& RecordTypeBuilder::Last() { return registry_.recordTypes_[index_].fields.back(); }
+
+RecordTypeBuilder& RecordTypeBuilder::Field(std::string name, FieldType type, std::string description) {
+    registry_.recordTypes_[index_].fields.push_back(MakeRecordValue(std::move(name), type, std::move(description)));
+    return *this;
+}
+RecordTypeBuilder& RecordTypeBuilder::Ref(std::string name, std::string recordType, std::string description) {
+    registry_.recordTypes_[index_].fields.push_back(
+        MakeRecordRef(std::move(name), std::move(recordType), std::move(description)));
+    return *this;
+}
+RecordTypeBuilder& RecordTypeBuilder::Object(std::string name, std::vector<RecordField> fields,
+                                             std::string description) {
+    RecordField field = MakeRecordValue(std::move(name), FieldType::String, std::move(description));
+    field.kind = RecordFieldKind::Object;
+    field.fields = std::move(fields);
+    registry_.recordTypes_[index_].fields.push_back(std::move(field));
+    return *this;
+}
+RecordTypeBuilder& RecordTypeBuilder::Min(double value) {
+    Last().min = value;
+    return *this;
+}
+RecordTypeBuilder& RecordTypeBuilder::Max(double value) {
+    Last().max = value;
+    return *this;
+}
+RecordTypeBuilder& RecordTypeBuilder::Options(std::vector<std::string> options) {
+    Last().options = std::move(options);
+    return *this;
+}
+RecordTypeBuilder& RecordTypeBuilder::List() {
+    Last().list = true;
+    return *this;
+}
+RecordTypeBuilder& RecordTypeBuilder::Required() {
+    Last().required = true;
+    return *this;
+}
+RecordTypeBuilder& RecordTypeBuilder::Default(nlohmann::json value) {
+    Last().defaultValue = std::move(value);
+    return *this;
+}
+
 CommandResult ReflectionRegistry::Run(CommandContext& context, const std::string& name,
                                       const std::vector<FieldValue>& args) const {
     const CommandInfo* command = FindCommand(name);
@@ -254,7 +361,16 @@ nlohmann::json ReflectionRegistry::ExportSchema() const {
         }
         commands.push_back({{"name", command.name}, {"description", command.description}, {"params", params}});
     }
-    return {{"version", 1}, {"components", components}, {"settings", settings}, {"commands", commands}};
+    nlohmann::json records = nlohmann::json::array();
+    for (const auto& type : recordTypes_) {
+        nlohmann::json fields = nlohmann::json::array();
+        for (const auto& field : type.fields) {
+            fields.push_back(RecordFieldToJson(field));
+        }
+        records.push_back({{"name", type.name}, {"description", type.description}, {"fields", fields}});
+    }
+    return {{"version", 1},         {"components", components}, {"settings", settings},
+            {"commands", commands}, {"records", records}};
 }
 
 // --- Component operations ------------------------------------------------------------
