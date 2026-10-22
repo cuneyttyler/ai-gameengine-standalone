@@ -2748,6 +2748,18 @@ over time, dependents, decisions). **21.5** The competency questions as tests.
 Done when: a hand-written test story's graph answers every competency question, and each
 rule catches its planted error.
 
+**Status (2026-10-22): built, to be tried** (`phase21-test-checklist.md`; "As built" in `story-ontology.md`).
+- 21.1 GSO in `data/story/` loaded by `engine/story/` (project extensions); `ontology/gso*.ttl`
+  published with alignments and a staleness test.
+- 21.2 `planner/kg.json`: temporal facts, branches, world state at a scene, the subgraph for a
+  scene, timelines, dependents; World Bible `rel:` lines read in and written out.
+- 21.3 The rules as checks with messages and severities (critic rules left to the AI).
+- 21.4 Project ▸ Story graph viewer.
+- 21.5 The competency questions and planted errors as tests.
+- AI panel: the `story_graph` op, refused on new rule errors; context, prompt and checks.
+  Tests: `story_graph_test.cpp`, `test_storygraph.py`.
+- Not yet: embedding retrieval (§6.5, with the Planner), condition-based facts for open maps.
+
 ## Phase 22 — AI Planner I: designing the game (`ai-planner.md` §5.1–5.9)
 
 **22.1** The Planner panel, documents, decision log, job engine (resumable), dependencies and

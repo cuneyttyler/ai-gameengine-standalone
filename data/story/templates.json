@@ -1,0 +1,41 @@
+{
+  "comment": "Structure templates (docs/story-ontology.md §8): acts with their share of the story, beats at positions (0-1 of the main line), the narrative roles they need.",
+  "templates": {
+    "three-act": {
+      "label": "Three-act structure",
+      "acts": [{"id": "setup", "share": 0.25}, {"id": "confrontation", "share": 0.5}, {"id": "resolution", "share": 0.25}],
+      "beats": [{"id": "inciting-incident", "at": 0.1}, {"id": "first-turn", "at": 0.25}, {"id": "midpoint", "at": 0.5}, {"id": "second-turn", "at": 0.75}, {"id": "climax", "at": 0.9}],
+      "roles": ["protagonist", "antagonist"]
+    },
+    "heros-journey": {
+      "label": "The hero's journey",
+      "acts": [{"id": "departure", "share": 0.25}, {"id": "initiation", "share": 0.5}, {"id": "return", "share": 0.25}],
+      "beats": [{"id": "ordinary-world", "at": 0.0}, {"id": "call-to-adventure", "at": 0.08}, {"id": "refusal", "at": 0.12}, {"id": "meeting-the-mentor", "at": 0.17}, {"id": "crossing-the-threshold", "at": 0.25}, {"id": "tests-allies-enemies", "at": 0.35}, {"id": "approach", "at": 0.45}, {"id": "ordeal", "at": 0.5}, {"id": "reward", "at": 0.6}, {"id": "the-road-back", "at": 0.75}, {"id": "resurrection", "at": 0.9}, {"id": "return-with-elixir", "at": 0.98}],
+      "roles": ["protagonist", "mentor", "antagonist", "threshold-guardian", "herald"]
+    },
+    "five-act": {
+      "label": "Five-act structure",
+      "acts": [{"id": "exposition", "share": 0.15}, {"id": "rising-action", "share": 0.25}, {"id": "climax-act", "share": 0.2}, {"id": "falling-action", "share": 0.25}, {"id": "denouement", "share": 0.15}],
+      "beats": [{"id": "inciting-incident", "at": 0.1}, {"id": "climax", "at": 0.5}, {"id": "catastrophe", "at": 0.9}],
+      "roles": ["protagonist", "antagonist"]
+    },
+    "save-the-cat": {
+      "label": "Save the cat",
+      "acts": [{"id": "act-1", "share": 0.25}, {"id": "act-2a", "share": 0.25}, {"id": "act-2b", "share": 0.25}, {"id": "act-3", "share": 0.25}],
+      "beats": [{"id": "opening-image", "at": 0.0}, {"id": "catalyst", "at": 0.1}, {"id": "break-into-two", "at": 0.25}, {"id": "midpoint", "at": 0.5}, {"id": "all-is-lost", "at": 0.75}, {"id": "finale", "at": 0.85}, {"id": "climax", "at": 0.9}, {"id": "final-image", "at": 1.0}],
+      "roles": ["protagonist", "antagonist"]
+    },
+    "kishotenketsu": {
+      "label": "Kishōtenketsu",
+      "acts": [{"id": "ki", "share": 0.25}, {"id": "sho", "share": 0.25}, {"id": "ten", "share": 0.25}, {"id": "ketsu", "share": 0.25}],
+      "beats": [{"id": "twist", "at": 0.6}, {"id": "climax", "at": 0.8}],
+      "roles": ["protagonist"]
+    },
+    "episodic": {
+      "label": "Episodic chapters",
+      "acts": [{"id": "chapters", "share": 1.0}],
+      "beats": [{"id": "climax", "at": 0.9}],
+      "roles": ["protagonist"]
+    }
+  }
+}

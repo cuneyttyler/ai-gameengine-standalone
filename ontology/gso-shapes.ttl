@@ -1,0 +1,698 @@
+# GSO shapes: SHACL for story knowledge graphs
+#
+# GENERATED from data/story/ by the engine (engine/story/StoryOntology.cpp).
+# Don't edit: change the JSON files and regenerate (ontology/README.md).
+
+@prefix gso:     <https://w3id.org/aige/gso#> .
+@prefix gsv:     <https://w3id.org/aige/gso/vocab#> .
+@prefix gss:     <https://w3id.org/aige/gso/shapes#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix sh:      <http://www.w3.org/ns/shacl#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<https://w3id.org/aige/gso/shapes>
+    a owl:Ontology ;
+    owl:versionInfo "0.1.0" ;
+    owl:imports <https://w3id.org/aige/gso> ;
+    dcterms:title "GSO shapes: SHACL for story knowledge graphs"@en ;
+    dcterms:description "Types, required fields and closed vocabularies of each class. Temporal facts, causality and continuity rules are beyond SHACL Core; the engine checks them (engine/story/StoryRules)."@en ;
+    dcterms:license <https://creativecommons.org/licenses/by/4.0/> ;
+    dcterms:creator "AIGE project" .
+
+gss:ActShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Act ;
+    sh:property [
+        sh:path gso:order ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal
+    ] ;
+    sh:property [
+        sh:path gso:purpose ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+gss:ActionShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Action ;
+    sh:property [
+        sh:path gso:agent ;
+        sh:maxCount 1 ;
+        sh:class gso:Character
+    ] .
+
+gss:AliasShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Alias ;
+    sh:property [
+        sh:path gso:fill ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:kind ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:required ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] .
+
+gss:BeatShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Beat ;
+    sh:property [
+        sh:path gso:function ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:text ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+gss:BeliefShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Belief ;
+    sh:property [
+        sh:path gso:text ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:true ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] .
+
+gss:ChapterShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Chapter ;
+    sh:property [
+        sh:path gso:hub ;
+        sh:maxCount 1 ;
+        sh:class gso:Location
+    ] ;
+    sh:property [
+        sh:path gso:order ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal
+    ] ;
+    sh:property [
+        sh:path gso:question ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+gss:CharacterShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Character ;
+    sh:property [
+        sh:path gso:arc ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:desire ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:idle ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:importance ;
+        sh:maxCount 1 ;
+        sh:in ( "major" "supporting" "minor" "extra" )
+    ] ;
+    sh:property [
+        sh:path gso:motivations ;
+        sh:maxCount 999 ;
+        sh:nodeKind sh:Literal
+    ] ;
+    sh:property [
+        sh:path gso:name ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:need ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:package ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:skills ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:statClass ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:static ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:stock ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:summary ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:traits ;
+        sh:maxCount 999 ;
+        sh:nodeKind sh:Literal
+    ] ;
+    sh:property [
+        sh:path gso:undead ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:weakness ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+gss:ChoicePointShape
+    a sh:NodeShape ;
+    sh:targetClass gso:ChoicePoint ;
+    sh:property [
+        sh:path gso:options ;
+        sh:maxCount 999 ;
+        sh:nodeKind sh:Literal
+    ] .
+
+gss:ConflictShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Conflict ;
+    sh:property [
+        sh:path gso:openEnded ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:stakes ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:type ;
+        sh:maxCount 1 ;
+        sh:in ( "person" "society" "nature" "self" "fate" "technology" "supernatural" )
+    ] .
+
+gss:ConvergenceShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Convergence ;
+    sh:property [
+        sh:path gso:carries ;
+        sh:maxCount 999 ;
+        sh:nodeKind sh:Literal
+    ] .
+
+gss:CutsceneShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Cutscene ;
+    sh:property [
+        sh:path gso:file ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+gss:DecisionShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Decision ;
+    sh:property [
+        sh:path gso:chosen ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:question ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:rationale ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:stage ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+gss:DialogueShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Dialogue ;
+    sh:property [
+        sh:path gso:file ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:speaker ;
+        sh:maxCount 1 ;
+        sh:class gso:Character
+    ] .
+
+gss:EndingShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Ending ;
+    sh:property [
+        sh:path gso:conditions ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:epilogue ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+gss:EventShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Event ;
+    sh:property [
+        sh:path gso:inciting ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:kernel ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:openEnded ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:setup ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:storyTime ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal
+    ] ;
+    sh:property [
+        sh:path gso:text ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+gss:FactionShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Faction ;
+    sh:property [
+        sh:path gso:goals ;
+        sh:maxCount 999 ;
+        sh:nodeKind sh:Literal
+    ] ;
+    sh:property [
+        sh:path gso:name ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+gss:GameplayRoleShape
+    a sh:NodeShape ;
+    sh:targetClass gso:GameplayRole ;
+    sh:property [
+        sh:path gso:role ;
+        sh:maxCount 1 ;
+        sh:in ( "quest-giver" "vendor" "trainer" "companion" "enemy" "elite" "boss" "guard" "innkeeper" "healer" "transport" "information" "crafter" "quest-target" "civilian" )
+    ] .
+
+gss:GoalShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Goal ;
+    sh:property [
+        sh:path gso:kind ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:status ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+gss:ItemShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Item ;
+    sh:property [
+        sh:path gso:kind ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:name ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:openEnded ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:record ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:setup ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:unique ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] .
+
+gss:LocationShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Location ;
+    sh:property [
+        sh:path gso:buildType ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:kind ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:mood ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:name ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:requiredParts ;
+        sh:maxCount 999 ;
+        sh:nodeKind sh:Literal
+    ] ;
+    sh:property [
+        sh:path gso:scene ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:start ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] .
+
+gss:NarrativeRoleShape
+    a sh:NodeShape ;
+    sh:targetClass gso:NarrativeRole ;
+    sh:property [
+        sh:path gso:archetype ;
+        sh:maxCount 1 ;
+        sh:in ( "protagonist" "antagonist" "deuteragonist" "mentor" "ally" "herald" "threshold-guardian" "shapeshifter" "trickster" "love-interest" "false-hero" "dispatcher" "donor" "foil" )
+    ] ;
+    sh:property [
+        sh:path gso:required ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:storyline ;
+        sh:maxCount 1 ;
+        sh:class gso:Storyline
+    ] .
+
+gss:ObjectiveShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Objective ;
+    sh:property [
+        sh:path gso:action ;
+        sh:maxCount 1 ;
+        sh:in ( "goto" "reach" "talk" "kill" "defeat-count" "gather" "collect" "deliver" "escort" "defend" "use" "interact" "examine" "spy" "stealth" "capture" "free" "craft" "wait" "choose" "survive" )
+    ] ;
+    sh:property [
+        sh:path gso:count ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal
+    ] ;
+    sh:property [
+        sh:path gso:optional ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:target ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+gss:QuestShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Quest ;
+    sh:property [
+        sh:path gso:file ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:level ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal
+    ] ;
+    sh:property [
+        sh:path gso:motivation ;
+        sh:maxCount 1 ;
+        sh:in ( "knowledge" "comfort" "reputation" "serenity" "protection" "conquest" "wealth" "ability" "equipment" )
+    ] ;
+    sh:property [
+        sh:path gso:storyline ;
+        sh:maxCount 1 ;
+        sh:class gso:Storyline
+    ] ;
+    sh:property [
+        sh:path gso:strategy ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:type ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+gss:QuestStageShape
+    a sh:NodeShape ;
+    sh:targetClass gso:QuestStage ;
+    sh:property [
+        sh:path gso:index ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal
+    ] ;
+    sh:property [
+        sh:path gso:journal ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:quest ;
+        sh:maxCount 1 ;
+        sh:class gso:Quest
+    ] ;
+    sh:property [
+        sh:path gso:terminal ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] .
+
+gss:StoryShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Story ;
+    sh:property [
+        sh:path gso:logline ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:pattern ;
+        sh:maxCount 1 ;
+        sh:in ( "linear" "gauntlet" "branch-and-bottleneck" "time-cave" "quest" "open-map" "sorting-hat" "floating-modules" "loop-and-grow" )
+    ] ;
+    sh:property [
+        sh:path gso:structure ;
+        sh:maxCount 1 ;
+        sh:in ( "three-act" "heros-journey" "five-act" "save-the-cat" "kishotenketsu" "episodic" )
+    ] ;
+    sh:property [
+        sh:path gso:synopsis ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:themes ;
+        sh:maxCount 999 ;
+        sh:nodeKind sh:Literal
+    ] ;
+    sh:property [
+        sh:path gso:tone ;
+        sh:maxCount 1 ;
+        sh:in ( "heroic" "dark" "grim" "comic" "whimsical" "cozy" "tragic" "mysterious" "horror" "romantic" )
+    ] .
+
+gss:StorySceneShape
+    a sh:NodeShape ;
+    sh:targetClass gso:StoryScene ;
+    sh:property [
+        sh:path gso:act ;
+        sh:maxCount 1 ;
+        sh:class gso:Act
+    ] ;
+    sh:property [
+        sh:path gso:branch ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:chapter ;
+        sh:maxCount 1 ;
+        sh:class gso:Chapter
+    ] ;
+    sh:property [
+        sh:path gso:chargeAfter ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal
+    ] ;
+    sh:property [
+        sh:path gso:chargeBefore ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal
+    ] ;
+    sh:property [
+        sh:path gso:climax ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:conflict ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:flashback ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:goal ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:inciting ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:kernel ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:boolean
+    ] ;
+    sh:property [
+        sh:path gso:location ;
+        sh:maxCount 1 ;
+        sh:class gso:Location
+    ] ;
+    sh:property [
+        sh:path gso:mode ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:in ( "cutscene" "dialogue" "gameplay" "environmental" "discoverable" "ambient" )
+    ] ;
+    sh:property [
+        sh:path gso:needsParts ;
+        sh:maxCount 999 ;
+        sh:nodeKind sh:Literal
+    ] ;
+    sh:property [
+        sh:path gso:order ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal
+    ] ;
+    sh:property [
+        sh:path gso:outcome ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:value ;
+        sh:maxCount 1 ;
+        sh:in ( "life-death" "love-hate" "trust-betrayal" "freedom-slavery" "truth-lie" "hope-despair" "loyalty-treachery" "wealth-poverty" "justice-injustice" )
+    ] .
+
+gss:StoryVariableShape
+    a sh:NodeShape ;
+    sh:targetClass gso:StoryVariable ;
+    sh:property [
+        sh:path gso:default ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path gso:type ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+gss:StorylineShape
+    a sh:NodeShape ;
+    sh:targetClass gso:Storyline ;
+    sh:property [
+        sh:path gso:kind ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+gss:WorldRuleShape
+    a sh:NodeShape ;
+    sh:targetClass gso:WorldRule ;
+    sh:property [
+        sh:path gso:text ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+

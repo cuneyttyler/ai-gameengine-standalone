@@ -1,0 +1,1745 @@
+# GSO vocabulary: classes, properties and concept schemes
+#
+# GENERATED from data/story/ by the engine (engine/story/StoryOntology.cpp).
+# Don't edit: change the JSON files and regenerate (ontology/README.md).
+
+@prefix gso:     <https://w3id.org/aige/gso#> .
+@prefix gsv:     <https://w3id.org/aige/gso/vocab#> .
+@prefix gss:     <https://w3id.org/aige/gso/shapes#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix sh:      <http://www.w3.org/ns/shacl#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<https://w3id.org/aige/gso/vocab>
+    a owl:Ontology ;
+    owl:versionInfo "0.1.0" ;
+    owl:imports <https://w3id.org/aige/gso> ;
+    dcterms:title "GSO vocabulary: the Game Story Ontology's classes, properties and vocabularies"@en ;
+    dcterms:license <https://creativecommons.org/licenses/by/4.0/> ;
+    dcterms:creator "AIGE project" .
+
+# --- Classes ---
+
+gso:Act
+    a owl:Class ;
+    gso:layer "plot" ;
+    rdfs:comment "A top-level part of the story."@en ;
+    rdfs:label "Act"@en .
+
+gso:Action
+    a owl:Class ;
+    rdfs:subClassOf gso:Event ;
+    gso:layer "fabula" ;
+    rdfs:comment "An event done by an agent with an intention."@en ;
+    rdfs:label "Action"@en .
+
+gso:Alias
+    a owl:Class ;
+    gso:layer "play" ;
+    rdfs:comment "A role filled when the quest starts."@en ;
+    rdfs:label "Alias"@en .
+
+gso:BackstoryEvent
+    a owl:Class ;
+    rdfs:subClassOf gso:Event ;
+    gso:layer "fabula" ;
+    rdfs:comment "Before the game starts; revealed in play."@en ;
+    rdfs:label "Backstory event"@en .
+
+gso:Bark
+    a owl:Class ;
+    gso:layer "presentation" ;
+    rdfs:comment "A one-line remark with conditions."@en ;
+    rdfs:label "Bark"@en .
+
+gso:Beat
+    a owl:Class ;
+    gso:layer "plot" ;
+    rdfs:comment "A moment inside a scene."@en ;
+    rdfs:label "Beat"@en .
+
+gso:Belief
+    a owl:Class ;
+    gso:layer "world" ;
+    rdfs:comment "What a character knows or believes."@en ;
+    rdfs:label "Belief"@en .
+
+gso:Chapter
+    a owl:Class ;
+    gso:layer "plot" ;
+    rdfs:comment "A group of scenes with one dramatic question."@en ;
+    rdfs:label "Chapter"@en .
+
+gso:Character
+    a owl:Class ;
+    gso:layer "world" ;
+    rdfs:comment "A person or creature with a part in the story."@en ;
+    rdfs:label "Character"@en .
+
+gso:ChoicePoint
+    a owl:Class ;
+    gso:layer "plot" ;
+    rdfs:comment "Where the player's choice changes what follows."@en ;
+    rdfs:label "Choice point"@en .
+
+gso:Conflict
+    a owl:Class ;
+    gso:layer "world" ;
+    rdfs:comment "An opposition."@en ;
+    rdfs:label "Conflict"@en .
+
+gso:Convergence
+    a owl:Class ;
+    gso:layer "plot" ;
+    rdfs:comment "Where branches join again."@en ;
+    rdfs:label "Convergence"@en .
+
+gso:Cutscene
+    a owl:Class ;
+    gso:layer "presentation" ;
+    rdfs:comment "An engine cutscene file."@en ;
+    rdfs:label "Cutscene"@en .
+
+gso:Decision
+    a owl:Class ;
+    gso:layer "provenance" ;
+    rdfs:comment "A recorded choice by the AI or the user."@en ;
+    rdfs:label "Decision"@en .
+
+gso:Dialogue
+    a owl:Class ;
+    gso:layer "presentation" ;
+    rdfs:comment "An engine dialogue file."@en ;
+    rdfs:label "Dialogue"@en .
+
+gso:Document
+    a owl:Class ;
+    gso:layer "presentation" ;
+    rdfs:comment "A readable in the world."@en ;
+    rdfs:label "Document"@en .
+
+gso:Ending
+    a owl:Class ;
+    gso:layer "plot" ;
+    rdfs:comment "One way the story ends."@en ;
+    rdfs:label "Ending"@en .
+
+gso:Event
+    a owl:Class ;
+    gso:layer "fabula" ;
+    rdfs:comment "Something that happens in story time."@en ;
+    rdfs:label "Event"@en .
+
+gso:Faction
+    a owl:Class ;
+    gso:layer "world" ;
+    rdfs:comment "An organisation."@en ;
+    rdfs:label "Faction"@en .
+
+gso:GameplayRole
+    a owl:Class ;
+    gso:layer "world" ;
+    rdfs:comment "A function in play."@en ;
+    rdfs:label "Gameplay role"@en .
+
+gso:Goal
+    a owl:Class ;
+    gso:layer "world" ;
+    rdfs:comment "What a character wants, at a time."@en ;
+    rdfs:label "Goal"@en .
+
+gso:Happening
+    a owl:Class ;
+    rdfs:subClassOf gso:Event ;
+    gso:layer "fabula" ;
+    rdfs:comment "An event without an agent's intention."@en ;
+    rdfs:label "Happening"@en .
+
+gso:Item
+    a owl:Class ;
+    gso:layer "world" ;
+    rdfs:comment "A thing with a part in the story."@en ;
+    rdfs:label "Item"@en .
+
+gso:Location
+    a owl:Class ;
+    gso:layer "world" ;
+    rdfs:comment "A place in the story world."@en ;
+    rdfs:label "Location"@en .
+
+gso:Lore
+    a owl:Class ;
+    gso:layer "world" ;
+    rdfs:comment "Background: history, religion, myths."@en ;
+    rdfs:label "Lore"@en .
+
+gso:NarrativeRole
+    a owl:Class ;
+    gso:layer "world" ;
+    rdfs:comment "A function in a storyline (an archetype, sphere or actant)."@en ;
+    rdfs:label "Narrative role"@en .
+
+gso:Objective
+    a owl:Class ;
+    gso:layer "play" ;
+    rdfs:comment "What the player must do in a stage."@en ;
+    rdfs:label "Objective"@en .
+
+gso:PlayerCharacter
+    a owl:Class ;
+    rdfs:subClassOf gso:Character ;
+    gso:layer "world" ;
+    rdfs:comment "The player's character."@en ;
+    rdfs:label "Player character"@en .
+
+gso:Quest
+    a owl:Class ;
+    gso:layer "play" ;
+    rdfs:comment "A unit of play with a goal, given and completed."@en ;
+    rdfs:label "Quest"@en .
+
+gso:QuestStage
+    a owl:Class ;
+    gso:layer "play" ;
+    rdfs:comment "A numbered state of a quest."@en ;
+    rdfs:label "Quest stage"@en .
+
+gso:Reward
+    a owl:Class ;
+    gso:layer "play" ;
+    rdfs:comment "What completing a quest gives."@en ;
+    rdfs:label "Reward"@en .
+
+gso:Source
+    a owl:Class ;
+    gso:layer "provenance" ;
+    rdfs:comment "A theory, a template, the user's request, a learned fact."@en ;
+    rdfs:label "Source"@en .
+
+gso:Story
+    a owl:Class ;
+    gso:layer "plot" ;
+    rdfs:comment "The game's story."@en ;
+    rdfs:label "Story"@en .
+
+gso:StoryScene
+    a owl:Class ;
+    gso:layer "plot" ;
+    rdfs:comment "One unit of story: a goal pursued against conflict to an outcome, turning a value."@en ;
+    rdfs:label "Story scene"@en .
+
+gso:StoryVariable
+    a owl:Class ;
+    gso:layer "plot" ;
+    rdfs:comment "State the story remembers."@en ;
+    rdfs:label "Story variable"@en .
+
+gso:Storyline
+    a owl:Class ;
+    gso:layer "plot" ;
+    rdfs:comment "A thread of scenes: main, side, companion, faction."@en ;
+    rdfs:label "Storyline"@en .
+
+gso:StructureTemplate
+    a owl:Class ;
+    gso:layer "plot" ;
+    rdfs:comment "A shape for stories, with its beats and their positions."@en ;
+    rdfs:label "Structure template"@en .
+
+gso:Theme
+    a owl:Class ;
+    gso:layer "world" ;
+    rdfs:comment "What the story is about."@en ;
+    rdfs:label "Theme"@en .
+
+gso:WorldRule
+    a owl:Class ;
+    gso:layer "world" ;
+    rdfs:comment "A rule of this world, judged as text by the critic."@en ;
+    rdfs:label "World rule"@en .
+
+# --- Properties ---
+
+gso:actualizes
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Event ;
+    rdfs:range gso:Goal ;
+    rdfs:label "actualizes"@en ;
+    rdfs:comment "Achieves a goal."@en .
+
+gso:advancesScene
+    a owl:ObjectProperty ;
+    rdfs:domain gso:QuestStage ;
+    rdfs:range gso:StoryScene ;
+    rdfs:label "advancesScene"@en ;
+    rdfs:comment "The scene a stage plays."@en .
+
+gso:at
+    a owl:ObjectProperty ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( gso:StoryScene gso:Event ) ] ;
+    rdfs:range gso:Location ;
+    rdfs:label "at"@en ;
+    rdfs:comment "Where it happens."@en .
+
+gso:branchesTo
+    a owl:ObjectProperty ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( gso:StoryScene gso:ChoicePoint ) ] ;
+    rdfs:range [ a owl:Class ; owl:unionOf ( gso:StoryScene gso:Ending gso:Convergence ) ] ;
+    rdfs:label "branchesTo"@en ;
+    rdfs:comment "A branch, via a choice point."@en .
+
+gso:causes
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Event ;
+    rdfs:range gso:Event ;
+    rdfs:label "causes"@en ;
+    rdfs:comment "Causality."@en .
+
+gso:connects
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Location ;
+    rdfs:range gso:Location ;
+    rdfs:label "connects"@en ;
+    rdfs:comment "How two locations join."@en .
+
+gso:consequence
+    a owl:ObjectProperty ;
+    rdfs:domain gso:ChoicePoint ;
+    rdfs:range [ a owl:Class ; owl:unionOf ( gso:StoryVariable gso:StoryScene gso:Character ) ] ;
+    rdfs:label "consequence"@en ;
+    rdfs:comment "What a choice changes."@en .
+
+gso:enables
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Event ;
+    rdfs:range gso:Event ;
+    rdfs:label "enables"@en ;
+    rdfs:comment "Makes possible."@en .
+
+gso:excludes
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Quest ;
+    rdfs:range gso:Quest ;
+    rdfs:label "excludes"@en ;
+    rdfs:comment "Can't both be done."@en .
+
+gso:fills
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Character ;
+    rdfs:range [ a owl:Class ; owl:unionOf ( gso:NarrativeRole gso:GameplayRole ) ] ;
+    rdfs:label "fills"@en ;
+    rdfs:comment "A character fills a role."@en .
+
+gso:gives
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Character ;
+    rdfs:range gso:Quest ;
+    rdfs:label "gives"@en ;
+    rdfs:comment "A quest's giver."@en .
+
+gso:hasAlias
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Quest ;
+    rdfs:range gso:Alias ;
+    rdfs:label "hasAlias"@en ;
+    rdfs:comment "A quest's aliases."@en .
+
+gso:hasChoice
+    a owl:ObjectProperty ;
+    rdfs:domain gso:StoryScene ;
+    rdfs:range gso:ChoicePoint ;
+    rdfs:label "hasChoice"@en ;
+    rdfs:comment "The choice point a scene ends with."@en .
+
+gso:hasGoal
+    a owl:ObjectProperty ;
+    a gso:TemporalProperty ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( gso:Character gso:Faction ) ] ;
+    rdfs:range gso:Goal ;
+    rdfs:label "hasGoal"@en ;
+    rdfs:comment "What it wants, from when to when."@en .
+
+gso:hasObjective
+    a owl:ObjectProperty ;
+    rdfs:domain gso:QuestStage ;
+    rdfs:range gso:Objective ;
+    rdfs:label "hasObjective"@en ;
+    rdfs:comment "A stage's objectives."@en .
+
+gso:hasRelationship
+    a owl:ObjectProperty ;
+    a gso:TemporalProperty ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( gso:Character gso:Faction ) ] ;
+    rdfs:range [ a owl:Class ; owl:unionOf ( gso:Character gso:Faction ) ] ;
+    rdfs:label "hasRelationship"@en ;
+    rdfs:comment "A typed, reified tie."@en .
+
+gso:hasStage
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Quest ;
+    rdfs:range gso:QuestStage ;
+    rdfs:label "hasStage"@en ;
+    rdfs:comment "A quest's stages."@en .
+
+gso:inStoryline
+    a owl:ObjectProperty ;
+    rdfs:domain gso:StoryScene ;
+    rdfs:range gso:Storyline ;
+    rdfs:label "inStoryline"@en ;
+    rdfs:comment "A scene serves a storyline (it may serve several)."@en .
+
+gso:inside
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Location ;
+    rdfs:range gso:Location ;
+    rdfs:label "inside"@en ;
+    rdfs:comment "Region hierarchy: room in building in settlement in region."@en .
+
+gso:knows
+    a owl:ObjectProperty ;
+    a gso:TemporalProperty ;
+    rdfs:domain gso:Character ;
+    rdfs:range gso:Belief ;
+    rdfs:label "knows"@en ;
+    rdfs:comment "What a character knows."@en .
+
+gso:locatedAt
+    a owl:ObjectProperty ;
+    a gso:TemporalProperty ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( gso:Character gso:Item ) ] ;
+    rdfs:range gso:Location ;
+    rdfs:label "locatedAt"@en ;
+    rdfs:comment "Where they are by default."@en .
+
+gso:madeBy
+    a owl:ObjectProperty ;
+    rdfs:range gso:Decision ;
+    rdfs:label "madeBy"@en ;
+    rdfs:comment "Provenance."@en .
+
+gso:memberOf
+    a owl:ObjectProperty ;
+    a gso:TemporalProperty ;
+    rdfs:domain gso:Character ;
+    rdfs:range gso:Faction ;
+    rdfs:label "memberOf"@en ;
+    rdfs:comment "Membership."@en .
+
+gso:mentions
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Character ;
+    rdfs:label "mentions"@en ;
+    rdfs:comment "What a character speaks of in a scene's dialogue (checked against what it knows)."@en .
+
+gso:motivates
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Event ;
+    rdfs:range gso:Goal ;
+    rdfs:label "motivates"@en ;
+    rdfs:comment "Gives an agent a goal."@en .
+
+gso:needsCharacter
+    a owl:ObjectProperty ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( gso:Quest gso:QuestStage ) ] ;
+    rdfs:range gso:Character ;
+    rdfs:label "needsCharacter"@en ;
+    rdfs:comment "A character the quest needs alive."@en .
+
+gso:next
+    a owl:ObjectProperty ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( gso:StoryScene gso:Convergence ) ] ;
+    rdfs:range [ a owl:Class ; owl:unionOf ( gso:StoryScene gso:Ending gso:Convergence ) ] ;
+    rdfs:label "next"@en ;
+    rdfs:comment "Discourse order (a convergence leads on to its scene)."@en .
+
+gso:partOf
+    a owl:ObjectProperty ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( gso:Beat gso:StoryScene gso:Chapter gso:Act ) ] ;
+    rdfs:range [ a owl:Class ; owl:unionOf ( gso:StoryScene gso:Chapter gso:Act gso:Story ) ] ;
+    rdfs:label "partOf"@en ;
+    rdfs:comment "Mereology: beat, scene, chapter, act, story."@en .
+
+gso:participant
+    a owl:ObjectProperty ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( gso:StoryScene gso:Event ) ] ;
+    rdfs:range gso:Character ;
+    rdfs:label "participant"@en ;
+    rdfs:comment "Who takes part, with a role."@en .
+
+gso:paysOff
+    a owl:ObjectProperty ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( gso:Event gso:StoryScene ) ] ;
+    rdfs:range [ a owl:Class ; owl:unionOf ( gso:Event gso:Item ) ] ;
+    rdfs:label "paysOff"@en ;
+    rdfs:comment "A setup paid off."@en .
+
+gso:possesses
+    a owl:ObjectProperty ;
+    a gso:TemporalProperty ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( gso:Character gso:Location ) ] ;
+    rdfs:range gso:Item ;
+    rdfs:label "possesses"@en ;
+    rdfs:comment "Who has what."@en .
+
+gso:presents
+    a owl:ObjectProperty ;
+    rdfs:domain gso:StoryScene ;
+    rdfs:range gso:Event ;
+    rdfs:label "presents"@en ;
+    rdfs:comment "The events a scene shows."@en .
+
+gso:prevents
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Event ;
+    rdfs:range [ a owl:Class ; owl:unionOf ( gso:Event gso:Goal ) ] ;
+    rdfs:label "prevents"@en ;
+    rdfs:comment "Stops."@en .
+
+gso:realizedBy
+    a owl:ObjectProperty ;
+    rdfs:label "realizedBy"@en ;
+    rdfs:comment "The engine file or entity that realises it."@en .
+
+gso:requiresQuest
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Quest ;
+    rdfs:range gso:Quest ;
+    rdfs:label "requiresQuest"@en ;
+    rdfs:comment "Must be done first."@en .
+
+gso:resolves
+    a owl:ObjectProperty ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( gso:Event gso:Ending ) ] ;
+    rdfs:range gso:Conflict ;
+    rdfs:label "resolves"@en ;
+    rdfs:comment "Ends a conflict."@en .
+
+gso:serves
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Action ;
+    rdfs:range gso:Goal ;
+    rdfs:label "serves"@en ;
+    rdfs:comment "The goal an action serves (intentionality)."@en .
+
+gso:state
+    a owl:ObjectProperty ;
+    a gso:TemporalProperty ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( gso:Character gso:Location gso:Item ) ] ;
+    rdfs:label "state"@en ;
+    rdfs:comment "A state over time: alive, dead, cursed, destroyed (byQuest: the quest that causes it)."@en .
+
+# --- Vocabularies (SKOS) ---
+
+gsv:Actant
+    a skos:ConceptScheme ;
+    skos:prefLabel "Actant"@en .
+
+gsv:Actant_subject
+    a skos:Concept ;
+    skos:inScheme gsv:Actant ;
+    skos:notation "subject" ;
+    skos:prefLabel "subject"@en .
+
+gsv:Actant_object
+    a skos:Concept ;
+    skos:inScheme gsv:Actant ;
+    skos:notation "object" ;
+    skos:prefLabel "object"@en .
+
+gsv:Actant_sender
+    a skos:Concept ;
+    skos:inScheme gsv:Actant ;
+    skos:notation "sender" ;
+    skos:prefLabel "sender"@en .
+
+gsv:Actant_receiver
+    a skos:Concept ;
+    skos:inScheme gsv:Actant ;
+    skos:notation "receiver" ;
+    skos:prefLabel "receiver"@en .
+
+gsv:Actant_helper
+    a skos:Concept ;
+    skos:inScheme gsv:Actant ;
+    skos:notation "helper" ;
+    skos:prefLabel "helper"@en .
+
+gsv:Actant_opponent
+    a skos:Concept ;
+    skos:inScheme gsv:Actant ;
+    skos:notation "opponent" ;
+    skos:prefLabel "opponent"@en .
+
+gsv:BranchingPattern
+    a skos:ConceptScheme ;
+    skos:prefLabel "BranchingPattern"@en .
+
+gsv:BranchingPattern_linear
+    a skos:Concept ;
+    skos:inScheme gsv:BranchingPattern ;
+    skos:notation "linear" ;
+    skos:prefLabel "linear"@en .
+
+gsv:BranchingPattern_gauntlet
+    a skos:Concept ;
+    skos:inScheme gsv:BranchingPattern ;
+    skos:notation "gauntlet" ;
+    skos:prefLabel "gauntlet"@en .
+
+gsv:BranchingPattern_branch_and_bottleneck
+    a skos:Concept ;
+    skos:inScheme gsv:BranchingPattern ;
+    skos:notation "branch-and-bottleneck" ;
+    skos:prefLabel "branch-and-bottleneck"@en .
+
+gsv:BranchingPattern_time_cave
+    a skos:Concept ;
+    skos:inScheme gsv:BranchingPattern ;
+    skos:notation "time-cave" ;
+    skos:prefLabel "time-cave"@en .
+
+gsv:BranchingPattern_quest
+    a skos:Concept ;
+    skos:inScheme gsv:BranchingPattern ;
+    skos:notation "quest" ;
+    skos:prefLabel "quest"@en .
+
+gsv:BranchingPattern_open_map
+    a skos:Concept ;
+    skos:inScheme gsv:BranchingPattern ;
+    skos:notation "open-map" ;
+    skos:prefLabel "open-map"@en .
+
+gsv:BranchingPattern_sorting_hat
+    a skos:Concept ;
+    skos:inScheme gsv:BranchingPattern ;
+    skos:notation "sorting-hat" ;
+    skos:prefLabel "sorting-hat"@en .
+
+gsv:BranchingPattern_floating_modules
+    a skos:Concept ;
+    skos:inScheme gsv:BranchingPattern ;
+    skos:notation "floating-modules" ;
+    skos:prefLabel "floating-modules"@en .
+
+gsv:BranchingPattern_loop_and_grow
+    a skos:Concept ;
+    skos:inScheme gsv:BranchingPattern ;
+    skos:notation "loop-and-grow" ;
+    skos:prefLabel "loop-and-grow"@en .
+
+gsv:ConflictType
+    a skos:ConceptScheme ;
+    skos:prefLabel "ConflictType"@en .
+
+gsv:ConflictType_person
+    a skos:Concept ;
+    skos:inScheme gsv:ConflictType ;
+    skos:notation "person" ;
+    skos:prefLabel "person"@en .
+
+gsv:ConflictType_society
+    a skos:Concept ;
+    skos:inScheme gsv:ConflictType ;
+    skos:notation "society" ;
+    skos:prefLabel "society"@en .
+
+gsv:ConflictType_nature
+    a skos:Concept ;
+    skos:inScheme gsv:ConflictType ;
+    skos:notation "nature" ;
+    skos:prefLabel "nature"@en .
+
+gsv:ConflictType_self
+    a skos:Concept ;
+    skos:inScheme gsv:ConflictType ;
+    skos:notation "self" ;
+    skos:prefLabel "self"@en .
+
+gsv:ConflictType_fate
+    a skos:Concept ;
+    skos:inScheme gsv:ConflictType ;
+    skos:notation "fate" ;
+    skos:prefLabel "fate"@en .
+
+gsv:ConflictType_technology
+    a skos:Concept ;
+    skos:inScheme gsv:ConflictType ;
+    skos:notation "technology" ;
+    skos:prefLabel "technology"@en .
+
+gsv:ConflictType_supernatural
+    a skos:Concept ;
+    skos:inScheme gsv:ConflictType ;
+    skos:notation "supernatural" ;
+    skos:prefLabel "supernatural"@en .
+
+gsv:GameplayRole
+    a skos:ConceptScheme ;
+    skos:prefLabel "GameplayRole"@en .
+
+gsv:GameplayRole_quest_giver
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "quest-giver" ;
+    skos:prefLabel "quest-giver"@en .
+
+gsv:GameplayRole_vendor
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "vendor" ;
+    skos:prefLabel "vendor"@en .
+
+gsv:GameplayRole_trainer
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "trainer" ;
+    skos:prefLabel "trainer"@en .
+
+gsv:GameplayRole_companion
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "companion" ;
+    skos:prefLabel "companion"@en .
+
+gsv:GameplayRole_enemy
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "enemy" ;
+    skos:prefLabel "enemy"@en .
+
+gsv:GameplayRole_elite
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "elite" ;
+    skos:prefLabel "elite"@en .
+
+gsv:GameplayRole_boss
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "boss" ;
+    skos:prefLabel "boss"@en .
+
+gsv:GameplayRole_guard
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "guard" ;
+    skos:prefLabel "guard"@en .
+
+gsv:GameplayRole_innkeeper
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "innkeeper" ;
+    skos:prefLabel "innkeeper"@en .
+
+gsv:GameplayRole_healer
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "healer" ;
+    skos:prefLabel "healer"@en .
+
+gsv:GameplayRole_transport
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "transport" ;
+    skos:prefLabel "transport"@en .
+
+gsv:GameplayRole_information
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "information" ;
+    skos:prefLabel "information"@en .
+
+gsv:GameplayRole_crafter
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "crafter" ;
+    skos:prefLabel "crafter"@en .
+
+gsv:GameplayRole_quest_target
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "quest-target" ;
+    skos:prefLabel "quest-target"@en .
+
+gsv:GameplayRole_civilian
+    a skos:Concept ;
+    skos:inScheme gsv:GameplayRole ;
+    skos:notation "civilian" ;
+    skos:prefLabel "civilian"@en .
+
+gsv:Importance
+    a skos:ConceptScheme ;
+    skos:prefLabel "Importance"@en .
+
+gsv:Importance_major
+    a skos:Concept ;
+    skos:inScheme gsv:Importance ;
+    skos:notation "major" ;
+    skos:prefLabel "major"@en .
+
+gsv:Importance_supporting
+    a skos:Concept ;
+    skos:inScheme gsv:Importance ;
+    skos:notation "supporting" ;
+    skos:prefLabel "supporting"@en .
+
+gsv:Importance_minor
+    a skos:Concept ;
+    skos:inScheme gsv:Importance ;
+    skos:notation "minor" ;
+    skos:prefLabel "minor"@en .
+
+gsv:Importance_extra
+    a skos:Concept ;
+    skos:inScheme gsv:Importance ;
+    skos:notation "extra" ;
+    skos:prefLabel "extra"@en .
+
+gsv:Motivation
+    a skos:ConceptScheme ;
+    skos:prefLabel "Motivation"@en .
+
+gsv:Motivation_knowledge
+    a skos:Concept ;
+    skos:inScheme gsv:Motivation ;
+    skos:notation "knowledge" ;
+    skos:prefLabel "knowledge"@en .
+
+gsv:Motivation_comfort
+    a skos:Concept ;
+    skos:inScheme gsv:Motivation ;
+    skos:notation "comfort" ;
+    skos:prefLabel "comfort"@en .
+
+gsv:Motivation_reputation
+    a skos:Concept ;
+    skos:inScheme gsv:Motivation ;
+    skos:notation "reputation" ;
+    skos:prefLabel "reputation"@en .
+
+gsv:Motivation_serenity
+    a skos:Concept ;
+    skos:inScheme gsv:Motivation ;
+    skos:notation "serenity" ;
+    skos:prefLabel "serenity"@en .
+
+gsv:Motivation_protection
+    a skos:Concept ;
+    skos:inScheme gsv:Motivation ;
+    skos:notation "protection" ;
+    skos:prefLabel "protection"@en .
+
+gsv:Motivation_conquest
+    a skos:Concept ;
+    skos:inScheme gsv:Motivation ;
+    skos:notation "conquest" ;
+    skos:prefLabel "conquest"@en .
+
+gsv:Motivation_wealth
+    a skos:Concept ;
+    skos:inScheme gsv:Motivation ;
+    skos:notation "wealth" ;
+    skos:prefLabel "wealth"@en .
+
+gsv:Motivation_ability
+    a skos:Concept ;
+    skos:inScheme gsv:Motivation ;
+    skos:notation "ability" ;
+    skos:prefLabel "ability"@en .
+
+gsv:Motivation_equipment
+    a skos:Concept ;
+    skos:inScheme gsv:Motivation ;
+    skos:notation "equipment" ;
+    skos:prefLabel "equipment"@en .
+
+gsv:NarrativeRole
+    a skos:ConceptScheme ;
+    skos:prefLabel "NarrativeRole"@en .
+
+gsv:NarrativeRole_protagonist
+    a skos:Concept ;
+    skos:inScheme gsv:NarrativeRole ;
+    skos:notation "protagonist" ;
+    skos:prefLabel "protagonist"@en .
+
+gsv:NarrativeRole_antagonist
+    a skos:Concept ;
+    skos:inScheme gsv:NarrativeRole ;
+    skos:notation "antagonist" ;
+    skos:prefLabel "antagonist"@en .
+
+gsv:NarrativeRole_deuteragonist
+    a skos:Concept ;
+    skos:inScheme gsv:NarrativeRole ;
+    skos:notation "deuteragonist" ;
+    skos:prefLabel "deuteragonist"@en .
+
+gsv:NarrativeRole_mentor
+    a skos:Concept ;
+    skos:inScheme gsv:NarrativeRole ;
+    skos:notation "mentor" ;
+    skos:prefLabel "mentor"@en .
+
+gsv:NarrativeRole_ally
+    a skos:Concept ;
+    skos:inScheme gsv:NarrativeRole ;
+    skos:notation "ally" ;
+    skos:prefLabel "ally"@en .
+
+gsv:NarrativeRole_herald
+    a skos:Concept ;
+    skos:inScheme gsv:NarrativeRole ;
+    skos:notation "herald" ;
+    skos:prefLabel "herald"@en .
+
+gsv:NarrativeRole_threshold_guardian
+    a skos:Concept ;
+    skos:inScheme gsv:NarrativeRole ;
+    skos:notation "threshold-guardian" ;
+    skos:prefLabel "threshold-guardian"@en .
+
+gsv:NarrativeRole_shapeshifter
+    a skos:Concept ;
+    skos:inScheme gsv:NarrativeRole ;
+    skos:notation "shapeshifter" ;
+    skos:prefLabel "shapeshifter"@en .
+
+gsv:NarrativeRole_trickster
+    a skos:Concept ;
+    skos:inScheme gsv:NarrativeRole ;
+    skos:notation "trickster" ;
+    skos:prefLabel "trickster"@en .
+
+gsv:NarrativeRole_love_interest
+    a skos:Concept ;
+    skos:inScheme gsv:NarrativeRole ;
+    skos:notation "love-interest" ;
+    skos:prefLabel "love-interest"@en .
+
+gsv:NarrativeRole_false_hero
+    a skos:Concept ;
+    skos:inScheme gsv:NarrativeRole ;
+    skos:notation "false-hero" ;
+    skos:prefLabel "false-hero"@en .
+
+gsv:NarrativeRole_dispatcher
+    a skos:Concept ;
+    skos:inScheme gsv:NarrativeRole ;
+    skos:notation "dispatcher" ;
+    skos:prefLabel "dispatcher"@en .
+
+gsv:NarrativeRole_donor
+    a skos:Concept ;
+    skos:inScheme gsv:NarrativeRole ;
+    skos:notation "donor" ;
+    skos:prefLabel "donor"@en .
+
+gsv:NarrativeRole_foil
+    a skos:Concept ;
+    skos:inScheme gsv:NarrativeRole ;
+    skos:notation "foil" ;
+    skos:prefLabel "foil"@en .
+
+gsv:ObjectiveAction
+    a skos:ConceptScheme ;
+    skos:prefLabel "ObjectiveAction"@en .
+
+gsv:ObjectiveAction_goto
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "goto" ;
+    skos:prefLabel "goto"@en .
+
+gsv:ObjectiveAction_reach
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "reach" ;
+    skos:prefLabel "reach"@en .
+
+gsv:ObjectiveAction_talk
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "talk" ;
+    skos:prefLabel "talk"@en .
+
+gsv:ObjectiveAction_kill
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "kill" ;
+    skos:prefLabel "kill"@en .
+
+gsv:ObjectiveAction_defeat_count
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "defeat-count" ;
+    skos:prefLabel "defeat-count"@en .
+
+gsv:ObjectiveAction_gather
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "gather" ;
+    skos:prefLabel "gather"@en .
+
+gsv:ObjectiveAction_collect
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "collect" ;
+    skos:prefLabel "collect"@en .
+
+gsv:ObjectiveAction_deliver
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "deliver" ;
+    skos:prefLabel "deliver"@en .
+
+gsv:ObjectiveAction_escort
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "escort" ;
+    skos:prefLabel "escort"@en .
+
+gsv:ObjectiveAction_defend
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "defend" ;
+    skos:prefLabel "defend"@en .
+
+gsv:ObjectiveAction_use
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "use" ;
+    skos:prefLabel "use"@en .
+
+gsv:ObjectiveAction_interact
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "interact" ;
+    skos:prefLabel "interact"@en .
+
+gsv:ObjectiveAction_examine
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "examine" ;
+    skos:prefLabel "examine"@en .
+
+gsv:ObjectiveAction_spy
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "spy" ;
+    skos:prefLabel "spy"@en .
+
+gsv:ObjectiveAction_stealth
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "stealth" ;
+    skos:prefLabel "stealth"@en .
+
+gsv:ObjectiveAction_capture
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "capture" ;
+    skos:prefLabel "capture"@en .
+
+gsv:ObjectiveAction_free
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "free" ;
+    skos:prefLabel "free"@en .
+
+gsv:ObjectiveAction_craft
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "craft" ;
+    skos:prefLabel "craft"@en .
+
+gsv:ObjectiveAction_wait
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "wait" ;
+    skos:prefLabel "wait"@en .
+
+gsv:ObjectiveAction_choose
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "choose" ;
+    skos:prefLabel "choose"@en .
+
+gsv:ObjectiveAction_survive
+    a skos:Concept ;
+    skos:inScheme gsv:ObjectiveAction ;
+    skos:notation "survive" ;
+    skos:prefLabel "survive"@en .
+
+gsv:RelationshipType
+    a skos:ConceptScheme ;
+    skos:prefLabel "RelationshipType"@en .
+
+gsv:RelationshipType_parent
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "parent" ;
+    skos:prefLabel "parent"@en .
+
+gsv:RelationshipType_child
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "child" ;
+    skos:prefLabel "child"@en .
+
+gsv:RelationshipType_sibling
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "sibling" ;
+    skos:prefLabel "sibling"@en .
+
+gsv:RelationshipType_spouse
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "spouse" ;
+    skos:prefLabel "spouse"@en .
+
+gsv:RelationshipType_romantic
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "romantic" ;
+    skos:prefLabel "romantic"@en .
+
+gsv:RelationshipType_friend
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "friend" ;
+    skos:prefLabel "friend"@en .
+
+gsv:RelationshipType_rival
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "rival" ;
+    skos:prefLabel "rival"@en .
+
+gsv:RelationshipType_enemy
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "enemy" ;
+    skos:prefLabel "enemy"@en .
+
+gsv:RelationshipType_mentor_of
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "mentor-of" ;
+    skos:prefLabel "mentor-of"@en .
+
+gsv:RelationshipType_student_of
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "student-of" ;
+    skos:prefLabel "student-of"@en .
+
+gsv:RelationshipType_serves
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "serves" ;
+    skos:prefLabel "serves"@en .
+
+gsv:RelationshipType_employs
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "employs" ;
+    skos:prefLabel "employs"@en .
+
+gsv:RelationshipType_owes
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "owes" ;
+    skos:prefLabel "owes"@en .
+
+gsv:RelationshipType_trusts
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "trusts" ;
+    skos:prefLabel "trusts"@en .
+
+gsv:RelationshipType_fears
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "fears" ;
+    skos:prefLabel "fears"@en .
+
+gsv:RelationshipType_betrayed_by
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "betrayed-by" ;
+    skos:prefLabel "betrayed-by"@en .
+
+gsv:RelationshipType_member_of
+    a skos:Concept ;
+    skos:inScheme gsv:RelationshipType ;
+    skos:notation "member-of" ;
+    skos:prefLabel "member-of"@en .
+
+gsv:SceneMode
+    a skos:ConceptScheme ;
+    skos:prefLabel "SceneMode"@en .
+
+gsv:SceneMode_cutscene
+    a skos:Concept ;
+    skos:inScheme gsv:SceneMode ;
+    skos:notation "cutscene" ;
+    skos:prefLabel "cutscene"@en .
+
+gsv:SceneMode_dialogue
+    a skos:Concept ;
+    skos:inScheme gsv:SceneMode ;
+    skos:notation "dialogue" ;
+    skos:prefLabel "dialogue"@en .
+
+gsv:SceneMode_gameplay
+    a skos:Concept ;
+    skos:inScheme gsv:SceneMode ;
+    skos:notation "gameplay" ;
+    skos:prefLabel "gameplay"@en .
+
+gsv:SceneMode_environmental
+    a skos:Concept ;
+    skos:inScheme gsv:SceneMode ;
+    skos:notation "environmental" ;
+    skos:prefLabel "environmental"@en .
+
+gsv:SceneMode_discoverable
+    a skos:Concept ;
+    skos:inScheme gsv:SceneMode ;
+    skos:notation "discoverable" ;
+    skos:prefLabel "discoverable"@en .
+
+gsv:SceneMode_ambient
+    a skos:Concept ;
+    skos:inScheme gsv:SceneMode ;
+    skos:notation "ambient" ;
+    skos:prefLabel "ambient"@en .
+
+gsv:StructureTemplate
+    a skos:ConceptScheme ;
+    skos:prefLabel "StructureTemplate"@en .
+
+gsv:StructureTemplate_three_act
+    a skos:Concept ;
+    skos:inScheme gsv:StructureTemplate ;
+    skos:notation "three-act" ;
+    skos:prefLabel "three-act"@en .
+
+gsv:StructureTemplate_heros_journey
+    a skos:Concept ;
+    skos:inScheme gsv:StructureTemplate ;
+    skos:notation "heros-journey" ;
+    skos:prefLabel "heros-journey"@en .
+
+gsv:StructureTemplate_five_act
+    a skos:Concept ;
+    skos:inScheme gsv:StructureTemplate ;
+    skos:notation "five-act" ;
+    skos:prefLabel "five-act"@en .
+
+gsv:StructureTemplate_save_the_cat
+    a skos:Concept ;
+    skos:inScheme gsv:StructureTemplate ;
+    skos:notation "save-the-cat" ;
+    skos:prefLabel "save-the-cat"@en .
+
+gsv:StructureTemplate_kishotenketsu
+    a skos:Concept ;
+    skos:inScheme gsv:StructureTemplate ;
+    skos:notation "kishotenketsu" ;
+    skos:prefLabel "kishotenketsu"@en .
+
+gsv:StructureTemplate_episodic
+    a skos:Concept ;
+    skos:inScheme gsv:StructureTemplate ;
+    skos:notation "episodic" ;
+    skos:prefLabel "episodic"@en .
+
+gsv:Tone
+    a skos:ConceptScheme ;
+    skos:prefLabel "Tone"@en .
+
+gsv:Tone_heroic
+    a skos:Concept ;
+    skos:inScheme gsv:Tone ;
+    skos:notation "heroic" ;
+    skos:prefLabel "heroic"@en .
+
+gsv:Tone_dark
+    a skos:Concept ;
+    skos:inScheme gsv:Tone ;
+    skos:notation "dark" ;
+    skos:prefLabel "dark"@en .
+
+gsv:Tone_grim
+    a skos:Concept ;
+    skos:inScheme gsv:Tone ;
+    skos:notation "grim" ;
+    skos:prefLabel "grim"@en .
+
+gsv:Tone_comic
+    a skos:Concept ;
+    skos:inScheme gsv:Tone ;
+    skos:notation "comic" ;
+    skos:prefLabel "comic"@en .
+
+gsv:Tone_whimsical
+    a skos:Concept ;
+    skos:inScheme gsv:Tone ;
+    skos:notation "whimsical" ;
+    skos:prefLabel "whimsical"@en .
+
+gsv:Tone_cozy
+    a skos:Concept ;
+    skos:inScheme gsv:Tone ;
+    skos:notation "cozy" ;
+    skos:prefLabel "cozy"@en .
+
+gsv:Tone_tragic
+    a skos:Concept ;
+    skos:inScheme gsv:Tone ;
+    skos:notation "tragic" ;
+    skos:prefLabel "tragic"@en .
+
+gsv:Tone_mysterious
+    a skos:Concept ;
+    skos:inScheme gsv:Tone ;
+    skos:notation "mysterious" ;
+    skos:prefLabel "mysterious"@en .
+
+gsv:Tone_horror
+    a skos:Concept ;
+    skos:inScheme gsv:Tone ;
+    skos:notation "horror" ;
+    skos:prefLabel "horror"@en .
+
+gsv:Tone_romantic
+    a skos:Concept ;
+    skos:inScheme gsv:Tone ;
+    skos:notation "romantic" ;
+    skos:prefLabel "romantic"@en .
+
+gsv:Trait
+    a skos:ConceptScheme ;
+    skos:prefLabel "Trait"@en .
+
+gsv:Trait_open
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "open" ;
+    skos:prefLabel "open"@en .
+
+gsv:Trait_closed
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "closed" ;
+    skos:prefLabel "closed"@en .
+
+gsv:Trait_conscientious
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "conscientious" ;
+    skos:prefLabel "conscientious"@en .
+
+gsv:Trait_careless
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "careless" ;
+    skos:prefLabel "careless"@en .
+
+gsv:Trait_extravert
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "extravert" ;
+    skos:prefLabel "extravert"@en .
+
+gsv:Trait_introvert
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "introvert" ;
+    skos:prefLabel "introvert"@en .
+
+gsv:Trait_agreeable
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "agreeable" ;
+    skos:prefLabel "agreeable"@en .
+
+gsv:Trait_hostile
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "hostile" ;
+    skos:prefLabel "hostile"@en .
+
+gsv:Trait_neurotic
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "neurotic" ;
+    skos:prefLabel "neurotic"@en .
+
+gsv:Trait_calm
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "calm" ;
+    skos:prefLabel "calm"@en .
+
+gsv:Trait_brave
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "brave" ;
+    skos:prefLabel "brave"@en .
+
+gsv:Trait_cowardly
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "cowardly" ;
+    skos:prefLabel "cowardly"@en .
+
+gsv:Trait_greedy
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "greedy" ;
+    skos:prefLabel "greedy"@en .
+
+gsv:Trait_generous
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "generous" ;
+    skos:prefLabel "generous"@en .
+
+gsv:Trait_loyal
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "loyal" ;
+    skos:prefLabel "loyal"@en .
+
+gsv:Trait_treacherous
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "treacherous" ;
+    skos:prefLabel "treacherous"@en .
+
+gsv:Trait_pious
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "pious" ;
+    skos:prefLabel "pious"@en .
+
+gsv:Trait_cynical
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "cynical" ;
+    skos:prefLabel "cynical"@en .
+
+gsv:Trait_curious
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "curious" ;
+    skos:prefLabel "curious"@en .
+
+gsv:Trait_proud
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "proud" ;
+    skos:prefLabel "proud"@en .
+
+gsv:Trait_humble
+    a skos:Concept ;
+    skos:inScheme gsv:Trait ;
+    skos:notation "humble" ;
+    skos:prefLabel "humble"@en .
+
+gsv:Value
+    a skos:ConceptScheme ;
+    skos:prefLabel "Value"@en .
+
+gsv:Value_life_death
+    a skos:Concept ;
+    skos:inScheme gsv:Value ;
+    skos:notation "life-death" ;
+    skos:prefLabel "life-death"@en .
+
+gsv:Value_love_hate
+    a skos:Concept ;
+    skos:inScheme gsv:Value ;
+    skos:notation "love-hate" ;
+    skos:prefLabel "love-hate"@en .
+
+gsv:Value_trust_betrayal
+    a skos:Concept ;
+    skos:inScheme gsv:Value ;
+    skos:notation "trust-betrayal" ;
+    skos:prefLabel "trust-betrayal"@en .
+
+gsv:Value_freedom_slavery
+    a skos:Concept ;
+    skos:inScheme gsv:Value ;
+    skos:notation "freedom-slavery" ;
+    skos:prefLabel "freedom-slavery"@en .
+
+gsv:Value_truth_lie
+    a skos:Concept ;
+    skos:inScheme gsv:Value ;
+    skos:notation "truth-lie" ;
+    skos:prefLabel "truth-lie"@en .
+
+gsv:Value_hope_despair
+    a skos:Concept ;
+    skos:inScheme gsv:Value ;
+    skos:notation "hope-despair" ;
+    skos:prefLabel "hope-despair"@en .
+
+gsv:Value_loyalty_treachery
+    a skos:Concept ;
+    skos:inScheme gsv:Value ;
+    skos:notation "loyalty-treachery" ;
+    skos:prefLabel "loyalty-treachery"@en .
+
+gsv:Value_wealth_poverty
+    a skos:Concept ;
+    skos:inScheme gsv:Value ;
+    skos:notation "wealth-poverty" ;
+    skos:prefLabel "wealth-poverty"@en .
+
+gsv:Value_justice_injustice
+    a skos:Concept ;
+    skos:inScheme gsv:Value ;
+    skos:notation "justice-injustice" ;
+    skos:prefLabel "justice-injustice"@en .
+
+# --- Structure templates ---
+
+gsv:StructureTemplate_episodic
+    gso:acts "chapters" ;
+    gso:roles "protagonist" .
+
+gsv:StructureTemplate_five_act
+    gso:acts "exposition, rising-action, climax-act, falling-action, denouement" ;
+    gso:roles "protagonist, antagonist" .
+
+gsv:StructureTemplate_heros_journey
+    gso:acts "departure, initiation, return" ;
+    gso:roles "protagonist, mentor, antagonist, threshold-guardian, herald" .
+
+gsv:StructureTemplate_kishotenketsu
+    gso:acts "ki, sho, ten, ketsu" ;
+    gso:roles "protagonist" .
+
+gsv:StructureTemplate_save_the_cat
+    gso:acts "act-1, act-2a, act-2b, act-3" ;
+    gso:roles "protagonist, antagonist" .
+
+gsv:StructureTemplate_three_act
+    gso:acts "setup, confrontation, resolution" ;
+    gso:roles "protagonist, antagonist" .
+
+# --- Rules ---
+
+gso:rule_R_S1
+    a gso:StoryRule ;
+    gso:ruleId "R-S1" ;
+    gso:severity "error" ;
+    rdfs:comment "Every act has at least one scene; acts follow the template's order."@en .
+
+gso:rule_R_S2
+    a gso:StoryRule ;
+    gso:ruleId "R-S2" ;
+    gso:severity "error" ;
+    rdfs:comment "Every main-line scene is reachable from the first scene along next/branchesTo."@en .
+
+gso:rule_R_S3
+    a gso:StoryRule ;
+    gso:ruleId "R-S3" ;
+    gso:severity "error" ;
+    rdfs:comment "Every branch reaches an ending or a convergence."@en .
+
+gso:rule_R_S4
+    a gso:StoryRule ;
+    gso:ruleId "R-S4" ;
+    gso:severity "warning" ;
+    rdfs:comment "Every choice point option has consequences."@en .
+
+gso:rule_R_S5
+    a gso:StoryRule ;
+    gso:ruleId "R-S5" ;
+    gso:severity "warning" ;
+    rdfs:comment "The climax is in the last 25% of the main line."@en .
+
+gso:rule_R_S6
+    a gso:StoryRule ;
+    gso:ruleId "R-S6" ;
+    gso:severity "warning" ;
+    rdfs:comment "Every kernel scene turns its value."@en .
+
+gso:rule_R_C1
+    a gso:StoryRule ;
+    gso:ruleId "R-C1" ;
+    gso:severity "warning" ;
+    rdfs:comment "Every kernel event is caused or enabled by an earlier event, or is the inciting incident."@en .
+
+gso:rule_R_C2
+    a gso:StoryRule ;
+    gso:ruleId "R-C2" ;
+    gso:severity "warning" ;
+    rdfs:comment "Every action in a kernel scene serves an agent's goal."@en .
+
+gso:rule_R_C3
+    a gso:StoryRule ;
+    gso:ruleId "R-C3" ;
+    gso:severity "warning" ;
+    rdfs:comment "Every setup is paid off, or marked openEnded."@en .
+
+gso:rule_R_C4
+    a gso:StoryRule ;
+    gso:ruleId "R-C4" ;
+    gso:severity "warning" ;
+    rdfs:comment "Every conflict is resolved, or deliberately left open."@en .
+
+gso:rule_R_T1
+    a gso:StoryRule ;
+    gso:ruleId "R-T1" ;
+    gso:severity "error" ;
+    rdfs:comment "A character participates only while alive (unless a flashback or undead)."@en .
+
+gso:rule_R_T2
+    a gso:StoryRule ;
+    gso:ruleId "R-T2" ;
+    gso:severity "error" ;
+    rdfs:comment "A character is in one location per scene."@en .
+
+gso:rule_R_T3
+    a gso:StoryRule ;
+    gso:ruleId "R-T3" ;
+    gso:severity "error" ;
+    rdfs:comment "A character refers only to what it knows at that scene."@en .
+
+gso:rule_R_T4
+    a gso:StoryRule ;
+    gso:ruleId "R-T4" ;
+    gso:severity "error" ;
+    rdfs:comment "A unique item has one possessor at a time."@en .
+
+gso:rule_R_T5
+    a gso:StoryRule ;
+    gso:ruleId "R-T5" ;
+    gso:severity "warning" ;
+    rdfs:comment "Relationship changes have a cause: a scene that presents the change."@en .
+
+gso:rule_R_T6
+    a gso:StoryRule ;
+    gso:ruleId "R-T6" ;
+    gso:severity "warning" ;
+    rdfs:comment "Travel between consecutive scenes is possible by connections."@en .
+
+gso:rule_R_K1
+    a gso:StoryRule ;
+    gso:ruleId "R-K1" ;
+    gso:severity "error" ;
+    rdfs:comment "Every narrative role the template requires is filled."@en .
+
+gso:rule_R_K2
+    a gso:StoryRule ;
+    gso:ruleId "R-K2" ;
+    gso:severity "warning" ;
+    rdfs:comment "Every major character has need, desire, motivation and an arc or a reason not to change."@en .
+
+gso:rule_R_K3
+    a gso:StoryRule ;
+    gso:ruleId "R-K3" ;
+    gso:severity "error" ;
+    rdfs:comment "Relationships are consistent both ways."@en .
+
+gso:rule_R_K4
+    a gso:StoryRule ;
+    gso:ruleId "R-K4" ;
+    gso:severity "warning" ;
+    rdfs:comment "Names are unique and distinguishable."@en .
+
+gso:rule_R_K5
+    a gso:StoryRule ;
+    gso:ruleId "R-K5" ;
+    gso:severity "error" ;
+    rdfs:comment "Every character with a gameplay role has what it needs."@en .
+
+gso:rule_R_K6
+    a gso:StoryRule ;
+    gso:ruleId "R-K6" ;
+    gso:severity "warning" ;
+    rdfs:comment "Every character placed in the world has an AI package or a reason to stand still."@en .
+
+gso:rule_R_Q1
+    a gso:StoryRule ;
+    gso:ruleId "R-Q1" ;
+    gso:severity "error" ;
+    rdfs:comment "Every main-line kernel scene in gameplay mode is advanced by a main-quest stage."@en .
+
+gso:rule_R_Q2
+    a gso:StoryRule ;
+    gso:ruleId "R-Q2" ;
+    gso:severity "error" ;
+    rdfs:comment "Every alias is fillable."@en .
+
+gso:rule_R_Q3
+    a gso:StoryRule ;
+    gso:ruleId "R-Q3" ;
+    gso:severity "error" ;
+    rdfs:comment "Each quest is completable: required characters are alive when needed."@en .
+
+gso:rule_R_Q4
+    a gso:StoryRule ;
+    gso:ruleId "R-Q4" ;
+    gso:severity "warning" ;
+    rdfs:comment "A quest's giver has a motivation consistent with the quest's."@en .
+
+gso:rule_R_Q5
+    a gso:StoryRule ;
+    gso:ruleId "R-Q5" ;
+    gso:severity "warning" ;
+    gso:judgedBy "critic" ;
+    rdfs:comment "Quest levels follow the difficulty curve."@en .
+
+gso:rule_R_Q6
+    a gso:StoryRule ;
+    gso:ruleId "R-Q6" ;
+    gso:severity "warning" ;
+    gso:judgedBy "critic" ;
+    rdfs:comment "Rewards fit the economy."@en .
+
+gso:rule_R_Q7
+    a gso:StoryRule ;
+    gso:ruleId "R-Q7" ;
+    gso:severity "error" ;
+    rdfs:comment "A quest that kills a character doesn't break a later quest that needs them."@en .
+
+gso:rule_R_P1
+    a gso:StoryRule ;
+    gso:ruleId "R-P1" ;
+    gso:severity "error" ;
+    rdfs:comment "Every location used by a scene exists, with a build type."@en .
+
+gso:rule_R_P2
+    a gso:StoryRule ;
+    gso:ruleId "R-P2" ;
+    gso:severity "error" ;
+    rdfs:comment "Every location is reachable from the start location by connections."@en .
+
+gso:rule_R_P3
+    a gso:StoryRule ;
+    gso:ruleId "R-P3" ;
+    gso:severity "error" ;
+    rdfs:comment "The parts a scene needs in a location are in its required parts."@en .
+
+gso:rule_R_P4
+    a gso:StoryRule ;
+    gso:ruleId "R-P4" ;
+    gso:severity "warning" ;
+    gso:judgedBy "critic" ;
+    rdfs:comment "A location's mood agrees with the scenes set there."@en .
+

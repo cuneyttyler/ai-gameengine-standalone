@@ -393,6 +393,9 @@ private:
     // Abilities and magic (19.4): the Magic tab's figures, Try and Customise.
     bool HandleMagicMessage(const std::string& type, const nlohmann::json& message);
     nlohmann::json MagicJson();
+    // The story knowledge graph viewer (21.4).
+    bool HandleStoryGraphMessage(const std::string& type, const nlohmann::json& message);
+    nlohmann::json StoryGraphJson(const std::string& notice = {});
     nlohmann::json FxJson();
     nlohmann::json UiJson();
     DocumentUi& UiDocs();

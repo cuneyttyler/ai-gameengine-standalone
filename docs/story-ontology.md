@@ -1,6 +1,6 @@
 # The story ontology — GSO, and the story knowledge graph
 
-Status: **draft for review (2026-10-21)**. Working name **GSO** (Game Story Ontology),
+Status: **built, to be tried (2026-10-22)**; see "As built" at the end. Working name **GSO** (Game Story Ontology),
 namespace `https://w3id.org/aige/gso#`, the sibling of the place ontology GBO
 (`place-ontology.md`). It is built in Phase 21, before the AI Planner (`ai-planner.md`)
 that generates stories with it.
@@ -478,3 +478,37 @@ A fragment of a graph after the Story stage (abridged):
 - **How much the critic judges.** World rules, mood and tone are judged by the AI; the
   thresholds for blocking vs warning are set when we see real results.
 - **Name.** GSO is a working name, like GBO.
+
+## 13. As built (Phase 21)
+
+- **The ontology** (`data/story/`): `classes.json` (41 classes in six layers, fields typed by
+  text, number, boolean, list, a class or a vocabulary; required fields), `properties.json`
+  (domains, ranges, which are temporal, edge fields), `vocabularies.json` (the §8 schemes, the
+  inverse relationship types, Doran & Parberry strategies per motivation), `templates.json`
+  (acts with shares, beats with positions, required roles), `rules.json` (the §7 rules with
+  severities and message templates; R-Q5, R-Q6 and R-P4 are left to the critic). A project
+  extends them in `story/ontology/`. Loaded by `engine/story/StoryOntology`.
+- **Published**: `ontology/gso.ttl` and `gso-align.ttl` by hand; `gso-vocab.ttl` and
+  `gso-shapes.ttl` generated, with a staleness test.
+- **The graph** (`engine/story/StoryGraph`, `planner/kg.json`): nodes and edges; temporal
+  facts hold from a scene (inclusive) until a scene (exclusive) by the scenes' `order`, and on a
+  branch (branch-less facts hold everywhere; a scene's own branch is the default). Queries for
+  every competency question (alive, located, knows, possesses, the advanced scenes, roles,
+  quests broken by a death, places and their parts, characters met in a chapter, why, what
+  depends on it), a node's timeline and the subgraph for one scene (§6.4). Changes go through
+  `Apply` (nodes, facts, ends, removals; shapes checked, atomic, revision bumped).
+- **World Bible identity**: `ReadRelationsFrom` brings hand-written `rel:` lines in as current
+  facts; `WriteRelationsTo` writes each entry's end-of-story relations as its `rel:` lines.
+- **Rules** (`engine/story/StoryRules`): shapes plus R-S1–S6, R-C1–C4, R-T1–T6, R-K1–K6,
+  R-Q1–Q4, R-Q7, R-P1–P3. New fields used by them: a scene's `needsParts`, `flashback`,
+  `climax`; a character's `undead`, `idle`, `statClass`; `state` facts' `byQuest`; the
+  `mentions` property (a character speaking of something in a scene, for R-T3).
+- **Editor**: Project ▸ Story graph: nodes by layer and class, a node's fields, facts over time,
+  dependents, its decision, the world state at a scene, the issues; Sync World Bible.
+- **AI panel**: the `story_graph` op (`nodes`, `facts`, `end`, `remove`), refused when it breaks
+  the shapes or adds a rule error; context `storyGraph` (the ontology summary, nodes, scenes,
+  counts, issues); the STORY GRAPH prompt section; Python checks (`ai_service/app/storygraph.py`).
+- Tests: `story_graph_test.cpp` (the competency questions on "The Moon Amulet", each rule's
+  planted error, the World Bible round trip), `test_storygraph.py`.
+- Open: embedding retrieval of scene summaries (§6.5) comes with the Planner (Phase 22);
+  branch-local facts beyond branch-and-bottleneck (§12) are still facts per branch.

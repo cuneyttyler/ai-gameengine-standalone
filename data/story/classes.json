@@ -1,0 +1,53 @@
+{
+  "version": "0.1.0",
+  "comment": "The Game Story Ontology (GSO) classes, docs/story-ontology.md §4. Layer: world, fabula, plot, play, presentation, provenance.",
+  "classes": {
+    "Story":            {"layer": "plot", "label": "Story", "comment": "The game's story.", "fields": {"logline": "text", "synopsis": "text", "structure": "StructureTemplate", "pattern": "BranchingPattern", "tone": "Tone", "themes": "list"}},
+    "StructureTemplate": {"layer": "plot", "label": "Structure template", "comment": "A shape for stories, with its beats and their positions."},
+    "Act":              {"layer": "plot", "label": "Act", "comment": "A top-level part of the story.", "fields": {"order": "number", "purpose": "text"}},
+    "Chapter":          {"layer": "plot", "label": "Chapter", "comment": "A group of scenes with one dramatic question.", "fields": {"question": "text", "hub": "Location", "order": "number"}},
+    "StoryScene":       {"layer": "plot", "label": "Story scene", "comment": "One unit of story: a goal pursued against conflict to an outcome, turning a value.",
+                         "fields": {"goal": "text", "conflict": "text", "outcome": "text", "value": "Value", "chargeBefore": "number", "chargeAfter": "number", "mode": "SceneMode", "kernel": "boolean", "location": "Location", "order": "number", "act": "Act", "chapter": "Chapter", "flashback": "boolean", "climax": "boolean", "inciting": "boolean", "branch": "text", "needsParts": "list"},
+                         "required": ["mode", "order"]},
+    "Beat":             {"layer": "plot", "label": "Beat", "comment": "A moment inside a scene.", "fields": {"function": "text", "text": "text"}},
+    "Storyline":        {"layer": "plot", "label": "Storyline", "comment": "A thread of scenes: main, side, companion, faction.", "fields": {"kind": "text"}},
+    "ChoicePoint":      {"layer": "plot", "label": "Choice point", "comment": "Where the player's choice changes what follows.", "fields": {"options": "list"}},
+    "Convergence":      {"layer": "plot", "label": "Convergence", "comment": "Where branches join again.", "fields": {"carries": "list"}},
+    "Ending":           {"layer": "plot", "label": "Ending", "comment": "One way the story ends.", "fields": {"conditions": "text", "epilogue": "text"}},
+    "StoryVariable":    {"layer": "plot", "label": "Story variable", "comment": "State the story remembers.", "fields": {"type": "text", "default": "text"}},
+
+    "Event":            {"layer": "fabula", "label": "Event", "comment": "Something that happens in story time.", "fields": {"storyTime": "number", "kernel": "boolean", "inciting": "boolean", "setup": "boolean", "openEnded": "boolean", "text": "text"}},
+    "Action":           {"layer": "fabula", "parent": "Event", "label": "Action", "comment": "An event done by an agent with an intention.", "fields": {"agent": "Character"}},
+    "Happening":        {"layer": "fabula", "parent": "Event", "label": "Happening", "comment": "An event without an agent's intention."},
+    "BackstoryEvent":   {"layer": "fabula", "parent": "Event", "label": "Backstory event", "comment": "Before the game starts; revealed in play."},
+
+    "Character":        {"layer": "world", "label": "Character", "comment": "A person or creature with a part in the story.",
+                         "fields": {"name": "text", "summary": "text", "importance": "Importance", "need": "text", "desire": "text", "weakness": "text", "motivations": "list", "traits": "list", "arc": "text", "static": "boolean", "undead": "boolean", "package": "text", "idle": "boolean", "statClass": "text", "stock": "text", "skills": "text"}},
+    "PlayerCharacter":  {"layer": "world", "parent": "Character", "label": "Player character", "comment": "The player's character."},
+    "Faction":          {"layer": "world", "label": "Faction", "comment": "An organisation.", "fields": {"name": "text", "goals": "list"}},
+    "NarrativeRole":    {"layer": "world", "label": "Narrative role", "comment": "A function in a storyline (an archetype, sphere or actant).", "fields": {"archetype": "NarrativeRole", "storyline": "Storyline", "required": "boolean"}},
+    "GameplayRole":     {"layer": "world", "label": "Gameplay role", "comment": "A function in play.", "fields": {"role": "GameplayRole"}},
+    "Goal":             {"layer": "world", "label": "Goal", "comment": "What a character wants, at a time.", "fields": {"kind": "text", "status": "text"}},
+    "Belief":           {"layer": "world", "label": "Belief", "comment": "What a character knows or believes.", "fields": {"text": "text", "true": "boolean"}},
+    "Location":         {"layer": "world", "label": "Location", "comment": "A place in the story world.", "fields": {"name": "text", "kind": "text", "buildType": "text", "requiredParts": "list", "mood": "text", "scene": "text", "start": "boolean"}},
+    "Item":             {"layer": "world", "label": "Item", "comment": "A thing with a part in the story.", "fields": {"name": "text", "kind": "text", "unique": "boolean", "record": "text", "setup": "boolean", "openEnded": "boolean"}},
+    "Lore":             {"layer": "world", "label": "Lore", "comment": "Background: history, religion, myths."},
+    "WorldRule":        {"layer": "world", "label": "World rule", "comment": "A rule of this world, judged as text by the critic.", "fields": {"text": "text"}},
+    "Theme":            {"layer": "world", "label": "Theme", "comment": "What the story is about."},
+    "Conflict":         {"layer": "world", "label": "Conflict", "comment": "An opposition.", "fields": {"type": "ConflictType", "stakes": "text", "openEnded": "boolean"}},
+
+    "Quest":            {"layer": "play", "label": "Quest", "comment": "A unit of play with a goal, given and completed.", "fields": {"type": "text", "motivation": "Motivation", "strategy": "text", "level": "number", "storyline": "Storyline", "file": "text"}},
+    "QuestStage":       {"layer": "play", "label": "Quest stage", "comment": "A numbered state of a quest.", "fields": {"index": "number", "journal": "text", "terminal": "boolean", "quest": "Quest"}},
+    "Objective":        {"layer": "play", "label": "Objective", "comment": "What the player must do in a stage.", "fields": {"action": "ObjectiveAction", "target": "text", "count": "number", "optional": "boolean"}},
+    "Alias":            {"layer": "play", "label": "Alias", "comment": "A role filled when the quest starts.", "fields": {"kind": "text", "fill": "text", "required": "boolean"}},
+    "Reward":           {"layer": "play", "label": "Reward", "comment": "What completing a quest gives."},
+
+    "Dialogue":         {"layer": "presentation", "label": "Dialogue", "comment": "An engine dialogue file.", "fields": {"file": "text", "speaker": "Character"}},
+    "Cutscene":         {"layer": "presentation", "label": "Cutscene", "comment": "An engine cutscene file.", "fields": {"file": "text"}},
+    "Bark":             {"layer": "presentation", "label": "Bark", "comment": "A one-line remark with conditions."},
+    "Document":         {"layer": "presentation", "label": "Document", "comment": "A readable in the world."},
+
+    "Decision":         {"layer": "provenance", "label": "Decision", "comment": "A recorded choice by the AI or the user.", "fields": {"stage": "text", "question": "text", "chosen": "text", "rationale": "text"}},
+    "Source":           {"layer": "provenance", "label": "Source", "comment": "A theory, a template, the user's request, a learned fact."}
+  }
+}

@@ -251,7 +251,27 @@ MAGIC (docs/magic.md; context "magic" lists the abilities and magic effects ther
   apply_effect(id, effect[, magnitude, duration]), remove_effects(id, tag), has_tag(id, tag), learn(id, ability).
 """
 
-PHYSICS = """PHYSICS (docs/physics.md; context "physics": the layers in use, gravity, rigid bodies, trigger names)
+STORY_GRAPH = """\
+THE STORY GRAPH (docs/story-ontology.md; context "storyGraph": the ontology, the graph's nodes and scenes, its issues)
+- The story's structured facts live in a knowledge graph: characters, factions, locations, items, events,
+  story scenes, quests, and the facts between them. Characters, places and items use World Bible keys as ids
+  ("character/tamsin"); their rel: lines are written from the graph.
+- Change it with ONE {"op": "story_graph", "nodes": [{"id", "class", ...fields}], "facts": [{"p": "<property>",
+  "s": "<subject id>", "o": "<object id>", ...fields, "from": "<scene>", "until": "<scene>", "branch": "<b>"}],
+  "end": [{"p", "s", "o", "at": "<scene>"}], "remove": ["<id>"]}. Classes, properties, field types and
+  vocabularies are in context storyGraph.ontology; use only those.
+- Facts that change (hasRelationship, memberOf, knows, possesses, locatedAt, state, hasGoal) hold from a scene
+  ("from", inclusive) until a scene ("until", exclusive) by the scenes' "order"; a death is {"p": "state",
+  "s": "character/x", "state": "dead", "from": "s-12"}. A story scene: {"class": "StoryScene", "order": 4,
+  "mode": "cutscene"|"dialogue"|"gameplay"|"environmental"|"discoverable"|"ambient", "kernel", "goal",
+  "conflict", "outcome", "value", "chargeBefore", "chargeAfter", "location": "location/x", "branch"}.
+- The engine checks the story's rules (the dead don't take part, one place at a time, unique items have one
+  owner, quests need their characters alive, kernel scenes are played by the main quest...) and refuses a
+  change that adds an error; context storyGraph.issues lists the current ones; fix them when asked.
+"""
+
+PHYSICS = """\
+PHYSICS (docs/physics.md; context "physics": the layers in use, gravity, rigid bodies, trigger names)
 - Collider2D: a box (halfWidth, halfHeight) or a circle ("shape": "Circle", "radius"); "layer" (empty: by team:
   player, enemy, ally; else default) and "mask": the layers it collides with ("world, enemy"; empty: all).
   Built-in layers: world, player, enemy, ally, projectile, trigger, default; a new name makes a new layer.
@@ -506,6 +526,7 @@ def build_messages(
             FX,
             MAGIC,
             PHYSICS,
+            STORY_GRAPH,
             RECORDS,
             SCENES,
             ART,

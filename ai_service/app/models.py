@@ -176,6 +176,9 @@ class EditorContext(BaseModel):
     magic: dict[str, Any] = {}
     # Physics v2 (20): {layers (in use), gravity [x, y], bodies (count), triggers (names)}.
     physics: dict[str, Any] = {}
+    # The story knowledge graph (21): {ontology {classes, properties, vocabularies, templates},
+    # revision, nodes {id: class}, scenes [{id, order, mode, location, branch}], counts, issues}.
+    storyGraph: dict[str, Any] = {}
 
 
 # --- Proposals --------------------------------------------------------------------
@@ -262,6 +265,18 @@ class WriteCutscene(BaseModel):
     cutscene: dict[str, Any]
 
 
+class StoryGraphOp(BaseModel):
+    """Adds to the story knowledge graph (planner/kg.json; docs/story-ontology.md): nodes
+    (World Bible keys for characters, places, items), facts (edges, temporal ones with
+    from/until scenes and a branch), facts it ends at a scene, nodes it removes."""
+
+    op: Literal["story_graph"]
+    nodes: list[dict[str, Any]] = []
+    facts: list[dict[str, Any]] = []
+    end: list[dict[str, Any]] = []
+    remove: list[str] = []
+
+
 class WriteUi(BaseModel):
     """Creates or replaces a game UI file under ui/ (a screen .rml, a style .rcss, theme.json,
     screens.json or notifications.json; docs/game-ui.md)."""
@@ -300,6 +315,7 @@ Operation = Annotated[
     Union[
         SetField, AddComponent, RemoveComponent, SetPrefabField, SetSetting, SetScriptProperty, RunCommand,
         WriteDialogue, WriteQuest, WriteSchedule, WriteCutscene, WriteUi, WriteAnim, WriteRecord, DeleteRecord,
+        StoryGraphOp,
     ],
     Field(discriminator="op"),
 ]

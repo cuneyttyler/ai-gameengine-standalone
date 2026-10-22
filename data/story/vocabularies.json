@@ -1,0 +1,34 @@
+{
+  "comment": "GSO vocabularies (SKOS concept schemes), docs/story-ontology.md §8.",
+  "vocabularies": {
+    "SceneMode": ["cutscene", "dialogue", "gameplay", "environmental", "discoverable", "ambient"],
+    "BranchingPattern": ["linear", "gauntlet", "branch-and-bottleneck", "time-cave", "quest", "open-map", "sorting-hat", "floating-modules", "loop-and-grow"],
+    "NarrativeRole": ["protagonist", "antagonist", "deuteragonist", "mentor", "ally", "herald", "threshold-guardian", "shapeshifter", "trickster", "love-interest", "false-hero", "dispatcher", "donor", "foil"],
+    "Actant": ["subject", "object", "sender", "receiver", "helper", "opponent"],
+    "GameplayRole": ["quest-giver", "vendor", "trainer", "companion", "enemy", "elite", "boss", "guard", "innkeeper", "healer", "transport", "information", "crafter", "quest-target", "civilian"],
+    "Motivation": ["knowledge", "comfort", "reputation", "serenity", "protection", "conquest", "wealth", "ability", "equipment"],
+    "ObjectiveAction": ["goto", "reach", "talk", "kill", "defeat-count", "gather", "collect", "deliver", "escort", "defend", "use", "interact", "examine", "spy", "stealth", "capture", "free", "craft", "wait", "choose", "survive"],
+    "ConflictType": ["person", "society", "nature", "self", "fate", "technology", "supernatural"],
+    "RelationshipType": ["parent", "child", "sibling", "spouse", "romantic", "friend", "rival", "enemy", "mentor-of", "student-of", "serves", "employs", "owes", "trusts", "fears", "betrayed-by", "member-of"],
+    "Value": ["life-death", "love-hate", "trust-betrayal", "freedom-slavery", "truth-lie", "hope-despair", "loyalty-treachery", "wealth-poverty", "justice-injustice"],
+    "Trait": ["open", "closed", "conscientious", "careless", "extravert", "introvert", "agreeable", "hostile", "neurotic", "calm", "brave", "cowardly", "greedy", "generous", "loyal", "treacherous", "pious", "cynical", "curious", "proud", "humble"],
+    "Tone": ["heroic", "dark", "grim", "comic", "whimsical", "cozy", "tragic", "mysterious", "horror", "romantic"],
+    "Importance": ["major", "supporting", "minor", "extra"],
+    "StructureTemplate": ["three-act", "heros-journey", "five-act", "save-the-cat", "kishotenketsu", "episodic"]
+  },
+  "inverse": {
+    "parent": "child", "child": "parent", "sibling": "sibling", "spouse": "spouse",
+    "mentor-of": "student-of", "student-of": "mentor-of", "employs": "serves", "serves": "employs"
+  },
+  "strategies": {
+    "knowledge": ["deliver-item-for-study", "spy", "interview-npc", "use-item-in-field"],
+    "comfort": ["obtain-luxuries", "kill-pests"],
+    "reputation": ["obtain-rare-items", "kill-enemies", "visit-dangerous-place"],
+    "serenity": ["revenge", "capture-criminal", "check-on-npc", "recover-lost-item", "rescue-captured-npc"],
+    "protection": ["attack-threatening-entities", "treat-or-repair", "create-diversion", "assemble-fortification", "guard-entity", "recover-stolen-item"],
+    "conquest": ["attack-enemy", "steal-stuff"],
+    "wealth": ["gather-raw-materials", "steal-valuables", "make-valuables"],
+    "ability": ["assemble-tool", "obtain-materials", "use-existing-tools", "practice-combat", "practice-skill", "research-skill"],
+    "equipment": ["assemble", "deliver-supplies", "steal-supplies", "trade-for-supplies"]
+  }
+}

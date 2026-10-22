@@ -1,3 +1,5 @@
+#include "story/StoryGraph.h"
+#include "story/StoryRules.h"
 #include "EditorApp.h"
 
 #include "assets/TextureCook.h"
@@ -46,6 +48,7 @@
 #include "scripting/Components.h"
 
 #include <algorithm>
+#include <tuple>
 #include <climits>
 #include <variant>
 #include <chrono>
@@ -565,6 +568,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     if (type.rfind("ui:", 0) == 0 && HandleUiMessage(type, message)) return;
     if (type.rfind("fx:", 0) == 0 && HandleFxMessage(type, message)) return;
     if (type.rfind("magic:", 0) == 0 && HandleMagicMessage(type, message)) return;
+    if (type.rfind("storygraph:", 0) == 0 && HandleStoryGraphMessage(type, message)) return;
 
     if (type == "viewport:bounds") {
         int width = message.value("width", 0);
@@ -3558,6 +3562,66 @@ nlohmann::json EditorApp::MagicJson() {
                            {"duration", e->duration}, {"tags", e->tags}});
     }
     return {{"type", "magic:model"}, {"abilities", abilities}, {"effects", effects}};
+}
+
+nlohmann::json EditorApp::StoryGraphJson(const std::string& notice) {
+    const fs::path root = assets_.GetProject().root;
+    const StoryOntology ontology = StoryOntology::ForProject(root);
+    auto graph = StoryGraph::Load(StoryGraph::PathIn(root));
+    nlohmann::json nodes = nlohmann::json::array();
+    nlohmann::json issues = nlohmann::json::array();
+    if (graph) {
+        std::vector<const StoryNode*> sorted;
+        for (const auto& n : graph->nodes) sorted.push_back(&n);
+        std::sort(sorted.begin(), sorted.end(), [&](const StoryNode* a, const StoryNode* b) {
+            const auto* ca = ontology.Class(a->cls);
+            const auto* cb = ontology.Class(b->cls);
+            const std::string la = ca ? ca->layer : "", lb = cb ? cb->layer : "";
+            return std::tie(la, a->cls, a->id) < std::tie(lb, b->cls, b->id);
+        });
+        for (const auto* n : sorted) {
+            const auto* cls = ontology.Class(n->cls);
+            std::string label = n->Text("name");
+            if (label.empty()) label = n->id;
+            nodes.push_back({{"id", n->id}, {"class", n->cls}, {"label", label}, {"layer", cls ? cls->layer : "?"}});
+        }
+        issues = IssuesJson(CheckStory(*graph, ontology));
+    }
+    return {{"type", "storygraph:model"}, {"exists", graph.has_value()}, {"revision", graph ? graph->revision : 0},
+            {"nodes", nodes}, {"issues", issues}, {"notice", notice}};
+}
+
+bool EditorApp::HandleStoryGraphMessage(const std::string& type, const nlohmann::json& message) {
+    const fs::path root = assets_.GetProject().root;
+    if (type == "storygraph:request") {
+        post_(StoryGraphJson());
+    } else if (type == "storygraph:node") {
+        auto graph = StoryGraph::Load(StoryGraph::PathIn(root));
+        const std::string id = message.value("id", "");
+        const StoryNode* node = graph ? graph->Find(id) : nullptr;
+        if (!node) return true;
+        nlohmann::json detail = {{"type", "storygraph:detail"}, {"id", id}, {"class", node->cls}, {"fields", node->fields},
+                                 {"timeline", graph->Timeline(id)}, {"dependents", graph->Dependents(id)}, {"madeBy", graph->MadeBy(id)}};
+        if (node->cls == "StoryScene") detail["subgraph"] = graph->Subgraph(id);
+        post_(detail);
+    } else if (type == "storygraph:sync") {
+        // Hand-written rel: lines in, the graph's end-of-story relations out (story-ontology.md §6.2).
+        const auto path = StoryGraph::PathIn(root);
+        auto graph = StoryGraph::Load(path);
+        if (!graph) {
+            post_(StoryGraphJson("No story graph to sync."));
+            return true;
+        }
+        world_.Refresh();
+        const int in = graph->ReadRelationsFrom(world_);
+        if (in) graph->Save(path);
+        const int out = graph->WriteRelationsTo(world_);
+        post_(StoryGraphJson(std::to_string(in) + " World Bible relation(s) read in, " + std::to_string(out) + " entr" +
+                             (out == 1 ? "y" : "ies") + " updated."));
+    } else {
+        return false;
+    }
+    return true;
 }
 
 bool EditorApp::HandleMagicMessage(const std::string& type, const nlohmann::json& message) {

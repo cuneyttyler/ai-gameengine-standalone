@@ -1,0 +1,32 @@
+# GSO alignments: how the Game Story Ontology's classes relate to existing ontologies
+#
+# Written by hand (docs/story-ontology.md §10). We align, not import: GSO stays small
+# enough to load in memory and to quote in prompts.
+
+@prefix gso:       <https://w3id.org/aige/gso#> .
+@prefix owl:       <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:      <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos:      <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms:   <http://purl.org/dc/terms/> .
+@prefix sem:       <http://semanticweb.cs.vu.nl/2009/11/sem/> .
+@prefix nont:      <http://purl.org/net/narrative/> .
+@prefix vgo:       <http://purl.org/net/VideoGameOntology#> .
+@prefix storyline: <http://purl.org/ontology/storyline/> .
+@prefix ome:       <http://contextus.net/ontology/ontomedia/core/expression#> .
+
+<https://w3id.org/aige/gso/align>
+    a owl:Ontology ;
+    owl:imports <https://w3id.org/aige/gso> ;
+    dcterms:title "GSO alignments"@en ;
+    dcterms:license <https://creativecommons.org/licenses/by/4.0/> ;
+    dcterms:creator "AIGE project" .
+
+gso:Event        skos:closeMatch sem:Event, nont:Event .
+gso:Action       skos:closeMatch nont:Action .
+gso:Character    skos:closeMatch vgo:Character .
+gso:PlayerCharacter rdfs:subClassOf gso:Character ; skos:closeMatch vgo:PlayerCharacter .
+gso:Location     skos:closeMatch sem:Place, vgo:Location .
+gso:Item         skos:closeMatch vgo:Item .
+gso:Storyline    skos:closeMatch storyline:Storyline .
+gso:Quest        skos:closeMatch vgo:Quest .
+gso:Relationship skos:closeMatch ome:Relationship .

@@ -96,3 +96,30 @@ print(pyshacl.validate(g, shacl_graph=s, inference='rdfs', advanced=True)[0])"
   are names that don't resolve yet.
 - **Documentation:** the Turtle files carry labels and comments on every term, so
   standard generators (pyLODE, WIDOCO) can build an HTML reference from them.
+
+# GSO — the Game Story Ontology
+
+GSO is the structure of a game's story: the **world** (characters, factions, places,
+items), the **fabula** (events and their causes), the **plot** (acts, chapters, story
+scenes, storylines, choices, endings) and **play** (quests, stages, objectives, aliases),
+with presentation and provenance. Facts that change hold over an interval of scenes.
+Design: [`docs/story-ontology.md`](../docs/story-ontology.md).
+
+| File | What | Written |
+|---|---|---|
+| `gso.ttl` | **Core vocabulary**: layers, temporal facts (`gso:from`, `gso:until`, `gso:branch`), story rules | by hand |
+| `gso-vocab.ttl` | **Classes, properties and vocabularies** (OWL 2 + SKOS), structure templates and rules | generated |
+| `gso-shapes.ttl` | **SHACL shapes**: each class's typed, required and closed-vocabulary fields | generated |
+| `gso-align.ttl` | **Alignments** to SEM, NOnt, VGO, Storyline and OntoMedia (`skos:closeMatch`) | by hand |
+
+The engine works from `data/story/*.json` (a project adds `story/ontology/`), loaded by
+`engine/story/`. `StoryOntologyTest.PublishedTurtleIsCurrent` fails when the generated
+files fall behind; regenerate with `AIGE_WRITE_ONTOLOGY=1` as for GBO. A game's story
+knowledge graph is `planner/kg.json` in its project; the rules beyond SHACL Core
+(continuity, causality, quests, places) are checked by `engine/story/StoryRules`.
+
+| Prefix | Namespace | Holds |
+|---|---|---|
+| `gso:` | `https://w3id.org/aige/gso#` | classes, properties, the core |
+| `gsv:` | `https://w3id.org/aige/gso/vocab#` | concept schemes (`gsv:SceneMode`) and concepts (`gsv:SceneMode_cutscene`) |
+| `gss:` | `https://w3id.org/aige/gso/shapes#` | SHACL shapes |

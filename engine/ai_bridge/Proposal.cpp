@@ -16,6 +16,8 @@
 #include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
 #include "world/WorldBible.h"
+#include "story/StoryGraph.h"
+#include "story/StoryRules.h"
 
 #include <fstream>
 #include <map>
@@ -378,6 +380,46 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             std::ofstream out(project.Resolve(path), std::ios::binary | std::ios::trunc);
             if (!out) error = "couldn't write " + path;
             else out << content;
+        }
+
+    } else if (kind == "story_graph") {
+        // Facts for the story knowledge graph (21.2): applied to planner/kg.json unless they
+        // break its shapes or add a rule error (story-ontology.md §6.4, §7).
+        item.kind = "story";
+        item.touchesFiles = true;
+        item.target = "Story graph · planner/kg.json";
+        const StoryOntology ontology = StoryOntology::ForProject(project.root);
+        const auto path = StoryGraph::PathIn(project.root);
+        StoryGraph graph = StoryGraph::Load(path).value_or(StoryGraph{});
+        WorldBible bible(project);
+        bible.Refresh();
+        graph.ReadRelationsFrom(bible); // hand-written rel: lines aren't lost
+        const auto before = CheckStory(graph, ontology);
+        if (const std::string problem = graph.Apply(op, ontology); !problem.empty()) {
+            error = problem;
+            return item;
+        }
+        const auto after = CheckStory(graph, ontology);
+        const auto added = NewErrors(before, after);
+        if (!added.empty()) {
+            std::vector<std::string> problems;
+            for (const auto& i : added) problems.push_back(i.rule + ": " + i.message);
+            error = JoinProblems(problems);
+            return item;
+        }
+        const size_t nodes = op.value("nodes", nlohmann::json::array()).size();
+        const size_t facts = op.value("facts", nlohmann::json::array()).size() + op.value("assert", nlohmann::json::array()).size();
+        const size_t ended = op.value("end", nlohmann::json::array()).size() + op.value("retract", nlohmann::json::array()).size();
+        item.target += " (" + std::to_string(nodes) + " nodes, " + std::to_string(facts) + " facts, " + std::to_string(ended) + " ended)";
+        nlohmann::json shown = op;
+        shown.erase("op");
+        item.detail = shown.dump(2);
+        size_t warnings = 0;
+        for (const auto& i : after) warnings += i.severity == "warning";
+        if (warnings) item.detail += "\n\n" + std::to_string(warnings) + " warning(s) remain in the story (Project ▸ Story graph).";
+        if (apply) {
+            if (!graph.Save(path)) error = "couldn't write planner/kg.json";
+            else graph.WriteRelationsTo(bible);
         }
 
     } else if (kind == "write_cutscene") {

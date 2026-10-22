@@ -9,6 +9,7 @@ import DifficultyPanel from './DifficultyPanel.vue'
 import UiPanel from './UiPanel.vue'
 import FxPanel from './FxPanel.vue'
 import MagicPanel from './MagicPanel.vue'
+import StoryGraphPanel from './StoryGraphPanel.vue'
 import StoryPanel from './StoryPanel.vue'
 import WorldPanel from './WorldPanel.vue'
 
@@ -21,6 +22,7 @@ const tabs: { id: ProjectTab; label: string; title: string }[] = [
   { id: 'ui', label: 'UI', title: "The game's screens, theme and notifications (documents in ui/)" },
   { id: 'fx', label: 'Effects', title: 'Animation sheets, particles and effects, cutscenes' },
   { id: 'magic', label: 'Magic', title: 'Abilities and magic effects, with their cost and output' },
+  { id: 'storygraph', label: 'Story graph', title: 'The story knowledge graph: facts over time, dependents and the story rules' },
 ]
 </script>
 
@@ -46,6 +48,7 @@ const tabs: { id: ProjectTab; label: string; title: string }[] = [
     <UiPanel v-else-if="panelTab.project === 'ui'" class="body" />
     <FxPanel v-else-if="panelTab.project === 'fx'" class="body" />
     <MagicPanel v-else-if="panelTab.project === 'magic'" class="body" />
+    <StoryGraphPanel v-else-if="panelTab.project === 'storygraph'" class="body" />
     <StoryPanel v-else class="body" />
   </div>
 </template>

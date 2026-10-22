@@ -17,6 +17,8 @@
 #include "gameplay/Effects.h"
 #include "gameplay/Magic.h"
 #include "gameplay/Physics.h"
+#include "story/StoryGraph.h"
+#include "story/StoryRules.h"
 #include "ui/Documents.h"
 #include "gameplay/Settings.h"
 #include "gameplay/Schedule.h"
@@ -306,6 +308,34 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
             return presets;
         };
         context["magic"] = {{"abilities", ids(AbilityPresets(), "ability")}, {"effects", ids(MagicEffectPresets(), "magic-effect")}};
+    }
+    // The story knowledge graph (21): the ontology, the graph's nodes and scenes, its issues.
+    {
+        const StoryOntology ontology = StoryOntology::ForProject(project.root);
+        nlohmann::json graphJson = {{"ontology", ontology.Summary()}};
+        if (auto graph = StoryGraph::Load(StoryGraph::PathIn(project.root))) {
+            nlohmann::json nodes = nlohmann::json::object(), scenes = nlohmann::json::array(), counts = nlohmann::json::object();
+            for (const auto& n : graph->nodes) {
+                nodes[n.id] = n.cls;
+                counts[n.cls] = counts.value(n.cls, 0) + 1;
+            }
+            for (const auto& id : graph->SceneOrder()) {
+                const StoryNode* n = graph->Find(id);
+                nlohmann::json s = {{"id", id}, {"order", n->fields.value("order", 0.0)}, {"mode", n->Text("mode")}};
+                for (const char* k : {"location", "branch", "goal"}) {
+                    if (!n->Text(k).empty()) s[k] = n->Text(k);
+                }
+                scenes.push_back(std::move(s));
+            }
+            auto issues = CheckStory(*graph, ontology);
+            if (issues.size() > 30) issues.resize(30);
+            graphJson["revision"] = graph->revision;
+            graphJson["nodes"] = nodes;
+            graphJson["scenes"] = scenes;
+            graphJson["counts"] = counts;
+            graphJson["issues"] = IssuesJson(issues);
+        }
+        context["storyGraph"] = graphJson;
     }
     // Physics v2 (20): the layers in use, gravity, how many rigid bodies, the triggers' names.
     {

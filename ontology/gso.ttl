@@ -1,0 +1,86 @@
+# GSO — the Game Story Ontology: core vocabulary
+#
+# Written by hand. The classes, properties and vocabularies themselves are generated from
+# data/story/ into gso-vocab.ttl, and their shapes into gso-shapes.ttl (ontology/README.md).
+# Design: docs/story-ontology.md.
+
+@prefix gso:     <https://w3id.org/aige/gso#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<https://w3id.org/aige/gso>
+    a owl:Ontology ;
+    owl:versionIRI <https://w3id.org/aige/gso/0.1.0> ;
+    owl:versionInfo "0.1.0" ;
+    dcterms:title "GSO — the Game Story Ontology"@en ;
+    dcterms:description "The structure of a game's story in four layers — world (what exists), fabula (what happens, with causes), plot (how it is told and played: acts, scenes, storylines, choices, endings) and play (quests, stages, objectives, aliases) — plus presentation and provenance. Facts that change hold over an interval of scenes."@en ;
+    dcterms:license <https://creativecommons.org/licenses/by/4.0/> ;
+    dcterms:creator "AIGE project" .
+
+# --- Layers -------------------------------------------------------------------------------
+
+gso:layer
+    a owl:DatatypeProperty ;
+    rdfs:label "layer"@en ;
+    rdfs:comment "The layer a class belongs to: world, fabula, plot, play, presentation or provenance."@en ;
+    rdfs:range xsd:string .
+
+# --- Temporal facts -----------------------------------------------------------------------
+
+gso:TemporalProperty
+    a owl:Class ;
+    rdfs:subClassOf owl:ObjectProperty ;
+    rdfs:label "temporal property"@en ;
+    rdfs:comment "A property whose facts hold over an interval of story scenes. In a graph they are reified as gso:Fact with gso:from, gso:until and gso:branch."@en .
+
+gso:Fact
+    a owl:Class ;
+    rdfs:label "fact"@en ;
+    rdfs:comment "A reified edge of the story knowledge graph: a property between a subject and an object, with fields, an interval and provenance."@en .
+
+gso:predicate a owl:ObjectProperty ; rdfs:domain gso:Fact ; rdfs:label "predicate"@en .
+gso:subject   a owl:ObjectProperty ; rdfs:domain gso:Fact ; rdfs:label "subject"@en .
+gso:object    a owl:ObjectProperty ; rdfs:domain gso:Fact ; rdfs:label "object"@en .
+
+gso:from
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Fact ;
+    rdfs:range gso:StoryScene ;
+    rdfs:label "from"@en ;
+    rdfs:comment "The first scene (by discourse order) at which the fact holds. Absent: from the start."@en .
+
+gso:until
+    a owl:ObjectProperty ;
+    rdfs:domain gso:Fact ;
+    rdfs:range gso:StoryScene ;
+    rdfs:label "until"@en ;
+    rdfs:comment "The first scene at which the fact no longer holds (exclusive). Absent: to the end."@en .
+
+gso:branch
+    a owl:DatatypeProperty ;
+    rdfs:domain gso:Fact ;
+    rdfs:range xsd:string ;
+    rdfs:label "branch"@en ;
+    rdfs:comment "The branch a fact holds on; facts with no branch hold on every branch."@en .
+
+gso:order
+    a owl:DatatypeProperty ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "order"@en ;
+    rdfs:comment "A story scene's place in the discourse order."@en .
+
+# --- Rules --------------------------------------------------------------------------------
+
+gso:StoryRule
+    a owl:Class ;
+    rdfs:label "story rule"@en ;
+    rdfs:comment "A check over a story graph beyond SHACL Core (continuity, causality, quests, places), evaluated by the engine or judged by the AI critic."@en .
+
+gso:ruleId   a owl:DatatypeProperty ; rdfs:domain gso:StoryRule ; rdfs:range xsd:string ; rdfs:label "rule id"@en .
+gso:severity a owl:DatatypeProperty ; rdfs:domain gso:StoryRule ; rdfs:range xsd:string ; rdfs:label "severity"@en .
+gso:judgedBy a owl:DatatypeProperty ; rdfs:domain gso:StoryRule ; rdfs:range xsd:string ; rdfs:label "judged by"@en .
+gso:acts     a owl:DatatypeProperty ; rdfs:range xsd:string ; rdfs:label "acts"@en .
+gso:roles    a owl:DatatypeProperty ; rdfs:range xsd:string ; rdfs:label "roles"@en .
