@@ -76,6 +76,8 @@ function updateMenus(): void {
   menuExtensions.file.top = [
     { label: 'New Project…', shortcut: keyLabel('file.new'), disabled: editorState.playing, action: newProject },
     { label: 'Open Project…', shortcut: keyLabel('file.open'), disabled: editorState.playing, action: () => sendToHost({ type: 'project:open' }) },
+    // The AI Planner (development_plan.md 22): its panel, where a game is described and designed.
+    { label: 'New Game with the Planner…', disabled: editorState.playing, action: () => sendToHost({ type: 'planner:show' }) },
     ...recentItems(),
     separator,
   ]

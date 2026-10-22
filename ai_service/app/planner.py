@@ -522,8 +522,48 @@ def plan_revise(provider: Provider, inputs: dict) -> dict:
     return _step(provider, REVISE_TASK, inputs, REVISE_SHAPE, "edits", check, inputs.get("problems"))
 
 
+DIALOGUE_TASK = """⑫ Dialogue: write one character's conversation tree for the engine, now that the world is
+built. In the character's voice (its voice and sample line), about what it knows (knows) and the scenes it talks in
+(scenes), never mentioning what it doesn't know. If it gives quests (gives), offer each with a choice whose effects
+start it ({"op": "start_quest", "name": "<quest id>"}) and whose conditions say it hasn't started
+({"quest": "<quest id>", "is": "inactive"}); add a line for when it's under way ({"quest": id, "is": "active"} in
+starts) and when it's done ("completed"). Nodes: {id, text, choices: [{text, next (a node id, or empty to end),
+conditions, effects}], next}; starts: [{conditions, node}] checked before start. Short lines; a few nodes."""
+
+DIALOGUE_SHAPE = """{"dialogue": {"start": "greet",
+   "starts": [{"conditions": [{"quest": "q-main", "is": "active"}], "node": "progress"}],
+   "nodes": [{"id": "greet", "text": "", "choices": [{"text": "", "next": "", "conditions": [], "effects": []}]},
+             {"id": "progress", "text": "", "next": ""}]},
+ "rationale": ""}"""
+
+
+def plan_dialogue(provider: Provider, inputs: dict) -> dict:
+    quests = {q.get("id") for q in inputs.get("gives", [])}
+
+    def check(answer: dict) -> list[str]:
+        d = answer.get("dialogue")
+        if not isinstance(d, dict) or not d.get("nodes"):
+            return ["'dialogue' needs nodes"]
+        ids = {n.get("id") for n in d["nodes"]}
+        problems = []
+        if d.get("start") not in ids:
+            problems.append(f"start {d.get('start')!r} isn't a node")
+        for n in d["nodes"]:
+            if n.get("next") and n["next"] not in ids:
+                problems.append(f"node {n.get('id')}: next {n['next']!r} isn't a node")
+            for c in n.get("choices", []):
+                if c.get("next") and c["next"] not in ids:
+                    problems.append(f"node {n.get('id')}: choice goes to {c['next']!r}, which isn't a node")
+                for e in c.get("effects", []):
+                    if e.get("op") == "start_quest" and quests and e.get("name") not in quests:
+                        problems.append(f"node {n.get('id')}: it starts {e.get('name')!r}, which it doesn't give")
+        return problems
+
+    return _step(provider, DIALOGUE_TASK, inputs, DIALOGUE_SHAPE, "dialogue", check, inputs.get("problems"))
+
+
 STEPS: dict[str, Callable[[Provider, dict], dict]] = {
     "concept": plan_concept, "outline": plan_outline, "act": plan_act, "scene": plan_scene, "critic": plan_critic,
     "character": plan_character, "quests": plan_quests, "place": plan_place, "systems": plan_systems,
-    "visuals": plan_visuals, "review": plan_review, "revise": plan_revise,
+    "visuals": plan_visuals, "review": plan_review, "revise": plan_revise, "dialogue": plan_dialogue,
 }

@@ -71,6 +71,16 @@ namespace aige {
 
 namespace {
 
+// "Build the game", "build it all": the planned game, built (23).
+bool LooksLikeBuildGameRequest(const std::string& text) {
+    std::string t;
+    for (char c : text) t += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (const char* phrase : {"build the game", "build my game", "build the whole game", "build it all", "build the plan", "build everything"}) {
+        if (t.find(phrase) != std::string::npos) return true;
+    }
+    return false;
+}
+
 // "Plan a game about...", "make me a game where...", "design an RPG...": the Planner's, not a proposal's.
 bool LooksLikeGameRequest(const std::string& text) {
     std::string t;
@@ -3672,6 +3682,48 @@ std::unique_ptr<GamePlan> EditorApp::MakePlan() {
     return std::make_unique<GamePlan>(std::move(host));
 }
 
+std::unique_ptr<GameBuild> EditorApp::MakeGameBuild() {
+    GameBuild::Host host;
+    host.request = [this](const std::string& path, const nlohmann::json& body, int timeout) {
+        return Ai() && Ai()->GetState() == AiClient::State::Ready ? Ai()->Request("POST", path, body, timeout) : 0;
+    };
+    host.projectRoot = assets_.GetProject().root;
+    host.places = [this]() -> const Ontology& { return Places(); };
+    return std::make_unique<GameBuild>(std::move(host));
+}
+
+void EditorApp::StepGameBuild() {
+    if (gameBuildJob_ && gameBuildJob_->done) {
+        gameBuildJob_->thread.join();
+        const std::string error = gameBuildJob_->error;
+        gameBuildJob_.reset();
+        if (!error.empty()) post_({{"type", "notify"}, {"text", "Building the game: " + error}});
+        RefreshAssets();
+        PostPlanner();
+    }
+    if (!gameBuild_ || gameBuildJob_) return;
+    while (!gameBuildAnswers_.empty()) {
+        const auto [id, body] = gameBuildAnswers_.front();
+        gameBuildAnswers_.pop_front();
+        gameBuild_->OnResponse(id, body);
+    }
+    if (!gameBuildDirty_ || gameBuild_->Status() != "working") return;
+    gameBuildDirty_ = false;
+    gameBuildJob_ = std::make_unique<GameBuildJob>();
+    GameBuildJob* job = gameBuildJob_.get();
+    GameBuild* build = gameBuild_.get();
+    job->thread = std::thread([job, build] {
+        try {
+            for (int i = 0; i < 64 && build->Pump(); ++i) {
+            }
+        } catch (const std::exception& e) {
+            job->error = e.what();
+        }
+        job->done = true;
+    });
+    // Whatever it does next (an answer, a user action) pumps again.
+}
+
 void EditorApp::StartPlan(const std::string& request, bool replace) {
     if (PlannerStore(assets_.GetProject().root).HasPlan() && !replace) {
         post_({{"type", "planner:open"}});
@@ -3690,6 +3742,12 @@ void EditorApp::StartPlan(const std::string& request, bool replace) {
 void EditorApp::PostPlanner() {
     nlohmann::json state = plan_ ? plan_->State() : nlohmann::json{{"active", false}};
     state["type"] = "planner:state";
+    if (!gameBuild_ && fs::exists(assets_.GetProject().root / "planner" / "buildstate.json")) {
+        gameBuild_ = MakeGameBuild();
+        if (gameBuild_->Open().empty()) gameBuildDirty_ = true;
+    }
+    if (gameBuild_ && !gameBuildJob_) state["build"] = gameBuild_->State();
+    else if (gameBuildJob_) state["build"] = {{"active", true}, {"status", "working"}, {"message", "Working (building places, writing files)…"}};
     state["hasPlan"] = PlannerStore(assets_.GetProject().root).HasPlan();
     post_(state);
     post_({{"type", "planner:card"}, {"card", plan_ ? plan_->Card() : nlohmann::json()}});
@@ -3699,6 +3757,11 @@ bool EditorApp::HandlePlannerMessage(const std::string& type, const nlohmann::js
     const fs::path root = assets_.GetProject().root;
     if (type == "planner:start") {
         StartPlan(message.value("request", ""), message.value("replace", false));
+        return true;
+    }
+    if (type == "planner:show") {
+        post_({{"type", "planner:open"}});
+        PostPlanner();
         return true;
     }
     // A plan left in the project carries on when the panel asks for it.
@@ -3733,6 +3796,40 @@ bool EditorApp::HandlePlannerMessage(const std::string& type, const nlohmann::js
         const std::string doc = message.value("doc", "");
         post_({{"type", "planner:document"}, {"doc", doc}, {"content", plan_->Document(doc)}});
         return true;
+    } else if (type == "planner:buildGame") {
+        // ⑩–⑬: build every place, bind the quests, write the files, playtest.
+        if (gameBuildJob_) {
+            post_({{"type", "notify"}, {"text", "The game is still being built: a moment"}});
+            return true;
+        }
+        gameBuild_ = MakeGameBuild();
+        why = gameBuild_->Start(message.value("mode", ""));
+        gameBuildDirty_ = why.empty();
+    } else if (type == "planner:buildRow") {
+        if (gameBuildJob_) {
+            post_({{"type", "notify"}, {"text", "The game is still being built: a moment"}});
+            return true;
+        }
+        if (!gameBuild_) return true;
+        const std::string place = message.value("place", ""), action = message.value("action", "");
+        if (action == "retry") why = gameBuild_->Retry(place);
+        else if (action == "placeholder") why = gameBuild_->UsePlaceholder(place);
+        else if (action == "manual" || action == "automatic") why = gameBuild_->SetMode(place, action);
+        else if (action == "done") why = gameBuild_->ManualDone(place);
+        else if (action == "open") {
+            const nlohmann::json state = gameBuild_->State();
+            for (const auto& row : state["rows"]) {
+                if (row.value("place", "") == place && !row.value("build", "").empty()) ResumeBuild(row.value("build", ""));
+            }
+        }
+        gameBuildDirty_ = true;
+    } else if (type == "planner:play") {
+        // ⑬ Play from the start: the start scene, then Play.
+        const std::string start = gameBuild_ ? gameBuild_->State().value("result", nlohmann::json::object()).value("startScene", "") : "";
+        if (!start.empty()) {
+            OpenScene(start);
+            if (!playing_) StartPlay();
+        }
     } else if (type == "planner:buildPlace") {
         // 22.10: the place's draft Brief, straight into the Build panel's confirmation window.
         const nlohmann::json place = plan_->Document(message.value("doc", ""));
@@ -3993,6 +4090,7 @@ void EditorApp::Tick(double frameSeconds) {
     PollAi();
     FinishBuildJob();
     StepBuildRun();
+    StepGameBuild();
     // The Grid setting changed (Project Settings, an AI proposal, undo): the
     // whole scene re-lays on the other grid (6.1).
     if (const IsoParams grid = BootstrapIso(); grid.topDown != iso_.topDown) {
@@ -4326,6 +4424,9 @@ void EditorApp::PollAi() {
                 nlohmann::json shown = result->body.is_object() ? result->body : nlohmann::json{{"ok", false}};
                 shown["type"] = "ai:models";
                 post_(shown);
+            } else if (gameBuild_ && gameBuild_->Owns(result->requestId)) {
+                gameBuildAnswers_.push_back({result->requestId, result->body}); // applied between pumps
+                gameBuildDirty_ = true;
             } else if (plan_ && plan_->Owns(result->requestId)) {
                 plan_->OnResponse(result->requestId, result->body);
                 PostPlanner();
@@ -4856,6 +4957,18 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool
                                     : "Couldn't revise the place: " + why}});
         post_({{"type", "build:open"}});
         PostBuild();
+        return;
+    }
+    // "Build the game": the validated plan's places built, quests bound, files written, playtested (23).
+    if (!asChange && plan_ && LooksLikeBuildGameRequest(text)) {
+        conversation_.emplace_back("user", text);
+        post_({{"type", "ai:message"}, {"role", "user"}, {"text", text}});
+        HandlePlannerMessage("planner:buildGame", {{"mode", ""}});
+        const bool started = gameBuild_ && gameBuild_->Active();
+        post_({{"type", "ai:message"}, {"role", "assistant"},
+               {"text", started ? "Building the game from the plan: follow it in the Planner panel (⑩–⑬)."
+                                : "The plan has to be validated first (⑨ in the Planner panel)."}});
+        post_({{"type", "planner:open"}});
         return;
     }
     // A change to the plan that's open ("make Aldric the mentor's son") goes to it as an edit (22).

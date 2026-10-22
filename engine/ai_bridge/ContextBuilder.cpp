@@ -318,6 +318,9 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
         if (brief.is_object() && state.is_object()) {
             context["plan"] = {{"title", brief.value("title", "")}, {"genre", brief.value("genre", "")}, {"logline", brief.value("logline", "")},
                                {"stage", state.value("stage", "")}, {"status", state.value("status", "")}};
+            std::ifstream buildIn(project.root / "planner" / "buildstate.json", std::ios::binary);
+            const nlohmann::json build = buildIn ? nlohmann::json::parse(buildIn, nullptr, false) : nlohmann::json();
+            if (build.is_object()) context["plan"]["build"] = {{"stage", build.value("stage", "")}, {"status", build.value("status", "")}};
         }
     }
     // The story knowledge graph (21): the ontology, the graph's nodes and scenes, its issues.

@@ -27,6 +27,7 @@
 #include "places/Ontology.h"
 #include "editing/PlaceBuild.h"
 #include "planner/GamePlan.h"
+#include "gamebuild/GameBuild.h"
 #include "editing/PlaceScene.h"
 #include "editing/ScenePreview.h"
 #include "renderer2d/Camera2D.h"
@@ -503,6 +504,22 @@ private:
     bool HandlePlannerMessage(const std::string& type, const nlohmann::json& message);
     void StartPlan(const std::string& request, bool replace);
     void PostPlanner();
+    // Building the planned game (23): its heavy steps run off the UI thread, one Pump at a
+    // time; AI answers wait while one runs (GameBuild isn't thread-safe).
+    std::unique_ptr<GameBuild> gameBuild_;
+    struct GameBuildJob {
+        std::thread thread;
+        std::atomic<bool> done{false};
+        std::string error;
+        ~GameBuildJob() {
+            if (thread.joinable()) thread.join();
+        }
+    };
+    std::unique_ptr<GameBuildJob> gameBuildJob_;
+    std::deque<std::pair<int, nlohmann::json>> gameBuildAnswers_;
+    bool gameBuildDirty_ = false;
+    std::unique_ptr<GameBuild> MakeGameBuild();
+    void StepGameBuild();
     // The build's heavy steps (planning, laying out: half a minute for a city) run off
     // the UI thread, one at a time (7.10). Nothing else touches build_ meanwhile: its
     // AI answers wait in buildDeferred_, the panel shows the last state as busy.

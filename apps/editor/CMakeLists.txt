@@ -11,7 +11,7 @@ endif()
 # WIN32: GUI subsystem (wWinMain entry point, no console) — this app is
 # Windows-native via WebView2 throughout, unlike apps/sandbox.
 add_executable(editor WIN32 main.cpp EditorApp.h EditorApp.cpp Win32Util.h Win32Util.cpp Launcher.h Launcher.cpp)
-target_link_libraries(editor PRIVATE aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets aige_audio aige_gameplay aige_editing aige_world aige_ai_bridge aige_planner aige_ui aige_editor aige_modules aige_game)
+target_link_libraries(editor PRIVATE aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets aige_audio aige_gameplay aige_editing aige_world aige_ai_bridge aige_planner aige_gamebuild aige_ui aige_editor aige_modules aige_game)
 target_compile_definitions(editor PRIVATE
     AIGE_EDITOR_DEFAULT_PROJECT="${CMAKE_SOURCE_DIR}/projects/demo"
     AIGE_EDITOR_UI_DIST_DIR="${CMAKE_CURRENT_SOURCE_DIR}/ui/dist"

@@ -209,6 +209,7 @@ function statusMark(status: string): string {
         <button v-if="waiting" class="primary" @click="sendToHost({ type: state.stage === 'concept' ? 'planner:confirm' : 'planner:approve' })">
           Continue
         </button>
+        <button :class="['step-build', { on: view === 'build' }]" @click="view = 'build'">⑩–⑬ Build</button>
       </div>
       <div v-if="askReplace" class="notice">
         The project already has a plan. Replace it with a new one for "{{ askReplace }}"?
@@ -373,6 +374,65 @@ function statusMark(status: string): string {
               <div><b>HUD</b>: {{ (state.ui.hud ?? []).join(', ') }}</div>
             </div>
             <div v-else class="muted">Not yet.</div>
+          </template>
+
+          <template v-else-if="view === 'build'">
+            <div v-if="!state.build?.active" class="section">
+              <p>Build every place of the design, place the characters, bind the quests, write the game's files and playtest it.</p>
+              <div class="row">
+                <button class="primary" :disabled="!state.baseline" @click="sendToHost({ type: 'planner:buildGame', mode: 'automatic' })">Build automatically</button>
+                <button :disabled="!state.baseline" @click="sendToHost({ type: 'planner:buildGame', mode: 'manual' })">Build each place myself</button>
+              </div>
+              <p v-if="!state.baseline" class="muted">The design needs a baseline first (⑨ Validate with no errors).</p>
+            </div>
+            <template v-else>
+              <div class="muted">{{ state.build.message }}</div>
+              <table class="grid">
+                <tbody>
+                  <tr v-for="r in state.build.rows ?? []" :key="r.place">
+                    <td><b>{{ r.place }}</b> <span class="muted">{{ r.scene }}</span></td>
+                    <td>{{ r.buildType }}</td>
+                    <td>{{ r.mode }}</td>
+                    <td :class="{ err: r.status === 'failed', warn: r.status === 'placeholder' || r.status === 'needs-you' }">{{ r.status }}</td>
+                    <td class="wide muted">{{ r.error }}</td>
+                    <td>
+                      <button v-if="r.build" @click="sendToHost({ type: 'planner:buildRow', place: r.place, action: 'open' })">Open build</button>
+                      <button v-if="r.status === 'needs-you'" @click="sendToHost({ type: 'planner:buildRow', place: r.place, action: 'done' })">Built</button>
+                      <button v-if="r.status === 'failed' || r.status === 'placeholder'" @click="sendToHost({ type: 'planner:buildRow', place: r.place, action: 'retry' })">Retry</button>
+                      <button v-if="r.status === 'failed'" @click="sendToHost({ type: 'planner:buildRow', place: r.place, action: 'placeholder' })">Placeholder</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <template v-if="(state.build.bindings?.aliases ?? []).length">
+                <h4>⑪ Bindings</h4>
+                <table class="grid">
+                  <tbody>
+                    <tr v-for="(a, i) in state.build.bindings.aliases" :key="i">
+                      <td>{{ a.quest }}</td><td>{{ a.alias }}</td><td :class="{ err: a.how === 'failed' }">{{ a.how }}</td>
+                      <td class="wide muted">{{ a.scene }} {{ a.marker || a.entity }} {{ a.reason }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </template>
+              <template v-if="state.build.playtest?.quests">
+                <h4>⑫ Playtest — {{ state.build.playtest.summary?.passed }}/{{ state.build.playtest.summary?.total }} checks</h4>
+                <div v-for="q in state.build.playtest.quests" :key="q.id">
+                  <b>{{ q.id }}</b>: <span :class="{ err: q.result !== 'completed' }">{{ q.result }}</span> <span class="muted">{{ q.reason }}</span>
+                </div>
+                <div v-for="(c, i) in (state.build.playtest.checks ?? []).filter((c: any) => !c.ok)" :key="'c' + i" class="err">✗ {{ c.check }} {{ c.detail }}</div>
+              </template>
+              <template v-if="state.build.result">
+                <h4>⑬ Result</h4>
+                <p><b>{{ state.build.result.headline }}</b></p>
+                <table class="grid">
+                  <tbody>
+                    <tr v-for="(a, i) in state.build.result.askedVsMade" :key="i"><td>{{ a.what }}</td><td>asked {{ a.asked }}</td><td>made {{ a.made }}</td></tr>
+                  </tbody>
+                </table>
+                <div class="row"><button class="primary" @click="sendToHost({ type: 'planner:play' })">Play from the start</button></div>
+              </template>
+            </template>
           </template>
 
           <template v-else-if="view === 'validate'">

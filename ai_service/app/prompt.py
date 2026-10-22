@@ -258,6 +258,8 @@ THE AI PLANNER (docs/ai-planner.md; context "plan" when the project has one)
   (a character's family, a quest's giver, a scene's outcome) go to the Planner as revisions too; if one reaches you,
   make the change in the scene as asked and say in the summary that the plan's documents can be updated from the
   Planner panel.
+- "Build the game" builds a validated plan (every place, the quests bound, the game's files, a playtest): the editor
+  sends it to the Planner too. context plan.build says how far a build has got.
 """
 
 STORY_GRAPH = """\

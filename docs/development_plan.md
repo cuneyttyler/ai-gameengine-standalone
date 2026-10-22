@@ -2801,6 +2801,18 @@ action-adventure, life-sim. (Games without a story come in v1.1, `roadmap.md`.)
 Done when: from one request, a short ARPG is planned, built (9 places, automatic), bound and
 playtested with every quest completable; the same flow makes a playable top-down life-sim.
 
+**Status (2026-10-22): built, to be tried** (`phase23-test-checklist.md`; "As built" §17 in `ai-planner.md`).
+- 23.1 `engine/gamebuild/`: the build plan, automatic and manual building through the Build panel's
+  `PlaceBuild`, scenes with their story anchors, gateways from the world graph, placeholders.
+- 23.2 Binding: characters placed, aliases fixed / by story anchor / made, items and markers.
+- 23.3 Quests, dialogue (AI, checked), cutscenes, records, packages, `game.json` with provenance; the
+  logic playtest (scenes, gateways, reachability, every quest walked).
+- 23.4 The Result page in the Planner panel, Play from the start.
+- 23.5 Profiles arpg, rpg, action-adventure, life-sim; the life-sim through the same flow.
+- AI panel: "build the game", `plan.build` in the context. Tests: `gamebuild_test.cpp`.
+- Not yet: module anchors and actor slots, AI choice among query candidates, local build edits,
+  simulated combat in the playtest.
+
 ## Phase 24 — Shipping quality
 
 Accessibility options, an in-game debug console, a profiler overlay, achievements (local,

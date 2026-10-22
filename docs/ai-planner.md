@@ -1,6 +1,6 @@
 # The AI Planner — designing and building a whole game
 
-Status: **designing built, to be tried (2026-10-22)**; see "As built" at the end. Phases 21–23 in `development_plan.md`. It comes
+Status: **built, to be tried (2026-10-22)**; see "As built" at the end. Phases 21–23 in `development_plan.md`. It comes
 after the engine's gaps are filled (Phases 12–20, `engine-gaps.md`), because the Planner
 can only design what the engine can run.
 
@@ -908,3 +908,40 @@ Points revised while writing this document set:
   offline Brief), `test_planner.py`.
 - Not yet (Phase 23): ⑩–⑬ (building every place automatically, binding, dialogue and files,
   playtest, Result); embedding retrieval of earlier scenes (§6.5 of `story-ontology.md`).
+
+## 17. As built (Phase 23: building)
+
+- **`engine/gamebuild/GameBuild`** takes over from the baseline (Planner panel ⑩–⑬ Build, or "build
+  the game" in the AI panel), with its state in `planner/buildstate.json`:
+  - **⑩** `planner/buildplan.json`: a row per place (scene `scenes/<place>.aige`, build type,
+    draft Brief, a prompt, parents before the places inside them). Each row's `PlaceBuild` starts
+    from its Brief (`StartFromBrief`) and is driven automatically — Confirm, Plan, Approve, each
+    recorded as an `actor: planner` decision — or waits for the user (manual rows: Open build,
+    then Built). The solved layout becomes the scene (`PlanPlaceAssets`, `BuildPlaceScene`), its
+    story anchors become markers (on the part that shows the anchor's module, else made near the
+    middle), an `arrive` marker, the player in the start scene. A build that can't start or
+    fails becomes a **placeholder** room (Retry rebuilds it). Then every `connects` and `inside`
+    edge becomes a gateway each way with an arrival marker (`from-<place>`).
+  - **⑪** characters placed at home (an NPC with `Talk` and its packages; bosses as enemies);
+    quest aliases bound — `fixed` (characters, locations), `story-anchor` (the anchor's marker),
+    `made` (a marker placed when no anchor exists), `failed` — items as pickups, every bound
+    spot a `<quest>/<alias>` marker (`planner/bindings.json`).
+  - **⑫** quests v2 from the designs (`EngineQuestFromDesign`), dialogue trees from the AI
+    (`/planner/dialogue`, checked: nodes link, the quests they start exist; a greeting with the
+    quests a character gives when the AI can't), cutscenes from cutscene scenes' beats, records
+    from Systems, a package record per character package, `game.json` (title, genre, start scene,
+    theme, screens, HUD) and `planner/files.json` (each file's provenance).
+  - **The playtest** (`planner/playtest.json`): every scene loads; gateways resolve; scenes are
+    reachable from the start through gateways; quests and dialogues validate; each quest walked —
+    every objective's target exists in a reachable scene and A* reaches it from the arrival
+    marker. It is a walk through the game's logic, not simulated combat.
+  - **⑬** `planner/result.json`: the headline, asked vs made, places with their builds, quests with
+    their playtest result, checks, placeholders, what next; **Play from the start**.
+- The editor runs `Pump()` off the UI thread, AI answers waiting between pumps.
+- Genre profiles for v1.0: arpg, rpg (top-down), action-adventure, life-sim; the life-sim goes
+  through the same flow to a playable game (`ALifeSimIsMadeTheSameWay`).
+- Tests: `gamebuild_test.cpp` (the ARPG built, connected, bound, written and playtested with every
+  quest finishable; a failed place's placeholder; the life-sim; engine quests from designs).
+- Not yet: anchors and actor slots declared by modules (§9.2; anchors are found by module or
+  made), query fills scored and chosen by the AI among candidates (the first candidate is used),
+  local build edits to make a missing part, simulated combat in the playtest, voice and music.
