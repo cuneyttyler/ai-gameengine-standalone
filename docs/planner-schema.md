@@ -1,6 +1,6 @@
 # Planner schemas — the Game Brief and the Planner's documents
 
-Status: **draft for review (2026-10-21)**. The input schema of the AI Planner
+Status: **built for Phase 22 (2026-10-22)**: the Brief, the stage documents through ⑨, the decision record and the plan state (`engine/planner/`). The input schema of the AI Planner
 (`ai-planner.md`) and the documents each stage writes. Field types reuse
 `place-schema.md` §2 (quantities with numbers, qualities from closed vocabularies);
 vocabularies for story terms come from GSO (`story-ontology.md` §8).

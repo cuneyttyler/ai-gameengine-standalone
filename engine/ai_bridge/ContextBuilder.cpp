@@ -309,6 +309,17 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
         };
         context["magic"] = {{"abilities", ids(AbilityPresets(), "ability")}, {"effects", ids(MagicEffectPresets(), "magic-effect")}};
     }
+    // The AI Planner's design (22), if the project has one: what game it is and where the plan is.
+    {
+        std::ifstream briefIn(project.root / "planner" / "brief.json", std::ios::binary);
+        std::ifstream stateIn(project.root / "planner" / "state.json", std::ios::binary);
+        const nlohmann::json brief = briefIn ? nlohmann::json::parse(briefIn, nullptr, false) : nlohmann::json();
+        const nlohmann::json state = stateIn ? nlohmann::json::parse(stateIn, nullptr, false) : nlohmann::json();
+        if (brief.is_object() && state.is_object()) {
+            context["plan"] = {{"title", brief.value("title", "")}, {"genre", brief.value("genre", "")}, {"logline", brief.value("logline", "")},
+                               {"stage", state.value("stage", "")}, {"status", state.value("status", "")}};
+        }
+    }
     // The story knowledge graph (21): the ontology, the graph's nodes and scenes, its issues.
     {
         const StoryOntology ontology = StoryOntology::ForProject(project.root);

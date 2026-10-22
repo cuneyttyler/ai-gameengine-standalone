@@ -1,0 +1,11 @@
+{
+  "schema": "aige.scope-table/1",
+  "comment": "Scope classes (docs/planner-schema.md §2.11): play time to numbers, for story genres.",
+  "classes": [
+    {"id": "micro",  "hours": [0, 1],    "places": [1, 3],   "scenes": [3, 6],    "mainQuestStages": [3, 6],   "sideQuests": [0, 2],    "cast": {"major": [1, 3],  "supporting": [0, 4],   "minor": [0, 10]}},
+    {"id": "short",  "hours": [1, 5],    "places": [3, 10],  "scenes": [8, 24],   "mainQuestStages": [8, 20],  "sideQuests": [3, 12],   "cast": {"major": [3, 5],  "supporting": [5, 12],  "minor": [10, 40]}},
+    {"id": "medium", "hours": [5, 15],   "places": [8, 25],  "scenes": [20, 60],  "mainQuestStages": [20, 40], "sideQuests": [12, 40],  "cast": {"major": [4, 8],  "supporting": [10, 25], "minor": [30, 100]}},
+    {"id": "long",   "hours": [15, 40],  "places": [20, 60], "scenes": [40, 120], "mainQuestStages": [30, 60], "sideQuests": [40, 120], "cast": {"major": [6, 12], "supporting": [20, 40], "minor": [80, 250]}},
+    {"id": "epic",   "hours": [40, 1000],"places": [50, 200],"scenes": [100, 500],"mainQuestStages": [50, 200],"sideQuests": [100, 400],"cast": {"major": [10, 12],"supporting": [40, 40], "minor": [200, 200]}}
+  ]
+}

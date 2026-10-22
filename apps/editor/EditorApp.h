@@ -26,6 +26,7 @@
 #include "assets/Catalog.h"
 #include "places/Ontology.h"
 #include "editing/PlaceBuild.h"
+#include "planner/GamePlan.h"
 #include "editing/PlaceScene.h"
 #include "editing/ScenePreview.h"
 #include "renderer2d/Camera2D.h"
@@ -496,6 +497,12 @@ private:
     TileLayers playLayers_; // the edited scene's tile layers while playing (7.2)
     std::optional<Ontology> places_;
     std::unique_ptr<PlaceBuild> build_; // the build open in the Build panel (7.4)
+    // The AI Planner (22): the plan open in the Planner panel; it resumes when the panel asks.
+    std::unique_ptr<GamePlan> plan_;
+    std::unique_ptr<GamePlan> MakePlan();
+    bool HandlePlannerMessage(const std::string& type, const nlohmann::json& message);
+    void StartPlan(const std::string& request, bool replace);
+    void PostPlanner();
     // The build's heavy steps (planning, laying out: half a minute for a city) run off
     // the UI thread, one at a time (7.10). Nothing else touches build_ meanwhile: its
     // AI answers wait in buildDeferred_, the panel shows the last state as busy.

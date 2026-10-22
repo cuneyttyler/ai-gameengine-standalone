@@ -486,6 +486,38 @@ std::string PlaceBuild::Start(const std::string& words, const json& choices) {
     return {};
 }
 
+std::string PlaceBuild::StartFromBrief(const std::string& words, const json& brief) {
+    if (!brief.is_object() || brief.value("buildType", "").empty() || !host_.ontology().Build(brief.value("buildType", ""))) {
+        return "the Brief names no build type the engine knows";
+    }
+    choices_ = json::object();
+    query_ = words.empty() ? brief.value("name", brief.value("buildType", "")) : words;
+    id_ = PlaceIdFor(host_.projectRoot, query_);
+    round_ = 1;
+    drafts_.clear();
+    draftProblems_.clear();
+    errors_.clear();
+    notices_.clear();
+    revisions_ = json::array();
+    result_ = json();
+    hasOrigin_ = false;
+    brief_ = json::object();
+    merge_ = {};
+    spec_ = solved_ = json();
+    context_ = InterpretContextFor(host_.ontology(), query_, {{"buildType", brief.value("buildType", "")}});
+    progressStep_.clear();
+    lastRetry_.clear();
+    WriteJson(Folder() / "request.json", {{"query", query_}, {"choices", choices_}, {"fromPlanner", true}});
+    Log({{"step", "start"}, {"query", query_}, {"brief", brief}, {"fromPlanner", true}});
+    // One draft, sure of itself: the merge keeps it as it is, and the window shows it to confirm.
+    drafts_ = {{{"brief", brief}, {"confidence", 1.0}, {"assumptions", json::array()}, {"questions", json::array()}, {"reading", "planner"}}};
+    draftProblems_ = {{}};
+    FinishInterpreting();
+    Notice("This Brief comes from the AI Planner's description of the place: check it, then build.");
+    Save();
+    return {};
+}
+
 // What the AI is given to read the request with: the one build type the words or the form name (a
 // village: the settlement's components, scale and fields), else all of them (each is many modules).
 json PlaceBuild::InterpretContextFor(const Ontology& ontology, const std::string& query, const json& choices) {

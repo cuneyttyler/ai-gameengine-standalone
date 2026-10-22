@@ -60,6 +60,7 @@ const handlers: Record<string, () => void> = {
   'panel.ai': () => togglePanel('ai'),
   'panel.viewport': () => toggleViewport(),
   'panel.build': () => togglePanel('build'),
+  'panel.planner': () => togglePanel('planner'),
   // The panel last clicked in (the viewport when none), or back to the whole layout.
   'panel.maximize': () => toggleMaximize(dockView.maximized ?? dockView.focused ?? 'viewport'),
   'help.shortcuts': () => (editorState.showShortcuts = !editorState.showShortcuts),

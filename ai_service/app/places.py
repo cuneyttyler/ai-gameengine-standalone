@@ -119,15 +119,17 @@ def _parse(text: str) -> tuple[dict | None, str]:
 
 
 def think_then_answer(provider: Provider, task: str, inputs: str, answer_shape: str, mode: str = "auto",
-                      think: bool = True) -> StepResult:
-    """One step (B1): think in free text, then answer in `answer_shape`."""
+                      think: bool = True, think_instructions: str | None = None) -> StepResult:
+    """One step (B1): think in free text, then answer in `answer_shape`. `think_instructions`
+    replaces the place builder's own (the AI Planner's steps think about other things)."""
+    thinking_how = THINK_INSTRUCTIONS if think_instructions is None else think_instructions
     mode = resolve_mode(provider, mode) if think else "answer-only"
     result = StepResult(answer=None, mode=mode)
     answer_system = f"{task}\n\n{answer_shape}\n\nAnswer with the JSON object only."
     try:
         if mode == "two-pass":
             thought = provider.complete_text([  # type: ignore[attr-defined]
-                {"role": "system", "content": f"{task}\n\n{THINK_INSTRUCTIONS}"},
+                {"role": "system", "content": f"{task}\n\n{thinking_how}"},
                 {"role": "user", "content": inputs}])
             result.thinking = thought.text.strip()
             result.usage.add(thought.usage)
@@ -137,7 +139,7 @@ def think_then_answer(provider: Provider, task: str, inputs: str, answer_shape: 
                                             "Now write the answer, following your reasoning."}])
         elif mode == "one-pass":
             reply = provider.complete([
-                {"role": "system", "content": f"{task}\n\n{THINK_INSTRUCTIONS}\n\n{answer_shape}\n\n"
+                {"role": "system", "content": f"{task}\n\n{thinking_how}\n\n{answer_shape}\n\n"
                                               "Answer with one JSON object whose FIRST key is \"thinking\" (your "
                                               "reasoning, as a string), followed by the answer's keys."},
                 {"role": "user", "content": inputs}])

@@ -1,3 +1,5 @@
+#include "gameplay/Behaviour.h"
+#include "planner/GamePlan.h"
 #include "story/StoryGraph.h"
 #include "story/StoryRules.h"
 #include "EditorApp.h"
@@ -66,6 +68,22 @@
 #include <shellapi.h>
 
 namespace aige {
+
+namespace {
+
+// "Plan a game about...", "make me a game where...", "design an RPG...": the Planner's, not a proposal's.
+bool LooksLikeGameRequest(const std::string& text) {
+    std::string t;
+    for (char c : text) t += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (const char* phrase : {"plan a game", "plan the game", "design a game", "design the game", "make a game", "make me a game",
+                               "create a game", "make an rpg", "make an arpg", "design an rpg", "plan an rpg", "make a life-sim",
+                               "make a life sim"}) {
+        if (t.find(phrase) != std::string::npos) return true;
+    }
+    return false;
+}
+
+} // namespace
 
 namespace fs = std::filesystem;
 
@@ -569,6 +587,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     if (type.rfind("fx:", 0) == 0 && HandleFxMessage(type, message)) return;
     if (type.rfind("magic:", 0) == 0 && HandleMagicMessage(type, message)) return;
     if (type.rfind("storygraph:", 0) == 0 && HandleStoryGraphMessage(type, message)) return;
+    if (type.rfind("planner:", 0) == 0 && HandlePlannerMessage(type, message)) return;
 
     if (type == "viewport:bounds") {
         int width = message.value("width", 0);
@@ -3624,6 +3643,121 @@ bool EditorApp::HandleStoryGraphMessage(const std::string& type, const nlohmann:
     return true;
 }
 
+std::unique_ptr<GamePlan> EditorApp::MakePlan() {
+    GamePlan::Host host;
+    host.request = [this](const std::string& path, const nlohmann::json& body, int timeout) {
+        return Ai() && Ai()->GetState() == AiClient::State::Ready ? Ai()->Request("POST", path, body, timeout) : 0;
+    };
+    host.projectRoot = assets_.GetProject().root;
+    host.places = [this]() -> const Ontology& { return Places(); };
+    nlohmann::json themes = nlohmann::json::array(), buildTypes = nlohmann::json::array(), recordTypes = nlohmann::json::object();
+    std::error_code ec;
+    for (const auto& file : fs::directory_iterator(EngineUiDir() / "themes", ec)) {
+        if (file.path().extension() == ".json") themes.push_back(file.path().stem().string());
+    }
+    for (const auto& [id, b] : Places().Builds()) buildTypes.push_back(id);
+    for (const auto& t : EngineReflection().RecordTypes()) {
+        nlohmann::json fields = nlohmann::json::array();
+        for (const auto& f : t.fields) fields.push_back(f.name);
+        recordTypes[t.name] = fields;
+    }
+    host.catalog = {{"packageTemplates", ProcedureNames()}, {"themes", themes}, {"buildTypes", buildTypes},
+                    {"recordTypes", recordTypes}, {"abilities", AbilityPresets()}, {"effects", MagicEffectPresets()}};
+    host.validateRecord = [](const std::string& type, const nlohmann::json& record) -> std::vector<std::string> {
+        for (const auto& t : EngineReflection().RecordTypes()) {
+            if (t.name == type) return ValidateRecord(t, record, nullptr);
+        }
+        return {"there's no record type '" + type + "'"};
+    };
+    return std::make_unique<GamePlan>(std::move(host));
+}
+
+void EditorApp::StartPlan(const std::string& request, bool replace) {
+    if (PlannerStore(assets_.GetProject().root).HasPlan() && !replace) {
+        post_({{"type", "planner:open"}});
+        post_({{"type", "planner:askReplace"}, {"request", request}});
+        return;
+    }
+    plan_ = MakePlan();
+    const std::string why = plan_->Start(request);
+    post_({{"type", "ai:message"}, {"role", "assistant"},
+           {"text", why.empty() ? "Planning the game in the Planner panel: confirm the Game Brief there when it's ready."
+                                : "Couldn't start the plan: " + why}});
+    post_({{"type", "planner:open"}});
+    PostPlanner();
+}
+
+void EditorApp::PostPlanner() {
+    nlohmann::json state = plan_ ? plan_->State() : nlohmann::json{{"active", false}};
+    state["type"] = "planner:state";
+    state["hasPlan"] = PlannerStore(assets_.GetProject().root).HasPlan();
+    post_(state);
+    post_({{"type", "planner:card"}, {"card", plan_ ? plan_->Card() : nlohmann::json()}});
+}
+
+bool EditorApp::HandlePlannerMessage(const std::string& type, const nlohmann::json& message) {
+    const fs::path root = assets_.GetProject().root;
+    if (type == "planner:start") {
+        StartPlan(message.value("request", ""), message.value("replace", false));
+        return true;
+    }
+    // A plan left in the project carries on when the panel asks for it.
+    if (!plan_ && PlannerStore(root).HasPlan()) {
+        plan_ = MakePlan();
+        if (const std::string why = plan_->Open(); !why.empty()) post_({{"type", "notify"}, {"text", "Can't open the plan: " + why}});
+    }
+    if (type == "planner:request") {
+        PostPlanner();
+        return true;
+    }
+    if (!plan_) {
+        post_({{"type", "notify"}, {"text", "There's no plan yet: describe the game in the Planner panel."}});
+        return true;
+    }
+    std::string why;
+    if (type == "planner:editBrief") plan_->EditBrief(message.value("path", ""), message.value("value", nlohmann::json()));
+    else if (type == "planner:confirm") why = plan_->Confirm();
+    else if (type == "planner:approve") why = plan_->Approve();
+    else if (type == "planner:pause") plan_->Pause(message.value("on", true));
+    else if (type == "planner:edit") {
+        why = plan_->Edit(message.value("doc", ""), message.value("pointer", ""), message.value("value", nlohmann::json()), message.value("reason", ""));
+    } else if (type == "planner:lock") why = plan_->Lock(message.value("doc", ""), message.value("on", true));
+    else if (type == "planner:regenerate") why = plan_->Regenerate(message.value("doc", ""));
+    else if (type == "planner:regenerateStale") why = plan_->RegenerateStale();
+    else if (type == "planner:accept") why = plan_->AcceptFinding(message.value("finding", ""), message.value("reason", ""));
+    else if (type == "planner:restore") why = plan_->Restore(message.value("n", 0));
+    else if (type == "planner:why") {
+        post_({{"type", "planner:why"}, {"why", plan_->Why(message.value("doc", ""))}});
+        return true;
+    } else if (type == "planner:document") {
+        const std::string doc = message.value("doc", "");
+        post_({{"type", "planner:document"}, {"doc", doc}, {"content", plan_->Document(doc)}});
+        return true;
+    } else if (type == "planner:buildPlace") {
+        // 22.10: the place's draft Brief, straight into the Build panel's confirmation window.
+        const nlohmann::json place = plan_->Document(message.value("doc", ""));
+        if (buildJob_) {
+            post_({{"type", "notify"}, {"text", "The build is still working: a moment"}});
+            return true;
+        }
+        build_ = MakeBuild();
+        const nlohmann::json brief = place.value("brief", nlohmann::json::object());
+        why = build_->StartFromBrief(brief.value("name", place.value("id", "")), brief);
+        post_({{"type", "build:open"}});
+        PostBuild();
+    } else {
+        return false;
+    }
+    if (!why.empty()) post_({{"type", "notify"}, {"text", why}});
+    PostPlanner();
+    // A user's edit to a document open in the panel: show it as it is now.
+    if (type == "planner:edit" || type == "planner:lock") {
+        const std::string doc = message.value("doc", "");
+        post_({{"type", "planner:document"}, {"doc", doc}, {"content", plan_->Document(doc)}});
+    }
+    return true;
+}
+
 bool EditorApp::HandleMagicMessage(const std::string& type, const nlohmann::json& message) {
     if (type == "magic:request") {
         post_(MagicJson());
@@ -4192,6 +4326,9 @@ void EditorApp::PollAi() {
                 nlohmann::json shown = result->body.is_object() ? result->body : nlohmann::json{{"ok", false}};
                 shown["type"] = "ai:models";
                 post_(shown);
+            } else if (plan_ && plan_->Owns(result->requestId)) {
+                plan_->OnResponse(result->requestId, result->body);
+                PostPlanner();
             } else if (buildJob_ && !KnownRequest(result->requestId)) {
                 buildDeferred_.push_back({result->requestId, result->body, true}); // the build is busy: after its job
             } else if (build_ && build_->Owns(result->requestId)) {
@@ -4719,6 +4856,25 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool
                                     : "Couldn't revise the place: " + why}});
         post_({{"type", "build:open"}});
         PostBuild();
+        return;
+    }
+    // A change to the plan that's open ("make Aldric the mentor's son") goes to it as an edit (22).
+    if (!asChange && plan_ && plan_->AboutThePlan(text) && !LooksLikeGameRequest(text)) {
+        conversation_.emplace_back("user", text);
+        post_({{"type", "ai:message"}, {"role", "user"}, {"text", text}});
+        const std::string why = plan_->Revise(text);
+        post_({{"type", "ai:message"}, {"role", "assistant"},
+               {"text", why.empty() ? "That's about the plan, so it went to the Planner panel as a revision."
+                                    : "Couldn't revise the plan: " + why}});
+        post_({{"type", "planner:open"}});
+        PostPlanner();
+        return;
+    }
+    // Designing a whole game goes to the Planner panel (22).
+    if (!asChange && LooksLikeGameRequest(text)) {
+        conversation_.emplace_back("user", text);
+        post_({{"type", "ai:message"}, {"role", "user"}, {"text", text}});
+        StartPlan(text, false);
         return;
     }
     // Building a place goes to the Build panel, not a proposal card.

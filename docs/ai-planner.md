@@ -1,6 +1,6 @@
 # The AI Planner — designing and building a whole game
 
-Status: **draft for review (2026-10-21)**. Phases 21–23 in `development_plan.md`. It comes
+Status: **designing built, to be tried (2026-10-22)**; see "As built" at the end. Phases 21–23 in `development_plan.md`. It comes
 after the engine's gaps are filled (Phases 12–20, `engine-gaps.md`), because the Planner
 can only design what the engine can run.
 
@@ -859,3 +859,52 @@ Points revised while writing this document set:
 - **Animations step** (after Phase 18).
 - **Learning from verified plans:** as builds feed `places/examples.json`, verified plans
   could give examples to the Outline and Quests steps.
+
+## 16. As built (Phase 22: designing)
+
+- **The engine** (`engine/planner/`): `PlannerStore` keeps `planner/` (documents with schema,
+  revision, `madeBy` and their inputs' revisions; `decisions.jsonl`; `log.jsonl`; `state.json`;
+  `history/<n>/` snapshots after every stage and the baseline; `defaults.json`). `PlannerDocs`
+  holds the Game Brief (schema `data/planner/brief-schema.json`, genre profiles
+  `data/planner/profiles/` for arpg, rpg, action-adventure and life-sim, the scope table
+  `data/planner/scope.json`), the confirmation window built from the schema, and a validator
+  for every stage document. `GamePlan` is the job engine: stages ①–⑨ as resumable jobs
+  (characters and places run side by side, scenes one after another), each AI answer checked
+  by the engine, sent back once with its problems, then recorded as a decision and applied.
+- **① Concept**: three readings (`/planner/concept`), merged field by field (`differ`,
+  `guessed`, `assumed` marks), completed from the profile and scope; the window always waits for
+  Continue; without the AI the Brief comes from the request's words.
+- **② Outline** seeds the story graph (story, acts, endings, cast with narrative and gameplay
+  roles, places with build types, the world graph) and World Bible stubs.
+- **③ Story**: each act's chapters and scene cards (`s<act>-<nn>`, ordered across acts), then
+  every scene in order against the graph's world state; its events, facts (temporal facts start
+  at the scene, on its branch), ends and new entities go into the graph, checked by the
+  continuity rules; main-line kernel gameplay scenes get a main-quest stage (the skeleton);
+  choices, convergences and endings are linked from the scenes' branches; a critic reviews each
+  act and its card fixes rewrite a scene once.
+- **④–⑧**: characters (biography, relationships both ways, class, packages; World Bible body),
+  quests (main in full with the skeleton kept, side quests from motivations; R-Q checks), places
+  (descriptions with story anchors and a draft Brief completed and validated against the place
+  ontology), systems (records validated against the record types), visuals (theme, screens, HUD).
+- **⑨ Validate**: the story rules, cross-document checks (characters in scenes have documents,
+  every place a description, quest anchors exist in their places, reward items have records,
+  systems in use are on, needed windows exist), stage findings and an AI critic; with no open
+  errors the design is the **baseline**; Accept keeps a finding with a reason.
+- **Editing**: Edit (a JSON pointer, or the whole document), Lock, Regenerate, Regenerate stale
+  (exactly the documents whose inputs changed; a scene's card edit rewrites that scene), Why?
+  (the decision, its rationale, inputs and the item's history), Restore a snapshot.
+- **Editor**: the Planner panel (Y): stepper with stale counts, the Brief's tabs, the outline's
+  columns, the scene board, the boards for the cast, quests and places, systems, visuals, the
+  report; on every item Why?, Regenerate, Lock and the editable document; **Build…** opens a
+  place's draft Brief in the Build panel's confirmation window (`PlaceBuild::StartFromBrief`).
+- **AI panel**: "plan a game…" starts a plan; the plan card follows it; a follow-up naming a
+  character, place or quest of the plan becomes a revision (`/planner/revise` → document edits);
+  context `plan` and a PLANNER prompt section for everything else.
+- **AI service** (`ai_service/app/planner.py`): `/planner/{concept, outline, act, scene, critic,
+  character, quests, place, systems, visuals, review, revise}`, each think → answer → check →
+  repair once, with checks mirroring the engine's.
+- Tests: `planner_test.cpp` (a short ARPG designed and validated from scripted answers, resumed
+  after closing mid-plan, an edit regenerating only its dependents, revision in words, the
+  offline Brief), `test_planner.py`.
+- Not yet (Phase 23): ⑩–⑬ (building every place automatically, binding, dialogue and files,
+  playtest, Result); embedding retrieval of earlier scenes (§6.5 of `story-ontology.md`).

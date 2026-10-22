@@ -24,13 +24,14 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .models import EditorContext, EngineSchema, Proposal, Usage
 from .consistency import check_consistency, writing_from_operations
 from .images import ImageGenerator, MistralImageGenerator, generate_sprites
+from .planner import STEPS as PLANNER_STEPS
 from .places import ask_questions, interpret, plan_root, plan_zone, repair_brief, repair_node, review_layout, revise_plan
 from .vision import describe_assets, map_chunk
 from .websource import all_candidates, candidates, fetch_file, search_web
@@ -717,6 +718,24 @@ def create_app(
         except ProviderError as error:
             return {"ok": False, "errors": [str(error)]}
         return {"ok": True, "assets": results}
+
+    @app.post("/planner/{step}")
+    def planner_step(step: str, body: dict = Body(default_factory=dict)) -> dict:
+        """The AI Planner's steps (app/planner.py): concept, outline, act, scene, critic, character,
+        quests, place, systems, visuals, review."""
+        provider: Provider | None = state["provider"]
+        if provider is None:
+            return {"ok": False, "errors": ["No AI provider configured: set MISTRAL_API_KEY in ai_service/.env"]}
+        run = PLANNER_STEPS.get(step)
+        if run is None:
+            return {"ok": False, "errors": [f"no planner step {step!r}"]}
+        try:
+            result = run(provider, body)
+        except ProviderError as error:
+            return {"ok": False, "errors": [str(error)]}
+        if isinstance(result.get("usage"), dict):
+            state["usage"].add(Usage(**result["usage"]))
+        return result
 
     @app.post("/consistency")
     def consistency(request: ConsistencyRequest) -> dict:

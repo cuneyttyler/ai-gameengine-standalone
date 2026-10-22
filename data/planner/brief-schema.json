@@ -1,0 +1,101 @@
+{
+  "schema": "aige.game-brief-schema/1",
+  "comment": "The Game Brief (docs/planner-schema.md §2): fields by the confirmation window's tab. type: text | number | int | bool | enum | enumSet | list | range. asked: shown first (round 1). Story vocabularies come from GSO (data/story/vocabularies.json) where 'vocab' names one.",
+  "tabs": [
+    {"id": "game", "label": "Game", "fields": [
+      {"path": "title", "label": "Title", "type": "text", "asked": true},
+      {"path": "logline", "label": "Logline", "type": "text", "asked": true, "max": 300},
+      {"path": "genre", "label": "Genre", "type": "enum", "asked": true, "options": ["arpg", "rpg", "action-adventure", "life-sim"]},
+      {"path": "perspective", "label": "Perspective", "type": "enum", "asked": true, "options": ["isometric", "top-down"]},
+      {"path": "camera", "label": "Camera", "type": "enum", "options": ["follow", "fixed-screen", "rooms"]},
+      {"path": "playTime", "label": "Play time (hours)", "type": "number", "asked": true, "min": 0.25, "max": 100},
+      {"path": "scopeClass", "label": "Scope", "type": "enum", "options": ["micro", "short", "medium", "long", "epic"]},
+      {"path": "scope.places", "label": "Places", "type": "range", "min": 1, "max": 200},
+      {"path": "scope.mainQuestStages", "label": "Main quest stages", "type": "range", "min": 1, "max": 200},
+      {"path": "scope.sideQuests", "label": "Side quests", "type": "range", "min": 0, "max": 400},
+      {"path": "scope.scenes", "label": "Story scenes", "type": "range", "min": 1, "max": 500},
+      {"path": "audience", "label": "Audience", "type": "enum", "options": ["everyone", "teen", "mature"]},
+      {"path": "artStyle.style", "label": "Art style", "type": "enum", "options": ["pixel-16", "pixel-32", "painted", "flat-vector", "from-project"]}
+    ]},
+    {"id": "story", "label": "Story", "fields": [
+      {"path": "setting.world", "label": "World", "type": "text", "asked": true},
+      {"path": "setting.era", "label": "Era", "type": "enum", "options": ["prehistoric", "ancient", "medieval", "renaissance", "industrial", "modern", "near-future", "far-future", "timeless"]},
+      {"path": "setting.genreFlavour", "label": "Flavour", "type": "enum", "options": ["fantasy", "dark-fantasy", "sci-fi", "post-apocalyptic", "historical", "horror", "mystery", "slice-of-life"]},
+      {"path": "tone", "label": "Tone", "type": "enumSet", "asked": true, "vocab": "Tone"},
+      {"path": "themes", "label": "Themes", "type": "list", "maxItems": 3},
+      {"path": "structure", "label": "Structure", "type": "enum", "vocab": "StructureTemplate"},
+      {"path": "pattern", "label": "Branching", "type": "enum", "vocab": "BranchingPattern"},
+      {"path": "endings", "label": "Endings", "type": "int", "min": 1, "max": 6},
+      {"path": "choicePoints", "label": "Major choices", "type": "int", "min": 0, "max": 12},
+      {"path": "playerCharacter.kind", "label": "Player character", "type": "enum", "asked": true, "options": ["fixed", "created"]},
+      {"path": "playerCharacter.name", "label": "Player's name", "type": "text"},
+      {"path": "playerCharacter.description", "label": "Player's description", "type": "text"},
+      {"path": "mustInclude", "label": "Must include", "type": "list"},
+      {"path": "avoid", "label": "Avoid", "type": "list"}
+    ]},
+    {"id": "characters", "label": "Characters", "fields": [
+      {"path": "cast.major", "label": "Major characters", "type": "int", "min": 1, "max": 12},
+      {"path": "cast.supporting", "label": "Supporting", "type": "int", "min": 0, "max": 40},
+      {"path": "cast.minor", "label": "Minor", "type": "int", "min": 0, "max": 200},
+      {"path": "companions", "label": "Companions", "type": "int", "min": 0, "max": 8},
+      {"path": "factions", "label": "Factions", "type": "int", "min": 0, "max": 12},
+      {"path": "behaviour", "label": "Behaviour", "type": "enum", "asked": true, "options": ["simple", "scheduled", "rich"]},
+      {"path": "romance", "label": "Romance", "type": "bool"}
+    ]},
+    {"id": "places", "label": "Places", "fields": [
+      {"path": "worldShape", "label": "World shape", "type": "enum", "asked": true, "options": ["single", "hub", "linear", "open-region", "levels"]},
+      {"path": "placeKinds.settlement", "label": "Settlements", "type": "int", "min": 0, "max": 10},
+      {"path": "placeKinds.interior", "label": "Interiors", "type": "int", "min": 0, "max": 60},
+      {"path": "placeKinds.dungeon", "label": "Dungeons", "type": "int", "min": 0, "max": 20},
+      {"path": "placeKinds.wilderness", "label": "Wilderness", "type": "int", "min": 0, "max": 20},
+      {"path": "interiors", "label": "Interiors", "type": "enum", "options": ["none", "key", "most"]},
+      {"path": "travel", "label": "Travel", "type": "enum", "options": ["walk", "walk+fast-travel", "world-map"]}
+    ]},
+    {"id": "systems", "label": "Systems", "fields": [
+      {"path": "systems.combat.on", "label": "Combat", "type": "bool"},
+      {"path": "systems.combat.style", "label": "Combat style", "type": "enum", "options": ["real-time-melee", "real-time-ranged", "mixed", "none"]},
+      {"path": "systems.abilities.on", "label": "Abilities", "type": "bool"},
+      {"path": "systems.abilities.magic", "label": "Magic", "type": "bool"},
+      {"path": "systems.inventory.on", "label": "Inventory", "type": "bool"},
+      {"path": "systems.crafting.on", "label": "Crafting", "type": "bool"},
+      {"path": "systems.economy.on", "label": "Economy", "type": "bool"},
+      {"path": "systems.economy.currency", "label": "Currency", "type": "text"},
+      {"path": "systems.progression.on", "label": "Progression", "type": "bool"},
+      {"path": "systems.progression.model", "label": "Progression model", "type": "enum", "options": ["levels", "skill-use", "none"]},
+      {"path": "systems.dialogue.on", "label": "Dialogue", "type": "bool"},
+      {"path": "systems.stealth.on", "label": "Stealth", "type": "bool"},
+      {"path": "systems.time.on", "label": "Day and night", "type": "bool"},
+      {"path": "systems.factions.on", "label": "Factions", "type": "bool"},
+      {"path": "systems.farming.on", "label": "Farming", "type": "bool"},
+      {"path": "systems.relationships.on", "label": "Relationships", "type": "bool"}
+    ]},
+    {"id": "difficulty", "label": "Difficulty", "fields": [
+      {"path": "difficulty.levels", "label": "Levels", "type": "list", "asked": true},
+      {"path": "difficulty.default", "label": "Default level", "type": "text"},
+      {"path": "difficulty.scales", "label": "What scales", "type": "enumSet", "asked": true, "options": ["enemy-health", "enemy-damage", "player-damage", "enemy-count", "enemy-ai", "resources", "prices", "xp", "checkpoints", "puzzle-hints", "timers"]},
+      {"path": "difficulty.curve", "label": "Curve", "type": "enum", "options": ["flat", "gentle", "steady", "steep", "sawtooth"]},
+      {"path": "difficulty.levelScaling", "label": "Level scaling", "type": "enum", "options": ["fixed-zones", "scaled", "hybrid"]},
+      {"path": "difficulty.adaptive", "label": "Adaptive", "type": "bool"},
+      {"path": "difficulty.assists", "label": "Assists", "type": "enumSet", "options": ["invincibility", "damage-reduction", "skip-encounter", "slow-motion", "aim-assist", "extra-hints"]},
+      {"path": "difficulty.permadeath", "label": "Permadeath", "type": "enum", "options": ["off", "option", "always"]}
+    ]},
+    {"id": "visuals", "label": "Visuals", "fields": [
+      {"path": "visuals.theme", "label": "UI theme", "type": "enum", "asked": true, "options": ["parchment", "stone", "metal", "sci-fi", "minimal", "pixel", "cozy"]},
+      {"path": "visuals.hudDensity", "label": "HUD density", "type": "enum", "asked": true, "options": ["minimal", "standard", "full"]},
+      {"path": "visuals.notifications", "label": "Notifications", "type": "enum", "options": ["subtle", "standard", "prominent"]},
+      {"path": "visuals.mapStyle", "label": "Map", "type": "enum", "options": ["none", "minimap", "full-map", "both"]}
+    ]},
+    {"id": "plan", "label": "Plan", "fields": [
+      {"path": "plan.autonomy.concept", "label": "① Concept", "type": "enum", "options": ["ask", "review", "auto"]},
+      {"path": "plan.autonomy.outline", "label": "② Outline", "type": "enum", "options": ["ask", "review", "auto"]},
+      {"path": "plan.autonomy.story", "label": "③ Story", "type": "enum", "options": ["ask", "review", "auto"]},
+      {"path": "plan.autonomy.characters", "label": "④ Characters", "type": "enum", "options": ["ask", "review", "auto"]},
+      {"path": "plan.autonomy.quests", "label": "⑤ Quests", "type": "enum", "options": ["ask", "review", "auto"]},
+      {"path": "plan.autonomy.places", "label": "⑥ Places", "type": "enum", "options": ["ask", "review", "auto"]},
+      {"path": "plan.autonomy.systems", "label": "⑦ Systems", "type": "enum", "options": ["ask", "review", "auto"]},
+      {"path": "plan.autonomy.visuals", "label": "⑧ Visuals", "type": "enum", "options": ["ask", "review", "auto"]},
+      {"path": "plan.building", "label": "Building", "type": "enum", "options": ["manual", "automatic", "ask-per-place"]},
+      {"path": "plan.budget.calls", "label": "Budget: AI calls (0: none)", "type": "int", "min": 0, "max": 100000}
+    ]}
+  ]
+}

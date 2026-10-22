@@ -430,8 +430,12 @@ TEST(StoryRulesTest, Continuity) {
     {
         StoryGraph g = Good();
         Add(g, {{"p", "participant"}, {"s", "s-04c"}, {"o", "character/aldric"}});
+        EXPECT_FALSE(Has(Issues(g), "R-T1")); // he dies in this scene: taking part while alive
+        auto& later = g.Upsert("s-04d", "StoryScene");
+        later.fields = {{"order", 4.7}, {"mode", "cutscene"}, {"branch", "kill"}, {"location", "location/tower"}};
+        Add(g, {{"p", "participant"}, {"s", "s-04d"}, {"o", "character/aldric"}});
         EXPECT_TRUE(Has(Issues(g), "R-T1"));
-        g.Find("s-04c")->fields["flashback"] = true; // a flashback may show the dead
+        g.Find("s-04d")->fields["flashback"] = true; // a flashback may show the dead
         EXPECT_FALSE(Has(Issues(g), "R-T1"));
     }
     {

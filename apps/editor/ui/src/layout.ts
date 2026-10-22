@@ -41,6 +41,7 @@ export const panelNames: Record<PanelId, string> = {
   generate: 'Generate',
   ai: 'AI',
   build: 'Build',
+  planner: 'Planner',
 }
 export const sideNames: Record<Side, string> = { left: 'Left', top: 'Top', right: 'Right', bottom: 'Bottom' }
 
@@ -123,7 +124,7 @@ function migrate(): LayoutState | null {
 // tabs used to be.
 // Panels that stay hidden until they have something to show (the Build panel
 // opens when a build starts, 7.4).
-const startsHidden: PanelId[] = ['build']
+const startsHidden: PanelId[] = ['build', 'planner']
 
 function addNewPanels(root: DockNode | null, known: PanelId[] | undefined): DockNode | null {
   const before = known ?? (['viewport', 'scene', 'assets', 'ai'] as PanelId[])

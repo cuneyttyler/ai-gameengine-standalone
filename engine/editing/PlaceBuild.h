@@ -75,6 +75,9 @@ public:
     // `choices` (the Build panel's form, {Brief path: value}, BuildChoices): sent
     // with the words and applied over every reading of them: what was chosen stays.
     std::string Start(const std::string& query, const nlohmann::json& choices = {});
+    // A Brief already written (the AI Planner's place description, development_plan.md
+    // 22.10): straight to ① Confirm with it, no reading of words. `words` names the build.
+    std::string StartFromBrief(const std::string& words, const nlohmann::json& brief);
     const nlohmann::json& Choices() const { return choices_; }
 
     // ② Assets' confirming questions (the AI's, first where each zone goes; or the

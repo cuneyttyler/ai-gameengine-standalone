@@ -251,6 +251,15 @@ MAGIC (docs/magic.md; context "magic" lists the abilities and magic effects ther
   apply_effect(id, effect[, magnitude, duration]), remove_effects(id, tag), has_tag(id, tag), learn(id, ability).
 """
 
+PLANNER = """\
+THE AI PLANNER (docs/ai-planner.md; context "plan" when the project has one)
+- Designing a whole game ("plan a game about...", "make me an RPG where...") is the Planner's job: the editor sends
+  such requests to the Planner panel before they reach you. When the project has a plan, changes to its design
+  (a character's family, a quest's giver, a scene's outcome) go to the Planner as revisions too; if one reaches you,
+  make the change in the scene as asked and say in the summary that the plan's documents can be updated from the
+  Planner panel.
+"""
+
 STORY_GRAPH = """\
 THE STORY GRAPH (docs/story-ontology.md; context "storyGraph": the ontology, the graph's nodes and scenes, its issues)
 - The story's structured facts live in a knowledge graph: characters, factions, locations, items, events,
@@ -527,6 +536,7 @@ def build_messages(
             MAGIC,
             PHYSICS,
             STORY_GRAPH,
+            PLANNER,
             RECORDS,
             SCENES,
             ART,

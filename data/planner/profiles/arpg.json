@@ -1,0 +1,23 @@
+{
+  "schema": "aige.genre-profile/1", "id": "arpg", "label": "Isometric action RPG",
+  "stages": {"story": "full", "characters": "full", "quests": "full", "places": "full", "systems": "full", "visuals": "full"},
+  "defaults": {
+    "perspective": "isometric", "camera": "follow", "audience": "teen",
+    "structure": "three-act", "pattern": "branch-and-bottleneck", "endings": 2, "choicePoints": 1,
+    "playerCharacter": {"kind": "fixed"}, "behaviour": "scheduled", "companions": 1, "factions": 2,
+    "worldShape": "hub", "interiors": "key", "travel": "walk",
+    "placeKinds": {"settlement": 2, "interior": 3, "dungeon": 2, "wilderness": 1},
+    "systems": {
+      "combat": {"on": true, "style": "real-time-melee"}, "abilities": {"on": true, "magic": true},
+      "inventory": {"on": true}, "crafting": {"on": false}, "economy": {"on": true, "currency": "gold"},
+      "progression": {"on": true, "model": "levels"}, "dialogue": {"on": true}, "stealth": {"on": false},
+      "time": {"on": true}, "factions": {"on": true}, "farming": {"on": false}, "relationships": {"on": false}
+    },
+    "difficulty": {"levels": ["story", "normal", "hard", "nightmare"], "default": "normal",
+                   "scales": ["enemy-health", "enemy-damage", "player-damage", "resources"],
+                   "curve": "steady", "levelScaling": "fixed-zones", "adaptive": false, "assists": ["damage-reduction"], "permadeath": "option"},
+    "visuals": {"theme": "stone", "hudDensity": "standard", "notifications": "standard", "mapStyle": "minimap"}
+  },
+  "asked": ["title", "logline", "genre", "perspective", "playTime", "setting.world", "tone", "playerCharacter.kind", "behaviour",
+            "worldShape", "difficulty.levels", "difficulty.scales", "visuals.theme", "visuals.hudDensity"]
+}

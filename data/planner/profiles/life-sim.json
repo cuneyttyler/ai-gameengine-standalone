@@ -1,0 +1,22 @@
+{
+  "schema": "aige.genre-profile/1", "id": "life-sim", "label": "Top-down life-sim",
+  "stages": {"story": "light", "characters": "full", "quests": "side-only", "places": "full", "systems": "full", "visuals": "full"},
+  "defaults": {
+    "perspective": "top-down", "camera": "follow", "audience": "everyone",
+    "structure": "episodic", "pattern": "open-map", "endings": 1, "choicePoints": 0,
+    "playerCharacter": {"kind": "created"}, "behaviour": "rich", "companions": 0, "factions": 0,
+    "worldShape": "hub", "interiors": "most", "travel": "walk",
+    "placeKinds": {"settlement": 1, "interior": 6, "dungeon": 0, "wilderness": 1},
+    "systems": {
+      "combat": {"on": false, "style": "none"}, "abilities": {"on": false, "magic": false},
+      "inventory": {"on": true}, "crafting": {"on": true}, "economy": {"on": true, "currency": "coins"},
+      "progression": {"on": true, "model": "skill-use"}, "dialogue": {"on": true}, "stealth": {"on": false},
+      "time": {"on": true}, "factions": {"on": false}, "farming": {"on": true}, "relationships": {"on": true}
+    },
+    "difficulty": {"levels": ["relaxed", "normal"], "default": "relaxed", "scales": ["prices", "timers"],
+                   "curve": "flat", "levelScaling": "fixed-zones", "adaptive": false, "assists": [], "permadeath": "off"},
+    "visuals": {"theme": "cozy", "hudDensity": "standard", "notifications": "subtle", "mapStyle": "none"}
+  },
+  "asked": ["title", "logline", "genre", "perspective", "playTime", "setting.world", "tone", "playerCharacter.kind",
+            "visuals.theme", "visuals.hudDensity"]
+}

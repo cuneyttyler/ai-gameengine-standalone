@@ -56,6 +56,7 @@ add_executable(aige_tests
     magic_test.cpp
     physics_test.cpp
     story_graph_test.cpp
+    planner_test.cpp
     export_test.cpp
     flat_sprites_test.cpp
     scenes_test.cpp
@@ -84,7 +85,7 @@ add_executable(aige_tests
     sourcing_test.cpp
     solve_test.cpp
 )
-target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets aige_gameplay aige_editing aige_world aige_ai_bridge aige_ui aige_editor aige_modules aige_places aige_game aige_story gtest_main)
+target_link_libraries(aige_tests PRIVATE aige_platform aige_rhi aige_ecs aige_physics2d aige_renderer2d aige_scripting aige_assets aige_gameplay aige_editing aige_world aige_ai_bridge aige_ui aige_editor aige_modules aige_places aige_game aige_story aige_planner gtest_main)
 target_compile_definitions(aige_tests PRIVATE AIGE_SOURCE_DIR="${CMAKE_SOURCE_DIR}" AIGE_PLAYER_DIR="$<TARGET_FILE_DIR:sandbox>")
 add_dependencies(aige_tests sandbox) # the export smoke test runs the player
 

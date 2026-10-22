@@ -179,6 +179,8 @@ class EditorContext(BaseModel):
     # The story knowledge graph (21): {ontology {classes, properties, vocabularies, templates},
     # revision, nodes {id: class}, scenes [{id, order, mode, location, branch}], counts, issues}.
     storyGraph: dict[str, Any] = {}
+    # The AI Planner's design (22): {title, genre, logline, stage, status}, when the project has a plan.
+    plan: dict[str, Any] = {}
 
 
 # --- Proposals --------------------------------------------------------------------

@@ -45,6 +45,7 @@ export const actions: ActionDef[] = [
   { id: 'panel.ai', label: 'Show / hide the AI panel', group: 'Panels', keys: ['I'] },
   { id: 'panel.viewport', label: 'Show / hide the viewport', group: 'Panels', keys: ['M'] },
   { id: 'panel.build', label: 'Show / hide the Build panel', group: 'Panels', keys: ['U'] },
+  { id: 'panel.planner', label: 'Show / hide the Planner panel (designing a whole game)', group: 'Panels', keys: ['Y'] },
   { id: 'panel.maximize', label: 'Maximise the panel in use to the whole window, or bring the layout back', group: 'Panels', keys: ['F11'], whileTyping: true },
   { id: 'play.toggle', label: 'Play / stop', group: 'Play', keys: ['F5'], inPlay: true },
   { id: 'play.save', label: 'Save the game (while playing)', group: 'Play', keys: ['F6'], inPlay: true },

@@ -256,6 +256,14 @@ private:
         return false;
     }
 
+    bool DiesIn(const std::string& character, const std::string& scene) const {
+        for (const auto* e : g_.Out(character, "state")) {
+            const std::string state = e->Text("state");
+            if ((state == "dead" || state == "destroyed") && e->from == scene) return true;
+        }
+        return false;
+    }
+
     void Continuity() {
         const auto scenes = g_.SceneOrder();
         for (const auto& s : scenes) {
@@ -263,8 +271,11 @@ private:
             for (const auto& c : g_.Participants(s)) {
                 const StoryNode* n = g_.Find(c);
                 if (!n || !o_.IsA(n->cls, "Character")) continue;
-                // R-T1: the dead don't take part (flashbacks, visions and the undead aside).
-                if (!scene->Flag("flashback") && !n->Flag("undead") && !g_.AliveAt(c, s)) Add("R-T1", s, {{"character", Name(c)}, {"scene", s}});
+                // R-T1: the dead don't take part (flashbacks, visions and the undead aside; dying in
+                // the scene is taking part while alive).
+                if (!scene->Flag("flashback") && !n->Flag("undead") && !g_.AliveAt(c, s) && !DiesIn(c, s)) {
+                    Add("R-T1", s, {{"character", Name(c)}, {"scene", s}});
+                }
             }
         }
         // R-T2: one place at a time.

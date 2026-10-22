@@ -1,0 +1,23 @@
+{
+  "schema": "aige.genre-profile/1", "id": "action-adventure", "label": "Action-adventure",
+  "stages": {"story": "full", "characters": "light", "quests": "main-only", "places": "full", "systems": "light", "visuals": "full"},
+  "defaults": {
+    "perspective": "top-down", "camera": "rooms", "audience": "everyone",
+    "structure": "three-act", "pattern": "linear", "endings": 1, "choicePoints": 0,
+    "playerCharacter": {"kind": "fixed"}, "behaviour": "simple", "companions": 0, "factions": 0,
+    "worldShape": "hub", "interiors": "key", "travel": "walk",
+    "placeKinds": {"settlement": 1, "interior": 2, "dungeon": 3, "wilderness": 1},
+    "systems": {
+      "combat": {"on": true, "style": "mixed"}, "abilities": {"on": true, "magic": false},
+      "inventory": {"on": true}, "crafting": {"on": false}, "economy": {"on": true, "currency": "rupees"},
+      "progression": {"on": false, "model": "none"}, "dialogue": {"on": true}, "stealth": {"on": false},
+      "time": {"on": false}, "factions": {"on": false}, "farming": {"on": false}, "relationships": {"on": false}
+    },
+    "difficulty": {"levels": ["easy", "normal", "hard"], "default": "normal",
+                   "scales": ["enemy-damage", "player-damage", "puzzle-hints"], "curve": "sawtooth", "levelScaling": "fixed-zones",
+                   "adaptive": false, "assists": ["extra-hints"], "permadeath": "off"},
+    "visuals": {"theme": "pixel", "hudDensity": "minimal", "notifications": "subtle", "mapStyle": "full-map"}
+  },
+  "asked": ["title", "logline", "genre", "perspective", "playTime", "setting.world", "tone", "worldShape",
+            "difficulty.levels", "visuals.theme", "visuals.hudDensity"]
+}

@@ -1,0 +1,23 @@
+{
+  "schema": "aige.genre-profile/1", "id": "rpg", "label": "Top-down RPG",
+  "stages": {"story": "full", "characters": "full", "quests": "full", "places": "full", "systems": "full", "visuals": "full"},
+  "defaults": {
+    "perspective": "top-down", "camera": "follow", "audience": "everyone",
+    "structure": "heros-journey", "pattern": "branch-and-bottleneck", "endings": 2, "choicePoints": 2,
+    "playerCharacter": {"kind": "fixed"}, "behaviour": "scheduled", "companions": 2, "factions": 2,
+    "worldShape": "open-region", "interiors": "key", "travel": "walk+fast-travel",
+    "placeKinds": {"settlement": 3, "interior": 4, "dungeon": 2, "wilderness": 2},
+    "systems": {
+      "combat": {"on": true, "style": "mixed"}, "abilities": {"on": true, "magic": true},
+      "inventory": {"on": true}, "crafting": {"on": false}, "economy": {"on": true, "currency": "gold"},
+      "progression": {"on": true, "model": "levels"}, "dialogue": {"on": true}, "stealth": {"on": false},
+      "time": {"on": true}, "factions": {"on": true}, "farming": {"on": false}, "relationships": {"on": false}
+    },
+    "difficulty": {"levels": ["story", "normal", "hard"], "default": "normal",
+                   "scales": ["enemy-health", "enemy-damage", "xp"], "curve": "gentle", "levelScaling": "hybrid",
+                   "adaptive": false, "assists": ["damage-reduction", "extra-hints"], "permadeath": "off"},
+    "visuals": {"theme": "parchment", "hudDensity": "standard", "notifications": "standard", "mapStyle": "both"}
+  },
+  "asked": ["title", "logline", "genre", "perspective", "playTime", "setting.world", "tone", "playerCharacter.kind", "behaviour",
+            "worldShape", "difficulty.levels", "difficulty.scales", "visuals.theme", "visuals.hudDensity"]
+}

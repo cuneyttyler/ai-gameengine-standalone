@@ -96,7 +96,18 @@ interface BuildEntry {
   query: string
 }
 
-type Entry = ProposalEntry | MessageEntry | TaskEntry | SplitEntry | BuildEntry
+// The AI Planner's card (development_plan.md 22): one per plan, kept up to date.
+interface PlanEntry {
+  kind: 'plan'
+  stageLabel: string
+  status: string
+  message: string
+  headline: string
+  done: number
+  total: number
+}
+
+type Entry = ProposalEntry | MessageEntry | TaskEntry | SplitEntry | BuildEntry | PlanEntry
 
 const entries = ref<Entry[]>([])
 const input = ref('')
@@ -156,6 +167,14 @@ function handle(message: Record<string, unknown>): void {
       query: String(message.query ?? '') }
     if (card) Object.assign(card, fields)
     else entries.value.push(reactive({ kind: 'build', id: String(message.buildId), ...fields }) as BuildEntry)
+  } else if (message.type === 'planner:card') {
+    const card = message.card as Record<string, any> | null
+    if (!card || !card.stage) return
+    const fields = { stageLabel: String(card.stageLabel ?? ''), status: String(card.status ?? ''), message: String(card.message ?? ''),
+      headline: String(card.headline ?? ''), done: Number(card.progress?.done ?? 0), total: Number(card.progress?.total ?? 0) }
+    const entry = entries.value.find((e) => e.kind === 'plan') as PlanEntry | undefined
+    if (entry) Object.assign(entry, fields)
+    else entries.value.push(reactive({ kind: 'plan', ...fields }) as PlanEntry)
   } else if (message.type === 'ai:proposal') {
     const items = message.items as ChangeItem[]
     const entry: ProposalEntry = reactive({
@@ -560,6 +579,16 @@ const examples = [
             >
               Ask as a change instead
             </button>
+          </div>
+        </div>
+
+        <div v-else-if="entry.kind === 'plan'" class="build-card" :class="entry.status">
+          <div class="build-title">Planning {{ entry.headline }}</div>
+          <div class="build-text">
+            {{ entry.stageLabel }}<span v-if="entry.total"> · {{ entry.done }}/{{ entry.total }}</span> — {{ entry.message }}
+          </div>
+          <div class="build-buttons">
+            <button class="primary" @click="showPanel('planner')">Open planner panel</button>
           </div>
         </div>
 

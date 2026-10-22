@@ -2775,6 +2775,19 @@ Done when: a request for a short ARPG gives a validated design (story, cast, que
 with Briefs, records, UI documents) whose every item answers Why?, survives closing the
 editor mid-plan, and regenerates only stale parts after an edit.
 
+**Status (2026-10-22): built, to be tried** (`phase22-test-checklist.md`; "As built" in `ai-planner.md`).
+- 22.1 `engine/planner/`: documents with inputs and staleness, decisions, call log, resumable
+  jobs, history snapshots and the baseline; the Planner panel (Y).
+- 22.2 ① the Game Brief: three readings merged with marks, genre profiles (arpg, rpg,
+  action-adventure, life-sim), the scope table, the confirmation window from the schema.
+- 22.3–22.9 ② outline and the graph seeded; ③ acts, scene cards and scenes in order against the
+  graph, the main quest's skeleton, the act critic; ④ characters; ⑤ quests; ⑥ places with draft
+  Briefs; ⑦ systems; ⑧ visuals; ⑨ the report and the baseline.
+- 22.10 A place's Brief opens in the Build panel (`PlaceBuild::StartFromBrief`); the automatic
+  driver over every place comes with ⑩ in Phase 23.
+- AI panel: "plan a game…", the plan card, revisions in words, context `plan`, the PLANNER prompt.
+  Tests: `planner_test.cpp`, `test_planner.py`.
+
 ## Phase 23 — AI Planner II: building the game (`ai-planner.md` §5.10–5.13, §8–§11)
 
 **23.1** ⑩ The build plan; manual and automatic building; gateways from the world graph;

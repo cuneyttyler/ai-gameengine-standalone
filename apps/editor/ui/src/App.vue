@@ -24,6 +24,7 @@ import DockNode from './components/DockNode.vue'
 import ScenePanel from './components/ScenePanel.vue'
 import ViewportPanel from './components/ViewportPanel.vue'
 import ProjectPanel from './components/ProjectPanel.vue'
+import PlannerPanel from './components/PlannerPanel.vue'
 import GeneratePanel from './components/GeneratePanel.vue'
 import BuildPanel from './components/BuildPanel.vue'
 import { keyLabel } from './keys'
@@ -122,6 +123,7 @@ onBeforeUnmount(() => setShell(null))
         <div class="panel-host" :style="hostStyle('generate')" @pointerdown.capture="dockView.focused = 'generate'"><GeneratePanel /></div>
         <div class="panel-host" :style="hostStyle('ai')" @pointerdown.capture="dockView.focused = 'ai'"><AiPanel /></div>
         <div class="panel-host" :style="hostStyle('build')" @pointerdown.capture="dockView.focused = 'build'"><BuildPanel /></div>
+        <div class="panel-host" :style="hostStyle('planner')" @pointerdown.capture="dockView.focused = 'planner'"><PlannerPanel /></div>
 
         <!-- While dragging: where the panel will land, and its name under the pointer. -->
         <template v-if="dockView.dragging">
