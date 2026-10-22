@@ -18,6 +18,7 @@ function updateMenus(): void {
   ]
   menuExtensions.view = [
     { label: 'Frame stats', shortcut: keyLabel('view.stats'), action: () => sendToHost({ type: 'view:stats' }) },
+    { label: 'Physics shapes (colliders, triggers, bodies)', action: () => sendToHost({ type: 'view:physics' }) },
     { label: `${editorState.grid ? '✓ ' : ''}Tile grid on empty ground`, shortcut: keyLabel('view.grid'), action: () => sendToHost({ type: 'view:grid' }) },
   ]
 }

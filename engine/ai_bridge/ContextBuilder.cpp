@@ -16,6 +16,7 @@
 #include "gameplay/Difficulty.h"
 #include "gameplay/Effects.h"
 #include "gameplay/Magic.h"
+#include "gameplay/Physics.h"
 #include "ui/Documents.h"
 #include "gameplay/Settings.h"
 #include "gameplay/Schedule.h"
@@ -305,6 +306,22 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
             return presets;
         };
         context["magic"] = {{"abilities", ids(AbilityPresets(), "ability")}, {"effects", ids(MagicEffectPresets(), "magic-effect")}};
+    }
+    // Physics v2 (20): the layers in use, gravity, how many rigid bodies, the triggers' names.
+    {
+        std::vector<std::string> layers;
+        for (auto [e, collider] : registry.view<Collider2D>().each()) {
+            if (!collider.layer.empty()) layers.push_back(collider.layer);
+        }
+        std::sort(layers.begin(), layers.end());
+        layers.erase(std::unique(layers.begin(), layers.end()), layers.end());
+        nlohmann::json triggers = nlohmann::json::array();
+        for (auto [e, trigger] : registry.view<Trigger>().each()) triggers.push_back(trigger.name);
+        const auto& p = ActiveSettings().physics;
+        context["physics"] = {{"layers", layers},
+                              {"gravity", {p.gravityX, p.gravityY}},
+                              {"bodies", registry.view<RigidBody2D>().size()},
+                              {"triggers", triggers}};
     }
     // The game's UI (17): the built-in themes, the project's theme and its own UI files.
     {

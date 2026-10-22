@@ -36,6 +36,15 @@ SpriteQuad SpriteQuadOf(const ScreenTransform2D& t, const Sprite& s, bool diamon
     }
     // High ground: raised, a flat tile's corners each by its own.
     for (int i = 0; i < 4; ++i) q.y[i] -= s.lift + (s.flat && diamond ? s.cornerLift[i] : 0.0f);
+    // Turned around its position (a rigid body's angle, 20.3).
+    if (s.angle != 0.0f && !s.flat) {
+        const float a = s.angle * 3.14159265f / 180.0f, c = std::cos(a), sn = std::sin(a);
+        for (int i = 0; i < 4; ++i) {
+            const float dx = q.x[i] - t.x, dy = q.y[i] - t.y;
+            q.x[i] = t.x + dx * c - dy * sn;
+            q.y[i] = t.y + dx * sn + dy * c;
+        }
+    }
     // The image's corners, clockwise from its top-left.
     const float us[4] = {s.u0, s.u1, s.u1, s.u0};
     const float vs[4] = {s.v0, s.v0, s.v1, s.v1};

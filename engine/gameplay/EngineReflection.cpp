@@ -8,6 +8,7 @@
 #include "gameplay/Difficulty.h"
 #include "gameplay/Effects.h"
 #include "gameplay/Magic.h"
+#include "gameplay/Physics.h"
 #include "gameplay/Items.h"
 #include "gameplay/Settings.h"
 #include "records/Records.h"
@@ -93,6 +94,10 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
     r.Component<Collider2D>("Collider2D", "Box used for wall collision, centered on the position, in cells.")
         .Field("halfWidth", &Collider2D::halfWidth, "Half the box width, in cells.").Range(0.05, 2.0)
         .Field("halfHeight", &Collider2D::halfHeight, "Half the box height, in cells.").Range(0.05, 2.0)
+        .Field("shape", &Collider2D::shape, "A box or a circle.").Options({"Box", "Circle"})
+        .Field("radius", &Collider2D::radius, "The circle's radius, in cells.").Range(0.05, 4.0)
+        .Field("layer", &Collider2D::layer, "Its collision layer (empty: by team: player, enemy, ally; else default).")
+        .Field("mask", &Collider2D::mask, "The layers it collides with: world, enemy... (empty: all)")
         .DependsOn({"WorldTransform2D"});
 
     // --- Combat ------------------------------------------------------------------
@@ -377,6 +382,38 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                                         "each a list of ability ids (presets or records).")
         .Field("known", &Abilities::known, "Known abilities: firebolt, heal...")
         .Field("slots", &Abilities::slots, "The quick slots (1-4), in order.");
+    // --- Physics v2 (20) -----------------------------------------------------------------
+    r.Component<Trigger>("Trigger", "A sensor area (20.1): whoever enters or leaves it (on its mask's layers) raises "
+                                    "trigger_enter / trigger_exit with its name.")
+        .Field("name", &Trigger::name, "What scripts hear as the event's text.")
+        .Field("mask", &Trigger::mask, "Which layers it notices: player, enemy, projectile... (empty: all)")
+        .Field("once", &Trigger::once, "Only the first time.")
+        .Field("radius", &Trigger::radius, "A circle of this radius (0: the entity's collider).").Range(0, 50)
+        .DependsOn({"WorldTransform2D"});
+    r.Component<CharacterController2D>("CharacterController2D", "How it moves (20.2): top-down walking, or grid-step "
+                                                                "(cell by cell).")
+        .Field("mode", &CharacterController2D::mode, "Top-down or grid-step.").Options({"TopDown", "GridStep"})
+        .Field("stepTime", &CharacterController2D::stepTime, "Grid-step: seconds per cell.").Range(0.02, 2)
+        .Field("diagonal", &CharacterController2D::diagonal, "Grid-step: diagonal steps allowed.");
+    r.Component<RigidBody2D>("RigidBody2D", "A physical body (20.3): pushed, falling, toppling, bouncing (Box2D).")
+        .Field("type", &RigidBody2D::type, "Static, kinematic (moved by code) or dynamic.").Options({"Static", "Kinematic", "Dynamic"})
+        .Field("density", &RigidBody2D::density, "Mass per area.").Range(0.01, 100)
+        .Field("friction", &RigidBody2D::friction, "0-1.").Range(0, 1)
+        .Field("restitution", &RigidBody2D::restitution, "Bounce, 0-1.").Range(0, 1)
+        .Field("linearDamping", &RigidBody2D::linearDamping, "Slowing down (a top-down floor's drag).").Range(0, 20)
+        .Field("angularDamping", &RigidBody2D::angularDamping, "Slowing its spin.").Range(0, 20)
+        .Field("gravityScale", &RigidBody2D::gravityScale, "Times Project Settings ▸ Physics gravity.").Range(-10, 10)
+        .Field("fixedRotation", &RigidBody2D::fixedRotation, "Never turns.")
+        .Field("bullet", &RigidBody2D::bullet, "Continuous collision, for fast bodies.")
+        .DependsOn({"WorldTransform2D", "Collider2D"});
+    r.Component<Joint2D>("Joint2D", "Joins this body to another (20.3): a hinge, a fixed distance (a rope), or welded.")
+        .Field("type", &Joint2D::type, "Revolute (a hinge), distance or weld.").Options({"Revolute", "Distance", "Weld"})
+        .Field("other", &Joint2D::other, "The other body.")
+        .Field("anchorX", &Joint2D::anchorX, "Where on this body, cells right of its centre.").Range(-10, 10)
+        .Field("anchorY", &Joint2D::anchorY, "Where on this body, cells below its centre.").Range(-10, 10)
+        .Field("length", &Joint2D::length, "Distance: the length (0: as placed).").Range(0, 100)
+        .Field("collide", &Joint2D::collide, "The two still collide with each other.")
+        .DependsOn({"RigidBody2D"});
     r.Component<Zone>("Zone", "The scene's level band (16.3): enemies here are made at a level within it.")
         .Field("minLevel", &Zone::minLevel, "The lowest level.").Range(1, 100)
         .Field("maxLevel", &Zone::maxLevel, "The highest level.").Range(1, 100);
@@ -429,6 +466,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("rotation", &Sprite::rotation, "Quarter turns clockwise of a flat image (0-3).").Range(0, 3)
         .Field("lift", &Sprite::lift, "Raised off the ground by this many pixels (standing on high ground).").Range(-512, 512)
         .Field("emissive", &Sprite::emissive, "Lit by itself (a lit window, glowing runes): darkness doesn't dim it.")
+        .Field("angle", &Sprite::angle, "Turned around its position, in degrees (a rigid body sets it).").Range(-3600, 3600)
         .DependsOn({"ScreenTransform2D"});
 
     // --- Scripting -------------------------------------------------------------------
@@ -502,7 +540,9 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("dodgeStamina", &CombatSettings::dodgeStamina, "Stamina a dodge costs (for those with stamina).")
         .Range(0, 1000);
     r.Settings("Physics", "Movement and collision.", &settings.physics)
-        .Field("playerCollides", &PhysicsSettings::playerCollides, "Off lets the player walk through walls.");
+        .Field("playerCollides", &PhysicsSettings::playerCollides, "Off lets the player walk through walls.")
+        .Field("gravityX", &PhysicsSettings::gravityX, "Rigid bodies' gravity, cells per second squared.").Range(-100, 100)
+        .Field("gravityY", &PhysicsSettings::gravityY, "(top-down games: 0; a side-on puzzle: about 10).").Range(-100, 100);
     r.Settings("Grid", "How the world is laid out: diamond cells seen at an angle, or square cells seen from above.",
                &settings.grid)
         .Field("style", &GridSettings::style,

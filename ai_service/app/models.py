@@ -174,6 +174,8 @@ class EditorContext(BaseModel):
     fx: dict[str, Any] = {}
     # Abilities and magic (19): {abilities, effects} ids (presets and records).
     magic: dict[str, Any] = {}
+    # Physics v2 (20): {layers (in use), gravity [x, y], bodies (count), triggers (names)}.
+    physics: dict[str, Any] = {}
 
 
 # --- Proposals --------------------------------------------------------------------

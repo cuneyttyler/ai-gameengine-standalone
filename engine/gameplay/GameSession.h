@@ -8,6 +8,7 @@
 #include "gameplay/Difficulty.h"
 #include "gameplay/Effects.h"
 #include "gameplay/Magic.h"
+#include "gameplay/Physics.h"
 #include "gameplay/InputMap.h"
 #include "gameplay/Isometric.h"
 #include "gameplay/Schedule.h"
@@ -263,6 +264,13 @@ public:
     // The player casts the ability in quick slot `slot` (0-3) the way it faces.
     bool CastSlot(int slot, std::string* why = nullptr);
 
+    // Physics v2 (20): rigid bodies and joints (Box2D), triggers, the debug view (F5).
+    PhysicsWorld& Physics() { return *physics_; }
+    bool PhysicsDebug() const { return showPhysicsDebug_; }
+    void SetPhysicsDebug(bool on) { showPhysicsDebug_ = on; }
+    // Colliders, triggers and bodies as translucent world sprites, for the debug view.
+    void AppendPhysicsDebugSprites(std::vector<SpriteItem>& out);
+
     // Objective markers (15.4): where the shown objective's target is (world
     // units), when the scene has it: a marker, a character, an item lying about.
     std::optional<std::pair<float, float>> ObjectiveLocation();
@@ -437,6 +445,9 @@ private:
     void StepFx(float dt); // animators, particles, tweens, lights
     std::unique_ptr<MagicSystem> magic_;
     float magicThink_ = 0.0f;
+    std::unique_ptr<PhysicsWorld> physics_;
+    bool showPhysicsDebug_ = false;
+    void StepPhysics(float dt, const SolidQueryFn& isSolid);
     void StepMagic(float dt, size_t firstEvent);
     void CueEffects(size_t firstEvent);
     NoticeSink noticeSink_;

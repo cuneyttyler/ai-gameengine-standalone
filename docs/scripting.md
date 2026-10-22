@@ -57,6 +57,9 @@ Entities are referred to by integer **ids** (as returned by `find_nearest` or `s
 | `cast(ability[, target])` / `cast(ability, x, y)` | boolean | This entity casts an ability (a record or preset), known or not ([magic.md](magic.md)). |
 | `apply_effect(id, effect[, magnitude, duration])` / `remove_effects(id, tag)` | boolean / — | A magic effect on an entity; remove effects by tag or id. |
 | `has_tag(id, tag)` / `add_tag(id, tag)` / `cooldown_left(ability)` / `learn(id, ability)` | | Tags (state.stunned, element.fire…), cooldowns, teaching. |
+| `raycast(x0, y0, x1, y1[, mask])` | table or nil | The first solid tile or collider along a segment (not this entity): `{entity, x, y, distance}`; `entity` is nil for a wall ([physics.md](physics.md)). |
+| `overlap(x, y, radius[, mask])` / `line_of_sight(x0, y0, x1, y1)` | ids / boolean | Entities whose colliders touch a circle; nothing solid between two points. |
+| `apply_impulse(id, ix, iy)` / `set_velocity(id, vx, vy)` | — | Pushes a rigid body (RigidBody2D), or sets its velocity. |
 | `difficulty()` / `difficulty_step(category)` / `set_difficulty(id)` | string / number / boolean | The difficulty level's id; a category's step, 1-5 (3: as designed); change the level. See [difficulty.md](difficulty.md). |
 | `play_cutscene(id)` / `skip_cutscene()` / `in_cutscene()` | boolean / — / boolean | Plays `cutscenes/<id>.json` (false if it doesn't load). See [story.md](story.md#cutscenes-cutscenesidjson). |
 | `set_flag(name[, value])` | — | Story flags shared with dialogue conditions; `value` defaults to true. |
@@ -96,6 +99,7 @@ Things that happen in the game are **events**, each with a name and a table `e`:
 | `pickup` | who picked it up | the pickup | healing / the pickup's prefab |
 | `attack` | who swung | — | — |
 | `victory` | — | — | — (the last enemy died) |
+| `trigger_enter` / `trigger_exit` | the trigger | who came or went | the trigger's name (a Trigger component, [physics.md](physics.md)) |
 | `talk` | who was talked to | the player | — / their World Bible key |
 | `quest_started`, `quest_completed`, `quest_failed`, `quest_stage`, `objective_completed` | — | — | — / the quest's id |
 | `cutscene_started`, `cutscene_ended` | — | — | — / the cutscene's id |

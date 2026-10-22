@@ -91,6 +91,7 @@ InputMap InputMap::Defaults() {
     map.actions.push_back(Button("quickload", "Load the quick slot.", "any", {Key::F9}));
     map.actions.push_back(Button("debug_stats", "Show frame statistics.", "any", {Key::F3}));
     map.actions.push_back(Button("debug_ai", "Show what every character is doing.", "any", {Key::F4}));
+    map.actions.push_back(Button("debug_physics", "Show colliders, triggers and bodies.", "any", {Key::F5}));
     return map;
 }
 

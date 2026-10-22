@@ -54,6 +54,7 @@ add_executable(aige_tests
     game_ui_test.cpp
     fx_test.cpp
     magic_test.cpp
+    physics_test.cpp
     export_test.cpp
     flat_sprites_test.cpp
     scenes_test.cpp

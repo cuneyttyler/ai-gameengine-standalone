@@ -42,6 +42,8 @@ struct Sprite {
     bool flat = false;
     // Lit by itself (windows at night, glowing runes): 2D lighting leaves it alone (18.6).
     bool emissive = false;
+    // Turned (degrees, clockwise) around its position: a rigid body's angle (20.3).
+    float angle = 0.0f;
     // Quarter turns clockwise of a flat image (0-3), so one road piece can
     // run either way along the grid. Upright sprites ignore it.
     int rotation = 0;

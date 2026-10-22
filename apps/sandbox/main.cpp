@@ -342,6 +342,7 @@ int main(int argc, char** argv) {
                                           static_cast<float>(extent.height), layerSprites);
                 // Phase 18: particles with the world, the scene's lights, the camera's shake.
                 session.AppendFxSprites(layerSprites);
+                if (session.PhysicsDebug()) session.AppendPhysicsDebugSprites(layerSprites); // F5 (20.4)
                 const aige::LightingFrame lighting = session.Lighting();
                 std::vector<aige::Renderer2D::SceneLight> lights;
                 for (const auto& l : lighting.lights) lights.push_back({l.x, l.y, l.radius, l.r, l.g, l.b, l.intensity});

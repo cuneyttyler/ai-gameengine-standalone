@@ -1,6 +1,6 @@
 # Game physics
 
-Status: **draft for review (2026-10-21)**. Phase 20 in `development_plan.md`.
+Status: **built, to be tried (2026-10-22)**; see "As built" at the end. Phase 20 in `development_plan.md`.
 
 ---
 
@@ -106,3 +106,33 @@ Presets of "feel" (tight, floaty, heavy) give the platformer's parameters; the e
   sensors, queries, top-down and grid-step controllers and Box2D; the platformer and
   free-flight controllers of §5 come with v1.2.
 - Out of scope: soft bodies, fluids, cloth.
+
+## 9. As built (Phase 20)
+
+- **Layers and shapes** (`gameplay/Physics`): `Collider2D` gained `shape` (box or circle), `radius`,
+  `layer` and `mask`. An entity's layer is its collider's, else `projectile`, `trigger`, its team's
+  (`player`, `enemy`), `ally` for a faction, else `default`; solid tiles are `world`. A mask is a
+  comma list; empty means everything.
+- **Queries**: `Raycast` (tiles stepped finely, colliders by segment tests), `Overlap` (a circle),
+  `LineOfSight` (tiles only); Lua `raycast`, `overlap`, `line_of_sight`.
+- **Triggers**: the `Trigger` component (name, mask, once, radius or the collider); `trigger_enter`
+  and `trigger_exit` events with the trigger's name as the text.
+- **Swept projectiles**: combat moves a shot in sub-steps of at most 0.2 cells, so fast shots
+  don't pass through; `Projectile.mask` limits what it hits.
+- **Controllers**: `CharacterController2D` (top-down, as before, or grid-step with `stepTime` and
+  `diagonal`); the player grid-steps by the move actions, turned to the world's axes in
+  isometric games.
+- **Box2D v3.0.0** (FetchContent, private to `aige_gameplay`): `PhysicsWorld` makes bodies for
+  `RigidBody2D` (static, kinematic, dynamic; density, friction, restitution, damping, gravity
+  scale, fixed rotation, bullet), kinematic bodies for characters so they push crates, static
+  boxes for solid tiles near bodies, and `Joint2D` (revolute, distance, weld). Dynamic bodies
+  write their position and `Sprite.angle` back; the renderer turns sprites by `angle`. A scene
+  with no rigid bodies never makes a world. Gravity: Project Settings ▸ Physics `gravityX/Y`.
+- **Debug**: F5 in play (and View ▸ Physics shapes in the editor) draws colliders (yellow),
+  triggers (green), dynamic (orange) and static (grey) bodies.
+- **AI panel**: context `physics` (layers in use, gravity, bodies, triggers); the PHYSICS prompt
+  section; checks for unknown layers in masks, nameless triggers, bodies without colliders and
+  joints without bodies (`ai_service/app/physics.py`).
+- Tests: `physics_test.cpp`, `test_physics.py`.
+- Not yet: collider gizmos you drag in the editor, one-way tiles, character-vs-character
+  resolution through Box2D (characters still use the tile collision of before).

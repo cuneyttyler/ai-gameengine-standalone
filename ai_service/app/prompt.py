@@ -251,6 +251,23 @@ MAGIC (docs/magic.md; context "magic" lists the abilities and magic effects ther
   apply_effect(id, effect[, magnitude, duration]), remove_effects(id, tag), has_tag(id, tag), learn(id, ability).
 """
 
+PHYSICS = """PHYSICS (docs/physics.md; context "physics": the layers in use, gravity, rigid bodies, trigger names)
+- Collider2D: a box (halfWidth, halfHeight) or a circle ("shape": "Circle", "radius"); "layer" (empty: by team:
+  player, enemy, ally; else default) and "mask": the layers it collides with ("world, enemy"; empty: all).
+  Built-in layers: world, player, enemy, ally, projectile, trigger, default; a new name makes a new layer.
+- A sensor area: add_component Trigger {"name": "cave-mouth", "mask": "player", "once": true, "radius": 2}.
+  Scripts hear on("trigger_enter", function(e) ... e.text == "cave-mouth" ... end) and trigger_exit.
+- Pushable, falling or toppling things: RigidBody2D {"type": "Dynamic", "density", "friction", "restitution",
+  "linearDamping"} with a Collider2D; characters push them. Static/Kinematic for fixed or scripted ones. Joints:
+  Joint2D {"type": "Revolute"|"Distance"|"Weld", "other": <entity with a RigidBody2D>, "length"} (a hinged
+  gate, a hanging lamp on a rope). Gravity is set_setting Physics gravityY (0 in top-down and isometric games;
+  about 10 in a side-on puzzle).
+- Cell-by-cell movement (roguelikes, tile RPGs): add_component CharacterController2D {"mode": "GridStep",
+  "stepTime": 0.18} on the player.
+- Lua: raycast(x0, y0, x1, y1[, mask]) -> {entity, x, y, distance} or nil; overlap(x, y, radius[, mask]) ->
+  ids; line_of_sight(x0, y0, x1, y1); apply_impulse(id, ix, iy); set_velocity(id, vx, vy). F5 shows the shapes.
+"""
+
 FX = """\
 ANIMATION AND EFFECTS (docs/effects-animation.md; context "fx")
 - An animated character: a sheet assets/<name>.anim.json (write it with {"op": "write_anim", "path":
@@ -371,6 +388,8 @@ second while playing). These are ALL the engine functions — there are no other
   tween(id, "Component.field", to, seconds[, ease]) -> handle / tween_done(handle) -> boolean
   cast(ability[, target id or x, y]) -> boolean / apply_effect(id, effect[, magnitude, duration]) -> boolean
   remove_effects(id, tag) / has_tag(id, tag) / add_tag(id, tag) / cooldown_left(ability) / learn(id, ability)
+  raycast(x0, y0, x1, y1[, mask]) -> {entity, x, y, distance} or nil / overlap(x, y, radius[, mask]) -> ids
+  line_of_sight(x0, y0, x1, y1) -> boolean / apply_impulse(id, ix, iy) / set_velocity(id, vx, vy)
   time_of_day()                     -> hours since midnight (fractional), e.g. 13.5
   day()                             -> the day number, from 1
   play_sound(asset_path) / play_sound_at(asset_path, x, y) / play_music(asset_path, or "" for the scene's)
@@ -486,6 +505,7 @@ def build_messages(
             GAME_UI,
             FX,
             MAGIC,
+            PHYSICS,
             RECORDS,
             SCENES,
             ART,

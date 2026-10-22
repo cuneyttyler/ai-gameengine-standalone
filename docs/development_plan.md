@@ -2725,6 +2725,17 @@ platforms), the platformer and free-flight controllers, the jump preview.
 Done when: projectiles and triggers use layers and sensors, a stack of crates topples, a
 grid-step game moves tile by tile, and existing top-down games behave as before.
 
+**Status (2026-10-22): built, to be tried** (`phase20-test-checklist.md`; "As built" in `physics.md`).
+- 20.1 Collider shapes (box, circle), layers and masks; `Trigger` sensors with `trigger_enter` /
+  `trigger_exit`; raycast, overlap and line-of-sight queries (C++ and Lua); swept, masked projectiles.
+- 20.2 `CharacterController2D`: top-down (unchanged) or grid-step for the player.
+- 20.3 Box2D v3: `RigidBody2D`, `Joint2D`, characters push bodies, sprites turn with their bodies;
+  gravity in Project Settings ▸ Physics.
+- 20.4 F5 debug view in play, View ▸ Physics shapes in the editor.
+- AI panel: physics in the context and prompt; checks on layers, triggers, bodies and joints.
+  Tests: `physics_test.cpp`, `test_physics.py`.
+- Not yet: draggable collider gizmos, one-way tiles, characters as Box2D bodies against each other.
+
 ## Phase 21 — The story ontology (`story-ontology.md`)
 
 **21.1** GSO in `data/story/` (classes, properties, vocabularies, templates) loaded by

@@ -340,6 +340,11 @@ MagicSystem::MagicSystem(Registry& registry) : registry_(registry) {
     registry_.ctx().insert_or_assign<MagicSystem*>(this);
 }
 
+MagicSystem::~MagicSystem() {
+    // The registry may outlive its session: don't leave it pointing at us.
+    if (auto* holder = registry_.ctx().find<MagicSystem*>(); holder && *holder == this) registry_.ctx().erase<MagicSystem*>();
+}
+
 std::map<std::string, float> MagicSystem::Variables(Entity caster, float charge) const {
     std::map<std::string, float> v{{"charge", charge}, {"caster.level", 1.0f}};
     if (!registry_.valid(caster)) return v;

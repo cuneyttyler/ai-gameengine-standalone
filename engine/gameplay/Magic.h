@@ -137,6 +137,9 @@ std::vector<std::string> SplitList(const std::string& list);
 class MagicSystem {
 public:
     explicit MagicSystem(Registry& registry);
+    ~MagicSystem(); // leaves the registry's context if it's still there
+    MagicSystem(const MagicSystem&) = delete;
+    MagicSystem& operator=(const MagicSystem&) = delete;
 
     // Hooks to the rest of the game.
     std::function<void(const std::string& effect, float x, float y, Entity target, Entity source)> playCue;

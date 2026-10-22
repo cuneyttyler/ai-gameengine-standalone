@@ -5,6 +5,7 @@
 #include "gameplay/Animation.h"
 #include "gameplay/Difficulty.h"
 #include "gameplay/Magic.h"
+#include "gameplay/Physics.h"
 #include "gameplay/GameSession.h"
 #include "records/Records.h"
 #include "gameplay/Settings.h"
@@ -359,14 +360,26 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
 
     // Projectiles (13.6): fly, stop at walls, hit the first hostile hurtbox.
     for (auto [shot, projectile, at] : registry.view<Projectile, WorldTransform2D>().each()) {
-        at.x += projectile.vx * dt;
-        at.y += projectile.vy * dt;
         projectile.remaining -= dt;
-        if (projectile.remaining <= 0.0f || isSolid(static_cast<int>(std::floor(at.x)), static_cast<int>(std::floor(at.y)))) {
+        if (projectile.remaining <= 0.0f) {
             expired.push_back(shot);
             continue;
         }
+        // Swept (20.1): a fast shot moves in short sub-steps so it can't pass through.
+        const float travel = std::sqrt(projectile.vx * projectile.vx + projectile.vy * projectile.vy) * dt;
+        const int steps = std::max(1, static_cast<int>(std::ceil(travel / 0.2f)));
+        bool stopped = false;
+        for (int sub = 0; sub < steps && !stopped; ++sub) {
+        at.x += projectile.vx * dt / steps;
+        at.y += projectile.vy * dt / steps;
+        if (isSolid(static_cast<int>(std::floor(at.x)), static_cast<int>(std::floor(at.y)))) {
+            expired.push_back(shot);
+            stopped = true;
+            break;
+        }
         for (auto target : targets) {
+            // A mask (20.1) names the layers it hits; without one, hostile characters.
+            if (!projectile.mask.empty() && !MaskAllows(projectile.mask, LayerOf(registry, target))) continue;
             if (target == projectile.owner ||
                 std::find(projectile.alreadyHit.begin(), projectile.alreadyHit.end(), target) != projectile.alreadyHit.end()) {
                 continue;
@@ -393,8 +406,10 @@ void UpdateCombat(Registry& registry, const SolidQueryFn& isSolid, float dt, std
             hurtbox.invulnerableRemaining = hurtbox.invulnerableTime;
             if (!projectile.pierce) {
                 expired.push_back(shot);
+                stopped = true;
                 break;
             }
+        }
         }
     }
 

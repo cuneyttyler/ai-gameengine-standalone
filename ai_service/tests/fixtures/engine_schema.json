@@ -647,6 +647,32 @@
           "min": 0.05,
           "name": "halfHeight",
           "type": "float"
+        },
+        {
+          "description": "A box or a circle.",
+          "name": "shape",
+          "options": [
+            "Box",
+            "Circle"
+          ],
+          "type": "int"
+        },
+        {
+          "description": "The circle's radius, in cells.",
+          "max": 4.0,
+          "min": 0.05,
+          "name": "radius",
+          "type": "float"
+        },
+        {
+          "description": "Its collision layer (empty: by team: player, enemy, ally; else default).",
+          "name": "layer",
+          "type": "string"
+        },
+        {
+          "description": "The layers it collides with: world, enemy... (empty: all)",
+          "name": "mask",
+          "type": "string"
         }
       ],
       "name": "Collider2D",
@@ -2036,6 +2062,191 @@
       "userEditable": true
     },
     {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "A sensor area (20.1): whoever enters or leaves it (on its mask's layers) raises trigger_enter / trigger_exit with its name.",
+      "fields": [
+        {
+          "description": "What scripts hear as the event's text.",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "Which layers it notices: player, enemy, projectile... (empty: all)",
+          "name": "mask",
+          "type": "string"
+        },
+        {
+          "description": "Only the first time.",
+          "name": "once",
+          "type": "bool"
+        },
+        {
+          "description": "A circle of this radius (0: the entity's collider).",
+          "max": 50.0,
+          "min": 0.0,
+          "name": "radius",
+          "type": "float"
+        }
+      ],
+      "name": "Trigger",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "How it moves (20.2): top-down walking, or grid-step (cell by cell).",
+      "fields": [
+        {
+          "description": "Top-down or grid-step.",
+          "name": "mode",
+          "options": [
+            "TopDown",
+            "GridStep"
+          ],
+          "type": "int"
+        },
+        {
+          "description": "Grid-step: seconds per cell.",
+          "max": 2.0,
+          "min": 0.02,
+          "name": "stepTime",
+          "type": "float"
+        },
+        {
+          "description": "Grid-step: diagonal steps allowed.",
+          "name": "diagonal",
+          "type": "bool"
+        }
+      ],
+      "name": "CharacterController2D",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D",
+        "Collider2D"
+      ],
+      "description": "A physical body (20.3): pushed, falling, toppling, bouncing (Box2D).",
+      "fields": [
+        {
+          "description": "Static, kinematic (moved by code) or dynamic.",
+          "name": "type",
+          "options": [
+            "Static",
+            "Kinematic",
+            "Dynamic"
+          ],
+          "type": "int"
+        },
+        {
+          "description": "Mass per area.",
+          "max": 100.0,
+          "min": 0.01,
+          "name": "density",
+          "type": "float"
+        },
+        {
+          "description": "0-1.",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "friction",
+          "type": "float"
+        },
+        {
+          "description": "Bounce, 0-1.",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "restitution",
+          "type": "float"
+        },
+        {
+          "description": "Slowing down (a top-down floor's drag).",
+          "max": 20.0,
+          "min": 0.0,
+          "name": "linearDamping",
+          "type": "float"
+        },
+        {
+          "description": "Slowing its spin.",
+          "max": 20.0,
+          "min": 0.0,
+          "name": "angularDamping",
+          "type": "float"
+        },
+        {
+          "description": "Times Project Settings ▸ Physics gravity.",
+          "max": 10.0,
+          "min": -10.0,
+          "name": "gravityScale",
+          "type": "float"
+        },
+        {
+          "description": "Never turns.",
+          "name": "fixedRotation",
+          "type": "bool"
+        },
+        {
+          "description": "Continuous collision, for fast bodies.",
+          "name": "bullet",
+          "type": "bool"
+        }
+      ],
+      "name": "RigidBody2D",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "RigidBody2D"
+      ],
+      "description": "Joins this body to another (20.3): a hinge, a fixed distance (a rope), or welded.",
+      "fields": [
+        {
+          "description": "Revolute (a hinge), distance or weld.",
+          "name": "type",
+          "options": [
+            "Revolute",
+            "Distance",
+            "Weld"
+          ],
+          "type": "int"
+        },
+        {
+          "description": "The other body.",
+          "name": "other",
+          "type": "entity"
+        },
+        {
+          "description": "Where on this body, cells right of its centre.",
+          "max": 10.0,
+          "min": -10.0,
+          "name": "anchorX",
+          "type": "float"
+        },
+        {
+          "description": "Where on this body, cells below its centre.",
+          "max": 10.0,
+          "min": -10.0,
+          "name": "anchorY",
+          "type": "float"
+        },
+        {
+          "description": "Distance: the length (0: as placed).",
+          "max": 100.0,
+          "min": 0.0,
+          "name": "length",
+          "type": "float"
+        },
+        {
+          "description": "The two still collide with each other.",
+          "name": "collide",
+          "type": "bool"
+        }
+      ],
+      "name": "Joint2D",
+      "userEditable": true
+    },
+    {
       "dependencies": [],
       "description": "The scene's level band (16.3): enemies here are made at a level within it.",
       "fields": [
@@ -2247,6 +2458,13 @@
           "description": "Lit by itself (a lit window, glowing runes): darkness doesn't dim it.",
           "name": "emissive",
           "type": "bool"
+        },
+        {
+          "description": "Turned around its position, in degrees (a rigid body sets it).",
+          "max": 3600.0,
+          "min": -3600.0,
+          "name": "angle",
+          "type": "float"
         }
       ],
       "name": "Sprite",
@@ -3918,6 +4136,20 @@
           "description": "Off lets the player walk through walls.",
           "name": "playerCollides",
           "type": "bool"
+        },
+        {
+          "description": "Rigid bodies' gravity, cells per second squared.",
+          "max": 100.0,
+          "min": -100.0,
+          "name": "gravityX",
+          "type": "float"
+        },
+        {
+          "description": "(top-down games: 0; a side-on puzzle: about 10).",
+          "max": 100.0,
+          "min": -100.0,
+          "name": "gravityY",
+          "type": "float"
         }
       ],
       "name": "Physics"

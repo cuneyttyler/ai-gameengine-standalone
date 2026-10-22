@@ -35,6 +35,8 @@ struct CombatSettings {
 
 struct PhysicsSettings {
     bool playerCollides = true; // off = the player walks through walls (debugging)
+    float gravityX = 0.0f;      // rigid bodies' gravity, cells per second squared (20.3);
+    float gravityY = 0.0f;      // top-down games have none
 };
 
 struct TimeSettings {

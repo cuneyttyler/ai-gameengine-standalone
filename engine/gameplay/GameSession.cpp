@@ -248,6 +248,7 @@ GameSession::GameSession(Registry& registry, LuaVM& lua, IsoParams iso, std::fil
     animations_.Refresh();
     // Magic (19): its hooks reach the effects, spawns, events and lights here.
     magic_ = std::make_unique<MagicSystem>(registry_);
+    physics_ = std::make_unique<PhysicsWorld>();
     magic_->playCue = [this](const std::string& effect, float x, float y, Entity target, Entity source) {
         PlayEffect(effect, x, y, target, source);
     };
@@ -627,6 +628,29 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
     env["add_tag"] = [this](lua_Integer id, const std::string& tag) { magic_->AddTag(ToEntity(id), tag); };
     env["cooldown_left"] = [this, self](const std::string& ability) { return magic_->CooldownLeft(self, ability); };
     env["learn"] = [this](lua_Integer id, const std::string& ability) { magic_->Learn(ToEntity(id), ability); };
+    // Physics (20): queries, impulses.
+    env["raycast"] = [this, L, self](float x0, float y0, float x1, float y1, sol::optional<std::string> mask) -> sol::object {
+        const auto hit = Raycast(registry_, [this](int gx, int gy) { return grid_.IsSolid(gx, gy); }, x0, y0, x1, y1,
+                                 mask.value_or(""), self);
+        if (!hit) return sol::lua_nil;
+        sol::table t = sol::state_view(L).create_table();
+        t["entity"] = hit->entity == entt::null ? sol::make_object(L, sol::lua_nil) : sol::make_object(L, ToId(hit->entity));
+        t["x"] = hit->x;
+        t["y"] = hit->y;
+        t["distance"] = hit->distance;
+        return t;
+    };
+    env["overlap"] = [this, L, self](float x, float y, float radius, sol::optional<std::string> mask) {
+        sol::table ids = sol::state_view(L).create_table();
+        int i = 1;
+        for (Entity e : Overlap(registry_, x, y, radius, mask.value_or(""), self)) ids[i++] = ToId(e);
+        return ids;
+    };
+    env["line_of_sight"] = [this](float x0, float y0, float x1, float y1) {
+        return LineOfSight([this](int gx, int gy) { return grid_.IsSolid(gx, gy); }, x0, y0, x1, y1);
+    };
+    env["apply_impulse"] = [this](lua_Integer id, float ix, float iy) { physics_->ApplyImpulse(ToEntity(id), ix, iy); };
+    env["set_velocity"] = [this](lua_Integer id, float vx, float vy) { physics_->SetVelocity(ToEntity(id), vx, vy); };
     // Animation and effects (18).
     env["play_effect"] = [this](const std::string& id, sol::object a, sol::optional<float> y) {
         if (a.is<float>() && y) return PlayEffect(id, a.as<float>(), *y);
@@ -886,6 +910,7 @@ void GameSession::SetStory(const StoryLibrary* library) {
     subtitle_.clear();
     titleCard_.clear();
     fade_ = fadeTarget_ = letterbox_ = 0.0f;
+    physics_->Clear();
 }
 
 bool GameSession::CheckGateways() {
@@ -919,6 +944,7 @@ std::optional<GameSession::TravelRequest> GameSession::TakeTravel() {
 
 void GameSession::SetScene(const std::string& scene) {
     scene_ = scene;
+    physics_->Clear(); // a new scene's entities
     if (storyLibrary_ != nullptr) story_.SetScene(scene, *storyLibrary_);
 }
 
@@ -1769,6 +1795,40 @@ bool GameSession::CastSlot(int slot, std::string* why) {
     return magic_->Cast(*player, slots[slot], ax, ay, target, why);
 }
 
+void GameSession::StepPhysics(float dt, const SolidQueryFn& isSolid) {
+    physics_->Step(registry_, isSolid, dt);
+    for (const auto& t : UpdateTriggers(registry_)) {
+        // trigger_enter / trigger_exit: the trigger, who, and its name as the text.
+        Emit({t.enter ? "trigger_enter" : "trigger_exit", t.trigger, t.other, 0.0, t.name});
+    }
+}
+
+void GameSession::AppendPhysicsDebugSprites(std::vector<SpriteItem>& out) {
+    // Colliders yellow, triggers green, dynamic bodies orange, static bodies grey.
+    static const float colours[4][3] = {{1.0f, 0.9f, 0.2f}, {0.3f, 1.0f, 0.4f}, {1.0f, 0.5f, 0.1f}, {0.6f, 0.6f, 0.6f}};
+    for (const DebugShape& s : PhysicsDebugShapes(registry_)) {
+        const ScreenPose pose = ProjectIso(s.x, s.y, iso_);
+        SpriteItem item;
+        item.owned = true;
+        const float w = (s.circle ? s.radius : s.halfWidth) * 2.0f * iso_.tileWidth * (iso_.topDown ? 1.0f : 0.7f);
+        const float h = (s.circle ? s.radius : s.halfHeight) * 2.0f * (iso_.topDown ? iso_.tileWidth : iso_.tileHeight * 1.4f);
+        item.value.width = w;
+        item.value.height = h;
+        const auto& c = colours[std::clamp(s.kind, 0, 3)];
+        item.value.r = c[0];
+        item.value.g = c[1];
+        item.value.b = c[2];
+        item.value.a = 0.35f;
+        item.value.texture = s.circle ? "fx:dot" : "";
+        item.value.angle = s.angle;
+        item.value.emissive = true;
+        item.transform.x = pose.x;
+        item.transform.y = pose.y + h * 0.5f;
+        item.transform.depth = 1e9f;
+        out.push_back(std::move(item));
+    }
+}
+
 void GameSession::StepMagic(float dt, size_t firstEvent) {
     // Hits: an ability projectile's effects, a weapon's enchantment.
     for (size_t i = firstEvent; i < events_.size(); ++i) {
@@ -2323,6 +2383,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
     input_.Update(ActiveInputMap(), isKeyDown, axisQuery_);
     bool attackPressed = input_.Pressed("attack");
     if (input_.Pressed("debug_ai")) showAiDebug_ = !showAiDebug_;
+    if (input_.Pressed("debug_physics")) showPhysicsDebug_ = !showPhysicsDebug_;
     HandleStoryInput(isKeyDown);
     if (noticeSeconds_ > 0.0) {
         noticeSeconds_ -= frameSeconds;
@@ -2372,7 +2433,16 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
     while (accumulator_ >= kFixedDt && !cutscene_.Active()) { // a cutscene started mid-frame takes over
         const float dt = static_cast<float>(kFixedDt);
         if (auto player = FindPlayer(registry_)) {
-            UpdatePlayerMove(registry_, *player, input_.Value("move_x"), input_.Value("move_y"), isSolid, dt);
+            if (const auto* controller = registry_.try_get<CharacterController2D>(*player); controller && controller->mode == 1) {
+                // Grid-step (20.2): cell by cell, on the screen's axes turned to the world's.
+                const float mx = input_.Value("move_x"), my = input_.Value("move_y");
+                float wx = mx, wy = my;
+                if (ActiveSettings().grid.style != GridStyle::TopDown) { wx = mx + my; wy = my - mx; }
+                registry_.get<Velocity2D>(*player) = {};
+                if (!registry_.all_of<Dead>(*player)) UpdateGridStep(registry_, *player, wx, wy, isSolid, dt);
+            } else {
+                UpdatePlayerMove(registry_, *player, input_.Value("move_x"), input_.Value("move_y"), isSolid, dt);
+            }
 
             // Attacks: the attack action swings toward the facing direction (on
             // press, once per frame); a click swings toward the clicked point.
@@ -2434,6 +2504,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         OnStoryEvents(firstEvent);
         CueEffects(firstEvent); // animation triggers and effect cues for the step's hits, deaths, attacks
         StepMagic(dt, firstEvent); // Phase 19: casts, effects, auras, enchantments, AI spells
+        StepPhysics(dt, isSolid);  // Phase 20: rigid bodies, joints, triggers
         // Events (12.2): combat's, then the story's, to the scripts' handlers;
         // then timers, waiting coroutines and the modules' systems.
         static const char* kNames[] = {"hit", "death", "pickup", "attack", "victory"};

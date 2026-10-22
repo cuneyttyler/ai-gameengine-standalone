@@ -611,6 +611,9 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         ShowWindow(viewport_.Handle(), message.value("on", true) ? SW_SHOWNA : SW_HIDE);
     } else if (type == "view:stats") {
         showStats_ = !showStats_;
+    } else if (type == "view:physics") {
+        // Colliders, triggers and bodies over the scene (20.4); F5 in play.
+        session_.SetPhysicsDebug(message.value("on", !session_.PhysicsDebug()));
     } else if (type == "play:save") {
         SaveGame();
     } else if (type == "play:load") {
@@ -3746,6 +3749,7 @@ Camera2D EditorApp::FxFrame(std::vector<SpriteItem>& items) {
         registered = true;
     }
     session_.AppendFxSprites(items); // also an effect being tried while editing
+    if (session_.PhysicsDebug()) session_.AppendPhysicsDebugSprites(items); // collider gizmos (20.4)
     if (!playing_) {
         renderer_.SetLighting(false, 1, 1, 1, {});
         Camera2D view = camera_;

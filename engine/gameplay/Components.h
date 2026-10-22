@@ -204,6 +204,7 @@ struct Projectile {
     float remaining = 1.0f; // seconds left
     bool pierce = false;
     std::vector<Entity> alreadyHit;
+    std::string mask; // the layers it hits (20.1); "" = hostile characters
 };
 
 // Holding block: hits from the front are reduced, at a stamina cost (runtime).
