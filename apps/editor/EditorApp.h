@@ -77,6 +77,8 @@ public:
     void StartAi(const std::filesystem::path& serviceDir);
 
     void OnWebMessage(const nlohmann::json& message);
+    // A notice in the editor (the status toast).
+    void Notify(const std::string& text) { post_({{"type", "notify"}, {"text", text}}); }
     void OnViewportMouse(const ViewportMouseEvent& event);
     void OnViewportKey(int virtualKey, bool ctrl, bool shift);
     // Shortcuts that are characters rather than keys ([ ] + -), so they work

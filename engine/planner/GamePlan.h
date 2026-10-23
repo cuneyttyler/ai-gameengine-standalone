@@ -89,6 +89,10 @@ public:
     std::string Lock(const std::string& doc, bool locked);
     std::string Regenerate(const std::string& doc);
     std::string RegenerateStale();
+    // A step that failed, tried again from its first attempt; or every failed step. The plan
+    // goes back to what it was doing (waiting for review, done) once they're through.
+    std::string RetryJob(const std::string& id);
+    std::string RetryFailed();
     // A change in words from the AI panel ("make Aldric the mentor's son"): the AI turns it into
     // edits of the plan's documents; what depends on them goes stale.
     std::string Revise(const std::string& instruction);
@@ -129,6 +133,12 @@ private:
     nlohmann::json toReview_ = nlohmann::json::array();
     nlohmann::json findings_ = nlohmann::json::array(); // what stages couldn't fix
     int nextJob_ = 1;
+    // The status a retry or a regenerate interrupted ({status, message}): back to it when the
+    // extra work is through.
+    nlohmann::json resume_;
+    void Requeue(Job& job);
+    void BeginExtraWork();
+    std::string DocOfJob(const Job& job) const;
     bool paused_ = false;
 
     // The job engine.

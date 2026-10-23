@@ -3757,7 +3757,14 @@ void EditorApp::StartPlan(const std::string& request, bool replace) {
 }
 
 void EditorApp::PostPlanner() {
-    nlohmann::json state = plan_ ? plan_->State() : nlohmann::json{{"active", false}};
+    nlohmann::json state;
+    try {
+        state = plan_ ? plan_->State() : nlohmann::json{{"active", false}};
+    } catch (const std::exception& error) {
+        // A document of the wrong shape: say so (Retry, Regenerate stay possible), don't crash.
+        state = {{"active", true}, {"status", "failed"}, {"message", std::string("The plan couldn't be shown: ") + error.what()},
+                 {"stages", nlohmann::json::array()}};
+    }
     state["type"] = "planner:state";
     if (!gameBuild_ && fs::exists(assets_.GetProject().root / "planner" / "buildstate.json")) {
         gameBuild_ = MakeGameBuild();
@@ -3804,6 +3811,8 @@ bool EditorApp::HandlePlannerMessage(const std::string& type, const nlohmann::js
     } else if (type == "planner:lock") why = plan_->Lock(message.value("doc", ""), message.value("on", true));
     else if (type == "planner:regenerate") why = plan_->Regenerate(message.value("doc", ""));
     else if (type == "planner:regenerateStale") why = plan_->RegenerateStale();
+    else if (type == "planner:retryJob") why = plan_->RetryJob(message.value("id", ""));
+    else if (type == "planner:retryFailed") why = plan_->RetryFailed();
     else if (type == "planner:accept") why = plan_->AcceptFinding(message.value("finding", ""), message.value("reason", ""));
     else if (type == "planner:restore") why = plan_->Restore(message.value("n", 0));
     else if (type == "planner:why") {

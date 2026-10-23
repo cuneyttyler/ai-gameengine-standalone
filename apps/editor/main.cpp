@@ -38,6 +38,9 @@
 #include <combaseapi.h>
 
 #include <chrono>
+#include <ctime>
+#include <exception>
+#include <fstream>
 #include <filesystem>
 #include <optional>
 #include <shellapi.h>
@@ -184,9 +187,36 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
     }
 }
 
+// %LOCALAPPDATA%\AIGE\editor-errors.log: what went wrong, when, for a bug report.
+void LogEditorError(const char* where, const std::string& what) {
+    const std::filesystem::path prefs = aige::UserPrefs::DefaultPath();
+    if (prefs.empty()) return;
+    std::ofstream log(prefs.parent_path() / "editor-errors.log", std::ios::app);
+    const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    char stamp[32] = {};
+    std::tm local{};
+    localtime_s(&local, &now);
+    std::strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", &local);
+    log << stamp << " [" << where << "] " << what << "\n";
+}
+
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
+    // What ends the editor anyway (an exception where none can be caught) is written down first.
+    std::set_terminate([] {
+        std::string what = "unknown";
+        if (const auto current = std::current_exception()) {
+            try {
+                std::rethrow_exception(current);
+            } catch (const std::exception& error) {
+                what = error.what();
+            } catch (...) {
+            }
+        }
+        LogEditorError("crash", what);
+        std::abort();
+    });
     try {
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
         const CommandLine commandLine = ParseCommandLine();
@@ -295,8 +325,11 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
         webView.SetMessageHandler([&app](std::wstring json) {
             try {
                 app.OnWebMessage(nlohmann::json::parse(aige::WideToUtf8(json)));
-            } catch (const nlohmann::json::exception&) {
-                // Malformed/unrecognized message — ignore rather than crash the editor.
+            } catch (const std::exception& error) {
+                // A message that couldn't be handled (or a value of the wrong kind in what it
+                // read): a notice and the crash log, never the end of the editor.
+                LogEditorError("message", error.what());
+                app.Notify(std::string("Something went wrong: ") + error.what());
             }
         });
 
@@ -322,7 +355,18 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
             }
 
             auto currentTime = Clock::now();
-            app.Tick(std::chrono::duration<double>(currentTime - previousTime).count());
+            try {
+                app.Tick(std::chrono::duration<double>(currentTime - previousTime).count());
+            } catch (const std::exception& error) {
+                // One frame's work failed (an AI answer of a shape nothing expected): logged and
+                // shown once, and the editor carries on.
+                static std::string last;
+                if (last != error.what()) {
+                    last = error.what();
+                    LogEditorError("frame", error.what());
+                    app.Notify(std::string("Something went wrong: ") + error.what());
+                }
+            }
             previousTime = currentTime;
 
             renderer.SetFlatDiamonds(aige::ActiveSettings().grid.style != aige::GridStyle::TopDown);

@@ -7,6 +7,7 @@
 import { computed, ref, watch } from 'vue'
 import AiProgress from './AiProgress.vue'
 import { onHostMessage, sendToHost } from '../ipc'
+import DocView from './DocView.vue'
 import { activatePanel, setPanelVisible } from '../layout'
 
 interface Stage {
@@ -17,6 +18,15 @@ interface Stage {
   total: number
   stale: number
   review: boolean
+  failed?: number
+}
+interface FailedJob {
+  id: string
+  kind: string
+  subject: string
+  stage: string
+  error: string
+  doc: string
 }
 interface WindowField {
   path: string
@@ -96,6 +106,8 @@ onHostMessage((message) => {
     item.value = { doc: message.doc as string, content: message.content }
     itemText.value = JSON.stringify(message.content, null, 2)
     why.value = null
+    if (item.value.doc !== lastDoc) rawJson.value = false // a new document opens readable
+    lastDoc = item.value.doc
   } else if (message.type === 'planner:why') {
     why.value = message.why as Record<string, any>
   }
@@ -108,6 +120,22 @@ const currentTab = computed(() => windowTabs.value.find((t) => t.id === tab.valu
 const acts = computed(() => (state.value.acts ?? []) as Act[])
 const findings = computed(() => ((state.value.report?.findings ?? []) as Finding[]))
 const staleCount = computed(() => (state.value.stale ?? []).length as number)
+const failedJobs = computed(() => (state.value.failedJobs ?? []) as FailedJob[])
+const failedHere = computed(() => failedJobs.value.filter((j) => j.stage === view.value))
+// A stage not reached yet has nothing to show.
+function reachable(s: Stage): boolean {
+  return s.status !== 'pending' && s.status !== 'skipped'
+}
+// The editor's "Raw JSON" of an item, for whoever wants it.
+const rawJson = ref(false)
+let lastDoc = ''
+function retryJob(id: string) {
+  sendToHost({ type: 'planner:retryJob', id })
+}
+function jobName(j: FailedJob): string {
+  const what = { outline: 'The outline', act: 'Act', scene: 'Scene', critic: 'Review of act', character: 'Character', quests: 'The quests', place: 'Place', systems: 'The systems', visuals: 'The interface', review: 'The review', interpret: 'Reading' }[j.kind] ?? j.kind
+  return j.subject && j.subject !== j.kind ? `${what} ${j.subject}` : what
+}
 const waiting = computed(() => state.value.status === 'waiting' || state.value.status === 'failed')
 const outline = computed(() => (state.value.outline ?? {}) as Record<string, any>)
 const hasOutline = computed(() => Object.keys(outline.value).length > 0)
@@ -211,10 +239,12 @@ function statusMark(status: string): string {
           v-for="s in stages"
           :key="s.id"
           :class="['step', s.status, { on: view === s.id }]"
-          :title="`${s.label}: ${s.status}${s.total ? ` (${s.done}/${s.total})` : ''}`"
+          :title="reachable(s) ? `${s.label}: ${s.status}${s.total ? ` (${s.done}/${s.total})` : ''}` : `${s.label}: not reached yet`"
+          :disabled="!reachable(s)"
           @click="view = s.id"
         >
           {{ s.label }} <span class="mark">{{ statusMark(s.status) }}</span>
+          <span v-if="s.failed" class="failed-count" :title="`${s.failed} failed: Retry in the stage`">{{ s.failed }} ✗</span>
           <span v-if="s.stale" class="stale">{{ s.stale }}</span>
           <span v-if="s.review" class="badge">review</span>
         </button>
@@ -225,6 +255,7 @@ function statusMark(status: string): string {
         <span class="muted" :title="`Read ${(state.usage?.inputTokens ?? 0).toLocaleString()} tokens, wrote ${(state.usage?.outputTokens ?? 0).toLocaleString()}`">
           {{ state.usage?.calls ?? 0 }} AI calls · {{ (state.usage?.outputTokens ?? 0).toLocaleString() }} tokens written · {{ state.decisions }} decisions
         </span>
+        <button v-if="failedJobs.length" class="retry" @click="sendToHost({ type: 'planner:retryFailed' })">Retry failed ({{ failedJobs.length }})</button>
         <button v-if="staleCount" @click="sendToHost({ type: 'planner:regenerateStale' })">Regenerate stale ({{ staleCount }})</button>
         <button v-if="state.status === 'working'" @click="sendToHost({ type: 'planner:pause', on: true })">Pause</button>
         <button v-if="state.status === 'paused'" @click="sendToHost({ type: 'planner:pause', on: false })">Resume</button>
@@ -242,6 +273,16 @@ function statusMark(status: string): string {
 
       <div class="body">
         <div class="main">
+          <!-- What failed in this stage: why, and Retry -->
+          <div v-if="failedHere.length" class="failed-list">
+            <div v-for="j in failedHere" :key="j.id" class="failed-row">
+              <span class="err">✗ {{ jobName(j) }}</span>
+              <span class="muted why-failed" :title="j.error">{{ j.error || 'failed' }}</span>
+              <span class="spacer"></span>
+              <button v-if="j.doc" @click="open(j.doc)">Open</button>
+              <button class="primary" @click="retryJob(j.id)">Retry</button>
+            </div>
+          </div>
           <!-- ① Concept: the confirmation window -->
           <template v-if="view === 'concept'">
             <div class="tabs">
@@ -544,12 +585,20 @@ function statusMark(status: string): string {
             <div v-if="why.decision" class="muted">{{ why.decision.id }} · {{ why.decision.actor }} · {{ why.decision.kind }} · {{ why.decision.time }}</div>
             <div v-for="(d, i) in why.history ?? []" :key="i" class="muted">{{ d.id }} {{ d.actor }} {{ d.kind }} {{ d.reason || '' }}</div>
           </div>
-          <div v-if="item.content === null || item.content === undefined" class="empty muted">
-            “{{ item.doc }}” hasn’t been written yet.
+          <div v-if="item.content === null || item.content === undefined" class="empty">
+            <span class="muted">This hasn’t been written yet.</span>
+            <button class="primary" @click="sendToHost({ type: 'planner:regenerate', doc: item.doc })">Write it</button>
           </div>
+          <template v-else-if="!rawJson">
+            <div class="readable"><DocView :value="item.content" /></div>
+            <div class="row"><button @click="rawJson = true">Edit JSON</button></div>
+          </template>
           <template v-else>
             <textarea v-model="itemText" class="doc" spellcheck="false"></textarea>
-            <div class="row"><button @click="saveItem">Save changes</button></div>
+            <div class="row">
+              <button class="primary" @click="saveItem">Save changes</button>
+              <button @click="rawJson = false">Back to the readable view</button>
+            </div>
           </template>
         </div>
       </div>
@@ -719,6 +768,45 @@ function statusMark(status: string): string {
 }
 .sect {
   margin-bottom: 12px;
+}
+.step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.failed-count {
+  color: #f87171;
+  font-size: 0.8em;
+  margin-left: 3px;
+}
+.retry {
+  border-color: #f87171;
+}
+.failed-list {
+  border: 1px solid #5b2a2a;
+  background: #2a1c1f;
+  margin-bottom: 8px;
+}
+.failed-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 6px;
+}
+.failed-row + .failed-row {
+  border-top: 1px solid #3a2a2e;
+}
+.why-failed {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.readable {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 10px;
+  border-bottom: 1px solid #2a2a3a;
 }
 .fold {
   cursor: pointer;

@@ -24,6 +24,59 @@ json CompactBrief(json brief) {
     return brief;
 }
 
+// The scene's answer with what can't be used taken out, before anything reads it: lists hold
+// objects (events, facts, ends, new entities) or ids; a fact's p, s and o are text; its from,
+// until and branch are text or left out ("from": true becomes "from this scene").
+json CleanSceneAnswer(json scene) {
+    if (!scene.is_object()) return json::object();
+    auto objects = [&](const char* key) {
+        json kept = json::array();
+        if (scene.contains(key) && scene[key].is_array()) {
+            for (const auto& v : scene[key]) {
+                if (v.is_object()) kept.push_back(v);
+            }
+        }
+        scene[key] = kept;
+    };
+    for (const char* key : {"newEntities", "events", "facts", "end"}) objects(key);
+    auto textOnly = [](json& o, const char* key) {
+        if (o.contains(key) && !(o[key].is_string() && !o[key].get<std::string>().empty())) o.erase(key);
+    };
+    for (auto& e : scene["events"]) {
+        for (const char* key : {"causes", "enables"}) {
+            json ids = json::array();
+            if (e.contains(key) && e[key].is_array()) {
+                for (const auto& v : e[key]) {
+                    if (v.is_string()) ids.push_back(v);
+                }
+            } else if (e.contains(key) && e[key].is_string()) {
+                ids.push_back(e[key]);
+            }
+            e[key] = ids;
+        }
+        for (const char* key : {"id", "class", "text", "serves", "resolves", "paysOff"}) {
+            if (e.contains(key) && !e[key].is_string()) e.erase(key);
+        }
+    }
+    for (const char* list : {"facts", "end"}) {
+        json kept = json::array();
+        for (auto f : scene[list]) {
+            if (!f.value("p", json()).is_string() || !f.value("s", json()).is_string()) continue;
+            if (f.contains("o") && !f["o"].is_string()) f.erase("o");
+            for (const char* key : {"from", "until", "branch", "at"}) textOnly(f, key);
+            kept.push_back(f);
+        }
+        scene[list] = kept;
+    }
+    for (auto& n : scene["newEntities"]) {
+        for (const char* key : {"id", "class", "name", "line", "importance", "kind"}) {
+            if (n.contains(key) && !n[key].is_string()) n.erase(key);
+        }
+    }
+    if (scene.contains("summary") && !scene["summary"].is_string()) scene.erase("summary");
+    return scene;
+}
+
 json Vocab(const StoryOntology& gso, std::initializer_list<const char*> schemes) {
     json out = json::object();
     for (const char* s : schemes) {
@@ -464,7 +517,8 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
         return HandleAct(job, act, decide("plan-act", "story/acts/" + job.subject, std::to_string(act.value("chapters", json::array()).size()) + " chapters"));
     }
     if (job.kind == "scene") {
-        const json scene = body.value("scene", json::object());
+        // What can't be used (a fact as plain text, "from": false) is taken out before the checks.
+        const json scene = CleanSceneAnswer(body.value("scene", json::object()));
         const auto problems = ValidateSceneDoc(scene, gso_);
         if (HasErrors(problems)) return ProblemTexts(problems);
         return HandleScene(job, scene, rationale.empty() ? scene.value("rationale", "") : rationale);
@@ -712,7 +766,9 @@ void GamePlan::UndoScene(const std::string& scene) {
     }
 }
 
-std::vector<std::string> GamePlan::HandleScene(Job& job, const json& scene, const std::string& rationale) {
+
+std::vector<std::string> GamePlan::HandleScene(Job& job, const json& answer, const std::string& rationale) {
+    const json& scene = answer; // cleaned by Handle (CleanSceneAnswer)
     const std::string id = job.subject;
     const std::string docName = "story/scenes/" + id;
     json doc = store_.Read(docName).value_or(json::object());

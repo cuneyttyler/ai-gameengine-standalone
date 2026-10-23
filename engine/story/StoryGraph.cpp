@@ -86,14 +86,23 @@ std::string StoryEdge::Text(const char* key) const {
 
 // --- Storage ----------------------------------------------------------------------------------
 
+namespace {
+// A key's text, or "" when it holds something else (an AI's "from": true): never a throw.
+std::string text(const nlohmann::json& o, const char* key) {
+    if (!o.is_object()) return {};
+    auto it = o.find(key);
+    return it != o.end() && it->is_string() ? it->get<std::string>() : std::string();
+}
+} // namespace
+
 StoryGraph StoryGraph::FromJson(const nlohmann::json& json) {
     StoryGraph g;
     g.revision = json.value("revision", 0);
     for (const auto& n : json.value("nodes", nlohmann::json::array())) {
         if (!n.is_object() || !n.contains("id")) continue;
         StoryNode node;
-        node.id = n.value("id", "");
-        node.cls = n.value("class", "");
+        node.id = text(n, "id");
+        node.cls = text(n, "class");
         for (const auto& [k, v] : n.items()) {
             if (k != "id" && k != "class") node.fields[k] = v;
         }
@@ -102,13 +111,13 @@ StoryGraph StoryGraph::FromJson(const nlohmann::json& json) {
     for (const auto& e : json.value("edges", nlohmann::json::array())) {
         if (!e.is_object()) continue;
         StoryEdge edge;
-        edge.p = e.value("p", "");
-        edge.s = e.value("s", "");
-        edge.o = e.value("o", "");
-        edge.from = e.value("from", "");
-        edge.until = e.value("until", "");
-        edge.branch = e.value("branch", "");
-        edge.madeBy = e.value("madeBy", "");
+        edge.p = text(e, "p");
+        edge.s = text(e, "s");
+        edge.o = text(e, "o");
+        edge.from = text(e, "from");
+        edge.until = text(e, "until");
+        edge.branch = text(e, "branch");
+        edge.madeBy = text(e, "madeBy");
         for (const auto& [k, v] : e.items()) {
             if (!IsEdgeKey(k)) edge.fields[k] = v;
         }
@@ -519,7 +528,8 @@ std::string StoryGraph::Apply(const nlohmann::json& change, const StoryOntology&
     if (!change.is_object()) return "a change is an object with nodes, assert, retract or remove";
     StoryGraph next = *this;
     for (const auto& n : change.value("nodes", nlohmann::json::array())) {
-        const std::string id = n.value("id", ""), cls = n.value("class", "");
+        if (!n.is_object()) return "a node is an object with id and class";
+        const std::string id = text(n, "id"), cls = text(n, "class");
         if (id.empty()) return "a node has no id";
         StoryNode* existing = next.Find(id);
         if (cls.empty() && !existing) return "node " + id + " has no class";
@@ -569,8 +579,9 @@ std::string StoryGraph::Apply(const nlohmann::json& change, const StoryOntology&
         if (!duplicate) next.edges.push_back(std::move(edge));
     }
     for (const auto& r : list("retract", "end")) {
-        const std::string p = r.value("p", ""), s = r.value("s", ""), o = r.value("o", ""), at = r.value("at", "");
-        const std::string type = r.value("type", "");
+        if (!r.is_object()) return "an ended fact is an object with p, s and o";
+        const std::string p = text(r, "p"), s = text(r, "s"), o = text(r, "o"), at = text(r, "at");
+        const std::string type = text(r, "type");
         bool found = false;
         for (auto& e : next.edges) {
             if (e.p != p || e.s != s || (!o.empty() && e.o != o) || (!type.empty() && e.Text("type") != type)) continue;

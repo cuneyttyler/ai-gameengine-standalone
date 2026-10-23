@@ -596,3 +596,16 @@ TEST(StoryGraphTest, WorldBibleRelationsComeFromTheGraph) {
     std::error_code ec;
     fs::remove_all(root, ec);
 }
+
+// A model's values of the wrong kind ("from": false, an id as a number) never throw: the
+// field reads as empty, and a node or ended fact that isn't an object is refused by name.
+TEST(StoryGraphTest, ValuesOfTheWrongKindDontThrow) {
+    const auto g = aige::StoryGraph::FromJson(nlohmann::json::parse(
+        R"({"nodes": [{"id": 7, "class": "Character"}], "edges": [{"p": "knows", "s": "character/a", "from": false, "until": 3}]})"));
+    ASSERT_EQ(g.edges.size(), 1u);
+    EXPECT_EQ(g.edges[0].from, "");
+    EXPECT_EQ(g.edges[0].until, "");
+    aige::StoryGraph h;
+    EXPECT_FALSE(h.Apply(nlohmann::json::parse(R"({"nodes": ["character/a"]})"), aige::StoryOntology::Engine()).empty());
+    EXPECT_FALSE(h.Apply(nlohmann::json::parse(R"({"retract": ["x"]})"), aige::StoryOntology::Engine()).empty());
+}

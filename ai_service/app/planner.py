@@ -294,12 +294,26 @@ def plan_scene(provider: Provider, inputs: dict) -> dict:
         problems = []
         if not str(scene.get("summary", "")).strip():
             problems.append("summary is empty")
-        for f in scene.get("facts", []):
+        for f in scene.get("facts") or []:
+            if not isinstance(f, dict):
+                problems.append(f"fact {f!r} must be an object {{p, s, o, ...}}")
+                continue
             if properties and f.get("p") not in properties:
                 problems.append(f"fact property {f.get('p')!r} doesn't exist")
             if not f.get("s"):
                 problems.append(f"fact {f.get('p')} has no subject 's'")
-        for n in scene.get("newEntities", []):
+            for key in ("from", "until", "branch"):
+                if key in f and not isinstance(f[key], str):
+                    problems.append(f"fact {f.get('p')} {key}: {f[key]!r} must be a scene id (text) or left out")
+        for e in scene.get("events") or []:
+            if isinstance(e, dict):
+                for key in ("causes", "enables"):
+                    if any(not isinstance(c, str) for c in e.get(key) or []):
+                        problems.append(f"event {e.get('id')} {key}: list event ids (text)")
+        for n in scene.get("newEntities") or []:
+            if not isinstance(n, dict):
+                problems.append(f"new entity {n!r} must be an object {{id, class, name, line}}")
+                continue
             if "/" not in str(n.get("id", "")):
                 problems.append(f"new entity {n.get('id')!r} needs an id like character/<slug>")
         return problems

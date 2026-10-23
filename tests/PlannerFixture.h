@@ -80,7 +80,10 @@ inline json Answer(const std::string& path, const json& body) {
             scene["newEntities"] = json::parse(R"([{"id": "item/amulet", "class": "Item", "name": "The Moon Amulet", "line": "It keeps the dead asleep."}])");
             scene["facts"] = json::parse(R"([{"p": "possesses", "s": "character/aldric", "o": "item/amulet"}])");
         } else if (id == "s1-02") {
-            scene["facts"] = json::parse(R"([{"p": "knows", "s": "character/warden", "about": "aldric-stole-the-amulet"}])");
+            // As a real model wrote it (2026-10-23): "from" as a bool, a cause as a number, a fact as text.
+            scene["facts"] = json::parse(R"([{"p": "knows", "s": "character/warden", "about": "aldric-stole-the-amulet", "from": false},
+                                              "the warden knows"])");
+            scene["events"] = json::parse(R"([{"id": "news", "class": "Event", "text": "Word reaches the warden", "causes": [3]}])");
         } else if (id == "s2-01") {
             scene["events"] = json::parse(R"([{"id": "fight", "class": "Action", "agent": "character/warden", "serves": "recover-amulet",
                                                "text": "The warden defeats Aldric", "kernel": true, "causes": []}])");

@@ -214,3 +214,34 @@ TEST(PlannerDocsTest, ValuesThatArentOptionsAreReplacedByTheProfiles) {
     EXPECT_EQ(notes.size(), 3u);
     EXPECT_FALSE(aige::HasErrors(aige::ValidateGameBrief(brief, gso))) << aige::ProblemTexts(aige::ValidateGameBrief(brief, gso))[0];
 }
+
+// A step that keeps failing (the model busy three times) stays failed, not done: the plan goes
+// on without it, lists it, and Retry makes it, after which the plan is back where it was.
+TEST(PlannerTest, AFailedStepCanBeRetried) {
+    Planner p("retry");
+    p.ThroughOutline();
+    while (!p.service.outstanding.empty()) {
+        const auto r = p.service.outstanding.front();
+        p.service.outstanding.pop_front();
+        const bool tamsin = r.path == "/planner/character" && r.body.value("entry", json::object()).value("id", "") == "character/tamsin";
+        p.plan->OnResponse(r.id, tamsin ? json{{"ok", false}, {"errors", {"the model is busy"}}} : Answer(r.path, r.body));
+    }
+    const std::string before = p.plan->Status();
+    json failed = p.plan->State()["failedJobs"];
+    ASSERT_EQ(failed.size(), 1u) << p.plan->State()["message"];
+    EXPECT_EQ(failed[0]["kind"], "character");
+    EXPECT_EQ(failed[0]["subject"], "tamsin");
+    EXPECT_EQ(failed[0]["doc"], "characters/tamsin");
+    EXPECT_FALSE(p.plan->Document("characters/tamsin").is_object());
+    for (const auto& s : p.plan->State()["stages"]) {
+        if (s["id"] == "characters") EXPECT_EQ(s["failed"], 1);
+    }
+    EXPECT_NE(p.plan->RetryJob("j-nope"), "");
+    ASSERT_EQ(p.plan->RetryJob(failed[0]["id"]), "");
+    EXPECT_EQ(p.plan->Status(), "working");
+    p.service.Drive(*p.plan);
+    EXPECT_TRUE(p.plan->State()["failedJobs"].empty());
+    EXPECT_TRUE(p.plan->Document("characters/tamsin").is_object());
+    EXPECT_EQ(p.plan->Status(), before); // back to what it was doing
+    EXPECT_EQ(p.plan->RetryFailed(), "nothing failed");
+}

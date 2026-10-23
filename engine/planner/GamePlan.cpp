@@ -189,7 +189,7 @@ void GamePlan::Save() {
     json state = {{"schema", "aige.plan-state/1"}, {"stage", stage_},         {"status", status_},     {"message", message_},
                   {"request", request_},           {"jobs", jobs},            {"paused", paused_},     {"usage", usage_},
                   {"concept", concept_},           {"toReview", toReview_},   {"findings", findings_}, {"nextJob", nextJob_},
-                  {"stale", Stale()}};
+                  {"stale", Stale()}, {"resume", resume_}};
     const json old = store_.State();
     if (old.contains("baseline")) state["baseline"] = old["baseline"];
     store_.SaveState(state);
@@ -207,6 +207,7 @@ void GamePlan::Load() {
     toReview_ = s.value("toReview", json::array());
     findings_ = s.value("findings", json::array());
     nextJob_ = s.value("nextJob", 1);
+    resume_ = s.value("resume", json());
     jobs_.clear();
     for (const auto& j : s.value("jobs", json::array())) {
         Job job;
@@ -362,7 +363,14 @@ void GamePlan::OnResponse(int requestId, const json& body) {
     }
     json answered = body;
     answered["call"] = call;
-    const auto problems = Handle(*job, answered);
+    std::vector<std::string> problems;
+    try {
+        problems = Handle(*job, answered);
+    } catch (const std::exception& error) {
+        // A value of the wrong kind somewhere in the answer (true where a scene id goes): the
+        // answer goes back like any other problem, the editor carries on.
+        problems = {std::string("the answer has a value of the wrong kind (") + error.what() + ")"};
+    }
     if (!problems.empty()) Retry(*job, problems);
     else Finish(*job, true);
     Save();
@@ -377,8 +385,9 @@ void GamePlan::Retry(Job& job, const std::vector<std::string>& problems) {
         return;
     }
     for (const auto& p : problems) Finding(StageOfJob(job.kind), job.subject, p, "error");
-    const bool essential = job.kind == "outline" || job.kind == "act";
-    Finish(job, !essential, problems.empty() ? "" : problems.front());
+    // Failed, not done: the stage goes on without it (unless it's the outline or an act), and
+    // Retry (or Continue) tries it again.
+    Finish(job, false, problems.empty() ? "" : problems.front());
 }
 
 void GamePlan::Finish(Job& job, bool ok, const std::string& error) {
@@ -392,12 +401,84 @@ void GamePlan::Finish(Job& job, bool ok, const std::string& error) {
     }
     const std::string stage = StageOfJob(job.kind);
     if (stage == stage_ && status_ == "working" && StageJobsDone(stage)) AfterStage(stage);
-    // Regenerating or revising a finished plan: done again once nothing is left to do.
+    // Regenerating, revising or retrying: back to what the plan was doing once nothing is left.
     const bool idle = std::none_of(jobs_.begin(), jobs_.end(), [](const Job& j) { return j.status == "queued" || j.status == "running"; });
-    if (idle && status_ == "working" && stage_ == "done") {
+    if (idle && status_ == "working" && resume_.is_object()) {
+        status_ = resume_.value("status", "waiting");
+        message_ = resume_.value("message", "");
+        if (status_ == "done" && job.kind != "revise") message_ = "Regenerated. Validate again (⑨) to refresh the report.";
+        resume_ = json();
+    } else if (idle && status_ == "working" && stage_ == "done") {
         status_ = "done";
         if (job.kind != "revise") message_ = "Regenerated. Validate again (⑨) to refresh the report.";
     }
+    if (status_ != "working") resume_ = json(); // the stage itself moved on
+}
+
+void GamePlan::Requeue(Job& job) {
+    job.status = "queued";
+    job.attempts = 0;
+    job.error.clear();
+    job.problems = json::array();
+    // Its findings go: it's being made again.
+    const std::string stage = StageOfJob(job.kind);
+    json kept = json::array();
+    for (const auto& f : findings_) {
+        if (!(f.value("subject", "") == job.subject && f.value("stage", "") == stage)) kept.push_back(f);
+    }
+    findings_ = kept;
+}
+
+void GamePlan::BeginExtraWork() {
+    if ((status_ == "waiting" || status_ == "done") && !resume_.is_object()) resume_ = {{"status", status_}, {"message", message_}};
+    if (status_ == "waiting" || status_ == "done" || status_ == "failed") status_ = "working";
+}
+
+std::string GamePlan::DocOfJob(const Job& job) const {
+    if (job.kind == "outline") return "outline";
+    if (job.kind == "act" || job.kind == "critic") return "story/acts/" + PlanSlug(job.subject);
+    if (job.kind == "scene") return "story/scenes/" + PlanSlug(job.subject);
+    if (job.kind == "character") return "characters/" + PlanSlug(job.subject);
+    if (job.kind == "quests") return "quests";
+    if (job.kind == "place") return "places/" + PlanSlug(job.subject);
+    if (job.kind == "systems") return "systems";
+    if (job.kind == "visuals") return "ui";
+    if (job.kind == "review" || job.kind == "report") return "report";
+    return {};
+}
+
+std::string GamePlan::RetryJob(const std::string& id) {
+    Job* job = FindJob(id);
+    if (!job) return "there's no step " + id;
+    if (job->status != "failed") return "only a step that failed is tried again";
+    // A stopped plan (its outline or an act failed): everything that failed goes again.
+    if (status_ == "failed") return RetryFailed();
+    Requeue(*job);
+    BeginExtraWork();
+    message_ = "Trying again…";
+    Save();
+    Pump();
+    return {};
+}
+
+std::string GamePlan::RetryFailed() {
+    int n = 0;
+    for (auto& j : jobs_) {
+        if (j.status != "failed") continue;
+        Requeue(j);
+        ++n;
+    }
+    if (n == 0 && status_ != "failed") return "nothing failed";
+    if (status_ == "failed") {
+        status_ = "working";
+        resume_ = json();
+    } else {
+        BeginExtraWork();
+    }
+    message_ = "Trying again…";
+    Save();
+    Pump();
+    return {};
 }
 
 void GamePlan::Fail(const std::string& message) {
@@ -490,20 +571,7 @@ void GamePlan::BeginStage(const std::string& stage) {
 }
 
 std::string GamePlan::Approve() {
-    if (status_ == "failed") {
-        // Go on: what failed is tried again.
-        for (auto& j : jobs_) {
-            if (j.status == "failed" && (j.kind == "outline" || j.kind == "act")) {
-                j.status = "queued";
-                j.attempts = 0;
-            }
-        }
-        status_ = "working";
-        message_.clear();
-        Save();
-        Pump();
-        return {};
-    }
+    if (status_ == "failed") return RetryFailed(); // go on: what failed is tried again
     if (status_ != "waiting") return "nothing is waiting";
     if (stage_ == "concept") return Confirm();
     if (stage_ == "validate") {
@@ -751,10 +819,8 @@ std::string GamePlan::Regenerate(const std::string& doc) {
     store_.Decide(d);
     const std::string id = AddJob(kind, subject);
     if (kind == "review") AddJob("report", "report", {id});
-    if (status_ == "done" || status_ == "waiting" || status_ == "failed") {
-        // Regenerating after the stage: work on it without moving the plan's stage.
-        status_ = "working";
-    }
+    // Regenerating after the stage: work on it without moving the plan's stage.
+    BeginExtraWork();
     Save();
     Pump();
     return {};
@@ -890,11 +956,12 @@ json GamePlan::State() const {
     const auto& order = StageOrder();
     const auto current = std::find(order.begin(), order.end(), stage_);
     for (auto it = order.begin(); it != order.end() && *it != "done"; ++it) {
-        int done = 0, total = 0, staleCount = 0;
+        int done = 0, total = 0, staleCount = 0, failedCount = 0;
         for (const auto& j : jobs_) {
             if (StageOfJob(j.kind) != *it) continue;
             ++total;
             done += j.status == "done" || j.status == "failed" || j.status == "skipped";
+            failedCount += j.status == "failed";
         }
         for (const auto& s : stale) {
             const std::string stageOf = s == "outline"                     ? "outline"
@@ -911,7 +978,7 @@ json GamePlan::State() const {
         if (current != order.end() && it < current) status = "done";
         if (*it == stage_) status = status_;
         if (!StageOn(*it)) status = "skipped";
-        stages.push_back({{"id", *it}, {"label", StageLabels().at(*it)}, {"status", status}, {"done", done}, {"total", total},
+        stages.push_back({{"id", *it}, {"label", StageLabels().at(*it)}, {"status", status}, {"done", done}, {"total", total}, {"failed", failedCount},
                           {"stale", staleCount}, {"review", std::find(toReview_.begin(), toReview_.end(), *it) != toReview_.end()}});
     }
 
@@ -991,6 +1058,12 @@ json GamePlan::State() const {
                           {"issues", issuesOf(n->id)}});
     }
     int queued = 0, running = 0, failed = 0, done = 0;
+    json failedJobs = json::array(); // each failed step: what, why, Retry
+    for (const auto& j : jobs_) {
+        if (j.status != "failed") continue;
+        failedJobs.push_back({{"id", j.id}, {"kind", j.kind}, {"subject", PlanSlug(j.subject)}, {"stage", StageOfJob(j.kind)},
+                              {"error", j.error}, {"doc", DocOfJob(j)}});
+    }
     for (const auto& j : jobs_) {
         queued += j.status == "queued";
         running += j.status == "running";
@@ -1019,6 +1092,7 @@ json GamePlan::State() const {
             {"findings", findings_},
             {"stale", stale},
             {"jobs", {{"queued", queued}, {"running", running}, {"failed", failed}, {"done", done}}},
+            {"failedJobs", failedJobs},
             {"usage", usage_},
             {"decisions", store_.Decisions().size()},
             {"history", store_.History()},
