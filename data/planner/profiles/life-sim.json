@@ -15,7 +15,7 @@
     },
     "difficulty": {"levels": ["relaxed", "normal"], "default": "relaxed", "scales": ["prices", "timers"],
                    "curve": "flat", "levelScaling": "fixed-zones", "adaptive": false, "assists": [], "permadeath": "off"},
-    "visuals": {"theme": "cozy", "hudDensity": "standard", "notifications": "subtle", "mapStyle": "none"}
+    "visuals": {"theme": "parchment", "hudDensity": "standard", "notifications": "subtle", "mapStyle": "none"}
   },
   "asked": ["title", "logline", "genre", "perspective", "playTime", "setting.world", "tone", "playerCharacter.kind",
             "visuals.theme", "visuals.hudDensity"]

@@ -8,6 +8,7 @@
 #include "gameplay/Difficulty.h"
 #include "gameplay/Effects.h"
 #include "gameplay/Magic.h"
+#include "gameplay/Achievements.h"
 #include "gameplay/Physics.h"
 #include "gameplay/InputMap.h"
 #include "gameplay/Isometric.h"
@@ -244,8 +245,11 @@ public:
     // Plays an effect (a record or preset) at a point, on a target, from a source.
     bool PlayEffect(const std::string& id, float x, float y, Entity target = entt::null, Entity source = entt::null);
     void Shake(float trauma);
-    void HitStop(float seconds) { freeze_ = std::max(freeze_, static_cast<double>(seconds)); }
+    void HitStop(float seconds) {
+        if (!reduceMotion_) freeze_ = std::max(freeze_, static_cast<double>(seconds));
+    }
     void SlowMotion(float scale, float seconds) {
+        if (reduceMotion_) return;
         slowScale_ = std::clamp(scale, 0.05f, 1.0f);
         slowSeconds_ = seconds;
     }
@@ -258,6 +262,17 @@ public:
     // Outside play (the editor trying an effect): particles, short lights and shake move on.
     void StepPreviewFx(float dt);
     bool TweenDone(int id) const;
+
+    // Accessibility (24): no shake, hit-stop or slow motion; no flashes.
+    void SetReduceMotion(bool on);
+    void SetReduceFlashes(bool on);
+    // Shipping (24): the console's travel and spawning, the game's achievements.
+    void RequestTravel(const std::string& scene, const std::string& marker) { travel_ = TravelRequest{scene, marker}; }
+    std::optional<Entity> Spawn(const std::string& prefab, float x, float y) {
+        return spawner_ ? spawner_(prefab, x, y) : std::nullopt;
+    }
+    AchievementSystem& Achievements() { return achievements_; }
+    InputState& MutableInput() { return input_; }
 
     // Abilities and magic (19): the system (also in the registry's context), and casting.
     MagicSystem& Magic() { return *magic_; }
@@ -445,6 +460,10 @@ private:
     void StepFx(float dt); // animators, particles, tweens, lights
     std::unique_ptr<MagicSystem> magic_;
     float magicThink_ = 0.0f;
+    AchievementSystem achievements_;
+    float achievementCheck_ = 0.0f;
+    float streamingCheck_ = 0.0f;
+    bool reduceMotion_ = false;
     std::unique_ptr<PhysicsWorld> physics_;
     bool showPhysicsDebug_ = false;
     void StepPhysics(float dt, const SolidQueryFn& isSolid);

@@ -495,6 +495,7 @@ struct DocumentUi::Impl {
     } notes;
     Rml::DataModelHandle menuModel, dialogueModel, hudModel, notesModel, uiModel;
     std::set<std::string> customShown;
+    nlohmann::json accessible = nlohmann::json::object();
 
     void LoadTheme() {
         // The built-in theme named by ui/theme.json's "base" (else "stone"), then its overrides.
@@ -513,6 +514,7 @@ struct DocumentUi::Impl {
         if (overrides.is_object()) {
             for (const auto& [name, value] : overrides.items()) tokens[name] = value;
         }
+        for (const auto& [name, value] : accessible.items()) tokens[name] = value; // the player's options win
         Files().tokens = tokens;
     }
 
@@ -714,6 +716,31 @@ void DocumentUi::Reload() {
 }
 
 nlohmann::json DocumentUi::ThemeTokens() const { return impl_->tokens; }
+
+void DocumentUi::SetAccessibilityTokens(const nlohmann::json& tokens) {
+    const nlohmann::json next = tokens.is_object() ? tokens : nlohmann::json::object();
+    if (next == impl_->accessible) return;
+    impl_->accessible = next;
+    Reload();
+}
+
+nlohmann::json ProjectThemeTokens(const std::filesystem::path& projectRoot) {
+    nlohmann::json theme = nlohmann::json::object();
+    std::ifstream in(projectRoot / "ui" / "theme.json", std::ios::binary);
+    if (in) theme = nlohmann::json::parse(in, nullptr, false);
+    if (!theme.is_object()) theme = nlohmann::json::object();
+    nlohmann::json tokens = nlohmann::json::object();
+    std::ifstream builtIn(EngineUiDir() / "themes" / (theme.value("base", "stone") + ".json"), std::ios::binary);
+    if (builtIn) {
+        const nlohmann::json json = nlohmann::json::parse(builtIn, nullptr, false);
+        if (json.is_object() && json.contains("tokens") && json["tokens"].is_object()) tokens = json["tokens"];
+    }
+    const nlohmann::json overrides = theme.value("tokens", nlohmann::json::object());
+    if (overrides.is_object()) {
+        for (const auto& [name, value] : overrides.items()) tokens[name] = value;
+    }
+    return tokens;
+}
 
 std::vector<std::string> DocumentUi::Themes() const {
     std::vector<std::string> names;

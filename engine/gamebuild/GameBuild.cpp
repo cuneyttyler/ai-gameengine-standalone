@@ -981,6 +981,13 @@ void GameBuild::WriteFiles() {
                        {"hud", ui.value("hud", json::array())},
                        {"provenance", {{"planner", "brief"}, {"decision", brief.value("madeBy", "")}}}};
     std::ofstream(host_.projectRoot / "game.json", std::ios::binary) << game.dump(2) << "\n";
+    // The interface's theme, for the game's documents (ui/theme.json).
+    if (!ui.value("theme", "").empty()) {
+        std::error_code themeEc;
+        fs::create_directories(host_.projectRoot / "ui", themeEc);
+        std::ofstream(host_.projectRoot / "ui" / "theme.json", std::ios::binary) << json{{"base", ui.value("theme", "")}, {"tokens", json::object()}}.dump(2);
+        files_["ui/theme.json"] = {{"planner", "ui"}};
+    }
     // The game starts in the plan's first place (Project Settings ▸ Game ▸ start scene).
     ActiveSettings().game.startScene = StartScene();
     SaveSettings(EngineReflection(), project.SettingsPath().string());

@@ -3965,6 +3965,85 @@
       "name": "magic-balance"
     },
     {
+      "description": "An achievement (24): what unlocks it — a quest's state, a story flag, a number of game events (deaths, pickups, trigger entries), or a script's unlock_achievement.",
+      "fields": [
+        {
+          "description": "As the player sees it.",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "How to get it (or a hint).",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "description": "A picture (assets/...).",
+          "name": "icon",
+          "type": "string"
+        },
+        {
+          "description": "Secret until unlocked.",
+          "name": "hidden",
+          "type": "bool"
+        },
+        {
+          "default": 10,
+          "description": "Its worth.",
+          "name": "points",
+          "type": "int"
+        },
+        {
+          "description": "What unlocks it.",
+          "name": "kind",
+          "options": [
+            "quest",
+            "flag",
+            "event",
+            "script"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "quest: which quest",
+          "name": "quest",
+          "type": "string"
+        },
+        {
+          "description": "quest: in which state",
+          "name": "state",
+          "options": [
+            "active",
+            "completed",
+            "failed"
+          ],
+          "type": "enum"
+        },
+        {
+          "description": "flag: which story flag",
+          "name": "flag",
+          "type": "string"
+        },
+        {
+          "description": "event: death, pickup, hit, attack, trigger_enter, talk, quest_completed...",
+          "name": "event",
+          "type": "string"
+        },
+        {
+          "description": "event: what it's about (a prefab, a name, a trigger, a quest id); empty: any",
+          "name": "target",
+          "type": "string"
+        },
+        {
+          "default": 1,
+          "description": "event: how many times",
+          "name": "count",
+          "type": "int"
+        }
+      ],
+      "name": "achievement"
+    },
+    {
       "description": "An encounter (13.7): what a Spawner makes, picked by weight and level.",
       "fields": [
         {
@@ -4130,6 +4209,31 @@
       "name": "Combat"
     },
     {
+      "description": "Big scenes: only the chunks around the player are simulated (24).",
+      "fields": [
+        {
+          "description": "On: characters, scripts, routines and spawners far away sleep.",
+          "name": "enabled",
+          "type": "bool"
+        },
+        {
+          "description": "A chunk's side, in cells.",
+          "max": 256.0,
+          "min": 8.0,
+          "name": "chunk",
+          "type": "int"
+        },
+        {
+          "description": "Chunks around the player's that stay awake.",
+          "max": 8.0,
+          "min": 1.0,
+          "name": "radius",
+          "type": "int"
+        }
+      ],
+      "name": "Streaming"
+    },
+    {
       "description": "Movement and collision.",
       "fields": [
         {
@@ -4175,6 +4279,21 @@
         {
           "description": "The scene the game starts in (scenes/*.aige).",
           "name": "startScene",
+          "type": "string"
+        },
+        {
+          "description": "The game's version: the window's title, the crash log, exports.",
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "description": "` opens the debug console in play (exports leave it off unless asked).",
+          "name": "debugConsole",
+          "type": "bool"
+        },
+        {
+          "description": "A picture shown for a moment when the game starts (assets/...).",
+          "name": "splash",
           "type": "string"
         }
       ],

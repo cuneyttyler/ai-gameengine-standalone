@@ -1,5 +1,6 @@
 #include "gameplay/Encounters.h"
 
+#include "ecs/Dormant.h"
 #include "gameplay/GameSession.h"
 #include "gameplay/Attributes.h"
 #include "gameplay/Difficulty.h"
@@ -48,7 +49,7 @@ std::vector<Entity> UpdateSpawners(Registry& registry, float dt, const SpawnPref
     std::map<Entity, int> alive;
     for (auto [entity, by] : registry.view<SpawnedBy>(entt::exclude<Dead>).each()) ++alive[by.spawner];
     std::vector<Entity> spawners;
-    for (auto entity : registry.view<Spawner, WorldTransform2D>()) spawners.push_back(entity);
+    for (auto entity : registry.view<Spawner, WorldTransform2D>(entt::exclude<Dormant>)) spawners.push_back(entity);
     int playerLevel = 1;
     if (auto player = FindPlayer(registry)) {
         if (const auto* progression = registry.try_get<Progression>(*player)) playerLevel = progression->level;

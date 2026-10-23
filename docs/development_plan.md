@@ -2822,6 +2822,18 @@ scenes, and a template project per supported game type (`game-types.md`).
 Done when: an exported game passes an accessibility checklist and ships with its template's
 features.
 
+**Status (2026-10-23): built, to be tried** (`phase24-test-checklist.md`; `shipping.md`).
+- Accessibility options (text size, high contrast, colour-blind palettes, reduce motion and flashes,
+  hold to toggle) and the accessibility report, shipped as `accessibility.json`.
+- The debug console (`) and the profiler overlay (F2).
+- Achievements: records, a local platform layer, unlock banners, the pause menu's list, Lua.
+- Export polish: version, the exe's icon, a splash, a crash log; exports known by `export.json`.
+- Streaming: far chunks' scripts, characters, routines and spawners sleep.
+- Template projects: arpg, rpg, action-adventure, life-sim.
+- AI panel: achievement checks, the SHIPPING prompt, context `shipping`. Tests: `shipping_test.cpp`,
+  `test_shipping.py`.
+- Not yet: full-picture colour filters, sound captions, loading chunks from disk, store platforms.
+
 ---
 
 ## Later

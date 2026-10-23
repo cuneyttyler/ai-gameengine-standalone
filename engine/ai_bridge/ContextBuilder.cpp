@@ -18,6 +18,8 @@
 #include "gameplay/Magic.h"
 #include "gameplay/Physics.h"
 #include "story/StoryGraph.h"
+#include "game/Accessibility.h"
+#include "gameplay/InputMap.h"
 #include "story/StoryRules.h"
 #include "ui/Documents.h"
 #include "gameplay/Settings.h"
@@ -308,6 +310,19 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
             return presets;
         };
         context["magic"] = {{"abilities", ids(AbilityPresets(), "ability")}, {"effects", ids(MagicEffectPresets(), "magic-effect")}};
+    }
+    // Shipping (24): the achievements, the version, what the accessibility report finds.
+    {
+        nlohmann::json achievements = nlohmann::json::array();
+        for (const Record* r : recordDb.OfType("achievement")) achievements.push_back(r->id);
+        const nlohmann::json report = AccessibilityReport(ProjectThemeTokens(project.root), ActiveInputMap());
+        nlohmann::json failing = nlohmann::json::array();
+        for (const auto& c : report["checks"]) {
+            if (!c.value("ok", true)) failing.push_back(c.value("id", "") + ": " + c.value("message", ""));
+        }
+        context["shipping"] = {{"achievements", achievements},
+                               {"version", ActiveSettings().game.version},
+                               {"accessibility", {{"passed", report["passed"]}, {"total", report["total"]}, {"failing", failing}}}};
     }
     // The AI Planner's design (22), if the project has one: what game it is and where the plan is.
     {

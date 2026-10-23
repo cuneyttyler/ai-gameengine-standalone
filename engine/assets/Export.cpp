@@ -1,5 +1,11 @@
 #include "assets/Export.h"
 
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
+#include <cstring>
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -154,8 +160,22 @@ ExportResult ExportGame(const ExportOptions& options) {
 #endif
         std::strftime(date, sizeof(date), "%Y-%m-%dT%H:%M:%SZ", &utc);
         std::ofstream(result.folder / "game" / "export.json")
-            << nlohmann::json{{"name", name}, {"exported", date}, {"engine", "AIGE"}}.dump(2);
+            << nlohmann::json{{"name", name},          {"exported", date},
+                              {"engine", "AIGE"},      {"version", options.version},
+                              {"debugConsole", options.debugConsole}, {"startScene", options.startScene}}
+                   .dump(2);
         result.files.push_back("game/export.json");
+        if (options.accessibility.is_object() && !options.accessibility.empty()) {
+            std::ofstream(result.folder / "game" / "accessibility.json") << options.accessibility.dump(2);
+            result.files.push_back("game/accessibility.json");
+        }
+        // The game's icon on the player itself.
+        const auto icon = options.project / "assets" / "icon.png";
+        std::error_code iconEc;
+        if (fs::exists(icon, iconEc)) {
+            const std::string why = SetExecutableIcon(result.folder / (name + ".exe"), icon);
+            if (!why.empty()) result.files.push_back("(icon not set: " + why + ")");
+        }
     }
     if (!result.error.empty()) return result;
 
@@ -239,6 +259,49 @@ bool WriteZip(const fs::path& folder, const fs::path& zipPath) {
     out.write(central.data(), static_cast<std::streamsize>(central.size()));
     out.write(end.data(), static_cast<std::streamsize>(end.size()));
     return static_cast<bool>(out);
+}
+
+std::string SetExecutableIcon(const std::filesystem::path& exe, const std::filesystem::path& png) {
+#ifdef _WIN32
+    std::ifstream in(png, std::ios::binary);
+    std::vector<char> data{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    if (data.size() < 24 || data[1] != 'P' || data[2] != 'N' || data[3] != 'G') return "icon.png isn't a PNG";
+    auto be32 = [&](size_t at) {
+        return (static_cast<uint32_t>(static_cast<unsigned char>(data[at])) << 24) | (static_cast<uint32_t>(static_cast<unsigned char>(data[at + 1])) << 16) |
+               (static_cast<uint32_t>(static_cast<unsigned char>(data[at + 2])) << 8) | static_cast<uint32_t>(static_cast<unsigned char>(data[at + 3]));
+    };
+    const uint32_t width = be32(16), height = be32(20);
+    if (width > 256 || height > 256) return "the icon is bigger than 256x256";
+    // The group (GRPICONDIR + one GRPICONDIRENTRY) pointing at icon 1, whose data is the PNG itself.
+#pragma pack(push, 2)
+    struct GroupHeader {
+        uint16_t reserved, type, count;
+    };
+    struct GroupEntry {
+        uint8_t width, height, colors, reserved;
+        uint16_t planes, bits;
+        uint32_t bytes;
+        uint16_t id;
+    };
+#pragma pack(pop)
+    std::vector<char> group(sizeof(GroupHeader) + sizeof(GroupEntry));
+    const GroupHeader header{0, 1, 1};
+    const GroupEntry entry{static_cast<uint8_t>(width == 256 ? 0 : width), static_cast<uint8_t>(height == 256 ? 0 : height), 0, 0, 1, 32,
+                           static_cast<uint32_t>(data.size()), 1};
+    std::memcpy(group.data(), &header, sizeof(header));
+    std::memcpy(group.data() + sizeof(header), &entry, sizeof(entry));
+    HANDLE update = BeginUpdateResourceW(exe.wstring().c_str(), FALSE);
+    if (!update) return "can't open the player to set its icon";
+    const WORD lang = MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL);
+    const bool ok = UpdateResourceW(update, MAKEINTRESOURCEW(3) /* RT_ICON */, MAKEINTRESOURCEW(1), lang, data.data(), static_cast<DWORD>(data.size())) &&
+                    UpdateResourceW(update, MAKEINTRESOURCEW(14) /* RT_GROUP_ICON */, MAKEINTRESOURCEW(1), lang, group.data(), static_cast<DWORD>(group.size()));
+    if (!EndUpdateResourceW(update, ok ? FALSE : TRUE) || !ok) return "couldn't write the icon into the player";
+    return {};
+#else
+    (void)exe;
+    (void)png;
+    return "icons are set on Windows only";
+#endif
 }
 
 } // namespace aige

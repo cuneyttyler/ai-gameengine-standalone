@@ -58,6 +58,7 @@ add_executable(aige_tests
     story_graph_test.cpp
     planner_test.cpp
     gamebuild_test.cpp
+    shipping_test.cpp
     export_test.cpp
     flat_sprites_test.cpp
     scenes_test.cpp

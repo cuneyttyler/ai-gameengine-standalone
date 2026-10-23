@@ -37,6 +37,8 @@ public:
 
     void GetFramebufferSize(int& width, int& height) const;
     void SetResizeCallback(std::function<void(int, int)> callback);
+    // Typed characters (the debug console, 24), as Unicode code points.
+    void SetCharCallback(std::function<void(unsigned)> callback);
 
     // Keys, mouse buttons and the first gamepad's buttons (development_plan.md 12.3).
     bool IsKeyDown(Key key) const;
@@ -49,10 +51,12 @@ public:
 
 private:
     static void FramebufferResizeTrampoline(GLFWwindow* handle, int width, int height);
+    static void CharTrampoline(GLFWwindow* handle, unsigned codepoint);
 
     GLFWwindow* handle_ = nullptr;
     int windowedX_ = 100, windowedY_ = 100, windowedWidth_ = 1280, windowedHeight_ = 720;
     std::function<void(int, int)> resizeCallback_;
+    std::function<void(unsigned)> charCallback_;
 };
 
 } // namespace aige

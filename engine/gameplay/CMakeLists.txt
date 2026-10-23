@@ -62,6 +62,12 @@ add_library(aige_gameplay STATIC
     Magic.cpp
     Physics.h
     Physics.cpp
+    Profiler.h
+    Profiler.cpp
+    Achievements.h
+    Achievements.cpp
+    Streaming.h
+    Streaming.cpp
     LevelGen.h
     LevelGen.cpp
     VillageGen.h

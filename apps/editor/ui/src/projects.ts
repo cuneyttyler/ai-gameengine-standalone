@@ -30,6 +30,19 @@ async function newProject(): Promise<void> {
     placeholder: 'my-game',
   })
   if (!name?.trim()) return
+  // A template project (development_plan.md 24): it plays as its genre from the start.
+  const template = await promptDialog({
+    title: 'Template',
+    message: 'Start from a game template? Type one: arpg (isometric action RPG), rpg (top-down RPG), action-adventure, life-sim — or leave it empty for a blank project.',
+    placeholder: 'arpg',
+    value: '',
+  })
+  if (template === null) return
+  const id = template.trim().toLowerCase()
+  if (['arpg', 'rpg', 'action-adventure', 'life-sim'].includes(id)) {
+    sendToHost({ type: 'project:new', name: name.trim(), template: id })
+    return
+  }
   const starter = await confirmDialog({
     title: 'Starting content',
     message:

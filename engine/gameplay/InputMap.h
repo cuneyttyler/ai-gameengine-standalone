@@ -101,8 +101,17 @@ public:
     void HoldCurrent() { contextChanged_ = true; }
     // Whether the gamepad was used last (prompts show its buttons, 17.6).
     bool UsingPad() const { return usingPad_; }
+    // Hold to toggle (accessibility, 24): these actions stay down after a press until the next.
+    void SetHoldToToggle(bool on, std::vector<std::string> actions = {"block", "sprint", "aim", "crouch"}) {
+        holdToToggle_ = on;
+        toggleActions_ = std::move(actions);
+        toggled_.clear();
+    }
 
 private:
+    bool holdToToggle_ = false;
+    std::vector<std::string> toggleActions_;
+    std::map<std::string, bool> toggled_;
     bool usingPad_ = false;
     std::string context_ = "gameplay";
     bool contextChanged_ = false;

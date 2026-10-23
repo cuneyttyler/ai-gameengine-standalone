@@ -23,7 +23,14 @@ async function exportGame(): Promise<void> {
     confirmLabel: 'Folder and .zip',
     cancelLabel: 'Folder only',
   })
-  sendToHost({ type: 'game:export', name: name.trim(), zip })
+  // The debug console (development_plan.md 24): off in a game for players unless asked.
+  const debugConsole = await confirmDialog({
+    title: 'Export game',
+    message: 'Keep the debug console (the ` key) in the exported game? Leave it off for a game you give to players.',
+    confirmLabel: 'Keep it',
+    cancelLabel: 'Leave it off',
+  })
+  sendToHost({ type: 'game:export', name: name.trim(), zip, debugConsole })
 }
 
 onHostMessage(async (message) => {
@@ -39,9 +46,15 @@ onHostMessage(async (message) => {
     build === 'Release' || build === 'installed'
       ? ''
       : ` It uses the ${build} player; build the Release configuration for a smaller, faster game.`
+  // The accessibility report (24) travels with the game (accessibility.json); the summary here.
+  const report = message.accessibility as { passed?: number; total?: number; checks?: { ok: boolean; message: string }[] } | undefined
+  const failing = (report?.checks ?? []).filter((c) => !c.ok).map((c) => `• ${c.message}`)
+  const access = report?.total
+    ? ` Accessibility: ${report.passed}/${report.total} checks pass.${failing.length ? '\n' + failing.join('\n') : ''}`
+    : ''
   const open = await confirmDialog({
     title: 'Game exported',
-    message: `${message.files} files in ${folder}${zip ? ` and ${zip}` : ''}. Run the .exe inside to play.${note}`,
+    message: `${message.files} files in ${folder}${zip ? ` and ${zip}` : ''}. Run the .exe inside to play.${note}${access}`,
     confirmLabel: 'Show in Explorer',
     cancelLabel: 'Close',
   })

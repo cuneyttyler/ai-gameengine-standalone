@@ -918,6 +918,21 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
             .Field("areaExponent", FieldType::Float, "").Default(0.5);
     }
 
+    r.RecordType("achievement", "An achievement (24): what unlocks it — a quest's state, a story flag, a number of game "
+                                "events (deaths, pickups, trigger entries), or a script's unlock_achievement.")
+        .Field("name", FieldType::String, "As the player sees it.")
+        .Field("description", FieldType::String, "How to get it (or a hint).")
+        .Field("icon", FieldType::String, "A picture (assets/...).")
+        .Field("hidden", FieldType::Bool, "Secret until unlocked.")
+        .Field("points", FieldType::Int, "Its worth.").Default(10)
+        .Field("kind", FieldType::Enum, "What unlocks it.").Options({"quest", "flag", "event", "script"})
+        .Field("quest", FieldType::String, "quest: which quest")
+        .Field("state", FieldType::Enum, "quest: in which state").Options({"active", "completed", "failed"})
+        .Field("flag", FieldType::String, "flag: which story flag")
+        .Field("event", FieldType::String, "event: death, pickup, hit, attack, trigger_enter, talk, quest_completed...")
+        .Field("target", FieldType::String, "event: what it's about (a prefab, a name, a trigger, a quest id); empty: any")
+        .Field("count", FieldType::Int, "event: how many times").Default(1);
+
     r.RecordType("encounter", "An encounter (13.7): what a Spawner makes, picked by weight and level.")
         .Field("name", FieldType::String, "A label for editors.")
         .Object("entries",

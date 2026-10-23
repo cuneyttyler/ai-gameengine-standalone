@@ -35,6 +35,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
+#include <ctime>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -117,6 +122,47 @@ int RunHeadless(const aige::Project& project, double seconds) {
 
 } // namespace
 
+// The crash log (24): an unhandled exception writes what and where to `path`, then says so.
+static std::filesystem::path g_crashLog;
+static std::string g_crashGame;
+
+#ifdef _WIN32
+static LONG WINAPI WriteCrashLog(EXCEPTION_POINTERS* info) {
+    std::ofstream out(g_crashLog, std::ios::app);
+    const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    char when[32];
+    std::strftime(when, sizeof(when), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+    out << "--- " << when << "  " << g_crashGame << "\n";
+    if (info && info->ExceptionRecord) {
+        const void* address = info->ExceptionRecord->ExceptionAddress;
+        HMODULE module = nullptr;
+        char name[MAX_PATH] = "?";
+        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               static_cast<LPCSTR>(address), &module)) {
+            GetModuleFileNameA(module, name, MAX_PATH);
+        }
+        char line[256];
+        std::snprintf(line, sizeof(line), "exception 0x%08lx at %p in %s (+0x%llx)\n", info->ExceptionRecord->ExceptionCode, address, name,
+                      static_cast<unsigned long long>(reinterpret_cast<const char*>(address) - reinterpret_cast<const char*>(module)));
+        out << line;
+    }
+    out.close();
+    const std::string text = "The game stopped unexpectedly. A report was written to:\n" + g_crashLog.string();
+    MessageBoxA(nullptr, text.c_str(), g_crashGame.c_str(), MB_ICONERROR | MB_OK);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+#endif
+
+static void InstallCrashLog(const std::filesystem::path& path, const std::string& game) {
+    g_crashLog = path;
+    g_crashGame = game;
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+#ifdef _WIN32
+    SetUnhandledExceptionFilter(&WriteCrashLog);
+#endif
+}
+
 int main(int argc, char** argv) {
     try {
         std::filesystem::path root = AIGE_DEFAULT_PROJECT;
@@ -145,13 +191,18 @@ int main(int argc, char** argv) {
         }
         // An exported game (5.1): its content sits in game/ next to the player.
         std::string gameName;
+        bool exportedGame = false;
+        bool exportConsole = false;
         if (!rootGiven) {
+            // An exported game is known by its export.json (24); older exports by their main scene.
             const std::filesystem::path exported = aige::ExecutableDir() / "game";
-            if (std::filesystem::exists(exported / "scenes" / "main.aige")) {
+            if (std::filesystem::exists(exported / "export.json") || std::filesystem::exists(exported / "scenes" / "main.aige")) {
                 root = exported;
+                exportedGame = true;
                 std::ifstream info(exported / "export.json");
                 nlohmann::json j = nlohmann::json::parse(info, nullptr, false);
                 gameName = j.is_object() ? j.value("name", "") : "";
+                exportConsole = j.is_object() && j.value("debugConsole", false);
             }
         }
         aige::Project project{std::filesystem::absolute(root)};
@@ -169,6 +220,9 @@ int main(int argc, char** argv) {
                 aige::LoadInputMap(std::filesystem::exists(playerDir / "input.json") ? playerDir : project.root);
         }
         const aige::ProjectSettings& settings = aige::ActiveSettings();
+        // A crash leaves a report beside the saves (24): what, where, which version.
+        InstallCrashLog(aige::PlayerSaveDir(gameName.empty() ? project.root.filename().string() : gameName) / "crash.log",
+                        (gameName.empty() ? project.root.filename().string() : gameName) + " " + settings.game.version);
 
         if (headless) {
             return RunHeadless(project, exitAfter >= 0.0 ? exitAfter : 2.0);
@@ -176,7 +230,7 @@ int main(int argc, char** argv) {
 
         aige::Window::Desc desc;
         if (!gameName.empty()) {
-            desc.title = gameName;
+            desc.title = gameName + (settings.game.version.empty() ? "" : "  v" + settings.game.version);
         }
         aige::Window window(desc);
         aige::VulkanRHI rhi(window);
@@ -217,6 +271,9 @@ int main(int argc, char** argv) {
         // The game's UI as documents (17): menus, windows, HUD and notifications, themed.
         game.EnableDocuments([&assets](const std::string& path) { return assets.LoadTexture(path); });
         game.Start();
+        // The debug console (24): in development, and in an export only when it was asked for.
+        game.SetConsoleAllowed(exportedGame ? exportConsole : settings.game.debugConsole);
+        window.SetCharCallback([&game](unsigned codepoint) { game.OnChar(codepoint); });
         if (bench) {
             registry.clear();
             aige::BuildBenchmarkScene(registry);
@@ -360,6 +417,7 @@ int main(int argc, char** argv) {
                       << " ms, update " << benchUpdateMs / benchFrames << " ms" << std::endl;
         }
     } catch (const std::exception& e) {
+        if (!g_crashLog.empty()) std::ofstream(g_crashLog, std::ios::app) << "--- " << g_crashGame << ": " << e.what() << "\n";
         std::cerr << "Fatal: " << e.what() << std::endl;
         return 1;
     }

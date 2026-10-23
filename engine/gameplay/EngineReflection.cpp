@@ -539,6 +539,10 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("dodgeDistance", &CombatSettings::dodgeDistance, "Cells a dodge covers.").Range(0, 10)
         .Field("dodgeStamina", &CombatSettings::dodgeStamina, "Stamina a dodge costs (for those with stamina).")
         .Range(0, 1000);
+    r.Settings("Streaming", "Big scenes: only the chunks around the player are simulated (24).", &settings.streaming)
+        .Field("enabled", &StreamingSettings::enabled, "On: characters, scripts, routines and spawners far away sleep.")
+        .Field("chunk", &StreamingSettings::chunk, "A chunk's side, in cells.").Range(8, 256)
+        .Field("radius", &StreamingSettings::radius, "Chunks around the player's that stay awake.").Range(1, 8);
     r.Settings("Physics", "Movement and collision.", &settings.physics)
         .Field("playerCollides", &PhysicsSettings::playerCollides, "Off lets the player walk through walls.")
         .Field("gravityX", &PhysicsSettings::gravityX, "Rigid bodies' gravity, cells per second squared.").Range(-100, 100)
@@ -550,7 +554,10 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "the whole scene.")
         .Options({"Isometric", "TopDown"});
     r.Settings("Game", "The game as a whole.", &settings.game)
-        .Field("startScene", &GameSettings::startScene, "The scene the game starts in (scenes/*.aige).");
+        .Field("startScene", &GameSettings::startScene, "The scene the game starts in (scenes/*.aige).")
+        .Field("version", &GameSettings::version, "The game's version: the window's title, the crash log, exports.")
+        .Field("debugConsole", &GameSettings::debugConsole, "` opens the debug console in play (exports leave it off unless asked).")
+        .Field("splash", &GameSettings::splash, "A picture shown for a moment when the game starts (assets/...).");
     r.Settings("Time", "The game clock (routines follow it).", &settings.time)
         .Field("startHour", &TimeSettings::startHour, "Time of day when a game starts, in hours.").Range(0, 23.99)
         .Field("minutesPerSecond", &TimeSettings::minutesPerSecond,

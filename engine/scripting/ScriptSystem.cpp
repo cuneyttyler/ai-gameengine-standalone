@@ -1,3 +1,4 @@
+#include "ecs/Dormant.h"
 #include "scripting/ScriptSystem.h"
 
 #include <unordered_map>
@@ -93,7 +94,7 @@ void UpdateScripts(Registry& registry, LuaVM& vm, float dt, const ScriptBinder& 
         std::error_code ec;
     };
     std::unordered_map<std::string, FileTime> fileTimes;
-    auto view = registry.view<LuaScript>();
+    auto view = registry.view<LuaScript>(entt::exclude<Dormant>); // far away in a streamed scene (24)
     for (auto entity : view) {
         auto& script = view.get<LuaScript>(entity);
         std::filesystem::path scriptPath = script.path;

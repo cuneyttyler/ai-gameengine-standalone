@@ -80,7 +80,7 @@
       {"path": "difficulty.permadeath", "label": "Permadeath", "type": "enum", "options": ["off", "option", "always"]}
     ]},
     {"id": "visuals", "label": "Visuals", "fields": [
-      {"path": "visuals.theme", "label": "UI theme", "type": "enum", "asked": true, "options": ["parchment", "stone", "metal", "sci-fi", "minimal", "pixel", "cozy"]},
+      {"path": "visuals.theme", "label": "UI theme", "type": "enum", "asked": true, "options": ["arcane", "iron", "minimal", "parchment", "pixel", "scifi-glass", "stone"]},
       {"path": "visuals.hudDensity", "label": "HUD density", "type": "enum", "asked": true, "options": ["minimal", "standard", "full"]},
       {"path": "visuals.notifications", "label": "Notifications", "type": "enum", "options": ["subtle", "standard", "prominent"]},
       {"path": "visuals.mapStyle", "label": "Map", "type": "enum", "options": ["none", "minimap", "full-map", "both"]}

@@ -1,5 +1,6 @@
 #include "gameplay/Schedule.h"
 
+#include "ecs/Dormant.h"
 #include "gameplay/Components.h"
 #include "gameplay/Pathfinding.h"
 #include "physics2d/Components.h"
@@ -193,7 +194,7 @@ void UpdateRoutines(Registry& registry, const ScheduleLibrary& schedules, float 
             if (n == name) return pos;
         return std::nullopt;
     };
-    auto view = registry.view<Routine, WorldTransform2D>(entt::exclude<Dead>);
+    auto view = registry.view<Routine, WorldTransform2D>(entt::exclude<Dead, Dormant>);
     for (auto entity : view) {
         const Routine& routine = view.get<Routine>(entity);
         const Schedule* schedule = schedules.Find(routine.schedule);

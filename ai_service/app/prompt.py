@@ -251,6 +251,19 @@ MAGIC (docs/magic.md; context "magic" lists the abilities and magic effects ther
   apply_effect(id, effect[, magnitude, duration]), remove_effects(id, tag), has_tag(id, tag), learn(id, ability).
 """
 
+SHIPPING = """\
+SHIPPING (development_plan.md 24; context "shipping": achievements, the accessibility report, the version)
+- Achievements are records "achievement": {"name", "description", "icon", "hidden", "points", "kind":
+  "quest"|"flag"|"event"|"script", "quest" + "state" (completed by default), "flag", "event" (death, pickup, hit,
+  attack, trigger_enter, talk, quest_completed...) + "target" (a prefab, a name, a trigger, a quest id; empty: any) +
+  "count"}. Scripts: unlock_achievement(id), achievement_unlocked(id), achievement_progress(id).
+- Project settings: Game ▸ version, debugConsole (` in play), splash (a picture at start); Streaming ▸ enabled, chunk,
+  radius (big scenes: only the chunks near the player are simulated).
+- Accessibility is the player's (Settings: text size, high contrast, colour-blind colours, reduce motion and flashes,
+  hold to toggle); the project's part is a theme with readable contrast (context shipping.accessibility lists what fails:
+  fix it in ui/theme.json's tokens, e.g. {"text": "#ffffff", "panel": "#101018f0"}).
+"""
+
 PLANNER = """\
 THE AI PLANNER (docs/ai-planner.md; context "plan" when the project has one)
 - Designing a whole game ("plan a game about...", "make me an RPG where...") is the Planner's job: the editor sends
@@ -539,6 +552,7 @@ def build_messages(
             PHYSICS,
             STORY_GRAPH,
             PLANNER,
+            SHIPPING,
             RECORDS,
             SCENES,
             ART,

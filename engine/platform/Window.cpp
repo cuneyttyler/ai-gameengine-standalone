@@ -82,6 +82,7 @@ Window::Window(const Desc& desc) {
 
     glfwSetWindowUserPointer(handle_, this);
     glfwSetFramebufferSizeCallback(handle_, &Window::FramebufferResizeTrampoline);
+    glfwSetCharCallback(handle_, &Window::CharTrampoline);
 }
 
 Window::~Window() {
@@ -177,6 +178,13 @@ void Window::FramebufferResizeTrampoline(GLFWwindow* handle, int width, int heig
 
 GLFWwindow* Window::NativeHandle() const {
     return handle_;
+}
+
+void Window::SetCharCallback(std::function<void(unsigned)> callback) { charCallback_ = std::move(callback); }
+
+void Window::CharTrampoline(GLFWwindow* handle, unsigned codepoint) {
+    auto* self = static_cast<Window*>(glfwGetWindowUserPointer(handle));
+    if (self && self->charCallback_) self->charCallback_(codepoint);
 }
 
 } // namespace aige

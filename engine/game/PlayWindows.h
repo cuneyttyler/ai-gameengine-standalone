@@ -1,5 +1,7 @@
 #pragma once
 
+#include <nlohmann/json.hpp>
+
 #include "ecs/Registry.h"
 #include "gameplay/InputMap.h"
 #include "gameplay/Story.h"
@@ -18,7 +20,7 @@ namespace aige {
 // UI (Phase 17) makes them customisable documents. The game is paused while one is open.
 class PlayWindows {
 public:
-    enum class Kind { None, Inventory, Shop, Journal, Spellbook };
+    enum class Kind { None, Inventory, Shop, Journal, Spellbook, Achievements };
 
     void OpenInventory(Entity player);
     // Restocks the merchant from its loot table when it's a new day.
@@ -28,6 +30,8 @@ public:
     void OpenJournal(Entity player, const StoryState& story, const StoryLibrary& library);
     // The spellbook (19): known abilities; picking one puts it in the first quick slot.
     void OpenSpellbook(Entity player);
+    // The game's achievements (24): AchievementSystem::View().
+    void OpenAchievements(Entity player, const nlohmann::json& view);
     void Close() { kind_ = Kind::None; }
     Kind Open() const { return kind_; }
 
@@ -53,6 +57,7 @@ private:
     std::vector<Line> Lines(Registry& registry) const;
 
     Kind kind_ = Kind::None;
+    std::string achievementPoints_;
     Entity player_ = entt::null;
     Entity merchant_ = entt::null;
     int highlighted_ = 0;

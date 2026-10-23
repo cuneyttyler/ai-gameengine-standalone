@@ -53,7 +53,7 @@ public:
     enum class State { Title, Playing, Paused, Load, Save, GameOver, Victory, Credits, Settings, Difficulty };
 
     struct Command {
-        enum class Kind { None, NewGame, Load, Save, Resume, QuitToTitle, Quit, SettingsChanged, DifficultyChanged } kind =
+        enum class Kind { None, NewGame, Load, Save, Resume, QuitToTitle, Quit, SettingsChanged, DifficultyChanged, Achievements } kind =
             Kind::None;
         std::string slot;  // Load / Save
         std::string level; // NewGame (when chosen) / DifficultyChanged: a difficulty level's id
@@ -106,6 +106,9 @@ public:
     // The current screen as a menu to draw; nullopt while playing.
     std::optional<MenuView> View() const;
 
+    // The pause menu offers Achievements when the game has some (24).
+    void SetHasAchievements(bool has) { hasAchievements_ = has; }
+
 private:
     struct Item {
         std::string id;
@@ -129,6 +132,7 @@ private:
     State state_ = State::Title;
     State back_ = State::Title; // where Load, Save and Credits go back to
     int highlighted_ = 0;
+    bool hasAchievements_ = false;
 };
 
 } // namespace aige

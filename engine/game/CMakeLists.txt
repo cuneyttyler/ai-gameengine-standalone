@@ -9,6 +9,12 @@ add_library(aige_game STATIC
     GameAudio.cpp
     PlayWindows.h
     PlayWindows.cpp
+    DebugConsole.h
+    DebugConsole.cpp
+    Accessibility.h
+    Accessibility.cpp
+    Templates.h
+    Templates.cpp
     Actors.h
     Actors.cpp
     GameRunner.h

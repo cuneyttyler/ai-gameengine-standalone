@@ -368,7 +368,7 @@ private:
     // While playing: the tile layers of `scene` (the edited one as it was at Play, others as saved).
     void PlayLayersFor(const std::string& scene);
     // Build & Export (5.1): the game as a folder (and .zip) that runs on its own.
-    void ExportGameTo(const std::string& name, bool zip);
+    void ExportGameTo(const std::string& name, bool zip, bool debugConsole = false);
     // Projects (4.2): asks about unsaved changes, then reopens the editor on `root`.
     void SwitchProject(const std::filesystem::path& root, bool askAboutChanges = true);
     nlohmann::json ProjectInfoJson();

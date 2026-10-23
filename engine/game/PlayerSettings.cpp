@@ -13,6 +13,12 @@ nlohmann::json PlayerSettings::ToJson() const {
             {"vsync", vsync},
             {"uiScale", uiScale},
             {"subtitles", subtitles},
+            {"reduceMotion", reduceMotion},
+            {"reduceFlashes", reduceFlashes},
+            {"highContrast", highContrast},
+            {"colorblind", colorblind},
+            {"textScale", textScale},
+            {"holdToToggle", holdToToggle},
             {"assists", {{"invincible", invincible}, {"damageReduction", damageReduction},
                          {"growingReduction", growingReduction}, {"gameSpeed", gameSpeed}, {"adaptive", adaptive}}}};
 }
@@ -33,6 +39,12 @@ PlayerSettings PlayerSettings::FromJson(const nlohmann::json& json) {
     s.vsync = json.value("vsync", true);
     s.uiScale = std::clamp(json.value("uiScale", 1.0f), 0.5f, 2.0f);
     s.subtitles = json.value("subtitles", true);
+    s.reduceMotion = json.value("reduceMotion", false);
+    s.reduceFlashes = json.value("reduceFlashes", false);
+    s.highContrast = json.value("highContrast", false);
+    s.colorblind = json.value("colorblind", "none");
+    s.textScale = std::clamp(json.value("textScale", 1.0f), 1.0f, 2.0f);
+    s.holdToToggle = json.value("holdToToggle", false);
     const nlohmann::json assists = json.value("assists", nlohmann::json::object());
     if (assists.is_object()) {
         s.invincible = assists.value("invincible", false);

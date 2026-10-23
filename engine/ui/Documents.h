@@ -79,6 +79,9 @@ public:
     // The theme (ui/theme.json): {"base": "stone", "tokens": {"panel": "#1d1d2b", ...}}.
     // Styles say var(--panel); the tokens are put in when a style is read.
     nlohmann::json ThemeTokens() const;
+    // The player's accessibility options (24): tokens put over the theme's (high contrast,
+    // colour-blind palettes, text size); the documents are read again with them.
+    void SetAccessibilityTokens(const nlohmann::json& tokens);
     std::vector<std::string> Themes() const; // the built-in themes' names
 
     // What's on screen. `screen` names the menu (title, pause, inventory...); nullopt hides it.
@@ -134,6 +137,8 @@ private:
 // document's models (menu, dialogue, hud, notes, ui; not on <body>). Empty when fine.
 std::vector<std::string> CheckUiFile(const std::string& path, const std::string& content);
 
+// A project's theme tokens (ui/theme.json over its base), as the game uses them.
+nlohmann::json ProjectThemeTokens(const std::filesystem::path& projectRoot);
 // Puts a theme's tokens into a style: var(--name) -> its value (unknown names stay).
 std::string ApplyThemeTokens(const std::string& style, const nlohmann::json& tokens);
 // The engine's UI documents and themes (data/ui).

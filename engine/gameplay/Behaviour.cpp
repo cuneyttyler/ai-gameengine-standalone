@@ -1,5 +1,6 @@
 #include "gameplay/Behaviour.h"
 
+#include "ecs/Dormant.h"
 #include "gameplay/Combat.h"
 #include "gameplay/Components.h"
 #include "gameplay/GameSession.h"
@@ -793,7 +794,7 @@ void UpdateBehaviours(AiContext& ctx, float dt) {
     Registry& registry = ctx.registry;
     const auto player = FindPlayer(registry);
     std::vector<Entity> actors;
-    for (auto entity : registry.view<Behaviour, WorldTransform2D>(entt::exclude<Dead>)) actors.push_back(entity);
+    for (auto entity : registry.view<Behaviour, WorldTransform2D>(entt::exclude<Dead, Dormant>)) actors.push_back(entity);
     for (Entity actor : actors) {
         if (!registry.valid(actor)) continue;
         auto& behaviour = registry.get<Behaviour>(actor);

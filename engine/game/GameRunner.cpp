@@ -1,3 +1,5 @@
+#include "game/Accessibility.h"
+#include "gameplay/Profiler.h"
 #include "game/GameRunner.h"
 
 #include "assets/Prefab.h"
@@ -61,6 +63,8 @@ GameRunner::GameRunner(const Project& project, Registry& registry, LuaVM& lua, P
     flow_.SetSlots(saves_.List());
     // The player's settings and the languages the game has (12.7).
     settings_ = LoadPlayerSettings(options_.saveDir / "settings.json");
+    // The player's achievements (24): kept beside the saves (a store's platform plugs in here).
+    if (!options_.saveDir.empty()) session_->Achievements().SetPlatform(std::make_shared<LocalAchievements>(options_.saveDir / "achievements.json"));
     ActiveLocalization().Load(project_.root, settings_.language);
     flow_.SetPlayerSettings(&settings_, ActiveLocalization().Available());
     OfferDifficulties();
@@ -88,6 +92,12 @@ void GameRunner::ApplyAssists() {
 
 void GameRunner::ApplySettings() {
     ActiveLocalization().Load(project_.root, settings_.language);
+    // Accessibility (24).
+    session_->SetReduceMotion(settings_.reduceMotion);
+    session_->SetReduceFlashes(settings_.reduceFlashes);
+    session_->MutableInput().SetHoldToToggle(settings_.holdToToggle);
+    flow_.SetHasAchievements(!session_->Achievements().Defs().empty());
+    if (docs_) docs_->SetAccessibilityTokens(AccessibilityTokens(settings_));
     if (audio_) {
         audio_->SetBusVolume(AudioBus::Master, settings_.master);
         audio_->SetBusVolume(AudioBus::Music, settings_.music);
@@ -106,6 +116,10 @@ std::vector<std::string> GameRunner::TakeLog() {
 }
 
 void GameRunner::Start() {
+    // The splash (24): the game's picture for a moment before the title.
+    const std::string splash = ActiveSettings().game.splash;
+    std::error_code splashEc;
+    if (!splash.empty() && std::filesystem::exists(project_.Resolve(splash), splashEc)) splashLeft_ = 2.0;
     const auto command = flow_.Begin();
     if (flow_.Current() == GameFlow::State::Title) {
         // The start scene stands behind the title screen, still.
@@ -249,6 +263,9 @@ void GameRunner::HandleCommand(const GameFlow::Command& command) {
             break;
         case Kind::Save: SaveTo(command.slot); break;
         case Kind::Resume: session_->ResetClock(); break;
+        case Kind::Achievements:
+            if (const auto player = FindPlayer(registry_)) windows_.OpenAchievements(*player, session_->Achievements().View());
+            break;
         case Kind::QuitToTitle:
             NewGame(); // the start scene behind the title again
                 break;
@@ -271,7 +288,55 @@ void GameRunner::Frame(double seconds, const KeyQueryFn& keys, const AxisQueryFn
     }
 }
 
+void GameRunner::OnChar(unsigned codepoint) {
+    if (codepoint == '`' && consoleAllowed_ && flow_.InPlay()) {
+        if (!console_) console_ = std::make_unique<DebugConsole>(*session_, registry_, lua_);
+        console_->Toggle();
+        session_->ResetClock();
+        return;
+    }
+    if (console_ && console_->Open()) console_->Type(codepoint);
+}
+
 void GameRunner::FrameLogic(double seconds, const KeyQueryFn& keys, const AxisQueryFn& axes) {
+    Profiler::Get().BeginFrame();
+    if (splashLeft_ > 0.0) {
+        splashLeft_ -= seconds;
+        if (keys(Key::Enter) || keys(Key::Space) || keys(Key::Escape) || keys(Key::MouseLeft) || keys(Key::PadA)) splashLeft_ = 0.0;
+        if (splashLeft_ <= 0.0) menuInput_.HoldCurrent(); // the key that skipped it isn't the menu's
+        return;
+    }
+    // F2: the profiler overlay (24).
+    const bool f2 = keys(Key::F2);
+    if (f2 && !f2Before_) profilerShown_ = !profilerShown_;
+    f2Before_ = f2;
+    // The debug console (24): while it's open the game waits; its keys edit the line.
+    if (console_ && console_->Open()) {
+        auto pressed = [&](Key k) {
+            const bool down = keys(k);
+            const bool was = consoleKeys_[static_cast<int>(k)];
+            consoleKeys_[static_cast<int>(k)] = down;
+            return down && !was;
+        };
+        if (pressed(Key::Enter)) console_->Submit();
+        if (pressed(Key::Backspace)) console_->Backspace();
+        if (pressed(Key::Up)) console_->HistoryUp();
+        if (pressed(Key::Down)) console_->HistoryDown();
+        if (pressed(Key::Escape)) console_->SetOpen(false);
+        if (console_->ProfilerShown() != profilerShown_ && console_->Log().size() && console_->Log().back().rfind("profiler", 0) == 0) {
+            profilerShown_ = console_->ProfilerShown();
+        }
+        TravelIfAsked();
+        return;
+    }
+    if (console_) {
+        if (console_->God()) {
+            if (const auto player = FindPlayer(registry_)) {
+                if (auto* h = registry_.try_get<Health>(*player)) h->current = h->max;
+            }
+        }
+        seconds *= console_->Speed();
+    }
     if (fade_ > 0.0) fade_ = std::max(0.0, fade_ - seconds / kFadeSeconds);
     if (docs_) docs_->Update(seconds);
     if (!flow_.InPlay()) {
@@ -338,8 +403,22 @@ void GameRunner::FrameLogic(double seconds, const KeyQueryFn& keys, const AxisQu
 }
 
 void GameRunner::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float viewportHeight) {
+    if (splashLeft_ > 0.0) {
+        AddUiRect(out, 0.0f, 0.0f, viewportWidth, viewportHeight, {0.0f, 0.0f, 0.0f, 1.0f});
+        UiQuad picture;
+        picture.x1 = viewportWidth;
+        picture.y1 = viewportHeight;
+        picture.u1 = picture.v1 = 1.0f;
+        picture.a = static_cast<float>(std::min(1.0, splashLeft_ / 0.4)); // fades out at the end
+        picture.texture = ActiveSettings().game.splash;
+        out.push_back(picture);
+        return;
+    }
     const bool title = flow_.Current() == GameFlow::State::Title;
     if (!title) session_->BuildUi(out, viewportWidth, viewportHeight);
+    // The profiler (F2) and the console (`), over everything but the fade.
+    if (profilerShown_) AddDebugLines(out, Profiler::Get().Lines(), viewportWidth, viewportHeight);
+    if (console_ && console_->Open()) AddDebugLines(out, console_->Lines(), viewportWidth, viewportHeight);
     if (docs_) {
         // The documents (17): the menu or window on screen, the dialogue, the HUD.
         docs_->SetViewport(static_cast<int>(viewportWidth), static_cast<int>(viewportHeight));
@@ -364,6 +443,7 @@ std::string GameRunner::MenuScreen() const {
         case PlayWindows::Kind::Shop: return "shop";
         case PlayWindows::Kind::Journal: return "journal";
         case PlayWindows::Kind::Spellbook: return "spellbook";
+        case PlayWindows::Kind::Achievements: return "journal";
         default: break;
     }
     switch (flow_.Current()) {

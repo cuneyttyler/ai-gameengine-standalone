@@ -60,6 +60,7 @@ Entities are referred to by integer **ids** (as returned by `find_nearest` or `s
 | `raycast(x0, y0, x1, y1[, mask])` | table or nil | The first solid tile or collider along a segment (not this entity): `{entity, x, y, distance}`; `entity` is nil for a wall ([physics.md](physics.md)). |
 | `overlap(x, y, radius[, mask])` / `line_of_sight(x0, y0, x1, y1)` | ids / boolean | Entities whose colliders touch a circle; nothing solid between two points. |
 | `apply_impulse(id, ix, iy)` / `set_velocity(id, vx, vy)` | — | Pushes a rigid body (RigidBody2D), or sets its velocity. |
+| `unlock_achievement(id)` / `achievement_unlocked(id)` / `achievement_progress(id)` | boolean / boolean / number | Achievements ([shipping.md](shipping.md)): unlock one, ask about one, its count so far. |
 | `difficulty()` / `difficulty_step(category)` / `set_difficulty(id)` | string / number / boolean | The difficulty level's id; a category's step, 1-5 (3: as designed); change the level. See [difficulty.md](difficulty.md). |
 | `play_cutscene(id)` / `skip_cutscene()` / `in_cutscene()` | boolean / — / boolean | Plays `cutscenes/<id>.json` (false if it doesn't load). See [story.md](story.md#cutscenes-cutscenesidjson). |
 | `set_flag(name[, value])` | — | Story flags shared with dialogue conditions; `value` defaults to true. |

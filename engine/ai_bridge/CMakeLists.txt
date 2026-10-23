@@ -36,7 +36,7 @@ add_library(aige_ai_bridge STATIC
 )
 target_include_directories(aige_ai_bridge PUBLIC ${CMAKE_SOURCE_DIR}/engine)
 target_include_directories(aige_ai_bridge PUBLIC ${httplib_SOURCE_DIR})
-target_link_libraries(aige_ai_bridge PUBLIC aige_editing aige_assets aige_gameplay aige_story nlohmann_json::nlohmann_json)
+target_link_libraries(aige_ai_bridge PUBLIC aige_editing aige_assets aige_gameplay aige_game aige_story nlohmann_json::nlohmann_json)
 target_compile_features(aige_ai_bridge PUBLIC cxx_std_20)
 if(WIN32)
     target_link_libraries(aige_ai_bridge PUBLIC ws2_32)

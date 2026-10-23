@@ -219,6 +219,15 @@ void InputState::Update(const InputMap& map, const KeyQueryFn& keys, const AxisQ
         for (const auto& [name, value] : now_) before_[name] = value;
         contextChanged_ = false;
     }
+    // Hold to toggle: a press of a toggled action flips it (read through Down).
+    if (holdToToggle_) {
+        for (const auto& a : toggleActions_) {
+            auto it = now_.find(a);
+            const bool down = it != now_.end() && it->second != 0.0f;
+            if (down && !before_.contains(a)) toggled_[a] = !toggled_[a];
+            else if (!toggled_.contains(a)) toggled_[a] = false;
+        }
+    }
 }
 
 std::string ActionGlyph(const InputMap& map, const std::string& action, bool pad) {
@@ -233,6 +242,10 @@ std::string ActionGlyph(const InputMap& map, const std::string& action, bool pad
 }
 
 bool InputState::Down(const std::string& action) const {
+    if (holdToToggle_) {
+        auto t = toggled_.find(action);
+        if (t != toggled_.end()) return t->second;
+    }
     auto it = now_.find(action);
     return it != now_.end() && it->second != 0.0f;
 }

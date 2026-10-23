@@ -5,6 +5,7 @@
 #include "game/Actors.h"
 #include "game/GameFlow.h"
 #include "game/PlayWindows.h"
+#include "game/DebugConsole.h"
 #include "game/SaveGames.h"
 #include "gameplay/GameSession.h"
 #include "gameplay/Schedule.h"
@@ -75,6 +76,11 @@ public:
     // and the language, and to the window through `onFullscreen`.
     PlayerSettings& Settings() { return settings_; }
     void ApplySettings();
+    // The debug console (24): typed characters (the host's char events) and whether it's open.
+    void OnChar(unsigned codepoint);
+    DebugConsole* Console() { return console_.get(); }
+    bool ConsoleAllowed() const { return consoleAllowed_; }
+    void SetConsoleAllowed(bool allowed) { consoleAllowed_ = allowed; }
     void OfferDifficulties(); // the levels for the New game and Settings menus (16)
     void ApplyAssists();      // the player's assists and adaptive choice (16.4)
     std::function<void(bool fullscreen)> onFullscreen;
@@ -129,6 +135,13 @@ private:
     std::mt19937 shopRng_{0x5409u};
     std::unique_ptr<DocumentUi> docs_;
     nlohmann::json notificationRules_ = nlohmann::json::array();
+    // Shipping (24): the debug console, its keys' last state, the profiler overlay.
+    std::unique_ptr<DebugConsole> console_;
+    bool consoleAllowed_ = true;
+    std::map<int, bool> consoleKeys_;
+    bool profilerShown_ = false;
+    bool f2Before_ = false;
+    double splashLeft_ = 0.0; // the game's splash picture (Project Settings ▸ Game ▸ splash)
 };
 
 } // namespace aige

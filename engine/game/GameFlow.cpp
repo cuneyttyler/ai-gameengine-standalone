@@ -102,13 +102,17 @@ std::vector<GameFlow::Item> GameFlow::Items() const {
                     {"settings", Tr("menu.settings", "Settings"), settings_ != nullptr},
                     {"credits", Tr("menu.credits", "Credits")},
                     {"quit", Tr("menu.quit", "Quit")}};
-        case State::Paused:
-            return {{"resume", Tr("menu.resume", "Resume")},
-                    {"save", Tr("menu.save", "Save game")},
-                    {"load", Tr("menu.load", "Load game"), anySave},
-                    {"settings", Tr("menu.settings", "Settings"), settings_ != nullptr},
-                    {"title", Tr("menu.quit_to_title", "Quit to title")},
-                    {"quit", Tr("menu.quit_game", "Quit game")}};
+        case State::Paused: {
+            std::vector<Item> items = {{"resume", Tr("menu.resume", "Resume")},
+                                       {"save", Tr("menu.save", "Save game")},
+                                       {"load", Tr("menu.load", "Load game"), anySave},
+                                       {"settings", Tr("menu.settings", "Settings"), settings_ != nullptr}};
+            // Only in games that have achievements (24).
+            if (hasAchievements_) items.push_back({"achievements", Tr("menu.achievements", "Achievements")});
+            items.push_back({"title", Tr("menu.quit_to_title", "Quit to title")});
+            items.push_back({"quit", Tr("menu.quit_game", "Quit game")});
+            return items;
+        }
         case State::Load: {
             std::vector<Item> items;
             for (const auto& slot : slots_) {
@@ -177,6 +181,16 @@ std::vector<GameFlow::Item> GameFlow::Items() const {
                                                 onOff(settings_->growingReduction)});
             items.push_back({"set:speed", Tr("settings.game_speed", "Game speed") + "  " + percent(settings_->gameSpeed)});
             items.push_back({"set:invincible", Tr("settings.invincible", "Invincible") + "  " + onOff(settings_->invincible)});
+            // Accessibility (24).
+            items.push_back({"set:textScale", Tr("settings.text_size", "Text size") + "  " + percent(settings_->textScale)});
+            items.push_back({"set:highContrast", Tr("settings.high_contrast", "High contrast") + "  " + onOff(settings_->highContrast)});
+            {
+                const std::string cb = settings_->colorblind == "none" ? Tr("menu.off", "Off") : Tr("settings.cb." + settings_->colorblind, settings_->colorblind);
+                items.push_back({"set:colorblind", Tr("settings.colorblind", "Colour-blind colours") + "  " + cb});
+            }
+            items.push_back({"set:reduceMotion", Tr("settings.reduce_motion", "Reduce motion") + "  " + onOff(settings_->reduceMotion)});
+            items.push_back({"set:reduceFlashes", Tr("settings.reduce_flashes", "Reduce flashes") + "  " + onOff(settings_->reduceFlashes)});
+            items.push_back({"set:holdToToggle", Tr("settings.hold_to_toggle", "Hold to toggle") + "  " + onOff(settings_->holdToToggle)});
             items.push_back({"back", Tr("menu.back", "Back")});
             return items;
         }
@@ -239,6 +253,19 @@ GameFlow::Command GameFlow::Choose(int index) {
         else if (what == "invincible") settings_->invincible = !settings_->invincible;
         else if (what == "growing") settings_->growingReduction = !settings_->growingReduction;
         else if (what == "adaptive") settings_->adaptive = !settings_->adaptive;
+        else if (what == "highContrast") settings_->highContrast = !settings_->highContrast;
+        else if (what == "reduceMotion") settings_->reduceMotion = !settings_->reduceMotion;
+        else if (what == "reduceFlashes") settings_->reduceFlashes = !settings_->reduceFlashes;
+        else if (what == "holdToToggle") settings_->holdToToggle = !settings_->holdToToggle;
+        else if (what == "textScale") settings_->textScale = settings_->textScale >= 1.99f ? 1.0f : settings_->textScale >= 1.49f ? 2.0f : settings_->textScale + 0.25f;
+        else if (what == "colorblind") {
+            static const char* kinds[] = {"none", "protanopia", "deuteranopia", "tritanopia"};
+            int at = 0;
+            for (int i = 0; i < 4; ++i) {
+                if (settings_->colorblind == kinds[i]) at = i;
+            }
+            settings_->colorblind = kinds[(at + 1) % 4];
+        }
         else if (what == "reduction") {
             settings_->damageReduction = settings_->damageReduction >= 0.74f ? 0.0f : settings_->damageReduction + 0.25f;
         } else if (what == "speed") {
@@ -255,6 +282,10 @@ GameFlow::Command GameFlow::Choose(int index) {
             settings_->language = it == options.end() || it + 1 == options.end() ? options.front() : *(it + 1);
         }
         return {Command::Kind::SettingsChanged};
+    }
+    if (id == "achievements") {
+        Go(State::Playing);
+        return {Command::Kind::Achievements};
     }
     if (id == "resume") {
         Go(State::Playing);

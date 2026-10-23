@@ -39,6 +39,7 @@ from .fx import check_anim, check_fx_refs
 from .magic import check_magic
 from .physics import check_physics
 from .storygraph import check_story_graph
+from .shipping import check_shipping
 from .gameui import check_ui
 from .story import StoryScope, check_cutscene, check_dialogue, check_quest, check_schedule
 
@@ -211,6 +212,7 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
     errors += check_magic(proposal, context)  # abilities and magic (19)
     errors += check_physics(proposal, context)  # layers, triggers, bodies and joints (20)
     errors += check_story_graph(proposal, context)  # the story knowledge graph (21)
+    errors += check_shipping(proposal, context)  # achievements and shipping settings (24)
 
     # Game UI files (17).
     for index, op in enumerate(proposal.operations, start=1):

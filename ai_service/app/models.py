@@ -181,6 +181,8 @@ class EditorContext(BaseModel):
     storyGraph: dict[str, Any] = {}
     # The AI Planner's design (22): {title, genre, logline, stage, status}, when the project has a plan.
     plan: dict[str, Any] = {}
+    # Shipping (24): {achievements (ids), accessibility {passed, total, failing [ids]}, version}.
+    shipping: dict[str, Any] = {}
 
 
 # --- Proposals --------------------------------------------------------------------

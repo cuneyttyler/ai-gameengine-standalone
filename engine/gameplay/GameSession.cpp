@@ -1,4 +1,6 @@
 #include "gameplay/GameSession.h"
+#include "gameplay/Profiler.h"
+#include "gameplay/Streaming.h"
 
 #include "gameplay/EngineReflection.h"
 #include "scripting/LuaVM.h"
@@ -248,6 +250,7 @@ GameSession::GameSession(Registry& registry, LuaVM& lua, IsoParams iso, std::fil
     animations_.Refresh();
     // Magic (19): its hooks reach the effects, spawns, events and lights here.
     magic_ = std::make_unique<MagicSystem>(registry_);
+    achievements_.Reload();
     physics_ = std::make_unique<PhysicsWorld>();
     magic_->playCue = [this](const std::string& effect, float x, float y, Entity target, Entity source) {
         PlayEffect(effect, x, y, target, source);
@@ -628,6 +631,10 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
     env["add_tag"] = [this](lua_Integer id, const std::string& tag) { magic_->AddTag(ToEntity(id), tag); };
     env["cooldown_left"] = [this, self](const std::string& ability) { return magic_->CooldownLeft(self, ability); };
     env["learn"] = [this](lua_Integer id, const std::string& ability) { magic_->Learn(ToEntity(id), ability); };
+    // Achievements (24).
+    env["unlock_achievement"] = [this](const std::string& id) { return achievements_.Unlock(id); };
+    env["achievement_unlocked"] = [this](const std::string& id) { return achievements_.Unlocked(id); };
+    env["achievement_progress"] = [this](const std::string& id) { return achievements_.Progress(id); };
     // Physics (20): queries, impulses.
     env["raycast"] = [this, L, self](float x0, float y0, float x1, float y1, sol::optional<std::string> mask) -> sol::object {
         const auto hit = Raycast(registry_, [this](int gx, int gy) { return grid_.IsSolid(gx, gy); }, x0, y0, x1, y1,
@@ -1855,6 +1862,17 @@ void GameSession::StepMagic(float dt, size_t firstEvent) {
 
 // --- Animation and effects (development_plan.md 18) ---------------------------------
 
+void GameSession::SetReduceMotion(bool on) {
+    reduceMotion_ = on;
+    ActiveFxAccessibility().shakeScale = on ? 0.0f : 1.0f;
+    if (on) {
+        trauma_ = 0.0f;
+        slowSeconds_ = 0.0;
+    }
+}
+
+void GameSession::SetReduceFlashes(bool on) { ActiveFxAccessibility().flashes = !on; }
+
 void GameSession::Shake(float trauma) {
     trauma_ = std::clamp(trauma_ + trauma * ActiveFxAccessibility().shakeScale, 0.0f, 1.0f);
 }
@@ -2313,6 +2331,17 @@ void GameSession::DispatchEvents() {
         batch.swap(pendingEvents_);
         for (const auto& event : batch) {
             delivered_.push_back(event);
+            // Achievements (24): what the event is about, by name and by text (a prefab, a trigger).
+            {
+                std::vector<std::string> about = {event.text};
+                if (registry_.valid(event.entity)) {
+                    if (const auto* n = registry_.try_get<Name>(event.entity)) about.push_back(n->value);
+                }
+                if (registry_.valid(event.other)) {
+                    if (const auto* n = registry_.try_get<Name>(event.other)) about.push_back(n->value);
+                }
+                achievements_.OnEvent(event.name, about);
+            }
             const std::vector<ScriptHandler> handlers = handlers_; // a handler may add or remove handlers
             for (const auto& handler : handlers) {
                 if (handler.event != event.name && handler.event != "*") continue;
@@ -2473,13 +2502,34 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
                 }
             }
         }
+        // Streaming (24): far chunks sleep; checked twice a second.
+        streamingCheck_ -= dt;
+        if (streamingCheck_ <= 0.0f) {
+            streamingCheck_ = 0.5f;
+            const auto& streaming = ActiveSettings().streaming;
+            if (streaming.enabled) {
+                if (auto player = FindPlayer(registry_)) {
+                    const auto& at = registry_.get<WorldTransform2D>(*player);
+                    UpdateStreaming(registry_, at.x, at.y, streaming.chunk, streaming.radius);
+                }
+            } else if (!registry_.view<Dormant>().empty()) {
+                WakeAll(registry_);
+            }
+        }
+        Profiler::Scope scriptsTime("scripts");
         UpdateScripts(registry_, lua_, dt, binder_, scriptRoot_, [this](Entity entity, const std::string& path, const std::string& message) {
             if (scriptErrors_.size() < 64) {
                 scriptErrors_.push_back({entity, path, message});
             }
         });
-        StepGameplay(dt, isSolid, firstStep); // Phase 13: attributes, actions, archers, spawners, pickups
-        StepCharacters(dt, isSolid);           // Phase 14: packages, perception, combat behaviour
+        {
+            Profiler::Scope t("gameplay");
+            StepGameplay(dt, isSolid, firstStep); // Phase 13: attributes, actions, archers, spawners, pickups
+        }
+        {
+            Profiler::Scope t("characters");
+            StepCharacters(dt, isSolid); // Phase 14: packages, perception, combat behaviour
+        }
         StepStory(dt);                         // Phase 15: timed, carried and escort objectives
         firstStep = false;
         const size_t firstEvent = events_.size();
@@ -2503,8 +2553,32 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         }
         OnStoryEvents(firstEvent);
         CueEffects(firstEvent); // animation triggers and effect cues for the step's hits, deaths, attacks
-        StepMagic(dt, firstEvent); // Phase 19: casts, effects, auras, enchantments, AI spells
-        StepPhysics(dt, isSolid);  // Phase 20: rigid bodies, joints, triggers
+        {
+            Profiler::Scope t("magic");
+            StepMagic(dt, firstEvent); // Phase 19: casts, effects, auras, enchantments, AI spells
+        }
+        {
+            Profiler::Scope t("physics");
+            StepPhysics(dt, isSolid); // Phase 20: rigid bodies, joints, triggers
+        }
+        // Achievements (24): quests and flags, now and then; what was unlocked, told.
+        achievementCheck_ -= dt;
+        if (achievementCheck_ <= 0.0f) {
+            achievementCheck_ = 0.5f;
+            achievements_.Check(
+                [this](const std::string& quest) {
+                    using S = StoryState::QuestState;
+                    const auto state = story_.Quest(quest).state;
+                    return state == S::Active ? std::string("active") : state == S::Completed ? std::string("completed")
+                           : state == S::Failed   ? std::string("failed")
+                                                  : std::string("inactive");
+                },
+                [this](const std::string& flag) { return story_.Flag(flag); });
+        }
+        for (const auto& a : achievements_.TakeUnlocked()) {
+            ShowNotice("Achievement unlocked: " + a.name, 4.0, "banner");
+            Emit({"achievement", entt::null, entt::null, static_cast<double>(a.points), a.id});
+        }
         // Events (12.2): combat's, then the story's, to the scripts' handlers;
         // then timers, waiting coroutines and the modules' systems.
         static const char* kNames[] = {"hit", "death", "pickup", "attack", "victory"};

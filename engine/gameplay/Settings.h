@@ -98,6 +98,16 @@ struct GridSettings {
 
 struct GameSettings {
     std::string startScene = "scenes/main.aige"; // where play begins (5.3)
+    std::string version = "1.0";                  // shown in the window's title and the crash log (24)
+    bool debugConsole = true;                     // ` opens the debug console in play (exports: only when asked)
+    std::string splash;                           // a picture shown when the game starts (assets/...)
+};
+
+// Streaming big scenes (24): only the chunks around the player are simulated.
+struct StreamingSettings {
+    bool enabled = false;
+    int chunk = 32;  // cells a side
+    int radius = 2;  // chunks around the player's that stay awake
 };
 
 struct ProjectSettings {
@@ -112,6 +122,7 @@ struct ProjectSettings {
     DifficultySettings difficulty;
     UiSettings ui;
     LightingSettings lighting;
+    StreamingSettings streaming;
 };
 
 ProjectSettings& ActiveSettings();

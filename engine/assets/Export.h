@@ -1,5 +1,7 @@
 #pragma once
 
+#include <nlohmann/json.hpp>
+
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -33,6 +35,11 @@ struct ExportOptions {
     std::filesystem::path destination; // the folder to export into
     std::string name;                  // the game's name (window title, file names)
     bool zip = false;
+    // Shipping (24).
+    std::string version = "1.0";       // export.json, the window's title, the crash log
+    bool debugConsole = false;         // the debug console stays available in the export
+    nlohmann::json accessibility;      // the accessibility report, as game/accessibility.json
+    std::string startScene;            // export.json (the player starts there)
 };
 
 struct ExportResult {
@@ -44,6 +51,10 @@ struct ExportResult {
 
 // Refuses an existing <destination>/<Name> folder (never overwrites).
 ExportResult ExportGame(const ExportOptions& options);
+
+// The game's icon on the exported player (Windows): a PNG embedded as the exe's icon
+// resource. Returns why not, or "".
+std::string SetExecutableIcon(const std::filesystem::path& exe, const std::filesystem::path& png);
 
 // A .zip (stored, no compression) of every file under `folder`, with paths
 // starting at the folder's own name. Returns false on an I/O error.

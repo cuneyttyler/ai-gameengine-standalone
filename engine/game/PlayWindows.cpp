@@ -98,6 +98,21 @@ void PlayWindows::OpenJournal(Entity player, const StoryState& story, const Stor
     for (auto& entry : finished) journal_.push_back(std::move(entry));
 }
 
+void PlayWindows::OpenAchievements(Entity player, const nlohmann::json& view) {
+    kind_ = Kind::Achievements;
+    player_ = player;
+    highlighted_ = 0;
+    journal_.clear();
+    for (const auto& a : view.value("achievements", nlohmann::json::array())) {
+        std::string label = (a.value("unlocked", false) ? "* " : "  ") + a.value("name", "");
+        if (!a.value("unlocked", false) && a.value("count", 1) > 1) {
+            label += "  (" + std::to_string(a.value("progress", 0)) + "/" + std::to_string(a.value("count", 1)) + ")";
+        }
+        journal_.push_back({label, a.value("description", "")});
+    }
+    achievementPoints_ = std::to_string(view.value("earned", 0)) + " / " + std::to_string(view.value("points", 0));
+}
+
 void PlayWindows::OpenSpellbook(Entity player) {
     kind_ = Kind::Spellbook;
     player_ = player;
@@ -125,7 +140,7 @@ std::vector<PlayWindows::Line> PlayWindows::Lines(Registry& registry) const {
         lines.push_back({"close", Tr("menu.close", "Close")});
         return lines;
     }
-    if (kind_ == Kind::Journal) {
+    if (kind_ == Kind::Journal || kind_ == Kind::Achievements) {
         for (size_t i = 0; i < journal_.size(); ++i) lines.push_back({"quest:" + std::to_string(i), journal_[i].label});
         lines.push_back({"close", Tr("menu.close", "Close")});
         return lines;
@@ -254,6 +269,11 @@ std::optional<MenuView> PlayWindows::View(Registry& registry) const {
     if (kind_ == Kind::Spellbook) {
         view.title = Tr("spellbook.title", "Abilities");
         view.body = Tr("spellbook.help", "Pick one to put it in quick slot 1 (keys 1-4 use the slots).");
+    } else if (kind_ == Kind::Achievements) {
+        view.title = Tr("achievements.title", "Achievements") + "  " + achievementPoints_;
+        view.body = journal_.empty() ? Tr("achievements.empty", "This game has no achievements.")
+                    : highlighted_ < static_cast<int>(journal_.size()) ? journal_[highlighted_].body
+                                                                       : std::string();
     } else if (kind_ == Kind::Journal) {
         view.title = Tr("journal.title", "Journal");
         view.body = journal_.empty() ? Tr("journal.empty", "No quests yet.")

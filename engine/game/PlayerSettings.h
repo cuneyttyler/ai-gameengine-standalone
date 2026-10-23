@@ -28,6 +28,13 @@ struct PlayerSettings {
     bool growingReduction = false; // more after each death
     float gameSpeed = 1.0f;       // 1, 0.75, 0.5
     bool adaptive = false;        // "adjust difficulty to how I play" (when the game offers it)
+    // Accessibility (development_plan.md 24).
+    bool reduceMotion = false;    // no screen shake, hit-stop or slow motion
+    bool reduceFlashes = false;   // no flashes
+    bool highContrast = false;    // white on black, a yellow accent
+    std::string colorblind = "none"; // none | protanopia | deuteranopia | tritanopia: safe bar colours
+    float textScale = 1.0f;       // the UI's text, apart from the UI's scale: 1, 1.25, 1.5, 2
+    bool holdToToggle = false;    // actions held down (block, sprint...) toggle instead
 
     nlohmann::json ToJson() const;
     static PlayerSettings FromJson(const nlohmann::json& json);

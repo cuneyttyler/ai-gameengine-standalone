@@ -1,3 +1,5 @@
+#include "game/Accessibility.h"
+#include "game/Templates.h"
 #include "gameplay/Behaviour.h"
 #include "planner/GamePlan.h"
 #include "story/StoryGraph.h"
@@ -698,7 +700,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         }
         post_(ScenesJson());
     } else if (type == "game:export") {
-        ExportGameTo(message.value("name", ""), message.value("zip", false));
+        ExportGameTo(message.value("name", ""), message.value("zip", false), message.value("debugConsole", false));
     } else if (type == "game:reveal") {
         const std::wstring folder = Utf8ToWide(message.value("path", ""));
         ShellExecuteW(mainWindow_, nullptr, L"explorer.exe", (L"\"" + folder + L"\"").c_str(), nullptr, SW_SHOWNORMAL);
@@ -738,6 +740,16 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         std::optional<std::filesystem::path> starter;
         if (message.value("starter", false)) {
             starter = std::filesystem::path(AIGE_EDITOR_DEFAULT_PROJECT);
+        }
+        const std::string templateId = message.value("template", "");
+        if (!templateId.empty()) {
+            // A template project (24): it plays as its genre from the start.
+            if (auto error = CreateProjectFromTemplate(root, templateId)) {
+                post_({{"type", "notify"}, {"text", *error}});
+                return;
+            }
+            SwitchProject(root);
+            return;
         }
         if (auto error = CreateProject(root, starter, message.value("topDown", false))) {
             post_({{"type", "notify"}, {"text", *error}});
@@ -2195,7 +2207,7 @@ std::optional<std::pair<std::filesystem::path, std::string>> FindPlayerBuild() {
 
 } // namespace
 
-void EditorApp::ExportGameTo(const std::string& name, bool zip) {
+void EditorApp::ExportGameTo(const std::string& name, bool zip, bool debugConsole) {
     auto fail = [&](const std::string& error) {
         post_({{"type", "game:exported"}, {"ok", false}, {"error", error}});
     };
@@ -2219,6 +2231,10 @@ void EditorApp::ExportGameTo(const std::string& name, bool zip) {
     options.destination = *destination;
     options.name = name;
     options.zip = zip;
+    options.version = ActiveSettings().game.version;
+    options.debugConsole = debugConsole;
+    options.startScene = StartScene();
+    options.accessibility = AccessibilityReport(ProjectThemeTokens(assets_.GetProject().root), ActiveInputMap());
     ExportResult result = ExportGame(options);
     if (!result.error.empty()) {
         return fail(result.error);
@@ -2228,7 +2244,8 @@ void EditorApp::ExportGameTo(const std::string& name, bool zip) {
            {"folder", WideToUtf8(result.folder.wstring())},
            {"zip", result.zip.empty() ? "" : WideToUtf8(result.zip.wstring())},
            {"files", result.files.size()},
-           {"build", player->second}});
+           {"build", player->second},
+           {"accessibility", options.accessibility}});
 }
 
 // --- Projects (development_plan.md 4.2) -----------------------------------
