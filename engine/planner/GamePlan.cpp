@@ -416,7 +416,7 @@ void GamePlan::AfterStage(const std::string& stage) {
     const std::string autonomy = BriefGet(Brief(), "plan.autonomy." + stage).is_string()
                                      ? BriefGet(Brief(), "plan.autonomy." + stage).get<std::string>()
                                      : "review";
-    if (autonomy == "ask") {
+    if (autonomy == "confirm" || autonomy == "ask") { // "ask": plans from before it was renamed
         status_ = "waiting";
         message_ = "Review " + StageLabels().at(stage) + ", then Continue.";
         Save();
@@ -539,6 +539,8 @@ void GamePlan::MergeConcept() {
     std::vector<std::string> assumed;
     json brief = CompleteGameBrief(merged, store_.Defaults(), &assumed);
     brief["assumed"] = assumed;
+    // What the readings put in a field that isn't one of its options goes back to the profile's.
+    const auto repaired = RepairGameBrief(brief, gso_, store_.Defaults());
     brief["request"] = request_;
     brief["confirmed"] = false;
     concept_["marks"] = marks;
@@ -551,6 +553,7 @@ void GamePlan::MergeConcept() {
         for (const auto& a : d.value("assumptions", json::array())) assumptions.push_back(a);
     }
     concept_["toDecide"] = toDecide;
+    for (const auto& r : repaired) assumptions.push_back("Replaced " + r + " (the reading suggested something that isn't an option)");
     concept_["assumptions"] = assumptions;
     int differ = 0;
     for (const auto& [p, m] : marks.items()) differ += m.contains("differ");
@@ -605,6 +608,17 @@ void GamePlan::EditBrief(const std::string& path, const json& value) {
 std::string GamePlan::Confirm() {
     if (stage_ != "concept" || status_ != "waiting") return "the Brief isn't waiting for confirmation";
     json brief = Brief();
+    // A Brief saved with values that aren't options (from an earlier reading): put right first.
+    if (const auto repaired = RepairGameBrief(brief, gso_, store_.Defaults()); !repaired.empty()) {
+        PlanDecision fix;
+        fix.stage = "concept";
+        fix.actor = "rule";
+        fix.kind = "fix";
+        fix.subject = "brief";
+        for (const auto& r : repaired) fix.chosen += (fix.chosen.empty() ? "" : "; ") + r;
+        fix.rationale = "Values that aren't among the fields' options were replaced by the genre profile's.";
+        store_.Touch("brief", brief, store_.Decide(fix));
+    }
     const auto problems = ValidateGameBrief(brief, gso_);
     if (HasErrors(problems)) {
         std::string out;

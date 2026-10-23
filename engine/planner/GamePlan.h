@@ -40,7 +40,7 @@ class Ontology;
 //   validate        ⑨ the rules and the cross-document checks, an AI critic; with no
 //                   errors the design becomes the baseline
 //
-// Each stage's autonomy (the Brief's plan.autonomy) is ask (waits for Approve()), review
+// Each stage's autonomy (the Brief's plan.autonomy) is confirm (waits for Approve()), review
 // (continues; marked to review) or auto. Every AI answer is a decision (planner/
 // decisions.jsonl) that documents and graph facts point to (Why?). Work is a queue of
 // jobs in planner/state.json, so a plan reopened later (Open) carries on where it was. A
@@ -79,7 +79,7 @@ public:
     // ① The confirmation window.
     void EditBrief(const std::string& path, const nlohmann::json& value);
     std::string Confirm();
-    // A stage waiting for the user (autonomy "ask") goes on.
+    // A stage waiting for the user (autonomy "confirm") goes on.
     std::string Approve();
     void Pause(bool paused);
 

@@ -184,7 +184,7 @@ std::string GameBuild::Start(const std::string& mode) {
     if (state.value("baseline", json()).is_null()) return "the design has no baseline yet: validate it first (⑨)";
     const json brief = store_.Read("brief").value_or(json::object());
     mode_ = mode.empty() ? BriefGet(brief, "plan.building").is_string() ? BriefGet(brief, "plan.building").get<std::string>() : "automatic" : mode;
-    if (mode_ == "ask-per-place") mode_ = "manual";
+    if (mode_ == "confirm-per-place" || mode_ == "ask-per-place") mode_ = "manual";
     rows_.clear();
     jobs_.clear();
     builds_.clear();

@@ -94,3 +94,17 @@ def test_every_step_has_an_endpoint():
     assert response.status_code == 200
     assert response.json()["ok"] and response.json()["findings"] == []
     assert client.post("/planner/nonsense", json={}).json()["ok"] is False
+
+
+def test_concept_values_must_be_among_their_options():
+    inputs = {**CONCEPT_INPUTS, "schema": {"genres": [{"id": "arpg"}], "fields": [
+        {"path": "pattern", "type": "enum", "options": ["linear", "branch-and-bottleneck"]},
+        {"path": "tone", "type": "enumSet", "options": ["dark", "heroic"]}]}}
+    bad = {"brief": {"title": "Moon", "logline": "x", "genre": "arpg", "pattern": "hub", "tone": ["dark", "spooky"]}}
+    good = {"brief": {"title": "Moon", "logline": "x", "genre": "arpg", "pattern": "branch-and-bottleneck", "tone": ["dark"]}}
+    provider = scripted(bad, good)
+    result = plan_concept(provider, inputs)
+    assert result["brief"]["pattern"] == "branch-and-bottleneck"
+    repair = provider.requests[-1][-1]["content"]
+    assert "pattern: hub isn't one of linear, branch-and-bottleneck" in repair
+    assert "tone: spooky isn't one of dark, heroic" in repair

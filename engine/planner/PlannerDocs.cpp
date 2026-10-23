@@ -215,9 +215,11 @@ json CompleteGameBrief(json brief, const json& projectDefaults, std::vector<std:
     }
     for (const char* stage : {"concept", "outline", "story", "characters", "quests", "places", "systems", "visuals"}) {
         const std::string path = std::string("plan.autonomy.") + stage;
-        if (BriefGet(brief, path).is_null()) BriefSet(brief, path, std::string(stage) == "concept" || std::string(stage) == "outline" ? "ask" : "review");
+        if (BriefGet(brief, path) == "ask") BriefSet(brief, path, "confirm"); // its old name
+        if (BriefGet(brief, path).is_null()) BriefSet(brief, path, std::string(stage) == "concept" || std::string(stage) == "outline" ? "confirm" : "review");
     }
     if (BriefGet(brief, "plan.building").is_null()) BriefSet(brief, "plan.building", "automatic");
+    if (BriefGet(brief, "plan.building") == "ask-per-place") BriefSet(brief, "plan.building", "confirm-per-place");
     if (!brief.contains("tone")) {
         brief["tone"] = json::array({"heroic"});
         if (assumed) assumed->push_back("tone");
@@ -281,6 +283,51 @@ std::vector<PlanProblem> ValidateGameBrief(const json& brief, const StoryOntolog
     }
     const json levels = BriefGet(brief, "difficulty.levels");
     if (levels.is_array() && (levels.empty() || levels.size() > 7)) out.push_back({"difficulty.levels", "has 1 to 7 levels"});
+    return out;
+}
+
+std::vector<std::string> RepairGameBrief(json& brief, const StoryOntology& gso, const json& projectDefaults) {
+    std::vector<std::string> out;
+    std::vector<std::pair<std::string, json>> removed;
+    for (const auto& tab : PlannerData::Engine().briefSchema.value("tabs", json::array())) {
+        for (const auto& field : tab.value("fields", json::array())) {
+            const std::string path = field.value("path", ""), type = field.value("type", "text");
+            const json value = BriefGet(brief, path);
+            if (value.is_null()) continue;
+            const auto options = FieldOptions(field, gso);
+            if (type == "enum" && !options.empty() && (!value.is_string() || !Contains(options, value.get<std::string>()))) {
+                removed.push_back({path, value});
+                BriefSet(brief, path, nullptr);
+            } else if (type == "enumSet" && !options.empty() && value.is_array()) {
+                json kept = json::array();
+                for (const auto& v : value) {
+                    if (v.is_string() && Contains(options, v.get<std::string>())) kept.push_back(v);
+                }
+                if (kept.size() != value.size()) {
+                    out.push_back(path + ": dropped what isn't an option (" + value.dump() + " → " + kept.dump() + ")");
+                    BriefSet(brief, path, kept.empty() ? json() : kept);
+                    if (kept.empty()) removed.push_back({path, value});
+                }
+            } else if ((type == "int" || type == "number") && value.is_number() &&
+                       ((field.contains("min") && value.get<double>() < field["min"].get<double>()) ||
+                        (field.contains("max") && value.get<double>() > field["max"].get<double>()))) {
+                const double clamped = std::clamp(value.get<double>(), field.value("min", value.get<double>()), field.value("max", value.get<double>()));
+                out.push_back(path + ": " + value.dump() + " → " + json(clamped).dump());
+                BriefSet(brief, path, type == "int" ? json(static_cast<int>(std::lround(clamped))) : json(clamped));
+            }
+        }
+    }
+    if (removed.empty()) return out;
+    // The profile's (or the scope table's) default in their place.
+    std::vector<std::string> refilled;
+    brief = CompleteGameBrief(brief, projectDefaults, &refilled);
+    json assumed = brief.value("assumed", json::array());
+    for (const auto& [path, was] : removed) {
+        const json now = BriefGet(brief, path);
+        out.push_back(path + ": " + was.dump() + " isn't an option → " + (now.is_null() ? std::string("left empty") : now.dump()));
+        if (std::find(assumed.begin(), assumed.end(), path) == assumed.end()) assumed.push_back(path);
+    }
+    brief["assumed"] = assumed;
     return out;
 }
 

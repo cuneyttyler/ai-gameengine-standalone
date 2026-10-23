@@ -95,7 +95,7 @@ These mirror Phase 7's agreed decisions; each is to be confirmed in review.
 | Question | Proposal |
 |---|---|
 | Confirmation | The Game Brief window opens for every plan (as the Build panel's does), with a **Difficulty** tab and a **Visuals** tab. |
-| Autonomy | Per stage: **ask** (the user approves each document), **review** (the Planner continues; the user reviews at the stage's end), **auto** (continues; findings reported). Defaults: ask for Concept and Outline, review for the rest. Building has its own choice: manual or automatic per scene (§8). |
+| Autonomy | Per stage: **confirm** (the user approves each document), **review** (the Planner continues; the user reviews at the stage's end), **auto** (continues; findings reported). Defaults: confirm for Concept and Outline, review for the rest. Building has its own choice: manual or automatic per scene (§8). |
 | Scope | From a single-screen game (a puzzle game) to a region-scale RPG of 30+ places and 100+ quests. |
 | Genres | Any in `game-types.md` that the engine supports at the time. Genre profiles switch stages on and off (§12). |
 | Editing | Every Planner document stays editable after the plan; a change marks what depends on it as stale and regenerates only that (§10.3). |
@@ -202,7 +202,7 @@ One step drafts the three pillars **in one context**, so they fit from the start
 The step thinks, answers, is validated (structure and the R-K1, R-P1, R-P2 rules), and
 **seeds the knowledge graph**: every character, place and storyline becomes a node; World
 Bible entries are created for characters, places and factions with their one-line
-summaries. The user reviews the outline (default autonomy: ask) in the Planner panel's
+summaries. The user reviews the outline (default autonomy: confirm) in the Planner panel's
 Outline view: three columns, editable, with "Regenerate" per item.
 
 Output: `planner/outline.json`, the graph at revision 1, World Bible stubs.

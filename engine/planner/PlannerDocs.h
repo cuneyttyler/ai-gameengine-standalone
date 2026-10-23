@@ -51,11 +51,15 @@ std::string ScopeClassFor(double hours);
 nlohmann::json ScopeNumbers(const std::string& scopeClass);
 
 // Fills a Brief: the genre profile's defaults under what's set, the scope from the play
-// time, autonomy defaults (ask for concept and outline, review for the rest), the project's
+// time, autonomy defaults (confirm for concept and outline, review for the rest), the project's
 // earlier answers. `assumed` gets every path that was filled in.
 nlohmann::json CompleteGameBrief(nlohmann::json brief, const nlohmann::json& projectDefaults = {},
                                  std::vector<std::string>* assumed = nullptr);
 std::vector<PlanProblem> ValidateGameBrief(const nlohmann::json& brief, const StoryOntology& gso);
+// Values the AI put in a field that aren't among its options ("hub" as the story's pattern) or
+// out of its range: taken out, so the genre profile's default fills the field again. Returns
+// what was replaced, as "pattern: 'hub' → 'branch-and-bottleneck'".
+std::vector<std::string> RepairGameBrief(nlohmann::json& brief, const StoryOntology& gso, const nlohmann::json& projectDefaults = {});
 // The confirmation window from the schema: tabs, each field with its value, type, options,
 // whether it's asked, and its marks (differ, guessed, assumed). Asked fields first.
 nlohmann::json BriefWindow(const nlohmann::json& brief, const nlohmann::json& marks, const StoryOntology& gso);

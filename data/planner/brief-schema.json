@@ -86,15 +86,15 @@
       {"path": "visuals.mapStyle", "label": "Map", "type": "enum", "options": ["none", "minimap", "full-map", "both"]}
     ]},
     {"id": "plan", "label": "Plan", "fields": [
-      {"path": "plan.autonomy.concept", "label": "① Concept", "type": "enum", "options": ["ask", "review", "auto"]},
-      {"path": "plan.autonomy.outline", "label": "② Outline", "type": "enum", "options": ["ask", "review", "auto"]},
-      {"path": "plan.autonomy.story", "label": "③ Story", "type": "enum", "options": ["ask", "review", "auto"]},
-      {"path": "plan.autonomy.characters", "label": "④ Characters", "type": "enum", "options": ["ask", "review", "auto"]},
-      {"path": "plan.autonomy.quests", "label": "⑤ Quests", "type": "enum", "options": ["ask", "review", "auto"]},
-      {"path": "plan.autonomy.places", "label": "⑥ Places", "type": "enum", "options": ["ask", "review", "auto"]},
-      {"path": "plan.autonomy.systems", "label": "⑦ Systems", "type": "enum", "options": ["ask", "review", "auto"]},
-      {"path": "plan.autonomy.visuals", "label": "⑧ Visuals", "type": "enum", "options": ["ask", "review", "auto"]},
-      {"path": "plan.building", "label": "Building", "type": "enum", "options": ["manual", "automatic", "ask-per-place"]},
+      {"path": "plan.autonomy.concept", "label": "① Concept", "type": "enum", "options": ["confirm", "review", "auto"]},
+      {"path": "plan.autonomy.outline", "label": "② Outline", "type": "enum", "options": ["confirm", "review", "auto"]},
+      {"path": "plan.autonomy.story", "label": "③ Story", "type": "enum", "options": ["confirm", "review", "auto"]},
+      {"path": "plan.autonomy.characters", "label": "④ Characters", "type": "enum", "options": ["confirm", "review", "auto"]},
+      {"path": "plan.autonomy.quests", "label": "⑤ Quests", "type": "enum", "options": ["confirm", "review", "auto"]},
+      {"path": "plan.autonomy.places", "label": "⑥ Places", "type": "enum", "options": ["confirm", "review", "auto"]},
+      {"path": "plan.autonomy.systems", "label": "⑦ Systems", "type": "enum", "options": ["confirm", "review", "auto"]},
+      {"path": "plan.autonomy.visuals", "label": "⑧ Visuals", "type": "enum", "options": ["confirm", "review", "auto"]},
+      {"path": "plan.building", "label": "Building", "type": "enum", "options": ["manual", "automatic", "confirm-per-place"]},
       {"path": "plan.budget.calls", "label": "Budget: AI calls (0: none)", "type": "int", "min": 0, "max": 100000}
     ]}
   ]

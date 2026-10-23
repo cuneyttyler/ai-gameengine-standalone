@@ -22,6 +22,9 @@
 #include "renderer2d/ImageData.h"
 
 #include <algorithm>
+#include <unordered_map>
+#include <thread>
+#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <deque>
@@ -1177,7 +1180,13 @@ float ValueNoise(float x, float y, int salt) {
 // field, a square: straight edges), water (a shore), a wall (stops light), its colour, hills.
 struct GroundLook {
     json terrains = json::object();
-    bool Is(const std::string& t, const char* key) const { return terrains.value(t, json::object()).value(key, false); }
+    // Read in place (the painter asks it millions of times: no copy of the terrain's object).
+    bool Is(const std::string& t, const char* key) const {
+        const auto it = terrains.find(t);
+        if (it == terrains.end() || !it->is_object()) return false;
+        const auto k = it->find(key);
+        return k != it->end() && k->is_boolean() && k->get<bool>();
+    }
     bool Made(const std::string& t) const { return Is(t, "made") || t == "void"; }
     bool Water(const std::string& t) const { return Is(t, "water"); }
     bool Wall(const std::string& t) const { return Is(t, "blocksLight"); }
@@ -1444,15 +1453,38 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
             fine[static_cast<size_t>(fy) * fw + fx] = best;
         }
     }
-    auto groundAt = [&](float x, float y) -> const std::string& {
+    auto groundAt = [&](float x, float y) -> int {
         const int fx = std::clamp(static_cast<int>(std::floor(x * kSub)), 0, fw - 1), fy = std::clamp(static_cast<int>(std::floor(y * kSub)), 0, fh - 1);
-        return names[fine[static_cast<size_t>(fy) * fw + fx]];
+        return fine[static_cast<size_t>(fy) * fw + fx];
     };
+    // Each ground's facts and plain texture, worked out once (the pixels ask by index, not by name).
+    const size_t groundCount = names.size();
+    std::vector<uint8_t> isMade(groundCount), isWater(groundCount), isWall(groundCount), isVoid(groundCount);
+    std::vector<const ImageData*> plainTexture(groundCount, nullptr);
+    auto lookupTexture = [&](const std::string& name) -> const ImageData* {
+        const auto tex = textures.find(name);
+        return tex == textures.end() || tex->second.width == 0 ? nullptr : &tex->second;
+    };
+    for (size_t i = 0; i < groundCount; ++i) {
+        isMade[i] = look.Made(names[i]);
+        isWater[i] = look.Water(names[i]);
+        isWall[i] = look.Wall(names[i]);
+        isVoid[i] = names[i] == "void";
+        plainTexture[i] = lookupTexture(names[i]);
+    }
     // Four looks a little round each point: the edge between two grounds, soft.
     const float jitter[4][2] = {{0.16f, 0.06f}, {-0.06f, 0.16f}, {-0.16f, -0.06f}, {0.06f, -0.16f}};
     const int side = kGroundChunk * kGroundCellPx;
-    for (int cy = 0; cy * kGroundChunk < grid.h; ++cy) {
-        for (int cx = 0; cx * kGroundChunk < grid.w; ++cx) {
+    const int chunksX = (grid.w + kGroundChunk - 1) / kGroundChunk, chunksY = (grid.h + kGroundChunk - 1) / kGroundChunk;
+    const int chunkCount = chunksX * chunksY;
+    std::vector<uint8_t> painted(static_cast<size_t>(chunkCount), 0);
+    std::atomic<bool> failed{false};
+    std::atomic<int> nextChunk{0};
+    // One picture per chunk, each on its own: the chunks are painted side by side, on every core.
+    auto paintChunks = [&] {
+        std::unordered_map<int64_t, const ImageData*> takes; // a field's take of a ground, per cell
+        for (int chunk = nextChunk++; chunk < chunkCount && !failed; chunk = nextChunk++) {
+            const int cx = chunk % chunksX, cy = chunk / chunksX;
             ImageData image;
             image.width = image.height = static_cast<uint32_t>(side);
             image.rgba.assign(static_cast<size_t>(side) * side * 4, 0);
@@ -1489,50 +1521,56 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
                     const float wx = cx * kGroundChunk + (px + 0.5f) / kGroundCellPx, wy = cy * kGroundChunk + (py + 0.5f) / kGroundCellPx;
                     const int ox = static_cast<int>(wx), oy = static_cast<int>(wy);
                     if (ox >= grid.w || oy >= grid.h) continue;
-                    const std::string own = nameAt(ox, oy);
-                    if (own == "void") continue;
+                    const int own = index[static_cast<size_t>(oy) * grid.w + ox];
+                    if (isVoid[own]) continue;
                     // A ragged border: where it looks up its ground, moved a little by noise.
-                    const float amp = look.Made(own) ? 0.05f : 0.34f;
+                    const float amp = isMade[own] ? 0.05f : 0.34f;
                     const float dx = (ValueNoise(wx * 1.4f, wy * 1.4f, 1) * 2 - 1) * amp + (ValueNoise(wx * 3.7f, wy * 3.7f, 2) * 2 - 1) * amp * 0.45f;
                     const float dy = (ValueNoise(wx * 1.4f, wy * 1.4f, 3) * 2 - 1) * amp + (ValueNoise(wx * 3.7f, wy * 3.7f, 4) * 2 - 1) * amp * 0.45f;
-                    const float soft = look.Made(own) ? 0.25f : 1.0f;
+                    const float soft = isMade[own] ? 0.25f : 1.0f;
                     GroundRgb color;
                     int water = 0, samples = 0;
                     for (const auto& j : jitter) {
-                        std::string t = groundAt(wx + dx + j[0] * soft, wy + dy + j[1] * soft);
-                        if (t == "void") t = own;
+                        int t = groundAt(wx + dx + j[0] * soft, wy + dy + j[1] * soft);
+                        if (isVoid[t]) t = own;
                         // Its take where the ground has several (one per field: takeOf), else the ground's.
-                        auto tex = textures.find(takeOf ? takeOf(t, static_cast<int>(wx), static_cast<int>(wy)) : t);
-                        if (tex == textures.end() || tex->second.width == 0) tex = textures.find(t);
-                        if (tex == textures.end() || tex->second.width == 0) tex = textures.find(own);
-                        if (tex == textures.end() || tex->second.width == 0) continue;
-                        const ImageData& ti = tex->second;
+                        const ImageData* ti = nullptr;
+                        if (takeOf) {
+                            const int64_t key = (static_cast<int64_t>(t) << 40) ^ (static_cast<int64_t>(static_cast<int>(wx)) << 20) ^ static_cast<int>(wy);
+                            auto cached = takes.find(key);
+                            if (cached == takes.end()) cached = takes.emplace(key, lookupTexture(takeOf(names[t], static_cast<int>(wx), static_cast<int>(wy)))).first;
+                            ti = cached->second;
+                        } else {
+                            ti = plainTexture[t];
+                        }
+                        if (!ti) ti = plainTexture[t];
+                        if (!ti) ti = plainTexture[own];
+                        if (!ti) continue;
                         // Its texture and, where slow noise says, the same texture turned and moved
                         // ("texture bombing"): no two stretches of a field sample it alike.
-                        const float tu = wx / kTextureCells * ti.width, tv = wy / kTextureCells * ti.height;
-                        const GroundRgb a = SampleWrapped(ti, tu, tv);
-                        const GroundRgb b = SampleWrapped(ti, tv + 0.37f * ti.width, -tu + 0.61f * ti.height);
+                        const float tu = wx / kTextureCells * ti->width, tv = wy / kTextureCells * ti->height;
+                        const GroundRgb a = SampleWrapped(*ti, tu, tv);
+                        const GroundRgb b = SampleWrapped(*ti, tv + 0.37f * ti->width, -tu + 0.61f * ti->height);
                         const float k = std::clamp((ValueNoise(wx * 0.33f, wy * 0.33f, 21) - 0.35f) / 0.3f, 0.0f, 1.0f);
                         const float m = k * k * (3 - 2 * k);
                         const GroundRgb c{a.r + (b.r - a.r) * m, a.g + (b.g - a.g) * m, a.b + (b.b - a.b) * m};
                         color.r += c.r, color.g += c.g, color.b += c.b;
-                        water += look.Water(t) ? 1 : 0;
+                        water += isWater[t] ? 1 : 0;
                         ++samples;
                     }
                     if (samples == 0) continue;
                     color.r /= samples, color.g /= samples, color.b /= samples;
                     // The shore: land by the water turns to sand; the water by the land, shallow.
-                    int near = 0;
+                    int nearWater = 0;
                     for (int k = 0; k < 6; ++k) {
                         const float a = k * 1.0472f;
-                        const std::string& n = groundAt(wx + dx + 0.42f * std::cos(a), wy + dy + 0.42f * std::sin(a));
-                        near += look.Water(n) ? 1 : 0;
+                        nearWater += isWater[groundAt(wx + dx + 0.42f * std::cos(a), wy + dy + 0.42f * std::sin(a))] ? 1 : 0;
                     }
-                    if (water * 2 < samples && near > 0) {
-                        const float t = 0.55f * std::min(1.0f, near / 3.0f);
+                    if (water * 2 < samples && nearWater > 0) {
+                        const float t = 0.55f * std::min(1.0f, nearWater / 3.0f);
                         color = {color.r + (sand.r - color.r) * t, color.g + (sand.g - color.g) * t, color.b + (sand.b - color.b) * t};
-                    } else if (water * 2 >= samples && near < 6) {
-                        const float t = 0.3f * (1.0f - near / 6.0f);
+                    } else if (water * 2 >= samples && nearWater < 6) {
+                        const float t = 0.3f * (1.0f - nearWater / 6.0f);
                         color = {color.r + (sand.r - color.r) * t, color.g + (sand.g - color.g) * t, color.b + (sand.b - color.b) * t};
                     }
                     // A slow change of light across the place: no two stretches of grass alike.
@@ -1543,8 +1581,7 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
                     if (lighting.indoor) {
                         const int sx = std::min(lw - 1, static_cast<int>(wx * kLightSub)), sy = std::min(lh - 1, static_cast<int>(wy * kLightSub));
                         const float warm = std::min(1.6f, lit[static_cast<size_t>(sy) * lw + sx]);
-                        const bool wall = look.Wall(own);
-                        const float ambient = wall ? 0.3f : 0.42f; // dark, but what's there still shows
+                        const float ambient = isWall[own] ? 0.3f : 0.42f; // dark, but what's there still shows
                         lr = light * (ambient * 0.9f + warm * 1.05f);
                         lg = light * (ambient * 0.95f + warm * 0.82f);
                         lb = light * (ambient * 1.15f + warm * 0.58f);
@@ -1559,13 +1596,30 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
             }
             if (!any) continue;
             const std::string path = "assets/generated/ground/" + slug + "-" + std::to_string(cx) + "-" + std::to_string(cy) + ".png";
-            (void)tag;
-            if (!WritePng(project.Resolve(path), image)) return {};
-            for (int y = cy * kGroundChunk; y < std::min(grid.h, (cy + 1) * kGroundChunk); ++y) {
-                for (int x = cx * kGroundChunk; x < std::min(grid.w, (cx + 1) * kGroundChunk); ++x) {
-                    const float u0 = static_cast<float>(x - cx * kGroundChunk) / kGroundChunk, v0 = static_cast<float>(y - cy * kGroundChunk) / kGroundChunk;
-                    out.cells[{x, y}] = {path, {u0, v0, u0 + 1.0f / kGroundChunk, v0 + 1.0f / kGroundChunk}};
-                }
+            if (!WritePng(project.Resolve(path), image)) {
+                failed = true;
+                return;
+            }
+            painted[static_cast<size_t>(chunk)] = 1;
+        }
+    };
+    {
+        const int workers = std::clamp(static_cast<int>(std::thread::hardware_concurrency()), 1, std::max(1, chunkCount));
+        std::vector<std::thread> threads;
+        for (int i = 1; i < workers; ++i) threads.emplace_back(paintChunks);
+        paintChunks();
+        for (auto& t : threads) t.join();
+    }
+    (void)tag;
+    if (failed) return {};
+    for (int chunk = 0; chunk < chunkCount; ++chunk) {
+        if (!painted[static_cast<size_t>(chunk)]) continue;
+        const int cx = chunk % chunksX, cy = chunk / chunksX;
+        const std::string path = "assets/generated/ground/" + slug + "-" + std::to_string(cx) + "-" + std::to_string(cy) + ".png";
+        for (int y = cy * kGroundChunk; y < std::min(grid.h, (cy + 1) * kGroundChunk); ++y) {
+            for (int x = cx * kGroundChunk; x < std::min(grid.w, (cx + 1) * kGroundChunk); ++x) {
+                const float u0 = static_cast<float>(x - cx * kGroundChunk) / kGroundChunk, v0 = static_cast<float>(y - cy * kGroundChunk) / kGroundChunk;
+                out.cells[{x, y}] = {path, {u0, v0, u0 + 1.0f / kGroundChunk, v0 + 1.0f / kGroundChunk}};
             }
         }
     }

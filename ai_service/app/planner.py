@@ -59,6 +59,15 @@ def _step(provider: Provider, task: str, inputs: dict, shape: str, key: str,
     return out
 
 
+def _get(data: dict, path: str):
+    """A dotted path into nested dicts ("setting.era"), or None."""
+    for key in path.split("."):
+        if not isinstance(data, dict) or key not in data:
+            return None
+        data = data[key]
+    return data
+
+
 def _vocab(inputs: dict, name: str) -> list[str]:
     return list((inputs.get("vocab") or {}).get(name, []))
 
@@ -104,6 +113,18 @@ def plan_concept(provider: Provider, inputs: dict) -> dict:
         for key in ("title", "logline"):
             if not str(brief.get(key, "")).strip():
                 problems.append(f"{key} is empty")
+        # Every enum field takes one of its options ("hub" is a world shape, not a story pattern).
+        for field in (inputs.get("schema") or {}).get("fields", []):
+            options = field.get("options")
+            if not options:
+                continue
+            value = _get(brief, field.get("path", ""))
+            if value is None:
+                continue
+            values = value if field.get("type") == "enumSet" and isinstance(value, list) else [value]
+            bad = [v for v in values if v not in options]
+            if bad:
+                problems.append(f"{field.get('path')}: {', '.join(map(str, bad))} isn't one of {', '.join(options)}")
         return problems
 
     task = CONCEPT_TASK.format(reading=READINGS.get(inputs.get("reading", "typical"), READINGS["typical"]))

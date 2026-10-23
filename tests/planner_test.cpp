@@ -32,7 +32,7 @@ TEST(PlannerDocsTest, BriefsProfilesScopeAndTheWindow) {
     const json brief = aige::CompleteGameBrief({{"title", "Farm Days"}, {"logline", "Grow a farm."}, {"genre", "life-sim"}, {"playTime", 8}}, {}, &assumed);
     EXPECT_EQ(brief["scopeClass"], "medium");
     EXPECT_EQ(aige::BriefGet(brief, "systems.farming.on"), true);
-    EXPECT_EQ(aige::BriefGet(brief, "plan.autonomy.outline"), "ask");
+    EXPECT_EQ(aige::BriefGet(brief, "plan.autonomy.outline"), "confirm");
     EXPECT_NE(std::find(assumed.begin(), assumed.end(), "perspective"), assumed.end());
     const auto& gso = aige::StoryOntology::Engine();
     EXPECT_FALSE(aige::HasErrors(aige::ValidateGameBrief(brief, gso)));
@@ -186,4 +186,17 @@ TEST(PlannerTest, TheAiPanelRevisesThePlanInWords) {
     EXPECT_EQ(p.plan->Document("characters/tamsin")["biography"]["need"], "forgiveness");
     const auto stale = p.plan->Stale();
     EXPECT_NE(std::find(stale.begin(), stale.end(), "quests/q-main"), stale.end());
+}
+
+TEST(PlannerDocsTest, ValuesThatArentOptionsAreReplacedByTheProfiles) {
+    const auto& gso = aige::StoryOntology::Engine();
+    json brief = aige::CompleteGameBrief({{"title", "Moon"}, {"logline", "A warden."}, {"genre", "arpg"}, {"pattern", "hub"},
+                                          {"tone", {"dark", "spooky"}}, {"endings", 40}});
+    EXPECT_TRUE(aige::HasErrors(aige::ValidateGameBrief(brief, gso)));
+    const auto notes = aige::RepairGameBrief(brief, gso);
+    EXPECT_EQ(brief["pattern"], "branch-and-bottleneck"); // the arpg profile's
+    EXPECT_EQ(brief["tone"], json::array({"dark"}));
+    EXPECT_EQ(brief["endings"], 6);
+    EXPECT_EQ(notes.size(), 3u);
+    EXPECT_FALSE(aige::HasErrors(aige::ValidateGameBrief(brief, gso))) << aige::ProblemTexts(aige::ValidateGameBrief(brief, gso))[0];
 }

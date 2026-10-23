@@ -208,7 +208,7 @@ struct Planner {
         ASSERT_EQ(plan->Confirm(), "");
         service.Drive(*plan);
         ASSERT_EQ(plan->Stage(), "outline");
-        ASSERT_EQ(plan->Status(), "waiting"); // autonomy "ask" for the outline
+        ASSERT_EQ(plan->Status(), "waiting"); // autonomy "confirm" for the outline
         ASSERT_EQ(plan->Approve(), "");
     }
 };

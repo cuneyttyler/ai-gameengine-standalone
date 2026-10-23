@@ -154,8 +154,8 @@ The questions of `difficulty.md` §8, as fields:
 
 | Field | Type | Values |
 |---|---|---|
-| `autonomy` | map stage → `ask` / `review` / `auto` | defaults: ask for concept, outline; review for the rest |
-| `building` | enum | `manual`, `automatic`, `ask-per-place` |
+| `autonomy` | map stage → `confirm` / `review` / `auto` | defaults: confirm for concept, outline; review for the rest |
+| `building` | enum | `manual`, `automatic`, `confirm-per-place` |
 | `model` | provider choice | as the Build panel |
 | `budget` | object | optional ceilings: calls, tokens, time |
 | `assetSources` | policy | `auto` / `project` / `library` / `web` / `generate` (`place-assets.md`) |

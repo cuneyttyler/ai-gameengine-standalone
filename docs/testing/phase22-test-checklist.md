@@ -31,7 +31,7 @@ list is about using it with the real AI. The design is `ai-planner.md` (see "As 
 - [ ] Three columns: story (logline, synopsis, acts), cast (one player, roles), places and
       connections. World tab: the characters and places are there as entries.
 - [ ] Project ▸ Story graph: the story, acts, characters with their roles, places.
-- [ ] **Continue** (the outline's autonomy is "ask").
+- [ ] **Continue** (the outline's autonomy is "confirm").
 
 ## ③ Story and ④–⑧
 
