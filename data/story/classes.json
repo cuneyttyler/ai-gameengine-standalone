@@ -1,6 +1,6 @@
 {
   "version": "0.1.0",
-  "comment": "The Game Story Ontology (GSO) classes, docs/story-ontology.md §4. Layer: world, fabula, plot, play, presentation, provenance.",
+  "comment": "The Game Story Ontology (GSO) classes, docs/systems/story-ontology.md §4. Layer: world, fabula, plot, play, presentation, provenance.",
   "classes": {
     "Story":            {"layer": "plot", "label": "Story", "comment": "The game's story.", "fields": {"logline": "text", "synopsis": "text", "structure": "StructureTemplate", "pattern": "BranchingPattern", "tone": "Tone", "themes": "list"}},
     "StructureTemplate": {"layer": "plot", "label": "Structure template", "comment": "A shape for stories, with its beats and their positions."},

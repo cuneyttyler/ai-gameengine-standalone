@@ -41,33 +41,33 @@ Entities are referred to by integer **ids** (as returned by `find_nearest` or `s
 | `get_field(id, component, field)` | value or nil | Any field the Inspector shows, e.g. `get_field(self_id(), "Health", "max")`. Enums come back as their option name (`"Enemy"`), entity references as ids. |
 | `set_field(id, component, field, value)` | boolean | The reverse; enums accept the option name or index. False if the entity lacks the component or the value has the wrong type. |
 | `spawn(prefab, x, y)` | id or nil | Places a copy of a prefab, e.g. `spawn("prefabs/skeleton.prefab", 4.5, 2.5)`. Tile prefabs paint the cell under the point. |
-| `start_quest(id)` | — | Starts `quests/<id>.json` (if it hasn't been started). See [story.md](story.md). |
+| `start_quest(id)` | — | Starts `quests/<id>.json` (if it hasn't been started). See [story.md](./story.md). |
 | `complete_objective(quest, objective)` | — | Completes that objective if it's open in the quest's current stage. |
 | `quest_state(id)` | string | `"inactive"`, `"active"`, `"completed"` or `"failed"`. |
-| `quest_stage(id)` / `set_stage(id, stage)` / `fail_quest(id)` | number / — / — | A quest's current stage (0 when not active); move it to a stage; fail it. See [story.md](story.md#questsidjson). |
+| `quest_stage(id)` / `set_stage(id, stage)` / `fail_quest(id)` | number / — / — | A quest's current stage (0 when not active); move it to a stage; fail it. See [story.md](./story.md#questsidjson). |
 | `get_var(name)` / `set_var(name, value)` | value / — | Story variables, shared with dialogue and quest conditions (numbers, text, booleans; `nil` removes). |
 | `used(name)` | — | Counts as using something, for `use` and `examine` objectives. |
-| `notify(channel, text[, seconds])` | — | A notification: `toast`, `feed`, `banner` or `alert` ([game-ui.md](game-ui.md)). |
+| `notify(channel, text[, seconds])` | — | A notification: `toast`, `feed`, `banner` or `alert` ([game-ui.md](./game-ui.md)). |
 | `open_screen(id)` / `close_screen(id)` / `is_open(id)` | boolean / — / boolean | The project's own screen, `ui/screens/<id>.rml`; its `action('…')` calls arrive as the `ui_action` event. |
-| `play_effect(id, x, y)` / `play_effect(id, entity)` | boolean | An effect (a record or preset) at a point or on an entity ([effects-animation.md](effects-animation.md)). |
+| `play_effect(id, x, y)` / `play_effect(id, entity)` | boolean | An effect (a record or preset) at a point or on an entity ([effects-animation.md](./effects-animation.md)). |
 | `emit_particles(id, x, y[, seconds])` | boolean | A burst of particles, or that many seconds of them. |
 | `shake(trauma)` / `hitstop(seconds)` / `slow_motion(scale, seconds)` | — | Juice: screen shake (0-1, decays), freeze the world, slow it. |
 | `tween(id, "Component.field", to, seconds[, ease])` / `tween_done(handle)` | handle / boolean | Eases a number field: `linear`, `ease_in`, `ease_out` (default), `ease_in_out`, `bounce`. |
 | `anim_trigger(id, trigger)` | — | Plays an animator's state: `attacking`, `casting`, `using`, `hurt`. |
-| `cast(ability[, target])` / `cast(ability, x, y)` | boolean | This entity casts an ability (a record or preset), known or not ([magic.md](magic.md)). |
+| `cast(ability[, target])` / `cast(ability, x, y)` | boolean | This entity casts an ability (a record or preset), known or not ([magic.md](./magic.md)). |
 | `apply_effect(id, effect[, magnitude, duration])` / `remove_effects(id, tag)` | boolean / — | A magic effect on an entity; remove effects by tag or id. |
 | `has_tag(id, tag)` / `add_tag(id, tag)` / `cooldown_left(ability)` / `learn(id, ability)` | | Tags (state.stunned, element.fire…), cooldowns, teaching. |
-| `raycast(x0, y0, x1, y1[, mask])` | table or nil | The first solid tile or collider along a segment (not this entity): `{entity, x, y, distance}`; `entity` is nil for a wall ([physics.md](physics.md)). |
+| `raycast(x0, y0, x1, y1[, mask])` | table or nil | The first solid tile or collider along a segment (not this entity): `{entity, x, y, distance}`; `entity` is nil for a wall ([physics.md](./physics.md)). |
 | `overlap(x, y, radius[, mask])` / `line_of_sight(x0, y0, x1, y1)` | ids / boolean | Entities whose colliders touch a circle; nothing solid between two points. |
 | `apply_impulse(id, ix, iy)` / `set_velocity(id, vx, vy)` | — | Pushes a rigid body (RigidBody2D), or sets its velocity. |
-| `unlock_achievement(id)` / `achievement_unlocked(id)` / `achievement_progress(id)` | boolean / boolean / number | Achievements ([shipping.md](shipping.md)): unlock one, ask about one, its count so far. |
-| `difficulty()` / `difficulty_step(category)` / `set_difficulty(id)` | string / number / boolean | The difficulty level's id; a category's step, 1-5 (3: as designed); change the level. See [difficulty.md](difficulty.md). |
-| `play_cutscene(id)` / `skip_cutscene()` / `in_cutscene()` | boolean / — / boolean | Plays `cutscenes/<id>.json` (false if it doesn't load). See [story.md](story.md#cutscenes-cutscenesidjson). |
+| `unlock_achievement(id)` / `achievement_unlocked(id)` / `achievement_progress(id)` | boolean / boolean / number | Achievements ([shipping.md](../project/shipping.md)): unlock one, ask about one, its count so far. |
+| `difficulty()` / `difficulty_step(category)` / `set_difficulty(id)` | string / number / boolean | The difficulty level's id; a category's step, 1-5 (3: as designed); change the level. See [difficulty.md](./difficulty.md). |
+| `play_cutscene(id)` / `skip_cutscene()` / `in_cutscene()` | boolean / — / boolean | Plays `cutscenes/<id>.json` (false if it doesn't load). See [story.md](./story.md#cutscenes-cutscenesidjson). |
 | `set_flag(name[, value])` | — | Story flags shared with dialogue conditions; `value` defaults to true. |
 | `get_flag(name)` | boolean | |
-| `time_of_day()` | number | Hours since midnight on the game clock, e.g. `13.5`. See [story.md](story.md#routines-schedulesidjson). |
+| `time_of_day()` | number | Hours since midnight on the game clock, e.g. `13.5`. See [story.md](./story.md#routines-schedulesidjson). |
 | `day()` | number | The day number, from 1. |
-| `record(type, id)` | table or nil | A record's fields (`records/<type>/<id>.json`), with its base and defaults applied, e.g. `record("item", "iron-sword").value`. See [records.md](records.md). |
+| `record(type, id)` | table or nil | A record's fields (`records/<type>/<id>.json`), with its base and defaults applied, e.g. `record("item", "iron-sword").value`. See [records.md](./records.md). |
 | `records(type)` | table | The ids of every record of a type. |
 | `on(event, fn)` | handle | Calls `fn(e)` whenever `event` happens; `"*"` for every event. See [Events](#events-timers-and-coroutines). |
 | `emit(event[, data])` | — | Sends your own event; `data` may have `entity`, `other`, `amount`, `text`. |
@@ -79,8 +79,8 @@ Entities are referred to by integer **ids** (as returned by `find_nearest` or `s
 | `axis(name)` | number | An axis action in [-1, 1], e.g. `axis("move_x")` (keys or a gamepad stick). |
 | `play_sound_at(path, x, y)` | — | A sound at a point in the world: quieter with distance, panned left or right. |
 | `play_music(path)` | — | Music instead of the scene's (a boss fight); `play_music("")` goes back to the scene's. |
-| attributes, items, experience, ranged attacks, factions | | `attribute`, `add_modifier`, `give_item`, `take_item`, `count_item`, `equip`, `use_item`, `award_xp`, `level`, `take_perk`, `drop_loot`, `shoot`, `dodge`, `is_hostile`, `set_disposition`: see [gameplay-systems.md](gameplay-systems.md#lua). |
-| `push_package(id, package)` / `pop_package(id, package)` | — | A character AI package on top of its stack, until popped ([ai-packages.md](ai-packages.md)). |
+| attributes, items, experience, ranged attacks, factions | | `attribute`, `add_modifier`, `give_item`, `take_item`, `count_item`, `equip`, `use_item`, `award_xp`, `level`, `take_perk`, `drop_loot`, `shoot`, `dodge`, `is_hostile`, `set_disposition`: see [gameplay-systems.md](./gameplay-systems.md#lua). |
+| `push_package(id, package)` / `pop_package(id, package)` | — | A character AI package on top of its stack, until popped ([ai-packages.md](../ai/ai-packages.md)). |
 | `bark(text)` | — | A one-line remark from this entity, shown at the bottom (`a|b` picks one). |
 | `awareness_of([id])` | number | How aware a character is of the player, 0-1. |
 | `set_visible(id, visible)` / `face(id)` | — | Show or hide an entity; turn this one toward another. |
@@ -100,7 +100,7 @@ Things that happen in the game are **events**, each with a name and a table `e`:
 | `pickup` | who picked it up | the pickup | healing / the pickup's prefab |
 | `attack` | who swung | — | — |
 | `victory` | — | — | — (the last enemy died) |
-| `trigger_enter` / `trigger_exit` | the trigger | who came or went | the trigger's name (a Trigger component, [physics.md](physics.md)) |
+| `trigger_enter` / `trigger_exit` | the trigger | who came or went | the trigger's name (a Trigger component, [physics.md](./physics.md)) |
 | `talk` | who was talked to | the player | — / their World Bible key |
 | `quest_started`, `quest_completed`, `quest_failed`, `quest_stage`, `objective_completed` | — | — | — / the quest's id |
 | `cutscene_started`, `cutscene_ended` | — | — | — / the cutscene's id |

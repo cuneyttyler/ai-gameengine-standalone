@@ -19,7 +19,7 @@ namespace aige {
 
 class Ontology;
 
-// The AI Planner, designing a game (development_plan.md 22, docs/ai-planner.md §5.1-5.9):
+// The AI Planner, designing a game (development_plan.md 22, docs/ai/ai-planner.md §5.1-5.9):
 //
 //   Start(request)  ① Concept: three readings of the request, merged into a Game Brief
 //                   (each field's confidence, the readings that differ, what was assumed

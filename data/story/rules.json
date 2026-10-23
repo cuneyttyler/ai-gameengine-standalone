@@ -1,5 +1,5 @@
 {
-  "comment": "The story rules (docs/story-ontology.md §7), evaluated by engine/story/StoryRules. check: the built-in check that implements it; critic: judged by the AI reading the subgraph.",
+  "comment": "The story rules (docs/systems/story-ontology.md §7), evaluated by engine/story/StoryRules. check: the built-in check that implements it; critic: judged by the AI reading the subgraph.",
   "rules": [
     {"id": "R-S1", "group": "structure", "severity": "error",   "text": "Every act has at least one scene; acts follow the template's order.", "message": "Act {act} has no scenes."},
     {"id": "R-S2", "group": "structure", "severity": "error",   "text": "Every main-line scene is reachable from the first scene along next/branchesTo.", "message": "Scene {scene} can't be reached from the first scene."},

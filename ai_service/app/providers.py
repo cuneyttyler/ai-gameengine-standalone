@@ -1,6 +1,6 @@
 """Model providers. The service only needs "messages in, JSON text out"; each
 adapter hides one vendor's SDK. Cloud first (Mistral); local models later
-(docs/technical.md §10)."""
+(docs/project/technical.md §10)."""
 
 from __future__ import annotations
 

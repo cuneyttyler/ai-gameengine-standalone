@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The story knowledge graph (development_plan.md 21.4, docs/story-ontology.md): its nodes by
+// The story knowledge graph (development_plan.md 21.4, docs/systems/story-ontology.md): its nodes by
 // class, a node's facts over time, what depends on it, why it exists, the world state of a
 // scene, and the story rules' issues. planner/kg.json is written by the Planner and by the
 // AI panel's story_graph changes; Sync reads hand-written World Bible rel: lines in and

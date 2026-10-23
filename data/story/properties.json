@@ -1,5 +1,5 @@
 {
-  "comment": "GSO properties, docs/story-ontology.md §5. temporal: holds over an interval of scenes (from, until, branch).",
+  "comment": "GSO properties, docs/systems/story-ontology.md §5. temporal: holds over an interval of scenes (from, until, branch).",
   "properties": {
     "partOf":          {"domain": ["Beat", "StoryScene", "Chapter", "Act"], "range": ["StoryScene", "Chapter", "Act", "Story"], "comment": "Mereology: beat, scene, chapter, act, story."},
     "inStoryline":     {"domain": ["StoryScene"], "range": ["Storyline"], "comment": "A scene serves a storyline (it may serve several)."},

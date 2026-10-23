@@ -10,7 +10,7 @@
 
 namespace aige {
 
-// Physics v2 (development_plan.md Phase 20, docs/physics.md): collision layers and
+// Physics v2 (development_plan.md Phase 20, docs/systems/physics.md): collision layers and
 // masks, circle and box colliders, triggers (sensors), queries, the grid-step
 // character controller, and Box2D v3 for dynamic bodies and joints. Games without
 // rigid bodies never step Box2D; top-down movement is the same as before.

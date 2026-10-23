@@ -384,7 +384,7 @@ TEST(LiveBuildTest, ReplayTheAssetsStep) {
     std::cout << report.value("objects", json()).dump() << std::endl;
 }
 
-// How each prompt of a list is read (docs/ontology-eval.md): by the engine's own words, and
+// How each prompt of a list is read (docs/places/ontology-eval.md): by the engine's own words, and
 // for the starred ones once by the AI. AIGE_BRIEF_EVAL="<prompts>|<out json>|<port, 0: no AI>".
 TEST(LiveBuildTest, ReadThePrompts) {
     const char* arg = std::getenv("AIGE_BRIEF_EVAL");

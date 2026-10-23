@@ -1,7 +1,7 @@
 # Place modules — the catalogue per build type
 
 Status: **draft for review (2026-10-18)**. The schemas these entries follow are in
-`docs/place-schema.md`. Each module listed here becomes a
+`docs/places/place-schema.md`. Each module listed here becomes a
 `places/modules/<id>.module.json`.
 
 How to read an entry:

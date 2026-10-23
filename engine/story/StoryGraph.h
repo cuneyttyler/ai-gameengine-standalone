@@ -15,7 +15,7 @@ namespace aige {
 
 class WorldBible;
 
-// The story knowledge graph (docs/story-ontology.md §6, development_plan.md 21.2): the
+// The story knowledge graph (docs/systems/story-ontology.md §6, development_plan.md 21.2): the
 // instance data of GSO for one game, in planner/kg.json. Nodes have a class, an id and
 // fields; edges have a property, a subject and an object, fields, and for temporal
 // properties an interval of scenes by discourse order ("from" inclusive, "until"

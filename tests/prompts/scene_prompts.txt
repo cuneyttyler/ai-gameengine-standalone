@@ -1,4 +1,4 @@
-# Scene prompts for checking the ontology (docs/ontology-eval.md). One per line:
+# Scene prompts for checking the ontology (docs/places/ontology-eval.md). One per line:
 # <what it is>|<prompt>. A leading * : also read by the AI (kept to a few, for cost).
 *village|a fishing village by a river with a market, cottages, gardens and farm fields
 town|a walled market town on a crossroads with a church and an inn

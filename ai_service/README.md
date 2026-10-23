@@ -1,6 +1,6 @@
 # AI Orchestration Service
 
-The local Python sidecar behind the editor's AI features (`docs/technical.md` §7, §10).
+The local Python sidecar behind the editor's AI features (`docs/project/technical.md` §7, §10).
 The editor starts it automatically and stops it on exit; you only need this file to set
 it up once or to run it by hand.
 
@@ -56,7 +56,7 @@ The World Bible grounds story requests: after `PUT /project` the service indexes
 `world/` (`app/world.py`), and every `/propose` gets the full text of the canon most
 related to the request, plus the tone guide, as a WORLD BIBLE block. Dialogue and quests
 are written with the `write_dialogue` / `write_quest` operations (format in
-`docs/story.md`), checked by `app/story.py` like the editor checks them.
+`docs/systems/story.md`), checked by `app/story.py` like the editor checks them.
 
 Sprites (`POST /assets/generate`, `app/images.py` + `app/sprites.py`): a description
 becomes a FLUX image through Mistral's Agents API image tool, then a cut-out, cropped,

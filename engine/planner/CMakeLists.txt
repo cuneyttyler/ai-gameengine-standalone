@@ -1,4 +1,4 @@
-# The AI Planner (development_plan.md 22, docs/ai-planner.md): the Game Brief, the stage
+# The AI Planner (development_plan.md 22, docs/ai/ai-planner.md): the Game Brief, the stage
 # documents and their validators, the decision record, and the job engine that runs the
 # stages against the AI service.
 add_library(aige_planner STATIC

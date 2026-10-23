@@ -62,7 +62,7 @@ class LuaVM;
 //
 // The C++ side is the single source of truth for editor state (selection,
 // tool, dirty flag, play state); the UI only renders what it's told and
-// sends requests. Message types are listed in docs/technical.md §9.
+// sends requests. Message types are listed in docs/project/technical.md §9.
 class EditorApp {
 public:
     using PostFn = std::function<void(const nlohmann::json&)>;

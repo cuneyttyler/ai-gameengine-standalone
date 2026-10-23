@@ -640,7 +640,7 @@ const std::vector<std::string> kSelectors = {"cells", "edge", "inner", "border",
 const std::vector<std::string> kCheckPredicates = {"count", "density", "area", "footprint-density", "reachable",
                                                    "closed", "score", "filled"};
 
-// The solving step of each statement kind inside its region (docs/layout-ir.md §7).
+// The solving step of each statement kind inside its region (docs/places/layout-ir.md §7).
 int StepOf(const json& s) {
     const std::string op = s.value("op", "");
     if (op == "fixed") return 0;

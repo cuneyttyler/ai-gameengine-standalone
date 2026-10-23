@@ -8,7 +8,7 @@ for every asset a build needs, **where it comes from**:
 4. the **Art tool** (generation).
 
 It also decides what happens when none of them gives a usable asset. It runs between
-**Confirm** and **Compile** (`docs/place-schema.md` §1).
+**Confirm** and **Compile** (`docs/places/place-schema.md` §1).
 
 ## 1. Terms
 

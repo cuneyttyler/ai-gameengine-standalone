@@ -12,7 +12,7 @@
 namespace aige {
 
 // Validators for the documents of the building procedure
-// (docs/place-schema.md, docs/layout-ir.md; development_plan.md 7.1):
+// (docs/places/place-schema.md, docs/places/layout-ir.md; development_plan.md 7.1):
 //   Brief  aige.brief/1   the confirmed request
 //   Spec   aige.spec/1    the plan tree: quantity and quality fields per part
 //   PLL    aige.ir/1      the Place Layout Language
@@ -57,7 +57,7 @@ std::vector<PlaceProblem> ValidateSpec(const Ontology& ontology, const nlohmann:
 // their parent.
 std::vector<PlaceProblem> ValidateLayout(const Ontology& ontology, const nlohmann::json& ir);
 
-// The PLL statement kinds (docs/layout-ir.md §5).
+// The PLL statement kinds (docs/places/layout-ir.md §5).
 const std::vector<std::string>& LayoutOps();
 
 } // namespace aige

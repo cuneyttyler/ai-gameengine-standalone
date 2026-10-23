@@ -1,5 +1,5 @@
 {
-  "comment": "Structure templates (docs/story-ontology.md §8): acts with their share of the story, beats at positions (0-1 of the main line), the narrative roles they need.",
+  "comment": "Structure templates (docs/systems/story-ontology.md §8): acts with their share of the story, beats at positions (0-1 of the main line), the narrative roles they need.",
   "templates": {
     "three-act": {
       "label": "Three-act structure",

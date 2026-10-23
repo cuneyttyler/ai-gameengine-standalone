@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The game's UI (development_plan.md 17.7, docs/game-ui.md): its screens as
+// The game's UI (development_plan.md 17.7, docs/systems/game-ui.md): its screens as
 // documents (RML with RCSS styles), the theme's tokens, notification rules and
 // checks. The engine's documents are read-only; Customise copies one into the
 // project's ui/ folder, where it wins. Preview shows a screen with sample data over

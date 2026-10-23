@@ -1,6 +1,6 @@
 # Build quality check: one request, every step, before and after
 
-Date: 2026-10-21. The ideas behind the changes are in `docs/place-refine.md`; this file is the
+Date: 2026-10-21. The ideas behind the changes are in `docs/places/place-refine.md`; this file is the
 test: how it was run, what each step produced, and what was measured.
 
 ## 1. How it was run

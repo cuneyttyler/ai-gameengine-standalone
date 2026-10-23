@@ -8,7 +8,7 @@
 
 namespace aige::places {
 
-// The constraint expression language (docs/place-schema.md §4.3): what module
+// The constraint expression language (docs/places/place-schema.md §4.3): what module
 // constraints, `when` conditions and checks are written in.
 //
 //   size.w * size.h >= 4

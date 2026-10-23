@@ -20,7 +20,7 @@ namespace aige {
 //
 // Speakers, quest givers and talk targets are World Bible keys
 // ("character/villager"); the game shows the entry's name. Formats are
-// documented in docs/story.md.
+// documented in docs/systems/story.md.
 
 // A condition on a choice or a dialogue start.
 struct StoryCondition {

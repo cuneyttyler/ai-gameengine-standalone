@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Difficulty (development_plan.md 16.5, docs/difficulty.md): the levels and their
+// Difficulty (development_plan.md 16.5, docs/systems/difficulty.md): the levels and their
 // category steps and modifiers, the category table, a preview of the selected
 // entity at every level (with hand-set values per level), the combat preview,
 // the curve over the game's scenes, and the level Play starts at. Levels and the

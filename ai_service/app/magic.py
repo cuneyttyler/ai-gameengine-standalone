@@ -1,4 +1,4 @@
-"""Checks for abilities and magic (development_plan.md 19, docs/magic.md): ability and
+"""Checks for abilities and magic (development_plan.md 19, docs/systems/magic.md): ability and
 magic-effect records the AI writes (mirroring engine/gameplay/Magic ValidateAbility), and
 the abilities an Abilities component or an item names."""
 

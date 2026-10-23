@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Conditions on a choice, a dialogue start or a quest branch (docs/story.md):
+// Conditions on a choice, a dialogue start or a quest branch (docs/systems/story.md):
 // all must hold. Edits the JSON form in place: {"flag": n}, {"flag": n, "is": false},
 // {"quest": id, "is": state, "stage": 20}, {"var": n, "op": ">=", "value": 3}, and the
 // world's (15.2): {"item": id, "count": 2}, {"gold": n}, {"level": n},

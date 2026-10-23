@@ -366,7 +366,7 @@ private:
     // TryMeleeAttack plus an Attack event (with the attacker's sound).
     bool Swing(Entity attacker, float dirX, float dirY);
 
-    // The Lua API every script gets (see docs/scripting.md).
+    // The Lua API every script gets (see docs/systems/scripting.md).
     void BindScriptApi(sol::environment& env, Entity self);
 
     // Phase 13: attributes, block/dodge/fire, archers, spawners, pickups; then

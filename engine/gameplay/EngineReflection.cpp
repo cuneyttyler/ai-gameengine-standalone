@@ -471,7 +471,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
 
     // --- Scripting -------------------------------------------------------------------
 
-    r.Component<LuaScript>("LuaScript", "Lua behavior (see docs/scripting.md). The script's `properties` "
+    r.Component<LuaScript>("LuaScript", "Lua behavior (see docs/systems/scripting.md). The script's `properties` "
                                         "table becomes per-entity settings.")
         .Field("path", &LuaScript::path, "The .lua file, relative to the project.").As(FieldType::Script)
         .OnSet([](Registry& registry, Entity entity, const FieldValue& value) {

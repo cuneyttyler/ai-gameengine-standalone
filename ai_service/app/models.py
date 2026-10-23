@@ -151,7 +151,7 @@ class EditorContext(BaseModel):
     # The World Bible, compact: {key, name, summary} per entry (the service adds
     # the full text of the entries most related to the request).
     world: list[dict[str, Any]] = []
-    # Dialogue and quests (docs/story.md), each with its "id"; a dialogue may be
+    # Dialogue and quests (docs/systems/story.md), each with its "id"; a dialogue may be
     # {"id", "speaker", "truncated": true} when the project's are too long to include.
     dialogues: list[dict[str, Any]] = []
     quests: list[dict[str, Any]] = []
@@ -238,7 +238,7 @@ class RunCommand(BaseModel):
 
 
 class WriteDialogue(BaseModel):
-    """Creates or replaces dialogue/<id>.json (format: docs/story.md)."""
+    """Creates or replaces dialogue/<id>.json (format: docs/systems/story.md)."""
 
     op: Literal["write_dialogue"]
     id: str
@@ -246,7 +246,7 @@ class WriteDialogue(BaseModel):
 
 
 class WriteSchedule(BaseModel):
-    """Creates or replaces schedules/<id>.json (a daily routine; docs/story.md)."""
+    """Creates or replaces schedules/<id>.json (a daily routine; docs/systems/story.md)."""
 
     op: Literal["write_schedule"]
     id: str
@@ -254,7 +254,7 @@ class WriteSchedule(BaseModel):
 
 
 class WriteQuest(BaseModel):
-    """Creates or replaces quests/<id>.json (format: docs/story.md)."""
+    """Creates or replaces quests/<id>.json (format: docs/systems/story.md)."""
 
     op: Literal["write_quest"]
     id: str
@@ -262,7 +262,7 @@ class WriteQuest(BaseModel):
 
 
 class WriteCutscene(BaseModel):
-    """Creates or replaces cutscenes/<id>.json (a timeline of tracks; docs/story.md)."""
+    """Creates or replaces cutscenes/<id>.json (a timeline of tracks; docs/systems/story.md)."""
 
     op: Literal["write_cutscene"]
     id: str
@@ -270,7 +270,7 @@ class WriteCutscene(BaseModel):
 
 
 class StoryGraphOp(BaseModel):
-    """Adds to the story knowledge graph (planner/kg.json; docs/story-ontology.md): nodes
+    """Adds to the story knowledge graph (planner/kg.json; docs/systems/story-ontology.md): nodes
     (World Bible keys for characters, places, items), facts (edges, temporal ones with
     from/until scenes and a branch), facts it ends at a scene, nodes it removes."""
 
@@ -283,7 +283,7 @@ class StoryGraphOp(BaseModel):
 
 class WriteUi(BaseModel):
     """Creates or replaces a game UI file under ui/ (a screen .rml, a style .rcss, theme.json,
-    screens.json or notifications.json; docs/game-ui.md)."""
+    screens.json or notifications.json; docs/systems/game-ui.md)."""
 
     op: Literal["write_ui"]
     path: str
@@ -291,7 +291,7 @@ class WriteUi(BaseModel):
 
 
 class WriteAnim(BaseModel):
-    """Creates or replaces an animation sheet, assets/<name>.anim.json (docs/effects-animation.md)."""
+    """Creates or replaces an animation sheet, assets/<name>.anim.json (docs/systems/effects-animation.md)."""
 
     op: Literal["write_anim"]
     path: str

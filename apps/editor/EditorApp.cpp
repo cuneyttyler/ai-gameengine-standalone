@@ -6165,7 +6165,7 @@ void EditorApp::PostLibrary() {
 }
 
 bool EditorApp::HandleLibraryMessage(const std::string& type, const nlohmann::json& message) {
-    // The Library tab (development_plan.md 10, docs/asset_management.md).
+    // The Library tab (development_plan.md 10, docs/systems/asset_management.md).
     UserLibrary library(UserLibraryDir());
     const std::string item = message.value("item", ""), folder = message.value("folder", "");
     std::string error;

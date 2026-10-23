@@ -1,4 +1,4 @@
-"""Checks for write_ui operations (development_plan.md 17, docs/game-ui.md), mirroring
+"""Checks for write_ui operations (development_plan.md 17, docs/systems/game-ui.md), mirroring
 engine/ui/Documents CheckUiFile: where a UI file may go, JSON with the expected shape
 (theme, screens manifest, notification rules), and a document's data models."""
 

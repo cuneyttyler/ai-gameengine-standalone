@@ -233,7 +233,7 @@ CUTSCENES (file cutscenes/<id>.json; context "cutscenes" lists the project's)
 """
 
 MAGIC = """\
-MAGIC (docs/magic.md; context "magic" lists the abilities and magic effects there are)
+MAGIC (docs/systems/magic.md; context "magic" lists the abilities and magic effects there are)
 - A magic effect (record "magic-effect") is what changes: {"archetype": "damage"|"heal"|"modify"|"over-time"|
   "absorb"|"state"|"summon"|"displace"|"dispel"|"light", "magnitude": 10 or "8 + 2 * caster.level",
   "duration", "period", "area", "damageType": "fire"..., "attribute" + "op" (modify), "tags": ["state.stunned"],
@@ -265,7 +265,7 @@ SHIPPING (development_plan.md 24; context "shipping": achievements, the accessib
 """
 
 PLANNER = """\
-THE AI PLANNER (docs/ai-planner.md; context "plan" when the project has one)
+THE AI PLANNER (docs/ai/ai-planner.md; context "plan" when the project has one)
 - Designing a whole game ("plan a game about...", "make me an RPG where...") is the Planner's job: the editor sends
   such requests to the Planner panel before they reach you. When the project has a plan, changes to its design
   (a character's family, a quest's giver, a scene's outcome) go to the Planner as revisions too; if one reaches you,
@@ -276,7 +276,7 @@ THE AI PLANNER (docs/ai-planner.md; context "plan" when the project has one)
 """
 
 STORY_GRAPH = """\
-THE STORY GRAPH (docs/story-ontology.md; context "storyGraph": the ontology, the graph's nodes and scenes, its issues)
+THE STORY GRAPH (docs/systems/story-ontology.md; context "storyGraph": the ontology, the graph's nodes and scenes, its issues)
 - The story's structured facts live in a knowledge graph: characters, factions, locations, items, events,
   story scenes, quests, and the facts between them. Characters, places and items use World Bible keys as ids
   ("character/tamsin"); their rel: lines are written from the graph.
@@ -295,7 +295,7 @@ THE STORY GRAPH (docs/story-ontology.md; context "storyGraph": the ontology, the
 """
 
 PHYSICS = """\
-PHYSICS (docs/physics.md; context "physics": the layers in use, gravity, rigid bodies, trigger names)
+PHYSICS (docs/systems/physics.md; context "physics": the layers in use, gravity, rigid bodies, trigger names)
 - Collider2D: a box (halfWidth, halfHeight) or a circle ("shape": "Circle", "radius"); "layer" (empty: by team:
   player, enemy, ally; else default) and "mask": the layers it collides with ("world, enemy"; empty: all).
   Built-in layers: world, player, enemy, ally, projectile, trigger, default; a new name makes a new layer.
@@ -313,7 +313,7 @@ PHYSICS (docs/physics.md; context "physics": the layers in use, gravity, rigid b
 """
 
 FX = """\
-ANIMATION AND EFFECTS (docs/effects-animation.md; context "fx")
+ANIMATION AND EFFECTS (docs/systems/effects-animation.md; context "fx")
 - An animated character: a sheet assets/<name>.anim.json (write it with {"op": "write_anim", "path":
   "assets/<name>.anim.json", "sheet": {"texture": "<picture path from context assets>", "size": [w, h],
   "grid": {"width": 32, "height": 32}, "fps": 8, "clips": {"idle": {"frames": [0, 1]}, "walk": {"directions":
@@ -337,7 +337,7 @@ ANIMATION AND EFFECTS (docs/effects-animation.md; context "fx")
 """
 
 GAME_UI = """\
-GAME UI (docs/game-ui.md; the game's menus, windows, HUD and notifications are documents; context "ui")
+GAME UI (docs/systems/game-ui.md; the game's menus, windows, HUD and notifications are documents; context "ui")
 - Write files with {"op": "write_ui", "path": "ui/...", "content": "<the whole file>"}:
   ui/theme.json {"base": "<a built-in theme from context ui.themes>", "tokens": {"panel": "#1b1b24e6",
   "text": "#eeeef2", "accent": "#3b82f6", "highlight": "#ffdb73", "health": "#d64545", ...}} restyles every

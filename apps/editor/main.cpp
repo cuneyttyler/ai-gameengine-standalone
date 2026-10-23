@@ -2,7 +2,7 @@
 // viewport input to EditorApp. The Vue frontend (apps/editor/ui) hosts every
 // panel; the native Vulkan viewport is positioned "on top" of the WebView2
 // surface at whatever rect the Vue app's viewport placeholder reports
-// ("hole punching", docs/technical.md §4). The WebView2 control always
+// ("hole punching", docs/project/technical.md §4). The WebView2 control always
 // fills the client area; only the viewport window's bounds are dynamic.
 #include "EditorApp.h"
 #include "ai_bridge/UserPrefs.h"

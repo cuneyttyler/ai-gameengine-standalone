@@ -259,7 +259,7 @@
       ]
     },
     {
-      "description": "Creates or replaces a Lua script (see docs/scripting.md for the API scripts can use). Attach it with a LuaScript component. Scripts are the game's behaviour: they run while playing, never while editing, so never write one to change the scene (use the scene commands: scene.spawn, entity.delete, prefab.replace, terrain.replace).",
+      "description": "Creates or replaces a Lua script (see docs/systems/scripting.md for the API scripts can use). Attach it with a LuaScript component. Scripts are the game's behaviour: they run while playing, never while editing, so never write one to change the scene (use the scene commands: scene.spawn, entity.delete, prefab.replace, terrain.replace).",
       "name": "script.write",
       "params": [
         {
@@ -2472,7 +2472,7 @@
     },
     {
       "dependencies": [],
-      "description": "Lua behavior (see docs/scripting.md). The script's `properties` table becomes per-entity settings.",
+      "description": "Lua behavior (see docs/systems/scripting.md). The script's `properties` table becomes per-entity settings.",
       "fields": [
         {
           "description": "The .lua file, relative to the project.",

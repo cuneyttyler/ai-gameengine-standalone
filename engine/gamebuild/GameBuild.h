@@ -19,7 +19,7 @@ namespace aige {
 
 class Ontology;
 
-// The AI Planner, building the game it designed (development_plan.md 23, docs/ai-planner.md
+// The AI Planner, building the game it designed (development_plan.md 23, docs/ai/ai-planner.md
 // §5.10-5.13, §8-§11). It starts from the plan's baseline:
 //
 //   build      ⑩ the build plan (planner/buildplan.json): one row per place, parents first;

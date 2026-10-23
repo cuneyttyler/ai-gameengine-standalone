@@ -14,7 +14,7 @@
 
 namespace aige {
 
-// Abilities and magic (development_plan.md Phase 19, docs/magic.md).
+// Abilities and magic (development_plan.md Phase 19, docs/systems/magic.md).
 //
 //   records/magic-effect/<id>   what changes: damage, heal, modify (an attribute for a
 //                               while), over-time, absorb, state (tags: stunned, rooted,

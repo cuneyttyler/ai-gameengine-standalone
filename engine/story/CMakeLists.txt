@@ -1,5 +1,5 @@
 # The Game Story Ontology and the story knowledge graph (development_plan.md 21,
-# docs/story-ontology.md): ontology loading and publishing, the graph with temporal
+# docs/systems/story-ontology.md): ontology loading and publishing, the graph with temporal
 # facts, and the story rules.
 add_library(aige_story STATIC
     StoryOntology.h

@@ -177,7 +177,7 @@ the goal.
 
 Scripts can drive the same state; see `start_quest`, `set_stage`, `fail_quest`,
 `get_var`, `set_var`, `quest_state` and the other story functions in
-[scripting.md](scripting.md).
+[scripting.md](./scripting.md).
 
 ## The journal and markers
 

@@ -85,7 +85,7 @@ two commands, `lantern.setAll` and `lantern.scaleRadius`.
 
 ## Record types
 
-A module can add record types (development_plan.md 12.1, [records.md](records.md)):
+A module can add record types (development_plan.md 12.1, [records.md](../systems/records.md)):
 
 ```json
 "records": [

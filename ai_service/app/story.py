@@ -1,7 +1,7 @@
 """Checks for write_dialogue / write_quest operations (development_plan.md 3.2d),
 mirroring engine/gameplay/Story (ValidateDialogue, ValidateQuest) and
 engine/world/StoryReferences, so the model gets the same feedback the editor
-would show — before anything reaches the review panel. Format: docs/story.md."""
+would show — before anything reaches the review panel. Format: docs/systems/story.md."""
 
 from __future__ import annotations
 

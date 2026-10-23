@@ -1,6 +1,6 @@
 """Checks a proposal against the engine schema and the editor context before
 it leaves the service — the service-side half of the defense in depth in
-docs/technical.md §7.5 (the editor validates again against its live registry).
+docs/project/technical.md §7.5 (the editor validates again against its live registry).
 
 Errors are plain sentences so they can be fed back to the model for a repair
 attempt and shown to the user.

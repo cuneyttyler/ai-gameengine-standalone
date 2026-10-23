@@ -1,4 +1,4 @@
-"""AI Orchestration Service for the AI-native game engine (docs/technical.md §10).
+"""AI Orchestration Service for the AI-native game engine (docs/project/technical.md §10).
 
 A local FastAPI sidecar the editor talks to over HTTP. It turns a
 natural-language instruction plus the engine's reflection schema and a summary

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The Assets panel's Library tab (development_plan.md 10, docs/asset_management.md): the
+// The Assets panel's Library tab (development_plan.md 10, docs/systems/asset_management.md): the
 // user's own art, outside any project, in folders they make: generated art (kept from every
 // project), art from the web and the AIGE library, and project art they keep. An item goes
 // into the open project with a click; generated art can be offered to other users through
@@ -150,7 +150,7 @@ function when(seconds?: number): string {
 
 <template>
   <div class="library">
-    <!-- Asked once: what happens to the art you generate (docs/asset_management.md §4). -->
+    <!-- Asked once: what happens to the art you generate (docs/systems/asset_management.md §4). -->
     <section v-if="library?.askSharing" class="share-ask">
       <strong>Share the art you generate?</strong>
       <p>

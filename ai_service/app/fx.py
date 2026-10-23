@@ -1,4 +1,4 @@
-"""Checks for animation and effects (development_plan.md 18, docs/effects-animation.md):
+"""Checks for animation and effects (development_plan.md 18, docs/systems/effects-animation.md):
 write_anim sheets (mirroring engine/gameplay/Animation ValidateAnimSheet), and the
 particles, effects and sheets that components name."""
 

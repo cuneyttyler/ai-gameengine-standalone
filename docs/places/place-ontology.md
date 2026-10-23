@@ -2,7 +2,7 @@
 
 Status: **draft for review (2026-10-18)**. Working name **GBO** (GenBuilding Ontology);
 alternatives are under discussion. It sits above the schemas in
-`docs/place-schema.md` and holds the modules of `docs/place-modules.md` as a
+`docs/places/place-schema.md` and holds the modules of `docs/places/place-modules.md` as a
 knowledge graph.
 
 ## 1. Why a knowledge graph, not only module files

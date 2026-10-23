@@ -47,5 +47,5 @@ New modules: `court` (the open court), `chamber` (an inner chamber). Biomes: `tr
 - Its components came back empty from one reading (to check: the interpret answer may put them
   where the summary doesn't look).
 
-These go with each kind of place's own pass (`docs/place-refine.md`'s method: the look of a
+These go with each kind of place's own pass (`docs/places/place-refine.md`'s method: the look of a
 reference game, its features, built and measured), starting with dungeons and caves (Diablo).

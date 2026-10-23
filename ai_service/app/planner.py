@@ -1,4 +1,4 @@
-"""The AI Planner's calls (development_plan.md 22, docs/ai-planner.md §5): one step per
+"""The AI Planner's calls (development_plan.md 22, docs/ai/ai-planner.md §5): one step per
 endpoint, each the protocol of place-interaction.md Part B — think in free text, answer in
 a strict JSON shape, check the answer, repair once with the exact problems, then report a
 problem rather than guess. The engine (engine/planner/GamePlan) assembles the inputs from

@@ -28,7 +28,7 @@ namespace aige {
 // into the first. An entry can name the scene it happens in ("scene":
 // "scenes/tavern.aige"): while the NPC's day puts it in another scene than
 // the one being played, it is away (hidden, nobody to talk to). Place the NPC
-// in each scene it visits. Format documented in docs/story.md.
+// in each scene it visits. Format documented in docs/systems/story.md.
 
 constexpr int kMinutesPerDay = 24 * 60;
 

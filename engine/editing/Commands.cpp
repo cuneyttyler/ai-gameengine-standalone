@@ -399,7 +399,7 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
             return {};
         });
 
-    r.Command("script.write", "Creates or replaces a Lua script (see docs/scripting.md for the API scripts can "
+    r.Command("script.write", "Creates or replaces a Lua script (see docs/systems/scripting.md for the API scripts can "
                               "use). Attach it with a LuaScript component. Scripts are the game's behaviour: they "
                               "run while playing, never while editing, so never write one to change the scene "
                               "(use the scene commands: scene.spawn, entity.delete, prefab.replace, terrain.replace).")

@@ -1,7 +1,7 @@
 # AI-Generated Building — design (Phase 7)
 
 Status: **design, revised after discussion (2026-10-18)**. The module catalogue is in
-`docs/place-modules.md`; the milestones are in `development_plan.md`, Phase 7.
+`docs/places/place-modules.md`; the milestones are in `development_plan.md`, Phase 7.
 
 ## 0. Approach (article form)
 
@@ -156,7 +156,7 @@ The word *module* covers two things; both are fixed per build type.
 
 Each stage decides which modules go where in its level of the tree; each module's
 generator lays itself out. The catalogue of modules per build type is
-`docs/place-modules.md`.
+`docs/places/place-modules.md`.
 
 ## 5. Modules, relations and generators, in brief
 
@@ -223,7 +223,7 @@ all of this is defined in `place-assets.md`.
 ## 7. The methodology: stages per build type
 
 Every build runs the same procedure. Its documents, the intermediate language and the
-constraints are defined in `docs/place-schema.md`:
+constraints are defined in `docs/places/place-schema.md`:
 
 ```
  Query → Interpret (Brief drafts) → Confirm (Brief) → Plan (Spec: quantity + quality per part)

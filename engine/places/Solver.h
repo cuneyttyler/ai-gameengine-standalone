@@ -13,7 +13,7 @@
 
 namespace aige {
 
-// The PLL solver (development_plan.md 7.6, docs/layout-ir.md §7-9): turns a
+// The PLL solver (development_plan.md 7.6, docs/places/layout-ir.md §7-9): turns a
 // layout document (aige.ir/1) into a solved one (aige.solved/1): every
 // region's cells, every object's footprint and facing, every path's cells,
 // every line's edges, the terrain of every cell, relation scores and checks.

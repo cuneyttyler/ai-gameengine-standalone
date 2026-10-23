@@ -1,5 +1,5 @@
 {
-  "comment": "GSO vocabularies (SKOS concept schemes), docs/story-ontology.md §8.",
+  "comment": "GSO vocabularies (SKOS concept schemes), docs/systems/story-ontology.md §8.",
   "vocabularies": {
     "SceneMode": ["cutscene", "dialogue", "gameplay", "environmental", "discoverable", "ambient"],
     "BranchingPattern": ["linear", "gauntlet", "branch-and-bottleneck", "time-cave", "quest", "open-map", "sorting-hat", "floating-modules", "loop-and-grow"],

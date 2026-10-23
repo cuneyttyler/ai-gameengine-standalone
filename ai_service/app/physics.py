@@ -1,4 +1,4 @@
-"""Checks for physics v2 (development_plan.md 20, docs/physics.md): collision layers and
+"""Checks for physics v2 (development_plan.md 20, docs/systems/physics.md): collision layers and
 masks, triggers, rigid bodies and joints the AI adds (mirroring engine/gameplay/Physics)."""
 
 from __future__ import annotations

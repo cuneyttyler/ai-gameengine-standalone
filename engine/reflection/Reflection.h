@@ -240,7 +240,7 @@ public:
     CommandResult Run(CommandContext& context, const std::string& command, const std::vector<FieldValue>& args) const;
 
     // The whole registry as JSON: what the AI service turns into its tool
-    // schema (docs/technical.md §7.3), and what its contract test checks.
+    // schema (docs/project/technical.md §7.3), and what its contract test checks.
     nlohmann::json ExportSchema() const;
 
 private:

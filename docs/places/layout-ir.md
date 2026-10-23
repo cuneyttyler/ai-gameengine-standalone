@@ -5,9 +5,9 @@ working name.
 
 PLL is the intermediate language between the **Spec** (the plan tree: *what and how much*)
 and the **scene** (cells and entities). A PLL document says *where things go and by which
-rules*. It is produced by compiling the Spec (`docs/place-schema.md` §1, step 4), read by
+rules*. It is produced by compiling the Spec (`docs/places/place-schema.md` §1, step 4), read by
 the solvers (step 5), and kept with the place for verification and editing. Its terms come
-from the place ontology (`docs/place-ontology.md`) and stay aligned with GLDL (§12).
+from the place ontology (`docs/places/place-ontology.md`) and stay aligned with GLDL (§12).
 
 ---
 

@@ -1,6 +1,6 @@
 {
   "schema": "aige.game-brief-schema/1",
-  "comment": "The Game Brief (docs/planner-schema.md §2): fields by the confirmation window's tab. type: text | number | int | bool | enum | enumSet | list | range. asked: shown first (round 1). Story vocabularies come from GSO (data/story/vocabularies.json) where 'vocab' names one.",
+  "comment": "The Game Brief (docs/ai/planner-schema.md §2): fields by the confirmation window's tab. type: text | number | int | bool | enum | enumSet | list | range. asked: shown first (round 1). Story vocabularies come from GSO (data/story/vocabularies.json) where 'vocab' names one.",
   "tabs": [
     {"id": "game", "label": "Game", "fields": [
       {"path": "title", "label": "Title", "type": "text", "asked": true},

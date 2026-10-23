@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Animation and effects (development_plan.md 18.7, docs/effects-animation.md):
+// Animation and effects (development_plan.md 18.7, docs/systems/effects-animation.md):
 // sheets and their clips (frames previewed, imported from Aseprite or a grid),
 // particles and effects to try in the viewport, and cutscenes on a timeline. Records
 // of particles, effects and animators are edited in Records; Customise copies an
@@ -364,7 +364,7 @@ const cutsceneProblems = computed(() => cutscenes.value.find((c) => c.id === cut
             <span v-if="keyError" class="warn small">{{ keyError }}</span>
           </div>
         </template>
-        <p class="muted small">The format is in docs/story.md ("Cutscenes"). Keys are placed by "at" (seconds); "seconds" is how long one lasts.</p>
+        <p class="muted small">The format is in docs/systems/story.md ("Cutscenes"). Keys are placed by "at" (seconds); "seconds" is how long one lasts.</p>
       </section>
       <section v-else class="editor muted">Pick or make a cutscene.</section>
     </div>

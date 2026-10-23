@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Dialogue and quests (development_plan.md 3.2c, format in docs/story.md).
+// Dialogue and quests (development_plan.md 3.2c, format in docs/systems/story.md).
 // The host lists dialogue/*.json and quests/*.json with problems and what
 // can be referenced (World Bible entries, prefabs); this panel edits one file
 // at a time as a draft and saves it back through the engine's own reader and
@@ -600,7 +600,7 @@ function targetsFor(type: string, scene?: string): { value: string; label: strin
         Conversations and quests. Give an NPC a <b>Talk</b> component (in the Inspector) pointing at a dialogue, and
         players talk to them with <b>E</b>.
       </p>
-      <p class="muted">Files live in <code>dialogue/</code> and <code>quests/</code>; the format is in docs/story.md.</p>
+      <p class="muted">Files live in <code>dialogue/</code> and <code>quests/</code>; the format is in docs/systems/story.md.</p>
     </section>
 
     <section v-else class="editor" @keydown="onKeydown">

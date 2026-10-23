@@ -9,7 +9,7 @@
 
 namespace aige {
 
-// The user's own asset library (development_plan.md 10, docs/asset_management.md): art kept
+// The user's own asset library (development_plan.md 10, docs/systems/asset_management.md): art kept
 // outside any project, in folders the user makes, reachable from every project and session.
 // Everything the Art tool generates is kept here too (it's never lost with a project), and
 // can be offered to other users through the AIGE library once its web service exists.

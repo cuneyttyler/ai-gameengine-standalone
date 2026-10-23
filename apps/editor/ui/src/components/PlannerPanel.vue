@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The AI Planner (development_plan.md 22, docs/ai-planner.md §6): one view per stage — the
+// The AI Planner (development_plan.md 22, docs/ai/ai-planner.md §6): one view per stage — the
 // Game Brief's confirmation window, the outline's three columns, the story's acts and scene
 // board, the cast, quests and places, systems, visuals and the validation report — and on
 // every item Why?, Regenerate, Edit and Lock. Documents whose inputs changed show as stale;

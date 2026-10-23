@@ -1,4 +1,4 @@
-"""Building places with AI (development_plan.md 7.4, docs/place-interaction.md
+"""Building places with AI (development_plan.md 7.4, docs/places/place-interaction.md
 Part B). Every call has the same shape:
 
     inputs -> THINK (free text, private) -> ANSWER (strict schema) -> validate -> (repair once)

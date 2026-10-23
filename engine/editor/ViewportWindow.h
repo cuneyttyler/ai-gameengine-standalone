@@ -29,7 +29,7 @@ struct ViewportMouseEvent {
 // everything else (see WebViewHost). Deliberately not aige::Window (GLFW):
 // this only makes sense as a child of an existing parent HWND, which GLFW
 // doesn't support creating, and this whole app is Windows-specific via
-// WebView2 anyway (see docs/technical.md's editor architecture notes).
+// WebView2 anyway (see docs/project/technical.md's editor architecture notes).
 class ViewportWindow {
 public:
     ViewportWindow(HWND parent, HINSTANCE hinstance, int x, int y, int width, int height);

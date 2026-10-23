@@ -1,4 +1,4 @@
-"""Checks for the story knowledge graph (development_plan.md 21, docs/story-ontology.md): the
+"""Checks for the story knowledge graph (development_plan.md 21, docs/systems/story-ontology.md): the
 story_graph op adds nodes and temporal facts; these checks mirror the engine's shapes
 (engine/story/StoryGraph Apply and StoryRules) so a bad change goes back before it's shown.
 The engine also runs the full rules and refuses a change that adds rule errors."""

@@ -15,7 +15,7 @@ namespace aige {
 
 class RecordDatabase;
 
-// Difficulty (development_plan.md Phase 16, docs/difficulty.md). Files hold base
+// Difficulty (development_plan.md Phase 16, docs/systems/difficulty.md). Files hold base
 // values; a difficulty level scales the fields registered as scalable, by the
 // field's kind and its owner's side, through the game's category table, plus the
 // level's own modifiers and per-entity overrides set by hand.

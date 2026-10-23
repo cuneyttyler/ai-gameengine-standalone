@@ -10,8 +10,8 @@ interiors, dungeons, regions) from a request:
 - the **vocabularies** their qualities use;
 - **design rules**, each with its source.
 
-Design: [`docs/place-ontology.md`](../docs/place-ontology.md). Schemas:
-[`docs/place-schema.md`](../docs/place-schema.md).
+Design: [`docs/places/place-ontology.md`](../docs/places/place-ontology.md). Schemas:
+[`docs/places/place-schema.md`](../docs/places/place-schema.md).
 
 ## Files
 
@@ -66,7 +66,7 @@ resolving. `gbo:moduleId` and `skos:notation` hold the JSON id of each term.
   as plain RDF and checked against `gbo-shapes.ttl`.
 - **Beyond OWL and SHACL Core:** conditions (`gbo:when`) and aggregate constraints
   (`gbo:constraint`) are strings in the GBO expression language
-  (`docs/place-schema.md` §4.3), evaluated by the engine on intervals. Defaults,
+  (`docs/places/place-schema.md` §4.3), evaluated by the engine on intervals. Defaults,
   density maps and relation arguments are `rdf:JSON` literals in the module-file form.
 
 ## Checking
@@ -103,7 +103,7 @@ GSO is the structure of a game's story: the **world** (characters, factions, pla
 items), the **fabula** (events and their causes), the **plot** (acts, chapters, story
 scenes, storylines, choices, endings) and **play** (quests, stages, objectives, aliases),
 with presentation and provenance. Facts that change hold over an interval of scenes.
-Design: [`docs/story-ontology.md`](../docs/story-ontology.md).
+Design: [`docs/systems/story-ontology.md`](../docs/systems/story-ontology.md).
 
 | File | What | Written |
 |---|---|---|

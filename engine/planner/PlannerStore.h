@@ -9,7 +9,7 @@
 
 namespace aige {
 
-// The AI Planner's documents (docs/planner-schema.md §1, development_plan.md 22.1): every
+// The AI Planner's documents (docs/ai/planner-schema.md §1, development_plan.md 22.1): every
 // document of planner/ by its name without .json ("brief", "outline", "story/acts/act-1",
 // "story/scenes/s-04", "characters/tamsin", "quests/q-main", "places/riverford", "systems",
 // "ui", "report"), each with a schema, a revision, the decision that made it (madeBy) and

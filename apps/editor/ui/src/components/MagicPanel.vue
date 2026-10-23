@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Abilities and magic (development_plan.md 19.4, docs/magic.md): every ability with
+// Abilities and magic (development_plan.md 19.4, docs/systems/magic.md): every ability with
 // its figures (the formula's cost against its own, output per cost and per second,
 // outliers flagged) and problems, the magic effects, Try (play, learn it and cast it),
 // and Customise (an engine preset as the project's record, to change in Records).

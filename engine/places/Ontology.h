@@ -11,7 +11,7 @@
 
 namespace aige {
 
-// The place ontology (docs/place-ontology.md, development_plan.md 7.1): what
+// The place ontology (docs/places/place-ontology.md, development_plan.md 7.1): what
 // the builder knows about places — build types and their scale tables,
 // modules (the parts a place is made of) with their fields, slots, children,
 // constraints and relations, the concept vocabularies, asset roles, relation
@@ -24,7 +24,7 @@ namespace aige {
 //   buildtypes.json     build types, their root module, components, scale table
 //   vocabularies.json   concept schemes: values, labels, synonyms, broader
 //   roles.json          asset roles (what a slot needs)
-//   relations.json      spatial relation types (docs/layout-ir.md §6)
+//   relations.json      spatial relation types (docs/places/layout-ir.md §6)
 //   rules.json          design rules, each with its source
 //   tolerances.json     conformity tolerances (aige.tolerance/1)
 //   modules/*.module.json   one module each (aige.module/1)
@@ -35,7 +35,7 @@ enum class PlaceLevel { Site, Network, Zone, Parcel, Feature, Dressing, Abstract
 std::optional<PlaceLevel> PlaceLevelFromName(const std::string& name);
 const char* PlaceLevelName(PlaceLevel level);
 
-// One quantity or quality field of a module (docs/place-schema.md §2).
+// One quantity or quality field of a module (docs/places/place-schema.md §2).
 struct FieldDef {
     std::string name;
     bool quantity = true;      // else quality
@@ -96,7 +96,7 @@ struct ModuleDef {
     std::map<std::string, FieldDef> quality;
     std::vector<SlotDef> slots;
     std::vector<ChildDef> children;
-    std::vector<std::string> constraints;   // aggregate constraints (docs/place-schema.md §4.3)
+    std::vector<std::string> constraints;   // aggregate constraints (docs/places/place-schema.md §4.3)
     std::vector<RelationDef> relations;
     std::vector<std::string> required;      // modules or classes the place must also have
     std::vector<std::string> excludes;

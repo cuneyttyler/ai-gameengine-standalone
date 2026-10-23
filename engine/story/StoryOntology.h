@@ -10,7 +10,7 @@
 
 namespace aige {
 
-// The Game Story Ontology (GSO, docs/story-ontology.md, development_plan.md 21.1):
+// The Game Story Ontology (GSO, docs/systems/story-ontology.md, development_plan.md 21.1):
 // classes, properties, vocabularies, structure templates and rules, loaded from
 // data/story/ and extended by a project's story/ontology/ (same file names; entries
 // add to or replace the engine's).

@@ -1,6 +1,6 @@
 {
   "schema": "aige.scope-table/1",
-  "comment": "Scope classes (docs/planner-schema.md §2.11): play time to numbers, for story genres.",
+  "comment": "Scope classes (docs/ai/planner-schema.md §2.11): play time to numbers, for story genres.",
   "classes": [
     {"id": "micro",  "hours": [0, 1],    "places": [1, 3],   "scenes": [3, 6],    "mainQuestStages": [3, 6],   "sideQuests": [0, 2],    "cast": {"major": [1, 3],  "supporting": [0, 4],   "minor": [0, 10]}},
     {"id": "short",  "hours": [1, 5],    "places": [3, 10],  "scenes": [8, 24],   "mainQuestStages": [8, 20],  "sideQuests": [3, 12],   "cast": {"major": [3, 5],  "supporting": [5, 12],  "minor": [10, 40]}},

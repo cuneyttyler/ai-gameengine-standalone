@@ -12,7 +12,7 @@ namespace aige {
 
 class Ontology;
 
-// The Planner's schemas (docs/planner-schema.md): the Game Brief with its genre profiles,
+// The Planner's schemas (docs/ai/planner-schema.md): the Game Brief with its genre profiles,
 // scope table and confirmation window, and the validators of each stage's document. The
 // AI service mirrors these (ai_service/app/planner.py), as story.py mirrors Story.cpp.
 

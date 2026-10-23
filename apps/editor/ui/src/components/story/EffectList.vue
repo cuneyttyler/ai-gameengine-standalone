@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// What a choice, node, quest stage or finished quest does (docs/story.md). Edits
+// What a choice, node, quest stage or finished quest does (docs/systems/story.md). Edits
 // the JSON form in place: {"op": "set_flag", "flag": n}, {"op": "start_quest",
 // "quest": id}, {"op": "set_stage", "quest": id, "stage": 20}, {"op": "set_var",
 // "var": n, "value": v}, {"op": "give_item", "item": id, "count": 2},
