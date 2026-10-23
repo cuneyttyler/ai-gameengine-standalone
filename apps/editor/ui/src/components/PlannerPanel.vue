@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The AI Planner (development_plan.md 22, docs/ai/ai-planner.md §6): one view per stage — the
-// Game Brief's confirmation window, the outline's three columns, the story's acts and scene
+// Game Brief's confirmation window, the outline (story, cast, places, stacked), the story's acts and scene
 // board, the cast, quests and places, systems, visuals and the validation report — and on
 // every item Why?, Regenerate, Edit and Lock. Documents whose inputs changed show as stale;
 // "Regenerate stale" redoes exactly those. A place's draft Brief opens in the Build panel.
@@ -109,6 +109,8 @@ const findings = computed(() => ((state.value.report?.findings ?? []) as Finding
 const staleCount = computed(() => (state.value.stale ?? []).length as number)
 const waiting = computed(() => state.value.status === 'waiting' || state.value.status === 'failed')
 const outline = computed(() => (state.value.outline ?? {}) as Record<string, any>)
+const hasOutline = computed(() => Object.keys(outline.value).length > 0)
+const outlineStage = computed(() => stages.value.find((s) => s.id === 'outline'))
 watch(
   () => state.value.stage,
   (s) => {
@@ -276,32 +278,59 @@ function statusMark(status: string): string {
             </div>
           </template>
 
-          <!-- ② Outline: three columns -->
-          <div v-else-if="view === 'outline'" class="columns">
-            <div class="col">
-              <h4>Story <a href="#" @click.prevent="open('outline')">open</a></h4>
-              <p><b>{{ outline.story?.logline }}</b></p>
-              <p class="muted">{{ outline.story?.synopsis }}</p>
-              <div v-for="a in outline.story?.acts ?? []" :key="a.id" class="card"><b>{{ a.id }}</b> {{ a.summary }}</div>
+          <!-- ② Outline: the story, then the cast, then the places, one under the other -->
+          <template v-else-if="view === 'outline'">
+            <div v-if="!hasOutline" class="empty">
+              <template v-if="outlineStage?.status === 'working'">
+                <b>Writing the outline…</b>
+                <p class="muted">The AI is drafting the story, cast and places ({{ state.jobs?.running ?? 0 }} running). It shows here when done.</p>
+              </template>
+              <template v-else-if="outlineStage?.status === 'failed'">
+                <b class="err">The outline couldn’t be written.</b>
+                <p class="muted">{{ state.message }}</p>
+                <button class="primary" @click="sendToHost({ type: 'planner:regenerate', doc: 'outline' })">Try again</button>
+              </template>
+              <template v-else-if="state.stage && state.stage !== 'concept'">
+                <b>No outline yet.</b>
+                <p class="muted">The plan is past the outline but none was saved.</p>
+                <button class="primary" @click="sendToHost({ type: 'planner:regenerate', doc: 'outline' })">Write the outline</button>
+              </template>
+              <template v-else>
+                <b>No outline yet.</b>
+                <p class="muted">It’s written after the Game Brief is confirmed: check ① Concept and press Continue.</p>
+                <button @click="view = 'concept'">Go to ① Concept</button>
+              </template>
             </div>
-            <div class="col">
-              <h4>Cast</h4>
-              <div v-for="c in outline.cast ?? []" :key="c.id" class="card">
-                <b>{{ c.name }}</b> <span class="badge">{{ c.importance }}</span><span v-if="c.player" class="badge">player</span>
-                <div class="muted">{{ (c.narrativeRoles ?? []).join(', ') }} {{ (c.gameplayRoles ?? []).join(', ') }}</div>
-                <div>{{ c.line }}</div>
-              </div>
-            </div>
-            <div class="col">
-              <h4>Places</h4>
-              <div v-for="p in outline.places ?? []" :key="p.id" class="card">
-                <b>{{ p.name || p.id }}</b> <span class="badge">{{ p.kind }}</span>
-                <div>{{ p.line }}</div>
-              </div>
-              <h4>Connections</h4>
-              <div v-for="(c, i) in outline.connections ?? []" :key="i" class="muted">{{ c.from }} → {{ c.to }} ({{ c.kind }})</div>
-            </div>
-          </div>
+            <template v-else>
+              <section class="sect">
+                <h4>Story <a href="#" @click.prevent="open('outline')">open</a></h4>
+                <p><b>{{ outline.story?.logline }}</b></p>
+                <p class="muted">{{ outline.story?.synopsis }}</p>
+                <div v-for="a in outline.story?.acts ?? []" :key="a.id" class="card"><b>{{ a.id }}</b> {{ a.summary }}</div>
+              </section>
+              <section class="sect">
+                <h4>Cast <span class="muted">{{ (outline.cast ?? []).length }}</span></h4>
+                <div class="cards">
+                  <div v-for="c in outline.cast ?? []" :key="c.id" class="card">
+                    <b>{{ c.name }}</b> <span class="badge">{{ c.importance }}</span><span v-if="c.player" class="badge">player</span>
+                    <div class="muted">{{ (c.narrativeRoles ?? []).join(', ') }} {{ (c.gameplayRoles ?? []).join(', ') }}</div>
+                    <div>{{ c.line }}</div>
+                  </div>
+                </div>
+              </section>
+              <section class="sect">
+                <h4>Places <span class="muted">{{ (outline.places ?? []).length }}</span></h4>
+                <div class="cards">
+                  <div v-for="p in outline.places ?? []" :key="p.id" class="card">
+                    <b>{{ p.name || p.id }}</b> <span class="badge">{{ p.kind }}</span>
+                    <div>{{ p.line }}</div>
+                  </div>
+                </div>
+                <h4 v-if="(outline.connections ?? []).length">Connections</h4>
+                <div v-for="(c, i) in outline.connections ?? []" :key="i" class="muted">{{ c.from }} → {{ c.to }} ({{ c.kind }})</div>
+              </section>
+            </template>
+          </template>
 
           <!-- ③ Story: acts, chapters, the scene board -->
           <template v-else-if="view === 'story'">
@@ -475,8 +504,13 @@ function statusMark(status: string): string {
             <div v-if="why.decision" class="muted">{{ why.decision.id }} · {{ why.decision.actor }} · {{ why.decision.kind }} · {{ why.decision.time }}</div>
             <div v-for="(d, i) in why.history ?? []" :key="i" class="muted">{{ d.id }} {{ d.actor }} {{ d.kind }} {{ d.reason || '' }}</div>
           </div>
-          <textarea v-model="itemText" class="doc" spellcheck="false"></textarea>
-          <div class="row"><button @click="saveItem">Save changes</button></div>
+          <div v-if="item.content === null || item.content === undefined" class="empty muted">
+            “{{ item.doc }}” hasn’t been written yet.
+          </div>
+          <template v-else>
+            <textarea v-model="itemText" class="doc" spellcheck="false"></textarea>
+            <div class="row"><button @click="saveItem">Save changes</button></div>
+          </template>
         </div>
       </div>
     </template>
@@ -559,16 +593,19 @@ function statusMark(status: string): string {
   flex: 1;
   min-height: 0;
   display: flex;
+  flex-direction: column;
 }
 .main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow: auto;
   padding: 8px 10px;
 }
 .item {
-  width: 420px;
-  border-left: 1px solid #2a2a3a;
+  height: 45%;
+  min-height: 160px;
+  border-top: 1px solid #2a2a3a;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -640,13 +677,23 @@ function statusMark(status: string): string {
 .range input {
   width: 70px;
 }
-.columns {
-  display: flex;
-  gap: 10px;
+.sect {
+  margin-bottom: 12px;
 }
-.col {
-  flex: 1;
-  min-width: 0;
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 4px;
+}
+.cards .card {
+  margin-bottom: 0;
+}
+.empty {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 .card {
   border: 1px solid #2a2a3a;

@@ -368,7 +368,7 @@ function stopTask(entry: TaskEntry): void {
   sendToHost({ type: 'ai:taskStop', id: entry.id })
 }
 
-function showPanel(id: 'build'): void {
+function showPanel(id: 'build' | 'planner'): void {
   setPanelVisible(id, true)
   activatePanel(id)
 }
