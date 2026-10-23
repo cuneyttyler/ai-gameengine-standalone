@@ -143,7 +143,8 @@ OUTLINE_TASK = """② Outline: draft the story, the cast and the places together
   template beats each act holds), the storylines (main, and side lines by name), the endings (one per ending the
   Brief asks for).
 - cast: every character with id character/<slug>, name, importance (major, supporting, minor), narrativeRoles and
-  gameplayRoles from the vocabularies, and one line. Exactly one is the player ("player": true). Every narrative
+  gameplayRoles, each only from its own vocabulary (vocab.NarrativeRole, vocab.GameplayRole: "companion" is a
+  gameplay role, "mentor" a narrative one), and one line. Exactly one is the player ("player": true). Every narrative
   role the template needs (template.roles) is someone's. Match the Brief's cast counts roughly.
 - factions (if the Brief has any): id faction/<slug>, name, line; a character may name its faction.
 - places: every location with id location/<slug>, name, kind (one of buildTypes), parent (a place in the list,
@@ -178,6 +179,15 @@ def check_outline(outline: Any, inputs: dict) -> list[str]:
     for c in cast:
         if not str(c.get("id", "")).startswith("character/"):
             problems.append(f"cast id {c.get('id')!r} should be character/<slug>")
+    vocab = inputs.get("vocab") or {}
+    for key, scheme in (("narrativeRoles", "NarrativeRole"), ("gameplayRoles", "GameplayRole")):
+        allowed = vocab.get(scheme)
+        if not allowed:
+            continue
+        for c in cast:
+            for r in c.get(key) or []:
+                if r not in allowed:
+                    problems.append(f"{c.get('id')} {key}: {r!r} isn't one of {', '.join(allowed)}")
     roles = {r for c in cast for r in c.get("narrativeRoles", [])}
     for role in (inputs.get("template") or {}).get("roles", []):
         if role not in roles:

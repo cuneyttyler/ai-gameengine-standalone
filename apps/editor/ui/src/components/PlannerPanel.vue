@@ -111,6 +111,23 @@ const waiting = computed(() => state.value.status === 'waiting' || state.value.s
 const outline = computed(() => (state.value.outline ?? {}) as Record<string, any>)
 const hasOutline = computed(() => Object.keys(outline.value).length > 0)
 const outlineStage = computed(() => stages.value.find((s) => s.id === 'outline'))
+// The outline's sections the user folded (remembered in this browser).
+const folded = ref<Record<string, boolean>>(loadFolded())
+function loadFolded(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem('planner.outline.folded') ?? '{}') as Record<string, boolean>
+  } catch {
+    return {}
+  }
+}
+function toggleFold(section: string) {
+  folded.value = { ...folded.value, [section]: !folded.value[section] }
+  try {
+    localStorage.setItem('planner.outline.folded', JSON.stringify(folded.value))
+  } catch {
+    /* not kept */
+  }
+}
 watch(
   () => state.value.stage,
   (s) => {
@@ -303,14 +320,21 @@ function statusMark(status: string): string {
             </div>
             <template v-else>
               <section class="sect">
-                <h4>Story <a href="#" @click.prevent="open('outline')">open</a></h4>
-                <p><b>{{ outline.story?.logline }}</b></p>
-                <p class="muted">{{ outline.story?.synopsis }}</p>
-                <div v-for="a in outline.story?.acts ?? []" :key="a.id" class="card"><b>{{ a.id }}</b> {{ a.summary }}</div>
+                <h4 class="fold" @click="toggleFold('story')">
+                  <span class="caret">{{ folded.story ? '▸' : '▾' }}</span> Story
+                  <a href="#" @click.prevent.stop="open('outline')">open</a>
+                </h4>
+                <template v-if="!folded.story">
+                  <p><b>{{ outline.story?.logline }}</b></p>
+                  <p class="muted">{{ outline.story?.synopsis }}</p>
+                  <div v-for="a in outline.story?.acts ?? []" :key="a.id" class="card"><b>{{ a.id }}</b> {{ a.summary }}</div>
+                </template>
               </section>
               <section class="sect">
-                <h4>Cast <span class="muted">{{ (outline.cast ?? []).length }}</span></h4>
-                <div class="cards">
+                <h4 class="fold" @click="toggleFold('cast')">
+                  <span class="caret">{{ folded.cast ? '▸' : '▾' }}</span> Cast <span class="muted">{{ (outline.cast ?? []).length }}</span>
+                </h4>
+                <div v-if="!folded.cast" class="cards">
                   <div v-for="c in outline.cast ?? []" :key="c.id" class="card">
                     <b>{{ c.name }}</b> <span class="badge">{{ c.importance }}</span><span v-if="c.player" class="badge">player</span>
                     <div class="muted">{{ (c.narrativeRoles ?? []).join(', ') }} {{ (c.gameplayRoles ?? []).join(', ') }}</div>
@@ -319,15 +343,26 @@ function statusMark(status: string): string {
                 </div>
               </section>
               <section class="sect">
-                <h4>Places <span class="muted">{{ (outline.places ?? []).length }}</span></h4>
-                <div class="cards">
+                <h4 class="fold" @click="toggleFold('places')">
+                  <span class="caret">{{ folded.places ? '▸' : '▾' }}</span> Places <span class="muted">{{ (outline.places ?? []).length }}</span>
+                </h4>
+                <div v-if="!folded.places" class="cards">
                   <div v-for="p in outline.places ?? []" :key="p.id" class="card">
                     <b>{{ p.name || p.id }}</b> <span class="badge">{{ p.kind }}</span>
                     <div>{{ p.line }}</div>
                   </div>
                 </div>
-                <h4 v-if="(outline.connections ?? []).length">Connections</h4>
-                <div v-for="(c, i) in outline.connections ?? []" :key="i" class="muted">{{ c.from }} → {{ c.to }} ({{ c.kind }})</div>
+              </section>
+              <section v-if="(outline.connections ?? []).length" class="sect">
+                <h4 class="fold" @click="toggleFold('connections')">
+                  <span class="caret">{{ folded.connections ? '▸' : '▾' }}</span> Connections
+                  <span class="muted">{{ outline.connections.length }}</span>
+                </h4>
+                <template v-if="!folded.connections">
+                  <div v-for="(c, i) in outline.connections" :key="i" class="muted">
+                    {{ c.from }} → {{ c.to }} ({{ c.kind }}){{ c.gate ? ' · opens with ' + c.gate : '' }}
+                  </div>
+                </template>
               </section>
             </template>
           </template>
@@ -679,6 +714,21 @@ function statusMark(status: string): string {
 }
 .sect {
   margin-bottom: 12px;
+}
+.fold {
+  cursor: pointer;
+  user-select: none;
+  margin: 0 0 6px;
+  padding: 3px 0;
+  border-bottom: 1px solid #2a2a3a;
+}
+.fold:hover {
+  color: #c7d2fe;
+}
+.caret {
+  display: inline-block;
+  width: 12px;
+  color: #8a8aa0;
 }
 .cards {
   display: grid;

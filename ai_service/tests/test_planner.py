@@ -5,7 +5,7 @@ import json
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.planner import STEPS, plan_concept, plan_outline, plan_scene, plan_visuals
+from app.planner import STEPS, check_outline, plan_concept, plan_outline, plan_scene, plan_visuals
 from app.providers import ScriptedProvider
 
 THINKING = "Thinking it through."
@@ -53,6 +53,16 @@ def test_a_bad_answer_is_repaired_once():
     assert "problems" not in result
     repair = provider.requests[-1][-1]["content"]
     assert "genre must be one of arpg, life-sim" in repair and "title is empty" in repair
+
+
+def test_outline_roles_come_from_their_own_vocabulary():
+    inputs = {"vocab": {"NarrativeRole": ["protagonist", "mentor"], "GameplayRole": ["companion", "vendor"]}}
+    outline = {"story": {"acts": [{"id": "act-1"}]}, "places": [], "connections": [],
+               "cast": [{"id": "character/a", "player": True, "narrativeRoles": ["protagonist", "companion"],
+                         "gameplayRoles": ["vendor"]}]}
+    problems = " | ".join(check_outline(outline, inputs))
+    assert "character/a narrativeRoles: 'companion' isn't one of protagonist, mentor" in problems
+    assert "vendor" not in problems  # in its own list: fine
 
 
 def test_the_outline_is_checked_for_the_player_roles_and_places():

@@ -73,6 +73,10 @@ std::string PlanSlug(const std::string& id);
 
 std::vector<PlanProblem> ValidateOutline(const nlohmann::json& outline, const nlohmann::json& brief, const StoryOntology& gso,
                                          const std::vector<std::string>& buildTypes);
+// The cast's roles put right before the outline is checked: a gameplay role listed as a narrative
+// one ("companion") moves to gameplayRoles (and the other way round); one in neither vocabulary is
+// dropped. Returns what was changed, as "cast[2]: 'companion' is a gameplay role".
+std::vector<std::string> RepairOutline(nlohmann::json& outline, const StoryOntology& gso);
 // An act's chapters with their scene cards.
 std::vector<PlanProblem> ValidateActPlan(const nlohmann::json& act, const nlohmann::json& outline, const StoryOntology& gso);
 std::vector<PlanProblem> ValidateSceneCard(const nlohmann::json& card, const StoryOntology& gso, const std::string& where);

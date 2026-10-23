@@ -382,6 +382,39 @@ std::string PlanSlug(const std::string& id) {
     return slash == std::string::npos ? id : id.substr(slash + 1);
 }
 
+std::vector<std::string> RepairOutline(json& outline, const StoryOntology& gso) {
+    std::vector<std::string> out;
+    if (!outline.is_object() || !outline.contains("cast") || !outline["cast"].is_array()) return out;
+    auto& cast = outline["cast"];
+    for (size_t i = 0; i < cast.size(); ++i) {
+        json& c = cast[i];
+        if (!c.is_object()) continue;
+        const std::string where = "cast[" + std::to_string(i) + "]";
+        json narrative = json::array(), gameplay = json::array();
+        auto add = [](json& list, const std::string& r) {
+            if (std::find(list.begin(), list.end(), r) == list.end()) list.push_back(r);
+        };
+        // Each role to the list it belongs to; what's in neither, dropped.
+        auto sort = [&](const json& roles, bool listedNarrative) {
+            if (!roles.is_array()) return;
+            for (const auto& role : roles) {
+                if (!role.is_string()) continue;
+                const std::string r = role.get<std::string>();
+                const bool isNarrative = gso.InVocabulary("NarrativeRole", r), isGameplay = gso.InVocabulary("GameplayRole", r);
+                if (listedNarrative ? isNarrative : isGameplay) add(listedNarrative ? narrative : gameplay, r);
+                else if (isGameplay) add(gameplay, r), out.push_back(where + ": '" + r + "' is a gameplay role");
+                else if (isNarrative) add(narrative, r), out.push_back(where + ": '" + r + "' is a narrative role");
+                else out.push_back(where + ": dropped '" + r + "' (not a role)");
+            }
+        };
+        sort(c.value("narrativeRoles", json::array()), true);
+        sort(c.value("gameplayRoles", json::array()), false);
+        c["narrativeRoles"] = narrative;
+        c["gameplayRoles"] = gameplay;
+    }
+    return out;
+}
+
 std::vector<PlanProblem> ValidateOutline(const json& outline, const json& brief, const StoryOntology& gso,
                                          const std::vector<std::string>& buildTypes) {
     std::vector<PlanProblem> out;

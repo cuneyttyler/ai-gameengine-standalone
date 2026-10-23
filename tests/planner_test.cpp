@@ -188,6 +188,20 @@ TEST(PlannerTest, TheAiPanelRevisesThePlanInWords) {
     EXPECT_NE(std::find(stale.begin(), stale.end(), "quests/q-main"), stale.end());
 }
 
+TEST(PlannerDocsTest, CastRolesFromTheWrongVocabularyArePutRight) {
+    const auto& gso = aige::StoryOntology::Engine();
+    json outline = {{"cast", json::array({{{"id", "character/mira"},
+                                           {"narrativeRoles", {"ally", "companion", "sidekick-ish"}},
+                                           {"gameplayRoles", {"vendor", "mentor"}}}})}};
+    const auto notes = aige::RepairOutline(outline, gso);
+    EXPECT_EQ(outline["cast"][0]["narrativeRoles"], json::array({"ally", "mentor"}));
+    EXPECT_EQ(outline["cast"][0]["gameplayRoles"], json::array({"companion", "vendor"}));
+    ASSERT_EQ(notes.size(), 3u);
+    EXPECT_EQ(notes[0], "cast[0]: 'companion' is a gameplay role");
+    EXPECT_EQ(notes[1], "cast[0]: dropped 'sidekick-ish' (not a role)");
+    EXPECT_TRUE(aige::RepairOutline(outline, gso).empty()); // right the second time
+}
+
 TEST(PlannerDocsTest, ValuesThatArentOptionsAreReplacedByTheProfiles) {
     const auto& gso = aige::StoryOntology::Engine();
     json brief = aige::CompleteGameBrief({{"title", "Moon"}, {"logline", "A warden."}, {"genre", "arpg"}, {"pattern", "hub"},

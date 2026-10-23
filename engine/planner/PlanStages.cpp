@@ -438,11 +438,24 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
         return {};
     }
     if (job.kind == "outline") {
-        const json outline = body.value("outline", json::object());
+        json outline = body.value("outline", json::object());
+        // Roles filed under the wrong kind ("companion" as a narrative role) are put right, not refused.
+        const auto repaired = RepairOutline(outline, gso_);
         std::vector<std::string> buildTypes = Strings(host_.catalog.value("buildTypes", json::array()));
         const auto problems = ValidateOutline(outline, Brief(), gso_, buildTypes);
         if (HasErrors(problems)) return ProblemTexts(problems);
-        return HandleOutline(job, outline, decide("write-outline", "outline", outline.value("story", json::object()).value("logline", "")));
+        const std::string decision = decide("write-outline", "outline", outline.value("story", json::object()).value("logline", ""));
+        if (!repaired.empty()) {
+            PlanDecision fix;
+            fix.stage = "outline";
+            fix.actor = "rule";
+            fix.kind = "fix";
+            fix.subject = "outline";
+            for (const auto& r : repaired) fix.chosen += (fix.chosen.empty() ? "" : "; ") + r;
+            fix.rationale = "Cast roles from the wrong vocabulary were moved to the right one, or dropped.";
+            store_.Decide(fix);
+        }
+        return HandleOutline(job, outline, decision);
     }
     if (job.kind == "act") {
         const json act = body.value("act", json::object());
