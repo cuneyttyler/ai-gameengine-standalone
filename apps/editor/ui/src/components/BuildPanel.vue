@@ -4,6 +4,7 @@
 // ⑤ Result. Not modal: the viewport stays in view. The host (PlaceBuild)
 // holds the Brief; every edit here goes back to it as (path, value).
 import { computed, ref, watch } from 'vue'
+import AiProgress from './AiProgress.vue'
 import { onHostMessage, sendToHost } from '../ipc'
 import { openContextMenu } from '../contextMenu'
 import { editorState } from '../editorState'
@@ -1026,6 +1027,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
 
 <template>
   <div class="build">
+    <AiProgress :paths="['/places/', '/assets/']" />
     <div v-if="zoomed" class="lightbox" @click="zoomed = null">
       <img :src="urlOf(zoomed.path)" alt="" />
       <div class="caption">{{ zoomed.caption }} <span class="dim">{{ zoomed.path }}</span></div>

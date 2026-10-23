@@ -3,6 +3,7 @@
 // PixelLab: 4 frames of the action asked for, each a texture, plus a spritesheet of
 // them in a row, in assets/textures/generated/animations/<name>/.
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import AiProgress from './AiProgress.vue'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 
@@ -80,6 +81,7 @@ function url(path: string, at = 0): string {
 
 <template>
   <div class="animate ed-form">
+    <AiProgress :paths="['/animations/']" />
     <section class="pick">
       <input v-model="filter" placeholder="Find an image: knight, torch, characters…" spellcheck="false" />
       <div class="grid">

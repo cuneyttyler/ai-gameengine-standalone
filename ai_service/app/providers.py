@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
+from . import progress
 from .models import Usage
 
 
@@ -74,53 +75,59 @@ class MistralProvider:
         options = {"response_format": {"type": "json_object"}} if json_mode else {}  # the prompt spells out the shape
         models = [self.model] + ([self.FALLBACK_MODELS[self.model]] if self.model in self.FALLBACK_MODELS else [])
         last: Exception | None = None
-        response = None
-        used = self.model
+        result: Completion | None = None
         for model in models:
-            used = model
             for wait in (0.0,) + self.BACKOFF_S:
                 if wait:
                     time.sleep(wait)
                 try:
-                    response = self._client.chat.complete(
-                        model=model,
-                        messages=messages,
-                        temperature=0.2,
-                        max_tokens=max_tokens,
-                        timeout_ms=self._timeout_ms,
-                        **options,
-                    )
+                    result = self._stream(model, messages, max_tokens, options, thinking_pass=not json_mode)
                     break
                 except Exception as error:  # the SDK raises several types; all mean "no answer"
                     last = error
                     if not self._busy(error):
+                        progress.call_ended()
                         raise ProviderError(f"Mistral request failed: {error}") from error
-            if response is not None:
+            if result is not None:
                 break
-        if response is None:
+        if result is None:
+            progress.call_ended()
             raise ProviderError(f"Mistral request failed: busy after retries and {', '.join(models)}: {last}") from last
-        choice = response.choices[0]
-        content = choice.message.content
-        thinking = ""
-        if isinstance(content, str):
-            text = content
-        else:
-            # Reasoning models answer in chunks: thinking chunks, then text.
-            parts, thoughts = [], []
-            for chunk in content or []:
-                kind = getattr(chunk, "type", "")
-                if kind == "thinking":
-                    for inner in getattr(chunk, "thinking", []) or []:
-                        thoughts.append(getattr(inner, "text", "") or "")
-                elif hasattr(chunk, "text"):
-                    parts.append(chunk.text or "")
-            text, thinking = "".join(parts), "\n".join(thoughts)
-        usage = Usage(
-            inputTokens=getattr(response.usage, "prompt_tokens", 0) or 0,
-            outputTokens=getattr(response.usage, "completion_tokens", 0) or 0,
-            requests=1,
-        )
-        return Completion(text=text, usage=usage, model=response.model or used, thinking=thinking)
+        progress.call_ended(result.usage.inputTokens, result.usage.outputTokens)
+        return result
+
+    def _stream(self, model: str, messages: list[dict], max_tokens: int, options: dict, thinking_pass: bool) -> Completion:
+        """One streamed call: the text, as it comes, goes to the progress strips (app/progress.py)."""
+        progress.call_started(thinking=thinking_pass)
+        parts: list[str] = []
+        thoughts: list[str] = []
+        usage = Usage(requests=1)
+        used = model
+        events = self._client.chat.stream(model=model, messages=messages, temperature=0.2, max_tokens=max_tokens,
+                                          timeout_ms=self._timeout_ms, **options)
+        for event in events:
+            chunk = getattr(event, "data", event)
+            used = getattr(chunk, "model", None) or used
+            if getattr(chunk, "usage", None):
+                usage = Usage(inputTokens=getattr(chunk.usage, "prompt_tokens", 0) or 0,
+                              outputTokens=getattr(chunk.usage, "completion_tokens", 0) or 0, requests=1)
+            for choice in getattr(chunk, "choices", None) or []:
+                content = getattr(choice.delta, "content", None)
+                if isinstance(content, str):
+                    parts.append(content)
+                    progress.streamed(content, thinking=thinking_pass)
+                    continue
+                # Reasoning models answer in chunks: thinking chunks, then text.
+                for piece in content or []:
+                    if getattr(piece, "type", "") == "thinking":
+                        for inner in getattr(piece, "thinking", []) or []:
+                            text = getattr(inner, "text", "") or ""
+                            thoughts.append(text)
+                            progress.streamed(text, thinking=True)
+                    elif hasattr(piece, "text"):
+                        parts.append(piece.text or "")
+                        progress.streamed(piece.text or "", thinking=thinking_pass)
+        return Completion(text="".join(parts), usage=usage, model=used, thinking="".join(thoughts))
 
 
 class ClaudeProvider:
@@ -182,6 +189,7 @@ class ClaudeProvider:
 
     def _call(self, messages: list[dict]) -> Completion:
         system, converted = self._convert(messages)
+        progress.call_started()
         try:
             # Streamed (a long plan takes a while); a declined request is retried
             # on another model by the server (refusal fallbacks).
@@ -195,11 +203,24 @@ class ClaudeProvider:
                 betas=["server-side-fallback-2026-07-01"],
                 fallbacks="default",
             ) as stream:
+                # The thinking and the answer as they come, for the progress strips.
+                for event in stream:
+                    if getattr(event, "type", "") != "content_block_delta":
+                        continue
+                    delta = event.delta
+                    kind = getattr(delta, "type", "")
+                    if kind == "thinking_delta":
+                        progress.streamed(getattr(delta, "thinking", "") or "", thinking=True)
+                    elif kind == "text_delta":
+                        progress.streamed(getattr(delta, "text", "") or "")
                 response = stream.get_final_message()
         except self._anthropic.APIStatusError as error:
+            progress.call_ended()
             raise ProviderError(f"Claude request failed ({error.status_code}): {error.message}") from error
         except self._anthropic.APIConnectionError as error:
+            progress.call_ended()
             raise ProviderError(f"Claude request failed: {error}") from error
+        progress.call_ended(response.usage.input_tokens or 0, response.usage.output_tokens or 0)
         if response.stop_reason == "refusal":
             raise ProviderError("Claude declined the request")
         text = "".join(b.text for b in response.content if b.type == "text")
@@ -226,12 +247,16 @@ class ScriptedProvider:
 
     def complete(self, messages: list[dict]) -> Completion:
         self.requests.append(messages)
+        progress.call_started()
         if callable(self._answers):
             text = self._answers(messages)
         elif self._answers:
             text = self._answers.pop(0)
         else:
+            progress.call_ended()
             raise ProviderError("scripted provider has no answers left")
+        progress.streamed(text)
+        progress.call_ended(100, 50)
         return Completion(text=text, usage=Usage(inputTokens=100, outputTokens=50, requests=1), model=self.model)
 
 

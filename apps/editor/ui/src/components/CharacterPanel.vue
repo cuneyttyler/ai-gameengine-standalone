@@ -3,6 +3,7 @@
 // direction a texture in assets/textures/generated/characters/<name>/ (with a
 // .gen.json saying how it was made). The Animate tab then makes it move.
 import { computed, reactive, ref } from 'vue'
+import AiProgress from './AiProgress.vue'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 import { panelTab } from '../paneltabs'
@@ -68,6 +69,7 @@ function thumb(path: string, at: number): string {
 
 <template>
   <div class="character ed-form">
+    <AiProgress :paths="['/characters/']" />
     <section class="form">
       <textarea
         v-model="form.description"

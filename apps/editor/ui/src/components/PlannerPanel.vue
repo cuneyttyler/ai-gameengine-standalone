@@ -5,6 +5,7 @@
 // every item Why?, Regenerate, Edit and Lock. Documents whose inputs changed show as stale;
 // "Regenerate stale" redoes exactly those. A place's draft Brief opens in the Build panel.
 import { computed, ref, watch } from 'vue'
+import AiProgress from './AiProgress.vue'
 import { onHostMessage, sendToHost } from '../ipc'
 import { activatePanel, setPanelVisible } from '../layout'
 
@@ -221,15 +222,19 @@ function statusMark(status: string): string {
       <div class="bar">
         <span :class="['status', state.status]">{{ state.message }}</span>
         <span class="spacer"></span>
-        <span class="muted">{{ state.usage?.calls ?? 0 }} AI calls · {{ state.decisions }} decisions</span>
+        <span class="muted" :title="`Read ${(state.usage?.inputTokens ?? 0).toLocaleString()} tokens, wrote ${(state.usage?.outputTokens ?? 0).toLocaleString()}`">
+          {{ state.usage?.calls ?? 0 }} AI calls · {{ (state.usage?.outputTokens ?? 0).toLocaleString() }} tokens written · {{ state.decisions }} decisions
+        </span>
         <button v-if="staleCount" @click="sendToHost({ type: 'planner:regenerateStale' })">Regenerate stale ({{ staleCount }})</button>
         <button v-if="state.status === 'working'" @click="sendToHost({ type: 'planner:pause', on: true })">Pause</button>
         <button v-if="state.status === 'paused'" @click="sendToHost({ type: 'planner:pause', on: false })">Resume</button>
         <button v-if="waiting" class="primary" @click="sendToHost({ type: state.stage === 'concept' ? 'planner:confirm' : 'planner:approve' })">
           Continue
         </button>
-        <button :class="['step-build', { on: view === 'build' }]" @click="view = 'build'">⑩–⑬ Build</button>
+        <!-- ⑩–⑬ only once the design has a baseline (⑨ Validate passed) or a build has begun -->
+        <button v-if="state.baseline || state.build?.active" :class="['step-build', { on: view === 'build' }]" @click="view = 'build'">⑩–⑬ Build</button>
       </div>
+      <AiProgress :paths="['/planner/']" />
       <div v-if="askReplace" class="notice">
         The project already has a plan. Replace it with a new one for "{{ askReplace }}"?
         <button @click="replace">Replace</button><button @click="askReplace = ''">Keep it</button>

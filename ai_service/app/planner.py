@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
+from . import progress
 from .models import Usage
 from .places import StepResult, think_then_answer
 from .providers import Provider
@@ -42,6 +43,7 @@ def _step(provider: Provider, task: str, inputs: dict, shape: str, key: str,
     answer = result.answer
     found = check(answer)
     if found:
+        progress.repairing()
         repair = think_then_answer(provider, f"{PLANNER_ROLE}\n\n{task}",
                                    text_inputs + "\n\nYour answer:\n" + _dump(answer) +
                                    "\n\nIt has these problems; answer again with them fixed:\n- " + "\n- ".join(found),

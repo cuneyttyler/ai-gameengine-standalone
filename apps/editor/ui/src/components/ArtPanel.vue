@@ -4,6 +4,7 @@
 // and keep, regenerate or discard what comes back. Everything generated lands
 // in assets/textures/generated with a .gen.json saying how it was made.
 import { computed, onMounted, reactive, ref } from 'vue'
+import AiProgress from './AiProgress.vue'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 import { confirmDialog } from '../dialogs'
@@ -171,6 +172,7 @@ const aiReady = computed(() => editorState.ai.state === 'ready')
 
 <template>
   <div class="art ed-form">
+    <AiProgress :paths="['/assets/generate', '/assets/describe']" />
     <section class="form">
       <textarea
         v-model="form.description"

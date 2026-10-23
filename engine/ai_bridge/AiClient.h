@@ -65,6 +65,10 @@ public:
     // Finished work, on the caller's thread. Call once per frame.
     std::optional<Result> Poll();
 
+    // Requests queued or running, not counting reads of GET /progress: while there are any, the
+    // editor shows the service's progress (what each model call is doing).
+    int InFlight() const { return inFlight_; }
+
     // Blocking GET for tests and diagnostics; nullopt if unreachable.
     std::optional<nlohmann::json> GetJson(const std::string& path, int timeoutSeconds = 2);
 
@@ -82,6 +86,7 @@ private:
 
     Options options_;
     std::atomic<State> state_{State::Stopped};
+    std::atomic<int> inFlight_{0};
     mutable std::mutex statusMutex_;
     std::string statusText_ = "AI service not started";
 

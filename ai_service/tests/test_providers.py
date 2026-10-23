@@ -43,22 +43,25 @@ def test_a_busy_mistral_is_asked_again_then_another_model(monkeypatch):
     from app.providers import MistralProvider, ProviderError
 
     monkeypatch.setattr("app.providers.time.sleep", lambda s: None)
-    answer = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="{}"))],
-                             usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1), model=None)
+    # The answer as Mistral streams it: one chunk of text, then one with the usage.
+    answer = [SimpleNamespace(data=SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="{}"))],
+                                                   usage=None, model=None)),
+              SimpleNamespace(data=SimpleNamespace(choices=[], usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+                                                   model=None))]
 
     def provider(failures: dict):
         asked = []
 
-        def complete(model, **kwargs):
+        def stream(model, **kwargs):
             asked.append(model)
             if failures.get(model, 0) > 0:
                 failures[model] -= 1
                 raise RuntimeError('API error occurred: Status 503. Body: {"message":"Service unavailable."}')
-            return answer
+            return iter(answer)
 
         p = object.__new__(MistralProvider)
         p.model, p._timeout_ms, p.reasoning = "mistral-large-latest", 1000, False
-        p._client = SimpleNamespace(chat=SimpleNamespace(complete=complete))
+        p._client = SimpleNamespace(chat=SimpleNamespace(stream=stream))
         return p, asked
 
     p, asked = provider({"mistral-large-latest": 2})
@@ -81,7 +84,7 @@ def test_a_busy_mistral_is_asked_again_then_another_model(monkeypatch):
         raise RuntimeError("Status 401 Unauthorized")
 
     p, _ = provider({})
-    p._client = SimpleNamespace(chat=SimpleNamespace(complete=bad))
+    p._client = SimpleNamespace(chat=SimpleNamespace(stream=bad))
     try:
         p.complete([{"role": "user", "content": "x"}])
         raise AssertionError("should have failed")

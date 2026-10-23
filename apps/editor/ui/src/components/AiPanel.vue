@@ -4,6 +4,7 @@
 // edited, and nothing touches the project until "Apply". The host validates
 // again on apply and runs everything through the same code as manual edits.
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import AiProgress from './AiProgress.vue'
 import { confirmDialog } from '../dialogs'
 import { editorState, setAiEnabled, setAiOpen } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
@@ -462,6 +463,7 @@ const examples = [
       </button>
       <button class="header-button" title="Collapse the AI panel" @click="setAiOpen(false)">›</button>
     </header>
+    <AiProgress :paths="['/propose', '/consistency', '/world/']" />
 
     <div v-if="showSettings && editorState.ai.enabled" class="settings">
       <div class="settings-title">Review</div>

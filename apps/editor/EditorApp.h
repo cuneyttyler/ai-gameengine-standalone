@@ -284,6 +284,11 @@ private:
     // The model the AI service writes with (File ▸ Preferences ▸ AI): sent when it's ready.
     void SendProvider();
     int providerRequest_ = 0;
+    // GET /progress while AI requests run (about once a second): what each model call is doing,
+    // for the panels' progress strips (ai:progress).
+    int progressRequest_ = 0;
+    bool progressShown_ = false;
+    std::chrono::steady_clock::time_point progressPolled_{};
     int artProviderRequest_ = 0;   // PUT /art-provider: what draws the art (Preferences ▸ AI ▸ Art)
     int modelsRequest_ = 0;        // GET /models: the provider's models, for Preferences
     int characterRequest_ = 0;     // Generate ▸ Character in flight

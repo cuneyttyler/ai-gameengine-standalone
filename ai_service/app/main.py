@@ -36,6 +36,7 @@ from .places import ask_questions, interpret, plan_root, plan_zone, repair_brief
 from .vision import describe_assets, map_chunk
 from .websource import all_candidates, candidates, fetch_file, search_web
 from .art_brief import better_queries, write_art_prompt
+from . import progress
 from . import style as project_style
 from .providers import ClaudeProvider, MistralEmbedder, MistralProvider, Provider, ProviderError
 from .service import propose
@@ -329,6 +330,26 @@ def create_app(
             if not hmac.compare_digest(given.encode(), token.encode()):
                 return JSONResponse({"ok": False, "errors": ["not the editor"]}, status_code=401)
         return await call_next(request)
+
+    # Each request that may call the model is one progress entry (app/progress.py), read by the
+    # editor's progress strips through GET /progress. A request that never reaches the model (one
+    # refused, a quick lookup) makes no model call and isn't shown.
+    @app.middleware("http")
+    async def track_progress(request: Request, call_next):
+        if request.method != "POST":
+            return await call_next(request)
+        token = progress.begin(request.url.path, request.query_params.get("label", ""))
+        ok = False
+        try:
+            response = await call_next(request)
+            ok = response.status_code < 400
+            return response
+        finally:
+            progress.end(token, ok)
+
+    @app.get("/progress")
+    def get_progress() -> dict:
+        return progress.snapshot()
 
     state = {
         "provider": provider,
@@ -729,6 +750,7 @@ def create_app(
         run = PLANNER_STEPS.get(step)
         if run is None:
             return {"ok": False, "errors": [f"no planner step {step!r}"]}
+        progress.label(body.pop("label", None))
         try:
             result = run(provider, body)
         except ProviderError as error:

@@ -315,6 +315,13 @@ bool GamePlan::Send(Job& job) {
     if (!host_.request) return false;
     json body = RequestBody(job);
     if (!job.problems.empty()) body["problems"] = job.problems;
+    // What the progress strip calls it ("④ Character: mira").
+    const auto stage = StageLabels().find(StageOfJob(job.kind));
+    std::string label = stage == StageLabels().end() ? job.kind : stage->second;
+    if (job.subject != job.kind && !job.subject.empty()) {
+        label += " · " + (job.kind == "interpret" ? job.subject + " reading" : job.kind + ": " + PlanSlug(job.subject));
+    }
+    body["label"] = label;
     const int id = host_.request(PathFor(job), body, 600);
     if (id == 0) return false;
     pending_[id] = job.id;

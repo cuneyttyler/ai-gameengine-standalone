@@ -118,7 +118,11 @@ int AiClient::Propose(const std::string& instruction, nlohmann::json context, nl
     std::lock_guard lock(mutex_);
     int id = nextRequestId_++;
     nlohmann::json request = {{"instruction", instruction}, {"context", std::move(context)}, {"history", std::move(history)}};
-    jobs_.push_back({false, [this, id, request = std::move(request)] { RunPropose(id, request); }});
+    ++inFlight_;
+    jobs_.push_back({false, [this, id, request = std::move(request)] {
+        RunPropose(id, request);
+        --inFlight_;
+    }});
     wake_.notify_all();
     return id;
 }
@@ -126,14 +130,17 @@ int AiClient::Propose(const std::string& instruction, nlohmann::json context, nl
 int AiClient::Request(const std::string& method, const std::string& path, nlohmann::json body, int timeoutSeconds) {
     std::lock_guard lock(mutex_);
     int id = nextRequestId_++;
-    jobs_.push_back({false, [this, id, method, path, body = std::move(body), timeoutSeconds] {
+    const bool counted = path != "/progress";
+    if (counted) ++inFlight_;
+    jobs_.push_back({false, [this, id, method, path, body = std::move(body), timeoutSeconds, counted] {
         if (state_ != State::Ready) {
             Push({Result::Kind::Response, id, Failure(StatusText())});
-            return;
+        } else {
+            std::string error;
+            auto response = Send(method, path, &body, timeoutSeconds, &error);
+            Push({Result::Kind::Response, id, response ? *response : Failure(error)});
         }
-        std::string error;
-        auto response = Send(method, path, &body, timeoutSeconds, &error);
-        Push({Result::Kind::Response, id, response ? *response : Failure(error)});
+        if (counted) --inFlight_;
     }});
     wake_.notify_all();
     return id;

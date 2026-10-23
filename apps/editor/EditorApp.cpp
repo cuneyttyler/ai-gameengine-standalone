@@ -4423,12 +4423,26 @@ void EditorApp::PollAi() {
     if (!Ai()) {
         return;
     }
+    // The model calls' progress, while there are any (and once more after, to clear the strips).
+    const auto now = std::chrono::steady_clock::now();
+    if (progressRequest_ == 0 && Ai()->GetState() == AiClient::State::Ready && (Ai()->InFlight() > 0 || progressShown_) &&
+        now - progressPolled_ >= std::chrono::milliseconds(800)) {
+        progressPolled_ = now;
+        progressRequest_ = Ai()->Request("GET", "/progress", nlohmann::json(), 3);
+    }
     while (auto result = Ai()->Poll()) {
         if (result->kind == AiClient::Result::Kind::Status) {
             if (Ai()->GetState() == AiClient::State::Ready) SendProvider();
             post_(AiStatusJson());
         } else if (result->kind == AiClient::Result::Kind::Response) {
-            if (result->requestId != 0 && result->requestId == providerRequest_) {
+            if (result->requestId != 0 && result->requestId == progressRequest_) {
+                progressRequest_ = 0;
+                nlohmann::json shown = result->body.is_object() && result->body.contains("calls") ? result->body
+                                                                                                    : nlohmann::json{{"calls", nlohmann::json::array()}};
+                progressShown_ = !shown["calls"].empty();
+                shown["type"] = "ai:progress";
+                post_(shown);
+            } else if (result->requestId != 0 && result->requestId == providerRequest_) {
                 providerRequest_ = 0;
                 providerStatus_ = result->body.is_object() ? result->body : nlohmann::json{{"ok", false}};
                 post_(AiStatusJson());
