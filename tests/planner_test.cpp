@@ -280,3 +280,57 @@ TEST(PlannerTest, WhatASceneNamesThatIsntThereIsPutRight) {
     EXPECT_EQ(state["storyProgress"]["written"], state["storyProgress"]["total"]);
     EXPECT_EQ(state["acts"][0]["chapters"][0]["scenes"][0]["progress"], "written");
 }
+
+// A scene whose answer contradicts the story: the retry is a quick fix (the answer goes back
+// with its problems), and if the fix still contradicts, the scene is written with what fits
+// and the rest left out, quietly: completed, not failed.
+TEST(PlannerTest, AContradictingSceneIsFixedQuietly) {
+    Planner p("quiet");
+    p.ThroughOutline();
+    json fixRequest;
+    while (!p.service.outstanding.empty()) {
+        const auto r = p.service.outstanding.front();
+        p.service.outstanding.pop_front();
+        json a = Answer(r.path, r.body);
+        if (r.path == "/planner/scene" && r.body.value("id", "") == "s1-02") {
+            // A parent with no child the other way (R-K3), every time.
+            a["scene"]["facts"].push_back({{"p", "hasRelationship"}, {"s", "character/warden"}, {"o", "character/tamsin"}, {"type", "parent"}});
+            if (r.body.contains("answer")) fixRequest = r.body;
+        }
+        p.plan->OnResponse(r.id, a);
+    }
+    ASSERT_TRUE(fixRequest.is_object()) << "the retry should carry the answer to fix";
+    EXPECT_TRUE(fixRequest["answer"].contains("scene"));
+    EXPECT_NE(fixRequest["problems"].dump().find("R-K3"), std::string::npos);
+    const json state = p.plan->State();
+    EXPECT_TRUE(state["failedJobs"].empty()) << state["failedJobs"].dump();
+    const auto g = p.plan->Graph();
+    EXPECT_TRUE(std::none_of(g.edges.begin(), g.edges.end(), [](const aige::StoryEdge& e) { return e.Text("type") == "parent"; }));
+    EXPECT_EQ(p.plan->Document("story/scenes/s1-02").value("status", ""), "written");
+}
+
+// A small model's character (Test2, 2026-10-23): templates the engine hasn't, a relationship
+// type and a motivation outside the vocabulary, a relationship with nobody. Put right, not failed.
+TEST(PlannerTest, ACharacterWithMadeUpValuesIsPutRight) {
+    Planner p("character");
+    p.ThroughOutline();
+    while (!p.service.outstanding.empty()) {
+        const auto r = p.service.outstanding.front();
+        p.service.outstanding.pop_front();
+        json a = Answer(r.path, r.body);
+        if (r.path == "/planner/character" && r.body.value("entry", json::object()).value("id", "") == "character/tamsin") {
+            json& c = a["character"];
+            c["behaviour"] = {{"packages", {{{"template", "patrol"}}, {{"template", "accompany"}}}}};
+            c["relationships"] = {{{"with", "character/warden"}, {"type", "skeptical-of"}}, {{"type", "friend"}}};
+            c["biography"]["motivations"] = {"glory-seeking"};
+        }
+        p.plan->OnResponse(r.id, a);
+    }
+    EXPECT_TRUE(p.plan->State()["failedJobs"].empty()) << p.plan->State()["failedJobs"].dump();
+    const json c = p.plan->Document("characters/tamsin");
+    ASSERT_TRUE(c.is_object());
+    EXPECT_EQ(c["behaviour"]["packages"][0]["template"], "guard");
+    EXPECT_EQ(c["behaviour"]["packages"][1]["template"], "wander");
+    ASSERT_EQ(c["relationships"].size(), 1u);
+    EXPECT_EQ(c["relationships"][0]["type"], "rival");
+}

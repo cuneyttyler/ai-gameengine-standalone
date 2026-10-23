@@ -119,6 +119,8 @@ private:
         int attempts = 0;
         std::vector<std::string> after; // jobs that must be done first
         nlohmann::json problems = nlohmann::json::array(); // the last answer's, for the retry
+        // That answer itself: the retry is a quick fix of it (only the problems), not a rewrite.
+        nlohmann::json lastAnswer;
         std::string decision;
     };
 

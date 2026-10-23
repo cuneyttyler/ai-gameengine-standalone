@@ -12,6 +12,7 @@ import json
 from typing import Any, Callable
 
 from . import progress
+from .shapes import coerce, parse_shape
 from .models import Usage
 from .places import StepResult, think_then_answer
 from .providers import Provider
@@ -33,14 +34,28 @@ def _step(provider: Provider, task: str, inputs: dict, shape: str, key: str,
           check: Callable[[dict], list[str]], problems: list[str] | None = None) -> dict:
     """One planner step: think, answer, check, repair once. Returns {ok, <key>, rationale, usage, errors}."""
     usage = Usage()
-    text_inputs = _dump(inputs)
-    if problems:
-        text_inputs += ("\n\nYour last answer had these problems; fix exactly them:\n- " + "\n- ".join(problems))
-    result: StepResult = think_then_answer(provider, f"{PLANNER_ROLE}\n\n{task}", text_inputs, shape, think_instructions=THINK)
+    previous = inputs.get("answer")
+    text_inputs = _dump({k: v for k, v in inputs.items() if k not in ("answer", "problems")})
+    if problems and isinstance(previous, dict):
+        # A quick fix: the answer back with its problems, changed only where they say. No
+        # thinking pass and no rewrite: fast, and what was right stays as it was.
+        progress.repairing()
+        text_inputs += ("\n\nYour answer:\n" + _dump(previous) +
+                        "\n\nIt has these problems. Answer with the same JSON, changed ONLY to fix them (remove or correct "
+                        "the parts they name; keep everything else exactly as it is):\n- " + "\n- ".join(problems))
+        result: StepResult = think_then_answer(provider, f"{PLANNER_ROLE}\n\n{task}", text_inputs, shape, think=False,
+                                               think_instructions=THINK)
+    else:
+        if problems:
+            text_inputs += ("\n\nYour last answer had these problems; fix exactly them:\n- " + "\n- ".join(problems))
+        result = think_then_answer(provider, f"{PLANNER_ROLE}\n\n{task}", text_inputs, shape, think_instructions=THINK)
     usage.add(result.usage)
     if result.answer is None:
         return {"ok": False, "errors": result.errors or ["no answer"], "usage": usage.model_dump()}
-    answer = result.answer
+    # Into the shape the step asked for (a list where one text goes, null for an object): a small
+    # model's answer is usable as it is, without sending it back.
+    example = parse_shape(shape)
+    answer = coerce(result.answer, example)
     found = check(answer)
     if found:
         progress.repairing()
@@ -50,7 +65,7 @@ def _step(provider: Provider, task: str, inputs: dict, shape: str, key: str,
                                    shape, think=False, think_instructions=THINK)
         usage.add(repair.usage)
         if repair.answer is not None:
-            answer = repair.answer
+            answer = coerce(repair.answer, example)
             found = check(answer)
     value = answer.get(key, answer if key == "*" else None)
     if value is None:

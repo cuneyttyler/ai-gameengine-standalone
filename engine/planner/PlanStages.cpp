@@ -25,6 +25,33 @@ json CompactBrief(json brief) {
     return brief;
 }
 
+// The word nearest to `word` in a closed list, by hints (a word it contains -> the option);
+// `fallback` when none matches.
+std::string Nearest(std::string word, const std::vector<std::pair<const char*, const char*>>& hints, const std::string& fallback) {
+    for (auto& c : word) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (const auto& [hint, to] : hints) {
+        if (word.find(hint) != std::string::npos) return to;
+    }
+    return fallback;
+}
+
+// A relationship type outside the vocabulary: the nearest that's in it (by its words, else its
+// valence). "skeptical-of" -> rival, "guides" -> mentor-of.
+std::string NearestRelationship(const std::string& type, const json& valence) {
+    static const std::vector<std::pair<const char*, const char*>> hints = {
+        {"betray", "betrayed-by"}, {"distrust", "rival"}, {"suspic", "rival"}, {"skeptic", "rival"}, {"rival", "rival"},
+        {"trust", "trusts"}, {"fear", "fears"}, {"love", "romantic"}, {"roman", "romantic"}, {"friend", "friend"},
+        {"mentor", "mentor-of"}, {"teach", "mentor-of"}, {"student", "student-of"}, {"serv", "serves"},
+        {"employ", "employs"}, {"owe", "owes"}, {"debt", "owes"}, {"enem", "enemy"}, {"hate", "enemy"},
+        {"member", "member-of"}, {"guide", "mentor-of"}, {"ally", "friend"}, {"protect", "friend"},
+        {"parent", "parent"}, {"father", "parent"}, {"mother", "parent"}, {"child", "child"}, {"son", "child"}, {"daughter", "child"},
+        {"brother", "sibling"}, {"sister", "sibling"}, {"sibling", "sibling"}, {"wife", "spouse"}, {"husband", "spouse"}, {"spouse", "spouse"}};
+    const std::string near = Nearest(type, hints, "");
+    if (!near.empty()) return near;
+    const double v = valence.is_number() ? valence.get<double>() : 0.0;
+    return v <= -0.5 ? "enemy" : v < 0 ? "rival" : v >= 0.5 ? "trusts" : "friend";
+}
+
 // The scene's answer with what can't be used taken out, before anything reads it: lists hold
 // objects (events, facts, ends, new entities) or ids; a fact's p, s and o are text; its from,
 // until and branch are text or left out ("from": true becomes "from this scene").
@@ -570,6 +597,18 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
                 q["index"] = std::stoi(index.get<std::string>());
             else scene["questStage"] = nullptr;
         }
+        if (job.attempts >= 2) {
+            // The quick fix still left these: settled here, not sent back again.
+            json withSubject = json::array();
+            for (const auto& f : scene["facts"]) {
+                if (!Text(f, "s").empty()) withSubject.push_back(f);
+            }
+            scene["facts"] = withSubject;
+            if (Text(scene, "summary").empty()) {
+                const json card = store_.Read("story/scenes/" + job.subject).value_or(json::object()).value("card", json::object());
+                scene["summary"] = Text(card, "goal").empty() ? "Scene " + job.subject + "." : Text(card, "goal");
+            }
+        }
         scene["_fixes"] = fixes;
         const auto problems = ValidateSceneDoc(scene, gso_);
         if (HasErrors(problems)) return ProblemTexts(problems);
@@ -578,7 +617,45 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
     if (job.kind == "critic") return HandleCritic(job, body, decide("critic", "story/acts/" + job.subject, ""));
     if (job.kind == "character") {
         json c = body.value("character", json::object());
-        const auto problems = ValidateCharacterDoc(c, gso_, Strings(host_.catalog.value("packageTemplates", json::array())));
+        if (!c.is_object()) c = json::object();
+        // Put right what a small model gets wrong, instead of sending it back: a package template
+        // the engine hasn't ("patrol" -> guard), a motivation or relationship type outside the
+        // vocabulary, a relationship with nobody, no name.
+        const auto templates = Strings(host_.catalog.value("packageTemplates", json::array()));
+        if (Text(c, "name").empty()) {
+            const StoryNode* n = Graph().Find(job.subject);
+            c["name"] = n && !n->Text("name").empty() ? n->Text("name") : PlanSlug(job.subject);
+        }
+        if (c.contains("biography") && c["biography"].is_object()) {
+            json& bio = c["biography"];
+            json kept = json::array();
+            for (const auto& m : Strings(bio.value("motivations", json::array()))) {
+                if (gso_.InVocabulary("Motivation", m)) kept.push_back(m);
+            }
+            bio["motivations"] = kept;
+        }
+        if (c.contains("relationships") && c["relationships"].is_array()) {
+            json kept = json::array();
+            for (auto r : c["relationships"]) {
+                if (!r.is_object() || Text(r, "with").empty()) continue;
+                if (!gso_.InVocabulary("RelationshipType", Text(r, "type"))) r["type"] = NearestRelationship(Text(r, "type"), r.value("valence", json()));
+                kept.push_back(r);
+            }
+            c["relationships"] = kept;
+        }
+        if (!templates.empty() && c.contains("behaviour") && c["behaviour"].is_object() && c["behaviour"].value("packages", json()).is_array()) {
+            static const std::vector<std::pair<const char*, const char*>> hints = {
+                {"patrol", "guard"}, {"guard", "guard"}, {"watch", "guard"}, {"sentry", "guard"}, {"defend", "guard"}, {"protect", "guard"},
+                {"sleep", "sleep"}, {"rest", "sleep"}, {"work", "work"}, {"craft", "work"}, {"sell", "work"}, {"trade", "work"},
+                {"shop", "work"}, {"study", "work"}, {"research", "work"}, {"pray", "work"}, {"cook", "work"}, {"farm", "work"}};
+            for (auto& pkg : c["behaviour"]["packages"]) {
+                if (!pkg.is_object() || std::find(templates.begin(), templates.end(), Text(pkg, "template")) != templates.end()) continue;
+                std::string to = Nearest(Text(pkg, "template"), hints, "wander"); // follow, accompany, roam, a script: wander
+                if (std::find(templates.begin(), templates.end(), to) == templates.end()) to = templates.front();
+                pkg["template"] = to;
+            }
+        }
+        const auto problems = ValidateCharacterDoc(c, gso_, templates);
         if (HasErrors(problems)) return ProblemTexts(problems);
         return HandleCharacter(job, c, rationale.empty() ? c.value("rationale", "") : rationale);
     }
@@ -1017,26 +1094,7 @@ std::vector<std::string> GamePlan::HandleScene(Job& job, const json& answer, con
                     learned.push_back({{"p", "knows"}, {"s", who}, {"about", about}, {"from", Text(f, "scene")}, {"madeBy", kPending}});
                     fixes.push_back(who + " learns '" + about + "' here (it's mentioned)");
                 } else if (p == "hasRelationship" && f.contains("type") && !gso_.InVocabulary("RelationshipType", Text(f, "type"))) {
-                    std::string type = Text(f, "type");
-                    for (auto& c : type) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-                    static const std::vector<std::pair<const char*, const char*>> hints = {
-                        {"betray", "betrayed-by"}, {"distrust", "rival"}, {"suspic", "rival"}, {"skeptic", "rival"}, {"rival", "rival"},
-                        {"trust", "trusts"}, {"fear", "fears"}, {"love", "romantic"}, {"roman", "romantic"}, {"friend", "friend"},
-                        {"mentor", "mentor-of"}, {"teach", "mentor-of"}, {"student", "student-of"}, {"serv", "serves"},
-                        {"employ", "employs"}, {"owe", "owes"}, {"debt", "owes"}, {"enem", "enemy"}, {"hate", "enemy"},
-                        {"member", "member-of"}, {"guide", "mentor-of"}, {"ally", "friend"}, {"protect", "friend"}};
-                    std::string chosen;
-                    for (const auto& [word, to] : hints) {
-                        if (type.find(word) != std::string::npos) {
-                            chosen = to;
-                            break;
-                        }
-                    }
-                    if (chosen.empty()) {
-                        const json v = f.value("valence", json());
-                        const double valence = v.is_number() ? v.get<double>() : 0.0;
-                        chosen = valence <= -0.5 ? "enemy" : valence < 0 ? "rival" : valence >= 0.5 ? "trusts" : "friend";
-                    }
+                    const std::string chosen = NearestRelationship(Text(f, "type"), f.value("valence", json()));
                     fixes.push_back(Text(f, "s") + " → " + Text(f, "o") + ": relationship '" + Text(f, "type") + "' is now '" + chosen + "'");
                     f["type"] = chosen;
                 }
@@ -1060,16 +1118,48 @@ std::vector<std::string> GamePlan::HandleScene(Job& job, const json& answer, con
         }
         ends = keptEnds;
     }
+    // What a change breaks: the continuity rules on what it added.
+    auto breaks = [&](const StoryGraph& candidate) {
+        std::vector<std::string> out;
+        for (const auto& i : NewErrors(before, CheckStory(candidate, gso_))) {
+            if (i.rule.rfind("R-T", 0) == 0 || i.rule == "R-K3" || i.rule == "shape") out.push_back(i.rule + ": " + i.message);
+        }
+        return out;
+    };
     StoryGraph next = g;
     if (StoryNode* n = next.Find(id)) n->fields["summary"] = scene.value("summary", "");
-    const std::string problem = next.Apply({{"nodes", nodes}, {"assert", facts}, {"retract", ends}}, gso_);
-    if (!problem.empty()) return {problem};
-    // The continuity rules on what it added (a violation goes back once).
-    std::vector<std::string> problems;
-    for (const auto& i : NewErrors(before, CheckStory(next, gso_))) {
-        if (i.rule.rfind("R-T", 0) == 0 || i.rule == "R-K3" || i.rule == "shape") problems.push_back(i.rule + ": " + i.message);
+    std::string problem = next.Apply({{"nodes", nodes}, {"assert", facts}, {"retract", ends}}, gso_);
+    std::vector<std::string> problems = problem.empty() ? breaks(next) : std::vector<std::string>{problem};
+    if (!problems.empty() && job.attempts < 2) return problems; // first: a quick fix of the answer (the AI)
+    if (!problems.empty()) {
+        // The fixed answer still doesn't fit: the scene is written with what fits. Each new
+        // entity, fact and end is kept only if the story stays sound with it; what isn't is
+        // left out, on record. Quietly: the scene is done, not failed.
+        next = g;
+        if (StoryNode* n = next.Find(id)) n->fields["summary"] = scene.value("summary", "");
+        auto fits = [&](const char* list, const json& item) {
+            StoryGraph trial = next;
+            if (!trial.Apply({{list, json::array({item})}}, gso_).empty() || !breaks(trial).empty()) return false;
+            next = std::move(trial);
+            return true;
+        };
+        for (const auto& n : nodes) {
+            if (!fits("nodes", n)) fixes.push_back("left out " + Text(n, "id") + " (it didn't fit the story)");
+        }
+        json keptFacts = json::array();
+        for (const auto& f : facts) {
+            if (fits("assert", f)) keptFacts.push_back(f);
+            else fixes.push_back("left out " + Text(f, "p") + " " + Text(f, "s") + (Text(f, "o").empty() ? "" : " → " + Text(f, "o")) +
+                                 " (it contradicts the story)");
+        }
+        facts = keptFacts;
+        json keptEnds = json::array();
+        for (const auto& e : ends) {
+            if (fits("retract", e)) keptEnds.push_back(e);
+            else fixes.push_back("left out the end of " + Text(e, "p") + " " + Text(e, "s"));
+        }
+        ends = keptEnds;
     }
-    if (!problems.empty()) return problems;
 
     if (!fixes.empty()) {
         PlanDecision fix;

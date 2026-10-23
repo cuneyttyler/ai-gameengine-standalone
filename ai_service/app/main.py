@@ -755,6 +755,8 @@ def create_app(
             result = run(provider, body)
         except ProviderError as error:
             return {"ok": False, "errors": [str(error)]}
+        except Exception as error:  # an answer of a shape the step's own code didn't expect
+            return {"ok": False, "errors": [f"the step couldn't read the answer ({type(error).__name__}: {error})"]}
         if isinstance(result.get("usage"), dict):
             state["usage"].add(Usage(**result["usage"]))
         return result

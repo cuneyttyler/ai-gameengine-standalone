@@ -23,7 +23,7 @@ function seconds(call: AiCall): string {
 }
 function phase(call: AiCall): string {
   return (
-    { waiting: 'waiting for the model', thinking: 'thinking', answering: 'writing', repairing: 'fixing problems', done: 'done', failed: 'failed' }[
+    { waiting: 'waiting for the model', thinking: 'thinking', answering: 'writing', repairing: 'finishing', done: 'done', failed: 'failed' }[
       call.phase
     ] ?? call.phase
   )
@@ -39,9 +39,6 @@ function tokens(n: number): string {
       <div class="line">
         <span class="name">{{ callName(c) }}</span>
         <span class="phase">{{ phase(c) }}</span>
-        <span v-if="c.calls > 1" class="muted" title="Model calls for this step (a second one fixes the first answer's problems)">
-          call {{ c.calls }}
-        </span>
         <span class="spacer"></span>
         <span class="tokens" :title="`Thinking ${tokens(c.thinkingTokens)} · answer ${tokens(c.answerTokens)} · read ${tokens(c.inputTokens)}`">
           {{ tokens(c.outputTokens) }} tokens
@@ -81,7 +78,7 @@ function tokens(n: number): string {
   color: #c4b5fd;
 }
 .call.repairing .phase {
-  color: #f59e0b;
+  color: #93c5fd;
 }
 .call.done .phase {
   color: #4ade80;
@@ -124,7 +121,7 @@ function tokens(n: number): string {
   background: #8b5cf6;
 }
 .call.repairing .run {
-  background: #f59e0b;
+  background: #3b82f6;
 }
 .call.done .run,
 .call.failed .run {

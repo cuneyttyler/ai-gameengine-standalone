@@ -52,6 +52,7 @@ interface Row {
   stale?: boolean
   locked?: boolean
   issues?: string[]
+  notes?: string[] // what a later stage resolves: information, not a warning
   [key: string]: unknown
 }
 interface SceneRow extends Row {
@@ -444,15 +445,18 @@ function statusMark(status: string): string {
                       <td class="scene-state">
                         <span v-if="s.progress === 'planned'" class="muted" title="Its card is planned; the scene isn't written yet">planned</span>
                         <span v-else-if="s.progress === 'queued'" class="muted" title="Waiting its turn: scenes are written in order">queued</span>
-                        <span v-else-if="s.progress === 'writing'" class="busy">writing…<template v-if="s.attempt > 1"> (try {{ s.attempt }})</template></span>
-                        <span v-else-if="s.progress === 'rewrite-queued'" class="busy" :title="`The act's review asked for changes: ${s.criticNote}`">rewrite queued</span>
-                        <span v-else-if="s.progress === 'rewriting'" class="busy" :title="`The act's review asked for changes: ${s.criticNote}`">rewriting…</span>
+                        <span v-else-if="s.progress === 'writing'" class="busy">writing…</span>
+                        <span v-else-if="s.progress === 'rewrite-queued'" class="busy" :title="`The act’s review suggested an improvement: ${s.criticNote}`">improvement queued</span>
+                        <span v-else-if="s.progress === 'rewriting'" class="busy" :title="`The act’s review suggested an improvement: ${s.criticNote}`">improving…</span>
                         <template v-else-if="s.progress === 'failed'">
                           <span class="err" :title="s.error">✗ failed</span>
                           <button class="mini" @click.stop="retryJob(s.job)">Retry</button>
                         </template>
-                        <span v-else-if="(s.issues ?? []).length" class="warn" :title="(s.issues ?? []).join('\n')">⚠ {{ (s.issues ?? []).length }}</span>
-                        <span v-else class="ok" :title="s.criticNote ? `Rewritten after the act's review: ${s.criticNote}` : 'Written'">✓{{ s.criticNote ? ' revised' : '' }}</span>
+                        <template v-else>
+                          <span class="ok" :title="s.criticNote ? `Improved after the act’s review: ${s.criticNote}` : 'Written'">✓ Completed{{ s.criticNote ? " (improved)" : "" }}</span>
+                          <span v-if="(s.issues ?? []).length" class="warn" :title="(s.issues ?? []).join('\n')"> ⚠ {{ (s.issues ?? []).length }}</span>
+                          <span v-if="(s.notes ?? []).length" class="info" :title="(s.notes ?? []).join('\n')"> ℹ {{ (s.notes ?? []).length }}</span>
+                        </template>
                         <span v-if="s.stale" class="badge warn">stale</span><span v-if="s.locked" class="badge">locked</span>
                       </td>
                     </tr>
@@ -474,8 +478,11 @@ function statusMark(status: string): string {
                 <td>
                   <span v-if="view === 'characters' && !r.detailed" class="muted">to detail</span>
                   <span v-else-if="view === 'places' && !r.described" class="muted">to describe</span>
-                  <span v-else-if="((r.problems as string[] | undefined) ?? []).length || (r.issues ?? []).length" class="warn">⚠</span>
-                  <span v-else>✓</span>
+                  <span v-else-if="((r.problems as string[] | undefined) ?? []).length || (r.issues ?? []).length" class="warn"
+                    :title="[...((r.problems as string[] | undefined) ?? []), ...(r.issues ?? [])].join('\n')">⚠</span>
+                  <span v-else class="ok">✓ Completed</span>
+                  <span v-if="((r.notes as string[] | undefined) ?? []).length" class="info" :title="((r.notes as string[] | undefined) ?? []).join('\n')">
+                    ℹ {{ ((r.notes as string[] | undefined) ?? []).length }}</span>
                   <span v-if="r.stale" class="badge warn">stale</span><span v-if="r.locked" class="badge">locked</span>
                 </td>
               </tr>
@@ -820,6 +827,10 @@ function statusMark(status: string): string {
 }
 .busy {
   color: #93c5fd;
+}
+.info {
+  color: #93c5fd;
+  cursor: help;
 }
 .ok {
   color: #4ade80;

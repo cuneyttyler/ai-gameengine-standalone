@@ -184,7 +184,8 @@ void GamePlan::Save() {
     json jobs = json::array();
     for (const auto& j : jobs_) {
         jobs.push_back({{"id", j.id}, {"kind", j.kind}, {"subject", j.subject}, {"status", j.status}, {"attempts", j.attempts},
-                        {"after", j.after}, {"error", j.error}, {"problems", j.problems}, {"decision", j.decision}});
+                        {"after", j.after}, {"error", j.error}, {"problems", j.problems}, {"decision", j.decision},
+                        {"lastAnswer", j.lastAnswer}});
     }
     json state = {{"schema", "aige.plan-state/1"}, {"stage", stage_},         {"status", status_},     {"message", message_},
                   {"request", request_},           {"jobs", jobs},            {"paused", paused_},     {"usage", usage_},
@@ -218,6 +219,7 @@ void GamePlan::Load() {
         job.attempts = j.value("attempts", 0);
         job.error = j.value("error", "");
         job.problems = j.value("problems", json::array());
+        job.lastAnswer = j.value("lastAnswer", json());
         job.decision = j.value("decision", "");
         for (const auto& a : j.value("after", json::array())) job.after.push_back(a.get<std::string>());
         jobs_.push_back(std::move(job));
@@ -347,11 +349,14 @@ bool GamePlan::Send(Job& job) {
     if (!host_.request) return false;
     json body = RequestBody(job);
     if (!job.problems.empty()) body["problems"] = job.problems;
+    // A retry with the answer it fixes: the AI changes only what the problems name (quick, no
+    // thinking pass), instead of writing the whole thing again.
+    if (!job.problems.empty() && job.lastAnswer.is_object()) body["answer"] = job.lastAnswer;
     // What the progress strip calls it ("④ Character: mira").
     const auto stage = StageLabels().find(StageOfJob(job.kind));
     std::string label = stage == StageLabels().end() ? job.kind : stage->second;
     if (job.subject != job.kind && !job.subject.empty()) {
-        label += " · " + (job.kind == "interpret" ? job.subject + " reading" : job.kind + ": " + PlanSlug(job.subject));
+        label += " · " + (job.kind == "interpret" ? job.subject + " reading" : (job.kind == "critic" ? std::string("review") : job.kind) + ": " + PlanSlug(job.subject));
     }
     body["label"] = label;
     const int id = host_.request(PathFor(job), body, 600);
@@ -394,6 +399,9 @@ void GamePlan::OnResponse(int requestId, const json& body) {
     }
     json answered = body;
     answered["call"] = call;
+    // Kept for a quick fix if it has problems (only the answer, not the bookkeeping).
+    job->lastAnswer = body;
+    for (const char* k : {"ok", "usage", "call", "problems", "errors", "rationale", "label"}) job->lastAnswer.erase(k);
     std::vector<std::string> problems;
     try {
         problems = Handle(*job, answered);
@@ -425,6 +433,7 @@ void GamePlan::Finish(Job& job, bool ok, const std::string& error) {
     job.status = ok ? "done" : "failed";
     job.error = error;
     job.problems = json::array();
+    job.lastAnswer = json(); // only kept for its quick fix
     if (!ok) Finding(StageOfJob(job.kind), job.subject, "couldn't be made: " + error, "error");
     if (!ok && (job.kind == "outline" || job.kind == "act")) {
         Fail("The " + StageLabels().at(StageOfJob(job.kind)) + " stage couldn't finish (" + error + "). Regenerate it to try again.");
@@ -451,6 +460,7 @@ void GamePlan::Requeue(Job& job) {
     job.attempts = 0;
     job.error.clear();
     job.problems = json::array();
+    job.lastAnswer = json();
     // Its findings go: it's being made again.
     const std::string stage = StageOfJob(job.kind);
     json kept = json::array();
@@ -482,6 +492,10 @@ std::string GamePlan::RetryJob(const std::string& id) {
     Job* job = FindJob(id);
     if (!job) return "there's no step " + id;
     if (job->status != "failed") return "only a step that failed is tried again";
+    if (paused_) {
+        paused_ = false; // retrying is going on
+        if (status_ == "paused") status_ = "working";
+    }
     // A stopped plan (its outline or an act failed): everything that failed goes again.
     if (status_ == "failed") return RetryFailed();
     Requeue(*job);
@@ -493,6 +507,11 @@ std::string GamePlan::RetryJob(const std::string& id) {
 }
 
 std::string GamePlan::RetryFailed() {
+    // Retrying is going on: a paused plan resumes (else the retry would wait unseen).
+    if (paused_) {
+        paused_ = false;
+        if (status_ == "paused") status_ = "working";
+    }
     int n = 0;
     // One try per thing: of two failed jobs for the same scene (a plan from before AddJob
     // replaced them), the latest goes again, the older is retired.
@@ -982,10 +1001,30 @@ json GamePlan::State() const {
     const auto issues = CheckStory(graph, gso_);
     const auto stale = Stale();
     auto isStale = [&](const std::string& doc) { return std::find(stale.begin(), stale.end(), doc) != stale.end(); };
+    // An issue a later stage resolves (a place's parts: ⑥ Places; a character's package: ④; a
+    // quest's stages: ⑤) is a note while that stage hasn't run, not a warning to worry about.
+    const auto& stageOrder = StageOrder();
+    const auto stageIndex = [&](const std::string& s) {
+        return static_cast<int>(std::find(stageOrder.begin(), stageOrder.end(), s) - stageOrder.begin());
+    };
+    auto laterStage = [&](const std::string& rule) -> std::string {
+        const std::string owner = rule.rfind("R-P", 0) == 0 ? "places" : rule.rfind("R-K", 0) == 0 ? "characters" : rule.rfind("R-Q", 0) == 0 ? "quests" : "";
+        if (owner.empty() || !StageOn(owner)) return {};
+        const int at = stageIndex(stage_), of = stageIndex(owner);
+        return of > at || (of == at && status_ == "working") ? owner : std::string();
+    };
     auto issuesOf = [&](const std::string& node) {
         json out = json::array();
         for (const auto& i : issues) {
-            if (i.node == node) out.push_back(i.rule + ": " + i.message);
+            if (i.node == node && laterStage(i.rule).empty()) out.push_back(i.rule + ": " + i.message);
+        }
+        return out;
+    };
+    auto notesOf = [&](const std::string& node) {
+        json out = json::array();
+        for (const auto& i : issues) {
+            if (i.node != node) continue;
+            if (const std::string later = laterStage(i.rule); !later.empty()) out.push_back("Handled in " + StageLabels().at(later) + ": " + i.message);
         }
         return out;
     };
@@ -1065,7 +1104,7 @@ json GamePlan::State() const {
                                   {"criticNote", s.value("criticNote", "")},
                                   {"stale", isStale(doc)},
                                   {"locked", s.value("locked", false)},
-                                  {"issues", issuesOf(sid.get<std::string>())}});
+                                  {"issues", issuesOf(sid.get<std::string>())}, {"notes", notesOf(sid.get<std::string>())}});
             }
             chapters.push_back({{"id", ch.value("id", "")}, {"question", ch.value("question", "")}, {"summary", ch.value("summary", "")},
                                 {"scenes", scenes}});
@@ -1088,7 +1127,7 @@ json GamePlan::State() const {
                               {"roles", c.value("gameplay", json::object()).value("roles", json::array())},
                               {"stale", isStale(doc)},
                               {"locked", c.value("locked", false)},
-                              {"issues", issuesOf(n->id)}});
+                              {"issues", issuesOf(n->id)}, {"notes", notesOf(n->id)}});
     }
     json quests = json::array();
     for (const auto& doc : store_.List("quests")) {
@@ -1096,7 +1135,7 @@ json GamePlan::State() const {
         quests.push_back({{"id", q.value("id", PlanSlug(doc))}, {"doc", doc}, {"name", q.value("name", "")}, {"type", q.value("type", "")},
                           {"stages", q.value("stages", json::array()).size()}, {"motivation", q.value("motivation", "")},
                           {"strategy", q.value("strategy", "")}, {"stale", isStale(doc)}, {"locked", q.value("locked", false)},
-                          {"issues", issuesOf(q.value("id", PlanSlug(doc)))}});
+                          {"issues", issuesOf(q.value("id", PlanSlug(doc)))}, {"notes", notesOf(q.value("id", PlanSlug(doc)))}});
     }
     json places = json::array();
     for (const auto* n : graph.OfClass("Location", gso_)) {
@@ -1115,7 +1154,7 @@ json GamePlan::State() const {
                           {"problems", problems},
                           {"stale", isStale(doc)},
                           {"locked", p.value("locked", false)},
-                          {"issues", issuesOf(n->id)}});
+                          {"issues", issuesOf(n->id)}, {"notes", notesOf(n->id)}});
     }
     int queued = 0, running = 0, failed = 0, done = 0;
     json failedJobs = json::array(); // each failed step: what, why, Retry
