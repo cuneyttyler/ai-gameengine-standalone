@@ -230,6 +230,11 @@ std::string GamePlan::AddJob(const std::string& kind, const std::string& subject
     job.kind = kind;
     job.subject = subject;
     job.after = std::move(after);
+    // The same thing made again (Regenerate, a critic's rewrite): its earlier failed try is
+    // replaced, not tried again beside it.
+    for (auto& j : jobs_) {
+        if (j.kind == kind && j.subject == subject && j.status == "failed") j.status = "skipped";
+    }
     jobs_.push_back(job);
     return job.id;
 }
@@ -274,13 +279,39 @@ void GamePlan::Pump() {
     int running = 0;
     for (const auto& j : jobs_) running += j.status == "running";
     const int budget = BriefGet(Brief(), "plan.budget.calls").is_number() ? BriefGet(Brief(), "plan.budget.calls").get<int>() : 0;
-    for (size_t i = 0; i < jobs_.size(); ++i) {
+    // Scenes are written in story order, one at a time: each reads what the earlier ones made
+    // true (a retried s1-01 goes before s1-03, whatever order the jobs were added in).
+    std::vector<size_t> visit(jobs_.size());
+    for (size_t i = 0; i < visit.size(); ++i) visit[i] = i;
+    std::map<std::string, int> sceneOrder;
+    {
+        const auto order = Graph().SceneOrder();
+        for (size_t i = 0; i < order.size(); ++i) sceneOrder[order[i]] = static_cast<int>(i);
+    }
+    auto orderOf = [&](const Job& j) {
+        const auto it = sceneOrder.find(j.subject);
+        return it == sceneOrder.end() ? 1 << 30 : it->second;
+    };
+    {
+        std::vector<size_t> slots, scenes;
+        for (size_t i = 0; i < jobs_.size(); ++i) {
+            if (jobs_[i].kind == "scene") slots.push_back(i), scenes.push_back(i);
+        }
+        std::stable_sort(scenes.begin(), scenes.end(), [&](size_t a, size_t b) { return orderOf(jobs_[a]) < orderOf(jobs_[b]); });
+        for (size_t k = 0; k < slots.size(); ++k) visit[slots[k]] = scenes[k];
+    }
+    for (const size_t i : visit) {
         if (jobs_[i].status != "queued") continue;
         const bool ready = std::all_of(jobs_[i].after.begin(), jobs_[i].after.end(), [&](const std::string& id) {
             const Job* dep = FindJob(id);
             return !dep || (dep->status != "queued" && dep->status != "running");
         });
         if (!ready) continue;
+        if (jobs_[i].kind == "scene" && std::any_of(jobs_.begin(), jobs_.end(), [&](const Job& j) {
+                return &j != &jobs_[i] && j.kind == "scene" && (j.status == "queued" || j.status == "running") && orderOf(j) < orderOf(jobs_[i]);
+            })) {
+            continue; // an earlier scene first
+        }
         if (jobs_[i].kind == "report") {
             LocalJob(jobs_[i]);
             return; // LocalJob moves the plan on (and pumps again)
@@ -463,9 +494,16 @@ std::string GamePlan::RetryJob(const std::string& id) {
 
 std::string GamePlan::RetryFailed() {
     int n = 0;
-    for (auto& j : jobs_) {
-        if (j.status != "failed") continue;
-        Requeue(j);
+    // One try per thing: of two failed jobs for the same scene (a plan from before AddJob
+    // replaced them), the latest goes again, the older is retired.
+    std::set<std::pair<std::string, std::string>> seen;
+    for (auto it = jobs_.rbegin(); it != jobs_.rend(); ++it) {
+        if (it->status != "failed") continue;
+        if (!seen.insert({it->kind, it->subject}).second) {
+            it->status = "skipped";
+            continue;
+        }
+        Requeue(*it);
         ++n;
     }
     if (n == 0 && status_ != "failed") return "nothing failed";
@@ -982,7 +1020,13 @@ json GamePlan::State() const {
                           {"stale", staleCount}, {"review", std::find(toReview_.begin(), toReview_.end(), *it) != toReview_.end()}});
     }
 
-    // ③ Story: acts, chapters, scene rows.
+    // ③ Story: acts, chapters, scene rows. Each scene's latest job says where it is: planned (a
+    // card), queued, being written, rewritten after the act's review, failed or written.
+    std::map<std::string, const Job*> sceneJobs;
+    for (const auto& j : jobs_) {
+        if (j.kind == "scene") sceneJobs[j.subject] = &j;
+    }
+    int scenesWritten = 0, scenesTotal = 0;
     json acts = json::array();
     for (const auto& actDoc : store_.List("story/acts")) {
         const json act = store_.Read(actDoc).value_or(json::object());
@@ -990,9 +1034,20 @@ json GamePlan::State() const {
         for (const auto& ch : act.value("chapters", json::array())) {
             json scenes = json::array();
             for (const auto& sid : ch.value("scenes", json::array())) {
+                if (!sid.is_string()) continue;
                 const std::string doc = "story/scenes/" + sid.get<std::string>();
                 const json s = store_.Read(doc).value_or(json::object());
                 const json card = s.value("card", json::object());
+                const bool written = s.value("status", "") == "written";
+                const auto jt = sceneJobs.find(sid.get<std::string>());
+                const Job* sj = jt == sceneJobs.end() ? nullptr : jt->second;
+                const bool rewrite = s.value("criticRewrites", 0) > 0;
+                std::string progress = written ? "written" : "planned";
+                if (sj && sj->status == "queued") progress = rewrite ? "rewrite-queued" : "queued";
+                else if (sj && sj->status == "running") progress = rewrite ? "rewriting" : "writing";
+                else if (sj && sj->status == "failed" && !written) progress = "failed";
+                ++scenesTotal;
+                scenesWritten += written;
                 scenes.push_back({{"id", sid},
                                   {"doc", doc},
                                   {"order", s.value("order", 0.0)},
@@ -1002,7 +1057,12 @@ json GamePlan::State() const {
                                   {"location", card.value("location", "")},
                                   {"goal", card.value("goal", "")},
                                   {"summary", s.value("summary", "")},
-                                  {"written", s.value("status", "") == "written"},
+                                  {"written", written},
+                                  {"progress", progress},
+                                  {"job", sj ? sj->id : ""},
+                                  {"error", sj && sj->status == "failed" ? sj->error : ""},
+                                  {"attempt", sj ? sj->attempts : 0},
+                                  {"criticNote", s.value("criticNote", "")},
                                   {"stale", isStale(doc)},
                                   {"locked", s.value("locked", false)},
                                   {"issues", issuesOf(sid.get<std::string>())}});
@@ -1093,6 +1153,7 @@ json GamePlan::State() const {
             {"stale", stale},
             {"jobs", {{"queued", queued}, {"running", running}, {"failed", failed}, {"done", done}}},
             {"failedJobs", failedJobs},
+            {"storyProgress", {{"written", scenesWritten}, {"total", scenesTotal}}},
             {"usage", usage_},
             {"decisions", store_.Decisions().size()},
             {"history", store_.History()},

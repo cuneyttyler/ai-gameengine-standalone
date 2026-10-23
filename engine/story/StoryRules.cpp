@@ -131,7 +131,10 @@ private:
         // R-S1: acts with scenes, in the template's order.
         std::vector<std::pair<double, std::string>> acts;
         for (const auto& n : g_.nodes) {
-            if (n.cls == "Act") acts.push_back({n.fields.value("order", 0.0), n.id});
+            if (n.cls == "Act") {
+                const auto order = n.fields.find("order");
+                acts.push_back({order != n.fields.end() && order->is_number() ? order->get<double>() : 0.0, n.id});
+            }
         }
         std::sort(acts.begin(), acts.end());
         double lastFirst = -1e9;

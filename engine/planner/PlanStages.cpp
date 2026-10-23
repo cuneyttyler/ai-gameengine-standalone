@@ -8,6 +8,7 @@
 #include "world/WorldBible.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <set>
 
@@ -71,6 +72,20 @@ json CleanSceneAnswer(json scene) {
     for (auto& n : scene["newEntities"]) {
         for (const char* key : {"id", "class", "name", "line", "importance", "kind"}) {
             if (n.contains(key) && !n[key].is_string()) n.erase(key);
+        }
+        // "amulet" (class Item) is item/amulet: the id names its kind.
+        std::string nid = n.value("id", std::string());
+        if (nid.empty()) nid = n.value("name", std::string());
+        if (!nid.empty() && nid.find('/') == std::string::npos) {
+            std::string kind = n.value("class", std::string("Item"));
+            for (auto& c : kind) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            std::string slug;
+            for (const char c : nid) {
+                if (std::isalnum(static_cast<unsigned char>(c))) slug += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                else if (!slug.empty() && slug.back() != '-') slug += '-';
+            }
+            while (!slug.empty() && slug.back() == '-') slug.pop_back();
+            if (!slug.empty()) n["id"] = kind + "/" + slug;
         }
     }
     if (scene.contains("summary") && !scene["summary"].is_string()) scene.erase("summary");
@@ -518,7 +533,44 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
     }
     if (job.kind == "scene") {
         // What can't be used (a fact as plain text, "from": false) is taken out before the checks.
-        const json scene = CleanSceneAnswer(body.value("scene", json::object()));
+        json scene = CleanSceneAnswer(body.value("scene", json::object()));
+        // A relation the story ontology doesn't have ("conflictActive"): left out, noted.
+        json fixes = json::array(), facts = json::array();
+        for (const auto& f : scene["facts"]) {
+            if (gso_.Property(Text(f, "p"))) facts.push_back(f);
+            else fixes.push_back("dropped " + Text(f, "p") + " " + Text(f, "s") + " (no such relation)");
+        }
+        scene["facts"] = facts;
+        // An event without an id or with a class that isn't an event's; a new entity whose
+        // class doesn't exist (taken from its id: item/... is an Item); a quest stage as text.
+        for (size_t i = 0; i < scene["events"].size(); ++i) {
+            json& e = scene["events"][i];
+            if (Text(e, "id").empty()) e["id"] = "e" + std::to_string(i + 1);
+            const std::string cls = Text(e, "class");
+            if (!cls.empty() && !gso_.IsA(cls, "Event")) {
+                e["class"] = e.contains("agent") ? "Action" : "Event";
+                fixes.push_back("event " + Text(e, "id") + ": '" + cls + "' is now " + e["class"].get<std::string>());
+            }
+        }
+        for (auto& n : scene["newEntities"]) {
+            if (gso_.Class(Text(n, "class"))) continue;
+            static const std::map<std::string, std::string> kinds = {
+                {"character", "Character"}, {"location", "Location"}, {"item", "Item"}, {"faction", "Faction"}};
+            const std::string nid = Text(n, "id");
+            const auto it = kinds.find(nid.substr(0, nid.find('/')));
+            const std::string cls = it == kinds.end() ? "Item" : it->second;
+            fixes.push_back(nid + ": class '" + Text(n, "class") + "' is now " + cls);
+            n["class"] = cls;
+        }
+        if (scene.contains("questStage") && scene["questStage"].is_object()) {
+            json& q = scene["questStage"];
+            const json index = q.value("index", json());
+            if (index.is_number()) q["index"] = static_cast<int>(std::lround(index.get<double>()));
+            else if (index.is_string() && !index.get<std::string>().empty() && std::isdigit(static_cast<unsigned char>(index.get<std::string>()[0])))
+                q["index"] = std::stoi(index.get<std::string>());
+            else scene["questStage"] = nullptr;
+        }
+        scene["_fixes"] = fixes;
         const auto problems = ValidateSceneDoc(scene, gso_);
         if (HasErrors(problems)) return ProblemTexts(problems);
         return HandleScene(job, scene, rationale.empty() ? scene.value("rationale", "") : rationale);
@@ -832,6 +884,182 @@ std::vector<std::string> GamePlan::HandleScene(Job& job, const json& answer, con
         if (!e.contains("at")) e["at"] = id;
         ends.push_back(e);
     }
+    // What it names that the story doesn't have. A character, place, item or faction is added
+    // as a stub (the scene brings it in, like its newEntities); a link to anything else that
+    // isn't there (an earlier event by a made-up name, a conflict never set up) is dropped,
+    // and so is the end of a fact that was never true. Not a failure: noted as a fix.
+    std::vector<std::string> fixes;
+    for (const auto& f : scene.value("_fixes", json::array())) {
+        if (f.is_string()) fixes.push_back(f.get<std::string>());
+    }
+    {
+        std::map<std::string, std::string> added; // id -> class, of the nodes this scene adds
+        for (const auto& n : nodes) added[Text(n, "id")] = Text(n, "class");
+        auto known = [&](const std::string& ref) { return ref.empty() || g.Find(ref) || added.contains(ref) || ref == id; };
+        auto classOf = [&](const std::string& ref) -> std::string {
+            if (ref == id) return "StoryScene";
+            if (const StoryNode* n = g.Find(ref)) return n->cls;
+            const auto it = added.find(ref);
+            return it == added.end() ? std::string() : it->second;
+        };
+        // A link to something real but of the wrong kind (paysOff → a scene, not an event).
+        auto fits = [&](const std::string& ref, const std::vector<std::string>& classes) {
+            if (ref.empty() || classes.empty()) return true;
+            const std::string cls = classOf(ref);
+            return cls.empty() || std::any_of(classes.begin(), classes.end(), [&](const std::string& c) { return gso_.IsA(cls, c); });
+        };
+        auto stubClass = [](const std::string& ref) -> std::string {
+            static const std::map<std::string, std::string> kinds = {
+                {"character", "Character"}, {"location", "Location"}, {"item", "Item"}, {"faction", "Faction"}, {"goal", "Goal"}};
+            const auto slash = ref.find('/');
+            if (slash == std::string::npos) return {};
+            const auto it = kinds.find(ref.substr(0, slash));
+            return it == kinds.end() ? std::string() : it->second;
+        };
+        json kept = json::array();
+        for (auto f : facts) {
+            bool ok = true;
+            for (const char* key : {"s", "o"}) {
+                std::string ref = Text(f, key);
+                // "goal:seek-amulet" is goal/seek-amulet.
+                if (const auto colon = ref.find(':'); colon != std::string::npos && ref.find('/') == std::string::npos) {
+                    ref[colon] = '/';
+                    f[key] = ref;
+                }
+                if (known(ref)) continue;
+                const std::string cls = stubClass(ref);
+                if (cls.empty()) {
+                    fixes.push_back("dropped " + Text(f, "p") + " → " + ref + " (not in the story)");
+                    ok = false;
+                    break;
+                }
+                std::string name = PlanSlug(ref);
+                std::replace(name.begin(), name.end(), '-', ' ');
+                if (!name.empty()) name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
+                json node = {{"id", ref}, {"class", cls}, {"name", name}, {"madeBy", kPending}, {"stubFrom", id}};
+                if (cls == "Character") node["importance"] = "minor";
+                if (cls == "Location") node["buildType"] = "interior";
+                if (cls == "Goal") node = {{"id", ref}, {"class", "Goal"}, {"kind", PlanSlug(ref)}, {"madeBy", kPending}};
+                nodes.push_back(node);
+                added[ref] = cls;
+                fixes.push_back("added " + ref + " (the scene names it)");
+            }
+            if (ok) {
+                if (const auto* property = gso_.Property(Text(f, "p"));
+                    property && (!fits(Text(f, "s"), property->domain) || !fits(Text(f, "o"), property->range))) {
+                    fixes.push_back("dropped " + Text(f, "p") + " " + Text(f, "s") + " → " + Text(f, "o") + " (the wrong kind of thing)");
+                    ok = false;
+                }
+            }
+            if (ok) kept.push_back(f);
+        }
+        facts = kept;
+        // A fact's "from" / "until" (and an end's "at") name a scene: an event id, a place or
+        // "earlier" there means this scene (from) or nothing (until).
+        auto isScene = [&](const std::string& ref) { return ref == id || g.OrderOf(ref) >= 0; };
+        for (auto& f : facts) {
+            for (const char* key : {"from", "until"}) {
+                const std::string at = Text(f, key);
+                if (at.empty() || isScene(at)) continue;
+                fixes.push_back(Text(f, "p") + " " + Text(f, "s") + ": " + key + " '" + at + "' isn't a scene");
+                if (std::string(key) == "from") f["from"] = id;
+                else f.erase("until");
+            }
+        }
+        for (auto& e : ends) {
+            if (!isScene(Text(e, "at"))) e["at"] = id;
+        }
+        // Moving is leaving: a character put somewhere here is no longer where it was (one
+        // place at a time, R-T2); of two places given here, the last one counts.
+        {
+            std::map<std::string, size_t> lastPlace;
+            for (size_t i = 0; i < facts.size(); ++i) {
+                if (Text(facts[i], "p") == "locatedAt") lastPlace[Text(facts[i], "s")] = i;
+            }
+            json placedFacts = json::array();
+            for (size_t i = 0; i < facts.size(); ++i) {
+                const bool place = Text(facts[i], "p") == "locatedAt";
+                if (place && lastPlace[Text(facts[i], "s")] != i) continue;
+                placedFacts.push_back(facts[i]);
+            }
+            facts = placedFacts;
+            // A scene moves someone now, not in an earlier scene ("from": s1-03 in s1-04).
+            for (auto& f : facts) {
+                const std::string from = Text(f, "from");
+                if (Text(f, "p") == "locatedAt" && !from.empty() && from != id && g.OrderOf(from) < g.OrderOf(id)) f["from"] = id;
+            }
+            std::set<std::pair<std::string, std::string>> left;
+            for (const auto& f : facts) {
+                if (Text(f, "p") != "locatedAt") continue;
+                const std::string who = Text(f, "s"), where = Text(f, "o");
+                for (const auto& x : g.edges) {
+                    if (x.p != "locatedAt" || x.s != who || x.o == where || !x.until.empty()) continue;
+                    if (!left.insert({who, x.o}).second) continue;
+                    ends.push_back({{"p", "locatedAt"}, {"s", who}, {"o", x.o}, {"at", id}});
+                    fixes.push_back(who + " leaves " + x.o + " (now at " + where + ")");
+                }
+            }
+        }
+        // Speaking of what one doesn't know yet (R-T3): one learns it here. A relationship type
+        // that isn't in the vocabulary: the nearest that is (by its words, else its valence).
+        {
+            json learned = json::array();
+            for (auto& f : facts) {
+                const std::string p = Text(f, "p");
+                if (p == "mentions") {
+                    if (!isScene(Text(f, "scene"))) f["scene"] = id;
+                    const std::string who = Text(f, "s"), about = Text(f, "o").empty() ? Text(f, "about") : Text(f, "o");
+                    if (about.empty() || g.KnowsAt(who, about, Text(f, "scene"))) continue;
+                    const bool toldHere = std::any_of(facts.begin(), facts.end(), [&](const json& k) {
+                        return Text(k, "p") == "knows" && Text(k, "s") == who && (Text(k, "about") == about || Text(k, "o") == about);
+                    });
+                    if (toldHere) continue;
+                    learned.push_back({{"p", "knows"}, {"s", who}, {"about", about}, {"from", Text(f, "scene")}, {"madeBy", kPending}});
+                    fixes.push_back(who + " learns '" + about + "' here (it's mentioned)");
+                } else if (p == "hasRelationship" && f.contains("type") && !gso_.InVocabulary("RelationshipType", Text(f, "type"))) {
+                    std::string type = Text(f, "type");
+                    for (auto& c : type) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                    static const std::vector<std::pair<const char*, const char*>> hints = {
+                        {"betray", "betrayed-by"}, {"distrust", "rival"}, {"suspic", "rival"}, {"skeptic", "rival"}, {"rival", "rival"},
+                        {"trust", "trusts"}, {"fear", "fears"}, {"love", "romantic"}, {"roman", "romantic"}, {"friend", "friend"},
+                        {"mentor", "mentor-of"}, {"teach", "mentor-of"}, {"student", "student-of"}, {"serv", "serves"},
+                        {"employ", "employs"}, {"owe", "owes"}, {"debt", "owes"}, {"enem", "enemy"}, {"hate", "enemy"},
+                        {"member", "member-of"}, {"guide", "mentor-of"}, {"ally", "friend"}, {"protect", "friend"}};
+                    std::string chosen;
+                    for (const auto& [word, to] : hints) {
+                        if (type.find(word) != std::string::npos) {
+                            chosen = to;
+                            break;
+                        }
+                    }
+                    if (chosen.empty()) {
+                        const json v = f.value("valence", json());
+                        const double valence = v.is_number() ? v.get<double>() : 0.0;
+                        chosen = valence <= -0.5 ? "enemy" : valence < 0 ? "rival" : valence >= 0.5 ? "trusts" : "friend";
+                    }
+                    fixes.push_back(Text(f, "s") + " → " + Text(f, "o") + ": relationship '" + Text(f, "type") + "' is now '" + chosen + "'");
+                    f["type"] = chosen;
+                }
+            }
+            for (const auto& k : learned) facts.push_back(k);
+        }
+        json keptEnds = json::array();
+        for (auto e : ends) {
+            const std::string p = Text(e, "p"), s = Text(e, "s"), o = Text(e, "o");
+            const bool held = std::any_of(g.edges.begin(), g.edges.end(),
+                                          [&](const StoryEdge& x) { return x.p == p && x.s == s && (o.empty() || x.o == o); });
+            // The relationship ends whatever type the answer gave it ("rival" for one held as "trusts").
+            const std::string type = Text(e, "type");
+            if (held && !type.empty() && std::none_of(g.edges.begin(), g.edges.end(), [&](const StoryEdge& x) {
+                    return x.p == p && x.s == s && (o.empty() || x.o == o) && x.Text("type") == type;
+                })) {
+                e.erase("type");
+            }
+            if (held) keptEnds.push_back(e);
+            else fixes.push_back("dropped the end of " + p + " " + s + (o.empty() ? "" : " → " + o) + " (it was never true)");
+        }
+        ends = keptEnds;
+    }
     StoryGraph next = g;
     if (StoryNode* n = next.Find(id)) n->fields["summary"] = scene.value("summary", "");
     const std::string problem = next.Apply({{"nodes", nodes}, {"assert", facts}, {"retract", ends}}, gso_);
@@ -843,6 +1071,16 @@ std::vector<std::string> GamePlan::HandleScene(Job& job, const json& answer, con
     }
     if (!problems.empty()) return problems;
 
+    if (!fixes.empty()) {
+        PlanDecision fix;
+        fix.stage = "story";
+        fix.actor = "rule";
+        fix.kind = "fix";
+        fix.subject = docName;
+        for (const auto& f : fixes) fix.chosen += (fix.chosen.empty() ? "" : "; ") + f;
+        fix.rationale = "What the scene named that the story doesn't have was added as a stub or left out.";
+        store_.Decide(fix);
+    }
     PlanDecision d;
     d.stage = "story";
     d.actor = "ai";
@@ -857,14 +1095,18 @@ std::vector<std::string> GamePlan::HandleScene(Job& job, const json& answer, con
 
     // The main quest's skeleton: a stage for each kernel gameplay scene on the main line.
     json questStage = scene.value("questStage", json());
-    if (!questStage.is_object() && card.value("kernel", false) && card.value("mode", "") == "gameplay" && branch.empty()) {
+    const bool kernel = card.value("kernel", json()).is_boolean() && card["kernel"].get<bool>();
+    if (!questStage.is_object() && kernel && Text(card, "mode") == "gameplay" && branch.empty()) {
         questStage = {{"quest", "q-main"}, {"journal", card.value("goal", scene.value("summary", ""))}};
     }
     if (questStage.is_object() && branch.empty()) {
         json q = store_.Read("quests/q-main").value_or(json{{"schema", "aige.quest-design/1"}, {"id", "q-main"}, {"type", "main"},
                                                           {"name", Brief().value("title", "The main quest")}, {"stages", json::array()}});
         int last = 0;
-        for (const auto& st : q["stages"]) last = std::max(last, st.value("index", 0));
+        if (!q.contains("stages") || !q["stages"].is_array()) q["stages"] = json::array();
+        for (const auto& st : q["stages"]) {
+            if (st.is_object() && st.value("index", json()).is_number()) last = std::max(last, static_cast<int>(st["index"].get<double>()));
+        }
         const int index = questStage.value("index", json()).is_number_integer() && questStage["index"].get<int>() > last
                               ? questStage["index"].get<int>()
                               : last + 10;

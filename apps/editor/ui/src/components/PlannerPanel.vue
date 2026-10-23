@@ -62,6 +62,12 @@ interface SceneRow extends Row {
   goal: string
   summary: string
   written: boolean
+  // planned, queued, writing, rewrite-queued, rewriting, failed, written
+  progress: string
+  job: string
+  error: string
+  attempt: number
+  criticNote: string
 }
 interface Chapter {
   id: string
@@ -415,6 +421,11 @@ function statusMark(status: string): string {
 
           <!-- ③ Story: acts, chapters, the scene board -->
           <template v-else-if="view === 'story'">
+            <div v-if="state.storyProgress?.total" class="story-progress">
+              <span>Scenes written: <b>{{ state.storyProgress.written }}</b> of {{ state.storyProgress.total }}</span>
+              <div class="meter"><div :style="{ width: (100 * state.storyProgress.written) / state.storyProgress.total + '%' }"></div></div>
+              <span class="muted">Each act is planned first (its scene cards), then its scenes are written one by one.</span>
+            </div>
             <div v-for="a in acts" :key="a.id" class="act">
               <h4>
                 {{ a.id }} <span class="muted">{{ a.summary }}</span>
@@ -424,16 +435,24 @@ function statusMark(status: string): string {
                 <div class="muted chapter">{{ ch.id }} · {{ ch.question }}</div>
                 <table class="grid">
                   <tbody>
-                    <tr v-for="s in ch.scenes" :key="s.id" @click="open(s.doc)">
+                    <tr v-for="s in ch.scenes" :key="s.id" :class="['scene-row', s.progress]" @click="open(s.doc)">
                       <td>{{ s.id }}</td>
                       <td>{{ s.mode }}</td>
                       <td>{{ s.kernel ? 'kernel' : '' }}{{ s.branch ? ' · ' + s.branch : '' }}</td>
                       <td>{{ s.location }}</td>
                       <td class="wide">{{ s.summary || s.goal }}</td>
-                      <td>
-                        <span v-if="!s.written" class="muted">card</span>
+                      <td class="scene-state">
+                        <span v-if="s.progress === 'planned'" class="muted" title="Its card is planned; the scene isn't written yet">planned</span>
+                        <span v-else-if="s.progress === 'queued'" class="muted" title="Waiting its turn: scenes are written in order">queued</span>
+                        <span v-else-if="s.progress === 'writing'" class="busy">writing…<template v-if="s.attempt > 1"> (try {{ s.attempt }})</template></span>
+                        <span v-else-if="s.progress === 'rewrite-queued'" class="busy" :title="`The act's review asked for changes: ${s.criticNote}`">rewrite queued</span>
+                        <span v-else-if="s.progress === 'rewriting'" class="busy" :title="`The act's review asked for changes: ${s.criticNote}`">rewriting…</span>
+                        <template v-else-if="s.progress === 'failed'">
+                          <span class="err" :title="s.error">✗ failed</span>
+                          <button class="mini" @click.stop="retryJob(s.job)">Retry</button>
+                        </template>
                         <span v-else-if="(s.issues ?? []).length" class="warn" :title="(s.issues ?? []).join('\n')">⚠ {{ (s.issues ?? []).length }}</span>
-                        <span v-else>✓</span>
+                        <span v-else class="ok" :title="s.criticNote ? `Rewritten after the act's review: ${s.criticNote}` : 'Written'">✓{{ s.criticNote ? ' revised' : '' }}</span>
                         <span v-if="s.stale" class="badge warn">stale</span><span v-if="s.locked" class="badge">locked</span>
                       </td>
                     </tr>
@@ -768,6 +787,47 @@ function statusMark(status: string): string {
 }
 .sect {
   margin-bottom: 12px;
+}
+.story-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+}
+.story-progress .muted {
+  flex-basis: 100%;
+  font-size: 0.85em;
+}
+.meter {
+  width: 160px;
+  height: 6px;
+  background: #2a2a3a;
+}
+.meter div {
+  height: 100%;
+  background: #4ade80;
+}
+.scene-state {
+  white-space: nowrap;
+}
+.scene-row.writing,
+.scene-row.rewriting {
+  background: #1d2433;
+}
+.scene-row.failed {
+  background: #2a1c1f;
+}
+.busy {
+  color: #93c5fd;
+}
+.ok {
+  color: #4ade80;
+}
+button.mini {
+  padding: 0 6px;
+  margin-left: 6px;
+  font-size: 0.85em;
 }
 .step:disabled {
   opacity: 0.4;

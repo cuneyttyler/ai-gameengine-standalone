@@ -87,6 +87,12 @@ std::string StoryEdge::Text(const char* key) const {
 // --- Storage ----------------------------------------------------------------------------------
 
 namespace {
+// A key's number, or 0 when it holds something else (an AI's "valence": null).
+double number(const nlohmann::json& o, const char* key) {
+    if (!o.is_object()) return 0.0;
+    auto it = o.find(key);
+    return it != o.end() && it->is_number() ? it->get<double>() : 0.0;
+}
 // A key's text, or "" when it holds something else (an AI's "from": true): never a throw.
 std::string text(const nlohmann::json& o, const char* key) {
     if (!o.is_object()) return {};
@@ -228,7 +234,7 @@ std::vector<const StoryEdge*> StoryGraph::In(const std::string& o, const std::st
 std::vector<std::string> StoryGraph::SceneOrder() const {
     std::vector<std::pair<double, std::string>> scenes;
     for (const auto& n : nodes) {
-        if (n.cls == "StoryScene") scenes.push_back({n.fields.value("order", 0.0), n.id});
+        if (n.cls == "StoryScene") scenes.push_back({number(n.fields, "order"), n.id});
     }
     std::sort(scenes.begin(), scenes.end());
     std::vector<std::string> out;
@@ -479,7 +485,7 @@ nlohmann::json StoryGraph::Subgraph(const std::string& scene, const std::string&
                        possesses = nlohmann::json::array();
         for (const auto* e : Out(c)) {
             if (!Holds(*e, scene, branch)) continue;
-            if (e->p == "hasRelationship") relationships.push_back({{"with", e->o}, {"type", e->Text("type")}, {"valence", e->fields.value("valence", 0.0)}});
+            if (e->p == "hasRelationship") relationships.push_back({{"with", e->o}, {"type", e->Text("type")}, {"valence", number(e->fields, "valence")}});
             else if (e->p == "hasGoal") goals.push_back(e->o);
             else if (e->p == "knows") knows.push_back(e->o.empty() ? e->Text("about") : e->o);
             else if (e->p == "possesses") possesses.push_back(e->o);
@@ -585,6 +591,7 @@ std::string StoryGraph::Apply(const nlohmann::json& change, const StoryOntology&
         bool found = false;
         for (auto& e : next.edges) {
             if (e.p != p || e.s != s || (!o.empty() && e.o != o) || (!type.empty() && e.Text("type") != type)) continue;
+            found = true; // ending what's already over is no error: it stays over
             if (at.empty()) {
                 e.until = "\x01remove";
             } else {
@@ -592,7 +599,6 @@ std::string StoryGraph::Apply(const nlohmann::json& change, const StoryOntology&
                 if (!e.until.empty() && next.OrderOf(e.until) <= next.OrderOf(at)) continue; // already over
                 e.until = at;
             }
-            found = true;
         }
         if (!found) return "retract: no " + p + " fact " + s + " -> " + o;
         next.edges.erase(std::remove_if(next.edges.begin(), next.edges.end(), [](const StoryEdge& e) { return e.until == "\x01remove"; }),

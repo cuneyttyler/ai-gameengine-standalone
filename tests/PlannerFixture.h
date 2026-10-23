@@ -83,7 +83,16 @@ inline json Answer(const std::string& path, const json& body) {
             // As a real model wrote it (2026-10-23): "from" as a bool, a cause as a number, a fact as text.
             scene["facts"] = json::parse(R"([{"p": "knows", "s": "character/warden", "about": "aldric-stole-the-amulet", "from": false},
                                               "the warden knows"])");
-            scene["events"] = json::parse(R"([{"id": "news", "class": "Event", "text": "Word reaches the warden", "causes": [3]}])");
+            // And what real models named that isn't there (2026-10-23): an id without its kind, a
+            // made-up earlier event, a conflict never set up, an item nobody introduced.
+            scene["events"] = json::parse(R"([{"id": "news", "class": "Event", "text": "Word reaches the warden", "causes": [3],
+                                               "paysOff": "letter-received-from-previous-scene", "resolves": "conflict/guard-demands-proof"}])");
+            scene["facts"].push_back(json::parse(R"({"p": "possesses", "s": "character/warden", "o": "item/ledger"})"));
+            scene["facts"].push_back(json::parse(R"({"p": "hasGoal", "s": "character/warden", "o": "goal:seek-amulet"})"));
+            scene["facts"].push_back(json::parse(R"({"p": "conflictActive", "s": "character/warden"})"));
+            scene["facts"].push_back(json::parse(R"({"p": "locatedAt", "s": "character/warden", "o": "location/riverford"})"));
+            scene["events"].push_back(json::parse(R"({"class": "Revelation", "text": "The seal was broken from inside", "paysOff": "s1-01"})"));
+            scene["newEntities"] = json::parse(R"([{"id": "Old Map", "class": "Item", "name": "The Old Map", "line": "Inked by the first wardens."}])");
         } else if (id == "s2-01") {
             scene["events"] = json::parse(R"([{"id": "fight", "class": "Action", "agent": "character/warden", "serves": "recover-amulet",
                                                "text": "The warden defeats Aldric", "kernel": true, "causes": []}])");
@@ -91,6 +100,14 @@ inline json Answer(const std::string& path, const json& body) {
                                               {"p": "possesses", "s": "character/warden", "o": "item/amulet"}])");
             scene["end"] = json::parse(R"([{"p": "possesses", "s": "character/aldric", "o": "item/amulet"}])");
             scene["questStage"] = {{"index", 10}, {"journal", "Take the amulet back from Aldric."}};
+            // As Test2's model wrote them (2026-10-23): "from" an event id, a made-up relationship
+            // with no valence, a mention of what she doesn't know yet, a move dated to an earlier scene.
+            for (const char* f : {R"({"p": "knows", "s": "character/warden", "about": "aldric-is-dead", "from": "e11"})",
+                                  R"({"p": "hasRelationship", "s": "character/warden", "o": "character/tamsin", "type": "skeptical-of"})",
+                                  R"({"p": "mentions", "s": "character/tamsin", "about": "the-old-seal", "scene": "s2-01"})",
+                                  R"({"p": "locatedAt", "s": "character/warden", "o": "location/crypt", "from": "s1-02"})"}) {
+                scene["facts"].push_back(json::parse(f));
+            }
         }
         a["scene"] = scene;
     } else if (path == "/planner/critic" || path == "/planner/review") {

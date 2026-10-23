@@ -233,7 +233,8 @@ TEST(PlannerTest, AFailedStepCanBeRetried) {
     EXPECT_EQ(failed[0]["subject"], "tamsin");
     EXPECT_EQ(failed[0]["doc"], "characters/tamsin");
     EXPECT_FALSE(p.plan->Document("characters/tamsin").is_object());
-    for (const auto& s : p.plan->State()["stages"]) {
+    const json withFailure = p.plan->State();
+    for (const auto& s : withFailure["stages"]) {
         if (s["id"] == "characters") EXPECT_EQ(s["failed"], 1);
     }
     EXPECT_NE(p.plan->RetryJob("j-nope"), "");
@@ -244,4 +245,38 @@ TEST(PlannerTest, AFailedStepCanBeRetried) {
     EXPECT_TRUE(p.plan->Document("characters/tamsin").is_object());
     EXPECT_EQ(p.plan->Status(), before); // back to what it was doing
     EXPECT_EQ(p.plan->RetryFailed(), "nothing failed");
+}
+
+// What a scene names that the story doesn't have is put right, not a failed scene: an item
+// it names becomes a stub, an id gets its kind, made-up links are left out (PlannerFixture's s1-02).
+TEST(PlannerTest, WhatASceneNamesThatIsntThereIsPutRight) {
+    Planner p("names");
+    p.ThroughOutline();
+    p.service.Drive(*p.plan);
+    EXPECT_TRUE(p.plan->State()["failedJobs"].empty()) << p.plan->State()["failedJobs"].dump();
+    const auto g = p.plan->Graph();
+    ASSERT_NE(g.Find("item/ledger"), nullptr);
+    EXPECT_EQ(g.Find("item/ledger")->cls, "Item");
+    EXPECT_NE(g.Find("item/old-map"), nullptr);
+    ASSERT_NE(g.Find("goal/seek-amulet"), nullptr);
+    EXPECT_EQ(g.Find("goal/seek-amulet")->cls, "Goal");
+    EXPECT_TRUE(std::none_of(g.edges.begin(), g.edges.end(), [](const aige::StoryEdge& e) { return e.o == "conflict/guard-demands-proof"; }));
+    EXPECT_TRUE(std::none_of(g.edges.begin(), g.edges.end(), [](const aige::StoryEdge& e) { return e.p == "paysOff" && e.o == "s1-01"; }));
+    EXPECT_NE(g.Find("s1-02/e2"), nullptr); // the event without an id got one, as an Event
+    // s2-01's: the relationship has a real type, Tamsin learns what she mentions, the warden
+    // is in one place at a time (the move starts at s2-01, and riverford ends there).
+    bool rival = false, learned = false;
+    for (const auto& e : g.edges) {
+        rival |= e.p == "hasRelationship" && e.s == "character/warden" && e.Text("type") == "rival";
+        learned |= e.p == "knows" && e.s == "character/tamsin" && e.Text("about") == "the-old-seal";
+        if (e.p == "locatedAt" && e.o == "location/crypt" && e.s == "character/warden") EXPECT_EQ(e.from, "s2-01");
+        if (e.p == "knows" && e.Text("about") == "aldric-is-dead") EXPECT_EQ(e.from, "s2-01");
+    }
+    EXPECT_TRUE(rival);
+    EXPECT_TRUE(learned);
+    EXPECT_EQ(g.LocationsAt("character/warden", "s2-01").size(), 1u);
+    // The scene board says where each scene is.
+    const json state = p.plan->State();
+    EXPECT_EQ(state["storyProgress"]["written"], state["storyProgress"]["total"]);
+    EXPECT_EQ(state["acts"][0]["chapters"][0]["scenes"][0]["progress"], "written");
 }
