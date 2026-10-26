@@ -71,7 +71,8 @@ def add(root: Path, pieces: list[dict]) -> list[dict]:
         path = root / p.get("path", "")
         try:
             with Image.open(path) as image:
-                refs.append({"path": p["path"], "role": p.get("role", ""), "name": p.get("name", ""), "palette": palette(image)})
+                refs.append({"path": p["path"], "role": p.get("role", ""), "name": p.get("name", ""), "layer": p.get("layer", ""),
+                             "palette": palette(image)})
         except (OSError, KeyError):
             continue
     refs = refs[-KEEP:]
@@ -97,6 +98,21 @@ def brief_context(root: Path) -> dict:
         return {}
     return {"palette": project_palette(root), "pieces": [r.get("role") or r.get("name") or Path(r["path"]).stem for r in refs][-8:],
             "rule": "match the project's other art: the same palette, outline weight and pixel size as these pieces"}
+
+
+def reference_paths(root: Path, layer: str, most: int = 4) -> list[Path]:
+    """The project's references of this kind (buildings for a building, props for a prop), the
+    latest first: what a new piece is drawn to match (PixelLab's generate-with-style)."""
+    if not layer:
+        return []
+    out = []
+    for r in reversed(load(root)):
+        path = root / r.get("path", "")
+        if r.get("layer") == layer and path.is_file():
+            out.append(path)
+        if len(out) >= most:
+            break
+    return out
 
 
 def image_palette(data: bytes) -> list[str]:

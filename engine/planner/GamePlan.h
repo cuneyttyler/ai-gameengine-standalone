@@ -93,6 +93,33 @@ public:
     // goes back to what it was doing (waiting for review, done) once they're through.
     std::string RetryJob(const std::string& id);
     std::string RetryFailed();
+    // ⑨'s findings with a known remedy, fixed with as few AI calls as can be: directly where no
+    // AI is needed (a window added, a part listed, a companion given a package), else a quick
+    // fix of the item (its document back to the AI with only the findings to correct; one call
+    // per item, however many findings). Then validated again. `ids`: finding ids, or "errors",
+    // "warnings", "*" (both); empty: every fixable error (what ⑨ does on its own, once).
+    std::string FixFindings(const std::vector<std::string>& ids = {});
+    // Every fix stops: what's still fixing is open again, the fix jobs not yet answered (and the
+    // check after them) are cancelled; fixes already made stay.
+    std::string StopFixes();
+    // Fix now (the user): the findings asked for; then, for errors or both, more rounds within that
+    // scope while errors keep turning up. Warnings or one finding: a single pass, errors untouched.
+    std::string FixNow(const std::vector<std::string>& ids) {
+        fixRounds_ = 1;
+        const bool errors = std::find(ids.begin(), ids.end(), "errors") != ids.end();
+        const bool both = std::find(ids.begin(), ids.end(), "*") != ids.end();
+        fixScope_ = both ? "*" : errors ? "errors" : "none";
+        return FixFindings(ids);
+    }
+    // The AI service became available: what waits for it (re-applied answers) goes now.
+    // A plan stopped only because the AI wasn't there goes on by itself.
+    void Kick();
+    // Steps queued or running while the plan works (0 when paused, waiting or done): closing the
+    // editor now would cut them off.
+    int Busy() const;
+    // The editor closes with steps to do: paused and saved, and carried on when the plan is next
+    // opened (a step that was running is asked again; its answer was lost with the session).
+    void PauseForClose();
     // A change in words from the AI panel ("make Aldric the mentor's son"): the AI turns it into
     // edits of the plan's documents; what depends on them goes stale.
     std::string Revise(const std::string& instruction);
@@ -121,6 +148,9 @@ private:
         nlohmann::json problems = nlohmann::json::array(); // the last answer's, for the retry
         // That answer itself: the retry is a quick fix of it (only the problems), not a rewrite.
         nlohmann::json lastAnswer;
+        // Its next send re-applies an answer the AI already gave (from the log: no model call,
+        // the service only puts it into shape); once tried, it isn't replayed again.
+        bool replay = false, replayed = false;
         std::string decision;
     };
 
@@ -138,9 +168,26 @@ private:
     // The status a retry or a regenerate interrupted ({status, message}): back to it when the
     // extra work is through.
     nlohmann::json resume_;
+    // ⑨ fixed what it could on its own after this report (once per validation).
+    bool autoFixed_ = false; // (plans from before rounds; read as rounds = 1)
+    // Fix rounds this validation has had: after each, a report with errors fixes again, up to 3.
+    int fixRounds_ = 0;
+    // What the rounds after a fix may fix: "errors" (the plan's own), "*" (Fix now: both), "none".
+    std::string fixScope_ = "errors";
+    // Paused because the editor closed (not by the user): Open carries on.
+    bool pausedForClose_ = false;
+    // A finding's remedy: {"how": what it does, "do": the change}, or null.
+    nlohmann::json RemedyOf(const nlohmann::json& finding) const;
+    // An item's document back to the AI with only these problems to correct (no rewrite).
+    std::string QuickFix(const std::string& doc, const std::vector<std::string>& problems);
+    void RepairQuest(nlohmann::json& quest, StoryGraph& graph, std::vector<std::string>& known, std::vector<std::string>& fixes) const;
     void Requeue(Job& job);
     void BeginExtraWork();
     std::string DocOfJob(const Job& job) const;
+    // The last answer the AI gave a job of this kind and subject (from the call log), or null.
+    nlohmann::json LoggedAnswer(const std::string& kind, const std::string& subject) const;
+    // Failed jobs with an answer in the log: queued to re-apply it (no model call).
+    int QueueReplays();
     bool paused_ = false;
 
     // The job engine.

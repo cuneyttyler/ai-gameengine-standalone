@@ -141,6 +141,11 @@ inline json Answer(const std::string& path, const json& body) {
            "aliases": [{"id": "giver", "kind": "character", "fill": "character/mara"}],
            "stages": [{"index": 10, "journal": "Gather herbs.", "objectives": [{"action": "gather", "target": "giver", "count": 5}]},
                       {"index": 100, "terminal": "completed"}]}])");
+        // One quest per call (body.only): the main quest, the first side quest, then small errands.
+        const std::string only = body.value("only", "");
+        if (only == "q-main") a["quests"] = json::array({a["quests"][0]});
+        else if (only == "q-side-1") a["quests"] = json::array({a["quests"][1]});
+        else if (!only.empty()) a["quests"] = json::array(); // no further side quest fits: the slot stays empty
     } else if (path == "/planner/place") {
         const std::string kind = body.value("kind", "settlement");
         json place = {{"kind", kind},
@@ -148,6 +153,9 @@ inline json Answer(const std::string& path, const json& body) {
                       {"brief", {{"schema", "aige.brief/1"}, {"buildType", kind}}}};
         if (body["entry"].value("id", "") == "location/crypt") place["storyAnchors"] = {{{"id", "altar"}, {"module", "altar"}, {"for", {{"quest", "q-main"}}}}};
         if (body["entry"].value("id", "") == "location/temple") place["storyAnchors"] = {{{"id", "altar"}, {"module", "altar"}}};
+        // As Test2's model wrote Briefs (2026-10-23): components the build type hasn't, an empty feature.
+        place["brief"]["components"] = {{"rooms", {{"count", 4}}}, {"kind", "crypt"}, {"features", json::array()}};
+        place["brief"]["features"] = json::array({""});
         a["place"] = place;
     } else if (path == "/planner/systems") {
         a["systems"] = {{"summary", {{"economy", "gold"}}}, {"records", {{{"type", "item"}, {"id", "warden-blade"}, {"record", {{"name", "Warden's Blade"}}}}}}};

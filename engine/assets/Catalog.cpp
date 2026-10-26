@@ -562,7 +562,7 @@ Retrieval RetrieveForSlot(const Catalog& catalog, const Ontology& ontology, cons
             continue;
         }
         // The project's own and what the Art tool made for it need no licence; anything else does.
-        if (e.source != "project" && e.source != "generated" && e.licence.empty()) {
+        if (e.source != "project" && e.source != "generated" && !e.own && e.licence.empty()) {
             reject("its licence is unknown");
             continue;
         }

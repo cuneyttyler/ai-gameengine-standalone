@@ -1,3 +1,4 @@
+#include <fstream>
 #include <gtest/gtest.h>
 
 #include "PlannerFixture.h"
@@ -228,7 +229,7 @@ TEST(PlannerTest, AFailedStepCanBeRetried) {
     }
     const std::string before = p.plan->Status();
     json failed = p.plan->State()["failedJobs"];
-    ASSERT_EQ(failed.size(), 1u) << p.plan->State()["message"];
+    ASSERT_EQ(failed.size(), 1u) << p.plan->State()["message"] << " " << failed.dump();
     EXPECT_EQ(failed[0]["kind"], "character");
     EXPECT_EQ(failed[0]["subject"], "tamsin");
     EXPECT_EQ(failed[0]["doc"], "characters/tamsin");
@@ -333,4 +334,242 @@ TEST(PlannerTest, ACharacterWithMadeUpValuesIsPutRight) {
     EXPECT_EQ(c["behaviour"]["packages"][1]["template"], "wander");
     ASSERT_EQ(c["relationships"].size(), 1u);
     EXPECT_EQ(c["relationships"][0]["type"], "rival");
+}
+
+// A step that failed but whose answer is in the call log is re-applied when the plan opens:
+// no model call, even with the plan paused, and the board shows it made.
+TEST(PlannerTest, AFailedStepIsReappliedFromTheLogOnOpen) {
+    Planner p("replay-log");
+    p.ThroughOutline();
+    p.service.Drive(*p.plan);
+    ASSERT_TRUE(p.plan->Document("characters/tamsin").is_object());
+    const int calls = p.plan->State()["usage"]["calls"];
+    p.plan.reset();
+    // As an older engine left it: tamsin's job failed, her document never written, the plan paused.
+    const fs::path statePath = p.root / "planner" / "state.json";
+    json state = json::parse(std::ifstream(statePath));
+    for (auto& j : state["jobs"]) {
+        if (j["kind"] == "character" && j["subject"] == "character/tamsin") j["status"] = "failed";
+    }
+    state["paused"] = true;
+    state["status"] = "paused";
+    std::ofstream(statePath) << state.dump();
+    fs::remove(p.root / "planner" / "characters" / "tamsin.json");
+    p.plan = std::make_unique<GamePlan>(p.service.Host(p.root));
+    ASSERT_EQ(p.plan->Open(), "");
+    ASSERT_EQ(p.service.outstanding.size(), 1u);
+    EXPECT_EQ(p.service.outstanding.front().path, "/planner/character");
+    EXPECT_TRUE(p.service.outstanding.front().body.contains("replay"));
+    p.service.Drive(*p.plan);
+    EXPECT_TRUE(p.plan->Document("characters/tamsin").is_object());
+    EXPECT_TRUE(p.plan->State()["failedJobs"].empty());
+    EXPECT_EQ(p.plan->State()["usage"]["calls"], calls); // no model call
+    EXPECT_EQ(p.plan->Status(), "paused");               // and the plan stays as it was
+}
+
+// ⑨ finds an error with a known remedy (the journal window missing while the game has
+// quests): the plan fixes it on its own, validates again, and the design is done.
+TEST(PlannerTest, ValidationFixesWhatHasARemedyOnItsOwn) {
+    Planner p("autofix");
+    p.ThroughOutline();
+    while (!p.service.outstanding.empty()) {
+        const auto r = p.service.outstanding.front();
+        p.service.outstanding.pop_front();
+        json a = Answer(r.path, r.body);
+        if (r.path == "/planner/visuals") {
+            json kept = json::array();
+            for (const auto& s : a["ui"]["screens"]) {
+                if (s != "journal") kept.push_back(s);
+            }
+            a["ui"]["screens"] = kept;
+        }
+        p.plan->OnResponse(r.id, a);
+    }
+    EXPECT_EQ(p.plan->Status(), "done") << p.plan->State()["message"] << "\n" << Findings(p.plan->Document("report"));
+    const auto screens = p.plan->Document("ui")["screens"];
+    EXPECT_NE(std::find(screens.begin(), screens.end(), "journal"), screens.end());
+    EXPECT_EQ(p.plan->Document("report")["summary"]["errors"], 0);
+}
+
+// ⑦'s records as a small model wrote them (Test2): "stack": false on the moon amulet, a record
+// of a type the engine hasn't. The field is left at its default, the record left out; the
+// systems are made, not failed.
+TEST(PlannerTest, RecordsTheEngineRefusesArePutRight) {
+    Planner p("records");
+    GamePlan::Host host = p.service.Host(p.root);
+    host.validateRecord = [](const std::string& type, const json& record) -> std::vector<std::string> {
+        if (type != "item") return {"there's no record type '" + type + "'"};
+        if (record.contains("stack") && !record["stack"].is_number()) return {"stack: expected a number, got " + record["stack"].dump()};
+        return {};
+    };
+    p.plan = std::make_unique<GamePlan>(host);
+    p.ThroughOutline();
+    while (!p.service.outstanding.empty()) {
+        const auto r = p.service.outstanding.front();
+        p.service.outstanding.pop_front();
+        json a = Answer(r.path, r.body);
+        if (r.path == "/planner/systems") {
+            a["systems"]["records"].push_back({{"type", "item"}, {"id", "moon-amulet"}, {"record", {{"name", "Moon Amulet"}, {"stack", false}}}});
+            a["systems"]["records"].push_back({{"type", "spell"}, {"id", "moonfire"}, {"record", {{"name", "Moonfire"}}}});
+        }
+        p.plan->OnResponse(r.id, a);
+    }
+    EXPECT_TRUE(p.plan->State()["failedJobs"].empty()) << p.plan->State()["failedJobs"].dump();
+    const json records = p.plan->Document("systems")["records"];
+    bool amulet = false, spell = false;
+    for (const auto& r : records) {
+        if (r["id"] == "moon-amulet") {
+            amulet = true;
+            EXPECT_FALSE(r["record"].contains("stack"));
+        }
+        if (r["id"] == "moonfire") spell = true;
+    }
+    EXPECT_TRUE(amulet);
+    EXPECT_FALSE(spell);
+}
+
+// A companion with no AI package (R-K5, an error): ⑨ gives it one directly, no AI call, and the
+// design is done.
+TEST(PlannerTest, ACompanionWithoutAPackageIsGivenOneWithoutTheAi) {
+    Planner p("companion");
+    ASSERT_EQ(p.plan->Start("a short dark-fantasy ARPG about a disgraced warden recovering a stolen amulet"), "");
+    int tamsinCalls = 0;
+    auto drive = [&] {
+        while (!p.service.outstanding.empty()) {
+            const auto r = p.service.outstanding.front();
+            p.service.outstanding.pop_front();
+            json a = Answer(r.path, r.body);
+            if (r.path == "/planner/outline") {
+                for (auto& c : a["outline"]["cast"]) {
+                    if (c["id"] == "character/tamsin") c["gameplayRoles"] = {"companion"};
+                }
+            }
+            if (r.path == "/planner/character" && r.body.value("entry", json::object()).value("id", "") == "character/tamsin") {
+                ++tamsinCalls;
+                a["character"]["behaviour"] = {{"packages", json::array()}};
+            }
+            p.plan->OnResponse(r.id, a);
+        }
+    };
+    drive();
+    ASSERT_EQ(p.plan->Confirm(), "");
+    drive();
+    ASSERT_EQ(p.plan->Approve(), "");
+    drive();
+    EXPECT_EQ(p.plan->Status(), "done") << p.plan->State()["message"] << "\n" << Findings(p.plan->Document("report"));
+    EXPECT_EQ(tamsinCalls, 1); // written once; the package came without the AI
+    const json c = p.plan->Document("characters/tamsin");
+    ASSERT_TRUE(c["behaviour"]["packages"].is_array() && !c["behaviour"]["packages"].empty());
+    EXPECT_EQ(c["behaviour"]["packages"][0]["template"], "wander");
+}
+
+// Closing the editor with steps to do pauses the plan (nothing left running) and opening it
+// again carries on from where it was, to the end.
+TEST(PlannerTest, ClosingPausesAndOpeningCarriesOn) {
+    Planner p("close");
+    p.ThroughOutline();
+    for (int i = 0; i < 3 && !p.service.outstanding.empty(); ++i) {
+        const auto r = p.service.outstanding.front();
+        p.service.outstanding.pop_front();
+        p.plan->OnResponse(r.id, Answer(r.path, r.body));
+    }
+    ASSERT_GT(p.plan->Busy(), 0);
+    p.plan->PauseForClose();
+    EXPECT_EQ(p.plan->Status(), "paused");
+    EXPECT_EQ(p.plan->Busy(), 0);
+    p.service.outstanding.clear(); // the session ends
+    p.plan = std::make_unique<GamePlan>(p.service.Host(p.root));
+    ASSERT_EQ(p.plan->Open(), "");
+    EXPECT_EQ(p.plan->Status(), "working");
+    EXPECT_FALSE(p.service.outstanding.empty()); // it carries on by itself
+    p.service.Drive(*p.plan);
+    EXPECT_EQ(p.plan->Status(), "done") << Findings(p.plan->Document("report"));
+}
+
+// Stop fix: what's fixing is open again, the fix jobs are cancelled, and an answer that comes
+// after for one of them is ignored.
+TEST(PlannerTest, StopFixCancelsEveryFix) {
+    Planner p("stopfix");
+    p.ThroughOutline();
+    // Tamsin's character keeps failing: ⑨ reports it, and its own fix (a retry) is queued.
+    for (int guard = 0; guard < 500 && !p.service.outstanding.empty(); ++guard) {
+        const auto r = p.service.outstanding.front();
+        const bool tamsin = r.path == "/planner/character" && r.body.value("entry", json::object()).value("id", "") == "character/tamsin";
+        if (tamsin && p.plan->Stage() == "validate") break; // the fix's retry: left unanswered
+        p.service.outstanding.pop_front();
+        p.plan->OnResponse(r.id, tamsin ? json{{"ok", false}, {"errors", {"the model is busy"}}} : Answer(r.path, r.body));
+    }
+    ASSERT_EQ(p.plan->Stage(), "validate");
+    ASSERT_GT(p.plan->Busy(), 0);
+    EXPECT_EQ(p.plan->StopFixes(), "");
+    EXPECT_EQ(p.plan->Busy(), 0);
+    EXPECT_EQ(p.plan->Status(), "waiting");
+    for (const auto& f : p.plan->Document("report")["findings"]) EXPECT_NE(f["status"], "fixing");
+    // The cancelled retry's answer arrives anyway: nothing happens.
+    const auto late = p.service.outstanding.front();
+    p.plan->OnResponse(late.id, Answer(late.path, late.body));
+    EXPECT_FALSE(p.plan->Document("characters/tamsin").is_object());
+}
+
+// A quest as a small model wrote it (Test2): an alias filled by an item the story lacks, an
+// alias of no kind and nothing to fill it, stage numbers that fall, a giver that isn't an alias,
+// an action outside the vocabulary. Put right, one call for the quest, nothing failed.
+TEST(PlannerTest, AQuestWithASmallModelsMistakesIsPutRight) {
+    Planner p("quest-repair");
+    p.ThroughOutline();
+    int mainCalls = 0;
+    while (!p.service.outstanding.empty()) {
+        const auto r = p.service.outstanding.front();
+        p.service.outstanding.pop_front();
+        json a = Answer(r.path, r.body);
+        if (r.path == "/planner/quests" && r.body.value("only", "") == "q-main") {
+            ++mainCalls;
+            json& q = a["quests"][0];
+            q["giver"] = {{"alias", "nobody"}};
+            q["aliases"].push_back({{"id", "relic"}, {"kind", "item"}, {"fill", "item/amulet-hollow-king"}});
+            q["aliases"].push_back({{"id", "helper"}, {"kind", "npc"}, {"fill", "character/tamsin"}});
+            q["aliases"].push_back({{"id", "mystery"}, {"kind", "thing"}});
+            q["stages"].insert(q["stages"].begin() + 1, json{{"index", 5}, {"journal", "Go back."}, {"objectives", {{{"action", "retrieve"}, {"target", "relic"}}}}});
+        }
+        p.plan->OnResponse(r.id, a);
+    }
+    EXPECT_TRUE(p.plan->State()["failedJobs"].empty()) << p.plan->State()["failedJobs"].dump();
+    EXPECT_EQ(mainCalls, 1);
+    const json q = p.plan->Document("quests/q-main");
+    ASSERT_TRUE(q.is_object());
+    EXPECT_EQ(q["giver"]["alias"], "giver");                 // the first character alias
+    EXPECT_NE(p.plan->Graph().Find("item/amulet-hollow-king"), nullptr);
+    int last = 0;
+    for (const auto& st : q["stages"]) {
+        EXPECT_GT(st["index"].get<int>(), last);
+        last = st["index"].get<int>();
+    }
+    for (const auto& al : q["aliases"]) {
+        if (al["id"] == "helper") EXPECT_EQ(al["kind"], "character");
+        if (al["id"] == "mystery") EXPECT_TRUE(al.contains("query"));
+    }
+}
+
+// A quest's giver without its motivation (R-Q4, a warning): Fix now settles it without the AI.
+TEST(PlannerTest, AQuestMotivationIsMatchedToItsGiverWithoutTheAi) {
+    Planner p("motivation");
+    p.ThroughOutline();
+    p.service.Drive(*p.plan);
+    auto open = [&](const char* rule) {
+        int n = 0;
+        const json report = p.plan->Document("report");
+        for (const auto& f : report["findings"]) n += f["rule"] == rule && f["status"] == "open";
+        return n;
+    };
+    ASSERT_GT(open("R-Q4"), 0);
+    ASSERT_EQ(p.plan->FixNow({"warnings"}), "");
+    int questCalls = 0;
+    while (!p.service.outstanding.empty()) {
+        const auto r = p.service.outstanding.front();
+        p.service.outstanding.pop_front();
+        questCalls += r.path == "/planner/quests";
+        p.plan->OnResponse(r.id, Answer(r.path, r.body));
+    }
+    EXPECT_EQ(questCalls, 0);
+    EXPECT_EQ(open("R-Q4"), 0) << Findings(p.plan->Document("report"));
 }

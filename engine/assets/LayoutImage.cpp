@@ -175,7 +175,40 @@ void Label(Canvas& canvas, const std::string& text, float cx, float cy, float si
 
 } // namespace
 
+// A kind's code on a vision check's map: A..Z, then AA, AB, ...
+static std::string CodeOf(size_t i) {
+    std::string code;
+    for (size_t n = i + 1; n > 0; n = (n - 1) / 26) code.insert(code.begin(), static_cast<char>('A' + (n - 1) % 26));
+    return code;
+}
+
+static Rgb CodeColour(size_t i) {
+    static const uint32_t colours[] = {0xe6194b, 0x3cb44b, 0xffe119, 0x4363d8, 0xf58231, 0x911eb4, 0x46f0f0, 0xf032e6, 0xbcf60c, 0xfabebe,
+                                       0x008080, 0xe6beff, 0x9a6324, 0xfffac8, 0x800000, 0xaaffc3, 0x808000, 0xffd8b1, 0x000075, 0xffffff};
+    return Hex(colours[i % 20]);
+}
+
+static bool Uncoded(const std::string& slot) {
+    // What grows: drawn as plants, not coded (it would bury the things that matter).
+    return slot == "tree" || slot == "bush" || slot == "plant" || slot == "flower" || slot == "crop" || slot == "grass" || slot == "reed" ||
+           slot == "mushroom" || slot == "herb" || slot == "fern" || slot == "weed";
+}
+
 ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& options) {
+    // The coded kinds (a vision check's map), in a fixed order.
+    std::map<std::string, size_t> codeIndex;
+    if (options.codes) {
+        std::set<std::string> kinds;
+        for (const auto& o : solved.value("objects", json::array())) {
+            const std::string slot = o.value("slot", "");
+            if (o.value("layer", "") != "building" && !Uncoded(slot) && !IsCrop(o.value("shows", ""))) kinds.insert(slot.empty() ? "object" : slot);
+        }
+        for (const auto& k : kinds) {
+            const size_t i = codeIndex.size();
+            codeIndex[k] = i;
+            if (options.codesOut) (*options.codesOut)[CodeOf(i)] = k;
+        }
+    }
     const json bounds = solved.value("grid", json::object()).value("bounds", json::array({0, 0, 64, 64}));
     const int W = std::max(1, bounds[2].get<int>()), H = std::max(1, bounds[3].get<int>());
     const int cell = options.cellPixels > 0 ? options.cellPixels : std::clamp(options.targetSize / std::max(W, H), 3, 24);
@@ -277,6 +310,10 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
         for (const auto& l : solved.value("lines", json::array())) lines.insert(l.value("slot", ""));
         if (!slots.empty() || !lines.empty()) heading("Things");
         for (const auto& slot : slots) {
+            if (auto c = codeIndex.find(slot.empty() ? "object" : slot); c != codeIndex.end()) {
+                add(Swatch::Prop, CodeColour(c->second), CodeOf(c->second) + ": " + (slot.empty() ? std::string("object") : slot));
+                continue;
+            }
             if (slot == "tree") add(Swatch::Tree, Hex(0x3d6b2a), "Tree");
             else if (slot == "bush") add(Swatch::Tree, Hex(0x3d6b2a), "Bush");
             else if (slot == "plant" || slot == "flower") {
@@ -466,6 +503,14 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
         const float x1 = x0 + o["w"].get<int>() * cell, y1 = y0 + o["h"].get<int>() * cell;
         const std::string slot = o.value("slot", ""), layer = o.value("layer", ""), shows = o.value("shows", "");
         const float cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+        if (auto c = layer == "building" ? codeIndex.end() : codeIndex.find(slot.empty() ? "object" : slot); c != codeIndex.end()) {
+            // A vision check's map: the kind's colour, and its code when there's room to read it.
+            const float inset = std::min(x1 - x0, y1 - y0) > cell ? cell * 0.1f : cell * 0.08f;
+            canvas.Rect(x0 + inset, y0 + inset, x1 - inset, y1 - inset, CodeColour(c->second));
+            canvas.Frame(x0 + inset, y0 + inset, x1 - inset, y1 - inset, Hex(0x11111b), 1.0f, std::max(1.0f, cell / 10.0f));
+            if (cell >= 11) Label(canvas, CodeOf(c->second), cx, cy, std::clamp(cell * 0.75f, 9.0f, 18.0f), Hex(0xffffff));
+            continue;
+        }
         if (layer == "building") {
             const auto module = options.modules.find(o.value("node", ""));
             const Rgb roof = RoofColor(module != options.modules.end() ? module->second : "");
@@ -494,6 +539,14 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
             canvas.Disc(cx + cell * 0.18f, cy + cell * 0.22f, r, Hex(0x1c2614), 0.35f);
             canvas.Disc(cx, cy, r, Hex(0x3d6b2a));
             canvas.Disc(cx - r * 0.25f, cy - r * 0.25f, r * 0.55f, Hex(0x5a8f3c), 0.8f);
+        } else if (slot == "grass" || slot == "reed" || slot == "fern" || slot == "weed" || slot == "herb" || slot == "mushroom") {
+            // Ground cover: a few small tufts (or caps), not a box.
+            const Rgb tuft = slot == "mushroom" ? Hex(0xd9c7a3) : slot == "reed" ? Hex(0x7d8c3a) : Hex(0x4f8a34);
+            for (int k = 0; k < 2; ++k) {
+                const float fx = x0 + (0.25f + 0.5f * Noise(o["x"].get<int>(), o["y"].get<int>(), k + 3)) * cell;
+                const float fy = y0 + (0.25f + 0.5f * Noise(o["y"].get<int>(), o["x"].get<int>(), k + 5)) * cell;
+                canvas.Disc(fx, fy, std::max(1.0f, cell * 0.12f), tuft, 0.9f);
+            }
         } else if ((slot == "plant" || slot == "flower") && !IsCrop(shows)) {
             for (int k = 0; k < 3; ++k) {
                 const float fx = x0 + (0.2f + 0.6f * Noise(o["x"].get<int>(), o["y"].get<int>(), k)) * cell;
@@ -520,6 +573,19 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
     // The zone names, by the map's size (it's shown at a fraction of it): about a twentieth of its width.
     const float labelSize = std::clamp(cell * std::max(W, H) / 20.0f, 22.0f, 72.0f);
     for (const auto& [text, at] : zoneLabels) Label(canvas, text, at[0], at[1], labelSize, Hex(0xfdfaf2));
+    // The parts named for a check (rooms, plots), at their middles, smaller.
+    if (!options.partNames.empty()) {
+        for (const auto& r : solved.value("regions", json::array())) {
+            const auto name = options.partNames.find(r.value("id", ""));
+            if (name == options.partNames.end() || r.value("statement", "") == "site/zones") continue;
+            double sx = 0, sy = 0;
+            size_t n = 0;
+            for (const auto& run : r.value("cells", json::array())) {
+                for (int x = run[1].get<int>(); x < run[2].get<int>(); ++x) sx += x + 0.5, sy += run[0].get<int>() + 0.5, ++n;
+            }
+            if (n > 0) Label(canvas, name->second, static_cast<float>(sx / n * cell), static_cast<float>(sy / n * cell), std::clamp(labelSize * 0.45f, 11.0f, 26.0f), Hex(0xfdfaf2));
+        }
+    }
     if (footer > 0) {
         canvas.Rect(0, static_cast<float>(H * cell), static_cast<float>(W * cell), static_cast<float>(H * cell + footer), Hex(0x1e1e2e));
         Label(canvas, options.title, W * cell / 2.0f, H * cell + footer / 2.0f, std::clamp(footer * 0.55f, 12.0f, 24.0f), Hex(0xcdd6f4));

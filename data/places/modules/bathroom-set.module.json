@@ -1,0 +1,54 @@
+{
+  "schema": "aige.module/1",
+  "id": "bathroom-set",
+  "name": "Bathroom fittings",
+  "level": "feature",
+  "description": "A toilet, a sink and a shower.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "toilet": {
+      "role": "toilet",
+      "essential": true,
+      "primary": true
+    },
+    "sink": {
+      "role": "sink",
+      "essential": false
+    },
+    "shower": {
+      "role": "shower",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "wall",
+      "members": [
+        {
+          "slot": "sink",
+          "count": [
+            1,
+            1
+          ],
+          "near": 2
+        },
+        {
+          "slot": "shower",
+          "count": [
+            0,
+            1
+          ],
+          "near": 3
+        }
+      ]
+    }
+  }
+}

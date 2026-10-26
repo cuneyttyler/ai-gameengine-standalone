@@ -1,0 +1,135 @@
+{
+  "schema": "aige.module/1",
+  "id": "school-plot",
+  "name": "School plot",
+  "level": "parcel",
+  "description": "A school with a playground and bike racks.",
+  "buildTypes": [
+    "modern-city"
+  ],
+  "classes": [
+    "PublicService"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          10,
+          14
+        ],
+        "h": [
+          8,
+          12
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    },
+    "setback": {
+      "type": "length",
+      "default": [
+        1,
+        2
+      ],
+      "min": 0,
+      "unit": "cells",
+      "max": 8
+    }
+  },
+  "quality": {
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "lived-in"
+    }
+  },
+  "slots": {
+    "school": {
+      "role": "school",
+      "essential": true,
+      "primary": true
+    },
+    "street-light": {
+      "role": "street-light",
+      "essential": false
+    },
+    "trash-bin": {
+      "role": "trash-bin",
+      "essential": false
+    },
+    "bicycle": {
+      "role": "bicycle",
+      "essential": false
+    },
+    "playground-set": {
+      "role": "playground-set",
+      "essential": false
+    },
+    "tree": {
+      "role": "tree",
+      "essential": false
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "faces",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 3.0
+    },
+    {
+      "type": "adjacent",
+      "members": [
+        "self",
+        "parent.street"
+      ],
+      "weight": 2.0
+    }
+  ],
+  "compile": {
+    "contents": [
+      {
+        "slot": "street-light",
+        "count": [
+          1,
+          2
+        ],
+        "where": "border"
+      },
+      {
+        "slot": "bicycle",
+        "count": [
+          1,
+          4
+        ],
+        "where": "border"
+      },
+      {
+        "slot": "playground-set",
+        "count": [
+          1,
+          2
+        ]
+      },
+      {
+        "slot": "tree",
+        "count": [
+          1,
+          3
+        ]
+      }
+    ],
+    "surface": "concrete"
+  }
+}

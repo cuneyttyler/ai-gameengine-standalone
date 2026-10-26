@@ -130,6 +130,11 @@ private:
     json statements_ = json::array();
     double woods_ = -1; // the root's `woods` (a density for the landscape's woods); -1: the module's own
     std::set<std::string> ids_;
+    std::string rootModule_; // the place's root module (its compile hints: the landscape set)
+    // The layout form (the root's fields: zone-shape, street-grid, block-size, block-fill, coverage), and the
+    // shared street lattice it gives ({origin [x, y], block [w, h]}; null: each zone its own streets).
+    json form_ = json::object();
+    json lattice_;
     int side_ = 64;
     int width_ = 0, height_ = 0; // a dungeon's or a building's grid (its levels side by side); 0: the square site
     std::vector<std::string> doors_;
@@ -168,6 +173,9 @@ private:
     json HintCount(const json& hint, const json& node, const ModuleDef& m) const;
     void Zone(const json& zone, const ModuleDef& m, int index, const json& layoutMix);
     void Landscape(const std::string& root, const std::string& zonesIn, const std::vector<std::pair<const json*, const ModuleDef*>>& zones);
+    // Vehicles on the roads of an area (a module's compile hint "traffic": {slot, density}): a scatter
+    // on road cells only. `mainOnly`: the site's main roads (the root's), not the zones' streets.
+    void Traffic(const ModuleDef& m, const std::string& node, const std::string& in, bool mainOnly);
     void Parcel(const json& templateNode, const ModuleDef& m, const std::string& instance, int index);
     void Feature(const json& node, const ModuleDef& m, const std::string& self, const std::string& parentInstance,
                  const std::string& parentPrimary);
@@ -359,7 +367,7 @@ void Compiler::Contents(const json& list, const json& node, const ModuleDef& m, 
         }
         if (slot == nullptr) continue;
         const std::string where = item.value("where", "");
-        json s = {{"op", "scatter"}, {"id", self + "/more-" + slotName + (k ? "-" + std::to_string(k) : "")}, {"node", nodeId},
+        json s = {{"op", "scatter"}, {"ordered", form_.value("arrangement", "") == "ordered"}, {"id", self + "/more-" + slotName + (k ? "-" + std::to_string(k) : "")}, {"node", nodeId},
                   {"in", in + (where == "border" ? ".border" : where == "inner" ? ".inner" : "")}, {"slot", slotName},
                   {"layer", item.value("layer", LayerForSlot(ontology_, *slot))}};
         const json count = HintCount(item.value("count", json()), node, m);
@@ -445,6 +453,13 @@ void Compiler::ScatteredZone(const json& zone, const ModuleDef& m, const json& h
 
 void Compiler::Root(const json& root) {
     const ModuleDef* m = ontology_.Module(root.value("module", ""));
+    rootModule_ = root.value("module", "");
+    if (m) {
+        for (const char* name : {"zone-shape", "street-grid", "block-fill", "coverage", "arrangement"}) {
+            if (const json v = FieldOf(root, *m, name); v.is_string()) form_[name] = v;
+        }
+        if (const json b = FieldOf(root, *m, "block-size"); b.is_object()) form_["block-size"] = b;
+    }
     const std::string id = root.value("id", "site");
     if (m) {
         if (const json w = FieldOf(root, *m, "woods"); w.is_string()) {
@@ -487,12 +502,22 @@ void Compiler::Root(const json& root) {
     const int s = side_;
     Emit({{"op", "region"}, {"id", "site"}, {"node", id}, {"shape", "rect"}, {"at", {0, 0}}, {"size", {{"w", s}, {"h", s}}}});
     const json children = root.value("children", json::array());
-    std::string ground = "grass";
+    const json rootHints = m && m->compile.is_object() ? m->compile : json::object();
+    std::string ground = rootHints.value("ground", "grass");
     std::string groundNode = id;
+    // A field the plan set itself (not its module's default): what the root's hints yield to.
+    auto setHere = [](const json& node, const char* group, const char* field) {
+        return node.contains(group) && node[group].is_object() && node[group].contains(field);
+    };
     for (const auto& c : children) {
         if (c.value("module", "") == "ground") {
             const ModuleDef* gm = ontology_.Module("ground");
-            ground = Text(gm ? FieldOf(c, *gm, "terrain") : json(), "grass");
+            // The plan's own choice wins over the root's hint; its module's default (what a planner writes
+            // when it doesn't choose) doesn't.
+            const json chosen = gm ? FieldOf(c, *gm, "terrain") : json();
+            const FieldDef* field = gm ? gm->Field("terrain") : nullptr;
+            const bool deliberate = setHere(c, "quality", "terrain") && !(field && chosen == field->defaultValue);
+            if (!rootHints.contains("ground") || deliberate) ground = Text(chosen, ground);
             groundNode = c.value("id", id);
         }
     }
@@ -518,8 +543,12 @@ void Compiler::Root(const json& root) {
         } else if (module == "road") {
             const std::string cls = Text(FieldOf(c, *cm, "class"), "main");
             if (cls != "main" && mainRoads > 0) continue; // streets come from each zone's network
-            const auto width = Range(c, *cm, "width");
-            const std::string surface = Text(FieldOf(c, *cm, "surface"), "dirt");
+            const json roads = rootHints.value("roads", json::object());
+            auto width = Range(c, *cm, "width");
+            if (roads.contains("width") && !setHere(c, "quantity", "width")) width = std::pair<double, double>{roads["width"].get<double>(), roads["width"].get<double>()};
+            const std::string surface = roads.contains("surface") && !setHere(c, "quality", "surface") ? roads.value("surface", "dirt")
+                                                                                                         : Text(FieldOf(c, *cm, "surface"), "dirt");
+            const std::string edge = roads.value("edge", ""); // sidewalks: the outer cells of its width
             const std::string pathId = mainRoads == 0 ? "site/main-road" : "site/main-road-" + std::to_string(mainRoads + 1);
             if (mainRoads > 0) {
                 // Another road (a branch north to the outskirts, south to the docks): from its side
@@ -534,21 +563,23 @@ void Compiler::Root(const json& root) {
                           {"at", side == "n" ? json::array({s / 2 + s / 12, 0}) : json::array({s / 2 - s / 12, s - 1})}, {"kind", "entrance"}});
                 }
                 Emit({{"op", "path"}, {"id", pathId}, {"node", node}, {"in", "site"}, {"from", entrance}, {"to", "site.center"}, {"class", "main"},
-                      {"width", width ? static_cast<int>(std::lround(width->first)) : 2}, {"terrain", surface}, {"wiggle", 0.5}});
+                      {"width", width ? static_cast<int>(std::lround(width->first)) : 2}, {"terrain", surface}, {"edge", edge},
+                      {"wiggle", roads.value("wiggle", 0.5)}});
                 ++mainRoads;
                 continue;
             }
             Emit({{"op", "path"}, {"id", pathId}, {"node", node}, {"in", "site"}, {"from", "site/entrance-w"}, {"to", "site/entrance-e"},
                   {"via", json::array({"site.center"})}, {"class", "main"}, {"width", width ? static_cast<int>(std::lround(width->first)) : 2},
-                  {"terrain", surface}, {"wiggle", 0.5}});
+                  {"terrain", surface}, {"edge", edge}, {"wiggle", roads.value("wiggle", 0.5)}});
             ++mainRoads;
-            // A town or bigger gets a crossroads.
-            if (buildings && buildings->second >= 150 && mainRoads == 1) {
+            // A town or bigger gets a crossroads (a city always: its avenues cross).
+            if (((buildings && buildings->second >= 150) || roads.value("cross", false)) && mainRoads == 1) {
                 Emit({{"op", "anchor"}, {"id", "site/entrance-n"}, {"node", id}, {"at", {s / 2 + s / 12, 0}}, {"kind", "entrance"}});
                 Emit({{"op", "anchor"}, {"id", "site/entrance-s"}, {"node", id}, {"at", {s / 2 - s / 12, s - 1}}, {"kind", "entrance"}});
                 Emit({{"op", "path"}, {"id", "site/cross-road"}, {"node", node}, {"in", "site"}, {"from", "site/entrance-n"},
-                      {"to", "site/entrance-s"}, {"via", json::array({"site.center"})}, {"class", "main"}, {"width", 2},
-                      {"terrain", surface}, {"wiggle", 0.5}});
+                      {"to", "site/entrance-s"}, {"via", json::array({"site.center"})}, {"class", "main"},
+                      {"width", width ? static_cast<int>(std::lround(width->first)) : 2}, {"terrain", surface}, {"edge", edge},
+                      {"wiggle", roads.value("wiggle", 0.5)}});
             }
         }
     }
@@ -649,10 +680,26 @@ void Compiler::Root(const json& root) {
         zones.push_back({&c, cm});
     }
     if (!into.empty()) {
-        Emit({{"op", "partition"}, {"id", "site/zones"}, {"node", id}, {"in", zonesIn}, {"into", into}, {"method", "growth"}});
+        // The layout form: zones grown from seeds, or rectangles along the main roads; a shared street lattice
+        // (one grid, lined up with the main roads at the site's centre); zones covering everything or not.
+        if (form_.value("street-grid", "") == "shared") {
+            const json b = form_.value("block-size", json::object());
+            const auto mid = [](const json& r, int d) {
+                if (r.is_number()) return r.get<int>();
+                if (r.is_array() && r.size() == 2) return (r[0].get<int>() + r[1].get<int>()) / 2;
+                return d;
+            };
+            lattice_ = {{"origin", {side_ / 2, side_ / 2}}, {"block", {mid(b.value("w", json()), 18), mid(b.value("h", json()), 18)}}};
+        }
+        json partition = {{"op", "partition"}, {"id", "site/zones"}, {"node", id}, {"in", zonesIn}, {"into", into},
+                          {"method", form_.value("zone-shape", "") == "blocks" ? "blocks" : "growth"}};
+        if (form_.value("coverage", "") == "full") partition["cover"] = true;
+        if (!lattice_.is_null()) partition["lattice"] = lattice_;
+        Emit(partition);
     }
     const json layout = m ? FieldOf(root, *m, "layout") : json();
     for (size_t i = 0; i < zones.size(); ++i) Zone(*zones[i].first, *zones[i].second, static_cast<int>(i), layout);
+    if (m) Traffic(*m, id, "site", true);
     Landscape(id, zonesIn, zones);
 
     // Walls round the site, with gates where the roads cross.
@@ -672,11 +719,37 @@ void Compiler::Root(const json& root) {
 // yards inside them, the verges along the main roads, each with what grows and lies there
 // (the landscape module's settings: trees, bushes, flowers, grass, rocks, mounds), so the
 // place reads as one landscape. Each is a scatter on the cells its container owns itself.
+void Compiler::Traffic(const ModuleDef& m, const std::string& node, const std::string& in, bool mainOnly) {
+    const json traffic = m.compile.is_object() ? m.compile.value("traffic", json()) : json();
+    if (!traffic.is_object()) return;
+    const std::string slotName = traffic.value("slot", "");
+    const SlotDef* slot = nullptr;
+    for (const auto& sd : m.slots) {
+        if (sd.name == slotName) slot = &sd;
+    }
+    if (slot == nullptr) return;
+    std::string area = in;
+    if (mainOnly) {
+        // The main roads only: what the root drew.
+        area.clear();
+        for (const char* road : {"site/main-road", "site/main-road-2", "site/main-road-3", "site/cross-road"}) {
+            if (ids_.contains(road)) area += (area.empty() ? "" : " | ") + std::string(road);
+        }
+        if (area.empty()) return;
+    }
+    Emit({{"op", "scatter"}, {"id", node + "/traffic"}, {"node", node}, {"in", area}, {"slot", slotName}, {"onRoad", true},
+          {"density", traffic.value("density", 0.06)}, {"spacing", {{"min", 1}}}, {"layer", "prop"}, {"ordered", form_.value("arrangement", "") == "ordered"}});
+}
+
 void Compiler::Landscape(const std::string& root, const std::string& zonesIn, const std::vector<std::pair<const json*, const ModuleDef*>>& zones) {
     const ModuleDef* lm = ontology_.Module("landscape");
     if (lm == nullptr || !lm->compile.is_object()) return;
     const json settings = lm->compile.value("settings", json::object());
-    auto scatter = [&](const std::string& in, const std::string& setting, const std::string& tag, const std::string& near) {
+    // A root may have its own set ("urban": urban-wild, urban-yard…), each falling back to the plain one.
+    const ModuleDef* rootModule = ontology_.Module(rootModule_);
+    const std::string set = rootModule && rootModule->compile.is_object() ? rootModule->compile.value("landscape", "") : "";
+    auto scatter = [&](const std::string& in, const std::string& plain, const std::string& tag, const std::string& near) {
+        const std::string setting = !set.empty() && settings.contains(set + "-" + plain) ? set + "-" + plain : plain;
         for (const auto& b : settings.value(setting, json::array())) {
             const std::string slotName = b.value("slot", "");
             const SlotDef* slot = nullptr;
@@ -689,6 +762,8 @@ void Compiler::Landscape(const std::string& root, const std::string& zonesIn, co
             json st = {{"op", "scatter"}, {"id", in + "/landscape-" + tag + "-" + b.value("name", slotName)}, {"node", root}, {"in", in}, {"slot", slotName},
                        {"density", density}, {"own", true}, {"spacing", {{"min", b.value("spacing", 1)}}}, {"layer", LayerForSlot(ontology_, *slot)},
                        {"dressing", "landscape"}};
+            // What's planted (yards, verges, banks) follows the arrangement; the wild grows as it grows.
+            if (tag != "wild" && tag != "inner" && !b.contains("cluster")) st["ordered"] = form_.value("arrangement", "") == "ordered";
             if (!near.empty()) {
                 st["near"] = near;
                 st["radius"] = b.value("radius", 1);
@@ -708,6 +783,15 @@ void Compiler::Landscape(const std::string& root, const std::string& zonesIn, co
     for (const char* road : {"site/main-road", "site/main-road-2", "site/main-road-3", "site/cross-road"}) {
         if (!ids_.contains(road)) continue;
         scatter("site", "verge", "verge" + std::to_string(++k), road);
+    }
+    // The streets of each zone get their verges too (grass and flowers at the house fronts), and the
+    // river its banks (rocks and reeds along the water), as a hand-made map has them.
+    for (const auto& [zone, zm] : zones) {
+        const std::string streets = zone->value("id", "") + "/streets";
+        if (ids_.contains(streets)) scatter(zone->value("id", ""), "street-verge", "street-verge", streets);
+    }
+    for (const auto& id : ids_) {
+        if (id == "river" || id.size() > 6 && id.compare(id.size() - 6, 6, "/river") == 0) scatter("site", "bank", "bank", id);
     }
 }
 
@@ -761,6 +845,15 @@ void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json&
         if (slot) {
             Emit({{"op", "scatter"}, {"id", zoneId + "/" + slot->name}, {"node", zoneId}, {"in", zoneId}, {"slot", slot->name},
                   {"density", density}, {"spacing", {{"min", 1}}}, {"layer", LayerForSlot(ontology_, *slot)}});
+            // The undergrowth: its other slots, in clumps among the trees (a wood is a mass, not a grid).
+            for (const auto& other : m.slots) {
+                if (&other == slot || other.binds.empty()) continue;
+                const std::string layer = LayerForSlot(ontology_, other);
+                if (layer == "building") continue;
+                Emit({{"op", "scatter"}, {"id", zoneId + "/" + other.name}, {"node", zoneId}, {"in", zoneId}, {"slot", other.name},
+                      {"density", std::max(0.02, density * 0.25)}, {"spacing", {{"min", 0}}}, {"layer", layer},
+                      {"cluster", {{"size", json::array({3, 10})}, {"fill", 0.7}}}});
+            }
         }
         return;
     }
@@ -828,10 +921,15 @@ void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json&
     }
     if (style.empty()) style = index == 0 ? "organic" : "organic";
     const json network = hints.value("network", json::object());
-    Emit({{"op", "network"}, {"id", zoneId + "/streets"}, {"node", zoneId}, {"in", zoneId}, {"style", network.value("style", style)},
-          {"spacing", std::max(network.value("spacing", 0), 2 * depth + 2)}, {"width", network.value("width", 1)},
-          {"class", network.value("class", "street")}, {"terrain", network.value("terrain", "dirt")}});
-    Emit({{"op", "subdivide"}, {"id", zoneId + "/plots"}, {"node", zoneId}, {"in", zoneId}, {"style", "frontage"},
+    if (!lattice_.is_null()) style = "grid"; // the shared grid: every zone's streets on the one lattice
+    Emit({{"op", "network"}, {"id", zoneId + "/streets"}, {"node", zoneId}, {"in", zoneId}, {"style", lattice_.is_null() ? network.value("style", style) : style},
+          {"lattice", lattice_},
+          // Two lots deep between streets, plus the street itself (a city's are four cells: lanes and sidewalks).
+          {"spacing", std::max(network.value("spacing", 0), 2 * depth + 1 + network.value("width", 1))}, {"width", network.value("width", 1)},
+          {"class", network.value("class", "street")}, {"terrain", network.value("terrain", "dirt")}, {"edge", network.value("edge", "")}});
+    Traffic(m, zoneId, zoneId, false);
+    Emit({{"op", "subdivide"}, {"id", zoneId + "/plots"}, {"node", zoneId}, {"in", zoneId},
+          {"style", form_.value("block-fill", "") == "full" ? "block" : "frontage"},
           {"access", "street"}, {"into", ordered}});
     Emit({{"op", "check"}, {"id", zoneId + "/plots-placed"}, {"node", zoneId}, {"predicate", "count"},
           {"args", {{"ref", zoneId + "/plots"}, {"range", {static_cast<int>(ordered.size() * 9 / 10), static_cast<int>(ordered.size())}}}}});
@@ -945,7 +1043,7 @@ void Compiler::Feature(const json& node, const ModuleDef& m, const std::string& 
     if (!sized) {
         if (primary && !parentPrimary.empty()) {
             double density = 0.5;
-            if (const auto r = Range(node, m, "items")) density = std::clamp((r->first + r->second) / 6.0, 0.1, 1.0);
+            if (const auto r = Range(node, m, "items")) density = std::clamp((r->first + r->second) / 4.0, 0.35, 1.0);
             Emit({{"op", "scatter"}, {"id", self}, {"node", nodeId}, {"in", parentPrimary + ".front"}, {"slot", primary->name},
                   {"density", density}, {"layer", LayerForSlot(ontology_, *primary)}});
         } else if (primary) {

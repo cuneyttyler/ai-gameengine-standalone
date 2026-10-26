@@ -1,0 +1,54 @@
+{
+  "schema": "aige.module/1",
+  "id": "reception-set",
+  "name": "Reception",
+  "level": "feature",
+  "description": "A reception desk with a plant and a water cooler.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "reception-desk": {
+      "role": "reception-desk",
+      "essential": true,
+      "primary": true
+    },
+    "potted-plant": {
+      "role": "potted-plant",
+      "essential": false
+    },
+    "water-cooler": {
+      "role": "water-cooler",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "facing-door",
+      "members": [
+        {
+          "slot": "potted-plant",
+          "count": [
+            1,
+            2
+          ],
+          "near": 3
+        },
+        {
+          "slot": "water-cooler",
+          "count": [
+            0,
+            1
+          ],
+          "near": 3
+        }
+      ]
+    }
+  }
+}

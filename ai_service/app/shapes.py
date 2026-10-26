@@ -11,6 +11,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
+# Parts whose content is free (a design described as text or as structure): kept as the model
+# gave them. ⑦'s summary parts are often objects (economy: currency, prices, ...); made text,
+# they'd read "currency: gold; prices: ..." instead of showing as tables.
+FREE = {"systems.summary"}
 # Objects that may be null on purpose ("no quest stage here"): left null, not made {}.
 NULLABLE = {"questStage"}
 # Which key of an object a bare text most likely is ("tall and grey" for appearance).
@@ -59,8 +63,8 @@ def _number(value: Any, integer: bool) -> int | float:
     return 0
 
 
-def coerce(value: Any, example: Any, key: str = "") -> Any:
-    if example is None:
+def coerce(value: Any, example: Any, key: str = "", path: str = "") -> Any:
+    if example is None or path in FREE:
         return value
     if isinstance(example, bool):
         if isinstance(value, bool):
@@ -82,7 +86,7 @@ def coerce(value: Any, example: Any, key: str = "") -> Any:
         kinds = {type(x) for x in example}
         if len(example) > 1 and len(kinds) > 1:  # a tuple: ["brave", 0.6]
             items = value if isinstance(value, list) else [value]
-            return [coerce(items[i] if i < len(items) else None, ex) for i, ex in enumerate(example)]
+            return [coerce(items[i] if i < len(items) else None, ex, key, path + "[]") for i, ex in enumerate(example)]
         item = example[0]
         items = value if isinstance(value, list) else [value]
         out = []
@@ -92,7 +96,7 @@ def coerce(value: Any, example: Any, key: str = "") -> Any:
             if isinstance(item, dict) and not isinstance(v, dict):
                 first = next((k for k in TEXT_KEYS if k in item), next(iter(item), None))
                 v = {first: _text(v)} if first else {}
-            out.append(coerce(v, item))
+            out.append(coerce(v, item, key, path + "[]"))
         return out
     if isinstance(example, dict):
         if value is None:
@@ -106,6 +110,6 @@ def coerce(value: Any, example: Any, key: str = "") -> Any:
         out = dict(value)
         for k, ex in example.items():
             if k in value:
-                out[k] = coerce(value[k], ex, k)
+                out[k] = coerce(value[k], ex, k, f"{path}.{k}" if path else k)
         return out
     return value

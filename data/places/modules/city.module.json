@@ -1,0 +1,197 @@
+{
+  "schema": "aige.module/1",
+  "id": "city",
+  "name": "City",
+  "level": "site",
+  "description": "A modern city, or a section of one: districts on a grid of avenues and streets with sidewalks.",
+  "buildTypes": [
+    "modern-city"
+  ],
+  "quantity": {
+    "buildings": {
+      "type": "count",
+      "default": [
+        40,
+        200
+      ],
+      "min": 1,
+      "max": 5000,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        6400,
+        40000
+      ],
+      "min": 400,
+      "unit": "cells²"
+    },
+    "block-size": {
+      "type": "size",
+      "default": {
+        "w": [
+          16,
+          20
+        ],
+        "h": [
+          16,
+          20
+        ]
+      },
+      "min": {
+        "w": 8,
+        "h": 8
+      },
+      "max": {
+        "w": 60,
+        "h": 60
+      },
+      "unit": "cells",
+      "ask": true,
+      "description": "A block of the shared street grid, street to street"
+    }
+  },
+  "quality": {
+    "layout": {
+      "type": "mix",
+      "vocabulary": "layout",
+      "default": {
+        "grid": 1.0
+      },
+      "ask": true,
+      "description": "street patterns and their shares; the plan gives each district one of them"
+    },
+    "era": {
+      "type": "enum",
+      "vocabulary": "era",
+      "default": "contemporary",
+      "ask": true
+    },
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "lived-in",
+      "ask": true
+    },
+    "style": {
+      "type": "tags",
+      "default": []
+    },
+    "relief": {
+      "type": "enum",
+      "values": [
+        "flat",
+        "gentle",
+        "hilly"
+      ],
+      "default": "flat"
+    },
+    "woods": {
+      "type": "enum",
+      "values": [
+        "none",
+        "few",
+        "some",
+        "dense"
+      ],
+      "default": "few"
+    },
+    "notes": {
+      "type": "description"
+    },
+    "zone-shape": {
+      "type": "enum",
+      "vocabulary": "zone-shape",
+      "default": "blocks",
+      "ask": true,
+      "description": "How the zones are shaped: grown from seeds (organic), or rectangles cut along the main roads (planned)"
+    },
+    "street-grid": {
+      "type": "enum",
+      "vocabulary": "street-grid",
+      "default": "shared",
+      "ask": true,
+      "description": "Each zone its own streets, or one street grid for the whole place, lined up with its main roads"
+    },
+    "block-fill": {
+      "type": "enum",
+      "vocabulary": "block-fill",
+      "default": "full",
+      "ask": true,
+      "description": "Lots along the streets with open land behind, or lots back to back so the blocks are built through"
+    },
+    "coverage": {
+      "type": "enum",
+      "vocabulary": "coverage",
+      "default": "full",
+      "ask": true,
+      "description": "Open land between the zones, or zones covering the whole place"
+    },
+    "arrangement": {
+      "type": "enum",
+      "vocabulary": "arrangement",
+      "default": "ordered",
+      "ask": true,
+      "description": "How the small things are set out (lamps, trees, benches, cars, bicycles, bushes): scattered as they come, or ordered: evenly spaced along edges, in lines and mirrored pairs"
+    }
+  },
+  "slots": {
+    "car": {
+      "role": "car",
+      "essential": false
+    }
+  },
+  "children": {
+    "class:District": {
+      "min": 0,
+      "weight": 1.0,
+      "max": 60
+    },
+    "downtown": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 4
+    },
+    "residential-district": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 12
+    },
+    "road": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 8
+    },
+    "river": {
+      "min": 0,
+      "weight": 0.25,
+      "max": 1
+    },
+    "lake": {
+      "min": 0,
+      "weight": 0.15,
+      "max": 1
+    },
+    "ground": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    }
+  },
+  "compile": {
+    "ground": "concrete",
+    "roads": {
+      "width": 6,
+      "surface": "asphalt",
+      "edge": "sidewalk",
+      "cross": true,
+      "wiggle": 0.0
+    },
+    "traffic": {
+      "slot": "car",
+      "density": 0.08
+    },
+    "landscape": "urban"
+  }
+}

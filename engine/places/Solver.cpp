@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <deque>
+#include <functional>
 #include <limits>
 #include <numeric>
 #include <optional>
@@ -104,6 +105,7 @@ struct Object {
 
 struct PathResult {
     std::string id, node, cls, terrain;
+    std::string edge; // the terrain of the outer cells of its width (a street's sidewalks), or none
     std::vector<int> cells;
     int width = 1;
 };
@@ -683,6 +685,7 @@ void Solver::Path(const json& s) {
     result.node = s.value("node", "");
     result.cls = cls;
     result.terrain = s.value("terrain", river ? "water" : "dirt");
+    result.edge = s.value("edge", "");
     result.width = std::max(1, s.value("width", 1));
     for (size_t i = 0; i + 1 < stops.size(); ++i) {
         const auto a = Cells(stops[i]), b = Cells(stops[i + 1]);
@@ -719,6 +722,7 @@ void Solver::Network(const json& s, int region) {
     const std::string style = s.value("style", "organic");
     const int spacing = std::max(4, s.value("spacing", 10));
     const uint8_t rank = RankOf(s.value("class", "street"));
+    const int width = std::max(1, s.value("width", 1)); // a city's streets: lanes and their sidewalks (Compile's network hint)
     Rng rng = StreamFor(s);
     std::vector<int> streets;
     auto inZone = [&](int c) { return owner_[c] == region && !water_[c]; };
@@ -813,7 +817,7 @@ void Solver::Network(const json& s, int region) {
                 return (inZone(c) ? 1.0 : 4.0) + 0.6 * rng.Unit() + alongside;
             }, wx0, wy0, wx1, wy1);
             if (lane.empty()) break;
-            MarkRoad(lane, 1, rank, -1);
+            MarkRoad(lane, width, rank, -1);
             streets.insert(streets.end(), lane.begin(), lane.end());
             for (int c = 0; c < static_cast<int>(lane.size()); ++c) {
                 // The lane's cells (and what MarkRoad widened round them) are roads now.
@@ -833,15 +837,21 @@ void Solver::Network(const json& s, int region) {
         }
     };
     if (style == "grid") {
-        const int ox = r.x0 + rng.Range(0, spacing / 2), oy = r.y0 + rng.Range(0, spacing / 2);
+        // A shared lattice (the layout form's street-grid "shared"): the same lines in every zone, so streets run
+        // on across zones and meet the main roads squarely. Else this zone's own grid.
+        const json lattice = s.value("lattice", json());
+        const bool shared = lattice.is_object() && lattice.contains("origin") && lattice.contains("block");
+        const int ox = shared ? lattice["origin"][0].get<int>() : r.x0 + rng.Range(0, spacing / 2);
+        const int oy = shared ? lattice["origin"][1].get<int>() : r.y0 + rng.Range(0, spacing / 2);
+        const int sx = shared ? std::max(4, lattice["block"][0].get<int>()) : spacing, sy = shared ? std::max(4, lattice["block"][1].get<int>()) : spacing;
         for (int c : r.cells) {
             const int x = c % W, y = c / W;
-            if ((x - ox) % spacing == 0 || (y - oy) % spacing == 0) streets.push_back(c);
+            if (((x - ox) % sx + sx) % sx == 0 || ((y - oy) % sy + sy) % sy == 0) streets.push_back(c);
         }
-        MarkRoad(streets, 1, rank, region);
+        MarkRoad(streets, width, rank, region);
         if (!streets.empty()) {
             auto link = connectToRoads(streets[streets.size() / 2]);
-            MarkRoad(link, 1, rank, -1);
+            MarkRoad(link, width, rank, -1);
             streets.insert(streets.end(), link.begin(), link.end());
         }
     } else if (style == "radial") {
@@ -861,10 +871,10 @@ void Solver::Network(const json& s, int region) {
             const int x = static_cast<int>(cx + std::cos(a) * ring), y = static_cast<int>(cy + std::sin(a) * ring);
             if (In(x, y) && inZone(Cell(x, y))) streets.push_back(Cell(x, y));
         }
-        MarkRoad(streets, 1, rank, region);
+        MarkRoad(streets, width, rank, region);
         if (!streets.empty()) {
             auto link = connectToRoads(streets.front());
-            MarkRoad(link, 1, rank, -1);
+            MarkRoad(link, width, rank, -1);
         }
         serveEveryCell();
     } else if (style == "linear-along-road" || style == "linear-along-river" || style == "linear") {
@@ -886,8 +896,8 @@ void Solver::Network(const json& s, int region) {
                 if (nearMain && ((x + y) % (spacing * 2) == 0)) streets.push_back(c);
             }
         }
-        MarkRoad(streets, 1, rank, region);
-        if (mains.empty() && !r.cells.empty()) MarkRoad(connectToRoads(r.cells[r.cells.size() / 2]), 1, rank, -1);
+        MarkRoad(streets, width, rank, region);
+        if (mains.empty() && !r.cells.empty()) MarkRoad(connectToRoads(r.cells[r.cells.size() / 2]), width, rank, -1);
         serveEveryCell();
     } else {
         // Organic: a winding main street along the zone's long axis, joined to
@@ -917,11 +927,11 @@ void Solver::Network(const json& s, int region) {
                 if (road_[c]) return 0.2;
                 return inZone(c) ? 1.0 + 1.5 * noise[c] : std::numeric_limits<double>::infinity();
             });
-            MarkRoad(spine, 1, rank, region);
+            MarkRoad(spine, width, rank, region);
             streets.insert(streets.end(), spine.begin(), spine.end());
             if (!spine.empty()) {
                 auto link = connectToRoads(spine[spine.size() / 2], true);
-                MarkRoad(link, 1, rank, -1);
+                MarkRoad(link, width, rank, -1);
             }
         }
         serveEveryCell();
@@ -931,6 +941,7 @@ void Solver::Network(const json& s, int region) {
     result.node = s.value("node", "");
     result.cls = s.value("class", "street");
     result.terrain = s.value("terrain", "dirt");
+    result.edge = s.value("edge", "");
     for (int c : r.cells) {
         if (road_[c]) result.cells.push_back(c);
     }
@@ -1010,6 +1021,114 @@ void Solver::Partition(const json& s, int region) {
         } else {
             const double keep = 0.1 * room; // a little for the fields, the rest for the wards
             for (auto& z : zones) z.quota *= z.flexible ? (flexible > 0 ? keep / flexible : 0) : (room - (flexible > 0 ? keep : 0)) / built;
+        }
+    }
+    // Planned zones (the layout form's zone-shape "blocks"): rectangles cut along the main roads (rows and
+    // columns that are mostly road), each sliced among the zones that go there, the central ones to the zones
+    // that prefer the centre; cuts on the shared street lattice. Each zone then takes its rectangle as if
+    // drawn. Zones left over (more zones than rectangles) grow as usual.
+    if (s.value("method", "") == "blocks") {
+        int bx0 = W, by0 = H, bx1 = 0, by1 = 0;
+        std::vector<uint8_t> avail(W * H, 0);
+        for (int c : available) {
+            avail[c] = 1;
+            bx0 = std::min(bx0, c % W), by0 = std::min(by0, c / W), bx1 = std::max(bx1, c % W + 1), by1 = std::max(by1, c / W + 1);
+        }
+        auto mostlyRoad = [&](int a, bool row) {
+            int n = 0, r = 0;
+            for (int b = row ? bx0 : by0; b < (row ? bx1 : by1); ++b) {
+                const int c = row ? Cell(b, a) : Cell(a, b);
+                ++n;
+                r += road_[c] != 0;
+            }
+            return n > 0 && r * 10 >= n * 6;
+        };
+        auto spans = [&](int a, int b, bool row) {
+            std::vector<std::pair<int, int>> out;
+            int start = -1;
+            for (int i = a; i < b; ++i) {
+                if (mostlyRoad(i, row)) {
+                    if (start >= 0) out.push_back({start, i});
+                    start = -1;
+                } else if (start < 0) {
+                    start = i;
+                }
+            }
+            if (start >= 0) out.push_back({start, b});
+            return out;
+        };
+        struct Rect {
+            int x0, y0, x1, y1;
+            double area, centre;
+        };
+        std::vector<Rect> rects;
+        for (const auto& [ry0, ry1] : spans(by0, by1, true)) {
+            for (const auto& [rx0, rx1] : spans(bx0, bx1, false)) {
+                int area = 0;
+                for (int y = ry0; y < ry1; ++y) {
+                    for (int x = rx0; x < rx1; ++x) area += avail[Cell(x, y)];
+                }
+                if (area >= 16) rects.push_back({rx0, ry0, rx1, ry1, static_cast<double>(area), std::hypot((rx0 + rx1) / 2.0 - W / 2.0, (ry0 + ry1) / 2.0 - H / 2.0)});
+            }
+        }
+        std::sort(rects.begin(), rects.end(), [](const Rect& a, const Rect& b) { return a.centre < b.centre; });
+        std::vector<size_t> order;
+        for (size_t k = 0; k < zones.size(); ++k) {
+            if (zones[k].box[0] < 0 && zones[k].painted.empty()) order.push_back(k);
+        }
+        auto centreWish = [&](size_t k) { return zones[k].prefers.value("centre", 0.0) - zones[k].prefers.value("edge", 0.0); };
+        std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+            if (zones[a].flexible != zones[b].flexible) return !zones[a].flexible;
+            if (centreWish(a) != centreWish(b)) return centreWish(a) > centreWish(b);
+            return zones[a].quota > zones[b].quota;
+        });
+        double total = 0, capacity = 0;
+        for (size_t k : order) total += zones[k].quota;
+        for (const auto& r : rects) capacity += r.area;
+        const bool cover = s.value("cover", false);
+        if (total > 0 && (cover || total > capacity)) {
+            for (size_t k : order) zones[k].quota *= capacity / total;
+        }
+        const json lattice = s.value("lattice", json());
+        const int lox = lattice.is_object() ? lattice["origin"][0].get<int>() : 0, loy = lattice.is_object() ? lattice["origin"][1].get<int>() : 0;
+        const int lbw = lattice.is_object() ? lattice["block"][0].get<int>() : 0, lbh = lattice.is_object() ? lattice["block"][1].get<int>() : 0;
+        auto snap = [](int v, int origin, int step, int lo, int hi) {
+            if (step <= 0) return v;
+            const int k = static_cast<int>(std::lround((v - origin) / static_cast<double>(step)));
+            const int snapped = origin + k * step;
+            return snapped > lo && snapped < hi ? snapped : v;
+        };
+        size_t next = 0;
+        for (const auto& r : rects) {
+            if (next >= order.size()) break;
+            std::vector<size_t> group;
+            double left = r.area, sum = 0;
+            while (next < order.size()) {
+                const double q = zones[order[next]].quota;
+                if (!group.empty() && q > left * 1.3) break;
+                group.push_back(order[next]);
+                sum += q;
+                left -= q;
+                ++next;
+                if (left <= r.area * 0.05) break;
+            }
+            // The last rectangle takes whoever is left.
+            if (&r == &rects.back()) {
+                while (next < order.size()) group.push_back(order[next]), sum += zones[order[next++]].quota;
+            }
+            const bool alongX = (r.x1 - r.x0) >= (r.y1 - r.y0);
+            const int a = alongX ? r.x0 : r.y0, b = alongX ? r.x1 : r.y1;
+            const int end = cover ? b : a + static_cast<int>(std::lround((b - a) * std::min(1.0, sum / r.area)));
+            int pos = a;
+            double acc = 0;
+            for (size_t i = 0; i < group.size(); ++i) {
+                acc += zones[group[i]].quota;
+                int cut = i + 1 == group.size() ? end : a + static_cast<int>(std::lround((end - a) * acc / std::max(1.0, sum)));
+                if (i + 1 < group.size()) cut = snap(cut, alongX ? lox : loy, alongX ? lbw : lbh, pos, end);
+                cut = std::max(cut, pos + 1);
+                zones[group[i]].box = alongX ? std::array<int, 4>{pos, r.y0, cut, r.y1} : std::array<int, 4>{r.x0, pos, r.x1, cut};
+                pos = cut;
+            }
         }
     }
     // Interest of each cell for each zone (Emilien et al.): its site preferences.
@@ -1490,6 +1609,33 @@ void Solver::Subdivide(const json& s, int region) {
             }
             continue;
         }
+        if (s.value("style", "") == "block") {
+            // Built through (the layout form's block-fill "full"): the lot runs back to the middle of its block,
+            // where the lot from the street behind meets it; no open land left inside the block.
+            const bool across = best.facing == 'n' || best.facing == 's';
+            const int depth = across ? best.rh : best.rw;
+            int run = 0; // free cells from the lot's front to the street behind, through its middle
+            const int mx = best.x + best.rw / 2, my = best.y + best.rh / 2;
+            for (int k = 0; k < W + H; ++k) {
+                const int x = best.facing == 'w' ? best.x + k : best.facing == 'e' ? best.x + best.rw - 1 - k : mx;
+                const int y = best.facing == 'n' ? best.y + k : best.facing == 's' ? best.y + best.rh - 1 - k : my;
+                if (!In(x, y) || owner_[Cell(x, y)] != region || road_[Cell(x, y)] || water_[Cell(x, y)]) break;
+                if (k >= depth && !free[Cell(x, y)]) break;
+                ++run;
+            }
+            const int want = std::max(depth, (run + 1) / 2);
+            for (int grow = want - depth; grow > 0; --grow) {
+                int x = best.x, y = best.y, rw = best.rw, rh = best.rh;
+                if (best.facing == 'n') rh += grow;
+                if (best.facing == 's') y -= grow, rh += grow;
+                if (best.facing == 'w') rw += grow;
+                if (best.facing == 'e') x -= grow, rw += grow;
+                if (sum(sat, x, y, rw, rh) == rw * rh) {
+                    best.x = x, best.y = y, best.rw = rw, best.rh = rh;
+                    break;
+                }
+            }
+        }
         std::vector<int> cells;
         for (int y = best.y; y < best.y + best.rh; ++y) {
             for (int x = best.x; x < best.x + best.rw; ++x) {
@@ -1676,6 +1822,19 @@ void Solver::Place(const json& s, int container) {
                 }
             }
             const auto doorIt = doorsOf_.find(parent.id);
+            // Unless the statement says where (docs/build-fixes.md): the role's own place (its look's
+            // "at"), and beside the other things of its set (a hearth's chairs by the hearth, a desk's
+            // chair at the desk, a bar's stools at the counter).
+            const std::string role = s.value("slot", "").substr(0, s.value("slot", "").find('|'));
+            const json roleAt = position.empty() ? ontology_.RoleLook(role, "at") : json();
+            std::vector<int> setCells;
+            for (const auto& o : objects_) {
+                if (!ontology_.IsA(parent.module, "Room") || setCells.size() > 200) break; // a room's sets, not a zone's hundreds
+                if (o.node.empty() || o.node != s.value("node", "") || o.statement == id) continue;
+                for (int yy = o.y; yy < o.y + o.h; ++yy) {
+                    for (int xx = o.x; xx < o.x + o.w; ++xx) setCells.push_back(Cell(xx, yy));
+                }
+            }
             for (int y = parent.y0; y + h <= parent.y1; ++y) {
                 for (int x = parent.x0; x + w <= parent.x1; ++x) {
                     bool fits = true;
@@ -1717,6 +1876,21 @@ void Solver::Place(const json& s, int container) {
                         score -= (toX + toY) * 1.5;
                     } else if (position == "facing-door") {
                         score -= std::abs(std::min(fromDoor, 12.0) - 2.0) + toEdge * 0.2;
+                    } else if (roleAt.is_string()) {
+                        const std::string where = roleAt.get<std::string>();
+                        if (where == "wall") score -= toEdge * 1.5;
+                        else if (where == "corner") score -= (std::min(x - parent.x0, parent.x1 - (x + w)) + std::min(y - parent.y0, parent.y1 - (y + h))) * 1.2;
+                        else if (where == "centre") score -= 0.6 * std::hypot(x + w / 2.0 - (parent.x0 + parent.x1) / 2.0, y + h / 2.0 - (parent.y0 + parent.y1) / 2.0);
+                    }
+                    if (!setCells.empty()) {
+                        int d = std::numeric_limits<int>::max();
+                        for (int c : setCells) {
+                            const int px = c % W, py = c / W;
+                            const int dx = px < x ? x - px : (px >= x + w ? px - (x + w - 1) : 0);
+                            const int dy = py < y ? y - py : (py >= y + h ? py - (y + h - 1) : 0);
+                            d = std::min(d, std::max(dx, dy));
+                        }
+                        score += 2.0 * std::max(0.0, 1.0 - (d - 1) / 5.0);
                     }
                     score += 0.001 * rng.Unit();
                     candidates.push_back({score, x, y});
@@ -1964,6 +2138,7 @@ void Solver::Scatter(const json& s, int container) {
     }
     std::vector<int> free;
     const bool own = s.value("own", false);
+    const bool onRoad = s.value("onRoad", false); // vehicles: road cells only, and only them
     std::vector<int> near;
     if (s.contains("near") && s["near"].is_string()) near = Cells(s["near"].get<std::string>());
     const int radius = s.value("radius", 2);
@@ -1974,6 +2149,16 @@ void Solver::Scatter(const json& s, int container) {
             bool close = false;
             for (int n : near) close = close || (std::abs(n % W - c % W) <= radius && std::abs(n / W - c / W) <= radius);
             if (!close) continue;
+        }
+        if (onRoad) {
+            // The carriageway only: not a road cell at the rim (its sidewalk, where people walk past).
+            if (!road_[c] || water_[c] || occ_[layer][c] || occ_[kBuilding][c]) continue;
+            bool rim = false;
+            for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                rim = rim || !In(c % W + dx, c / W + dy) || !road_[Cell(c % W + dx, c / W + dy)];
+            }
+            if (!rim) free.push_back(c);
+            continue;
         }
         if (Free(c, -1, true) && !occ_[layer][c] && (!solid || (!occ_[kProp][c] && !occ_[kBuilding][c]))) free.push_back(c);
     }
@@ -1986,6 +2171,89 @@ void Solver::Scatter(const json& s, int container) {
     target = std::max(target, std::min(static_cast<int>(free.size()), s.value("min", 0)));
     const int spacing = std::max(0, RangeOf(s.value("spacing", json::object()).value("min", json()), solid ? 1 : 0).lo);
     for (size_t i = free.size(); i > 1; --i) std::swap(free[i - 1], free[rng.Next() % i]);
+    // Where a thing belongs (docs/build-fixes.md; its role's look): in a room, against a wall, in a
+    // corner, in the middle, or beside another kind of thing (a chair by a table); out of doors, what
+    // grows wild (a "vary" role) in groves and thickets with clearings between, from a slow noise,
+    // never an even sprinkle. The free cells are ranked so (still a little shuffled).
+    {
+        const std::string slot = s.value("slot", "");
+        const std::string role = slot.substr(0, slot.find('|'));
+        const json at = ontology_.RoleLook(role, "at"), nearRole = ontology_.RoleLook(role, "near"), vary = ontology_.RoleLook(role, "vary");
+        const bool inRoom = container >= 0 && ontology_.IsA(regions_[container].module, "Room");
+        auto walls = [&](int c) {
+            int n = 0;
+            for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                const int x = c % W + dx, y = c / W + dy;
+                if (!In(x, y)) {
+                    ++n;
+                    continue;
+                }
+                const int nc = Cell(x, y);
+                n += owner_[nc] != container || solid_[nc] || occ_[kBuilding][nc];
+            }
+            return n;
+        };
+        std::vector<double> rank(W * H, 0.0);
+        bool ranked = false;
+        if (inRoom && at.is_string()) {
+            const std::string where = at.get<std::string>();
+            for (int c : free) {
+                const int n = walls(c);
+                rank[c] = where == "wall" ? (n >= 1 ? 1.5 : 0.0) : where == "corner" ? (n >= 2 ? 2.0 : n == 1 ? 1.0 : 0.0) : (n == 0 ? 1.5 : 0.0);
+                rank[c] += rng.Unit() * 1.5; // mostly where it belongs, not every corner of every room
+            }
+            ranked = true;
+        }
+        if (inRoom && nearRole.is_string()) {
+            const std::string other = nearRole.get<std::string>();
+            std::vector<uint8_t> by(W * H, 0);
+            for (const auto& o : objects_) {
+                if (o.slot.substr(0, o.slot.find('|')) != other) continue;
+                for (int dy = -1; dy <= o.h; ++dy) {
+                    for (int dx = -1; dx <= o.w; ++dx) {
+                        if (In(o.x + dx, o.y + dy)) by[Cell(o.x + dx, o.y + dy)] = 1;
+                    }
+                }
+            }
+            for (int c : free) rank[c] += by[c] ? 4.0 : 0.0;
+            ranked = true;
+        }
+        if (s.value("ordered", false) && !s.contains("cluster") && target > 0 && !free.empty()) {
+            // Ordered (the layout form's arrangement): on a regular pattern spaced for the number wanted, anchored
+            // on the container; along an edge (a lamp, a bench on a plot's border) evenly spaced points; a cell
+            // whose mirror across the container's centre is free too first, so things come in matching pairs.
+            int x0 = W, y0 = H, x1 = 0, y1 = 0;
+            for (int c : free) x0 = std::min(x0, c % W), y0 = std::min(y0, c / W), x1 = std::max(x1, c % W), y1 = std::max(y1, c / W);
+            const bool edge = s.value("in", "").find(".border") != std::string::npos || s.value("onRoad", false);
+            const int step = std::max(spacing + 1, static_cast<int>(std::lround(edge ? static_cast<double>(free.size()) / target
+                                                                                       : std::sqrt(static_cast<double>(free.size()) / target))));
+            std::vector<uint8_t> isFree(W * H, 0);
+            for (int c : free) isFree[c] = 1;
+            for (int c : free) {
+                const int x = c % W - x0, y = c / W - y0;
+                const bool onPattern = edge ? (x + y) % step == 0 : (x % step == step / 2 % step && y % step == step / 2 % step);
+                const int mx = x0 + x1 - c % W, my = y0 + y1 - c / W;
+                const bool paired = In(mx, my) && isFree[Cell(mx, my)];
+                rank[c] = (onPattern ? 10.0 : 0.0) + (paired ? 2.0 : 0.0) + 0.001 * rng.Unit();
+            }
+            ranked = true;
+        } else if (!inRoom && vary.is_boolean() && vary.get<bool>() && !s.contains("cluster")) {
+            // A value noise about ten cells across, smoothed: high where a grove grows.
+            auto lattice = [&](int x, int y) { return static_cast<double>((static_cast<uint32_t>(x) * 73856093u ^ static_cast<uint32_t>(y) * 19349663u ^
+                                                                         static_cast<uint32_t>(std::hash<std::string>{}(id))) % 1000u) / 999.0; };
+            auto noise = [&](int x, int y) {
+                const double fx = x / 10.0, fy = y / 10.0;
+                const int ix = static_cast<int>(std::floor(fx)), iy = static_cast<int>(std::floor(fy));
+                const double tx = fx - ix, ty = fy - iy, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+                const double a = lattice(ix, iy) + (lattice(ix + 1, iy) - lattice(ix, iy)) * sx;
+                const double b = lattice(ix, iy + 1) + (lattice(ix + 1, iy + 1) - lattice(ix, iy + 1)) * sx;
+                return a + (b - a) * sy;
+            };
+            for (int c : free) rank[c] = std::pow(noise(c % W, c / W), 2.0) + rng.Unit() * 0.25;
+            ranked = true;
+        }
+        if (ranked) std::stable_sort(free.begin(), free.end(), [&](int a, int b) { return rank[a] > rank[b]; });
+    }
     // In patches ("cluster": {size: [lo, hi], fill}): a flower bed, a thicket, a grove, a lawn.
     // Each patch grows from a seed over neighbouring free cells, and most of its cells get one;
     // the same density as scattered, gathered as real plants grow. Patches stay apart.
@@ -3218,6 +3486,20 @@ json Solver::Terrain() {
     const int dirt = indexOf("dirt");
     for (int c = 0; c < W * H; ++c) {
         if (road_[c]) grid[c] = surface[road_[c]] ? surface[road_[c]] : dirt;
+    }
+    // Sidewalks: a class's edge terrain on its road cells that touch land (the outer cells of its width).
+    std::array<int, 5> edge{};
+    for (const auto& p : paths_) {
+        if (p.cls != "river" && !p.edge.empty() && edge[RankOf(p.cls)] == 0) edge[RankOf(p.cls)] = indexOf(p.edge);
+    }
+    for (int c = 0; c < W * H; ++c) {
+        if (!road_[c] || edge[road_[c]] == 0) continue;
+        const int x = c % W, y = c / W;
+        bool rim = false;
+        for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+            rim = rim || (In(x + dx, y + dy) && !road_[Cell(x + dx, y + dy)] && !water_[Cell(x + dx, y + dy)]);
+        }
+        if (rim) grid[c] = edge[road_[c]];
     }
     const int water = indexOf("water");
     for (int c = 0; c < W * H; ++c) {

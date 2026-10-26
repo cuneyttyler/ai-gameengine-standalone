@@ -225,6 +225,146 @@
             "cellar",
             "cells"
           ]
+        },
+        "apartment": {
+          "ground": [
+            "apartment-living",
+            "apartment-kitchen",
+            "bedroom",
+            "restroom"
+          ],
+          "upper": [
+            "apartment-living",
+            "bedroom",
+            "bedroom",
+            "restroom"
+          ],
+          "cellar": [
+            "storage"
+          ]
+        },
+        "office": {
+          "ground": [
+            "lobby",
+            "open-office",
+            "meeting-room",
+            "restroom"
+          ],
+          "upper": [
+            "open-office",
+            "open-office",
+            "meeting-room",
+            "restroom"
+          ],
+          "cellar": [
+            "storage"
+          ]
+        },
+        "store": {
+          "ground": [
+            "store-floor",
+            "storage",
+            "restroom"
+          ],
+          "upper": [
+            "open-office",
+            "storage"
+          ],
+          "cellar": [
+            "storage"
+          ]
+        },
+        "restaurant": {
+          "ground": [
+            "dining-room",
+            "apartment-kitchen",
+            "restroom"
+          ],
+          "upper": [
+            "storage"
+          ],
+          "cellar": [
+            "storage"
+          ]
+        },
+        "school": {
+          "ground": [
+            "lobby",
+            "classroom",
+            "classroom",
+            "restroom",
+            "hallway"
+          ],
+          "upper": [
+            "classroom",
+            "classroom",
+            "library"
+          ],
+          "cellar": [
+            "storage"
+          ]
+        },
+        "hospital": {
+          "ground": [
+            "lobby",
+            "meeting-room",
+            "restroom",
+            "hallway"
+          ],
+          "upper": [
+            "bedroom",
+            "bedroom",
+            "open-office"
+          ],
+          "cellar": [
+            "storage"
+          ]
+        },
+        "hotel": {
+          "ground": [
+            "lobby",
+            "dining-room",
+            "apartment-kitchen",
+            "restroom"
+          ],
+          "upper": [
+            "guest-room",
+            "guest-room",
+            "guest-room",
+            "restroom"
+          ],
+          "cellar": [
+            "storage"
+          ]
+        },
+        "police-station": {
+          "ground": [
+            "lobby",
+            "open-office",
+            "cells",
+            "restroom"
+          ],
+          "upper": [
+            "open-office",
+            "meeting-room"
+          ],
+          "cellar": [
+            "storage"
+          ]
+        },
+        "fire-station": {
+          "ground": [
+            "storage",
+            "apartment-kitchen",
+            "restroom"
+          ],
+          "upper": [
+            "bedroom",
+            "apartment-living"
+          ],
+          "cellar": [
+            "storage"
+          ]
         }
       }
     }

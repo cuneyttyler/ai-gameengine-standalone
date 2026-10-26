@@ -25,6 +25,14 @@ struct LayoutImageOptions {
     // A legend down the right side: what each colour and mark means, for
     // what this map shows (each zone by name, each kind of building, ...).
     bool legend = true;
+    // For a vision check (docs/build-fixes.md): each kind of thing (all but trees, plants and crops)
+    // in its own colour with a short code drawn on it, the legend listing code and kind; the codes
+    // given back in `codesOut` (code -> kind), for the check's prompt.
+    bool codes = false;
+    // Labels for any region by id (a dungeon's rooms, an interior's rooms, a ward's plots), smaller
+    // than the zones' names: for a vision check of a layout.
+    std::map<std::string, std::string> partNames;
+    std::map<std::string, std::string>* codesOut = nullptr;
 };
 
 ImageData RenderLayoutImage(const nlohmann::json& solved, const LayoutImageOptions& options = {});

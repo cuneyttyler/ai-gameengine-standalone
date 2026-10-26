@@ -2836,6 +2836,54 @@ features.
 
 ---
 
+## Phase 25 — Build improvements
+
+Builds that look hand-crafted: every step of a build checked by a vision model and scored, art
+that fits its place, and two ways to build a place's art: **Assembled** (each piece's art made and
+put together on the grid) and **Painted** (the place painted from its plan). Modern places in the
+ontology, and layout parameters any place can use. The record is `docs/build-fixes.md` (what
+changed, round by round) and `docs/build-scores.md` (the scores).
+
+Done when: a place built from a request (a village, a dungeon, an interior, a modern city) scores
+well on every check, and looks planned and hand-crafted when its project is opened.
+
+**Status (2026-10-26): built, partly tried** (`phase25-test-checklist.md`).
+- Planner builds: stop, continue (from the step it stopped at) and rebuild; levels of a place as
+  scenes of their own, joined by stairs.
+- Checks by the vision model (Mistral Large 4), each scored: the layout (its zones), the plan (each
+  kind of thing and where it stands), the built scene (in windows: placement, fit, quality). The
+  layout check revises the zones; a redo that scores worse is undone. Scores per item in
+  `docs/build-scores.md` (`tools/build_scores.py`).
+- Art: found art checked by vision before it's used (the next candidate, then generated); a piece
+  designed against what it depends on (a door against its wall); the ontology's placements (wall,
+  corner, centre, near), sizes and drawing words used throughout.
+- Assembled, sketch first: the place painted once (Mistral's image model), each piece cropped from
+  the painting and its art drawn from the crop; the ground's patches from it too.
+- The plan's block-out (`PlaceBlockout`): the plan drawn in the game's view without art, colour-coded
+  by kind with a legend in the ontology's words, storeys and roofs from the roles.
+- Painted: the block-out painted by a **Paint Provider** (Preferences ▸ AI ▸ Paint Provider: Black
+  Forest Labs; FLUX.3 Image, FLUX.2 klein, FLUX.2 max, FLUX.3 → klein, FLUX.3 → FLUX.2 pro), each
+  model with its own recipe (`bfl.py`); the painting checked against the layout and plan (`match`),
+  building by building (`/places/check-painting`) and for its looks (`appeal`). A backdrop painted
+  from words alone (`/places/backdrop`) is kept for comparison. Results: `tests/quality/bfl_results`.
+- The build method (Places ▸ method: Assembled or Painted) chosen when a project is made, shown in
+  Project Settings and fixed once places are built.
+- Modern places: the `modern-city` build type (districts, office towers, apartments, shops, malls,
+  schools, hospitals, stations, parking, parks), vehicles, street furniture, modern interiors and
+  rooms, modern terrains and vocabularies (an `era` scheme), urban design rules. Sidewalks along
+  streets, traffic in the lanes, a root's own ground, roads and landscape set (its compile hints).
+- The layout form (any place with zones; each build type its defaults; asked in the Brief):
+  zone-shape (grown, blocks), street-grid (per-zone, shared lattice), block-size, block-fill
+  (frontage, built through), coverage (partial, full), arrangement (natural, ordered).
+- Designs: `docs/places/big-scenes.md` (big places by tiles: zones as tiles, buffers between them),
+  `docs/build/ontology-gaps.md` (what the build ontology still lacks, with priorities).
+- AI panel: the checks' answers and scores on the panel; the Paint Provider's status.
+- Not yet: sprites and tiles extracted from a painting to build the scene in the renderer (Assembled
+  from the block-out painting: occlusion and editing for free); filler for a city's empty blocks;
+  buildings growing with their lots; shared radial and linear street lattices; tiling big places.
+
+---
+
 ## Later
 
 Phases after 5 are planned as development goes (2026-10-17): each new phase is written

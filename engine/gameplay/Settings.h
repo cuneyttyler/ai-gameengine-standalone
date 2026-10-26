@@ -18,7 +18,7 @@ struct RendererSettings {
 
 struct CameraSettings {
     float followStiffness = 6.0f; // how quickly the play camera catches up with the player
-    float playZoom = 1.0f;        // camera zoom while playing (the sandbox, and editor Play)
+    float playZoom = 2.0f;        // camera zoom while playing (the sandbox, and editor Play)
     float deadZone = 0.1f;        // share of the screen around the centre the player moves in freely (12.7)
     float lookAhead = 1.5f;       // cells the camera leads the player by, the way they move
     bool clampToLevel = false;    // never show beyond the level's edges
@@ -96,6 +96,19 @@ struct GridSettings {
     GridStyle style = GridStyle::Isometric;
 };
 
+// How the AI builds places (docs/build-fixes.md), chosen when the project is made and kept once
+// places are built: Assembled draws each piece's art from a concept painting of the place and puts
+// them together on the grid; Painted paints the whole place, or each level, as one picture (a
+// backdrop) and reads what stands where from it.
+enum class PlacesMethod {
+    Assembled,
+    Painted,
+};
+
+struct PlacesSettings {
+    PlacesMethod method = PlacesMethod::Assembled;
+};
+
 struct GameSettings {
     std::string startScene = "scenes/main.aige"; // where play begins (5.3)
     std::string version = "1.0";                  // shown in the window's title and the crash log (24)
@@ -113,6 +126,7 @@ struct StreamingSettings {
 struct ProjectSettings {
     GameSettings game;
     GridSettings grid;
+    PlacesSettings places;
     RendererSettings renderer;
     CameraSettings camera;
     CombatSettings combat;

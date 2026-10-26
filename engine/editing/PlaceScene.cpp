@@ -531,8 +531,8 @@ std::optional<Entity> PlaceObject(Registry& registry, PrefabLibrary& prefabs, co
     const json look = choice.value("look", json::object()); // its role's (the ontology's)
     const bool varied = look.value("vary", false);
     const unsigned v = CellVariety(o.value("x", 0) + 7919, o.value("y", 0) + 104729);
-    const float jx = varied ? (static_cast<float>(v % 97) / 96.0f - 0.5f) * 0.4f : 0.0f;
-    const float jy = varied ? (static_cast<float>((v >> 7) % 97) / 96.0f - 0.5f) * 0.4f : 0.0f;
+    const float jx = varied ? (static_cast<float>(v % 97) / 96.0f - 0.5f) * 0.7f : 0.0f; // up to a third of a cell: no lattice
+    const float jy = varied ? (static_cast<float>((v >> 7) % 97) / 96.0f - 0.5f) * 0.7f : 0.0f;
     auto placed = prefabs.Instantiate(registry, prefab, stand.x + jx, stand.y + jy, false);
     if (!placed) return std::nullopt;
     const Entity e = *placed;
@@ -576,7 +576,10 @@ std::optional<Entity> PlaceObject(Registry& registry, PrefabLibrary& prefabs, co
     }
     if (varied) {
         if ((v >> 14) & 1) MirrorEntity(EngineReflection(), registry, e);
-        const float scale = 0.88f + static_cast<float>((v >> 16) % 25) / 100.0f;
+        // Trees from saplings to old giants (0.78 to 1.30): a wood reads as a mass of crowns, not a
+        // grid of one tree; smaller things vary less.
+        const bool tree = choice.value("role", "") == "tree" || o.value("slot", "") == "tree";
+        const float scale = tree ? 0.78f + static_cast<float>((v >> 16) % 53) / 100.0f : 0.88f + static_cast<float>((v >> 16) % 25) / 100.0f;
         if (std::abs(scale - 1.0f) > 0.02f) ScaleEntity(EngineReflection(), registry, e, scale);
     }
     // A building is as wide as its footprint, and blocks all of it.
@@ -666,8 +669,12 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
             const std::string base = path.substr(0, path.find('#'));
             if (const json* n = SpecNode(specCopy, base)) {
                 const json source = BriefValue(sourcing->brief, "components." + n->value("module", "") + ".assets.source");
-                // "auto" (what a Brief says unless asked otherwise) is the build's default.
-                if (source.is_string() && !source.get<std::string>().empty() && source.get<std::string>() != "auto") return source.get<std::string>();
+                // "auto" (what a Brief says unless asked otherwise) is the build's default; in a Planner
+                // build, the plan's strategy (only a placeholder asked for stands).
+                if (source.is_string() && !source.get<std::string>().empty() && source.get<std::string>() != "auto" &&
+                    (!sourcing->strategyRules || source.get<std::string>() == "placeholder")) {
+                    return source.get<std::string>();
+                }
             }
             const size_t slash = path.find_last_of('/');
             if (slash == std::string::npos) break;
@@ -871,11 +878,32 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
             const auto tried = sourcing->tried.contains(key) ? sourcing->tried.at(key) : Tried{};
             Decision d = choice.value("exclude", false) ? Decision{"A7", "drop", "none", std::nullopt, "excluded by you", false}
                                                         : Decide(policy, profile, candidates, sourcing->settings.licences,
-                                                                 sourcing->settings.webSearch || policy == "web" || policy == "search", sourcing->canGenerate, tried);
+                                                                 sourcing->settings.webSearch || policy == "web", sourcing->canGenerate, tried);
+            // Sketched: made from the place's painting (docs/build-fixes.md), unless that was tried.
+            if (sourcing->sketched.contains(key) && sourcing->canGenerate && !tried.generate && !choice.value("exclude", false)) {
+                d = Decision{"K", "generate", "generated", std::nullopt, "drawn from the place's sketch", false};
+            }
             row["decision"] = {{"step", d.step}, {"action", d.action}, {"reason", d.reason}, {"warn", d.warn}};
             if (d.candidate && d.candidate->entry && take(*d.candidate)) {
                 // A library asset is the project's from now on (copied when the build runs).
                 if (d.action == "import" && d.candidate->entry->source == "library") row["import"] = d.candidate->entry->path;
+                // Found art, not yet seen by the vision model for this place: looked at before it's used.
+                const std::string entry = row.value("entry", "");
+                if (sourcing->checkFound && sourcing->canGenerate && !entry.empty() && !tried.approved.contains(entry) &&
+                    !tried.approved.contains(d.candidate->entry->path)) {
+                    std::string concepts;
+                    for (const auto& c : need.concepts) concepts += (concepts.empty() ? "" : " ") + c;
+                    const std::string one = need.role.substr(0, need.role.find('|'));
+                    const std::string what = concepts.empty() ? one : concepts + " " + one;
+                    json check = {{"key", key}, {"action", "check"}, {"entry", entry}, {"candidate", d.candidate->entry->id}, {"role", need.role}, {"title", what},
+                                  {"concepts", need.concepts}, {"layer", need.layer}, {"w", need.w}, {"h", need.h}, {"kind", need.kind},
+                                  {"about", row.value("description", "")},
+                                  {"description", "a " + what + " for a game, " + std::string(options.isoGrid ? "isometric" : "top-down") + " view"}};
+                    const ImageRect& r = d.candidate->entry->rect;
+                    if (entry.find('#') != std::string::npos && r.w > 0 && r.h > 0) check["rect"] = {r.x, r.y, r.w, r.h};
+                    out["pending"].push_back(check);
+                    row["why"] = "found; being checked against the scene";
+                }
             } else if (d.action == "drop") {
                 row["source"] = "dropped";
                 row["why"] = d.reason;
@@ -947,9 +975,18 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
     {
         const TerrainGrid g = ReadTerrain(solved);
         const json grounds = out["look"]["terrains"];
+        const bool indoor = out["look"].value("lighting", "sun") == "indoor";
+        const json lines = solved.value("lines", json::array()); // named: begin() and end() of one array
+        const bool wallLines = std::any_of(lines.begin(), lines.end(), [](const json& l) { return l.value("slot", "") == "wall"; });
         const bool walls = std::any_of(g.cells.begin(), g.cells.end(), [&](const std::string& t) {
             return grounds.value(t, json::object()).value("blocksLight", false);
-        });
+        }) || (wallLines && [&] {
+            for (const auto& p : out["look"]["parts"]) {
+                if (p.value("at", "") == "wall-edge") return true;
+            }
+            return false;
+        }());
+        (void)indoor;
         for (const auto& part : out["look"]["parts"]) {
             const std::string partKey = part.value("key", ""), role = part.value("role", partKey);
             if (partKey.empty() || !walls) continue;
@@ -999,7 +1036,14 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
     // Fence and wall pieces.
     std::set<std::string> lineSlots;
     for (const auto& l : solved.value("lines", json::array())) lineSlots.insert(l.value("slot", "fence"));
+    const bool indoorWalls = [&] { // any place whose look stands its walls up as blocks
+        for (const auto& p : placeLook.value("parts", json::array())) {
+            if (p.value("at", "") == "wall-edge") return true;
+        }
+        return false;
+    }();
     for (const auto& slotName : lineSlots) {
+        if (slotName == "wall" && indoorWalls) continue; // stood up as the place's wall blocks
         SlotNeed slot;
         slot.role = slotName == "wall" ? "wall-piece-set" : slotName == "hedge" ? "hedge-piece-set" : "fence-piece-set";
         slot.joined = true;
@@ -1084,13 +1128,19 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
         // Ground the Art tool made for it (each that passed its check), as plain tiles: the
         // latest first, the others its variants, mixed by cell.
         std::vector<std::string> madeTiles;
+        std::set<std::string> sketchedTiles;
         for (const AssetInfo& a : assets.Assets()) {
             auto terrain = a.analysis.find("terrain"), source = a.analysis.find("source"), roles = a.analysis.find("roles");
             if (terrain == a.analysis.end() || terrain->second != t || source == a.analysis.end() || source->second != "generated") continue;
             if (roles == a.analysis.end() || roles->second.empty()) continue; // replaced by a refined one
             madeTiles.push_back(a.path);
+            if (const auto s = a.analysis.find("fromSketch"); s != a.analysis.end() && s->second == "1") sketchedTiles.insert(a.path);
         }
+        // The latest first; a patch cut from the place's own sketch before any other (its colours are
+        // the painting's).
         std::sort(madeTiles.rbegin(), madeTiles.rend());
+        std::stable_partition(madeTiles.begin(), madeTiles.end(), [&](const std::string& p) { return sketchedTiles.contains(p); });
+        if (!madeTiles.empty() && sketchedTiles.contains(madeTiles.front())) out["look"]["terrains"][t]["sketched"] = true;
         json variants = json::array();
         for (const auto& made : madeTiles) {
             if (const std::string prefab = GeneratedTilePrefab(prefabs, made, t, SolidTerrain(t), options.iso); !prefab.empty()) {
@@ -1144,6 +1194,98 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
                               {"why", pending ? "to be made by the Art tool" : "no " + t + " ground tiles in the project"}};
     }
     return out;
+}
+
+// ③ Assets' rows: each need, and the ground (each terrain: the project's tiles, made ones, or the Art tool).
+nlohmann::json AssetNeedRows(const nlohmann::json& assets) {
+    nlohmann::json needs = assets.value("needs", nlohmann::json::array());
+    const nlohmann::json terrains = assets.value("terrains", nlohmann::json::object());
+    for (const auto& [t, g] : terrains.items()) {
+        nlohmann::json row = {{"key", "terrain|" + t}, {"role", "ground-tile"}, {"concepts", nlohmann::json::array({t})}, {"source", g.value("source", "")},
+                              {"entry", g.value("entry", g.value("terrain", ""))}, {"why", g.value("why", "")}, {"component", "ground"}};
+        if (g.value("why", "") == "to be made by the Art tool") row["decision"] = {{"action", "generate"}, {"reason", "no " + t + " ground tiles in the project"}};
+        needs.push_back(row);
+    }
+    // A dungeon's standing parts: its wall block and its torch.
+    const nlohmann::json parts = assets.value("parts", nlohmann::json::object());
+    for (const auto& [part, p] : parts.items()) {
+        nlohmann::json row = {{"key", "part|" + part}, {"role", p.value("role", part)}, {"concepts", nlohmann::json::array({part})},
+                              {"source", p.value("source", "")}, {"entry", p.value("entry", "")}, {"why", p.value("why", "")}, {"title", part}};
+        if (p.value("why", "") == "to be made by the Art tool") row["decision"] = {{"action", "generate"}, {"reason", "none in the project"}};
+        needs.push_back(row);
+    }
+    // The lines' pieces: a fence, wall or hedge section.
+    const nlohmann::json pieces = assets.value("pieces", nlohmann::json::object());
+    for (const auto& [slot, p] : pieces.items()) {
+        nlohmann::json row = {{"key", "piece|" + slot}, {"role", p.value("role", slot)}, {"concepts", nlohmann::json::array({slot})},
+                              {"source", p.value("source", "")}, {"entry", p.value("entry", p.value("set", ""))}, {"why", p.value("why", "")},
+                              {"title", slot + " section"}};
+        if (p.value("why", "") == "to be made by the Art tool") row["decision"] = {{"action", "generate"}, {"reason", "no " + slot + " pieces in the project"}};
+        needs.push_back(row);
+    }
+    return needs;
+}
+
+std::array<int, 4> OccupiedBounds(const json& solved) {
+    const json bounds = solved.value("grid", json::object()).value("bounds", json::array({0, 0, 64, 64}));
+    const int W = bounds[2].get<int>(), H = bounds[3].get<int>();
+    const TerrainGrid grid = ReadTerrain(solved);
+    int x0 = W, y0 = H, x1 = 0, y1 = 0;
+    for (int y = 0; y < grid.h; ++y) {
+        for (int x = 0; x < grid.w; ++x) {
+            if (grid.At(x, y) == "void") continue;
+            x0 = std::min(x0, x), y0 = std::min(y0, y), x1 = std::max(x1, x + 1), y1 = std::max(y1, y + 1);
+        }
+    }
+    if (x1 <= x0 || y1 <= y0) return {0, 0, W, H};
+    return {std::max(0, x0 - 1), std::max(0, y0 - 1), std::min(W, x1 + 1), std::min(H, y1 + 1)};
+}
+
+std::vector<PlaceLevelArea> PlaceLevelAreas(const Ontology& ontology, const json& spec, const json& solved) {
+    std::vector<PlaceLevelArea> out;
+    const json root = spec.is_object() && spec.contains("root") ? spec["root"] : json::object();
+    for (const auto& z : root.value("children", json::array())) {
+        if (!ontology.IsA(z.value("module", ""), "Level")) continue;
+        PlaceLevelArea a{z.value("id", ""), 1 << 30, 1 << 30, -1, -1, {}};
+        for (const auto& r : solved.value("regions", json::array())) {
+            const std::string id = r.value("id", "");
+            if (id != a.id && id.rfind(a.id + "/", 0) != 0) continue;
+            for (const auto& run : r.value("cells", json::array())) {
+                const int y = run[0].get<int>();
+                a.x0 = std::min(a.x0, run[1].get<int>()), a.x1 = std::max(a.x1, run[2].get<int>());
+                a.y0 = std::min(a.y0, y), a.y1 = std::max(a.y1, y + 1);
+            }
+        }
+        if (a.x1 < 0) continue;
+        for (const auto& o : solved.value("objects", json::array())) {
+            const int x = o.value("x", -1), y = o.value("y", -1);
+            if (o.value("slot", "") == "stairs" && x >= a.x0 && y >= a.y0 && x < a.x1 && y < a.y1) a.stairs.push_back({x, y});
+        }
+        out.push_back(a);
+    }
+    if (out.size() < 2) out.clear();
+    return out;
+}
+
+void SetMoodGrade(PlaceSceneOptions& options, const json& brief, const json& story) {
+    std::string words = brief.is_object() ? brief.value("style", json::object()).dump() + " " + brief.value("name", "") : "";
+    if (story.is_object()) words += " " + story.value("mood", json()).dump() + " " + story.value("purpose", json()).dump();
+    for (auto& c : words) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    auto says = [&](std::initializer_list<const char*> list) {
+        int n = 0;
+        for (const char* w : list) n += words.find(w) != std::string::npos;
+        return n;
+    };
+    const int grim = says({"cursed", "ruin", "grim", "dark", "oppress", "decay", "haunt", "blacken", "gloom", "desolat", "rot", "dread", "bleak", "plague", "dying", "sinister"});
+    const int bright = says({"cheer", "prosper", "sunny", "festive", "bright", "idyllic", "peaceful", "lush", "vibrant"});
+    if (grim >= 2 || (grim == 1 && bright == 0)) {
+        const float k = std::min(1.0f, 0.5f + 0.15f * grim); // the grimmer it reads, the more
+        options.gradeSaturation = 1.0f - 0.4f * k;
+        options.gradeBrightness = 1.0f - 0.2f * k;
+        options.gradeTint = {1.0f - 0.08f * k, 1.0f - 0.04f * k, 1.0f};
+    } else if (bright > 0) {
+        options.gradeSaturation = 1.05f;
+    }
 }
 
 float HillsFor(const json& brief) {
@@ -1237,6 +1379,8 @@ struct PointLight {
 struct Lighting {
     bool indoor = false;
     std::vector<PointLight> lights;
+    float saturation = 1.0f, brightness = 1.0f; // the place's grade (its mood)
+    std::array<float, 3> tint{1.0f, 1.0f, 1.0f};
 };
 
 // The land's height at each corner of the cells ((w + 1) x (h + 1), in screen pixels): low,
@@ -1313,7 +1457,7 @@ HeightField MakeHills(const TerrainGrid& grid, const json& solved, float top, co
 }
 
 constexpr int kGroundChunk = 16;   // cells across a picture
-constexpr int kGroundCellPx = 32;  // pixels across a cell (a 64 x 32 cell's diamond needs no more)
+constexpr int kGroundCellPx = 64;  // pixels across a cell: a 64 x 32 diamond needs 32; twice that keeps the ground sharp close up
 constexpr float kTextureCells = 4; // cells a ground's texture spans before it repeats
 
 // Each ground's own colour (place-refine.md §3): the image model's grass is green one time and
@@ -1329,7 +1473,7 @@ std::map<std::string, ImageData> LockPalette(std::map<std::string, ImageData> te
         const size_t n = image.rgba.size() / 4;
         for (size_t i = 0; i < n; ++i) mean.r += image.rgba[i * 4], mean.g += image.rgba[i * 4 + 1], mean.b += image.rgba[i * 4 + 2];
         mean.r /= n, mean.g /= n, mean.b /= n;
-        const float k = 0.8f;
+        const float k = look.Is(t.substr(0, t.find('#')), "sketched") ? 0.25f : 0.8f; // the sketch's own ground: its colours mostly kept
         const float dr = (target.r - mean.r) * k, dg = (target.g - mean.g) * k, db = (target.b - mean.b) * k;
         for (size_t i = 0; i < n; ++i) {
             image.rgba[i * 4] = static_cast<uint8_t>(std::clamp(image.rgba[i * 4] + dr, 0.0f, 255.0f));
@@ -1465,12 +1609,22 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
         const auto tex = textures.find(name);
         return tex == textures.end() || tex->second.width == 0 ? nullptr : &tex->second;
     };
+    std::vector<uint8_t> isRoadLike(groundCount);
+    std::vector<float> meanLum(groundCount, 0.0f);
     for (size_t i = 0; i < groundCount; ++i) {
         isMade[i] = look.Made(names[i]);
         isWater[i] = look.Water(names[i]);
         isWall[i] = look.Wall(names[i]);
         isVoid[i] = names[i] == "void";
         plainTexture[i] = lookupTexture(names[i]);
+        isRoadLike[i] = names[i] == "dirt" || names[i] == "gravel" || names[i] == "cobble" || names[i] == "paved" || names[i] == "path";
+        // Its texture's mean brightness: grounds of much the same colour are told apart at their edge.
+        if (const ImageData* t = plainTexture[i]; t && t->width > 0) {
+            double sum = 0;
+            const size_t n = static_cast<size_t>(t->width) * t->height;
+            for (size_t p = 0; p < n; p += 7) sum += 0.3 * t->rgba[p * 4] + 0.59 * t->rgba[p * 4 + 1] + 0.11 * t->rgba[p * 4 + 2];
+            meanLum[i] = static_cast<float>(sum / std::max<size_t>(1, (n + 6) / 7));
+        }
     }
     // Four looks a little round each point: the edge between two grounds, soft.
     const float jitter[4][2] = {{0.16f, 0.06f}, {-0.06f, 0.16f}, {-0.16f, -0.06f}, {0.06f, -0.16f}};
@@ -1573,6 +1727,17 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
                         const float t = 0.3f * (1.0f - nearWater / 6.0f);
                         color = {color.r + (sand.r - color.r) * t, color.g + (sand.g - color.g) * t, color.b + (sand.b - color.b) * t};
                     }
+                    // A road on ground of much the same colour (a dirt track through mud) disappears into
+                    // it (docs/build-fixes.md): its edge is worn darker, so it reads as a road.
+                    if (isRoadLike[own] && !isWater[own]) {
+                        for (int k = 0; k < 6; ++k) {
+                            const float a = k * 1.0472f + 0.3f;
+                            const int t = groundAt(wx + dx + 0.3f * std::cos(a), wy + dy + 0.3f * std::sin(a));
+                            if (t == own || isWater[t] || isVoid[t] || isWall[t] || std::abs(meanLum[t] - meanLum[own]) > 32.0f) continue;
+                            color = {color.r * 0.8f, color.g * 0.8f, color.b * 0.8f};
+                            break;
+                        }
+                    }
                     // A slow change of light across the place: no two stretches of grass alike.
                     float light = 1.0f + (ValueNoise(wx * 0.12f, wy * 0.12f, 9) - 0.5f) * 0.14f + (ValueNoise(wx * 0.5f, wy * 0.5f, 10) - 0.5f) * 0.06f;
                     light *= 1.0f - shade[static_cast<size_t>(py) * side + px];
@@ -1581,10 +1746,25 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
                     if (lighting.indoor) {
                         const int sx = std::min(lw - 1, static_cast<int>(wx * kLightSub)), sy = std::min(lh - 1, static_cast<int>(wy * kLightSub));
                         const float warm = std::min(1.6f, lit[static_cast<size_t>(sy) * lw + sx]);
-                        const float ambient = isWall[own] ? 0.3f : 0.42f; // dark, but what's there still shows
-                        lr = light * (ambient * 0.9f + warm * 1.05f);
-                        lg = light * (ambient * 0.95f + warm * 0.82f);
-                        lb = light * (ambient * 1.15f + warm * 0.58f);
+                        // Solid rock nobody stands in is darkness, as in Diablo (docs/build-fixes.md): its
+                        // texture flattened to a faint grain, so no tile pattern shows; the floors show.
+                        if (isWall[own]) {
+                            const float mean = (color.r + color.g + color.b) / 3.0f;
+                            color = {mean + (color.r - mean) * 0.25f, mean + (color.g - mean) * 0.25f, mean + (color.b - mean) * 0.25f};
+                            const float grain = 0.85f + 0.3f * ValueNoise(wx * 2.3f, wy * 2.3f, 31);
+                            color = {color.r * 0.35f * grain + 9.0f, color.g * 0.35f * grain + 8.0f, color.b * 0.35f * grain + 11.0f};
+                        }
+                        const float ambient = isWall[own] ? 0.16f : 0.42f; // dark, but what's there still shows
+                        const float glow = isWall[own] ? 0.35f : 1.0f;      // the light falls on the floor
+                        lr = light * (ambient * 0.9f + warm * 1.05f * glow);
+                        lg = light * (ambient * 0.95f + warm * 0.82f * glow);
+                        lb = light * (ambient * 1.15f + warm * 0.58f * glow);
+                    }
+                    // The place's grade: its mood's saturation, brightness and tint.
+                    if (lighting.saturation != 1.0f || lighting.brightness != 1.0f) {
+                        const float lum = 0.3f * color.r + 0.59f * color.g + 0.11f * color.b;
+                        color = {lum + (color.r - lum) * lighting.saturation, lum + (color.g - lum) * lighting.saturation, lum + (color.b - lum) * lighting.saturation};
+                        lr *= lighting.brightness * lighting.tint[0], lg *= lighting.brightness * lighting.tint[1], lb *= lighting.brightness * lighting.tint[2];
                     }
                     uint8_t* p = &image.rgba[(static_cast<size_t>(py) * side + px) * 4];
                     p[0] = static_cast<uint8_t>(std::clamp(color.r * lr, 0.0f, 255.0f));
@@ -1816,6 +1996,7 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
     }
     Lighting lighting;
     lighting.indoor = (options.lighting.empty() ? assetPlan.value("look", json::object()).value("lighting", "sun") : options.lighting) == "indoor";
+    lighting.saturation = options.gradeSaturation, lighting.brightness = options.gradeBrightness, lighting.tint = options.gradeTint;
     std::vector<std::pair<int, int>> torches; // wall cells with a torch on them
     if (lighting.indoor) {
         // Indoors the shadows fall all round a thing (its lights are everywhere), close under it.
@@ -1987,6 +2168,53 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
         } else if (lid.size() > 11 && lid.compare(lid.size() - 11, 11, "/yard-fence") == 0) {
             if (lineIds.contains(lid.substr(0, lid.size() - 11) + "/fence-line")) continue;
         }
+        if (line.value("slot", "") == "wall") {
+            // An indoor place's walls (docs/build-fixes.md): its wall block on each edge, the floor
+            // shown as in Diablo or Divinity: a wall with the floor on the viewer's side of it (the
+            // room behind it is seen) stands whole; one between two rooms, lower; one in front of a
+            // room (it would hide it) is left out.
+            std::string block;
+            const json partRows = assetPlan.value("parts", json::object()); // named: items() of a temporary dangles
+            for (const auto& [key, part] : partRows.items()) {
+                if (part.value("at", "") == "wall-edge") block = part.value("prefab", "");
+            }
+            if (!block.empty()) {
+                auto floorCell = [&](int cx, int cy) {
+                    return cx >= 0 && cy >= 0 && cx < grid.w && cy < grid.h && !groundLook.Wall(grid.At(cx, cy)) && grid.At(cx, cy) != "void" &&
+                           !grid.At(cx, cy).empty();
+                };
+                std::set<std::tuple<int, int, std::string>> doorGaps;
+                for (const auto& g : line.value("gaps", json::array())) doorGaps.insert({g[0].get<int>(), g[1].get<int>(), g[2].get<std::string>()});
+                for (const auto& e : line.value("edges", json::array())) {
+                    const int x = e[0].get<int>(), y = e[1].get<int>();
+                    const std::string side = e[2].get<std::string>();
+                    if (doorGaps.contains({x, y, side})) continue;
+                    // The cells either side: "far" up the screen (lower x or y), "near" towards the viewer.
+                    int fx = x, fy = y, nx = x, ny = y;
+                    if (side == "n") fy = y - 1;
+                    if (side == "s") ny = y + 1;
+                    if (side == "w") fx = x - 1;
+                    if (side == "e") nx = x + 1;
+                    const bool farFloor = floorCell(fx, fy), nearFloor = floorCell(nx, ny);
+                    if (lighting.indoor && !nearFloor) continue; // in front of a room: left out (indoors)
+                    float wx = x + options.originX + 0.5f, wy = y + options.originY + 0.5f;
+                    if (side == "n") wy -= 0.5f;
+                    if (side == "s") wy += 0.5f;
+                    if (side == "w") wx -= 0.5f;
+                    if (side == "e") wx += 0.5f;
+                    auto placed = prefabs.Instantiate(registry, block, wx, wy, false);
+                    if (!placed) continue;
+                    registry.emplace_or_replace<PlaceNode>(*placed, options.place, line.value("node", ""), line.value("id", ""));
+                    registry.remove<Obstacle>(*placed); // an edge: the cells beside it stay walkable
+                    if (const auto* sprite = registry.try_get<Sprite>(*placed); sprite && sprite->width > 0) {
+                        const float factor = options.iso.tileWidth * (lighting.indoor ? (farFloor ? 0.62f : 0.82f) : 1.0f) / sprite->width;
+                        if (std::abs(factor - 1.0f) > 0.02f) ScaleEntity(EngineReflection(), registry, *placed, factor);
+                    }
+                    out["pieces"] = out["pieces"].get<int>() + 1;
+                }
+                continue;
+            }
+        }
         const json row = pieces.value(line.value("slot", "fence"), json::object());
         const json kinds = row.value("pieces", json::object());
         const bool fit = row.value("fit", false) && !options.iso.topDown;
@@ -2077,6 +2305,26 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
                 ++walls;
             }
         }
+        // A plain door whose walls are both cut away (in front of a room) would stand alone in the dark:
+        // left out, the doorway open (docs/build-fixes.md). Locked and secret doors stay (play needs them).
+        if (!wall.empty()) {
+            auto wallShown = [&](int x, int y) {
+                return x >= 0 && y >= 0 && x < grid.w && y < grid.h && groundLook.Wall(grid.At(x, y)) &&
+                       (floorAt(x + 1, y) || floorAt(x, y + 1) || floorAt(x + 1, y + 1));
+            };
+            std::set<std::string> floating;
+            for (const auto& o : solved.value("objects", json::array())) {
+                if (o.value("slot", "") != "door") continue;
+                const int x = o.value("x", 0), y = o.value("y", 0);
+                if (!wallShown(x - 1, y) && !wallShown(x + 1, y) && !wallShown(x, y - 1) && !wallShown(x, y + 1)) floating.insert(o.value("id", ""));
+            }
+            std::vector<Entity> gone;
+            for (auto [e, node] : registry.view<PlaceNode>().each()) {
+                if (node.place == options.place && floating.contains(node.statement)) gone.push_back(e);
+            }
+            for (auto e : gone) registry.destroy(e);
+            out["doorsOpen"] = static_cast<int>(gone.size());
+        }
         int hung = 0;
         for (const auto& [x, y] : torches) {
             if (torch.empty()) break;
@@ -2089,10 +2337,61 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
         }
         out["walls"] = walls;
         out["torches"] = hung;
+        // What hangs on a wall (its role's look "hang": a banner, a shield) goes on the wall's face
+        // (docs/build-fixes.md): beside it, the back walls first (they're the ones seen), lifted.
+        int hanging = 0;
+        std::map<std::string, std::pair<int, int>> hangAt;
+        for (const auto& o : solved.value("objects", json::array())) {
+            const std::string key = byObject.value(o.value("id", ""), "");
+            const auto look = lookByKey.find(key);
+            if (look == lookByKey.end() || !look->second.is_object() || !look->second.value("hang", false)) continue;
+            hangAt[o.value("id", "")] = {o.value("x", 0), o.value("y", 0)};
+        }
+        std::set<std::tuple<int, int, char>> lineWalls; // wall edges of an interior's rooms: (x, y, n|w)
+        for (const auto& line : solved.value("lines", json::array())) {
+            if (line.value("slot", "") != "wall") continue;
+            for (const auto& e : line.value("edges", json::array())) {
+                const int x = e[0].get<int>(), y = e[1].get<int>();
+                const std::string side = e[2].get<std::string>();
+                if (side == "n") lineWalls.insert({x, y, 'n'});
+                if (side == "w") lineWalls.insert({x, y, 'w'});
+                if (side == "s") lineWalls.insert({x, y + 1, 'n'});
+                if (side == "e") lineWalls.insert({x + 1, y, 'w'});
+            }
+        }
+        for (auto [e, node] : registry.view<PlaceNode>().each()) {
+            const auto at = hangAt.find(node.statement);
+            if (node.place != options.place || at == hangAt.end()) continue;
+            const auto [x, y] = at->second;
+            // The wall it hangs on: north or west (seen), else south or east.
+            float dx = 0, dy = 0;
+            if (!floorAt(x, y - 1) || lineWalls.contains({x, y, 'n'})) dy = -0.45f;
+            else if (!floorAt(x - 1, y) || lineWalls.contains({x, y, 'w'})) dx = -0.45f;
+            else if (!floorAt(x, y + 1) || lineWalls.contains({x, y + 1, 'n'})) dy = 0.45f;
+            else if (!floorAt(x + 1, y) || lineWalls.contains({x + 1, y, 'w'})) dx = 0.45f;
+            else continue; // no wall beside it: it stands where it is
+            if (auto* w = registry.try_get<WorldTransform2D>(e)) {
+                w->x = x + options.originX + 0.5f + dx;
+                w->y = y + options.originY + 0.5f + dy;
+            }
+            registry.remove<Obstacle>(e);
+            EditField(EngineReflection(), registry, e, "Sprite", "lift", options.iso.tileHeight * 0.8f);
+            ++hanging;
+        }
+        out["hanging"] = hanging;
     }
     // Locks and keys that work in play (development_plan.md 13.5): a locked door
     // opens with its key; the key lies in its room to be picked up. Each key is an
     // item record of its own, so it has a name in the inventory.
+    // Every thing of the place through its grade's brightness and tint (a sprite can't be desaturated).
+    if (options.gradeBrightness != 1.0f || options.gradeTint != std::array<float, 3>{1.0f, 1.0f, 1.0f}) {
+        for (auto [e, node, sprite] : registry.view<PlaceNode, Sprite>().each()) {
+            if (node.place != options.place || sprite.emissive) continue;
+            sprite.r *= options.gradeBrightness * options.gradeTint[0];
+            sprite.g *= options.gradeBrightness * options.gradeTint[1];
+            sprite.b *= options.gradeBrightness * options.gradeTint[2];
+        }
+    }
     out["locks"] = WireLocksAndKeys(registry, prefabs, solved, options);
     // Furniture characters use (14.3): beds, chairs, counters, forges become smart
     // objects their routines find by type and affordance.

@@ -136,6 +136,8 @@ def generate_sprites(
     variants: list[str] | None = None,
     even_light: bool = False,
     brief: dict | None = None,
+    layer: str = "",
+    with_images: list[str] | None = None,
 ) -> list[dict]:
     """Generates one sprite per variant (one if no variants) into
     <root>/assets/textures/generated/, each with a .gen.json sidecar.
@@ -159,8 +161,15 @@ def generate_sprites(
         if getattr(generator, "takes_options", False):
             # A generator made for game art (PixelLab): its view, size and background, and the
             # project's palette (its style references) so the piece keeps to its colours.
-            from .style import project_palette
-            image = generator.generate(prompt, {"kind": kind, "height": height, "isometric": kind != "tile", "palette": project_palette(root)})
+            from .style import project_palette, reference_paths
+            options = {"kind": kind, "height": height, "isometric": kind != "tile", "palette": project_palette(root)}
+            # Drawn to match the project's own pieces of the same kind, when it has some.
+            refs = [str(p) for p in reference_paths(root, layer)] if kind != "tile" else []
+            # What it's designed against (a door's wall) first: the look it must meet.
+            refs = list(with_images or []) + [r for r in refs if r not in (with_images or [])]
+            if refs:
+                options["references"] = refs
+            image = generator.generate(prompt, options)
         else:
             image = generator.generate(prompt)
         png, processing = make_sprite(image.data, SpriteOptions(height=height, style=style, tile=kind == "tile", even_light=even_light and kind == "tile"))

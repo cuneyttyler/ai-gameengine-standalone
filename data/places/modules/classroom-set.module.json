@@ -1,0 +1,42 @@
+{
+  "schema": "aige.module/1",
+  "id": "classroom-set",
+  "name": "Classroom",
+  "level": "feature",
+  "description": "Rows of school desks facing a whiteboard.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "whiteboard": {
+      "role": "whiteboard",
+      "essential": true,
+      "primary": true
+    },
+    "school-desk": {
+      "role": "school-desk",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "wall",
+      "members": [
+        {
+          "slot": "school-desk",
+          "count": [
+            6,
+            12
+          ],
+          "near": 6
+        }
+      ]
+    }
+  }
+}

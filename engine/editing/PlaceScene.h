@@ -12,6 +12,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <array>
+
 #include <memory>
 #include <set>
 #include <string>
@@ -61,10 +63,36 @@ struct PlaceSceneOptions {
     // Whether the corridor at a door cell runs along x (its door then stands across it, along
     // y); set by BuildPlaceScene from the layout.
     std::function<bool(int x, int y)> doorAcrossX;
+    // The place's colour grade (docs/build-fixes.md), from its mood (SetMoodGrade): the ground
+    // painted through it, every thing tinted by it, as a game grades a level as one picture.
+    float gradeSaturation = 1.0f, gradeBrightness = 1.0f;
+    std::array<float, 3> gradeTint{1.0f, 1.0f, 1.0f};
 };
+
+// A place's levels (docs/build-fixes.md): its zones of the ontology's class Level (a dungeon's
+// levels, a building's floors), each with the cells it covers (site cells) and where its stairs
+// stand. Two or more: each becomes a scene of its own; fewer: none (the place is one scene).
+struct PlaceLevelArea {
+    std::string id;
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    std::vector<std::pair<int, int>> stairs;
+};
+std::vector<PlaceLevelArea> PlaceLevelAreas(const Ontology& ontology, const nlohmann::json& spec, const nlohmann::json& solved);
+
+// The cells the place really covers {x0, y0, x1, y1}: its ground that isn't "void" (an interior's
+// building, not the empty site round it); the whole site when it has none.
+std::array<int, 4> OccupiedBounds(const nlohmann::json& solved);
+
+// ③ Assets' rows from PlanPlaceAssets' answer: each need, then the ground (each terrain), a
+// dungeon's standing parts and the lines' pieces, as rows of the same shape.
+nlohmann::json AssetNeedRows(const nlohmann::json& assets);
 
 // The hills' height (PlaceSceneOptions::hills) for a Brief's `root.relief`: flat, gentle, hilly.
 float HillsFor(const nlohmann::json& brief);
+
+// The colour grade for a place's mood, from its Brief's style and its story's mood words: a cursed,
+// ruined or oppressive place muted, darker and cool; a cheerful one a touch brighter; else none.
+void SetMoodGrade(PlaceSceneOptions& options, const nlohmann::json& brief, const nlohmann::json& story);
 
 // Where a site of `side` cells can go without covering what's in the scene:
 // beside it (to its right, `gap` cells off), or at 0,0 in an empty scene. The
@@ -82,6 +110,16 @@ struct AssetSourcing {
     Catalog library;           // LoadLibrary, and the user's library (UserLibrary::AsCatalog)
     // Copies the user's library item (its id, after "user:") into the project; its project path.
     std::function<std::string(const std::string& item)> importLibrary;
+    // A build from the AI Planner: the plan's art strategy (settings.defaultSource) is used for every
+    // part, whatever a component of the place's Brief says (only "placeholder" stands).
+    bool strategyRules = false;
+    // Found art (the project's, a library's, the web's) is looked at by the vision model before it's
+    // used (docs/build-fixes.md): a need whose art isn't yet approved for this place is pending a
+    // "check"; refused art is skipped next time (Tried::refused), down to the Art tool.
+    bool checkFound = false;
+    // Needs the place's sketch painted (PlaceBuild::SketchCrops): made by the Art tool from their crop,
+    // so every piece keeps the painting's look; found art only if that fails.
+    std::set<std::string> sketched;
 };
 
 // {"needs": [{key, role, concepts, layer, w, h, uses, importance, styleCritical,

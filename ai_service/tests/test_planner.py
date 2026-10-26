@@ -165,3 +165,48 @@ def test_a_scene_without_a_quest_stage_keeps_it_null():
     from app.shapes import coerce, parse_shape
     from app.planner import SCENE_SHAPE
     assert coerce({"scene": {"questStage": None, "summary": "x"}}, parse_shape(SCENE_SHAPE))["scene"]["questStage"] is None
+
+
+def test_a_replayed_answer_calls_no_model():
+    """The engine re-applies an answer from its log: put into shape and checked, no model call."""
+    provider = ScriptedProvider([])
+    replay = {"character": {"name": ["Mira"], "relationships": ["character/kael"]}, "rationale": "x"}
+    result = plan_character(provider, {"entry": {"id": "character/mira"}, "replay": replay})
+    assert result["ok"] and result["character"]["name"] == "Mira"
+    assert result["character"]["relationships"] == [{"with": "character/kael"}]
+    assert provider.requests == []
+
+
+def test_a_broken_or_cut_off_json_answer_is_repaired():
+    """Trailing commas, a fence, and an answer cut off by the token limit: closed at the last
+    complete item instead of "the answer wasn't JSON"."""
+    from app.places import _parse
+    value, problem = _parse('Here it is:\n```json\n{"systems": {"records": [{"type": "item", "id": "sword",},]}}\n```')
+    assert problem == "" and value["systems"]["records"][0]["id"] == "sword"
+    cut = '{"systems": {"summary": {"economy": "gold"}, "records": [{"type": "item", "id": "sword", "record": {"name": "Sword"}}, {"type": "item", "id": "shi'
+    value, problem = _parse(cut)
+    assert problem == "" and [r["id"] for r in value["systems"]["records"]] == ["sword"]
+    assert value["systems"]["summary"]["economy"] == "gold"
+    assert _parse("no json here")[0] is None
+
+
+def test_the_systems_design_keeps_its_structure():
+    """⑦'s summary parts are free: an object stays an object (shown as a table), not "a: b; c: d"."""
+    from app.planner import SYSTEMS_SHAPE
+    from app.shapes import coerce, parse_shape
+    answer = {"systems": {"summary": {"economy": {"currency": "gold", "prices": {"weapons": {"min": 50, "max": 300}}},
+                                      "loot": "chests and drops"},
+                          "records": [{"type": "item", "id": ["sword"], "record": {"name": "Sword"}}]}}
+    out = coerce(answer, parse_shape(SYSTEMS_SHAPE))["systems"]
+    assert out["summary"]["economy"]["prices"]["weapons"]["max"] == 300
+    assert out["summary"]["loot"] == "chests and drops"
+    assert out["records"][0]["id"] == "sword"  # the rest is still put into shape
+
+
+def test_a_place_is_planned_with_the_story_set_there():
+    """The Planner's place builds carry the story (context.story): the planning prompt shows it."""
+    from app.places import story_part
+    context = {"story": {"logline": "A warden hunts a stolen amulet.", "scenesHere": [{"id": "s1-02", "needs": ["altar"]}]}}
+    part = story_part(context)
+    assert "THE STORY SET HERE" in part and "stolen amulet" in part and "altar" in part
+    assert story_part({}) == ""

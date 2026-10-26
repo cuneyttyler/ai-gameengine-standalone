@@ -98,5 +98,65 @@
     "text": "A temple closes the view at the end of a street.",
     "source": "Lynch, The Image of the City (1960)",
     "appliesTo": "temple-plot"
+  },
+  {
+    "id": "city-downtown-at-centre",
+    "text": "The downtown with its towers is at the centre, where the avenues cross.",
+    "source": "Burgess 1925 (concentric zones)",
+    "appliesTo": "downtown"
+  },
+  {
+    "id": "city-height-falls-outward",
+    "text": "Buildings are tallest downtown and lower outward; suburbs are low.",
+    "source": "Alonso 1964 (bid-rent)",
+    "appliesTo": "class:District"
+  },
+  {
+    "id": "city-industry-at-edge",
+    "text": "Industry is at the edge, by water, rail or the highway, away from homes.",
+    "source": "Hoyt 1939 (sectors)",
+    "appliesTo": "industrial-district"
+  },
+  {
+    "id": "city-retail-on-main-roads",
+    "text": "Shops and commercial strips line the main roads.",
+    "source": "Christaller 1933; strip development",
+    "appliesTo": "commercial-district"
+  },
+  {
+    "id": "city-civic-near-downtown",
+    "text": "City hall and civic buildings are near the centre, on a plaza.",
+    "source": "Lynch 1960",
+    "appliesTo": "civic-district"
+  },
+  {
+    "id": "city-parks-within-walk",
+    "text": "Every residential district has a park or playground within a short walk.",
+    "source": "Perry 1929 (neighbourhood unit)",
+    "appliesTo": "residential-district"
+  },
+  {
+    "id": "city-schools-in-neighbourhoods",
+    "text": "Schools sit inside residential neighbourhoods, not on main roads.",
+    "source": "Perry 1929",
+    "appliesTo": "school-plot"
+  },
+  {
+    "id": "city-parking-behind",
+    "text": "Large parking lots sit behind or beside big stores, not in front of downtown streets.",
+    "source": "Jacobs 1961",
+    "appliesTo": "parking-lot"
+  },
+  {
+    "id": "city-transit-at-centre",
+    "text": "The station is downtown, on an avenue.",
+    "source": "Calthorpe 1993 (TOD)",
+    "appliesTo": "transit-station-plot"
+  },
+  {
+    "id": "city-sidewalks-everywhere",
+    "text": "Streets have sidewalks on both sides, with lamps, trees and bins along them.",
+    "source": "Jacobs 1961",
+    "appliesTo": "class:District"
   }
 ]

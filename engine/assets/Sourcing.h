@@ -64,6 +64,11 @@ struct SourceCandidates {
 struct Tried {
     bool web = false;
     bool generate = false;
+    // Art the vision model looked at for this need, in this place (docs/build-fixes.md): refused (it
+    // doesn't fit the scene: the next candidate is taken) or approved (no need to look again). By path.
+    std::set<std::string> refused;
+    std::set<std::string> approved;
+    int refusals = 0; // how many found pieces were refused (one may be listed twice: its library id, its copy)
 };
 
 struct Decision {

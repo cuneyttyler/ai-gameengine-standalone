@@ -33,6 +33,9 @@ from .consistency import check_consistency, writing_from_operations
 from .images import ImageGenerator, MistralImageGenerator, generate_sprites
 from .planner import STEPS as PLANNER_STEPS
 from .places import ask_questions, interpret, plan_root, plan_zone, repair_brief, repair_node, review_layout, revise_plan
+from .inspect import inspect_place
+from .sketch import sketch_place
+from .backdrop import paint_backdrop
 from .vision import describe_assets, map_chunk
 from .websource import all_candidates, candidates, fetch_file, search_web
 from .art_brief import better_queries, write_art_prompt
@@ -69,6 +72,8 @@ class DescribeAssetsRequest(BaseModel):
     paths: list[str] = []
     items: list[dict] = []   # objects cut from sheets: {"id", "path", "rect": [x, y, w, h]} (7.3)
     roles: list[str] = []    # the ontology roles to choose from
+    # What these were made or found for (a build's check): each also gets a verdict, fits and why not.
+    wanted: dict = {}
 
 
 class InterpretRequest(BaseModel):
@@ -134,6 +139,28 @@ class RevisePlanRequest(BaseModel):
     room: list = []        # in the plan: each zone's land and about how many parcels it holds
 
 
+class SketchRequest(BaseModel):
+    context: dict = {}       # the place, its look and story, its zones, its items ({key, type, drawn, count})
+    outDir: str              # where the painting and its crops go, relative to the project
+    name: str = "sketch"
+
+
+class BackdropRequest(BaseModel):
+    context: dict = {}       # the place, its look and story, its zones and items with where they lie, its anchors
+    out: str                 # the backdrop's PNG, relative to the project (its map beside it, .json)
+
+
+class InspectRequest(BaseModel):
+    kind: str              # layout, plan or build (docs/build-fixes.md)
+    images: list[str]      # relative to the project root: one, or one per window of a big scene
+    windows: list[dict] = []  # per image: {label, items} (what was placed in that window)
+    brief: dict = {}
+    story: dict = {}
+    look: dict = {}        # the goal for this kind of place (the build type's look)
+    expected: dict = {}    # zones, items (type: count and where), legend (code: type)
+    issues: list = []      # "fixes": the draft's mistakes, each judged fixed or not in the repaint
+
+
 class ReviewLayoutRequest(BaseModel):
     image: str             # the map, relative to the project root (places/<id>/layout.png)
     brief: dict
@@ -165,6 +192,25 @@ class WebFetchRequest(BaseModel):
 
 class ArtProviderRequest(BaseModel):
     provider: str = "auto"
+
+
+class PaintProviderRequest(BaseModel):
+    provider: str = "bfl"              # Preferences ▸ Paint Provider: who paints places (the Painted method)
+    model: str = "flux-3-image"        # one of bfl.PAINT_PROVIDERS[provider]
+
+
+class CheckPaintingRequest(BaseModel):
+    painting: str                      # relative to the project root
+    legend: dict = {}                  # the block-out's colour key, with each thing's box and the image size
+
+
+class PaintBlockoutRequest(BaseModel):
+    blockout: str                      # the plan's block-out (PlaceBlockout), relative to the project root
+    legend: dict = {}                  # its colour key and boxes
+    place: dict = {}                   # {name, type}
+    story: dict = {}
+    look: dict = {}
+    out: str                           # the painting, relative to the project root
 
 
 class AnimationRequest(BaseModel):
@@ -202,6 +248,9 @@ class GenerateAssetRequest(BaseModel):
     # The piece's place (place-refine.md §14): what it is for and where it goes, its view, size and
     # style. Given, the text model first writes what exactly to draw for it there (art_brief).
     context: dict = {}
+    # The art of the pieces it's designed against (a door's wall), relative to the project: the image
+    # model draws to match them, before the project's other references.
+    withImages: list[str] = []
 
 
 class ProposeResponse(BaseModel):
@@ -284,12 +333,12 @@ def default_checker() -> Provider | None:
 
 
 def default_vision() -> Provider | None:
-    """Looks at images (6.2): a vision-capable model; MISTRAL_VISION_MODEL picks another."""
+    """Looks at images (6.2): Mistral's best vision model (Large 4); MISTRAL_VISION_MODEL picks another."""
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     key = os.environ.get("MISTRAL_API_KEY")
     if not key:
         return None
-    return MistralProvider(api_key=key, model=os.environ.get("MISTRAL_VISION_MODEL", "mistral-medium-latest"),
+    return MistralProvider(api_key=key, model=os.environ.get("MISTRAL_VISION_MODEL", "mistral-large-4"),
                            timeout_s=180.0)
 
 
@@ -477,7 +526,8 @@ def create_app(
             return {"ok": False, "errors": ["No vision model available (MISTRAL_API_KEY)"]}
         if len(request.paths) + len(request.items) > 400:
             return {"ok": False, "errors": ["At most 400 images at a time"]}
-        return describe_assets(vision, root, request.paths, items=request.items, roles=request.roles or None)
+        return describe_assets(vision, root, request.paths, items=request.items, roles=request.roles or None,
+                               judge=request.wanted or None)
 
     @app.post("/places/interpret")
     def places_interpret(request: InterpretRequest) -> dict:
@@ -542,6 +592,57 @@ def create_app(
             return {"ok": True, "provider": provider, "models": list_models(provider)}
         except Exception as error:
             return {"ok": False, "errors": [f"Couldn't list {provider}'s models: {error}"]}
+
+    @app.put("/paint-provider")
+    def set_paint_provider(request: PaintProviderRequest) -> dict:
+        """Who paints places from their plan (Preferences ▸ Paint Provider): BFL for now, and its model."""
+        from .bfl import PAINT_PROVIDERS
+        models = PAINT_PROVIDERS.get(request.provider)
+        if models is None:
+            return {"ok": False, "errors": [f"Unknown paint provider {request.provider}: one of {', '.join(PAINT_PROVIDERS)}"]}
+        if request.model not in models:
+            return {"ok": False, "errors": [f"Unknown model {request.model}: one of {', '.join(models)}"]}
+        load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+        if request.provider == "bfl" and not os.environ.get("BFL_API_KEY"):
+            return {"ok": False, "errors": ["No key for BFL: set BFL_API_KEY in ai_service/.env"]}
+        state["paint"] = {"provider": request.provider, "model": request.model}
+        return {"ok": True, "paint": state["paint"], "models": models}
+
+    @app.post("/places/paint-blockout")
+    def places_paint_blockout(request: PaintBlockoutRequest) -> dict:
+        """A place painted from its plan's block-out by the chosen Paint Provider model."""
+        from .bfl import paint_place
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        paint = state.get("paint") or {"provider": "bfl", "model": "flux-3-image"}
+        load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+        key = os.environ.get("BFL_API_KEY")
+        if not key:
+            return {"ok": False, "errors": ["No key for BFL: set BFL_API_KEY in ai_service/.env"]}
+        source, target = (root / request.blockout).resolve(), (root / request.out).resolve()
+        if root.resolve() not in source.parents or not source.is_file() or root.resolve() not in target.parents:
+            return {"ok": False, "errors": [f"No block-out at {request.blockout}, or {request.out} is outside the project"]}
+        try:
+            png, steps = paint_place(key, paint["model"], source.read_bytes(), request.legend, request.place, request.story, request.look)
+        except ProviderError as error:
+            return {"ok": False, "errors": [str(error)]}
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(png)
+        return {"ok": True, "painting": request.out, "model": paint["model"], "steps": steps}
+
+    @app.post("/places/check-painting")
+    def places_check_painting(request: CheckPaintingRequest) -> dict:
+        """A painting checked against its plan's block-out: each building drawn as its kind, and how it looks."""
+        from .inspect import check_painting
+        root: Path | None = state["root"]
+        vision: Provider | None = state["vision"]
+        if root is None or vision is None:
+            return {"ok": False, "errors": ["No project open, or no vision model"]}
+        path = (root / request.painting).resolve()
+        if root.resolve() not in path.parents or not path.is_file():
+            return {"ok": False, "errors": [f"No painting at {request.painting}"]}
+        return check_painting(vision, root, request.painting, request.legend)
 
     @app.put("/art-provider")
     def set_art_provider(request: ArtProviderRequest) -> dict:
@@ -660,6 +761,51 @@ def create_app(
         state["usage"].add(Usage(**result["usage"]))
         return result
 
+    @app.post("/assets/sketch")
+    def assets_sketch(request: SketchRequest) -> dict:
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        # The sketch is painted by Mistral's image model (big, from words alone), whatever draws the
+        # pieces themselves (PixelLab, or the user's choice): it decides how things look, not where.
+        painter = make_image_generator("mistral", None)
+        if painter is None:
+            return {"ok": False, "errors": ["Sketching needs Mistral's image model (MISTRAL_API_KEY)"]}
+        return sketch_place(painter, state["provider"], state["vision"], root, request.context, request.outDir, request.name)
+
+    @app.post("/places/backdrop")
+    def places_backdrop(request: BackdropRequest) -> dict:
+        """A painted place (the "Painted" build method): described from its plan, painted by Mistral's image
+        model (big, from words alone), and read by the vision model (what stands where, the doors, the anchors)."""
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        painter = make_image_generator("mistral", None)
+        if painter is None:
+            return {"ok": False, "errors": ["Painting places needs Mistral's image model (MISTRAL_API_KEY)"]}
+        return paint_backdrop(painter, state["provider"], state["vision"], root, request.context, request.out)
+
+    @app.post("/places/inspect")
+    def places_inspect(request: InspectRequest) -> dict:
+        root: Path | None = state["root"]
+        vision: Provider | None = state["vision"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        if vision is None:
+            return {"ok": False, "errors": ["No vision model (MISTRAL_API_KEY)"]}
+        chunks = []
+        for image in request.images:
+            path = (root / image).resolve()
+            if root.resolve() not in path.parents or not path.is_file():
+                return {"ok": False, "errors": [f"No image at {image}"]}
+            chunks.append(map_chunk(path, longest=1600))
+        if not chunks:
+            return {"ok": False, "errors": ["No image to look at"]}
+        result = inspect_place(vision, request.kind, chunks, request.model_dump(), request.windows or None)
+        if "usage" in result:
+            state["usage"].add(Usage(**result["usage"]))
+        return result
+
     @app.post("/assets/web-search")
     def assets_web_search(request: WebSearchRequest) -> dict:
         """Free art from an approved site, licence checked (7.9, rule W)."""
@@ -732,8 +878,12 @@ def create_app(
             except ProviderError as error:
                 brief = {"error": str(error)}  # drawn from the plain description
         try:
+            with_images = [str((root / p).resolve()) for p in request.withImages
+                           if root.resolve() in (root / p).resolve().parents and (root / p).is_file()]
             results = generate_sprites(images, root, request.name, description, request.kind,
-                                       request.height, request.style, request.variants, request.evenLight, brief)
+                                       request.height, request.style, request.variants, request.evenLight, brief,
+                                       layer=str(request.context.get("layer", "")) if request.context else "",
+                                       with_images=with_images)
         except ValueError as error:
             return {"ok": False, "errors": [str(error)]}
         except ProviderError as error:

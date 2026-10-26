@@ -144,8 +144,19 @@ int RunWelcome(HWND mainWindow) {
     return 0;
 }
 
-// Asks about unsaved edits. Returns false if closing should be cancelled.
+// Asks about the AI Planner still working and about unsaved edits. Returns false if closing
+// should be cancelled.
 bool ConfirmClose(HWND hwnd) {
+    if (g_app != nullptr) {
+        if (const int busy = g_app->PlannerBusy(); busy > 0) {
+            const std::wstring text = L"The AI Planner is still working (" + std::to_wstring(busy) +
+                                      L" step(s) to do).\n\nQuit anyway? It pauses now and carries on from here when you open the project again.";
+            if (MessageBoxW(hwnd, text.c_str(), L"The AI Planner is working", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) {
+                return false;
+            }
+            g_app->PausePlannerForClose();
+        }
+    }
     if (g_app == nullptr || !g_app->IsDirty()) {
         return true;
     }

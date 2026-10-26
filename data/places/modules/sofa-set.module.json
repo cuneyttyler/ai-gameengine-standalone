@@ -1,0 +1,54 @@
+{
+  "schema": "aige.module/1",
+  "id": "sofa-set",
+  "name": "Sofa",
+  "level": "feature",
+  "description": "A sofa facing a television, a coffee table between.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "sofa": {
+      "role": "sofa",
+      "essential": true,
+      "primary": true
+    },
+    "coffee-table": {
+      "role": "coffee-table",
+      "essential": false
+    },
+    "tv": {
+      "role": "tv",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "wall",
+      "members": [
+        {
+          "slot": "coffee-table",
+          "count": [
+            1,
+            1
+          ],
+          "near": 1
+        },
+        {
+          "slot": "tv",
+          "count": [
+            0,
+            1
+          ],
+          "near": 3
+        }
+      ]
+    }
+  }
+}

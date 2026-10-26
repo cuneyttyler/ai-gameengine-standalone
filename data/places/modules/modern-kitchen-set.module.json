@@ -1,0 +1,66 @@
+{
+  "schema": "aige.module/1",
+  "id": "modern-kitchen-set",
+  "name": "Fitted kitchen",
+  "level": "feature",
+  "description": "A fridge, a sink and a stove along the wall, a table near.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "fridge": {
+      "role": "fridge",
+      "essential": true,
+      "primary": true
+    },
+    "sink": {
+      "role": "sink",
+      "essential": false
+    },
+    "stove": {
+      "role": "stove",
+      "essential": false
+    },
+    "table": {
+      "role": "table",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "wall",
+      "members": [
+        {
+          "slot": "sink",
+          "count": [
+            1,
+            1
+          ],
+          "near": 2
+        },
+        {
+          "slot": "stove",
+          "count": [
+            1,
+            1
+          ],
+          "near": 2
+        },
+        {
+          "slot": "table",
+          "count": [
+            0,
+            1
+          ],
+          "near": 3
+        }
+      ]
+    }
+  }
+}

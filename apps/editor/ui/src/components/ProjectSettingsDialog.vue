@@ -93,7 +93,7 @@ function askAi(section: string, field: string): void {
                     ✦
                   </button>
                 </label>
-                <FieldEditor :field="field" @change="set(section.name, field, $event)" />
+                <FieldEditor :field="field" :disabled="!!field.locked" :title="field.locked || undefined" @change="set(section.name, field, $event)" />
               </div>
               <div v-if="errors[`${section.name}.${field.name}`]" class="field-error">
                 {{ errors[`${section.name}.${field.name}`] }}

@@ -1,6 +1,7 @@
 #include "assets/UserLibrary.h"
 
 #include <algorithm>
+#include <map>
 #include <chrono>
 #include <fstream>
 #include <set>
@@ -260,19 +261,70 @@ Catalog UserLibrary::AsCatalog() const {
     for (const auto& item : library.value("items", json::array())) {
         const json meta = item.value("meta", json::object());
         auto field = [&](const char* key) { return meta.contains(key) && meta[key].is_string() ? meta[key].get<std::string>() : std::string(); };
-        if (field("roles").empty()) continue; // not analysed: nothing says what it's for
+        // Not analysed: its name says what it was made for ("barrel-prop-1", "dirt-ground-1": the
+        // engine names generated art by role and layer). Nothing to go by: left out.
+        json named = meta;
+        if (field("roles").empty()) {
+            std::vector<std::string> words;
+            std::string word;
+            for (const char c : item.value("name", std::string()) + "-") {
+                if (c == '-' || c == '_' || c == ' ') {
+                    if (!word.empty()) words.push_back(word);
+                    word.clear();
+                } else {
+                    word += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                }
+            }
+            while (!words.empty() && std::all_of(words.back().begin(), words.back().end(), [](unsigned char c) { return std::isdigit(c); })) words.pop_back();
+            // A building's size in its name ("inn-building-5x7"): cells across.
+            int across = 0;
+            if (!words.empty()) {
+                const std::string last = words.back();
+                const size_t x = last.find('x');
+                if (x != std::string::npos && x > 0 && x + 1 < last.size() &&
+                    std::all_of(last.begin(), last.begin() + static_cast<long>(x), [](unsigned char c) { return std::isdigit(c); }) &&
+                    std::all_of(last.begin() + static_cast<long>(x) + 1, last.end(), [](unsigned char c) { return std::isdigit(c); })) {
+                    across = std::atoi(last.substr(0, x).c_str());
+                    words.pop_back();
+                }
+            }
+            static const std::map<std::string, std::string> layers = {{"prop", "prop"}, {"decal", "decal"}, {"building", "building"},
+                                                                      {"ground", "ground"}, {"tile", "ground"}, {"terrain", "ground"}};
+            std::string layer;
+            if (!words.empty() && layers.contains(words.back())) layer = layers.at(words.back()), words.pop_back();
+            std::string role;
+            for (const auto& w : words) role += (role.empty() ? "" : "-") + w;
+            if (role.empty() || layer.empty()) continue;
+            // The whole ("house-cottage") and each word ("house", "cottage") as roles; the words as concepts.
+            std::string roles = role, concepts;
+            for (const auto& w : words) {
+                if (w != role) roles += ", " + w;
+                concepts += (concepts.empty() ? "" : ", ") + w;
+            }
+            named["roles"] = roles;
+            named["concepts"] = concepts;
+            if (across > 0) named["cells"] = std::to_string(across) + ".00";
+            named["layer"] = layer;
+            named["kind"] = layer == "building" ? "building" : layer == "ground" ? "ground" : "prop";
+            if (!named.contains("description")) named["description"] = role;
+        }
+        auto field2 = [&](const char* key) { return named.contains(key) && named[key].is_string() ? named[key].get<std::string>() : std::string(); };
         CatalogEntry e;
         e.id = "user:" + item.value("id", "");
         e.path = (dir_ / "files" / item.value("file", "")).generic_string();
         e.name = item.value("name", "");
-        e.kind = field("kind");
-        e.description = field("description");
-        e.tags = split(field("tags"));
-        e.roles = split(field("roles"));
-        e.perspective = field("perspective");
-        e.layer = field("layer");
-        e.flat = field("flat") == "1" || e.kind == "ground";
-        if (const std::string cells = field("cells"); !cells.empty()) {
+        e.kind = field2("kind");
+        e.description = field2("description");
+        e.tags = split(field2("tags"));
+        e.roles = split(field2("roles"));
+        e.perspective = field2("perspective");
+        e.layer = field2("layer");
+        for (const auto& c : split(field2("concepts"))) e.concepts.push_back(c);
+        // Made by the user or the Art tool (no licence): their own, usable anywhere they build.
+        const std::string from = item.value("source", std::string());
+        e.own = item.value("licence", std::string()).empty() && (from == "generated" || from == "project" || from.empty());
+        e.flat = field2("flat") == "1" || e.kind == "ground";
+        if (const std::string cells = field2("cells"); !cells.empty()) {
             const float c = std::max(0.1f, static_cast<float>(std::atof(cells.c_str())));
             e.footprint.w = e.footprint.h = c;
             e.footprint.cellsW = e.footprint.cellsH = std::max(1, static_cast<int>(c + 0.5f));
@@ -314,12 +366,27 @@ int UserLibrary::KeepGenerated(const fs::path& projectRoot) {
         if (f.value("name", "") == "Generated" && f.value("parent", "").empty()) generated = f.value("id", "");
     }
     int added = 0;
+    bool refreshed = false;
     for (const auto& entry : fs::directory_iterator(folder, ec)) {
         const fs::path file = entry.path();
         if (!entry.is_regular_file() || file.extension() != ".png") continue;
         const std::string stem = file.stem().string();
         if (stem.size() > 9 && stem.substr(stem.size() - 9) == "-seamless") continue; // made from one that's kept
-        if (kept.contains(HashOf(file))) continue;
+        if (const std::string hash = HashOf(file); kept.contains(hash)) {
+            // Kept before its analysis was written (the build's check writes it after): now it has it.
+            const auto meta = ReadMeta(file);
+            if (meta.contains("roles")) {
+                for (auto& item : library["items"]) {
+                    if (item.value("hash", "") != hash) continue;
+                    const json have = item.value("meta", json::object());
+                    if (have.is_object() && have.contains("roles")) break;
+                    item["meta"] = meta;
+                    refreshed = true;
+                    break;
+                }
+            }
+            continue;
+        }
         if (generated.empty()) {
             NewFolder("Generated");
             const json folders = Load()["folders"];
@@ -328,6 +395,33 @@ int UserLibrary::KeepGenerated(const fs::path& projectRoot) {
             }
         }
         if (!Add(file, {{"source", "generated"}, {"origin", projectRoot.filename().string()}}, generated).empty()) ++added;
+    }
+    if (refreshed) {
+        // Add() above saves its own; the refreshed analyses go in with what's there now.
+        json now = Load();
+        for (auto& item : now["items"]) {
+            for (const auto& mine : library["items"]) {
+                if (item.value("hash", "") == mine.value("hash", "") && mine.value("meta", json::object()).contains("roles") &&
+                    !item.value("meta", json::object()).contains("roles")) {
+                    item["meta"] = mine["meta"];
+                }
+            }
+        }
+        Save(now);
+    }
+    // Art fetched from the web for its builds (with its licence), kept too.
+    const fs::path web = projectRoot / "assets" / "web";
+    if (fs::is_directory(web, ec)) {
+        json current = Load();
+        std::set<std::string> have;
+        for (const auto& item : current["items"]) have.insert(item.value("hash", ""));
+        for (const auto& entry : fs::recursive_directory_iterator(web, ec)) {
+            const fs::path file = entry.path();
+            if (!entry.is_regular_file() || file.extension() != ".png" || have.contains(HashOf(file))) continue;
+            const auto meta = ReadMeta(file);
+            if (!meta.contains("roles")) continue; // never checked: not known to be what it was fetched for
+            if (!Add(file, {{"source", "web"}, {"origin", projectRoot.filename().string()}}, generated).empty()) ++added;
+        }
     }
     return added;
 }

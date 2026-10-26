@@ -1,0 +1,37 @@
+{
+  "schema": "aige.module/1",
+  "id": "store-shelves",
+  "name": "Store shelves",
+  "level": "feature",
+  "description": "Shelving units of goods.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "store-shelf": {
+      "role": "store-shelf",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "center",
+      "members": [
+        {
+          "slot": "store-shelf",
+          "count": [
+            2,
+            5
+          ],
+          "near": 3
+        }
+      ]
+    }
+  }
+}

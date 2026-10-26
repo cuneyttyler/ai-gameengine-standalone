@@ -19,6 +19,10 @@ add_library(aige_editing STATIC
     BuildWindow.cpp
     PlaceBuild.h
     PlaceBuild.cpp
+    PlaceInspect.cpp
+    PlaceSketch.cpp
+    PlacePaint.cpp
+    PlaceBlockout.cpp
     PlaceScene.h
     PlaceScene.cpp
     ScenePreview.h

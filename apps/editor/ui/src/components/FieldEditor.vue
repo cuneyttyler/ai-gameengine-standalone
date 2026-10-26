@@ -27,6 +27,7 @@ export interface FieldData {
   max?: number
   overridden?: boolean
   scalable?: string // difficulty scales it, as this kind (16.2)
+  locked?: string // why it can't change now (Places ▸ method once places are built)
 }
 
 export interface Choices {

@@ -1,0 +1,54 @@
+{
+  "schema": "aige.module/1",
+  "id": "meeting-set",
+  "name": "Meeting table",
+  "level": "feature",
+  "description": "A meeting table with chairs round it and a whiteboard.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "meeting-table": {
+      "role": "meeting-table",
+      "essential": true,
+      "primary": true
+    },
+    "office-chair": {
+      "role": "office-chair",
+      "essential": false
+    },
+    "whiteboard": {
+      "role": "whiteboard",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "center",
+      "members": [
+        {
+          "slot": "office-chair",
+          "count": [
+            4,
+            8
+          ],
+          "near": 1
+        },
+        {
+          "slot": "whiteboard",
+          "count": [
+            0,
+            1
+          ],
+          "near": 4
+        }
+      ]
+    }
+  }
+}

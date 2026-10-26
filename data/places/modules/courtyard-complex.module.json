@@ -3,7 +3,7 @@
   "id": "courtyard-complex",
   "name": "Courtyard",
   "level": "site",
-  "description": "A walled courtyard: an open court in the middle, the rooms round it (a hall, chambers, stores).",
+  "description": "A walled courtyard: an open court in the middle, the rooms round it (a hall, chambers, stores). Its floors are storeys (a ground floor, at most one above), each holding the rooms round the court; a room is never a floor.",
   "buildTypes": [
     "courtyard"
   ],
@@ -71,7 +71,7 @@
     "floor-level": {
       "min": 1,
       "weight": 1.0,
-      "max": 6,
+      "max": 2,
       "count": "floors"
     }
   },

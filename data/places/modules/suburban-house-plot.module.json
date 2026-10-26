@@ -1,0 +1,136 @@
+{
+  "schema": "aige.module/1",
+  "id": "suburban-house-plot",
+  "name": "Suburban house plot",
+  "level": "parcel",
+  "description": "A detached house with a lawn, a driveway and a car.",
+  "buildTypes": [
+    "modern-city"
+  ],
+  "classes": [
+    "Dwelling"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          8
+        ],
+        "h": [
+          7,
+          10
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    },
+    "setback": {
+      "type": "length",
+      "default": [
+        2,
+        3
+      ],
+      "min": 0,
+      "unit": "cells",
+      "max": 8
+    }
+  },
+  "quality": {
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "lived-in"
+    },
+    "house-kind": {
+      "type": "enum",
+      "vocabulary": "modern-house-kind",
+      "default": "detached",
+      "ask": true
+    },
+    "wealth": {
+      "type": "enum",
+      "vocabulary": "wealth",
+      "default": "common"
+    }
+  },
+  "slots": {
+    "suburban-house": {
+      "role": "suburban-house",
+      "essential": true,
+      "primary": true,
+      "concepts": "house-kind"
+    },
+    "car": {
+      "role": "car",
+      "essential": false
+    },
+    "mailbox": {
+      "role": "mailbox",
+      "essential": false
+    },
+    "trash-bin": {
+      "role": "trash-bin",
+      "essential": false
+    },
+    "tree": {
+      "role": "tree",
+      "essential": false
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "faces",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 3.0
+    },
+    {
+      "type": "adjacent",
+      "members": [
+        "self",
+        "parent.street"
+      ],
+      "weight": 2.0
+    }
+  ],
+  "compile": {
+    "contents": [
+      {
+        "slot": "car",
+        "count": [
+          0,
+          2
+        ],
+        "near": "primary"
+      },
+      {
+        "slot": "mailbox",
+        "count": [
+          1,
+          1
+        ],
+        "where": "border"
+      },
+      {
+        "slot": "tree",
+        "count": [
+          0,
+          2
+        ]
+      }
+    ],
+    "surface": "lawn"
+  }
+}

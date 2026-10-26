@@ -57,8 +57,20 @@ ROLE_LIST = ('the one role from this list it best fills in a place (a piece of a
              'joins others is the "...-piece-set" role), or "" if none fits: ')
 
 
-def prompt_for(roles: list[str] | None) -> str:
-    return PROMPT.replace("%ROLE%", ROLE_LIST + ", ".join(roles) if roles else ROLE_FREE)
+def prompt_for(roles: list[str] | None, wanted: dict | None = None) -> str:
+    text = PROMPT.replace("%ROLE%", ROLE_LIST + ", ".join(roles) if roles else ROLE_FREE)
+    if wanted:
+        text += ("\n\nThese images were made or found for ONE piece of a game place. What was wanted:\n"
+                 f"{json.dumps(wanted, ensure_ascii=False)}\n"
+                 "Judge each image against it strictly, as an art director would, and add to its entry:\n"
+                 "- \"fits\": true only if it shows exactly what was wanted, as ONE whole thing of the kind asked "
+                 "(a whole building, not its sign, door, gate or a part of it; one object, not several), in the view "
+                 "asked, and it would look right in that room and place (its materials, era, condition and mood);\n"
+                 "- \"problems\": if not, each reason in a few plain words an artist can act on (\"it shows the inn's "
+                 "hanging sign, not the inn building\", \"seen from the front, not isometric\", \"a clean modern street "
+                 "lamp in a damp medieval cellar\", \"two barrels, not one\"); else [];\n"
+                 "- \"sheet\": true if the image is a sprite sheet, tileset or collection of many separate things.")
+    return text
 
 
 class AssetDescription(BaseModel):
@@ -75,6 +87,10 @@ class AssetDescription(BaseModel):
     anchors: dict[str, list[float]] = {}
     accessible: bool = False
     role: str = ""
+    # The verdict when what was wanted is given: does it show that, and if not, why.
+    fits: bool | None = None
+    problems: list[str] = []
+    sheet: bool = False
 
     @field_validator("name")
     @classmethod
@@ -169,8 +185,8 @@ def map_chunk(path: Path, longest: int = 1400) -> dict:
 
 
 def _describe_batch(provider: Provider, root: Path, items: list[dict],
-                    roles: list[str] | None = None) -> tuple[list[dict], list[str]]:
-    content: list[dict] = [{"type": "text", "text": prompt_for(roles)}]
+                    roles: list[str] | None = None, wanted: dict | None = None) -> tuple[list[dict], list[str]]:
+    content: list[dict] = [{"type": "text", "text": prompt_for(roles, wanted)}]
     ids = [item["id"] for item in items]
     for index, item in enumerate(items, start=1):
         file = (root / item["path"]).resolve()
@@ -213,7 +229,7 @@ def _describe_batch(provider: Provider, root: Path, items: list[dict],
 
 
 def describe_assets(provider: Provider, root: Path, paths: list[str], workers: int = 3,
-                    items: list[dict] | None = None, roles: list[str] | None = None) -> dict:
+                    items: list[dict] | None = None, roles: list[str] | None = None, judge: dict | None = None) -> dict:
     """Describes every image in `paths` (project-relative), and every item of
     `items` ({"id", "path", "rect": [x, y, w, h]}: an object cut from a sheet),
     several per request and a few requests at once. Unreadable or missing files
@@ -238,7 +254,7 @@ def describe_assets(provider: Provider, root: Path, paths: list[str], workers: i
     batches = [images[i:i + BATCH] for i in range(0, len(images), BATCH)]
     results: list[dict] = []
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        for found, problems in pool.map(lambda batch: _describe_batch(provider, root, batch, roles), batches):
+        for found, problems in pool.map(lambda batch: _describe_batch(provider, root, batch, roles, judge), batches):
             results.extend(found)
             errors.extend(problems)
     order = {item["id"]: i for i, item in enumerate(wanted)}

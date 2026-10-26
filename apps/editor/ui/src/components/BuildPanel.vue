@@ -115,6 +115,7 @@ interface PlanRow {
   notes?: string[] // what the fixes did to it
 }
 interface BuildState {
+  fromPlanner?: boolean // started by the AI Planner: its art strategy is the Game Brief's
   busy?: boolean // working off the UI thread (planning, laying out)
   revisingFrom?: string
   questions?: { text: string; about?: string; zone?: string }[] // ② Assets' confirming questions
@@ -1472,13 +1473,16 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             {{ state.assetNeeds.filter((n) => n.decision?.action === 'web' && n.source === 'placeholder').length }} to search for,
             {{ state.assetNeeds.filter((n) => n.source !== 'placeholder').length }} found</span>
         </h4>
-        <div class="row set-all">
+        <div v-if="state.fromPlanner" class="row set-all">
+          <span class="dim">Art strategy: set in the AI Planner's Game Brief (① Concept ▸ Plan ▸ Art for the places)</span>
+        </div>
+        <div v-else class="row set-all">
           <span class="dim" title="How a piece set to auto is found: Search looks in the project, your library and the web first (found art is the most reliable), and makes it only when nothing found fits">Default for this build</span>
           <select :value="sourcingSettings.defaultSource" @change="setSourcing({ defaultSource: ($event.target as HTMLSelectElement).value }); sendToHost({ type: 'build:findAssets' })">
             <option value="search">Search (project, library, web, then make)</option>
             <option value="generate">Generate (the Art tool)</option>
-            <option value="library">Library only</option>
-            <option value="project">The project only</option>
+            <option value="library">Library (else made by the Art tool)</option>
+            <option value="project">The project (else made by the Art tool)</option>
             <option value="auto">Auto (by each piece's importance)</option>
           </select>
         </div>

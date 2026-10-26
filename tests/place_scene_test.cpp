@@ -461,3 +461,28 @@ TEST(PlaceSceneTest, BuildsAGivenProjectsPlace) {
         std::cout << "  preview " << image.width << "x" << image.height << "\n";
     }
 }
+
+// A place's levels (docs/build-fixes.md): its zones of class Level, each with its cells and stairs;
+// one level is no split (the place stays one scene).
+TEST(PlaceSceneTest, APlaceWithTwoLevelsHasTwoLevelAreas) {
+    const json spec = {{"root", {{"id", "site"}, {"module", "dungeon"}, {"children", json::array({{{"id", "upper"}, {"module", "dungeon-level"}},
+                                                                                                {{"id", "lower"}, {"module", "dungeon-level"}}})}}}};
+    json solved = {{"regions", json::array({{{"id", "upper"}, {"cells", json::array({{0, 0, 10}, {1, 0, 10}})}},
+                                            {{"id", "upper/hall"}, {"cells", json::array({{2, 2, 6}})}},
+                                            {{"id", "lower"}, {"cells", json::array({{0, 20, 30}, {5, 20, 30}})}}})},
+                   {"objects", json::array({{{"slot", "stairs"}, {"x", 3}, {"y", 2}}, {{"slot", "stairs"}, {"x", 25}, {"y", 4}}})}};
+    const auto levels = PlaceLevelAreas(Library(), spec, solved);
+    ASSERT_EQ(levels.size(), 2u);
+    EXPECT_EQ(levels[0].id, "upper");
+    EXPECT_EQ(levels[0].x0, 0);
+    EXPECT_EQ(levels[0].x1, 10);
+    EXPECT_EQ(levels[0].y1, 3); // its hall's row too
+    ASSERT_EQ(levels[0].stairs.size(), 1u);
+    EXPECT_EQ(levels[1].x0, 20);
+    EXPECT_EQ(levels[1].y1, 6);
+    ASSERT_EQ(levels[1].stairs.size(), 1u);
+    // One level: no split.
+    json one = spec;
+    one["root"]["children"].erase(1);
+    EXPECT_TRUE(PlaceLevelAreas(Library(), one, solved).empty());
+}

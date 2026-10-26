@@ -1,0 +1,44 @@
+{
+  "schema": "aige.module/1",
+  "id": "office-lights",
+  "name": "Office lights",
+  "level": "feature",
+  "description": "Ceiling lights.",
+  "buildTypes": [
+    "interior"
+  ],
+  "quantity": {
+    "lights": {
+      "type": "density",
+      "levels": [
+        0,
+        0.02,
+        0.04,
+        0.06,
+        0.1
+      ],
+      "unit": "per free cell",
+      "default": "some"
+    }
+  },
+  "quality": {},
+  "slots": {
+    "light": {
+      "role": "ceiling-light",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {},
+  "compile": {
+    "contents": [
+      {
+        "slot": "light",
+        "density": "lights",
+        "where": "inner",
+        "min": 1
+      }
+    ],
+    "noPrimary": true
+  }
+}

@@ -41,6 +41,9 @@ class PixelLabImageGenerator:
     name = "pixellab"
     takes_options = True  # generate(prompt, options): its view, size, background, palette
 
+    # The account can't use style-v2 (not Pro, 402/401/403): not asked again this session.
+    _style_refused = False
+
     def __init__(self, api_key: str, timeout_s: float = 180.0):
         self._key = api_key
         self._timeout = timeout_s
@@ -62,7 +65,7 @@ class PixelLabImageGenerator:
         """One image. Options: kind ("tile" or "object"), height (pixels), isometric, palette (hex colours)."""
         o = options or {}
         tile = o.get("kind") == "tile"
-        side = max(32, min(400, int(o.get("height", 128))))
+        side = max(32, min(400, int(o.get("height", 128)))) // 4 * 4  # PixelLab: sides divisible by 4 (2 for small ones)
         body = {
             "description": prompt[:1800],
             "image_size": {"width": side, "height": side},
@@ -76,6 +79,11 @@ class PixelLabImageGenerator:
             body["view"] = "high top-down"
         if (colours := palette_image(o.get("palette", []))) is not None:
             body["color_image"] = colours
+        # The project's own pieces of this kind as style references: the new one matches their look
+        # (generate-with-style-v2, a Pro endpoint). If that fails, pixflux below.
+        if not tile and o.get("references") and not PixelLabImageGenerator._style_refused:
+            if (data := self._with_style(prompt, o["references"][:4], side)) is not None:
+                return GeneratedImage(data, "pixellab style-v2", prompt)
         answer = self._call("POST", "/create-image-pixflux", body)
         try:
             data = base64.b64decode(answer["image"]["base64"])
@@ -83,10 +91,67 @@ class PixelLabImageGenerator:
             raise ProviderError("PixelLab didn't return an image") from error
         return GeneratedImage(data, "pixellab pixflux", prompt)
 
+    def _with_style(self, prompt: str, references: list, side: int) -> bytes | None:
+        """An image in the look of the references, or None (pixflux then). The output's size is the
+        references' largest side, so each is scaled to the size wanted, on a square canvas. A job not
+        done in time is cancelled: a waiting one holds the account's concurrency slot, and every other
+        PixelLab call (pixflux too) would queue behind it."""
+        side = max(16, min(512, side))
+        styles = []
+        try:
+            for path in references:
+                with Image.open(path) as source:
+                    image = source.convert("RGBA")
+                bbox = image.getbbox()
+                if bbox:
+                    image = image.crop(bbox)
+                scale = side / max(image.width, image.height)
+                image = image.resize((max(1, round(image.width * scale)), max(1, round(image.height * scale))), Image.Resampling.NEAREST)
+                square = Image.new("RGBA", (side, side))
+                square.paste(image, ((side - image.width) // 2, side - image.height))
+                out = io.BytesIO()
+                square.save(out, format="PNG")
+                styles.append({"image": {"type": "base64", "base64": base64.b64encode(out.getvalue()).decode(), "format": "png"},
+                               "width": side, "height": side})
+        except (OSError, ValueError):
+            return None
+        if not styles:
+            return None
+        try:
+            started = self._call("POST", "/generate-with-style-v2", {
+                "style_images": styles, "description": prompt[:1999], "no_background": True,
+                "style_description": "the same pixel size, outline, shading and palette as these pieces of the same game"})
+        except ProviderError as error:
+            if any(f"answered {code}" in str(error) for code in (401, 402, 403)):
+                PixelLabImageGenerator._style_refused = True
+            return None
+        data = _first_image(started)
+        job = started.get("background_job_id")
+        deadline = time.time() + 90  # then pixflux: a build isn't held for minutes
+        try:
+            while data is None and job and time.time() < deadline:
+                time.sleep(5)  # as the API asks: every 5-10 s
+                state = self._call("GET", f"/background-jobs/{job}")
+                status = str(state.get("status", "")).lower()
+                if status == "completed":
+                    data = _first_image(state.get("last_response") or {})
+                    return data
+                if status == "failed":
+                    return None
+        except ProviderError:
+            pass
+        if job:
+            try:
+                self._call("DELETE", f"/background-jobs/{job}")  # frees the slot; a queued job isn't charged
+            except ProviderError:
+                pass
+        return data
+
     def character(self, description: str, directions: int = 4, size: int = 64, view: str = "low top-down",
                   isometric: bool = False, palette: list[str] | None = None, wait_s: float = 240.0) -> dict[str, bytes]:
         """A character from each direction (4: south, west, east, north; or 8), as PNG bytes by direction."""
         path = "/create-character-with-8-directions" if directions == 8 else "/create-character-with-4-directions"
+        size = int(size) // 2 * 2  # even sides
         body = {"description": description[:1800], "image_size": {"width": size, "height": size}, "view": view,
                 "isometric": isometric, "outline": "single color black outline", "shading": "basic shading", "detail": "medium detail"}
         if (colours := palette_image(palette or [])) is not None:
@@ -104,6 +169,25 @@ class PixelLabImageGenerator:
                 raise ProviderError(f"PixelLab couldn't make the character: {state.get('last_response') or 'failed'}")
             time.sleep(3)
         raise ProviderError("PixelLab is still making the character: try again in a minute")
+
+
+def _first_image(answer: dict) -> bytes | None:
+    """The first image of an answer (generate-with-style returns a list; some endpoints one)."""
+    candidates = []
+    if isinstance(answer.get("images"), list):
+        candidates = answer["images"]
+    elif isinstance(answer.get("image"), dict):
+        candidates = [answer["image"]]
+    for c in candidates:
+        if isinstance(c, dict) and isinstance(c.get("image"), dict):
+            c = c["image"]  # {image: {base64}} items
+        if isinstance(c, dict) and c.get("base64"):
+            try:
+                text = str(c["base64"])
+                return base64.b64decode(text.split(",", 1)[1] if text.startswith("data:") else text)
+            except (TypeError, ValueError):
+                continue
+    return None
 
 
 def as_reference(png: bytes, side: int = 64) -> dict:

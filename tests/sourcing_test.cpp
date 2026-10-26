@@ -92,9 +92,12 @@ TEST(SourcingTest, TheDecisionTable) {
     EXPECT_EQ(decide("auto", kOptional, {{}, {}, {}}, false, false).action, "drop");                // A7
     EXPECT_EQ(decide("auto", kNormal, {{}, {}, {}}, false, false).action, "placeholder");
     EXPECT_EQ(decide("auto", kCritical, {{}, {}, {}}, false, false).action, "placeholder");
-    // project: the project only
-    EXPECT_EQ(decide("project", kNormal, {projectUsable, library, webs}, true, true).step, "A6");
-    EXPECT_EQ(decide("project", kNormal, {{}, library, webs}, true, true).action, "placeholder");
+    // project: the project's art; what it has nothing good for is made by the Art tool (2026-10-23),
+    // and only when that was tried, the nearest it has, adapted, or a placeholder
+    EXPECT_EQ(decide("project", kNormal, {projectUsable, library, webs}, true, true).step, "A5");
+    EXPECT_EQ(decide("project", kNormal, {{}, library, webs}, true, true).action, "generate");
+    EXPECT_EQ(decide("project", kNormal, {projectUsable, library, webs}, true, true, {false, true}).step, "A6");
+    EXPECT_EQ(decide("project", kNormal, {{}, library, webs}, true, true, {false, true}).action, "placeholder");
     // library
     EXPECT_EQ(decide("library", kNormal, {{}, library, {}}, false, true).step, "A2");
     // web: even style-critical, with a warning
@@ -205,14 +208,14 @@ TEST(SourcingTest, ArtIsMadeCheckedAndFound) {
     EXPECT_NE(sent.back().second["description"].get<std::string>().find("not a house"), std::string::npos);
     build.OnResponse(static_cast<int>(sent.size()), {{"ok", true}, {"assets", json::array({{{"path", "assets/textures/generated/house-2.png"}}})}});
     build.OnResponse(static_cast<int>(sent.size()),
-                     {{"ok", true}, {"assets", json::array({{{"path", "assets/textures/generated/house-2.png"}, {"role", "house"}, {"description", "a house"}}})}});
+                     {{"ok", true}, {"assets", json::array({{{"path", "assets/textures/generated/house-2.png"}, {"role", "house"}, {"kind", "building"}, {"description", "a house"}}})}});
     EXPECT_FALSE(build.SourcingDone()); // the well is still out
     // The well: found on the web, with its licence; described.
     build.OnResponse(2, {{"ok", true}, {"assets", json::array({{{"path", "assets/web/isometric-well/well.png"}, {"licence", "CC-BY"},
                                                                  {"author", "Alice"}, {"url", "https://opengameart.org/content/well"}}})}});
     build.OnResponse(static_cast<int>(sent.size()),
                      {{"ok", true}, {"assets", json::array({{{"path", "assets/web/isometric-well/well.png"}, {"role", "well"}, {"description", "a stone well"}}})}});
-    ASSERT_TRUE(build.SourcingDone());
+    ASSERT_TRUE(build.SourcingDone()) << build.State().value("sourcing", json()).dump();
     EXPECT_EQ(build.Stage(), "sourced"); // the art is in: ③ Assets waits for Build
     EXPECT_TRUE(build.TriedSources().at("house||building|4x3").generate);
     EXPECT_TRUE(build.TriedSources().at("well||prop").web);
@@ -236,8 +239,9 @@ TEST(SourcingTest, AChosenSourceIsSearchedEvenWithGeneratedArtThere) {
     const auto generatedOnly = s.List({{made, 0}});
     const Decision web = Decide("web", kNormal, {generatedOnly, {}, {}}, LicencePolicy{}, true, true, {});
     EXPECT_EQ(web.action, "web") << web.reason;
+    // "library": the libraries first, then the project's own art (2026-10-23), then the Art tool.
     const Decision library = Decide("library", kNormal, {generatedOnly, {}, {}}, LicencePolicy{}, false, true, {});
-    EXPECT_NE(library.step, "A1") << library.reason;
+    EXPECT_EQ(library.source, "generated") << library.reason;
     // Art fetched from the web before, in the project: used again, not fetched twice.
     const auto both = s.List({{made, 0}, {fetched, 1}});
     const Decision again = Decide("web", kNormal, {both, {}, {}}, LicencePolicy{}, true, true, {});

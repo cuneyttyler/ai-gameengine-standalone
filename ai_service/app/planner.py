@@ -34,6 +34,18 @@ def _step(provider: Provider, task: str, inputs: dict, shape: str, key: str,
           check: Callable[[dict], list[str]], problems: list[str] | None = None) -> dict:
     """One planner step: think, answer, check, repair once. Returns {ok, <key>, rationale, usage, errors}."""
     usage = Usage()
+    replay = inputs.get("replay")
+    if isinstance(replay, dict):
+        # An answer the model already gave (from the engine's call log), re-applied: no model
+        # call, only put into shape and checked, as a fresh answer would be.
+        answer = coerce(replay, parse_shape(shape))
+        value = answer.get(key, answer if key == "*" else None)
+        if value is None:
+            return {"ok": False, "errors": [f"the answer has no '{key}'"], "usage": usage.model_dump()}
+        out = {"ok": True, key: value, "rationale": str(answer.get("rationale", ""))[:600], "usage": usage.model_dump()}
+        if found := check(answer):
+            out["problems"] = found
+        return out
     previous = inputs.get("answer")
     text_inputs = _dump({k: v for k, v in inputs.items() if k not in ("answer", "problems")})
     if problems and isinstance(previous, dict):
@@ -427,7 +439,8 @@ def plan_quests(provider: Provider, inputs: dict) -> dict:
 
     def check(answer: dict) -> list[str]:
         quests = answer.get("quests")
-        if not isinstance(quests, list) or not quests:
+        side_slot = bool(inputs.get("only")) and inputs.get("only") != "q-main"
+        if not isinstance(quests, list) or (not quests and not side_slot):
             return ["'quests' must be a non-empty list"]
         problems = []
         for q in quests:
@@ -440,7 +453,15 @@ def plan_quests(provider: Provider, inputs: dict) -> dict:
                         problems.append(f"{q.get('id')}: objective target {o['target']!r} isn't one of its aliases")
         return problems
 
-    return _step(provider, QUESTS_TASK, inputs, QUESTS_SHAPE, "quests", check, inputs.get("problems"))
+    task = QUESTS_TASK
+    only = inputs.get("only")
+    if only == "q-main":
+        task += ("\n\nThis call designs ONE quest: the main quest (id q-main) only. Answer with quests: [that quest].")
+    elif only:
+        task += ("\n\nThis call designs ONE quest: a single side quest, different in giver and strategy from those in "
+                 "\"designed\" (don't repeat them, and don't write the main quest). Answer with quests: [that quest], or "
+                 "quests: [] if no character has a need left that makes a good quest.")
+    return _step(provider, task, inputs, QUESTS_SHAPE, "quests", check, inputs.get("problems"))
 
 
 # --- ⑥ Places -------------------------------------------------------------------------------

@@ -179,7 +179,19 @@
       "hamlet",
       "settlement"
     ],
-    "rank": 1
+    "rank": 1,
+    "look": {
+      "reference": "Age of Empires II, Anno 1404, Stronghold (their towns and villages)",
+      "goals": [
+        "one continuous painted ground: roads worn into the grass, no tile grid or seams",
+        "a clear heart: a market square or well plaza on the main road; houses front the streets with their doors to the road",
+        "buildings in one architectural style and pixel density, sized by purpose (manor > house > shack)",
+        "dense, varied woods and copses at the edges; rivers and ponds with soft banks",
+        "props in purposeful groups (barrels and crates at shops and docks, carts on roads, a well in a square), never scattered at random",
+        "plots with fences, gardens and yards; fields with furrows outside the core",
+        "unique things (the town's sign, a statue, a gallows) once, at a meaningful spot (the gate, the square)"
+      ]
+    }
   },
   {
     "id": "farmland",
@@ -284,6 +296,16 @@
         "lake",
         "hill",
         "crossroads"
+      ]
+    },
+    "look": {
+      "reference": "Age of Empires II, Stardew Valley, Anno 1404 farmland",
+      "goals": [
+        "large rectangular fields of one crop each, with furrows; meadows and pasture between",
+        "a farmstead (farmhouse, barn, yard) on a track, with tools, carts and hay at the barn",
+        "fences and hedges along field edges, gates where tracks enter",
+        "orchards in rows; scattered trees and copses along the edges",
+        "continuous ground: tracks worn into grass, no tile grid"
       ]
     }
   },
@@ -407,6 +429,15 @@
         "hill",
         "coast"
       ]
+    },
+    "look": {
+      "reference": "Age of Empires II maps, Diablo II outdoor areas",
+      "goals": [
+        "dense natural forests with clearings, trees of varied species and size, a forest floor under them",
+        "rivers and lakes with soft shores and shallows; rocks and cliffs where the land rises",
+        "winding paths, never a grid; landmarks (a ruin, a shrine, an old tree) where paths meet",
+        "nothing artificial or regular; clutter (stones, logs, mushrooms) in natural clusters"
+      ]
     }
   },
   {
@@ -512,6 +543,16 @@
         "river",
         "lake",
         "hill"
+      ]
+    },
+    "look": {
+      "reference": "Age of Empires II, Baldur's Gate, Kingdom Come camps",
+      "goals": [
+        "tents in a ring or rows around a central campfire",
+        "supplies (crates, barrels, sacks) stacked together near the tents or a cart",
+        "a boundary: palisade, carts or a ditch, with an entrance",
+        "trampled dirt ground around the fire and between the tents; grass beyond",
+        "weapon racks, a cooking spot and bedrolls placed where people would use them"
       ]
     }
   },
@@ -626,6 +667,23 @@
         "hill",
         "coast"
       ]
+    },
+    "look": {
+      "reference": "Stronghold, Age of Empires II castles",
+      "goals": [
+        "curtain walls with towers at the corners and a gatehouse facing the approach",
+        "the keep at the heart; the inner bailey with stables, barracks and a smithy against the walls",
+        "a moat or ditch outside the walls; a road to the gate",
+        "one stone style throughout; banners and torches on walls and gate",
+        "a paved or packed-earth courtyard with clear paths from the gate to each door"
+      ],
+      "parts": [
+        {
+          "key": "curtain-wall",
+          "role": "curtain-wall",
+          "at": "wall-edge"
+        }
+      ]
     }
   },
   {
@@ -718,6 +776,14 @@
         "lake",
         "coast",
         "mountains"
+      ]
+    },
+    "look": {
+      "reference": "Age of Empires II maps, Heroes of Might and Magic adventure maps",
+      "goals": [
+        "settlements linked by winding roads; bridges where roads cross rivers",
+        "forests, hills and water in natural shapes, never a grid",
+        "landmarks at meaningful spots; each settlement readable at a glance"
       ]
     }
   },
@@ -861,6 +927,16 @@
           "role": "wall-torch",
           "at": "lights"
         }
+      ],
+      "reference": "Diablo II, Baldur's Gate, Darkest Dungeon dungeons",
+      "goals": [
+        "every room and zone connected: a clear route from the entrance to the deepest room (the boss), with side rooms and a loop or two",
+        "rooms of varied shape and size by purpose (crypt halls, narrow corridors, a large boss chamber), never a grid of equal boxes",
+        "thick, continuous walls with doors set in them; solid rock outside the rooms",
+        "immersive lighting: dark overall, warm pools of light from torches on walls and braziers, falling off into shadow",
+        "props against walls and in corners (sarcophagi in rows, debris in corners, chests in dead ends), a strong focal piece per room (an altar, a throne), the middle of rooms kept walkable",
+        "floors varied: cracked stone, rubble, puddles, a few stains, never one tile repeated",
+        "items with a story: a key lies on the near side of its locked door, in a room found before it (never behind it, rarely right beside it), a lever by its gate, traps in corridors, bones near the lair"
       ]
     }
   },
@@ -1013,7 +1089,28 @@
       "features": []
     },
     "look": {
-      "lighting": "indoor"
+      "lighting": "indoor",
+      "reference": "Baldur's Gate, Divinity: Original Sin, Pillars of Eternity interiors",
+      "goals": [
+        "rooms adjacent and sharing walls, with doors in the walls between them and to the outside; no gaps between rooms",
+        "each room furnished for its purpose (a tavern hall: a bar counter, tables with chairs around them, a hearth; an office: a desk with its chair, shelves, a cabinet)",
+        "furniture against the walls, facing into the room; tables in the middle with chairs around them; rugs under tables; walkways to the doors kept free",
+        "warm interior light from a hearth, candles and lanterns; dark corners",
+        "one continuous floor (planks or flagstones); walls drawn as whole wall pieces with corners",
+        "furniture in one consistent style and scale"
+      ],
+      "parts": [
+        {
+          "key": "wall-block",
+          "role": "wall-block",
+          "at": "wall-edge"
+        },
+        {
+          "key": "wall-torch",
+          "role": "wall-torch",
+          "at": "lights"
+        }
+      ]
     }
   },
   {
@@ -1142,6 +1239,162 @@
         "condition": "condition"
       },
       "features": []
+    },
+    "look": {
+      "reference": "Stronghold, Baldur's Gate, Age of Empires II courtyards",
+      "goals": [
+        "enclosed by walls and buildings, entered by a gate",
+        "paved or gravel ground with clear paths from the gate to each door",
+        "a centrepiece (a well, fountain or statue) at the centre",
+        "buildings facing inward; planters, benches and barrels along the walls, the middle kept open"
+      ]
+    }
+  },
+  {
+    "id": "modern-city",
+    "name": "City (modern)",
+    "root": "city",
+    "stages": [
+      "site & terrain",
+      "avenues and the river",
+      "districts",
+      "streets & parcels",
+      "buildings, parking, street furniture",
+      "traffic"
+    ],
+    "components": [
+      "downtown",
+      "residential-district",
+      "suburb",
+      "commercial-district",
+      "industrial-district",
+      "civic-district",
+      "park-district",
+      "waterfront",
+      "river",
+      "lake"
+    ],
+    "scale": [
+      {
+        "class": "block",
+        "buildings": [
+          8,
+          30
+        ],
+        "side": [
+          40,
+          70
+        ],
+        "zones": [
+          1,
+          2
+        ]
+      },
+      {
+        "class": "neighbourhood",
+        "buildings": [
+          30,
+          120
+        ],
+        "side": [
+          70,
+          130
+        ],
+        "zones": [
+          2,
+          4
+        ]
+      },
+      {
+        "class": "district",
+        "buildings": [
+          120,
+          400
+        ],
+        "side": [
+          130,
+          240
+        ],
+        "zones": [
+          4,
+          8
+        ]
+      },
+      {
+        "class": "metropolis",
+        "buildings": [
+          400,
+          3000
+        ],
+        "side": [
+          240,
+          700
+        ],
+        "zones": [
+          8,
+          30
+        ]
+      }
+    ],
+    "briefFields": {
+      "style": {
+        "era": [
+          "modern",
+          "contemporary",
+          "near-future"
+        ],
+        "culture": [
+          "western",
+          "northern",
+          "eastern",
+          "southern"
+        ],
+        "biome": "biome",
+        "condition": "condition"
+      },
+      "layout": [
+        "grid",
+        "organic",
+        "radial",
+        "linear-along-road",
+        "linear-along-river"
+      ],
+      "features": [
+        "river",
+        "lake",
+        "coast",
+        "hill"
+      ]
+    },
+    "unit": {
+      "field": "buildings",
+      "class": "BuildingParcel",
+      "label": "buildings"
+    },
+    "words": [
+      "modern city",
+      "city block",
+      "city section",
+      "downtown",
+      "metropolis",
+      "skyscrapers",
+      "skyscraper",
+      "high-rise",
+      "business district",
+      "industrial estate",
+      "modern town",
+      "suburbia",
+      "contemporary city"
+    ],
+    "layout": "site",
+    "look": {
+      "reference": "Cities: Skylines, SimCity 4, Townscaper, GTA 2 seen isometrically: a clean, detailed contemporary city",
+      "goals": [
+        "avenues and streets of asphalt with sidewalks and crossings, cars in the lanes and parked",
+        "towers downtown, lower buildings outward; every building reads as what it is (office, apartments, shop, school)",
+        "parks and plazas with trees, benches and lamps; street lights along every street",
+        "one consistent modern palette: concrete greys, glass blues, warm brick, green lawns"
+      ]
     }
   }
 ]

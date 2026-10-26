@@ -1,4 +1,5 @@
 #include "editing/PlaceBuild.h"
+#include "editing/PlaceInspect.h"
 
 #include "assets/ArtAnalysis.h"
 #include "assets/LayoutImage.h"
@@ -120,7 +121,10 @@ std::string FirstError(const json& body) {
 // A failure no retry can fix: the service says it has no model, or the request is empty.
 bool Hopeless(const json& body) {
     const std::string e = FirstError(body);
-    return e.find("No AI provider") != std::string::npos || e.find("Say what") != std::string::npos;
+    if (e.find("No AI provider") != std::string::npos || e.find("Say what") != std::string::npos) return true;
+    // An image service refusing the request itself (4xx, not 429 "slow down"): the same again is refused again.
+    const size_t at = e.find(" answered 4");
+    return at != std::string::npos && e.compare(at + 10, 3, "429") != 0;
 }
 
 } // namespace
@@ -364,7 +368,21 @@ bool PlaceBuild::Mentions(const std::string& request, const std::string& zoneId)
 
 // --- Requests to the AI --------------------------------------------------------------
 
+void PlaceBuild::SetStory(json story) {
+    story_ = story.is_object() ? std::move(story) : json();
+    json request = ReadJson(Folder() / "request.json");
+    if (request.is_object()) {
+        request["story"] = story_;
+        WriteJson(Folder() / "request.json", request);
+    }
+}
+
 bool PlaceBuild::Send(Pending what) {
+    // The story this place serves, with the rest of what the AI is told (its context).
+    if (story_.is_object() && !story_.empty() && what.path.rfind("/places/", 0) == 0 && what.body.is_object()) {
+        if (!what.body.contains("context") || !what.body["context"].is_object()) what.body["context"] = json::object();
+        what.body["context"]["story"] = story_;
+    }
     const int id = host_.request ? host_.request(what.path, what.body, what.timeout) : 0;
     if (id == 0) return false;
     pending_[id] = std::move(what);
@@ -405,11 +423,17 @@ void PlaceBuild::Save() const {
                                           {"notices", notices_},
                                           {"planProblems", ProblemsJson(planProblems_)},
                                           {"revisions", revisions_},
+                                          {"sketch", {{"done", sketched_}, {"crops", sketchCrops_}, {"sketches", sketches_}}},
+                                          {"paint", {{"done", painted_}, {"backdrops", backdrops_}}},
+                                          {"layoutCheck", {{"checked", layoutChecked_}, {"rounds", layoutRounds_}, {"answer", layoutCheck_}}},
                                           {"fit", {{"scale", fitScale_}, {"side", fitSide_}}},
                                           {"locks", locks_},
                                           {"tried", [this] {
                                                json t = json::object();
-                                               for (const auto& [k, v] : tried_) t[k] = {{"web", v.web}, {"generate", v.generate}};
+                                               for (const auto& [k, v] : tried_) {
+                                                   t[k] = {{"web", v.web}, {"generate", v.generate}, {"refused", v.refused}, {"approved", v.approved},
+                                                           {"refusals", v.refusals}};
+                                               }
                                                return t;
                                            }()},
                                           {"sourcing", SourcingJson(sourcing_)},
@@ -508,6 +532,7 @@ std::string PlaceBuild::StartFromBrief(const std::string& words, const json& bri
     progressStep_.clear();
     lastRetry_.clear();
     WriteJson(Folder() / "request.json", {{"query", query_}, {"choices", choices_}, {"fromPlanner", true}});
+    fromPlanner_ = true;
     Log({{"step", "start"}, {"query", query_}, {"brief", brief}, {"fromPlanner", true}});
     // One draft, sure of itself: the merge keeps it as it is, and the window shows it to confirm.
     drafts_ = {{{"brief", brief}, {"confidence", 1.0}, {"assumptions", json::array()}, {"questions", json::array()}, {"reading", "planner"}}};
@@ -545,6 +570,42 @@ void PlaceBuild::InterpretWithoutAi(const std::string& why) {
 }
 
 void PlaceBuild::OnResponse(int requestId, const json& body) {
+    // An AI answer of an odd shape must not throw out of the build (the editor, the game build):
+    // it's noted, and the build goes back to where it was.
+    const auto asked = pending_.find(requestId);
+    const std::string kind = asked == pending_.end() ? "" : asked->second.kind, key = asked == pending_.end() ? "" : asked->second.node;
+    const std::optional<Pending> what = asked == pending_.end() ? std::nullopt : std::optional<Pending>(asked->second);
+    try {
+        HandleResponse(requestId, body);
+    } catch (const std::exception& e) {
+        Log({{"step", "odd answer"}, {"error", e.what()}});
+        // A step of the plan (reading the request, the zones, a repair): asked again, as for an answer
+        // that came back wrong (three times at most); it would wait for nothing otherwise.
+        static const std::set<std::string> planning = {"interpret", "repair", "questions", "plan-root", "plan-zone", "repair-node"};
+        if (what && planning.contains(kind)) {
+            pending_.erase(requestId);
+            if (Retry(*what, {{"ok", false}, {"errors", json::array({std::string("its answer couldn't be used: ") + e.what()})}})) {
+                Save();
+                return;
+            }
+        }
+        // A piece of art whose answer couldn't be used: done (its other sources next), so sourcing ends.
+        if ((kind == "art" || kind == "web" || kind == "critic") && sourcing_.contains(key)) {
+            sourcing_[key].done = true;
+            FinishSourcing();
+        }
+        Notice(std::string("An AI answer couldn't be used (") + e.what() + "); the build goes on without it.");
+        if (stage_ == "revising") stage_ = beforeRevision_.empty() ? "plan" : beforeRevision_;
+        layoutCheckRevising_ = false;
+        inspecting_ = false;
+        if (kind == "paint" && painting_ == 0) painted_ = true; // the last painting's answer: painting ends
+        if (kind == "sketch" && sketching_ == 0) sketched_ = true;
+        status_.clear();
+        Save();
+    }
+}
+
+void PlaceBuild::HandleResponse(int requestId, const json& body) {
     auto it = pending_.find(requestId);
     if (it == pending_.end()) return;
     const Pending what = it->second;
@@ -569,6 +630,251 @@ void PlaceBuild::OnResponse(int requestId, const json& body) {
     }
     if (what.kind == "revise" || what.kind == "review") {
         if (stage_ == "revising") OnRevision(what, body);
+        Save();
+        return;
+    }
+    if (what.kind == "paint") {
+        painting_ = std::max(0, painting_ - 1);
+        const size_t i = static_cast<size_t>(std::stoi(what.node));
+        const json request = i < paintRequests_.size() ? paintRequests_[i] : json::object();
+        Log({{"step", "painted"}, {"level", request.value("level", "")}, {"answer", body}});
+        if (body.value("ok", false)) {
+            backdrops_.push_back({{"level", request.value("level", "")}, {"area", request.value("area", json::array())},
+                                  {"backdrop", body.value("backdrop", body.value("painting", ""))}, {"size", body.value("size", json::array())},
+                                  {"prompt", body.value("prompt", "")}, {"map", body.value("map", json::object())},
+                                  {"model", body.value("model", "")}, {"steps", body.value("steps", json::array())},
+                                  {"blockout", request.value("blockout", "")}, {"legend", request.value("legend", "")}});
+        } else {
+            Notice("A backdrop wasn't painted: " + FirstError(body));
+        }
+        if (painting_ == 0) {
+            painted_ = true;
+            status_ = std::to_string(backdrops_.size()) + " backdrop(s) painted.";
+        }
+        Save();
+        return;
+    }
+    if (what.kind == "sketch") {
+        sketching_ = std::max(0, sketching_ - 1);
+        Log({{"step", "sketched"}, {"window", what.node}, {"answer", body}});
+        if (body.value("ok", false)) {
+            sketches_.push_back({{"window", what.node}, {"sketch", body.value("sketch", "")}, {"prompt", body.value("prompt", "")}});
+            const json crops = body.value("crops", json::object()); // named: items() of a temporary dangles
+            for (const auto& [key, crop] : crops.items()) {
+                if (crop.is_string()) sketchCrops_[key] = crop.get<std::string>();
+            }
+            const json seen = body.value("seen", json::object());
+            for (const auto& [key, words] : seen.items()) {
+                if (words.is_string()) sketchSeen_[key] = words.get<std::string>();
+            }
+        } else {
+            sketches_.push_back({{"window", what.node}, {"error", FirstError(body)}});
+        }
+        if (sketching_ == 0) {
+            sketched_ = true;
+            status_ = std::to_string(sketchCrops_.size()) + " pieces sketched; their art is drawn from the sketch.";
+            if (stage_ == "built" && buildRounds_ <= 1 && !sketchCrops_.empty()) {
+                // Painted from the first build: each sketched piece made again from its crop (with what
+                // the check refused, in one round). Worse, and the art from before comes back.
+                if (buildRounds_ == 0) {
+                    buildRounds_ = 1;
+                    double sum = 0;
+                    int count = 0, errors = 0;
+                    const json scores = buildCheck_.value("scores", json::object());
+                    for (const auto& [k, v] : scores.items()) {
+                        if (v.is_number()) sum += v.get<double>(), ++count;
+                    }
+                    for (const auto& p : buildCheck_.value("problems", json::array())) errors += p.value("severity", "") == "error";
+                    firstBuildWorth_ = (count ? sum / count : 0.0) - 0.5 * errors;
+                }
+                for (const auto& [key, crop] : sketchCrops_) {
+                    if (key.rfind("terrain|", 0) == 0) continue; // the ground is painted, not a sprite
+                    for (const auto& n : assetNeeds_) {
+                        if (n.value("key", "") != key || n.value("entry", "").empty()) continue;
+                        if (!redoneFrom_.contains(key)) redoneFrom_[key] = n.value("entry", "");
+                    }
+                    tried_[key].generate = false;
+                    if (std::find(redo_.begin(), redo_.end(), key) == redo_.end()) redo_.push_back(key);
+                    if (!redoReasons_.contains(key)) redoReasons_[key] = "drawn again to match the painting of the whole place";
+                }
+                Notice(std::to_string(redo_.size()) + " pieces are drawn again from the painting of the place.");
+            }
+        }
+        Save();
+        return;
+    }
+    if (what.kind == "inspect-build") {
+        inspecting_ = false;
+        buildCheck_ = body;
+        Log({{"step", "build check"}, {"answer", body}});
+        json issues = json::array();
+        for (const auto& p : body.value("problems", json::array())) {
+            if (p.is_object()) issues.push_back((p.value("severity", "") == "error" ? "" : "(minor) ") + p.value("issue", ""));
+        }
+        if (result_.is_object()) {
+            result_["critique"] = body.value("ok", false) ? json{{"summary", body.value("summary", "")}, {"issues", issues}, {"scores", body.value("scores", json::object())}}
+                                                          : json{{"error", FirstError(body)}};
+            WriteJson(Folder() / "result.json", result_);
+        }
+        // What it found doesn't fit or looks wrong: the needs whose art that is.
+        std::map<std::string, std::string> refused;
+        auto lower = [](std::string t) {
+            for (auto& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return t;
+        };
+        auto names = [&](const std::string& text, const std::string& word) {
+            const std::string t = lower(text), w = lower(word);
+            if (w.size() < 3) return false;
+            for (size_t at = t.find(w); at != std::string::npos; at = t.find(w, at + 1)) {
+                const bool before = at == 0 || !std::isalnum(static_cast<unsigned char>(t[at - 1]));
+                const size_t end = at + w.size();
+                const bool after = end >= t.size() || !std::isalnum(static_cast<unsigned char>(t[end])) || t[end] == 's';
+                if (before && after) return true;
+            }
+            return false;
+        };
+        auto judge = [&](const std::string& type, const std::string& why) {
+            for (const auto& n : assetNeeds_) {
+                const std::string source = n.value("source", ""), entry = n.value("entry", "");
+                if (entry.empty() || source == "placeholder" || source == "picked" || source == "dropped") continue;
+                const std::string role = n.value("role", "");
+                std::vector<std::string> words;
+                for (size_t at = 0; at <= role.size();) {
+                    const size_t bar = role.find('|', at);
+                    words.push_back(role.substr(at, bar == std::string::npos ? std::string::npos : bar - at));
+                    if (bar == std::string::npos) break;
+                    at = bar + 1;
+                }
+                for (const auto& c : n.value("concepts", json::array())) {
+                    if (c.is_string()) words.push_back(c.get<std::string>());
+                }
+                if (role == "ground-tile") words = {"ground", "floor", "terrain"};
+                for (const auto& w : words) {
+                    std::string spaced = w;
+                    std::replace(spaced.begin(), spaced.end(), '-', ' ');
+                    if (names(type, w) || names(type, spaced)) {
+                        std::string& r = refused[n.value("key", "")];
+                        r += (r.empty() ? "" : "; ") + why;
+                        break;
+                    }
+                }
+            }
+        };
+        for (const char* key : {"fit", "quality"}) {
+            for (const auto& e : body.value(key, json::array())) {
+                if (e.is_object() && e.contains("ok") && e["ok"].is_boolean() && !e["ok"].get<bool>()) judge(e.value("type", ""), e.value("why", ""));
+            }
+        }
+        // Its worth, to compare the build before and after a redo: the scores' mean, less half a point
+        // an error. The check's scores vary a little between looks; a redo is only undone when clearly worse.
+        double worth = 0;
+        {
+            const json scores = body.value("scores", json::object());
+            double sum = 0;
+            int count = 0, errors = 0;
+            for (const auto& [k, v] : scores.items()) {
+                if (v.is_number()) sum += v.get<double>(), ++count;
+            }
+            for (const auto& p : body.value("problems", json::array())) errors += p.value("severity", "") == "error";
+            worth = (count ? sum / count : 0.0) - 0.5 * errors;
+        }
+        if (body.value("ok", false) && buildRounds_ == 1 && worth < firstBuildWorth_ - 0.75 && !redoneFrom_.empty()) {
+            // The redo made it worse (docs/build-fixes.md): the art before it comes back, the redo's is
+            // refused, and the place is built once more.
+            ++buildRounds_;
+            for (const auto& [key, old] : redoneFrom_) {
+                Tried& t = tried_[key];
+                for (const auto& n : assetNeeds_) {
+                    if (n.value("key", "") == key && n.value("entry", "") != old) t.refused.insert(n.value("entry", ""));
+                }
+                t.refused.erase(old);
+                t.approved.insert(old);
+                t.generate = true; // no more making: the earlier art
+                redo_.push_back(key);
+            }
+            redoneFrom_.clear();
+            Notice("The redone art made the place look worse; the art from before is put back.");
+        } else if (body.value("ok", false) && !refused.empty() && buildRounds_ < 1) {
+            ++buildRounds_;
+            firstBuildWorth_ = worth;
+            for (const auto& [key, why] : refused) {
+                for (const auto& n : assetNeeds_) {
+                    if (n.value("key", "") != key) continue;
+                    Tried& t = tried_[key];
+                    redoneFrom_[key] = n.value("entry", "");
+                    t.refused.insert(n.value("entry", ""));
+                    t.approved.erase(n.value("entry", ""));
+                    t.generate = false; // made again (or found elsewhere), told why
+                }
+                redo_.push_back(key);
+                redoReasons_[key] = "in the built scene: " + why;
+            }
+            Notice("The check of the built place refused the art of " + std::to_string(redo_.size()) + " part(s); they're found or made again.");
+        } else if (buildRounds_ == 1) {
+            buildRounds_ = 2; // the redo stands
+        }
+        status_ = body.value("ok", false) ? "Built and checked: " + body.value("summary", std::string())
+                                          : "Built; the AI couldn't check it (" + FirstError(body) + ")";
+        Save();
+        return;
+    }
+    if (what.kind == "inspect-layout") {
+        // The layout's check: its errors go back as a revision (the layout is checked again after it).
+        Log({{"step", "layout check"}, {"answer", body}});
+        layoutCheck_ = body;
+        stage_ = beforeRevision_.empty() ? "layout" : beforeRevision_;
+        status_.clear();
+        std::string fixes;
+        int n = 0;
+        for (const auto& p : body.value("problems", json::array())) {
+            if (!p.is_object() || p.value("severity", "") != "error") continue;
+            fixes += "\n" + std::to_string(++n) + ") " + p.value("issue", "") + (p.value("fix", "").empty() ? "" : " Fix: " + p.value("fix", ""));
+        }
+        revisions_.push_back({{"by", "layout check"}, {"summary", body.value("summary", "")}, {"scores", body.value("scores", json::object())},
+                              {"issues", [&] {
+                                   json issues = json::array();
+                                   for (const auto& p : body.value("problems", json::array())) issues.push_back(p.value("issue", ""));
+                                   return issues;
+                               }()}});
+        // The best layout seen is kept (docs/build-fixes.md): a revision can make it worse, and the
+        // last one isn't always the one to keep. Its worth: the scores' mean, less a point an error.
+        double worth = -1e9;
+        if (body.value("ok", false)) {
+            const json scores = body.value("scores", json::object());
+            double sum = 0;
+            int count = 0;
+            for (const auto& [k, v] : scores.items()) {
+                if (v.is_number()) sum += v.get<double>(), ++count;
+            }
+            worth = (count ? sum / count : 0.0) - n;
+            if (worth > bestLayoutWorth_) {
+                bestLayoutWorth_ = worth;
+                bestLayout_ = Snapshot();
+                bestLayoutCheck_ = body;
+            }
+        }
+        auto keepBest = [&] {
+            if (bestLayout_.is_object() && worth < bestLayoutWorth_ - 0.25) {
+                Restore(bestLayout_);
+                stage_ = beforeRevision_.empty() ? stage_ : beforeRevision_;
+                layoutCheck_ = bestLayoutCheck_;
+                revisions_.push_back({{"by", "layout check"}, {"summary", "The last revision made the layout worse: the best one is kept."}});
+                Log({{"step", "layout check"}, {"kept", "the best layout"}, {"worth", bestLayoutWorth_}});
+            }
+        };
+        if (body.value("ok", false) && n > 0 && layoutRounds_ < 2) {
+            ++layoutRounds_;
+            // At ③ Plan (built without ② Layout) the zones are frozen for a user's revision; the
+            // layout check is that step's check, so its revision may move them.
+            layoutCheckRevising_ = true;
+            if (Revise("The layout check found these problems in the zones; fix each one with the changes the rules allow, keeping "
+                       "what's right:" + fixes).empty()) {
+                Save();
+                return;
+            }
+        }
+        keepBest();
+        layoutChecked_ = true;
         Save();
         return;
     }
@@ -2495,10 +2801,36 @@ std::set<std::string> PlaceBuild::RunExactOps(const json& ops, std::set<std::str
     return placed;
 }
 
+std::string PlaceBuild::CheckLayout() {
+    // At ② Layout; or, built without that step (the Planner's), at ③ Plan before it's approved.
+    if (stage_ != "layout" && stage_ != "plan") return "there's no layout to check";
+    if (!solved_.is_object() || !solved_.contains("regions")) {
+        layoutChecked_ = true;
+        return "there's no layout to check";
+    }
+    if (!Send({"inspect-layout", -1, "", "/places/inspect", InspectLayoutRequest(*this, &host_.ontology()), 600})) {
+        layoutChecked_ = true; // without the AI, the plan goes on unchecked
+        return "the AI is off";
+    }
+    beforeRevision_ = stage_;
+    stage_ = "revising";
+    status_ = "The AI is checking the layout: each zone, where it is, and what's next to it…";
+    Log({{"step", "check layout"}});
+    Save();
+    return {};
+}
+
 std::string PlaceBuild::Review() {
     if ((stage_ != "planned" && stage_ != "built") || !fs::exists(Folder() / "layout.png")) return "there's no map to review yet";
     json body = RevisionBody();
-    body["image"] = "places/" + id_ + "/layout.png";
+    // The map with every kind of thing in its own colour and code (docs/build-fixes.md): the AI names
+    // each kind and judges where it stands, alone and beside the others, against the look and story.
+    const json coded = InspectPlanRequest(*this, &host_.ontology());
+    body["image"] = coded["images"][0];
+    if (!body["context"].is_object()) body["context"] = json::object();
+    body["context"]["map"] = {{"legend", coded["expected"]["legend"]}, {"items", coded["expected"]["items"]}};
+    body["context"]["look"] = coded["look"];
+    if (story_.is_object() && !story_.empty()) body["context"]["story"] = story_;
     body["verify"] = VerifyLayout(host_.ontology(), brief_, spec_, solved_);
     if (!Send({"review", -1, "", "/places/review-layout", body, 600})) return "the AI is off";
     beforeRevision_ = stage_;
@@ -2511,6 +2843,10 @@ std::string PlaceBuild::Review() {
 
 void PlaceBuild::OnRevision(const Pending& what, const json& body) {
     const Ontology& ontology = host_.ontology();
+    struct Unfreeze { // the layout check's revision is over, whichever way it ends
+        bool& flag;
+        ~Unfreeze() { flag = false; }
+    } unfreeze{layoutCheckRevising_};
     const bool review = what.kind == "review";
     Log({{"step", what.kind}, {"attempt", what.attempts}, {"thinking", body.value("thinking", "")}, {"answer", body.value("answer", json())},
          {"errors", body.value("errors", json::array())}});
@@ -2555,6 +2891,11 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
         json facts = json::array();
         for (const auto& e : answer.value("expect", json::array())) {
             if (!e.is_object()) continue;
+            // A fact the layout can check names a node, a relation and another node, all by words; one
+            // that doesn't ("to": 6, a room count) is no relation (and would throw where it's read).
+            bool words = true;
+            for (const char* key : {"node", "type", "to"}) words = words && (!e.contains(key) || e[key].is_string());
+            if (!words) continue;
             for (auto one : NormalizeRelations(json::array({e}))) {
                 one["node"] = e.value("node", "");
                 facts.push_back(one);
@@ -2590,7 +2931,7 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
     // changes what's inside them, never their borders, their place, or which zones there are.
     json changesKept = changes;
     json briefKept = briefChanges;
-    if (beforeRevision_ != "layout" && LayoutFrozen()) {
+    if (beforeRevision_ != "layout" && LayoutFrozen() && !layoutCheckRevising_) {
         bool dropped = false;
         auto isZone = [&](const std::string& id) {
             if (id.empty() || id.find('/') != std::string::npos) return false;
@@ -3327,14 +3668,84 @@ bool PlaceBuild::AboutThisPlace(const std::string& request) const {
 
 // --- Sourcing the art (7.9) ---------------------------------------------------------------
 
+// A need's role, its first alternative ("barrel|pot" is a barrel's).
+static std::string FirstRole(const json& need) {
+    const std::string role = need.value("role", "");
+    return role.substr(0, role.find('|'));
+}
+
+std::vector<std::string> PlaceBuild::DependsOn(const json& need) const {
+    std::vector<std::string> out;
+    for (const auto& r : host_.ontology().RoleLook(FirstRole(need), "dependsOn")) {
+        if (r.is_string()) out.push_back(r.get<std::string>());
+    }
+    return out;
+}
+
+json PlaceBuild::GoesWith(const json& need) const {
+    // The art of what it's designed against (docs/build-fixes.md): made in this round (passed), made
+    // before, or the place's chosen art; each with what it is and the prompt it was drawn from.
+    json out = json::array();
+    for (const auto& dep : DependsOn(need)) {
+        json found;
+        auto from = [&](const std::map<std::string, Sourcing>& pieces) {
+            for (const auto& [k, s] : pieces) {
+                if (FirstRole(s.need) != dep || !found.is_null()) continue;
+                for (const auto& m : s.made) {
+                    if (m.value("ok", false)) found = {{"what", s.need.value("title", dep)}, {"description", s.need.value("description", "")},
+                                                        {"prompt", s.lastPrompt}, {"image", m.value("path", "")}};
+                }
+            }
+        };
+        from(sourcing_);
+        from(sourced_);
+        if (found.is_null()) {
+            for (const auto& n : assetNeeds_) {
+                const std::string entry = n.value("entry", "");
+                if (FirstRole(n) != dep || entry.empty() || n.value("source", "") == "placeholder" || entry.find('.') == std::string::npos) continue;
+                found = {{"what", n.value("title", dep)}, {"description", n.value("description", "")}, {"image", entry.substr(0, entry.find('#'))}};
+                break;
+            }
+        }
+        if (found.is_object()) out.push_back(found);
+    }
+    return out;
+}
+
+void PlaceBuild::SendWaiting() {
+    // What waited for the pieces it's designed against: made now they're done.
+    for (auto it = waitingOn_.begin(); it != waitingOn_.end();) {
+        bool ready = true;
+        for (const auto& dep : DependsOn(sourcing_[*it].need)) {
+            for (const auto& [k, s] : sourcing_) ready = ready && (FirstRole(s.need) != dep || s.done);
+        }
+        if (!ready) {
+            ++it;
+            continue;
+        }
+        const std::string key = *it;
+        it = waitingOn_.erase(it);
+        if (!SendArt(key)) sourcing_[key].done = true;
+    }
+}
+
 bool PlaceBuild::StartSourcing(const json& pending, const SourcingSettings& settings) {
     sourcing_.clear();
+    waitingOn_.clear();
     sourcingDone_ = false;
     bool sent = false;
+    std::set<std::string> pendingRoles;
+    for (const auto& need : pending) pendingRoles.insert(FirstRole(need));
     for (const auto& need : pending) {
         const std::string key = need.value("key", "");
         if (key.empty()) continue;
         sourcing_[key] = {need};
+        if (auto why = redoReasons_.find(key); why != redoReasons_.end()) {
+            // Refused in the built scene: its last prompt, rewritten with why.
+            sourcing_[key].reasons = why->second;
+            if (auto before = sourced_.find(key); before != sourced_.end()) sourcing_[key].lastPrompt = before->second.lastPrompt;
+            redoReasons_.erase(why);
+        }
         if (need.value("action", "") == "web") {
             std::string folder = "assets/web/";
             for (const char c : need.value("query", key)) folder += std::isalnum(static_cast<unsigned char>(c)) ? static_cast<char>(std::tolower(c)) : '-';
@@ -3342,8 +3753,25 @@ bool PlaceBuild::StartSourcing(const json& pending, const SourcingSettings& sett
                          {{"query", need.value("query", "")}, {"folder", folder.substr(0, 60)}, {"maxAssets", 4},
                           {"shareAlike", settings.licences.shareAlike}, {"queries", need.value("queries", json::array())}},
                          300}) || sent;
+        } else if (need.value("action", "") == "check") {
+            // Found art: the critic looks at it against the scene before it's used.
+            json item = {{"id", need.value("entry", "")}, {"path", need.value("entry", "").substr(0, need.value("entry", "").find('#'))}};
+            if (need.contains("rect")) item["rect"] = need["rect"];
+            sourcing_[key].made.push_back({{"path", item["path"]}, {"attempt", 0}});
+            sent = Send({"critic", -1, key, "/assets/describe",
+                         {{"paths", json::array()}, {"items", json::array({item})}, {"roles", json::array({need.value("role", "")})},
+                          {"wanted", WantedFor(sourcing_[key])}},
+                         300}) || sent;
         } else {
-            sent = SendArt(key) || sent;
+            // Designed against a piece still to be made in this round (a door against its wall): after it.
+            bool waits = false;
+            for (const auto& dep : DependsOn(need)) waits = waits || (dep != FirstRole(need) && pendingRoles.contains(dep));
+            if (waits) {
+                waitingOn_.insert(key);
+                sent = true;
+            } else {
+                sent = SendArt(key) || sent;
+            }
         }
     }
     if (!sent) {
@@ -3357,14 +3785,45 @@ bool PlaceBuild::StartSourcing(const json& pending, const SourcingSettings& sett
     return true;
 }
 
+json PlaceBuild::WantedFor(const Sourcing& s) const {
+    // What was wanted, so the critic says whether this is it (and if not, why): the thing, its kind,
+    // the view, the room and place it's for, and the place's story.
+    const bool isoView = !host_.isoGrid || host_.isoGrid();
+    json wanted = {{"what", s.need.value("title", s.need.value("role", ""))}, {"description", s.need.value("description", "")},
+                   {"kind", s.need.value("kind", "") == "building" ? "a whole building" : s.need.value("layer", "") == "ground" ? "a ground tile" : "one object"},
+                   {"view", s.need.value("layer", "") == "ground" ? "flat, from straight above"
+                            : s.need.value("kind", "") == "decal" ? "lying flat on the ground, seen from above (top-down or isometric both do)"
+                            : isoView ? "isometric" : "top-down"},
+                   {"room", s.need.value("about", s.need.value("component", ""))},
+                   {"place", brief_.is_object() ? json{{"name", brief_.value("name", "")}, {"type", brief_.value("buildType", "")}, {"style", brief_.value("style", json::object())}} : json::object()}};
+    if (story_.is_object() && !story_.empty()) wanted["story"] = {{"purpose", story_.value("purpose", json())}, {"mood", story_.value("mood", json())}};
+    return wanted;
+}
+
 bool PlaceBuild::SendArt(const std::string& key) {
     Sourcing& s = sourcing_[key];
     const json& need = s.need;
     ++s.attempts;
-    std::string name;
-    for (const char c : key) name += std::isalnum(static_cast<unsigned char>(c)) ? static_cast<char>(std::tolower(c)) : '-';
-    while (name.find("--") != std::string::npos) name.replace(name.find("--"), 2, "-");
-    name = name.substr(0, 40) + "-" + std::to_string(s.attempts);
+    // Its file's name: the place, the need and a stamp (docs/build-fixes.md). By the need and the try
+    // alone ("tree-prop-1"), the next place's tree, or this place's next round, wrote over the art a
+    // built scene already used.
+    auto slug = [](const std::string& text, size_t most) {
+        std::string out;
+        for (const char c : text) out += std::isalnum(static_cast<unsigned char>(c)) ? static_cast<char>(std::tolower(c)) : '-';
+        while (out.find("--") != std::string::npos) out.replace(out.find("--"), 2, "-");
+        while (!out.empty() && out.front() == '-') out.erase(0, 1);
+        out = out.substr(0, most);
+        while (!out.empty() && out.back() == '-') out.pop_back();
+        return out;
+    };
+    std::string stamp;
+    for (auto t = static_cast<unsigned long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::system_clock::now().time_since_epoch()).count()) % 2176782336ull; // 36^6
+         stamp.size() < 6; t /= 36) {
+        stamp.insert(stamp.begin(), "0123456789abcdefghijklmnopqrstuvwxyz"[t % 36]);
+    }
+    const std::string place = slug(id_, 10);
+    std::string name = (place.empty() ? "" : place + "-") + slug(key, 24) + "-" + stamp;
     while (!name.empty() && name.front() == '-') name.erase(0, 1);
     const std::string kind = need.value("layer", "") == "ground" ? "tile" : "object";
     // What to draw, at its size (place-refine.md §2): a role's own words ("a small clump of
@@ -3373,8 +3832,10 @@ bool PlaceBuild::SendArt(const std::string& key) {
     const std::string role = need.value("role", "");
     const bool building = need.value("kind", "") == "building";
     const float size = ontology.RoleSize(role), tall = ontology.RoleTall(role);
-    int height = building ? std::clamp(96 + 16 * need.value("w", 3), 112, 192) : need.value("kind", "") == "decal" ? 32 : 64;
-    if (!building && size > 0) height = std::clamp(static_cast<int>(std::lround(96.0f * size * std::max(0.5f, tall))), 24, 160);
+    // Twice the pixels a cell's 64 on screen needs (docs/build-fixes.md): close up, a house carries
+    // the detail of a hand-painted one (PixelLab draws up to 400).
+    int height = building ? std::clamp(192 + 32 * need.value("w", 3), 224, 384) : need.value("kind", "") == "decal" ? 64 : 128;
+    if (!building && size > 0) height = std::clamp(static_cast<int>(std::lround(192.0f * size * std::max(0.5f, tall))), 48, 320);
     std::string description = need.value("description", "");
     if (const std::string draw = ontology.RoleDraw(role); !draw.empty() && !building && kind != "tile") {
         std::string concepts;
@@ -3419,8 +3880,36 @@ bool PlaceBuild::SendArt(const std::string& key) {
             context["runs"] = "a piece of the place's structure, one cell across, standing on its cell";
         }
         if (const std::string style = need.value("style", ""); !style.empty()) context["wished"] = style; // the Brief's words for its look
+        if (building) context["whole"] = "building"; // the whole building from outside, not its sign or door
+        context["layer"] = need.value("layer", building ? std::string("building") : std::string("prop")); // its kind, for style references
         if (!s.reasons.empty()) context["lastAttemptWrong"] = s.reasons;
+        if (!s.lastPrompt.empty() && !s.reasons.empty()) context["previousPrompt"] = s.lastPrompt; // rewritten to fix exactly what went wrong
+        // The room it stands in, and what the story needs of the place: so it fits there.
+        if (const std::string room = need.value("component", ""); !room.empty()) {
+            if (const ModuleDef* m = ontology.Module(room)) context["room"] = {{"is", m->name}, {"about", m->description}};
+        }
+        if (story_.is_object() && !story_.empty()) {
+            context["placeStory"] = {{"purpose", story_.value("purpose", json())}, {"mood", story_.value("mood", json())},
+                                     {"logline", story_.value("logline", json())}};
+        }
         if (!s.request.empty()) context["userAsks"] = s.request;
+        json images = json::array();
+        if (const auto crop = sketchCrops_.find(key); crop != sketchCrops_.end()) {
+            // The piece as the place's sketch painted it: its look, colours and light are kept; drawn
+            // alone, whole, cut out (the crop has its neighbours and the floor in it).
+            images.push_back(crop->second);
+            context["sketch"] = "the first reference image is this piece cropped from the concept painting of the whole place: keep "
+                                "its design, materials, colours and light, and draw it alone, whole and cut out, in the game's view "
+                                "(the painting's angle may differ), without the ground or the neighbours the crop shows";
+            if (const auto seen = sketchSeen_.find(key); seen != sketchSeen_.end()) context["inTheSketch"] = seen->second;
+        }
+        if (const json with = GoesWith(need); !with.empty()) {
+            context["goesWith"] = with;
+            for (const auto& w : with) {
+                if (!w.value("image", "").empty()) images.push_back(w["image"]);
+            }
+        }
+        if (!images.empty()) body["withImages"] = images;
         body["context"] = context;
     }
     // Ground covers hundreds of cells: two takes of it, mixed by cell, don't show a repeat.
@@ -3474,6 +3963,10 @@ void PlaceBuild::SourcingStep(const Pending& what, const json& body) {
             const std::string path = a.value("path", "");
             if (path.empty()) continue;
             paths.push_back(path);
+            // The prompt it was drawn from: if it doesn't pass, the next prompt is this one, corrected.
+            if (const json meta = a.value("meta", json::object()); meta.is_object() && meta.value("prompt", json()).is_string()) {
+                s.lastPrompt = meta["prompt"].get<std::string>();
+            }
             provenance[path] = what.kind == "web"
                                    ? json{{"source", "web"}, {"licence", a.value("licence", "")}, {"author", a.value("author", "")},
                                           {"url", a.value("url", "")}, {"retrieved", a.value("retrieved", "")}}
@@ -3485,7 +3978,10 @@ void PlaceBuild::SourcingStep(const Pending& what, const json& body) {
         } else {
             s.need["provenance"] = provenance;
             // The critic: what the vision model sees in it, against what was asked.
-            if (!Send({"critic", -1, key, "/assets/describe", {{"paths", paths}, {"roles", json::array({s.need.value("role", "")})}}, 300})) {
+            // What was wanted, so it says whether this is it (and if not, why): the thing, its kind,
+            // the view, and the room and place it's for.
+            const json wanted = WantedFor(s);
+            if (!Send({"critic", -1, key, "/assets/describe", {{"paths", paths}, {"roles", json::array({s.need.value("role", "")})}, {"wanted", wanted}}, 300})) {
                 for (const auto& p : paths) newAssets_.push_back({{"path", p}, {"fields", provenance[p.get<std::string>()]}});
                 s.done = true;
             }
@@ -3532,7 +4028,8 @@ void PlaceBuild::SourcingStep(const Pending& what, const json& body) {
                 }
                 if (s.need.value("kind", "") == "building") fields["blocks"] = "1";
             }
-            newAssets_.push_back({{"path", path}, {"fields", fields}});
+            const bool checking = s.need.value("action", "") == "check";
+            if (!checking) newAssets_.push_back({{"path", path}, {"fields", fields}});
             // Does it show what was asked: its role (or a narrower one), or the concept in its words?
             const std::string seen = a.value("role", "");
             // A role of alternatives ("barrel|pot|bench|sign|lamp"): any of them passes.
@@ -3548,8 +4045,18 @@ void PlaceBuild::SourcingStep(const Pending& what, const json& body) {
             bool fills = isWanted(seen);
             for (const Role* r = ontology.FindRole(seen); r && !fills; r = ontology.FindRole(r->broader)) fills = isWanted(r->broader);
             const std::string text = a.value("description", "") + " " + tags + " " + a.value("name", "");
+            // A word, not part of one ("inn" isn't in "dinner").
+            auto saysWord = [&](const std::string& word) {
+                if (word.empty()) return false;
+                for (size_t at = text.find(word); at != std::string::npos; at = text.find(word, at + 1)) {
+                    const bool before = at == 0 || !std::isalnum(static_cast<unsigned char>(text[at - 1]));
+                    const bool after = at + word.size() >= text.size() || !std::isalnum(static_cast<unsigned char>(text[at + word.size()]));
+                    if (before && after) return true;
+                }
+                return false;
+            };
             for (const auto& c : s.need.value("concepts", json::array())) {
-                if (text.find(c.get<std::string>()) != std::string::npos) fills = true;
+                if (c.is_string() && saysWord(c.get<std::string>())) fills = true;
             }
             // A ground tile: ground is what it must be.
             if (!s.need.value("terrain", "").empty() && (a.value("kind", "") == "ground" || isWanted("ground-tile"))) {
@@ -3557,7 +4064,13 @@ void PlaceBuild::SourcingStep(const Pending& what, const json& body) {
             }
             // Or what it says it is names one of them (the model's role may be broader: "prop").
             for (const auto& w : wanted) {
-                if (text.find(w) != std::string::npos && (seen.empty() || seen == "prop" || seen == "building")) fills = true;
+                if (saysWord(w) && (seen.empty() || seen == "prop" || seen == "building")) fills = true;
+            }
+            // A building must be one: an inn's sign, door or gate is no inn.
+            if (fills && s.need.value("kind", "") == "building" && a.value("kind", "") != "building") {
+                fills = false;
+                reasons += (reasons.empty() ? "" : "; ") + std::string("it shows ") + (a.value("description", "").empty() ? "a part" : a.value("description", "")) +
+                           ", not the whole building seen from outside";
             }
             // Its view must be the scene's (place-refine.md §4): an isometric scene's buildings and
             // things aren't seen from straight above; its ground is.
@@ -3590,8 +4103,24 @@ void PlaceBuild::SourcingStep(const Pending& what, const json& body) {
                                "): draw a single straight run of fence, two posts and its rails, no corners, not a closed square";
                 }
             }
+            // Measured, whatever the model says (docs/build-fixes.md): a thing that stands in the scene
+            // must be cut out (not on a box of background) and be one thing (not a sheet of many).
+            if (fills && ground == false) {
+                if (const auto image = DecodeImage(host_.projectRoot / path)) {
+                    ImageRect region;
+                    if (const json r = s.need.value("rect", json()); r.is_array() && r.size() == 4) region = {r[0].get<int>(), r[1].get<int>(), r[2].get<int>(), r[3].get<int>()};
+                    const ArtShape shape = AnalyzeShape(*image, region);
+                    if (shape.edgesOpaque) {
+                        fills = false;
+                        reasons += std::string(reasons.empty() ? "" : "; ") + "it stands on a solid box of background, not cut out on transparency";
+                    } else if (region.Empty() && SegmentObjects(*image).size() >= 5) {
+                        fills = false;
+                        reasons += std::string(reasons.empty() ? "" : "; ") + "it's a sheet of many separate pieces, not one thing";
+                    }
+                }
+            }
             // It passed, but the model named no role (or a broader one): it's the slot's, for the catalog.
-            if (fills && !isWanted(seen) && !wanted.empty()) newAssets_.back()["fields"]["roles"] = wanted.front();
+            if (fills && !checking && !isWanted(seen) && !wanted.empty()) newAssets_.back()["fields"]["roles"] = wanted.front();
             // The verdict on this one, shown under its picture.
             for (auto& m : s.made) {
                 if (m.value("path", "") == path) {
@@ -3608,9 +4137,22 @@ void PlaceBuild::SourcingStep(const Pending& what, const json& body) {
                 }
                 s.superseded = json::array();
             }
+            // The vision model's own verdict on what was wanted (and why not): it decides when it says no.
+            if (a.value("sheet", false)) {
+                fills = false;
+                reasons += (reasons.empty() ? "" : "; ") + std::string("it's a sheet of many separate pieces, not one");
+            } else if (a.contains("fits") && a["fits"].is_boolean() && !a["fits"].get<bool>()) {
+                std::string why;
+                for (const auto& p : a.value("problems", json::array())) {
+                    if (p.is_string()) why += (why.empty() ? "" : "; ") + p.get<std::string>();
+                }
+                if (fills) reasons += (reasons.empty() ? "" : "; ") + (why.empty() ? std::string("it doesn't fit what was asked") : why);
+                fills = false;
+            }
             if (fills) passed = true;
-            else reasons += (reasons.empty() ? "" : "; ") + std::string("it looks like ") + (seen.empty() ? a.value("kind", "something else") : seen) +
-                            ", not a " + s.need.value("title", role);
+            else if (reasons.empty() || reasons.find(a.value("description", "\x01")) == std::string::npos)
+                reasons += (reasons.empty() ? "" : "; ") + std::string("it looks like ") + (seen.empty() ? a.value("kind", "something else") : seen) +
+                           ", not a " + s.need.value("title", role);
         }
         if (!body.value("ok", false)) reasons = FirstError(body);
         // A generated one that didn't pass: again, with the reasons (3 tries at most).
@@ -3705,13 +4247,28 @@ void PlaceBuild::SkipSourcing() {
 }
 
 void PlaceBuild::FinishSourcing() {
+    SendWaiting();
     for (const auto& [key, s] : sourcing_) {
         if (!s.done) return;
     }
     for (const auto& [key, s] : sourcing_) {
         Tried& t = tried_[key];
-        if (s.need.value("action", "") == "web") t.web = true;
+        const std::string action = s.need.value("action", "");
+        if (action == "check") {
+            // Found art, looked at: used, or the next candidate (down to the Art tool) next time.
+            // Under both names: the copy checked, and the candidate it came from (a library's art is
+            // copied into the project first; the next decision sees the library's again).
+            const std::string entry = s.need.value("entry", ""), candidate = s.need.value("candidate", "");
+            (s.passed ? t.approved : t.refused).insert(entry);
+            if (!candidate.empty()) (s.passed ? t.approved : t.refused).insert(candidate);
+            if (!s.passed) ++t.refusals;
+            continue;
+        }
+        if (action == "web") t.web = true;
         else t.generate = true;
+        for (const auto& m : s.made) {
+            if (m.value("ok", false)) t.approved.insert(m.value("path", "")); // made and passed: no need to look again
+        }
     }
     for (const auto& [key, s] : sourcing_) sourced_[key] = s; // kept for Refine
     sourcing_.clear();
@@ -3805,15 +4362,66 @@ void PlaceBuild::Built(const json& result) {
     status_ = failed ? std::to_string(failed) + " check(s) still failing after the repairs" : "Built and verified.";
     Log({{"step", "built"}, {"report", result_.value("report", json())}, {"repairs", result_.value("repairs", json::array())}});
     if (failed == 0) KeepAsExample();
-    // The AI looks at the place as the game draws it (the Result shows what it saw).
-    if (result_.contains("image") && fs::exists(Folder() / "scene.png")) {
-        json body = RevisionBody();
-        body["image"] = "places/" + id_ + "/scene.png";
-        body["kind"] = "scene";
-        body["verify"] = result_.value("after", json::array());
-        if (Send({"scene-review", -1, "", "/places/review-layout", body, 600})) result_["critique"] = {{"looking", true}};
-    }
     Save();
+}
+
+std::string PlaceBuild::Paint(const json& requests) {
+    backdrops_ = json::array();
+    paintRequests_ = requests.is_array() ? requests : json::array();
+    if (paintRequests_.empty()) {
+        painted_ = true;
+        return "nothing to paint";
+    }
+    for (size_t i = 0; i < paintRequests_.size(); ++i) {
+        const json& r = paintRequests_[i];
+        // Its endpoint and body: the block-out painted by the Paint Provider (BlockoutPaintRequests), or a
+        // backdrop painted from words (BackdropRequests).
+        const std::string path = r.value("path", "/places/backdrop");
+        const json body = r.contains("body") ? r["body"] : json{{"context", r.value("context", json::object())}, {"out", r.value("out", "")}};
+        if (Send({"paint", -1, std::to_string(i), path, body, 900})) {
+            ++painting_;
+        }
+    }
+    if (painting_ == 0) {
+        painted_ = true;
+        return "the AI is off";
+    }
+    status_ = "Painting the place: one backdrop per level, then its map read from it…";
+    Log({{"step", "paint"}, {"backdrops", painting_}});
+    Save();
+    return {};
+}
+
+std::string PlaceBuild::Sketch(const json& requests) {
+    if (!requests.is_array() || requests.empty()) {
+        sketched_ = true;
+        return "nothing to sketch";
+    }
+    sketches_ = json::array();
+    sketchCrops_.clear();
+    sketchSeen_.clear();
+    for (const auto& r : requests) {
+        if (Send({"sketch", -1, r.value("name", ""), "/assets/sketch", r, 600})) ++sketching_;
+    }
+    if (sketching_ == 0) {
+        sketched_ = true; // without the AI, the art is made without a sketch
+        return "the AI is off";
+    }
+    status_ = "Sketching the place, window by window: one painting each, the art of every piece from it…";
+    Log({{"step", "sketch"}, {"windows", sketching_}});
+    Save();
+    return {};
+}
+
+std::string PlaceBuild::InspectBuilt(const json& body) {
+    if (stage_ != "built") return "the place isn't built";
+    if (!Send({"inspect-build", -1, "", "/places/inspect", body, 900})) return "the AI is off";
+    inspecting_ = true;
+    if (result_.is_object()) result_["critique"] = {{"looking", true}};
+    status_ = "The AI is checking the built place: each kind of thing, where it stands, how it fits and looks…";
+    Log({{"step", "check build"}, {"windows", body.value("images", json::array()).size()}});
+    Save();
+    return {};
 }
 
 void PlaceBuild::KeepAsExample() const {
@@ -3878,6 +4486,8 @@ std::string PlaceBuild::Open(const std::string& id) {
     id_ = id;
     query_ = request.value("query", "");
     choices_ = request.value("choices", json::object());
+    story_ = request.value("story", json());
+    fromPlanner_ = request.value("fromPlanner", false);
     pending_.clear();
     errors_.clear();
     notices_.clear();
@@ -3908,6 +4518,23 @@ std::string PlaceBuild::Open(const std::string& id) {
         }
         planProblems_ = ProblemsFrom(session.value("planProblems", json::array()));
         revisions_ = session.value("revisions", json::array());
+        if (const json sk = session.value("sketch", json::object()); sk.is_object()) {
+            sketched_ = sk.value("done", false);
+            sketches_ = sk.value("sketches", json::array());
+            const json crops = sk.value("crops", json::object()); // named: items() of a temporary dangles
+            for (const auto& [key, crop] : crops.items()) {
+                if (crop.is_string()) sketchCrops_[key] = crop.get<std::string>();
+            }
+        }
+        if (const json pt = session.value("paint", json::object()); pt.is_object()) {
+            painted_ = pt.value("done", false);
+            backdrops_ = pt.value("backdrops", json::array());
+        }
+        if (const json lc = session.value("layoutCheck", json::object()); lc.is_object()) {
+            layoutChecked_ = lc.value("checked", false);
+            layoutRounds_ = lc.value("rounds", 0);
+            layoutCheck_ = lc.value("answer", json());
+        }
         fitScale_.clear();
         const json fit = session.value("fit", json::object());
         const json fitScale = fit.value("scale", json::object());
@@ -3921,7 +4548,17 @@ std::string PlaceBuild::Open(const std::string& id) {
         }
         tried_.clear();
         const json tried = session.value("tried", json::object());
-        for (const auto& [k, v] : tried.items()) tried_[k] = {v.value("web", false), v.value("generate", false)};
+        for (const auto& [k, v] : tried.items()) {
+            Tried t{v.value("web", false), v.value("generate", false)};
+            t.refusals = v.value("refusals", 0);
+            for (const auto& p : v.value("refused", json::array())) {
+                if (p.is_string()) t.refused.insert(p.get<std::string>());
+            }
+            for (const auto& p : v.value("approved", json::array())) {
+                if (p.is_string()) t.approved.insert(p.get<std::string>());
+            }
+            tried_[k] = t;
+        }
         sourcing_ = SourcingFrom(session.value("sourcing", json::object()));
         questions_ = session.value("questions", json::array());
         decisionAnswers_ = session.value("decisionAnswers", json::object());
@@ -4025,7 +4662,7 @@ void PlaceBuild::Cancel() {
 // --- What the panels show -----------------------------------------------------------------
 
 json PlaceBuild::State() {
-    json state = {{"type", "build:state"}, {"id", id_}, {"query", query_}, {"stage", stage_}, {"round", round_},
+    json state = {{"type", "build:state"}, {"id", id_}, {"query", query_}, {"fromPlanner", fromPlanner_}, {"stage", stage_}, {"round", round_},
                   {"status", status_}, {"errors", errors_}, {"notices", notices_}, {"drafts", drafts_.size()}};
     if (stage_ == "plan" || stage_ == "planned" || stage_ == "sourcing" || stage_ == "sourced" || stage_ == "building" || stage_ == "built") {
         state["plan"] = PlanSummary(host_.ontology(), spec_);

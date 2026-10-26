@@ -174,10 +174,56 @@ std::string GamePlan::Open() {
     for (auto& job : jobs_) {
         if (job.status == "running") job.status = "queued"; // its answer was lost with the session
     }
+    // Paused when the editor closed: it carries on now, from where it was.
+    if (pausedForClose_) {
+        pausedForClose_ = false;
+        paused_ = false;
+        if (status_ == "paused") status_ = "working";
+    }
     if (status_ == "working") message_ = "Carrying on where the plan was left…";
+    // What failed but has the AI's answer in the log: re-applied quietly (the engine now
+    // repairs what it once refused), so the boards show it made.
+    QueueReplays();
     Save();
     Pump();
     return {};
+}
+
+json GamePlan::LoggedAnswer(const std::string& kind, const std::string& subject) const {
+    std::ifstream in(store_.Dir() / "log.jsonl", std::ios::binary);
+    json found;
+    for (std::string line; std::getline(in, line);) {
+        if (line.find("\"" + kind + "\"") == std::string::npos) continue; // cheap filter before parsing
+        const json e = json::parse(line, nullptr, false);
+        if (!e.is_object() || e.value("kind", json()) != kind || e.value("subject", json()) != subject) continue;
+        const json a = e.value("answer", json());
+        if (!a.is_object() || !a.value("ok", false)) continue;
+        found = a;
+    }
+    if (found.is_object()) {
+        for (const char* k : {"ok", "usage", "call", "problems", "errors", "label"}) found.erase(k);
+    }
+    return found;
+}
+
+int GamePlan::QueueReplays() {
+    int n = 0;
+    std::set<std::pair<std::string, std::string>> seen;
+    for (auto it = jobs_.rbegin(); it != jobs_.rend(); ++it) {
+        if (it->status != "failed") continue;
+        if (!seen.insert({it->kind, it->subject}).second) {
+            it->status = "skipped"; // an older try at the same thing
+            continue;
+        }
+        if (it->replayed) continue;
+        json answer = LoggedAnswer(it->kind, it->subject);
+        if (!answer.is_object()) continue;
+        Requeue(*it);
+        it->replay = true;
+        it->lastAnswer = answer;
+        ++n;
+    }
+    return n;
 }
 
 void GamePlan::Save() {
@@ -185,12 +231,13 @@ void GamePlan::Save() {
     for (const auto& j : jobs_) {
         jobs.push_back({{"id", j.id}, {"kind", j.kind}, {"subject", j.subject}, {"status", j.status}, {"attempts", j.attempts},
                         {"after", j.after}, {"error", j.error}, {"problems", j.problems}, {"decision", j.decision},
-                        {"lastAnswer", j.lastAnswer}});
+                        {"lastAnswer", j.lastAnswer}, {"replay", j.replay}, {"replayed", j.replayed}});
     }
     json state = {{"schema", "aige.plan-state/1"}, {"stage", stage_},         {"status", status_},     {"message", message_},
                   {"request", request_},           {"jobs", jobs},            {"paused", paused_},     {"usage", usage_},
                   {"concept", concept_},           {"toReview", toReview_},   {"findings", findings_}, {"nextJob", nextJob_},
-                  {"stale", Stale()}, {"resume", resume_}};
+                  {"stale", Stale()}, {"resume", resume_}, {"autoFixed", autoFixed_}, {"fixRounds", fixRounds_}, {"fixScope", fixScope_},
+                  {"pausedForClose", pausedForClose_}};
     const json old = store_.State();
     if (old.contains("baseline")) state["baseline"] = old["baseline"];
     store_.SaveState(state);
@@ -209,6 +256,10 @@ void GamePlan::Load() {
     findings_ = s.value("findings", json::array());
     nextJob_ = s.value("nextJob", 1);
     resume_ = s.value("resume", json());
+    autoFixed_ = s.value("autoFixed", false);
+    fixRounds_ = s.value("fixRounds", autoFixed_ ? 1 : 0);
+    fixScope_ = s.value("fixScope", std::string("errors"));
+    pausedForClose_ = s.value("pausedForClose", false);
     jobs_.clear();
     for (const auto& j : s.value("jobs", json::array())) {
         Job job;
@@ -220,6 +271,8 @@ void GamePlan::Load() {
         job.error = j.value("error", "");
         job.problems = j.value("problems", json::array());
         job.lastAnswer = j.value("lastAnswer", json());
+        job.replay = j.value("replay", false);
+        job.replayed = j.value("replayed", false);
         job.decision = j.value("decision", "");
         for (const auto& a : j.value("after", json::array())) job.after.push_back(a.get<std::string>());
         jobs_.push_back(std::move(job));
@@ -251,7 +304,7 @@ GamePlan::Job* GamePlan::FindJob(const std::string& id) {
 std::string GamePlan::StageOfJob(const std::string& kind) const {
     static const std::map<std::string, std::string> stages = {
         {"interpret", "concept"}, {"outline", "outline"},       {"act", "story"},       {"scene", "story"},
-        {"critic", "story"},      {"character", "characters"}, {"quests", "quests"},   {"place", "places"},
+        {"critic", "story"},      {"character", "characters"}, {"quests", "quests"},   {"quest", "quests"},   {"place", "places"},
         {"systems", "systems"},   {"visuals", "visuals"},      {"review", "validate"}, {"report", "validate"}};
     auto it = stages.find(kind);
     return it == stages.end() ? "" : it->second;
@@ -266,7 +319,9 @@ std::string GamePlan::NextStage(const std::string& stage) const {
 bool GamePlan::StageOn(const std::string& stage) const {
     if (stage == "concept" || stage == "outline" || stage == "validate" || stage == "done") return true;
     const GenreProfile* profile = PlannerData::Engine().Profile(Brief().value("genre", ""));
-    return !profile || profile->stages.value(stage, "full") != "off";
+    if (!profile || !profile->stages.is_object()) return true; // a profile without stage settings: every stage on
+    const auto it = profile->stages.find(stage);
+    return it == profile->stages.end() || !it->is_string() || it->get<std::string>() != "off";
 }
 
 bool GamePlan::StageJobsDone(const std::string& stage) const {
@@ -277,7 +332,9 @@ bool GamePlan::StageJobsDone(const std::string& stage) const {
 }
 
 void GamePlan::Pump() {
-    if (paused_ || status_ == "failed" || status_ == "done") return;
+    // A paused, stopped or finished plan makes no AI calls; re-applying a logged answer isn't one.
+    const bool replaysOnly = paused_ || status_ == "failed" || status_ == "done";
+    if (replaysOnly && std::none_of(jobs_.begin(), jobs_.end(), [](const Job& j) { return j.status == "queued" && j.replay; })) return;
     int running = 0;
     for (const auto& j : jobs_) running += j.status == "running";
     const int budget = BriefGet(Brief(), "plan.budget.calls").is_number() ? BriefGet(Brief(), "plan.budget.calls").get<int>() : 0;
@@ -304,6 +361,7 @@ void GamePlan::Pump() {
     }
     for (const size_t i : visit) {
         if (jobs_[i].status != "queued") continue;
+        if (replaysOnly && !jobs_[i].replay) continue;
         const bool ready = std::all_of(jobs_[i].after.begin(), jobs_[i].after.end(), [&](const std::string& id) {
             const Job* dep = FindJob(id);
             return !dep || (dep->status != "queued" && dep->status != "running");
@@ -315,18 +373,37 @@ void GamePlan::Pump() {
             continue; // an earlier scene first
         }
         if (jobs_[i].kind == "report") {
+            if (std::any_of(jobs_.begin(), jobs_.end(), [&](const Job& j) {
+                    return j.kind != "report" && (j.status == "queued" || j.status == "running");
+                })) {
+                continue; // after the fixes and remakes it checks (another report isn't work to wait for)
+            }
+            // One report does for all that are waiting.
+            for (auto& j : jobs_) {
+                if (&j != &jobs_[i] && j.kind == "report" && j.status == "queued") j.status = "skipped";
+            }
             LocalJob(jobs_[i]);
             return; // LocalJob moves the plan on (and pumps again)
         }
         if (running >= std::max(1, host_.parallel)) break;
-        if (budget > 0 && usage_.value("calls", 0) >= budget) {
+        if (!jobs_[i].replay && budget > 0 && usage_.value("calls", 0) >= budget) {
             paused_ = true;
             status_ = "paused";
             message_ = "The plan's budget of " + std::to_string(budget) + " AI calls is used up: raise it (Plan tab) to go on.";
             Save();
             return;
         }
-        if (!Send(jobs_[i])) {
+        bool sent = false;
+        try {
+            sent = Send(jobs_[i]);
+        } catch (const std::exception& error) {
+            // Its request couldn't be put together (a document of a shape nothing expected): this
+            // step fails, with Retry; the plan goes on.
+            Finish(jobs_[i], false, std::string("its request couldn't be prepared (") + error.what() + ")");
+            continue;
+        }
+        if (!sent) {
+            if (jobs_[i].replay) continue; // waits for the AI service (Kick), quietly
             if (jobs_[i].kind == "interpret") {
                 // Without the AI the Brief comes from the request's own words.
                 for (auto& j : jobs_) {
@@ -348,6 +425,10 @@ void GamePlan::Pump() {
 bool GamePlan::Send(Job& job) {
     if (!host_.request) return false;
     json body = RequestBody(job);
+    if (job.replay && job.lastAnswer.is_object()) {
+        body["replay"] = job.lastAnswer;
+        job.attempts = std::max(job.attempts, 1); // so it's handled as a last try: what fits is kept
+    }
     if (!job.problems.empty()) body["problems"] = job.problems;
     // A retry with the answer it fixes: the AI changes only what the problems name (quick, no
     // thinking pass), instead of writing the whole thing again.
@@ -364,7 +445,7 @@ bool GamePlan::Send(Job& job) {
     pending_[id] = job.id;
     job.status = "running";
     ++job.attempts;
-    usage_["calls"] = usage_.value("calls", 0) + 1;
+    if (!body.contains("replay")) usage_["calls"] = usage_.value("calls", 0) + 1; // a replay calls no model
     return true;
 }
 
@@ -375,6 +456,11 @@ void GamePlan::OnResponse(int requestId, const json& body) {
     pending_.erase(it);
     Job* job = FindJob(jobId);
     if (!job) return;
+    if (job->status != "running") return; // cancelled meanwhile (Stop fix): its answer is ignored
+    if (job->replay) {
+        job->replay = false;
+        job->replayed = true;
+    }
     if (body.contains("usage") && body["usage"].is_object()) {
         for (const char* k : {"input_tokens", "inputTokens"}) usage_["inputTokens"] = usage_.value("inputTokens", 0) + body["usage"].value(k, 0);
         for (const char* k : {"output_tokens", "outputTokens"}) usage_["outputTokens"] = usage_.value("outputTokens", 0) + body["usage"].value(k, 0);
@@ -430,12 +516,30 @@ void GamePlan::Retry(Job& job, const std::vector<std::string>& problems) {
 }
 
 void GamePlan::Finish(Job& job, bool ok, const std::string& error) {
+    // The findings this job was fixing: off the list when it made its item, back to open if not.
+    if (auto report = store_.Read("report"); report && report->contains("findings") && (*report)["findings"].is_array()) {
+        bool changed = false;
+        for (auto& f : (*report)["findings"]) {
+            if (!f.is_object() || f.value("fixJob", json()) != job.id || f.value("status", json()) != "fixing") continue;
+            f["status"] = ok ? "fixed" : "open";
+            f.erase("fixJob");
+            changed = true;
+        }
+        if (changed) store_.Touch("report", *report, "");
+    }
     job.status = ok ? "done" : "failed";
     job.error = error;
     job.problems = json::array();
-    job.lastAnswer = json(); // only kept for its quick fix
-    if (!ok) Finding(StageOfJob(job.kind), job.subject, "couldn't be made: " + error, "error");
-    if (!ok && (job.kind == "outline" || job.kind == "act")) {
+    if (ok) job.lastAnswer = json(); // a failed one keeps it: Retry corrects it instead of starting over
+    // Something that couldn't be made is an error; a correction that didn't come through leaves
+    // the item as it was (its finding is open again), and isn't one.
+    const std::string madeDoc = DocOfJob(job);
+    const bool correction = job.kind == "revise" || (!madeDoc.empty() && store_.Exists(madeDoc));
+    if (!ok && !correction) Finding(StageOfJob(job.kind), job.subject, "couldn't be made: " + error, "error");
+    // An outline or an act that couldn't be made stops the plan; one that couldn't be corrected (a
+    // fix) keeps what it had, and the plan goes on.
+    const bool existed = job.kind == "outline" ? store_.Exists("outline") : store_.Exists("story/acts/" + PlanSlug(job.subject));
+    if (!ok && (job.kind == "outline" || job.kind == "act") && !existed) {
         Fail("The " + StageLabels().at(StageOfJob(job.kind)) + " stage couldn't finish (" + error + "). Regenerate it to try again.");
         return;
     }
@@ -458,9 +562,11 @@ void GamePlan::Finish(Job& job, bool ok, const std::string& error) {
 void GamePlan::Requeue(Job& job) {
     job.status = "queued";
     job.attempts = 0;
+    // Its last answer, if it had one, goes back with what was wrong with it (a quick fix, not a
+    // new start); a step that never had an answer is asked afresh.
+    job.problems = job.lastAnswer.is_object() && !job.error.empty() ? json::array({job.error}) : json::array();
+    if (!job.problems.empty() && job.lastAnswer.empty()) job.problems = json::array();
     job.error.clear();
-    job.problems = json::array();
-    job.lastAnswer = json();
     // Its findings go: it's being made again.
     const std::string stage = StageOfJob(job.kind);
     json kept = json::array();
@@ -481,6 +587,13 @@ std::string GamePlan::DocOfJob(const Job& job) const {
     if (job.kind == "scene") return "story/scenes/" + PlanSlug(job.subject);
     if (job.kind == "character") return "characters/" + PlanSlug(job.subject);
     if (job.kind == "quests") return "quests";
+    if (job.kind == "quest") {
+        for (const auto& doc : store_.List("quests")) {
+            const json q = store_.Read(doc).value_or(json::object());
+            if (q.is_object() && q.value("slot", json()) == job.subject) return doc;
+        }
+        return "quests/" + job.subject;
+    }
     if (job.kind == "place") return "places/" + PlanSlug(job.subject);
     if (job.kind == "systems") return "systems";
     if (job.kind == "visuals") return "ui";
@@ -523,6 +636,13 @@ std::string GamePlan::RetryFailed() {
             continue;
         }
         Requeue(*it);
+        // The AI's answer is in the log and hasn't been re-applied: that first (no model call).
+        if (!it->replayed) {
+            if (json answer = LoggedAnswer(it->kind, it->subject); answer.is_object()) {
+                it->replay = true;
+                it->lastAnswer = answer;
+            }
+        }
         ++n;
     }
     if (n == 0 && status_ != "failed") return "nothing failed";
@@ -536,6 +656,66 @@ std::string GamePlan::RetryFailed() {
     Save();
     Pump();
     return {};
+}
+
+std::string GamePlan::StopFixes() {
+    std::set<std::string> fixJobs;
+    auto report = store_.Read("report");
+    if (report && report->contains("findings") && (*report)["findings"].is_array()) {
+        for (auto& f : (*report)["findings"]) {
+            if (!f.is_object() || f.value("status", json()) != "fixing") continue;
+            if (f.contains("fixJob") && f["fixJob"].is_string()) fixJobs.insert(f["fixJob"].get<std::string>());
+            f["status"] = "open";
+            f.erase("fixJob");
+        }
+        store_.Touch("report", *report, "");
+    }
+    // At ⑨ every job is a fix's (or the check after them); elsewhere only those the findings name.
+    int stopped = 0;
+    for (auto& j : jobs_) {
+        if (j.status != "queued" && j.status != "running") continue;
+        if (stage_ != "validate" && !fixJobs.contains(j.id) && j.kind != "report") continue;
+        j.status = "skipped";
+        ++stopped;
+    }
+    for (auto it = pending_.begin(); it != pending_.end();) {
+        const Job* j = FindJob(it->second);
+        it = j && j->status == "skipped" ? pending_.erase(it) : std::next(it);
+    }
+    resume_ = json();
+    if (stage_ == "validate") {
+        status_ = "waiting";
+        message_ = "Fixing stopped: what wasn't fixed is open again.";
+    }
+    Save();
+    return stopped == 0 && fixJobs.empty() ? "no fix is running" : std::string();
+}
+
+int GamePlan::Busy() const {
+    if (paused_ || status_ != "working") return 0;
+    return static_cast<int>(std::count_if(jobs_.begin(), jobs_.end(), [](const Job& j) { return j.status == "queued" || j.status == "running"; }));
+}
+
+void GamePlan::PauseForClose() {
+    if (Busy() == 0) return;
+    for (auto& j : jobs_) {
+        if (j.status == "running") j.status = "queued"; // its answer won't come now: asked again next time
+    }
+    pending_.clear();
+    paused_ = true;
+    pausedForClose_ = true;
+    status_ = "paused";
+    message_ = "Paused when the editor closed: it carries on when the project is opened again.";
+    Save();
+}
+
+void GamePlan::Kick() {
+    if (status_ == "failed" && message_.rfind("The AI isn't available", 0) == 0) {
+        status_ = "working";
+        message_ = "The AI is back: carrying on…";
+        Save();
+    }
+    Pump();
 }
 
 void GamePlan::Fail(const std::string& message) {
@@ -606,7 +786,17 @@ void GamePlan::BeginStage(const std::string& stage) {
             if (!store_.Locked("characters/" + PlanSlug(id))) AddJob("character", id);
         }
     } else if (stage == "quests") {
-        AddJob("quests", "quests");
+        // One call per quest (the main quest, then each side quest): a small answer each, and a
+        // fix or retry touches only that quest.
+        if (!store_.Locked("quests/q-main")) AddJob("quest", "q-main");
+        const json side = BriefGet(Brief(), "scope.sideQuests");
+        int sides = 3;
+        if (side.is_array() && side.size() == 2 && side[0].is_number() && side[1].is_number())
+            sides = static_cast<int>(std::lround((side[0].get<double>() + side[1].get<double>()) / 2.0));
+        else if (side.is_number()) sides = side.get<int>();
+        const GenreProfile* profile = PlannerData::Engine().Profile(Brief().value("genre", json("")).is_string() ? Brief().value("genre", "") : "");
+        if (profile && profile->stages.is_object() && profile->stages.value("quests", json("full")) == "main-only") sides = 0;
+        for (int i = 1; i <= std::clamp(sides, 0, 12); ++i) AddJob("quest", "q-side-" + std::to_string(i));
     } else if (stage == "places") {
         for (const auto* n : graph.OfClass("Location", gso_)) {
             if (!store_.Locked("places/" + PlanSlug(n->id))) AddJob("place", n->id);
@@ -616,6 +806,9 @@ void GamePlan::BeginStage(const std::string& stage) {
     } else if (stage == "visuals") {
         AddJob("visuals", "ui");
     } else if (stage == "validate") {
+        autoFixed_ = false;
+        fixRounds_ = 0;
+        fixScope_ = "errors";
         const std::string review = AddJob("review", "review");
         AddJob("report", "report", {review});
     }
@@ -633,6 +826,9 @@ std::string GamePlan::Approve() {
     if (stage_ == "concept") return Confirm();
     if (stage_ == "validate") {
         status_ = "working";
+        autoFixed_ = false;
+        fixRounds_ = 0;
+        fixScope_ = "errors";
         AddJob("report", "report");
         Pump();
         return {};
@@ -733,7 +929,14 @@ void GamePlan::EditBrief(const std::string& path, const json& value) {
     d.kind = "edit";
     d.subject = "brief:" + path;
     d.chosen = value.dump();
-    store_.Touch("brief", brief, store_.Decide(d));
+    if (path.rfind("plan.", 0) == 0 && brief.value("confirmed", false)) {
+        // How the plan runs (autonomy, building, art, budget), not what it designs: written in place,
+        // so nothing made from the Brief goes stale.
+        store_.Decide(d);
+        std::ofstream(store_.PathOf("brief"), std::ios::binary) << brief.dump(2) << "\n";
+    } else {
+        store_.Touch("brief", brief, store_.Decide(d));
+    }
     Save();
 }
 
@@ -857,7 +1060,12 @@ std::string GamePlan::Regenerate(const std::string& doc) {
     else if (doc.rfind("story/acts/", 0) == 0) kind = "act", subject = PlanSlug(doc);
     else if (doc.rfind("story/scenes/", 0) == 0) kind = "scene", subject = PlanSlug(doc);
     else if (doc.rfind("characters/", 0) == 0) kind = "character", subject = "character/" + PlanSlug(doc);
-    else if (doc.rfind("quests/", 0) == 0) kind = "quests", subject = "quests";
+    else if (doc.rfind("quests/", 0) == 0) {
+        // One quest: made again in its slot (the main quest, or that side quest).
+        const json q = store_.Read(doc).value_or(json::object());
+        kind = "quest", subject = q.is_object() && q.value("slot", json()).is_string() && !q["slot"].get<std::string>().empty()
+                                      ? q["slot"].get<std::string>() : PlanSlug(doc);
+    }
     else if (doc.rfind("places/", 0) == 0) kind = "place", subject = "location/" + PlanSlug(doc);
     else if (doc == "systems") kind = "systems", subject = "systems";
     else if (doc == "ui") kind = "visuals", subject = "ui";
@@ -995,6 +1203,33 @@ json GamePlan::Card() const {
             {"headline", headline}};
 }
 
+// Fields of the plan's documents, read for showing: whatever the AI left there (an object where
+// a text goes, a text where a number does) shows as best it can, never throws.
+std::string TextOf(const json& j, const char* key) {
+    if (!j.is_object()) return {};
+    const auto it = j.find(key);
+    if (it == j.end() || it->is_null()) return {};
+    if (it->is_string()) return it->get<std::string>();
+    if (it->is_number() || it->is_boolean()) return it->dump();
+    std::string out; // an object or a list: its texts, joined
+    for (const auto& v : *it) {
+        if (v.is_string() && !v.get<std::string>().empty()) out += (out.empty() ? "" : "; ") + v.get<std::string>();
+    }
+    return out.empty() ? it->dump() : out;
+}
+bool BoolOf(const json& j, const char* key) {
+    if (!j.is_object()) return false;
+    const auto it = j.find(key);
+    return it != j.end() && (it->is_boolean() ? it->get<bool>() : it->is_number() ? it->get<double>() != 0 : false);
+}
+// A document as an object: anything else (missing, null, a list) reads as empty.
+json ObjectOf(const std::optional<json>& doc) { return doc && doc->is_object() ? *doc : json::object(); }
+double NumOf(const json& j, const char* key) {
+    if (!j.is_object()) return 0.0;
+    const auto it = j.find(key);
+    return it != j.end() && it->is_number() ? it->get<double>() : 0.0;
+}
+
 json GamePlan::State() const {
     const json brief = Brief();
     const StoryGraph graph = Graph();
@@ -1068,19 +1303,20 @@ json GamePlan::State() const {
     int scenesWritten = 0, scenesTotal = 0;
     json acts = json::array();
     for (const auto& actDoc : store_.List("story/acts")) {
-        const json act = store_.Read(actDoc).value_or(json::object());
+        const json act = ObjectOf(store_.Read(actDoc));
         json chapters = json::array();
         for (const auto& ch : act.value("chapters", json::array())) {
+            if (!ch.is_object()) continue;
             json scenes = json::array();
             for (const auto& sid : ch.value("scenes", json::array())) {
                 if (!sid.is_string()) continue;
                 const std::string doc = "story/scenes/" + sid.get<std::string>();
-                const json s = store_.Read(doc).value_or(json::object());
+                const json s = ObjectOf(store_.Read(doc));
                 const json card = s.value("card", json::object());
-                const bool written = s.value("status", "") == "written";
+                const bool written = TextOf(s, "status") == "written";
                 const auto jt = sceneJobs.find(sid.get<std::string>());
                 const Job* sj = jt == sceneJobs.end() ? nullptr : jt->second;
-                const bool rewrite = s.value("criticRewrites", 0) > 0;
+                const bool rewrite = static_cast<int>(NumOf(s, "criticRewrites")) > 0;
                 std::string progress = written ? "written" : "planned";
                 if (sj && sj->status == "queued") progress = rewrite ? "rewrite-queued" : "queued";
                 else if (sj && sj->status == "running") progress = rewrite ? "rewriting" : "writing";
@@ -1089,34 +1325,34 @@ json GamePlan::State() const {
                 scenesWritten += written;
                 scenes.push_back({{"id", sid},
                                   {"doc", doc},
-                                  {"order", s.value("order", 0.0)},
-                                  {"mode", card.value("mode", "")},
-                                  {"kernel", card.value("kernel", false)},
-                                  {"branch", card.value("branch", "")},
-                                  {"location", card.value("location", "")},
-                                  {"goal", card.value("goal", "")},
-                                  {"summary", s.value("summary", "")},
+                                  {"order", NumOf(s, "order")},
+                                  {"mode", TextOf(card, "mode")},
+                                  {"kernel", BoolOf(card, "kernel")},
+                                  {"branch", TextOf(card, "branch")},
+                                  {"location", TextOf(card, "location")},
+                                  {"goal", TextOf(card, "goal")},
+                                  {"summary", TextOf(s, "summary")},
                                   {"written", written},
                                   {"progress", progress},
                                   {"job", sj ? sj->id : ""},
                                   {"error", sj && sj->status == "failed" ? sj->error : ""},
                                   {"attempt", sj ? sj->attempts : 0},
-                                  {"criticNote", s.value("criticNote", "")},
+                                  {"criticNote", TextOf(s, "criticNote")},
                                   {"stale", isStale(doc)},
-                                  {"locked", s.value("locked", false)},
+                                  {"locked", BoolOf(s, "locked")},
                                   {"issues", issuesOf(sid.get<std::string>())}, {"notes", notesOf(sid.get<std::string>())}});
             }
-            chapters.push_back({{"id", ch.value("id", "")}, {"question", ch.value("question", "")}, {"summary", ch.value("summary", "")},
+            chapters.push_back({{"id", TextOf(ch, "id")}, {"question", TextOf(ch, "question")}, {"summary", TextOf(ch, "summary")},
                                 {"scenes", scenes}});
         }
-        acts.push_back({{"id", PlanSlug(actDoc)}, {"doc", actDoc}, {"summary", act.value("summary", "")}, {"chapters", chapters},
-                        {"stale", isStale(actDoc)}, {"locked", act.value("locked", false)}});
+        acts.push_back({{"id", PlanSlug(actDoc)}, {"doc", actDoc}, {"summary", TextOf(act, "summary")}, {"chapters", chapters},
+                        {"stale", isStale(actDoc)}, {"locked", BoolOf(act, "locked")}});
     }
     // ④ ⑤ ⑥ rows.
     json characters = json::array();
     for (const auto* n : graph.OfClass("Character", gso_)) {
         const std::string doc = "characters/" + PlanSlug(n->id);
-        const json c = store_.Read(doc).value_or(json::object());
+        const json c = ObjectOf(store_.Read(doc));
         characters.push_back({{"id", n->id},
                               {"doc", doc},
                               {"name", n->Text("name").empty() ? n->id : n->Text("name")},
@@ -1124,23 +1360,23 @@ json GamePlan::State() const {
                               {"player", n->cls == "PlayerCharacter"},
                               {"line", n->Text("summary")},
                               {"detailed", store_.Exists(doc)},
-                              {"roles", c.value("gameplay", json::object()).value("roles", json::array())},
+                              {"roles", c.contains("gameplay") && c["gameplay"].is_object() ? c["gameplay"].value("roles", json::array()) : json::array()},
                               {"stale", isStale(doc)},
-                              {"locked", c.value("locked", false)},
+                              {"locked", BoolOf(c, "locked")},
                               {"issues", issuesOf(n->id)}, {"notes", notesOf(n->id)}});
     }
     json quests = json::array();
     for (const auto& doc : store_.List("quests")) {
-        const json q = store_.Read(doc).value_or(json::object());
-        quests.push_back({{"id", q.value("id", PlanSlug(doc))}, {"doc", doc}, {"name", q.value("name", "")}, {"type", q.value("type", "")},
-                          {"stages", q.value("stages", json::array()).size()}, {"motivation", q.value("motivation", "")},
-                          {"strategy", q.value("strategy", "")}, {"stale", isStale(doc)}, {"locked", q.value("locked", false)},
-                          {"issues", issuesOf(q.value("id", PlanSlug(doc)))}, {"notes", notesOf(q.value("id", PlanSlug(doc)))}});
+        const json q = ObjectOf(store_.Read(doc));
+        quests.push_back({{"id", (TextOf(q, "id").empty() ? PlanSlug(doc) : TextOf(q, "id"))}, {"doc", doc}, {"name", TextOf(q, "name")}, {"type", TextOf(q, "type")},
+                          {"stages", q.value("stages", json::array()).size()}, {"motivation", TextOf(q, "motivation")},
+                          {"strategy", TextOf(q, "strategy")}, {"stale", isStale(doc)}, {"locked", BoolOf(q, "locked")},
+                          {"issues", issuesOf((TextOf(q, "id").empty() ? PlanSlug(doc) : TextOf(q, "id")))}, {"notes", notesOf((TextOf(q, "id").empty() ? PlanSlug(doc) : TextOf(q, "id")))}});
     }
     json places = json::array();
     for (const auto* n : graph.OfClass("Location", gso_)) {
         const std::string doc = "places/" + PlanSlug(n->id);
-        const json p = store_.Read(doc).value_or(json::object());
+        const json p = ObjectOf(store_.Read(doc));
         json problems = json::array();
         if (host_.places && !p.empty()) {
             for (const auto& t : ProblemTexts(ValidatePlaceDesc(p, host_.places()))) problems.push_back(t);
@@ -1150,13 +1386,43 @@ json GamePlan::State() const {
                           {"name", n->Text("name").empty() ? n->id : n->Text("name")},
                           {"kind", n->Text("buildType")},
                           {"described", store_.Exists(doc)},
-                          {"purpose", p.value("description", json::object()).value("purpose", "")},
+                          {"purpose", TextOf(p.value("description", json::object()), "purpose")},
                           {"problems", problems},
                           {"stale", isStale(doc)},
-                          {"locked", p.value("locked", false)},
+                          {"locked", BoolOf(p, "locked")},
                           {"issues", issuesOf(n->id)}, {"notes", notesOf(n->id)}});
     }
     int queued = 0, running = 0, failed = 0, done = 0;
+    // The report with each open finding's remedy (worked out now: a report made before remedies
+    // existed gets Fix buttons too).
+    json reportShown = store_.Read("report").value_or(json());
+    if (reportShown.is_object() && reportShown.contains("findings") && reportShown["findings"].is_array()) {
+        // The step each finding comes from, by its rule (a failed step's: from the stage that had it).
+        auto stepOf = [&](const json& f) -> std::string {
+            const std::string rule = TextOf(f, "rule");
+            std::string stage;
+            if (rule.rfind("R-S", 0) == 0 || rule.rfind("R-C", 0) == 0 || rule.rfind("R-T", 0) == 0) stage = "story";
+            else if (rule.rfind("R-K", 0) == 0 || rule == "X-character") stage = "characters";
+            else if (rule.rfind("R-Q", 0) == 0) stage = "quests";
+            else if (rule.rfind("R-P", 0) == 0 || rule == "X-place" || rule == "X-anchor") stage = "places";
+            else if (rule == "X-item" || rule == "X-system") stage = "systems";
+            else if (rule == "X-screen") stage = "visuals";
+            else if (rule == "critic") stage = "validate";
+            else if (rule == "stage") {
+                for (const auto& s : findings_) {
+                    if (TextOf(s, "subject") == TextOf(f, "subject") && TextOf(s, "message") == TextOf(f, "message")) stage = TextOf(s, "stage");
+                }
+            }
+            if (stage == "validate") return "⑨ Review";
+            return StageLabels().count(stage) ? StageLabels().at(stage) : std::string();
+        };
+        for (auto& f : reportShown["findings"]) {
+            f["step"] = stepOf(f);
+            f.erase("remedy"); // the current one, not one an older report stored
+            if (TextOf(f, "status") != "open") continue;
+            if (const json remedy = RemedyOf(f); remedy.is_object()) f["remedy"] = remedy;
+        }
+    }
     json failedJobs = json::array(); // each failed step: what, why, Retry
     for (const auto& j : jobs_) {
         if (j.status != "failed") continue;
@@ -1187,11 +1453,18 @@ json GamePlan::State() const {
             {"places", places},
             {"systems", store_.Read("systems").value_or(json())},
             {"ui", store_.Read("ui").value_or(json())},
-            {"report", store_.Read("report").value_or(json())},
+            {"report", reportShown},
             {"findings", findings_},
             {"stale", stale},
             {"jobs", {{"queued", queued}, {"running", running}, {"failed", failed}, {"done", done}}},
             {"failedJobs", failedJobs},
+            {"runningJobs", [&] {
+                 json ids = json::array(); // what's being worked on now (⑨ shows which finding's fix)
+                 for (const auto& j : jobs_) {
+                     if (j.status == "running") ids.push_back(j.id);
+                 }
+                 return ids;
+             }()},
             {"storyProgress", {{"written", scenesWritten}, {"total", scenesTotal}}},
             {"usage", usage_},
             {"decisions", store_.Decisions().size()},

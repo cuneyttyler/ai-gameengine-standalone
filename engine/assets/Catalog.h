@@ -77,6 +77,7 @@ struct CatalogEntry {
     // Provenance.
     std::string source = "project"; // project, library, web, generated
     std::string licence, author, url;
+    bool own = false; // the user's own art (from their library: made by them or the Art tool): no licence needed
 
     // What the review should look at.
     std::vector<std::string> problems;

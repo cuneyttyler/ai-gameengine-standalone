@@ -57,7 +57,7 @@ std::string Describe(const std::vector<PlaceProblem>& problems) {
 TEST(BriefTest, InterpretContextDescribesWhatCanBeBuilt) {
     const json context = InterpretContext(Library());
     // The settlement, and the other build types (7.10): region, castle, interior, courtyard, dungeon, farmland, wilderness, camp.
-    ASSERT_EQ(context["buildTypes"].size(), 9u);
+    ASSERT_EQ(context["buildTypes"].size(), 10u); // and the modern city
     json settlement;
     for (const auto& b : context["buildTypes"]) {
         if (b["id"] == "settlement") settlement = b;

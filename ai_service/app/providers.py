@@ -49,12 +49,13 @@ class MistralProvider:
         self.reasoning = "magistral" in model
 
     # What a call may write at most: a model that runs on (repeating itself) is cut off
-    # instead of taking minutes. The answers are JSON a few thousand tokens long at most.
-    MAX_ANSWER_TOKENS = 6000
+    # instead of taking minutes. Most answers are a few thousand tokens; ⑦ Systems (every record)
+    # runs longer, and one cut off is closed at its last complete item (places._repair).
+    MAX_ANSWER_TOKENS = 12000
     MAX_THINKING_TOKENS = 3000
 
-    def complete(self, messages: list[dict]) -> Completion:
-        return self._call(messages, json_mode=True, max_tokens=self.MAX_ANSWER_TOKENS)
+    def complete(self, messages: list[dict], max_tokens: int | None = None) -> Completion:
+        return self._call(messages, json_mode=True, max_tokens=max_tokens or self.MAX_ANSWER_TOKENS)
 
     def complete_text(self, messages: list[dict]) -> Completion:
         """Free text: the thinking pass of a two-pass call."""
@@ -63,7 +64,7 @@ class MistralProvider:
     # Mistral at capacity ("Service unavailable", 503; too many requests, 429): wait and ask
     # again, then ask a less loaded model, before saying there's no answer (2026-10-21).
     BACKOFF_S = (2.0, 5.0, 10.0)
-    FALLBACK_MODELS = {"mistral-large-latest": "mistral-medium-latest", "magistral-medium-latest": "mistral-medium-latest"}
+    FALLBACK_MODELS = {"mistral-large-4": "mistral-medium-latest", "mistral-large-latest": "mistral-medium-latest", "magistral-medium-latest": "mistral-medium-latest"}
 
     @staticmethod
     def _busy(error: Exception) -> bool:

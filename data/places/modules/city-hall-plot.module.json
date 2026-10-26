@@ -1,0 +1,136 @@
+{
+  "schema": "aige.module/1",
+  "id": "city-hall-plot",
+  "name": "City hall plot",
+  "level": "parcel",
+  "description": "City hall on its square, with a flagpole and a fountain.",
+  "buildTypes": [
+    "modern-city"
+  ],
+  "classes": [
+    "PublicService"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          10,
+          14
+        ],
+        "h": [
+          10,
+          14
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    },
+    "setback": {
+      "type": "length",
+      "default": [
+        1,
+        2
+      ],
+      "min": 0,
+      "unit": "cells",
+      "max": 8
+    }
+  },
+  "quality": {
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "lived-in"
+    }
+  },
+  "slots": {
+    "city-hall": {
+      "role": "city-hall",
+      "essential": true,
+      "primary": true
+    },
+    "street-light": {
+      "role": "street-light",
+      "essential": false
+    },
+    "trash-bin": {
+      "role": "trash-bin",
+      "essential": false
+    },
+    "flagpole": {
+      "role": "flagpole",
+      "essential": false
+    },
+    "fountain": {
+      "role": "fountain",
+      "essential": false
+    },
+    "park-bench": {
+      "role": "park-bench",
+      "essential": false
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "faces",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 3.0
+    },
+    {
+      "type": "adjacent",
+      "members": [
+        "self",
+        "parent.street"
+      ],
+      "weight": 2.0
+    }
+  ],
+  "compile": {
+    "contents": [
+      {
+        "slot": "street-light",
+        "count": [
+          1,
+          2
+        ],
+        "where": "border"
+      },
+      {
+        "slot": "flagpole",
+        "count": [
+          1,
+          2
+        ],
+        "near": "primary"
+      },
+      {
+        "slot": "fountain",
+        "count": [
+          0,
+          1
+        ]
+      },
+      {
+        "slot": "park-bench",
+        "count": [
+          1,
+          3
+        ],
+        "where": "border"
+      }
+    ],
+    "surface": "plaza"
+  }
+}

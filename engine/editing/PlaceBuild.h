@@ -116,6 +116,12 @@ public:
     void Edit(const std::string& path, const nlohmann::json& value);
     // Moves to "request" or "assets". Returns why not (errors to fix), or "".
     std::string Step(const std::string& step);
+    const nlohmann::json& Story() const { return story_; }
+    bool FromPlanner() const { return fromPlanner_; }
+    // What the story needs of this place (from the AI Planner: the synopsis, the scenes set here,
+    // who is here, what the quests need in it): given to every AI request, so the place is
+    // designed for its story. Kept with the build.
+    void SetStory(nlohmann::json story);
     // The Assets step's Build: saves the Brief and starts planning. Returns why not, or "".
     std::string Confirm();
     // ③ Plan's Approve: compiles and solves the plan, then has the AI review
@@ -125,6 +131,12 @@ public:
     std::string Revise(const std::string& request);
     // The AI looks at the laid-out map and fixes what looks wrong.
     std::string Review();
+    // ② The layout looked at by the vision model before the plan is made (docs/build-fixes.md): its
+    // zones named and judged in the whole and against each other; what it finds wrong goes back as a
+    // revision, and the layout is looked at again (two revisions at most). "" when asked.
+    std::string CheckLayout();
+    bool LayoutChecked() const { return layoutChecked_; }
+    const nlohmann::json& LayoutCheck() const { return layoutCheck_; }
     // Back to the plan before the last revision.
     std::string Undo();
     std::string Redo(); // the last action undone, again (8.2)
@@ -188,6 +200,31 @@ public:
     std::string StartBuilding();
     // The editor's scene build is done: {assets, report, verify, repairs, after}.
     void Built(const nlohmann::json& result);
+    // ⑤ The built scene looked at by the vision model (docs/build-fixes.md), in the windows the host
+    // drew (InspectBuildRequest): every kind of thing named, its placement, fit and quality judged.
+    // Art it finds doesn't fit or looks wrong is refused for its need (made art is made again, its
+    // prompt rewritten with why): one more round of sourcing and building, which ArtToRedo names
+    // until the host starts it (ArtRedone). "" when asked.
+    std::string InspectBuilt(const nlohmann::json& body);
+    // The place sketched before its art is made (PlaceSketch, docs/build-fixes.md): one request per
+    // window of its block-out; each need's crop of the painting kept, the first reference its own art
+    // is drawn from. "" when asked.
+    std::string Sketch(const nlohmann::json& requests);
+    bool Sketching() const { return sketching_ > 0; }
+    bool Sketched() const { return sketched_; }
+    const std::map<std::string, std::string>& SketchCrops() const { return sketchCrops_; }
+    const nlohmann::json& Sketches() const { return sketches_; }
+    // The place painted whole (the Painted build method, PlacePaint, docs/build-fixes.md): one request
+    // per level (BackdropRequests); each answer kept with its level and area, its painting and map
+    // (Backdrops: what BuildBackdropScene builds the scene from). "" when asked.
+    std::string Paint(const nlohmann::json& requests);
+    bool Painting() const { return painting_ > 0; }
+    bool Painted() const { return painted_; }
+    const nlohmann::json& Backdrops() const { return backdrops_; }
+    bool Inspecting() const { return inspecting_; }
+    const std::vector<std::string>& ArtToRedo() const { return redo_; }
+    void ArtRedone() { redo_.clear(); }
+    const nlohmann::json& BuildCheck() const { return buildCheck_; }
     void BuildFailed(const std::string& why); // ④ Build stopped: back to ③ Assets, said why
     const nlohmann::json& Result() const { return result_; }
     // Where the site's corner is in the world (kept, so a rebuild lands on the same cells).
@@ -279,12 +316,14 @@ private:
 
     Host host_;
     std::string id_, query_, stage_, status_;
+    nlohmann::json story_; // SetStory
+    bool fromPlanner_ = false; // started by the AI Planner's game build (its art strategy is the Brief's)
     int round_ = 1;
     std::vector<nlohmann::json> drafts_;
     std::vector<std::vector<PlaceProblem>> draftProblems_;
     std::map<int, Pending> pending_;
     nlohmann::json context_;
-    nlohmann::json brief_;
+    nlohmann::json brief_ = nlohmann::json::object();
     BriefMerge merge_;
     std::vector<std::string> errors_;
     std::vector<std::string> notices_;
@@ -298,6 +337,28 @@ private:
     std::vector<PlaceProblem> tidied_;       // what was fixed without the AI (warnings)
     int zonesTotal_ = 0, zonesDone_ = 0;
     nlohmann::json revisions_ = nlohmann::json::array();
+    int sketching_ = 0;
+    bool sketched_ = false;
+    std::map<std::string, std::string> sketchCrops_; // need key -> its crop of the sketch
+    std::map<std::string, std::string> sketchSeen_;  // need key -> how it looks in the sketch (the vision model's words)
+    nlohmann::json sketches_ = nlohmann::json::array(); // each window's painting and prompt
+    int painting_ = 0;
+    bool painted_ = false;
+    nlohmann::json paintRequests_ = nlohmann::json::array();
+    nlohmann::json backdrops_ = nlohmann::json::array(); // [{level, area, backdrop, size, prompt, map}]
+    bool inspecting_ = false;
+    int buildRounds_ = 0;
+    nlohmann::json buildCheck_;            // the last check of the built scene
+    std::vector<std::string> redo_;        // needs whose art the check refused, for the next round
+    std::map<std::string, std::string> redoReasons_; // why, for the next prompt
+    std::map<std::string, std::string> redoneFrom_;  // the art each redone need had before (put back if the redo is worse)
+    double firstBuildWorth_ = 0;                    // the first check's worth, to judge the redo by
+    bool layoutChecked_ = false;
+    int layoutRounds_ = 0;
+    bool layoutCheckRevising_ = false; // the layout check's revision: zones may move, even at ③ Plan
+    nlohmann::json layoutCheck_; // the last check of the layout (/places/inspect)
+    double bestLayoutWorth_ = -1e9; // the best layout checked (its scores' mean, less a point an error)
+    nlohmann::json bestLayout_, bestLayoutCheck_;
     std::string beforeRevision_; // the stage a revision returns to
     bool solveAfter_ = false;    // a revision of a laid-out plan: solve again once planned
     // The next layout keeps these zones' seeds (a revision moves only what it's about).
@@ -310,6 +371,7 @@ private:
         nlohmann::json need;      // the pending need
         int attempts = 0;
         std::string reasons;      // why the last try didn't pass
+        std::string lastPrompt;   // the prompt the last try was drawn from (rewritten with the reasons)
         bool done = false;
         bool passed = false;
         nlohmann::json made = nlohmann::json::array(); // what came, try by try: {path, attempt, seen?, ok?}
@@ -328,6 +390,13 @@ private:
     nlohmann::json newAssets_ = nlohmann::json::array();
     bool sourcingDone_ = false;
     bool SendArt(const std::string& key);
+    void HandleResponse(int requestId, const nlohmann::json& body);
+    // What a need is designed against (its role's look "dependsOn": a door's wall), and that art.
+    std::vector<std::string> DependsOn(const nlohmann::json& need) const;
+    nlohmann::json GoesWith(const nlohmann::json& need) const;
+    void SendWaiting();
+    std::set<std::string> waitingOn_; // made after the pieces they're designed against
+    nlohmann::json WantedFor(const Sourcing& s) const;
     void SourcingStep(const Pending& what, const nlohmann::json& body);
     void FinishSourcing();
     std::set<std::string> changed_; // parts laid out again by the last edit

@@ -97,5 +97,74 @@
   "Fortification": {
     "label": "Fortification",
     "description": "Walls, towers and gates that defend a place."
+  },
+  "District": {
+    "subClassOf": [
+      "Ward"
+    ],
+    "label": "District",
+    "description": "A zone of a modern city with its own use: a downtown, a suburb, an industrial estate."
+  },
+  "Office": {
+    "subClassOf": [
+      "Workplace"
+    ],
+    "label": "Office",
+    "description": "A parcel of offices: a tower, an office building."
+  },
+  "Commercial": {
+    "subClassOf": [
+      "Workplace"
+    ],
+    "label": "Commercial",
+    "description": "A parcel that sells: shops, a mall, restaurants, a hotel, a gas station."
+  },
+  "Industrial": {
+    "subClassOf": [
+      "Workplace"
+    ],
+    "label": "Industrial",
+    "description": "A parcel that makes or stores goods: a factory, a logistics warehouse."
+  },
+  "MixedUse": {
+    "subClassOf": [
+      "Dwelling",
+      "Workplace"
+    ],
+    "label": "Mixed use",
+    "description": "Homes over shops or offices."
+  },
+  "PublicService": {
+    "subClassOf": [
+      "Civic"
+    ],
+    "label": "Public service",
+    "description": "A school, hospital, police or fire station, city hall."
+  },
+  "Infrastructure": {
+    "label": "Infrastructure",
+    "description": "What a place runs on: roads, parking, transit, utilities."
+  },
+  "Parking": {
+    "subClassOf": [
+      "Infrastructure"
+    ],
+    "label": "Parking",
+    "description": "Where vehicles stand: a lot, a garage."
+  },
+  "Transit": {
+    "subClassOf": [
+      "Infrastructure"
+    ],
+    "label": "Transit",
+    "description": "Where people board public transport: a station, a stop."
+  },
+  "Park": {
+    "subClassOf": [
+      "OpenSpace",
+      "PlantedArea"
+    ],
+    "label": "Park",
+    "description": "A public green: lawns, trees, paths, benches."
   }
 }

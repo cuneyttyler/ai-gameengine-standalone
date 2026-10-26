@@ -15,6 +15,7 @@ request, so that where they disagree is where the request is open."""
 from __future__ import annotations
 
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
@@ -103,17 +104,80 @@ def resolve_mode(provider: Provider, mode: str) -> str:
     return mode
 
 
+def _closers(text: str) -> str | None:
+    """What closes the open strings, objects and lists at the end of `text` (None if it closes
+    more than it opens)."""
+    stack: list[str] = []
+    in_string = escaped = False
+    for ch in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+        elif ch == '"':
+            in_string = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]":
+            if not stack:
+                return None
+            stack.pop()
+    return ('"' if in_string else "") + "".join(reversed(stack))
+
+
+def _repair(text: str) -> dict | None:
+    """A model's JSON put right: prose or a fence round it, trailing commas, and an answer cut
+    off by its token limit (closed at its last complete item)."""
+    start = text.find("{")
+    if start < 0:
+        return None
+    body = re.sub(r",\s*([}\]])", r"\1", text[start:].strip().removesuffix("```").strip())
+    end = body.rfind("}")
+    for candidate in ([body[:end + 1]] if end > 0 else []) + [body]:
+        try:
+            value = json.loads(candidate)
+            return value if isinstance(value, dict) else None
+        except json.JSONDecodeError:
+            pass
+    # Cut off: back to where the last complete object or list ended (the half-written item after
+    # it goes), then close what's still open.
+    ends: list[int] = []
+    in_string = escaped = False
+    for i, ch in enumerate(body):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+        elif ch == '"':
+            in_string = True
+        elif ch in "}]":
+            ends.append(i)
+    for end in reversed(ends[-400:]):
+        cut = body[:end + 1]
+        closing = _closers(cut)
+        if closing is None:
+            continue
+        try:
+            value = json.loads(re.sub(r",\s*([}\]])", r"\1", cut + closing))
+            if isinstance(value, dict):
+                return value
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
 def _parse(text: str) -> tuple[dict | None, str]:
     try:
         value = json.loads(text)
     except json.JSONDecodeError:
-        # Some models wrap JSON in prose or a fence: take the outermost object.
-        start, end = text.find("{"), text.rfind("}")
-        if start < 0 or end <= start:
-            return None, "the answer wasn't JSON"
-        try:
-            value = json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
+        value = _repair(text)
+        if value is None:
             return None, "the answer wasn't JSON"
     return (value, "") if isinstance(value, dict) else (None, "the answer wasn't a JSON object")
 
@@ -197,6 +261,17 @@ def _clean_draft(answer: dict, build_types: list[str]) -> tuple[dict | None, lis
             "rationale": " ".join(str(answer.get("rationale", "")).split())[:400]}, []
 
 
+def story_part(context: dict) -> str:
+    """The story this place serves (from the AI Planner), as its own part of a prompt: the place is
+    designed for what happens there."""
+    story = context.get("story") if isinstance(context, dict) else None
+    if not isinstance(story, dict) or not story:
+        return ""
+    return ("THE STORY SET HERE — design the place to serve it: give the scenes set here the spaces they need "
+            "(their \"needs\" especially), room for the characters who are here, and the spots the quests need "
+            f"(questNeeds); let its purpose and mood shape it:\n{json.dumps(story, ensure_ascii=False)}\n\n")
+
+
 def interpret_inputs(query: str, context: dict, reading: str, choices: dict | None = None) -> str:
     chosen = ""
     if choices:
@@ -204,7 +279,7 @@ def interpret_inputs(query: str, context: dict, reading: str, choices: dict | No
                   "decided: keep each exactly as given in your Brief, read the words for everything else, and "
                   "where the words seem to contradict a choice, the choice wins (say so in assumptions):\n"
                   f"{json.dumps(choices, ensure_ascii=False)}\n\n")
-    return (f"The request: {query.strip() or '(no words: build from the choices)'}\n\n{chosen}Reading: {reading}\n\n"
+    return (f"The request: {query.strip() or '(no words: build from the choices)'}\n\n{chosen}{story_part(context)}Reading: {reading}\n\n"
             f"What can be built (build types, their components with fields, scale tables, vocabularies):\n"
             f"{json.dumps(context, ensure_ascii=False)}")
 
@@ -358,7 +433,7 @@ def plan_root(provider: Provider, brief: dict, context: dict, mode: str = "auto"
                 "give each zone the relations (\"rel\") and the \"placement\" they ask for, and follow everything else "
                 f"they say:\nThe questions: {json.dumps(directions.get('questions', []), ensure_ascii=False)}\n"
                 f"The answers: {directions['answers']}\n\n")
-    inputs = (f"The Brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n" + told + sketch + shown +
+    inputs = (f"The Brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n" + story_part(context) + told + sketch + shown +
               f"The modules and rules (the ontology's relevant part):\n{json.dumps(context, ensure_ascii=False)}")
     return _plan_result(think_then_answer(provider, task, inputs, shape, mode))
 
@@ -382,7 +457,7 @@ def ask_questions(provider: Provider, query: str, brief: dict, context: dict, ch
             "outside the walls). Never ask what the Brief or the user's choices already decide. Each question gives "
             "a suggestion the user can accept.")
     chosen = f"What the user chose in the form:\n{json.dumps(choices, ensure_ascii=False)}\n\n" if choices else ""
-    inputs = (f"The request: {query.strip()}\n\n" + chosen + f"The Brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n"
+    inputs = (f"The request: {query.strip()}\n\n" + chosen + story_part(context) + f"The Brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n"
               f"What the place can have (zones, networks):\n{json.dumps(context, ensure_ascii=False)}")
     step = think_then_answer(provider, task, inputs, QUESTIONS_SHAPE, think=False)
     out = {"ok": False, "errors": list(step.errors), "usage": step.usage.model_dump()}
@@ -404,7 +479,7 @@ def plan_zone(provider: Provider, brief: dict, zone: dict, siblings: list[dict],
         kinds = ("The user set how many of these the zone holds; plan exactly that many of each (the repeats of "
                  "that module add up to it), and fill the rest of its count with other kinds as fits:\n"
                  f"{json.dumps(zone['kinds'], ensure_ascii=False)}\n\n")
-    inputs = (f"The Brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n"
+    inputs = (f"The Brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n" + story_part(context) +
               f"The zone:\n{json.dumps(zone, ensure_ascii=False)}\n\n" + kinds +
               f"The other zones (for balance):\n{json.dumps(siblings, ensure_ascii=False)}\n\n"
               f"What this zone may contain (the ontology's relevant part):\n{json.dumps(context, ensure_ascii=False)}")
@@ -593,10 +668,18 @@ def review_layout(provider: Provider, image: dict, brief: dict, plan: dict, resu
                   context: dict, kind: str = "map") -> dict:
     """The AI looks at the solved map (7.6) or at the built scene (7.7, kind "scene") and proposes changes."""
     task = SCENE_TASK if kind == "scene" else (
-            "You check a game place's layout, drawn as a map with a legend, against its Brief and its plan. Look "
-            "for what a player would notice: a zone without buildings, a ward whose main building is missing (a "
-            "temple ward without its temple), empty stretches, things in odd places, a part the Brief asked for "
-            "that isn't there. The checks below say what the layout placed against what was planned. Propose "
+            "You are the lead level designer of a studio that makes hand-crafted games. You check a game place's "
+            "plan, drawn as a map: every kind of thing has its own colour and code, listed in the legend "
+            "(context.map.legend; context.map.items says how many of each there are and in which zones and "
+            "rooms). Work in this order. 1) Identify each kind of thing on the map by its code. 2) For each kind, "
+            "judge its placement on its own (a bed or a shelf against a wall, a door in a wall, a torch on a wall, "
+            "an altar at the end of a shrine, a well in a square, a stall on a street) and against the things "
+            "around it (chairs around tables, crates and barrels together by a storeroom, graves in rows, nothing "
+            "blocking a door or a path). 3) Judge the whole against the place's look (context.look: the games it "
+            "should look like and what it needs) and its story (context.story): a zone without its main building, "
+            "a unique thing repeated, the same prop scattered everywhere, empty stretches, a part the Brief asked "
+            "for that isn't there, rooms or zones nobody can reach. Put what you found in your thinking and "
+            "issues, kind by kind. The checks below say what the layout placed against what was planned. Propose "
             "only changes the rules allow, and only for real problems; when it looks right, say so and change "
             "nothing.")
     inputs = (f"The Brief:\n{json.dumps(brief, ensure_ascii=False)}\n\n"

@@ -1,0 +1,112 @@
+{
+  "schema": "aige.module/1",
+  "id": "office-plot",
+  "name": "Office building plot",
+  "level": "parcel",
+  "description": "A mid-rise office building with a small car park.",
+  "buildTypes": [
+    "modern-city"
+  ],
+  "classes": [
+    "Office"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          5,
+          8
+        ],
+        "h": [
+          5,
+          8
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    },
+    "setback": {
+      "type": "length",
+      "default": [
+        1,
+        2
+      ],
+      "min": 0,
+      "unit": "cells",
+      "max": 8
+    }
+  },
+  "quality": {
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "lived-in"
+    }
+  },
+  "slots": {
+    "office-building": {
+      "role": "office-building",
+      "essential": true,
+      "primary": true
+    },
+    "street-light": {
+      "role": "street-light",
+      "essential": false
+    },
+    "trash-bin": {
+      "role": "trash-bin",
+      "essential": false
+    },
+    "car": {
+      "role": "car",
+      "essential": false
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "faces",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 3.0
+    },
+    {
+      "type": "adjacent",
+      "members": [
+        "self",
+        "parent.street"
+      ],
+      "weight": 2.0
+    }
+  ],
+  "compile": {
+    "contents": [
+      {
+        "slot": "street-light",
+        "count": [
+          1,
+          2
+        ],
+        "where": "border"
+      },
+      {
+        "slot": "car",
+        "count": [
+          0,
+          3
+        ]
+      }
+    ],
+    "surface": "concrete"
+  }
+}

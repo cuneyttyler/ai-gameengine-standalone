@@ -4274,6 +4274,21 @@
       "name": "Grid"
     },
     {
+      "description": "How the AI builds places: chosen when the project is made, fixed once places are built.",
+      "fields": [
+        {
+          "description": "Assembled (each piece's art drawn from a concept painting, put together on the grid: every piece editable) or Painted (the whole place painted as one picture, a backdrop: walls, doors and anchors read from it).",
+          "name": "method",
+          "options": [
+            "Assembled",
+            "Painted"
+          ],
+          "type": "enum"
+        }
+      ],
+      "name": "Places"
+    },
+    {
       "description": "The game as a whole.",
       "fields": [
         {

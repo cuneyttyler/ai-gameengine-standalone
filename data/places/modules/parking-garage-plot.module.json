@@ -1,0 +1,98 @@
+{
+  "schema": "aige.module/1",
+  "id": "parking-garage-plot",
+  "name": "Parking garage plot",
+  "level": "parcel",
+  "description": "A multi-storey parking garage.",
+  "buildTypes": [
+    "modern-city"
+  ],
+  "classes": [
+    "Parking",
+    "BuildingParcel"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          8,
+          12
+        ],
+        "h": [
+          8,
+          12
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    },
+    "setback": {
+      "type": "length",
+      "default": [
+        1,
+        2
+      ],
+      "min": 0,
+      "unit": "cells",
+      "max": 8
+    }
+  },
+  "quality": {
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "lived-in"
+    }
+  },
+  "slots": {
+    "parking-garage": {
+      "role": "parking-garage",
+      "essential": true,
+      "primary": true
+    },
+    "car": {
+      "role": "car",
+      "essential": false
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "faces",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 3.0
+    },
+    {
+      "type": "adjacent",
+      "members": [
+        "self",
+        "parent.street"
+      ],
+      "weight": 2.0
+    }
+  ],
+  "compile": {
+    "contents": [
+      {
+        "slot": "car",
+        "count": [
+          0,
+          2
+        ],
+        "where": "border"
+      }
+    ],
+    "surface": "concrete"
+  }
+}

@@ -1,0 +1,145 @@
+{
+  "schema": "aige.module/1",
+  "id": "residential-district",
+  "name": "Residential district",
+  "level": "zone",
+  "description": "Apartment blocks and row houses, a corner shop, a school, small parks.",
+  "buildTypes": [
+    "modern-city"
+  ],
+  "classes": [
+    "Ward",
+    "District"
+  ],
+  "quantity": {
+    "plots": {
+      "type": "count",
+      "default": [
+        10,
+        40
+      ],
+      "min": 0,
+      "max": 2000,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        900,
+        4000
+      ],
+      "min": 100,
+      "unit": "cells²"
+    },
+    "footprint-density": {
+      "type": "ratio",
+      "default": [
+        0.35,
+        0.7
+      ],
+      "min": 0,
+      "max": 1,
+      "description": "built cells / district cells"
+    }
+  },
+  "quality": {
+    "wealth": {
+      "type": "enum",
+      "vocabulary": "wealth",
+      "default": "common",
+      "ask": true
+    },
+    "density": {
+      "type": "enum",
+      "values": [
+        "sparse",
+        "medium",
+        "dense"
+      ],
+      "default": "medium",
+      "ask": true
+    },
+    "street-style": {
+      "type": "enum",
+      "vocabulary": "layout",
+      "description": "this district's own street pattern; unset, the city's"
+    }
+  },
+  "slots": {
+    "car": {
+      "role": "car",
+      "essential": false
+    }
+  },
+  "children": {
+    "apartment-plot": {
+      "min": 0,
+      "weight": 1.0,
+      "max": 200
+    },
+    "row-house-row": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 100
+    },
+    "retail-plot": {
+      "min": 0,
+      "weight": 0.25,
+      "max": 30
+    },
+    "school-plot": {
+      "min": 0,
+      "weight": 0.15,
+      "max": 3
+    },
+    "playground": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 6
+    },
+    "park": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 4
+    },
+    "parking-lot": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 10
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "constraints": [
+    "count(children(class: BuildingParcel)) + count(children(class: OpenSpace)) >= 1"
+  ],
+  "relations": [
+    {
+      "type": "near",
+      "members": [
+        "self",
+        "parent.downtown"
+      ],
+      "weight": 1.0,
+      "args": {
+        "d0": 0,
+        "d1": 40
+      }
+    }
+  ],
+  "compile": {
+    "network": {
+      "class": "street",
+      "terrain": "asphalt",
+      "width": 4,
+      "edge": "sidewalk"
+    },
+    "traffic": {
+      "slot": "car",
+      "density": 0.06
+    }
+  }
+}

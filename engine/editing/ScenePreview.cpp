@@ -70,7 +70,7 @@ void DrawQuad(Canvas& canvas, const SpriteQuad& q, const ImageData* texture, con
 } // namespace
 
 ImageData RenderScenePreview(Registry& registry, const Project& project, const IsoParams& iso, int x0, int y0, int x1, int y1,
-                             int maxWidth) {
+                             int maxWidth, std::map<Entity, std::array<float, 4>>* boxes) {
     UpdateWorldToScreen(registry, iso);
     // The region's corners on screen, with room above for what stands up.
     float minX = 1e30f, minY = 1e30f, maxX = -1e30f, maxY = -1e30f;
@@ -81,7 +81,7 @@ ImageData RenderScenePreview(Registry& registry, const Project& project, const I
     minY -= iso.tileHeight * 6; // tall buildings at the back
     Canvas canvas;
     canvas.minX = minX, canvas.minY = minY;
-    canvas.scale = std::min(1.0f, maxWidth / std::max(1.0f, maxX - minX));
+    canvas.scale = std::min(2.0f, maxWidth / std::max(1.0f, maxX - minX)); // a close-up shows the art's own pixels (drawn at twice the cell)
     canvas.image.width = static_cast<uint32_t>(std::ceil((maxX - minX) * canvas.scale));
     canvas.image.height = static_cast<uint32_t>(std::ceil((maxY - minY) * canvas.scale));
     canvas.image.rgba.assign(static_cast<size_t>(canvas.image.width) * canvas.image.height * 4, 0);
@@ -122,7 +122,13 @@ ImageData RenderScenePreview(Registry& registry, const Project& project, const I
     for (const auto& item : items) {
         const auto& t = registry.get<ScreenTransform2D>(item.entity);
         const auto& s = registry.get<Sprite>(item.entity);
-        DrawQuad(canvas, SpriteQuadOf(t, s, !iso.topDown), texture(s.texture), s);
+        const SpriteQuad quad = SpriteQuadOf(t, s, !iso.topDown);
+        DrawQuad(canvas, quad, texture(s.texture), s);
+        if (boxes) {
+            float qx0 = 1e30f, qy0 = 1e30f, qx1 = -1e30f, qy1 = -1e30f;
+            for (int k = 0; k < 4; ++k) qx0 = std::min(qx0, quad.x[k]), qy0 = std::min(qy0, quad.y[k]), qx1 = std::max(qx1, quad.x[k]), qy1 = std::max(qy1, quad.y[k]);
+            (*boxes)[item.entity] = {(qx0 - canvas.minX) * canvas.scale, (qy0 - canvas.minY) * canvas.scale, (qx1 - qx0) * canvas.scale, (qy1 - qy0) * canvas.scale};
+        }
     }
     return canvas.image;
 }

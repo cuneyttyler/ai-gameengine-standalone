@@ -1,0 +1,54 @@
+{
+  "schema": "aige.module/1",
+  "id": "office-desk-set",
+  "name": "Office desk",
+  "level": "feature",
+  "description": "A desk with its chair and a filing cabinet.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "office-desk": {
+      "role": "office-desk",
+      "essential": true,
+      "primary": true
+    },
+    "office-chair": {
+      "role": "office-chair",
+      "essential": false
+    },
+    "filing-cabinet": {
+      "role": "filing-cabinet",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "center",
+      "members": [
+        {
+          "slot": "office-chair",
+          "count": [
+            1,
+            1
+          ],
+          "near": 1
+        },
+        {
+          "slot": "filing-cabinet",
+          "count": [
+            0,
+            1
+          ],
+          "near": 2
+        }
+      ]
+    }
+  }
+}

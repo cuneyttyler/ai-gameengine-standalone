@@ -77,6 +77,11 @@ public:
     void StartAi(const std::filesystem::path& serviceDir);
 
     void OnWebMessage(const nlohmann::json& message);
+    // The AI Planner's steps still to do (0 when it isn't working), and pausing it for closing.
+    int PlannerBusy() const; // the Planner's steps and the game build's places still to do
+    void PausePlannerForClose() {
+        if (plan_) plan_->PauseForClose();
+    }
     // A notice in the editor (the status toast).
     void Notify(const std::string& text) { post_({{"type", "notify"}, {"text", text}}); }
     void OnViewportMouse(const ViewportMouseEvent& event);
@@ -228,6 +233,20 @@ private:
         std::unique_ptr<EditCommand> command;
     };
     std::unique_ptr<BuildRun> buildRun_;
+    // A place the game build (⑩) hands to the Build panel: its scene opened, its art found, built,
+    // saved; the game build waits for "built" (or "failed: why"). Set from the game build's thread.
+    struct PlannerPlaceBuild {
+        std::string buildId, scene, status = "queued";
+    };
+    mutable std::mutex plannerBuildMutex_;
+    std::optional<PlannerPlaceBuild> plannerBuild_;
+    void StepPlannerPlaceBuild();
+    // Stop / Restart builds asked while the game build's thread works: done when it's through.
+    bool stopGameBuild_ = false, restartGameBuild_ = false;
+    void StopGameBuildNow();
+    void RestartGameBuildNow();
+    // The Brief's art strategy (plan.art) into the project's sourcing setting.
+    void ApplyArtFromBrief();
     bool HandleBuildMessage(const std::string& type, const nlohmann::json& message);
     // Editing after the build (7.8): the scene follows the parts an edit laid out again.
     void UpdateBuiltParts();
@@ -292,6 +311,8 @@ private:
     bool progressShown_ = false;
     std::chrono::steady_clock::time_point progressPolled_{};
     int artProviderRequest_ = 0;   // PUT /art-provider: what draws the art (Preferences ▸ AI ▸ Art)
+    int paintProviderRequest_ = 0; // PUT /paint-provider: who paints places from their plan (Preferences ▸ AI ▸ Paint Provider)
+    nlohmann::json paintStatus_ = nlohmann::json::object(); // its answer
     int modelsRequest_ = 0;        // GET /models: the provider's models, for Preferences
     int characterRequest_ = 0;     // Generate ▸ Character in flight
     int animationRequest_ = 0;     // Generate ▸ Animate in flight

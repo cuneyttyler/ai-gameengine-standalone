@@ -1,0 +1,148 @@
+{
+  "schema": "aige.module/1",
+  "id": "civic-district",
+  "name": "Civic district",
+  "level": "zone",
+  "description": "City hall on a plaza, police and fire stations, a hospital, a school, a park.",
+  "buildTypes": [
+    "modern-city"
+  ],
+  "classes": [
+    "Ward",
+    "District"
+  ],
+  "quantity": {
+    "plots": {
+      "type": "count",
+      "default": [
+        4,
+        12
+      ],
+      "min": 0,
+      "max": 2000,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        900,
+        4000
+      ],
+      "min": 100,
+      "unit": "cells²"
+    },
+    "footprint-density": {
+      "type": "ratio",
+      "default": [
+        0.35,
+        0.7
+      ],
+      "min": 0,
+      "max": 1,
+      "description": "built cells / district cells"
+    }
+  },
+  "quality": {
+    "wealth": {
+      "type": "enum",
+      "vocabulary": "wealth",
+      "default": "common",
+      "ask": true
+    },
+    "density": {
+      "type": "enum",
+      "values": [
+        "sparse",
+        "medium",
+        "dense"
+      ],
+      "default": "medium",
+      "ask": true
+    },
+    "street-style": {
+      "type": "enum",
+      "vocabulary": "layout",
+      "description": "this district's own street pattern; unset, the city's"
+    }
+  },
+  "slots": {
+    "car": {
+      "role": "car",
+      "essential": false
+    }
+  },
+  "children": {
+    "city-hall-plot": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    },
+    "police-station-plot": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 2
+    },
+    "fire-station-plot": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 2
+    },
+    "hospital-plot": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 1
+    },
+    "school-plot": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 2
+    },
+    "plaza": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 3
+    },
+    "park": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 2
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "constraints": [
+    "count(children(class: BuildingParcel)) + count(children(class: OpenSpace)) >= 1"
+  ],
+  "relations": [
+    {
+      "type": "near",
+      "members": [
+        "self",
+        "parent.downtown"
+      ],
+      "weight": 1.5,
+      "args": {
+        "d0": 0,
+        "d1": 25
+      }
+    }
+  ],
+  "prefersSite": {
+    "centre": 1.0
+  },
+  "compile": {
+    "network": {
+      "class": "street",
+      "terrain": "asphalt",
+      "width": 4,
+      "edge": "sidewalk"
+    },
+    "traffic": {
+      "slot": "car",
+      "density": 0.06
+    }
+  }
+}

@@ -149,8 +149,31 @@ function close(): void {
               <span v-if="editorState.ai.art" class="muted">drawing with {{ editorState.ai.art }}</span>
             </div>
             <p v-if="editorState.ai.artError" class="error">{{ editorState.ai.artError }}</p>
+            <h5>Paint Provider</h5>
+            <p class="muted">Who paints places from their plan, when a project builds them Painted (Project Settings ▸ Places).</p>
+            <div class="row">
+              <select
+                :value="editorState.ai.paintProvider"
+                :disabled="!editorState.ai.enabled"
+                @change="sendToHost({ type: 'ai:setPaintProvider', provider: ($event.target as HTMLSelectElement).value, model: editorState.ai.paintModel })"
+              >
+                <option value="bfl">Black Forest Labs (FLUX)</option>
+              </select>
+              <select
+                :value="editorState.ai.paintModel"
+                :disabled="!editorState.ai.enabled"
+                @change="sendToHost({ type: 'ai:setPaintProvider', provider: editorState.ai.paintProvider, model: ($event.target as HTMLSelectElement).value })"
+              >
+                <option value="flux-3-image">FLUX.3 Image: reads the plan best</option>
+                <option value="flux-2-klein-4b">FLUX.2 klein: the best look, cheap</option>
+                <option value="flux-2-max">FLUX.2 max: rich art, looser layout</option>
+                <option value="flux-3-to-klein">FLUX.3 → klein: FLUX.3's layout, klein's look</option>
+                <option value="flux-3-to-pro">FLUX.3 → FLUX.2 pro: FLUX.3's layout, refined by FLUX.2 pro</option>
+              </select>
+            </div>
+            <p v-if="editorState.ai.paintError" class="error">{{ editorState.ai.paintError }}</p>
             <p class="muted">
-              Keys go in ai_service/.env (MISTRAL_API_KEY, ANTHROPIC_API_KEY, PIXELLAB_API_KEY); they never leave this
+              Keys go in ai_service/.env (MISTRAL_API_KEY, ANTHROPIC_API_KEY, PIXELLAB_API_KEY, BFL_API_KEY); they never leave this
               computer except to that service. Characters and animations (Generate ▸ Character, Animate) are always PixelLab's.
             </p>
           </template>

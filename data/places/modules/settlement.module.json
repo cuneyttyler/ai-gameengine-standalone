@@ -26,6 +26,30 @@
       ],
       "min": 100,
       "unit": "cells²"
+    },
+    "block-size": {
+      "type": "size",
+      "default": {
+        "w": [
+          16,
+          20
+        ],
+        "h": [
+          16,
+          20
+        ]
+      },
+      "min": {
+        "w": 8,
+        "h": 8
+      },
+      "max": {
+        "w": 60,
+        "h": 60
+      },
+      "unit": "cells",
+      "ask": true,
+      "description": "A block of the shared street grid, street to street"
     }
   },
   "quality": {
@@ -83,6 +107,41 @@
     },
     "notes": {
       "type": "description"
+    },
+    "zone-shape": {
+      "type": "enum",
+      "vocabulary": "zone-shape",
+      "default": "grown",
+      "ask": true,
+      "description": "How the zones are shaped: grown from seeds (organic), or rectangles cut along the main roads (planned)"
+    },
+    "street-grid": {
+      "type": "enum",
+      "vocabulary": "street-grid",
+      "default": "per-zone",
+      "ask": true,
+      "description": "Each zone its own streets, or one street grid for the whole place, lined up with its main roads"
+    },
+    "block-fill": {
+      "type": "enum",
+      "vocabulary": "block-fill",
+      "default": "frontage",
+      "ask": true,
+      "description": "Lots along the streets with open land behind, or lots back to back so the blocks are built through"
+    },
+    "coverage": {
+      "type": "enum",
+      "vocabulary": "coverage",
+      "default": "partial",
+      "ask": true,
+      "description": "Open land between the zones, or zones covering the whole place"
+    },
+    "arrangement": {
+      "type": "enum",
+      "vocabulary": "arrangement",
+      "default": "natural",
+      "ask": true,
+      "description": "How the small things are set out (lamps, trees, benches, cars, bicycles, bushes): scattered as they come, or ordered: evenly spaced along edges, in lines and mirrored pairs"
     }
   },
   "slots": {},

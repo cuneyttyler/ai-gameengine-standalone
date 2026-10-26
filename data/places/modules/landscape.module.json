@@ -107,7 +107,7 @@
               40,
               180
             ],
-            "fill": 0.9,
+            "fill": 0.95,
             "prefer": "edge",
             "terrain": "forest-floor"
           }
@@ -168,6 +168,21 @@
           "slot": "mound",
           "density": 0.005,
           "spacing": 3
+        },
+        {
+          "slot": "bush",
+          "name": "woods-undergrowth",
+          "density": 0.06,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              6,
+              20
+            ],
+            "fill": 0.8,
+            "prefer": "edge",
+            "terrain": "forest-floor"
+          }
         }
       ],
       "yard": [
@@ -242,6 +257,131 @@
               8
             ],
             "fill": 0.9
+          }
+        }
+      ],
+      "street-verge": [
+        {
+          "slot": "grass",
+          "density": 0.2,
+          "radius": 1,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              3,
+              8
+            ],
+            "fill": 0.85
+          }
+        },
+        {
+          "slot": "flower",
+          "density": 0.06,
+          "radius": 1,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              2,
+              6
+            ],
+            "fill": 0.9
+          }
+        },
+        {
+          "slot": "bush",
+          "density": 0.04,
+          "radius": 1,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              2,
+              5
+            ],
+            "fill": 0.8
+          }
+        }
+      ],
+      "bank": [
+        {
+          "slot": "rock",
+          "density": 0.18,
+          "radius": 1,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              2,
+              6
+            ],
+            "fill": 0.7
+          }
+        },
+        {
+          "slot": "grass",
+          "density": 0.3,
+          "radius": 1,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              4,
+              12
+            ],
+            "fill": 0.85
+          }
+        },
+        {
+          "slot": "bush",
+          "density": 0.06,
+          "radius": 2,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              2,
+              6
+            ],
+            "fill": 0.75
+          }
+        }
+      ],
+      "urban-wild": [
+        {
+          "slot": "tree",
+          "density": 0.03,
+          "spacing": 1
+        },
+        {
+          "slot": "bush",
+          "density": 0.01,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              2,
+              6
+            ],
+            "fill": 0.7
+          }
+        }
+      ],
+      "urban-yard": [
+        {
+          "slot": "tree",
+          "density": 0.008,
+          "spacing": 2
+        }
+      ],
+      "urban-verge": [],
+      "urban-street-verge": [],
+      "urban-bank": [
+        {
+          "slot": "grass",
+          "density": 0.2,
+          "radius": 1,
+          "spacing": 0,
+          "cluster": {
+            "size": [
+              3,
+              8
+            ],
+            "fill": 0.8
           }
         }
       ]

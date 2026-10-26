@@ -69,7 +69,14 @@ async function newProject(): Promise<void> {
     confirmLabel: 'Top-down (square cells)',
     cancelLabel: 'Isometric (diamond cells)',
   })
-  sendToHost({ type: 'welcome:new', name: name.trim(), starter, topDown })
+  const painted = await confirmDialog({
+    title: 'Places',
+    message:
+      "How should the AI build your places? Assembled: every building, prop and tree is its own piece of art, put together on the grid (each piece can be moved and edited). Painted: each place is painted as one picture, like the backdrops of Baldur's Gate (richer art; walls, doors and story spots are read from the painting). This is fixed once places are built.",
+    confirmLabel: 'Painted (one picture)',
+    cancelLabel: 'Assembled (pieces)',
+  })
+  sendToHost({ type: 'welcome:new', name: name.trim(), starter, topDown, painted })
 }
 
 function forget(project: Recent): void {

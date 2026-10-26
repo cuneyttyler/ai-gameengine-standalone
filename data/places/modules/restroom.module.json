@@ -1,0 +1,66 @@
+{
+  "schema": "aige.module/1",
+  "id": "restroom",
+  "name": "Restroom",
+  "level": "parcel",
+  "description": "Toilets and sinks.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "InteriorRoom"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          3,
+          6
+        ],
+        "h": [
+          3,
+          6
+        ]
+      },
+      "min": {
+        "w": 2,
+        "h": 2
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    }
+  },
+  "quality": {
+    "surface": {
+      "type": "enum",
+      "vocabulary": "floor-surface",
+      "default": "tile-floor"
+    }
+  },
+  "slots": {
+    "floor": {
+      "role": "floor-tile",
+      "essential": true,
+      "primary": true
+    }
+  },
+  "children": {
+    "bathroom-set": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 3
+    },
+    "office-lights": {
+      "min": 0,
+      "weight": 0.9,
+      "max": 1
+    }
+  },
+  "compile": {
+    "room": true
+  }
+}

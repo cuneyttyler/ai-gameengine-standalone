@@ -1,0 +1,42 @@
+{
+  "schema": "aige.module/1",
+  "id": "checkout-set",
+  "name": "Checkout",
+  "level": "feature",
+  "description": "A checkout counter by the door.",
+  "buildTypes": [
+    "interior"
+  ],
+  "classes": [
+    "FurnitureGroup"
+  ],
+  "quantity": {},
+  "quality": {},
+  "slots": {
+    "checkout-counter": {
+      "role": "checkout-counter",
+      "essential": true,
+      "primary": true
+    },
+    "potted-plant": {
+      "role": "potted-plant",
+      "essential": false
+    }
+  },
+  "children": {},
+  "compile": {
+    "group": {
+      "position": "facing-door",
+      "members": [
+        {
+          "slot": "potted-plant",
+          "count": [
+            0,
+            1
+          ],
+          "near": 2
+        }
+      ]
+    }
+  }
+}

@@ -219,6 +219,10 @@ json CompleteGameBrief(json brief, const json& projectDefaults, std::vector<std:
         if (BriefGet(brief, path).is_null()) BriefSet(brief, path, std::string(stage) == "concept" || std::string(stage) == "outline" ? "confirm" : "review");
     }
     if (BriefGet(brief, "plan.building").is_null()) BriefSet(brief, "plan.building", "automatic");
+    // How the places' builds find their art (written to the project's sourcing when confirmed).
+    if (BriefGet(brief, "plan.art.source").is_null()) BriefSet(brief, "plan.art.source", "search");
+    if (BriefGet(brief, "plan.art.webSearch").is_null()) BriefSet(brief, "plan.art.webSearch", false);
+    if (BriefGet(brief, "plan.art.shareAlike").is_null()) BriefSet(brief, "plan.art.shareAlike", false);
     if (BriefGet(brief, "plan.building") == "ask-per-place") BriefSet(brief, "plan.building", "confirm-per-place");
     if (!brief.contains("tone")) {
         brief["tone"] = json::array({"heroic"});

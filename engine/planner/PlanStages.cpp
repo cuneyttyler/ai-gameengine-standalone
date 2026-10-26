@@ -129,6 +129,7 @@ json Vocab(const StoryOntology& gso, std::initializer_list<const char*> schemes)
 }
 
 std::string Text(const json& j, const char* key) {
+    if (!j.is_object()) return {};
     auto it = j.find(key);
     return it != j.end() && it->is_string() ? it->get<std::string>() : std::string();
 }
@@ -253,7 +254,7 @@ std::string GamePlan::PathFor(const Job& job) const {
     static const std::map<std::string, std::string> paths = {
         {"interpret", "/planner/concept"}, {"outline", "/planner/outline"}, {"act", "/planner/act"},
         {"scene", "/planner/scene"},       {"critic", "/planner/critic"},   {"character", "/planner/character"},
-        {"quests", "/planner/quests"},     {"place", "/planner/place"},     {"systems", "/planner/systems"},
+        {"quests", "/planner/quests"},     {"quest", "/planner/quests"},    {"place", "/planner/place"},     {"systems", "/planner/systems"},
         {"visuals", "/planner/visuals"},   {"review", "/planner/review"},   {"revise", "/planner/revise"}};
     auto it = paths.find(job.kind);
     return it == paths.end() ? "" : it->second;
@@ -397,7 +398,7 @@ json GamePlan::RequestBody(const Job& job) {
                 {"packageTemplates", host_.catalog.value("packageTemplates", json::array())},
                 {"vocab", Vocab(gso_, {"Trait", "Motivation", "RelationshipType", "GameplayRole"})}};
     }
-    if (job.kind == "quests") {
+    if (job.kind == "quests" || job.kind == "quest") {
         json characters = json::array();
         for (const auto* n : g.OfClass("Character", gso_)) {
             const auto where = g.Out(n->id, "locatedAt");
@@ -422,9 +423,22 @@ json GamePlan::RequestBody(const Job& job) {
         for (const auto& doc : store_.List("quests")) {
             if (store_.Locked(doc)) keep.push_back(store_.Read(doc).value_or(json::object()));
         }
-        return {{"brief", brief}, {"skeleton", store_.Read("quests/q-main").value_or(json::object())}, {"characters", characters},
-                {"places", sites}, {"scenes", scenes}, {"sideQuests", target}, {"mode", profile ? profile->stages.value("quests", "full") : "full"},
-                {"keep", keep}, {"strategies", gso_.strategies}, {"vocab", Vocab(gso_, {"ObjectiveAction", "Motivation"})}};
+        json body = {{"brief", brief}, {"skeleton", store_.Read("quests/q-main").value_or(json::object())}, {"characters", characters},
+                     {"places", sites}, {"scenes", scenes}, {"sideQuests", target},
+                     {"mode", profile && profile->stages.is_object() && profile->stages.value("quests", json("full")).is_string() ? profile->stages.value("quests", "full") : "full"},
+                     {"keep", keep}, {"strategies", gso_.strategies}, {"vocab", Vocab(gso_, {"ObjectiveAction", "Motivation"})}};
+        if (job.kind == "quest") {
+            // This call designs one quest; the others made so far, so a side quest doesn't repeat them.
+            body["only"] = job.subject;
+            json designed = json::array();
+            for (const auto& doc : store_.List("quests")) {
+                const json q = store_.Read(doc).value_or(json::object());
+                if (!q.is_object() || Text(q, "slot") == job.subject || Text(q, "kind") == "skeleton") continue;
+                designed.push_back({{"id", Text(q, "id")}, {"name", Text(q, "name")}, {"giver", q.value("giver", json())}, {"strategy", Text(q, "strategy")}});
+            }
+            body["designed"] = designed;
+        }
+        return body;
     }
     if (job.kind == "place") {
         const StoryNode* n = g.Find(job.subject);
@@ -485,7 +499,7 @@ json GamePlan::RequestBody(const Job& job) {
         for (const char* folder : {"characters", "places", "quests", "story/scenes"}) {
             for (const auto& doc : store_.List(folder)) {
                 const json d = store_.Read(doc).value_or(json::object());
-                std::string name = d.value("name", d.value("summary", ""));
+                std::string name = Text(d, "name").empty() ? Text(d, "summary") : Text(d, "name");
                 index.push_back({{"doc", doc}, {"name", name}});
                 for (auto& ch : name) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
                 const std::string slug = PlanSlug(doc);
@@ -659,7 +673,7 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
         if (HasErrors(problems)) return ProblemTexts(problems);
         return HandleCharacter(job, c, rationale.empty() ? c.value("rationale", "") : rationale);
     }
-    if (job.kind == "quests") return HandleQuests(job, body.value("quests", json::array()), rationale);
+    if (job.kind == "quests" || job.kind == "quest") return HandleQuests(job, body.value("quests", json::array()), rationale);
     if (job.kind == "place") return HandlePlace(job, body.value("place", json::object()), rationale);
     if (job.kind == "systems") return HandleSystems(job, body.value("systems", json::object()), rationale);
     if (job.kind == "visuals") return HandleVisuals(job, body.value("ui", json::object()), rationale);
@@ -678,8 +692,12 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
             if (why.empty()) ++made;
             else problems.push_back(why);
         }
-        if (made == 0 && !problems.empty()) return problems;
-        for (const auto& p : problems) Finding(stage_, "revise", p);
+        // The AI's suggested fix for ⑨ with nothing it could apply: nothing changes (not a failed
+        // step); words from the AI panel say so (sent back once).
+        const bool suggestion = job.subject.rfind("Fix these validation findings", 0) == 0;
+        if (made == 0 && !problems.empty() && !suggestion) return problems;
+        // An edit that couldn't be applied (a small model's edit of its request, not of a
+        // document: "no places") is dropped quietly, not a warning.
         message_ = std::to_string(made) + " change(s) made for '" + job.subject + "'; " + std::to_string(Stale().size()) +
                    " document(s) to regenerate.";
         return {};
@@ -1248,10 +1266,9 @@ std::vector<std::string> GamePlan::HandleCritic(Job& job, const json& answer, co
         for (const auto& [k, v] : fix.items()) (*s)["card"][k] = v;
         (*s)["criticRewrites"] = s->value("criticRewrites", 0) + 1;
         (*s)["criticNote"] = f.value("problem", "");
-        UndoScene(scene);
-        (*s)["status"] = "card";
         store_.Touch(doc, *s, decision);
-        AddJob("scene", scene);
+        // Corrected where the review says (its card changed as proposed), not written again.
+        QuickFix(doc, {"The act's review: " + f.value("problem", "") + " (the scene's card now reads as proposed: " + fix.dump() + ")"});
     }
     return {};
 }
@@ -1346,15 +1363,141 @@ std::vector<std::string> GamePlan::HandleCharacter(Job& job, const json& answer,
 
 // --- ⑤ Quests --------------------------------------------------------------------------------------
 
-std::vector<std::string> GamePlan::HandleQuests(Job&, const json& quests, const std::string& rationale) {
-    if (!quests.is_array() || quests.empty()) return {"no quests"};
+// A quest as a small model writes it, put right before it's checked: an alias naming what the
+// story lacks gets a stub (an item, character or place), its kind from what it names, and a
+// query if it names nothing; stage numbers that don't rise are renumbered; objective actions
+// outside the vocabulary map to the nearest, targets that aren't aliases go; a giver that isn't
+// one of the aliases becomes the first character alias.
+void GamePlan::RepairQuest(json& q, StoryGraph& g, std::vector<std::string>& known, std::vector<std::string>& fixes) const {
+    const std::string qid = Text(q, "id");
+    if (Text(q, "name").empty()) {
+        std::string name = PlanSlug(qid.empty() ? std::string("quest") : qid);
+        std::replace(name.begin(), name.end(), '-', ' ');
+        if (!name.empty()) name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
+        q["name"] = name;
+    }
+    if (!Text(q, "motivation").empty() && !gso_.InVocabulary("Motivation", Text(q, "motivation"))) q.erase("motivation");
+    static const std::vector<std::string> kinds = {"character", "item", "location", "spot", "container"};
+    static const std::map<std::string, std::string> classes = {{"character", "Character"}, {"item", "Item"}, {"location", "Location"}, {"faction", "Faction"}};
+    auto stub = [&](const std::string& ref) {
+        if (ref.empty() || std::find(known.begin(), known.end(), ref) != known.end()) return true;
+        const auto slash = ref.find('/');
+        const auto cls = slash == std::string::npos ? classes.end() : classes.find(ref.substr(0, slash));
+        if (cls == classes.end()) return false;
+        std::string name = PlanSlug(ref);
+        std::replace(name.begin(), name.end(), '-', ' ');
+        if (!name.empty()) name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
+        StoryNode& n = g.Upsert(ref, cls->second);
+        n.fields = {{"name", name}, {"madeBy", kPending}, {"stubFrom", qid}};
+        if (cls->second == "Character") n.fields["importance"] = "minor";
+        if (cls->second == "Location") n.fields["buildType"] = "interior";
+        known.push_back(ref);
+        fixes.push_back("added " + ref + " (" + qid + " names it)");
+        return true;
+    };
+    json aliases = json::array();
+    std::set<std::string> ids;
+    for (auto a : q.value("aliases", json::array())) {
+        if (!a.is_object()) continue;
+        std::string id = Text(a, "id");
+        if (id.empty() || ids.contains(id)) id = "alias-" + std::to_string(aliases.size() + 1);
+        a["id"] = id;
+        ids.insert(id);
+        for (const char* key : {"fill", "in"}) {
+            if (a.contains(key) && !a[key].is_string()) a.erase(key);
+            if (!stub(Text(a, key))) {
+                fixes.push_back(qid + ": alias " + id + " " + key + " " + Text(a, key) + " isn't in the story");
+                a.erase(key);
+            }
+        }
+        if (std::find(kinds.begin(), kinds.end(), Text(a, "kind")) == kinds.end()) {
+            const std::string fill = Text(a, "fill");
+            const std::string prefix = fill.substr(0, fill.find('/'));
+            a["kind"] = std::find(kinds.begin(), kinds.end(), prefix) != kinds.end() ? prefix : !Text(a, "in").empty() ? "spot" : "item";
+        }
+        if (Text(a, "fill").empty() && Text(a, "query").empty() && Text(a, "in").empty()) {
+            std::string query = id;
+            std::replace(query.begin(), query.end(), '-', ' ');
+            a["query"] = query; // found by what it's called
+        }
+        aliases.push_back(a);
+    }
+    q["aliases"] = aliases;
+    static const std::vector<std::pair<const char*, const char*>> hints = {
+        {"go", "goto"}, {"travel", "goto"}, {"find", "reach"}, {"reach", "reach"}, {"speak", "talk"}, {"talk", "talk"}, {"ask", "talk"},
+        {"slay", "kill"}, {"kill", "kill"}, {"defeat", "kill"}, {"fight", "kill"}, {"get", "collect"}, {"take", "collect"},
+        {"retrieve", "collect"}, {"steal", "collect"}, {"find", "collect"}, {"bring", "deliver"}, {"give", "deliver"}, {"return", "deliver"},
+        {"protect", "defend"}, {"guard", "defend"}, {"inspect", "examine"}, {"search", "examine"}, {"investigate", "examine"},
+        {"sneak", "stealth"}, {"rescue", "free"}, {"save", "free"}, {"make", "craft"}, {"decide", "choose"}, {"open", "use"}};
+    int last = 0;
+    json stages = json::array();
+    for (auto st : q.value("stages", json::array())) {
+        if (!st.is_object()) continue;
+        const json index = st.value("index", json());
+        if (!index.is_number_integer() || index.get<int>() <= last) {
+            st["index"] = last + 10;
+            fixes.push_back(qid + ": a stage numbered " + index.dump() + " is now " + std::to_string(last + 10));
+        }
+        last = st["index"].get<int>();
+        json objectives = json::array();
+        for (auto o : st.value("objectives", json::array())) {
+            if (!o.is_object()) continue;
+            if (!gso_.InVocabulary("ObjectiveAction", Text(o, "action"))) o["action"] = Nearest(Text(o, "action"), hints, "interact");
+            if (!Text(o, "target").empty() && !ids.contains(Text(o, "target"))) o.erase("target");
+            objectives.push_back(o);
+        }
+        st["objectives"] = objectives;
+        stages.push_back(st);
+    }
+    q["stages"] = stages;
+    if (q.contains("giver") && q["giver"].is_object() && !Text(q["giver"], "alias").empty() && !ids.contains(Text(q["giver"], "alias"))) {
+        std::string first;
+        for (const auto& a : aliases) {
+            if (first.empty() && Text(a, "kind") == "character") first = Text(a, "id");
+        }
+        if (first.empty()) q["giver"].erase("alias");
+        else q["giver"]["alias"] = first;
+    }
+}
+
+std::vector<std::string> GamePlan::HandleQuests(Job& job, const json& answer, const std::string& rationale) {
+    json quests = answer.is_array() ? answer : answer.is_object() ? json::array({answer}) : json::array();
+    // One quest per call: the answer's first, as that quest's slot (q-main, or q-side-N).
+    const bool one = job.kind == "quest";
+    if (quests.empty() && one && job.subject != "q-main") {
+        // No side quest fits this slot (the AI found no giver or need left): it stays empty.
+        for (const auto& doc : store_.List("quests")) {
+            const json old = store_.Read(doc).value_or(json::object());
+            if (old.is_object() && Text(old, "slot") == job.subject && !store_.Locked(doc)) store_.Remove(doc);
+        }
+        return {};
+    }
+    if (quests.empty()) return {"no quests"};
+    if (one) quests = json::array({quests[0]});
     StoryGraph g = Graph();
     std::vector<std::string> known;
     for (const auto& n : g.nodes) known.push_back(n.id);
-    std::vector<std::string> problems;
+    std::vector<std::string> problems, fixes;
     std::vector<json> designs;
     const json skeleton = store_.Read("quests/q-main").value_or(json::object());
+    std::set<std::string> otherIds; // quests of other slots: a side quest's id mustn't take theirs
+    for (const auto& doc : store_.List("quests")) {
+        const json d = store_.Read(doc).value_or(json::object());
+        if (d.is_object() && (!one || Text(d, "slot") != job.subject) && Text(d, "kind") != "skeleton") otherIds.insert(PlanSlug(doc));
+    }
     for (auto q : quests) {
+        if (!q.is_object()) continue;
+        if (one) {
+            q["slot"] = job.subject;
+            if (job.subject == "q-main") q["id"] = "q-main", q["type"] = "main";
+            else {
+                if (Text(q, "type") == "main" || Text(q, "type").empty()) q["type"] = "side";
+                std::string id = Text(q, "id");
+                if (id.empty() || id == "q-main" || otherIds.contains(id)) id = job.subject;
+                q["id"] = id;
+            }
+        }
+        RepairQuest(q, g, known, fixes);
         q["schema"] = "aige.quest-design/1";
         if (q.value("id", "") == "q-main" || q.value("type", "") == "main") {
             q["id"] = "q-main";
@@ -1366,16 +1509,37 @@ std::vector<std::string> GamePlan::HandleQuests(Job&, const json& quests, const 
             }
             std::sort(q["stages"].begin(), q["stages"].end(), [](const json& a, const json& b) { return a.value("index", 0) < b.value("index", 0); });
         }
-        if (store_.Locked("quests/" + q.value("id", ""))) continue;
-        for (const auto& p : ProblemTexts(ValidateQuestDesign(q, gso_, known))) problems.push_back(q.value("id", "?") + ": " + p);
+        if (store_.Locked("quests/" + Text(q, "id"))) continue;
+        const auto found = ProblemTexts(ValidateQuestDesign(q, gso_, known));
+        // On its last try a side quest that still doesn't hold is left out (noted), not failed.
+        if (!found.empty() && job.attempts >= 2 && Text(q, "type") != "main") {
+            fixes.push_back("left out " + Text(q, "id") + " (" + found.front() + ")");
+            continue;
+        }
+        for (const auto& p : found) problems.push_back(Text(q, "id") + ": " + p);
         designs.push_back(q);
     }
     if (!problems.empty()) return problems;
-    // Out with what the last quest design put in the graph.
+    if (designs.empty() && one) {
+        PlanDecision d;
+        d.stage = "quests";
+        d.actor = "rule";
+        d.kind = "fix";
+        d.subject = "quests";
+        for (const auto& f : fixes) d.chosen += (d.chosen.empty() ? "" : "; ") + f;
+        store_.Decide(d);
+        return {};
+    }
+    // Out with what the last design of these quests put in the graph (one call: only its slot's).
+    auto ours = [&](const json& old, const std::string& doc) {
+        if (!one) return true;
+        return Text(old, "slot") == job.subject || PlanSlug(doc) == job.subject ||
+               std::any_of(designs.begin(), designs.end(), [&](const json& q) { return Text(q, "id") == PlanSlug(doc); });
+    };
     for (const auto& doc : store_.List("quests")) {
         if (store_.Locked(doc)) continue;
         const json old = store_.Read(doc).value_or(json::object());
-        if (old.value("kind", "") != "skeleton") RemoveMadeBy(g, old.value("designedBy", ""), gso_, true);
+        if (old.is_object() && Text(old, "kind") != "skeleton" && ours(old, doc)) RemoveMadeBy(g, Text(old, "designedBy"), gso_, true);
     }
     const auto before = CheckStory(g, gso_);
     json nodes = json::array(), facts = json::array();
@@ -1419,7 +1583,18 @@ std::vector<std::string> GamePlan::HandleQuests(Job&, const json& quests, const 
     for (const auto& i : NewErrors(before, CheckStory(next, gso_))) {
         if (i.rule.rfind("R-Q", 0) == 0 || i.rule == "shape") problems.push_back(i.rule + ": " + i.message);
     }
-    if (!problems.empty()) return problems;
+    // Its last try: kept, and what the rules still find goes to ⑨ (where it can be fixed).
+    if (!problems.empty() && job.attempts < 2) return problems;
+    if (!fixes.empty()) {
+        PlanDecision fix;
+        fix.stage = "quests";
+        fix.actor = "rule";
+        fix.kind = "fix";
+        fix.subject = "quests";
+        for (const auto& f : fixes) fix.chosen += (fix.chosen.empty() ? "" : "; ") + f;
+        fix.rationale = "What the quest named that the story lacks was added as a stub; kinds, stage numbers and links put right.";
+        store_.Decide(fix);
+    }
     PlanDecision d;
     d.stage = "quests";
     d.actor = "ai";
@@ -1444,7 +1619,9 @@ std::vector<std::string> GamePlan::HandleQuests(Job&, const json& quests, const 
         written.insert("quests/" + q.value("id", ""));
     }
     for (const auto& doc : store_.List("quests")) {
-        if (!written.contains(doc) && !store_.Locked(doc)) store_.Remove(doc);
+        if (written.contains(doc) || store_.Locked(doc)) continue;
+        const json old = store_.Read(doc).value_or(json::object());
+        if (!one || (old.is_object() && Text(old, "slot") == job.subject)) store_.Remove(doc); // one call: only its slot's old design
     }
     return {};
 }
@@ -1464,10 +1641,68 @@ std::vector<std::string> GamePlan::HandlePlace(Job& job, const json& answer, con
     brief["schema"] = "aige.brief/1";
     brief["buildType"] = p["kind"];
     if (!brief.contains("name")) brief["name"] = n && !n->Text("name").empty() ? n->Text("name") : PlanSlug(id);
-    if (host_.places) brief = CompleteBrief(host_.places(), brief);
+    if (host_.places) {
+        // What a small model gets wrong about a Brief, put right instead of sent back: a build
+        // type the library hasn't, components the build type doesn't have ("rooms" for a
+        // dungeon), features that are empty or unknown, or that this build type can't have.
+        const Ontology& places = host_.places();
+        if (!places.Builds().contains(Text(p, "kind"))) {
+            const std::string fromGraph = n ? n->Text("buildType") : "";
+            p["kind"] = places.Builds().contains(fromGraph) ? fromGraph : "interior";
+            brief["buildType"] = p["kind"];
+        }
+        const auto build = places.Builds().find(Text(p, "kind"));
+        if (build != places.Builds().end() && brief.contains("components") && brief["components"].is_object()) {
+            json kept = json::object();
+            for (const auto& [cid, c] : brief["components"].items()) {
+                const auto& allowed = build->second.components;
+                if (std::find(allowed.begin(), allowed.end(), cid) != allowed.end()) kept[cid] = c;
+            }
+            brief["components"] = kept;
+        }
+        if (brief.contains("features")) {
+            json kept = json::array();
+            for (const auto& f : brief["features"].is_array() ? brief["features"] : json::array({brief["features"]})) {
+                const std::string fid = f.is_object() ? Text(f, "module") : f.is_string() ? f.get<std::string>() : "";
+                const ModuleDef* module = places.Module(fid);
+                if (!module) continue;
+                if (!module->buildTypes.empty() && build != places.Builds().end() &&
+                    std::find(module->buildTypes.begin(), module->buildTypes.end(), build->first) == module->buildTypes.end()) {
+                    continue;
+                }
+                kept.push_back(f);
+            }
+            brief["features"] = kept;
+        }
+        brief = CompleteBrief(places, brief);
+    }
     p["brief"] = brief;
     if (host_.places) {
-        const auto problems = ValidatePlaceDesc(p, host_.places());
+        // Anything else the checks name inside the Brief ("brief.x.y"): that part left out, and
+        // checked again; only what can't be left out goes back to the AI.
+        auto problems = ValidatePlaceDesc(p, host_.places());
+        for (int round = 0; round < 8 && HasErrors(problems); ++round) {
+            bool removed = false;
+            for (const auto& problem : problems) {
+                if (problem.warning || problem.where.rfind("brief.", 0) != 0) continue;
+                json* parent = &p["brief"];
+                std::string rest = problem.where.substr(6);
+                for (size_t dot = rest.find('.'); dot != std::string::npos && parent->is_object(); dot = rest.find('.')) {
+                    const std::string key = rest.substr(0, dot);
+                    if (!parent->contains(key)) break;
+                    parent = &(*parent)[key];
+                    rest = rest.substr(dot + 1);
+                }
+                const std::string key = rest.substr(0, rest.find('['));
+                if (parent->is_object() && parent->contains(key) && key != "buildType" && key != "name") {
+                    parent->erase(key);
+                    removed = true;
+                }
+            }
+            if (!removed) break;
+            p["brief"] = CompleteBrief(host_.places(), p["brief"]);
+            problems = ValidatePlaceDesc(p, host_.places());
+        }
         if (HasErrors(problems)) return ProblemTexts(problems);
     }
     PlanDecision d;
@@ -1509,19 +1744,57 @@ std::vector<std::string> GamePlan::HandlePlace(Job& job, const json& answer, con
 
 // --- ⑦ Systems and ⑧ Visuals -----------------------------------------------------------------------
 
-std::vector<std::string> GamePlan::HandleSystems(Job&, const json& systems, const std::string& rationale) {
-    std::vector<std::string> problems;
-    for (const auto& r : systems.value("records", json::array())) {
-        const std::string type = r.value("type", ""), id = r.value("id", "");
+std::vector<std::string> GamePlan::HandleSystems(Job&, const json& answer, const std::string& rationale) {
+    // Each record put right instead of the whole answer sent back: a field the record type
+    // refuses ("stack": false) is left out, so its default applies; a record still refused, of
+    // a type the engine hasn't, or without a type or id, is left out. Noted, not failed.
+    json systems = answer.is_object() ? answer : json::object();
+    std::vector<std::string> fixes;
+    json kept = json::array();
+    for (auto r : systems.value("records", json::array())) {
+        if (!r.is_object()) continue;
+        const std::string type = Text(r, "type"), id = Text(r, "id");
         if (type.empty() || id.empty()) {
-            problems.push_back("a record needs a type and an id");
+            fixes.push_back("left out a record without a type or id");
             continue;
         }
+        json record = r.value("record", json::object());
+        if (!record.is_object()) record = json::object();
+        std::vector<std::string> refused;
         if (host_.validateRecord) {
-            for (const auto& p : host_.validateRecord(type, r.value("record", json::object()))) problems.push_back(type + "/" + id + ": " + p);
+            for (int round = 0; round < 12; ++round) {
+                refused = host_.validateRecord(type, record);
+                if (refused.empty()) break;
+                bool removed = false;
+                for (const auto& p : refused) {
+                    const std::string field = p.substr(0, std::min(p.find(':'), std::min(p.find('.'), p.find('['))));
+                    if (record.contains(field)) {
+                        record.erase(field);
+                        fixes.push_back(type + "/" + id + ": " + p + " (left at its default)");
+                        removed = true;
+                    }
+                }
+                if (!removed) break;
+            }
         }
+        if (!refused.empty()) {
+            fixes.push_back("left out " + type + "/" + id + " (" + refused.front() + ")");
+            continue;
+        }
+        r["record"] = record;
+        kept.push_back(r);
     }
-    if (!problems.empty()) return problems;
+    systems["records"] = kept;
+    if (!fixes.empty()) {
+        PlanDecision fix;
+        fix.stage = "systems";
+        fix.actor = "rule";
+        fix.kind = "fix";
+        fix.subject = "systems";
+        for (const auto& f : fixes) fix.chosen += (fix.chosen.empty() ? "" : "; ") + f;
+        fix.rationale = "Record fields the engine refuses were left at their defaults; records it can't take, left out.";
+        store_.Decide(fix);
+    }
     PlanDecision d;
     d.stage = "systems";
     d.actor = "ai";
@@ -1565,6 +1838,7 @@ void GamePlan::LocalJob(Job& job) {
     BuildReport(store_.Read("review").value_or(json::object()));
     job.status = "done";
     Save();
+    Pump(); // what the report set going (its fixes, the report after them) goes on
 }
 
 void GamePlan::BuildReport(const json& review) {
@@ -1592,11 +1866,12 @@ void GamePlan::BuildReport(const json& review) {
             const StoryNode* n = g.Find(c);
             if (!n || !gso_.IsA(n->cls, "Character") || store_.Exists("characters/" + PlanSlug(c))) continue;
             const bool important = n->Text("importance") == "major" || n->Text("importance") == "supporting";
-            add("X-character", important ? "error" : "warning", c, (n->Text("name").empty() ? c : n->Text("name")) + " takes part in " + s + " but has no character document (④)");
+            add("X-character", important ? "error" : "warning", c, (n->Text("name").empty() ? c : n->Text("name")) + " takes part in " + s + " but has no character document (④)",
+                {{"make", {{"kind", "character"}, {"subject", c}}}});
         }
     }
     for (const auto* n : g.OfClass("Location", gso_)) {
-        if (!store_.Exists("places/" + PlanSlug(n->id))) add("X-place", "error", n->id, n->id + " has no place description (⑥)");
+        if (!store_.Exists("places/" + PlanSlug(n->id))) add("X-place", "error", n->id, n->id + " has no place description (⑥)", {{"make", {{"kind", "place"}, {"subject", n->id}}}});
     }
     for (const auto& doc : store_.List("quests")) {
         const json q = store_.Read(doc).value_or(json::object());
@@ -1626,14 +1901,14 @@ void GamePlan::BuildReport(const json& review) {
         const json q = store_.Read(doc).value_or(json::object());
         for (const auto& r : q.value("rewards", json::array())) {
             const std::string item = PlanSlug(r.value("item", ""));
-            if (!item.empty() && !items.contains(item)) add("X-item", "warning", q.value("id", ""), "reward item '" + item + "' has no record (⑦)");
+            if (!item.empty() && !items.contains(item)) add("X-item", "warning", q.value("id", ""), "reward item '" + item + "' has no record (⑦)", {{"addItem", item}});
         }
     }
     if (!BriefGet(brief, "systems.abilities.on").is_boolean() || !BriefGet(brief, "systems.abilities.on").get<bool>()) {
         for (const auto& doc : store_.List("characters")) {
             const json c = store_.Read(doc).value_or(json::object());
             if (!c.value("gameplay", json::object()).value("abilities", json::array()).empty()) {
-                add("X-system", "error", c.value("id", ""), c.value("name", "") + " has abilities, but abilities are off in the Brief");
+                add("X-system", "error", c.value("id", ""), c.value("name", "") + " has abilities, but abilities are off in the Brief", {{"clearAbilities", doc}});
             }
         }
     }
@@ -1641,7 +1916,7 @@ void GamePlan::BuildReport(const json& review) {
     const auto screens = Strings(ui.value("screens", json::array()));
     auto needScreen = [&](bool on, const std::string& screen, const std::string& why, const std::string& severity = "error") {
         if (on && !ui.empty() && std::find(screens.begin(), screens.end(), screen) == screens.end()) {
-            add("X-screen", severity, "ui", "the " + screen + " window is needed (" + why + ")");
+            add("X-screen", severity, "ui", "the " + screen + " window is needed (" + why + ")", {{"addScreen", screen}});
         }
     };
     auto on = [&](const char* path) { return BriefGet(brief, path).is_boolean() && BriefGet(brief, path).get<bool>(); };
@@ -1650,11 +1925,14 @@ void GamePlan::BuildReport(const json& review) {
     needScreen(on("systems.abilities.magic"), "spellbook", "magic is on");
     needScreen(g.OfClass("Location", gso_).size() > 1, "map", "more than one place", "warning");
     // 3. What the stages couldn't fix.
-    for (const auto& f : findings_) add("stage", f.value("severity", "warning"), f.value("subject", ""), f.value("message", ""));
+    for (const auto& f : findings_) add("stage", f.value("severity", "warning"), f.value("subject", ""), f.value("message", ""), {{"retry", true}});
     // 4. The critic.
     for (const auto& f : review.value("findings", json::array())) {
         add("critic", f.value("severity", "warning") == "error" ? "error" : "warning", f.value("subject", ""), f.value("message", ""), f.value("fix", json()));
     }
+    // (A finding's remedy is worked out when it's shown or fixed, never stored: so it's always the
+    // current one.)
+    resume_ = json(); // the report decides what the plan does next
     int errors = 0, warnings = 0, accepted = 0;
     for (const auto& f : findings) {
         if (f["status"] == "accepted") ++accepted;
@@ -1672,6 +1950,9 @@ void GamePlan::BuildReport(const json& review) {
                             {"summary", {{"errors", errors}, {"warnings", warnings}, {"accepted", accepted}}}, {"findings", findings}},
                  store_.Decide(d));
     if (errors == 0) {
+        autoFixed_ = false;
+        fixRounds_ = 0;
+        fixScope_ = "errors";
         const int baseline = store_.Commit("baseline");
         json state = store_.State();
         state["baseline"] = baseline;
@@ -1682,9 +1963,486 @@ void GamePlan::BuildReport(const json& review) {
     } else {
         stage_ = "validate";
         status_ = "waiting";
-        message_ = std::to_string(errors) + " errors to fix before building: regenerate what they name, or accept them with a reason.";
+        message_ = std::to_string(errors) + " errors to fix before building: Fix them, or accept them with a reason.";
+        // What has a remedy is fixed on its own and checked again, while errors remain: up to three
+        // rounds (a fix can turn up something new); then what's left is for Fix or Accept.
+        if (fixRounds_ < 3 && fixScope_ != "none") {
+            ++fixRounds_;
+            autoFixed_ = true;
+            Save();
+            if (FixFindings({fixScope_}).empty()) return;
+        }
     }
     Save();
+}
+
+json GamePlan::RemedyOf(const json& f) const {
+    const std::string rule = f.value("rule", ""), subject = f.value("subject", ""), message = f.value("message", "");
+    const json fix = f.value("fix", json());
+    auto remedy = [](const std::string& how, json what) { return json{{"how", how}, {"do", std::move(what)}}; };
+    if (fix.is_object()) {
+        if (fix.contains("make")) return remedy("make " + PlanSlug(fix["make"].value("subject", "")) + " (" + fix["make"].value("kind", "") + ")", fix);
+        if (fix.contains("addScreen")) return remedy("add the " + fix.value("addScreen", "") + " window", fix);
+        if (fix.contains("addItem")) return remedy("add a record for " + fix.value("addItem", ""), fix);
+        if (fix.contains("clearAbilities")) return remedy("remove the abilities", fix);
+        if (fix.contains("retry") && rule != "stage") return remedy("try it again", fix);
+        if (fix.contains("regenerate")) return remedy("correct " + PlanSlug(fix.value("regenerate", "")), {{"quickfix", fix.value("regenerate", "")}});
+    }
+    // A report from before the findings carried their fix: read from the finding itself.
+    if (rule == "X-character" && subject.rfind("character/", 0) == 0)
+        return remedy("make " + PlanSlug(subject) + " (character)", {{"make", {{"kind", "character"}, {"subject", subject}}}});
+    if (rule == "X-place" && subject.rfind("location/", 0) == 0)
+        return remedy("make " + PlanSlug(subject) + " (place)", {{"make", {{"kind", "place"}, {"subject", subject}}}});
+    if (rule == "X-screen") {
+        const auto a = message.find("the "), b = message.find(" window");
+        if (a != std::string::npos && b != std::string::npos && b > a + 4)
+            return remedy("add the " + message.substr(a + 4, b - a - 4) + " window", {{"addScreen", message.substr(a + 4, b - a - 4)}});
+    }
+    if (rule == "X-item") {
+        const auto a = message.find('\''), b = message.find('\'', a + 1);
+        if (a != std::string::npos && b != std::string::npos) return remedy("add a record for " + message.substr(a + 1, b - a - 1), {{"addItem", message.substr(a + 1, b - a - 1)}});
+    }
+    if (rule == "stage") {
+        // A step that failed (or is being tried again already): tried again.
+        const bool failed = std::any_of(jobs_.begin(), jobs_.end(), [&](const Job& j) {
+            return (j.status == "failed" || j.status == "queued" || j.status == "running") && j.kind != "revise" && j.kind != "report" &&
+                   (j.subject == subject || PlanSlug(j.subject) == PlanSlug(subject));
+        });
+        if (failed) return remedy("try it again", {{"retry", true}});
+        // A character or place that was never made: made.
+        if (subject.rfind("character/", 0) == 0 && !store_.Exists("characters/" + PlanSlug(subject)))
+            return remedy("make " + PlanSlug(subject) + " (character)", {{"make", {{"kind", "character"}, {"subject", subject}}}});
+        if (subject.rfind("location/", 0) == 0 && !store_.Exists("places/" + PlanSlug(subject)))
+            return remedy("make " + PlanSlug(subject) + " (place)", {{"make", {{"kind", "place"}, {"subject", subject}}}});
+        // A note about what was settled already ("... was left out"), or the AI's own noise: off the list.
+        if (subject == "revise" || message.find("was left out") != std::string::npos || message.find("isn't in the story") != std::string::npos)
+            return remedy("dismiss the note (already handled)", {{"dismiss", true}});
+        // A note about a scene, act, character, place or quest: that item corrected where it says.
+        std::string doc;
+        for (const std::string& candidate : {"story/scenes/" + subject, "story/scenes/" + subject.substr(0, subject.find('/')), "story/acts/" + subject,
+                                            "characters/" + PlanSlug(subject), "places/" + PlanSlug(subject), "quests/" + subject}) {
+            if (doc.empty() && store_.Exists(candidate)) doc = candidate;
+        }
+        if (!doc.empty() && !store_.Locked(doc)) return remedy("correct " + PlanSlug(doc), {{"quickfix", doc}});
+        return remedy("ask the AI for the smallest fix", {{"suggest", true}});
+    }
+    // The story rules: by what they're about.
+    const auto docOf = [&](const std::string& node) -> std::string {
+        if (store_.Exists("story/scenes/" + node)) return "story/scenes/" + node;
+        if (node.rfind("character/", 0) == 0) return "characters/" + PlanSlug(node);
+        if (node.rfind("location/", 0) == 0) return "places/" + PlanSlug(node);
+        if (node.rfind("q-", 0) == 0 || store_.Exists("quests/" + node)) return "quests";
+        return {};
+    };
+    if (rule == "R-P3") {
+        // "Scene s needs a <part> in <location>, which doesn't list one."
+        const auto a = message.find(" needs a "), b = message.find(" in ", a == std::string::npos ? 0 : a + 9), c = message.find(", which");
+        if (a != std::string::npos && b != std::string::npos && c != std::string::npos && b < c) {
+            const std::string part = message.substr(a + 9, b - a - 9), location = message.substr(b + 4, c - b - 4);
+            return remedy("list a " + part + " in " + PlanSlug(location), {{"addPart", {{"location", location}, {"part", part}}}});
+        }
+    }
+    if (rule == "R-P1" && message.find("has no build type") != std::string::npos) {
+        const std::string loc = Graph().LocationOfScene(subject);
+        if (!loc.empty()) return remedy("give " + PlanSlug(loc) + " a build type", {{"buildType", loc}});
+    }
+    // A kernel event with no cause (R-C1; the reviewer's "kernel-event/<id>" too): enabled by the
+    // latest event of an earlier scene, or the inciting incident if it comes first. No AI.
+    if (rule == "critic") {
+        // The reviewer names things its own way ("location/enforcer-s-office" for
+        // location/enforcers-office, "kernel-event/s1-01/e1"): matched to the story's ids by their
+        // letters and digits, then fixed as the rule for the same problem would be.
+        auto squash = [](const std::string& s) {
+            std::string out;
+            for (unsigned char c : s) {
+                if (std::isalnum(c)) out += static_cast<char>(std::tolower(c));
+            }
+            return out;
+        };
+        std::string id = subject.rfind("kernel-event/", 0) == 0 ? subject.substr(13) : subject;
+        const StoryGraph g = Graph();
+        if (!g.Find(id)) {
+            for (const auto& n : g.nodes) {
+                if (squash(n.id) == squash(id)) id = n.id;
+            }
+        }
+        std::string words = message;
+        for (auto& c : words) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        const StoryNode* node = g.Find(id);
+        if (node && node->cls == "Location" && (words.find("unreachable") != std::string::npos || words.find("can't be reached") != std::string::npos))
+            return remedy("connect " + PlanSlug(id) + " to the start", {{"connect", id}});
+        if (node && gso_.IsA(node->cls, "Event") && words.find("cause") != std::string::npos)
+            return remedy("let an earlier event lead to " + id, {{"cause", id}});
+        if (node && gso_.IsA(node->cls, "Character") && words.find("package") != std::string::npos) {
+            const auto templates = Strings(host_.catalog.value("packageTemplates", json::array()));
+            const std::string value = templates.empty() || std::find(templates.begin(), templates.end(), "wander") != templates.end() ? "wander" : templates.front();
+            return remedy("give " + PlanSlug(id) + " the " + value + " package", {{"setRole", {{"character", id}, {"field", "package"}, {"value", value}}}});
+        }
+    }
+    if (rule == "R-C1" || (rule == "critic" && subject.rfind("kernel-event/", 0) == 0)) {
+        const std::string event = subject.rfind("kernel-event/", 0) == 0 ? subject.substr(13) : subject;
+        return remedy("let an earlier event lead to " + event, {{"cause", event}});
+    }
+    // A place nobody can reach (R-P2): a door (an interior) or a road from the start. No AI.
+    if (rule == "R-P2" && subject.rfind("location/", 0) == 0) return remedy("connect " + PlanSlug(subject) + " to the start", {{"connect", subject}});
+    // A gameplay role without what it needs (R-K5), a placed character with nothing to do (R-K6):
+    // filled in directly. A companion follows (wander), a guard guards, a vendor works.
+    if (rule == "R-K5" || rule == "R-K6") {
+        std::string field = "package", role;
+        if (rule == "R-K5") {
+            const auto a = message.find(" is a "), b = message.find(" but has no ");
+            if (a != std::string::npos && b != std::string::npos && b > a) {
+                role = message.substr(a + 6, b - a - 6);
+                const std::string missing = message.substr(b + 12);
+                field = missing.rfind("stock", 0) == 0 ? "stock" : missing.rfind("skills", 0) == 0 ? "skills" : missing.rfind("fight", 0) == 0 ? "statClass" : "package";
+            }
+        }
+        std::string value = field == "stock" ? "general goods" : field == "skills" ? "combat basics" : field == "statClass" ? "boss" : "wander";
+        if (field == "package") {
+            const auto templates = Strings(host_.catalog.value("packageTemplates", json::array()));
+            const std::string want = role == "guard" ? "guard" : (role == "vendor" || role == "innkeeper" || role == "crafter" || role == "healer" || role == "trainer") ? "work" : "wander";
+            value = templates.empty() || std::find(templates.begin(), templates.end(), want) != templates.end() ? want : templates.front();
+        }
+        return remedy("give " + PlanSlug(subject) + " " + (field == "package" ? "the " + value + " package" : field == "statClass" ? "a stat class" : value),
+                      {{"setRole", {{"character", subject}, {"field", field}, {"value", value}}}});
+    }
+    // A giver without the quest's motivation (R-Q4): the quest takes one the giver has (or the
+    // giver gets the quest's). No AI.
+    if (rule == "R-Q4") return remedy("match " + subject + "'s motivation to its giver", {{"questMotivation", subject}});
+    if (rule.rfind("R-Q", 0) == 0) {
+        const std::string doc = store_.Exists("quests/" + subject) ? "quests/" + subject : "quests/q-main";
+        return remedy("correct " + PlanSlug(doc), {{"quickfix", doc}});
+    }
+    if (rule.rfind("R-", 0) == 0 || rule == "critic") {
+        const std::string doc = docOf(subject);
+        if (!doc.empty() && store_.Exists(doc) && !store_.Locked(doc)) return remedy("correct " + PlanSlug(doc), {{"quickfix", doc}});
+        if (!doc.empty() && !store_.Exists(doc) && doc.rfind("characters/", 0) == 0)
+            return remedy("make " + PlanSlug(doc) + " (character)", {{"make", {{"kind", "character"}, {"subject", subject}}}});
+    }
+    // Anything else: the AI suggests the smallest edits that resolve it (every such finding in
+    // one call, as a revision of the plan's documents).
+    return remedy("ask the AI for the smallest fix", {{"suggest", true}});
+}
+
+std::string GamePlan::FixFindings(const std::vector<std::string>& ids) {
+    auto report = store_.Read("report");
+    if (!report) return "there's no report yet";
+    const auto has = [&](const char* word) { return std::find(ids.begin(), ids.end(), word) != ids.end(); };
+    const bool every = has("*"), errors = has("errors") || ids.empty(), warnings = has("warnings");
+    std::vector<std::string> done;
+    std::set<std::string> remade;
+    std::map<std::string, std::vector<std::string>> quickFixes; // document -> the findings it corrects
+    std::vector<std::string> suggest;                           // for the AI to suggest edits for, in one call
+    std::map<std::string, std::string> how;                     // finding -> what fixes it ("direct", "doc:<doc>", "job:<kind> <subject>", "suggest", "retry")
+    // Fixing is going on: a paused plan resumes (else the fixes would wait unseen).
+    if (paused_) {
+        paused_ = false;
+        if (status_ == "paused") status_ = "working";
+    }
+    bool retry = false;
+    json ui = store_.Read("ui").value_or(json::object()), systems = store_.Read("systems").value_or(json::object());
+    bool uiChanged = false, systemsChanged = false;
+    StoryGraph g = Graph();
+    bool graphChanged = false;
+    for (auto f : report->value("findings", json::array())) {
+        if (f.value("status", "") != "open") continue;
+        f.erase("remedy"); // one stored by an older report: worked out again
+        if (const json remedy = RemedyOf(f); remedy.is_object()) f["remedy"] = remedy;
+        else continue;
+        const bool isError = f.value("severity", "") == "error";
+        const bool chosen = every || (errors && isError) || (warnings && !isError) ||
+                            std::find(ids.begin(), ids.end(), f.value("id", "")) != ids.end();
+        if (!chosen) continue;
+        const json what = f["remedy"].value("do", json::object());
+        if (what.contains("addScreen") && ui.is_object() && !ui.empty()) {
+            if (!ui.contains("screens") || !ui["screens"].is_array()) ui["screens"] = json::array();
+            if (std::find(ui["screens"].begin(), ui["screens"].end(), what["addScreen"]) == ui["screens"].end()) ui["screens"].push_back(what["addScreen"]);
+            uiChanged = true;
+        } else if (what.contains("addItem")) {
+            if (!systems.contains("records") || !systems["records"].is_array()) systems["records"] = json::array();
+            std::string name = what.value("addItem", "");
+            std::replace(name.begin(), name.end(), '-', ' ');
+            if (!name.empty()) name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
+            systems["records"].push_back({{"type", "item"}, {"id", what.value("addItem", "")}, {"record", {{"name", name}}}});
+            systemsChanged = true;
+        } else if (what.contains("clearAbilities")) {
+            const std::string doc = what.value("clearAbilities", "");
+            if (auto c = store_.Read(doc); c && !store_.Locked(doc)) {
+                (*c)["gameplay"]["abilities"] = json::array();
+                store_.Touch(doc, *c, "");
+            }
+        } else if (what.contains("addPart")) {
+            const std::string location = what["addPart"].value("location", ""), part = what["addPart"].value("part", "");
+            if (StoryNode* n = g.Find(location)) {
+                json parts = n->fields.value("requiredParts", json::array());
+                if (!parts.is_array()) parts = json::array();
+                if (std::find(parts.begin(), parts.end(), part) == parts.end()) parts.push_back(part);
+                n->fields["requiredParts"] = parts;
+                graphChanged = true;
+            }
+            const std::string doc = "places/" + PlanSlug(location);
+            if (auto p = store_.Read(doc); p && !store_.Locked(doc) && host_.places && host_.places().Module(part)) {
+                if (!p->contains("storyAnchors") || !(*p)["storyAnchors"].is_array()) (*p)["storyAnchors"] = json::array();
+                (*p)["storyAnchors"].push_back({{"id", part}, {"module", part}});
+                store_.Touch(doc, *p, "");
+            }
+        } else if (what.contains("buildType")) {
+            if (StoryNode* n = g.Find(what.value("buildType", ""))) {
+                const json place = store_.Read("places/" + PlanSlug(n->id)).value_or(json::object());
+                n->fields["buildType"] = place.value("kind", json("interior")).is_string() ? place.value("kind", "interior") : "interior";
+                graphChanged = true;
+            }
+        } else if (what.contains("setRole")) {
+            const std::string who = what["setRole"].value("character", ""), field = what["setRole"].value("field", ""),
+                              value = what["setRole"].value("value", "");
+            if (StoryNode* n = g.Find(who)) {
+                n->fields[field] = field == "package" ? json(PlanSlug(who) + ": " + value) : json(value);
+                graphChanged = true;
+            }
+            const std::string doc = "characters/" + PlanSlug(who);
+            if (auto c = store_.Read(doc); c && !store_.Locked(doc)) {
+                if (field == "package") {
+                    json& behaviour = (*c)["behaviour"];
+                    if (!behaviour.is_object()) behaviour = json::object();
+                    if (!behaviour.contains("packages") || !behaviour["packages"].is_array()) behaviour["packages"] = json::array();
+                    behaviour["packages"].push_back({{"template", value}});
+                } else {
+                    if (!(*c)["gameplay"].is_object()) (*c)["gameplay"] = json::object();
+                    (*c)["gameplay"][field == "statClass" ? "class" : field] = value;
+                }
+                store_.Touch(doc, *c, "");
+            }
+        } else if (what.contains("cause")) {
+            const std::string event = what.value("cause", "");
+            const std::string scene = event.substr(0, event.find('/'));
+            const double at = g.OrderOf(scene);
+            // The latest event presented by an earlier scene (a kernel one if that scene has one).
+            std::string before;
+            double best = -1;
+            bool bestKernel = false;
+            for (const auto& e : g.edges) {
+                if (e.p != "presents" || e.o == event) continue;
+                const double order = g.OrderOf(e.s);
+                if (order < 0 || order >= at) continue;
+                const StoryNode* ev = g.Find(e.o);
+                const bool kernel = ev && ev->Flag("kernel");
+                if (order > best || (order == best && kernel && !bestKernel)) best = order, before = e.o, bestKernel = kernel;
+            }
+            if (StoryNode* n = g.Find(event)) {
+                if (before.empty()) n->fields["inciting"] = true; // nothing comes before it: it sets the story going
+                else if (g.Apply({{"assert", json::array({{{"p", "enables"}, {"s", before}, {"o", event}}})}}, gso_).empty()) {}
+                graphChanged = true;
+            }
+        } else if (what.contains("connect")) {
+            const std::string place = what.value("connect", "");
+            std::string start;
+            for (const auto& n : g.nodes) {
+                if (n.cls == "Location" && n.Flag("start")) start = n.id;
+            }
+            if (const StoryNode* n = g.Find(place); n && !start.empty() && start != place) {
+                const std::string kind = n->Text("buildType") == "interior" ? "door" : "road";
+                if (g.Apply({{"assert", json::array({{{"p", "connects"}, {"s", start}, {"o", place}, {"kind", kind}}})}}, gso_).empty()) graphChanged = true;
+            }
+        } else if (what.contains("questMotivation")) {
+            const std::string quest = what.value("questMotivation", "");
+            std::string giver;
+            for (const auto& e : g.edges) {
+                if (e.p == "gives" && e.o == quest) giver = e.s;
+            }
+            StoryNode* qn = g.Find(quest);
+            StoryNode* gn = g.Find(giver);
+            if (qn && gn) {
+                const auto wants = gn->List("motivations");
+                const std::string motivation = qn->Text("motivation");
+                if (!wants.empty()) {
+                    qn->fields["motivation"] = wants.front();
+                    if (auto q = store_.Read("quests/" + quest); q && q->is_object() && !store_.Locked("quests/" + quest)) {
+                        (*q)["motivation"] = wants.front();
+                        store_.Touch("quests/" + quest, *q, "");
+                    }
+                } else {
+                    gn->fields["motivations"] = json::array({motivation});
+                    const std::string doc = "characters/" + PlanSlug(giver);
+                    if (auto c = store_.Read(doc); c && c->is_object() && !store_.Locked(doc)) {
+                        if (!(*c)["biography"].is_object()) (*c)["biography"] = json::object();
+                        (*c)["biography"]["motivations"] = json::array({motivation});
+                        store_.Touch(doc, *c, "");
+                    }
+                }
+                graphChanged = true;
+            }
+        } else if (what.contains("quickfix")) {
+            quickFixes[what.value("quickfix", "")].push_back(f.value("message", ""));
+            how[f.value("id", "")] = "doc:" + what.value("quickfix", "");
+        } else if (what.contains("suggest")) {
+            suggest.push_back("[" + f.value("rule", "") + "] " + f.value("subject", "") + ": " + f.value("message", ""));
+            how[f.value("id", "")] = "suggest";
+        } else if (what.contains("make")) {
+            const std::string kind = what["make"].value("kind", ""), subject = what["make"].value("subject", "");
+            if (remade.insert(kind + " " + subject).second) AddJob(kind, subject);
+            how[f.value("id", "")] = "job:" + kind + " " + subject;
+        } else if (what.contains("remake")) {
+            const std::string doc = what.value("remake", "");
+            quickFixes[doc].push_back(f.value("message", "")); // corrected in place, not made again
+            how[f.value("id", "")] = "doc:" + doc;
+        } else if (what.contains("dismiss")) {
+            json kept = json::array();
+            for (const auto& n : findings_) {
+                if (!(n.value("subject", json()) == f.value("subject", json()) && n.value("message", json()) == f.value("message", json()))) kept.push_back(n);
+            }
+            findings_ = kept;
+        } else if (what.contains("retry")) {
+            retry = true;
+            how[f.value("id", "")] = "retry";
+        } else {
+            continue;
+        }
+        if (!how.contains(f.value("id", ""))) how[f.value("id", "")] = "direct";
+        done.push_back(f.value("id", "") + ": " + f["remedy"].value("how", ""));
+    }
+    if (done.empty()) return ids.empty() ? "nothing has a fix" : "those findings have no fix";
+    // One quick fix per document, with every finding it has.
+    for (const auto& [doc, problems] : quickFixes) {
+        if (remade.insert(doc).second) QuickFix(doc, problems);
+    }
+    // The rest: one AI call suggests the smallest edits for all of them.
+    std::string suggestJob;
+    if (!suggest.empty()) {
+        std::string instruction = "Fix these validation findings with the smallest edits to the plan's documents; change only what each "
+                                  "one names and keep everything else as it is:";
+        for (const auto& s : suggest) instruction += "\n- " + s;
+        Revise(instruction);
+        if (!jobs_.empty() && jobs_.back().kind == "revise") suggestJob = jobs_.back().id;
+    }
+    // Each finding on the list says how its fix goes: done (a direct fix: off the list now), or
+    // fixing by a job (off the list when that job has made its item; back to open if it fails).
+    auto jobFor = [&](const std::string& kind, const std::string& subject) -> std::string {
+        for (auto it = jobs_.rbegin(); it != jobs_.rend(); ++it) {
+            if (it->kind == kind && it->subject == subject && (it->status == "queued" || it->status == "running")) return it->id;
+        }
+        return {};
+    };
+    auto jobOfDoc = [&](const std::string& doc) -> std::string {
+        if (doc.rfind("characters/", 0) == 0) return jobFor("character", "character/" + PlanSlug(doc));
+        if (doc.rfind("places/", 0) == 0) return jobFor("place", "location/" + PlanSlug(doc));
+        if (doc.rfind("story/scenes/", 0) == 0) return jobFor("scene", PlanSlug(doc));
+        if (doc.rfind("story/acts/", 0) == 0) return jobFor("act", PlanSlug(doc));
+        if (doc.rfind("quests/", 0) == 0) {
+            const json q = store_.Read(doc).value_or(json::object());
+            const std::string slot = q.is_object() && !Text(q, "slot").empty() ? Text(q, "slot") : PlanSlug(doc);
+            const std::string id = jobFor("quest", slot);
+            return id.empty() ? jobFor("quests", "quests") : id;
+        }
+        if (doc == "quests") return jobFor("quests", "quests");
+        if (doc == "systems") return jobFor("systems", "systems");
+        if (doc == "ui") return jobFor("visuals", "ui");
+        if (doc == "outline") return jobFor("outline", "outline");
+        return {};
+    };
+    for (auto& f : (*report)["findings"]) {
+        const auto h = how.find(f.value("id", ""));
+        if (h == how.end()) continue;
+        if (h->second == "direct") {
+            f["status"] = "fixed";
+            continue;
+        }
+        std::string job;
+        if (h->second.rfind("doc:", 0) == 0) job = jobOfDoc(h->second.substr(4));
+        else if (h->second.rfind("job:", 0) == 0) {
+            const std::string rest = h->second.substr(4);
+            job = jobFor(rest.substr(0, rest.find(' ')), rest.substr(rest.find(' ') + 1));
+        } else if (h->second == "suggest") job = suggestJob;
+        f["status"] = "fixing";
+        if (!job.empty()) f["fixJob"] = job;
+    }
+    store_.Touch("report", *report, "");
+    {
+        std::set<std::pair<std::string, std::string>> reviewed;
+        for (const auto& f : report->value("findings", json::array())) {
+            if (f.value("rule", json()) == "critic" && how.contains(f.value("id", ""))) reviewed.insert({f.value("subject", ""), f.value("message", "")});
+        }
+        if (auto review = store_.Read("review"); !reviewed.empty() && review && review->contains("findings") && (*review)["findings"].is_array()) {
+            json kept = json::array();
+            for (const auto& f : (*review)["findings"]) {
+                const bool fixed = f.is_object() && reviewed.contains({Text(f, "subject"), Text(f, "message")});
+                if (!fixed) kept.push_back(f);
+            }
+            (*review)["findings"] = kept;
+            store_.Touch("review", *review, "");
+        }
+    }
+    if (uiChanged) store_.Touch("ui", ui, "");
+    if (systemsChanged) store_.Touch("systems", systems, "");
+    if (graphChanged) SaveGraph(g);
+    if (retry) RetryFailed();
+    PlanDecision d;
+    d.stage = "validate";
+    d.actor = ids.empty() ? "rule" : "user";
+    d.kind = "fix";
+    d.subject = "report";
+    for (const auto& x : done) d.chosen += (d.chosen.empty() ? "" : "; ") + x;
+    d.rationale = "Findings with a known remedy, fixed; then validated again.";
+    store_.Decide(d);
+    // Validated again once the remakes are through (the report waits for them).
+    stage_ = "validate";
+    status_ = "working";
+    message_ = "Fixing what validation found (" + std::to_string(done.size()) + "), then checking again…";
+    if (std::none_of(jobs_.begin(), jobs_.end(), [](const Job& j) { return j.kind == "report" && j.status == "queued"; })) AddJob("report", "report");
+    Save();
+    Pump();
+    return {};
+}
+
+std::string GamePlan::QuickFix(const std::string& doc, const std::vector<std::string>& problems) {
+    if (store_.Locked(doc)) return doc + " is locked";
+    std::string kind, subject, key;
+    if (doc.rfind("characters/", 0) == 0) kind = "character", subject = "character/" + PlanSlug(doc), key = "character";
+    else if (doc.rfind("places/", 0) == 0) kind = "place", subject = "location/" + PlanSlug(doc), key = "place";
+    else if (doc.rfind("story/scenes/", 0) == 0) kind = "scene", subject = PlanSlug(doc), key = "scene";
+    else if (doc.rfind("quests/", 0) == 0) {
+        const json q = store_.Read(doc).value_or(json::object());
+        kind = "quest", subject = q.is_object() && !Text(q, "slot").empty() ? Text(q, "slot") : PlanSlug(doc), key = "quests";
+    } else if (doc == "quests") kind = "quests", subject = "quests", key = "quests";
+    else if (doc == "systems") kind = "systems", subject = "systems", key = "systems";
+    else if (doc == "ui") kind = "visuals", subject = "ui", key = "ui";
+    else if (doc.rfind("story/acts/", 0) == 0) kind = "act", subject = PlanSlug(doc), key = "act";
+    else if (doc == "outline") kind = "outline", subject = "outline", key = "outline";
+    else return Regenerate(doc); // nothing to correct in place
+    json content;
+    if (kind == "quests") {
+        content = json::array();
+        for (const auto& q : store_.List("quests")) content.push_back(store_.Read(q).value_or(json::object()));
+    } else if (kind == "quest") {
+        content = json::array({store_.Read(doc).value_or(json::object())}); // the answer's shape: quests: [it]
+    } else {
+        content = store_.Read(doc).value_or(json());
+    }
+    if (content.is_null() || content.empty()) return Regenerate(doc);
+    auto strip = [](json& d) {
+        for (const char* k : {"revision", "madeBy", "inputs", "schema", "rationale", "locked", "designedBy"}) d.erase(k);
+    };
+    if (content.is_array()) {
+        for (auto& d : content) {
+            if (d.is_object()) strip(d);
+        }
+    } else if (content.is_object()) {
+        strip(content);
+    }
+    for (const auto& j : jobs_) {
+        if (j.kind == kind && j.subject == subject && (j.status == "queued" || j.status == "running")) return {};
+    }
+    if (kind == "scene") UndoScene(subject);
+    PlanDecision d;
+    d.stage = StageOfJob(kind);
+    d.actor = "rule";
+    d.kind = "quick-fix";
+    d.subject = doc;
+    for (const auto& p : problems) d.chosen += (d.chosen.empty() ? "" : "; ") + p;
+    store_.Decide(d);
+    Job* job = FindJob(AddJob(kind, subject));
+    job->problems = json(problems);
+    job->lastAnswer = {{key, content}};
+    return {};
 }
 
 std::string GamePlan::AcceptFinding(const std::string& finding, const std::string& reason) {

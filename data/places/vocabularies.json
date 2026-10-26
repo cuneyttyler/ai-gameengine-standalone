@@ -91,6 +91,21 @@
       "alt": [
         "metal"
       ]
+    },
+    {
+      "id": "concrete"
+    },
+    {
+      "id": "glass"
+    },
+    {
+      "id": "steel"
+    },
+    {
+      "id": "asphalt"
+    },
+    {
+      "id": "plastic"
     }
   ],
   "house-kind": [
@@ -424,6 +439,25 @@
         "boardwalk",
         "wooden"
       ]
+    },
+    {
+      "id": "asphalt",
+      "alt": [
+        "tarmac"
+      ]
+    },
+    {
+      "id": "concrete"
+    },
+    {
+      "id": "plaza",
+      "broader": "paved"
+    },
+    {
+      "id": "lawn"
+    },
+    {
+      "id": "sports-court"
     }
   ],
   "terrain-kind": [
@@ -506,10 +540,24 @@
       }
     },
     {
-      "id": "stone"
+      "id": "stone",
+      "look": {
+        "tone": [
+          128,
+          124,
+          118
+        ]
+      }
     },
     {
-      "id": "mud"
+      "id": "mud",
+      "look": {
+        "tone": [
+          96,
+          76,
+          52
+        ]
+      }
     },
     {
       "id": "cobble",
@@ -537,7 +585,12 @@
     {
       "id": "water-shallow",
       "look": {
-        "water": true
+        "water": true,
+        "tone": [
+          80,
+          136,
+          146
+        ]
       }
     },
     {
@@ -574,6 +627,161 @@
           54
         ]
       }
+    },
+    {
+      "id": "asphalt",
+      "alt": [
+        "tarmac",
+        "road surface"
+      ],
+      "look": {
+        "made": true,
+        "tone": [
+          66,
+          66,
+          72
+        ]
+      }
+    },
+    {
+      "id": "sidewalk",
+      "alt": [
+        "pavement",
+        "footpath"
+      ],
+      "look": {
+        "made": true,
+        "tone": [
+          172,
+          170,
+          162
+        ]
+      }
+    },
+    {
+      "id": "concrete",
+      "look": {
+        "made": true,
+        "tone": [
+          148,
+          148,
+          144
+        ]
+      }
+    },
+    {
+      "id": "plaza",
+      "alt": [
+        "paving",
+        "paved square",
+        "flagstones"
+      ],
+      "look": {
+        "made": true,
+        "tone": [
+          176,
+          166,
+          150
+        ]
+      }
+    },
+    {
+      "id": "lawn",
+      "alt": [
+        "mown grass",
+        "turf"
+      ],
+      "look": {
+        "tone": [
+          96,
+          140,
+          64
+        ]
+      }
+    },
+    {
+      "id": "sports-court",
+      "alt": [
+        "court",
+        "pitch"
+      ],
+      "look": {
+        "made": true,
+        "tone": [
+          176,
+          88,
+          70
+        ]
+      }
+    },
+    {
+      "id": "gravel",
+      "look": {
+        "made": true,
+        "tone": [
+          150,
+          140,
+          124
+        ]
+      }
+    },
+    {
+      "id": "paved",
+      "look": {
+        "made": true,
+        "tone": [
+          140,
+          136,
+          128
+        ]
+      }
+    },
+    {
+      "id": "plank",
+      "look": {
+        "made": true,
+        "tone": [
+          128,
+          96,
+          64
+        ]
+      }
+    },
+    {
+      "id": "cave-floor",
+      "look": {
+        "made": true,
+        "tone": [
+          92,
+          84,
+          76
+        ]
+      }
+    },
+    {
+      "id": "tile-floor",
+      "alt": [
+        "tiles"
+      ],
+      "look": {
+        "made": true,
+        "tone": [
+          196,
+          192,
+          182
+        ]
+      }
+    },
+    {
+      "id": "carpet",
+      "look": {
+        "made": true,
+        "tone": [
+          118,
+          96,
+          98
+        ]
+      }
     }
   ],
   "road-class": [
@@ -599,6 +807,18 @@
         "path",
         "track"
       ]
+    },
+    {
+      "id": "highway",
+      "broader": "main"
+    },
+    {
+      "id": "boulevard",
+      "broader": "main"
+    },
+    {
+      "id": "avenue",
+      "broader": "main"
     }
   ],
   "layout": [
@@ -753,6 +973,18 @@
     },
     {
       "id": "brazier"
+    },
+    {
+      "id": "street-light",
+      "alt": [
+        "streetlamp"
+      ]
+    },
+    {
+      "id": "neon"
+    },
+    {
+      "id": "floodlight"
     }
   ],
   "clutter-theme": [
@@ -770,6 +1002,15 @@
     },
     {
       "id": "military"
+    },
+    {
+      "id": "urban"
+    },
+    {
+      "id": "office"
+    },
+    {
+      "id": "industrial"
     }
   ],
   "affordance": [
@@ -813,6 +1054,17 @@
     },
     {
       "id": "interior"
+    },
+    {
+      "id": "courtyard"
+    },
+    {
+      "id": "modern-city",
+      "alt": [
+        "modern city",
+        "downtown",
+        "metropolis"
+      ]
     }
   ],
   "dungeon-theme": [
@@ -1006,6 +1258,42 @@
         "smithy",
         "forge"
       ]
+    },
+    {
+      "id": "apartment",
+      "alt": [
+        "flat"
+      ]
+    },
+    {
+      "id": "office"
+    },
+    {
+      "id": "store",
+      "alt": [
+        "retail"
+      ]
+    },
+    {
+      "id": "restaurant",
+      "alt": [
+        "cafe"
+      ]
+    },
+    {
+      "id": "school"
+    },
+    {
+      "id": "hospital"
+    },
+    {
+      "id": "hotel"
+    },
+    {
+      "id": "police-station"
+    },
+    {
+      "id": "fire-station"
     }
   ],
   "biome-kind": [
@@ -1062,6 +1350,15 @@
       "alt": [
         "earth"
       ]
+    },
+    {
+      "id": "tile-floor"
+    },
+    {
+      "id": "carpet"
+    },
+    {
+      "id": "concrete"
     }
   ],
   "enemy-kind": [
@@ -1149,6 +1446,252 @@
       "alt": [
         "royal court",
         "palace"
+      ]
+    }
+  ],
+  "era": [
+    {
+      "id": "prehistoric"
+    },
+    {
+      "id": "ancient"
+    },
+    {
+      "id": "medieval"
+    },
+    {
+      "id": "renaissance"
+    },
+    {
+      "id": "industrial",
+      "alt": [
+        "victorian",
+        "steam"
+      ]
+    },
+    {
+      "id": "modern",
+      "alt": [
+        "20th century"
+      ]
+    },
+    {
+      "id": "contemporary",
+      "alt": [
+        "present day",
+        "today"
+      ]
+    },
+    {
+      "id": "near-future",
+      "alt": [
+        "cyberpunk"
+      ]
+    },
+    {
+      "id": "far-future",
+      "alt": [
+        "sci-fi"
+      ]
+    }
+  ],
+  "modern-house-kind": [
+    {
+      "id": "detached",
+      "alt": [
+        "suburban house",
+        "family house"
+      ]
+    },
+    {
+      "id": "bungalow"
+    },
+    {
+      "id": "duplex"
+    },
+    {
+      "id": "villa"
+    }
+  ],
+  "apartment-kind": [
+    {
+      "id": "low-rise"
+    },
+    {
+      "id": "mid-rise"
+    },
+    {
+      "id": "high-rise",
+      "alt": [
+        "tower block"
+      ]
+    }
+  ],
+  "shop-kind": [
+    {
+      "id": "convenience"
+    },
+    {
+      "id": "boutique",
+      "alt": [
+        "clothes"
+      ]
+    },
+    {
+      "id": "pharmacy"
+    },
+    {
+      "id": "bakery"
+    },
+    {
+      "id": "electronics"
+    },
+    {
+      "id": "bookshop"
+    },
+    {
+      "id": "barber"
+    },
+    {
+      "id": "florist"
+    },
+    {
+      "id": "bank"
+    }
+  ],
+  "vehicle-kind": [
+    {
+      "id": "car"
+    },
+    {
+      "id": "van"
+    },
+    {
+      "id": "truck"
+    },
+    {
+      "id": "bus"
+    },
+    {
+      "id": "bicycle"
+    },
+    {
+      "id": "motorcycle"
+    },
+    {
+      "id": "taxi",
+      "broader": "car"
+    }
+  ],
+  "district-kind": [
+    {
+      "id": "downtown",
+      "alt": [
+        "cbd",
+        "city centre"
+      ]
+    },
+    {
+      "id": "residential"
+    },
+    {
+      "id": "suburb"
+    },
+    {
+      "id": "commercial"
+    },
+    {
+      "id": "industrial"
+    },
+    {
+      "id": "civic"
+    },
+    {
+      "id": "park"
+    },
+    {
+      "id": "waterfront"
+    }
+  ],
+  "zone-shape": [
+    {
+      "id": "grown",
+      "alt": [
+        "organic",
+        "irregular"
+      ]
+    },
+    {
+      "id": "blocks",
+      "alt": [
+        "rectangular",
+        "planned",
+        "grid blocks"
+      ]
+    }
+  ],
+  "street-grid": [
+    {
+      "id": "per-zone",
+      "alt": [
+        "each its own"
+      ]
+    },
+    {
+      "id": "shared",
+      "alt": [
+        "city grid",
+        "one grid",
+        "continuous"
+      ]
+    }
+  ],
+  "block-fill": [
+    {
+      "id": "frontage",
+      "alt": [
+        "along the streets"
+      ]
+    },
+    {
+      "id": "full",
+      "alt": [
+        "built through",
+        "back to back"
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "id": "partial",
+      "alt": [
+        "open land between"
+      ]
+    },
+    {
+      "id": "full",
+      "alt": [
+        "covered",
+        "dense"
+      ]
+    }
+  ],
+  "arrangement": [
+    {
+      "id": "natural",
+      "alt": [
+        "scattered",
+        "random",
+        "organic"
+      ]
+    },
+    {
+      "id": "ordered",
+      "alt": [
+        "regular",
+        "symmetric",
+        "aligned",
+        "in rows"
       ]
     }
   ]

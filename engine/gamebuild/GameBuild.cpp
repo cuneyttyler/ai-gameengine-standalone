@@ -17,6 +17,7 @@
 #include "gameplay/Settings.h"
 #include "gameplay/Story.h"
 #include "gameplay/TileGrid.h"
+#include "gameplay/TileLayer.h"
 #include "physics2d/Components.h"
 #include "places/Ontology.h"
 #include "planner/PlannerDocs.h"
@@ -201,6 +202,18 @@ std::string GameBuild::Start(const std::string& mode) {
     return {};
 }
 
+void GameBuild::Stop() {
+    for (auto& r : rows_) {
+        if (r.status == "building") r.status = "waiting";
+        r.inEditor = false;
+    }
+    builds_.clear();
+    pending_.clear();
+    status_ = "stopped";
+    message_ = "Stopped: Restart builds builds every place again (with the art setting as it is then).";
+    Save();
+}
+
 std::string GameBuild::Open() {
     if (!fs::exists(store_.Dir() / "buildstate.json")) return "nothing is being built";
     Load();
@@ -211,11 +224,31 @@ std::string GameBuild::Open() {
     // A build that was waiting on the AI reopens where it was (PlaceBuild::Open).
     for (auto& r : rows_) {
         if (r.status == "building" && !r.build.empty()) {
+            // Past its plan (its art being found, its scene being built) when the editor closed: the
+            // Build panel finishes it, from where it was.
+            std::ifstream sessionIn(host_.projectRoot / "places" / r.build / "session.json", std::ios::binary);
+            const json session = json::parse(sessionIn, nullptr, false);
+            const std::string stage = session.is_object() && session.value("stage", json()).is_string() ? session["stage"].get<std::string>() : "";
+            const bool pastPlan = stage == "planned" || stage == "sourcing" || stage == "sourced" || stage == "building" || stage == "built";
+            if (pastPlan && host_.buildInEditor) {
+                r.resumeInEditor = true;
+                continue;
+            }
             auto build = std::make_unique<PlaceBuild>(BuildHost(r.place));
             if (build->Open(r.build).empty()) builds_[r.place] = std::move(build);
             else r.status = "waiting";
         }
     }
+    Save();
+    return {};
+}
+
+std::string GameBuild::Resume() {
+    if (rows_.empty()) return "nothing to continue: start the build";
+    if (status_ == "working") return {};
+    if (stage_ == "done") return "the game is built: Restart builds to build it again";
+    status_ = "working";
+    message_ = stage_ == "build" ? "⑩ Carrying on with the places…" : "Carrying on…";
     Save();
     return {};
 }
@@ -331,6 +364,62 @@ PlaceBuild::Host GameBuild::BuildHost(const std::string& place) {
     return h;
 }
 
+// What the story needs of a place, for its build: the game's logline and synopsis, the scenes set
+// there (in order), who is there, what the quests need in it, and its purpose and mood.
+json GameBuild::StoryAnchors(const std::string& place) const {
+    const json desc = store_.Read("places/" + PlanSlug(place)).value_or(json::object());
+    json out = json::array();
+    for (const auto& a : desc.value("storyAnchors", json::array())) {
+        if (!a.is_object() || a.value("id", "").empty()) continue;
+        std::string about = a.value("about", a.value("description", ""));
+        if (about.empty()) about = a.value("module", "");
+        out.push_back({{"id", a.value("id", "")}, {"about", about}});
+    }
+    return out;
+}
+
+json GameBuild::StoryFor(const std::string& place) const {
+    const StoryGraph g = StoryGraph::Load(StoryGraph::PathIn(host_.projectRoot)).value_or(StoryGraph{});
+    auto text = [](const json& j, const char* key) {
+        const auto it = j.is_object() ? j.find(key) : j.end();
+        return j.is_object() && it != j.end() && it->is_string() ? it->get<std::string>() : std::string();
+    };
+    const json outline = store_.Read("outline").value_or(json::object());
+    const json storyPart = outline.is_object() ? outline.value("story", json::object()) : json::object();
+    std::string synopsis = text(storyPart, "synopsis");
+    if (synopsis.size() > 900) synopsis = synopsis.substr(0, 900) + "…";
+    json scenes = json::array();
+    for (const auto& id : g.SceneOrder()) {
+        if (g.LocationOfScene(id) != place) continue;
+        const json s = store_.Read("story/scenes/" + id).value_or(json::object());
+        const json card = s.is_object() ? s.value("card", json::object()) : json::object();
+        json scene = {{"id", id}, {"goal", text(card, "goal")}, {"summary", text(s, "summary")}};
+        if (card.is_object() && card.contains("needsParts")) scene["needs"] = card["needsParts"];
+        scenes.push_back(scene);
+    }
+    json people = json::array();
+    for (const auto& e : g.edges) {
+        if (e.p != "locatedAt" || e.o != place) continue;
+        const StoryNode* n = g.Find(e.s);
+        if (n) people.push_back({{"id", n->id}, {"name", n->Text("name")}, {"line", n->Text("summary")}});
+    }
+    json needs = json::array();
+    for (const auto& doc : store_.List("quests")) {
+        const json q = store_.Read(doc).value_or(json::object());
+        if (!q.is_object()) continue;
+        for (const auto& a : q.value("aliases", json::array())) {
+            if (!a.is_object() || text(a, "in") != place) continue;
+            needs.push_back({{"quest", text(q, "name")}, {"alias", text(a, "id")}, {"kind", text(a, "kind")},
+                             {"where", a.value("where", json())}});
+        }
+    }
+    const json desc = store_.Read("places/" + PlanSlug(place)).value_or(json::object());
+    const json d = desc.is_object() ? desc.value("description", json::object()) : json::object();
+    json out = {{"logline", text(storyPart, "logline")}, {"synopsis", synopsis}, {"scenesHere", scenes},
+                {"charactersHere", people}, {"questNeeds", needs}, {"purpose", text(d, "purpose")}, {"mood", text(d, "mood")}};
+    return out;
+}
+
 PlaceBuild* GameBuild::BuildOf(const std::string& place) {
     auto it = builds_.find(place);
     return it == builds_.end() ? nullptr : it->second.get();
@@ -405,6 +494,42 @@ std::string GameBuild::Retry(const std::string& place) {
     return {};
 }
 
+std::string GameBuild::Rebuild(const std::string& place) {
+    Row* r = FindRow(place);
+    if (!r) return "no " + place + " in the build plan";
+    if (r->status == "building") return "it's being built now";
+    r->status = "waiting";
+    r->error.clear();
+    r->steps = 0;
+    r->build.clear(); // a new build of it, not the old one carried on
+    r->inEditor = false;
+    r->resumeInEditor = false;
+    builds_.erase(place);
+    stage_ = "build"; // the rest follows again
+    status_ = "working";
+    message_ = "⑩ Building " + PlanSlug(place) + " again…";
+    Record("rebuild", place, "");
+    Save();
+    return {};
+}
+
+std::string GameBuild::InstallBuilt(const std::string& place, const std::string& buildId) {
+    if (fs::exists(store_.Dir() / "buildstate.json")) Load();
+    Row* r = FindRow(place);
+    if (!r) return "no " + place + " in the build plan";
+    r->build = buildId;
+    r->error.clear();
+    r->inEditor = r->resumeInEditor = false;
+    builds_.erase(place);
+    try {
+        FinishInEditor(*r);
+    } catch (const std::exception& e) {
+        return e.what();
+    }
+    Save();
+    return {};
+}
+
 std::string GameBuild::UsePlaceholder(const std::string& place) {
     Row* r = FindRow(place);
     if (!r) return "no " + place + " in the build plan";
@@ -445,6 +570,7 @@ bool GameBuild::DriveBuilds() {
         if (row.status != "waiting" || !depsDone(row)) continue;
         auto build = std::make_unique<PlaceBuild>(BuildHost(row.place));
         const std::string why = build->StartFromBrief(row.prompt, row.brief);
+        if (why.empty()) build->SetStory(StoryFor(row.place));
         if (!why.empty()) {
             row.error = why;
             row.status = "failed";
@@ -464,6 +590,23 @@ bool GameBuild::DriveBuilds() {
 }
 
 bool GameBuild::DriveRow(Row& row) {
+    if (row.resumeInEditor) {
+        // Reopened past its plan: the Build panel picks it up again.
+        row.resumeInEditor = false;
+        const std::string why = host_.buildInEditor ? host_.buildInEditor(row.build, row.scene) : "the editor isn't there";
+        if (!why.empty()) throw std::runtime_error(why);
+        row.inEditor = true;
+        return true;
+    }
+    if (row.inEditor) {
+        // The Build panel is building it (art, scene, checks): the next place waits.
+        const std::string status = host_.editorBuildStatus ? host_.editorBuildStatus(row.build) : "failed: the editor isn't there";
+        if (status == "working") return false;
+        row.inEditor = false;
+        if (status != "built") throw std::runtime_error(status.rfind("failed: ", 0) == 0 ? status.substr(8) : status);
+        FinishInEditor(row);
+        return true;
+    }
     PlaceBuild* build = BuildOf(row.place);
     if (!build) {
         row.status = "waiting";
@@ -480,10 +623,29 @@ bool GameBuild::DriveRow(Row& row) {
         for (int step = 0; step < 12; ++step) {
             const std::string stage = build->Stage();
             std::string why;
-            if (stage == "request" || stage == "assets") why = build->Confirm();
-            else if (stage == "layout") why = build->PlanFromLayout();
-            else if (stage == "plan") why = build->Approve();
-            else if (stage == "planned" || stage == "built") {
+            // The request is confirmed first (it moves on to the assets), then the build.
+            if (stage == "request") why = build->Step("assets");
+            else if (stage == "assets") why = build->Confirm();
+            else if (stage == "layout") {
+                // Checked by the vision model first (its errors revised); then the plan.
+                if (build->LayoutChecked() || !build->CheckLayout().empty()) why = build->PlanFromLayout();
+            }
+            else if (stage == "plan") {
+                // Its zones checked by the vision model first (built without ② Layout); then approved.
+                if (build->LayoutChecked() || !build->CheckLayout().empty()) why = build->Approve();
+            }
+            else if ((stage == "planned" || stage == "built") && host_.buildInEditor) {
+                // Built by the Build panel itself, as the user would: its art found or made, the scene
+                // built, checked and saved; this build lets go of it meanwhile.
+                const std::string id = build->Id();
+                row.build = id;
+                builds_.erase(row.place);
+                const std::string why = host_.buildInEditor(id, row.scene);
+                if (!why.empty()) throw std::runtime_error(why);
+                row.inEditor = true;
+                Record("build-step", row.place, "planned → the Build panel", "automatic: built in the editor");
+                return true;
+            } else if (stage == "planned" || stage == "built") {
                 const std::string built = BuildScene(row, *build);
                 if (!built.empty()) throw std::runtime_error(built);
                 return true;
@@ -526,32 +688,7 @@ std::string GameBuild::BuildScene(Row& row, PlaceBuild& build) {
     Registry registry;
     json report;
     BuildPlaceScene(registry, prefabs, build.Solved(), plan, terrains, options, &report);
-    // Its story anchors as markers: on the part that shows the anchor's module, else in the middle.
-    const TileGrid grid = TileGrid::Build(registry);
-    const Extent extent = OpenExtent(registry, grid);
-    const int midX = extent.any ? (extent.minX + extent.maxX) / 2 : 0, midY = extent.any ? (extent.minY + extent.maxY) / 2 : 0;
-    const json desc = store_.Read("places/" + PlanSlug(row.place)).value_or(json::object());
-    int made = 0;
-    for (const auto& a : desc.value("storyAnchors", json::array())) {
-        const std::string id = a.value("id", ""), module = a.value("module", "");
-        std::optional<std::pair<int, int>> at;
-        for (const auto& o : build.Solved().value("objects", json::array())) {
-            const std::string node = o.value("node", "");
-            if (o.value("shows", "") == module || o.value("slot", "") == id || node.size() >= id.size() + 1 && node.compare(node.size() - id.size(), id.size(), id) == 0) {
-                at = NearestOpen(grid, o.value("x", 0) + options.originX, o.value("y", 0) + options.originY);
-                break;
-            }
-        }
-        if (!at) {
-            at = NearestOpen(grid, midX + made, midY);
-            ++made;
-        }
-        if (at) AddMarker(registry, id, at->first + 0.5f, at->second + 0.5f);
-    }
-    if (auto arrive = NearestOpen(grid, midX, midY)) {
-        AddMarker(registry, "arrive", arrive->first + 0.5f, arrive->second + 0.5f);
-        if (row.scene == StartScene()) CreatePlayer(registry, arrive->first + 0.5f, arrive->second + 0.5f);
-    }
+    const int made = AddStoryMarkers(registry, row, build.Solved(), options.originX, options.originY);
     std::error_code ec;
     fs::create_directories(project.Resolve(row.scene).parent_path(), ec);
     SaveScene(registry, project.Resolve(row.scene).string());
@@ -563,6 +700,142 @@ std::string GameBuild::BuildScene(Row& row, PlaceBuild& build) {
     row.status = "built";
     files_[row.scene] = {{"planner", "places/" + PlanSlug(row.place)}, {"build", build.Id()}};
     return {};
+}
+
+int GameBuild::AddStoryMarkers(Registry& registry, const Row& row, const json& solved, int originX, int originY) {
+    // Its story anchors as markers: on the part that shows the anchor's module, else in the middle.
+    const TileGrid grid = TileGrid::Build(registry);
+    const Extent extent = OpenExtent(registry, grid);
+    const int midX = extent.any ? (extent.minX + extent.maxX) / 2 : 0, midY = extent.any ? (extent.minY + extent.maxY) / 2 : 0;
+    const json desc = store_.Read("places/" + PlanSlug(row.place)).value_or(json::object());
+    int made = 0;
+    // A painted place's markers are already where its painting shows them (PlacePaint): kept.
+    std::map<std::string, std::pair<float, float>> placed;
+    for (auto [e, m, w] : registry.view<Marker, WorldTransform2D>().each()) placed[m.name] = {w.x, w.y};
+    for (const auto& a : desc.value("storyAnchors", json::array())) {
+        if (!a.is_object()) continue;
+        const std::string id = a.value("id", ""), module = a.value("module", "");
+        if (placed.contains(id)) continue;
+        std::optional<std::pair<int, int>> at;
+        for (const auto& o : solved.value("objects", json::array())) {
+            if (!o.is_object()) continue;
+            const std::string node = o.value("node", "");
+            if (o.value("shows", "") == module || o.value("slot", "") == id || node.size() >= id.size() + 1 && node.compare(node.size() - id.size(), id.size(), id) == 0) {
+                at = NearestOpen(grid, o.value("x", 0) + originX, o.value("y", 0) + originY);
+                break;
+            }
+        }
+        if (!at) {
+            at = NearestOpen(grid, midX + made, midY);
+            ++made;
+        }
+        if (at) AddMarker(registry, id, at->first + 0.5f, at->second + 0.5f);
+    }
+    if (const auto at = placed.find("arrive"); at != placed.end()) {
+        if (row.scene == StartScene()) CreatePlayer(registry, at->second.first, at->second.second);
+    } else if (auto arrive = NearestOpen(grid, midX, midY)) {
+        AddMarker(registry, "arrive", arrive->first + 0.5f, arrive->second + 0.5f);
+        if (row.scene == StartScene()) CreatePlayer(registry, arrive->first + 0.5f, arrive->second + 0.5f);
+    }
+    return made;
+}
+
+using LevelArea = PlaceLevelArea;
+
+// Only what stands in [x0,x1)x[y0,y1) (a cell round it for the walls) is kept: the rest goes.
+static void KeepOnly(Registry& registry, int x0, int y0, int x1, int y1, const std::string& level) {
+    x0 -= 1, y0 -= 1, x1 += 1, y1 += 1;
+    auto inside = [&](float x, float y) { return x >= x0 && y >= y0 && x < x1 && y < y1; };
+    std::vector<Entity> gone;
+    for (auto e : registry.view<entt::entity>()) {
+        // A painted level's backdrop stands on the screen, not a cell: kept with its own level only.
+        if (const auto* n = registry.try_get<PlaceNode>(e); n && n->statement.rfind("backdrop#", 0) == 0) {
+            if (n->node != level) gone.push_back(e);
+            continue;
+        }
+        if (const auto* t = registry.try_get<Tile>(e)) {
+            if (!inside(static_cast<float>(t->gx), static_cast<float>(t->gy))) gone.push_back(e);
+        } else if (const auto* w = registry.try_get<WorldTransform2D>(e)) {
+            if (!inside(w->x, w->y)) gone.push_back(e);
+        }
+    }
+    for (auto e : gone) registry.destroy(e);
+    for (auto& [name, layer] : LayersOf(registry).layers) {
+        std::vector<std::pair<int, int>> out;
+        layer.ForEach([&](int gx, int gy, uint16_t) {
+            if (!inside(static_cast<float>(gx), static_cast<float>(gy))) out.push_back({gx, gy});
+        });
+        for (const auto& [gx, gy] : out) layer.Erase(gx, gy);
+    }
+}
+
+void GameBuild::FinishInEditor(Row& row) {
+    const Project project{host_.projectRoot};
+    const std::string path = project.Resolve(row.scene).string();
+    Registry registry;
+    if (!LoadScene(registry, path)) throw std::runtime_error("the scene the Build panel saved can't be read: " + row.scene);
+    PlaceBuild build(BuildHost(row.place));
+    int made = 0;
+    std::vector<LevelArea> levels;
+    int ox = 0, oy = 0;
+    if (build.Open(row.build).empty()) {
+        std::tie(ox, oy) = build.Origin();
+        made = AddStoryMarkers(registry, row, build.Solved(), ox, oy);
+        if (host_.places) levels = PlaceLevelAreas(host_.places(), build.Spec(), build.Solved());
+    }
+    files_[row.scene] = {{"planner", "places/" + PlanSlug(row.place)}, {"build", row.build}};
+    if (levels.empty()) {
+        SaveScene(registry, path);
+    } else {
+        // Each level its own scene (docs/build-fixes.md): the first at the row's scene, the others
+        // beside it; stairs lead down to the next level and back up (a gateway on each, arriving by
+        // the other level's stairs).
+        const std::string whole = SerializeScene(registry);
+        const fs::path base = fs::path(row.scene);
+        auto sceneOf = [&](size_t i) {
+            return i == 0 ? row.scene : (base.parent_path() / (base.stem().string() + "-" + PlanSlug(levels[i].id) + base.extension().string())).generic_string();
+        };
+        auto stairsOf = [&](const LevelArea& l, bool last) -> std::pair<float, float> {
+            if (!l.stairs.empty()) {
+                const auto& s = last ? l.stairs.back() : l.stairs.front();
+                return {ox + s.first + 0.5f, oy + s.second + 0.5f};
+            }
+            return {ox + (l.x0 + l.x1) / 2.0f, oy + (l.y0 + l.y1) / 2.0f};
+        };
+        json sceneList = json::array();
+        for (size_t i = 0; i < levels.size(); ++i) {
+            Registry level;
+            DeserializeScene(level, whole);
+            KeepOnly(level, ox + levels[i].x0, oy + levels[i].y0, ox + levels[i].x1, oy + levels[i].y1, levels[i].id);
+            auto gateway = [&](float x, float y, const std::string& scene, const std::string& marker, const std::string& label) {
+                const Entity g = level.create();
+                level.emplace<WorldTransform2D>(g, x, y);
+                level.emplace<Gateway>(g, scene, marker);
+                level.emplace<Name>(g, label);
+            };
+            if (i + 1 < levels.size()) {
+                const auto [sx, sy] = stairsOf(levels[i], true);
+                gateway(sx, sy, sceneOf(i + 1), "from-" + PlanSlug(levels[i].id), "Stairs down to " + levels[i + 1].id);
+                AddMarker(level, "from-" + PlanSlug(levels[i + 1].id), sx + 1.0f, sy);
+            }
+            if (i > 0) {
+                const auto [sx, sy] = stairsOf(levels[i], false);
+                gateway(sx, sy, sceneOf(i - 1), "from-" + PlanSlug(levels[i].id), "Stairs up to " + levels[i - 1].id);
+                AddMarker(level, "from-" + PlanSlug(levels[i - 1].id), sx + 1.0f, sy);
+            }
+            const std::string file = project.Resolve(sceneOf(i)).string();
+            std::error_code ec;
+            fs::create_directories(fs::path(file).parent_path(), ec);
+            SaveScene(level, file);
+            files_[sceneOf(i)] = {{"planner", "places/" + PlanSlug(row.place)}, {"build", row.build}, {"level", levels[i].id}};
+            sceneList.push_back(sceneOf(i));
+        }
+        row.checks["levels"] = sceneList;
+    }
+    row.checks["anchorsMade"] = made;
+    row.checks["builtIn"] = "the Build panel";
+    row.status = "built";
+    Record("built", row.place, row.scene, "built by the Build panel: art found, scene built and checked");
 }
 
 std::string GameBuild::PlaceholderScene(Row& row) {
@@ -1205,8 +1478,18 @@ bool GameBuild::Pump() {
 json GameBuild::State() const {
     json rows = json::array();
     for (const auto& r : rows_) {
+        // The place builder's own step for the place being built (request, assets, plan, layout...).
+        std::string step, phase;
+        if (r.status == "building") {
+            const auto b = builds_.find(r.place);
+            if (b != builds_.end() && b->second) {
+                step = b->second->Stage();
+                const json s = b->second->State();
+                if (s.is_object() && s.value("planPhase", json()).is_string()) phase = s["planPhase"].get<std::string>();
+            }
+        }
         rows.push_back({{"place", r.place}, {"scene", r.scene}, {"buildType", r.buildType}, {"mode", r.mode}, {"status", r.status},
-                        {"build", r.build}, {"error", r.error}, {"checks", r.checks}, {"dependsOn", r.dependsOn}});
+                        {"step", step}, {"planPhase", phase}, {"build", r.build}, {"error", r.error}, {"checks", r.checks}, {"dependsOn", r.dependsOn}});
     }
     std::ifstream in(store_.Dir() / "result.json", std::ios::binary);
     const json result = json::parse(in, nullptr, false);

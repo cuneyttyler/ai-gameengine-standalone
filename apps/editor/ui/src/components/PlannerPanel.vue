@@ -8,6 +8,8 @@ import { computed, ref, watch } from 'vue'
 import AiProgress from './AiProgress.vue'
 import { onHostMessage, sendToHost } from '../ipc'
 import DocView from './DocView.vue'
+import SystemsView from './SystemsView.vue'
+import DataTable from './DataTable.vue'
 import { activatePanel, setPanelVisible } from '../layout'
 
 interface Stage {
@@ -82,6 +84,9 @@ interface Act {
   chapters: Chapter[]
 }
 interface Finding {
+  remedy?: { how: string; do: unknown } // a known fix ("add the journal window", "make tamsin again")
+  fixJob?: string // the job fixing it, while it's being fixed
+  step?: string // the stage it comes from ("④ Characters")
   id: string
   rule: string
   severity: string
@@ -125,7 +130,89 @@ const stages = computed(() => (state.value.stages ?? []) as Stage[])
 const windowTabs = computed(() => (state.value.window ?? []) as WindowTab[])
 const currentTab = computed(() => windowTabs.value.find((t) => t.id === tab.value) ?? windowTabs.value[0])
 const acts = computed(() => (state.value.acts ?? []) as Act[])
-const findings = computed(() => ((state.value.report?.findings ?? []) as Finding[]))
+// The findings still to deal with; those being fixed are off the list (the next report decides).
+const allFindings = computed(() => ((state.value.report?.findings ?? []) as Finding[]))
+const findings = computed(() => allFindings.value.filter((f) => f.status !== 'fixed')) // a fixed one leaves the list
+const fixingCount = computed(() => findings.value.filter((f) => f.status === 'fixing').length)
+// The row numbers (1-based, as the table shows them) of the findings whose fix is running now.
+// The row numbers (as the table shows them) of every finding being fixed.
+const fixingRows = computed(() => findings.value.flatMap((f, i) => (f.status === 'fixing' ? [i + 1] : [])))
+// 1, 2, 3, 5, 7, 8, 9 -> "1–3, 5, 7–9".
+function ranges(rows: number[]): string {
+  const out: string[] = []
+  for (let i = 0; i < rows.length; ) {
+    let j = i
+    while (j + 1 < rows.length && rows[j + 1] === rows[j]! + 1) j++
+    out.push(j - i >= 2 ? `${rows[i]}–${rows[j]}` : rows.slice(i, j + 1).join(', '))
+    i = j + 1
+  }
+  return out.join(', ')
+}
+const fixingNow = computed(() => {
+  const running = new Set((state.value.runningJobs ?? []) as string[])
+  return findings.value.flatMap((f, i) => (f.status === 'fixing' && f.fixJob && running.has(f.fixJob) ? [i + 1] : []))
+})
+// A fix running (findings still fixing, or the plan re-checking): no second one on top.
+const fixBusy = computed(() => fixingCount.value > 0 || (state.value.stage === 'validate' && state.value.status === 'working'))
+const openErrors = computed(() => findings.value.filter((f) => f.status !== 'accepted' && f.severity === 'error').length) // fixing ones still count
+const openWarnings = computed(() => findings.value.filter((f) => f.status !== 'accepted' && f.severity !== 'error').length)
+const acceptedCount = computed(() => findings.value.filter((f) => f.status === 'accepted').length)
+const fixable = computed(() => findings.value.filter((f) => f.status === 'open' && f.remedy))
+// ⑧'s design: theme, windows, HUD first; bookkeeping left out.
+const uiInOrder = computed(() => {
+  const ui = (state.value.ui ?? {}) as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const k of ['theme', 'screens', 'hud', 'notifications', 'mapStyle']) if (k in ui) out[k] = ui[k]
+  for (const [k, v] of Object.entries(ui)) {
+    if (!(k in out) && !['schema', 'revision', 'madeBy', 'inputs', 'rationale', 'locked'].includes(k)) out[k] = v
+  }
+  return out
+})
+// ⑩: the place being built now, how far along the places are, and which can be tried again.
+const buildRows = computed(() => (state.value.build?.rows ?? []) as { place: string; status: string; step?: string; planPhase?: string }[])
+const buildingRow = computed(() => buildRows.value.find((r) => r.status === 'building'))
+const buildDone = computed(() => buildRows.value.filter((r) => r.status === 'built' || r.status === 'placeholder').length)
+function rebuildPlace(place: string) {
+  if (window.confirm(`Build ${place.replace(/^location\//, '')} again from the start? Its scene is replaced.`))
+    sendToHost({ type: 'planner:buildRow', place, action: 'rebuild' })
+}
+const buildRetryable = computed(() => buildRows.value.filter((r) => r.status === 'failed' || r.status === 'placeholder'))
+// The art strategy's options, as words.
+function artSourceName(source: string): string {
+  return (
+    ({
+      search: 'Search: the project, the library, the web, then made by the Art tool',
+      generate: 'Generate: made by the Art tool',
+      library: 'Library: the libraries, else made by the Art tool',
+      project: 'The project: its own art, else made by the Art tool',
+      auto: "Auto: by each piece's importance",
+    } as Record<string, string>)[source] ?? source
+  )
+}
+function restartBuilds() {
+  if (window.confirm('Build every place again from the start, with the art setting as it is now?')) sendToHost({ type: 'planner:restartBuilds' })
+}
+function retryFailedPlaces() {
+  for (const r of buildRetryable.value) sendToHost({ type: 'planner:buildRow', place: r.place, action: 'retry' })
+}
+// The place builder's step, named as the Build panel names it (its activeStep): the AI drafting
+// the first plan is still ① Confirm there.
+function stepName(step: string, phase = ''): string {
+  if (['request', 'assets', 'interpreting'].includes(step) || (step === 'planning' && phase === 'root')) return '① Confirm'
+  if (step === 'layout') return '② Layout'
+  if (['planning', 'plan', 'planned', 'revising'].includes(step)) return '③ Plan'
+  if (['sourcing', 'sourced'].includes(step)) return '④ Assets'
+  if (['building', 'built'].includes(step)) return '⑤ Result'
+  return step
+}
+const fixableHow = computed(() => fixable.value.map((f) => f.remedy?.how ?? '').join('\n'))
+const fixableErrors = computed(() => fixable.value.filter((f) => f.severity === 'error').length)
+const fixableWarnings = computed(() => fixable.value.length - fixableErrors.value)
+// What "Fix now" fixes: errors first (they stop the build), else what there is.
+const fixScope = ref('errors')
+watch(fixableErrors, (n) => {
+  if (n === 0 && fixScope.value === 'errors') fixScope.value = '*'
+}, { immediate: true })
 const staleCount = computed(() => (state.value.stale ?? []).length as number)
 const failedJobs = computed(() => (state.value.failedJobs ?? []) as FailedJob[])
 const failedHere = computed(() => failedJobs.value.filter((j) => j.stage === view.value))
@@ -144,6 +231,8 @@ function jobName(j: FailedJob): string {
   return j.subject && j.subject !== j.kind ? `${what} ${j.subject}` : what
 }
 const waiting = computed(() => state.value.status === 'waiting' || state.value.status === 'failed')
+// The places are being built (⑩–⑬, not finished): Continue goes on with them, not back to ⑨.
+const buildGoing = computed(() => !!state.value.build?.active && state.value.build?.stage !== 'done')
 const outline = computed(() => (state.value.outline ?? {}) as Record<string, any>)
 const hasOutline = computed(() => Object.keys(outline.value).length > 0)
 const outlineStage = computed(() => stages.value.find((s) => s.id === 'outline'))
@@ -255,6 +344,17 @@ function statusMark(status: string): string {
           <span v-if="s.stale" class="stale">{{ s.stale }}</span>
           <span v-if="s.review" class="badge">review</span>
         </button>
+        <!-- ⑩–⑬ the last step: greyed until the design has a baseline (⑨ Validate passed) -->
+        <button
+          :class="['step', { on: view === 'build' }]"
+          :disabled="!(state.baseline || state.build?.active)"
+          :title="state.baseline || state.build?.active
+            ? 'Build the places, place the characters, bind the quests, write the files and playtest'
+            : 'Available once ⑨ Validate passes. To build one place now: open it in ⑥ Places and choose Build…'"
+          @click="view = 'build'"
+        >
+          ⑩–⑬ Build
+        </button>
       </div>
       <div class="bar">
         <span :class="['status', state.status]">{{ state.message }}</span>
@@ -266,11 +366,11 @@ function statusMark(status: string): string {
         <button v-if="staleCount" @click="sendToHost({ type: 'planner:regenerateStale' })">Regenerate stale ({{ staleCount }})</button>
         <button v-if="state.status === 'working'" @click="sendToHost({ type: 'planner:pause', on: true })">Pause</button>
         <button v-if="state.status === 'paused'" @click="sendToHost({ type: 'planner:pause', on: false })">Resume</button>
-        <button v-if="waiting" class="primary" @click="sendToHost({ type: state.stage === 'concept' ? 'planner:confirm' : 'planner:approve' })">
+        <button v-if="buildGoing && state.build.status !== 'working'" class="primary" title="Go on from the next place that isn't built; those that are stay"
+          @click="sendToHost({ type: 'planner:continueBuilds' })">Continue building</button>
+        <button v-else-if="waiting && !buildGoing" class="primary" @click="sendToHost({ type: state.stage === 'concept' ? 'planner:confirm' : 'planner:approve' })">
           Continue
         </button>
-        <!-- ⑩–⑬ only once the design has a baseline (⑨ Validate passed) or a build has begun -->
-        <button v-if="state.baseline || state.build?.active" :class="['step-build', { on: view === 'build' }]" @click="view = 'build'">⑩–⑬ Build</button>
       </div>
       <AiProgress :paths="['/planner/']" />
       <div v-if="askReplace" class="notice">
@@ -491,28 +591,39 @@ function statusMark(status: string): string {
 
           <template v-else-if="view === 'systems'">
             <div v-if="state.systems" class="section">
-              <a href="#" @click.prevent="open('systems')">open</a>
-              <div v-for="(v, k) in state.systems.summary ?? {}" :key="k"><b>{{ k }}</b>: {{ show(v) }}</div>
-              <table class="grid">
-                <tbody>
-                  <tr v-for="(r, i) in state.systems.records ?? []" :key="i"><td>{{ r.type }}</td><td>{{ r.id }}</td><td class="wide">{{ show(r.record) }}</td></tr>
-                </tbody>
-              </table>
+              <div class="row"><span class="spacer"></span><a href="#" @click.prevent="open('systems')">open the document</a></div>
+              <SystemsView :systems="state.systems" />
             </div>
             <div v-else class="muted">Not yet.</div>
           </template>
 
           <template v-else-if="view === 'visuals'">
             <div v-if="state.ui" class="section">
-              <a href="#" @click.prevent="open('ui')">open</a>
-              <div><b>Theme</b>: {{ state.ui.theme }}</div>
-              <div><b>Screens</b>: {{ (state.ui.screens ?? []).join(', ') }}</div>
-              <div><b>HUD</b>: {{ (state.ui.hud ?? []).join(', ') }}</div>
+              <h4 class="fold">The interface <a href="#" @click.prevent="open('ui')">open</a></h4>
+              <p class="muted">
+                Chosen from the engine's interface kit: the theme every window wears, which windows the game has and what's
+                on screen while playing. The windows themselves are made in that theme when the game is built (⑫).
+              </p>
+              <!-- In a reading order (the document's own keys come alphabetically), then anything else it has -->
+              <DataTable :value="uiInOrder" />
             </div>
             <div v-else class="muted">Not yet.</div>
           </template>
 
           <template v-else-if="view === 'build'">
+            <!-- How the places find their art: the project's setting, shared with the Build panel -->
+            <div class="art-strategy">
+              <h4>Art for the places</h4>
+              <div>
+                <b>{{ artSourceName(state.sourcing?.defaultSource ?? 'search') }}</b>
+                <span class="muted"> · web search {{ state.sourcing?.webSearch ? 'on' : 'off' }} · share-alike {{ state.sourcing?.shareAlike ? 'allowed' : 'not allowed' }}</span>
+              </div>
+              <p class="muted">
+                Set in the Game Brief: ① Concept ▸ Plan ▸ Art for the places
+                <a href="#" @click.prevent="view = 'concept'; tab = 'plan'">change it</a>.
+                A change is used by the builds started after it (Restart builds).
+              </p>
+            </div>
             <div v-if="!state.build?.active" class="section">
               <p>Build every place of the design, place the characters, bind the quests, write the game's files and playtest it.</p>
               <div class="row">
@@ -522,19 +633,36 @@ function statusMark(status: string): string {
               <p v-if="!state.baseline" class="muted">The design needs a baseline first (⑨ Validate with no errors).</p>
             </div>
             <template v-else>
-              <div class="muted">{{ state.build.message }}</div>
+              <div class="build-now">
+                <template v-if="buildingRow">
+                  <span class="busy">Building <b>{{ buildingRow.place }}</b></span>
+                  <span v-if="buildingRow.step" class="muted"> — {{ stepName(buildingRow.step, buildingRow.planPhase) }}</span>
+                </template>
+                <span v-else class="muted">{{ state.build.message }}</span>
+                <span class="muted"> · {{ buildDone }} of {{ (state.build.rows ?? []).length }} places done</span>
+                <span class="spacer"></span>
+                <button v-if="buildRetryable.length" class="retry" @click="retryFailedPlaces">Retry failed ({{ buildRetryable.length }})</button>
+                <button v-if="state.build.status === 'working'" class="stop" @click="sendToHost({ type: 'planner:stopBuilds' })">Stop building</button>
+                <button v-else-if="state.build.stage !== 'done'" class="primary" title="Go on from the next place that isn't built; those that are stay"
+                  @click="sendToHost({ type: 'planner:continueBuilds' })">Continue building</button>
+                <button title="Build every place again from the start, with the art setting as it is now" @click="restartBuilds">Restart builds</button>
+              </div>
               <table class="grid">
                 <tbody>
-                  <tr v-for="r in state.build.rows ?? []" :key="r.place">
+                  <tr v-for="r in state.build.rows ?? []" :key="r.place" :class="{ 'building-now': r.status === 'building' }">
                     <td><b>{{ r.place }}</b> <span class="muted">{{ r.scene }}</span></td>
                     <td>{{ r.buildType }}</td>
                     <td>{{ r.mode }}</td>
-                    <td :class="{ err: r.status === 'failed', warn: r.status === 'placeholder' || r.status === 'needs-you' }">{{ r.status }}</td>
+                    <td :class="{ err: r.status === 'failed', warn: r.status === 'placeholder' || r.status === 'needs-you', busy: r.status === 'building' }">
+                      {{ r.status === 'building' ? `building… ${r.step ? '(' + stepName(r.step, r.planPhase) + ')' : ''}` : r.status }}
+                    </td>
                     <td class="wide muted">{{ r.error }}</td>
                     <td>
                       <button v-if="r.build" @click="sendToHost({ type: 'planner:buildRow', place: r.place, action: 'open' })">Open build</button>
                       <button v-if="r.status === 'needs-you'" @click="sendToHost({ type: 'planner:buildRow', place: r.place, action: 'done' })">Built</button>
                       <button v-if="r.status === 'failed' || r.status === 'placeholder'" @click="sendToHost({ type: 'planner:buildRow', place: r.place, action: 'retry' })">Retry</button>
+                      <button v-if="r.status === 'built' || r.status === 'needs-you'" title="Build this place again from the start, with the art setting as it is now"
+                        @click="rebuildPlace(r.place)">Rebuild</button>
                       <button v-if="r.status === 'failed'" @click="sendToHost({ type: 'planner:buildRow', place: r.place, action: 'placeholder' })">Placeholder</button>
                     </td>
                   </tr>
@@ -573,16 +701,39 @@ function statusMark(status: string): string {
 
           <template v-else-if="view === 'validate'">
             <div v-if="state.report" class="section">
-              <b>{{ state.report.summary?.errors }} errors, {{ state.report.summary?.warnings }} warnings, {{ state.report.summary?.accepted }} accepted</b>
+              <b>{{ openErrors }} errors, {{ openWarnings }} warnings, {{ acceptedCount }} accepted</b>
+              <span v-if="fixingCount" class="busy">
+                · Fixing {{ fixingRows.length === 1 ? 'item' : 'items' }} {{ ranges(fixingRows) }}<template v-if="fixingNow.length">
+                  · now {{ fixingNow.length === 1 ? 'item' : 'items' }} {{ ranges(fixingNow) }}</template>
+              </span>
               <span v-if="state.baseline" class="muted"> · baseline {{ state.baseline }}</span>
+              <span v-if="fixable.length || fixBusy" class="fix-all" :title="fixableHow">
+                <label for="fix-scope">Fix</label>
+                <select id="fix-scope" v-model="fixScope" :disabled="fixBusy">
+                  <option value="errors" :disabled="!fixableErrors">Errors ({{ fixableErrors }})</option>
+                  <option value="warnings" :disabled="!fixableWarnings">Warnings ({{ fixableWarnings }})</option>
+                  <option value="*">Both ({{ fixable.length }})</option>
+                </select>
+                <button class="primary" :disabled="fixBusy" :title="fixBusy ? 'A fix is in progress' : ''" @click="sendToHost({ type: 'planner:fixFindings', ids: [fixScope] })">Fix now</button>
+                <button v-if="fixBusy" class="stop" title="Stop every fix: what isn't fixed yet goes back to open" @click="sendToHost({ type: 'planner:stopFixes' })">Stop fix</button>
+              </span>
+              <p class="muted">
+                Errors stop the build until they're fixed or accepted; warnings don't. The Planner fixes what has a known
+                remedy on its own once, then checks again. Fix does it for one finding; Accept keeps it as it is, with your reason.
+              </p>
               <table class="grid">
                 <tbody>
-                  <tr v-for="f in findings" :key="f.id">
-                    <td>{{ f.rule }}</td>
+                  <tr v-for="(f, i) in findings" :key="f.id" :class="{ 'is-fixing': f.status === 'fixing', 'fixing-now': fixingNow.includes(i + 1) }">
+                    <td class="row-number">{{ i + 1 }}</td>
+                    <td class="step-cell">{{ f.step || '—' }}</td>
+                    <td class="muted">{{ f.rule }}</td>
                     <td :class="f.severity === 'error' ? 'err' : 'warn'">{{ f.status === 'accepted' ? 'accepted' : f.severity }}</td>
                     <td>{{ f.subject }}</td>
                     <td class="wide">{{ f.message }}<span v-if="f.reason" class="muted"> — {{ f.reason }}</span></td>
-                    <td>
+                    <td class="finding-actions">
+                      <span v-if="f.status === 'fixing'" class="busy">fixing…</span>
+                      <button v-if="f.status === 'open' && f.remedy" class="primary" :title="f.remedy.how"
+                        :disabled="fixBusy" @click="sendToHost({ type: 'planner:fixFindings', ids: [f.id] })">Fix</button>
                       <button v-if="f.status === 'open'" @click="accept(f)">Accept…</button>
                     </td>
                   </tr>
@@ -794,6 +945,71 @@ function statusMark(status: string): string {
 }
 .sect {
   margin-bottom: 12px;
+}
+.fix-all {
+  margin-left: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fix-all label {
+  color: #9a9ab0;
+}
+.fix-all select {
+  min-width: 150px;
+}
+tr.is-fixing td {
+  opacity: 0.6;
+}
+tr.fixing-now td {
+  opacity: 1;
+  background: #1d2433;
+}
+.row-number {
+  color: #6a6a80;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  width: 1%;
+}
+.stop {
+  border-color: #f87171;
+  color: #fca5a5;
+}
+.step-cell {
+  white-space: nowrap;
+}
+.finding-actions {
+  white-space: nowrap;
+}
+.art-strategy {
+  border: 1px solid #2a2a3a;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+}
+.art-strategy h4 {
+  margin: 0 0 6px;
+}
+.art-strategy .row {
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.art-strategy .check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.build-now {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.build-now .spacer {
+  flex: 1;
+}
+tr.building-now td {
+  background: #1d2433;
 }
 .story-progress {
   display: flex;

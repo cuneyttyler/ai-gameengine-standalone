@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ecs/Registry.h"
 #include "editing/PlaceBuild.h"
 #include "planner/PlannerStore.h"
 #include "story/StoryGraph.h"
@@ -50,6 +51,12 @@ public:
         std::function<int(const std::string& path, const nlohmann::json& body, int timeoutSeconds)> request;
         std::filesystem::path projectRoot;
         std::function<const Ontology&()> places;
+        // The editor builds a place as the Build panel does (its art found and made, its scene built,
+        // checked and saved to `scene`): it starts and returns; editorBuildStatus says how it goes
+        // ("working", "built", "failed: why"). Without them the scene is built here, with the art
+        // the project has.
+        std::function<std::string(const std::string& buildId, const std::string& scene)> buildInEditor;
+        std::function<std::string(const std::string& buildId)> editorBuildStatus;
     };
 
     explicit GameBuild(Host host);
@@ -59,6 +66,11 @@ public:
     // the Brief's plan.building. Returns why not, or "".
     std::string Start(const std::string& mode = {});
     std::string Open(); // resumes planner/buildstate.json
+    // Stops building: nothing more is started; a place being built goes back to waiting. Start
+    // (Restart builds) builds every place again; Resume (Continue building) goes on from the next
+    // place that isn't built, keeping those that are.
+    void Stop();
+    std::string Resume();
     bool Active() const { return !stage_.empty(); }
     const std::string& Stage() const { return stage_; }
     const std::string& Status() const { return status_; }
@@ -74,8 +86,18 @@ public:
     // placeholder place; a manual row's build (for the Build panel), and its completion.
     std::string SetMode(const std::string& place, const std::string& mode);
     std::string Retry(const std::string& place);
+    // Builds the place again from the start (a new build of it, built or not); the game build goes
+    // on with it, then what follows (binding, files, playtest) again.
+    std::string Rebuild(const std::string& place);
     std::string UsePlaceholder(const std::string& place);
+    // A place built outside the game build (the build test, docs/build-fixes.md), its scene already
+    // saved at the row's scene path: taken in as the Build panel's are (story markers added, the row
+    // built, its file recorded). The rest of the game build goes on from there.
+    std::string InstallBuilt(const std::string& place, const std::string& buildId);
     PlaceBuild* BuildOf(const std::string& place);
+    nlohmann::json StoryFor(const std::string& place) const;
+    // The place's story anchors, for a painting to show and find ([{id, about}]: BackdropRequests).
+    nlohmann::json StoryAnchors(const std::string& place) const;
     std::string ManualDone(const std::string& place); // the user built it in the Build panel
 
     nlohmann::json State() const;
@@ -89,7 +111,15 @@ private:
         nlohmann::json checks = nlohmann::json::object();
         int steps = 0;      // drive steps taken (a stuck build is stopped)
         std::string lastStage;
+        bool inEditor = false; // handed to the editor's Build panel: waiting for it to finish
+        bool resumeInEditor = false; // reopened past its plan: handed back to the Build panel to finish
     };
+    // The story's markers (its anchors, where one arrives, the player in the first scene) on a built
+    // place's scene; the number of anchors that had no part showing them.
+    int AddStoryMarkers(Registry& registry, const Row& row, const nlohmann::json& solved, int originX, int originY);
+    // The editor finished a place: its scene gets its markers, and the row is built.
+    void FinishInEditor(Row& row);
+
     struct Job {
         std::string id, kind, subject, status = "queued", error;
         int attempts = 0;

@@ -1,0 +1,138 @@
+{
+  "schema": "aige.module/1",
+  "id": "apartment-plot",
+  "name": "Apartment plot",
+  "level": "parcel",
+  "description": "An apartment block or tower with a courtyard, bikes and bins.",
+  "buildTypes": [
+    "modern-city"
+  ],
+  "classes": [
+    "Dwelling"
+  ],
+  "quantity": {
+    "size": {
+      "type": "size",
+      "default": {
+        "w": [
+          6,
+          9
+        ],
+        "h": [
+          5,
+          8
+        ]
+      },
+      "min": {
+        "w": 3,
+        "h": 3
+      },
+      "unit": "cells",
+      "max": {
+        "w": 40,
+        "h": 40
+      }
+    },
+    "setback": {
+      "type": "length",
+      "default": [
+        1,
+        2
+      ],
+      "min": 0,
+      "unit": "cells",
+      "max": 8
+    }
+  },
+  "quality": {
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "lived-in"
+    },
+    "height": {
+      "type": "enum",
+      "vocabulary": "apartment-kind",
+      "default": "mid-rise",
+      "ask": true
+    }
+  },
+  "slots": {
+    "apartment-block": {
+      "role": "apartment-block|apartment-tower",
+      "essential": true,
+      "primary": true,
+      "concepts": "height"
+    },
+    "street-light": {
+      "role": "street-light",
+      "essential": false
+    },
+    "trash-bin": {
+      "role": "trash-bin",
+      "essential": false
+    },
+    "bicycle": {
+      "role": "bicycle",
+      "essential": false
+    },
+    "tree": {
+      "role": "tree",
+      "essential": false
+    }
+  },
+  "children": {},
+  "relations": [
+    {
+      "type": "faces",
+      "members": [
+        "self.primary",
+        "parent.street"
+      ],
+      "weight": 3.0
+    },
+    {
+      "type": "adjacent",
+      "members": [
+        "self",
+        "parent.street"
+      ],
+      "weight": 2.0
+    }
+  ],
+  "compile": {
+    "contents": [
+      {
+        "slot": "street-light",
+        "count": [
+          1,
+          2
+        ],
+        "where": "border"
+      },
+      {
+        "slot": "bicycle",
+        "count": [
+          0,
+          3
+        ]
+      },
+      {
+        "slot": "trash-bin",
+        "count": [
+          1,
+          2
+        ],
+        "where": "border"
+      },
+      {
+        "slot": "tree",
+        "count": [
+          0,
+          2
+        ]
+      }
+    ],
+    "surface": "concrete"
+  }
+}

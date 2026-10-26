@@ -1,0 +1,137 @@
+{
+  "schema": "aige.module/1",
+  "id": "suburb",
+  "name": "Suburb",
+  "level": "zone",
+  "description": "Detached family houses with lawns and driveways on quiet streets.",
+  "buildTypes": [
+    "modern-city"
+  ],
+  "classes": [
+    "Ward",
+    "District"
+  ],
+  "quantity": {
+    "plots": {
+      "type": "count",
+      "default": [
+        12,
+        50
+      ],
+      "min": 0,
+      "max": 2000,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        900,
+        4000
+      ],
+      "min": 100,
+      "unit": "cells²"
+    },
+    "footprint-density": {
+      "type": "ratio",
+      "default": [
+        0.35,
+        0.7
+      ],
+      "min": 0,
+      "max": 1,
+      "description": "built cells / district cells"
+    }
+  },
+  "quality": {
+    "wealth": {
+      "type": "enum",
+      "vocabulary": "wealth",
+      "default": "common",
+      "ask": true
+    },
+    "density": {
+      "type": "enum",
+      "values": [
+        "sparse",
+        "medium",
+        "dense"
+      ],
+      "default": "sparse",
+      "ask": true
+    },
+    "street-style": {
+      "type": "enum",
+      "vocabulary": "layout",
+      "description": "this district's own street pattern; unset, the city's"
+    }
+  },
+  "slots": {
+    "car": {
+      "role": "car",
+      "essential": false
+    }
+  },
+  "children": {
+    "suburban-house-plot": {
+      "min": 0,
+      "weight": 1.0,
+      "max": 400
+    },
+    "school-plot": {
+      "min": 0,
+      "weight": 0.1,
+      "max": 2
+    },
+    "park": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 4
+    },
+    "playground": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 4
+    },
+    "retail-plot": {
+      "min": 0,
+      "weight": 0.1,
+      "max": 6
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "constraints": [
+    "count(children(class: BuildingParcel)) + count(children(class: OpenSpace)) >= 1"
+  ],
+  "relations": [
+    {
+      "type": "away-from",
+      "members": [
+        "self",
+        "parent.downtown"
+      ],
+      "weight": 1.0,
+      "args": {
+        "d": 20
+      }
+    }
+  ],
+  "prefersSite": {
+    "edge": 1.5
+  },
+  "compile": {
+    "network": {
+      "class": "street",
+      "terrain": "asphalt",
+      "width": 3,
+      "edge": "sidewalk"
+    },
+    "traffic": {
+      "slot": "car",
+      "density": 0.06
+    }
+  }
+}

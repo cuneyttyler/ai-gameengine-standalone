@@ -86,7 +86,7 @@ std::vector<Candidate> Licensed(const std::vector<Candidate>& candidates, const 
     std::vector<Candidate> out;
     for (const auto& c : candidates) {
         if (c.entry == nullptr) continue;
-        const bool own = (c.entry->source == "project" || c.entry->source == "generated") && c.entry->licence.empty();
+        const bool own = (c.entry->source == "project" || c.entry->source == "generated" || c.entry->own) && c.entry->licence.empty();
         if (own || licences.Allowed(c.entry->licence)) out.push_back(c);
     }
     return out;
@@ -111,6 +111,10 @@ std::string SourceOf(const Candidate& c, const std::string& fallback) {
 Decision Decide(const std::string& policy, const NeedProfile& profile, const SourceCandidates& all, const LicencePolicy& licences,
                 bool webEnabled, bool canGenerate, const Tried& tried) {
     SourceCandidates c{Licensed(all.project, licences), Licensed(all.library, licences), Licensed(all.web, licences)};
+    // Art the vision model refused for this need is out: the next candidate, else the Art tool.
+    for (auto* list : {&c.project, &c.library, &c.web}) {
+        std::erase_if(*list, [&](const Candidate& cand) { return cand.entry && (tried.refused.contains(cand.entry->id) || tried.refused.contains(cand.entry->path)); });
+    }
     Decision d;
     auto use = [&](const char* step, const char* action, const Candidate* candidate, const std::string& source, const std::string& reason) {
         d.step = step;
@@ -127,6 +131,11 @@ Decision Decide(const std::string& policy, const NeedProfile& profile, const Sou
         d.reason = reason;
         return d;
     };
+    // Two found pieces the vision model refused for this scene: what's found won't do; the Art tool
+    // makes it, in the place's style (docs/build-fixes.md). Not for a source the user picked.
+    if (tried.refusals >= 2 && canGenerate && !tried.generate && policy != "web") {
+        return pending("R", "generate", "found art didn't fit the scene twice: made by the Art tool");
+    }
     // A6 over the sources the policy reaches; then A7.
     auto fallback = [&](std::vector<const std::vector<Candidate>*> lists, const std::vector<std::string>& names) {
         const Candidate* best = nullptr;
@@ -163,15 +172,21 @@ Decision Decide(const std::string& policy, const NeedProfile& profile, const Sou
         }
         return out;
     };
+    // The project or the library first; what neither has that fits is made by the Art tool (and
+    // only if that fails, the nearest they have, adapted, or a placeholder).
     if (policy == "project") {
         if (const Candidate* g = Best(c.project, "good")) return use("A1", "use", g, "project", "fits well");
+        if (canGenerate && !tried.generate) return pending("A5", "generate", "nothing in the project fits: made by the Art tool");
         return fallback({&c.project}, {"project"});
     }
     if (policy == "library") {
+        // The libraries (AIGE's and the user's) first, then what the project has, then the Art tool.
         const auto fromLibrary = fromSource(c.project, {"library", "aige"});
         if (const Candidate* g = Best(fromLibrary, "good")) return use("A1", "use", g, "library", "from the library, already in the project");
-        if (const Candidate* g = Best(c.library, "good")) return use("A2", "import", g, "library", "from the AIGE library");
-        return fallback({&c.project, &c.library}, {"project", "library"});
+        if (const Candidate* g = Best(c.library, "good")) return use("A2", "import", g, "library", "from the library");
+        if (const Candidate* g = Best(c.project, "good")) return use("A1", "use", g, "project", "nothing in the library fits: the project's");
+        if (canGenerate && !tried.generate) return pending("A5", "generate", "nothing in the library or the project fits: made by the Art tool");
+        return fallback({&c.library, &c.project}, {"library", "project"});
     }
     if (policy == "search") {
         // Found art first (the most reliable): what the project has that fits, the user's library,
@@ -179,7 +194,7 @@ Decision Decide(const std::string& policy, const NeedProfile& profile, const Sou
         if (const Candidate* g = Best(c.project, "good")) return use("S1", "use", g, "project", "fits well, already in the project");
         if (const Candidate* g = Best(c.library, "good")) return use("S2", "import", g, "library", "from your library");
         if (const Candidate* g = Best(c.web, "good")) return use("S3", "import", g, "web", "free art from the web, licence checked");
-        if (!tried.web) return pending("S3", "web", "searching approved sites for art that fits");
+        if (webEnabled && !tried.web) return pending("S3", "web", "searching approved sites for art that fits");
         if (canGenerate && !tried.generate) return pending("S4", "generate", "nothing found fits: made by the Art tool");
         return fallback({&c.project, &c.library, &c.web}, {"project", "library", "web"});
     }

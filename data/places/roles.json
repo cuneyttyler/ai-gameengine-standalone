@@ -133,7 +133,10 @@
     "broader": "plant",
     "size": 1.2,
     "tall": 1.6,
-    "draw": "a leafy deciduous tree with a full round crown and a short brown trunk"
+    "draw": "a leafy deciduous tree with a full round crown and a short brown trunk",
+    "look": {
+      "vary": true
+    }
   },
   "bush": {
     "label": "bush",
@@ -141,7 +144,10 @@
     "broader": "plant",
     "size": 0.6,
     "tall": 0.8,
-    "draw": "a round, dense, leafy green bush"
+    "draw": "a round, dense, leafy green bush",
+    "look": {
+      "vary": true
+    }
   },
   "flower": {
     "label": "flower",
@@ -282,7 +288,8 @@
     "tall": 0.5,
     "draw": "a small mossy grey rock",
     "look": {
-      "vary": true
+      "vary": true,
+      "at": "corner"
     }
   },
   "mound": {
@@ -293,7 +300,8 @@
     "tall": 0.4,
     "draw": "a low, rounded, grassy hump of earth with soft sloping sides, not a block, no straight edges",
     "look": {
-      "vary": true
+      "vary": true,
+      "at": "corner"
     }
   },
   "boulder": {
@@ -304,7 +312,8 @@
     "tall": 0.8,
     "draw": "a large weathered grey boulder",
     "look": {
-      "vary": true
+      "vary": true,
+      "at": "corner"
     }
   },
   "bridge": {
@@ -320,7 +329,13 @@
   "gate": {
     "label": "gate",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "dependsOn": [
+        "wall-piece-set",
+        "fence-piece-set"
+      ]
+    }
   },
   "light-prop": {
     "label": "light prop",
@@ -330,9 +345,12 @@
       "light": {
         "radius": 5.5,
         "strength": 1.0
-      }
+      },
+      "at": "wall"
     },
-    "draw": "a light that suits the place: a burning torch in an iron wall bracket, a brazier, a candle stand or a lantern, whichever such a place has"
+    "draw": "a light that suits the place: a burning torch in an iron wall bracket, a brazier, a candle stand or a lantern, whichever such a place has",
+    "size": 0.3,
+    "tall": 1.6
   },
   "decal": {
     "label": "decal",
@@ -345,7 +363,10 @@
     "broader": "prop",
     "size": 1.0,
     "tall": 1.2,
-    "draw": "a round stone village well with a small wooden roof and a bucket"
+    "draw": "a round stone village well with a small wooden roof and a bucket",
+    "look": {
+      "at": "centre"
+    }
   },
   "fountain": {
     "label": "fountain",
@@ -353,7 +374,10 @@
     "broader": "prop",
     "size": 1.5,
     "tall": 1.0,
-    "draw": "a round stone fountain with water"
+    "draw": "a round stone fountain with water",
+    "look": {
+      "at": "centre"
+    }
   },
   "statue": {
     "label": "statue",
@@ -361,7 +385,10 @@
     "broader": "prop",
     "size": 0.8,
     "tall": 1.6,
-    "draw": "a stone statue on a plinth"
+    "draw": "a stone statue on a plinth",
+    "look": {
+      "at": "centre"
+    }
   },
   "garden-bed": {
     "label": "garden bed",
@@ -408,7 +435,10 @@
     "broader": "prop",
     "size": 0.8,
     "tall": 0.6,
-    "draw": "a neat stack of chopped firewood"
+    "draw": "a neat stack of chopped firewood",
+    "look": {
+      "at": "wall"
+    }
   },
   "saw": {
     "label": "saw",
@@ -429,7 +459,10 @@
     "broader": "prop",
     "size": 0.8,
     "tall": 0.4,
-    "draw": "a wooden water trough"
+    "draw": "a wooden water trough",
+    "look": {
+      "at": "wall"
+    }
   },
   "hay": {
     "label": "hay",
@@ -437,7 +470,10 @@
     "broader": "prop",
     "size": 0.8,
     "tall": 0.7,
-    "draw": "a round bale of hay"
+    "draw": "a round bale of hay",
+    "look": {
+      "at": "wall"
+    }
   },
   "shore-prop": {
     "label": "shore prop",
@@ -483,7 +519,10 @@
     "broader": "prop",
     "size": 0.35,
     "tall": 0.8,
-    "draw": "a wooden barrel with iron hoops"
+    "draw": "a wooden barrel with iron hoops",
+    "look": {
+      "at": "wall"
+    }
   },
   "crate": {
     "label": "crate",
@@ -491,7 +530,10 @@
     "broader": "prop",
     "size": 0.4,
     "tall": 0.7,
-    "draw": "a wooden crate"
+    "draw": "a wooden crate",
+    "look": {
+      "at": "wall"
+    }
   },
   "sack": {
     "label": "sack",
@@ -499,7 +541,10 @@
     "broader": "prop",
     "size": 0.3,
     "tall": 0.6,
-    "draw": "a burlap sack of grain"
+    "draw": "a burlap sack of grain",
+    "look": {
+      "at": "wall"
+    }
   },
   "cart": {
     "label": "cart",
@@ -515,7 +560,10 @@
     "broader": "prop",
     "size": 0.4,
     "tall": 0.8,
-    "draw": "a farming tool leaning on a post"
+    "draw": "a farming tool leaning on a post",
+    "look": {
+      "at": "wall"
+    }
   },
   "pot": {
     "label": "pot",
@@ -523,7 +571,10 @@
     "broader": "prop",
     "size": 0.3,
     "tall": 0.6,
-    "draw": "a clay pot with a small plant"
+    "draw": "a clay pot with a small plant",
+    "look": {
+      "at": "wall"
+    }
   },
   "bench": {
     "label": "bench",
@@ -531,7 +582,13 @@
     "broader": "prop",
     "size": 0.6,
     "tall": 0.5,
-    "draw": "a simple wooden bench"
+    "draw": "a simple wooden bench",
+    "look": {
+      "near": "table",
+      "dependsOn": [
+        "table"
+      ]
+    }
   },
   "animal": {
     "label": "animal",
@@ -598,7 +655,10 @@
   "campfire": {
     "label": "campfire",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "centre"
+    }
   },
   "hitching-post": {
     "label": "hitching post",
@@ -618,7 +678,10 @@
   "weapon-rack": {
     "label": "weapon rack",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "drawbridge": {
     "label": "drawbridge",
@@ -648,7 +711,11 @@
     "tall": 1.4,
     "draw": "an old heavy door of dark oak planks bound with rusted iron, closed, set in its stone arch, seen in isometric view: the wall it stands in runs diagonally, from the upper left down to the lower right",
     "look": {
-      "doorway": true
+      "doorway": true,
+      "dependsOn": [
+        "wall-block",
+        "wall-piece-set"
+      ]
     }
   },
   "stairs": {
@@ -659,12 +726,18 @@
   "chest": {
     "label": "chest",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "corner"
+    }
   },
   "altar": {
     "label": "altar",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "trap": {
     "label": "trap",
@@ -679,17 +752,26 @@
   "cage": {
     "label": "cage",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "sarcophagus": {
     "label": "sarcophagus",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "bookshelf": {
     "label": "bookshelf",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "lever": {
     "label": "lever",
@@ -699,107 +781,190 @@
   "bed": {
     "label": "bed",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "table": {
     "label": "table",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "centre"
+    }
   },
   "chair": {
     "label": "chair",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "near": "table",
+      "dependsOn": [
+        "table"
+      ]
+    }
   },
   "nightstand": {
     "label": "nightstand",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "near": "bed",
+      "dependsOn": [
+        "bed"
+      ]
+    }
   },
   "fireplace": {
     "label": "fireplace",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "counter": {
     "label": "counter",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "stool": {
     "label": "stool",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "near": "counter",
+      "dependsOn": [
+        "counter"
+      ]
+    }
   },
   "shelf": {
     "label": "shelf",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "workbench": {
     "label": "workbench",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "anvil": {
     "label": "anvil",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "display-stand": {
     "label": "display stand",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "lectern": {
     "label": "lectern",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "throne": {
     "label": "throne",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "banner": {
     "label": "banner",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall",
+      "dependsOn": [
+        "wall-block"
+      ],
+      "hang": true
+    },
+    "size": 0.45,
+    "tall": 1.2
   },
   "pew": {
     "label": "pew",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "cupboard": {
     "label": "cupboard",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "stove": {
     "label": "stove",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "wardrobe": {
     "label": "wardrobe",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "desk": {
     "label": "desk",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall"
+    }
   },
   "wall-decor": {
     "label": "wall decor",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "wall",
+      "dependsOn": [
+        "wall-block"
+      ],
+      "hang": true
+    },
+    "size": 0.4,
+    "tall": 1.2
   },
   "candle": {
     "label": "candle",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "size": 0.12,
+    "tall": 1.2
   },
   "stand": {
     "label": "stand",
@@ -814,18 +979,34 @@
     "tall": 1.4,
     "draw": "an old heavy door of dark oak planks bound with rusted iron, closed, set in its stone arch, seen in isometric view: the wall it stands in runs diagonally, from the upper left down to the lower right, with a big iron padlock on it",
     "look": {
-      "doorway": true
+      "doorway": true,
+      "dependsOn": [
+        "wall-block",
+        "wall-piece-set"
+      ]
     }
   },
   "secret-door": {
     "label": "secret door",
     "affordance": "interactive-object",
-    "broader": "door"
+    "broader": "door",
+    "look": {
+      "dependsOn": [
+        "wall-block",
+        "wall-piece-set"
+      ]
+    }
   },
   "portcullis": {
     "label": "portcullis",
     "affordance": "interactive-object",
-    "broader": "door"
+    "broader": "door",
+    "look": {
+      "dependsOn": [
+        "wall-block",
+        "wall-piece-set"
+      ]
+    }
   },
   "key": {
     "label": "key",
@@ -835,7 +1016,10 @@
   "loot": {
     "label": "loot",
     "affordance": "item",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "at": "corner"
+    }
   },
   "enemy": {
     "label": "enemy",
@@ -858,17 +1042,26 @@
   "rug": {
     "label": "rug",
     "affordance": "environmental-object",
-    "broader": "decal"
+    "broader": "decal",
+    "look": {
+      "at": "centre"
+    }
   },
   "debris": {
     "label": "debris",
     "affordance": "environmental-object",
-    "broader": "decal"
+    "broader": "decal",
+    "look": {
+      "at": "corner"
+    }
   },
   "bones": {
     "label": "bones",
     "affordance": "environmental-object",
-    "broader": "decal"
+    "broader": "decal",
+    "look": {
+      "at": "corner"
+    }
   },
   "floor-tile": {
     "label": "floor tile",
@@ -883,7 +1076,13 @@
   "window": {
     "label": "window",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "look": {
+      "dependsOn": [
+        "wall-block",
+        "wall-piece-set"
+      ]
+    }
   },
   "wall-block": {
     "label": "wall block",
@@ -903,6 +1102,809 @@
     "look": {
       "light": {
         "radius": 5.5,
+        "strength": 1.0
+      },
+      "at": "wall",
+      "dependsOn": [
+        "wall-block"
+      ]
+    }
+  },
+  "curtain-wall": {
+    "label": "curtain wall",
+    "affordance": "environmental-object",
+    "broader": "wall-block",
+    "size": 1.0,
+    "tall": 2.4,
+    "draw": "a section of a castle's crenellated stone curtain wall, tall, of big grey ashlar blocks, a walkway behind the battlements"
+  },
+  "office-tower": {
+    "label": "office tower",
+    "affordance": "environmental-object",
+    "broader": "building",
+    "draw": "a modern glass and steel office skyscraper with a flat roof and rooftop plant",
+    "look": {
+      "floors": [
+        8,
+        20
+      ],
+      "roof": "flat"
+    }
+  },
+  "office-building": {
+    "label": "office building",
+    "affordance": "environmental-object",
+    "broader": "building",
+    "draw": "a modern mid-rise office building of glass and concrete with a flat roof",
+    "look": {
+      "floors": [
+        3,
+        6
+      ],
+      "roof": "flat"
+    }
+  },
+  "apartment-block": {
+    "label": "apartment block",
+    "affordance": "environmental-object",
+    "broader": "building",
+    "draw": "a modern mid-rise apartment block with balconies and a flat roof",
+    "look": {
+      "floors": [
+        4,
+        8
+      ],
+      "roof": "flat"
+    }
+  },
+  "apartment-tower": {
+    "label": "apartment tower",
+    "affordance": "environmental-object",
+    "broader": "apartment-block",
+    "draw": "a modern high-rise residential tower with balconies",
+    "look": {
+      "floors": [
+        10,
+        24
+      ],
+      "roof": "flat"
+    }
+  },
+  "suburban-house": {
+    "label": "suburban house",
+    "affordance": "environmental-object",
+    "broader": "house",
+    "draw": "a detached suburban family house with a pitched roof, a porch and a garage",
+    "look": {
+      "floors": [
+        1,
+        2
+      ],
+      "roof": "pitched"
+    }
+  },
+  "row-house": {
+    "label": "row house",
+    "affordance": "environmental-object",
+    "broader": "townhouse",
+    "draw": "a narrow modern terraced town house in a row",
+    "look": {
+      "floors": [
+        2,
+        3
+      ],
+      "roof": "pitched"
+    }
+  },
+  "retail-store": {
+    "label": "retail store",
+    "affordance": "environmental-object",
+    "broader": "shop",
+    "draw": "a small modern shop with a glass shopfront, a sign and an awning",
+    "look": {
+      "floors": [
+        1,
+        2
+      ],
+      "roof": "flat"
+    }
+  },
+  "supermarket": {
+    "label": "supermarket",
+    "affordance": "environmental-object",
+    "broader": "shop",
+    "draw": "a large single-storey supermarket with a glass entrance and a big sign",
+    "look": {
+      "floors": [
+        1,
+        1
+      ],
+      "roof": "flat"
+    }
+  },
+  "mall": {
+    "label": "shopping mall",
+    "affordance": "environmental-object",
+    "broader": "shop",
+    "draw": "a large modern shopping mall with glass entrances",
+    "look": {
+      "floors": [
+        2,
+        3
+      ],
+      "roof": "flat"
+    }
+  },
+  "restaurant": {
+    "label": "restaurant",
+    "affordance": "environmental-object",
+    "broader": "building",
+    "draw": "a modern restaurant with large windows and a sign",
+    "look": {
+      "floors": [
+        1,
+        2
+      ],
+      "roof": "flat"
+    }
+  },
+  "cafe": {
+    "label": "café",
+    "affordance": "environmental-object",
+    "broader": "restaurant",
+    "draw": "a small café with a glass front and an awning",
+    "look": {
+      "floors": [
+        1,
+        1
+      ],
+      "roof": "flat"
+    }
+  },
+  "hotel": {
+    "label": "hotel",
+    "affordance": "environmental-object",
+    "broader": "building",
+    "draw": "a modern hotel tower with a canopied entrance",
+    "look": {
+      "floors": [
+        5,
+        12
+      ],
+      "roof": "flat"
+    }
+  },
+  "gas-station": {
+    "label": "gas station",
+    "affordance": "environmental-object",
+    "broader": "building",
+    "draw": "a gas station: a canopy over the pumps and a small shop",
+    "look": {
+      "floors": [
+        1,
+        1
+      ],
+      "roof": "flat"
+    }
+  },
+  "parking-garage": {
+    "label": "parking garage",
+    "affordance": "environmental-object",
+    "broader": "building",
+    "draw": "a multi-storey concrete parking garage with open decks",
+    "look": {
+      "floors": [
+        3,
+        6
+      ],
+      "roof": "flat"
+    }
+  },
+  "factory": {
+    "label": "factory",
+    "affordance": "environmental-object",
+    "broader": "workshop",
+    "draw": "a modern factory hall with a sawtooth roof, chimneys and loading doors",
+    "look": {
+      "floors": [
+        1,
+        2
+      ],
+      "roof": "flat"
+    }
+  },
+  "logistics-warehouse": {
+    "label": "logistics warehouse",
+    "affordance": "environmental-object",
+    "broader": "warehouse",
+    "draw": "a large low logistics warehouse with loading docks",
+    "look": {
+      "floors": [
+        1,
+        1
+      ],
+      "roof": "flat"
+    }
+  },
+  "school": {
+    "label": "school",
+    "affordance": "environmental-object",
+    "broader": "building",
+    "draw": "a modern school building with large windows",
+    "look": {
+      "floors": [
+        2,
+        3
+      ],
+      "roof": "flat"
+    }
+  },
+  "hospital": {
+    "label": "hospital",
+    "affordance": "environmental-object",
+    "broader": "building",
+    "draw": "a modern hospital with an emergency entrance and a helipad on the roof",
+    "look": {
+      "floors": [
+        4,
+        8
+      ],
+      "roof": "flat"
+    }
+  },
+  "police-station": {
+    "label": "police station",
+    "affordance": "environmental-object",
+    "broader": "building",
+    "draw": "a modern police station with a sign and blue lamp",
+    "look": {
+      "floors": [
+        2,
+        3
+      ],
+      "roof": "flat"
+    }
+  },
+  "fire-station": {
+    "label": "fire station",
+    "affordance": "environmental-object",
+    "broader": "building",
+    "draw": "a fire station with big red bay doors",
+    "look": {
+      "floors": [
+        2,
+        2
+      ],
+      "roof": "flat"
+    }
+  },
+  "city-hall": {
+    "label": "city hall",
+    "affordance": "environmental-object",
+    "broader": "building",
+    "draw": "a grand civic building with columns and steps",
+    "look": {
+      "floors": [
+        3,
+        4
+      ],
+      "roof": "flat"
+    }
+  },
+  "transit-station": {
+    "label": "transit station",
+    "affordance": "environmental-object",
+    "broader": "building",
+    "draw": "a modern bus or metro station with a glass canopy",
+    "look": {
+      "floors": [
+        1,
+        2
+      ],
+      "roof": "flat"
+    }
+  },
+  "modern-church": {
+    "label": "church",
+    "affordance": "environmental-object",
+    "broader": "temple",
+    "draw": "a modern church with a bell tower",
+    "look": {
+      "floors": [
+        1,
+        2
+      ],
+      "roof": "pitched"
+    }
+  },
+  "vehicle": {
+    "label": "vehicle",
+    "affordance": "interactive-object",
+    "broader": "prop",
+    "size": 1.0,
+    "tall": 0.5,
+    "draw": "a vehicle that suits the place"
+  },
+  "car": {
+    "label": "car",
+    "affordance": "interactive-object",
+    "broader": "vehicle",
+    "size": 1.0,
+    "tall": 0.5,
+    "draw": "a modern car (a sedan, hatchback or SUV) in a varied colour, seen from above at an angle",
+    "look": {
+      "vary": true
+    }
+  },
+  "taxi": {
+    "label": "taxi",
+    "affordance": "interactive-object",
+    "broader": "car",
+    "size": 1.0,
+    "tall": 0.5,
+    "draw": "a yellow taxi"
+  },
+  "police-car": {
+    "label": "police car",
+    "affordance": "interactive-object",
+    "broader": "car",
+    "size": 1.0,
+    "tall": 0.5,
+    "draw": "a police car with a light bar"
+  },
+  "van": {
+    "label": "van",
+    "affordance": "interactive-object",
+    "broader": "vehicle",
+    "size": 1.2,
+    "tall": 0.6,
+    "draw": "a delivery van"
+  },
+  "truck": {
+    "label": "truck",
+    "affordance": "interactive-object",
+    "broader": "vehicle",
+    "size": 2.0,
+    "tall": 0.6,
+    "draw": "a lorry with a box trailer"
+  },
+  "fire-truck": {
+    "label": "fire truck",
+    "affordance": "interactive-object",
+    "broader": "truck",
+    "size": 2.0,
+    "tall": 0.6,
+    "draw": "a red fire engine"
+  },
+  "bus": {
+    "label": "bus",
+    "affordance": "interactive-object",
+    "broader": "vehicle",
+    "size": 3.0,
+    "tall": 0.4,
+    "draw": "a city bus"
+  },
+  "bicycle": {
+    "label": "bicycle",
+    "affordance": "interactive-object",
+    "broader": "vehicle",
+    "size": 0.6,
+    "tall": 0.6,
+    "draw": "a parked bicycle"
+  },
+  "street-light": {
+    "label": "street light",
+    "affordance": "environmental-object",
+    "broader": "light-prop",
+    "size": 0.3,
+    "tall": 3.0,
+    "draw": "a modern steel street light on a tall pole",
+    "look": {
+      "light": {
+        "radius": 6.0,
+        "strength": 1.0
+      },
+      "at": "edge"
+    }
+  },
+  "traffic-light": {
+    "label": "traffic light",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.3,
+    "tall": 2.6,
+    "draw": "a traffic light on a pole at a crossing"
+  },
+  "road-sign": {
+    "label": "road sign",
+    "affordance": "environmental-object",
+    "broader": "sign",
+    "size": 0.3,
+    "tall": 2.0,
+    "draw": "a road sign on a pole (a stop sign, a street name, a speed limit)"
+  },
+  "bus-stop": {
+    "label": "bus stop",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 2.0,
+    "tall": 0.8,
+    "draw": "a bus stop shelter with a bench and a timetable"
+  },
+  "park-bench": {
+    "label": "park bench",
+    "affordance": "interactive-object",
+    "broader": "bench",
+    "size": 1.0,
+    "tall": 0.6,
+    "draw": "a wooden park bench with iron legs"
+  },
+  "trash-bin": {
+    "label": "trash bin",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.4,
+    "tall": 1.2,
+    "draw": "a public litter bin"
+  },
+  "fire-hydrant": {
+    "label": "fire hydrant",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.3,
+    "tall": 1.4,
+    "draw": "a red fire hydrant"
+  },
+  "mailbox": {
+    "label": "mailbox",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.4,
+    "tall": 1.4,
+    "draw": "a mailbox"
+  },
+  "bollard": {
+    "label": "bollard",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.2,
+    "tall": 1.6,
+    "draw": "a short steel bollard"
+  },
+  "planter": {
+    "label": "planter",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.8,
+    "tall": 0.8,
+    "draw": "a concrete planter with shrubs"
+  },
+  "kiosk": {
+    "label": "kiosk",
+    "affordance": "environmental-object",
+    "broader": "stall",
+    "size": 1.2,
+    "tall": 1.0,
+    "draw": "a small news kiosk"
+  },
+  "billboard": {
+    "label": "billboard",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 2.0,
+    "tall": 1.2,
+    "draw": "a billboard on posts"
+  },
+  "vending-machine": {
+    "label": "vending machine",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.6,
+    "tall": 1.6,
+    "draw": "a drinks vending machine"
+  },
+  "parking-meter": {
+    "label": "parking meter",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.2,
+    "tall": 3.0,
+    "draw": "a parking meter"
+  },
+  "utility-pole": {
+    "label": "utility pole",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.3,
+    "tall": 4.0,
+    "draw": "a wooden utility pole with wires"
+  },
+  "ac-unit": {
+    "label": "air-conditioning unit",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.6,
+    "tall": 0.6,
+    "draw": "an air-conditioning unit"
+  },
+  "fuel-pump": {
+    "label": "fuel pump",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.5,
+    "tall": 1.6,
+    "draw": "a gas station fuel pump"
+  },
+  "flagpole": {
+    "label": "flagpole",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.2,
+    "tall": 6.0,
+    "draw": "a flagpole with a flag"
+  },
+  "playground-set": {
+    "label": "playground set",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 2.0,
+    "tall": 0.8,
+    "draw": "a children's playground climbing frame with a slide and swings"
+  },
+  "sports-hoop": {
+    "label": "basketball hoop",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.4,
+    "tall": 3.0,
+    "draw": "a basketball hoop on a pole"
+  },
+  "cafe-table": {
+    "label": "café table",
+    "affordance": "interactive-object",
+    "broader": "table",
+    "size": 0.8,
+    "tall": 0.8,
+    "draw": "a small outdoor café table with chairs and a parasol"
+  },
+  "road-marking": {
+    "label": "road marking",
+    "affordance": "environmental-object",
+    "broader": "decal",
+    "size": 1.0,
+    "tall": 0.0,
+    "draw": "white road markings painted on asphalt"
+  },
+  "manhole": {
+    "label": "manhole cover",
+    "affordance": "environmental-object",
+    "broader": "decal",
+    "size": 0.5,
+    "tall": 0.0,
+    "draw": "an iron manhole cover"
+  },
+  "sofa": {
+    "label": "sofa",
+    "affordance": "interactive-object",
+    "broader": "prop",
+    "size": 2.0,
+    "tall": 0.5,
+    "draw": "a modern fabric sofa",
+    "look": {
+      "at": "wall"
+    }
+  },
+  "tv": {
+    "label": "television",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 1.2,
+    "tall": 0.6,
+    "draw": "a flat-screen television on a low stand",
+    "look": {
+      "at": "wall"
+    }
+  },
+  "coffee-table": {
+    "label": "coffee table",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 1.0,
+    "tall": 0.4,
+    "draw": "a low coffee table",
+    "look": {
+      "near": "sofa"
+    }
+  },
+  "fridge": {
+    "label": "fridge",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.8,
+    "tall": 2.0,
+    "draw": "a tall fridge",
+    "look": {
+      "at": "wall"
+    }
+  },
+  "sink": {
+    "label": "sink",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.8,
+    "tall": 1.0,
+    "draw": "a sink unit",
+    "look": {
+      "at": "wall"
+    }
+  },
+  "toilet": {
+    "label": "toilet",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.6,
+    "tall": 1.0,
+    "draw": "a toilet",
+    "look": {
+      "at": "wall"
+    }
+  },
+  "shower": {
+    "label": "shower",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 1.0,
+    "tall": 2.2,
+    "draw": "a glass shower cubicle",
+    "look": {
+      "at": "corner"
+    }
+  },
+  "office-desk": {
+    "label": "office desk",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 1.4,
+    "tall": 0.6,
+    "draw": "a modern office desk with a monitor"
+  },
+  "office-chair": {
+    "label": "office chair",
+    "affordance": "interactive-object",
+    "broader": "prop",
+    "size": 0.6,
+    "tall": 1.4,
+    "draw": "a swivel office chair",
+    "look": {
+      "near": "office-desk"
+    }
+  },
+  "filing-cabinet": {
+    "label": "filing cabinet",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.6,
+    "tall": 1.4,
+    "draw": "a metal filing cabinet",
+    "look": {
+      "at": "wall"
+    }
+  },
+  "meeting-table": {
+    "label": "meeting table",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 3.0,
+    "tall": 0.3,
+    "draw": "a long meeting table",
+    "look": {
+      "at": "centre"
+    }
+  },
+  "whiteboard": {
+    "label": "whiteboard",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 1.6,
+    "tall": 0.8,
+    "draw": "a whiteboard on the wall",
+    "look": {
+      "at": "wall",
+      "hang": true
+    }
+  },
+  "reception-desk": {
+    "label": "reception desk",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 2.4,
+    "tall": 0.5,
+    "draw": "a curved reception desk",
+    "look": {
+      "at": "centre"
+    }
+  },
+  "potted-plant": {
+    "label": "potted plant",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.6,
+    "tall": 1.6,
+    "draw": "a tall potted plant",
+    "look": {
+      "at": "corner"
+    }
+  },
+  "checkout-counter": {
+    "label": "checkout counter",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 1.6,
+    "tall": 0.6,
+    "draw": "a shop checkout counter with a till",
+    "look": {
+      "at": "wall"
+    }
+  },
+  "store-shelf": {
+    "label": "store shelf",
+    "affordance": "environmental-object",
+    "broader": "shelf",
+    "size": 2.0,
+    "tall": 0.9,
+    "draw": "a shop shelving unit full of goods"
+  },
+  "school-desk": {
+    "label": "school desk",
+    "affordance": "interactive-object",
+    "broader": "prop",
+    "size": 0.8,
+    "tall": 0.8,
+    "draw": "a school desk with a chair"
+  },
+  "copier": {
+    "label": "copier",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.8,
+    "tall": 1.2,
+    "draw": "an office photocopier",
+    "look": {
+      "at": "wall"
+    }
+  },
+  "water-cooler": {
+    "label": "water cooler",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.4,
+    "tall": 2.6,
+    "draw": "a water cooler",
+    "look": {
+      "at": "wall"
+    }
+  },
+  "locker": {
+    "label": "locker",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "size": 0.6,
+    "tall": 2.8,
+    "draw": "a row of metal lockers",
+    "look": {
+      "at": "wall"
+    }
+  },
+  "ceiling-light": {
+    "label": "ceiling light",
+    "affordance": "environmental-object",
+    "broader": "light-prop",
+    "size": 0.4,
+    "tall": 0.2,
+    "draw": "a modern ceiling light panel",
+    "look": {
+      "light": {
+        "radius": 4.5,
         "strength": 1.0
       }
     }

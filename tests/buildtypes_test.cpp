@@ -447,11 +447,48 @@ TEST(BuildTypesTest, AWalledCityFromItsRequest) {
 }
 
 // The Build panel's choices: structured input from the ontology, beside the words.
+// A modern city (the modern-city build type): from its request to its layout, offline. Its avenues
+// and streets are asphalt with sidewalks, its districts hold towers, apartments and shops, and its
+// cars stand on the roads.
+TEST(BuildTypesTest, AModernCityBlockFromItsRequest) {
+    Offline f("aige_buildtype_modern_city");
+    PlaceBuild build(f.Host());
+    ASSERT_EQ(build.Start("Build a modern city downtown with skyscrapers, apartments and shops"), "");
+    const json solved = RunToLayout(build, "the modern city", "modern-city", true);
+    std::map<std::string, int> slots;
+    int buildings = 0;
+    for (const auto& o : solved["objects"]) {
+        ++slots[o.value("slot", "")];
+        buildings += o["layer"] == "building" && o.value("primary", false);
+    }
+    std::cout << "[ modern city ] " << solved["stats"].dump() << ", " << buildings << " buildings" << std::endl;
+    EXPECT_GE(buildings, 5);
+    EXPECT_GT(slots["office-tower"] + slots["office-building"] + slots["apartment-block"] + slots["retail-store"], 0) << json(slots).dump();
+    const json palette = solved["terrain"]["palette"];
+    EXPECT_NE(std::find(palette.begin(), palette.end(), "asphalt"), palette.end()) << palette.dump();
+    EXPECT_NE(std::find(palette.begin(), palette.end(), "sidewalk"), palette.end()) << palette.dump();
+    int traffic = 0, asphalt = 0;
+    for (const auto& o : solved["objects"]) traffic += o.value("id", "").find("/traffic") != std::string::npos;
+    EXPECT_GT(traffic, 0) << "cars in the lanes (not only parked ones)";
+    // The districts' streets have lanes as well as sidewalks.
+    std::vector<std::string> cells;
+    const json pal = solved["terrain"]["palette"];
+    for (const auto& row : solved["terrain"]["rows"]) {
+        for (const auto& run : row) asphalt += pal[run[1].get<int>()] == "asphalt" ? run[0].get<int>() : 0;
+    }
+    EXPECT_GT(asphalt, 500) << "asphalt lanes";
+    std::string hard;
+    for (const auto& c : solved["checks"]) {
+        if (!c.value("ok", true) && c.value("predicate", "") != "footprint-density") hard += "  " + c.dump() + "\n";
+    }
+    EXPECT_TRUE(hard.empty()) << hard;
+}
+
 TEST(BuildTypesTest, TheChoicesComeFromTheOntology) {
     const json options = BuildChoices(Library());
     std::map<std::string, json> byId;
     for (const auto& t : options["types"]) byId[t["id"]] = t;
-    ASSERT_EQ(byId.size(), 9u);
+    ASSERT_EQ(byId.size(), 10u); // settlement … courtyard, and the modern city
     EXPECT_EQ(options["types"][0]["id"], "settlement"); // the default first
     auto paths = [&](const std::string& type) {
         std::set<std::string> out;
@@ -474,6 +511,8 @@ TEST(BuildTypesTest, TheChoicesComeFromTheOntology) {
     EXPECT_FALSE(parts("settlement").contains("house-plot")) << "the many alike aren't offered";
     EXPECT_TRUE(parts("castle").contains("moat"));
     EXPECT_TRUE(parts("dungeon").contains("boss-arena"));
+    EXPECT_TRUE(parts("modern-city").contains("downtown"));
+    EXPECT_TRUE(parts("modern-city").contains("industrial-district"));
     for (const auto& [id, t] : byId) {
         EXPECT_FALSE(t["classes"].empty()) << id;
         EXPECT_LE(t["parts"].size(), 24u) << id;

@@ -95,6 +95,9 @@
       {"path": "plan.autonomy.systems", "label": "⑦ Systems", "type": "enum", "options": ["confirm", "review", "auto"]},
       {"path": "plan.autonomy.visuals", "label": "⑧ Visuals", "type": "enum", "options": ["confirm", "review", "auto"]},
       {"path": "plan.building", "label": "Building", "type": "enum", "options": ["manual", "automatic", "confirm-per-place"]},
+      {"path": "plan.art.source", "label": "Art for the places", "type": "enum", "options": ["search", "generate", "library", "project", "auto"]},
+      {"path": "plan.art.webSearch", "label": "Search the web for free art", "type": "bool"},
+      {"path": "plan.art.shareAlike", "label": "Allow share-alike licences (CC BY-SA)", "type": "bool"},
       {"path": "plan.budget.calls", "label": "Budget: AI calls (0: none)", "type": "int", "min": 0, "max": 100000}
     ]}
   ]

@@ -342,9 +342,9 @@ TEST(BuildRobustTest, APlanIsRevisedReviewedAndUndone) {
     f.AnswerAll(build, off); // the plan from the rules
     ASSERT_EQ(build.Stage(), "plan") << build.State().dump();
     ASSERT_EQ(build.Approve(), "");
-    // Laid out, then the AI looks at the map.
+    // Laid out, then the AI looks at the map (the coded plan map: each thing's kind and place).
     ASSERT_EQ(f.sent.back().first, "/places/review-layout");
-    EXPECT_EQ(f.sent.back().second["image"], "places/" + build.Id() + "/layout.png");
+    EXPECT_EQ(f.sent.back().second["image"], "places/" + build.Id() + "/inspect-plan.png");
     EXPECT_TRUE(f.sent.back().second["verify"].size() > 2);
     EXPECT_EQ(build.Stage(), "revising");
     f.answered.insert(static_cast<int>(f.sent.size()));
@@ -720,14 +720,16 @@ TEST(BuildRobustTest, ABuiltPlaceIsKeptAndReviewedAsRendered) {
         const size_t before = f.sent.size();
         build.Built({{"after", json::array({{{"id", "objects"}, {"ok", true}}})}, {"image", "places/x/scene.png"}});
         EXPECT_EQ(build.Stage(), "built");
-        // Reviewed as rendered.
+        // Reviewed as rendered: the host asks for the vision check of the built place (InspectBuilt), in windows.
+        EXPECT_EQ(f.sent.size(), before);
+        ASSERT_EQ(build.InspectBuilt({{"kind", "build"}, {"images", json::array({"places/x/scene.png"})}}), "");
         ASSERT_EQ(f.sent.size(), before + 1);
-        EXPECT_EQ(f.sent.back().first, "/places/review-layout");
-        EXPECT_EQ(f.sent.back().second["kind"], "scene");
-        EXPECT_EQ(f.sent.back().second["image"], "places/" + build.Id() + "/scene.png");
+        EXPECT_EQ(f.sent.back().first, "/places/inspect");
+        EXPECT_EQ(f.sent.back().second["images"][0], "places/x/scene.png");
         f.answered.insert(static_cast<int>(f.sent.size()));
         build.OnResponse(static_cast<int>(f.sent.size()),
-                         {{"ok", true}, {"answer", {{"summary", "One house stands on the road."}, {"issues", json::array({"a house on the road"})}}}});
+                         {{"ok", true}, {"summary", "One house stands on the road."},
+                          {"problems", json::array({{{"severity", "error"}, {"issue", "a house on the road"}}})}});
         EXPECT_EQ(build.Result()["critique"]["issues"][0], "a house on the road");
         EXPECT_EQ(build.Stage(), "built");
         first = build.Id();

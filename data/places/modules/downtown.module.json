@@ -1,0 +1,140 @@
+{
+  "schema": "aige.module/1",
+  "id": "downtown",
+  "name": "Downtown",
+  "level": "zone",
+  "description": "The heart of the city: office towers, hotels, shops at street level, plazas, a station.",
+  "buildTypes": [
+    "modern-city"
+  ],
+  "classes": [
+    "Ward",
+    "District"
+  ],
+  "quantity": {
+    "plots": {
+      "type": "count",
+      "default": [
+        8,
+        30
+      ],
+      "min": 0,
+      "max": 2000,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        900,
+        4000
+      ],
+      "min": 100,
+      "unit": "cells²"
+    },
+    "footprint-density": {
+      "type": "ratio",
+      "default": [
+        0.35,
+        0.7
+      ],
+      "min": 0,
+      "max": 1,
+      "description": "built cells / district cells"
+    }
+  },
+  "quality": {
+    "wealth": {
+      "type": "enum",
+      "vocabulary": "wealth",
+      "default": "common",
+      "ask": true
+    },
+    "density": {
+      "type": "enum",
+      "values": [
+        "sparse",
+        "medium",
+        "dense"
+      ],
+      "default": "dense",
+      "ask": true
+    },
+    "street-style": {
+      "type": "enum",
+      "vocabulary": "layout",
+      "description": "this district's own street pattern; unset, the city's"
+    }
+  },
+  "slots": {
+    "car": {
+      "role": "car",
+      "essential": false
+    }
+  },
+  "children": {
+    "office-tower-plot": {
+      "min": 0,
+      "weight": 1.0,
+      "max": 60
+    },
+    "office-plot": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    },
+    "hotel-plot": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 10
+    },
+    "retail-plot": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 80
+    },
+    "plaza": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 6
+    },
+    "parking-garage-plot": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 8
+    },
+    "transit-station-plot": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 3
+    },
+    "restaurant-plot": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 30
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "constraints": [
+    "count(children(class: BuildingParcel)) + count(children(class: OpenSpace)) >= 1"
+  ],
+  "prefersSite": {
+    "centre": 2.0,
+    "main-road": 1.0
+  },
+  "compile": {
+    "network": {
+      "class": "street",
+      "terrain": "asphalt",
+      "width": 4,
+      "edge": "sidewalk"
+    },
+    "traffic": {
+      "slot": "car",
+      "density": 0.06
+    }
+  }
+}

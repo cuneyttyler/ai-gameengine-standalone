@@ -1,0 +1,129 @@
+{
+  "schema": "aige.module/1",
+  "id": "commercial-district",
+  "name": "Commercial district",
+  "level": "zone",
+  "description": "Shops, a supermarket or mall, restaurants and a gas station, with parking.",
+  "buildTypes": [
+    "modern-city"
+  ],
+  "classes": [
+    "Ward",
+    "District"
+  ],
+  "quantity": {
+    "plots": {
+      "type": "count",
+      "default": [
+        8,
+        30
+      ],
+      "min": 0,
+      "max": 2000,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        900,
+        4000
+      ],
+      "min": 100,
+      "unit": "cells²"
+    },
+    "footprint-density": {
+      "type": "ratio",
+      "default": [
+        0.35,
+        0.7
+      ],
+      "min": 0,
+      "max": 1,
+      "description": "built cells / district cells"
+    }
+  },
+  "quality": {
+    "wealth": {
+      "type": "enum",
+      "vocabulary": "wealth",
+      "default": "common",
+      "ask": true
+    },
+    "density": {
+      "type": "enum",
+      "values": [
+        "sparse",
+        "medium",
+        "dense"
+      ],
+      "default": "medium",
+      "ask": true
+    },
+    "street-style": {
+      "type": "enum",
+      "vocabulary": "layout",
+      "description": "this district's own street pattern; unset, the city's"
+    }
+  },
+  "slots": {
+    "car": {
+      "role": "car",
+      "essential": false
+    }
+  },
+  "children": {
+    "retail-plot": {
+      "min": 0,
+      "weight": 1.0,
+      "max": 80
+    },
+    "supermarket-plot": {
+      "min": 0,
+      "weight": 0.4,
+      "max": 4
+    },
+    "mall-plot": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 2
+    },
+    "restaurant-plot": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 30
+    },
+    "gas-station-plot": {
+      "min": 0,
+      "weight": 0.3,
+      "max": 3
+    },
+    "parking-lot": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 12
+    },
+    "road": {
+      "min": 0,
+      "weight": 0.6,
+      "max": 60
+    }
+  },
+  "constraints": [
+    "count(children(class: BuildingParcel)) + count(children(class: OpenSpace)) >= 1"
+  ],
+  "prefersSite": {
+    "main-road": 2.0
+  },
+  "compile": {
+    "network": {
+      "class": "street",
+      "terrain": "asphalt",
+      "width": 4,
+      "edge": "sidewalk"
+    },
+    "traffic": {
+      "slot": "car",
+      "density": 0.06
+    }
+  }
+}

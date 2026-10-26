@@ -553,6 +553,12 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "Isometric (diamond cells) or TopDown (square cells, for art drawn from above). Changing it re-lays "
                "the whole scene.")
         .Options({"Isometric", "TopDown"});
+    r.Settings("Places", "How the AI builds places: chosen when the project is made, fixed once places are built.", &settings.places)
+        .Field("method", &PlacesSettings::method,
+               "Assembled (each piece's art drawn from a concept painting, put together on the grid: every piece "
+               "editable) or Painted (the whole place painted as one picture, a backdrop: walls, doors and anchors "
+               "read from it).")
+        .Options({"Assembled", "Painted"});
     r.Settings("Game", "The game as a whole.", &settings.game)
         .Field("startScene", &GameSettings::startScene, "The scene the game starts in (scenes/*.aige).")
         .Field("version", &GameSettings::version, "The game's version: the window's title, the crash log, exports.")
