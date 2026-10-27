@@ -161,6 +161,13 @@ Zones with `box` or `paint` take their cells before any seed is placed; a seed t
 | **`path`** | `from`, `to`, `via` (refs), `width`, `class`: `main` · `street` · `lane` · `trail` · `river`, `terrain`, `reuse` (cost factor for existing paths, default 0.1), `avoid` (refs), `cost` (criterion weights) | A least-cost route over the grid between anchors. Existing paths are almost free to reuse, so networks join instead of running in parallel. |
 | **`network`** | `in`, `style`: `grid` · `radial` · `organic` · `growth`, `spacing`, `width`, `class`, `connect` (anchor refs), `loops` (0–1) | A street network filling a region. `growth` grows streets toward seeded buildings. Every result counts as a `path`. |
 
+**Dead ends are joined** (every style, 1-cell streets). Once a network is laid, each street that ends looks for
+another street: first straight ahead, up to one block (`spacing`); then the nearest within half a block. It runs on
+to that street over the zone's own land or open land, never across water, a building or another zone. A lane that
+stops a cell short of the main road, or a grid line clipped at the zone's edge a few cells from it, reads on the map
+as cut off. A lane with nothing near stays a dead end, like a real close. `PlaceFlowTest.StreetsDontStopShortOfEachOther`
+checks that no street stops within 3 cells of another straight ahead.
+
 ### 5.3b Openings
 
 | op | Fields | Meaning |

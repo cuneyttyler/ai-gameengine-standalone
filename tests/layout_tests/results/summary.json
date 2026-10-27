@@ -1,10 +1,28 @@
 [
   {
+    "failures": [],
+    "name": "swap-by-where",
+    "passed": true,
+    "revise": "move the residential ward to where the outskirts is now and move the outskirts to where the residential ward is now"
+  },
+  {
+    "failures": [],
+    "name": "swap-by-word",
+    "passed": true,
+    "revise": "swap the market ward and the craftsmen ward"
+  },
+  {
     "failures": [
-      "residential-ward is 1.000000 times its size: asked at least 1.2"
+      "temple-ward is gone after the revision"
     ],
-    "name": "grow",
+    "name": "move-north",
     "passed": false,
+    "revise": "put the temple ward north of the market ward"
+  },
+  {
+    "failures": [],
+    "name": "grow",
+    "passed": true,
     "revise": "make the residential ward bigger"
   },
   {
@@ -14,11 +32,9 @@
     "revise": "make the craftsmen ward twice as big"
   },
   {
-    "failures": [
-      "market-ward is 1.000000 times its size: asked at most 0.85"
-    ],
+    "failures": [],
     "name": "shrink",
-    "passed": false,
+    "passed": true,
     "revise": "make the market ward smaller"
   }
 ]

@@ -4,6 +4,7 @@
 #include "editing/PlaceBlockout.h"
 #include "editing/PlaceScene.h"
 #include "gameplay/Components.h"
+#include "gameplay/Interiors.h"
 #include "places/Ontology.h"
 #include "renderer2d/Components.h"
 
@@ -473,9 +474,10 @@ std::vector<std::string> CheckMarks(const json& solved, const Ontology* ontology
         out.push_back("nothing is marked yet: ⑤ Mark");
         return out;
     }
-    std::set<std::string> covered;
+    std::set<std::string> covered, rooms; // rooms: buildings with an interior, walked into on purpose
     for (const auto& o : marks.value("occluders", json::array())) {
         if (o.contains("object")) covered.insert(o.value("object", ""));
+        if (o.contains("object") && o.contains("interior")) rooms.insert(o.value("object", ""));
         const json box = o.value("box", json());
         if (o.value("base", json::array()).size() < 2) out.push_back(o.value("name", o.value("id", "")) + " has no base line");
         if (box.is_array() && box.size() >= 4 && (box[2].get<int>() <= 1 || box[3].get<int>() <= 1)) out.push_back(o.value("name", o.value("id", "")) + "'s region is empty");
@@ -489,7 +491,7 @@ std::vector<std::string> CheckMarks(const json& solved, const Ontology* ontology
         if (!building && HeightOf(ontology, o.value("slot", "")) < 0.9) continue;
         const std::string id = o.value("id", "");
         if (!covered.contains(id) && ++uncovered <= 3) examples += (examples.empty() ? "" : ", ") + o.value("slot", "") + " at " + std::to_string(o.value("x", 0)) + "," + std::to_string(o.value("y", 0));
-        if (!building || blocked.empty()) continue;
+        if (!building || blocked.empty() || rooms.contains(id)) continue;
         int open = 0;
         for (int y = o.value("y", 0); y < o.value("y", 0) + o.value("h", 1); ++y) {
             for (int x = o.value("x", 0); x < o.value("x", 0) + o.value("w", 1); ++x) {
@@ -512,7 +514,68 @@ std::vector<std::vector<bool>> MarkedBlocked(const json& marks, int w, int h) {
         const std::string row = rows[y].get<std::string>();
         for (int x = 0; x < w && x < static_cast<int>(row.size()); ++x) out[static_cast<size_t>(x)][static_cast<size_t>(y)] = row[static_cast<size_t>(x)] == '#';
     }
+    // Buildings with an interior: walked into through their door (docs/places/interiors.md §7).
+    for (const auto& o : marks.value("occluders", json::array())) {
+        const json cells = o.value("cells", json());
+        if (!o.contains("interior") || !cells.is_array() || cells.size() < 4) continue;
+        const int x0 = cells[0].get<int>(), y0 = cells[1].get<int>(), x1 = cells[2].get<int>(), y1 = cells[3].get<int>();
+        auto set = [&](int x, int y, bool blocked) {
+            if (x >= 0 && y >= 0 && x < w && y < h) out[static_cast<size_t>(x)][static_cast<size_t>(y)] = blocked;
+        };
+        for (int y = y0; y <= y1; ++y) {
+            for (int x = x0; x <= x1; ++x) set(x, y, false);
+        }
+        ForEachInteriorWall(x1, y1, x1 - x0, 0, y1 - y0, o.value("door", std::string("s")), [&](int x, int y) { set(x, y, true); });
+    }
     return out;
+}
+
+json InteriorRequests(const json& solved, const Ontology* ontology, const fs::path& folder) {
+    json out = json::array();
+    const json marks = LoadMarks(folder);
+    if (!marks.is_object() || ontology == nullptr) return out;
+    const json objects = solved.value("objects", json::array());
+    std::map<std::string, const json*> byId;
+    for (const auto& o : objects) byId[o.value("id", "")] = &o;
+    std::error_code ec;
+    for (const auto& o : marks.value("occluders", json::array())) {
+        const std::string id = o.value("id", "");
+        const auto it = byId.find(o.value("object", ""));
+        if (o.value("hidden", false) || !SafeId(id) || it == byId.end() || it->second->value("layer", "") != "building") continue;
+        const json& object = *it->second;
+        const std::string role = object.value("role", object.value("slot", ""));
+        if (ontology->RoleLook(role, "has_interior") != true) continue;
+        if (fs::exists(folder / "marks" / (id + "-interior.png"), ec)) continue;
+        out.push_back({{"id", id}, {"box", o.value("box", json::array())}, {"mask", o.value("mask", "marks/" + id + ".png")}, {"role", role},
+                       {"purpose", object.value("purpose", json())}});
+    }
+    return out;
+}
+
+int PairInteriorMarks(const json& solved, const fs::path& folder) {
+    json marks = LoadMarks(folder);
+    if (!marks.is_object()) return 0;
+    const json objects = solved.value("objects", json::array());
+    std::map<std::string, const json*> byId;
+    for (const auto& o : objects) byId[o.value("id", "")] = &o;
+    std::error_code ec;
+    int count = 0;
+    for (auto& o : marks["occluders"]) {
+        const std::string id = o.value("id", "");
+        const auto it = byId.find(o.value("object", ""));
+        if (!SafeId(id) || it == byId.end() || !fs::exists(folder / "marks" / (id + "-interior.png"), ec)) {
+            o.erase("interior"), o.erase("cells"), o.erase("door");
+            continue;
+        }
+        const json& object = *it->second;
+        const int x = object.value("x", 0), y = object.value("y", 0), w = std::max(1, object.value("w", 1)), h = std::max(1, object.value("h", 1));
+        o["interior"] = "marks/" + id + "-interior.png";
+        o["cells"] = {x, y, x + w - 1, y + h - 1};
+        o["door"] = object.value("facing", std::string("s"));
+        ++count;
+    }
+    WriteJsonFile(folder / "marks.json", marks);
+    return count;
 }
 
 json AddPaintingEntities(Registry& registry, const fs::path& folder, const std::string& relative, const std::string& place, int originX,
@@ -606,6 +669,32 @@ json AddPaintingEntities(Registry& registry, const fs::path& folder, const std::
         }
         if (strips == 0) continue;
         out["occluders"] = out["occluders"].get<int>() + 1;
+        // Its interior (docs/places/interiors.md §7): the cutaway over the painted building, seen while the player is
+        // inside, its occluder's strips hidden meanwhile.
+        const json cells = o.value("cells", json());
+        if (o.contains("interior") && cells.is_array() && cells.size() >= 4) {
+            const int x0 = cells[0].get<int>() + originX, y0 = cells[1].get<int>() + originY;
+            const int x1 = cells[2].get<int>() + originX, y1 = cells[3].get<int>() + originY;
+            const auto c = scene(bx + bw / 2.0, by + bh / 2.0);
+            const Entity room = registry.create();
+            // Behind whoever stands in it: its back corner's depth.
+            registry.emplace<ScreenTransform2D>(room, static_cast<float>(c.first), static_cast<float>(c.second), static_cast<float>(x0 + y0) - 0.5f);
+            Sprite s;
+            s.texture = relative + "/" + o.value("interior", "");
+            s.width = static_cast<float>(bw * kx);
+            s.height = static_cast<float>(bh * ky);
+            s.a = 0.0f;
+            registry.emplace<Sprite>(room, s);
+            Interior interior;
+            interior.texture = s.texture;
+            interior.door = o.value("door", std::string("s"));
+            interior.cells = std::to_string(x0) + "," + std::to_string(y0) + "," + std::to_string(x1) + "," + std::to_string(y1);
+            interior.hides = "painting#" + id + "/";
+            registry.emplace<Interior>(room, interior);
+            registry.emplace<PlaceNode>(room, place, "", "painting#" + id + "-interior");
+            registry.emplace<Name>(room, o.value("name", id) + " interior");
+            out["interiors"] = out.value("interiors", 0) + 1;
+        }
         out["strips"] = out["strips"].get<int>() + strips;
     }
     return out;

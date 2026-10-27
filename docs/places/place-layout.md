@@ -334,6 +334,11 @@ The layout is the AI's proposal; the user shapes it before anything inside is pl
 
 ### 8.2 Revise in words
 
+> Since 2026-10-27 the AI answers a user's revision in the **revision language**
+> ([revise-language.md](revise-language.md)): a program of instructions (`grow`, `shrink`, `swap`, `move`, `add`,
+> `remove`…) that the engine checks and lowers to the operations below. The steps here still apply to what is
+> lowered, and the AI's own map review still answers with the operations directly.
+
 The user writes a change ("put the residential ward along the river, east of it, the
 others west of it"). The AI receives the request, **where things are now** (the `Where`
 description with a coarse text map), the plan, and what each part may hold, and answers

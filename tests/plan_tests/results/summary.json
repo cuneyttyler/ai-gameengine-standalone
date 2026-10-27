@@ -1,8 +1,24 @@
 [
   {
-    "failures": [],
+    "failures": [
+      "residential-ward-1 has 7 more buildings (20 -> 27): asked 10"
+    ],
     "name": "add-10-houses",
+    "passed": false,
+    "revise": "add 10 more houses to the residential ward 1"
+  },
+  {
+    "failures": [],
+    "name": "add-5-workshops",
     "passed": true,
-    "revise": "add 10 more houses to the north residential ward"
+    "revise": "add 5 more workshops to the craftsmen ward"
+  },
+  {
+    "failures": [
+      "outskirts has 2 more buildings (19 -> 21): asked 3"
+    ],
+    "name": "add-3-buildings",
+    "passed": false,
+    "revise": "add 3 more buildings to the outskirts"
   }
 ]

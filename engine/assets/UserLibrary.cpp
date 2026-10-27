@@ -6,6 +6,7 @@
 #include <fstream>
 #include <set>
 #include <tuple>
+#include <vector>
 
 namespace aige {
 
@@ -56,6 +57,23 @@ void CopyBeside(const fs::path& from, const fs::path& to) {
     for (const char* extra : {".meta", ".gen.json"}) {
         if (fs::exists(from.string() + extra, ec)) fs::copy_file(from.string() + extra, to.string() + extra, fs::copy_options::overwrite_existing, ec);
     }
+}
+
+// A .meta's key=value line set ("" removes it), the rest kept as is.
+void SetMetaField(const fs::path& file, const std::string& key, const std::string& value) {
+    std::error_code ec;
+    if (value.empty() && !fs::exists(file.string() + ".meta", ec)) return;
+    std::vector<std::string> lines;
+    {
+        std::ifstream in(file.string() + ".meta");
+        for (std::string line; std::getline(in, line);) {
+            if (!line.empty() && line.back() == '') line.pop_back();
+            if (line.rfind(key + "=", 0) != 0) lines.push_back(line);
+        }
+    }
+    if (!value.empty()) lines.push_back(key + "=" + value);
+    std::ofstream out(file.string() + ".meta", std::ios::binary | std::ios::trunc);
+    for (const auto& line : lines) out << line << "\n";
 }
 
 json* Find(json& list, const std::string& id) {
@@ -144,6 +162,18 @@ std::string UserLibrary::Add(const fs::path& file, const json& info, const std::
     if (ec) return {};
     CopyBeside(file, target);
     const auto meta = ReadMeta(file);
+    // Its interior (a project path in its .meta): found from the project's root, one of the file's folders up.
+    std::string interior;
+    if (const auto it = meta.find("interior"); it != meta.end() && !it->second.empty()) {
+        for (fs::path up = file.parent_path(); !up.empty(); up = up.parent_path()) {
+            if (fs::is_regular_file(up / it->second, ec)) {
+                interior = Add(up / it->second, info, folder);
+                library = Load();
+                break;
+            }
+            if (up == up.root_path()) break;
+        }
+    }
     json item = {{"id", hash},
                  {"name", info.value("name", meta.contains("name") ? meta.at("name") : file.stem().string())},
                  {"file", name},
@@ -159,6 +189,10 @@ std::string UserLibrary::Add(const fs::path& file, const json& info, const std::
     // Generated art: shared as the user chose for it (asked when they haven't chosen).
     const std::string sharing = library.value("sharing", "unset");
     item["shared"] = item["source"] == "generated" ? (sharing == "always" ? "yes" : sharing == "never" ? "no" : "unasked") : "no";
+    if (!interior.empty() && interior != hash) {
+        item["interior"] = interior;
+        if (json* inside = Find(library["items"], interior)) (*inside)["exteriorOf"] = hash;
+    }
     library["items"].push_back(item);
     Save(library);
     return hash;
@@ -374,7 +408,17 @@ std::string UserLibrary::CopyToProject(const std::string& item, const fs::path& 
     fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec);
     if (ec) return {};
     CopyBeside(from, to);
-    return "assets/library/" + name;
+    const std::string path = "assets/library/" + name;
+    // The pair under the new paths: its interior copied too; an interior alone is no one's here.
+    SetMetaField(to, "exteriorOf", "");
+    SetMetaField(to, "interior", "");
+    if (const std::string interior = i->value("interior", ""); !interior.empty() && interior != item) {
+        if (const std::string inside = CopyToProject(interior, projectRoot); !inside.empty()) {
+            SetMetaField(to, "interior", inside);
+            SetMetaField(projectRoot / inside, "exteriorOf", path);
+        }
+    }
+    return path;
 }
 
 int UserLibrary::KeepGenerated(const fs::path& projectRoot) {

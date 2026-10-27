@@ -1,6 +1,7 @@
 #include "gameplay/TileGrid.h"
 
 #include "gameplay/Components.h"
+#include "gameplay/Interiors.h"
 #include "gameplay/TileLayer.h"
 #include "physics2d/Components.h"
 
@@ -24,6 +25,16 @@ TileGrid TileGrid::Build(Registry& registry) {
         if (const auto* door = registry.try_get<Door>(entity); door && door->open) continue; // an open door (13.5)
         const int sx = static_cast<int>(std::floor(world.x));
         const int sy = static_cast<int>(std::floor(world.y));
+        auto block = [&](int gx, int gy) {
+            auto it = grid.cells_.find(Key(gx, gy));
+            if (it != grid.cells_.end()) it->second.solid = true;
+            else grid.blocked_.insert(Key(gx, gy));
+        };
+        // A place one can go into: its walls only, with a doorway (Phase 27).
+        if (const auto* interior = registry.try_get<Interior>(entity); interior && !interior->texture.empty()) {
+            ForEachInteriorWall(sx, sy, std::max(0, obstacle.left), std::max(0, obstacle.right), std::max(0, obstacle.back), interior->door, block);
+            continue;
+        }
         for (int gy = sy - std::max(0, obstacle.back); gy <= sy; ++gy) {
             for (int gx = sx - std::max(0, obstacle.left); gx <= sx + std::max(0, obstacle.right); ++gx) {
                 auto it = grid.cells_.find(Key(gx, gy));

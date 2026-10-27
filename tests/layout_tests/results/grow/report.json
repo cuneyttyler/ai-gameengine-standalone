@@ -6,69 +6,96 @@
     "outskirts": "outskirts",
     "residential-ward": "residential-ward"
   },
-  "failures": [
-    "residential-ward is 1.000000 times its size: asked at least 1.2"
-  ],
+  "failures": [],
   "land": {
     "craftsmen-ward": {
-      "after": 2195,
+      "after": 2168,
       "before": 2195,
-      "kept": 1.0,
+      "kept": 0.9876993166287016,
       "middleAfter": [
-        219.1266514806378,
-        227.81822323462416
+        138.05166051660515,
+        94.91928044280442
       ],
       "middleBefore": [
-        219.1266514806378,
-        227.81822323462416
+        138.02095671981778,
+        95.29157175398633
       ]
     },
     "market-ward": {
-      "after": 1723,
-      "before": 1723,
+      "after": 2068,
+      "before": 2068,
       "kept": 1.0,
       "middleAfter": [
-        154.83459082994776,
-        194.6912362159025
+        23.022243713733076,
+        24.256769825918763
       ],
       "middleBefore": [
-        154.83459082994776,
-        194.6912362159025
+        23.022243713733076,
+        24.256769825918763
       ]
     },
     "outskirts": {
-      "after": 7771,
-      "before": 7771,
-      "kept": 1.0,
+      "after": 9566,
+      "before": 9714,
+      "kept": 0.9847642577722874,
       "middleAfter": [
-        36.30176296486938,
-        65.34075408570325
+        75.36159314237926,
+        158.8210328245871
       ],
       "middleBefore": [
-        36.30176296486938,
-        65.34075408570325
+        75.54282478896438,
+        158.27166975499279
       ]
     },
     "residential-ward": {
-      "after": 5111,
+      "after": 6644,
       "before": 5111,
       "kept": 1.0,
       "middleAfter": [
-        144.88045392291136,
-        106.86969281940912
+        126.94491270319085,
+        38.55313064419025
       ],
       "middleBefore": [
-        144.88045392291136,
-        106.86969281940912
+        121.88730189786735,
+        39.98884758364312
       ]
     }
   },
   "name": "grow",
-  "passed": false,
+  "passed": true,
   "request": "a town with a market ward, a residential ward, a craftsmen ward and outskirts",
   "revise": "make the residential ward bigger",
-  "revision": null,
-  "sizeRatio": 1.0,
+  "revision": {
+    "by": "you",
+    "couldnt": [
+      "Shrink outskirts ×0.7: left out, the request didn't ask about it"
+    ],
+    "issues": [],
+    "notes": [],
+    "now": "{\"residential-ward\": {\"area\": 5111, \"centre\": [122, 40], \"extent\": [79, 2, 168, 79], \"river\": {\"bank\": \"east\", \"alongRows\": 51, \"height\": 77, \"nearest\": 2}, \"others\": [{\"zone\": \"market-ward\", \"lies\": \"west\", \"touching\": false}, {\"zone\": \"craftsmen-ward\", \"lies\": \"south\", \"touching\": true}, {\"zone\": \"outskirts\", \"lies\": \"south\", \"touching\": false}]}, \"outskirts\": {\"area\": 9714, \"centre\": [76, 159], \"extent\": [14, 102, 145, 211], \"river\": {\"bank\": \"west\", \"alongRows\": 38, \"height\": 109, \"nearest\": 2}, \"others\": [{\"zone\": \"market-ward\", \"lies\": \"north\", \"touching\": false}, {\"zone\": \"craftsmen-ward\", \"lies\": \"north-east\", \"touching\": true}, {\"zone\": \"residential-ward\", \"lies\": \"north\", \"touching\": false}]}}",
+    "program": [
+      {
+        "by": 1.3,
+        "do": "grow",
+        "zone": "residential-ward"
+      },
+      {
+        "by": 0.7,
+        "do": "shrink",
+        "zone": "outskirts"
+      }
+    ],
+    "shown": [
+      "Grow residential-ward ×1.3"
+    ],
+    "stage": "layout",
+    "summary": "The residential ward is expanded southward into the outskirts' space, increasing its area by 30% (to ~6644 cells) while shrinking the outskirts to accommodate it. The craftsmen's ward and market ward remain unchanged.",
+    "text": "make the residential ward bigger",
+    "time": 1793126689,
+    "undo": 1
+  },
+  "sizeRatio": 1.2999413030718059,
+  "staysWhereItWas": 1.0,
   "zones": {
     "A": "residential-ward"
   }

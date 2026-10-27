@@ -1,0 +1,85 @@
+{
+  "about": "Three more buildings in the outer zone, said plainly.",
+  "allZones": {
+    "craftsmen-ward": "craftsmen-ward",
+    "market-ward": "market-ward",
+    "outskirts": "outskirts",
+    "residential-ward": "residential-ward"
+  },
+  "buildings": {
+    "after": 21,
+    "asked": 3,
+    "before": 19,
+    "zone": "outskirts"
+  },
+  "failures": [
+    "outskirts has 2 more buildings (19 -> 21): asked 3"
+  ],
+  "name": "add-3-buildings",
+  "others": {
+    "craftsmen-ward": {
+      "buildings": [
+        17,
+        17
+      ],
+      "movedOrGone": 0,
+      "new": 0,
+      "sameLand": true,
+      "things": 17
+    },
+    "market-ward": {
+      "buildings": [
+        18,
+        18
+      ],
+      "movedOrGone": 0,
+      "new": 0,
+      "sameLand": true,
+      "things": 47
+    },
+    "residential-ward": {
+      "buildings": [
+        47,
+        47
+      ],
+      "movedOrGone": 0,
+      "new": 0,
+      "sameLand": true,
+      "things": 113
+    }
+  },
+  "passed": false,
+  "request": "a town with a market ward, a residential ward and outskirts with farms",
+  "revise": "add 3 more buildings to the outskirts",
+  "revision": {
+    "by": "you",
+    "issues": [],
+    "notes": [
+      "outskirts took 706 cells of the open land beside it, for the 3 more it was asked for"
+    ],
+    "now": "{\"zone\": \"outskirts\", \"has\": 19, \"holds about\": 19, \"cells\": 3886, \"module\": \"outskirts\", \"parcels\": [{\"module\": \"farmstead\", \"repeat\": 19}, {\"module\": \"road\"}, {\"module\": \"nature-scatter\"}]}",
+    "program": [
+      {
+        "count": 3,
+        "do": "add",
+        "kind": "farmstead",
+        "zone": "outskirts"
+      }
+    ],
+    "shown": [
+      "Add 3 farmstead to outskirts"
+    ],
+    "stage": "planned",
+    "summary": "Added 3 more farmsteads to the outskirts, raising its building count from 19 to 22. The zone's layout and style remain unchanged. Outskirts has room for 21 of the 22 buildings planned; it has 21 (Farmstead 22 → 21). To fit them all, make it bigger in ① Confirm → Layout.",
+    "text": "add 3 more buildings to the outskirts",
+    "time": 1793128460,
+    "undo": 2
+  },
+  "zoneLand": {
+    "after": 4592,
+    "before": 3886
+  },
+  "zones": {
+    "A": "outskirts"
+  }
+}

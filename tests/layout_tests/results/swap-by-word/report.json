@@ -1,161 +1,91 @@
 {
   "about": "Two zones change places, said in one word.",
   "allZones": {
-    "commons": "commons",
     "craftsmen-ward": "craftsmen-ward",
     "docks": "docks",
-    "farmland-ring": "farmland-ring",
-    "gate-ward-north": "gate-ward",
-    "gate-ward-south": "gate-ward",
     "market-ward": "market-ward",
     "residential-ward-1": "residential-ward",
     "residential-ward-2": "residential-ward",
-    "residential-ward-3": "residential-ward",
     "temple-ward": "temple-ward"
   },
   "failures": [],
   "land": {
-    "commons": {
-      "after": 800,
-      "before": 800,
-      "kept": 1.0,
-      "middleAfter": [
-        18.835,
-        64.96
-      ],
-      "middleBefore": [
-        18.835,
-        64.96
-      ]
-    },
     "craftsmen-ward": {
-      "after": 1200,
-      "before": 1200,
+      "after": 2068,
+      "before": 2195,
       "kept": 0.0,
       "middleAfter": [
-        23.911666666666665,
-        102.00166666666667
+        29.586557059961315,
+        42.47388781431334
       ],
       "middleBefore": [
-        18.275833333333335,
-        135.99666666666667
+        23.97129840546697,
+        216.09658314350798
       ]
     },
     "docks": {
-      "after": 600,
-      "before": 600,
+      "after": 2299,
+      "before": 2299,
       "kept": 1.0,
       "middleAfter": [
-        118.20166666666667,
-        141.30833333333334
+        125.59765115267507,
+        178.85863418877773
       ],
       "middleBefore": [
-        118.20166666666667,
-        141.30833333333334
-      ]
-    },
-    "farmland-ring": {
-      "after": 1314,
-      "before": 1314,
-      "kept": 1.0,
-      "middleAfter": [
-        102.3675799086758,
-        216.6324200913242
-      ],
-      "middleBefore": [
-        102.3675799086758,
-        216.6324200913242
-      ]
-    },
-    "gate-ward-north": {
-      "after": 400,
-      "before": 400,
-      "kept": 1.0,
-      "middleAfter": [
-        181.5425,
-        239.2425
-      ],
-      "middleBefore": [
-        181.5425,
-        239.2425
-      ]
-    },
-    "gate-ward-south": {
-      "after": 400,
-      "before": 400,
-      "kept": 1.0,
-      "middleAfter": [
-        210.005,
-        188.0275
-      ],
-      "middleBefore": [
-        210.005,
-        188.0275
+        125.59765115267507,
+        178.85863418877773
       ]
     },
     "market-ward": {
-      "after": 1200,
-      "before": 1200,
+      "after": 2195,
+      "before": 2068,
       "kept": 0.0,
       "middleAfter": [
-        18.275833333333335,
-        135.99666666666667
+        23.97129840546697,
+        216.09658314350798
       ],
       "middleBefore": [
-        23.911666666666665,
-        102.00166666666667
+        29.586557059961315,
+        42.47388781431334
       ]
     },
     "residential-ward-1": {
-      "after": 1000,
-      "before": 1000,
+      "after": 1500,
+      "before": 1500,
       "kept": 1.0,
       "middleAfter": [
-        109.304,
-        36.623
+        103.242,
+        15.919333333333332
       ],
       "middleBefore": [
-        109.304,
-        36.623
+        103.242,
+        15.919333333333332
       ]
     },
     "residential-ward-2": {
-      "after": 1000,
-      "before": 1000,
+      "after": 2500,
+      "before": 2500,
       "kept": 1.0,
       "middleAfter": [
-        69.365,
-        167.787
+        170.9592,
+        104.5928
       ],
       "middleBefore": [
-        69.365,
-        167.787
-      ]
-    },
-    "residential-ward-3": {
-      "after": 800,
-      "before": 800,
-      "kept": 1.0,
-      "middleAfter": [
-        9.2025,
-        226.63375
-      ],
-      "middleBefore": [
-        9.2025,
-        226.63375
+        170.9592,
+        104.5928
       ]
     },
     "temple-ward": {
-      "after": 600,
-      "before": 600,
+      "after": 2675,
+      "before": 2675,
       "kept": 1.0,
       "middleAfter": [
-        147.51,
-        8.44
+        25.547663551401868,
+        88.56373831775701
       ],
       "middleBefore": [
-        147.51,
-        8.44
+        25.547663551401868,
+        88.56373831775701
       ]
     }
   },
@@ -172,7 +102,7 @@
     "stage": "layout",
     "summary": "Market ward and Craftsmen ward change places.",
     "text": "swap the market ward and the craftsmen ward",
-    "time": 1793119316,
+    "time": 1793126231,
     "undo": 1
   },
   "swap": {

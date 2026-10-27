@@ -13,6 +13,7 @@ export interface MenuEntity {
   name: string
   prefab: string | null
   tile: boolean
+  interior?: boolean | null // a building with an interior (Phase 27): whether it shows now; null/absent: none
 }
 
 // Extra items other features add (copy/paste, resize, ...), given the target.
@@ -38,6 +39,10 @@ export function entityMenu(entity: MenuEntity): MenuItem[] {
   const label = entity.name || (entity.tile ? 'Tile' : `Entity #${entity.id}`)
   return [
     ...drawItem(entity.prefab),
+    ...(typeof entity.interior === 'boolean'
+      ? [{ label: entity.interior ? 'Show exterior' : 'Show interior', shortcut: keyLabel('view.interior'), disabled: editorState.playing,
+           action: () => sendToHost({ type: 'entity:interior', id: entity.id, shown: !entity.interior }) }]
+      : []),
     ...(entity.prefab && !entity.tile ? [{ label: 'Replace prefab…', disabled: editorState.playing, action: () => replacePrefab(entity) }] : []),
     { label: `Duplicate ${label}`, shortcut: keyLabel('edit.duplicate'), action: () => (select(), sendToHost({ type: 'edit:duplicate' })) },
     ...entityMenuExtensions.flatMap((extend) => extend(entity)),
@@ -108,6 +113,13 @@ onHostMessage((message) => {
     // Ground (or a tile): the tile's own menu first, then what can go there.
     const cell = message.cell as [number, number]
     const items = groundMenu(cell, (message.brush as string) || editorState.brush)
+    // Buildings with interiors (Phase 27): all shown inside or out.
+    const interiors = message.interiors as { count: number; shown: number } | undefined
+    if (interiors?.count) {
+      items.splice(items.length - 2, 0, interiors.shown < interiors.count
+        ? { label: `Show interiors (${interiors.count})`, action: () => sendToHost({ type: 'interiors:showAll', shown: true }) }
+        : { label: 'Show exteriors', action: () => sendToHost({ type: 'interiors:showAll', shown: false }) })
+    }
     // A ground tile there (a tile entity's prefab, or a tile layer's cell): Draw with it first.
     const tilePrefab = entity?.prefab ?? ((message.cellPrefab as string) || null)
     const draw = drawItem(tilePrefab)

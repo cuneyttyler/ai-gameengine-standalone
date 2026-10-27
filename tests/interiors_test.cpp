@@ -1,0 +1,174 @@
+#include "assets/UserLibrary.h"
+#include "editing/PaintedPlace.h"
+#include "gameplay/Components.h"
+#include "gameplay/Interiors.h"
+#include "physics2d/Components.h"
+#include "renderer2d/Components.h"
+
+#include <gtest/gtest.h>
+
+#include <filesystem>
+#include <fstream>
+#include <set>
+#include <sstream>
+
+using namespace aige;
+using json = nlohmann::json;
+namespace fs = std::filesystem;
+
+// docs/places/interiors.md: a building's interior shown while the player is inside it, walked into through its door;
+// painted buildings the same over the painting; a pair kept in the library stays a pair.
+
+namespace {
+
+void WriteFile(const fs::path& path, const std::string& bytes) {
+    fs::create_directories(path.parent_path());
+    std::ofstream(path, std::ios::binary) << bytes;
+}
+
+std::string ReadFile(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    std::stringstream s;
+    s << in.rdbuf();
+    return s.str();
+}
+
+} // namespace
+
+TEST(InteriorsTest, WallsLeaveTheDoorwayOpen) {
+    // A 3 x 3 footprint whose cell (its front corner) is 5,5: its edge blocks but the middle of its south side.
+    std::set<std::pair<int, int>> walls;
+    ForEachInteriorWall(5, 5, 2, 0, 2, "s", [&](int x, int y) { walls.insert({x, y}); });
+    EXPECT_EQ(walls.size(), 7u);
+    EXPECT_FALSE(walls.contains({4, 5})); // the doorway
+    EXPECT_FALSE(walls.contains({4, 4})); // inside
+    EXPECT_TRUE(walls.contains({3, 3}));
+    walls.clear();
+    ForEachInteriorWall(5, 5, 2, 0, 2, "e", [&](int x, int y) { walls.insert({x, y}); });
+    EXPECT_FALSE(walls.contains({5, 4}));
+    EXPECT_TRUE(walls.contains({4, 5}));
+}
+
+TEST(InteriorsTest, ShownWhileThePlayerIsInside) {
+    Registry registry;
+    const Entity house = registry.create();
+    registry.emplace<WorldTransform2D>(house, 5.0f, 5.0f);
+    registry.emplace<Obstacle>(house, Obstacle{2, 0, 2});
+    Sprite sprite;
+    sprite.texture = "assets/house.png";
+    registry.emplace<Sprite>(house, sprite);
+    registry.emplace<Interior>(house, Interior{"assets/house-interior.png", "s"});
+    const Entity player = registry.create();
+    auto& at = registry.emplace<WorldTransform2D>(player, 9.0f, 9.0f);
+
+    UpdateInteriors(registry, player);
+    EXPECT_FALSE(registry.get<Interior>(house).shown);
+    EXPECT_EQ(registry.get<Sprite>(house).texture, "assets/house.png");
+
+    at.x = 4.5f, at.y = 4.5f; // in through the door
+    UpdateInteriors(registry, player);
+    EXPECT_TRUE(registry.get<Interior>(house).shown);
+    EXPECT_EQ(registry.get<Sprite>(house).texture, "assets/house-interior.png");
+
+    at.x = 4.5f, at.y = 6.5f; // out again
+    UpdateInteriors(registry, player);
+    EXPECT_EQ(registry.get<Sprite>(house).texture, "assets/house.png");
+
+    // The editor's preview: shown by hand.
+    registry.get<Interior>(house).shown = true;
+    ApplyInteriors(registry);
+    EXPECT_EQ(registry.get<Sprite>(house).texture, "assets/house-interior.png");
+}
+
+TEST(InteriorsTest, PaintedBuildingHidesItsOccluders) {
+    Registry registry;
+    const Entity room = registry.create();
+    Sprite cutaway;
+    cutaway.texture = "places/v/marks/o1-interior.png";
+    cutaway.a = 0.0f;
+    registry.emplace<Sprite>(room, cutaway);
+    Interior interior{cutaway.texture, "s"};
+    interior.cells = "10,10,12,11";
+    interior.hides = "painting#o1/";
+    registry.emplace<Interior>(room, interior);
+    const Entity strip = registry.create();
+    registry.emplace<Sprite>(strip, Sprite{});
+    registry.emplace<PlaceNode>(strip, "v", "", "painting#o1/0");
+    const Entity other = registry.create();
+    registry.emplace<Sprite>(other, Sprite{});
+    registry.emplace<PlaceNode>(other, "v", "", "painting#o12/0");
+    const Entity player = registry.create();
+    auto& at = registry.emplace<WorldTransform2D>(player, 11.5f, 11.5f);
+
+    UpdateInteriors(registry, player);
+    EXPECT_FLOAT_EQ(registry.get<Sprite>(room).a, 1.0f);
+    EXPECT_FLOAT_EQ(registry.get<Sprite>(strip).a, 0.0f);
+    EXPECT_FLOAT_EQ(registry.get<Sprite>(other).a, 1.0f); // another building's
+
+    at.x = 15.0f;
+    UpdateInteriors(registry, player);
+    EXPECT_FLOAT_EQ(registry.get<Sprite>(room).a, 0.0f);
+    EXPECT_FLOAT_EQ(registry.get<Sprite>(strip).a, 1.0f);
+}
+
+TEST(InteriorsTest, PaintedWalkCellsBecomeWallsAndADoor) {
+    // The marks block the whole house (cells 1..3 x 1..3); with an interior, only its walls do.
+    const json marks = {{"walk", {{"rows", {".....", ".###.", ".###.", ".###.", "....."}}}},
+                        {"occluders", {{{"id", "o1"}, {"interior", "marks/o1-interior.png"}, {"cells", {1, 1, 3, 3}}, {"door", "s"}}}}};
+    const auto blocked = MarkedBlocked(marks, 5, 5);
+    EXPECT_FALSE(blocked[2][2]); // inside
+    EXPECT_FALSE(blocked[2][3]); // the doorway
+    EXPECT_TRUE(blocked[1][3]);
+    EXPECT_TRUE(blocked[2][1]);
+    EXPECT_FALSE(blocked[0][0]);
+}
+
+TEST(InteriorsTest, PaintedInteriorsArePairedWithTheirBuilding) {
+    const fs::path folder = fs::temp_directory_path() / "aige_interiors_paint";
+    fs::remove_all(folder);
+    fs::create_directories(folder / "marks");
+    WriteFile(folder / "marks.json", json{{"occluders", {{{"id", "o1"}, {"object", "h1"}}, {{"id", "o2"}, {"object", "t1"}}}}}.dump());
+    WriteFile(folder / "marks/o1-interior.png", "png");
+    const json solved = {{"objects", {{{"id", "h1"}, {"layer", "building"}, {"x", 2}, {"y", 3}, {"w", 3}, {"h", 2}, {"facing", "e"}},
+                                      {{"id", "t1"}, {"layer", "prop"}, {"x", 7}, {"y", 7}}}}};
+    EXPECT_EQ(PairInteriorMarks(solved, folder), 1);
+    const json marks = json::parse(ReadFile(folder / "marks.json"));
+    EXPECT_EQ(marks["occluders"][0]["interior"], "marks/o1-interior.png");
+    EXPECT_EQ(marks["occluders"][0]["cells"], json({2, 3, 4, 4}));
+    EXPECT_EQ(marks["occluders"][0]["door"], "e");
+    EXPECT_FALSE(marks["occluders"][1].contains("interior"));
+}
+
+TEST(InteriorsTest, ALibraryPairStaysAPair) {
+    const fs::path base = fs::temp_directory_path() / "aige_interiors_library";
+    fs::remove_all(base);
+    const fs::path project = base / "Village";
+    WriteFile(project / "places/v/art/house.png", "png-house");
+    WriteFile(project / "places/v/art/house.png.meta", "name=house\ninterior=places/v/art/house-interior.png\n");
+    WriteFile(project / "places/v/art/house-interior.png", "png-house-inside");
+    WriteFile(project / "places/v/art/house-interior.png.meta", "name=house interior\nexteriorOf=places/v/art/house.png\n");
+
+    UserLibrary library(base / "library");
+    const std::string house = library.Add(project / "places/v/art/house.png", json::object());
+    ASSERT_FALSE(house.empty());
+    const json state = library.State();
+    ASSERT_EQ(state["items"].size(), 2u); // its interior came with it
+    std::string inside;
+    for (const auto& i : state["items"]) {
+        if (i["id"] == house) inside = i.value("interior", "");
+    }
+    ASSERT_FALSE(inside.empty());
+    for (const auto& i : state["items"]) {
+        if (i["id"] == inside) EXPECT_EQ(i.value("exteriorOf", ""), house);
+    }
+
+    const fs::path other = base / "Other";
+    const std::string path = library.CopyToProject(house, other);
+    ASSERT_FALSE(path.empty());
+    const std::string meta = ReadFile(other / (path + ".meta"));
+    const size_t at = meta.find("interior=");
+    ASSERT_NE(at, std::string::npos);
+    const std::string insidePath = meta.substr(at + 9, meta.find('\n', at) - at - 9);
+    EXPECT_TRUE(fs::exists(other / insidePath));
+    EXPECT_NE(ReadFile(other / (insidePath + ".meta")).find("exteriorOf=" + path), std::string::npos);
+}

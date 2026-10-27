@@ -32,7 +32,9 @@ public:
     nlohmann::json State(const std::filesystem::path& projectRoot = {}) const;
 
     // A file into the library (copied, with its .meta and .gen.json): the same picture twice is
-    // one item (by its content). Returns the item's id, or "" if the file can't be read.
+    // one item (by its content). Returns the item's id, or "" if the file can't be read. A building's
+    // exterior brings its interior (its .meta's interior=, docs/places/interiors.md §6): kept too, the
+    // pair recorded on both items (interior, exteriorOf).
     std::string Add(const std::filesystem::path& file, const nlohmann::json& info, const std::string& folder = {});
 
     // Folders: made, renamed, removed (their items and folders go to the parent).
@@ -47,7 +49,8 @@ public:
     // The default for generated art: "always" (offered), "ask" (each decided), "never".
     std::string SetSharing(const std::string& choice);
 
-    // An item into a project (assets/library/<file>, with its .meta): the project path, or "".
+    // An item into a project (assets/library/<file>, with its .meta): the project path, or "". An
+    // exterior brings its interior, their .meta paired again under their new paths.
     std::string CopyToProject(const std::string& item, const std::filesystem::path& projectRoot) const;
     // Its items as catalog entries (id "user:<item>", source "library", their analysis: roles,
     // kind, view, size), for a build to choose from before it makes or searches for art.

@@ -782,6 +782,15 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
         steps.append({"derived": derive_pieces(painter, folder, derived, every, context, seed, writer=vision)})
         new += [p for p in derived if (folder / "pieces" / f"{p['slug']}.png").exists()]
         track.done("derived")
+    # The interiors (Phase 27): each building one can go into whose exterior is made, its interior an edit of it.
+    rooms = [p for p in every if p.get("interior") and p.get("view") != "back" and (folder / "pieces" / f"{p['slug']}.png").exists()
+             and not (folder / "pieces" / f"{p['slug']}-interior.png").exists()]
+    if rooms:
+        track.add("interiors", f"Interiors: {len(rooms)} buildings cut away to show their rooms", rooms, before=("facing", "ground"))
+        track.start("interiors")
+        made_rooms = make_interiors(painter, folder, rooms, context, seed)
+        steps.append({"interiors": made_rooms})
+        track.done("interiors", label=f"Interiors: {len(made_rooms)} of {len(rooms)} made")
     # Things with a front face the lower left (their back view: their back): turned round where they don't.
     if vision is not None:
         track.start("facing")
@@ -963,6 +972,104 @@ def paint_from_words(painter, folder: Path, pieces: list[dict], every: list[dict
             fixed = sum(pool.map(lambda k: paint(by_key[k], 2, redo[k]), list(redo)))
     return {"made": made, "step": {"painted": sorted(made), "missing": sorted(p["key"] for p in pieces if p["key"] not in made),
                                    "repainted": sorted(redo), "fixed": fixed, "words": words}}
+
+
+INTERIOR_PROMPT = """Game asset. Isometric view. Flat magenta background (#FF00FF).
+Image 1 is a building. Paint the same building as a cutaway, from the same camera, at the same place and size in the
+picture: its roof gone and the two walls that face the camera (the front-left and front-right walls) taken away
+entirely, with their windows, doors, shutters, timber frames and gables: nothing of them stands, only a low sill along
+the floor's front edges. So its inside shows: the floor, its rooms and inner walls, a staircase if it has an upper
+storey, and the furniture and things {purpose}, lit warmly. The two back walls stay at their full height; every wall
+keeps exactly the building's outline, footprint, materials and colours. {style}
+Nothing stands between the camera and the rooms. Only this building, nothing round it: no ground, no shadow, no people,
+no text. Keep the magenta empty."""
+
+
+def cutaway(painter, exterior: Image.Image, purpose: str, style: str, seed: int) -> Image.Image | None:
+    """A building's interior (docs/places/interiors.md §2): `exterior` (RGBA, transparent round the building) edited
+    into the same building cut away (INTERIOR_PROMPT) on a magenta canvas where it stands as it is, then cut back to
+    exactly its size. Nothing outside its outline is kept. None when the edit fails."""
+    side = 1024
+    k = min(1.0, side * 0.78 / max(exterior.width, exterior.height))
+    shown = exterior.resize((max(1, round(exterior.width * k)), max(1, round(exterior.height * k))), Image.LANCZOS) if k < 1 else exterior
+    ox, oy = (side - shown.width) // 2, (side - shown.height) // 2
+    canvas = Image.new("RGB", (side, side), (255, 0, 255))
+    canvas.paste(shown, (ox, oy), shown)
+    try:
+        png = painter.repaint(_png(canvas), INTERIOR_PROMPT.format(purpose=purpose, style=style), references=[], seed=seed,
+                              width=side, height=side)
+    except Exception:  # noqa: BLE001 - the building stays closed this run; asked again next run
+        return None
+    painted = Image.open(io.BytesIO(png)).convert("RGB")
+    if painted.size != (side, side):
+        painted = painted.resize((side, side), Image.LANCZOS)
+    part = painted.crop((ox, oy, ox + shown.width, oy + shown.height))
+    if part.size != exterior.size:
+        part = part.resize(exterior.size, Image.LANCZOS)
+    back = _background(part)
+    inside = part.convert("RGBA")
+    px, ex = inside.load(), exterior.load()
+    for y in range(inside.height):
+        for x in range(inside.width):
+            if back[y][x] or ex[x, y][3] < 128:  # the background, or outside the building's outline
+                px[x, y] = (0, 0, 0, 0)
+    return inside
+
+
+def _purpose(p: dict) -> str:
+    return f"of {p['purpose']}" if p.get("purpose") else f"a {str(p.get('role') or 'building').replace('-', ' ')} has"
+
+
+def make_interiors(painter, folder: Path, pieces: list[dict], context: dict, seed: int) -> list[str]:
+    """Each building's interior (Assembled): `cutaway` of its exterior picture, written as pieces/<slug>-interior.png,
+    exactly its size, so the cutter (CutMatchedArt) frames both the same way and they swap in place. Always BFL (an edit
+    needs the picture): whichever draws the rest. Returns the slugs made."""
+    from concurrent.futures import ThreadPoolExecutor
+    style = f"Style: {_style_words(context)}; {_style_line(context)}."
+
+    def make(p: dict) -> str | None:
+        exterior_path = folder / "pieces" / f"{p['slug']}.png"
+        if not exterior_path.exists():
+            return None
+        with Image.open(exterior_path) as im:
+            exterior = im.convert("RGBA")
+        inside = cutaway(painter, exterior, _purpose(p), style, seed + 977 + len(p["key"]))
+        if inside is None:
+            return None
+        inside.save(folder / "pieces" / f"{p['slug']}-interior.png")
+        return p["slug"]
+    with ThreadPoolExecutor(4) as pool:
+        return [s for s in pool.map(make, pieces) if s]
+
+
+def paint_interiors(painter, folder: Path, items: list[dict], context: dict, seed: int, painting: str = "painting.png") -> list[str]:
+    """Each painted building's interior (Paint, docs/places/interiors.md §7): its occluder's region of the painting
+    (`box` [x, y, w, h], `mask` an alpha PNG that size, both from marks.json) edited by `cutaway`, written as
+    marks/<id>-interior.png, the box's size, so it lies exactly over the painted building. Returns the ids made."""
+    from concurrent.futures import ThreadPoolExecutor
+    style = f"Style: {_style_words(context)}; {_style_line(context)}."
+    with Image.open(folder / painting) as im:
+        whole = im.convert("RGBA")
+
+    def make(item: dict) -> str | None:
+        x, y, w, h = (int(v) for v in item["box"][:4])
+        mask_path = folder / item.get("mask", f"marks/{item['id']}.png")
+        if w <= 0 or h <= 0 or not mask_path.exists():
+            return None
+        with Image.open(mask_path) as m:
+            mask = m.convert("RGBA").split()[3]
+        if mask.size != (w, h):
+            mask = mask.resize((w, h), Image.NEAREST)
+        exterior = whole.crop((x, y, x + w, y + h))
+        exterior.putalpha(mask)
+        inside = cutaway(painter, exterior, _purpose(item), style, seed + 977 + len(item["id"]))
+        if inside is None:
+            return None
+        (folder / "marks").mkdir(exist_ok=True)
+        inside.save(folder / "marks" / f"{item['id']}-interior.png")
+        return item["id"]
+    with ThreadPoolExecutor(4) as pool:
+        return [i for i in pool.map(make, items) if i]
 
 
 def derive_pieces(painter, folder: Path, pieces: list[dict], every: list[dict], context: dict, seed: int, writer=None) -> list[str]:

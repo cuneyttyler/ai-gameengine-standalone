@@ -248,6 +248,7 @@ function prefabMenu(prefab: (typeof editorState.prefabs)[number], event: MouseEv
   prefabPick.value = { picked: [prefab.path], anchor: prefab.path }
   const items: MenuItem[] = [
     { label: prefab.isTile ? 'Paint with it' : 'Place it', disabled: editorState.playing, action: () => armPrefab(prefab.path) },
+    ...(pairOf(prefab.texture) ? [{ label: pairOf(prefab.texture)!.label, action: () => goToPairedPrefab(prefab.texture) }] : []),
     separator,
     { label: 'Rename…', disabled: editorState.playing, action: () => renameItem(prefab.path) },
     { label: 'Move to folder…', disabled: editorState.playing, action: () => askMoveToFolder(prefab.path, 'prefabs') },
@@ -430,6 +431,55 @@ function manyMenu(which: 'assets' | 'prefabs', event: MouseEvent): void {
   openContextMenu(event.clientX, event.clientY, items)
 }
 
+// Interiors (development_plan.md Phase 27): an asset's pair, kept in its analysis both ways (interior= on the
+// exterior, exteriorOf= on the interior).
+function pairOf(path: string): { label: string; path: string } | null {
+  const analysis = assets.value.find((a) => a.path === path)?.analysis
+  if (analysis?.interior) return { label: 'Go to interior', path: analysis.interior }
+  if (analysis?.exteriorOf) return { label: 'Go to exterior', path: analysis.exteriorOf }
+  return null
+}
+
+async function goToAsset(path: string): Promise<void> {
+  tab.value = 'assets'
+  if (!inFolder(path, 'assets', assetFolder.value)) assetFolder.value = ''
+  filter.value = ''
+  assetPick.value = { picked: [path], anchor: path }
+  selectedPath.value = path
+  await nextTick()
+  document.querySelector(`[data-asset="${CSS.escape(path)}"]`)?.scrollIntoView({ block: 'nearest' })
+}
+
+// A prefab's pair: the prefab drawn with its texture's pair, or that asset when no prefab draws it.
+async function goToPairedPrefab(texture: string): Promise<void> {
+  const pair = pairOf(texture)
+  if (!pair) return
+  const prefab = editorState.prefabs.find((p) => p.texture === pair.path)
+  if (!prefab) return goToAsset(pair.path)
+  tab.value = 'prefabs'
+  if (!inFolder(prefab.path, 'prefabs', prefabFolder.value)) prefabFolder.value = ''
+  prefabKind.value = 'all'
+  filter.value = ''
+  prefabPick.value = { picked: [prefab.path], anchor: prefab.path }
+  await nextTick()
+  document.querySelector(`[data-prefab="${CSS.escape(prefab.path)}"]`)?.scrollIntoView({ block: 'nearest' })
+}
+
+// The pictures that can be the selected asset's interior: images that aren't another building's exterior or interior.
+const interiorChoices = computed(() =>
+  assets.value.filter(
+    (a) =>
+      a.type !== 'audio' &&
+      a.path !== selectedPath.value &&
+      (!a.analysis?.interior) &&
+      (!a.analysis?.exteriorOf || a.analysis.exteriorOf === selectedPath.value),
+  ),
+)
+
+function setInterior(path: string, interior: string): void {
+  sendToHost({ type: 'asset:setInterior', path, interior })
+}
+
 function assetMenu(asset: Asset, event: MouseEvent): void {
   if (pickedAssets.value.length > 1 && pickedAssets.value.includes(asset.path)) {
     manyMenu('assets', event)
@@ -439,6 +489,7 @@ function assetMenu(asset: Asset, event: MouseEvent): void {
   selectedPath.value = asset.path
   const items: MenuItem[] = [
     { label: 'Details', action: () => (selectedPath.value = asset.path) },
+    ...(pairOf(asset.path) ? [{ label: pairOf(asset.path)!.label, action: () => goToAsset(pairOf(asset.path)!.path) }] : []),
     { label: 'Rename…', disabled: editorState.playing, action: () => renameItem(asset.path) },
     { label: 'Move to folder…', disabled: editorState.playing, action: () => askMoveToFolder(asset.path, 'assets') },
     { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: asset.path }) },
@@ -668,6 +719,7 @@ onMounted(() => {
           <p v-else-if="visible.length === 0" class="placeholder">Nothing here matches.</p>
           <button
             v-for="asset in visible"
+            :data-asset="asset.path"
             :key="asset.path"
             class="card"
             :class="{ selected: pickedAssets.includes(asset.path), broken: !!asset.error }"
@@ -776,6 +828,20 @@ onMounted(() => {
               <span>Borders</span><span class="edges">{{ selected.analysis.edges }}</span>
             </div>
           </template>
+          <div v-if="selected.analysis?.exteriorOf" class="row" title="This is the inside of a building">
+            <span>Interior of</span>
+            <span class="pair">
+              <a href="#" @click.prevent="goToAsset(selected.analysis.exteriorOf)">{{ selected.analysis.exteriorOf.split('/').pop() }}</a>
+              <button :disabled="editorState.playing" @click="setInterior(selected.analysis.exteriorOf, '')">Unpair</button>
+            </span>
+          </div>
+          <div v-else class="row" title="The building's inside, shown while the player is in it (Phase 27)">
+            <span>Interior</span>
+            <select :value="selected.analysis?.interior ?? ''" :disabled="editorState.playing" @change="setInterior(selected.path, ($event.target as HTMLSelectElement).value)">
+              <option value="">None</option>
+              <option v-for="a in interiorChoices" :key="a.path" :value="a.path">{{ a.path.replace(/^assets\//, '') }}</option>
+            </select>
+          </div>
           <div class="actions">
             <button :disabled="analyzing > 0" title="What this image is (6.2)" @click="analyze([selected.path])">
               {{ selected.analysis ? 'Analyze again' : 'Analyze' }}

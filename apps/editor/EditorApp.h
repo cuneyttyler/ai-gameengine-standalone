@@ -181,6 +181,7 @@ private:
     // Build ④ Paint and ⑤ Mark's messages (build:paint, build:skipPaint, build:prefillMarks, build:marksRequest,
     // build:saveMarks); false for any other.
     bool HandlePaintMessage(const std::string& type, const nlohmann::json& message);
+    bool HandleInteriorMessage(const std::string& type, const nlohmann::json& message);
     // File ▸ Preferences' own settings (prefs.ts: interface scale, grid at start, zoom, recovery, paint model, a new
     // project's build method), kept in prefs.json: prefs:set and prefs:request, answered with prefs:values.
     nlohmann::json PrefsJson() const;

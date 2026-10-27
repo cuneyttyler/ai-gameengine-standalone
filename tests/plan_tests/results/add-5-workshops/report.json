@@ -1,0 +1,70 @@
+{
+  "about": "Five more workshops in the craftsmen's zone, nothing else changed.",
+  "allZones": {
+    "craftsmen-ward": "craftsmen-ward",
+    "market-ward": "market-ward",
+    "residential-ward": "residential-ward"
+  },
+  "buildings": {
+    "after": 28,
+    "asked": 5,
+    "before": 23,
+    "zone": "craftsmen-ward"
+  },
+  "failures": [],
+  "name": "add-5-workshops",
+  "others": {
+    "market-ward": {
+      "buildings": [
+        31,
+        31
+      ],
+      "movedOrGone": 0,
+      "new": 0,
+      "sameLand": true,
+      "things": 79
+    },
+    "residential-ward": {
+      "buildings": [
+        90,
+        90
+      ],
+      "movedOrGone": 0,
+      "new": 0,
+      "sameLand": true,
+      "things": 153
+    }
+  },
+  "passed": true,
+  "request": "a town with a market ward, a residential ward and a craftsmen ward",
+  "revise": "add 5 more workshops to the craftsmen ward",
+  "revision": {
+    "by": "you",
+    "issues": [],
+    "notes": [],
+    "now": "{\"zone\": \"craftsmen-ward\", \"has\": 23, \"holds about\": 27, \"cells\": 2969, \"workshop-plot\": {\"repeat\": 23, \"quality\": {\"trade\": \"smith\"}}}",
+    "program": [
+      {
+        "count": 5,
+        "do": "add",
+        "kind": "workshop-plot",
+        "zone": "craftsmen-ward"
+      }
+    ],
+    "shown": [
+      "Add 5 workshop-plot to craftsmen-ward"
+    ],
+    "stage": "planned",
+    "summary": "Added 5 more workshops to the craftsmen ward, increasing its workshop count from 23 to 28. The craftsmen ward now holds 28 workshops, which fits within its module's rules and the Brief's implied flexibility.",
+    "text": "add 5 more workshops to the craftsmen ward",
+    "time": 1793127888,
+    "undo": 2
+  },
+  "zoneLand": {
+    "after": 2969,
+    "before": 2969
+  },
+  "zones": {
+    "A": "craftsmen-ward"
+  }
+}

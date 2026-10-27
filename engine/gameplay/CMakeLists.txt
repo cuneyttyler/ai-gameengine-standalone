@@ -44,6 +44,7 @@ add_library(aige_gameplay STATIC
     Items.cpp
     Interact.h
     Interact.cpp
+    Interiors.cpp
     Encounters.h
     Encounters.cpp
     Behaviour.h

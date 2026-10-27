@@ -40,7 +40,8 @@
     "label": "building",
     "affordance": "environmental-object",
     "look": {
-      "variety": "high"
+      "variety": "high",
+      "has_interior": true
     },
     "storey": 2.0
   },

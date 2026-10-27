@@ -71,6 +71,7 @@ add_executable(aige_tests
     project_story_test.cpp
     places_test.cpp
     painted_place_test.cpp
+    interiors_test.cpp
     ontology_edit_test.cpp
     user_library_test.cpp
     live_build_test.cpp

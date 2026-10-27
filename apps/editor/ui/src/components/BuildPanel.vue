@@ -12,6 +12,7 @@ import { editorState } from '../editorState'
 import { activatePanel, setPanelVisible } from '../layout'
 import CatalogThumb from './CatalogThumb.vue'
 import MarkEditor from './MarkEditor.vue'
+import ReviseHelp, { type ReviseInstruction } from './ReviseHelp.vue'
 import { amountText, countRange, layoutSketch, parseRange, setShare, toggleShare, type Shares } from '../buildwindow'
 
 type Rect = [number, number, number, number]
@@ -119,6 +120,7 @@ interface PlanRow {
 // ④ Paint and ⑤ Mark (docs/places/painted-places.md): the painting's files and the marks' counts.
 interface PaintState {
   painting?: boolean
+  makingInteriors?: boolean // the buildings' interiors being made (docs/places/interiors.md §7)
   file?: string
   blockout?: string
   size?: [number, number]
@@ -152,7 +154,7 @@ interface BuildState {
     state: 'making' | 'made' | 'cut' | 'failed'
     provider?: string
     error?: string
-    report?: { pieces: number; grounds: number; flagged: number; skipped: { key: string; why: string }[] }
+    report?: { pieces: number; grounds: number; flagged: number; interiors?: number; skipped: { key: string; why: string }[] }
   }
   // The layout form (the place's layout fields): each with its values, what each means, its value now.
   layoutForm?: {
@@ -265,6 +267,7 @@ interface BuildState {
   result?: BuildResult // ⑤ Result: the scene build
   origin?: [number, number]
   revisions?: Revision[]
+  reviseLanguage?: ReviseInstruction[] // what a revision can do at this step
 }
 
 const PROJECT_HOST = 'https://aige-project.local/'
@@ -369,6 +372,8 @@ interface Revision {
   checks?: { node: string; type: string; to: string; ok: boolean; detail: string }[]
   issues?: string[]
   notes?: string[]
+  shown?: string[] // what it ran, in the revision language (docs/places/revise-language.md)
+  couldnt?: string[] // what it couldn't run, and why
   undo?: number
   undone?: boolean
 }
@@ -1745,10 +1750,13 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           <div v-for="(c, k) in r.checks ?? []" :key="'c' + k" :class="['small', c.ok ? 'ok' : 'error']">
             {{ c.ok ? '✓' : '✗' }} {{ c.node }} {{ c.type }} {{ c.to }} <span class="dim">· {{ c.detail }}</span>
           </div>
+          <div v-if="r.shown?.length" class="small ran">Done: {{ r.shown.join('; ') }}</div>
+          <div v-for="n in r.couldnt ?? []" :key="'x' + n" class="small error">Not done: {{ n }}</div>
           <div v-for="n in r.notes ?? []" :key="n" class="dim small">{{ n }}</div>
         </div>
         <p v-if="stage === 'revising'">{{ state.status }} <button @click="sendToHost({ type: 'build:cancel' })">Stop</button></p>
         <template v-else>
+          <ReviseHelp :instructions="state.reviseLanguage ?? []" @use="(t) => (revision = t)" />
           <textarea
             v-model="revision"
             rows="2"
@@ -1985,10 +1993,11 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
               : state.matched.state === 'made' ? 'Cutting the pieces…'
               : state.matched.state === 'failed' ? `The art failed: ${state.matched.error ?? ''}`
               : `Matched art: ${state.matched.report?.pieces ?? 0} pieces, ${state.matched.report?.grounds ?? 0} grounds` +
+                (state.matched.report?.interiors ? `, ${state.matched.report.interiors} buildings with interiors` : '') +
                 (state.matched.report?.flagged ? `, ${state.matched.report.flagged} off the style` : '') }}
           </span>
           <button v-if="SCENE_BUILD" class="primary"
-                  :disabled="stage === 'sourcing' || stage === 'building' || state?.backgroundMaking || state?.matched?.state === 'making'"
+                  :disabled="stage === 'sourcing' || stage === 'building' || state?.backgroundMaking || state?.matched?.state === 'making' || state?.paint?.makingInteriors"
                   :title="(state?.background ? '' : 'The background first (the whole ground, painted), then: ') + (makesArt
                     ? 'every part\'s art made by the art provider (Preferences ▸ AI ▸ Art) in one style: a style sheet first, then every piece in its style, drawn to the grid'
                     : 'each part\'s art found in the project or the library, and what\'s missing searched for or made')"
@@ -2445,10 +2454,13 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           <div v-for="(c, k) in r.checks ?? []" :key="'c' + k" :class="['small', c.ok ? 'ok' : 'error']">
             {{ c.ok ? '✓' : '✗' }} {{ c.node }} {{ c.type }} {{ c.to }} <span class="dim">· {{ c.detail }}</span>
           </div>
+          <div v-if="r.shown?.length" class="small ran">Done: {{ r.shown.join('; ') }}</div>
+          <div v-for="n in r.couldnt ?? []" :key="'x' + n" class="small error">Not done: {{ n }}</div>
           <div v-for="n in r.notes ?? []" :key="n" class="dim small">{{ n }}</div>
         </div>
         <p v-if="stage === 'revising'">{{ state.status }} <button @click="sendToHost({ type: 'build:cancel' })">Stop</button></p>
         <template v-else>
+          <ReviseHelp :instructions="state.reviseLanguage ?? []" @use="(t) => (revision = t)" />
           <textarea
             v-model="revision"
             rows="2"
@@ -3259,6 +3271,9 @@ button.link {
   border-left: 3px solid #45475a;
   padding: 4px 8px;
   margin: 6px 0;
+}
+.revision .ran {
+  color: #86efac;
 }
 .revision.undone {
   opacity: 0.55;

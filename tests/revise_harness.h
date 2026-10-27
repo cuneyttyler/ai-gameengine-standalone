@@ -259,7 +259,12 @@ public:
         Pump();
         if (build_->Stage() != was) return "after the revision the build is at " + build_->Stage() + ": " + build_->State().value("status", "");
         const json& revisions = build_->Revisions();
-        if (!revisions.empty()) Say("revised: " + revisions.back().value("summary", revisions.back().dump().substr(0, 300)));
+        if (!revisions.empty()) {
+            const json& r = revisions.back();
+            Say("revised: " + r.value("summary", r.dump().substr(0, 300)));
+            if (r.contains("shown")) Say("  done: " + r["shown"].dump());
+            if (r.contains("couldnt")) Say("  not done: " + r["couldnt"].dump());
+        }
         return {};
     }
 

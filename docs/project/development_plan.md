@@ -2958,6 +2958,37 @@ Done when: a village painted from its plan is marked in a few minutes (pre-fill,
 and brush strokes) and can be walked in the editor's Play mode. A character goes behind houses and
 trees and in front of them correctly, and can't walk through walls or water.
 
+## Phase 27 — Interiors
+
+When a character goes into a building (or another closed place), the inside shows: the same building as a cutaway,
+its roof and the walls facing the camera taken away, its rooms, floor and furniture showing, and the walls' outline
+keeping the outside around them. One complementing asset a building: its interior, paired with its exterior.
+The design, the approved look and the status are in `docs/places/interiors.md`. Interiors are always made with BFL
+(an edit of the exterior) and never skipped for another provider.
+
+- **Ontology:** a role's look `has_interior` (inherited: every building has one; set off where a thing has none).
+- **Art:** each piece of a role with an interior gets its interior made with it (Assembled and Paint): an edit of the
+  exterior picture (the same building, cut away), on the same canvas, so the two line up exactly and swap in place.
+- **Assets:** the pair kept in the catalog (`.meta`): the exterior's `interior` names its interior, the interior's
+  `exteriorOf` names its exterior; the Assets panel shows the pair and sets it ("Interior: …", any project image).
+  Interiors aren't candidates for a place's needs on their own.
+- **Library:** a pair stays a pair: keeping an exterior in the user's library keeps its interior with it (an item's
+  `interior`), and copying it into a project copies both and pairs them there; the AIGE library's items the same.
+- **Scene:** a building whose art has an interior gets an `Interior` component (the interior's texture, its door side).
+  Its collision is then its walls only, with a doorway on its front, so one can walk in.
+- **Play:** while the player stands inside its footprint, the building shows its interior; outside, its exterior. In
+  the editor, the Inspector's Interior ▸ shown previews it.
+- **Editor:** the Assets panel's right-click on an asset or prefab with a pair: Go to interior / exterior. The
+  viewport's right-click on a building: Show interior / exterior; on the ground: Show interiors / exteriors (all);
+  **H** toggles the selected building's.
+- **Paint method:** after Mark, each building's region of the painting is edited into its cutaway (BFL), shown by an
+  entity whose `Interior` hides that building's occluders while it shows; its walk cells become walls and a door.
+- **AI panel:** context and ops know an entity's interior (show it, set its texture); the build card says how many
+  buildings have interiors.
+
+Done when: a village built with the words art method has an interior for every house, the player walks into one
+through its door and sees its rooms, and walks out again; a pair kept in the library comes back as a pair.
+
 ---
 
 ## Later

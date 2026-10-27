@@ -41,6 +41,7 @@
 #include "game/SaveGames.h"
 #include "game/GameAudio.h"
 #include "gameplay/InputMap.h"
+#include "gameplay/Interiors.h"
 #include "world/StoryReferences.h"
 #include "editing/SceneEditing.h"
 #include "gameplay/BootstrapLevel.h"
@@ -406,6 +407,7 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         return true;
     }
     if (HandlePaintMessage(type, message)) return true;
+    if (HandleInteriorMessage(type, message)) return true;
     if (type == "build:start") {
         StartBuild(message.value("query", ""), message.value("choices", nlohmann::json::object()), message.value("method", ""));
     } else if (type == "build:choicesRequest") {
@@ -2688,6 +2690,9 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                                              ? nlohmann::json(registry_.get<PrefabInstance>(*picked).path)
                                              : nlohmann::json(nullptr)},
                               {"tile", registry_.all_of<Tile>(*picked)}};
+                    // Its interior (Phase 27): whether it shows now, null when it has none.
+                    const auto* interior = registry_.try_get<Interior>(*picked);
+                    entity["interior"] = interior && !interior->texture.empty() ? nlohmann::json(interior->shown) : nlohmann::json(nullptr);
                 }
                 // A ground tile there (a tile layer's cell, a built place's ground): its prefab, to Draw with.
                 std::string cellPrefab;
@@ -2705,6 +2710,16 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                        {"cell", {gx, gy}},
                        {"cellPrefab", cellPrefab},
                        {"layerCell", !picked && PickLayerCell(sceneX, sceneY).has_value()}, // a ground cell (Make an asset from it)
+                       {"interiors", [&] {
+                            // How many buildings with an interior, and how many show it (Show interiors / exteriors).
+                            int count = 0, shown = 0;
+                            for (auto [e, interior] : registry_.view<Interior>().each()) {
+                                if (interior.texture.empty()) continue;
+                                ++count;
+                                shown += interior.shown ? 1 : 0;
+                            }
+                            return nlohmann::json{{"count", count}, {"shown", shown}};
+                        }()},
                        {"brush", tool_ == Tool::Prefab ? brushPrefab_ : std::string()}});
             }
             if (event.button == Button::Right || event.button == Button::Middle || event.button == Button::None) {
@@ -4822,6 +4837,7 @@ void EditorApp::AddStatsOverlay(std::vector<UiQuad>& ui) {
 void EditorApp::Tick(double frameSeconds) {
     const SlowWatch whole("frame (all of Tick: if only this is logged, it was the rest of the frame's work)");
     { const SlowWatch w("frame: the AI's answers"); PollAi(); }
+    if (!playing_) ApplyInteriors(registry_); // the Inspector's Interior ▸ shown previews it
     { const SlowWatch w("frame: a build job ending"); FinishBuildJob(); }
     { const SlowWatch w("frame: a build step"); StepBuildRun(); }
     { const SlowWatch w("frame: the recovery snapshot"); WriteRecovery(); } // the unsaved scene, every two minutes
@@ -5561,6 +5577,54 @@ void EditorApp::CutMatched() {
                                             std::to_string(report.value("grounds", nlohmann::json::array()).size()) + " grounds in one style"}});
 }
 
+bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::json& message) {
+    // Interiors (docs/places/interiors.md §5).
+    if (type == "entity:interior" || type == "interiors:showAll") {
+        // Interiors (development_plan.md Phase 27): one building's (the selection's, or `id`'s) interior shown or its
+        // exterior, toggled unless `shown` says; or every building's. A view, not an edit: Play sets them from where the
+        // player stands.
+        if (!playing_) {
+            if (type == "interiors:showAll") {
+                for (auto [e, interior] : registry_.view<Interior>().each()) interior.shown = message.value("shown", true);
+            } else {
+                std::optional<Entity> target = selected_;
+                if (message.contains("id") && message["id"].is_number_unsigned()) target = static_cast<Entity>(message["id"].get<uint32_t>());
+                Interior* interior = target && registry_.valid(*target) ? registry_.try_get<Interior>(*target) : nullptr;
+                if (interior == nullptr || interior->texture.empty()) {
+                    post_({{"type", "notify"}, {"text", "This has no interior"}});
+                } else {
+                    interior->shown = message.value("shown", !interior->shown);
+                }
+            }
+            ApplyInteriors(registry_);
+            inspectorStale_ = true;
+        }
+        return true;
+    }
+    if (type == "asset:setInterior") {
+        // Interiors (docs/places/interiors.md §5): `path`'s interior set to `interior` ("" unpairs), kept both ways in the
+        // catalog (interior= on the exterior, exteriorOf= on the interior); the old partners lose theirs.
+        const std::string path = message.value("path", ""), inside = message.value("interior", "");
+        const auto field = [&](const std::string& asset, const char* key) {
+            const AssetInfo* info = assets_.Find(asset);
+            if (info == nullptr || !info->analysis.contains(key)) return std::string();
+            return info->analysis.at(key);
+        };
+        if (assets_.Find(path) != nullptr && path != inside && (inside.empty() || assets_.Find(inside) != nullptr)) {
+            if (const std::string old = field(path, "interior"); !old.empty()) SetCatalogFields(assets_, old, {{"exteriorOf", ""}});
+            if (!inside.empty()) {
+                if (const std::string old = field(inside, "exteriorOf"); !old.empty()) SetCatalogFields(assets_, old, {{"interior", ""}});
+                SetCatalogFields(assets_, inside, {{"exteriorOf", path}, {"interior", ""}});
+            }
+            SetCatalogFields(assets_, path, {{"interior", inside}, {"exteriorOf", ""}});
+            post_(CatalogJson());
+            post_(AssetsJson());
+        }
+        return true;
+    }
+    return false;
+}
+
 bool EditorApp::HandlePaintMessage(const std::string& type, const nlohmann::json& message) {
     // ④ Paint and ⑤ Mark (docs/places/painted-places.md).
     if (type == "build:segment") {
@@ -5585,6 +5649,8 @@ bool EditorApp::HandlePaintMessage(const std::string& type, const nlohmann::json
         // ⑤ Mark's Continue: the marks are the user's now; a Planner build waiting on them goes on.
         if (build_) {
             if (const std::string why = ConfirmMarks(build_->Folder()); !why.empty()) post_({{"type", "notify"}, {"text", why}});
+            // The painted buildings' interiors (docs/places/interiors.md §7): their regions cut away, while ⑥ Assets goes on.
+            else if (const std::string not_ = build_->PaintInteriors(); !not_.empty()) post_({{"type", "notify"}, {"text", "Interiors: " + not_}});
         }
         PostBuild();
         return true;

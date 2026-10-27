@@ -607,8 +607,10 @@ def program_shape(language: dict) -> str:
             "Use the ids from the plan for zones, parcels and kinds; a kind must be one the zone's rules list. Give only "
             "what the request asks: one instruction for each thing it asks, none for anything it doesn't name. A number "
             "the request says is the number in the instruction (\"10 more houses\" is count 10; \"twice as big\" is by 2; "
-            "\"a bit bigger\" is by 1.2). An empty program, with the reason in summary, when the request can't be done "
-            "with these instructions.")
+            "\"a bit bigger\" is by 1.2). The engine does the rest: a grown zone takes the land around it by itself, so "
+            "don't shrink or move other zones to make room, and don't restate where a zone is when only its size or "
+            "contents change. An empty program, with the reason in summary, when the request can't be done with these "
+            "instructions.")
 
 
 def revise_plan(provider: Provider, brief: dict, plan: dict, result: dict, instruction: str, context: dict,

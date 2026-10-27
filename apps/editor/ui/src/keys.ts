@@ -51,6 +51,7 @@ const handlers: Record<string, () => void> = {
   'tool.erase': send('tool:set', { tool: 'erase' }),
   'view.frame': send('view:frame'),
   'view.grid': send('view:grid'),
+  'view.interior': send('entity:interior'),
   'view.stats': send('view:stats'),
   'play.toggle': send('play:toggle'),
   'panel.scene': () => togglePanel('scene'),

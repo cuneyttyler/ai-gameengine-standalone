@@ -1,0 +1,83 @@
+{
+  "about": "Ten more houses in one zone: exactly ten; every other zone's land and things stay exactly as they were.",
+  "allZones": {
+    "market-ward": "market-ward",
+    "residential-ward-1": "residential-ward",
+    "residential-ward-2": "residential-ward"
+  },
+  "buildings": {
+    "after": 27,
+    "asked": 10,
+    "before": 20,
+    "zone": "residential-ward-1"
+  },
+  "failures": [
+    "residential-ward-1 has 7 more buildings (20 -> 27): asked 10"
+  ],
+  "name": "add-10-houses",
+  "others": {
+    "market-ward": {
+      "buildings": [
+        9,
+        9
+      ],
+      "movedOrGone": 0,
+      "new": 0,
+      "sameLand": true,
+      "things": 22
+    },
+    "residential-ward-2": {
+      "buildings": [
+        20,
+        20
+      ],
+      "movedOrGone": 0,
+      "new": 0,
+      "sameLand": true,
+      "things": 195
+    }
+  },
+  "passed": false,
+  "request": "a village with a market and two residential wards",
+  "revise": "add 10 more houses to the residential ward 1",
+  "revision": {
+    "by": "you",
+    "issues": [],
+    "notes": [
+      "residential-ward-1 took 280 cells of the open land beside it, for the 2 more it was asked for"
+    ],
+    "now": "{\"zone\": \"residential-ward-1\", \"current_houses\": 20, \"area\": 3407, \"children_areas_fit\": true, \"buildings_total\": 49, \"scale_buildings_count\": [40, 50]}",
+    "program": [
+      {
+        "count": 10,
+        "do": "add",
+        "kind": "house-plot",
+        "zone": "residential-ward-1"
+      },
+      {
+        "do": "set-place",
+        "path": "scale.buildings.count",
+        "value": [
+          40,
+          60
+        ]
+      }
+    ],
+    "shown": [
+      "Add 10 house-plot to residential-ward-1",
+      "Set the place's scale.buildings.count to 40, 60"
+    ],
+    "stage": "planned",
+    "summary": "Added 10 more house plots to residential ward 1 (now 30), raising the total building count to 59. Adjusted the Brief's building count upper bound to 60 to fit the new total. Residential ward has room for 27 of the 30 buildings planned; it has 27 (House plot 30 → 27). To fit them all, make it bigger in ① Confirm → Layout.",
+    "text": "add 10 more houses to the residential ward 1",
+    "time": 1793127434,
+    "undo": 2
+  },
+  "zoneLand": {
+    "after": 3687,
+    "before": 3407
+  },
+  "zones": {
+    "A": "residential-ward-1"
+  }
+}

@@ -1,101 +1,109 @@
 {
   "about": "One zone put north of another; zones away from both stay where they were.",
   "allZones": {
-    "commons": "commons",
     "craftsmen-ward": "craftsmen-ward",
     "market-ward": "market-ward",
     "residential-ward": "residential-ward",
     "temple-ward": "temple-ward"
   },
-  "failures": [],
+  "failures": [
+    "temple-ward is gone after the revision"
+  ],
   "land": {
-    "commons": {
-      "after": 1500,
-      "before": 1500,
-      "kept": 1.0,
-      "middleAfter": [
-        209.01933333333332,
-        22.861333333333334
-      ],
-      "middleBefore": [
-        209.01933333333332,
-        22.861333333333334
-      ]
-    },
     "craftsmen-ward": {
-      "after": 2000,
-      "before": 2000,
+      "after": 1470,
+      "before": 1470,
       "kept": 1.0,
       "middleAfter": [
-        123.5945,
-        231.223
+        23.5,
+        122.98775510204082
       ],
       "middleBefore": [
-        123.5945,
-        231.223
+        23.5,
+        122.98775510204082
       ]
     },
     "market-ward": {
-      "after": 1436,
-      "before": 1500,
-      "kept": 0.9573333333333334,
+      "after": 980,
+      "before": 980,
+      "kept": 1.0,
       "middleAfter": [
-        115.42339832869081,
-        116.39972144846797
+        1.5,
+        122.99591836734695
       ],
       "middleBefore": [
-        115.642,
-        116.762
+        1.5,
+        122.99591836734695
       ]
     },
     "residential-ward": {
-      "after": 3000,
-      "before": 3000,
+      "after": 2450,
+      "before": 2450,
       "kept": 1.0,
       "middleAfter": [
-        132.74133333333333,
-        181.36133333333333
+        15.5,
+        122.98775510204082
       ],
       "middleBefore": [
-        132.74133333333333,
-        181.36133333333333
+        15.5,
+        122.98775510204082
       ]
     },
     "temple-ward": {
-      "after": 1000,
-      "before": 1000,
+      "after": 0,
+      "before": 1713,
       "kept": 0.0,
       "middleAfter": [
-        100.067,
-        10.427
+        0.0,
+        0.0
       ],
       "middleBefore": [
-        122.99,
-        144.869
+        6.997081144191477,
+        122.99357851722125
       ]
     }
   },
   "name": "move-north",
-  "passed": true,
+  "passed": false,
   "request": "a town with a market ward, a temple ward, a residential ward and a craftsmen ward",
   "revise": "put the temple ward north of the market ward",
   "revision": {
     "by": "you",
     "checks": [
       {
-        "detail": "temple-ward lies north of market-ward",
+        "detail": "the layout has no temple-ward",
         "node": "temple-ward",
-        "ok": true,
+        "ok": false,
         "to": "market-ward",
         "type": "north-of"
+      },
+      {
+        "detail": "the layout has no temple-ward",
+        "node": "temple-ward",
+        "ok": false,
+        "to": "main-road",
+        "type": "west-of"
+      },
+      {
+        "detail": "the layout has no temple-ward",
+        "node": "temple-ward",
+        "ok": false,
+        "to": "site",
+        "type": "in-west"
       }
     ],
     "issues": [],
-    "notes": [],
+    "notes": [
+      "Temple ward: west of the Road, as the Market ward it's placed by is (the request doesn't say otherwise)",
+      "Temple ward: in the west of the map, as the Market ward it's placed by is (the request doesn't say otherwise)"
+    ],
+    "now": "{\"temple-ward\": {\"area\": 1713, \"centre\": [7, 123], \"extent\": [4, 0, 11, 247], \"river_bank\": \"east\", \"river_rows\": 0, \"others\": [{\"distance\": 5, \"lies\": \"east\", \"touching\": true, \"zone\": \"market-ward\"}, {\"distance\": 17, \"lies\": \"east\", \"touching\": false, \"zone\": \"craftsmen-ward\"}, {\"distance\": 9, \"lies\": \"east\", \"touching\": true, \"zone\": \"residential-ward\"}]}, \"market-ward\": {\"area\": 980, \"centre\": [2, 123], \"extent\": [0, 0, 4, 247], \"river_bank\": \"east\", \"river_rows\": 0, \"others\": [{\"distance\": 22, \"lies\": \"east\", \"touching\": false, \"zone\": \"craftsmen-ward\"}, {\"distance\": 14, \"lies\": \"east\", \"touching\": false, \"zone\": \"residential-ward\"}, {\"distance\": 5, \"lies\": \"west\", \"touching\": true, \"zone\": \"temple-ward\"}]}}",
+    "program": [],
+    "shown": [],
     "stage": "layout",
-    "summary": "Moved the temple ward north of the market ward, keeping its east-west alignment. The temple ward is now placed above the market ward without touching the river or a road. The commons zone remains in its current position as it was not named in the request.",
+    "summary": "The temple ward cannot be placed north of the market ward without moving or resizing other zones, as the map layout is a single column of zones with no free space above the market ward. Not achieved on the layout: temple-ward north-of market-ward (now: the layout has no temple-ward); temple-ward west-of main-road (now: the layout has no temple-ward); temple-ward in-west site (now: the layout has no temple-ward).",
     "text": "put the temple ward north of the market ward",
-    "time": 1793119458,
+    "time": 1793126424,
     "undo": 1
   },
   "zones": {

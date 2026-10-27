@@ -221,6 +221,15 @@ class PaintRequest(BaseModel):
     seed: int = 7
 
 
+class InteriorsRequest(BaseModel):
+    dir: str                           # the place's folder (places/<id>): painting.png and marks/ are there
+    items: list[dict] = []             # [{id, box: [x, y, w, h], mask, role, purpose}]: each building's occluder
+    place: dict = {}                   # {name, type, style}
+    story: dict = {}
+    look: dict = {}
+    seed: int = 7
+
+
 class SegmentRequest(BaseModel):
     path: str                          # the picture, relative to the project (places/<id>/painting.png)
     points: list[list[float]] = []     # [x, y, 1] to add, [x, y, 0] to leave out, in the picture's pixels
@@ -754,6 +763,29 @@ def create_app(
         report(1, 1, "Painted")
         return {"ok": True, "provider": PAINT_MODELS[request.model], "path": (folder / "painting.png").relative_to(root.resolve()).as_posix(),
                 "prompt": prompt, "seconds": round(_time.monotonic() - started, 1)}
+
+    @app.post("/places/interiors")
+    def places_interiors(request: InteriorsRequest) -> dict:
+        """A painted place's buildings' interiors (docs/places/interiors.md §7): each occluder's region of the painting
+        cut away by BFL, written as marks/<id>-interior.png in `dir`."""
+        from .bfl import BflPainter
+        from .matched import paint_interiors
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        folder = (root / request.dir).resolve()
+        if root.resolve() not in folder.parents or not (folder / "painting.png").is_file():
+            return {"ok": False, "errors": [f"No painting in {request.dir}"]}
+        load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+        key = os.environ.get("BFL_API_KEY")
+        if not key:
+            return {"ok": False, "errors": ["Interiors are painted by BFL: set BFL_API_KEY in ai_service/.env"]}
+        report = progress.reporter()
+        report(0, 1, f"Interiors: {len(request.items)} buildings cut away to show their rooms")
+        made = paint_interiors(BflPainter(key, "flux-3-image"), folder, request.items,
+                               {"place": request.place, "story": request.story, "look": request.look}, request.seed)
+        report(1, 1, f"Interiors: {len(made)} of {len(request.items)} made")
+        return {"ok": True, "made": made, "files": {i: f"marks/{i}-interior.png" for i in made}}
 
     @app.post("/animations/generate")
     def animations_generate(request: AnimationRequest) -> dict:

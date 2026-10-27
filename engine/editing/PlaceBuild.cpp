@@ -687,6 +687,18 @@ void PlaceBuild::HandleResponse(int requestId, const json& body) {
         Save();
         return;
     }
+    if (what.kind == "interiors") {
+        makingInteriors_ = false;
+        Log({{"step", "interiors made"}, {"answer", body}});
+        const int paired = PairInteriorMarks(solved_, Folder());
+        if (body.value("ok", false)) {
+            status_ = std::to_string(paired) + " buildings with interiors.";
+        } else {
+            Notice("The interiors weren't made: " + FirstError(body));
+        }
+        Save();
+        return;
+    }
     if (what.kind == "background") {
         makingBackground_ = false;
         Log({{"step", "background painted"}, {"answer", body}});
@@ -2318,10 +2330,12 @@ void PlaceBuild::FinishPlanning() {
     // The lower levels, then every fix that needs no AI.
     ExpandSpec(ontology, brief_, spec_);
     for (auto& note : TidySpec(ontology, spec_)) tidied_.push_back(std::move(note));
-    RebalanceBuildings(ontology, brief_, spec_); // before the checks: the count is the Brief's
+    // A revision of some zones: their counts as asked, the others' as they are (nothing re-balanced).
+    const bool rebalance = resolveOnly_.empty();
+    RebalanceBuildings(ontology, brief_, spec_, rebalance); // before the checks: the count is the Brief's
     for (auto& note : ResolveSpec(ontology, brief_, spec_)) tidied_.push_back(std::move(note));
     ExpandSpec(ontology, brief_, spec_); // what a removal left without its required parts
-    int buildings = RebalanceBuildings(ontology, brief_, spec_);
+    int buildings = RebalanceBuildings(ontology, brief_, spec_, rebalance);
     auto errors = ErrorsOf(ValidateSpec(ontology, spec_, SpecStage::Final, type));
 
     // What's still wrong goes to the AI once, node by node.
@@ -2347,7 +2361,7 @@ void PlaceBuild::FinishPlanning() {
     if (finalRepairAsked_) {
         for (auto& note : TidySpec(ontology, spec_)) tidied_.push_back(std::move(note));
         for (auto& note : ResolveSpec(ontology, brief_, spec_)) tidied_.push_back(std::move(note));
-        buildings = RebalanceBuildings(ontology, brief_, spec_);
+        buildings = RebalanceBuildings(ontology, brief_, spec_, rebalance);
     }
     // Never stuck: what can't be fixed is kept as planned and said so.
     planProblems_.clear();
@@ -2361,6 +2375,7 @@ void PlaceBuild::FinishPlanning() {
     stage_ = solveAfter_ ? "planned" : "plan";
     solveAfter_ = false;
     Solve();
+    resolveOnly_.clear();
     MeetExpectations();
     WriteJson(Folder() / "spec.json", spec_);
     Arrange();
@@ -2439,7 +2454,15 @@ void PlaceBuild::Solve() {
         // The plan's arrangement (what each kind is for, its size, where it stands and faces: docs/dungeon.md §0).
         ApplyArrangement(ontology, ir, spec_.value("arrangement", json::object()));
         const auto t1 = std::chrono::steady_clock::now();
-        SolvedLayout solved = SolveLayout(ontology, ir);
+        // A plan revision of some zones: only they are laid out again, the rest exactly as before.
+        SolveOptions partial;
+        const json previous = solved_;
+        if (frozen && !resolveOnly_.empty() && previous.is_object() && previous.contains("objects")) {
+            partial.previous = &previous;
+            partial.resolve = resolveOnly_;
+            partial.locked = locks_;
+        }
+        SolvedLayout solved = SolveLayout(ontology, ir, partial);
         FaceObjects(ontology, solved.document, ir);
         const auto t2 = std::chrono::steady_clock::now();
         const json rows = VerifyLayout(ontology, brief_, spec_, solved.document);
@@ -2508,10 +2531,11 @@ void PlaceBuild::Solve() {
     assetNeeds_ = json::array();
     // A revision that asks a zone for more ("10 more houses"): the zone takes the open land
     // beside it first, and the plan is solved again; only what still doesn't fit is cut.
-    if (frozen && roomToRevision_ && !growing_ && GrowShortZones()) {
-        growing_ = true;
+    // Up to three times, each taking more: what a zone's land per part says it needs is an estimate.
+    if (frozen && roomToRevision_ && growing_ < 3 && GrowShortZones(growing_)) {
+        ++growing_;
         Solve();
-        growing_ = false;
+        --growing_;
         return;
     }
     if (frozen) FitToRoom();
@@ -2520,7 +2544,7 @@ void PlaceBuild::Solve() {
          {"stats", solved_.value("stats", json())}});
 }
 
-bool PlaceBuild::GrowShortZones() {
+bool PlaceBuild::GrowShortZones(int attempt) {
     if (!spec_.contains("root")) return false;
     const Ontology& ontology = host_.ontology();
     const int W = std::max(1, SiteSide());
@@ -2552,7 +2576,8 @@ bool PlaceBuild::GrowShortZones() {
         if (zone == nullptr || !land.contains(id)) continue;
         std::set<int> mine(land[id].begin(), land[id].end());
         // What the missing parts need: the zone's land per part it holds, for each one missing.
-        const int want = static_cast<int>(std::ceil(1.15 * mine.size() * (planned - built) / std::max(1, built)));
+        const double margin = 1.3 + 0.5 * attempt; // more each time it still falls short
+        const int want = static_cast<int>(std::ceil(margin * mine.size() * (planned - built) / std::max(1, built)));
         std::deque<int> frontier(mine.begin(), mine.end());
         int added = 0;
         while (!frontier.empty() && added < want) {
@@ -3000,6 +3025,15 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
     entry["summary"] = answer.value("summary", "");
     entry["issues"] = answer.value("issues", json::array());
     if (answer.contains("now") && answer["now"].is_string()) entry["now"] = answer["now"]; // where it read things are
+    // A request about "the others", "the rest" or "all" is about every zone.
+    const bool aboutAll = [&] {
+        std::string t = what.node;
+        for (auto& ch : t) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        for (const char* w : {"other", "the rest", "all zone", "all the zone", "every", "everything", "each zone", "all of them", "remaining"}) {
+            if (t.find(w) != std::string::npos) return true;
+        }
+        return false;
+    }();
     // The request in the revision language (docs/places/revise-language.md): each instruction checked and
     // lowered to the plan's changes here; what it ran is shown to the user as read, and what it couldn't, why.
     json changes = answer.value("changes", json::array());
@@ -3014,7 +3048,42 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
                 if (r.value("statement", "") == "site/zones") cells[r.value("id", "")] += static_cast<int>(DecodeCells(r.value("cells", json::array()), w).size());
             }
         }
-        LoweredRevision lowered = LowerRevision(ontology, spec_, brief_, cells, ReviseStep(beforeRevision_), answer["program"]);
+        // An instruction about a zone the request doesn't name is the AI's own (making room, restating where
+        // it is): left out, and said. The engine makes room around a grown zone itself.
+        json program = json::array(), unasked = json::array();
+        for (const auto& i : answer["program"]) {
+            std::vector<std::string> about;
+            for (const char* key : {"zone", "a", "b"}) {
+                if (i.contains(key) && i[key].is_string()) about.push_back(i[key].get<std::string>());
+            }
+            if (i.contains("node") && i["node"].is_string()) about.push_back(i["node"].get<std::string>().substr(0, i["node"].get<std::string>().find('/')));
+            bool named = true;
+            for (const auto& z : about) named = named && (review || aboutAll || Mentions(what.node, z));
+            (named ? program : unasked).push_back(i);
+        }
+        // At the layout, a direction the words give for the zone they move ("put the temple ward north of the
+        // market"), when the program has nothing for that zone: run as a move, read from the words.
+        json fromWords = json::array();
+        if (!review && beforeRevision_ == "layout" && spec_.contains("root")) {
+            for (const auto& c : spec_["root"].value("children", json::array())) {
+                const std::string zone = c.value("id", "");
+                const ModuleDef* m = ontology.Module(c.value("module", ""));
+                if (m == nullptr || m->level != PlaceLevel::Zone || !IsSubject(what.node, zone)) continue;
+                const bool covered = std::any_of(program.begin(), program.end(), [&](const json& i) {
+                    return i.value("zone", "") == zone || i.value("a", "") == zone || i.value("b", "") == zone;
+                });
+                if (covered) continue;
+                json rel = json::array();
+                for (const auto& [type, to] : DirectionsIn(what.node, zone)) rel.push_back({{"type", type}, {"to", to}});
+                if (rel.empty()) continue;
+                const json move = {{"do", "move"}, {"zone", zone}, {"rel", rel}};
+                program.push_back(move);
+                fromWords.push_back(move);
+            }
+        }
+        LoweredRevision lowered = LowerRevision(ontology, spec_, brief_, cells, ReviseStep(beforeRevision_), program);
+        for (const auto& i : fromWords) lowered.notes.push_back(ShowInstruction(i) + ": read from your words (the AI gave no instruction for it)");
+        for (const auto& i : unasked) lowered.notes.push_back(ShowInstruction(i) + ": left out, the request didn't ask about it");
         changes = lowered.changes;
         briefChanges = lowered.brief;
         programExpect = lowered.expect;
@@ -3025,15 +3094,6 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
         if (!lowered.notes.empty()) entry["couldnt"] = lowered.notes;
         Log({{"step", "revise program"}, {"program", answer["program"]}, {"lowered", changes}, {"brief", briefChanges}, {"notes", lowered.notes}});
     }
-    // A request about "the others", "the rest" or "all" is about every zone.
-    const bool aboutAll = [&] {
-        std::string t = what.node;
-        for (auto& ch : t) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-        for (const char* w : {"other", "the rest", "all zone", "all the zone", "every", "everything", "each zone", "all of them", "remaining"}) {
-            if (t.find(w) != std::string::npos) return true;
-        }
-        return false;
-    }();
     // The spatial facts asked for ("the farmland west of the ward"): the AI's,
     // and the request's own direction words. They're checked on the layout.
     expect_ = json::array();
@@ -3435,6 +3495,25 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
         inPlace_.clear();
         return;
     }
+    // In a fixed layout, the zones the changes touch are the only ones laid out again (a parcel's id is
+    // zone/parcel). A change to something outside every zone (a road of the place) lays out all of it.
+    resolveOnly_.clear();
+    if (LayoutFrozen() && !layoutCheckRevising_) {
+        bool whole = false;
+        for (const auto& c : kept) {
+            std::string id = c.value("node", json("")).is_string() ? c["node"].get<std::string>()
+                             : c.value("node", json()).is_object() ? c["node"].value("id", "")
+                                                                   : "";
+            const std::string zone = id.substr(0, id.find('/'));
+            json probe = spec_;
+            const json* node = zone.empty() ? nullptr : SpecNode(probe, zone);
+            const ModuleDef* m = node ? ontology.Module(node->value("module", "")) : nullptr;
+            if (m == nullptr || m->level != PlaceLevel::Zone) whole = true;
+            else resolveOnly_.insert(zone);
+        }
+        if (whole) resolveOnly_.clear();
+        if (!resolveOnly_.empty()) Log({{"step", "revise"}, {"layingOutAgain", resolveOnly_}});
+    }
     // The rest as after planning: the expansion, the fixes, the checks; then laid out again.
     solveAfter_ = beforeRevision_ == "planned" || beforeRevision_ == "built";
     roomToRevision_ = true; // what doesn't fit is said in this revision's summary
@@ -3500,6 +3579,31 @@ std::set<std::string> PlaceBuild::LocalRemovals(const json& changes) const {
 
 void PlaceBuild::MeetExpectations() {
     if (!expect_.is_array() || expect_.empty()) return;
+    // The zones a layout has: a round that loses one is undone (a zone pulled where it can't fit isn't dropped).
+    auto zonesOf = [](const json& solved) {
+        std::set<std::string> out;
+        for (const auto& r : solved.value("regions", json::array())) {
+            if (r.value("statement", "") == "site/zones" && !r.value("cells", json::array()).empty()) out.insert(r.value("id", ""));
+        }
+        return out;
+    };
+    auto lostZone = [&](const json& before) {
+        const auto now = zonesOf(solved_);
+        for (const auto& z : zonesOf(before)) {
+            if (!now.contains(z)) return z;
+        }
+        return std::string();
+    };
+    auto putBack = [&](const json& spec, const json& solved, const std::string& lost) {
+        spec_ = spec;
+        solved_ = solved;
+        WriteJson(Folder() / "layout.solved.json", solved_);
+        WriteJson(Folder() / "spec.json", spec_);
+        RenderMap();
+        std::error_code ec;
+        if (stage_ == "layout") fs::copy_file(Folder() / "layout.png", Folder() / "zones.png", fs::copy_options::overwrite_existing, ec);
+        Log({{"step", "expect"}, {"undone", "a round lost " + lost}});
+    };
     auto failing = [](const json& checks) {
         json out = json::array();
         for (const auto& c : checks) {
@@ -3525,12 +3629,17 @@ void PlaceBuild::MeetExpectations() {
         }
         Log({{"step", "expect"}, {"round", round + 1}, {"failing", failing(checks)}});
         keepSeeds_ = revisionKeep_;
+        const json specBefore = spec_, solvedBefore = solved_;
         if (stage_ == "layout") {
             std::set<std::string> pulled;
             for (const auto& c : failing(checks)) pulled.insert(c.value("node", ""));
             RelayoutMoving(pulled);
         } else {
             Solve();
+        }
+        if (const std::string lost = lostZone(solvedBefore); !lost.empty()) {
+            putBack(specBefore, solvedBefore, lost);
+            break;
         }
         checks = CheckExpectations(solved_, expect_);
     }
@@ -3553,7 +3662,9 @@ void PlaceBuild::MeetExpectations() {
         LayoutZones();
         const json after = CheckExpectations(solved_, expect_);
         Log({{"step", "expect"}, {"round", "give way"}, {"failing", failing(after)}});
-        if (failing(after).size() < before) {
+        if (const std::string lost = lostZone(solved); !lost.empty()) {
+            putBack(spec, solved, lost);
+        } else if (failing(after).size() < before) {
             checks = after;
             if (!revisions_.empty()) revisions_.back()["notes"].push_back("To make room, the zones the request didn't name moved.");
         } else {
@@ -4723,6 +4834,27 @@ std::string PlaceBuild::Paint(const std::string& notes) {
     return {};
 }
 
+std::string PlaceBuild::PaintInteriors() {
+    if (makingInteriors_) return {};
+    const json items = InteriorRequests(solved_, &host_.ontology(), Folder());
+    if (items.empty()) {
+        PairInteriorMarks(solved_, Folder());
+        return {};
+    }
+    const json story = story_.is_object() ? story_ : json::object();
+    const json body = {{"dir", "places/" + id_},
+                       {"items", items},
+                       {"place", {{"name", brief_.value("name", id_)}, {"type", brief_.value("buildType", "")}}},
+                       {"story", {{"purpose", story.value("purpose", json())}, {"mood", story.value("mood", json())}}},
+                       {"look", LookFor(brief_.value("buildType", ""))}};
+    if (!Send({"interiors", -1, "", "/places/interiors", body, 900})) return "the AI is off";
+    makingInteriors_ = true;
+    status_ = "Interiors: " + std::to_string(items.size()) + " buildings cut away to show their rooms…";
+    Log({{"step", "interiors"}, {"count", items.size()}});
+    Save();
+    return {};
+}
+
 void PlaceBuild::SetModels(const json& models) {
     if (models.contains("art") && models["art"].is_string()) artModel_ = models["art"].get<std::string>();
     if (models.contains("background") && models["background"].is_string()) backgroundModel_ = models["background"].get<std::string>();
@@ -5234,7 +5366,7 @@ json PlaceBuild::State() {
     if (stage_ == "planned" || stage_ == "sourcing" || stage_ == "sourced" || stage_ == "building" || stage_ == "built") {
         // ④ Paint and ⑤ Mark: the painting's files (project-relative) and the marks' counts.
         const std::string rel = "places/" + id_ + "/";
-        json paint = {{"painting", painting_}, {"marks", MarksSummary(Folder())}};
+        json paint = {{"painting", painting_}, {"marks", MarksSummary(Folder())}, {"makingInteriors", makingInteriors_}};
         if (const json p = LoadPainting(Folder()); p.is_object()) {
             paint["size"] = p.value("size", json());
             paint["view"] = p.value("view", json());

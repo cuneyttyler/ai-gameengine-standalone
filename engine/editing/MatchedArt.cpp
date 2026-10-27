@@ -844,6 +844,8 @@ json MatchedArtSheets(const json& solved, const json& assetPlan, const Ontology*
             const json orient = ontology ? ontology->RoleLook(role, "orient") : json();
             const bool views = orient.is_string() && orient != "none" && row.value("layer", "") != "building" && !row.contains("kit");
             if (views) piece["orient"] = orient, piece["view"] = "front";
+            // A building one can go into (its role's look has_interior, Phase 27): its interior made with it.
+            if (row.value("layer", "") == "building" && ontology && ontology->RoleLook(role, "has_interior") == true) piece["interior"] = true;
             // Several looks for a kind the place uses often, by how much real ones differ (its role's look
             // "variety"): many different cars, a few shops, one street light.
             int variants = 1;
@@ -904,6 +906,7 @@ json CutMatchedArt(AssetDatabase& assets, const Project& project, const json& sh
         ImageData image;
         double cells = 1;
         bool style = false;
+        std::optional<ImageData> interior; // its interior (Phase 27), cut and framed exactly as `image`
     };
     std::vector<Made> made;
     for (const auto& s : sheets.value("sheets", json::array())) {
@@ -1071,6 +1074,16 @@ json CutMatchedArt(AssetDatabase& assets, const Project& project, const json& sh
                     continue;
                 }
                 cut = CropImage(*own, *box);
+                // Its interior (Phase 27): painted on the exterior's own canvas (matched.py make_interiors), so the same
+                // crop, and below the same framing, line it up with the exterior exactly.
+                std::optional<ImageData> inside;
+                if (auto raw = DecodeImage(dir / "pieces" / (p.value("slug", "") + "-interior.png")); raw && raw->width == own->width && raw->height == own->height) {
+                    for (size_t i = 0; i < raw->rgba.size(); i += 4) {
+                        if (IsKey(&raw->rgba[i])) raw->rgba[i + 3] = 0;
+                    }
+                    Clean(*raw);
+                    inside = CropImage(*raw, *box);
+                }
                 const double size = ontology ? ontology->RoleSize(p.value("role", "")) : 0.0;
                 cells = building ? (p.value("w", 1) + p.value("h", 1)) / 2.0 : std::clamp(size > 0 ? size : 0.8, 0.2, 3.0);
                 // A thing as tall as its role says too (its relative size, docs/places/ontology-in-use.md): painted
@@ -1127,6 +1140,23 @@ json CutMatchedArt(AssetDatabase& assets, const Project& project, const json& sh
                     }
                     cells = framed.width / (2.0 * unit);
                     cut = std::move(framed);
+                    if (inside) {
+                        // The interior framed the same way.
+                        ImageData room;
+                        room.width = cut.width, room.height = cut.height;
+                        room.rgba.assign(static_cast<size_t>(room.width) * room.height * 4, 0);
+                        for (int y = 0; y < std::min<int>(height, static_cast<int>(inside->height)); ++y) {
+                            for (uint32_t x = 0; x < inside->width && x + offset < room.width; ++x) {
+                                std::copy_n(&inside->rgba[(static_cast<size_t>(y) * inside->width + x) * 4], 4, &room.rgba[(static_cast<size_t>(y) * room.width + x + offset) * 4]);
+                            }
+                        }
+                        inside = std::move(room);
+                    }
+                }
+                if (inside && building) {
+                    Clean(cut);
+                    made.push_back({p, name, std::move(cut), cells, s.value("kind", "") == "style", std::move(inside)});
+                    continue;
                 }
             } else {
                 report["skipped"].push_back({{"key", p.value("key", "")}, {"why", "nothing made for it"}});
@@ -1193,6 +1223,16 @@ json CutMatchedArt(AssetDatabase& assets, const Project& project, const json& sh
         // for a squarish outline).
         fields["flat"] = "0";
         if (building) fields["footprint"] = std::to_string(p.value("w", 1)) + "x" + std::to_string(p.value("h", 1));
+        if (m.interior) {
+            const std::string inside = folder + "/" + p.value("slug", "piece") + "-interior.png";
+            WritePng(project.root / inside, *m.interior);
+            fields["interior"] = inside;
+            catalog.push_back({inside, {{"name", p.value("role", "") + " interior"}, {"kind", "building"}, {"layer", "building"},
+                                        {"description", "the inside of " + p.value("words", p.value("role", ""))}, {"perspective", "isometric"},
+                                        {"cells", Number(m.cells)}, {"flat", "0"}, {"exteriorOf", path}, {"source", "generated"},
+                                        {"author", "matched art"}, {"own", "1"}, {"matched", "1"}}});
+            report["interiors"] = report.value("interiors", 0) + 1;
+        }
         catalog.push_back({path, fields});
         int opaque = 0;
         for (size_t i = 3; i < m.image.rgba.size(); i += 4) opaque += m.image.rgba[i] > 128;

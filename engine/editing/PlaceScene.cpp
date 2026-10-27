@@ -622,6 +622,16 @@ int PictureAxis(PrefabLibrary& prefabs, const std::string& texture) {
     return axis;
 }
 
+// A field of an asset's .meta ("interior=assets/…"), or "".
+std::string AssetField(const Project& project, const std::string& asset, const std::string& key) {
+    std::ifstream in(project.Resolve(asset + ".meta"));
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.rfind(key + "=", 0) == 0) return line.substr(key.size() + 1);
+    }
+    return {};
+}
+
 std::optional<Entity> PlaceObject(Registry& registry, PrefabLibrary& prefabs, const json& o, const json& choice,
                                   const PlaceSceneOptions& options) {
     std::string prefab = choice.value("prefab", "");
@@ -752,6 +762,14 @@ std::optional<Entity> PlaceObject(Registry& registry, PrefabLibrary& prefabs, co
         obstacle.right = stand.right;
         obstacle.back = stand.back;
         for (const char* field : {"left", "right", "back"}) RecordOverride(registry, e, "Obstacle", field);
+        // Its interior (Phase 27): the art's pair (its .meta's interior), walked into through the door on its front.
+        if (const auto* sprite = registry.try_get<Sprite>(e); sprite && !sprite->texture.empty()) {
+            if (const std::string inside = AssetField(prefabs.GetProject(), sprite->texture, "interior"); !inside.empty()) {
+                auto& interior = registry.emplace_or_replace<Interior>(e);
+                interior.texture = inside;
+                interior.door = o.value("facing", std::string("s"));
+            }
+        }
     }
     return e;
 }

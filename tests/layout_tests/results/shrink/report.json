@@ -1,80 +1,50 @@
 {
   "about": "One zone made smaller: it shrinks; zones away from it stay as they were.",
   "allZones": {
-    "commons": "commons",
     "craftsmen-ward": "craftsmen-ward",
-    "farmland-ring": "farmland-ring",
     "market-ward": "market-ward",
     "outskirts": "outskirts",
     "residential-ward": "residential-ward"
   },
-  "failures": [
-    "market-ward is 1.000000 times its size: asked at most 0.85"
-  ],
+  "failures": [],
   "land": {
-    "commons": {
-      "after": 800,
-      "before": 800,
-      "kept": 1.0,
-      "middleAfter": [
-        23.41125,
-        43.6125
-      ],
-      "middleBefore": [
-        23.41125,
-        43.6125
-      ]
-    },
     "craftsmen-ward": {
-      "after": 5486,
-      "before": 5486,
+      "after": 3292,
+      "before": 3292,
       "kept": 1.0,
       "middleAfter": [
-        25.04739336492891,
-        149.54320087495444
+        157.9055285540705,
+        164.4714459295261
       ],
       "middleBefore": [
-        25.04739336492891,
-        149.54320087495444
-      ]
-    },
-    "farmland-ring": {
-      "after": 1314,
-      "before": 1314,
-      "kept": 1.0,
-      "middleAfter": [
-        146.69330289193303,
-        240.18797564687975
-      ],
-      "middleBefore": [
-        146.69330289193303,
-        240.18797564687975
+        157.9055285540705,
+        164.4714459295261
       ]
     },
     "market-ward": {
-      "after": 3446,
-      "before": 3446,
-      "kept": 1.0,
+      "after": 2000,
+      "before": 2585,
+      "kept": 0.7736943907156673,
       "middleAfter": [
-        78.60098665118979,
-        96.4184561810795
+        116.6415,
+        70.037
       ],
       "middleBefore": [
-        78.60098665118979,
-        96.4184561810795
+        122.3926499032882,
+        77.97021276595744
       ]
     },
     "outskirts": {
-      "after": 15542,
-      "before": 15542,
+      "after": 7771,
+      "before": 7771,
       "kept": 1.0,
       "middleAfter": [
-        113.91410371895509,
-        203.03860507013255
+        138.15261871059064,
+        35.5963196499807
       ],
       "middleBefore": [
-        113.91410371895509,
-        203.03860507013255
+        138.15261871059064,
+        35.5963196499807
       ]
     },
     "residential-ward": {
@@ -82,21 +52,42 @@
       "before": 17037,
       "kept": 1.0,
       "middleAfter": [
-        162.35058989258673,
-        107.4067617538299
+        64.06855667077537,
+        131.35064858836648
       ],
       "middleBefore": [
-        162.35058989258673,
-        107.4067617538299
+        64.06855667077537,
+        131.35064858836648
       ]
     }
   },
   "name": "shrink",
-  "passed": false,
+  "passed": true,
   "request": "a town with a market ward, a residential ward, a craftsmen ward and outskirts",
   "revise": "make the market ward smaller",
-  "revision": null,
-  "sizeRatio": 1.0,
+  "revision": {
+    "by": "you",
+    "issues": [],
+    "notes": [],
+    "now": "{\"zone\": \"market-ward\", \"area\": 2585, \"centre\": [123, 78], \"extent\": [84, 42, 168, 122], \"river\": {\"bank\": \"east\", \"alongRows\": 49, \"height\": 80, \"nearest\": 2}, \"others\": [{\"zone\": \"residential-ward\", \"lies\": \"south-west\", \"touching\": true, \"distance\": 79}, {\"zone\": \"craftsmen-ward\", \"lies\": \"south-east\", \"touching\": true, \"distance\": 94}, {\"zone\": \"outskirts\", \"lies\": \"north\", \"touching\": true, \"distance\": 45}]}",
+    "program": [
+      {
+        "do": "shrink",
+        "to": 2000,
+        "zone": "market-ward"
+      }
+    ],
+    "shown": [
+      "Shrink market-ward to 2000 cells"
+    ],
+    "stage": "layout",
+    "summary": "The market ward was shrunk to 2000 cells while keeping its central position and relations to other zones. The new area fits within the module's default bounds and maintains all required components.",
+    "text": "make the market ward smaller",
+    "time": 1793127100,
+    "undo": 1
+  },
+  "sizeRatio": 0.7736943907156673,
+  "staysWhereItWas": 1.0,
   "zones": {
     "A": "market-ward"
   }

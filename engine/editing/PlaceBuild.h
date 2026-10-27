@@ -244,6 +244,10 @@ public:
     // ⑤ Mark pre-filled from the plan. `notes`: the user's, painting again. "" when asked.
     std::string Paint(const std::string& notes = {});
     bool Painting() const { return painting_; }
+    // The painted buildings' interiors (docs/places/interiors.md §7), after ⑤ Mark: each building with one, its region
+    // of the painting cut away by BFL. "" when asked or nothing needs one.
+    std::string PaintInteriors();
+    bool MakingInteriors() const { return makingInteriors_; }
     // How it's built (docs/places/painted-places.md): "Assembled" (Confirm, Layout, Plan, Assets, Build) or "Paint"
     // (Confirm, Layout, Plan, Paint, Mark, Assets, Build). From the project's setting when started; "" when set.
     const std::string& Method() const { return method_; }
@@ -387,6 +391,7 @@ private:
     bool inspecting_ = false;
     bool makingBackground_ = false;
     bool painting_ = false;      // ④ Paint: asked, not answered
+    bool makingInteriors_ = false; // the interiors (docs/places/interiors.md §7): asked, not answered
     std::string method_ = "Assembled"; // Assembled or Paint (Method)
     std::string artModel_, backgroundModel_; // SetModels
     std::string variety_; // how many looks each kind gets: "low", "high", or "" (the ontology's), from the start page
@@ -474,8 +479,8 @@ private:
     void FitToRoom();
     // A revision asked a zone for more than it holds: it grows into the open land beside it (no
     // other zone's, not water or a road) by what the missing parts need. True if any grew.
-    bool GrowShortZones();
-    bool growing_ = false;
+    bool GrowShortZones(int attempt = 0); // each attempt takes more of the open land than the last
+    int growing_ = 0; // GrowShortZones attempts in this solve (three at most)
     std::string ArtDirection() const; // the look every piece of the place is asked for in
     // History (8.2): each action's state before it, restored exactly by Undo; Redo's after.
     nlohmann::json Snapshot() const;
@@ -490,6 +495,9 @@ private:
     // A revision's zones changed where they stand (a size, what they hold; nothing said of where they go):
     // laid out again from their own seed, with their own relations, not placed anew.
     std::set<std::string> inPlace_;
+    // A plan revision's zones (the ones its changes touch): only they are laid out again, from the
+    // layout before it; every other zone keeps its things exactly, and no counts are re-balanced.
+    std::set<std::string> resolveOnly_;
     nlohmann::json layoutQuality_ = nlohmann::json::object(); // the layout's quality checks (§11.3)
     nlohmann::json LayoutQuality(const nlohmann::json& spec, const nlohmann::json& solved) const;
     void ApplySketch(nlohmann::json& zones, int side) const; // the AI's grid sketch, onto the zones

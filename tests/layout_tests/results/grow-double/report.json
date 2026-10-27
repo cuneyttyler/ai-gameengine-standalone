@@ -1,7 +1,6 @@
 {
   "about": "One zone made twice as big.",
   "allZones": {
-    "commons": "commons",
     "craftsmen-ward": "craftsmen-ward",
     "market-ward": "market-ward",
     "residential-ward": "residential-ward",
@@ -9,69 +8,56 @@
   },
   "failures": [],
   "land": {
-    "commons": {
-      "after": 472,
-      "before": 500,
-      "kept": 0.944,
-      "middleAfter": [
-        146.92584745762713,
-        144.77754237288136
-      ],
-      "middleBefore": [
-        147.082,
-        144.154
-      ]
-    },
     "craftsmen-ward": {
-      "after": 5486,
-      "before": 2743,
-      "kept": 0.0,
+      "after": 3950,
+      "before": 1975,
+      "kept": 0.980253164556962,
       "middleAfter": [
-        196.84196135617935,
-        206.458257382428
+        209.76759493670886,
+        158.80911392405062
       ],
       "middleBefore": [
-        140.3186292380605,
-        221.5052861830113
+        214.69215189873418,
+        152.2840506329114
       ]
     },
     "market-ward": {
-      "after": 2585,
-      "before": 2585,
+      "after": 2068,
+      "before": 2068,
       "kept": 1.0,
       "middleAfter": [
-        62.358220502901354,
-        54.069245647969055
+        38.02949709864603,
+        14.065764023210832
       ],
       "middleBefore": [
-        62.358220502901354,
-        54.069245647969055
+        38.02949709864603,
+        14.065764023210832
       ]
     },
     "residential-ward": {
-      "after": 6815,
-      "before": 6815,
+      "after": 4259,
+      "before": 4259,
       "kept": 1.0,
       "middleAfter": [
-        177.46104181951577,
-        74.8582538517975
+        32.8142756515614,
+        56.82507630899272
       ],
       "middleBefore": [
-        177.46104181951577,
-        74.8582538517975
+        32.8142756515614,
+        56.82507630899272
       ]
     },
     "temple-ward": {
-      "after": 1672,
-      "before": 1672,
+      "after": 2675,
+      "before": 2675,
       "kept": 1.0,
       "middleAfter": [
-        207.39832535885168,
-        28.269138755980862
+        220.35364485981307,
+        108.06766355140186
       ],
       "middleBefore": [
-        207.39832535885168,
-        28.269138755980862
+        220.35364485981307,
+        108.06766355140186
       ]
     }
   },
@@ -81,27 +67,27 @@
   "revise": "make the craftsmen ward twice as big",
   "revision": {
     "by": "you",
-    "checks": [
+    "issues": [],
+    "notes": [],
+    "now": "{\"zone\": \"craftsmen-ward\", \"area\": 1975, \"centre\": [215, 153], \"extent\": [189, 130, 245, 180], \"river_bank\": \"none\", \"river_rows\": 0, \"others\": [{\"distance\": 45, \"lies\": \"north\", \"touching\": true, \"zone\": \"temple-ward\"}, {\"distance\": 205, \"lies\": \"north-west\", \"touching\": false, \"zone\": \"residential-ward\"}, {\"distance\": 224, \"lies\": \"north-west\", \"touching\": false, \"zone\": \"market-ward\"}]}",
+    "program": [
       {
-        "detail": "craftsmen-ward lies same place of craftsmen-ward",
-        "node": "craftsmen-ward",
-        "ok": false,
-        "to": "craftsmen-ward",
-        "type": "east-of"
+        "by": 2,
+        "do": "grow",
+        "zone": "craftsmen-ward"
       }
     ],
-    "issues": [],
-    "notes": [
-      "craftsmen-ward: left out along river (the request doesn't say it)",
-      "craftsmen-ward: left out south-of wall (the request doesn't say it)"
+    "shown": [
+      "Grow craftsmen-ward ×2"
     ],
     "stage": "layout",
-    "summary": "The craftsmen ward's area is doubled to 5486 cells by expanding it eastward along the river (west bank) and south of the wall. The plots count remains at 25 to maintain proportional density. Not achieved on the layout: craftsmen-ward east-of craftsmen-ward (now: craftsmen-ward lies same place of craftsmen-ward).",
+    "summary": "The craftsmen ward is now twice as big (3950 cells²), expanding east and south into open land while keeping its relations to the temple ward and the wall.",
     "text": "make the craftsmen ward twice as big",
-    "time": 1793121087,
+    "time": 1793126856,
     "undo": 1
   },
   "sizeRatio": 2.0,
+  "staysWhereItWas": 0.980253164556962,
   "zones": {
     "A": "craftsmen-ward"
   }

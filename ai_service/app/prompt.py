@@ -400,6 +400,10 @@ GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
   aggression and confidence decide fights; a "combat-style" record says how they fight; Barks are one-line
   remarks (alternatives separated by |). SmartObject marks beds, chairs, counters for packages to use. Actor
   {key, prefab} makes one person persist across scenes (dead stays dead).
+- Interior: a building one can walk into (texture: its interior picture, the same building cut away; door: s, e, n
+  or w). Its collision becomes its walls with a doorway; while the player stands inside, the interior shows (no Lua,
+  no event). An asset's pair is in its catalog fields: interior= on the exterior, exteriorOf= on the interior. To give
+  a building one, add Interior with the texture its art's interior field names; shown previews it in the editor.
 - Prefer these systems over Lua for anything they cover.
 """
 

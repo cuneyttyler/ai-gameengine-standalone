@@ -1,7 +1,6 @@
 {
   "about": "Two zones change places, said the long way: each moved to where the other is.",
   "allZones": {
-    "commons": "commons",
     "craftsmen-ward": "craftsmen-ward",
     "market-ward": "market-ward",
     "outskirts": "outskirts",
@@ -9,30 +8,17 @@
   },
   "failures": [],
   "land": {
-    "commons": {
-      "after": 420,
-      "before": 420,
-      "kept": 1.0,
-      "middleAfter": [
-        167.73333333333332,
-        163.55714285714285
-      ],
-      "middleBefore": [
-        167.73333333333332,
-        163.55714285714285
-      ]
-    },
     "craftsmen-ward": {
-      "after": 2195,
-      "before": 2195,
+      "after": 3292,
+      "before": 3292,
       "kept": 1.0,
       "middleAfter": [
-        71.02779043280182,
-        68.49430523917995
+        98.25759416767922,
+        135.49635479951397
       ],
       "middleBefore": [
-        71.02779043280182,
-        68.49430523917995
+        98.25759416767922,
+        135.49635479951397
       ]
     },
     "market-ward": {
@@ -40,38 +26,38 @@
       "before": 2068,
       "kept": 1.0,
       "middleAfter": [
-        42.22001934235977,
-        24.920696324951646
+        34.475822050290134,
+        53.648452611218566
       ],
       "middleBefore": [
-        42.22001934235977,
-        24.920696324951646
+        34.475822050290134,
+        53.648452611218566
       ]
     },
     "outskirts": {
-      "after": 5111,
+      "after": 6815,
       "before": 11657,
       "kept": 0.0,
       "middleAfter": [
-        131.80375660340442,
-        35.893171590686755
+        143.12296404988996,
+        48.313719735876745
       ],
       "middleBefore": [
-        175.52629321437763,
-        124.05138543364502
+        81.06365274084241,
+        202.96808784421378
       ]
     },
     "residential-ward": {
-      "after": 11456,
-      "before": 5111,
+      "after": 11657,
+      "before": 6815,
       "kept": 0.0,
       "middleAfter": [
-        175.97346368715083,
-        123.8606843575419
+        81.06365274084241,
+        202.96808784421378
       ],
       "middleBefore": [
-        131.80375660340442,
-        35.893171590686755
+        143.12296404988996,
+        48.313719735876745
       ]
     }
   },
@@ -88,7 +74,7 @@
     "stage": "layout",
     "summary": "Residential ward and Outskirts change places.",
     "text": "move the residential ward to where the outskirts is now and move the outskirts to where the residential ward is now",
-    "time": 1793119198,
+    "time": 1793126042,
     "undo": 1
   },
   "swap": {

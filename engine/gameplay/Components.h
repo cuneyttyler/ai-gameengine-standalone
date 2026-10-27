@@ -266,6 +266,20 @@ struct Interactable {
     bool used = false;
 };
 
+// A building or other closed place one can go into (development_plan.md Phase 27): its interior picture (the same
+// building cut away: rooms, floor and furniture inside the walls' outline), shown while the player is inside its
+// footprint (Interiors.h); its walls then the only solid cells, with a doorway on its `door` side.
+struct Interior {
+    std::string texture;         // the interior art; empty: none
+    std::string door = "s";      // the doorway's side: s, e, n, w
+    bool shown = false;          // the interior showing now (the player inside; in the editor, a preview)
+    std::string exteriorTexture; // the outside art while the interior shows (put back after)
+    // A painted building (docs/places/interiors.md §7): no exterior of its own (the painting shows it), so its sprite is
+    // the interior, seen only while shown.
+    std::string cells; // its footprint "x0,y0,x1,y1" in world cells (it has no Obstacle); empty: its Obstacle's
+    std::string hides; // the sprites hidden while it shows: those whose PlaceNode statement starts with this
+};
+
 // A door: open, it doesn't block its cell.
 struct Door {
     bool open = false;

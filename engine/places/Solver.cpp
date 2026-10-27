@@ -1030,6 +1030,106 @@ void Solver::Network(const json& s, int region) {
         }
         serveEveryCell();
     }
+    // Dead ends joined: a lane that stops a little short of another street (ahead of it, or just beside)
+    // runs on to it, so the streets read as one network (a lane ending a cell from the main road looks cut).
+    // Over the zone's own land or open land, never across water, a building or another zone's land; a lane
+    // with nothing near stays as it is. The 1-cell streets only (a city's wide ones are laid as a grid).
+    if (width == 1) {
+        auto otherZone = [&](int c) {
+            for (int z = owner_[c]; z >= 0; z = regions_[z].parent) {
+                if (regions_[z].statement == r.statement) return z != region;
+            }
+            return false;
+        };
+        auto passable = [&](int c) { return !water_[c] && !occ_[kBuilding][c] && !otherZone(c); };
+        static const int ddx[4] = {1, -1, 0, 0}, ddy[4] = {0, 0, 1, -1};
+        auto roadsBeside = [&](int c, int* one = nullptr) {
+            int n = 0;
+            for (int k = 0; k < 4; ++k) {
+                const int nx = c % W + ddx[k], ny = c / W + ddy[k];
+                if (In(nx, ny) && road_[Cell(nx, ny)]) {
+                    ++n;
+                    if (one) *one = Cell(nx, ny);
+                }
+            }
+            return n;
+        };
+        const int reach = 3; // a short gap only: a longer link takes the land plots stand on (a city's wards lose them)
+        std::vector<int> ends;
+        for (int c : r.cells) {
+            if (road_[c] && road_[c] <= rank && roadsBeside(c) == 1) ends.push_back(c);
+        }
+        for (int d : ends) {
+            int behind = -1;
+            if (roadsBeside(d, &behind) != 1) continue; // joined by an earlier one
+            // Its own lane, back from the end (not what it joins).
+            std::set<int> own = {d};
+            for (int cur = d, prev = -1, k = 0; k < reach; ++k) {
+                int next = -1, n = 0;
+                for (int j = 0; j < 4; ++j) {
+                    const int nx = cur % W + ddx[j], ny = cur / W + ddy[j];
+                    if (!In(nx, ny) || !road_[Cell(nx, ny)] || Cell(nx, ny) == prev) continue;
+                    ++n;
+                    next = Cell(nx, ny);
+                }
+                if (n != 1) break; // a junction: the rest is the network
+                own.insert(next);
+                prev = cur;
+                cur = next;
+            }
+            auto joins = [&](int c) {
+                if (!road_[c] || own.contains(c)) return false;
+                for (int j = 0; j < 4; ++j) { // not its own lane's side either
+                    const int nx = c % W + ddx[j], ny = c / W + ddy[j];
+                    if (In(nx, ny) && own.contains(Cell(nx, ny)) && Cell(nx, ny) != d) return false;
+                }
+                return true;
+            };
+            std::vector<int> link;
+            // Straight on, the way it was going.
+            const int dx = d % W - behind % W, dy = d / W - behind / W;
+            for (int k = 1; k <= reach; ++k) {
+                const int x = d % W + dx * k, y = d / W + dy * k;
+                if (!In(x, y) || !passable(Cell(x, y))) {
+                    link.clear();
+                    break;
+                }
+                if (joins(Cell(x, y))) break;
+                if (road_[Cell(x, y)]) { // its own lane again: no
+                    link.clear();
+                    break;
+                }
+                link.push_back(Cell(x, y));
+                if (k == reach) link.clear();
+            }
+            // Else the nearest street within half a block, by the land.
+            if (link.empty()) {
+                std::map<int, int> from = {{d, -1}};
+                std::deque<std::pair<int, int>> todo = {{d, 0}};
+                int hit = -1;
+                while (!todo.empty() && hit < 0) {
+                    const auto [c, depth] = todo.front();
+                    todo.pop_front();
+                    if (depth >= reach / 2) continue;
+                    for (int j = 0; j < 4 && hit < 0; ++j) {
+                        const int nx = c % W + ddx[j], ny = c / W + ddy[j];
+                        if (!In(nx, ny)) continue;
+                        const int n = Cell(nx, ny);
+                        if (from.contains(n) || !passable(n)) continue;
+                        from[n] = c;
+                        if (joins(n)) hit = n;
+                        else if (!road_[n]) todo.push_back({n, depth + 1});
+                    }
+                }
+                if (hit >= 0) {
+                    for (int c = from[hit]; c != d && c >= 0; c = from[c]) link.push_back(c);
+                }
+            }
+            if (link.empty()) continue;
+            MarkRoad(link, width, rank, -1);
+            streets.insert(streets.end(), link.begin(), link.end());
+        }
+    }
     PathResult result;
     result.id = s.value("id", "");
     result.node = s.value("node", "");
@@ -4202,8 +4302,22 @@ void Solver::Restore(const json& previous) {
         const json parentId = r.value("parent", json());
         const int parent = parentId.is_string() ? RegionIndex(parentId.get<std::string>()) : -1;
         if (parentId.is_string() && parent < 0) continue; // its container is redone
-        const int index = AddRegion(id, r.value("node", ""), r.value("statement", ""), parent, DecodeCells(r.value("cells", json::array()), W),
-                                    r.value("module", ""));
+        std::vector<int> cells = DecodeCells(r.value("cells", json::array()), W);
+        // A zone laid out again, with its land fixed by the plan (a frozen layout, the zone given more of the
+        // open land beside it): that land, not the old one.
+        if (Redo(r.value("node", "")) && !Locked(r.value("node", ""))) {
+            if (auto st = statementById_.find(r.value("statement", "")); st != statementById_.end()) {
+                for (const auto& z : st->second->value("into", json::array())) {
+                    const json paint = z.value("paint", json());
+                    if (z.value("id", "") != id || !paint.is_array() || paint.empty()) continue;
+                    cells.clear();
+                    for (int c : DecodeCells(paint, W)) {
+                        if (c >= 0 && c < W * H) cells.push_back(c);
+                    }
+                }
+            }
+        }
+        const int index = AddRegion(id, r.value("node", ""), r.value("statement", ""), parent, cells, r.value("module", ""));
         Region& g = regions_[index];
         const std::string facing = r.value("facing", "");
         g.facing = facing.empty() ? 0 : facing[0];
@@ -4219,8 +4333,18 @@ void Solver::Restore(const json& previous) {
         if (const json seed = r.value("seed", json()); seed.is_array() && seed.size() == 2) zoneSeeds_[id] = Cell(seed[0].get<int>(), seed[1].get<int>());
         instancesOf_[g.statement]++;
     }
+    // Land of a zone laid out again: what stood there before and isn't redone (the site's trees on the open land it
+    // was given) goes, so the zone's own things have it.
+    auto onRedoneZone = [&](int x, int y) {
+        if (!In(x, y)) return false;
+        for (int z = owner_[Cell(x, y)]; z >= 0; z = regions_[z].parent) {
+            if (Redo(regions_[z].node) && !Locked(regions_[z].node)) return true;
+        }
+        return false;
+    };
     for (const auto& o : previous.value("objects", json::array())) {
         if (!made(o)) continue;
+        if (!Redo(o.value("node", "")) && onRedoneZone(o.value("x", 0), o.value("y", 0))) continue;
         Object b;
         b.id = o.value("id", "");
         b.statement = o.value("statement", "");

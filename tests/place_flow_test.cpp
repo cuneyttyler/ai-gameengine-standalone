@@ -2,6 +2,8 @@
 // read, laid out, planned and built; the layout and the plan revised as a user asks
 // (docs/test.md, place-refine.md §9).
 #include "assets/AssetDatabase.h"
+#include "assets/LayoutImage.h"
+#include "assets/TextureCook.h"
 #include "assets/Catalog.h"
 #include "assets/Prefab.h"
 #include "assets/ProjectTemplate.h"
@@ -15,6 +17,10 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdlib>
+#include <fstream>
+#include <functional>
+#include <iostream>
 #include <filesystem>
 #include <set>
 
@@ -335,4 +341,70 @@ TEST(PlaceFlowTest, PlanReviseMovesOneThingAndLeavesTheRest) {
     const json after = b.build->Solved();
     EXPECT_EQ(ThingsIn(after, "market"), market);
     EXPECT_EQ(ThingsIn(after, "ward-2"), other);
+}
+
+namespace {
+
+// Street ends that stop short of another street straight ahead (within `gap` cells): what reads as "not
+// connected" on the map. A street cell with one road neighbour whose line, carried on, meets another road.
+int ShortEnds(const json& solved, int gap) {
+    if (!solved.contains("grid")) return 0;
+    const int w = solved["grid"]["bounds"][2].get<int>(), h = solved["grid"]["bounds"][3].get<int>();
+    std::set<std::pair<int, int>> road;
+    for (const auto& r : solved.value("roads", json::array())) road.insert({r[0].get<int>(), r[1].get<int>()});
+    auto at = [&](int x, int y) { return x >= 0 && y >= 0 && x < w && y < h && road.contains({x, y}); };
+    int n = 0;
+    for (const auto& [x, y] : road) {
+        int count = 0, bx = 0, by = 0;
+        for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+            if (at(x + dx, y + dy)) ++count, bx = x + dx, by = y + dy;
+        }
+        if (count != 1) continue;
+        const int dx = x - bx, dy = y - by;
+        for (int k = 2; k <= gap + 1; ++k) {
+            if (at(x + dx * k, y + dy * k)) {
+                ++n;
+                break;
+            }
+        }
+    }
+    return n;
+}
+
+} // namespace
+
+// The streets read as one network: no lane stops a few cells short of another street ahead of it.
+TEST(PlaceFlowTest, StreetsDontStopShortOfEachOther) {
+    Bench b("streets", true);
+    ToLayout(b);
+    ToPlanned(b);
+    EXPECT_EQ(ShortEnds(b.build->Solved(), 3), 0);
+}
+
+// A saved place's layout solved again with the solver as it is now, and drawn (AIGE_RESOLVE_MAP=<place folder>|<out png>):
+// to compare a change to the solver on a real plan.
+TEST(PlaceFlowTest, ResolveASavedLayout) {
+    const char* arg = std::getenv("AIGE_RESOLVE_MAP");
+    if (arg == nullptr) GTEST_SKIP() << "set AIGE_RESOLVE_MAP=<place folder>|<out png>";
+    const std::string text = arg;
+    const fs::path folder = text.substr(0, text.find('|')), out = text.substr(text.find('|') + 1);
+    std::ifstream in(folder / "layout.ir.json");
+    const json ir = json::parse(in);
+    std::ifstream specIn(folder / "spec.json");
+    const json spec = json::parse(specIn);
+    std::ifstream oldIn(folder / "layout.solved.json");
+    const json old = json::parse(oldIn);
+    const SolvedLayout solved = SolveLayout(Library(), ir);
+    LayoutImageOptions image;
+    for (const auto& c : spec["root"].value("children", json::array())) {
+        if (const ModuleDef* m = Library().Module(c.value("module", ""))) image.names[c.value("id", "")] = m->name;
+    }
+    std::function<void(const json&)> walk = [&](const json& node) {
+        image.modules[node.value("id", "")] = node.value("module", "");
+        for (const auto& c : node.value("children", json::array())) walk(c);
+    };
+    walk(spec["root"]);
+    ASSERT_TRUE(WritePng(out, RenderLayoutImage(solved.document, image)));
+    std::cout << "short ends (3 cells): before " << ShortEnds(old, 3) << ", now " << ShortEnds(solved.document, 3) << "; (10 cells): before "
+              << ShortEnds(old, 10) << ", now " << ShortEnds(solved.document, 10) << std::endl;
 }

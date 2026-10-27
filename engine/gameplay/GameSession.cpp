@@ -8,6 +8,7 @@
 #include "gameplay/Attributes.h"
 #include "gameplay/Encounters.h"
 #include "gameplay/Interact.h"
+#include "gameplay/Interiors.h"
 #include "gameplay/Items.h"
 #include "gameplay/Localization.h"
 #include "gameplay/Settings.h"
@@ -2081,6 +2082,7 @@ int GameSession::LevelOf(Entity entity) const {
 void GameSession::StepGameplay(float dt, const SolidQueryFn& isSolid, bool firstStep) {
     UpdateAttributes(registry_, dt);
     const auto player = FindPlayer(registry_);
+    UpdateInteriors(registry_, player); // inside a building: its interior shows (Phase 27)
     if (player && !registry_.all_of<Dead>(*player)) {
         // Block while held; dodge, fire on press (once a frame).
         if (input_.Down("block") && !registry_.all_of<Dodging>(*player)) registry_.emplace_or_replace<Blocking>(*player);

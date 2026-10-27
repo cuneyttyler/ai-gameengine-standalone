@@ -228,6 +228,13 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("once", &Interactable::once, "Works only once.")
         .Field("used", &Interactable::used, "Already used (with once).")
         .DependsOn({"WorldTransform2D"});
+    r.Component<Interior>("Interior", "A place one can go into (Phase 27): its interior shows while the player is inside; only its walls block.")
+        .Field("texture", &Interior::texture, "The interior picture (the same building cut away).").As(FieldType::Texture)
+        .Field("door", &Interior::door, "The doorway's side.").Options({"s", "e", "n", "w"})
+        .Field("shown", &Interior::shown, "The interior showing now (in the editor: a preview).")
+        .Field("exteriorTexture", &Interior::exteriorTexture, "The outside picture while the interior shows (kept by itself).").As(FieldType::Texture)
+        .Field("cells", &Interior::cells, "A painted building's footprint, x0,y0,x1,y1 in cells (else its Obstacle's).")
+        .Field("hides", &Interior::hides, "A painted building's occluders, hidden while the interior shows.");
     r.Component<Door>("Door", "A door (13.5): the interact action opens and closes it; open, it doesn't block.")
         .Field("open", &Door::open, "Open now.")
         .Field("openTexture", &Door::openTexture, "The picture when open (empty: unchanged).").As(FieldType::Texture)

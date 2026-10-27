@@ -1331,6 +1331,50 @@
       "userEditable": true
     },
     {
+      "dependencies": [],
+      "description": "A place one can go into (Phase 27): its interior shows while the player is inside; only its walls block.",
+      "fields": [
+        {
+          "description": "The interior picture (the same building cut away).",
+          "name": "texture",
+          "type": "texture"
+        },
+        {
+          "description": "The doorway's side.",
+          "name": "door",
+          "options": [
+            "s",
+            "e",
+            "n",
+            "w"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The interior showing now (in the editor: a preview).",
+          "name": "shown",
+          "type": "bool"
+        },
+        {
+          "description": "The outside picture while the interior shows (kept by itself).",
+          "name": "exteriorTexture",
+          "type": "texture"
+        },
+        {
+          "description": "A painted building's footprint, x0,y0,x1,y1 in cells (else its Obstacle's).",
+          "name": "cells",
+          "type": "string"
+        },
+        {
+          "description": "A painted building's occluders, hidden while the interior shows.",
+          "name": "hides",
+          "type": "string"
+        }
+      ],
+      "name": "Interior",
+      "userEditable": true
+    },
+    {
       "dependencies": [
         "Interactable"
       ],

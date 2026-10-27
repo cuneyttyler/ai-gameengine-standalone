@@ -33,7 +33,7 @@ Ontology (2026-10-27)
   only where a place has a wall block). Still: things made with fences, paths and buildings (made-with to a non-wall piece)
 
 Planner: animation and effects in ⑧ Visuals (2026-10-27; the "Animations step" designed in docs/ai/ai-planner.md §5.8
-and docs/systems/effects-animation.md §11, left for after Phase 18, which is now built). Phase 27, with its AI panel part.
+and docs/systems/effects-animation.md §11, left for after Phase 18, which is now built). Phase 28, with its AI panel part.
 - Today ⑧ Visuals covers only the UI (theme, screens, HUD, notifications, map) and ⑦ Systems only names effects for
   abilities: nothing plans animations or effects
 - Decided: no separate Effects step, and animation and effects go under ⑧ Visuals, which becomes "how the game looks
