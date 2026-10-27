@@ -77,6 +77,8 @@ add_executable(aige_tests
     big_scene_test.cpp
     catalog_test.cpp
     brief_test.cpp
+    arrange_test.cpp
+    parking_test.cpp
     plan_test.cpp
     build_robust_test.cpp
     buildtypes_test.cpp

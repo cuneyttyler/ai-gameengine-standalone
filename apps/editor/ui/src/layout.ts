@@ -253,6 +253,11 @@ export function setPanelVisible(id: PanelId, on: boolean): void {
 // The panel shortcuts (B, J, I, M): a panel on screen hides; one behind
 // another tab comes to the front; a hidden one comes back.
 export function togglePanel(id: PanelId): void {
+  // Another panel full-window: this one isn't seen, whatever its tab says, so its shortcut shows it (the layout back).
+  if (dockView.maximized && dockView.maximized !== id) {
+    setPanelVisible(id, true)
+    return
+  }
   setPanelVisible(id, !isFront(id))
 }
 

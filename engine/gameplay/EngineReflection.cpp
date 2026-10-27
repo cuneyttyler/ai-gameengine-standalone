@@ -553,12 +553,14 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "Isometric (diamond cells) or TopDown (square cells, for art drawn from above). Changing it re-lays "
                "the whole scene.")
         .Options({"Isometric", "TopDown"});
-    r.Settings("Places", "How the AI builds places: chosen when the project is made, fixed once places are built.", &settings.places)
-        .Field("method", &PlacesSettings::method,
-               "Assembled (each piece's art drawn from a concept painting, put together on the grid: every piece "
-               "editable) or Painted (the whole place painted as one picture, a backdrop: walls, doors and anchors "
-               "read from it).")
-        .Options({"Assembled", "Painted"});
+    r.Settings("AI", "This project's AI: each left empty uses the app's choice (Preferences ▸ AI).", &settings.ai)
+        .Field("provider", &AiSettings::provider, "The language model's provider (empty: the app's).")
+        .Options({"", "mistral", "claude"})
+        .Field("model", &AiSettings::model, "Its model (empty: the app's, or the provider's default).")
+        .Field("art", &AiSettings::art, "Who draws the prefabs' art (empty: the app's).")
+        .Options({"", "mistral", "pixellab", "bfl:flux-2-klein-4b", "bfl:flux-3-image", "bfl:flux-2-pro"})
+        .Field("background", &AiSettings::background, "Who paints the places' backgrounds (empty: the app's).")
+        .Options({"", "bfl:flux-3-image"});
     r.Settings("Game", "The game as a whole.", &settings.game)
         .Field("startScene", &GameSettings::startScene, "The scene the game starts in (scenes/*.aige).")
         .Field("version", &GameSettings::version, "The game's version: the window's title, the crash log, exports.")

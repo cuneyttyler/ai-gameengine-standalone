@@ -35,11 +35,15 @@ json FieldJson(const Ontology& ontology, const FieldDef& f) {
     if (!f.unit.empty()) j["unit"] = f.unit;
     if (!f.values.empty()) j["values"] = f.values;
     if (!f.vocabulary.empty()) {
-        json values = json::array();
+        json values = json::array(), meaning = json::object();
         if (const auto* scheme = ontology.Scheme(f.vocabulary)) {
-            for (const auto& c : *scheme) values.push_back(c.id);
+            for (const auto& c : *scheme) {
+                values.push_back(c.id);
+                if (!c.prompt.empty()) meaning[c.id] = c.prompt; // what each choice means, for the AI
+            }
         }
         j["values"] = values;
+        if (!meaning.empty()) j["meaning"] = meaning;
     }
     if (!f.when.empty()) j["when"] = f.when;
     if (!f.description.empty()) j["description"] = f.description;

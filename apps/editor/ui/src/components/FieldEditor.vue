@@ -27,7 +27,8 @@ export interface FieldData {
   max?: number
   overridden?: boolean
   scalable?: string // difficulty scales it, as this kind (16.2)
-  locked?: string // why it can't change now (Places ▸ method once places are built)
+  locked?: string // why it can't change now
+  appDefault?: string // a choice left empty uses the app's: its "Use app default (…)" (Project Settings ▸ AI)
 }
 
 export interface Choices {
@@ -92,6 +93,17 @@ function emitNumber(event: Event): void {
       :disabled="disabled"
       @change="emit('change', ($event.target as HTMLInputElement).checked)"
     />
+
+    <select
+      v-else-if="field.type === 'string' && field.options?.length"
+      :value="field.value as string"
+      :disabled="disabled"
+      @change="emit('change', ($event.target as HTMLSelectElement).value)"
+    >
+      <option v-for="option in field.options" :key="option" :value="option">
+        {{ option === '' ? `Use app default (${field.appDefault ?? 'the app’s'})` : option }}
+      </option>
+    </select>
 
     <input
       v-else-if="field.type === 'string'"

@@ -99,9 +99,73 @@ struct Object {
     std::string id, statement, node, slot, module;
     int x = 0, y = 0, w = 1, h = 1;
     char facing = 's';
+    std::string faced; // what set its facing ("layout": its module's layout), so it isn't turned again
     int layer = kProp;
     bool primary = false;
+    // A shaped building (building-shape "rounded" or "fitted"): the cells it covers, if not its whole box (a
+    // fitted one's), and its shape; its outline is drawn from them.
+    std::vector<int> cells;
+    std::string shape;
 };
+
+// A footprint's hull: the convex outline round its cells' corners, clockwise on screen (y down).
+static std::vector<std::pair<double, double>> CellHull(const std::vector<int>& cells, int W) {
+    std::vector<std::pair<double, double>> pts;
+    for (int c : cells) {
+        const double x = c % W, y = c / W;
+        pts.insert(pts.end(), {{x, y}, {x + 1, y}, {x, y + 1}, {x + 1, y + 1}});
+    }
+    std::sort(pts.begin(), pts.end());
+    pts.erase(std::unique(pts.begin(), pts.end()), pts.end());
+    if (pts.size() < 3) return pts;
+    auto cross = [](const auto& o, const auto& a, const auto& b) { return (a.first - o.first) * (b.second - o.second) - (a.second - o.second) * (b.first - o.first); };
+    std::vector<std::pair<double, double>> hull(2 * pts.size());
+    size_t k = 0;
+    for (size_t i = 0; i < pts.size(); ++i) {
+        while (k >= 2 && cross(hull[k - 2], hull[k - 1], pts[i]) <= 0) --k;
+        hull[k++] = pts[i];
+    }
+    for (size_t i = pts.size() - 1, lower = k + 1; i-- > 0;) {
+        while (k >= lower && cross(hull[k - 2], hull[k - 1], pts[i]) <= 0) --k;
+        hull[k++] = pts[i];
+    }
+    hull.resize(k - 1);
+    return hull;
+}
+
+static double HullArea(const std::vector<std::pair<double, double>>& hull) {
+    double area = 0;
+    for (size_t i = 0; i < hull.size(); ++i) {
+        const auto& a = hull[i];
+        const auto& b = hull[(i + 1) % hull.size()];
+        area += a.first * b.second - b.first * a.second;
+    }
+    return std::abs(area) / 2;
+}
+
+// A footprint's outline, smooth: its hull (a fitted footprint is kept near convex: a wedge, a trapezoid, a box),
+// each corner rounded (radius in cells). [x0, y0, x1, y1, …] in cells.
+static std::vector<double> SmoothOutline(const std::vector<int>& cells, int W, double radius) {
+    const std::vector<std::pair<double, double>> corners = CellHull(cells, W);
+    if (corners.size() < 3) return {};
+    // Each corner an arc (a quadratic curve through it), as round as its two sides allow.
+    std::vector<double> out;
+    for (size_t i = 0; i < corners.size(); ++i) {
+        const auto& p = corners[(i + corners.size() - 1) % corners.size()];
+        const auto& v = corners[i];
+        const auto& n = corners[(i + 1) % corners.size()];
+        const double lp = std::hypot(p.first - v.first, p.second - v.second), ln = std::hypot(n.first - v.first, n.second - v.second);
+        const double r = std::min({radius, lp * 0.45, ln * 0.45});
+        const double ax = v.first + (p.first - v.first) / lp * r, ay = v.second + (p.second - v.second) / lp * r;
+        const double bx = v.first + (n.first - v.first) / ln * r, by = v.second + (n.second - v.second) / ln * r;
+        for (int k = 0; k <= 4; ++k) {
+            const double t = k / 4.0, u = 1 - t;
+            out.push_back(u * u * ax + 2 * u * t * v.first + t * t * bx);
+            out.push_back(u * u * ay + 2 * u * t * v.second + t * t * by);
+        }
+    }
+    return out;
+}
 
 struct PathResult {
     std::string id, node, cls, terrain;
@@ -308,9 +372,13 @@ int Solver::AddRegion(const std::string& id, const std::string& node, const std:
 
 int Solver::AddObject(Object o) {
     const int index = static_cast<int>(objects_.size());
-    for (int y = o.y; y < o.y + o.h; ++y) {
-        for (int x = o.x; x < o.x + o.w; ++x) {
-            if (In(x, y)) occ_[o.layer][Cell(x, y)] = index + 1;
+    if (!o.cells.empty()) {
+        for (int c : o.cells) occ_[o.layer][c] = index + 1; // angled: only what it covers
+    } else {
+        for (int y = o.y; y < o.y + o.h; ++y) {
+            for (int x = o.x; x < o.x + o.w; ++x) {
+                if (In(x, y)) occ_[o.layer][Cell(x, y)] = index + 1;
+            }
         }
     }
     objectsByStatement_[o.statement].push_back(index);
@@ -853,6 +921,32 @@ void Solver::Network(const json& s, int region) {
             auto link = connectToRoads(streets[streets.size() / 2]);
             MarkRoad(link, width, rank, -1);
             streets.insert(streets.end(), link.begin(), link.end());
+        }
+    } else if (style == "radial" && s.value("lattice", json()).is_object()) {
+        // A shared radial network (street-grid "shared"): spokes from the place's centre and rings at each block's
+        // distance, the same in every zone, so they run on across zones.
+        const json lattice = s["lattice"];
+        const double cx = lattice["origin"][0].get<double>(), cy = lattice["origin"][1].get<double>();
+        const double step = std::max(6, lattice["block"][0].get<int>());
+        const double radius = std::hypot(W, H);
+        const int spokes = 8;
+        for (int k = 0; k < spokes; ++k) {
+            const double a = k * 2 * 3.14159265 / spokes;
+            for (double t = 0; t < radius; t += 0.5) {
+                const int x = static_cast<int>(cx + std::cos(a) * t), y = static_cast<int>(cy + std::sin(a) * t);
+                if (In(x, y) && inZone(Cell(x, y))) streets.push_back(Cell(x, y));
+            }
+        }
+        for (double ring = step; ring < radius; ring += step) {
+            for (double a = 0; a < 2 * 3.14159265; a += 0.5 / ring) {
+                const int x = static_cast<int>(cx + std::cos(a) * ring), y = static_cast<int>(cy + std::sin(a) * ring);
+                if (In(x, y) && inZone(Cell(x, y))) streets.push_back(Cell(x, y));
+            }
+        }
+        MarkRoad(streets, width, rank, region);
+        if (!streets.empty()) {
+            auto link = connectToRoads(streets.front());
+            MarkRoad(link, width, rank, -1);
         }
     } else if (style == "radial") {
         const double cx = (r.x0 + r.x1) / 2.0, cy = (r.y0 + r.y1) / 2.0;
@@ -1541,7 +1635,229 @@ void Solver::Subdivide(const json& s, int region) {
     }
     const double cx = (parent.x0 + parent.x1) / 2.0, cy = (parent.y0 + parent.y1) / 2.0;
     int placed = 0;
-    for (const auto& item : s.value("into", json::array())) {
+    json leftovers = json::array();
+    if (s.value("lots", "") == "rows") {
+        // Rows (the layout form's lot-layout "rows"): each block between the streets (a connected piece of free
+        // land) is cut into rows of equal lots along its long sides, back to back, one row if it's shallow. With
+        // block-use "grouped", a block takes one kind of lot; the filler lots take what's left.
+        std::vector<int> block(W * H, -1);
+        struct Block {
+            int x0 = 1 << 30, y0 = 1 << 30, x1 = -1, y1 = -1, cells = 0;
+        };
+        std::vector<Block> blocks;
+        for (int c : parent.cells) {
+            if (!free[c] || block[c] >= 0) continue;
+            Block b;
+            std::deque<int> todo = {c};
+            block[c] = static_cast<int>(blocks.size());
+            while (!todo.empty()) {
+                const int v = todo.front();
+                todo.pop_front();
+                ++b.cells;
+                b.x0 = std::min(b.x0, v % W), b.y0 = std::min(b.y0, v / W), b.x1 = std::max(b.x1, v % W + 1), b.y1 = std::max(b.y1, v / W + 1);
+                for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                    const int nx = v % W + dx, ny = v / W + dy;
+                    if (In(nx, ny) && free[Cell(nx, ny)] && block[Cell(nx, ny)] < 0) {
+                        block[Cell(nx, ny)] = block[c];
+                        todo.push_back(Cell(nx, ny));
+                    }
+                }
+            }
+            blocks.push_back(b);
+        }
+        // Central blocks first (density falls outward).
+        std::vector<size_t> byCentre(blocks.size());
+        for (size_t i = 0; i < blocks.size(); ++i) byCentre[i] = i;
+        std::sort(byCentre.begin(), byCentre.end(), [&](size_t a, size_t b) {
+            return std::hypot((blocks[a].x0 + blocks[a].x1) / 2.0 - cx, (blocks[a].y0 + blocks[a].y1) / 2.0 - cy) <
+                   std::hypot((blocks[b].x0 + blocks[b].x1) / 2.0 - cx, (blocks[b].y0 + blocks[b].y1) / 2.0 - cy);
+        });
+        // The items in groups (one kind each, in order; the fillers last), or one group of all when mixed.
+        const bool grouped = s.value("grouped", false);
+        std::vector<std::vector<json>> groups;
+        std::map<std::string, size_t> groupOf;
+        for (const auto& item : s.value("into", json::array())) {
+            if (options_.previous && regionById_.contains(item.value("id", ""))) {
+                ++placed;
+                continue;
+            }
+            // Filler by kind too (when grouped): each filler kind its own blocks, not mixed into one.
+            const std::string key = item.value("filler", false) ? "~filler:" + (grouped ? item.value("module", "") : std::string())
+                                                                : grouped ? item.value("module", "") : "";
+            if (!groupOf.contains(key)) groupOf[key] = groups.size(), groups.push_back({});
+            groups[groupOf[key]].push_back(item);
+        }
+        std::stable_sort(groups.begin(), groups.end(), [](const auto& a, const auto& b) {
+            return !a.front().value("filler", false) && b.front().value("filler", false);
+        });
+        auto streetSide = [&](int x0, int y0, int x1, int y1, char side) {
+            int n = 0;
+            if (side == 'n') n = sum(roadSat, x0, y0 - 1, x1 - x0, 1);
+            if (side == 's') n = sum(roadSat, x0, y1, x1 - x0, 1);
+            if (side == 'w') n = sum(roadSat, x0 - 1, y0, 1, y1 - y0);
+            if (side == 'e') n = sum(roadSat, x1, y0, 1, y1 - y0);
+            return n;
+        };
+        // Lots of one block for one group: rows along its long sides, each lot the group's frontage.
+        auto cut = [&](const Block& b, const std::vector<json>& items, size_t& next) {
+            const bool alongX = (b.x1 - b.x0) >= (b.y1 - b.y0);
+            const int length = alongX ? b.x1 - b.x0 : b.y1 - b.y0, deep = alongX ? b.y1 - b.y0 : b.x1 - b.x0;
+            const char sideA = alongX ? 'n' : 'w', sideB = alongX ? 's' : 'e';
+            const bool hasA = streetSide(b.x0, b.y0, b.x1, b.y1, sideA) > 0, hasB = streetSide(b.x0, b.y0, b.x1, b.y1, sideB) > 0;
+            const IntRange want = RangeOf(items[std::min(next, items.size() - 1)].value("size", json::object()).value("h", json()), 6);
+            const bool two = hasA && hasB && deep >= 2 * std::max(4, want.lo * 2 / 3);
+            std::vector<std::pair<char, std::pair<int, int>>> rows; // side, [offset, depth] across the block
+            if (two) {
+                rows.push_back({sideA, {0, deep / 2}});
+                rows.push_back({sideB, {deep / 2, deep - deep / 2}});
+            } else {
+                rows.push_back({hasA || !hasB ? sideA : sideB, {0, deep}});
+            }
+            for (const auto& [side, span] : rows) {
+                if (next >= items.size()) break;
+                const IntRange fw = RangeOf(items[next].value("size", json::object()).value("w", json()), 5);
+                const int front = std::max(3, (fw.lo + fw.hi) / 2);
+                const int n = std::max(1, length / front);
+                for (int k = 0; k < n && next < items.size(); ++k) {
+                    const int a = k * length / n, e = (k + 1) * length / n; // equal lots, the remainder spread
+                    int x = alongX ? b.x0 + a : b.x0 + span.first, y = alongX ? b.y0 + span.first : b.y0 + a;
+                    int w = alongX ? e - a : span.second, h = alongX ? span.second : e - a;
+                    std::vector<int> cells;
+                    for (int yy = y; yy < y + h; ++yy) {
+                        for (int xx = x; xx < x + w; ++xx) {
+                            if (In(xx, yy) && free[Cell(xx, yy)]) cells.push_back(Cell(xx, yy));
+                        }
+                    }
+                    if (static_cast<int>(cells.size()) * 10 < w * h * 7) continue; // mostly not this block's
+                    const json& item = items[next++];
+                    for (int c : cells) free[c] = 0;
+                    const int index = AddRegion(item.value("id", ""), item.value("node", ""), s.value("id", ""), region, cells, item.value("module", ""));
+                    Region& r = regions_[index];
+                    r.facing = side;
+                    for (int t = 0; t < (side == 'n' || side == 's' ? w : h); ++t) {
+                        int sx = x, sy = y;
+                        if (side == 'n') sx += t, sy -= 1;
+                        if (side == 's') sx += t, sy += h;
+                        if (side == 'w') sx -= 1, sy += t;
+                        if (side == 'e') sx += w, sy += t;
+                        if (In(sx, sy) && road_[Cell(sx, sy)]) r.street.push_back(Cell(sx, sy));
+                    }
+                    ++placed;
+                }
+            }
+        };
+        // A block that isn't a rectangle (a radial plan's wedge, a bent one): its street-front cells in order round
+        // it, split into runs one lot's frontage long; each cell of the block joins its nearest run, so the lots
+        // meet in the middle, each facing its own stretch of street.
+        auto edgeLots = [&](size_t bi, const std::vector<json>& items, size_t& next) {
+            const Block& b = blocks[bi];
+            std::vector<int> cellsOf, front;
+            for (int y = b.y0; y < b.y1; ++y) {
+                for (int x = b.x0; x < b.x1; ++x) {
+                    const int c = Cell(x, y);
+                    if (block[c] != static_cast<int>(bi) || !free[c]) continue;
+                    cellsOf.push_back(c);
+                    bool onStreet = false;
+                    for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                        onStreet = onStreet || (In(x + dx, y + dy) && road_[Cell(x + dx, y + dy)]);
+                    }
+                    if (onStreet) front.push_back(c);
+                }
+            }
+            if (front.empty()) return;
+            double bx = 0, by = 0;
+            for (int c : cellsOf) bx += c % W, by += c / W;
+            bx /= cellsOf.size(), by /= cellsOf.size();
+            std::sort(front.begin(), front.end(), [&](int a, int c) { return std::atan2(a / W - by, a % W - bx) < std::atan2(c / W - by, c % W - bx); });
+            std::vector<int> label(W * H, -1);
+            std::vector<std::vector<int>> runs;
+            for (size_t i = 0; i < front.size() && next + runs.size() < items.size();) {
+                const IntRange fw = RangeOf(items[next + runs.size()].value("size", json::object()).value("w", json()), 5);
+                const size_t length = static_cast<size_t>(std::max(3, (fw.lo + fw.hi) / 2));
+                std::vector<int> run(front.begin() + static_cast<std::ptrdiff_t>(i), front.begin() + static_cast<std::ptrdiff_t>(std::min(front.size(), i + length)));
+                if (run.size() * 2 < length && !runs.empty()) {
+                    for (int c : run) runs.back().push_back(c); // a short end joins the last lot
+                } else {
+                    runs.push_back(run);
+                }
+                i += length;
+            }
+            std::deque<int> todo;
+            for (size_t k = 0; k < runs.size(); ++k) {
+                for (int c : runs[k]) label[c] = static_cast<int>(k), todo.push_back(c);
+            }
+            while (!todo.empty()) {
+                const int c = todo.front();
+                todo.pop_front();
+                for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                    const int nx = c % W + dx, ny = c / W + dy;
+                    if (!In(nx, ny)) continue;
+                    const int n = Cell(nx, ny);
+                    if (block[n] == static_cast<int>(bi) && free[n] && label[n] < 0) label[n] = label[c], todo.push_back(n);
+                }
+            }
+            std::vector<std::vector<int>> lots(runs.size());
+            for (int c : cellsOf) {
+                if (label[c] >= 0) lots[label[c]].push_back(c);
+            }
+            for (size_t k = 0; k < runs.size() && next < items.size(); ++k) {
+                if (lots[k].size() < 6) continue;
+                const json& item = items[next++];
+                for (int c : lots[k]) free[c] = 0;
+                const int index = AddRegion(item.value("id", ""), item.value("node", ""), s.value("id", ""), region, lots[k], item.value("module", ""));
+                Region& r = regions_[index];
+                // It faces the side its street is on, mostly; its street: the road cells along its run.
+                std::map<char, int> sides;
+                for (int c : runs[k]) {
+                    const int x = c % W, y = c / W;
+                    if (In(x, y - 1) && road_[Cell(x, y - 1)]) ++sides['n'], r.street.push_back(Cell(x, y - 1));
+                    if (In(x, y + 1) && road_[Cell(x, y + 1)]) ++sides['s'], r.street.push_back(Cell(x, y + 1));
+                    if (In(x - 1, y) && road_[Cell(x - 1, y)]) ++sides['w'], r.street.push_back(Cell(x - 1, y));
+                    if (In(x + 1, y) && road_[Cell(x + 1, y)]) ++sides['e'], r.street.push_back(Cell(x + 1, y));
+                }
+                r.facing = std::max_element(sides.begin(), sides.end(), [](const auto& a, const auto& c) { return a.second < c.second; })->first;
+                ++placed;
+            }
+        };
+        std::vector<uint8_t> used(blocks.size(), 0);
+        std::vector<std::string> kindOf(blocks.size()); // grouped: the kind each block holds
+        for (const auto& items : groups) {
+            size_t next = 0;
+            const bool filler = items.front().value("filler", false);
+            const std::string kind = items.front().value("module", "");
+            for (size_t bi : byCentre) {
+                if (next >= items.size()) break;
+                // Grouped: a block for one kind; a filler kind may finish a block of its own kind. Mixed: shared.
+                if (used[bi] && grouped && kindOf[bi] != kind) continue;
+                if (used[bi] && !grouped && !filler) continue;
+                if (blocks[bi].cells < 12) continue;
+                const Block& b = blocks[bi];
+                if (b.cells * 10 < (b.x1 - b.x0) * (b.y1 - b.y0) * 8) edgeLots(bi, items, next); // not a rectangle
+                else cut(b, items, next);
+                used[bi] = 1;
+                if (kindOf[bi].empty()) kindOf[bi] = kind;
+                if (!grouped && !filler) used[bi] = 0; // mixed: the next kinds share it
+            }
+        }
+        rebuild();
+        // What the rows couldn't place (blocks that aren't rectangles: a radial plan's, an old town's) is fitted
+        // the packed way below.
+        json rest = json::array();
+        for (const auto& item : s.value("into", json::array())) {
+            if (!regionById_.contains(item.value("id", ""))) rest.push_back(item);
+        }
+        leftovers = rest;
+        fronts.clear();
+        for (int c : parent.cells) {
+            if (!free[c]) continue;
+            const int x = c % W, y = c / W;
+            if (In(x, y - 1) && road_[Cell(x, y - 1)]) fronts.push_back({c, 'n'});
+            if (In(x, y + 1) && road_[Cell(x, y + 1)]) fronts.push_back({c, 's'});
+            if (In(x - 1, y) && road_[Cell(x - 1, y)]) fronts.push_back({c, 'w'});
+            if (In(x + 1, y) && road_[Cell(x + 1, y)]) fronts.push_back({c, 'e'});
+        }
+    }
+    for (const auto& item : (s.value("lots", "") == "rows" ? leftovers : s.value("into", json::array()))) {
         // Kept from the previous layout (a locked part's lot): already there.
         if (options_.previous && regionById_.contains(item.value("id", ""))) {
             ++placed;
@@ -1766,10 +2082,164 @@ void Solver::Place(const json& s, int container) {
     for (int k = 0; k < n; ++k) {
         char facing = facingRule.size() == 1 ? facingRule[0] : (parent.facing ? parent.facing : 's');
         int w = rng.Range(cw.lo, cw.hi), h = rng.Range(ch.lo, ch.hi);
+        if (s.contains("fit") && s.value("primary", false) && parent.facing) {
+            // Fitted (building-cover "fit"): as wide as the lot's front and as deep as the lot, less its setback,
+            // by its kind's cover.
+            const double cover = std::clamp(s.value("fit", 0.7), 0.2, 1.0);
+            const bool across = parent.facing == 'n' || parent.facing == 's';
+            const int front = across ? parent.x1 - parent.x0 : parent.y1 - parent.y0, deep = across ? parent.y1 - parent.y0 : parent.x1 - parent.x0;
+            w = std::max(2, static_cast<int>(std::lround(front * std::sqrt(cover))));
+            h = std::max(2, static_cast<int>(std::lround((deep - s.value("setback", 1)) * std::sqrt(cover))));
+            if (!across) std::swap(w, h); // undone below: the width runs along the front
+        }
         // The footprint's width runs along its front.
         if (facing == 'e' || facing == 'w') std::swap(w, h);
         const std::string objectId = n == 1 ? id : id + "[" + std::to_string(k) + "]";
         std::optional<std::pair<int, int>> at;
+        // Fitted (building-shape "fitted"): the lot itself, less its setback from the street and a cell from its
+        // neighbours, cut from the back to its kind's cover, so its front follows the street, curved or not. Or, in a
+        // lot that isn't a rectangle, the largest rectangle in it.
+        const std::string shape = s.value("shape", "");
+        if (s.value("primary", false) && parent.facing && layer == kBuilding &&
+            (shape == "fitted" || (s.contains("fit") && static_cast<int>(parent.cells.size()) * 100 < (parent.x1 - parent.x0) * (parent.y1 - parent.y0) * 85))) {
+            std::set<int> lot(parent.cells.begin(), parent.cells.end());
+            if (shape == "fitted") {
+                // Each cell's steps from the street.
+                std::map<int, int> steps;
+                std::deque<int> todo;
+                for (int c : parent.cells) {
+                    const int x = c % W, y = c / W;
+                    bool front = false;
+                    for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                        front = front || (In(x + dx, y + dy) && road_[Cell(x + dx, y + dy)]);
+                    }
+                    if (front) steps[c] = 1, todo.push_back(c);
+                }
+                while (!todo.empty()) {
+                    const int c = todo.front();
+                    todo.pop_front();
+                    for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                        const int nx = c % W + dx, ny = c / W + dy;
+                        if (!In(nx, ny) || !lot.contains(Cell(nx, ny)) || steps.contains(Cell(nx, ny))) continue;
+                        steps[Cell(nx, ny)] = steps[c] + 1;
+                        todo.push_back(Cell(nx, ny));
+                    }
+                }
+                const int setback = s.value("setback", 1);
+                std::vector<int> body;
+                for (int c : parent.cells) {
+                    const int x = c % W, y = c / W;
+                    if (!steps.contains(c) || steps[c] <= setback || !Free(c, container, solid) || occ_[layer][c]) continue;
+                    bool edge = false; // a cell from the lot's other neighbours (not the street)
+                    for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                        const int nx = x + dx, ny = y + dy;
+                        edge = edge || !In(nx, ny) || (!lot.contains(Cell(nx, ny)) && !road_[Cell(nx, ny)]);
+                    }
+                    if (!edge) body.push_back(c);
+                }
+                // Cut from the back to its cover; then its largest piece, its loose cells trimmed.
+                const size_t target = static_cast<size_t>(parent.cells.size() * std::clamp(s.value("fit", 0.7), 0.2, 1.0));
+                std::stable_sort(body.begin(), body.end(), [&](int a, int b) { return steps[a] < steps[b]; });
+                if (body.size() > target) body.resize(target);
+                std::set<int> keep(body.begin(), body.end());
+                for (bool trimmed = true; trimmed;) {
+                    trimmed = false;
+                    for (auto it = keep.begin(); it != keep.end();) {
+                        const int x = *it % W, y = *it / W;
+                        int around = 0;
+                        for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                            around += In(x + dx, y + dy) && keep.contains(Cell(x + dx, y + dy));
+                        }
+                        if (around < 2) it = keep.erase(it), trimmed = true;
+                        else ++it;
+                    }
+                }
+                std::vector<int> piece;
+                std::set<int> done;
+                for (int c : keep) {
+                    if (done.contains(c)) continue;
+                    std::vector<int> part{c};
+                    done.insert(c);
+                    for (size_t i = 0; i < part.size(); ++i) {
+                        for (const auto& [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                            const int nx = part[i] % W + dx, ny = part[i] / W + dy;
+                            if (In(nx, ny) && keep.contains(Cell(nx, ny)) && !done.contains(Cell(nx, ny))) done.insert(Cell(nx, ny)), part.push_back(Cell(nx, ny));
+                        }
+                    }
+                    if (part.size() > piece.size()) piece = part;
+                }
+                if (piece.size() >= 6 && piece.size() >= 0.8 * HullArea(CellHull(piece, W))) {
+                    Object o;
+                    o.id = objectId;
+                    o.statement = id;
+                    o.node = s.value("node", "");
+                    o.slot = s.value("slot", "");
+                    o.module = s.value("module", "");
+                    int bx0 = W, by0 = H, bx1 = 0, by1 = 0;
+                    for (int c : piece) bx0 = std::min(bx0, c % W), by0 = std::min(by0, c / W), bx1 = std::max(bx1, c % W + 1), by1 = std::max(by1, c / W + 1);
+                    o.x = bx0, o.y = by0, o.w = bx1 - bx0, o.h = by1 - by0;
+                    o.cells = piece;
+                    o.shape = shape;
+                    o.facing = parent.facing;
+                    o.layer = layer;
+                    o.primary = true;
+                    AddObject(o);
+                    ++made;
+                    at = std::pair{o.x, o.y};
+                }
+            }
+            if (!at) {
+                // A lot that isn't a rectangle: the largest free rectangle inside the lot, cut to its kind's cover, kept to the
+                // street side.
+                const int bw = parent.x1 - parent.x0, bh = parent.y1 - parent.y0;
+                std::vector<int> run(bw, 0);
+                int best = 0, rx = 0, ry = 0, rw = 0, rh = 0;
+                for (int y = parent.y0; y < parent.y1; ++y) {
+                    for (int x = parent.x0; x < parent.x1; ++x) {
+                        const int c = Cell(x, y);
+                        run[x - parent.x0] = lot.contains(c) && Free(c, container, solid) && !occ_[layer][c] ? run[x - parent.x0] + 1 : 0;
+                    }
+                    for (int i = 0; i < bw; ++i) { // the widest rectangle ending on this row, for each height
+                        int height = run[i];
+                        for (int j = i; j < bw && height > 0; ++j) {
+                            height = std::min(height, run[j]);
+                            const int cw = j - i + 1, area = cw * height;
+                            if (area > best && cw >= 2 && height >= 2 && cw <= 3 * height && height <= 3 * cw) {
+                                best = area, rx = parent.x0 + i, ry = y - height + 1, rw = cw, rh = height;
+                            }
+                        }
+                    }
+                }
+                (void)bh;
+                if (best >= 4) {
+                    const double target = parent.cells.size() * std::clamp(s.value("fit", 0.7), 0.2, 1.0);
+                    if (best > target) {
+                        const double k = std::sqrt(target / best);
+                        const int nw = std::max(2, static_cast<int>(std::lround(rw * k))), nh = std::max(2, static_cast<int>(std::lround(rh * k)));
+                        if (parent.facing == 's') ry += rh - nh;
+                        if (parent.facing == 'e') rx += rw - nw;
+                        if (parent.facing == 'n' || parent.facing == 's') rx += (rw - nw) / 2;
+                        else ry += (rh - nh) / 2;
+                        rw = nw, rh = nh;
+                    }
+                    Object o;
+                    o.id = objectId;
+                    o.statement = id;
+                    o.node = s.value("node", "");
+                    o.slot = s.value("slot", "");
+                    o.module = s.value("module", "");
+                    o.x = rx, o.y = ry, o.w = rw, o.h = rh;
+                    o.facing = parent.facing;
+                    o.layer = layer;
+                    o.primary = true;
+                    o.shape = s.value("shape", "");
+                    AddObject(o);
+                    ++made;
+                    at = std::pair{o.x, o.y};
+                }
+            }
+            if (at) continue;
+        }
         // A primary object in a parcel stands at the front, at its setback, centred
         // or as near the centre as puts its door on the street (a lot whose front
         // is only partly on the street).
@@ -1924,6 +2394,7 @@ void Solver::Place(const json& s, int container) {
         o.facing = facing;
         o.layer = layer;
         o.primary = s.value("primary", false);
+        if (layer == kBuilding) o.shape = s.value("shape", "");
         AddObject(o);
         ++made;
     }
@@ -2162,6 +2633,44 @@ void Solver::Scatter(const json& s, int container) {
         }
         if (Free(c, -1, true) && !occ_[layer][c] && (!solid || (!occ_[kProp][c] && !occ_[kBuilding][c]))) free.push_back(c);
     }
+    // Its module's layout for it (the ontology's: docs/places/ontology-in-use.md). "bays": rows along the area's long
+    // side, each "length" cells deep (a car's length: it stands in the cell by its aisle, the rest its tail's); the first
+    // against the edge, then an aisle ("aisle" cells) and two rows back to back, over and over; a cross aisle at each end
+    // ("ends"). Things only in the bays, side by side, each facing its aisle: every car can drive out.
+    std::map<int, char> bayFacing;
+    {
+        const std::string slotName = s.value("slot", "");
+        const ModuleDef* module = container >= 0 ? ontology_.Module(regions_[container].module) : nullptr;
+        const json layout = module ? module->layout.value(slotName.substr(0, slotName.find('|')), json()) : json();
+        if (layout.is_object() && layout.value("pattern", "") == "bays" && !area.empty()) {
+            int x0 = W, y0 = H, x1 = -1, y1 = -1;
+            for (int c : area) x0 = std::min(x0, c % W), y0 = std::min(y0, c / W), x1 = std::max(x1, c % W), y1 = std::max(y1, c / W);
+            const bool rowsAlongX = x1 - x0 >= y1 - y0;
+            const int deep = std::max(1, layout.value("length", 2)), aisle = std::max(1, layout.value("aisle", 2)), ends = layout.value("ends", 1);
+            const int length = rowsAlongX ? x1 - x0 : y1 - y0, span = rowsAlongX ? y1 - y0 : x1 - x0;
+            // Across the rows: +1, a bay whose aisle is after it; -1, before it; 0, not a bay (an aisle, a tail).
+            auto bayAt = [&](int t) {
+                int toAisle = 0;
+                if (t < deep) {
+                    toAisle = t == deep - 1 ? 1 : 0;
+                } else {
+                    const int u = (t - deep) % (aisle + 2 * deep);
+                    toAisle = u == aisle ? -1 : u == aisle + 2 * deep - 1 ? 1 : 0;
+                }
+                return toAisle > 0 && t + aisle > span ? 0 : toAisle; // its whole aisle inside the area, not past its edge
+            };
+            std::vector<int> bays;
+            for (int c : free) {
+                const int along = rowsAlongX ? c % W - x0 : c / W - y0, t = rowsAlongX ? c / W - y0 : c % W - x0;
+                if (length > 2 * ends + 2 && (along < ends || along > length - ends)) continue; // the cross aisles
+                const int toAisle = bayAt(t);
+                if (toAisle == 0) continue;
+                bays.push_back(c);
+                bayFacing[c] = layout.value("facing", "aisle") != "aisle" ? 's' : rowsAlongX ? (toAisle > 0 ? 's' : 'n') : (toAisle > 0 ? 'e' : 'w');
+            }
+            free = bays;
+        }
+    }
     const double density = std::clamp(s.value("density", 0.1), 0.0, 1.0);
     int target = static_cast<int>(std::lround(density * free.size()));
     if (s.contains("count")) {
@@ -2169,7 +2678,8 @@ void Solver::Scatter(const json& s, int container) {
         target = std::min(static_cast<int>(free.size()), rng.Range(count.lo, count.hi)); // so many, not a share
     }
     target = std::max(target, std::min(static_cast<int>(free.size()), s.value("min", 0)));
-    const int spacing = std::max(0, RangeOf(s.value("spacing", json::object()).value("min", json()), solid ? 1 : 0).lo);
+    // In bays, side by side.
+    const int spacing = bayFacing.empty() ? std::max(0, RangeOf(s.value("spacing", json::object()).value("min", json()), solid ? 1 : 0).lo) : 0;
     for (size_t i = free.size(); i > 1; --i) std::swap(free[i - 1], free[rng.Next() % i]);
     // Where a thing belongs (docs/build-fixes.md; its role's look): in a room, against a wall, in a
     // corner, in the middle, or beside another kind of thing (a chair by a table); out of doors, what
@@ -2178,7 +2688,9 @@ void Solver::Scatter(const json& s, int container) {
     {
         const std::string slot = s.value("slot", "");
         const std::string role = slot.substr(0, slot.find('|'));
-        const json at = ontology_.RoleLook(role, "at"), nearRole = ontology_.RoleLook(role, "near"), vary = ontology_.RoleLook(role, "vary");
+        // The plan's arrangement first (its position: ApplyArrangement), else the role's own place.
+        const json at = s.contains("position") ? s["position"] : ontology_.RoleLook(role, "at");
+        const json nearRole = ontology_.RoleLook(role, "near"), vary = ontology_.RoleLook(role, "vary");
         const bool inRoom = container >= 0 && ontology_.IsA(regions_[container].module, "Room");
         auto walls = [&](int c) {
             int n = 0;
@@ -2218,7 +2730,7 @@ void Solver::Scatter(const json& s, int container) {
             for (int c : free) rank[c] += by[c] ? 4.0 : 0.0;
             ranked = true;
         }
-        if (s.value("ordered", false) && !s.contains("cluster") && target > 0 && !free.empty()) {
+        if (bayFacing.empty() && s.value("ordered", false) && !s.contains("cluster") && target > 0 && !free.empty()) {
             // Ordered (the layout form's arrangement): on a regular pattern spaced for the number wanted, anchored
             // on the container; along an edge (a lamp, a bench on a plot's border) evenly spaced points; a cell
             // whose mirror across the container's centre is free too first, so things come in matching pairs.
@@ -2348,6 +2860,7 @@ void Solver::Scatter(const json& s, int container) {
         o.x = c % W;
         o.y = c / W;
         o.layer = layer;
+        if (const auto bay = bayFacing.find(c); bay != bayFacing.end()) o.facing = bay->second, o.faced = "layout";
         AddObject(o);
         ++made;
         // Poisson-disk: nothing else within `spacing`.
@@ -3472,10 +3985,25 @@ json Solver::Terrain() {
         const int r = RegionIndex(ContainerOf(*s));
         return r >= 0 ? regions_[r].depth : 0;
     };
-    std::stable_sort(fills.begin(), fills.end(), [&](const json* a, const json* b) { return depthOf(a) < depthOf(b); });
+    // Deeper regions over their parents; patterns (a park's footpaths) over the ground they cross.
+    std::stable_sort(fills.begin(), fills.end(), [&](const json* a, const json* b) {
+        const bool pa = a->contains("pattern"), pb = b->contains("pattern");
+        return depthOf(a) != depthOf(b) ? depthOf(a) < depthOf(b) : !pa && pb;
+    });
     for (const json* s : fills) {
         const int t = indexOf(s->value("terrain", "grass"));
-        for (int c : Cells(s->value("in", ""))) grid[c] = t;
+        const std::vector<int> cells = Cells(s->value("in", ""));
+        if (s->value("pattern", "") == "cross" && !cells.empty()) {
+            // Footpaths crossing the region through its middle, one each way.
+            int x0 = W, y0 = H, x1 = 0, y1 = 0;
+            for (int c : cells) x0 = std::min(x0, c % W), y0 = std::min(y0, c / W), x1 = std::max(x1, c % W), y1 = std::max(y1, c / W);
+            const int width = std::max(1, s->value("width", 1)), mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+            for (int c : cells) {
+                if (std::abs(c % W - mx) * 2 < width + 1 || std::abs(c / W - my) * 2 < width + 1) grid[c] = t;
+            }
+            continue;
+        }
+        for (int c : cells) grid[c] = t;
     }
     for (const auto& [c, t] : groundUnder_) grid[c] = indexOf(t); // a wood's floor
     // Road cells take the surface of their class (the first path of that class says it).
@@ -3826,6 +4354,19 @@ SolvedLayout Solver::Run() {
     for (const auto& o : objects_) {
         json one = {{"id", o.id}, {"statement", o.statement}, {"node", o.node}, {"slot", o.slot}, {"x", o.x}, {"y", o.y},
                     {"w", o.w}, {"h", o.h}, {"facing", std::string(1, o.facing)}, {"layer", LayerName(o.layer)}};
+        if (!o.faced.empty()) one["faced"] = o.faced;
+        if (!o.shape.empty()) {
+            // Its outline: a fitted one's cells, or its box, with rounded corners.
+            std::vector<int> cells = o.cells;
+            if (cells.empty()) {
+                for (int y = o.y; y < o.y + o.h; ++y) {
+                    for (int x = o.x; x < o.x + o.w; ++x) cells.push_back(Cell(x, y));
+                }
+            }
+            const std::vector<double> outline = SmoothOutline(cells, W, std::clamp(std::min(o.w, o.h) * 0.3, 0.6, 2.5));
+            one["shape"] = o.shape;
+            if (!outline.empty()) one["outline"] = outline;
+        }
         if (o.primary) one["primary"] = true;
         if (!o.module.empty()) one["shows"] = o.module;
         objects.push_back(one);

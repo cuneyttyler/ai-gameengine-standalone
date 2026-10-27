@@ -26,6 +26,7 @@
 #include "editing/LevelBuild.h"
 #include "editing/PlaceInspect.h"
 #include "editing/PlaceSketch.h"
+#include "editing/MatchedArt.h"
 #include "editing/SceneTools.h"
 #include "ai_bridge/RecentProjects.h"
 #include "assets/Export.h"
@@ -73,7 +74,6 @@
 
 namespace aige {
 
-static std::string PlacesMethodLock(const std::filesystem::path& root);
 
 namespace {
 
@@ -358,6 +358,11 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         const std::string zone = message.value("zone", ""), field = message.value("field", "");
         const nlohmann::json value = message.value("value", nlohmann::json());
         RunBuildJob([zone, field, value](PlaceBuild& build) { return build.SetZoneField(zone, field, value); }, "Can't set it: ");
+    } else if (type == "build:rootField") {
+        // The layout form (the Layout section): one of the place's layout fields, and the place laid out again.
+        const std::string field = message.value("field", "");
+        const nlohmann::json value = message.value("value", nlohmann::json());
+        RunBuildJob([field, value](PlaceBuild& build) { return build.SetRootField(field, value); }, "Can't set it: ");
     } else if (type == "build:paintZone") {
         const std::string zone = message.value("zone", "");
         const nlohmann::json cells = message.value("cells", nlohmann::json::array());
@@ -407,6 +412,49 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         WriteSourcingSettings(assets_.GetProject().root, settings);
         post_({{"type", "build:sourcing"}, {"webSearch", settings.webSearch}, {"shareAlike", settings.licences.shareAlike},
                {"defaultSource", settings.defaultSource}});
+    } else if (type == "scene:backgroundImage") {
+        // Edit ▸ Background Image…: a top-down picture of your own as the place's ground (the whole site), copied into
+        // the project; the place's scene is laid with it again at once.
+        if (!build_ || build_->Background().is_null() && build_->Stage() != "built" && build_->Stage() != "sourced" && build_->Stage() != "planned") {
+            post_({{"type", "notify"}, {"text", "Open a place's build (Build panel) to give its scene a background image"}});
+            return true;
+        }
+        const auto file = ShowOpenFileDialog(mainWindow_, L"Background image (top-down, the whole site)", L"Images", L"*.png;*.jpg;*.jpeg");
+        if (!file) return true;
+        const std::filesystem::path root = assets_.GetProject().root;
+        const std::string rel = "assets/backgrounds/" + WideToUtf8(file->filename().wstring());
+        std::error_code ec;
+        std::filesystem::create_directories(root / "assets" / "backgrounds", ec);
+        std::filesystem::copy_file(*file, root / rel, std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec) {
+            post_({{"type", "notify"}, {"text", "Couldn't copy the picture: " + ec.message()}});
+            return true;
+        }
+        if (const std::string why = build_->SetBackground(rel); !why.empty()) {
+            post_({{"type", "notify"}, {"text", "No background: " + why}});
+            return true;
+        }
+        if (build_->Stage() == "built") BuildIntoScene(); // the scene laid with it now
+        PostBuild();
+    } else if (type == "build:background") {
+        // The place's background painted from its plan (docs/places/background.md), from its description.
+        if (!build_) return true;
+        if (message.contains("description") && message["description"].is_string()) build_->Edit("background.description", message["description"]);
+        if (const std::string why = build_->MakeBackground(); !why.empty()) post_({{"type", "notify"}, {"text", "No background: " + why}});
+        PostBuild();
+    } else if (type == "build:matchedArt") {
+        // ③ Matched art (docs/places/matched-art.md): every need made by the art provider in one style, then cut
+        // (CutMatchedArt).
+        if (!build_ || buildJob_ || buildRun_) return true;
+        const std::string stage = build_->Stage();
+        if (stage != "planned" && stage != "sourced" && stage != "built") {
+            post_({{"type", "notify"}, {"text", "Not yet: approve the plan first"}});
+            return true;
+        }
+        if (const std::string why = build_->MakeMatchedArt(PlanForMatchedArt(), &Places()); !why.empty()) {
+            post_({{"type", "notify"}, {"text", "No matched art: " + why}});
+        }
+        PostBuild();
     } else if (type == "build:findAssets") {
         if (build_) build_->ForgetTried(); // asked again: what's still missing is made again
         autoRounds_ = 0;
@@ -434,6 +482,12 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
             }
             if (path.empty() || !Project::IsInside(path)) {
                 post_({{"type", "notify"}, {"text", "Couldn't use that art"}});
+                return true;
+            }
+            if (message.value("key", "") == "background") {
+                // The place's background: a picture of the whole ground, laid cell by cell.
+                if (const std::string why = build_->SetBackground(path); !why.empty()) post_({{"type", "notify"}, {"text", "No background: " + why}});
+                PostBuild();
                 return true;
             }
             SetNeedChoice(message.value("key", ""), {{"entry", path}});
@@ -490,6 +544,45 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
 }
 
 // Difficulty (16.5): the Difficulty tab's requests.
+// New Project's messages: its folder picked, the project made with its choices.
+bool EditorApp::HandleProjectMessage(const std::string& type, const nlohmann::json& message) {
+    if (type == "project:browse") {
+        // New Project's Browse…: the folder back to its window.
+        if (auto folder = ShowFolderDialog(mainWindow_, Utf8ToWide(message.value("title", "Where to create the project")))) {
+            post_({{"type", "project:browsed"}, {"path", WideToUtf8(folder->wstring())}});
+        }
+    } else if (type == "project:new") {
+        // New Project's window: its name, where, its grid, a template, and its own AI (Project Settings ▸ AI).
+        const std::string name = message.value("name", ""), location = message.value("location", "");
+        if (name.empty() || location.empty()) {
+            return true;
+        }
+        std::filesystem::path root = std::filesystem::path(Utf8ToWide(location)) / Utf8ToWide(name);
+        const std::string templateId = message.value("template", "");
+        if (!templateId.empty()) {
+            // A template project (24): it plays as its genre from the start.
+            if (auto error = CreateProjectFromTemplate(root, templateId)) {
+                post_({{"type", "notify"}, {"text", *error}});
+                return true;
+            }
+            SwitchProject(root);
+            return true;
+        }
+        std::map<std::string, std::string> ai;
+        for (const auto& [k, v] : message.value("ai", nlohmann::json::object()).items()) {
+            if (v.is_string()) ai[k] = v.get<std::string>();
+        }
+        if (auto error = CreateProject(root, std::nullopt, message.value("topDown", false), ai)) {
+            post_({{"type", "notify"}, {"text", *error}});
+            return true;
+        }
+        SwitchProject(root);
+    } else {
+        return false;
+    }
+    return true;
+}
+
 bool EditorApp::HandleDifficultyMessage(const std::string& type, const nlohmann::json& message) {
     if (type == "difficulty:request") {
         ActiveRecords().Refresh();
@@ -572,6 +665,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     if (type.rfind("library:", 0) == 0 && HandleLibraryMessage(type, message)) return;
     if (type.rfind("difficulty:", 0) == 0 && HandleDifficultyMessage(type, message)) return;
     if (type.rfind("ui:", 0) == 0 && HandleUiMessage(type, message)) return;
+    if ((type == "project:browse" || type == "project:new") && HandleProjectMessage(type, message)) return;
     if (type.rfind("fx:", 0) == 0 && HandleFxMessage(type, message)) return;
     if (type.rfind("magic:", 0) == 0 && HandleMagicMessage(type, message)) return;
     if (type.rfind("storygraph:", 0) == 0 && HandleStoryGraphMessage(type, message)) return;
@@ -703,32 +797,6 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         }
         if (!LooksLikeProject(root)) {
             post_({{"type", "notify"}, {"text", WideToUtf8(root.wstring()) + " isn't an AIGE project"}});
-            return;
-        }
-        SwitchProject(root);
-    } else if (type == "project:new") {
-        const std::string name = message.value("name", "");
-        auto parent = ShowFolderDialog(mainWindow_, L"Where to create \"" + Utf8ToWide(name) + L"\"");
-        if (!parent || name.empty()) {
-            return;
-        }
-        std::filesystem::path root = *parent / Utf8ToWide(name);
-        std::optional<std::filesystem::path> starter;
-        if (message.value("starter", false)) {
-            starter = std::filesystem::path(AIGE_EDITOR_DEFAULT_PROJECT);
-        }
-        const std::string templateId = message.value("template", "");
-        if (!templateId.empty()) {
-            // A template project (24): it plays as its genre from the start.
-            if (auto error = CreateProjectFromTemplate(root, templateId)) {
-                post_({{"type", "notify"}, {"text", *error}});
-                return;
-            }
-            SwitchProject(root);
-            return;
-        }
-        if (auto error = CreateProject(root, starter, message.value("topDown", false), message.value("painted", false))) {
-            post_({{"type", "notify"}, {"text", *error}});
             return;
         }
         SwitchProject(root);
@@ -953,22 +1021,15 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         if (aiConnection_) aiConnection_->Restart();
         post_(AiStatusJson());
     } else if (type == "ai:setArtProvider") {
-        // What draws the art: auto (follows the LLM), mistral or pixellab. Applied at once.
+        // What draws the prefabs' art: auto (follows the LLM), mistral, pixellab or bfl:<model>. Applied at once,
+        // unless the project has its own (Project Settings ▸ AI).
         if (userPrefs_) userPrefs_->Set("artProvider", message.value("provider", "auto"));
-        if (Ai() && Ai()->GetState() == AiClient::State::Ready) {
-            artProviderRequest_ = Ai()->Request("PUT", "/art-provider", {{"provider", message.value("provider", "auto")}});
-        }
+        SendProvider();
         post_(AiStatusJson());
-    } else if (type == "ai:setPaintProvider") {
-        // Who paints places from their plan (Preferences ▸ Paint Provider): BFL, and its model. Applied at once.
-        if (userPrefs_) {
-            userPrefs_->Set("paintProvider", message.value("provider", "bfl"));
-            userPrefs_->Set("paintModel", message.value("model", "flux-3-image"));
-        }
-        if (Ai() && Ai()->GetState() == AiClient::State::Ready) {
-            paintProviderRequest_ = Ai()->Request("PUT", "/paint-provider",
-                                                  {{"provider", message.value("provider", "bfl")}, {"model", message.value("model", "flux-3-image")}});
-        }
+    } else if (type == "ai:setBackgroundProvider") {
+        // What paints backgrounds (Preferences ▸ AI ▸ Background). Applied at once, unless the project has its own.
+        if (userPrefs_) userPrefs_->Set("backgroundProvider", message.value("provider", "bfl:flux-3-image"));
+        SendProvider();
         post_(AiStatusJson());
     } else if (type == "ai:listModels") {
         // The models the provider offers (its own list), for Preferences ▸ AI ▸ Model.
@@ -1258,9 +1319,12 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     } else if (type == "settings:set") {
         std::string sectionName = message.value("section", "");
         std::string fieldName = message.value("field", "");
-        const std::string lock = sectionName == "Places" && fieldName == "method" ? PlacesMethodLock(assets_.GetProject().root) : "";
-        std::optional<std::string> error = lock.empty() ? SetSetting(sectionName, fieldName, message.value("value", nlohmann::json()))
-                                                        : std::optional<std::string>(lock);
+        std::optional<std::string> error = SetSetting(sectionName, fieldName, message.value("value", nlohmann::json()));
+        // The project's AI changed: the service told at once (a new LLM swaps live, no restart).
+        if (!error && sectionName == "AI") {
+            SendProvider();
+            post_(AiStatusJson());
+        }
         post_({{"type", "inspector:fieldError"},
                {"component", sectionName},
                {"field", fieldName},
@@ -2948,6 +3012,7 @@ void EditorApp::UpdateBuiltParts() {
     options.hills = HillsFor(build_->Brief());
     options.only = changed;
     options.locked = build_->Locks();
+    ApplyBackground(options);
     const TerrainSet terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
     const Catalog catalog = BuildCatalog(assets_, &Places(), CatalogOptionsNow());
     const nlohmann::json assets = PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), catalog, prefabs_, assets_, terrains, options);
@@ -4544,9 +4609,9 @@ void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
     userPrefs_ = std::make_unique<UserPrefs>(UserPrefs::DefaultPath());
     std::string projectRoot = std::filesystem::absolute(assets_.GetProject().root).string();
     aiConnection_ = std::make_unique<AiConnection>(*userPrefs_, [this, serviceDir, projectRoot]() {
-        // The model chosen in Preferences, for the service to start with.
-        const nlohmann::json chosen = userPrefs_ ? userPrefs_->Get("aiProvider", "mistral") : nlohmann::json("mistral");
-        _putenv_s("AIGE_PROVIDER", chosen.is_string() ? chosen.get<std::string>().c_str() : "mistral");
+        // The project's LLM (Project Settings ▸ AI), else the one chosen in Preferences, for the service to start with.
+        const std::string chosen = ChosenAi("provider");
+        _putenv_s("AIGE_PROVIDER", chosen.empty() ? "mistral" : chosen.c_str());
         AiClient::Options options;
         options.serviceDir = serviceDir;
         auto client = std::make_unique<AiClient>(options);
@@ -4560,19 +4625,32 @@ void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
     post_(AiStatusJson());
 }
 
+std::string EditorApp::ChosenAi(const std::string& which) {
+    const AiSettings& project = ActiveSettings().ai;
+    auto pref = [&](const char* key, const char* fallback) {
+        const nlohmann::json v = userPrefs_ ? userPrefs_->Get(key, fallback) : nlohmann::json(fallback);
+        return v.is_string() ? v.get<std::string>() : std::string(fallback);
+    };
+    if (which == "provider") return !project.provider.empty() ? project.provider : pref("aiProvider", "mistral");
+    if (which == "model") {
+        // The project's model; with the project's own provider and no model, that provider's default; else the app's.
+        if (!project.model.empty()) return project.model;
+        const std::string provider = ChosenAi("provider");
+        if (!project.provider.empty() && project.provider != pref("aiProvider", "mistral")) return provider == "mistral" ? "ministral-8b-latest" : "";
+        return pref("aiModel", provider == "mistral" ? "ministral-8b-latest" : "");
+    }
+    if (which == "art") return !project.art.empty() ? project.art : pref("artProvider", "auto");
+    if (which == "background") return !project.background.empty() ? project.background : pref("backgroundProvider", "bfl:flux-3-image");
+    return {};
+}
+
 void EditorApp::SendProvider() {
     if (!Ai() || Ai()->GetState() != AiClient::State::Ready || !userPrefs_) return;
-    const nlohmann::json provider = userPrefs_->Get("aiProvider", "mistral");
-    // Mistral's small model unless another was chosen (fast and cheap; Preferences ▸ AI ▸ Model).
-    const nlohmann::json model = userPrefs_->Get("aiModel", provider == "mistral" ? "ministral-8b-latest" : "");
-    const nlohmann::json art = userPrefs_->Get("artProvider", "auto");
-    artProviderRequest_ = Ai()->Request("PUT", "/art-provider", {{"provider", art.is_string() ? art : nlohmann::json("auto")}});
-    const nlohmann::json paintProvider = userPrefs_->Get("paintProvider", "bfl"), paintModel = userPrefs_->Get("paintModel", "flux-3-image");
-    paintProviderRequest_ = Ai()->Request("PUT", "/paint-provider", {{"provider", paintProvider.is_string() ? paintProvider : nlohmann::json("bfl")},
-                                                                     {"model", paintModel.is_string() ? paintModel : nlohmann::json("flux-3-image")}});
-    providerRequest_ = Ai()->Request("PUT", "/provider",
-                                     {{"provider", provider.is_string() ? provider : nlohmann::json("mistral")},
-                                      {"model", model.is_string() ? model : nlohmann::json("")}});
+    // Each the project's choice (Project Settings ▸ AI), else the app's (Preferences ▸ AI); Mistral's small model unless
+    // another was chosen (fast and cheap).
+    artProviderRequest_ = Ai()->Request("PUT", "/art-provider", {{"provider", ChosenAi("art")}});
+    backgroundProviderRequest_ = Ai()->Request("PUT", "/background-provider", {{"provider", ChosenAi("background")}});
+    providerRequest_ = Ai()->Request("PUT", "/provider", {{"provider", ChosenAi("provider")}, {"model", ChosenAi("model")}});
 }
 
 AiClient* EditorApp::Ai() {
@@ -4624,10 +4702,12 @@ nlohmann::json EditorApp::AiStatusJson() {
             {"available", providerStatus_.value("available", nlohmann::json::object())},
             {"artProvider", userPrefs_ ? userPrefs_->Get("artProvider", "auto") : nlohmann::json("auto")},
             {"art", artStatus_.value("art", "")},
-            {"paintProvider", userPrefs_ ? userPrefs_->Get("paintProvider", "bfl") : nlohmann::json("bfl")},
-            {"paintModel", userPrefs_ ? userPrefs_->Get("paintModel", "flux-3-image") : nlohmann::json("flux-3-image")},
-            {"paintError", paintStatus_.value("ok", true) ? "" : (paintStatus_.contains("errors") && !paintStatus_["errors"].empty()
-                                                                  ? paintStatus_["errors"][0].get<std::string>() : "")},
+            {"backgroundProvider", userPrefs_ ? userPrefs_->Get("backgroundProvider", "bfl:flux-3-image") : nlohmann::json("bfl:flux-3-image")},
+            {"backgroundError", backgroundStatus_.value("ok", true) ? "" : (backgroundStatus_.contains("errors") && !backgroundStatus_["errors"].empty()
+                                                                            ? backgroundStatus_["errors"][0].get<std::string>() : "")},
+            // What this project uses instead of the app's, where it has its own (Project Settings ▸ AI).
+            {"project", {{"provider", ActiveSettings().ai.provider}, {"model", ActiveSettings().ai.model}, {"art", ActiveSettings().ai.art},
+                         {"background", ActiveSettings().ai.background}}},
             {"artError", artStatus_.value("ok", true) ? "" : (artStatus_.contains("errors") && !artStatus_["errors"].empty()
                                                               ? artStatus_["errors"][0].get<std::string>() : "")},
             {"text", status}};
@@ -4670,9 +4750,9 @@ void EditorApp::PollAi() {
                 artProviderRequest_ = 0;
                 artStatus_ = result->body.is_object() ? result->body : nlohmann::json{{"ok", false}};
                 post_(AiStatusJson());
-            } else if (result->requestId != 0 && result->requestId == paintProviderRequest_) {
-                paintProviderRequest_ = 0;
-                paintStatus_ = result->body.is_object() ? result->body : nlohmann::json{{"ok", false}};
+            } else if (result->requestId != 0 && result->requestId == backgroundProviderRequest_) {
+                backgroundProviderRequest_ = 0;
+                backgroundStatus_ = result->body.is_object() ? result->body : nlohmann::json{{"ok", false}};
                 post_(AiStatusJson());
             } else if (result->requestId != 0 && result->requestId == modelsRequest_) {
                 modelsRequest_ = 0;
@@ -4942,11 +5022,57 @@ std::unique_ptr<PlaceBuild> EditorApp::MakeBuild() {
     return std::make_unique<PlaceBuild>(std::move(host));
 }
 
+nlohmann::json EditorApp::PlanForMatchedArt() {
+    // What each part needs, as the Assets step decides it (the need rows the art is made for).
+    if (!build_->HasOrigin()) {
+        const auto [x, y] = FreeOrigin(registry_, build_->Id(), build_->SiteSide());
+        build_->SetOrigin(x, y);
+    }
+    PlaceSceneOptions options;
+    options.place = build_->Id();
+    std::tie(options.originX, options.originY) = build_->Origin();
+    options.iso = iso_;
+    options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
+    options.hills = HillsFor(build_->Brief());
+    const AssetSourcing sourcing = SourcingNow();
+    return PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), BuildCatalog(assets_, &Places(), CatalogOptionsNow()), prefabs_, assets_,
+                           ProjectTerrainSet(prefabs_, assets_.GetProject()), options, &sourcing);
+}
+
+void EditorApp::ApplyBackground(PlaceSceneOptions& options) const {
+    // The place's background (painted by Matched art, or picked): its ground, cell by cell.
+    if (!build_) return;
+    if (const nlohmann::json bg = build_->Background(); bg.is_object() && bg.value("cellPx", 0) > 0) {
+        options.groundPicture = bg.value("path", "");
+        options.groundPictureCellPx = bg.value("cellPx", 0);
+    }
+}
+
+void EditorApp::CutMatched() {
+    // The art is made: each piece cut, fitted and checked, then what each part gets with them.
+    const nlohmann::json info = build_->MatchedArtInfo();
+    const fs::path root = assets_.GetProject().root, dir = root / info.value("dir", "");
+    nlohmann::json sheets;
+    if (std::ifstream in(dir / "sheets.json"); in) sheets = nlohmann::json::parse(in, nullptr, false);
+    if (!sheets.is_object()) {
+        build_->MatchedArtDone({{"skipped", nlohmann::json::array({{{"key", "*"}, {"why", "the sheets couldn't be read"}}})}});
+        return;
+    }
+    const nlohmann::json report = CutMatchedArt(assets_, assets_.GetProject(), sheets, dir, &Places(), build_->Id());
+    RefreshAssets();
+    post_(AssetsJson());
+    build_->MarkSourced(AssetRows(PlanForMatchedArt()));
+    build_->MatchedArtDone(report);
+    post_({{"type", "notify"}, {"text", "Made " + std::to_string(report.value("pieces", nlohmann::json::array()).size()) + " pieces and " +
+                                            std::to_string(report.value("grounds", nlohmann::json::array()).size()) + " grounds in one style"}});
+}
+
 void EditorApp::PostBuild() {
     if (!build_) {
         post_({{"type", "build:state"}, {"stage", ""}});
         return;
     }
+    if (!buildJob_ && build_->MatchedArtMade()) CutMatched(); // on the UI thread: it changes the project's assets
     if (buildJob_) {
         // Working (off the UI thread): what it was, marked busy; the build itself isn't touched.
         nlohmann::json shown = buildShown_.is_object() ? buildShown_ : nlohmann::json{{"type", "build:state"}};
@@ -5071,6 +5197,7 @@ void EditorApp::BuildIntoScene() {
     buildRun_->options.iso = iso_;
     buildRun_->options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
     buildRun_->options.hills = HillsFor(build_->Brief());
+    ApplyBackground(buildRun_->options);
     SetMoodGrade(buildRun_->options, build_->Brief(), build_->Story()); // the place's mood, as one grade
     build_->SetBuildProgress(0, 5, "Choosing the art for each part…");
     PostBuild(); // ④ Build shows while it works
@@ -6183,25 +6310,20 @@ void EditorApp::RevertOverride(const std::string& key) {
 
 // --- Project settings --------------------------------------------------------
 
-// Places ▸ method is fixed once a place is built (its scenes are made one way or the other):
-// why, or "" while it can still change.
-static std::string PlacesMethodLock(const std::filesystem::path& root) {
-    std::error_code ec;
-    if (!std::filesystem::is_directory(root / "places", ec)) return {};
-    for (const auto& e : std::filesystem::directory_iterator(root / "places", ec)) {
-        if (std::filesystem::exists(e.path() / "result.json", ec)) return "Fixed: this project's places are already built with it.";
-    }
-    return {};
-}
-
 nlohmann::json EditorApp::SettingsJson() {
     nlohmann::json sections = nlohmann::json::array();
-    const std::string lock = PlacesMethodLock(assets_.GetProject().root);
+    // The app's choice for each AI field, for its "Use app default (…)" option.
+    const std::map<std::string, std::pair<const char*, const char*>> appKey = {
+        {"provider", {"aiProvider", "mistral"}}, {"model", {"aiModel", ""}}, {"art", {"artProvider", "auto"}}, {"background", {"backgroundProvider", "bfl:flux-3-image"}}};
     for (const auto& section : EngineReflection().AllSettings()) {
         nlohmann::json fields = nlohmann::json::array();
         for (const auto& field : section.fields) {
             fields.push_back(FieldJson(field, field.get()));
-            if (section.name == "Places" && field.name == "method" && !lock.empty()) fields.back()["locked"] = lock;
+            if (section.name == "AI" && appKey.contains(field.name)) {
+                const auto& [key, fallback] = appKey.at(field.name);
+                const nlohmann::json value = userPrefs_ ? userPrefs_->Get(key, fallback) : nlohmann::json(fallback);
+                fields.back()["appDefault"] = value.is_string() && !value.get<std::string>().empty() ? value : nlohmann::json(field.name == "model" ? "the provider's default" : fallback);
+            }
         }
         sections.push_back({{"name", section.name}, {"description", section.description}, {"fields", fields}});
     }

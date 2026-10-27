@@ -17,54 +17,16 @@ export const projectState = reactive({
   openLast: false, // start in the last project instead of the welcome window (5.4)
   showPreferences: false,
   showProjectSettings: false, // File ▸ Project Settings (5.5)
+  showNewProject: false, // File ▸ New Project: its one window
 })
 
 function baseName(path: string): string {
   return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? path
 }
 
-async function newProject(): Promise<void> {
-  const name = await promptDialog({
-    title: 'New project',
-    message: 'A name for the project. Next you pick the folder to create it in.',
-    placeholder: 'my-game',
-  })
-  if (!name?.trim()) return
-  // A template project (development_plan.md 24): it plays as its genre from the start.
-  const template = await promptDialog({
-    title: 'Template',
-    message: 'Start from a game template? Type one: arpg (isometric action RPG), rpg (top-down RPG), action-adventure, life-sim — or leave it empty for a blank project.',
-    placeholder: 'arpg',
-    value: '',
-  })
-  if (template === null) return
-  const id = template.trim().toLowerCase()
-  if (['arpg', 'rpg', 'action-adventure', 'life-sim'].includes(id)) {
-    sendToHost({ type: 'project:new', name: name.trim(), template: id })
-    return
-  }
-  const starter = await confirmDialog({
-    title: 'Starting content',
-    message:
-      "Start with the demo's art, prefabs and scripts as a palette? (Its scene, story and canon aren't copied.)",
-    confirmLabel: 'Use the demo palette',
-    cancelLabel: 'Start empty',
-  })
-  const topDown = await confirmDialog({
-    title: 'Grid',
-    message:
-      'How is your art drawn? Isometric art (diamond-shaped ground, buildings seen at an angle) or top-down art (square ground seen from above, fences and roads along the screen). You can change it later in Project Settings ▸ Grid.',
-    confirmLabel: 'Top-down (square cells)',
-    cancelLabel: 'Isometric (diamond cells)',
-  })
-  const painted = await confirmDialog({
-    title: 'Places',
-    message:
-      "How should the AI build your places? Assembled: every building, prop and tree is its own piece of art, put together on the grid (each piece can be moved and edited). Painted: each place is painted as one picture, like the backdrops of Baldur's Gate (richer art; walls, doors and story spots are read from the painting). This is fixed once places are built.",
-    confirmLabel: 'Painted (one picture)',
-    cancelLabel: 'Assembled (pieces)',
-  })
-  sendToHost({ type: 'project:new', name: name.trim(), starter, topDown, painted })
+// File ▸ New Project: every choice in one window (NewProjectDialog, mounted by App).
+function newProject(): void {
+  projectState.showNewProject = true
 }
 
 async function saveAs(): Promise<void> {
@@ -123,7 +85,7 @@ onHostMessage((message) => {
 
 // Ctrl+N / Ctrl+Shift+S by default; rebindable (keys.ts).
 registerAction('file.new', () => {
-  if (!editorState.playing) void newProject()
+  if (!editorState.playing) newProject()
 })
 registerAction('file.saveAs', () => {
   if (!editorState.playing) void saveAs()

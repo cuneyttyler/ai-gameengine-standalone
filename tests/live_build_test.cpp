@@ -21,12 +21,13 @@
 #include "editing/PlaceBuild.h"
 #include "editing/PlaceBlockout.h"
 #include "editing/PlaceInspect.h"
-#include "editing/PlacePaint.h"
 #include "editing/PlaceSketch.h"
 #include "gamebuild/GameBuild.h"
 #include "editing/PlaceScene.h"
 #include "editing/ScenePreview.h"
+#include "editing/MatchedArt.h"
 #include "places/Brief.h"
+#include "places/Arrange.h"
 #include "places/Compile.h"
 #include "places/Ontology.h"
 #include "places/Solver.h"
@@ -78,13 +79,23 @@ int Resolve(const fs::path& placeFolder, json& solved) {
     std::set<std::string> have;
     for (const auto& st : ir["statements"]) have.insert(st.value("id", ""));
     int added = 0;
+    std::map<std::string, json> now;
     for (const auto& st : CompileSpec(o, spec, co).value("statements", json::array())) {
+        now[st.value("id", "")] = st;
         if (!have.contains(st.value("id", "")) && st.value("id", "").find("landscape-") != std::string::npos) {
             ir["statements"].push_back(st);
             ++added;
         }
     }
+    // How many, as the ontology says now (a module's density levels).
+    for (auto& st : ir["statements"]) {
+        const auto it = now.find(st.value("id", ""));
+        if (it != now.end() && it->second.contains("density") && st.contains("density")) st["density"] = it->second["density"];
+    }
+    // With the plan's arrangement (else the ontology's), each thing turned by its relations and facing rule.
+    ApplyArrangement(o, ir, spec.value("arrangement", json::object()));
     solved = SolveLayout(o, ir).document;
+    FaceObjects(o, solved, ir);
     std::ofstream(placeFolder / "layout.ir.json") << ir.dump(1);
     std::ofstream(placeFolder / "layout.solved.json") << solved.dump(1);
     return added;
@@ -126,6 +137,9 @@ TEST(LiveBuildTest, ARealBuildEndToEnd) {
     const fs::path out = parts[1];
     const int port = std::stoi(parts[2]);
     const bool web = parts.size() > 3 && parts[3] == "web";
+    // AIGE_LIVE_ART=<art provider> (bfl:flux-2-klein-4b, pixellab, mistral): ④ made as Matched art by it
+    // (docs/places/matched-art.md), as the Assets step's "Make matched art" does; else found or made piece by piece.
+    const char* matchedArt = std::getenv("AIGE_LIVE_ART");
     fs::remove_all(out / "project");
     fs::create_directories(out);
     const fs::path project = out / "project";
@@ -185,7 +199,7 @@ TEST(LiveBuildTest, ARealBuildEndToEnd) {
                 auto answer = std::async(std::launch::async, [port, path = call.path, body = call.body.dump()] {
                     httplib::Client c("127.0.0.1", port);
                     c.set_connection_timeout(5);
-                    c.set_read_timeout(900);
+                    c.set_read_timeout(3600);
                     const auto r = c.Post(path, body, "application/json");
                     json out = r && r->status == 200 ? json::parse(r->body, nullptr, false) : json{{"ok", false}, {"errors", {"no answer"}}};
                     return out.is_discarded() ? json{{"ok", false}, {"errors", {"not JSON"}}} : out;
@@ -221,7 +235,62 @@ TEST(LiveBuildTest, ARealBuildEndToEnd) {
         for (const auto& entry : fs::directory_iterator(source)) {
             if (entry.is_regular_file()) fs::copy_file(entry.path(), into / entry.path().filename(), fs::copy_options::overwrite_existing);
         }
-        fs::copy(source / "revisions", into / "revisions", fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+        if (fs::exists(source / "revisions")) fs::copy(source / "revisions", into / "revisions", fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+        // Its matched art's pieces, style sheet and what passed the check: kept, only what's missing painted (matched.py make_with_bfl).
+        if (fs::exists(source / "matched" / "pieces")) {
+            fs::create_directories(into / "matched");
+            fs::copy(source / "matched" / "pieces", into / "matched" / "pieces", fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+            for (const char* name : {"style-sheet.png", "ground-painted.png", "checked.json"}) {
+                if (fs::exists(source / "matched" / name)) fs::copy_file(source / "matched" / name, into / "matched" / name, fs::copy_options::overwrite_existing);
+            }
+            // AIGE_LIVE_REPAINT=<slug part>,...: those pieces painted again (the rest kept).
+            if (const char* repaint = std::getenv("AIGE_LIVE_REPAINT")) {
+                std::vector<std::string> parts;
+                std::string part;
+                std::istringstream list(repaint);
+                while (std::getline(list, part, ',')) parts.push_back(part);
+                for (const auto& entry : fs::directory_iterator(into / "matched" / "pieces")) {
+                    const std::string name = entry.path().filename().string();
+                    if (std::any_of(parts.begin(), parts.end(), [&](const std::string& p) { return name.find(p) != std::string::npos; })) fs::remove(entry.path());
+                }
+            }
+        }
+        // AIGE_LIVE_ARRANGE=1: the plan's arrangement asked of the AI (docs/dungeon.md §0) and the layout solved again with
+        // it: each kind's purpose, size, relations, place and facing.
+        if (std::getenv("AIGE_LIVE_ARRANGE") != nullptr) {
+            json ir = ReadFile(into / "layout.ir.json");
+            json spec = ReadFile(into / "spec.json");
+            json relations = json::array();
+            for (const auto& [rid, r] : ontology.Relations()) {
+                if (r.use.is_object() && !r.use.empty()) relations.push_back({{"type", rid}, {"means", r.description}});
+            }
+            const json brief = ReadFile(into / "brief.json");
+            const json body = {{"kinds", ArrangementKinds(ontology, ir)},
+                               {"place", {{"name", brief.value("name", "")}, {"type", brief.value("buildType", "")}, {"style", brief.value("style", json::object())}}},
+                               {"relations", relations}};
+            const auto r = client.Post("/places/arrange", body.dump(), "application/json");
+            const json answer = r && r->status == 200 ? json::parse(r->body, nullptr, false) : json();
+            WriteText(out / "0-arrangement.json", answer.dump(2));
+            if (answer.is_object() && answer.value("ok", false)) spec["arrangement"] = answer["arrangement"];
+            ApplyArrangement(ontology, ir, spec.value("arrangement", json::object()));
+            SolvedLayout solved = SolveLayout(ontology, ir);
+            say("arranged: " + std::to_string(FaceObjects(ontology, solved.document, ir)) + " things faced by the plan");
+            WriteText(into / "spec.json", spec.dump(2));
+            WriteText(into / "layout.ir.json", ir.dump(1));
+            WriteText(into / "layout.solved.json", solved.document.dump(1));
+        } else if (std::getenv("AIGE_LIVE_FACE") != nullptr) {
+            // AIGE_LIVE_FACE=1: the same layout, each thing turned again by its relations and facing rule (the plan's
+            // arrangement, else the ontology's): no AI, nothing moved.
+            json ir = ReadFile(into / "layout.ir.json");
+            json solved = ReadFile(into / "layout.solved.json");
+            ApplyArrangement(ontology, ir, ReadFile(into / "spec.json").value("arrangement", json::object()));
+            for (auto& o : solved["objects"]) {
+                if (o.value("faced", "") != "layout") o.erase("faced");
+            }
+            say("faced: " + std::to_string(FaceObjects(ontology, solved, ir)) + " things turned");
+            WriteText(into / "layout.ir.json", ir.dump(1));
+            WriteText(into / "layout.solved.json", solved.dump(1));
+        }
         // Its session up to the plan (no art made yet).
         std::ifstream in(source / "session.json");
         json session = json::parse(in);
@@ -286,7 +355,49 @@ TEST(LiveBuildTest, ARealBuildEndToEnd) {
     auto [plan, settings] = planAssets(true);
     WriteText(out / "4-assets-decided.json", Rows(plan).dump(2));
     build.MarkSourced(Rows(plan));
-    for (int round = 0; round < 3; ++round) {
+    if (matchedArt != nullptr) {
+        // Matched art: the art provider set (Preferences ▸ AI ▸ Art), the needs made in sheets, cut, the rows remade.
+        const auto r = client.Put("/art-provider", json{{"provider", matchedArt}}.dump(), "application/json");
+        ASSERT_TRUE(r && r->status == 200) << "the service didn't take the art provider";
+        say(std::string("matched art by ") + matchedArt);
+        if (const char* ground = std::getenv("AIGE_LIVE_GROUND")) {
+            // The background first (AIGE_LIVE_GROUND, below): the art coloured by it (coloured-by) is painted in its colours.
+            const std::string g = ground;
+            fs::create_directories(project / "assets" / "backgrounds");
+            fs::copy_file(g.substr(0, g.find('|')), project / "assets" / "backgrounds" / "background.png", fs::copy_options::overwrite_existing);
+            EXPECT_EQ(build.SetBackground("assets/backgrounds/background.png"), "");
+        }
+        ASSERT_EQ(build.MakeMatchedArt(planAssets(false).first, &ontology), "");
+        pump();
+        ASSERT_TRUE(build.MatchedArtMade()) << build.MatchedArtInfo().dump();
+        const fs::path dir = project / build.MatchedArtInfo().value("dir", "");
+        const json report = CutMatchedArt(assets, Project{project}, ReadFile(dir / "sheets.json"), dir, &ontology, build.Id());
+        assets.Refresh();
+        std::tie(plan, settings) = planAssets(false);
+        build.MarkSourced(Rows(plan));
+        build.MatchedArtDone(report);
+        WriteText(out / "4-matched-report.json", report.dump(2));
+        WritePng(out / "4-assets.png", MatchedArtBoard(Project{project}, report));
+        for (const auto& entry : fs::directory_iterator(dir)) {
+            const std::string name = entry.path().filename().string();
+            if (name.ends_with("-sheet.png") || name == "ground-painted.png") copy(entry.path(), "4-" + name);
+        }
+        say("matched art: " + std::to_string(report["pieces"].size()) + " pieces, " + std::to_string(report["grounds"].size()) + " grounds");
+        if (const char* ground = std::getenv("AIGE_LIVE_GROUND")) {
+            // A background painted apart (docs/places/background.md): AIGE_LIVE_GROUND=<top-down picture>|<px a cell>.
+            const std::string g = ground;
+            fs::create_directories(project / "assets" / "backgrounds");
+            fs::copy_file(g.substr(0, g.find('|')), project / "assets" / "backgrounds" / "background.png", fs::copy_options::overwrite_existing);
+            options.groundPicture = "assets/backgrounds/background.png";
+            options.groundPictureCellPx = std::stoi(g.substr(g.find('|') + 1));
+        } else if (const json ground = report.value("groundPicture", json()); ground.is_object()) {
+            // The painted ground plan: the scene's ground, cell by cell.
+            options.groundPicture = ground.value("path", "");
+            options.groundPictureCellPx = ground.value("cellPx", 0);
+            copy(project / options.groundPicture, "4-ground-picture.png");
+        }
+    }
+    for (int round = 0; round < (matchedArt != nullptr ? 0 : 3); ++round) {
         const json pending = plan.value("pending", json::array());
         if (pending.empty()) break;
         say("assets round " + std::to_string(round + 1) + ": " + std::to_string(pending.size()) + " to find or make");
@@ -333,10 +444,12 @@ TEST(LiveBuildTest, ARealBuildEndToEnd) {
     WriteText(out / "5-verify.json", verify.dump(2));
     WriteText(out / "5-report.json", report.dump(2));
     const int side = build.Solved()["grid"]["bounds"][2].get<int>();
-    WritePng(out / "5-scene.png", RenderScenePreview(registry, Project{project}, options.iso, 0, 0, side, side, 1800));
+    // As sharp as the art: about 192 pixels a cell (a cut sprite's own size), so a close look shows each piece as made.
+    const float sceneWidth = std::clamp(side * 192.0f, 1800.0f, 12000.0f);
+    WritePng(out / "5-scene.png", RenderScenePreview(registry, Project{project}, options.iso, 0, 0, side, side, sceneWidth));
     // A close look, as a player would see it: a window of the middle.
     const int c = side / 2, r = std::max(8, side / 6);
-    WritePng(out / "5-scene-detail.png", RenderScenePreview(registry, Project{project}, options.iso, c - r, c - r, c + r, c + r, 1600));
+    WritePng(out / "5-scene-detail.png", RenderScenePreview(registry, Project{project}, options.iso, c - r, c - r, c + r, c + r, 3200));
     for (const auto& check : verify) say(std::string(check.value("ok", true) ? "ok   " : "FAIL ") + check.value("id", "") + " " + check.value("detail", ""));
     say("done");
 }
@@ -365,6 +478,13 @@ TEST(LiveBuildTest, ReplayTheAssetsStep) {
     options.place = place;
     options.isoGrid = true;
     options.hills = HillsFor(brief);
+    // AIGE_REPLAY_GROUND=<picture, from the project>|<px a cell>: the ground as one top-down picture (a background,
+    // docs/places/background.md) instead of the terrains' textures.
+    if (const char* ground = std::getenv("AIGE_REPLAY_GROUND")) {
+        const std::string g = ground;
+        options.groundPicture = g.substr(0, g.find('|'));
+        options.groundPictureCellPx = std::stoi(g.substr(g.find('|') + 1));
+    }
     AssetSourcing sourcing;
     sourcing.brief = brief;
     sourcing.settings = ReadSourcingSettings(project);
@@ -372,7 +492,8 @@ TEST(LiveBuildTest, ReplayTheAssetsStep) {
     const json plan = PlanPlaceAssets(ontology, spec, solved, BuildCatalog(assets, &ontology, catalogOptions), prefabs, assets,
                                       ProjectTerrainSet(prefabs, Project{project}), options, &sourcing);
     std::cout << Rows(plan).size() << " rows" << std::endl;
-    for (const auto& entry : fs::directory_iterator(project / "assets/textures/generated")) {
+    std::error_code noPieces; // Matched art keeps its pieces elsewhere (assets/matched)
+    for (const auto& entry : fs::directory_iterator(project / "assets/textures/generated", noPieces)) {
         const std::string name = entry.path().filename().string();
         if (name.rfind("piece-", 0) != 0 || entry.path().extension() != ".png") continue;
         if (auto image = DecodeImage(entry.path())) {
@@ -386,9 +507,13 @@ TEST(LiveBuildTest, ReplayTheAssetsStep) {
     auto command = BuildPlaceScene(registry, prefabs, solved, plan, ProjectTerrainSet(prefabs, Project{project}), options, &report);
     const int side = solved["grid"]["bounds"][2].get<int>();
     const fs::path out = project.parent_path();
-    WritePng(out / "replay-scene.png", RenderScenePreview(registry, Project{project}, options.iso, 0, 0, side, side, 1800));
+    // With a background, as sharp as the art (about 192 pixels a cell, as the live build draws it).
+    const float width = options.groundPicture.empty() ? 1800.0f : std::clamp(side * 192.0f, 1800.0f, 12000.0f);
+    WritePng(out / "replay-scene.png", RenderScenePreview(registry, Project{project}, options.iso, 0, 0, side, side, width));
     const int c = side / 2, r = std::max(8, side / 6);
-    WritePng(out / "replay-detail.png", RenderScenePreview(registry, Project{project}, options.iso, c - r, c - r, c + r, c + r, 1600));
+    WritePng(out / "replay-detail.png", RenderScenePreview(registry, Project{project}, options.iso, c - r, c - r, c + r, c + r,
+                                                           options.groundPicture.empty() ? 1600.0f : 3200.0f));
+    WriteText(out / "replay-verify.json", VerifyPlaceScene(registry, solved, plan, options).dump(2));
     std::cout << report.value("objects", json()).dump() << std::endl;
 }
 
@@ -420,6 +545,142 @@ TEST(LiveBuildTest, RenderTheBuiltPlaces) {
     }
 }
 
+// Plans and block-outs of one request for several layout-form variants: no project. AIGE_PLAN_VARIANTS=<out dir>
+// plans them offline (the rules); with AIGE_PLAN_PORT=<port> the AI plans them through the service, as the
+// Planner does (the Brief from the request, the plan tree), each variant's layout-form choices fixed. Each
+// variant: <name>-layout.png (the zones), <name>-plan.png (the plan map), <name>-blockout.png (the plan in the
+// game's view), <name>-spec.json (the plan tree).
+TEST(LiveBuildTest, RenderPlanVariants) {
+    const char* arg = std::getenv("AIGE_PLAN_VARIANTS");
+    if (arg == nullptr) GTEST_SKIP() << "set AIGE_PLAN_VARIANTS=<out dir>";
+    const fs::path out = arg;
+    fs::create_directories(out);
+    Ontology ontology;
+    ontology.Load({EnginePlacesDir()});
+    const std::string city = "Build a modern city downtown with skyscrapers, apartments, shops and a park";
+    const json plain = {{"buildType", "modern-city"}};
+    struct Variant {
+        std::string name, query;
+        json choices;
+    };
+    std::vector<Variant> variants = {
+        {"city-defaults", city, plain},
+        {"city-packed-mixed", city, {{"buildType", "modern-city"}, {"root.lot-layout", "packed"}, {"root.block-use", "mixed"},
+                                     {"root.frontage", "varied"}, {"root.building-cover", "planned"}}},
+        {"city-rows-mixed", city, {{"buildType", "modern-city"}, {"root.block-use", "mixed"}}},
+        {"city-radial", city, {{"buildType", "modern-city"}, {"shape.layout", "radial"}}},
+        {"city-organic", city, {{"buildType", "modern-city"}, {"shape.layout", "organic"}, {"root.zone-shape", "grown"}, {"root.street-grid", "per-zone"}}},
+        {"village", "a village by a river with a market and a temple", json::object()},
+    };
+    // Or the variants from a file (AIGE_PLAN_VARIANTS_FILE: [{name, query, choices}]).
+    if (const char* file = std::getenv("AIGE_PLAN_VARIANTS_FILE")) {
+        variants.clear();
+        for (const auto& v : ReadFile(file)) variants.push_back({v.value("name", ""), v.value("query", ""), v.value("choices", json::object())});
+    }
+    const char* portText = std::getenv("AIGE_PLAN_PORT");
+    const int port = portText ? std::stoi(portText) : 0;
+    for (const auto& v : variants) {
+        const fs::path root = fs::temp_directory_path() / ("aige_plan_variant_" + v.name);
+        // AIGE_PLAN_REUSE=1: the variant's last plan (its build in the temp folder) laid out again with the current
+        // code, without planning anew: the same plan, compared before and after a layout change.
+        const bool reuse = std::getenv("AIGE_PLAN_REUSE") != nullptr && fs::exists(root / "places");
+        if (!reuse) {
+            fs::remove_all(root);
+            fs::create_directories(root / "places");
+        }
+        std::deque<Call> queue;
+        int nextId = 1;
+        PlaceBuild::Host host;
+        host.ontology = [&]() -> const Ontology& { return ontology; };
+        host.catalog = [] { return Catalog{}; };
+        host.isoGrid = [] { return true; };
+        if (port > 0) {
+            host.request = [&](const std::string& path, const json& body, int timeout) {
+                queue.push_back({nextId, path, body, timeout});
+                return nextId++;
+            };
+        } else {
+            host.request = [](const std::string&, const json&, int) { return 0; };
+        }
+        host.projectRoot = root;
+        host.layoutStep = false; // as the Planner builds
+        PlaceBuild build(host);
+        // The AI's answers, four at a time (as the Planner build's pump).
+        auto pump = [&] {
+            if (port == 0) return;
+            std::vector<std::pair<int, std::future<json>>> flying;
+            while (!queue.empty() || !flying.empty()) {
+                while (!queue.empty() && flying.size() < 4) {
+                    const Call call = queue.front();
+                    queue.pop_front();
+                    flying.push_back({call.id, std::async(std::launch::async, [port, call] {
+                                          httplib::Client c("127.0.0.1", port);
+                                          c.set_connection_timeout(5);
+                                          c.set_read_timeout(3600);
+                                          const auto r = c.Post(call.path, call.body.dump(), "application/json");
+                                          json o = r && r->status == 200 ? json::parse(r->body, nullptr, false) : json{{"ok", false}, {"errors", {"no answer"}}};
+                                          return o.is_discarded() ? json{{"ok", false}, {"errors", {"not JSON"}}} : o;
+                                      })});
+                }
+                for (size_t i = 0; i < flying.size();) {
+                    if (flying[i].second.wait_for(std::chrono::milliseconds(50)) != std::future_status::ready) {
+                        ++i;
+                        continue;
+                    }
+                    const int id = flying[i].first;
+                    const json body = flying[i].second.get();
+                    flying.erase(flying.begin() + static_cast<std::ptrdiff_t>(i));
+                    build.OnResponse(id, body);
+                }
+            }
+        };
+        if (port > 0) {
+            httplib::Client client("127.0.0.1", port);
+            client.set_connection_timeout(5);
+            const auto r = client.Put("/project", json{{"root", fs::absolute(root).string()}}.dump(), "application/json");
+            ASSERT_TRUE(r && r->status == 200) << "the AI service isn't answering on port " << port;
+        }
+        if (reuse) {
+            std::string id;
+            for (const auto& e : fs::directory_iterator(root / "places")) {
+                if (e.is_directory()) id = e.path().filename().string();
+            }
+            ASSERT_EQ(build.Open(id), "") << v.name;
+            ASSERT_EQ(build.Relayout(), "") << v.name;
+        } else {
+            ASSERT_EQ(build.Start(v.query, v.choices), "") << v.name;
+        }
+        pump();
+        // As the Planner drives a build: the request, the assets step, the plan (no layout checks here).
+        for (int step = 0; step < 40 && build.Stage() != "plan" && build.Stage() != "planned"; ++step) {
+            const std::string stage = build.Stage();
+            std::string why;
+            if (stage == "request") why = build.Step("assets");
+            else if (stage == "assets") why = build.Confirm();
+            else if (stage == "layout") why = build.PlanFromLayout();
+            ASSERT_EQ(why, "") << v.name << " at " << stage;
+            pump();
+        }
+        const fs::path folder = out / v.name;
+        fs::create_directories(folder);
+        if (const char* work = std::getenv("AIGE_PLAN_WORK")) {
+            fs::create_directories(work);
+            WriteText(fs::path(work) / (v.name + "-spec.json"), build.Spec().dump(2));
+        }
+        ASSERT_TRUE(build.Solved().is_object() && build.Solved().contains("objects")) << v.name << ": " << build.State().dump().substr(0, 600);
+        InspectLayoutRequest(build, &ontology);
+        InspectPlanRequest(build, &ontology);
+        std::error_code ec;
+        fs::copy_file(build.Folder() / "inspect-layout.png", folder / "layout.png", fs::copy_options::overwrite_existing, ec);
+        fs::copy_file(build.Folder() / "inspect-plan.png", folder / "plan.png", fs::copy_options::overwrite_existing, ec);
+        const auto [x0, y0, x1, y1] = OccupiedBounds(build.Solved());
+        WritePng(folder / "blockout.png", RenderPlanBlockout(build.Solved(), x0, y0, x1, y1, 2000, &ontology));
+        int buildings = 0;
+        for (const auto& o : build.Solved()["objects"]) buildings += o["layer"] == "building" && o.value("primary", false);
+        std::cout << v.name << ": " << build.Brief().value("buildType", "") << ", " << buildings << " buildings, " << build.Solved()["stats"].dump() << std::endl;
+    }
+}
+
 // A place's plan drawn as an isometric block-out (AIGE_BLOCKOUT=<solved json>|<out png>|<width>): what an
 // image model repaints in the Painted build method (PlaceBlockout).
 TEST(LiveBuildTest, RenderPlanBlockout) {
@@ -441,6 +702,94 @@ TEST(LiveBuildTest, RenderPlanBlockout) {
     ASSERT_TRUE(WritePng(parts[1], image));
     WriteText(fs::path(parts[1]).replace_extension(".legend.json"), legend.dump(2));
     std::cout << image.width << " x " << image.height << std::endl;
+}
+
+// Matched art (docs/places/matched-art.md), first half (AIGE_MATCHED_PREP=<project>|<place id>|<work dir>): the saved
+// place's needs as sheets of boxes (sheets.json, <sheet>.png), for the art provider to make.
+TEST(LiveBuildTest, MatchedArtPrepare) {
+    const char* arg = std::getenv("AIGE_MATCHED_PREP");
+    if (arg == nullptr) GTEST_SKIP() << "set AIGE_MATCHED_PREP=<project>|<place id>|<work dir>";
+    std::vector<std::string> parts;
+    {
+        std::string part;
+        std::istringstream in(arg);
+        while (std::getline(in, part, '|')) parts.push_back(part);
+    }
+    ASSERT_EQ(parts.size(), 3u);
+    const fs::path project = parts[0], work = parts[2];
+    const json spec = ReadFile(project / "places" / parts[1] / "spec.json");
+    const json solved = ReadFile(project / "places" / parts[1] / "layout.solved.json");
+    Ontology ontology;
+    ontology.Load({EnginePlacesDir()});
+    PrefabLibrary prefabs(Project{project});
+    AssetDatabase assets(Project{project});
+    assets.Refresh();
+    PlaceSceneOptions options;
+    options.place = parts[1];
+    options.isoGrid = true;
+    const json plan = PlanPlaceAssets(ontology, spec, solved, BuildCatalog(assets, &ontology, {}), prefabs, assets,
+                                      ProjectTerrainSet(prefabs, Project{project}), options, nullptr);
+    const json sheets = MatchedArtSheets(solved, plan, &ontology, work);
+    ASSERT_FALSE(sheets["sheets"].empty());
+    int pieces = 0;
+    for (const auto& s : sheets["sheets"]) pieces += static_cast<int>(s.value("pieces", json::array()).size());
+    std::cout << sheets["sheets"].size() << " sheets, " << pieces << " pieces" << std::endl;
+}
+
+// Second half (AIGE_MATCHED_CUT=<project>|<place id>|<work dir>|<out dir>): what the provider made cut into the
+// place's assets, the asset plan made with them, the place built on the grid and drawn as the editor draws it.
+TEST(LiveBuildTest, MatchedArtBuild) {
+    const char* arg = std::getenv("AIGE_MATCHED_CUT");
+    if (arg == nullptr) GTEST_SKIP() << "set AIGE_MATCHED_CUT=<project>|<place id>|<work dir>|<out dir>";
+    std::vector<std::string> parts;
+    {
+        std::string part;
+        std::istringstream in(arg);
+        while (std::getline(in, part, '|')) parts.push_back(part);
+    }
+    ASSERT_EQ(parts.size(), 4u);
+    const fs::path project = parts[0], work = parts[2], out = parts[3];
+    const std::string place = parts[1];
+    const json spec = ReadFile(project / "places" / place / "spec.json");
+    const json solved = ReadFile(project / "places" / place / "layout.solved.json");
+    const json sheets = ReadFile(work / "sheets.json");
+    Ontology ontology;
+    ontology.Load({EnginePlacesDir()});
+    PrefabLibrary prefabs(Project{project});
+    AssetDatabase assets(Project{project});
+    assets.Refresh();
+    CatalogOptions catalogOptions;
+    catalogOptions.isoGrid = true;
+    PlaceSceneOptions options;
+    options.place = place;
+    options.isoGrid = true;
+    options.hills = 0;
+    const json report = CutMatchedArt(assets, Project{project}, sheets, work, &ontology, place);
+    fs::create_directories(out);
+    WriteText(work / "cut-report.json", report.dump(2));
+    WritePng(out / "assets.png", MatchedArtBoard(Project{project}, report));
+    const json plan = PlanPlaceAssets(ontology, spec, solved, BuildCatalog(assets, &ontology, catalogOptions), prefabs, assets,
+                                      ProjectTerrainSet(prefabs, Project{project}), options, nullptr);
+    WriteText(work / "assets.json", Rows(plan).dump(2));
+    int matched = 0, placeholders = 0, flagged = 0;
+    for (const auto& n : Rows(plan)) {
+        matched += n.value("source", "") == "generated";
+        placeholders += n.value("source", "") == "placeholder";
+    }
+    for (const auto& p : report["pieces"]) flagged += p.value("flagged", false);
+    std::cout << report["pieces"].size() << " pieces (" << flagged << " off the style), " << report["grounds"].size() << " grounds, "
+              << report["skipped"].size() << " skipped" << std::endl;
+    std::cout << Rows(plan).size() << " asset rows: " << matched << " matched art, " << placeholders << " placeholders" << std::endl;
+    EXPECT_GT(matched, 0);
+    Registry registry;
+    json built;
+    auto command = BuildPlaceScene(registry, prefabs, solved, plan, ProjectTerrainSet(prefabs, Project{project}), options, &built);
+    WriteText(work / "build-report.json", built.dump(2));
+    const auto [x0, y0, x1, y1] = OccupiedBounds(solved);
+    WritePng(out / "scene.png", RenderScenePreview(registry, Project{project}, options.iso, x0, y0, x1, y1, 2400));
+    const int cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, r = std::max(6, (x1 - x0) / 6);
+    WritePng(out / "scene-detail.png", RenderScenePreview(registry, Project{project}, options.iso, cx - r, cy - r, cx + r, cy + r, 1800));
+    std::cout << "built: " << built.value("objects", json()).dump() << std::endl;
 }
 
 // One saved scene drawn big (AIGE_RENDER_ONE=<project>|<scene .aige>|<build id>|<out png>|<width>):
@@ -579,7 +928,7 @@ TEST(LiveBuildTest, APlannerPlaceBuild) {
     auto post = [port](const std::string& path, const json& body) {
         httplib::Client c("127.0.0.1", port);
         c.set_connection_timeout(5);
-        c.set_read_timeout(900);
+        c.set_read_timeout(3600);
         const auto r = c.Post(path, body.dump(), "application/json");
         json out = r && r->status == 200 ? json::parse(r->body, nullptr, false) : json{{"ok", false}, {"errors", {"no answer"}}};
         return out.is_discarded() ? json{{"ok", false}, {"errors", {"not JSON"}}} : out;
@@ -691,93 +1040,6 @@ TEST(LiveBuildTest, APlannerPlaceBuild) {
     WriteText(out / "1-brief.json", build.Brief().dump(2));
     WriteText(out / "3-spec.json", build.Spec().dump(2));
     say("planned");
-
-    // The Painted method (AIGE_METHOD=painted), as the app runs it: the plan's block-out painted by the Paint
-    // Provider (each model of AIGE_PAINT_MODELS in turn, as Preferences ▸ Paint Provider sets it), each painting
-    // checked: against the layout and the plan (match), building by building, and for its looks.
-    if (const char* method = std::getenv("AIGE_METHOD"); method && std::string(method) == "painted") {
-        std::vector<std::string> models;
-        {
-            const char* list = std::getenv("AIGE_PAINT_MODELS");
-            std::string part;
-            std::istringstream in(list ? list : "flux-3-image");
-            while (std::getline(in, part, ',')) models.push_back(part);
-        }
-        json table = json::array();
-        for (const auto& model : models) {
-            const auto r = client.Put("/paint-provider", json{{"provider", "bfl"}, {"model", model}}.dump(), "application/json");
-            if (!r || r->status != 200 || !json::parse(r->body, nullptr, false).value("ok", false)) {
-                say("paint provider " + model + " refused: " + (r ? r->body : "no answer"));
-                continue;
-            }
-            const json requests = BlockoutPaintRequests(build, &ontology);
-            for (const auto& q : requests) {
-                copy(project / q.value("blockout", ""), fs::path(q.value("blockout", "")).filename().string());
-                copy(project / q.value("legend", ""), fs::path(q.value("legend", "")).filename().string());
-            }
-            if (build.Paint(requests).empty()) pump();
-            for (const auto& b : build.Backdrops()) {
-                const std::string painting = b.value("backdrop", ""), level = b.value("level", "");
-                const std::string name = model + (level.empty() ? "" : "-" + level);
-                copy(project / painting, name + ".png");
-                WriteText(out / (name + ".steps.json"), b.value("steps", json::array()).dump(2));
-                json body = InspectPlanRequest(build, &ontology);
-                body["kind"] = "match";
-                body.erase("windows");
-                body["images"] = json::array({"places/" + build.Id() + "/inspect-layout.png", "places/" + build.Id() + "/inspect-plan.png", painting});
-                const json match = inspect("paint-" + name, body, name + ".match.json");
-                const json legend = ReadFile(project / b.value("legend", ""));
-                const json check = post("/places/check-painting", {{"painting", painting}, {"legend", legend}});
-                WriteText(out / (name + ".check.json"), check.dump(2));
-                table.push_back({{"model", name}, {"match", match.value("scores", json::object())}, {"buildings", check.value("buildings", json::array())},
-                                 {"wrong", check.value("wrong", json::array())}, {"appeal", check.value("appeal", json::object())}});
-                say("painted by " + name + ": " + InspectSummary(match) + "; buildings " + check.value("buildings", json::array()).dump());
-            }
-        }
-        // The comparison: each model's scores in one table.
-        std::ostringstream md;
-        md << "# " << build.Brief().value("name", placeId) << ": the Paint Provider models\n\n"
-           << "Planned by the Planner from the request (`1-brief.json`, `3-spec.json`), the layout and plan checked "
-              "(`2-layout.png`, `3-plan.png`); the plan's block-out (`blockout.png`, its colour key from the ontology in "
-              "`blockout.legend.json`) painted by each Paint Provider model, as the app does it. Layout, placement, fit and "
-              "quality: the match check against the layout and the plan. Buildings right: each building of the plan cut from "
-              "the painting and named. Appeal: how the painting looks. All 0-10.\n\n"
-           << "| Model | Layout | Placement | Fit | Quality | Buildings right | Appeal | Modern | Polish | Readability | Average |\n"
-           << "|---|---|---|---|---|---|---|---|---|---|---|\n";
-        for (const auto& row : table) {
-            const json m = row["match"], a = row["appeal"], b = row["buildings"];
-            std::vector<double> values;
-            auto cell = [&](const json& j, const char* k) {
-                if (!j.contains(k) || !j[k].is_number()) return std::string("-");
-                values.push_back(j[k].get<double>());
-                std::ostringstream v;
-                v << j[k].get<double>();
-                return v.str();
-            };
-            std::string right = "-";
-            if (b.is_array() && b.size() == 2 && b[1].get<int>() > 0) {
-                right = std::to_string(b[0].get<int>()) + "/" + std::to_string(b[1].get<int>());
-                values.push_back(10.0 * b[0].get<int>() / b[1].get<int>());
-            }
-            md << "| [" << row["model"].get<std::string>() << "](" << row["model"].get<std::string>() << ".png) | " << cell(m, "layout") << " | "
-               << cell(m, "placement") << " | " << cell(m, "fit") << " | " << cell(m, "quality") << " | " << right << " | " << cell(a, "appeal")
-               << " | " << cell(a, "modern") << " | " << cell(a, "polish") << " | " << cell(a, "readability") << " | ";
-            double sum = 0;
-            for (double v : values) sum += v;
-            md << (values.empty() ? std::string("-") : std::to_string(sum / values.size()).substr(0, 3)) << " |\n";
-        }
-        md << "\n## Buildings drawn as the wrong kind (plan's kind -> what the painting shows)\n\n";
-        for (const auto& row : table) {
-            std::string wrong;
-            for (const auto& w : row["wrong"]) wrong += (wrong.empty() ? "" : "; ") + w.get<std::string>();
-            md << "- **" << row["model"].get<std::string>() << ":** " << (wrong.empty() ? "none" : wrong) << "\n";
-        }
-        WriteText(out / "comparison.md", md.str());
-        scores["painted"] = table;
-        WriteText(out / "scores.json", scores.dump(2));
-        say("done");
-        return;
-    }
 
     // ④ Assets, as the editor finds them (FindAssets, AfterSourcing).
     PlaceSceneOptions options;
@@ -933,146 +1195,6 @@ TEST(LiveBuildTest, APlannerPlaceBuild) {
         say(why.empty() ? "installed as " + row.value("scene", "") : "couldn't install it: " + why);
         EXPECT_EQ(why, "");
     }
-    say("done");
-}
-
-// The Painted build method (docs/build-fixes.md) from an earlier run's layout and plan: its place
-// build opened as it was planned, painted whole (one backdrop per level, PlacePaint), the scene built
-// from the painting by code, and the three checked together by the vision model (/places/inspect
-// "match": do the layout, the plan and the final build agree, and does the build tell the story).
-// AIGE_PAINT="<earlier run dir>|<out dir>|<port>". Written: 2-layout.png, 3-plan.png, backdrop*.png
-// (the painting) and backdrop*.json (its map), 5-scene.png (the scene built from it), match.json,
-// scores.json.
-TEST(LiveBuildTest, PaintAnEarlierBuild) {
-    const char* arg = std::getenv("AIGE_PAINT");
-    if (arg == nullptr) GTEST_SKIP() << "set AIGE_PAINT=<earlier run dir>|<out dir>|<port>";
-    std::vector<std::string> parts;
-    {
-        std::string part;
-        std::istringstream in(arg);
-        while (std::getline(in, part, '|')) parts.push_back(part);
-    }
-    ASSERT_EQ(parts.size(), 3u);
-    const fs::path earlier = parts[0], out = parts[1];
-    const int port = std::stoi(parts[2]);
-    const fs::path project = out / "project";
-    fs::remove_all(project);
-    fs::create_directories(project);
-    for (auto it = fs::recursive_directory_iterator(earlier / "project"); it != fs::recursive_directory_iterator(); ++it) {
-        const fs::path rel = fs::relative(it->path(), earlier / "project");
-        if (rel.generic_string() == ".cache") {
-            it.disable_recursion_pending();
-            continue;
-        }
-        if (it->is_directory()) fs::create_directories(project / rel);
-        else fs::copy_file(it->path(), project / rel, fs::copy_options::overwrite_existing);
-    }
-    std::string buildId;
-    for (const auto& e : fs::directory_iterator(project / "places")) {
-        if (e.is_directory()) buildId = e.path().filename().string();
-    }
-    ASSERT_FALSE(buildId.empty()) << "no place build in " << earlier;
-    const std::string placeId = ReadFile(earlier / "scores.json").value("place", "");
-    std::ofstream log(out / "run.log");
-    const auto started = std::chrono::steady_clock::now();
-    auto say = [&](const std::string& text) {
-        const auto t = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - started).count();
-        log << "[" << t << "s] " << text << std::endl;
-        std::cout << "[" << t << "s] " << text << std::endl;
-    };
-    auto post = [port](const std::string& path, const json& body) {
-        httplib::Client c("127.0.0.1", port);
-        c.set_connection_timeout(5);
-        c.set_read_timeout(900);
-        const auto r = c.Post(path, body.dump(), "application/json");
-        json o = r && r->status == 200 ? json::parse(r->body, nullptr, false) : json{{"ok", false}, {"errors", {"no answer"}}};
-        return o.is_discarded() ? json{{"ok", false}, {"errors", {"not JSON"}}} : o;
-    };
-    {
-        httplib::Client client("127.0.0.1", port);
-        client.set_connection_timeout(5);
-        const auto r = client.Put("/project", json{{"root", fs::absolute(project).string()}}.dump(), "application/json");
-        ASSERT_TRUE(r && r->status == 200) << "the AI service isn't answering on port " << port;
-    }
-    Ontology ontology;
-    ontology.Load({EnginePlacesDir()});
-    std::deque<Call> queue;
-    int nextId = 1;
-    PlaceBuild::Host host;
-    host.ontology = [&]() -> const Ontology& { return ontology; };
-    host.isoGrid = [] { return true; };
-    host.request = [&](const std::string& path, const json& body, int timeout) {
-        queue.push_back({nextId, path, body, timeout});
-        return nextId++;
-    };
-    host.projectRoot = project;
-    PlaceBuild build(host);
-    ASSERT_EQ(build.Open(buildId), "");
-    ASSERT_TRUE(build.Solved().is_object() && build.Solved().contains("objects")) << "the earlier build has no plan";
-    say("opened " + buildId + " (" + placeId + ")");
-    auto copy = [&](const fs::path& from, const std::string& name) {
-        std::error_code ec;
-        if (fs::exists(from, ec)) fs::copy_file(from, out / name, fs::copy_options::overwrite_existing, ec);
-    };
-    // The layout and the plan, drawn again from the earlier build (as its checks draw them).
-    const json layoutBody = InspectLayoutRequest(build, &ontology);
-    copy(build.Folder() / "inspect-layout.png", "2-layout.png");
-    const json planBody = InspectPlanRequest(build, &ontology);
-    copy(build.Folder() / "inspect-plan.png", "3-plan.png");
-
-    // Painted: the requests (the place, or each level), each painted and read.
-    GameBuild::Host gameHost;
-    gameHost.projectRoot = project;
-    gameHost.places = [&]() -> const Ontology& { return ontology; };
-    const GameBuild game(gameHost);
-    const json anchors = placeId.empty() ? json::array() : game.StoryAnchors(placeId);
-    const json requests = BackdropRequests(build, &ontology, anchors);
-    WriteText(out / "4-backdrop-requests.json", requests.dump(2));
-    ASSERT_EQ(build.Paint(requests), "");
-    while (!queue.empty()) {
-        std::vector<std::pair<int, std::future<json>>> flying;
-        for (; !queue.empty(); queue.pop_front()) flying.push_back({queue.front().id, std::async(std::launch::async, post, queue.front().path, queue.front().body)});
-        for (auto& [id, answer] : flying) {
-            const json body = answer.get();
-            say(std::string("painted: ") + (body.value("ok", false) ? "ok" : "failed " + body.dump().substr(0, 300)));
-            build.OnResponse(id, body);
-        }
-    }
-    ASSERT_TRUE(build.Painted());
-    ASSERT_FALSE(build.Backdrops().empty()) << "nothing was painted";
-    for (const auto& b : build.Backdrops()) {
-        const std::string file = b.value("backdrop", "");
-        copy(project / file, fs::path(file).filename().string());
-        copy(fs::path(project / file).replace_extension(".json"), fs::path(file).stem().string() + ".json");
-    }
-    // The scene built from the paintings by code.
-    PlaceSceneOptions options;
-    options.place = build.Id();
-    options.isoGrid = true;
-    Registry registry;
-    const json report = BuildBackdropScene(registry, build, build.Backdrops(), options);
-    WriteText(out / "5-report.json", report.dump(2));
-    say("scene: " + report.dump());
-    const auto [bx0, by0, bx1, by1] = OccupiedBounds(build.Solved());
-    WritePng(out / "5-scene.png", RenderScenePreview(registry, Project{project}, options.iso, bx0, by0, bx1, by1, 1800));
-    SaveScene(registry, (out / "scene.aige").string());
-
-    // Do the layout, the plan and the final build agree; does it tell the story?
-    json scores = {{"place", placeId}, {"build", buildId}, {"method", "Painted"}, {"scene", report}};
-    for (const auto& b : build.Backdrops()) {
-        json body = planBody;
-        body["kind"] = "match";
-        body.erase("windows");
-        body["images"] = json::array({layoutBody["images"][0], planBody["images"][0], b.value("backdrop", "")});
-        if (body.contains("expected") && layoutBody.contains("expected")) body["expected"]["zones"] = layoutBody["expected"].value("zones", json::array());
-        const std::string level = b.value("level", "");
-        const json answer = post("/places/inspect", body);
-        WriteText(out / (level.empty() ? "match.json" : "match-" + level + ".json"), answer.dump(2));
-        scores[level.empty() ? "match" : "match-" + level] = {{"scores", answer.value("scores", json::object())}, {"summary", answer.value("summary", "")},
-                                                               {"missing", answer.value("missing", json::array())}};
-        say("match" + (level.empty() ? "" : " (" + level + ")") + ": " + InspectSummary(answer));
-    }
-    WriteText(out / "scores.json", scores.dump(2));
     say("done");
 }
 

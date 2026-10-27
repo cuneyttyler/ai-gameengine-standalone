@@ -49,12 +49,13 @@ export const editorState = reactive({
     model: '',
     providerError: '',
     available: {} as Record<string, boolean>,
-    artProvider: 'auto' as string, // what draws the art: auto (follows the LLM), mistral or pixellab
+    artProvider: 'auto' as string, // what draws the prefabs' art: auto (follows the LLM), mistral, pixellab, bfl:<model>
     art: '', // the generator in use
     artError: '',
-    paintProvider: 'bfl' as string, // who paints places from their plan (Preferences ▸ AI ▸ Paint Provider)
-    paintModel: 'flux-3-image' as string,
-    paintError: '',
+    backgroundProvider: 'bfl:flux-3-image' as string, // what paints backgrounds (Preferences ▸ AI ▸ Background)
+    backgroundError: '',
+    // The project's own choices (Project Settings ▸ AI), each '' when it uses the app's.
+    project: { provider: '', model: '', art: '', background: '' } as Record<string, string>,
     models: {} as Record<string, string[]>, // each provider's models (Preferences ▸ AI ▸ Model)
     modelsError: '',
   },
@@ -123,9 +124,9 @@ onHostMessage((message) => {
     editorState.ai.artProvider = (message.artProvider as string) ?? 'auto'
     editorState.ai.art = (message.art as string) ?? ''
     editorState.ai.artError = (message.artError as string) ?? ''
-    editorState.ai.paintProvider = (message.paintProvider as string) ?? 'bfl'
-    editorState.ai.paintModel = (message.paintModel as string) ?? 'flux-3-image'
-    editorState.ai.paintError = (message.paintError as string) ?? ''
+    editorState.ai.backgroundProvider = (message.backgroundProvider as string) ?? 'bfl:flux-3-image'
+    editorState.ai.backgroundError = (message.backgroundError as string) ?? ''
+    editorState.ai.project = (message.project as Record<string, string>) ?? { provider: '', model: '', art: '', background: '' }
   } else if (message.type === 'ai:models') {
     const provider = (message.provider as string) ?? editorState.ai.provider
     editorState.ai.models = { ...editorState.ai.models, [provider]: (message.models as string[]) ?? [] }

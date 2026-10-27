@@ -465,6 +465,14 @@ json FieldChoice(const Ontology& ontology, const FieldDef& f, const std::string&
     if (f.type == "enum") {
         c["values"] = f.vocabulary.empty() ? json(f.values) : SchemeValues(ontology, f.vocabulary);
         if (c["values"].empty()) return json();
+        // What each choice means (the vocabulary's prompts): shown with the choice.
+        if (const auto* scheme = f.vocabulary.empty() ? nullptr : ontology.Scheme(f.vocabulary)) {
+            json meaning = json::object();
+            for (const auto& term : *scheme) {
+                if (!term.prompt.empty()) meaning[term.id] = term.prompt;
+            }
+            if (!meaning.empty()) c["meaning"] = meaning;
+        }
     } else if (f.type == "count") {
         c["type"] = "count";
         c["min"] = f.min.value_or(0);

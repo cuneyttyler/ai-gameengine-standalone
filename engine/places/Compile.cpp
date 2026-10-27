@@ -4,6 +4,7 @@
 #include "places/PlaceValidate.h"
 
 #include <algorithm>
+#include <deque>
 #include <cmath>
 #include <set>
 
@@ -135,6 +136,9 @@ private:
     // shared street lattice it gives ({origin [x, y], block [w, h]}; null: each zone its own streets).
     json form_ = json::object();
     json lattice_;
+    // On a shared street grid, the one spec every zone's streets are drawn with (Root): {terrain, width, edge, class}.
+    json sharedStreet_;
+    std::deque<json> fillerNodes_; // the filler lots' nodes (kept: their parcels point at them)
     int side_ = 64;
     int width_ = 0, height_ = 0; // a dungeon's or a building's grid (its levels side by side); 0: the square site
     std::vector<std::string> doors_;
@@ -166,6 +170,9 @@ private:
     // The module's contents hints ({slot, count|density, where, near, layer, mix}), as scatters in `in`.
     void Contents(const json& list, const json& node, const ModuleDef& m, const std::string& self, const std::string& in,
                   const std::string& primaryId);
+    // The module's layout rules that are solver ops (its "layout": {slot: {op: grid|rows, ...}}, the ontology's):
+    // those statements in `self`. Whether there were any.
+    bool LayoutOps(const json& node, const ModuleDef& m, const std::string& self, const std::string& nodeId);
     // A furniture group: its anchor where the hint says, its members near it.
     void Group(const json& node, const ModuleDef& m, const std::string& self, const std::string& parentInstance);
     // A hint's number: a number, a field's middle, or {field, values} by the field's value.
@@ -352,6 +359,33 @@ json Compiler::HintCount(const json& hint, const json& node, const ModuleDef& m)
     return json();
 }
 
+bool Compiler::LayoutOps(const json& node, const ModuleDef& m, const std::string& self, const std::string& nodeId) {
+    bool any = false;
+    for (const auto& [slotName, rule] : m.layout.items()) {
+        const std::string op = rule.value("op", "");
+        if (op != "grid" && op != "rows") continue;
+        const SlotDef* slot = nullptr;
+        for (const auto& sd : m.slots) {
+            if (sd.name == slotName) slot = &sd;
+        }
+        if (slot == nullptr) continue;
+        // How many: its count field's range (divided by "per": a row of four stalls), else its default.
+        json count = rule.value("default", json(1));
+        if (const auto r = Range(node, m, rule.value("count", ""))) {
+            const double per = std::max(1.0, rule.value("per", 1.0));
+            count = per > 1 ? RangeJson({std::max(1.0, r->first / per), std::max(1.0, r->second / per)}) : RangeJson(*r);
+        }
+        json s = {{"op", op}, {"id", self + "/" + rule.value("name", slotName)}, {"node", nodeId}, {"in", self}, {"slot", slotName},
+                  {"count", count}, {"layer", rule.value("layer", LayerForSlot(ontology_, *slot))}};
+        for (const char* k : {"spacing", "margin"}) {
+            if (rule.contains(k)) s[k] = rule[k];
+        }
+        Emit(s);
+        any = true;
+    }
+    return any;
+}
+
 void Compiler::Contents(const json& list, const json& node, const ModuleDef& m, const std::string& self, const std::string& in,
                         const std::string& primaryId) {
     if (!list.is_array()) return;
@@ -451,11 +485,25 @@ void Compiler::ScatteredZone(const json& zone, const ModuleDef& m, const json& h
           {"args", {{"ref", zoneId + "/trails"}, {"range", {static_cast<int>(members.size()), static_cast<int>(members.size())}}}}});
 }
 
+// The street pattern that leads a place's layout mix ("radial", or {"grid": 0.6, "radial": 0.4} → "grid").
+static std::string LeadPattern(const json& layout) {
+    const json mix = layout.is_object() && layout.contains("mix") ? layout["mix"] : layout;
+    std::string lead = mix.is_string() ? mix.get<std::string>() : "";
+    double best = -1;
+    if (mix.is_object()) {
+        for (const auto& [pattern, share] : mix.items()) {
+            if (share.is_number() && share.get<double>() > best) best = share.get<double>(), lead = pattern;
+        }
+    }
+    return lead;
+}
+
 void Compiler::Root(const json& root) {
     const ModuleDef* m = ontology_.Module(root.value("module", ""));
     rootModule_ = root.value("module", "");
     if (m) {
-        for (const char* name : {"zone-shape", "street-grid", "block-fill", "coverage", "arrangement"}) {
+        for (const char* name : {"zone-shape", "street-grid", "block-fill", "coverage", "arrangement", "lot-layout", "block-use", "frontage",
+                                 "building-cover", "building-shape", "site-fit", "open-space"}) {
             if (const json v = FieldOf(root, *m, name); v.is_string()) form_[name] = v;
         }
         if (const json b = FieldOf(root, *m, "block-size"); b.is_object()) form_["block-size"] = b;
@@ -497,12 +545,42 @@ void Compiler::Root(const json& root) {
             if (auto it = options_.zoneScale.find(c.value("id", "")); it != options_.zoneScale.end()) scale = it->second;
             required += ParcelArea(c) * 1.9 * scale;
         }
-        if (!options_.fixedSide) side_ = std::max(side_, static_cast<int>(std::ceil(std::sqrt(required / 0.6))) + 2 * margin);
+        if (!options_.fixedSide && form_.value("site-fit", "") == "content") {
+            // Sized to the content (the layout form's site-fit): the plan's lots and their streets, its open space on
+            // top; on a shared grid, whole blocks (and the line closing them).
+            const double open = form_.value("open-space", "") == "many" ? 0.4 : form_.value("open-space", "") == "some" ? 0.25 : 0.1;
+            // A shared radial plan's spokes and rings take more of the land than a grid's streets, and leave wedges.
+            const bool radial = form_.value("street-grid", "") == "shared" && m && LeadPattern(FieldOf(root, *m, "layout")) == "radial";
+            int fit = static_cast<int>(std::ceil(std::sqrt(required * (1.0 + open) / (radial ? 0.6 : 0.9)))) + 2 * margin;
+            if (form_.value("street-grid", "") == "shared") {
+                const json b = form_.value("block-size", json::object());
+                const json w = b.value("w", json());
+                const int block = w.is_number() ? w.get<int>() : w.is_array() && w.size() == 2 ? (w[0].get<int>() + w[1].get<int>()) / 2 : 18;
+                fit = (fit + block - 1) / block * block + 1;
+            }
+            side_ = std::max(24, fit);
+        } else if (!options_.fixedSide) {
+            side_ = std::max(side_, static_cast<int>(std::ceil(std::sqrt(required / 0.6))) + 2 * margin);
+        }
     }
     const int s = side_;
     Emit({{"op", "region"}, {"id", "site"}, {"node", id}, {"shape", "rect"}, {"at", {0, 0}}, {"size", {{"w", s}, {"h", s}}}});
     const json children = root.value("children", json::array());
     const json rootHints = m && m->compile.is_object() ? m->compile : json::object();
+    // A shared street grid is one network: its streets one road all through the place (the place's road surface and
+    // edge, as wide as the widest of its zones' streets), whatever each zone's own street style (a park's lanes).
+    if (form_.value("street-grid", "") == "shared") {
+        const json roads = rootHints.value("roads", json::object());
+        int width = roads.value("width", 0);
+        for (const auto& c : root.value("children", json::array())) {
+            const ModuleDef* cm = ontology_.Module(c.value("module", ""));
+            if (cm == nullptr || cm->level != PlaceLevel::Zone || !cm->compile.is_object()) continue;
+            const json network = cm->compile.value("network", json::object());
+            if (network.value("class", "street") == "street") width = std::max(width, network.value("width", 1));
+        }
+        sharedStreet_ = {{"terrain", roads.value("surface", "asphalt")}, {"width", std::max(2, width)}, {"edge", roads.value("edge", "")},
+                         {"class", "street"}};
+    }
     std::string ground = rootHints.value("ground", "grass");
     std::string groundNode = id;
     // A field the plan set itself (not its module's default): what the root's hints yield to.
@@ -546,6 +624,11 @@ void Compiler::Root(const json& root) {
             const json roads = rootHints.value("roads", json::object());
             auto width = Range(c, *cm, "width");
             if (roads.contains("width") && !setHere(c, "quantity", "width")) width = std::pair<double, double>{roads["width"].get<double>(), roads["width"].get<double>()};
+            if (sharedStreet_.is_object()) {
+                // On a shared grid, no narrower than its streets (a 4-wide street doesn't narrow where it meets them).
+                const double street = sharedStreet_.value("width", 2);
+                width = std::pair<double, double>{std::max(width ? width->first : 2.0, street), std::max(width ? width->second : 2.0, street)};
+            }
             const std::string surface = roads.contains("surface") && !setHere(c, "quality", "surface") ? roads.value("surface", "dirt")
                                                                                                          : Text(FieldOf(c, *cm, "surface"), "dirt");
             const std::string edge = roads.value("edge", ""); // sidewalks: the outer cells of its width
@@ -920,19 +1003,74 @@ void Compiler::Zone(const json& zone, const ModuleDef& m, int index, const json&
         }
     }
     if (style.empty()) style = index == 0 ? "organic" : "organic";
-    const json network = hints.value("network", json::object());
-    if (!lattice_.is_null()) style = "grid"; // the shared grid: every zone's streets on the one lattice
+    // On a shared grid, the place's one street spec, not the zone's own (a park's plaza lanes would break the streets).
+    const json network = !lattice_.is_null() && sharedStreet_.is_object() ? sharedStreet_ : hints.value("network", json::object());
+    // The shared network: one plan for the place, so the place's layout decides it (radial if that leads its mix),
+    // not each zone's own street style; every zone's streets on one lattice, or one radial plan.
+    if (!lattice_.is_null()) style = LeadPattern(layoutMix) == "radial" ? "radial" : "grid";
     Emit({{"op", "network"}, {"id", zoneId + "/streets"}, {"node", zoneId}, {"in", zoneId}, {"style", lattice_.is_null() ? network.value("style", style) : style},
           {"lattice", lattice_},
           // Two lots deep between streets, plus the street itself (a city's are four cells: lanes and sidewalks).
           {"spacing", std::max(network.value("spacing", 0), 2 * depth + 1 + network.value("width", 1))}, {"width", network.value("width", 1)},
           {"class", network.value("class", "street")}, {"terrain", network.value("terrain", "dirt")}, {"edge", network.value("edge", "")}});
     Traffic(m, zoneId, zoneId, false);
+    // Filler (the layout form's coverage "full"): the district's own kinds (a downtown's plazas and parking, a
+    // suburb's parks) for the lots its buildings leave; placed after them, as many as there's room for.
+    const size_t planned = ordered.size();
+    if (form_.value("coverage", "") == "full") {
+        // Filler: the zone's own kinds of lot (its children rules, by weight), open space (its filler kinds: parks,
+        // plazas, parking) only within the layout form's open-space share, counting the plan's own open lots.
+        const json openKinds = hints.value("filler", json::array());
+        const double share = form_.value("open-space", "") == "many" ? 0.4 : form_.value("open-space", "") == "some" ? 0.25 : 0.1;
+        auto isOpen = [&](const std::string& id) {
+            return ontology_.IsA(id, "OpenSpace") || ontology_.IsA(id, "Parking") || ontology_.IsA(id, "Park");
+        };
+        std::vector<std::pair<std::string, double>> buildingKinds;
+        double totalWeight = 0;
+        for (const auto& rule : m.children) {
+            const ModuleDef* cm = ontology_.Module(rule.module);
+            if (cm == nullptr || cm->level != PlaceLevel::Parcel || isOpen(cm->id) || rule.weight <= 0) continue;
+            buildingKinds.push_back({cm->id, rule.weight});
+            totalWeight += rule.weight;
+        }
+        int open = 0;
+        for (const auto& item : ordered) open += isOpen(item.value("module", ""));
+        int nextOpen = 0;
+        for (int k = 0; k < 60; ++k) {
+            std::string module;
+            if (!openKinds.empty() && open < share * (static_cast<double>(planned) + k + 1)) {
+                module = openKinds[nextOpen++ % openKinds.size()].get<std::string>();
+                ++open;
+            } else if (!buildingKinds.empty()) {
+                // By weight, the same every time: the k-th pick walks the weights.
+                const double pick = std::fmod((k + 0.5) * 0.6180339887 * totalWeight, totalWeight);
+                double run = 0;
+                for (const auto& [id, w] : buildingKinds) {
+                    run += w;
+                    if (pick <= run) {
+                        module = id;
+                        break;
+                    }
+                }
+                if (module.empty()) module = buildingKinds.back().first;
+            } else {
+                break;
+            }
+            const ModuleDef* fm = ontology_.Module(module);
+            if (fm == nullptr || fm->level != PlaceLevel::Parcel) continue;
+            fillerNodes_.push_back({{"id", zoneId + "/filler-" + module}, {"module", module}});
+            const std::string instance = zoneId + "/filler#" + std::to_string(k);
+            ordered.push_back({{"id", instance}, {"node", fillerNodes_.back()["id"]}, {"module", module}, {"size", LotSize(fillerNodes_.back(), *fm, 0, 1)},
+                               {"filler", true}});
+            parcels.push_back({&fillerNodes_.back(), fm, instance, 0});
+        }
+    }
     Emit({{"op", "subdivide"}, {"id", zoneId + "/plots"}, {"node", zoneId}, {"in", zoneId},
           {"style", form_.value("block-fill", "") == "full" ? "block" : "frontage"},
+          {"lots", form_.value("lot-layout", "packed")}, {"grouped", form_.value("block-use", "") == "grouped"},
           {"access", "street"}, {"into", ordered}});
     Emit({{"op", "check"}, {"id", zoneId + "/plots-placed"}, {"node", zoneId}, {"predicate", "count"},
-          {"args", {{"ref", zoneId + "/plots"}, {"range", {static_cast<int>(ordered.size() * 9 / 10), static_cast<int>(ordered.size())}}}}});
+          {"args", {{"ref", zoneId + "/plots"}, {"range", {static_cast<int>(planned * 9 / 10), static_cast<int>(ordered.size())}}}}});
     if (const auto band = Range(zone, m, "footprint-density")) {
         // Built cells over the ward's cells: the band is the plan's, widened (roads and open land count too).
         Emit({{"op", "check"}, {"id", zoneId + "/density"}, {"node", zoneId}, {"predicate", "footprint-density"},
@@ -972,6 +1110,11 @@ void Compiler::Parcel(const json& node, const ModuleDef& m, const std::string& i
     if (const json surface = hints.value("surface", json()); surface.is_string()) {
         Emit({{"op", "fill"}, {"id", instance + "/surface"}, {"node", nodeId}, {"in", instance}, {"terrain", surface}});
     }
+    // Its footpaths (a park's): crossing it, painted over its ground.
+    if (const json paths = hints.value("paths", json()); paths.is_object()) {
+        Emit({{"op", "fill"}, {"id", instance + "/paths"}, {"node", nodeId}, {"in", instance}, {"terrain", paths.value("terrain", "plaza")},
+              {"pattern", paths.value("pattern", "cross")}, {"width", paths.value("width", 1)}});
+    }
     if (primary) {
         primaryId = instance + "/" + primary->name;
         const auto [fw, fh] = Footprint(m, *primary, size);
@@ -981,7 +1124,15 @@ void Compiler::Parcel(const json& node, const ModuleDef& m, const std::string& i
         int setback = 1;
         if (const auto r = Range(node, m, "setback")) setback = static_cast<int>(std::lround(r->first));
         if (Extras(node, index, instances).second) setback = std::max(1, setback); // its doorstep, sign or stall goes there
+        if (form_.value("frontage", "") == "aligned") setback = 1; // one building line along the street
         s["setback"] = setback;
+        // Fitted (the layout form's building-cover "fit"): the building fills its lot as its kind does.
+        if (form_.value("building-cover", "") == "fit" && layer == "building") {
+            const json cover = ontology_.RoleLook(primary->binds.empty() ? primary->name : primary->binds.front().role, "cover");
+            s["fit"] = cover.is_number() ? cover.get<double>() : 0.7;
+        }
+        // Its shape (the layout form's building-shape): rounded corners, or following its lot.
+        if (const std::string shape = form_.value("building-shape", ""); layer == "building" && (shape == "rounded" || shape == "fitted")) s["shape"] = shape;
         // A room's main thing (a dungeon's altar, its stairs) stands in its middle.
         if (hints.value("centre", false) || ontology_.IsA(m.id, "DungeonRoom")) s["position"] = "center";
         if (layer == "ground") {
@@ -1000,10 +1151,7 @@ void Compiler::Parcel(const json& node, const ModuleDef& m, const std::string& i
             Emit({{"op", "place"}, {"id", instance + "/centrepiece"}, {"node", nodeId}, {"in", instance}, {"slot", "centrepiece"},
                   {"footprint", {{"w", 2}, {"h", 2}}}, {"position", "center"}, {"layer", "prop"}});
         }
-        if (const auto stalls = Range(node, m, "stalls")) {
-            Emit({{"op", "rows"}, {"id", instance + "/stalls"}, {"node", nodeId}, {"in", instance}, {"slot", "stall"},
-                  {"count", RangeJson({std::max(1.0, stalls->first / 4), std::max(1.0, stalls->second / 4)})}, {"layer", "prop"}, {"margin", 1}});
-        }
+        if (Range(node, m, "stalls")) LayoutOps(node, m, instance, nodeId); // its stalls in rows (its layout)
     }
     Relations(m, nodeId, instance, instance.substr(0, instance.find('/')), "", primaryId);
     Contents(hints.value("contents", json()), node, m, instance, instance, primaryId);
@@ -1140,17 +1288,8 @@ void Compiler::Feature(const json& node, const ModuleDef& m, const std::string& 
             Emit({{"op", "scatter"}, {"id", self + "/beds[*]/crops"}, {"node", nodeId}, {"in", self + "/beds[*]"}, {"slot", "crop"},
                   {"density", density}, {"layer", "decal"}, {"mix", plantMix}});
         }
-        if (m.id == "orchard") {
-            Emit({{"op", "grid"}, {"id", self + "/trees"}, {"node", nodeId}, {"in", self}, {"slot", "tree"},
-                  {"spacing", {{"x", 2}, {"y", 2}}}, {"count", Range(node, m, "trees") ? RangeJson(*Range(node, m, "trees")) : json(9)},
-                  {"layer", "prop"}});
-        } else if (m.id == "graveyard") {
-            Emit({{"op", "grid"}, {"id", self + "/graves"}, {"node", nodeId}, {"in", self}, {"slot", "grave"},
-                  {"spacing", {{"x", 2}, {"y", 2}}}, {"count", Range(node, m, "graves") ? RangeJson(*Range(node, m, "graves")) : json(8)},
-                  {"layer", "prop"}});
-        } else if (m.id == "field") {
-            Emit({{"op", "rows"}, {"id", self + "/rows"}, {"node", nodeId}, {"in", self}, {"slot", "crop"},
-                  {"count", Range(node, m, "rows") ? RangeJson(*Range(node, m, "rows")) : json(6)}, {"layer", "decal"}, {"margin", 0}});
+        // Its layout rules (an orchard's trees in a grid, a graveyard's graves, a field's rows), else its contents.
+        if (LayoutOps(node, m, self, nodeId)) {
         } else if (contents) {
             double density = 0.3;
             for (const char* field : {"flowers", "plants", "trees"}) {

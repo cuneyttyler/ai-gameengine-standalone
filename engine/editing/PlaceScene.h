@@ -67,6 +67,11 @@ struct PlaceSceneOptions {
     // painted through it, every thing tinted by it, as a game grades a level as one picture.
     float gradeSaturation = 1.0f, gradeBrightness = 1.0f;
     std::array<float, 3> gradeTint{1.0f, 1.0f, 1.0f};
+    // The ground as one picture (Matched art's painted ground plan, docs/places/matched-art.md): top-down, the site's
+    // cell (0, 0) at its corner, `groundPictureCellPx` pixels a cell. Its colours are the ground's; the shadows,
+    // shore and light are laid over them as on any ground. Empty: the ground from its terrains' textures.
+    std::string groundPicture;
+    int groundPictureCellPx = 0;
 };
 
 // A place's levels (docs/build-fixes.md): its zones of the ontology's class Level (a dungeon's

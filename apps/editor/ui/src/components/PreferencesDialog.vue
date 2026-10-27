@@ -135,7 +135,10 @@ function close(): void {
             </div>
             <p v-if="editorState.ai.modelsError" class="error">{{ editorState.ai.modelsError }}</p>
             <p v-if="editorState.ai.providerError" class="error">{{ editorState.ai.providerError }}</p>
-            <h5>Art</h5>
+            <p v-if="editorState.ai.project.provider || editorState.ai.project.model" class="muted">
+              This project uses its own: {{ [editorState.ai.project.provider, editorState.ai.project.model].filter(Boolean).join(' ') }} (Project Settings ▸ AI).
+            </p>
+            <h5>Prefab art</h5>
             <div class="row">
               <select
                 :value="editorState.ai.artProvider"
@@ -145,33 +148,28 @@ function close(): void {
                 <option value="auto">Follow the provider{{ editorState.ai.provider === 'claude' ? ' (Claude draws nothing: Mistral, else PixelLab)' : '' }}</option>
                 <option value="mistral">Mistral{{ editorState.ai.available.mistral === false ? ' (no key)' : '' }}</option>
                 <option value="pixellab">PixelLab{{ editorState.ai.available.pixellab === false ? ' (no key)' : '' }}</option>
+                <option value="bfl:flux-2-klein-4b">BFL FLUX.2 klein{{ editorState.ai.available.bfl === false ? ' (no key)' : '' }}</option>
+                <option value="bfl:flux-3-image">BFL FLUX.3 Image{{ editorState.ai.available.bfl === false ? ' (no key)' : '' }}</option>
+                <option value="bfl:flux-2-pro">BFL FLUX.2 pro{{ editorState.ai.available.bfl === false ? ' (no key)' : '' }}</option>
               </select>
               <span v-if="editorState.ai.art" class="muted">drawing with {{ editorState.ai.art }}</span>
             </div>
             <p v-if="editorState.ai.artError" class="error">{{ editorState.ai.artError }}</p>
-            <h5>Paint Provider</h5>
-            <p class="muted">Who paints places from their plan, when a project builds them Painted (Project Settings ▸ Places).</p>
+            <p class="muted">Who draws the prefabs' art: every piece made in one style (Matched art), and the Art tool's single pieces.</p>
+            <p v-if="editorState.ai.project.art" class="muted">This project uses its own: {{ editorState.ai.project.art }} (Project Settings ▸ AI).</p>
+            <h5>Background</h5>
             <div class="row">
               <select
-                :value="editorState.ai.paintProvider"
+                :value="editorState.ai.backgroundProvider"
                 :disabled="!editorState.ai.enabled"
-                @change="sendToHost({ type: 'ai:setPaintProvider', provider: ($event.target as HTMLSelectElement).value, model: editorState.ai.paintModel })"
+                @change="sendToHost({ type: 'ai:setBackgroundProvider', provider: ($event.target as HTMLSelectElement).value })"
               >
-                <option value="bfl">Black Forest Labs (FLUX)</option>
-              </select>
-              <select
-                :value="editorState.ai.paintModel"
-                :disabled="!editorState.ai.enabled"
-                @change="sendToHost({ type: 'ai:setPaintProvider', provider: editorState.ai.paintProvider, model: ($event.target as HTMLSelectElement).value })"
-              >
-                <option value="flux-3-image">FLUX.3 Image: reads the plan best</option>
-                <option value="flux-2-klein-4b">FLUX.2 klein: the best look, cheap</option>
-                <option value="flux-2-max">FLUX.2 max: rich art, looser layout</option>
-                <option value="flux-3-to-klein">FLUX.3 → klein: FLUX.3's layout, klein's look</option>
-                <option value="flux-3-to-pro">FLUX.3 → FLUX.2 pro: FLUX.3's layout, refined by FLUX.2 pro</option>
+                <option value="bfl:flux-3-image">BFL FLUX.3 Image{{ editorState.ai.available.bfl === false ? ' (no key)' : '' }}</option>
               </select>
             </div>
-            <p v-if="editorState.ai.paintError" class="error">{{ editorState.ai.paintError }}</p>
+            <p v-if="editorState.ai.backgroundError" class="error">{{ editorState.ai.backgroundError }}</p>
+            <p class="muted">Who paints a place's background: its ground, roads and floors as one picture, from its plan.</p>
+            <p v-if="editorState.ai.project.background" class="muted">This project uses its own: {{ editorState.ai.project.background }} (Project Settings ▸ AI).</p>
             <p class="muted">
               Keys go in ai_service/.env (MISTRAL_API_KEY, ANTHROPIC_API_KEY, PIXELLAB_API_KEY, BFL_API_KEY); they never leave this
               computer except to that service. Characters and animations (Generate ▸ Character, Animate) are always PixelLab's.

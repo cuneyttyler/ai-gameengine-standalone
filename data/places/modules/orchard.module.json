@@ -87,5 +87,19 @@
         "axis": "x"
       }
     }
-  ]
+  ],
+  "layout": {
+    "tree": {
+      "op": "grid",
+      "name": "trees",
+      "spacing": {
+        "x": 2,
+        "y": 2
+      },
+      "count": "trees",
+      "default": 9,
+      "layer": "prop",
+      "why": "fruit trees planted in a regular grid, a tree's spread apart, with room to walk and pick between them"
+    }
+  }
 }

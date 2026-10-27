@@ -124,6 +124,10 @@
     "traffic": {
       "slot": "car",
       "density": 0.06
-    }
+    },
+    "filler": [
+      "parking-lot",
+      "plaza"
+    ]
   }
 }

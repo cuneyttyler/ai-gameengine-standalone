@@ -142,6 +142,55 @@
       "default": "natural",
       "ask": true,
       "description": "How the small things are set out (lamps, trees, benches, cars, bicycles, bushes): scattered as they come, or ordered: evenly spaced along edges, in lines and mirrored pairs"
+    },
+    "lot-layout": {
+      "type": "enum",
+      "vocabulary": "lot-layout",
+      "default": "packed",
+      "ask": true,
+      "description": "How a block is divided into lots"
+    },
+    "block-use": {
+      "type": "enum",
+      "vocabulary": "block-use",
+      "default": "mixed",
+      "ask": true,
+      "description": "One kind of building per block, or mixed"
+    },
+    "frontage": {
+      "type": "enum",
+      "vocabulary": "frontage",
+      "default": "varied",
+      "ask": true,
+      "description": "One building line along a street, or each its own setback"
+    },
+    "building-cover": {
+      "type": "enum",
+      "vocabulary": "building-cover",
+      "default": "planned",
+      "ask": true,
+      "description": "Buildings fill their lots, or keep their planned footprints"
+    },
+    "building-shape": {
+      "type": "enum",
+      "vocabulary": "building-shape",
+      "default": "square",
+      "ask": true,
+      "description": "Buildings square, with rounded corners, or following their lots and streets"
+    },
+    "site-fit": {
+      "type": "enum",
+      "vocabulary": "site-fit",
+      "default": "scale",
+      "ask": true,
+      "description": "How big the site is: sized to the plan's content, or to the scale"
+    },
+    "open-space": {
+      "type": "enum",
+      "vocabulary": "open-space",
+      "default": "some",
+      "ask": true,
+      "description": "How much of each zone is open space (parks, plazas, parking) rather than buildings"
     }
   },
   "slots": {},

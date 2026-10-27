@@ -1619,7 +1619,8 @@
       "alt": [
         "organic",
         "irregular"
-      ]
+      ],
+      "prompt": "zones grow from seeds into irregular, organic shapes, as an old town's wards do"
     },
     {
       "id": "blocks",
@@ -1627,7 +1628,8 @@
         "rectangular",
         "planned",
         "grid blocks"
-      ]
+      ],
+      "prompt": "zones are rectangles cut along the main roads, as a planned city's districts are"
     }
   ],
   "street-grid": [
@@ -1635,7 +1637,8 @@
       "id": "per-zone",
       "alt": [
         "each its own"
-      ]
+      ],
+      "prompt": "each zone lays out its own streets; they needn't line up with the next zone's"
     },
     {
       "id": "shared",
@@ -1643,7 +1646,8 @@
         "city grid",
         "one grid",
         "continuous"
-      ]
+      ],
+      "prompt": "one street network for the whole place, lined up with its main roads; streets run on straight across zones"
     }
   ],
   "block-fill": [
@@ -1651,14 +1655,16 @@
       "id": "frontage",
       "alt": [
         "along the streets"
-      ]
+      ],
+      "prompt": "lots stand along the streets with open land (gardens, yards) behind them"
     },
     {
       "id": "full",
       "alt": [
         "built through",
         "back to back"
-      ]
+      ],
+      "prompt": "lots run back to back, so each block between streets is built through"
     }
   ],
   "coverage": [
@@ -1666,14 +1672,16 @@
       "id": "partial",
       "alt": [
         "open land between"
-      ]
+      ],
+      "prompt": "open land is left between the zones"
     },
     {
       "id": "full",
       "alt": [
         "covered",
         "dense"
-      ]
+      ],
+      "prompt": "the zones cover the whole place; no land is left over"
     }
   ],
   "arrangement": [
@@ -1683,7 +1691,8 @@
         "scattered",
         "random",
         "organic"
-      ]
+      ],
+      "prompt": "small things (trees, lamps, benches, cars) are scattered as they come"
     },
     {
       "id": "ordered",
@@ -1692,7 +1701,127 @@
         "symmetric",
         "aligned",
         "in rows"
-      ]
+      ],
+      "prompt": "small things are set out evenly: in lines along the streets and edges, in mirrored pairs"
+    }
+  ],
+  "lot-layout": [
+    {
+      "id": "rows",
+      "alt": [
+        "regular",
+        "even lots"
+      ],
+      "prompt": "each block between streets is divided into regular rows of equal lots along its long sides, back to back, symmetric"
+    },
+    {
+      "id": "packed",
+      "alt": [
+        "irregular",
+        "organic lots"
+      ],
+      "prompt": "lots are fitted one by one wherever they fit, of varied sizes, as in an old town"
+    }
+  ],
+  "block-use": [
+    {
+      "id": "grouped",
+      "alt": [
+        "one kind per block",
+        "zoned"
+      ],
+      "prompt": "a block holds one kind of building (a block of towers, a block of shops, a park block)"
+    },
+    {
+      "id": "mixed",
+      "alt": [
+        "mixed use"
+      ],
+      "prompt": "kinds of building are mixed within each block"
+    }
+  ],
+  "frontage": [
+    {
+      "id": "aligned",
+      "alt": [
+        "building line",
+        "lined up"
+      ],
+      "prompt": "the buildings of a row share one building line: the same setback, all facing the street"
+    },
+    {
+      "id": "varied",
+      "prompt": "each building stands at its own setback"
+    }
+  ],
+  "building-cover": [
+    {
+      "id": "fit",
+      "alt": [
+        "fills its lot"
+      ],
+      "prompt": "a building fills its lot (less its setback), as much as its kind does: a tower most, a house less"
+    },
+    {
+      "id": "planned",
+      "prompt": "a building keeps its planned footprint inside its lot"
+    }
+  ],
+  "site-fit": [
+    {
+      "id": "content",
+      "alt": [
+        "tight",
+        "fitted"
+      ],
+      "prompt": "the site is sized to what the plan holds (its lots and streets), so little land is left over"
+    },
+    {
+      "id": "scale",
+      "alt": [
+        "as large as the scale"
+      ],
+      "prompt": "the site's size comes from the scale chosen (its area); what the plan doesn't fill stays open"
+    }
+  ],
+  "open-space": [
+    {
+      "id": "few",
+      "prompt": "about one lot in ten is open space (a park, a plaza, a car park); the rest are buildings"
+    },
+    {
+      "id": "some",
+      "prompt": "about a quarter of the lots are open space"
+    },
+    {
+      "id": "many",
+      "prompt": "about two lots in five are open space: a green, airy place"
+    }
+  ],
+  "building-shape": [
+    {
+      "id": "square",
+      "alt": [
+        "rectangular",
+        "boxy"
+      ],
+      "prompt": "buildings are plain rectangles on the street grid, sharp corners"
+    },
+    {
+      "id": "rounded",
+      "alt": [
+        "rounded corners",
+        "soft corners"
+      ],
+      "prompt": "buildings are rectangles with rounded corners, a modern look"
+    },
+    {
+      "id": "fitted",
+      "alt": [
+        "follows the street",
+        "curved"
+      ],
+      "prompt": "a building's footprint follows its lot and its street: a curved front on a curved street, a wedge in a wedge, rounded corners"
     }
   ]
 }

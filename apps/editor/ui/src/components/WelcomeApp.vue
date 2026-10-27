@@ -5,7 +5,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
 import DialogHost from './DialogHost.vue'
-import { confirmDialog, promptDialog } from '../dialogs'
+import NewProjectDialog from './NewProjectDialog.vue'
 
 interface Recent {
   path: string
@@ -48,35 +48,11 @@ function send(type: string): void {
   sendToHost({ type })
 }
 
-async function newProject(): Promise<void> {
-  const name = await promptDialog({
-    title: 'New project',
-    message: 'A name for the project. Next you pick the folder to create it in.',
-    placeholder: 'my-game',
-  })
-  if (!name?.trim()) return
-  const starter = await confirmDialog({
-    title: 'Starting content',
-    message: "Start with the demo's art, prefabs and scripts as a palette? (Its scene, story and canon aren't copied.)",
-    confirmLabel: 'Use the demo palette',
-    cancelLabel: 'Start empty',
-  })
+// New Project: every choice in one window.
+const showNew = ref(false)
+function newProject(): void {
   error.value = ''
-  const topDown = await confirmDialog({
-    title: 'Grid',
-    message:
-      'How is your art drawn? Isometric art (diamond-shaped ground, buildings seen at an angle) or top-down art (square ground seen from above, fences and roads along the screen). You can change it later in Project Settings ▸ Grid.',
-    confirmLabel: 'Top-down (square cells)',
-    cancelLabel: 'Isometric (diamond cells)',
-  })
-  const painted = await confirmDialog({
-    title: 'Places',
-    message:
-      "How should the AI build your places? Assembled: every building, prop and tree is its own piece of art, put together on the grid (each piece can be moved and edited). Painted: each place is painted as one picture, like the backdrops of Baldur's Gate (richer art; walls, doors and story spots are read from the painting). This is fixed once places are built.",
-    confirmLabel: 'Painted (one picture)',
-    cancelLabel: 'Assembled (pieces)',
-  })
-  sendToHost({ type: 'welcome:new', name: name.trim(), starter, topDown, painted })
+  showNew.value = true
 }
 
 function forget(project: Recent): void {
@@ -136,6 +112,7 @@ function when(iso: string): string {
       </div>
     </section>
     <DialogHost />
+    <NewProjectDialog :open="showNew" flow="welcome" @close="showNew = false" />
   </div>
 </template>
 

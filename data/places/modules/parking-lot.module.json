@@ -38,10 +38,10 @@
       "type": "density",
       "levels": [
         0,
-        0.15,
         0.3,
-        0.45,
-        0.6
+        0.55,
+        0.75,
+        0.9
       ],
       "default": "common"
     }
@@ -89,5 +89,15 @@
         "where": "border"
       }
     ]
+  },
+  "layout": {
+    "car": {
+      "pattern": "bays",
+      "length": 2,
+      "aisle": 2,
+      "ends": 1,
+      "facing": "aisle",
+      "why": "cars park in rows of bays a car's length deep, two rows back to back, each row facing a driving aisle wide enough to drive out; aisles join at both ends, so every car can reach the street"
+    }
   }
 }

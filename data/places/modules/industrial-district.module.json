@@ -129,6 +129,9 @@
     "traffic": {
       "slot": "truck",
       "density": 0.06
-    }
+    },
+    "filler": [
+      "parking-lot"
+    ]
   }
 }

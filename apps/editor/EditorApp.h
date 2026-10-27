@@ -304,15 +304,18 @@ private:
     int worldSearchRequest_ = 0;
     // The model the AI service writes with (File ▸ Preferences ▸ AI): sent when it's ready.
     void SendProvider();
+    // The AI this project uses (Project Settings ▸ AI), each choice falling back on the app's (Preferences ▸ AI):
+    // "provider", "model", "art", "background".
+    std::string ChosenAi(const std::string& which);
     int providerRequest_ = 0;
     // GET /progress while AI requests run (about once a second): what each model call is doing,
     // for the panels' progress strips (ai:progress).
     int progressRequest_ = 0;
     bool progressShown_ = false;
     std::chrono::steady_clock::time_point progressPolled_{};
-    int artProviderRequest_ = 0;   // PUT /art-provider: what draws the art (Preferences ▸ AI ▸ Art)
-    int paintProviderRequest_ = 0; // PUT /paint-provider: who paints places from their plan (Preferences ▸ AI ▸ Paint Provider)
-    nlohmann::json paintStatus_ = nlohmann::json::object(); // its answer
+    int artProviderRequest_ = 0;   // PUT /art-provider: what draws the art (Preferences ▸ AI ▸ Prefab art)
+    int backgroundProviderRequest_ = 0; // PUT /background-provider: what paints backgrounds (Preferences ▸ AI ▸ Background)
+    nlohmann::json backgroundStatus_ = nlohmann::json::object(); // its answer
     int modelsRequest_ = 0;        // GET /models: the provider's models, for Preferences
     int characterRequest_ = 0;     // Generate ▸ Character in flight
     int animationRequest_ = 0;     // Generate ▸ Animate in flight
@@ -415,6 +418,7 @@ private:
     nlohmann::json RecordsJson();
     // Difficulty (16.5): the levels, table and settings for the Difficulty panel,
     // and the curve over the project's scenes along their gateways.
+    bool HandleProjectMessage(const std::string& type, const nlohmann::json& message);
     bool HandleDifficultyMessage(const std::string& type, const nlohmann::json& message);
     // Game UI (17): the documents in Play and the UI tab's designer (preview, source, theme).
     bool HandleUiMessage(const std::string& type, const nlohmann::json& message);
@@ -573,6 +577,9 @@ private:
     void FinishBuildJob();
     void OnBuildResult(int requestId, const nlohmann::json& body);
     void AfterSourcing(); // the art is in (or skipped): into the scene
+    nlohmann::json PlanForMatchedArt(); // ③ Assets: what each part needs (PlanPlaceAssets), as the Assets step sees it
+    void CutMatched();                  // the matched art is made: its pieces cut into assets (MatchedArt)
+    void ApplyBackground(PlaceSceneOptions& options) const; // the place's background as the scene's ground
     bool KnownRequest(int requestId) const;
     // The selection when Play started, restored on Stop. Indices taken from
     // the live registry at Stop would be off once enemies die mid-play.

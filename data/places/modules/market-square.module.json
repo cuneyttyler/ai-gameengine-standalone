@@ -124,5 +124,16 @@
   "prefersSite": {
     "centre": 1.0,
     "main-road": 0.8
+  },
+  "layout": {
+    "stall": {
+      "op": "rows",
+      "name": "stalls",
+      "count": "stalls",
+      "per": 4,
+      "layer": "prop",
+      "margin": 1,
+      "why": "stalls in rows of about four with walkways between, the square's middle and edges left free for shoppers"
+    }
   }
 }

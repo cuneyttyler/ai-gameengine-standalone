@@ -166,6 +166,7 @@ ModuleDef ParseModule(const json& j, const std::string& source) {
         }
     }
     m.compile = j.value("compile", json());
+    m.layout = j.value("layout", json::object());
     m.source = source;
     return m;
 }
@@ -275,6 +276,7 @@ std::vector<std::string> Ontology::Load(const std::vector<fs::path>& dirs) {
                         c.alt = Strings(v.value("alt", json::array()));
                         c.broader = v.value("broader", "");
                         c.look = v.value("look", json::object());
+                        c.prompt = v.value("prompt", "");
                     }
                     if (c.id.empty()) continue;
                     if (c.label.empty()) c.label = c.id;
@@ -307,6 +309,7 @@ std::vector<std::string> Ontology::Load(const std::vector<fs::path>& dirs) {
                     r.args = Strings(spec.value("args", json::array()));
                     r.hardByDefault = spec.value("hard", false);
                     r.description = spec.value("description", "");
+                    r.use = spec.value("use", json::object());
                 }
                 relations_[id] = r;
             }

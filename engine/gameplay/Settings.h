@@ -96,17 +96,13 @@ struct GridSettings {
     GridStyle style = GridStyle::Isometric;
 };
 
-// How the AI builds places (docs/build-fixes.md), chosen when the project is made and kept once
-// places are built: Assembled draws each piece's art from a concept painting of the place and puts
-// them together on the grid; Painted paints the whole place, or each level, as one picture (a
-// backdrop) and reads what stands where from it.
-enum class PlacesMethod {
-    Assembled,
-    Painted,
-};
-
-struct PlacesSettings {
-    PlacesMethod method = PlacesMethod::Assembled;
+// The project's own AI choices (Project Settings ▸ AI): each empty uses the app's (Preferences ▸ AI), so
+// projects can differ (one drawn by PixelLab, another by BFL) without changing the editor's defaults.
+struct AiSettings {
+    std::string provider;   // the language model's provider: mistral, claude
+    std::string model;      // its model (empty: the provider's default)
+    std::string art;        // who draws the prefabs' art: mistral, pixellab, bfl:<model>
+    std::string background; // who paints the places' backgrounds: bfl:flux-3-image
 };
 
 struct GameSettings {
@@ -126,7 +122,7 @@ struct StreamingSettings {
 struct ProjectSettings {
     GameSettings game;
     GridSettings grid;
-    PlacesSettings places;
+    AiSettings ai;
     RendererSettings renderer;
     CameraSettings camera;
     CombatSettings combat;

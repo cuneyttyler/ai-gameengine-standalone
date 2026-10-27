@@ -107,5 +107,19 @@
         "axis": "x"
       }
     }
-  ]
+  ],
+  "layout": {
+    "grave": {
+      "op": "grid",
+      "name": "graves",
+      "spacing": {
+        "x": 2,
+        "y": 2
+      },
+      "count": "graves",
+      "default": 8,
+      "layer": "prop",
+      "why": "graves in neat rows and columns, a path's width between them so mourners can reach each one"
+    }
+  }
 }

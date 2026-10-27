@@ -110,16 +110,22 @@
     "maxMembers": 2,
     "args": [],
     "hard": false,
-    "description": "a's facing points toward b"
+    "description": "a's facing points toward b",
+    "use": {
+      "facing": "front",
+      "within": 6
+    }
   },
   "aligned": {
     "minMembers": 2,
-    "maxMembers": -1,
-    "args": [
-      "axis"
-    ],
+    "maxMembers": 2,
+    "args": [],
     "hard": false,
-    "description": "the members' centres line up on an axis"
+    "description": "a lies along b, parallel to it (a car on its road, on its side of it)",
+    "use": {
+      "facing": "along",
+      "within": 4
+    }
   },
   "in-row": {
     "minMembers": 2,
@@ -269,5 +275,121 @@
     "args": [],
     "hard": false,
     "description": "a lies in the west of the map (its left side); b is \"site\""
+  },
+  "set-in": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a fills a gap in b (a door in its wall)",
+    "use": {
+      "position": "wall",
+      "facing": "across",
+      "art": "in-run"
+    }
+  },
+  "mounted-on": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a hangs on b (a torch on a wall)",
+    "use": {
+      "position": "wall",
+      "facing": "away",
+      "art": "on-run",
+      "within": 4
+    }
+  },
+  "against": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a stands with its back to b (a chest against a wall)",
+    "use": {
+      "position": "wall",
+      "facing": "away",
+      "art": "sheet",
+      "within": 4
+    }
+  },
+  "leads-to": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a connects here to b (stairs to another level, a gate to a road)",
+    "use": {
+      "position": "wall",
+      "facing": "away",
+      "art": "sheet",
+      "within": 4
+    }
+  },
+  "lights": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a lights b (a lamp, a brazier)",
+    "use": {
+      "position": "near",
+      "art": "sheet"
+    }
+  },
+  "part-of": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a belongs to b (a counter of a shop, a pillar of a hall)",
+    "use": {
+      "art": "sheet"
+    }
+  },
+  "used-with": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a is used with b (a chair at a table)",
+    "use": {
+      "position": "near",
+      "facing": "front",
+      "art": "sheet",
+      "within": 4
+    }
+  },
+  "debris-of": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a came from b (rubble of a wall)",
+    "use": {
+      "position": "near",
+      "art": "material"
+    }
+  },
+  "coloured-by": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a's art takes its colours from b (a wall from the background it stands on)",
+    "use": {
+      "art": "colour"
+    }
+  },
+  "made-with": {
+    "minMembers": 2,
+    "maxMembers": 2,
+    "args": [],
+    "hard": false,
+    "description": "a's art is made together with b's, so they match (stairs with the walls they stand against): b's picture shown when a is painted",
+    "use": {
+      "art": "with"
+    }
   }
 }

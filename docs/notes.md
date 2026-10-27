@@ -1,3 +1,61 @@
+TO-DO (2026-10-26, queued)
+AI settings / project (in progress)
+- Preferences ▸ AI: Prefab art + Background (FLUX.3 Image) app defaults
+- Project Settings ▸ AI: provider, model, art, background, each "Use app default (…)" (engine side done: AiSettings; UI dropdown, effective values, PUT /background-provider still to do)
+- New Project: one window (name, location + Browse, grid, LLM provider/model, prefab art, background); no starter content, no Assembled/Painted
+- Painted method removed (engine/test side done; still: EditorApp paint provider + PlacesMethodLock, Python backdrop/paint endpoints, docs, schema fixture)
+- Planner writes the place's background description in an editable field; Build ▸ Assets background row: Generate/Regenerate (POST /places/background, done in the service)
+- Background image import: a manual editor feature (e.g. Scene ▸ Background Image…), not in the Build panel
+Assets
+- "How each is found": choosing find/generate should stay on the page, not start generation/search
+- Generation/search: show rejected art's image (not a placeholder), with Keep; add Pick (user library search) as for not-found art
+- Library tab: top/bottom sections resizable; art grid in a folder shows art badly (rectangles); no "Add to project" for art already in the project
+Viewport / editor
+- Clicking a prefab in the viewport selects it in Assets ▸ Prefabs
+- Panel fullscreen: other panels' shortcuts should open them
+- Right-click menu closes on clicking elsewhere
+- Right-click on a prefab/tile: Draw; on a prefab: Replace prefab (also in the Inspector)
+- Selecting a tile: show its prefab image in the Inspector
+- Periodic snapshots for crash recovery; detect a crash and offer recovery at startup
+Builder
+- Finish opens the Viewport
+- Token counts and seconds per step (as in the Planner)
+- Next step: overlay with a spinner and what's being done
+- Add a sketch step
+AI Planner
+- Home page: previous plans; a button on each step back to the home page
+- Confirm window decisions (number of characters, places…) decided during story generation and editable
+- Choices section (story ontology options usable with the prompt), as in the Build panel
+- Concept step: a synopsis of the story
+- Story: scene detail window resizable
+- Total generation time next to total tokens
+Ontology (2026-10-27)
+- Go through all of data/places (roles.json, relations.json, modules, vocabularies) for the new traits and relations
+  (docs/places/ontology-in-use.md): each was set only on the roles the dungeon and city tests needed. Check every role for
+  orient, views, axis, faces, turns, run, variety, found, purpose, and every role for its relations (set-in, mounted-on,
+  against, leads-to, aligned, lights, part-of, used-with, debris-of, coloured-by); e.g. fences/hedges/railings as runs,
+  windows/signs/awnings set in or mounted on buildings, benches/boats/trains aligned with paths/water/rails, more roles
+  coloured by the background (floors' rugs, cliffs, rubble), found for every role a relation can name
+  First pass (2026-10-27): against a wall (sofa, tv, sink, toilet, shower, filing cabinet, whiteboard, copier, water
+  cooler, vending machine, nightstand, workbench, weapon rack, desk); used-with (school desk → whiteboard, sofa → coffee
+  table); faces the road (billboard, bus stop; `faces` now has a facing use); faces the door (reception desk, checkout
+  counter); part-of (fuel pump → gas station, drawbridge → gatehouse); gate set in a wall; coloured by the background
+  (rock, boulder, mound, cliff and bank pieces); headstone made with its grave; vehicles no longer `vary`. Still to do:
+  water and rails as `found` targets (boats, trains aligned), awnings/signs/windows on a building's face (needs building
+  faces, not wall runs), runs beyond walls (fences, hedges, railings in the scene)
+- Layout rules for the other zones (modules' "layout", docs/places/ontology-in-use.md): only the parking lot has one
+  (bays). Shops (shelves in aisles), market squares (stalls in rows facing a walkway), orchards (grid), graveyards (rows),
+  dining halls (tables in rows with room for benches), car showrooms, bus depots, libraries, classrooms; new patterns as
+  needed (grid, ring, along-edge). Then an access check in verify: everything used reachable from its zone's entrance.
+  Later, optionally, the LLM adjusting a zone's rule for one place
+  First pass (2026-10-27): the orchard, graveyard, field and market square patterns moved from Compile.cpp into their
+  modules' layout (op grid/rows); parking lot bays. Still: shops, dining halls, depots, libraries, classrooms; access check
+- Which art is made with which (made-with, docs/places/ontology-in-use.md): only stairs are made with the walls. Go
+  through every role: what must match what it stands with (gates with fences and walls, bridges with paths and roads,
+  fireplaces and wall shelves with the walls, market stalls with each other, a building's annex with the building)
+  First pass (2026-10-27): pillars, fireplaces, altars, towers, wells, crypts and sarcophagi made with the walls (acts
+  only where a place has a wall block). Still: things made with fences, paths and buildings (made-with to a non-wall piece)
+
 TO-DO
 - AI Plan panel
 - On AI panel confirmations - when a change is applied, show Undo button. When the change is reverted using ctrl-z show apply hide undo.
@@ -138,3 +196,15 @@ also, what are the design principles behind our prompt design you can check sour
 determining locations and rotations/directions of the assets
 
 make mention of multi-hop spatial reasoning (chain of though) mechanism that is used for revise of layout and plan. the system calculates relative positions of zones or artefacts (in layout and plan steps) against each other to determine where to place the requested element. it works in chain of though mechanism as described in docs/place-layout.md, meaning: prompt: put A to south of B, reasoning: if B is east of C, A must be east of C
+
+
+
+The parameters are the layout form from yesterday, root fields any zoned place can use, with the modern city's defaults:
+
+Field	Values	City default	What it controls
+zone-shape	grown, blocks	blocks	district shapes: rectangles cut along the avenues
+street-grid	per-zone, shared	shared	one street lattice for the whole place, lined up with the avenues
+block-size	cells	16–20	the lattice's spacing
+block-fill	frontage, full	full	lots back to back, blocks built through
+coverage	partial, full	full	districts cover the whole site
+arrangement	natural, ordered	ordered	cars, lamps, trees, bins, bicycles evenly spaced in lines and mirrored pairs

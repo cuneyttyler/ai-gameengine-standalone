@@ -48,6 +48,15 @@ Rgb TerrainColor(const std::string& t) {
     if (t == "wood-floor") return Hex(0xb08a5e);
     if (t == "water-shallow") return Hex(0x6f9fc0);
     if (t == "void") return Hex(0x1e1f22);
+    // Made ground of today: greys, with paving warm and courts red.
+    if (t == "asphalt") return Hex(0x4a4a50);
+    if (t == "sidewalk") return Hex(0xb4b0a6);
+    if (t == "concrete") return Hex(0x9c9c96);
+    if (t == "plaza") return Hex(0xc2b49c);
+    if (t == "lawn") return Hex(0x6fa64a);
+    if (t == "sports-court") return Hex(0xb05a46);
+    if (t == "tile-floor") return Hex(0xc8c4b8);
+    if (t == "carpet") return Hex(0x8a6a6c);
     const uint32_t h = Hash(static_cast<int>(t.size()), static_cast<int>(t[0]));
     return Mix(Hex(0x86b25f), Hex(h & 0xFFFFFF), 0.3f);
 }
@@ -109,6 +118,38 @@ public:
         Rect(x0, y1 - t, x1, y1, c, a);
         Rect(x0, y0 + t, x0 + t, y1 - t, c, a);
         Rect(x1 - t, y0 + t, x1, y1 - t, c, a);
+    }
+    // A polygon, by scanlines (even-odd).
+    void Poly(const std::vector<std::pair<float, float>>& poly, Rgb c, float a = 1.0f) {
+        if (poly.size() < 3) return;
+        float minY = 1e30f, maxY = -1e30f;
+        for (const auto& p : poly) minY = std::min(minY, p.second), maxY = std::max(maxY, p.second);
+        std::vector<float> xs;
+        for (int y = std::max(0, static_cast<int>(std::floor(minY))); y <= std::min(h_ - 1, static_cast<int>(std::ceil(maxY))); ++y) {
+            const float sy = y + 0.5f;
+            xs.clear();
+            for (size_t i = 0; i < poly.size(); ++i) {
+                const auto& p = poly[i];
+                const auto& q = poly[(i + 1) % poly.size()];
+                if ((p.second <= sy && q.second > sy) || (q.second <= sy && p.second > sy)) xs.push_back(p.first + (sy - p.second) / (q.second - p.second) * (q.first - p.first));
+            }
+            std::sort(xs.begin(), xs.end());
+            for (size_t i = 0; i + 1 < xs.size(); i += 2) {
+                for (int x = static_cast<int>(std::ceil(xs[i] - 0.5f)); x <= static_cast<int>(std::floor(xs[i + 1] - 0.5f)); ++x) Blend(x, y, c, a);
+            }
+        }
+    }
+    // A polygon's border, t thick.
+    void Stroke(const std::vector<std::pair<float, float>>& poly, Rgb c, float t) {
+        for (size_t i = 0; i < poly.size(); ++i) {
+            const auto& p = poly[i];
+            const auto& q = poly[(i + 1) % poly.size()];
+            const int steps = std::max(1, static_cast<int>(std::hypot(q.first - p.first, q.second - p.second)));
+            for (int k = 0; k <= steps; ++k) {
+                const float x = p.first + (q.first - p.first) * k / steps, y = p.second + (q.second - p.second) * k / steps;
+                Rect(x - t / 2, y - t / 2, x + t / 2, y + t / 2, c);
+            }
+        }
     }
     // A soft-edged disc.
     void Disc(float cx, float cy, float r, Rgb c, float a = 1.0f) {
@@ -515,6 +556,25 @@ ImageData RenderLayoutImage(const json& solved, const LayoutImageOptions& option
             const auto module = options.modules.find(o.value("node", ""));
             const Rgb roof = RoofColor(module != options.modules.end() ? module->second : "");
             const float shadow = std::max(2.0f, cell / 3.0f);
+            // Shaped (rounded corners, or following its lot): its outline, a flat roof with a parapet.
+            if (const json outline = o.value("outline", json()); outline.is_array() && outline.size() >= 6) {
+                std::vector<std::pair<float, float>> ring, cast, inner;
+                float mx = 0, my = 0;
+                for (size_t i = 0; i + 1 < outline.size(); i += 2) {
+                    ring.push_back({outline[i].get<float>() * cell, outline[i + 1].get<float>() * cell});
+                    mx += ring.back().first, my += ring.back().second;
+                }
+                mx /= ring.size(), my /= ring.size();
+                for (const auto& [px, py] : ring) {
+                    cast.push_back({px + shadow, py + shadow});
+                    inner.push_back({mx + (px - mx) * 0.86f, my + (py - my) * 0.86f});
+                }
+                canvas.Poly(cast, Hex(0x1c1f17), 0.35f);
+                canvas.Poly(ring, roof);
+                canvas.Poly(inner, Shade(roof, 1.12f), 0.9f);
+                canvas.Stroke(ring, Shade(roof, 0.45f), std::max(1.0f, cell / 8.0f));
+                continue;
+            }
             canvas.Rect(x0 + shadow, y0 + shadow, x1 + shadow, y1 + shadow, Hex(0x1c1f17), 0.35f);
             canvas.Rect(x0, y0, x1, y1, roof);
             // The roof's two slopes: light on one side of the ridge, dark on the other.

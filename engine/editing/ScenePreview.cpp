@@ -7,6 +7,8 @@
 #include "renderer2d/SpriteCulling.h"
 
 #include <algorithm>
+#include <array>
+#include <tuple>
 #include <cmath>
 #include <map>
 #include <optional>
@@ -23,7 +25,24 @@ struct Canvas {
     }
 };
 
-// A textured quad (two triangles), sampled nearest, alpha over.
+// A texture's colour at (u, v), bilinear (weighted by alpha, so a sprite's clear pixels don't darken its edge).
+std::array<float, 4> Sample(const ImageData& t, float u, float v) {
+    const float fx = std::clamp(u * t.width - 0.5f, 0.0f, t.width - 1.0f), fy = std::clamp(v * t.height - 0.5f, 0.0f, t.height - 1.0f);
+    const int ix = static_cast<int>(fx), iy = static_cast<int>(fy);
+    const int jx = std::min(ix + 1, static_cast<int>(t.width) - 1), jy = std::min(iy + 1, static_cast<int>(t.height) - 1);
+    const float ax = fx - ix, ay = fy - iy;
+    float r = 0, g = 0, b = 0, a = 0;
+    for (const auto& [x, y, w] : {std::tuple{ix, iy, (1 - ax) * (1 - ay)}, std::tuple{jx, iy, ax * (1 - ay)},
+                                  std::tuple{ix, jy, (1 - ax) * ay}, std::tuple{jx, jy, ax * ay}}) {
+        const uint8_t* p = &t.rgba[(static_cast<size_t>(y) * t.width + x) * 4];
+        const float wa = w * p[3];
+        r += p[0] * wa, g += p[1] * wa, b += p[2] * wa, a += wa;
+    }
+    if (a <= 0) return {0, 0, 0, 0};
+    return {r / a / 255.0f, g / a / 255.0f, b / a / 255.0f, a / 255.0f};
+}
+
+// A textured quad (two triangles), sampled bilinear, alpha over.
 void DrawQuad(Canvas& canvas, const SpriteQuad& q, const ImageData* texture, const Sprite& s) {
     float px[4], py[4];
     for (int i = 0; i < 4; ++i) {
@@ -50,10 +69,8 @@ void DrawQuad(Canvas& canvas, const SpriteQuad& q, const ImageData* texture, con
                 const float v = w0 * q.v[tri[0]] + w1 * q.v[tri[1]] + w2 * q.v[tri[2]];
                 float r = s.r, g = s.g, b = s.b, a = s.a;
                 if (texture && texture->width > 0) {
-                    const int tx = std::clamp(static_cast<int>(u * texture->width), 0, static_cast<int>(texture->width) - 1);
-                    const int ty = std::clamp(static_cast<int>(v * texture->height), 0, static_cast<int>(texture->height) - 1);
-                    const uint8_t* t = &texture->rgba[(static_cast<size_t>(ty) * texture->width + tx) * 4];
-                    r *= t[0] / 255.0f, g *= t[1] / 255.0f, b *= t[2] / 255.0f, a *= t[3] / 255.0f;
+                    const auto t = Sample(*texture, u, v);
+                    r *= t[0], g *= t[1], b *= t[2], a *= t[3];
                 } else {
                     r *= 0.8f, g *= 0.4f, b *= 0.8f; // no texture: magenta-ish, so it shows
                 }
@@ -81,7 +98,8 @@ ImageData RenderScenePreview(Registry& registry, const Project& project, const I
     minY -= iso.tileHeight * 6; // tall buildings at the back
     Canvas canvas;
     canvas.minX = minX, canvas.minY = minY;
-    canvas.scale = std::min(2.0f, maxWidth / std::max(1.0f, maxX - minX)); // a close-up shows the art's own pixels (drawn at twice the cell)
+    // At most the art's own pixels: a painted ground is 192 px a cell, a cut sprite up to 256 (four times the cell).
+    canvas.scale = std::min(4.0f, maxWidth / std::max(1.0f, maxX - minX));
     canvas.image.width = static_cast<uint32_t>(std::ceil((maxX - minX) * canvas.scale));
     canvas.image.height = static_cast<uint32_t>(std::ceil((maxY - minY) * canvas.scale));
     canvas.image.rgba.assign(static_cast<size_t>(canvas.image.width) * canvas.image.height * 4, 0);

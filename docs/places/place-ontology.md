@@ -149,3 +149,6 @@ GLDL can't serve as our language directly:
 
 Adopting it would mean extending nearly all of it. Keeping its terms where they overlap
 gives us comparability (an interior room could be exported to GLDL) without its limits.
+
+How the plan, the asset step and the scene use roles' traits and the functional relations (`set-in`, `mounted-on`,
+`aligned`…): docs/places/ontology-in-use.md.

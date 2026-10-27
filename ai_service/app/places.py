@@ -725,3 +725,65 @@ def _plan_result(step: StepResult) -> dict:
     out["answer"] = answer
     out["ok"] = True
     return out
+
+
+ARRANGE_SHAPE = """The arrangement, as JSON:
+{
+  "kinds": {
+    "<role>": {
+      "purpose": "<one plain sentence: what this kind of thing is for in this place, e.g. 'stairs leading up to the level above'>",
+      "footprint": {"w": <cells across its front>, "h": <cells deep>},
+      "position": "<wall|corner|center|far-wall|facing-door|free>",
+      "faces": "<away-from-wall|room|door|path|front|across>",
+      "relations": [{"type": "<one of the relation types>", "to": "<a role, or 'room', 'level', 'road'>"}]
+    }
+  }
+}"""
+
+
+def arrange_kinds(provider: Provider, kinds: list[dict], place: dict, relations: list[dict], context: dict) -> dict:
+    """The plan's arrangement (docs/dungeon.md §0): for each kind of thing a place's plan holds, what it's for, how big
+    it is, how it relates to the others, where it stands and which way it faces. Decided before anything is placed."""
+    task = ("You arrange the things of a game place before they are placed on its grid (a cell is about a metre). For each "
+            "kind of thing listed, decide: its purpose in this place (one plain sentence: what it's for, so it's drawn and "
+            "sized for that); its footprint in cells (as big as that purpose needs: stairs up to another level take several "
+            "cells and are as tall as the walls; a crate takes one); its relations to the other kinds, using only the "
+            "relation types given (a door is set-in a wall, a torch mounted-on a wall, stairs lead-to another level and "
+            "stand against a wall, a chest against a wall, a chair used-with a table); where it stands (from its relations: "
+            "against or set in a wall means at a wall); and which way it faces (away-from-wall: its back to the wall; room: "
+            "towards the room's middle; door: towards the door; path: along the road it's on; front: towards what it's used "
+            "with). Keep what each kind's defaults say unless this place needs otherwise. Every kind listed gets an entry.")
+    inputs = (f"The place: {json.dumps(place, ensure_ascii=False)}\n\n" + story_part(context) +
+              f"The relation types:\n{json.dumps(relations, ensure_ascii=False)}\n\n"
+              f"The kinds of things (role, how many statements place them, the rooms or areas they're in, the ontology's "
+              f"defaults):\n{json.dumps(kinds, ensure_ascii=False)}")
+    step = think_then_answer(provider, task, inputs, ARRANGE_SHAPE, think=False)
+    out = {"ok": False, "errors": list(step.errors), "usage": step.usage.model_dump()}
+    answer = step.answer
+    allowed = {r.get("type") for r in relations if isinstance(r, dict)} | {"near", "beside", "faces"}
+    roles = {k.get("role") for k in kinds if isinstance(k, dict)}
+    if isinstance(answer, dict) and isinstance(answer.get("kinds"), dict):
+        clean = {}
+        for role, kind in answer["kinds"].items():
+            if role not in roles or not isinstance(kind, dict):
+                continue
+            entry = {}
+            if isinstance(kind.get("purpose"), str) and kind["purpose"].strip():
+                entry["purpose"] = kind["purpose"].strip()[:200]
+            fp = kind.get("footprint")
+            if isinstance(fp, dict) and isinstance(fp.get("w"), int) and isinstance(fp.get("h"), int):
+                entry["footprint"] = {"w": max(1, min(8, fp["w"])), "h": max(1, min(8, fp["h"]))}
+            if kind.get("position") in ("wall", "corner", "center", "far-wall", "facing-door"):
+                entry["position"] = kind["position"]
+            if kind.get("faces") in ("away-from-wall", "room", "door", "path", "front", "across"):
+                entry["faces"] = kind["faces"]
+            rels = [r for r in kind.get("relations") or [] if isinstance(r, dict) and r.get("type") in allowed and isinstance(r.get("to"), str)]
+            if rels:
+                entry["relations"] = [{"type": r["type"], "to": r["to"]} for r in rels][:4]
+            clean[role] = entry
+        if clean:
+            out["ok"] = True
+            out["arrangement"] = {"kinds": clean}
+    if not out["ok"] and not out["errors"]:
+        out["errors"] = ["the answer had no kinds"]
+    return out

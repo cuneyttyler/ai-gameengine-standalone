@@ -515,30 +515,169 @@ std::pair<int, int> DoorCell(const json& o, const PlaceSceneOptions& options) {
     return {x + w / 2, y + h};
 }
 
+// A building whose lot the map's edge cuts, at its kind's own size: the footprint the same kind (its slot) has away from
+// the edge, most often, facing the same way; reaching outward past the edge where it touches it (its inner sides stay).
+// {x, y, w, h}, or nothing (not on the edge, or already its size).
+std::optional<std::array<int, 4>> OwnSize(const json& o, const std::vector<const json*>& objects, int gridW, int gridH) {
+    const int x = o.value("x", 0), y = o.value("y", 0), w = o.value("w", 1), h = o.value("h", 1);
+    const bool left = x <= 0, top = y <= 0, right = x + w >= gridW, bottom = y + h >= gridH;
+    if (!left && !top && !right && !bottom) return std::nullopt;
+    std::map<std::pair<int, int>, int> sizes;
+    for (const json* other : objects) {
+        if (other->value("slot", "") != o.value("slot", "") || other->value("layer", "") != "building") continue;
+        const int ox = other->value("x", 0), oy = other->value("y", 0), ow = other->value("w", 1), oh = other->value("h", 1);
+        if (ox <= 0 || oy <= 0 || ox + ow >= gridW || oy + oh >= gridH) continue; // on an edge too
+        if (other->value("facing", "s") != o.value("facing", "s")) continue;
+        ++sizes[{ow, oh}];
+    }
+    if (sizes.empty()) return std::nullopt;
+    const auto best = std::max_element(sizes.begin(), sizes.end(), [](const auto& a, const auto& b) { return a.second < b.second; })->first;
+    int nx = x, ny = y, nw = w, nh = h;
+    // Only across the edges it touches: along x for the left and right ones, along y for the top and bottom.
+    if ((left || right) && best.first > w) {
+        nw = best.first;
+        if (left) nx = x + w - nw;
+    }
+    if ((top || bottom) && best.second > h) {
+        nh = best.second;
+        if (top) ny = y + h - nh;
+    }
+    if (nw == w && nh == h) return std::nullopt;
+    return std::array<int, 4>{nx, ny, nw, nh};
+}
+
+// A building on the edge of the map cut at the edge (the map ends there: nothing of it stands past it). Each pixel of
+// its picture is where its box shows it: its foot is its footprint's front corner (the scene seats it there), so each
+// pixel is on the box's top or one of its two front faces, at a cell of the grid; what falls outside the map is
+// cleared. The cut picture is the sprite's own (assets/generated/clipped/). False: nothing was outside.
+bool ClipToMap(Registry& registry, PrefabLibrary& prefabs, Entity e, const json& o, int gridW, int gridH, const PlaceSceneOptions& options) {
+    const auto* sprite = registry.try_get<Sprite>(e);
+    if (sprite == nullptr || sprite->texture.empty() || sprite->width <= 0 || sprite->u0 > sprite->u1) return false;
+    auto image = DecodeImage(prefabs.GetProject().Resolve(sprite->texture));
+    if (!image || image->width < 8 || image->height < 8) return false;
+    const int x = o.value("x", 0), y = o.value("y", 0), w = std::max(1, o.value("w", 1)), h = std::max(1, o.value("h", 1));
+    const double k = image->width * options.iso.tileWidth / (2.0 * sprite->width); // picture pixels per half a cell across
+    const double hz = image->height / (k / 2) - (w + h);                          // its height, in quarter cells
+    const double fx = x + w, fy = y + h, e2 = 0.02;
+    bool cut = false;
+    for (uint32_t py = 0; py < image->height; ++py) {
+        for (uint32_t px = 0; px < image->width; ++px) {
+            uint8_t* p = &image->rgba[(static_cast<size_t>(py) * image->width + px) * 4];
+            if (p[3] == 0) continue;
+            const double u = (px + 0.5 - image->width / 2.0) / k, v = (py + 0.5 - image->height) / (k / 2);
+            // From the front corner into the footprint: a along x, b along y.
+            double a = -1, b = -1;
+            const double ta = (-v - hz - u) / 2, tb = (u - v - hz) / 2;
+            if (ta >= -e2 && ta <= w + e2 && tb >= -e2 && tb <= h + e2) a = ta, b = tb; // its top
+            else if (u <= 0) a = -u, b = 0;                                            // its face along x
+            else a = 0, b = u;                                                         // its face along y
+            const double wx = fx - a, wy = fy - b;
+            if (wx < -e2 || wy < -e2 || wx > gridW + e2 || wy > gridH + e2) p[3] = 0, cut = true;
+        }
+    }
+    if (!cut) return false;
+    const std::string path = "assets/generated/clipped/" + PrefabSlug(o.value("id", "thing")) + ".png";
+    std::error_code ec;
+    fs::create_directories(prefabs.GetProject().Resolve("assets/generated/clipped"), ec);
+    if (!WritePng(prefabs.GetProject().Resolve(path), *image)) return false;
+    EditField(EngineReflection(), registry, e, "Sprite", "texture", path);
+    return true;
+}
+
 // Places one object with a prefab; returns the entity.
+// Which of the grid's ways a picture of a thing that runs along its way (a car) is painted along, from where its lowest
+// point is (measured once): towards the right, along x (a front facing east, a back facing west), 1; towards the left,
+// along y (a front facing south, a back facing north), -1; in the middle, 0 (no telling).
+int PictureAxis(PrefabLibrary& prefabs, const std::string& texture) {
+    static std::map<std::string, int> axisOf;
+    if (const auto it = axisOf.find(texture); it != axisOf.end()) return it->second;
+    int axis = 0;
+    if (const auto image = DecodeImage(prefabs.GetProject().Resolve(texture)); image && image->width > 8) {
+        const int w = static_cast<int>(image->width), h = static_cast<int>(image->height);
+        std::vector<int> foot(static_cast<size_t>(w), -1);
+        for (int x = 0; x < w; ++x) {
+            for (int y = h - 1; y >= 0; --y) {
+                if (image->rgba[(static_cast<size_t>(y) * w + x) * 4 + 3] > 128) {
+                    foot[x] = y;
+                    break;
+                }
+            }
+        }
+        int x0 = 0, x1 = w - 1, low = -1;
+        while (x0 < w && foot[x0] < 0) ++x0;
+        while (x1 > x0 && foot[x1] < 0) --x1;
+        for (int x = x0; x <= x1; ++x) low = std::max(low, foot[x]);
+        double sum = 0;
+        int n = 0;
+        for (int x = x0; x <= x1; ++x) {
+            if (foot[x] >= low - 2) sum += x, ++n;
+        }
+        if (n > 0 && x1 - x0 > 8) {
+            const double at = (sum / n - x0) / (x1 - x0);
+            axis = at > 0.58 ? 1 : at < 0.42 ? -1 : 0;
+        }
+    }
+    axisOf.emplace(texture, axis);
+    return axis;
+}
+
 std::optional<Entity> PlaceObject(Registry& registry, PrefabLibrary& prefabs, const json& o, const json& choice,
                                   const PlaceSceneOptions& options) {
     std::string prefab = choice.value("prefab", "");
+    size_t variant = 0;
     if (const json many = choice.value("prefabs", json::array()); many.is_array() && many.size() > 1) {
-        const unsigned v = CellVariety(o.value("x", 0) * 3 + 11, o.value("y", 0) * 5 + 7);
-        prefab = many[v % many.size()].get<std::string>();
+        // Its place among its kind (the caller numbers them, neighbours apart), else by its cell.
+        const unsigned v = o.contains("variant") ? o["variant"].get<unsigned>() : CellVariety(o.value("x", 0) * 3 + 11, o.value("y", 0) * 5 + 7);
+        variant = v % many.size();
+        prefab = many[variant].get<std::string>();
+    }
+    const json look = choice.value("look", json::object()); // its role's (the ontology's)
+    // A thing with a front shows it as it faces: its art faces the viewer's lower left (south); facing east, that
+    // mirrored; facing north or west, its back view (mirrored for west). Without a back view, its front, mirrored.
+    const std::string orient = look.value("orient", "none");
+    bool mirrored = false;
+    if (orient != "none" && o.value("layer", "prop") != "building") {
+        const std::string f = o.value("facing", "s");
+        mirrored = f == "e" || f == "w";
+        if (f == "n" || f == "w") {
+            const json backs = choice.value("backs", json::array());
+            if (variant < backs.size() && backs[variant].is_string() && !backs[variant].get<std::string>().empty()) prefab = backs[variant].get<std::string>();
+        }
     }
     if (prefab.empty()) return std::nullopt;
     const Stand stand = StandOf(o, options);
     // A wood of one tree drawn three hundred times mustn't look stamped (place-refine.md §7):
-    // each natural thing is moved a little in its cell, turned the other way half the time,
-    // and a little bigger or smaller.
-    const json look = choice.value("look", json::object()); // its role's (the ontology's)
+    // each natural thing is moved a little in its cell, turned the other way half the time (unless
+    // it faces a way), and a little bigger or smaller.
     const bool varied = look.value("vary", false);
     const unsigned v = CellVariety(o.value("x", 0) + 7919, o.value("y", 0) + 104729);
     const float jx = varied ? (static_cast<float>(v % 97) / 96.0f - 0.5f) * 0.7f : 0.0f; // up to a third of a cell: no lattice
     const float jy = varied ? (static_cast<float>((v >> 7) % 97) / 96.0f - 0.5f) * 0.7f : 0.0f;
-    auto placed = prefabs.Instantiate(registry, prefab, stand.x + jx, stand.y + jy, false);
+    // Where its foot lands. A sprite stands with its bottom a quarter cell (of height) below its point; art drawn to
+    // the grid (matched art) has its lowest pixel where its footprint's front edge is: for a building or a run's piece
+    // the front corner, half a cell below its front cell's middle; for a thing, half its width (in cells) below its
+    // middle. So it's set forward (along x and y) by half its width less a quarter: a building, a wall piece, a car a
+    // quarter of a cell, a lamp not at all. Otherwise everything floats a little above the ground.
+    float seat = 0.0f;
+    if (choice.value("seated", false) || (choice.value("drawnToGrid", false) && o.value("layer", "prop") == "building")) {
+        seat = 0.25f;
+    } else if (choice.value("drawnToGrid", false)) {
+        float across = 1.0f;
+        prefabs.VisitTemplate(prefab, [&](Registry& r, Entity t) {
+            if (const auto* s = r.try_get<Sprite>(t); s && s->width > 0) across = s->width / options.iso.tileWidth;
+        });
+        seat = std::clamp(across / 2.0f - 0.25f, 0.0f, 0.25f);
+    }
+    auto placed = prefabs.Instantiate(registry, prefab, stand.x + jx + seat, stand.y + jy + seat, false);
     if (!placed) return std::nullopt;
     const Entity e = *placed;
     registry.emplace_or_replace<PlaceNode>(e, options.place, o.value("node", ""), o.value("id", ""));
     const std::string layer = o.value("layer", "prop");
-    if (look.value("doorway", false) && options.doorAcrossX) {
+    if (look.value("doorway", false) && options.doorAcrossX && choice.value("seated", false)) {
+        // A door block (an edit of the wall block: its door on its face along x) turns with its wall: across a corridor
+        // running along x it stands along y, mirrored.
+        if (options.doorAcrossX(o.value("x", 0), o.value("y", 0))) MirrorEntity(EngineReflection(), registry, e);
+    } else if (look.value("doorway", false) && options.doorAcrossX) {
         // The doorway's way (from the layout, done by the caller) against the picture's.
         const bool acrossX = options.doorAcrossX(o.value("x", 0), o.value("y", 0));
         if (const auto* sprite = registry.try_get<Sprite>(e)) {
@@ -574,17 +713,36 @@ std::optional<Entity> PlaceObject(Registry& registry, PrefabLibrary& prefabs, co
             if (it->second != 0 && drawnAlongX == acrossX) MirrorEntity(EngineReflection(), registry, e);
         }
     }
+    if (orient == "along" && layer != "building") {
+        // Painted along either of the grid's ways (a car's front to the lower left or the lower right): mirrored when its
+        // picture runs the other way from its facing. No telling: as if drawn facing south.
+        if (const auto* sprite = registry.try_get<Sprite>(e)) {
+            if (const int axis = PictureAxis(prefabs, sprite->texture); axis != 0) {
+                const std::string f = o.value("facing", "s");
+                mirrored = (f == "e" || f == "w") != (axis > 0);
+            }
+        }
+    }
+    if (mirrored) MirrorEntity(EngineReflection(), registry, e);
     if (varied) {
-        if ((v >> 14) & 1) MirrorEntity(EngineReflection(), registry, e);
+        if (orient == "none" && ((v >> 14) & 1)) MirrorEntity(EngineReflection(), registry, e);
         // Trees from saplings to old giants (0.78 to 1.30): a wood reads as a mass of crowns, not a
         // grid of one tree; smaller things vary less.
         const bool tree = choice.value("role", "") == "tree" || o.value("slot", "") == "tree";
         const float scale = tree ? 0.78f + static_cast<float>((v >> 16) % 53) / 100.0f : 0.88f + static_cast<float>((v >> 16) % 25) / 100.0f;
         if (std::abs(scale - 1.0f) > 0.02f) ScaleEntity(EngineReflection(), registry, e, scale);
     }
-    // A building is as wide as its footprint, and blocks all of it.
-    if (layer == "building") {
+    // A thing bigger than a cell (stairs up to another level, 2 x 3: the plan's footprint) at least nearly as wide as its
+    // footprint, its art drawn for a smaller one.
+    if (layer != "building" && (o.value("w", 1) > 1 || o.value("h", 1) > 1)) {
         if (const auto* sprite = registry.try_get<Sprite>(e); sprite && sprite->width > 0) {
+            const float want = FootprintPixels(o.value("w", 1), o.value("h", 1), options) * 0.9f;
+            if (sprite->width < want) ScaleEntity(EngineReflection(), registry, e, want / sprite->width);
+        }
+    }
+    // A building is as wide as its footprint (unless its art is drawn to the grid), and blocks all of it.
+    if (layer == "building") {
+        if (const auto* sprite = registry.try_get<Sprite>(e); sprite && sprite->width > 0 && !choice.value("drawnToGrid", false)) {
             const float factor = FootprintPixels(o.value("w", 1), o.value("h", 1), options) / sprite->width;
             if (std::abs(factor - 1.0f) > 0.02f) ScaleEntity(EngineReflection(), registry, e, factor);
         }
@@ -777,7 +935,7 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
         // shadow, whether it varies (a plant), gives light (a torch), or fills a doorway.
         {
             json look = {{"size", ontology.RoleSize(need.role)}, {"tall", ontology.RoleTall(need.role)}};
-            for (const char* k : {"vary", "light", "doorway"}) {
+            for (const char* k : {"vary", "light", "doorway", "orient", "run", "relations"}) {
                 if (const json v = ontology.RoleLook(need.role, k); !v.is_null()) look[k] = v;
             }
             row["look"] = look;
@@ -967,6 +1125,46 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
                                                       : "no candidate could be made a prefab";
             }
         }
+        // Matched art (MatchedArt) is drawn to the grid already: as wide as its sheet had it, standing where
+        // the builder stands it; not scaled again.
+        if (const AssetInfo* a = row.contains("entry") ? assets.Find(row.value("entry", "")) : nullptr) {
+            if (const auto s = a->analysis.find("matched"); s != a->analysis.end() && s->second == "1") row["drawnToGrid"] = true;
+            // A cell of a painted run (a door cut from its wall): its foot is its cell's front corner.
+            if (const auto r = a->analysis.find("run"); r != a->analysis.end() && r->second == "1") row["seated"] = true;
+            // Its kind's other looks (made together: variantKey) mixed across the place, and each one's back view
+            // (backOf) for a thing that faces away.
+            if (const auto vk = a->analysis.find("variantKey"); vk != a->analysis.end() && !vk->second.empty()) {
+                auto field = [](const AssetInfo& x, const char* k) {
+                    const auto f = x.analysis.find(k);
+                    return f == x.analysis.end() ? std::string() : f->second;
+                };
+                std::vector<std::pair<int, std::string>> fronts;
+                std::map<std::string, std::string> backOf;
+                for (const AssetInfo& x : assets.Assets()) {
+                    if (field(x, "variantKey") != vk->second) continue;
+                    if (const std::string b = field(x, "backOf"); !b.empty()) backOf[b] = x.path;
+                    else fronts.push_back({std::atoi(field(x, "variant").c_str()), x.path});
+                }
+                std::sort(fronts.begin(), fronts.end());
+                json prefabsOf = json::array(), backs = json::array();
+                bool anyBack = false;
+                for (const auto& [n, path] : fronts) {
+                    const CatalogEntry* e = catalog.Find(path);
+                    const std::string prefab = e ? PrefabForEntry(prefabs, assets, *e, solid, options) : std::string();
+                    if (prefab.empty()) continue;
+                    prefabsOf.push_back(prefab);
+                    std::string back;
+                    if (const auto b = backOf.find(path); b != backOf.end()) {
+                        if (const CatalogEntry* be = catalog.Find(b->second)) back = PrefabForEntry(prefabs, assets, *be, solid, options);
+                    }
+                    anyBack = anyBack || !back.empty();
+                    backs.push_back(back);
+                }
+                if (prefabsOf.size() > 1) row["prefabs"] = prefabsOf;
+                if (!prefabsOf.empty()) row["prefab"] = prefabsOf[0];
+                if (anyBack) row["backs"] = backs;
+            }
+        }
         out["needs"].push_back(row);
     }
     // The parts the build type stands up (place-refine.md §12, its look's "parts": a dungeon's wall
@@ -996,16 +1194,28 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
             json row = {{"role", role}, {"at", part.value("at", "")}};
             {
                 json look = {{"size", ontology.RoleSize(role)}, {"tall", ontology.RoleTall(role)}};
-                for (const char* k : {"vary", "light", "doorway"}) {
+                for (const char* k : {"vary", "light", "doorway", "orient", "run", "relations"}) {
                     if (const json v = ontology.RoleLook(role, k); !v.is_null()) look[k] = v;
                 }
                 row["look"] = look;
             }
-            std::string made;
+            // The newest made for it; a piece of a run (MatchedArt's kit: flat-sided, so copies join) before a lone block.
+            std::string made, madeEnd;
+            bool madeRun = false;
             for (const AssetInfo& a : assets.Assets()) {
-                auto of = a.analysis.find("partOf"), roles = a.analysis.find("roles");
+                auto of = a.analysis.find("partOf"), roles = a.analysis.find("roles"), run = a.analysis.find("run");
                 if (of == a.analysis.end() || of->second != partKey || roles == a.analysis.end() || roles->second.empty()) continue;
-                if (made.empty() || a.path > made) made = a.path;
+                if (run != a.analysis.end() && run->second == "end") {
+                    if (madeEnd.empty() || a.path > madeEnd) madeEnd = a.path;
+                    continue;
+                }
+                const bool isRun = run != a.analysis.end() && run->second == "1";
+                if (made.empty() || isRun > madeRun || (isRun == madeRun && a.path > made)) made = a.path, madeRun = isRun;
+            }
+            if (madeRun) row["run"] = true;
+            // A run's end (its end painted), for the cell where a run stops.
+            if (const CatalogEntry* e = madeRun && !madeEnd.empty() ? catalog.Find(madeEnd) : nullptr) {
+                if (const std::string prefab = PrefabForEntry(prefabs, assets, *e, false, options); !prefab.empty()) row["endPrefab"] = prefab;
             }
             if (const CatalogEntry* e = made.empty() ? nullptr : catalog.Find(made)) {
                 if (const std::string prefab = PrefabForEntry(prefabs, assets, *e, false, options); !prefab.empty()) {
@@ -1192,6 +1402,29 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
                                                            SolidTerrain(t), options.iso)},
                               {"source", "placeholder"},
                               {"why", pending ? "to be made by the Art tool" : "no " + t + " ground tiles in the project"}};
+    }
+    // What each relation means for art (docs/dungeon.md §0), for the scene (it has no ontology).
+    for (const auto& [id, r] : ontology.Relations()) {
+        if (r.use.is_object() && r.use.contains("art")) out["relationArt"][id] = r.use["art"];
+    }
+    // A wall cell with a thing mounted on it (MatchedArt's on-run kit: a torch painted on its wall), for each kind that
+    // hangs on a wall (docs/dungeon.md §6): the scene puts that cell where the thing hangs, not the thing on the floor.
+    {
+        std::map<std::string, std::string> onWall;
+        for (const AssetInfo& a : assets.Assets()) {
+            if (const auto f = a.analysis.find("onWallOf"); f != a.analysis.end() && !f->second.empty() && (!onWall.contains(f->second) || a.path > onWall[f->second])) {
+                onWall[f->second] = a.path;
+            }
+        }
+        auto give = [&](json& row) {
+            const auto it = onWall.find(row.value("role", ""));
+            if (it == onWall.end()) return;
+            if (const CatalogEntry* e = catalog.Find(it->second)) {
+                if (const std::string prefab = PrefabForEntry(prefabs, assets, *e, false, options); !prefab.empty()) row["onWall"] = prefab;
+            }
+        };
+        for (auto& row : out["needs"]) give(row);
+        for (auto& [k, row] : out["parts"].items()) give(row);
     }
     return out;
 }
@@ -1456,8 +1689,67 @@ HeightField MakeHills(const TerrainGrid& grid, const json& solved, float top, co
     return f;
 }
 
+// Which way a thing faces from where it stands (n, s, e, w), by its role's look "orient" (docs/places/matched-art.md
+// §2b): "front", away from the nearest edge of its room or area (a wall, rock, the area's bounds), so it backs onto
+// the wall and faces in; "along", down the path it stands on (the long way of its ground there), on the right-hand
+// side (a car in its lane). Anything else: as the layout has it.
+std::string FacingFromPlace(const json& o, const std::string& orient, const TerrainGrid& grid, const json& solved, const GroundLook& look) {
+    const int x = o.value("x", 0), y = o.value("y", 0);
+    const std::string here = grid.At(x, y);
+    if (orient == "along") {
+        // The same ground's run through the cell, each way (up to 16 cells each side).
+        auto reach = [&](int dx, int dy) {
+            int n = 0;
+            while (n < 16 && grid.At(x + dx * (n + 1), y + dy * (n + 1)) == here) ++n;
+            return n;
+        };
+        const int west = reach(-1, 0), east = reach(1, 0), north = reach(0, -1), south = reach(0, 1);
+        const int alongX = west + east, alongY = north + south;
+        const unsigned v = CellVariety(x * 7 + 3, y * 11 + 5);
+        if (alongX > alongY || (alongX == alongY && (v & 1))) return south < north ? "e" : "w"; // the south half drives east
+        return east < west ? "n" : "s";                                                          // the east half drives north
+    }
+    if (orient != "front") return o.value("facing", "s");
+    // Its area: the smallest region holding it.
+    std::array<int, 4> area = {0, 0, grid.w, grid.h};
+    long best = static_cast<long>(grid.w) * grid.h + 1;
+    for (const auto& r : solved.value("regions", json::array())) {
+        const json b = r.value("bounds", json::array());
+        if (!b.is_array() || b.size() != 4) continue;
+        const int bx = b[0], by = b[1], bw = b[2], bh = b[3];
+        if (x < bx || y < by || x >= bx + bw || y >= by + bh || static_cast<long>(bw) * bh >= best) continue;
+        best = static_cast<long>(bw) * bh, area = {bx, by, bx + bw, by + bh};
+    }
+    auto open = [&](int cx, int cy) {
+        if (cx < area[0] || cy < area[1] || cx >= area[2] || cy >= area[3]) return false;
+        const std::string& t = grid.At(cx, cy);
+        return !t.empty() && t != "void" && !look.Wall(t) && !look.Solid(t);
+    };
+    const int w = std::max(1, o.value("w", 1)), h = std::max(1, o.value("h", 1));
+    auto distance = [&](int dx, int dy) {
+        int n = 0;
+        int cx = dx > 0 ? x + w - 1 : x, cy = dy > 0 ? y + h - 1 : y;
+        while (n < 8 && open(cx + dx * (n + 1), cy + dy * (n + 1))) ++n;
+        return n;
+    };
+    const int dn = distance(0, -1), ds = distance(0, 1), dw = distance(-1, 0), de = distance(1, 0);
+    const int nearest = std::min({dn, ds, dw, de});
+    if (nearest >= 8) return o.value("facing", "s"); // nothing near: as laid out
+    // Backs onto the nearest edge; on a tie, the way with more room in front.
+    std::vector<std::pair<int, std::string>> ways = {{ds, "n"}, {dn, "s"}, {de, "w"}, {dw, "e"}}; // (room behind, facing)
+    std::string facing = "s";
+    int room = -1;
+    for (const auto& [behind, f] : ways) {
+        if (behind != nearest) continue;
+        const int ahead = f == "n" ? dn : f == "s" ? ds : f == "e" ? de : dw;
+        if (ahead > room) room = ahead, facing = f;
+    }
+    return facing;
+}
+
 constexpr int kGroundChunk = 16;   // cells across a picture
 constexpr int kGroundCellPx = 64;  // pixels across a cell: a 64 x 32 diamond needs 32; twice that keeps the ground sharp close up
+constexpr int kGroundCellPxPainted = 192; // with a painted ground picture: its detail kept for a close camera
 constexpr float kTextureCells = 4; // cells a ground's texture spans before it repeats
 
 // Each ground's own colour (place-refine.md §3): the image model's grass is green one time and
@@ -1487,7 +1779,10 @@ std::map<std::string, ImageData> LockPalette(std::map<std::string, ImageData> te
 PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const std::map<std::string, ImageData>& rawTextures,
                           const std::string& place, const std::vector<ShadowCaster>& casters, const HeightField& heights,
                           const Lighting& lighting, const GroundLook& look,
-                          const std::function<std::string(const std::string&, int, int)>& takeOf = {}) {
+                          const std::function<std::string(const std::string&, int, int)>& takeOf = {},
+                          const ImageData* picture = nullptr, int pictureCellPx = 0) {
+    // With a picture of the ground (painted whole), its colours; drawn at a finer scale, its detail kept.
+    const int kCellPx = picture ? kGroundCellPxPainted : kGroundCellPx;
     PaintedGround out;
     const std::map<std::string, ImageData> textures = LockPalette(rawTextures, look);
     auto nameAt = [&](int x, int y) -> std::string {
@@ -1628,7 +1923,7 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
     }
     // Four looks a little round each point: the edge between two grounds, soft.
     const float jitter[4][2] = {{0.16f, 0.06f}, {-0.06f, 0.16f}, {-0.16f, -0.06f}, {0.06f, -0.16f}};
-    const int side = kGroundChunk * kGroundCellPx;
+    const int side = kGroundChunk * kCellPx;
     const int chunksX = (grid.w + kGroundChunk - 1) / kGroundChunk, chunksY = (grid.h + kGroundChunk - 1) / kGroundChunk;
     const int chunkCount = chunksX * chunksY;
     std::vector<uint8_t> painted(static_cast<size_t>(chunkCount), 0);
@@ -1650,11 +1945,11 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
                 const float sx = c.x + c.shift, sy = c.y + c.shift * 0.35f;
                 const float reachX = c.rx + 0.6f, reachY = c.ry + 0.6f;
                 if (sx + reachX < x0 || sx - reachX > x0 + kGroundChunk || sy + reachY < y0 || sy - reachY > y0 + kGroundChunk) continue;
-                const int pxa = std::max(0, static_cast<int>((sx - reachX - x0) * kGroundCellPx)), pxb = std::min(side, static_cast<int>((sx + reachX - x0) * kGroundCellPx) + 1);
-                const int pya = std::max(0, static_cast<int>((sy - reachY - y0) * kGroundCellPx)), pyb = std::min(side, static_cast<int>((sy + reachY - y0) * kGroundCellPx) + 1);
+                const int pxa = std::max(0, static_cast<int>((sx - reachX - x0) * kCellPx)), pxb = std::min(side, static_cast<int>((sx + reachX - x0) * kCellPx) + 1);
+                const int pya = std::max(0, static_cast<int>((sy - reachY - y0) * kCellPx)), pyb = std::min(side, static_cast<int>((sy + reachY - y0) * kCellPx) + 1);
                 for (int py = pya; py < pyb; ++py) {
                     for (int px = pxa; px < pxb; ++px) {
-                        const float wx = x0 + (px + 0.5f) / kGroundCellPx, wy = y0 + (py + 0.5f) / kGroundCellPx;
+                        const float wx = x0 + (px + 0.5f) / kCellPx, wy = y0 + (py + 0.5f) / kCellPx;
                         float d;
                         if (c.box) {
                             // Outside the footprint's box, by how far (0 inside).
@@ -1672,7 +1967,7 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
             }
             for (int py = 0; py < side; ++py) {
                 for (int px = 0; px < side; ++px) {
-                    const float wx = cx * kGroundChunk + (px + 0.5f) / kGroundCellPx, wy = cy * kGroundChunk + (py + 0.5f) / kGroundCellPx;
+                    const float wx = cx * kGroundChunk + (px + 0.5f) / kCellPx, wy = cy * kGroundChunk + (py + 0.5f) / kCellPx;
                     const int ox = static_cast<int>(wx), oy = static_cast<int>(wy);
                     if (ox >= grid.w || oy >= grid.h) continue;
                     const int own = index[static_cast<size_t>(oy) * grid.w + ox];
@@ -1699,7 +1994,11 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
                         }
                         if (!ti) ti = plainTexture[t];
                         if (!ti) ti = plainTexture[own];
-                        if (!ti) continue;
+                        if (!ti) {
+                            // No texture for it (a background painted whole: docs/places/background.md): the picture's colour.
+                            if (picture != nullptr && pictureCellPx > 0) water += isWater[t] ? 1 : 0, ++samples;
+                            continue;
+                        }
                         // Its texture and, where slow noise says, the same texture turned and moved
                         // ("texture bombing"): no two stretches of a field sample it alike.
                         const float tu = wx / kTextureCells * ti->width, tv = wy / kTextureCells * ti->height;
@@ -1714,6 +2013,17 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
                     }
                     if (samples == 0) continue;
                     color.r /= samples, color.g /= samples, color.b /= samples;
+                    if (picture != nullptr && pictureCellPx > 0) {
+                        // The painted ground's colour here (bilinear), over the textures'.
+                        const float fx = std::clamp(wx * pictureCellPx - 0.5f, 0.0f, picture->width - 1.0f);
+                        const float fy = std::clamp(wy * pictureCellPx - 0.5f, 0.0f, picture->height - 1.0f);
+                        const int ax = static_cast<int>(fx), ay = static_cast<int>(fy);
+                        const int bx = std::min<int>(ax + 1, picture->width - 1), by = std::min<int>(ay + 1, picture->height - 1);
+                        const float tx = fx - ax, ty = fy - ay;
+                        auto at = [&](int x, int y, int k) { return static_cast<float>(picture->rgba[(static_cast<size_t>(y) * picture->width + x) * 4 + k]); };
+                        auto mix = [&](int k) { return (at(ax, ay, k) * (1 - tx) + at(bx, ay, k) * tx) * (1 - ty) + (at(ax, by, k) * (1 - tx) + at(bx, by, k) * tx) * ty; };
+                        color = {mix(0), mix(1), mix(2)};
+                    }
                     // The shore: land by the water turns to sand; the water by the land, shallow.
                     int nearWater = 0;
                     for (int k = 0; k < 6; ++k) {
@@ -1991,7 +2301,9 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
             const float size = look.value("size", 0.0f) > 0 ? look.value("size", 0.0f) : 0.6f * std::max(w, h);
             const float tall = look.value("tall", 0.0f) > 0 ? look.value("tall", 0.0f) : 1.0f;
             const float r = std::clamp(0.46f * size, 0.12f, 1.2f);
-            casters.push_back({x, y, r, r * 0.75f, 0.3f * size + 0.12f * tall, size >= 1.0f ? 0.4f : 0.32f, false});
+            // Cast by its height, not its width: a low thing (a car, a crate) keeps its shadow under it, so it stands on the
+            // ground; a tall one (a lamp post, a tree) casts it further.
+            casters.push_back({x, y, r, r * 0.75f, 0.02f + 0.22f * std::clamp(tall - 0.6f, 0.0f, 2.0f), size >= 1.0f ? 0.4f : 0.32f, false});
         }
     }
     Lighting lighting;
@@ -2056,7 +2368,11 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
         return k == 0 ? t : t + "#" + std::to_string(k);
     };
     const HeightField heights = textures.empty() || options.iso.topDown ? HeightField{} : MakeHills(grid, solved, options.hills, groundLook, lookOf);
-    const PaintedGround paintedGround = textures.empty() ? PaintedGround{} : PaintGround(prefabs.GetProject(), grid, textures, options.place, casters, heights, lighting, groundLook, takeOf);
+    std::optional<ImageData> groundPicture;
+    if (!options.groundPicture.empty() && options.groundPictureCellPx > 0) groundPicture = DecodeImage(prefabs.GetProject().Resolve(options.groundPicture));
+    const PaintedGround paintedGround = textures.empty() && !groundPicture ? PaintedGround{}
+                                        : PaintGround(prefabs.GetProject(), grid, textures, options.place, casters, heights, lighting, groundLook, takeOf,
+                                                      groundPicture ? &*groundPicture : nullptr, options.groundPictureCellPx);
     {
         std::set<std::string> pictures;
         for (const auto& [cell, picture] : paintedGround.cells) pictures.insert(picture.first);
@@ -2121,7 +2437,28 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
     // Things, back to front.
     std::map<std::string, json> choices;
     for (const auto& n : assetPlan.value("needs", json::array())) choices[n.value("key", "")] = n;
-    const json list = solved.value("objects", json::array()); // pointers below point into it
+    json list = solved.value("objects", json::array()); // pointers below point into it
+    // Which way each thing faces, from where it stands (its role's look "orient"), and which of its kind's looks it
+    // shows: neighbours of a kind get different ones.
+    {
+        const json byKey = assetPlan.value("byObject", json::object());
+        std::map<std::string, std::vector<json*>> ofKey;
+        for (auto& o : list) {
+            const std::string key = byKey.value(o.value("id", ""), "");
+            const auto c = choices.find(key);
+            if (c == choices.end()) continue;
+            const std::string orient = c->second.value("look", json::object()).value("orient", "none");
+            // The plan's facing (FaceObjects, by the arrangement's rule) first; else worked out here.
+            if (orient != "none" && o.value("layer", "") != "building" && !o.contains("faced")) o["facing"] = FacingFromPlace(o, orient, grid, solved, groundLook);
+            ofKey[key].push_back(&o);
+        }
+        for (auto& [key, of] : ofKey) {
+            std::stable_sort(of.begin(), of.end(), [](const json* a, const json* b) {
+                return std::make_pair(a->value("y", 0), a->value("x", 0)) < std::make_pair(b->value("y", 0), b->value("x", 0));
+            });
+            for (size_t i = 0; i < of.size(); ++i) (*of[i])["variant"] = static_cast<int>(i);
+        }
+    }
     std::vector<const json*> objects;
     for (const auto& o : list) objects.push_back(&o);
     std::stable_sort(objects.begin(), objects.end(), [](const json* a, const json* b) {
@@ -2138,6 +2475,7 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
         const bool alongX = open(x - 1, y) && open(x + 1, y), alongY = open(x, y - 1) && open(x, y + 1);
         return alongX && !alongY;
     };
+    std::map<std::pair<int, int>, std::string> onWallAt; // wall cells that show a thing mounted on them
     for (const json* o : objects) {
         const std::string id = o->value("id", "");
         if (Kept(options, o->value("node", ""), id)) continue; // not this edit's, or locked: as it is
@@ -2147,9 +2485,72 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
             out["dropped"] = out.value("dropped", 0) + 1; // excluded, or optional with nothing to show
             continue;
         }
-        if (it == choices.end() || !PlaceObject(registry, prefabs, *o, it->second, placing)) {
+        // Mounted on a wall (a relation whose art is "on-run", with that wall cell made): the nearest wall cell shown
+        // gets the piece with it painted on; nothing stands on the floor. Its light still shines (from the plan).
+        if (it != choices.end() && it->second.contains("onWall")) {
+            json relations = o->value("relations", json());
+            if (!relations.is_array()) relations = it->second.value("look", json::object()).value("relations", json::array());
+            const json art = assetPlan.value("relationArt", json::object());
+            bool mounted = false;
+            for (const auto& r : relations.is_array() ? relations : json::array()) mounted = mounted || art.value(r.value("type", ""), "") == "on-run";
+            if (mounted) {
+                const int ox = o->value("x", 0), oy = o->value("y", 0);
+                auto shown = [&](int cx, int cy) {
+                    auto floor = [&](int fx, int fy) { return fx >= 0 && fy >= 0 && fx < grid.w && fy < grid.h && !groundLook.Wall(grid.At(fx, fy)) && grid.At(fx, fy) != "void"; };
+                    return cx >= 0 && cy >= 0 && cx < grid.w && cy < grid.h && groundLook.Wall(grid.At(cx, cy)) && (floor(cx + 1, cy) || floor(cx, cy + 1) || floor(cx + 1, cy + 1));
+                };
+                int best = 99;
+                std::pair<int, int> at{-1, -1};
+                for (int dy = -2; dy <= 2; ++dy) {
+                    for (int dx = -2; dx <= 2; ++dx) {
+                        if (shown(ox + dx, oy + dy) && std::abs(dx) + std::abs(dy) < best) best = std::abs(dx) + std::abs(dy), at = {ox + dx, oy + dy};
+                    }
+                }
+                if (at.first >= 0) {
+                    onWallAt[at] = it->second.value("onWall", "");
+                    out["objects"]["mounted"] = out["objects"].value("mounted", 0) + 1;
+                    continue;
+                }
+            }
+            // No wall near, and its only art is the wall piece (no floor version made): not stood on the floor as a
+            // wall block. Its light still shines.
+            if (it->second.value("prefab", "") == it->second.value("onWall", "")) {
+                out["objects"]["unmounted"] = out["objects"].value("unmounted", 0) + 1;
+                continue;
+            }
+        }
+        // A building on a lot the map's edge cuts: shown at its kind's own size (the plan's: the footprint the same kind
+        // has away from the edge), reaching past the edge with the art made for that size, and cut at the edge, so the
+        // map reads as a window on a bigger place, not a row of shrunken buildings.
+        json shown = *o;
+        json shownChoice = it != choices.end() ? it->second : json();
+        if (o->value("layer", "") == "building" && it != choices.end()) {
+            const auto ext = OwnSize(*o, objects, grid.w, grid.h);
+            if (ext) {
+                shown["x"] = (*ext)[0], shown["y"] = (*ext)[1], shown["w"] = (*ext)[2], shown["h"] = (*ext)[3];
+                // The art made for that size (a need of the same role with that footprint), else its own.
+                const std::string role = it->second.value("role", "");
+                for (const auto& [k, row] : choices) {
+                    if (row.value("role", "") == role && row.value("w", 0) == (*ext)[2] && row.value("h", 0) == (*ext)[3] && row.contains("prefab") &&
+                        row.value("source", "") != "placeholder") {
+                        shownChoice["prefab"] = row["prefab"];
+                        shownChoice.erase("prefabs");
+                        if (row.contains("prefabs")) shownChoice["prefabs"] = row["prefabs"];
+                        break;
+                    }
+                }
+                out["extended"] = out.value("extended", 0) + 1;
+            }
+        }
+        const auto placedEntity = it == choices.end() ? std::nullopt : PlaceObject(registry, prefabs, shown, shownChoice, placing);
+        if (!placedEntity) {
             out["missing"].push_back(id);
             continue;
+        }
+        // On the map's edge: cut there.
+        if (shown.value("layer", "") == "building" && (shown.value("x", 0) <= 2 || shown.value("y", 0) <= 2 ||
+                                                       shown.value("x", 0) + shown.value("w", 1) >= grid.w - 2 || shown.value("y", 0) + shown.value("h", 1) >= grid.h - 2)) {
+            if (ClipToMap(registry, prefabs, *placedEntity, shown, grid.w, grid.h, options)) out["clipped"] = out.value("clipped", 0) + 1;
         }
         const std::string layerName = o->value("layer", "prop");
         out["objects"][layerName] = out["objects"].value(layerName, 0) + 1;
@@ -2284,24 +2685,45 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
     // towards the viewer); the ones in front are left out, so the rooms show (as in Diablo).
     // Its torches hang on them, where its lights are.
     if (lighting.indoor) {
-        std::string wall, torch;
+        std::string wall, wallEnd, torch, torchOnWall;
+        bool wallRun = false;
         const json partRows = assetPlan.value("parts", json::object()); // named: items() of a temporary dangles
         for (const auto& [key, part] : partRows.items()) {
-            if (part.value("at", "") == "wall-edge") wall = part.value("prefab", "");
-            if (part.value("at", "") == "lights") torch = part.value("prefab", "");
+            if (part.value("at", "") == "wall-edge") wall = part.value("prefab", ""), wallEnd = part.value("endPrefab", ""), wallRun = part.value("run", false);
+            if (part.value("at", "") == "lights") torch = part.value("prefab", ""), torchOnWall = part.value("onWall", "");
         }
         auto floorAt = [&](int x, int y) { return x >= 0 && y >= 0 && x < grid.w && y < grid.h && !groundLook.Wall(grid.At(x, y)) && grid.At(x, y) != "void"; };
         int walls = 0;
         for (int y = 0; y < grid.h && !wall.empty(); ++y) {
             for (int x = 0; x < grid.w; ++x) {
                 if (!groundLook.Wall(grid.At(x, y)) || !(floorAt(x + 1, y) || floorAt(x, y + 1) || floorAt(x + 1, y + 1))) continue;
-                auto placed = prefabs.Instantiate(registry, wall, x + options.originX + 0.5f, y + options.originY + 0.5f, false);
+                // A run's piece is cut to its cell exactly (its foot the cell's front corner, a quarter cell below
+                // where a thing stands): set a quarter cell forward, a cell wide, so neighbours meet with no gap. It's
+                // made running along x, its long face to the south: a wall showing its face to the east is mirrored.
+                const float forward = wallRun ? 0.25f : 0.0f;
+                // Its face to the east (floor only there): mirrored. Inside a run its middle piece; where the run stops
+                // (no shown wall next along it, towards the viewer) its end piece, the end painted.
+                const bool east = floorAt(x + 1, y) && !floorAt(x, y + 1);
+                auto shownWall = [&](int cx, int cy) {
+                    return cx >= 0 && cy >= 0 && cx < grid.w && cy < grid.h && groundLook.Wall(grid.At(cx, cy)) &&
+                           (floorAt(cx + 1, cy) || floorAt(cx, cy + 1) || floorAt(cx + 1, cy + 1));
+                };
+                const bool ends = east ? !shownWall(x, y + 1) : !shownWall(x + 1, y);
+                // A cell with a torch, or a thing mounted on it: that wall cell, painted with it.
+                const bool torchHere = !torchOnWall.empty() && std::find(torches.begin(), torches.end(), std::pair{x, y}) != torches.end();
+                const auto mountedHere = onWallAt.find({x, y});
+                const std::string& piece = mountedHere != onWallAt.end() ? mountedHere->second
+                                           : torchHere                  ? torchOnWall
+                                           : wallRun && ends && !wallEnd.empty() ? wallEnd : wall;
+                auto placed = prefabs.Instantiate(registry, piece, x + options.originX + 0.5f + forward, y + options.originY + 0.5f + forward, false);
                 if (!placed) continue;
                 registry.emplace_or_replace<PlaceNode>(*placed, options.place, "walls", "walls#" + std::to_string(x) + "," + std::to_string(y));
-                if (const auto* sprite = registry.try_get<Sprite>(*placed); sprite && sprite->width > 0) {
+                // A block drawn to the grid (one cell by its foot) as it is; a lone block of other art a cell wide.
+                if (const auto* sprite = registry.try_get<Sprite>(*placed); sprite && sprite->width > 0 && !wallRun) {
                     const float factor = options.iso.tileWidth * 1.02f / sprite->width;
-                    if (std::abs(factor - 1.0f) > 0.02f) ScaleEntity(EngineReflection(), registry, *placed, factor);
+                    if (std::abs(factor - 1.0f) > 0.002f) ScaleEntity(EngineReflection(), registry, *placed, factor);
                 }
+                if (wallRun && east) MirrorEntity(EngineReflection(), registry, *placed);
                 ++walls;
             }
         }
@@ -2327,7 +2749,7 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
         }
         int hung = 0;
         for (const auto& [x, y] : torches) {
-            if (torch.empty()) break;
+            if (torch.empty() || !torchOnWall.empty()) break; // painted on their wall cells instead
             const float fx = floorAt(x + 1, y) ? 0.5f : 0.0f, fy = fx == 0.0f ? 0.5f : 0.0f;
             auto placed = prefabs.Instantiate(registry, torch, x + options.originX + 0.5f + fx, y + options.originY + 0.5f + fy, false);
             if (!placed) continue;
@@ -2383,6 +2805,51 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
     // Locks and keys that work in play (development_plan.md 13.5): a locked door
     // opens with its key; the key lies in its room to be picked up. Each key is an
     // item record of its own, so it has a name in the inventory.
+    // The things toned to the background (docs/dungeon.md §7): painted apart, by another model, they come out in another
+    // light (a grey wall on a brown floor). Each picture's colour on average against the background's, a little brighter
+    // (a thing standing up catches more light than the floor): each channel most of the way there, never brighter (a
+    // sprite is only tinted down), so walls, doors and props sit in the ground's light. Lights keep theirs.
+    if (groundPicture && groundPicture->width > 0) {
+        double bg[3] = {0, 0, 0};
+        long nb = 0;
+        const ImageData& g = *groundPicture;
+        for (size_t i = 0; i < g.rgba.size(); i += 4 * 97) {
+            if (g.rgba[i] + g.rgba[i + 1] + g.rgba[i + 2] < 30) continue; // rock and the void
+            for (int c = 0; c < 3; ++c) bg[c] += g.rgba[i + c];
+            ++nb;
+        }
+        constexpr double lift = 1.15, strength = 0.8;
+        std::map<std::string, std::optional<std::array<float, 3>>> gains;
+        json toned = json::object();
+        for (auto [e, node, sprite] : registry.view<PlaceNode, Sprite>(entt::exclude<Tile>).each()) {
+            if (nb <= 100 || node.place != options.place || sprite.emissive || sprite.texture.empty()) continue;
+            auto it = gains.find(sprite.texture);
+            if (it == gains.end()) {
+                std::optional<std::array<float, 3>> gain;
+                if (const auto image = DecodeImage(prefabs.GetProject().Resolve(sprite.texture))) {
+                    double art[3] = {0, 0, 0};
+                    long na = 0;
+                    for (size_t i = 0; i < image->rgba.size(); i += 4 * 7) {
+                        if (image->rgba[i + 3] < 128) continue;
+                        for (int c = 0; c < 3; ++c) art[c] += image->rgba[i + c];
+                        ++na;
+                    }
+                    if (na > 50) {
+                        gain = std::array<float, 3>{};
+                        for (int c = 0; c < 3; ++c) {
+                            const double want = lift * bg[c] / nb / std::max(1.0, art[c] / na);
+                            (*gain)[c] = static_cast<float>(std::clamp(1.0 + strength * (want - 1.0), 0.45, 1.0));
+                        }
+                        toned[sprite.texture] = {(*gain)[0], (*gain)[1], (*gain)[2]};
+                    }
+                }
+                it = gains.emplace(sprite.texture, gain).first;
+            }
+            if (!it->second) continue;
+            sprite.r *= (*it->second)[0], sprite.g *= (*it->second)[1], sprite.b *= (*it->second)[2];
+        }
+        if (!toned.empty()) out["toned"] = toned;
+    }
     // Every thing of the place through its grade's brightness and tint (a sprite can't be desaturated).
     if (options.gradeBrightness != 1.0f || options.gradeTint != std::array<float, 3>{1.0f, 1.0f, 1.0f}) {
         for (auto [e, node, sprite] : registry.view<PlaceNode, Sprite>().each()) {
@@ -2429,7 +2896,8 @@ json VerifyPlaceScene(Registry& registry, const json& solved, const json& assetP
         ++found;
         const auto* world = registry.try_get<WorldTransform2D>(it->second);
         const Stand stand = StandOf(o, options);
-        if (world == nullptr || std::abs(world->x - stand.x) > 0.51f || std::abs(world->y - stand.y) > 0.51f) {
+        // Within its cell, allowing the quarter cell art drawn to the grid is set forward to stand on its foot (PlaceObject).
+        if (world == nullptr || std::abs(world->x - stand.x) > 0.8f || std::abs(world->y - stand.y) > 0.8f) {
             ++misplaced;
             if (off.size() < 30) off.push_back(o.value("id", ""));
         }

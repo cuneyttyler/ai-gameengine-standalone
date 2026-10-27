@@ -32,7 +32,7 @@ bool LooksLikeProject(const fs::path& root) {
 }
 
 std::optional<std::string> CreateProject(const fs::path& root, const std::optional<fs::path>& contentFrom,
-                                         bool topDown, bool painted) {
+                                         bool topDown, const std::map<std::string, std::string>& ai) {
     if (auto problem = MustBeEmptyOrMissing(root)) return problem;
     std::error_code ec;
     for (const char* folder : kFolders) {
@@ -50,8 +50,12 @@ std::optional<std::string> CreateProject(const fs::path& root, const std::option
         // Generated art's history belongs to the project it was made in.
         fs::remove_all(root / "assets" / "textures" / "generated", ec);
     }
+    std::string aiLine;
+    for (const char* field : {"provider", "model", "art", "background"}) {
+        if (const auto it = ai.find(field); it != ai.end() && !it->second.empty()) aiLine += std::string(" ") + field + "=\"" + it->second + "\"";
+    }
     std::ofstream(root / "settings.aige") << "# AIGE Settings v1\n" << (topDown ? "Grid style=TopDown\n" : "")
-                                          << (painted ? "Places method=Painted\n" : "");
+                                          << (aiLine.empty() ? "" : "AI" + aiLine + "\n");
     std::ofstream(root / "README.md")
         << "# " << root.filename().string() << "\n\n"
         << "An AIGE project. Open this folder in the editor (File > Open Project).\n\n"

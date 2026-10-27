@@ -5,6 +5,8 @@
 #include "assets/LayoutImage.h"
 #include "assets/TextureCook.h"
 #include "editing/BuildWindow.h"
+#include "editing/MatchedArt.h"
+#include "places/Arrange.h"
 #include "places/Compile.h"
 #include "places/PlaceValidate.h"
 #include "places/Planner.h"
@@ -424,7 +426,7 @@ void PlaceBuild::Save() const {
                                           {"planProblems", ProblemsJson(planProblems_)},
                                           {"revisions", revisions_},
                                           {"sketch", {{"done", sketched_}, {"crops", sketchCrops_}, {"sketches", sketches_}}},
-                                          {"paint", {{"done", painted_}, {"backdrops", backdrops_}}},
+                                          {"matched", matched_},
                                           {"layoutCheck", {{"checked", layoutChecked_}, {"rounds", layoutRounds_}, {"answer", layoutCheck_}}},
                                           {"fit", {{"scale", fitScale_}, {"side", fitSide_}}},
                                           {"locks", locks_},
@@ -598,7 +600,6 @@ void PlaceBuild::OnResponse(int requestId, const json& body) {
         if (stage_ == "revising") stage_ = beforeRevision_.empty() ? "plan" : beforeRevision_;
         layoutCheckRevising_ = false;
         inspecting_ = false;
-        if (kind == "paint" && painting_ == 0) painted_ = true; // the last painting's answer: painting ends
         if (kind == "sketch" && sketching_ == 0) sketched_ = true;
         status_.clear();
         Save();
@@ -633,23 +634,44 @@ void PlaceBuild::HandleResponse(int requestId, const json& body) {
         Save();
         return;
     }
-    if (what.kind == "paint") {
-        painting_ = std::max(0, painting_ - 1);
-        const size_t i = static_cast<size_t>(std::stoi(what.node));
-        const json request = i < paintRequests_.size() ? paintRequests_[i] : json::object();
-        Log({{"step", "painted"}, {"level", request.value("level", "")}, {"answer", body}});
+    if (what.kind == "background") {
+        makingBackground_ = false;
+        Log({{"step", "background painted"}, {"answer", body}});
         if (body.value("ok", false)) {
-            backdrops_.push_back({{"level", request.value("level", "")}, {"area", request.value("area", json::array())},
-                                  {"backdrop", body.value("backdrop", body.value("painting", ""))}, {"size", body.value("size", json::array())},
-                                  {"prompt", body.value("prompt", "")}, {"map", body.value("map", json::object())},
-                                  {"model", body.value("model", "")}, {"steps", body.value("steps", json::array())},
-                                  {"blockout", request.value("blockout", "")}, {"legend", request.value("legend", "")}});
+            matched_["groundPicture"] = {{"path", body.value("path", "")}, {"cellPx", body.value("cellPx", 0)}, {"cells", body.value("cells", json::array())},
+                                         {"provider", body.value("provider", "")}, {"calls", body.value("calls", 0)}};
+            status_ = "Background painted (" + std::to_string(body.value("calls", 0)) + " calls).";
         } else {
-            Notice("A backdrop wasn't painted: " + FirstError(body));
+            Notice("The background wasn't painted: " + FirstError(body));
         }
-        if (painting_ == 0) {
-            painted_ = true;
-            status_ = std::to_string(backdrops_.size()) + " backdrop(s) painted.";
+        Save();
+        return;
+    }
+    if (what.kind == "arrange") {
+        Log({{"step", "arranged"}, {"answer", body}});
+        if (body.value("ok", false) && body.contains("arrangement")) {
+            spec_["arrangement"] = body["arrangement"];
+            Solve();
+            WriteJson(Folder() / "spec.json", spec_);
+            status_ = "Arranged: " + std::to_string(body["arrangement"].value("kinds", json::object()).size()) + " kinds of things.";
+        } else {
+            Notice("The things weren't arranged by the AI (" + FirstError(body) + "): the ontology's defaults are used.");
+        }
+        Save();
+        return;
+    }
+    if (what.kind == "matched-art") {
+        Log({{"step", "matched art made"}, {"answer", body}});
+        if (body.value("ok", false)) {
+            matched_["state"] = "made";
+            matched_["provider"] = body.value("provider", "");
+            matched_["steps"] = body.value("steps", json::array());
+            status_ = "The art is made by " + body.value("provider", std::string("the art provider")) + "; cutting its pieces…";
+        } else {
+            matched_["state"] = "failed";
+            matched_["error"] = FirstError(body);
+            status_ = "Making the art failed (" + FirstError(body) + ").";
+            Notice(status_);
         }
         Save();
         return;
@@ -1044,10 +1066,12 @@ void PlaceBuild::Edit(const std::string& path, const json& value) {
     const bool confirming = stage_ == "layout";
     // ③ Assets (after the plan): only where each component's art comes from.
     const bool sources = (stage_ == "planned" || stage_ == "sourced" || stage_ == "built") && path.size() > 14 && path.substr(path.size() - 14) == ".assets.source";
-    if (stage_ != "request" && stage_ != "assets" && !confirming && !sources) return;
+    // The background's description: what it's painted from, editable whenever.
+    const bool background = path == "background.description";
+    if (stage_ != "request" && stage_ != "assets" && !confirming && !sources && !background) return;
     ApplyWindowEdit(host_.ontology(), brief_, path, value);
     // What the zones were planned from changed: the layout is out of date until planned again.
-    if (confirming && path != "name" && path.rfind("style.", 0) != 0 && !sources) layoutStale_ = true;
+    if (confirming && path != "name" && path.rfind("style.", 0) != 0 && !sources && !background) layoutStale_ = true;
     WriteJson(Folder() / "brief.json", brief_);
     Save();
 }
@@ -1138,6 +1162,28 @@ std::string PlaceBuild::SetZoneField(const std::string& zone, const std::string&
     }
     Save();
     return {};
+}
+
+std::string PlaceBuild::SetRootField(const std::string& field, const json& value) {
+    if (stage_ != "layout" && stage_ != "plan" && stage_ != "planned") return "the layout is set before the place is built";
+    if (!spec_.contains("root")) return "there's no plan yet";
+    const ModuleDef* m = host_.ontology().Module(spec_["root"].value("module", ""));
+    const FieldDef* f = m ? m->Field(field) : nullptr;
+    if (f == nullptr) return "the place has no " + field;
+    if (const std::string error = CheckFieldValue(host_.ontology(), *f, value); !value.is_null() && !error.empty()) return field + ": " + error;
+    Checkpoint("layout: " + field + " = " + value.dump());
+    json& group = spec_["root"][f->quantity ? "quantity" : "quality"];
+    if (value.is_null()) group.erase(field);
+    else group[field] = value;
+    SetBriefValue(brief_, "root." + field, value); // the Brief says the same
+    Log({{"step", "layout form"}, {"field", field}, {"value", value}});
+    if (stage_ == "layout") {
+        UnfreezeLayout(true);
+        LayoutZones();
+        Save();
+        return {};
+    }
+    return Relayout();
 }
 
 std::string PlaceBuild::PaintZone(const std::string& zone, const json& cells, bool erase) {
@@ -2263,6 +2309,25 @@ void PlaceBuild::FinishPlanning() {
     Solve();
     MeetExpectations();
     WriteJson(Folder() / "spec.json", spec_);
+    Arrange();
+}
+
+bool PlaceBuild::Arrange() {
+    if (spec_.contains("arrangement")) return false;
+    const json ir = ReadJson(Folder() / "layout.ir.json");
+    if (!ir.is_object()) return false;
+    const Ontology& ontology = host_.ontology();
+    json relations = json::array();
+    for (const char* id : {"set-in", "mounted-on", "against", "leads-to", "lights", "part-of", "used-with", "debris-of", "near", "beside", "faces"}) {
+        if (const RelationType* r = ontology.Relation(id)) relations.push_back({{"type", id}, {"means", r->description}});
+    }
+    const json body = {{"kinds", ArrangementKinds(ontology, ir)},
+                       {"place", {{"name", brief_.value("name", id_)}, {"type", brief_.value("buildType", "")}, {"style", brief_.value("style", json::object())}}},
+                       {"relations", relations}};
+    if (!Send({"arrange", -1, "", "/places/arrange", body, 300})) return false;
+    status_ = "Arranging: what each thing is for, how big, where it stands and which way it faces…";
+    Log({{"step", "arrange"}, {"kinds", body["kinds"].size()}});
+    return true;
 }
 
 // --- Solve ----------------------------------------------------------------------------------
@@ -2317,8 +2382,11 @@ void PlaceBuild::Solve() {
         const auto roundScale = options.zoneScale;
         const auto t0 = std::chrono::steady_clock::now();
         ir = CompileSpec(ontology, spec_, options);
+        // The plan's arrangement (what each kind is for, its size, where it stands and faces: docs/dungeon.md §0).
+        ApplyArrangement(ontology, ir, spec_.value("arrangement", json::object()));
         const auto t1 = std::chrono::steady_clock::now();
-        const SolvedLayout solved = SolveLayout(ontology, ir);
+        SolvedLayout solved = SolveLayout(ontology, ir);
+        FaceObjects(ontology, solved.document, ir);
         const auto t2 = std::chrono::steady_clock::now();
         const json rows = VerifyLayout(ontology, brief_, spec_, solved.document);
         const auto t3 = std::chrono::steady_clock::now();
@@ -3542,13 +3610,15 @@ void PlaceBuild::SolveParts(const std::set<std::string>& parts, const std::strin
     options.fixedSide = true;
     options.isoGrid = host_.isoGrid ? host_.isoGrid() : true;
     options.zoneScale = fitScale_;
-    const json ir = CompileSpec(ontology, spec_, options);
+    json ir = CompileSpec(ontology, spec_, options);
+    ApplyArrangement(ontology, ir, spec_.value("arrangement", json::object()));
     SolveOptions solve;
     solve.previous = &solved_;
     solve.resolve = parts;
     solve.locked = locks_;
     const json previous = solved_;
-    const SolvedLayout layout = SolveLayout(ontology, ir, solve);
+    SolvedLayout layout = SolveLayout(ontology, ir, solve);
+    FaceObjects(ontology, layout.document, ir);
     solved_ = layout.document;
     WriteJson(Folder() / "layout.ir.json", ir);
     WriteJson(Folder() / "layout.solved.json", solved_);
@@ -4365,33 +4435,6 @@ void PlaceBuild::Built(const json& result) {
     Save();
 }
 
-std::string PlaceBuild::Paint(const json& requests) {
-    backdrops_ = json::array();
-    paintRequests_ = requests.is_array() ? requests : json::array();
-    if (paintRequests_.empty()) {
-        painted_ = true;
-        return "nothing to paint";
-    }
-    for (size_t i = 0; i < paintRequests_.size(); ++i) {
-        const json& r = paintRequests_[i];
-        // Its endpoint and body: the block-out painted by the Paint Provider (BlockoutPaintRequests), or a
-        // backdrop painted from words (BackdropRequests).
-        const std::string path = r.value("path", "/places/backdrop");
-        const json body = r.contains("body") ? r["body"] : json{{"context", r.value("context", json::object())}, {"out", r.value("out", "")}};
-        if (Send({"paint", -1, std::to_string(i), path, body, 900})) {
-            ++painting_;
-        }
-    }
-    if (painting_ == 0) {
-        painted_ = true;
-        return "the AI is off";
-    }
-    status_ = "Painting the place: one backdrop per level, then its map read from it…";
-    Log({{"step", "paint"}, {"backdrops", painting_}});
-    Save();
-    return {};
-}
-
 std::string PlaceBuild::Sketch(const json& requests) {
     if (!requests.is_array() || requests.empty()) {
         sketched_ = true;
@@ -4409,6 +4452,100 @@ std::string PlaceBuild::Sketch(const json& requests) {
     }
     status_ = "Sketching the place, window by window: one painting each, the art of every piece from it…";
     Log({{"step", "sketch"}, {"windows", sketching_}});
+    Save();
+    return {};
+}
+
+std::string PlaceBuild::MakeMatchedArt(const json& assetPlan, const Ontology* ontology) {
+    if (!solved_.is_object()) return "the plan isn't laid out";
+    if (matched_.value("state", "") == "making") return "already making the art";
+    // The sheets, beside the build: what the provider makes, and where each piece is cut from.
+    const std::string dir = "places/" + id_ + "/matched";
+    const fs::path root = Folder().parent_path().parent_path();
+    std::error_code ec;
+    // A new round: nothing of the last one cut by mistake, but the art it made kept (its pieces, its style sheet, its
+    // ground textures, what passed the check): the provider paints only what's missing (docs/places/matched-art.md §2b).
+    for (const auto& entry : fs::directory_iterator(root / dir, ec)) {
+        const std::string name = entry.path().filename().string();
+        if (name == "pieces" || name == "style-sheet.png" || name == "ground-painted.png" || name == "checked.json") continue;
+        fs::remove_all(entry.path(), ec);
+    }
+    const json sheets = MatchedArtSheets(solved_, assetPlan, ontology, root / dir);
+    if (sheets.value("sheets", json::array()).empty()) return "nothing to make";
+    const json story = story_.is_object() ? story_ : json::object();
+    const json body = {{"dir", dir},
+                       {"sheets", sheets},
+                       // The place as its mood (its era, culture and condition): how its art looks.
+                       {"place", {{"name", brief_.value("name", "")}, {"type", brief_.value("buildType", "")}, {"style", brief_.value("style", json::object())}}},
+                       {"story", {{"purpose", story.value("purpose", json())}, {"mood", story.value("mood", json())}, {"logline", story.value("logline", json())}}},
+                       {"look", LookFor(brief_.value("buildType", ""))},
+                       // The place's background (painted or picked), for the art coloured by it (relation coloured-by).
+                       {"background", matched_.value("groundPicture", json::object()).value("path", "")}};
+    if (!Send({"matched-art", -1, "", "/assets/matched", body, 3600})) return "the AI is off";
+    const json background = matched_.value("groundPicture", json());
+    matched_ = {{"state", "making"}, {"dir", dir}, {"sheets", sheets.value("sheets", json::array()).size()}};
+    if (background.is_object()) matched_["groundPicture"] = background; // the background stays
+    status_ = "Making the art: the style sheet first, then every piece in its style…";
+    Log({{"step", "matched art"}, {"sheets", sheets.value("sheets", json::array()).size()}});
+    Save();
+    return {};
+}
+
+void PlaceBuild::MatchedArtDone(const json& report) {
+    matched_["state"] = "cut";
+    if (report.contains("groundPicture")) matched_["groundPicture"] = report["groundPicture"];
+    int flagged = 0;
+    for (const auto& p : report.value("pieces", json::array())) flagged += p.value("flagged", false);
+    matched_["report"] = {{"pieces", report.value("pieces", json::array()).size()}, {"grounds", report.value("grounds", json::array()).size()},
+                          {"flagged", flagged}, {"skipped", report.value("skipped", json::array())}};
+    status_ = std::to_string(report.value("pieces", json::array()).size()) + " pieces and " + std::to_string(report.value("grounds", json::array()).size()) +
+              " grounds made to match" + (flagged ? " (" + std::to_string(flagged) + " off the style)" : "") + ". Build puts them into the scene.";
+    Log({{"step", "matched art cut"}, {"report", report}});
+    Save();
+}
+
+std::string PlaceBuild::SetBackground(const std::string& path) {
+    if (!solved_.is_object()) return "the plan isn't laid out";
+    const auto image = DecodeImage(Folder().parent_path().parent_path() / path);
+    if (!image || image->width == 0) return "that picture can't be read";
+    // As many pixels a cell as the picture has across the site (a picture of another shape is stretched to it).
+    const json b = solved_["grid"].value("bounds", json::array({0, 0, 1, 1}));
+    const int cells = std::max(1, b[2].get<int>());
+    matched_["groundPicture"] = {{"path", path}, {"cellPx", std::max(1, static_cast<int>(image->width) / cells)}, {"cells", {b[2], b[3]}}, {"picked", true}};
+    Log({{"step", "background"}, {"path", path}});
+    Save();
+    return {};
+}
+
+std::string PlaceBuild::BackgroundDescription() const {
+    if (const json d = brief_.value("background", json::object()).value("description", json()); d.is_string() && !d.get<std::string>().empty()) {
+        return d.get<std::string>();
+    }
+    // From the Brief: what the place is and how it looks (each ground's words come from the ontology).
+    std::string kind = brief_.value("buildType", std::string("place"));
+    std::replace(kind.begin(), kind.end(), '-', ' ');
+    std::string style;
+    for (const auto& [k, v] : brief_.value("style", json::object()).items()) {
+        if (v.is_string() && !v.get<std::string>().empty() && k != "tags") style += (style.empty() ? "" : ", ") + v.get<std::string>();
+    }
+    std::string text = "A " + kind + " background for a game.";
+    if (!style.empty()) text += "\nStyle: " + style + ".";
+    if (const json reference = LookFor(brief_.value("buildType", "")).value("reference", json()); reference.is_string()) {
+        text += " It looks like " + reference.get<std::string>().substr(0, reference.get<std::string>().find(':')) + ".";
+    }
+    return text;
+}
+
+std::string PlaceBuild::MakeBackground() {
+    if (!solved_.is_object() || !solved_.contains("terrain")) return "the plan isn't laid out";
+    if (makingBackground_) return "already painting it";
+    const json b = solved_["grid"].value("bounds", json::array({0, 0, 1, 1}));
+    const json body = {{"dir", "places/" + id_ + "/background"}, {"terrain", solved_["terrain"]}, {"cells", {b[2], b[3]}},
+                       {"description", BackgroundDescription()}};
+    if (!Send({"background", -1, "", "/places/background", body, 1800})) return "the AI is off";
+    makingBackground_ = true;
+    status_ = "Painting the background: the whole place, then the parts that need more detail…";
+    Log({{"step", "background"}, {"description", body["description"]}});
     Save();
     return {};
 }
@@ -4526,10 +4663,8 @@ std::string PlaceBuild::Open(const std::string& id) {
                 if (crop.is_string()) sketchCrops_[key] = crop.get<std::string>();
             }
         }
-        if (const json pt = session.value("paint", json::object()); pt.is_object()) {
-            painted_ = pt.value("done", false);
-            backdrops_ = pt.value("backdrops", json::array());
-        }
+        matched_ = session.value("matched", json::object());
+        if (matched_.value("state", "") == "making") matched_["state"] = "failed"; // the answer can't come now
         if (const json lc = session.value("layoutCheck", json::object()); lc.is_object()) {
             layoutChecked_ = lc.value("checked", false);
             layoutRounds_ = lc.value("rounds", 0);
@@ -4664,6 +4799,33 @@ void PlaceBuild::Cancel() {
 json PlaceBuild::State() {
     json state = {{"type", "build:state"}, {"id", id_}, {"query", query_}, {"fromPlanner", fromPlanner_}, {"stage", stage_}, {"round", round_},
                   {"status", status_}, {"errors", errors_}, {"notices", notices_}, {"drafts", drafts_.size()}};
+    // The layout form (the root's layout fields): each with its values, what each means, and its value now.
+    if (spec_.is_object() && spec_.contains("root")) {
+        static const std::vector<std::string> kForm = {"site-fit", "zone-shape", "street-grid", "block-size", "block-fill", "coverage", "open-space",
+                                                       "lot-layout", "block-use", "frontage", "building-cover", "building-shape", "arrangement"};
+        const Ontology& ontology = host_.ontology();
+        if (const ModuleDef* root = ontology.Module(spec_["root"].value("module", ""))) {
+            json form = json::array();
+            for (const auto& name : kForm) {
+                const FieldDef* f = root->Field(name);
+                if (f == nullptr) continue;
+                json row = {{"field", name}, {"type", f->type}, {"description", f->description}, {"default", f->defaultValue}};
+                const json set = spec_["root"].value(f->quantity ? "quantity" : "quality", json::object()).value(name, json());
+                row["value"] = set.is_null() ? f->defaultValue : set;
+                if (const auto* scheme = f->vocabulary.empty() ? nullptr : ontology.Scheme(f->vocabulary)) {
+                    json values = json::array(), meaning = json::object();
+                    for (const auto& term : *scheme) {
+                        values.push_back(term.id);
+                        if (!term.prompt.empty()) meaning[term.id] = term.prompt;
+                    }
+                    row["values"] = values;
+                    row["meaning"] = meaning;
+                }
+                form.push_back(row);
+            }
+            if (!form.empty()) state["layoutForm"] = form;
+        }
+    }
     if (stage_ == "plan" || stage_ == "planned" || stage_ == "sourcing" || stage_ == "sourced" || stage_ == "building" || stage_ == "built") {
         state["plan"] = PlanSummary(host_.ontology(), spec_);
         // Why each part is as it is: its rationale (already there), its relations, and what was fixed.
@@ -4820,6 +4982,14 @@ json PlaceBuild::State() {
     }
     // ③ Assets (after the plan): the art plan and where each component's art comes from.
     if (stage_ == "planned" || stage_ == "sourcing" || stage_ == "sourced" || stage_ == "built") state["assetNeeds"] = assetNeeds_;
+    if (!matched_.empty()) {
+        json shown = matched_;
+        shown.erase("sheets"); // the panel needs where it is, not every box
+        state["matched"] = shown;
+    }
+    if (matched_.contains("groundPicture")) state["background"] = matched_["groundPicture"];
+    state["backgroundDescription"] = BackgroundDescription();
+    state["backgroundMaking"] = makingBackground_;
     if (stage_ == "building") state["buildProgress"] = buildProgress_;
     if (host_.layoutStep && (stage_ == "planned" || stage_ == "sourcing" || stage_ == "sourced" || stage_ == "built")) {
         const Catalog catalog = host_.catalog ? host_.catalog() : Catalog{};

@@ -132,6 +132,10 @@
     "traffic": {
       "slot": "car",
       "density": 0.06
-    }
+    },
+    "filler": [
+      "park",
+      "playground"
+    ]
   }
 }

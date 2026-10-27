@@ -473,7 +473,10 @@ interpret context, relation, for: {quest} or {scene}} — every quest anchor giv
 who live or work there (actors {character, anchor}), its exits matching its connections ({to, edge, kind}),
 style (palette, materials). Then write its draft Brief for the Build panel, exactly as the interpret context
 describes for its build type (schema aige.brief/1: buildType, name, scale, components with their fields, features,
-style), with the anchors' modules on."""
+style), with the anchors' modules on. In the Brief, also describe its background (the ground everything stands on,
+painted as one picture: docs/places/background.md): a first line saying what the place is for a game and its style
+and look, then one line per kind of ground it has, "<ground>: <how it looks, in plain words>" (asphalt: road with white
+lane markings; stone-floor: old worn stone slabs, cracks, moss in the joints). Only ground: no buildings or things."""
 
 PLACE_SHAPE = """{"place": {"kind": "<build type>",
    "description": {"purpose": "", "culture": "", "era": "", "mood": "", "residents": []},
@@ -482,7 +485,10 @@ PLACE_SHAPE = """{"place": {"kind": "<build type>",
    "actors": [{"character": "character/x", "anchor": "home"}],
    "exits": [{"to": "location/y", "edge": "east", "kind": "road"}],
    "style": {"palette": [], "materials": []},
-   "brief": {"schema": "aige.brief/1", "buildType": "<build type>", "name": "", "scale": {}, "components": {}, "features": []}},
+   "brief": {"schema": "aige.brief/1", "buildType": "<build type>", "name": "", "scale": {}, "components": {}, "features": [],
+             "background": {"description": "<line one: the place and its look>
+<ground>: <how it looks>
+..."}}},
  "rationale": ""}"""
 
 

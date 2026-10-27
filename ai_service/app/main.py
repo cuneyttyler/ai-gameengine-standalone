@@ -35,7 +35,6 @@ from .planner import STEPS as PLANNER_STEPS
 from .places import ask_questions, interpret, plan_root, plan_zone, repair_brief, repair_node, review_layout, revise_plan
 from .inspect import inspect_place
 from .sketch import sketch_place
-from .backdrop import paint_backdrop
 from .vision import describe_assets, map_chunk
 from .websource import all_candidates, candidates, fetch_file, search_web
 from .art_brief import better_queries, write_art_prompt
@@ -145,11 +144,6 @@ class SketchRequest(BaseModel):
     name: str = "sketch"
 
 
-class BackdropRequest(BaseModel):
-    context: dict = {}       # the place, its look and story, its zones and items with where they lie, its anchors
-    out: str                 # the backdrop's PNG, relative to the project (its map beside it, .json)
-
-
 class InspectRequest(BaseModel):
     kind: str              # layout, plan or build (docs/build-fixes.md)
     images: list[str]      # relative to the project root: one, or one per window of a big scene
@@ -194,23 +188,32 @@ class ArtProviderRequest(BaseModel):
     provider: str = "auto"
 
 
-class PaintProviderRequest(BaseModel):
-    provider: str = "bfl"              # Preferences ▸ Paint Provider: who paints places (the Painted method)
-    model: str = "flux-3-image"        # one of bfl.PAINT_PROVIDERS[provider]
+class ArrangeRequest(BaseModel):
+    kinds: list[dict]                  # ArrangementKinds: role, label, footprint, in, statements, the ontology's defaults
+    place: dict = {}
+    relations: list[dict] = []         # the relation types it may use: {type, means}
+    context: dict = {}
 
 
-class CheckPaintingRequest(BaseModel):
-    painting: str                      # relative to the project root
-    legend: dict = {}                  # the block-out's colour key, with each thing's box and the image size
+class BackgroundProviderRequest(BaseModel):
+    provider: str = "bfl:flux-3-image"
 
 
-class PaintBlockoutRequest(BaseModel):
-    blockout: str                      # the plan's block-out (PlaceBlockout), relative to the project root
-    legend: dict = {}                  # its colour key and boxes
+class BackgroundRequest(BaseModel):
+    dir: str                           # where it's written, relative to the project root (places/<id>/background)
+    terrain: dict                      # the solved layout's terrain {palette, rows}
+    cells: list[int]                   # [W, H]
+    description: str = ""              # the background description (the planner's, edited by the user)
+    seed: int = 7
+
+
+class MatchedRequest(BaseModel):
+    dir: str                           # the sheets' folder (MatchedArtSheets), relative to the project root
+    sheets: dict                       # sheets.json
     place: dict = {}                   # {name, type}
     story: dict = {}
     look: dict = {}
-    out: str                           # the painting, relative to the project root
+    background: str = ""               # the place's background (project path), for the art coloured by it (coloured-by)
 
 
 class AnimationRequest(BaseModel):
@@ -270,10 +273,14 @@ def available_providers() -> dict[str, bool]:
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     return {"mistral": bool(os.environ.get("MISTRAL_API_KEY")),
             "claude": bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")),
-            "pixellab": bool(os.environ.get("PIXELLAB_API_KEY"))}
+            "pixellab": bool(os.environ.get("PIXELLAB_API_KEY")),
+            "bfl": bool(os.environ.get("BFL_API_KEY"))}
 
 
-ART_PROVIDERS = ("auto", "mistral", "pixellab")
+# What draws the art (Preferences ▸ AI ▸ Art): auto (follows the LLM), Mistral, PixelLab, or a BFL model ("bfl:<model>").
+ART_PROVIDERS = ("auto", "mistral", "pixellab") + tuple(f"bfl:{m}" for m in ("flux-2-klein-4b", "flux-3-image", "flux-2-pro"))
+# What paints a place's background (docs/places/background.md): FLUX.3 Image only, for now (klein invents objects).
+BACKGROUND_PROVIDERS = ("bfl:flux-3-image",)
 
 
 def make_image_generator(art: str, llm: str | None) -> ImageGenerator | None:
@@ -288,6 +295,9 @@ def make_image_generator(art: str, llm: str | None) -> ImageGenerator | None:
         return PixelLabImageGenerator(api_key=os.environ["PIXELLAB_API_KEY"])
     if art == "mistral" and keys["mistral"]:
         return MistralImageGenerator(api_key=os.environ["MISTRAL_API_KEY"])
+    if art.startswith("bfl:") and keys["bfl"]:
+        from .bfl import BflImageGenerator
+        return BflImageGenerator(api_key=os.environ["BFL_API_KEY"], model=art.split(":", 1)[1])
     return None
 
 
@@ -571,6 +581,12 @@ def create_app(
     def places_plan_zone(request: PlanZoneRequest) -> dict:
         return _planning(lambda p: plan_zone(p, request.brief, request.zone, request.siblings, request.context, request.mode))
 
+    @app.post("/places/arrange")
+    def places_arrange(request: ArrangeRequest) -> dict:
+        """The plan's arrangement (docs/dungeon.md §0): each kind's purpose, footprint, relations, place and facing."""
+        from .places import arrange_kinds
+        return _planning(lambda p: arrange_kinds(p, request.kinds, request.place, request.relations, request.context))
+
     @app.post("/places/repair-node")
     def places_repair_node(request: RepairNodeRequest) -> dict:
         return _planning(lambda p: repair_node(p, request.node, request.problems, request.context))
@@ -581,6 +597,7 @@ def create_app(
         images: ImageGenerator | None = state["images"]
         return {"ok": True, "provider": getattr(current, "name", None), "model": getattr(current, "model", None),
                 "available": available_providers(), "artProvider": state.get("artProvider", "auto"),
+                "backgroundProvider": state.get("backgroundProvider", BACKGROUND_PROVIDERS[0]),
                 "art": getattr(images, "name", None)}
 
     @app.get("/models")
@@ -593,56 +610,23 @@ def create_app(
         except Exception as error:
             return {"ok": False, "errors": [f"Couldn't list {provider}'s models: {error}"]}
 
-    @app.put("/paint-provider")
-    def set_paint_provider(request: PaintProviderRequest) -> dict:
-        """Who paints places from their plan (Preferences ▸ Paint Provider): BFL for now, and its model."""
-        from .bfl import PAINT_PROVIDERS
-        models = PAINT_PROVIDERS.get(request.provider)
-        if models is None:
-            return {"ok": False, "errors": [f"Unknown paint provider {request.provider}: one of {', '.join(PAINT_PROVIDERS)}"]}
-        if request.model not in models:
-            return {"ok": False, "errors": [f"Unknown model {request.model}: one of {', '.join(models)}"]}
-        load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-        if request.provider == "bfl" and not os.environ.get("BFL_API_KEY"):
-            return {"ok": False, "errors": ["No key for BFL: set BFL_API_KEY in ai_service/.env"]}
-        state["paint"] = {"provider": request.provider, "model": request.model}
-        return {"ok": True, "paint": state["paint"], "models": models}
-
-    @app.post("/places/paint-blockout")
-    def places_paint_blockout(request: PaintBlockoutRequest) -> dict:
-        """A place painted from its plan's block-out by the chosen Paint Provider model."""
-        from .bfl import paint_place
+    @app.post("/assets/matched")
+    def assets_matched(request: MatchedRequest) -> dict:
+        """A place's art made to fit together (docs/places/matched-art.md), by the art provider: the sheets painted
+        whole (BFL), or each piece alone in the style sheet's look (PixelLab, Mistral). The editor cuts them."""
+        from .matched import make
         root: Path | None = state["root"]
         if root is None:
             return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
-        paint = state.get("paint") or {"provider": "bfl", "model": "flux-3-image"}
+        folder = (root / request.dir).resolve()
+        if root.resolve() not in folder.parents or not folder.is_dir():
+            return {"ok": False, "errors": [f"No sheets at {request.dir}"]}
         load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-        key = os.environ.get("BFL_API_KEY")
-        if not key:
-            return {"ok": False, "errors": ["No key for BFL: set BFL_API_KEY in ai_service/.env"]}
-        source, target = (root / request.blockout).resolve(), (root / request.out).resolve()
-        if root.resolve() not in source.parents or not source.is_file() or root.resolve() not in target.parents:
-            return {"ok": False, "errors": [f"No block-out at {request.blockout}, or {request.out} is outside the project"]}
-        try:
-            png, steps = paint_place(key, paint["model"], source.read_bytes(), request.legend, request.place, request.story, request.look)
-        except ProviderError as error:
-            return {"ok": False, "errors": [str(error)]}
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(png)
-        return {"ok": True, "painting": request.out, "model": paint["model"], "steps": steps}
-
-    @app.post("/places/check-painting")
-    def places_check_painting(request: CheckPaintingRequest) -> dict:
-        """A painting checked against its plan's block-out: each building drawn as its kind, and how it looks."""
-        from .inspect import check_painting
-        root: Path | None = state["root"]
-        vision: Provider | None = state["vision"]
-        if root is None or vision is None:
-            return {"ok": False, "errors": ["No project open, or no vision model"]}
-        path = (root / request.painting).resolve()
-        if root.resolve() not in path.parents or not path.is_file():
-            return {"ok": False, "errors": [f"No painting at {request.painting}"]}
-        return check_painting(vision, root, request.painting, request.legend)
+        art = state.get("artProvider", "auto")
+        if art == "auto":
+            art = "mistral" if available_providers()["mistral"] else "pixellab"
+        return make(art, root, request.dir, request.sheets, request.model_dump(), generator=state.get("images"), vision=state.get("vision"),
+                    keys={"bfl": os.environ.get("BFL_API_KEY")})
 
     @app.put("/art-provider")
     def set_art_provider(request: ArtProviderRequest) -> dict:
@@ -651,10 +635,43 @@ def create_app(
             return {"ok": False, "errors": [f"Unknown art provider {request.provider}: one of {', '.join(ART_PROVIDERS)}"]}
         images = make_image_generator(request.provider, getattr(state["provider"], "name", None))
         if images is None:
-            key = "PIXELLAB_API_KEY" if request.provider == "pixellab" else "MISTRAL_API_KEY"
+            key = "PIXELLAB_API_KEY" if request.provider == "pixellab" else "BFL_API_KEY" if request.provider.startswith("bfl") else "MISTRAL_API_KEY"
             return {"ok": False, "errors": [f"No key for {request.provider}: set {key} in ai_service/.env"], "available": available_providers()}
         state["images"], state["artProvider"] = images, request.provider
         return {"ok": True, "artProvider": request.provider, "art": images.name, "available": available_providers()}
+
+    @app.put("/background-provider")
+    def set_background_provider(request: BackgroundProviderRequest) -> dict:
+        """What paints the backgrounds (Preferences ▸ AI ▸ Background, or the project's own)."""
+        if request.provider not in BACKGROUND_PROVIDERS:
+            return {"ok": False, "errors": [f"Unknown background provider {request.provider}: one of {', '.join(BACKGROUND_PROVIDERS)}"]}
+        state["backgroundProvider"] = request.provider
+        return {"ok": True, "backgroundProvider": request.provider}
+
+    @app.post("/places/background")
+    def places_background(request: BackgroundRequest) -> dict:
+        """A place's background painted from its plan (docs/places/background.md): the whole in one call, then tiles
+        from it where it needs more detail, checked and blended; written top-down to `dir`."""
+        from .bfl import BflPainter
+        from .matched import paint_background
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        folder = (root / request.dir).resolve()
+        if root.resolve() not in folder.parents:
+            return {"ok": False, "errors": [f"Not in the project: {request.dir}"]}
+        load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+        key = os.environ.get("BFL_API_KEY")
+        if not key:
+            return {"ok": False, "errors": ["No key for BFL: set BFL_API_KEY in ai_service/.env"]}
+        provider = state.get("backgroundProvider", BACKGROUND_PROVIDERS[0])
+        try:
+            made = paint_background(BflPainter(key, provider.split(":", 1)[1]), request.terrain, (request.cells[0], request.cells[1]),
+                                    request.description, folder, seed=request.seed)
+        except Exception as error:  # noqa: BLE001 - said to the editor
+            return {"ok": False, "errors": [f"The background couldn't be painted: {error}"]}
+        return {"ok": True, "provider": provider, "path": made["path"].relative_to(root.resolve()).as_posix(), "cellPx": made["cellPx"],
+                "cells": made["cells"], "calls": made["calls"], "tiles": made["tiles"], "prompt": made["prompt"]}
 
     @app.post("/animations/generate")
     def animations_generate(request: AnimationRequest) -> dict:
@@ -772,18 +789,6 @@ def create_app(
         if painter is None:
             return {"ok": False, "errors": ["Sketching needs Mistral's image model (MISTRAL_API_KEY)"]}
         return sketch_place(painter, state["provider"], state["vision"], root, request.context, request.outDir, request.name)
-
-    @app.post("/places/backdrop")
-    def places_backdrop(request: BackdropRequest) -> dict:
-        """A painted place (the "Painted" build method): described from its plan, painted by Mistral's image
-        model (big, from words alone), and read by the vision model (what stands where, the doors, the anchors)."""
-        root: Path | None = state["root"]
-        if root is None:
-            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
-        painter = make_image_generator("mistral", None)
-        if painter is None:
-            return {"ok": False, "errors": ["Painting places needs Mistral's image model (MISTRAL_API_KEY)"]}
-        return paint_backdrop(painter, state["provider"], state["vision"], root, request.context, request.out)
 
     @app.post("/places/inspect")
     def places_inspect(request: InspectRequest) -> dict:

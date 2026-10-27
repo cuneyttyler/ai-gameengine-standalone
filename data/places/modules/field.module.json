@@ -100,5 +100,16 @@
         "d1": 6
       }
     }
-  ]
+  ],
+  "layout": {
+    "crop": {
+      "op": "rows",
+      "name": "rows",
+      "count": "rows",
+      "default": 6,
+      "layer": "decal",
+      "margin": 0,
+      "why": "crops sown in long parallel rows across the field, as a plough leaves them"
+    }
+  }
 }

@@ -3162,7 +3162,7 @@ gbl:City
     gbo:moduleId "city" ;
     gbo:level gbo:Site ;
     gbo:allowedIn gbb:modern-city ;
-    gbo:hasField gbl:City.area, gbl:City.block-size, gbl:City.buildings, gbl:City.arrangement, gbl:City.block-fill, gbl:City.condition, gbl:City.coverage, gbl:City.era, gbl:City.layout, gbl:City.notes, gbl:City.relief, gbl:City.street-grid, gbl:City.style, gbl:City.woods, gbl:City.zone-shape ;
+    gbo:hasField gbl:City.area, gbl:City.block-size, gbl:City.buildings, gbl:City.arrangement, gbl:City.block-fill, gbl:City.block-use, gbl:City.building-cover, gbl:City.building-shape, gbl:City.condition, gbl:City.coverage, gbl:City.era, gbl:City.frontage, gbl:City.layout, gbl:City.lot-layout, gbl:City.notes, gbl:City.open-space, gbl:City.relief, gbl:City.site-fit, gbl:City.street-grid, gbl:City.style, gbl:City.woods, gbl:City.zone-shape ;
     gbo:hasSlot gbl:City.slot.car ;
     gbo:hasChildRule gbl:City.child.District, gbl:City.child.downtown, gbl:City.child.ground, gbl:City.child.lake, gbl:City.child.residential-district, gbl:City.child.river, gbl:City.child.road ;
     gbo:origin "engine" .
@@ -3225,6 +3225,39 @@ gbl:City.block-fill
     gbo:vocabulary gbv:block-fill ;
     gbo:askedInConfirmation true .
 
+gbl:City.block-use
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "block-use"@en ;
+    rdfs:comment "One kind of building per block, or mixed"@en ;
+    rdfs:domain gbl:City ;
+    gbo:fieldName "block-use" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"grouped\""^^rdf:JSON ;
+    gbo:vocabulary gbv:block-use ;
+    gbo:askedInConfirmation true .
+
+gbl:City.building-cover
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "building-cover"@en ;
+    rdfs:comment "Buildings fill their lots, or keep their planned footprints"@en ;
+    rdfs:domain gbl:City ;
+    gbo:fieldName "building-cover" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"fit\""^^rdf:JSON ;
+    gbo:vocabulary gbv:building-cover ;
+    gbo:askedInConfirmation true .
+
+gbl:City.building-shape
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "building-shape"@en ;
+    rdfs:comment "Buildings square, with rounded corners, or following their lots and streets"@en ;
+    rdfs:domain gbl:City ;
+    gbo:fieldName "building-shape" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"fitted\""^^rdf:JSON ;
+    gbo:vocabulary gbv:building-shape ;
+    gbo:askedInConfirmation true .
+
 gbl:City.condition
     a gbo:QualityField, owl:ObjectProperty ;
     rdfs:label "condition"@en ;
@@ -3256,6 +3289,17 @@ gbl:City.era
     gbo:vocabulary gbv:era ;
     gbo:askedInConfirmation true .
 
+gbl:City.frontage
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "frontage"@en ;
+    rdfs:comment "One building line along a street, or each its own setback"@en ;
+    rdfs:domain gbl:City ;
+    gbo:fieldName "frontage" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"aligned\""^^rdf:JSON ;
+    gbo:vocabulary gbv:frontage ;
+    gbo:askedInConfirmation true .
+
 gbl:City.layout
     a gbo:QualityField, owl:DatatypeProperty ;
     rdfs:label "layout"@en ;
@@ -3267,12 +3311,34 @@ gbl:City.layout
     gbo:vocabulary gbv:layout ;
     gbo:askedInConfirmation true .
 
+gbl:City.lot-layout
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "lot-layout"@en ;
+    rdfs:comment "How a block is divided into lots"@en ;
+    rdfs:domain gbl:City ;
+    gbo:fieldName "lot-layout" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"rows\""^^rdf:JSON ;
+    gbo:vocabulary gbv:lot-layout ;
+    gbo:askedInConfirmation true .
+
 gbl:City.notes
     a gbo:QualityField, owl:DatatypeProperty ;
     rdfs:label "notes"@en ;
     rdfs:domain gbl:City ;
     gbo:fieldName "notes" ;
     gbo:fieldType gbo:description .
+
+gbl:City.open-space
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "open-space"@en ;
+    rdfs:comment "How much of each zone is open space (parks, plazas, parking) rather than buildings"@en ;
+    rdfs:domain gbl:City ;
+    gbo:fieldName "open-space" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"few\""^^rdf:JSON ;
+    gbo:vocabulary gbv:open-space ;
+    gbo:askedInConfirmation true .
 
 gbl:City.relief
     a gbo:QualityField, owl:DatatypeProperty ;
@@ -3282,6 +3348,17 @@ gbl:City.relief
     gbo:fieldType gbo:enum ;
     gbo:defaultValue "\"flat\""^^rdf:JSON ;
     gbo:allowedValue "flat", "gentle", "hilly" .
+
+gbl:City.site-fit
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "site-fit"@en ;
+    rdfs:comment "How big the site is: sized to the plan's content, or to the scale"@en ;
+    rdfs:domain gbl:City ;
+    gbo:fieldName "site-fit" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"content\""^^rdf:JSON ;
+    gbo:vocabulary gbv:site-fit ;
+    gbo:askedInConfirmation true .
 
 gbl:City.street-grid
     a gbo:QualityField, owl:ObjectProperty ;
@@ -12482,12 +12559,12 @@ gbl:Park
         owl:allValuesFrom gbl:Pond
     ] ;
     rdfs:label "Park"@en ;
-    rdfs:comment "A public park: a lawn with trees, paths, benches and bins."@en ;
+    rdfs:comment "A public park: lawns crossed by footpaths, trees and flowerbeds, a fountain or statue at its heart, benches and picnic tables, a play corner."@en ;
     gbo:moduleId "park" ;
     gbo:level gbo:Parcel ;
     gbo:allowedIn gbb:modern-city ;
     gbo:hasField gbl:Park.size, gbl:Park.trees, gbl:Park.surface ;
-    gbo:hasSlot gbl:Park.slot.bush, gbl:Park.slot.ground, gbl:Park.slot.park-bench, gbl:Park.slot.street-light, gbl:Park.slot.trash-bin, gbl:Park.slot.tree ;
+    gbo:hasSlot gbl:Park.slot.bush, gbl:Park.slot.centrepiece, gbl:Park.slot.flowerbed, gbl:Park.slot.ground, gbl:Park.slot.park-bench, gbl:Park.slot.picnic-table, gbl:Park.slot.playground-set, gbl:Park.slot.street-light, gbl:Park.slot.trash-bin, gbl:Park.slot.tree ;
     gbo:hasChildRule gbl:Park.child.pond ;
     gbo:origin "engine" .
 
@@ -12528,6 +12605,18 @@ gbl:Park.slot.bush
     gbo:essential false ;
     gbo:needsRole gbr:bush .
 
+gbl:Park.slot.centrepiece
+    a gbo:Slot ;
+    gbo:slotName "centrepiece" ;
+    gbo:essential false ;
+    gbo:needsRole gbr:fountain, gbr:statue .
+
+gbl:Park.slot.flowerbed
+    a gbo:Slot ;
+    gbo:slotName "flowerbed" ;
+    gbo:essential false ;
+    gbo:needsRole gbr:flowerbed .
+
 gbl:Park.slot.ground
     a gbo:Slot ;
     gbo:slotName "ground" ;
@@ -12541,6 +12630,18 @@ gbl:Park.slot.park-bench
     gbo:slotName "park-bench" ;
     gbo:essential false ;
     gbo:needsRole gbr:park-bench .
+
+gbl:Park.slot.picnic-table
+    a gbo:Slot ;
+    gbo:slotName "picnic-table" ;
+    gbo:essential false ;
+    gbo:needsRole gbr:picnic-table .
+
+gbl:Park.slot.playground-set
+    a gbo:Slot ;
+    gbo:slotName "playground-set" ;
+    gbo:essential false ;
+    gbo:needsRole gbr:playground-set .
 
 gbl:Park.slot.street-light
     a gbo:Slot ;
@@ -12816,7 +12917,7 @@ gbl:ParkingLot.cars
     gbo:fieldName "cars" ;
     gbo:fieldType gbo:density ;
     gbo:defaultValue "\"common\""^^rdf:JSON ;
-    gbo:densityLevels "[0.0,0.15,0.3,0.45,0.6]"^^rdf:JSON .
+    gbo:densityLevels "[0.0,0.3,0.55,0.75,0.9]"^^rdf:JSON .
 
 gbl:ParkingLot.size
     a gbo:QuantityField, owl:ObjectProperty ;
@@ -15275,7 +15376,7 @@ gbl:Settlement
     gbo:moduleId "settlement" ;
     gbo:level gbo:Site ;
     gbo:allowedIn gbb:settlement ;
-    gbo:hasField gbl:Settlement.area, gbl:Settlement.block-size, gbl:Settlement.buildings, gbl:Settlement.arrangement, gbl:Settlement.block-fill, gbl:Settlement.condition, gbl:Settlement.coverage, gbl:Settlement.layout, gbl:Settlement.notes, gbl:Settlement.relief, gbl:Settlement.street-grid, gbl:Settlement.style, gbl:Settlement.walled, gbl:Settlement.woods, gbl:Settlement.zone-shape ;
+    gbo:hasField gbl:Settlement.area, gbl:Settlement.block-size, gbl:Settlement.buildings, gbl:Settlement.arrangement, gbl:Settlement.block-fill, gbl:Settlement.block-use, gbl:Settlement.building-cover, gbl:Settlement.building-shape, gbl:Settlement.condition, gbl:Settlement.coverage, gbl:Settlement.frontage, gbl:Settlement.layout, gbl:Settlement.lot-layout, gbl:Settlement.notes, gbl:Settlement.open-space, gbl:Settlement.relief, gbl:Settlement.site-fit, gbl:Settlement.street-grid, gbl:Settlement.style, gbl:Settlement.walled, gbl:Settlement.woods, gbl:Settlement.zone-shape ;
     gbo:hasChildRule gbl:Settlement.child.Ward, gbl:Settlement.child.forest, gbl:Settlement.child.ground, gbl:Settlement.child.lake, gbl:Settlement.child.meadow, gbl:Settlement.child.river, gbl:Settlement.child.road, gbl:Settlement.child.rock-field, gbl:Settlement.child.wall ;
     gbo:constraint "within(self.buildings, count(descendants(class: BuildingParcel)), tol: 'count')"^^gbo:Expression, "sum(children().area) <= 0.85 * self.area"^^gbo:Expression, "walled != 'none' implies count(children(wall)) >= 1"^^gbo:Expression ;
     gbo:origin "engine" .
@@ -15338,6 +15439,39 @@ gbl:Settlement.block-fill
     gbo:vocabulary gbv:block-fill ;
     gbo:askedInConfirmation true .
 
+gbl:Settlement.block-use
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "block-use"@en ;
+    rdfs:comment "One kind of building per block, or mixed"@en ;
+    rdfs:domain gbl:Settlement ;
+    gbo:fieldName "block-use" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"mixed\""^^rdf:JSON ;
+    gbo:vocabulary gbv:block-use ;
+    gbo:askedInConfirmation true .
+
+gbl:Settlement.building-cover
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "building-cover"@en ;
+    rdfs:comment "Buildings fill their lots, or keep their planned footprints"@en ;
+    rdfs:domain gbl:Settlement ;
+    gbo:fieldName "building-cover" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"planned\""^^rdf:JSON ;
+    gbo:vocabulary gbv:building-cover ;
+    gbo:askedInConfirmation true .
+
+gbl:Settlement.building-shape
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "building-shape"@en ;
+    rdfs:comment "Buildings square, with rounded corners, or following their lots and streets"@en ;
+    rdfs:domain gbl:Settlement ;
+    gbo:fieldName "building-shape" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"square\""^^rdf:JSON ;
+    gbo:vocabulary gbv:building-shape ;
+    gbo:askedInConfirmation true .
+
 gbl:Settlement.condition
     a gbo:QualityField, owl:ObjectProperty ;
     rdfs:label "condition"@en ;
@@ -15359,6 +15493,17 @@ gbl:Settlement.coverage
     gbo:vocabulary gbv:coverage ;
     gbo:askedInConfirmation true .
 
+gbl:Settlement.frontage
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "frontage"@en ;
+    rdfs:comment "One building line along a street, or each its own setback"@en ;
+    rdfs:domain gbl:Settlement ;
+    gbo:fieldName "frontage" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"varied\""^^rdf:JSON ;
+    gbo:vocabulary gbv:frontage ;
+    gbo:askedInConfirmation true .
+
 gbl:Settlement.layout
     a gbo:QualityField, owl:DatatypeProperty ;
     rdfs:label "layout"@en ;
@@ -15370,12 +15515,34 @@ gbl:Settlement.layout
     gbo:vocabulary gbv:layout ;
     gbo:askedInConfirmation true .
 
+gbl:Settlement.lot-layout
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "lot-layout"@en ;
+    rdfs:comment "How a block is divided into lots"@en ;
+    rdfs:domain gbl:Settlement ;
+    gbo:fieldName "lot-layout" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"packed\""^^rdf:JSON ;
+    gbo:vocabulary gbv:lot-layout ;
+    gbo:askedInConfirmation true .
+
 gbl:Settlement.notes
     a gbo:QualityField, owl:DatatypeProperty ;
     rdfs:label "notes"@en ;
     rdfs:domain gbl:Settlement ;
     gbo:fieldName "notes" ;
     gbo:fieldType gbo:description .
+
+gbl:Settlement.open-space
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "open-space"@en ;
+    rdfs:comment "How much of each zone is open space (parks, plazas, parking) rather than buildings"@en ;
+    rdfs:domain gbl:Settlement ;
+    gbo:fieldName "open-space" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"some\""^^rdf:JSON ;
+    gbo:vocabulary gbv:open-space ;
+    gbo:askedInConfirmation true .
 
 gbl:Settlement.relief
     a gbo:QualityField, owl:DatatypeProperty ;
@@ -15386,6 +15553,17 @@ gbl:Settlement.relief
     gbo:fieldType gbo:enum ;
     gbo:defaultValue "\"gentle\""^^rdf:JSON ;
     gbo:allowedValue "flat", "gentle", "hilly" ;
+    gbo:askedInConfirmation true .
+
+gbl:Settlement.site-fit
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "site-fit"@en ;
+    rdfs:comment "How big the site is: sized to the plan's content, or to the scale"@en ;
+    rdfs:domain gbl:Settlement ;
+    gbo:fieldName "site-fit" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"scale\""^^rdf:JSON ;
+    gbo:vocabulary gbv:site-fit ;
     gbo:askedInConfirmation true .
 
 gbl:Settlement.street-grid
@@ -20743,6 +20921,27 @@ gbv:block-fill.full
     skos:notation "full" ;
     skos:topConceptOf gbv:block-fill .
 
+gbv:block-use
+    a skos:ConceptScheme ;
+    skos:prefLabel "block-use"@en ;
+    skos:hasTopConcept gbv:block-use.grouped, gbv:block-use.mixed .
+
+gbv:block-use.grouped
+    a skos:Concept ;
+    skos:inScheme gbv:block-use ;
+    skos:prefLabel "grouped"@en ;
+    skos:altLabel "one kind per block"@en, "zoned"@en ;
+    skos:notation "grouped" ;
+    skos:topConceptOf gbv:block-use .
+
+gbv:block-use.mixed
+    a skos:Concept ;
+    skos:inScheme gbv:block-use ;
+    skos:prefLabel "mixed"@en ;
+    skos:altLabel "mixed use"@en ;
+    skos:notation "mixed" ;
+    skos:topConceptOf gbv:block-use .
+
 gbv:build-type
     a skos:ConceptScheme ;
     skos:prefLabel "build-type"@en ;
@@ -20818,6 +21017,26 @@ gbv:build-type.modern-city
     skos:altLabel "modern city"@en, "downtown"@en, "metropolis"@en ;
     skos:notation "modern-city" ;
     skos:topConceptOf gbv:build-type .
+
+gbv:building-cover
+    a skos:ConceptScheme ;
+    skos:prefLabel "building-cover"@en ;
+    skos:hasTopConcept gbv:building-cover.fit, gbv:building-cover.planned .
+
+gbv:building-cover.fit
+    a skos:Concept ;
+    skos:inScheme gbv:building-cover ;
+    skos:prefLabel "fit"@en ;
+    skos:altLabel "fills its lot"@en ;
+    skos:notation "fit" ;
+    skos:topConceptOf gbv:building-cover .
+
+gbv:building-cover.planned
+    a skos:Concept ;
+    skos:inScheme gbv:building-cover ;
+    skos:prefLabel "planned"@en ;
+    skos:notation "planned" ;
+    skos:topConceptOf gbv:building-cover .
 
 gbv:building-kind
     a skos:ConceptScheme ;
@@ -20937,6 +21156,35 @@ gbv:building-kind.fire-station
     skos:prefLabel "fire-station"@en ;
     skos:notation "fire-station" ;
     skos:topConceptOf gbv:building-kind .
+
+gbv:building-shape
+    a skos:ConceptScheme ;
+    skos:prefLabel "building-shape"@en ;
+    skos:hasTopConcept gbv:building-shape.square, gbv:building-shape.rounded, gbv:building-shape.fitted .
+
+gbv:building-shape.square
+    a skos:Concept ;
+    skos:inScheme gbv:building-shape ;
+    skos:prefLabel "square"@en ;
+    skos:altLabel "rectangular"@en, "boxy"@en ;
+    skos:notation "square" ;
+    skos:topConceptOf gbv:building-shape .
+
+gbv:building-shape.rounded
+    a skos:Concept ;
+    skos:inScheme gbv:building-shape ;
+    skos:prefLabel "rounded"@en ;
+    skos:altLabel "rounded corners"@en, "soft corners"@en ;
+    skos:notation "rounded" ;
+    skos:topConceptOf gbv:building-shape .
+
+gbv:building-shape.fitted
+    a skos:Concept ;
+    skos:inScheme gbv:building-shape ;
+    skos:prefLabel "fitted"@en ;
+    skos:altLabel "follows the street"@en, "curved"@en ;
+    skos:notation "fitted" ;
+    skos:topConceptOf gbv:building-shape .
 
 gbv:camp-kind
     a skos:ConceptScheme ;
@@ -21869,6 +22117,26 @@ gbv:flower-kind.wildflower
     skos:notation "wildflower" ;
     skos:broader gbv:flower-kind.flower .
 
+gbv:frontage
+    a skos:ConceptScheme ;
+    skos:prefLabel "frontage"@en ;
+    skos:hasTopConcept gbv:frontage.aligned, gbv:frontage.varied .
+
+gbv:frontage.aligned
+    a skos:Concept ;
+    skos:inScheme gbv:frontage ;
+    skos:prefLabel "aligned"@en ;
+    skos:altLabel "building line"@en, "lined up"@en ;
+    skos:notation "aligned" ;
+    skos:topConceptOf gbv:frontage .
+
+gbv:frontage.varied
+    a skos:Concept ;
+    skos:inScheme gbv:frontage ;
+    skos:prefLabel "varied"@en ;
+    skos:notation "varied" ;
+    skos:topConceptOf gbv:frontage .
+
 gbv:fruit-kind
     a skos:ConceptScheme ;
     skos:prefLabel "fruit-kind"@en ;
@@ -22189,6 +22457,27 @@ gbv:livestock.chicken
     skos:notation "chicken" ;
     skos:topConceptOf gbv:livestock .
 
+gbv:lot-layout
+    a skos:ConceptScheme ;
+    skos:prefLabel "lot-layout"@en ;
+    skos:hasTopConcept gbv:lot-layout.rows, gbv:lot-layout.packed .
+
+gbv:lot-layout.rows
+    a skos:Concept ;
+    skos:inScheme gbv:lot-layout ;
+    skos:prefLabel "rows"@en ;
+    skos:altLabel "regular"@en, "even lots"@en ;
+    skos:notation "rows" ;
+    skos:topConceptOf gbv:lot-layout .
+
+gbv:lot-layout.packed
+    a skos:Concept ;
+    skos:inScheme gbv:lot-layout ;
+    skos:prefLabel "packed"@en ;
+    skos:altLabel "irregular"@en, "organic lots"@en ;
+    skos:notation "packed" ;
+    skos:topConceptOf gbv:lot-layout .
+
 gbv:material
     a skos:ConceptScheme ;
     skos:prefLabel "material"@en ;
@@ -22314,6 +22603,32 @@ gbv:modern-house-kind.villa
     skos:prefLabel "villa"@en ;
     skos:notation "villa" ;
     skos:topConceptOf gbv:modern-house-kind .
+
+gbv:open-space
+    a skos:ConceptScheme ;
+    skos:prefLabel "open-space"@en ;
+    skos:hasTopConcept gbv:open-space.few, gbv:open-space.some, gbv:open-space.many .
+
+gbv:open-space.few
+    a skos:Concept ;
+    skos:inScheme gbv:open-space ;
+    skos:prefLabel "few"@en ;
+    skos:notation "few" ;
+    skos:topConceptOf gbv:open-space .
+
+gbv:open-space.some
+    a skos:Concept ;
+    skos:inScheme gbv:open-space ;
+    skos:prefLabel "some"@en ;
+    skos:notation "some" ;
+    skos:topConceptOf gbv:open-space .
+
+gbv:open-space.many
+    a skos:Concept ;
+    skos:inScheme gbv:open-space ;
+    skos:prefLabel "many"@en ;
+    skos:notation "many" ;
+    skos:topConceptOf gbv:open-space .
 
 gbv:poi-kind
     a skos:ConceptScheme ;
@@ -22520,6 +22835,27 @@ gbv:shop-kind.bank
     skos:prefLabel "bank"@en ;
     skos:notation "bank" ;
     skos:topConceptOf gbv:shop-kind .
+
+gbv:site-fit
+    a skos:ConceptScheme ;
+    skos:prefLabel "site-fit"@en ;
+    skos:hasTopConcept gbv:site-fit.content, gbv:site-fit.scale .
+
+gbv:site-fit.content
+    a skos:Concept ;
+    skos:inScheme gbv:site-fit ;
+    skos:prefLabel "content"@en ;
+    skos:altLabel "tight"@en, "fitted"@en ;
+    skos:notation "content" ;
+    skos:topConceptOf gbv:site-fit .
+
+gbv:site-fit.scale
+    a skos:Concept ;
+    skos:inScheme gbv:site-fit ;
+    skos:prefLabel "scale"@en ;
+    skos:altLabel "as large as the scale"@en ;
+    skos:notation "scale" ;
+    skos:topConceptOf gbv:site-fit .
 
 gbv:street-grid
     a skos:ConceptScheme ;
@@ -23086,6 +23422,14 @@ gbr:awning
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:background
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "background"@en ;
+    skos:notation "background" ;
+    skos:broader gbr:terrain ;
+    gbo:affordance gbv:affordance.terrain .
+
 gbr:bank-piece
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
@@ -23582,6 +23926,14 @@ gbr:flower
     skos:broader gbr:plant ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:flowerbed
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "flowerbed"@en ;
+    skos:notation "flowerbed" ;
+    skos:broader gbr:plant ;
+    gbo:affordance gbv:affordance.environmental-object .
+
 gbr:fountain
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
@@ -24053,6 +24405,14 @@ gbr:pew
     skos:notation "pew" ;
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:picnic-table
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "picnic table"@en ;
+    skos:notation "picnic-table" ;
+    skos:broader gbr:table ;
+    gbo:affordance gbv:affordance.interactive-object .
 
 gbr:piece-set
     a gbo:Role, skos:Concept ;
@@ -24739,7 +25099,7 @@ gbr:wall-torch
     skos:inScheme gbo:roles ;
     skos:prefLabel "wall torch"@en ;
     skos:notation "wall-torch" ;
-    skos:broader gbr:prop ;
+    skos:broader gbr:light-prop ;
     gbo:affordance gbv:affordance.environmental-object .
 
 gbr:wardrobe
@@ -24832,12 +25192,20 @@ gbx:adjacent
     gbo:maxMembers 2 ;
     gbo:hardByDefault false .
 
+gbx:against
+    a gbo:RelationType ;
+    rdfs:label "against"@en ;
+    rdfs:comment "a stands with its back to b (a chest against a wall)"@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
 gbx:aligned
     a gbo:RelationType ;
     rdfs:label "aligned"@en ;
-    rdfs:comment "the members' centres line up on an axis"@en ;
+    rdfs:comment "a lies along b, parallel to it (a car on its road, on its side of it)"@en ;
     gbo:minMembers 2 ;
-    gbo:argument "axis" ;
+    gbo:maxMembers 2 ;
     gbo:hardByDefault false .
 
 gbx:along
@@ -24891,6 +25259,14 @@ gbx:center
     gbo:maxMembers 1 ;
     gbo:hardByDefault false .
 
+gbx:coloured-by
+    a gbo:RelationType ;
+    rdfs:label "coloured-by"@en ;
+    rdfs:comment "a's art takes its colours from b (a wall from the background it stands on)"@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
 gbx:corner
     a gbo:RelationType ;
     rdfs:label "corner"@en ;
@@ -24904,6 +25280,14 @@ gbx:crosses
     a gbo:RelationType ;
     rdfs:label "crosses"@en ;
     rdfs:comment "path a passes through b"@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
+gbx:debris-of
+    a gbo:RelationType ;
+    rdfs:label "debris-of"@en ;
+    rdfs:comment "a came from b (rubble of a wall)"@en ;
     gbo:minMembers 2 ;
     gbo:maxMembers 2 ;
     gbo:hardByDefault false .
@@ -25024,6 +25408,38 @@ gbx:interest
     gbo:argument "criterion", "weight" ;
     gbo:hardByDefault false .
 
+gbx:leads-to
+    a gbo:RelationType ;
+    rdfs:label "leads-to"@en ;
+    rdfs:comment "a connects here to b (stairs to another level, a gate to a road)"@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
+gbx:lights
+    a gbo:RelationType ;
+    rdfs:label "lights"@en ;
+    rdfs:comment "a lights b (a lamp, a brazier)"@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
+gbx:made-with
+    a gbo:RelationType ;
+    rdfs:label "made-with"@en ;
+    rdfs:comment "a's art is made together with b's, so they match (stairs with the walls they stand against): b's picture shown when a is painted"@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
+gbx:mounted-on
+    a gbo:RelationType ;
+    rdfs:label "mounted-on"@en ;
+    rdfs:comment "a hangs on b (a torch on a wall)"@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
 gbx:near
     a gbo:RelationType ;
     rdfs:label "near"@en ;
@@ -25057,6 +25473,14 @@ gbx:outside
     gbo:maxMembers 2 ;
     gbo:hardByDefault true .
 
+gbx:part-of
+    a gbo:RelationType ;
+    rdfs:label "part-of"@en ;
+    rdfs:comment "a belongs to b (a counter of a shop, a pillar of a hall)"@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
 gbx:path-between
     a gbo:RelationType ;
     rdfs:label "path-between"@en ;
@@ -25074,6 +25498,14 @@ gbx:repeat
     gbo:argument "spacing" ;
     gbo:hardByDefault false .
 
+gbx:set-in
+    a gbo:RelationType ;
+    rdfs:label "set-in"@en ;
+    rdfs:comment "a fills a gap in b (a door in its wall)"@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
+    gbo:hardByDefault false .
+
 gbx:south-of
     a gbo:RelationType ;
     rdfs:label "south-of"@en ;
@@ -25088,6 +25520,14 @@ gbx:symmetric
     rdfs:comment "members are mirrored across the parent's axis"@en ;
     gbo:minMembers 2 ;
     gbo:argument "axis" ;
+    gbo:hardByDefault false .
+
+gbx:used-with
+    a gbo:RelationType ;
+    rdfs:label "used-with"@en ;
+    rdfs:comment "a is used with b (a chair at a table)"@en ;
+    gbo:minMembers 2 ;
+    gbo:maxMembers 2 ;
     gbo:hardByDefault false .
 
 gbx:visible-from

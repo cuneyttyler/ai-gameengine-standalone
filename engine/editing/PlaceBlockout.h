@@ -24,7 +24,14 @@ class Ontology;
 // [x0, x1) x [y0, y1): the site cells drawn (OccupiedBounds); `width`: the image's width in pixels
 // (the height follows from the view). Indoors (walls of rooms on void or rock), walls are drawn low,
 // as a cutaway, so the rooms show.
+//
+// `ids` (optional): the id map, the same picture with every object one flat colour, its index in the
+// layout's objects + 1 as r + 256 g + 65536 b (kBlockoutLine for fences and walls, 0 the ground), each
+// pixel the object in front there. The legend then also has each id's pixels drawn (`drawn`), and
+// always the view (`view`: x0, y0, x1, y1, tw, th, top): cell (x, y) at height up is at
+// ((x - x0 - (y - y0)) tw/2 + (y1 - y0) tw/2, (x - x0 + y - y0) th/2 + top - up).
+inline constexpr int kBlockoutLine = 0xFFFFFF;
 ImageData RenderPlanBlockout(const nlohmann::json& solved, int x0, int y0, int x1, int y1, int width, const Ontology* ontology = nullptr,
-                             nlohmann::json* legend = nullptr);
+                             nlohmann::json* legend = nullptr, ImageData* ids = nullptr);
 
 } // namespace aige

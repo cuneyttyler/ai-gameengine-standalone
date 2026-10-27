@@ -19,6 +19,7 @@ import PreferencesDialog from './components/PreferencesDialog.vue'
 import OntologyDialog from './components/OntologyDialog.vue'
 import ReplacePrefabDialog from './components/ReplacePrefabDialog.vue'
 import ProjectSettingsDialog from './components/ProjectSettingsDialog.vue'
+import NewProjectDialog from './components/NewProjectDialog.vue'
 import PackImportDialog from './components/PackImportDialog.vue'
 import DockNode from './components/DockNode.vue'
 import ScenePanel from './components/ScenePanel.vue'
@@ -28,6 +29,7 @@ import PlannerPanel from './components/PlannerPanel.vue'
 import GeneratePanel from './components/GeneratePanel.vue'
 import BuildPanel from './components/BuildPanel.vue'
 import { keyLabel } from './keys'
+import { projectState } from './projects'
 import {
   dockView,
   hiddenPanels,
@@ -153,6 +155,12 @@ onBeforeUnmount(() => setShell(null))
   <OntologyDialog />
   <ReplacePrefabDialog />
   <ProjectSettingsDialog />
+  <NewProjectDialog
+    :open="projectState.showNewProject"
+    flow="editor"
+    :defaults="{ provider: editorState.ai.provider, model: editorState.ai.model, art: editorState.ai.artProvider, background: editorState.ai.backgroundProvider }"
+    @close="projectState.showNewProject = false"
+  />
   <PackImportDialog />
   <DialogHost />
 </template>

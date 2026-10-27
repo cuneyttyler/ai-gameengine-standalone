@@ -102,6 +102,9 @@ struct ModuleDef {
     std::vector<std::string> excludes;
     std::map<std::string, double> prefersSite; // interest criterion -> weight in [-1, 1]
     nlohmann::json compile;                 // the compile template: PLL statements with placeholders
+    // How its things are laid out, by slot (docs/places/ontology-in-use.md): {"car": {"pattern": "bays", "depth": 2,
+    // "aisle": 2, "ends": 1, "facing": "aisle"}}: the solver places them so, without asking anyone.
+    nlohmann::json layout = nlohmann::json::object();
     std::string source;                     // where it came from: "engine", a project, "learned"
 
     const FieldDef* Field(const std::string& name) const;
@@ -122,6 +125,7 @@ struct Concept {
     std::vector<std::string> alt; // synonyms
     std::string broader;          // a concept id in the same scheme, or ""
     nlohmann::json look;          // how it shows (a terrain's tone, made, water, solid, blocksLight, hills)
+    std::string prompt;           // what choosing it means, for the AI and the Brief ("each block divided into regular rows")
 };
 
 struct Role {
@@ -145,6 +149,9 @@ struct RelationType {
     std::vector<std::string> args;
     bool hardByDefault = false;
     std::string description;
+    // A functional relation's use (docs/dungeon.md §0): {position, facing, art}: where its subject stands, which way it
+    // faces relative to the other, how its art is made. Empty for the spatial ones.
+    nlohmann::json use = nlohmann::json::object();
 };
 
 struct ScaleClass {

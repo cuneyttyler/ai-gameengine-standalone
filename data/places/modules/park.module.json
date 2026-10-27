@@ -3,7 +3,7 @@
   "id": "park",
   "name": "Park",
   "level": "parcel",
-  "description": "A public park: a lawn with trees, paths, benches and bins.",
+  "description": "A public park: lawns crossed by footpaths, trees and flowerbeds, a fountain or statue at its heart, benches and picnic tables, a play corner.",
   "buildTypes": [
     "modern-city"
   ],
@@ -78,6 +78,22 @@
     "street-light": {
       "role": "street-light",
       "essential": false
+    },
+    "centrepiece": {
+      "role": "fountain|statue",
+      "essential": false
+    },
+    "flowerbed": {
+      "role": "flowerbed",
+      "essential": false
+    },
+    "picnic-table": {
+      "role": "picnic-table",
+      "essential": false
+    },
+    "playground-set": {
+      "role": "playground-set",
+      "essential": false
     }
   },
   "children": {
@@ -89,6 +105,22 @@
   },
   "compile": {
     "contents": [
+      {
+        "slot": "centrepiece",
+        "count": [
+          1,
+          1
+        ],
+        "where": "inner"
+      },
+      {
+        "slot": "flowerbed",
+        "count": [
+          2,
+          6
+        ],
+        "where": "inner"
+      },
       {
         "slot": "tree",
         "density": "trees"
@@ -109,6 +141,20 @@
         "where": "border"
       },
       {
+        "slot": "picnic-table",
+        "count": [
+          1,
+          3
+        ]
+      },
+      {
+        "slot": "playground-set",
+        "count": [
+          0,
+          1
+        ]
+      },
+      {
         "slot": "trash-bin",
         "count": [
           1,
@@ -124,6 +170,11 @@
         ],
         "where": "border"
       }
-    ]
+    ],
+    "paths": {
+      "terrain": "plaza",
+      "width": 1,
+      "pattern": "cross"
+    }
   }
 }

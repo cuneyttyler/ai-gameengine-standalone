@@ -118,6 +118,28 @@ interface BuildState {
   fromPlanner?: boolean // started by the AI Planner: its art strategy is the Game Brief's
   busy?: boolean // working off the UI thread (planning, laying out)
   revisingFrom?: string
+  // The place's background: its ground painted whole (or a picture picked for it), laid cell by cell.
+  background?: { path: string; cellPx: number; picked?: boolean; provider?: string; calls?: number }
+  // What the background is painted from (the planner's, editable): the place and its look, a line per kind of ground.
+  backgroundDescription?: string
+  backgroundMaking?: boolean
+  // ③ Matched art: where it is, who made it, and what came of it.
+  matched?: {
+    state: 'making' | 'made' | 'cut' | 'failed'
+    provider?: string
+    error?: string
+    report?: { pieces: number; grounds: number; flagged: number; skipped: { key: string; why: string }[] }
+  }
+  // The layout form (the place's layout fields): each with its values, what each means, its value now.
+  layoutForm?: {
+    field: string
+    type: string
+    description?: string
+    default?: any
+    value?: any
+    values?: string[]
+    meaning?: Record<string, string>
+  }[]
   questions?: { text: string; about?: string; zone?: string }[] // ② Assets' confirming questions
   directions?: string
   decisionAnswers?: Record<string, string>
@@ -530,8 +552,10 @@ const showAssets = computed(
 // ③ Assets' two tabs: how each part's art will be found, and the art found and made.
 const assetsTab = ref<'how' | 'found'>('how')
 const assetsFound = computed(() => ['sourcing', 'sourced', 'building', 'built'].includes(stage.value))
+// To the art when work on it starts (finding or making it, building): choosing how a part is found re-previews the
+// plan (which can make it "sourced") and must leave the user where they are.
 watch(stage, (s) => {
-  if (s === 'sourcing' || s === 'sourced' || s === 'building') assetsTab.value = 'found'
+  if (s === 'sourcing' || s === 'building') assetsTab.value = 'found'
   else if (s === 'planned') assetsTab.value = 'how'
 })
 // ④ Result: the built place alone (the plan is ② Plan's).
@@ -895,6 +919,16 @@ function setKind(module: string, kind: string, value: string): void {
   sendToHost({ type: 'build:zoneKind', module, kind, value: value.trim() === '' ? null : Number(value) })
 }
 
+// The background's description: edited here, sent when the field is left (or with Generate).
+const backgroundText = ref('')
+watch(
+  () => state.value?.backgroundDescription,
+  (d) => {
+    if (typeof d === 'string') backgroundText.value = d
+  },
+  { immediate: true },
+)
+
 function edit(path: string, value: unknown): void {
   sendToHost({ type: 'build:edit', path, value })
 }
@@ -923,6 +957,19 @@ function zoom(path: string, caption: string): void {
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') zoomed.value = null
 })
+// A made piece shown in its card: the last that passed the check, else the last made (the user can keep it anyway).
+type MadeArt = { path: string; ok?: boolean; seen?: string }
+function shownArt(n: { made: MadeArt[] }): MadeArt[] {
+  const good = n.made.filter((x) => x.ok !== false)
+  return good.length ? good.slice(-1) : n.made.slice(-1)
+}
+// Keep: the shown piece is the need's art, by the user's word (a piece the check rejected too).
+function keepArt(n: { key: string; made: MadeArt[] }): void {
+  const shown = shownArt(n)[0]
+  if (shown && shown.ok === false) sendToHost({ type: 'build:pickArt', key: n.key, path: shown.path })
+  sendToHost({ type: 'build:artVerdict', key: n.key, verdict: 'kept' })
+}
+
 // Refine one piece of the build's art: the user's words, then it's made again.
 const refining = ref('')
 const refineText = ref('')
@@ -1296,6 +1343,29 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       @mousedown.capture="guardLocked"
       @keydown.capture="guardLocked"
     >
+      <section v-if="state.layoutForm?.length" class="layout-form">
+        <h4>Layout form</h4>
+        <p class="dim small">How the place is laid out: the shape of its zones, its streets, its blocks and lots. A change lays it out again.</p>
+        <div class="form-grid">
+          <template v-for="f in state.layoutForm" :key="f.field">
+            <label :title="f.description">{{ f.field.replace(/-/g, ' ') }}</label>
+            <div>
+              <select v-if="f.values" :value="f.value" @change="sendToHost({ type: 'build:rootField', field: f.field, value: ($event.target as HTMLSelectElement).value })">
+                <option v-for="v in f.values" :key="v" :value="v">{{ v }}{{ v === f.default ? ' (default)' : '' }}</option>
+              </select>
+              <span v-else-if="f.type === 'size'" class="size-pair">
+                <input type="number" min="8" max="60" :value="Array.isArray(f.value?.w) ? f.value.w[0] : f.value?.w"
+                       @change="sendToHost({ type: 'build:rootField', field: f.field, value: { w: Number(($event.target as HTMLInputElement).value), h: Array.isArray(f.value?.h) ? f.value.h[0] : f.value?.h } })" />
+                ×
+                <input type="number" min="8" max="60" :value="Array.isArray(f.value?.h) ? f.value.h[0] : f.value?.h"
+                       @change="sendToHost({ type: 'build:rootField', field: f.field, value: { w: Array.isArray(f.value?.w) ? f.value.w[0] : f.value?.w, h: Number(($event.target as HTMLInputElement).value) } })" />
+                cells
+              </span>
+              <div v-if="f.meaning?.[f.value]" class="dim small">{{ f.meaning[f.value] }}</div>
+            </div>
+          </template>
+        </div>
+      </section>
       <section v-if="state.layout.stale" class="note warning">
         The Contents changed since these zones were planned.
         <button class="primary" @click="sendToHost({ type: 'build:replanLayout' })">Lay out the zones again</button>
@@ -1497,6 +1567,34 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <table class="components needs">
           <thead><tr><th></th><th>Needed</th><th>For</th><th>Gets</th><th>From</th><th>Why</th><th></th></tr></thead>
           <tbody>
+            <tr class="background-row" title="The place's ground in one picture, matched to the grid: each cell shows its own square of it">
+              <td class="thumb">
+                <img v-if="state.background" :src="urlOf(state.background.path)" alt="" class="zoomable" @click="zoom(state.background.path, 'Background')" />
+              </td>
+              <td>Background</td>
+              <td class="dim">the whole ground</td>
+              <td>{{ state.background ? state.background.path.split('/').pop() : '—' }}</td>
+              <td>{{ state.backgroundMaking ? 'painting…' : state.background ? (state.background.picked ? 'imported' : state.background.provider || 'painted') : 'not yet' }}</td>
+              <td class="dim">roads, paths, floors and grass painted as one picture, from the description below</td>
+              <td>
+                <button :disabled="state.backgroundMaking" title="Paint it from the plan and the description (Preferences ▸ AI ▸ Background)" @click="sendToHost({ type: 'build:background', description: backgroundText })">
+                  {{ state.background ? 'Regenerate' : 'Generate' }}
+                </button>
+              </td>
+            </tr>
+            <tr class="background-row">
+              <td></td>
+              <td colspan="6">
+                <textarea
+                  v-model="backgroundText"
+                  class="background-description"
+                  rows="4"
+                  spellcheck="false"
+                  title="What the background is painted from: the place and its look, then a line per kind of ground ('asphalt: road with white lane markings')"
+                  @blur="edit('background.description', backgroundText)"
+                />
+              </td>
+            </tr>
             <tr v-for="n in state.assetNeeds" :key="n.key" :title="n.description">
               <td class="thumb">
                 <img v-if="n.entry && n.source !== 'placeholder' && /\.(png|jpg|jpeg)$/i.test(n.entry)" :src="urlOf(n.entry)" alt="" />
@@ -1545,6 +1643,18 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <div class="actions">
           <button @click="viewing = 'plan'">← Plan</button>
           <span class="dim">{{ state?.status }}</span>
+          <span v-if="state?.matched" class="dim" :title="(state.matched.report?.skipped ?? []).map((s) => `${s.key}: ${s.why}`).join('; ')">
+            {{ state.matched.state === 'making' ? 'Making the art…'
+              : state.matched.state === 'made' ? 'Cutting the pieces…'
+              : state.matched.state === 'failed' ? `The art failed: ${state.matched.error ?? ''}`
+              : `Matched art: ${state.matched.report?.pieces ?? 0} pieces, ${state.matched.report?.grounds ?? 0} grounds` +
+                (state.matched.report?.flagged ? `, ${state.matched.report.flagged} off the style` : '') }}
+          </span>
+          <button v-if="SCENE_BUILD" :disabled="stage === 'sourcing' || stage === 'building' || state?.matched?.state === 'making'"
+                  title="Makes every part's art with the art provider (Preferences ▸ AI ▸ Art) in one style: a style sheet first, then every piece in its style, drawn to the grid"
+                  @click="sendToHost({ type: 'build:matchedArt' }); assetsTab = 'found'">
+            Make matched art
+          </button>
           <button v-if="SCENE_BUILD" class="primary" :disabled="stage === 'sourcing' || stage === 'building'"
                   title="Finds each part's art in the project or the library, and searches or makes what's missing"
                   @click="sendToHost({ type: 'build:findAssets' }); assetsTab = 'found'">
@@ -1625,10 +1735,11 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           <div class="art-grid">
             <div v-for="n in state.sourced" :key="n.key" :class="['art-need', { done: true, passed: n.passed, open: refining === n.key }]">
               <div class="thumbs">
-                <figure v-for="m in n.made.filter((x) => x.ok !== false).slice(-1)" :key="m.path" :title="m.seen ? 'Seen as: ' + m.seen : ''">
+                <figure v-for="m in shownArt(n)" :key="m.path" :class="{ bad: m.ok === false }" :title="m.seen ? 'Seen as: ' + m.seen : ''">
                   <img :src="urlOf(m.path)" alt="" class="zoomable" @click="zoom(m.path, n.role + (m.seen ? ' · seen as ' + m.seen : ''))" />
+                  <figcaption v-if="m.ok === false">✗ the check: {{ m.seen || 'not right' }}</figcaption>
                 </figure>
-                <span v-if="!n.made.some((x) => x.ok !== false)" class="waiting">placeholder</span>
+                <span v-if="!n.made.length" class="waiting">placeholder</span>
               </div>
               <div class="what">
                 <strong>{{ n.role }}</strong>
@@ -1638,7 +1749,8 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
                 <span v-if="n.verdict === 'kept'" class="verdict kept">✓ kept by you</span>
                 <span v-else-if="n.verdict === 'rejected'" class="verdict rejected">✗ rejected: found another way</span>
                 <div class="row">
-                  <button class="small" title="It's right: keep it" :disabled="n.verdict === 'kept'" @click="sendToHost({ type: 'build:artVerdict', key: n.key, verdict: 'kept' })">Keep</button>
+                  <button class="small" title="It's right: keep it (even if the check rejected it)" :disabled="n.verdict === 'kept'" @click="keepArt(n)">Keep</button>
+                  <button class="small" title="Art from the project or your library instead" @click="openPicker(n.key)">Pick…</button>
                   <button class="small" title="Describe what to change, and it's made again" @click="openRefine(n.key)">Refine</button>
                   <button class="small" title="It's wrong: not used, the need is found another way (your library, the web, a placeholder)" :disabled="n.verdict === 'rejected'" @click="sendToHost({ type: 'build:artVerdict', key: n.key, verdict: 'rejected' })">Reject</button>
                 </div>
@@ -1747,7 +1859,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           <li>Undo (Ctrl+Z) takes the whole build out of the scene in one step.</li>
         </ul>
         <div class="row">
-          <button class="primary" title="Save the scene with the place in it and close the build" @click="sendToHost({ type: 'build:finish' })">Finish</button>
+          <button class="primary" title="Save the scene with the place in it, close the build and show it in the Viewport" @click="sendToHost({ type: 'build:finish' }); setPanelVisible('viewport', true)">Finish</button>
         </div>
       </section>
       <template v-if="!showResult">
@@ -3245,5 +3357,34 @@ table.decisions input {
 }
 .verdict.rejected {
   color: #e08080;
+}
+
+.layout-form {
+  border: 1px solid var(--border, #3a3a40);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+.layout-form h4 {
+  margin: 0 0 4px;
+}
+.layout-form .form-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 12px;
+  align-items: start;
+}
+.layout-form label {
+  text-transform: capitalize;
+  padding-top: 3px;
+}
+.layout-form .size-pair input {
+  width: 4em;
+}
+.background-description {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 12px;
+  resize: vertical;
 }
 </style>

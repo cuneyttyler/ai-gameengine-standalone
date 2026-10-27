@@ -100,6 +100,9 @@ public:
     std::string ReplanLayout();
     std::string SetZoneKind(const std::string& module, const std::string& kind, const nlohmann::json& value); // ① Confirm: how many of one kind of building
     std::string SetZoneField(const std::string& zone, const std::string& field, const nlohmann::json& value);
+    // A field of the layout form (the root's: zone-shape, street-grid, lot-layout, …; docs/places/plan-generation.md
+    // §3.1): set in the plan and the Brief, and the place laid out again (the zones in the layout; all of it after).
+    std::string SetRootField(const std::string& field, const nlohmann::json& value);
     std::string DrawZone(const std::string& zone, const nlohmann::json& rect);
     // The drawing tool's brush: cells [[x, y]...] painted onto a zone (taken from any other
     // zone painted there), or erased from it. The zone takes exactly its painted cells.
@@ -214,13 +217,25 @@ public:
     bool Sketched() const { return sketched_; }
     const std::map<std::string, std::string>& SketchCrops() const { return sketchCrops_; }
     const nlohmann::json& Sketches() const { return sketches_; }
-    // The place painted whole (the Painted build method, PlacePaint, docs/build-fixes.md): one request
-    // per level (BackdropRequests); each answer kept with its level and area, its painting and map
-    // (Backdrops: what BuildBackdropScene builds the scene from). "" when asked.
-    std::string Paint(const nlohmann::json& requests);
-    bool Painting() const { return painting_ > 0; }
-    bool Painted() const { return painted_; }
-    const nlohmann::json& Backdrops() const { return backdrops_; }
+    // ③ Matched art (MatchedArt, docs/places/matched-art.md): the asset plan's needs drawn as sheets of boxes in
+    // matched/, made by the art provider (the style sheet first, every other piece in its style). "" when asked.
+    // Once made (MatchedArtMade), the editor cuts the pieces and says what came of it (MatchedArtDone).
+    std::string MakeMatchedArt(const nlohmann::json& assetPlan, const Ontology* ontology);
+    bool MatchedArtMade() const { return matched_.value("state", "") == "made"; }
+    const nlohmann::json& MatchedArtInfo() const { return matched_; }
+    void MatchedArtDone(const nlohmann::json& report);
+    // The place's background: its ground painted whole (Matched art's ground plan), or a picture the user picked: top-down,
+    // the site's cell (0, 0) at its corner. {path, cellPx}, or null. The Build step lays it as the ground, cell by cell.
+    nlohmann::json Background() const { return matched_.value("groundPicture", nlohmann::json()); }
+    std::string SetBackground(const std::string& path);
+    // The background's description (the planner's, editable in Build ▸ Assets: docs/places/background.md §2): the
+    // place and its style, then a line per kind of ground ("asphalt: road with white lane markings"). The Brief's
+    // background.description, else one made from the Brief.
+    std::string BackgroundDescription() const;
+    // The background painted from the plan by the background provider (POST /places/background: the whole, then
+    // tiles where it needs detail), from its description. "" when asked.
+    std::string MakeBackground();
+    bool MakingBackground() const { return makingBackground_; }
     bool Inspecting() const { return inspecting_; }
     const std::vector<std::string>& ArtToRedo() const { return redo_; }
     void ArtRedone() { redo_.clear(); }
@@ -283,6 +298,9 @@ private:
     void PlanZones();
     void FinishPlanning();
     void Solve();
+    // The plan's arrangement asked of the AI (docs/dungeon.md §0): each kind's purpose, size, relations, place and
+    // facing; once answered, kept in the spec and the layout solved again with it. False: not asked (no AI, or kept).
+    bool Arrange();
     void OnRevision(const Pending& what, const nlohmann::json& body);
     // After a revision is laid out: the spatial facts it asked for, checked; a
     // miss strengthens its relation and lays out again; what's still missed is said.
@@ -342,11 +360,9 @@ private:
     std::map<std::string, std::string> sketchCrops_; // need key -> its crop of the sketch
     std::map<std::string, std::string> sketchSeen_;  // need key -> how it looks in the sketch (the vision model's words)
     nlohmann::json sketches_ = nlohmann::json::array(); // each window's painting and prompt
-    int painting_ = 0;
-    bool painted_ = false;
-    nlohmann::json paintRequests_ = nlohmann::json::array();
-    nlohmann::json backdrops_ = nlohmann::json::array(); // [{level, area, backdrop, size, prompt, map}]
+    nlohmann::json matched_ = nlohmann::json::object(); // {state: making | made | cut | failed, dir, sheets, provider, report}
     bool inspecting_ = false;
+    bool makingBackground_ = false;
     int buildRounds_ = 0;
     nlohmann::json buildCheck_;            // the last check of the built scene
     std::vector<std::string> redo_;        // needs whose art the check refused, for the next round

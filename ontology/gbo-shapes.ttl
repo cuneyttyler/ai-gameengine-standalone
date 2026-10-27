@@ -1958,6 +1958,18 @@ gbs:CityShape
         sh:maxCount 1 ;
         sh:in ( gbv:block-fill.frontage gbv:block-fill.full )
     ], [
+        sh:path gbl:City.block-use ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:block-use.grouped gbv:block-use.mixed )
+    ], [
+        sh:path gbl:City.building-cover ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:building-cover.fit gbv:building-cover.planned )
+    ], [
+        sh:path gbl:City.building-shape ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:building-shape.square gbv:building-shape.rounded gbv:building-shape.fitted )
+    ], [
         sh:path gbl:City.condition ;
         sh:maxCount 1 ;
         sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
@@ -1970,17 +1982,33 @@ gbs:CityShape
         sh:maxCount 1 ;
         sh:in ( gbv:era.prehistoric gbv:era.ancient gbv:era.medieval gbv:era.renaissance gbv:era.industrial gbv:era.modern gbv:era.contemporary gbv:era.near-future gbv:era.far-future )
     ], [
+        sh:path gbl:City.frontage ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:frontage.aligned gbv:frontage.varied )
+    ], [
         sh:path gbl:City.layout ;
         sh:maxCount 1 ;
         sh:datatype rdf:JSON
+    ], [
+        sh:path gbl:City.lot-layout ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:lot-layout.rows gbv:lot-layout.packed )
     ], [
         sh:path gbl:City.notes ;
         sh:maxCount 1 ;
         sh:datatype xsd:string
     ], [
+        sh:path gbl:City.open-space ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:open-space.few gbv:open-space.some gbv:open-space.many )
+    ], [
         sh:path gbl:City.relief ;
         sh:maxCount 1 ;
         sh:in ( "flat" "gentle" "hilly" )
+    ], [
+        sh:path gbl:City.site-fit ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:site-fit.content gbv:site-fit.scale )
     ], [
         sh:path gbl:City.street-grid ;
         sh:maxCount 1 ;
@@ -8100,6 +8128,18 @@ gbs:SettlementShape
         sh:maxCount 1 ;
         sh:in ( gbv:block-fill.frontage gbv:block-fill.full )
     ], [
+        sh:path gbl:Settlement.block-use ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:block-use.grouped gbv:block-use.mixed )
+    ], [
+        sh:path gbl:Settlement.building-cover ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:building-cover.fit gbv:building-cover.planned )
+    ], [
+        sh:path gbl:Settlement.building-shape ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:building-shape.square gbv:building-shape.rounded gbv:building-shape.fitted )
+    ], [
         sh:path gbl:Settlement.condition ;
         sh:maxCount 1 ;
         sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
@@ -8108,17 +8148,33 @@ gbs:SettlementShape
         sh:maxCount 1 ;
         sh:in ( gbv:coverage.partial gbv:coverage.full )
     ], [
+        sh:path gbl:Settlement.frontage ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:frontage.aligned gbv:frontage.varied )
+    ], [
         sh:path gbl:Settlement.layout ;
         sh:maxCount 1 ;
         sh:datatype rdf:JSON
+    ], [
+        sh:path gbl:Settlement.lot-layout ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:lot-layout.rows gbv:lot-layout.packed )
     ], [
         sh:path gbl:Settlement.notes ;
         sh:maxCount 1 ;
         sh:datatype xsd:string
     ], [
+        sh:path gbl:Settlement.open-space ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:open-space.few gbv:open-space.some gbv:open-space.many )
+    ], [
         sh:path gbl:Settlement.relief ;
         sh:maxCount 1 ;
         sh:in ( "flat" "gentle" "hilly" )
+    ], [
+        sh:path gbl:Settlement.site-fit ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:site-fit.content gbv:site-fit.scale )
     ], [
         sh:path gbl:Settlement.street-grid ;
         sh:maxCount 1 ;

@@ -8,6 +8,8 @@ import { computed, ref } from 'vue'
 import { openContextMenu, separator, type MenuItem } from '../contextMenu'
 import { confirmDialog, promptDialog } from '../dialogs'
 import { onHostMessage, sendToHost } from '../ipc'
+import { projectState } from '../projects'
+import Splitter from './Splitter.vue'
 
 const LIBRARY_HOST = 'https://aige-library.local/'
 
@@ -42,6 +44,23 @@ const props = defineProps<{ filter: string }>()
 const library = ref<Library | null>(null)
 const folder = ref('') // '' : everything at the top
 const selected = ref('')
+// The details under the grid: as tall as the user drags it.
+const detailsHeight = ref(150)
+const libraryEl = ref<HTMLElement | null>(null)
+function resizeDetails(y: number): void {
+  const box = libraryEl.value?.getBoundingClientRect()
+  if (box) detailsHeight.value = Math.max(80, Math.min(box.height - 120, box.bottom - y))
+}
+// Art already in the open project (it came from it, or was added from here): no "Add to the project".
+const added = ref(new Set<string>())
+function inProject(i: Item): boolean {
+  return added.value.has(i.id) || (i.source === 'project' && !!i.origin && i.origin === projectState.name)
+}
+function toProject(i: Item): void {
+  if (inProject(i)) return
+  sendToHost({ type: 'library:toProject', item: i.id })
+  added.value = new Set([...added.value, i.id])
+}
 
 onHostMessage((message) => {
   if (message.type === 'library:state') library.value = message as unknown as Library
@@ -149,7 +168,7 @@ function when(seconds?: number): string {
 </script>
 
 <template>
-  <div class="library">
+  <div ref="libraryEl" class="library">
     <!-- Asked once: what happens to the art you generate (docs/systems/asset_management.md §4). -->
     <section v-if="library?.askSharing" class="share-ask">
       <strong>Share the art you generate?</strong>
@@ -189,7 +208,7 @@ function when(seconds?: number): string {
         :title="i.name + ' · ' + (SOURCE_NAMES[i.source] ?? i.source)"
         draggable="false"
         @click="selected = i.id"
-        @dblclick="sendToHost({ type: 'library:toProject', item: i.id })"
+        @dblclick="toProject(i)"
         @contextmenu.prevent="itemMenu(i, $event)"
       >
         <img :src="LIBRARY_HOST + i.path" alt="" loading="lazy" />
@@ -201,7 +220,8 @@ function when(seconds?: number): string {
       </p>
     </div>
 
-    <section v-if="item" class="details">
+    <Splitter v-if="item" direction="vertical" @drag="resizeDetails" />
+    <section v-if="item" class="details" :style="{ height: detailsHeight + 'px' }">
       <img :src="LIBRARY_HOST + item.path" alt="" />
       <div>
         <strong>{{ item.name }}</strong>
@@ -210,7 +230,8 @@ function when(seconds?: number): string {
         <div v-if="item.licence" class="dim">{{ item.licence }}<span v-if="item.author"> · {{ item.author }}</span></div>
         <div v-if="item.source === 'generated'" class="dim">Sharing: {{ SHARED_NAMES[item.shared ?? 'unasked'] }}</div>
         <div class="row">
-          <button class="primary" @click="sendToHost({ type: 'library:toProject', item: item.id })">Add to the project</button>
+          <button v-if="!inProject(item)" class="primary" @click="toProject(item)">Add to the project</button>
+          <span v-else class="dim">In the project</span>
           <template v-if="item.source === 'generated'">
             <button v-if="item.shared !== 'yes'" @click="sendToHost({ type: 'library:setShared', item: item.id, shared: 'yes' })">Offer it to others</button>
             <button v-if="item.shared !== 'no'" @click="sendToHost({ type: 'library:setShared', item: item.id, shared: 'no' })">Keep it private</button>
@@ -271,9 +292,10 @@ function when(seconds?: number): string {
 }
 .grid {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 6px;
   padding: 6px;
   align-content: start;
@@ -293,15 +315,19 @@ function when(seconds?: number): string {
   border-color: #3b82f6;
 }
 .card img {
-  width: 76px;
-  height: 76px;
+  width: 100%;
+  aspect-ratio: 1;
   object-fit: contain;
-  image-rendering: pixelated;
+  /* Painted art drawn smooth (pixelated made it blocky); a dark checkerboard shows its clear edges. */
+  background: repeating-conic-gradient(#1c1c28 0 25%, #16161f 0 50%) 0 0 / 16px 16px;
 }
 .card .icon {
-  font-size: 40px;
-  line-height: 76px;
-  height: 76px;
+  font-size: 48px;
+  width: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0.6;
 }
 .card .name {
@@ -325,11 +351,15 @@ function when(seconds?: number): string {
   gap: 10px;
   padding: 6px 8px;
   border-top: 1px solid #262637;
+  overflow: auto;
+  flex-shrink: 0;
 }
 .details img {
-  width: 72px;
-  height: 72px;
+  height: 100%;
+  max-height: 100%;
+  aspect-ratio: 1;
   object-fit: contain;
+  background: repeating-conic-gradient(#1c1c28 0 25%, #16161f 0 50%) 0 0 / 16px 16px;
 }
 .row {
   display: flex;

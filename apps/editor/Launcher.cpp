@@ -52,21 +52,23 @@ void Launcher::OnWebMessage(const nlohmann::json& message) {
         }
     } else if (type == "welcome:demo") {
         Open(demo_);
+    } else if (type == "project:browse") {
+        // New Project's Browse…: the folder back to its window.
+        if (auto folder = ShowFolderDialog(window_, Utf8ToWide(message.value("title", "Where to create the project")))) {
+            post_({{"type", "project:browsed"}, {"path", WideToUtf8(folder->wstring())}});
+        }
     } else if (type == "welcome:new") {
-        const std::string name = message.value("name", "");
-        if (name.empty()) {
+        // New Project's window: its name, where, its grid and its own AI (Project Settings ▸ AI).
+        const std::string name = message.value("name", ""), location = message.value("location", "");
+        if (name.empty() || location.empty()) {
             return;
         }
-        auto parent = ShowFolderDialog(window_, L"Where to create \"" + Utf8ToWide(name) + L"\"");
-        if (!parent) {
-            return;
+        const std::filesystem::path root = std::filesystem::path(Utf8ToWide(location)) / Utf8ToWide(name);
+        std::map<std::string, std::string> ai;
+        for (const auto& [k, v] : message.value("ai", nlohmann::json::object()).items()) {
+            if (v.is_string()) ai[k] = v.get<std::string>();
         }
-        const std::filesystem::path root = *parent / Utf8ToWide(name);
-        std::optional<std::filesystem::path> starter;
-        if (message.value("starter", false)) {
-            starter = demo_;
-        }
-        if (auto error = CreateProject(root, starter, message.value("topDown", false), message.value("painted", false))) {
+        if (auto error = CreateProject(root, std::nullopt, message.value("topDown", false), ai)) {
             post_({{"type", "welcome:error"}, {"text", *error}});
             return;
         }

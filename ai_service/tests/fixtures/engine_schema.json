@@ -4274,19 +4274,47 @@
       "name": "Grid"
     },
     {
-      "description": "How the AI builds places: chosen when the project is made, fixed once places are built.",
+      "description": "This project's AI: each left empty uses the app's choice (Preferences ▸ AI).",
       "fields": [
         {
-          "description": "Assembled (each piece's art drawn from a concept painting, put together on the grid: every piece editable) or Painted (the whole place painted as one picture, a backdrop: walls, doors and anchors read from it).",
-          "name": "method",
+          "description": "The language model's provider (empty: the app's).",
+          "name": "provider",
           "options": [
-            "Assembled",
-            "Painted"
+            "",
+            "mistral",
+            "claude"
           ],
-          "type": "enum"
+          "type": "string"
+        },
+        {
+          "description": "Its model (empty: the app's, or the provider's default).",
+          "name": "model",
+          "type": "string"
+        },
+        {
+          "description": "Who draws the prefabs' art (empty: the app's).",
+          "name": "art",
+          "options": [
+            "",
+            "mistral",
+            "pixellab",
+            "bfl:flux-2-klein-4b",
+            "bfl:flux-3-image",
+            "bfl:flux-2-pro"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Who paints the places' backgrounds (empty: the app's).",
+          "name": "background",
+          "options": [
+            "",
+            "bfl:flux-3-image"
+          ],
+          "type": "string"
         }
       ],
-      "name": "Places"
+      "name": "AI"
     },
     {
       "description": "The game as a whole.",
