@@ -358,10 +358,16 @@ void VulkanRHI::CreateSwapchain() {
     std::vector<VkPresentModeKHR> presentModes(presentModeCount);
     vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice_, surface_, &presentModeCount, presentModes.data());
 
+    // A UNORM swapchain: the textures (UNORM, their bytes already sRGB) and every colour the engine sets (tints, light,
+    // overlays, the UI) are written as they are. An _SRGB swapchain encoded them a second time: the viewport came out
+    // pale and washed out beside the same scene's preview picture (2026-10-27).
     VkSurfaceFormatKHR chosenFormat = formats[0];
-    for (const auto& f : formats) {
-        if (f.format == VK_FORMAT_B8G8R8A8_SRGB && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-            chosenFormat = f;
+    for (const VkFormat wanted : {VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM}) {
+        const auto it = std::find_if(formats.begin(), formats.end(), [&](const VkSurfaceFormatKHR& f) {
+            return f.format == wanted && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+        });
+        if (it != formats.end()) {
+            chosenFormat = *it;
             break;
         }
     }
