@@ -4982,7 +4982,7 @@ void EditorApp::UpdateTitle() {
     // The project first: switching scenes stays in the same project and window.
     const std::wstring project = assets_.GetProject().root.filename().wstring();
     const std::wstring scene = std::filesystem::path(scenePath_).stem().wstring();
-    std::wstring title = project + L" — " + scene + (dirty_ ? L"*" : L"") + L" - AI-Native Game Engine Editor";
+    std::wstring title = project + L" — " + scene + (dirty_ ? L"*" : L"") + L" - AIGE";
     SetWindowTextW(mainWindow_, title.c_str());
 }
 

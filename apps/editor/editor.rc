@@ -1,0 +1,2 @@
+// The editor's icon (docs/brand): the .exe's, so Explorer, the Start menu and the taskbar show it.
+1 ICON "aige.ico"

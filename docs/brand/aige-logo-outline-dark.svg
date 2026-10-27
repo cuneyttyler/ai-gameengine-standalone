@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 422 128" width="422" height="128">
+<title>AIGE: AI Game Engine</title>
+<defs>
+  <linearGradient id="ai" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2f7cf6"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>
+  <linearGradient id="top" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7cc4ff"/><stop offset="1" stop-color="#a5dcff"/></linearGradient>
+</defs>
+<rect width="100%" height="100%" fill="#0b1020"/>
+<polygon points="60.0,8.0 108.0,36.0 60.0,64.0 12.0,36.0" fill="url(#top)"/>
+<polygon points="12.0,36.0 60.0,64.0 60.0,120.0 12.0,92.0" fill="#2f7cf6"/>
+<polygon points="60.0,64.0 108.0,36.0 108.0,92.0 60.0,120.0" fill="#1d4ed8"/>
+<polygon points="60.0,27.3 64.2,33.6 75.0,36.0 64.2,38.4 60.0,44.7 55.8,38.4 45.0,36.0 55.8,33.6" fill="#ffffff"/>
+<path d="M138.0,103.0 167.6,25.0 186.4,25.0 216.0,103.0 197.3,103.0 191.0,85.8 163.0,85.8 156.7,103.0 Z M169.2,69.5 177.0,48.4 184.8,69.5 Z" fill="url(#ai)" fill-rule="evenodd"/>
+<path d="M226.9,25.0 245.6,25.0 245.6,103.0 226.9,103.0 Z" fill="url(#ai)" fill-rule="evenodd"/>
+<path d="M269.0,25.0 339.2,25.0 339.2,42.2 287.8,42.2 287.8,85.8 320.5,85.8 320.5,76.5 304.9,76.5 304.9,60.9 339.2,60.9 339.2,103.0 269.0,103.0 Z" fill="none" stroke="#cfe3ff" stroke-width="3.5" stroke-linejoin="miter" fill-rule="evenodd"/>
+<path d="M350.2,25.0 414.1,25.0 414.1,42.2 368.9,42.2 368.9,55.4 406.3,55.4 406.3,72.6 368.9,72.6 368.9,85.8 414.1,85.8 414.1,103.0 350.2,103.0 Z" fill="none" stroke="#cfe3ff" stroke-width="3.5" stroke-linejoin="miter" fill-rule="evenodd"/>
+</svg>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import logo from '../assets/aige-logo-dark.svg' // the AIGE logo (docs/brand)
 // The welcome window (development_plan.md 5.4): shown when the editor starts
 // without a project. Everything here asks the host (apps/editor/Launcher),
 // which starts the editor on the chosen project.
@@ -73,7 +74,7 @@ function when(iso: string): string {
 <template>
   <div class="welcome">
     <section class="start">
-      <h1>AI-Native Game Engine</h1>
+      <h1 class="brand"><img :src="logo" alt="AIGE" /><span class="sr">AIGE: AI Game Engine</span></h1>
       <p class="muted">Open a project to start, or make a new one.</p>
       <div class="actions">
         <button class="primary" @click="newProject">New Project…</button>
@@ -117,6 +118,20 @@ function when(iso: string): string {
 </template>
 
 <style scoped>
+.brand {
+  margin: 0 0 6px;
+}
+.brand img {
+  height: 64px;
+  display: block;
+}
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
 .welcome {
   display: flex;
   height: 100vh;

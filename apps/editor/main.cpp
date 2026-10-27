@@ -109,7 +109,7 @@ CommandLine ParseCommandLine() {
 // The welcome window: only the web UI (no viewport, no project), until a
 // project is chosen and a new editor process opens it.
 int RunWelcome(HWND mainWindow) {
-    SetWindowTextW(mainWindow, L"AI-Native Game Engine");
+    SetWindowTextW(mainWindow, L"AIGE");
     // Smaller than the editor, centered.
     const int width = 1000, height = 640;
     SetWindowPos(mainWindow, nullptr, (GetSystemMetrics(SM_CXSCREEN) - width) / 2,
@@ -240,9 +240,12 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
         wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
         wc.lpszClassName = kMainWindowClass;
+        // The AIGE icon (editor.rc): the title bar's and the taskbar's.
+        wc.hIcon = static_cast<HICON>(LoadImageW(hinstance, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), 0));
+        wc.hIconSm = static_cast<HICON>(LoadImageW(hinstance, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0));
         RegisterClassExW(&wc);
 
-        HWND mainWindow = CreateWindowExW(0, kMainWindowClass, L"AI-Native Game Engine - Editor",
+        HWND mainWindow = CreateWindowExW(0, kMainWindowClass, L"AIGE",
                                           WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1400, 900, nullptr,
                                           nullptr, hinstance, nullptr);
         if (mainWindow == nullptr) {

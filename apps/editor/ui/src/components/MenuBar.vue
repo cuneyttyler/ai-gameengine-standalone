@@ -4,6 +4,7 @@ import { projectState } from '../projects'
 // dropdowns are context menus (contextMenu.ts) opened under the title, so
 // they're cut out of the viewport like any other overlay.
 import { computed, ref } from 'vue'
+import mark from '../assets/aige-mark.svg' // the AIGE cube (docs/brand)
 import { closeContextMenu, menuState, openContextMenu, separator, type MenuItem } from '../contextMenu'
 import { editorState } from '../editorState'
 import { sendToHost } from '../ipc'
@@ -114,6 +115,7 @@ function hover(name: string, event: MouseEvent): void {
 
 <template>
   <nav class="menubar" @mousedown.stop>
+    <img class="brand" :src="mark" alt="AIGE" title="AIGE: AI Game Engine" />
     <button
       v-for="name in Object.keys(menus)"
       :key="name"
@@ -136,6 +138,11 @@ function hover(name: string, event: MouseEvent): void {
   background: #11111b;
   border-bottom: 1px solid #262636;
   font-size: 0.85em;
+}
+.brand {
+  height: 18px;
+  align-self: center;
+  margin: 0 6px 0 8px;
 }
 button {
   padding: 0 10px;
