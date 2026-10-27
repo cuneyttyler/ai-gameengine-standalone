@@ -28,7 +28,7 @@ public:
         int port = 8765;
         // How the service is launched (inside serviceDir). uv provides the
         // project's own Python environment.
-        std::string launchCommand = "uv run uvicorn app.main:app --host 127.0.0.1 --port {port}";
+        std::string launchCommand = "uv run --extra segment uvicorn app.main:app --host 127.0.0.1 --port {port}"; // segment: click-to-select (SAM 2)
     };
 
     explicit AiClient(Options options);
