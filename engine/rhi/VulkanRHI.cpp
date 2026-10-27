@@ -366,13 +366,10 @@ void VulkanRHI::CreateSwapchain() {
         }
     }
 
-    VkPresentModeKHR chosenPresentMode = VK_PRESENT_MODE_FIFO_KHR;
-    for (const auto& mode : presentModes) {
-        if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
-            chosenPresentMode = mode;
-            break;
-        }
-    }
+    // Vsync (FIFO, always available): a frame per refresh of the screen. Mailbox drew as many frames as the GPU could,
+    // even with nothing changing: a laptop's GPU at full load the whole time the editor was open, until it overheated
+    // and switched off (2026-10-27).
+    const VkPresentModeKHR chosenPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 
     VkExtent2D extent;
     if (capabilities.currentExtent.width != UINT32_MAX) {

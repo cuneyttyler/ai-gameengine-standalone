@@ -366,6 +366,14 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
                 break;
             }
 
+            // Minimized: nothing to draw, so it rests between checks; in the background (another window active): a few frames
+            // a second (the AI's answers and builds still go on). Only the editor in front draws at the screen's rate.
+            if (IsIconic(mainWindow)) {
+                Sleep(100);
+            } else if (GetAncestor(GetForegroundWindow(), GA_ROOT) != mainWindow) {
+                Sleep(80);
+            }
+
             auto currentTime = Clock::now();
             try {
                 app.Tick(std::chrono::duration<double>(currentTime - previousTime).count());
@@ -406,6 +414,8 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
                 const aige::Camera2D view = app.FxFrame(layerSprites); // particles, lights, shake (18)
                 renderer.Render(cmd, registry, view, app.BuildOverlay(), app.BuildUi(), &app.Preview(), layerSprites);
                 rhi.EndFrame();
+            } else {
+                Sleep(16); // no frame to draw (the viewport resized to nothing): not a spin
             }
         }
         g_app = nullptr;

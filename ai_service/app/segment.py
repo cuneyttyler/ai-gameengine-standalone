@@ -30,6 +30,8 @@ def _load():
         import torch
         from transformers import Sam2Model, Sam2Processor
         torch.set_grad_enabled(False)
+        import os as _os
+        torch.set_num_threads(max(1, (_os.cpu_count() or 2) // 2))  # half the cores: the editor and the machine keep the rest
         _processor = Sam2Processor.from_pretrained(MODEL_ID)
         _model = Sam2Model.from_pretrained(MODEL_ID).eval()
     return _model, _processor

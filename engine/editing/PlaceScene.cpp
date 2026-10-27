@@ -2153,7 +2153,8 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
         }
     };
     {
-        const int workers = std::clamp(static_cast<int>(std::thread::hardware_concurrency()), 1, std::max(1, chunkCount));
+        // Every core but one: the editor (and the rest of the machine) keeps one, and a laptop runs less hot.
+        const int workers = std::clamp(static_cast<int>(std::thread::hardware_concurrency()) - 1, 1, std::max(1, chunkCount));
         std::vector<std::thread> threads;
         for (int i = 1; i < workers; ++i) threads.emplace_back(paintChunks);
         paintChunks();
