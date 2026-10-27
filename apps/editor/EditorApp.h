@@ -181,7 +181,8 @@ private:
     // Build ④ Paint and ⑤ Mark's messages (build:paint, build:skipPaint, build:prefillMarks, build:marksRequest,
     // build:saveMarks); false for any other.
     bool HandlePaintMessage(const std::string& type, const nlohmann::json& message);
-    bool wasPainting_ = false; // ④ Paint asked: when it's answered, ⑥ Assets is decided again
+    bool wasPainting_ = false;
+    std::string plannerBuildMethod_; // the Planner home page's build method for the next plan ("": the project's) // ④ Paint asked: when it's answered, ⑥ Assets is decided again
     void RevertOverride(const std::string& key);
 
     nlohmann::json AiStatusJson();
@@ -189,7 +190,9 @@ private:
     // A request to build a place ("a village by a river") starts a build
     // (7.4) unless `asChange`; anything else becomes a proposal.
     void SendToAi(const std::string& text, const std::string& focus, bool asChange = false);
-    void StartBuild(const std::string& query, const nlohmann::json& choices = nlohmann::json::object());
+    void StartBuild(const std::string& query, const nlohmann::json& choices = nlohmann::json::object(), const std::string& method = {});
+    // The build method a plan's places start with: the plan's, else the project's (Places ▸ method).
+    std::string PlanBuildMethod() const;
     void ResumeBuild(const std::string& id); // a build of the project, from places/<id>/
     void PreviewAssets();                    // ③ Assets: each part's art decided, nothing fetched yet
     // Each need's own choice (④ Assets): a source, a picked piece of art, a placeholder (assets.json "overrides").
@@ -343,6 +346,7 @@ private:
     int artRequest_ = 0; // the Art tab's generation in flight (development_plan.md 3.6)
     // The Assets panel's Web Search: the search in flight, and each file being fetched (its result).
     int webPreviewRequest_ = 0;
+    int segmentRequest_ = 0; // ⑤ Mark's click-to-select (POST /images/segment)
     std::map<int, nlohmann::json> webFetchRequests_;
     // Asset analysis (6.2): border terrains now, descriptions from the AI service.
     int analyzeRequest_ = 0;

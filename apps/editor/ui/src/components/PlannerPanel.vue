@@ -312,6 +312,14 @@ function pick(c: Choice, o: string): void {
 const replaceChoices = ref<Record<string, unknown>>({})
 // The home page (⌂ on the step bar): a new plan, and the project's plans (the current one, the earlier ones).
 const home = ref(false)
+// How the plan's places are built (Project Settings ▸ Places ▸ method): the plan's, from the project's by default.
+const BUILD_METHODS = [
+  { id: 'Assembled', title: 'Each building, tree and prop gets its own art, put together on the grid over a painted background; every piece can be moved and edited.' },
+  { id: 'Paint', title: "Each place is painted whole as one picture (as Baldur's Gate's areas are); where one can walk and what a character goes behind are pre-filled from the plan and refined by you. Only doors, chests, items and characters get art of their own." },
+]
+function setBuildMethod(method: string): void {
+  sendToHost({ type: 'planner:setBuildMethod', method })
+}
 type PlanRow = { id: string; request: string; stage: string; updated: number; name?: string }
 const removing = ref<PlanRow | null>(null)
 function openPlan(id: string): void {
@@ -330,7 +338,7 @@ function planWhen(seconds: number): string {
 function start() {
   if (!request.value.trim()) return
   home.value = false // the plan's page: its Brief, or the question whether to replace the current plan
-  sendToHost({ type: 'planner:start', request: request.value, choices: { ...picked.value } })
+  sendToHost({ type: 'planner:start', request: request.value, choices: { ...picked.value }, buildMethod: state.value.buildMethod || '' })
 }
 function replace() {
   sendToHost({ type: 'planner:start', request: askReplace.value, replace: true, choices: replaceChoices.value })
@@ -390,6 +398,14 @@ function statusMark(status: string): string {
         Describe the game: the Planner reads it three ways, asks you to confirm a Game Brief, then designs the story, cast,
         quests, places, systems and interface, checking each step. A new plan keeps the current one below, to open again.
       </p>
+      <label class="method-row">
+        Build method
+        <select :value="state.buildMethod || state.projectBuildMethod || 'Assembled'" @change="setBuildMethod(($event.target as HTMLSelectElement).value)">
+          <option v-for="m in BUILD_METHODS" :key="m.id" :value="m.id" :title="m.title">{{ m.id }}</option>
+        </select>
+        <span class="help" :title="BUILD_METHODS.find((m) => m.id === (state.buildMethod || state.projectBuildMethod))?.title">?</span>
+        <span class="muted">{{ (state.buildMethod || state.projectBuildMethod) === state.projectBuildMethod ? "the project's" : 'this plan only' }}</span>
+      </label>
       <textarea v-model="request" rows="4" placeholder="A short dark-fantasy action RPG about a disgraced warden recovering a stolen amulet, three towns and a dungeon, about four hours" />
       <section v-if="state.choices?.length" class="choices">
         <button class="toggle" @click="choicesOpen = !choicesOpen">
@@ -930,6 +946,23 @@ function statusMark(status: string): string {
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+.method-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+.help {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  font-size: 10px;
+  border: 1px solid currentColor;
+  opacity: 0.7;
+  cursor: help;
 }
 .home-step {
   min-width: 28px;

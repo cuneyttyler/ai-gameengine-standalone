@@ -361,6 +361,7 @@ PlaceBuild::Host GameBuild::BuildHost(const std::string& place) {
     };
     h.projectRoot = root;
     h.layoutStep = false; // the planner confirms the zones with the rest
+    h.buildMethod = host_.buildMethod;
     return h;
 }
 

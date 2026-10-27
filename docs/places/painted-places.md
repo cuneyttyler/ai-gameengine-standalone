@@ -13,11 +13,22 @@ Code can't find occluders reliably in a painting (trees, wooden walls, a tower),
 the painting, the build has a **Mark** step where the user marks them over the painting. The plan pre-fills the step,
 and click-to-select helps.
 
-## 1. Steps
+## 1. Build methods and steps
 
-① Confirm → ② Layout → ③ Plan → **④ Paint** → **⑤ Mark** → ⑥ Assets → ⑦ Build
+A build has a **build method** (Project Settings ▸ Places ▸ method, also asked in New Project):
 
-- Paint is optional. A place that isn't painted is built from its kit, as before (`matched-art.md`, `background.md`).
+| Method | Steps | What it makes |
+|---|---|---|
+| **Assembled** | ① Confirm → ② Layout → ③ Plan → ④ Assets → ⑤ Build | each building, tree and prop its own art, put together on the grid over a painted background (`matched-art.md`, `background.md`) |
+| **Paint** | ① Confirm → ② Layout → ③ Plan → ④ Paint → ⑤ Mark → ⑥ Assets → ⑦ Build | the place painted whole, marked by hand; art only for what the player uses |
+
+- A new build starts with the project's method; the Build panel's start page has a **Build method** select above Choices
+  (`build:start {method}`), and ④ Paint can switch a build to Assembled (`build:setMethod`).
+- The AI Planner's home page has a **Build method** too (`planner:setBuildMethod`, kept with the plan as `buildMethod`);
+  every place the plan builds starts with it. In the automatic game build, a Paint place is painted, its marks
+  pre-filled from the plan, and then built (the user refines the marks in ⑤ Mark later).
+- `PlaceBuild::Method()` ("Assembled" or "Paint") is saved with the build; a build from before methods is Paint if it
+  was painted, else Assembled.
 - Once a place has a painting, its Assets step makes only what the painting doesn't hold: things the player uses
   (doors, chests, items: role affordance `use`, `container`, `item`), characters and anything that moves. Buildings,
   trees, fences, walls, ground and décor are in the painting.
@@ -28,9 +39,18 @@ and click-to-select helps.
    - `blockout.png`: the plan in the game's view, colour-coded by kind;
    - `blockout-ids.png`: each object's pixels, as index + 1 in r + 256 g;
    - `blockout.legend.json`: what each colour is, and the view.
-2. FLUX.3 Image paints the block-out with the colour-key prompt (`bfl.blockout_prompt`, from Phase 25's tests: layout
-   9, fit 10). It's one call at up to 4 MP. Big places will be painted in tiles, as the background is
-   (`background.md` §4–§7); not yet.
+2. The **paint model** (Project Settings ▸ AI ▸ paint, New Project ▸ Paint model; `bfl.paint_place`) paints it, at up
+   to 4 MP:
+
+   | Model | How |
+   |---|---|
+   | FLUX-3-Image (default) | the block-out with the colour-key prompt and the counts (Phase 25: layout 9, fit 10) |
+   | FLUX-2-Klein-4b | the block-out scaled to 4096 px as a "rough draft" with a short key (klein copies a flat input it's told about) |
+   | FLUX-2-Pro, FLUX-2-Max | the block-out with the colour-key prompt and the counts, prompt upsampling off (rich looks; Phase 25: may drift from the layout, swap kinds) |
+   | FLUX-3-Image-to-Klein | FLUX-3-Image, then klein repaints its look |
+   | FLUX-3-Image-to-Pro | FLUX-3-Image, then FLUX.2 pro refines it with the block-out beside it saying what each building is |
+
+   Big places will be painted in tiles, as the background is (`background.md` §4–§7); not yet.
 3. The result is `painting.png`, scaled to the block-out's size so that pixels line up with the id map, and
    `painting.json`:
 
@@ -106,9 +126,12 @@ Stored as `places/<id>/marks.json`, with masks under `places/<id>/marks/`:
 
 ## 4. Click-to-select (26.4)
 
-`POST /images/segment {image, points: [[x, y, 1|0]], box?}` returns a mask PNG. It uses SAM 2.1 tiny, on the CPU, in
-the AI service. The painting's image embedding is computed once (about 1–2 s) and cached by path and modification time,
-so each click takes about 50 ms. The editor ORs the result into the region, or subtracts it with Alt.
+`POST /images/segment {path, points: [[x, y, 1|0]], box?}` returns `{png (base64, white inside), box}`
+(`app/segment.py`). It uses SAM 2.1 tiny (`facebook/sam2.1-hiera-tiny` through transformers), on the CPU, in the AI
+service's optional `segment` extra (`uv sync --extra segment`: torch, torchvision, transformers). The model is
+downloaded on first use; the painting's image embedding is computed once and kept by path and modification time
+(measured: the first click about 2 s after the download, then 0.2 s). Mark's **Click-select** tool (S) adds the
+result to the selected occluder, or takes it away with Alt (`build:segment`, `build:segmented`).
 
 ## 5. The scene (Build ⑦, `BuildPaintedScene`)
 

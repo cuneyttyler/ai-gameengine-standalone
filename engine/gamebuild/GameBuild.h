@@ -57,6 +57,8 @@ public:
         // the project has.
         std::function<std::string(const std::string& buildId, const std::string& scene)> buildInEditor;
         std::function<std::string(const std::string& buildId)> editorBuildStatus;
+        // The plan's build method for its places (Assembled or Paint).
+        std::function<std::string()> buildMethod;
     };
 
     explicit GameBuild(Host host);

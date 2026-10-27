@@ -119,7 +119,6 @@ interface PlanRow {
 // ④ Paint and ⑤ Mark (docs/places/painted-places.md): the painting's files and the marks' counts.
 interface PaintState {
   painting?: boolean
-  skipped?: boolean
   file?: string
   blockout?: string
   size?: [number, number]
@@ -128,10 +127,13 @@ interface PaintState {
   provider?: string
   seconds?: number
   prompt?: string
-  marks?: { painted?: boolean; marked?: boolean; occluders?: number; edited?: number; blocked?: number; walkable?: number; stale?: boolean }
+  marks?: { painted?: boolean; marked?: boolean; confirmed?: boolean; occluders?: number; edited?: number; blocked?: number; walkable?: number; stale?: boolean }
 }
 interface BuildState {
   paint?: PaintState
+  method?: 'Assembled' | 'Paint' // which steps it has (docs/places/painted-places.md)
+  projectMethod?: 'Assembled' | 'Paint'
+  reviewing?: boolean // the approved map checked by the AI in the background
   fromPlanner?: boolean // started by the AI Planner: its art strategy is the Game Brief's
   busy?: boolean // working off the UI thread (planning, laying out)
   busyInline?: boolean // and the page shows its steps going on: no overlay
@@ -271,7 +273,7 @@ const SOURCES = [
   { id: 'generate', label: 'generate', title: 'Made by the Art tool in the place’s style' },
 ]
 const DENSITIES = ['none', 'rare', 'some', 'common', 'abundant']
-const STEPS = [
+const ALL_STEPS = [
   { id: 'confirm', label: '① Confirm' },
   { id: 'layout', label: '② Layout' },
   { id: 'plan', label: '③ Plan' },
@@ -280,6 +282,19 @@ const STEPS = [
   { id: 'assets', label: '⑥ Assets' },
   { id: 'result', label: '⑦ Result' },
 ]
+// A build's steps: by its method (Assembled: Confirm, Layout, Plan, Assets, Result; Paint adds Paint and Mark).
+const buildMethod = computed(() => state.value?.method ?? newMethod.value)
+const STEPS = computed(() => ALL_STEPS.filter((st) => buildMethod.value === 'Paint' || (st.id !== 'paint' && st.id !== 'mark')).map((st, i) => ({
+  ...st, label: `${'①②③④⑤⑥⑦'[i]} ${st.label.slice(2)}`,
+})))
+// The build methods (Project Settings ▸ Places ▸ method), in words.
+const METHODS = [
+  { id: 'Assembled', label: 'Assembled', title: 'Each building, tree and prop gets its own art, put together on the grid over a painted background; every piece can be moved and edited. Steps: Confirm, Layout, Plan, Assets, Build.' },
+  { id: 'Paint', label: 'Paint', title: "The place is painted whole as one picture (as Baldur's Gate's areas are), then you mark where one can walk and what a character goes behind; only doors, chests, items and characters get art of their own. Steps: Confirm, Layout, Plan, Paint, Mark, Assets, Build." },
+] as const
+// The method a new build starts with: the project's, until changed here.
+const newMethod = ref<'Assembled' | 'Paint'>('Assembled')
+const newMethodTouched = ref(false)
 
 interface VerifyRow {
   id: string
@@ -482,8 +497,12 @@ onHostMessage((message) => {
     }
   } else if (message.type === 'build:choices') {
     choiceTypes.value = (message.types as ChoiceType[]) ?? []
+    if (!newMethodTouched.value && (message.buildMethod === 'Paint' || message.buildMethod === 'Assembled')) newMethod.value = message.buildMethod
   } else if (message.type === 'build:list') {
     builds.value = (message.builds as BuildEntry[]) ?? []
+  } else if (message.type === 'build:showStep') {
+    // The Planner's automatic build waits on a step that's the user's (⑤ Mark): shown.
+    if (message.step === 'mark' || message.step === 'paint') viewing.value = message.step
   } else if (message.type === 'build:open') {
     browsing.value = false
     setPanelVisible('build', true)
@@ -580,7 +599,7 @@ const paintCompare = ref(false)
 const markEditor = ref<InstanceType<typeof MarkEditor> | null>(null)
 // A plan just approved: ④ Paint first, unless it's painted or skipped already.
 watch(stage, (s, was) => {
-  if (s === 'planned' && was && !['planned', 'sourcing', 'sourced', 'built', 'building'].includes(was) && !paint.value.file && !paint.value.skipped) viewing.value = 'paint'
+  if (s === 'planned' && was && !['planned', 'sourcing', 'sourced', 'built', 'building'].includes(was) && buildMethod.value === 'Paint' && !paint.value.file) viewing.value = 'paint'
 })
 // Painted: on to ⑤ Mark (the marks pre-filled from the plan).
 watch(
@@ -592,8 +611,14 @@ watch(
 function startPaint(again = false): void {
   sendToHost({ type: 'build:paint', notes: again ? paintNotes.value : '' })
 }
-function skipPaint(): void {
-  sendToHost({ type: 'build:skipPaint', skip: true })
+function setMethod(method: 'Assembled' | 'Paint'): void {
+  sendToHost({ type: 'build:setMethod', method })
+  if (method === 'Assembled' && atPaint.value) viewing.value = ''
+}
+// ⑤ Mark's Continue: saved and confirmed (a Planner build waiting on it goes on), then ⑥ Assets.
+function confirmMarks(): void {
+  markEditor.value?.save()
+  sendToHost({ type: 'build:confirmMarks' })
   viewing.value = ''
 }
 function leaveMark(to: string): void {
@@ -1137,7 +1162,7 @@ function urlOf(path: string): string {
 }
 function start(): void {
   // The words and the choices together; either may be empty, not both.
-  if (query.value.trim() || hasChoices.value) sendToHost({ type: 'build:start', query: query.value.trim(), choices: choices() })
+  if (query.value.trim() || hasChoices.value) sendToHost({ type: 'build:start', query: query.value.trim(), choices: choices(), method: newMethod.value })
 }
 function browse(): void {
   browsing.value = true
@@ -1155,10 +1180,10 @@ const STAGE_NAMES: Record<string, string> = {
   layout: '① Confirm · ② Layout',
   plan: '③ Plan',
   planned: 'laid out',
-  sourcing: '⑥ Assets: finding the art',
-  sourced: '⑥ Assets: the art is ready',
+  sourcing: 'Assets: finding the art',
+  sourced: 'Assets: the art is ready',
   building: 'building',
-  built: '⑦ Result',
+  built: 'Result',
   cancelled: 'stopped',
   failed: 'stopped',
 }
@@ -1373,6 +1398,14 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <input v-model="query" placeholder="e.g. a large village by a river, with gardens and a market" @keydown.enter="start" />
         <button class="primary" :disabled="!query.trim() && !hasChoices" @click="start">Start</button>
       </div>
+      <label class="method-row">
+        Build method
+        <select v-model="newMethod" @change="newMethodTouched = true">
+          <option v-for="m in METHODS" :key="m.id" :value="m.id" :title="m.title">{{ m.label }}</option>
+        </select>
+        <span class="help" :title="METHODS.find((m) => m.id === newMethod)?.title">?</span>
+        <span class="dim">{{ newMethod === state?.projectMethod || !state?.projectMethod ? "the project's" : 'this build only' }}</span>
+      </label>
       <section class="choices">
         <button class="toggle" @click="choicesOpen = !choicesOpen">
           {{ choicesOpen ? '▾' : '▸' }} Choices
@@ -1704,7 +1737,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <p>{{ paintCall?.step || 'FLUX.3 Image paints the block-out, the layout kept' }}<span v-if="paintCall" class="dim"> · {{ Math.round(paintCall.seconds) }}s</span></p>
         <p class="dim">About a minute. Then ⑤ Mark opens with what can be walked on and the occluders pre-filled from the plan.</p>
       </section>
-      <section v-else-if="paint.file && !paint.skipped" class="painting">
+      <section v-else-if="paint.file" class="painting">
         <div class="pictures">
           <img :src="urlOf(paint.file) + '?v=' + encodeURIComponent(paint.paintedAt || '')" alt="The painting" class="zoomable" title="Click to zoom" @click="zoom(paint.file, 'The painting')" />
           <img v-if="paintCompare && paint.blockout" :src="urlOf(paint.blockout) + '?v=' + encodeURIComponent(paint.paintedAt || '')" alt="The block-out" class="zoomable" title="The plan it was painted from" @click="zoom(paint.blockout, 'The block-out')" />
@@ -1724,18 +1757,16 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           place's own look. Next you mark where one can walk and what a character goes behind (pre-filled from the plan). Only the
           things the player uses (doors, chests, items) and characters are made as art of their own.
         </p>
-        <p v-if="paint.skipped" class="dim">Skipped: the place is built from its kit (each piece's art put together).</p>
         <img v-if="paint.blockout" :src="urlOf(paint.blockout)" alt="" class="blockout-thumb" />
       </section>
       <div class="actions">
         <button @click="viewing = 'plan'">← ③ Plan</button>
         <span class="dim">{{ state.status }}</span>
         <template v-if="!paint.painting">
-          <button v-if="!paint.file || paint.skipped" class="primary" :disabled="state.busy" @click="startPaint()">Paint the place</button>
+          <button v-if="!paint.file" class="primary" :disabled="state.busy" @click="startPaint()">Paint the place</button>
           <button v-else :disabled="state.busy" title="Painted again, with your notes; the marks you made by hand are kept" @click="startPaint(true)">Paint again</button>
-          <button v-if="!paint.skipped" title="Build it from its kit instead" @click="skipPaint">{{ paint.file ? 'Use the kit instead' : 'Skip: build from the kit' }}</button>
-          <button v-if="paint.file && !paint.skipped" class="primary" @click="viewing = 'mark'">⑤ Mark →</button>
-          <button v-if="paint.skipped" @click="viewing = ''">⑥ Assets →</button>
+          <button title="Build it with the Assembled method instead: each piece's art put together over a painted background" @click="setMethod('Assembled')">Use Assembled instead</button>
+          <button v-if="paint.file" class="primary" @click="viewing = 'mark'">⑤ Mark →</button>
         </template>
       </div>
     </div>
@@ -1750,7 +1781,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           {{ paint.marks?.occluders ?? 0 }} occluders ({{ paint.marks?.edited ?? 0 }} edited) · {{ paint.marks?.blocked ?? 0 }} cells blocked
         </span>
         <button title="Pre-fill from the plan again; what you edited stays" @click="markEditor?.prefill(false)">Pre-fill again</button>
-        <button class="primary" @click="leaveMark('')">⑥ Assets →</button>
+        <button class="primary" title="The marks are done: on to the art (a Planner build goes on and builds the place)" @click="confirmMarks">Continue →</button>
       </div>
     </div>
 
@@ -2781,6 +2812,23 @@ button:hover:not(:disabled) {
 }
 button:disabled {
   opacity: 0.5;
+}
+.method-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+}
+.help {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  font-size: 10px;
+  border: 1px solid currentColor;
+  opacity: 0.7;
+  cursor: help;
 }
 .paint-view .pictures {
   display: flex;

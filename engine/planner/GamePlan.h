@@ -69,6 +69,10 @@ public:
     // paths to values, from the home page's Choices): the readings keep them, the merged Brief has them. Returns
     // why it can't, or "".
     std::string Start(const std::string& request, const nlohmann::json& choices = nlohmann::json::object());
+    // How its places are built (Places ▸ method: Assembled or Paint; "" for the project's). Chosen on the Planner's home
+    // page, kept with the plan; each place's build starts with it.
+    const std::string& BuildMethod() const { return buildMethod_; }
+    void SetBuildMethod(const std::string& method);
     // Reopens planner/: running jobs start again. Returns why it can't, or "".
     std::string Open();
     bool Active() const { return !stage_.empty(); }
@@ -161,6 +165,7 @@ private:
     StoryOntology gso_;
     std::string stage_, status_, message_, request_;
     nlohmann::json choices_ = nlohmann::json::object(); // the user's choices with the request (Start)
+    std::string buildMethod_; // BuildMethod
     std::deque<Job> jobs_; // a deque: handlers add jobs while holding a reference to theirs
     std::map<int, std::string> pending_; // request id -> job id
     nlohmann::json usage_ = {{"calls", 0}, {"inputTokens", 0}, {"outputTokens", 0}};

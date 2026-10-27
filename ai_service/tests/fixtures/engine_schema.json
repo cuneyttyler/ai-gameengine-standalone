@@ -4328,9 +4328,36 @@
             "bfl:flux-3-image"
           ],
           "type": "string"
+        },
+        {
+          "description": "Who paints a place whole for the Paint build method (empty: FLUX-3-Image). FLUX-2-Klein-4b: fast, follows the plan as a rough draft; FLUX-3-Image: keeps the layout best; FLUX-3-Image-to-Pro and -to-Klein: FLUX-3-Image paints the plan, then FLUX.2 pro or klein repaints its look.",
+          "name": "paint",
+          "options": [
+            "",
+            "flux-2-klein-4b",
+            "flux-3-image",
+            "flux-3-to-pro",
+            "flux-3-to-klein"
+          ],
+          "type": "string"
         }
       ],
       "name": "AI"
+    },
+    {
+      "description": "How the AI builds places: each build and plan starts with this and can choose the other.",
+      "fields": [
+        {
+          "description": "Assembled: each building, tree and prop gets its own art, put together on the grid over a painted background; every piece can be moved and edited. Paint: the place is painted whole as one picture (as Baldur's Gate's areas are), then you mark where one can walk and what a character goes behind; only doors, chests, items and characters get art of their own.",
+          "name": "method",
+          "options": [
+            "Assembled",
+            "Paint"
+          ],
+          "type": "string"
+        }
+      ],
+      "name": "Places"
     },
     {
       "description": "The game as a whole.",

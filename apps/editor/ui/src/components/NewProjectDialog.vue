@@ -20,6 +20,13 @@ const provider = ref('')
 const model = ref('')
 const art = ref('')
 const background = ref('')
+const paintModel = ref('')
+// How the AI builds places (Project Settings ▸ Places ▸ method); each build and plan can choose the other.
+const buildMethod = ref<'Assembled' | 'Paint'>('Paint')
+const METHOD_HELP: Record<string, string> = {
+  Assembled: 'Each building, tree and prop gets its own art, put together on the grid over a painted background; every piece can be moved and edited. Steps: Confirm, Layout, Plan, Assets, Build.',
+  Paint: "Each place is painted whole as one picture (as Baldur's Gate's areas are), then you mark where one can walk and what a character goes behind; only doors, chests, items and characters get art of their own. Steps: Confirm, Layout, Plan, Paint, Mark, Assets, Build.",
+}
 const error = ref('')
 
 onHostMessage((message) => {
@@ -67,7 +74,8 @@ function create(): void {
     location: location.value,
     topDown: grid.value === 'topdown',
     template: props.flow === 'editor' ? template.value : '',
-    ai: { provider: provider.value, model: model.value.trim(), art: art.value, background: background.value },
+    ai: { provider: provider.value, model: model.value.trim(), art: art.value, background: background.value, paint: paintModel.value },
+    buildMethod: buildMethod.value,
   })
   emit('close')
 }
@@ -109,6 +117,12 @@ function create(): void {
           </select>
         </template>
 
+        <label>Build method <span class="help" :title="'How the AI builds places (each build and plan can choose the other). ' + METHOD_HELP[buildMethod]">?</span></label>
+        <div class="choice">
+          <label :title="METHOD_HELP.Paint"><input v-model="buildMethod" type="radio" value="Paint" /> Paint (painted whole, marked by you)</label>
+          <label :title="METHOD_HELP.Assembled"><input v-model="buildMethod" type="radio" value="Assembled" /> Assembled (each piece's art)</label>
+        </div>
+
         <h4>AI <span class="muted small">this project's own; change later in Project Settings ▸ AI</span></h4>
         <label>LLM provider</label>
         <select v-model="provider">
@@ -134,6 +148,17 @@ function create(): void {
         <select v-model="background">
           <option value="">{{ appDefault('background', 'BFL FLUX.3 Image') }}</option>
           <option value="bfl:flux-3-image">BFL FLUX.3 Image</option>
+        </select>
+
+        <label>Paint model <span class="help" title="Who paints a place whole for the Paint method. FLUX-3-Image keeps the plan's layout best; FLUX-2-Klein-4b is fast and follows the plan as a rough draft; FLUX-2-Pro and FLUX-2-Max have rich looks but may drift from the layout; FLUX-3-Image-to-Pro and -to-Klein: FLUX-3-Image paints the plan, then FLUX.2 pro or klein repaints its look.">?</span></label>
+        <select v-model="paintModel">
+          <option value="">FLUX-3-Image (default)</option>
+          <option value="flux-2-klein-4b">FLUX-2-Klein-4b</option>
+          <option value="flux-2-pro">FLUX-2-Pro</option>
+          <option value="flux-2-max">FLUX-2-Max</option>
+          <option value="flux-3-image">FLUX-3-Image</option>
+          <option value="flux-3-to-pro">FLUX-3-Image-to-Pro</option>
+          <option value="flux-3-to-klein">FLUX-3-Image-to-Klein</option>
         </select>
       </div>
       <p v-if="error" class="error">{{ error }}</p>
@@ -199,6 +224,18 @@ h4 {
 }
 .pick input {
   flex: 1;
+}
+.help {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  font-size: 10px;
+  border: 1px solid currentColor;
+  opacity: 0.7;
+  cursor: help;
+  margin-left: 4px;
 }
 .choice {
   display: flex;

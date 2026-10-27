@@ -46,7 +46,10 @@ function cellOf(px: number, py: number): [number, number] {
 // --- State ---
 const loaded = ref(false)
 const layer = ref<'walk' | 'occluders'>('occluders')
-const tool = ref<'select' | 'brush' | 'erase' | 'base' | 'block' | 'rect' | 'fill'>('select')
+const tool = ref<'select' | 'sam' | 'brush' | 'erase' | 'base' | 'block' | 'rect' | 'fill'>('select')
+// Click-to-select: waiting for the AI service's mask (the click, and whether it takes away).
+const segmenting = ref<{ subtract: boolean } | null>(null)
+const segmentError = ref('')
 const brush = ref(16) // painting pixels
 const cellBrush = ref(1) // cells
 const opacity = reactive({ walk: 0.45, occluders: 0.45 })
@@ -112,7 +115,49 @@ function load(marks: Marks): void {
 }
 onHostMessage((m) => {
   if (m.type === 'build:marks' && m.place === props.place) load((m.marks as Marks) ?? {})
+  if (m.type === 'build:segmented') applySegment(m as unknown as { ok: boolean; png?: string; box?: number[]; errors?: string[] })
 })
+// The mask the service found (white where the thing is) added to the selected occluder, or taken from it.
+function applySegment(answer: { ok: boolean; png?: string; box?: number[]; errors?: string[] }): void {
+  const asked = segmenting.value
+  segmenting.value = null
+  const o = selected.value
+  if (!answer.ok || !answer.png || !answer.box || !o || !asked) {
+    segmentError.value = answer.errors?.[0] ?? (o ? '' : 'Select an occluder first')
+    return
+  }
+  segmentError.value = ''
+  const [x, y, w, h] = answer.box as [number, number, number, number]
+  if (w <= 0 || h <= 0) return
+  const img = new Image()
+  img.onload = () => {
+    // Its white as alpha, in the occluder's colour.
+    const piece = document.createElement('canvas')
+    piece.width = w
+    piece.height = h
+    const pc = piece.getContext('2d')!
+    pc.drawImage(img, -x, -y)
+    const data = pc.getImageData(0, 0, w, h)
+    for (let i = 0; i < data.data.length; i += 4) {
+      const on = (data.data[i] ?? 0) > 127
+      data.data[i + 3] = on ? 255 : 0
+    }
+    pc.putImageData(data, 0, 0)
+    pc.globalCompositeOperation = 'source-in'
+    pc.fillStyle = colourOf(o.id)
+    pc.fillRect(0, 0, w, h)
+    remember(snapshot('mask', o.id))
+    if (!asked.subtract) grow(o, x, y, x + w, y + h)
+    const ctx = masks.get(o.id)!.getContext('2d')!
+    ctx.globalCompositeOperation = asked.subtract ? 'destination-out' : 'source-over'
+    ctx.drawImage(piece, x - o.box[0], y - o.box[1])
+    ctx.globalCompositeOperation = 'source-over'
+    o.edited = true
+    dirty.add(o.id)
+    draw()
+  }
+  img.src = `data:image/png;base64,${answer.png}`
+}
 
 // --- The canvas: pan and zoom ---
 const host = ref<HTMLDivElement | null>(null)
@@ -428,6 +473,12 @@ function onDown(e: PointerEvent): void {
     return
   }
   if (!o) return
+  if (tool.value === 'sam') {
+    if (segmenting.value) return
+    segmenting.value = { subtract: alt }
+    sendToHost({ type: 'build:segment', points: [[Math.round(p[0]), Math.round(p[1]), 1]] })
+    return
+  }
   if (tool.value === 'base') {
     const i = handleAt(o, p)
     if (e.button === 2) {
@@ -533,6 +584,7 @@ function onKey(e: KeyboardEvent): void {
   else if (e.key === '[') brush.value = Math.max(2, Math.round(brush.value / 1.25))
   else if (e.key === ']') brush.value = Math.min(256, Math.round(brush.value * 1.25))
   else if (e.key === 'v') tool.value = 'select'
+  else if (e.key === 's') tool.value = 'sam'
   else if (e.key === 'b') tool.value = layer.value === 'walk' ? 'block' : 'brush'
   else if (e.key === 'e') tool.value = 'erase'
   else if (e.key === 'l') tool.value = 'base'
@@ -615,6 +667,7 @@ const counts = computed(() => {
       </div>
       <div v-if="layer === 'occluders'" class="group">
         <button :class="{ active: tool === 'select' }" title="Pick an occluder (V)" @click="tool = 'select'">Select</button>
+        <button :class="{ active: tool === 'sam' }" :disabled="!selected" title="Click a thing in the painting to add its outline to the selected occluder (S; Alt+click takes it away). The first click on a painting takes a few seconds." @click="tool = 'sam'">Click-select</button>
         <button :class="{ active: tool === 'brush' }" :disabled="!selected" title="Add to the selected occluder (B; Alt or right button erases)" @click="tool = 'brush'">Brush</button>
         <button :class="{ active: tool === 'erase' }" :disabled="!selected" title="Take away from it (E)" @click="tool = 'erase'">Eraser</button>
         <button :class="{ active: tool === 'base' }" :disabled="!selected" title="Its base line, where it meets the ground (L): drag a handle, click to add one, right-click to remove one" @click="tool = 'base'">Base line</button>
@@ -652,6 +705,8 @@ const counts = computed(() => {
           @contextmenu.prevent
         />
         <p v-if="!loaded" class="loading">Loading the marks…</p>
+        <p v-if="segmenting" class="status">Finding its outline…</p>
+        <p v-else-if="segmentError" class="status error">{{ segmentError }}</p>
       </div>
       <aside v-if="layer === 'occluders'" class="list">
         <h5>{{ counts.occluders }} occluders <span class="dim">· {{ counts.edited }} edited</span></h5>
@@ -725,6 +780,18 @@ const counts = computed(() => {
   position: absolute;
   inset: 0;
   cursor: crosshair;
+}
+.status {
+  position: absolute;
+  left: 8px;
+  bottom: 4px;
+  margin: 0;
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.7);
+  font-size: 11px;
+}
+.status.error {
+  color: #e08080;
 }
 .loading {
   position: absolute;

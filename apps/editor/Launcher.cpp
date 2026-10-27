@@ -73,7 +73,7 @@ void Launcher::OnWebMessage(const nlohmann::json& message) {
         for (const auto& [k, v] : aiGiven.items()) {
             if (v.is_string()) ai[k] = v.get<std::string>();
         }
-        if (auto error = CreateProject(root, std::nullopt, message.value("topDown", false), ai)) {
+        if (auto error = CreateProject(root, std::nullopt, message.value("topDown", false), ai, message.value("buildMethod", ""))) {
             post_({{"type", "welcome:error"}, {"text", *error}});
             return;
         }

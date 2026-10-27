@@ -137,6 +137,11 @@ json MergeGameBriefs(const std::vector<json>& drafts, json* marks) {
 
 GamePlan::GamePlan(Host host) : host_(std::move(host)), store_(host_.projectRoot), gso_(StoryOntology::ForProject(host_.projectRoot)) {}
 
+void GamePlan::SetBuildMethod(const std::string& method) {
+    buildMethod_ = method == "Assembled" || method == "Paint" ? method : "";
+    Save();
+}
+
 std::string GamePlan::Start(const std::string& request, const json& choices) {
     if (request.find_first_not_of(" \t\r\n") == std::string::npos) return "say what game to make";
     std::error_code ec;
@@ -235,7 +240,7 @@ void GamePlan::Save() {
                         {"lastAnswer", j.lastAnswer}, {"replay", j.replay}, {"replayed", j.replayed}});
     }
     json state = {{"schema", "aige.plan-state/1"}, {"stage", stage_},         {"status", status_},     {"message", message_},
-                  {"request", request_},           {"choices", choices_},     {"jobs", jobs},            {"paused", paused_},     {"usage", usage_},
+                  {"request", request_},           {"choices", choices_},     {"buildMethod", buildMethod_},     {"jobs", jobs},            {"paused", paused_},     {"usage", usage_},
                   {"concept", concept_},           {"toReview", toReview_},   {"findings", findings_}, {"nextJob", nextJob_},
                   {"stale", Stale()}, {"resume", resume_}, {"autoFixed", autoFixed_}, {"fixRounds", fixRounds_}, {"fixScope", fixScope_},
                   {"pausedForClose", pausedForClose_}};
@@ -251,6 +256,7 @@ void GamePlan::Load() {
     message_ = s.value("message", "");
     request_ = s.value("request", "");
     choices_ = s.value("choices", json::object());
+    buildMethod_ = s.contains("buildMethod") && s["buildMethod"].is_string() ? s["buildMethod"].get<std::string>() : "";
     paused_ = s.value("paused", false);
     usage_ = s.value("usage", usage_);
     concept_ = s.value("concept", json::object());

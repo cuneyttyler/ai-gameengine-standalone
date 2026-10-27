@@ -437,6 +437,15 @@ std::string SaveMarks(const fs::path& folder, const json& body) {
     return {};
 }
 
+std::string ConfirmMarks(const fs::path& folder) {
+    json marks = LoadMarks(folder);
+    if (!marks.is_object()) return "nothing is marked yet";
+    marks["confirmed"] = true;
+    marks["confirmedAt"] = Now();
+    WriteJsonFile(folder / "marks.json", marks);
+    return {};
+}
+
 json MarksSummary(const fs::path& folder) {
     const json painting = LoadPainting(folder);
     const json marks = LoadMarks(folder);
@@ -453,6 +462,7 @@ json MarksSummary(const fs::path& folder) {
     out["blocked"] = blocked;
     out["walkable"] = walkable;
     out["stale"] = painting.is_object() && marks.value("paintedAt", "") != painting.value("paintedAt", "");
+    out["confirmed"] = marks.value("confirmed", false) && !out["stale"].get<bool>();
     return out;
 }
 

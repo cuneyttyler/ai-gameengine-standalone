@@ -203,15 +203,71 @@ def counts_sentence(legend: dict | None) -> str:
     return text + " Where the draft has trees, woods, grass or water, there are no buildings."
 
 
-def paint_place(painter: BflPainter, blockout_png: bytes, legend: dict, place: dict, story: dict, look: dict,
+def draft_prompt(place: dict, story: dict, look: dict, legend: dict | None = None, notes: str = "") -> str:
+    """A short prompt that makes an editing model (FLUX.2 klein) repaint the block-out completely: the image a rough
+    draft to replace, the mood first, the colour key a brief line per kind (klein copies a long key's colours)."""
+    name = place.get("name") or "the place"
+    kind = place.get("type") or "place"
+    mood = str(story.get("mood") or story.get("purpose") or "")[:300]
+    text = f"Repaint this image as a finished, hand-crafted isometric game map of a {kind} ({name}). "
+    if mood:
+        text += f"Mood: {mood} "
+    text += ("The image is only a rough colour-coded draft: replace all of its flat colours and simple shapes with real, "
+             "detailed things, materials, light and shadow; none of the draft's colours may remain. ")
+    things = [t for t in (legend or {}).get("things", []) if t.get("kind")]
+    if things:
+        text += "In the draft: " + ", ".join(f"{t['colour']} = {t['kind']}" for t in things[:14]) + ". "
+    lines = (legend or {}).get("lines", [])
+    if lines:
+        text += "Thin strips are " + " and ".join(str(l.get("kind", "fence")) + "s" for l in lines) + ". "
+    if notes.strip():
+        text += f"Also: {notes.strip()[:400]} "
+    return text + ("Keep every building, road, river, bridge, fence and tree where it is, with the same camera and the "
+                   "diamond-shaped map. No text, no UI, no characters.")
+
+
+# Who paints a place whole (Project Settings ▸ AI ▸ paint), as shown.
+PAINT_MODELS = {"flux-2-klein-4b": "FLUX-2-Klein-4b", "flux-2-pro": "FLUX-2-Pro", "flux-2-max": "FLUX-2-Max", "flux-3-image": "FLUX-3-Image",
+                "flux-3-to-pro": "FLUX-3-Image-to-Pro", "flux-3-to-klein": "FLUX-3-Image-to-Klein"}
+
+
+def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: dict, story: dict, look: dict,
                 notes: str = "", seed: int = 7) -> tuple[bytes, str]:
-    """A place painted from its block-out; the painting at the block-out's own size (so its pixels line up with the
-    block-out's id map) and the prompt."""
+    """A place painted from its block-out by one of PAINT_MODELS; the painting at the block-out's own size (so its
+    pixels line up with the block-out's id map) and the prompt(s).
+    - flux-3-image: the block-out with the colour key and the counts (keeps the layout best).
+    - flux-2-klein-4b: klein copies a flat input it's told about: the block-out as a rough draft, scaled up, a short key.
+    - flux-2-pro / flux-2-max: the block-out with the colour key and the counts, as FLUX.3 Image (prompt upsampling off);
+      they look good but can drift from the layout (Phase 25's tests).
+    - flux-3-to-klein / flux-3-to-pro: FLUX.3 Image paints the plan, then klein or FLUX.2 pro repaints its look, the
+      block-out beside it (pro) saying what each building is."""
     import io
     from PIL import Image
     src = Image.open(io.BytesIO(blockout_png)).convert("RGB")
-    prompt = (blockout_prompt(place, story, look, legend, notes) + " " + counts_sentence(legend)).strip()
-    png = painter.repaint(blockout_png, prompt, seed=seed, **_four_mp(src.width, src.height))
+    size = _four_mp(src.width, src.height)
+    keyed = (blockout_prompt(place, story, look, legend, notes) + " " + counts_sentence(legend)).strip()
+    draft = draft_prompt(place, story, look, legend, notes)
+    if model in ("flux-2-pro", "flux-2-max"):
+        png, prompt = BflPainter(key, model).repaint(blockout_png, keyed, seed=seed, **size), keyed
+    elif model == "flux-2-klein-4b":
+        big = src.resize((4096, round(4096 * src.height / src.width)), Image.LANCZOS)
+        buf = io.BytesIO()
+        big.save(buf, format="PNG")
+        png, prompt = BflPainter(key, "flux-2-klein-4b").repaint(buf.getvalue(), draft, seed=seed, **size), draft
+    else:
+        png, prompt = BflPainter(key, "flux-3-image").repaint(blockout_png, keyed, seed=seed, **size), keyed
+        if model == "flux-3-to-klein":
+            png = BflPainter(key, "flux-2-klein-4b").repaint(png, draft, seed=seed, **size)
+            prompt += "\n---\n" + draft
+        elif model == "flux-3-to-pro":
+            things = "; ".join(f"{t['colour']} = {t['kind']}" for t in (legend or {}).get("things", []) if t.get("kind"))
+            refine = ("Refine this painted isometric game map into finished, hand-crafted art: richer materials, light and "
+                      "detail, one consistent palette. Keep the camera, the layout and every building, road, river, fence and "
+                      "tree exactly where it is. The second image is the place's colour-coded plan, aligned with the first: "
+                      f"each coloured box marks one building or thing ({things}). Draw each as the kind its colour says; never "
+                      "draw the second image's colours. " + counts_sentence(legend) + " No text, no UI, no characters.")
+            png = BflPainter(key, "flux-2-pro").repaint(png, refine, references=[blockout_png], seed=seed, **size)
+            prompt += "\n---\n" + refine
     painted = Image.open(io.BytesIO(png)).convert("RGB")
     if painted.size != src.size:
         painted = painted.resize(src.size, Image.LANCZOS)

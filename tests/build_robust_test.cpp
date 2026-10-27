@@ -229,9 +229,11 @@ TEST(BuildRobustTest, ABrokenPlanIsFixedOrKeptAndCanBeApproved) {
     ASSERT_NE(g, nullptr) << spec.dump().substr(0, 4000);
     EXPECT_TRUE((*g)["quality"]["crop-mix"].contains("onion")) << g->dump();
     ASSERT_EQ(build.Approve(), "");
-    EXPECT_EQ(build.Stage(), "revising"); // the AI's review of the map
+    EXPECT_EQ(build.Stage(), "planned"); // approved at once: the AI's review of the map runs in the background
+    EXPECT_TRUE(build.State().value("reviewing", false));
     f.AnswerAll(build, {{"ok", false}, {"errors", json::array({"No AI provider configured"})}});
     EXPECT_EQ(build.Stage(), "planned"); // without it, the layout stands
+    EXPECT_FALSE(build.State().value("reviewing", true));
 }
 
 TEST(BuildRobustTest, ABuildIsReopenedWhereItWasLeft) {
@@ -346,7 +348,7 @@ TEST(BuildRobustTest, APlanIsRevisedReviewedAndUndone) {
     ASSERT_EQ(f.sent.back().first, "/places/review-layout");
     EXPECT_EQ(f.sent.back().second["image"], "places/" + build.Id() + "/inspect-plan.png");
     EXPECT_TRUE(f.sent.back().second["verify"].size() > 2);
-    EXPECT_EQ(build.Stage(), "revising");
+    EXPECT_EQ(build.Stage(), "planned"); // the review in the background; its answer applies while nothing else is done
     f.answered.insert(static_cast<int>(f.sent.size()));
     build.OnResponse(static_cast<int>(f.sent.size()), {{"ok", true}, {"answer", {{"summary", "Looks right."}, {"changes", json::array()}}}});
     ASSERT_EQ(build.Stage(), "planned");

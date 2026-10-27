@@ -12,6 +12,13 @@ dependencies = [
     "uvicorn[standard]>=0.54.0",
 ]
 
+[project.optional-dependencies]
+segment = [
+    "torch>=2.14.1",
+    "torchvision>=0.29.1",
+    "transformers>=4.56",
+]
+
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",

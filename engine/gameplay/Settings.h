@@ -103,6 +103,15 @@ struct AiSettings {
     std::string model;      // its model (empty: the provider's default)
     std::string art;        // who draws the prefabs' art: mistral, pixellab, bfl:<model>
     std::string background; // who paints the places' backgrounds: bfl:flux-3-image
+    std::string paint;      // who paints a place whole (the Paint method): flux-2-klein-4b, flux-3-image, flux-3-to-pro, flux-3-to-klein
+};
+
+// How the AI builds the project's places (docs/places/painted-places.md): "Assembled" (each piece's art made and put
+// together on the grid over the painted background: Confirm, Layout, Plan, Assets, Build) or "Paint" (the place painted
+// whole, then marked by hand: Confirm, Layout, Plan, Paint, Mark, Assets, Build). A build and a plan start with it and
+// can choose the other.
+struct PlacesSettings {
+    std::string method = "Assembled";
 };
 
 struct GameSettings {
@@ -123,6 +132,7 @@ struct ProjectSettings {
     GameSettings game;
     GridSettings grid;
     AiSettings ai;
+    PlacesSettings places;
     RendererSettings renderer;
     CameraSettings camera;
     CombatSettings combat;

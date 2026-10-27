@@ -215,7 +215,14 @@ class PaintRequest(BaseModel):
     story: dict = {}                   # {mood, purpose, logline}
     look: dict = {}                    # {goals, style}
     notes: str = ""                    # the user's, when painting again
+    model: str = "flux-3-image"        # flux-2-klein-4b, flux-3-image, flux-3-to-pro, flux-3-to-klein (Project Settings ▸ AI ▸ paint)
     seed: int = 7
+
+
+class SegmentRequest(BaseModel):
+    path: str                          # the picture, relative to the project (places/<id>/painting.png)
+    points: list[list[float]] = []     # [x, y, 1] to add, [x, y, 0] to leave out, in the picture's pixels
+    box: list[float] | None = None     # [x0, y0, x1, y1]
 
 
 class MatchedRequest(BaseModel):
@@ -684,12 +691,31 @@ def create_app(
         return {"ok": True, "provider": provider, "path": made["path"].relative_to(root.resolve()).as_posix(), "cellPx": made["cellPx"],
                 "cells": made["cells"], "calls": made["calls"], "tiles": made["tiles"], "prompt": made["prompt"]}
 
+    @app.post("/images/segment")
+    def images_segment(request: SegmentRequest) -> dict:
+        """Click-to-select (docs/places/painted-places.md §4): the mask of the thing at the points, by SAM 2.1."""
+        import base64 as _b64
+        from . import segment
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        picture = (root / request.path).resolve()
+        if root.resolve() not in picture.parents or not picture.is_file():
+            return {"ok": False, "errors": [f"No picture at {request.path}"]}
+        if why := segment.available():
+            return {"ok": False, "errors": [why]}
+        try:
+            png, box = segment.segment(picture, request.points, request.box)
+        except Exception as error:  # noqa: BLE001 - said to the editor
+            return {"ok": False, "errors": [f"The selection failed: {error}"]}
+        return {"ok": True, "png": _b64.b64encode(png).decode("ascii"), "box": box, "points": request.points}
+
     @app.post("/places/paint")
     def places_paint(request: PaintRequest) -> dict:
         """A place painted whole from its plan's block-out (docs/places/painted-places.md §2), by FLUX.3 Image;
         written as painting.png in `dir`, at the block-out's size."""
         import time as _time
-        from .bfl import BflPainter, paint_place
+        from .bfl import PAINT_MODELS, paint_place
         root: Path | None = state["root"]
         if root is None:
             return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
@@ -701,17 +727,19 @@ def create_app(
         if not key:
             return {"ok": False, "errors": ["No key for BFL: set BFL_API_KEY in ai_service/.env"]}
         report = progress.reporter()
-        report(0, 1, "Painting the place from its plan (FLUX.3 Image)")
+        if request.model not in PAINT_MODELS:
+            return {"ok": False, "errors": [f"Unknown paint model {request.model}: one of {', '.join(PAINT_MODELS)}"]}
+        report(0, 1, f"Painting the place from its plan ({PAINT_MODELS[request.model]})")
         started = _time.monotonic()
         try:
-            png, prompt = paint_place(BflPainter(key, "flux-3-image"), (folder / request.blockout).read_bytes(), request.legend,
+            png, prompt = paint_place(key, request.model, (folder / request.blockout).read_bytes(), request.legend,
                                       request.place, request.story, request.look, request.notes, request.seed)
         except Exception as error:  # noqa: BLE001 - said to the editor
             return {"ok": False, "errors": [f"The place couldn't be painted: {error}"]}
         (folder / "painting.png").write_bytes(png)
         (folder / "painting-prompt.txt").write_text(prompt, encoding="utf-8")
         report(1, 1, "Painted")
-        return {"ok": True, "provider": "bfl:flux-3-image", "path": (folder / "painting.png").relative_to(root.resolve()).as_posix(),
+        return {"ok": True, "provider": PAINT_MODELS[request.model], "path": (folder / "painting.png").relative_to(root.resolve()).as_posix(),
                 "prompt": prompt, "seconds": round(_time.monotonic() - started, 1)}
 
     @app.post("/animations/generate")

@@ -165,10 +165,14 @@ How many different looks a kind gets comes from how often the place uses it and 
 400 cars get 6; its 12 shops of one footprint 3; its bicycles and street lights 1. In the scene each kind's things are
 numbered in reading order and take the looks in turn, so neighbours differ.
 
-**Other looks and back views are edits of the first piece** (`derive_pieces`), not boxes on a sheet: a small box
-labelled "a bicycle, version 2" or "a car, seen from behind" was often painted as a little building. The accepted
-first look is given as image 1 with "another bicycle of the same kind: different colours and details, same size,
-angle and style" or "the same bicycle, seen from behind"; it starts from the right thing, so it stays that thing.
+**Other looks and back views are made from the first piece** (`derive_pieces`), not boxes on a sheet: a small box
+labelled "a bicycle, version 2" or "a car, seen from behind" was often painted as a little building.
+- **Another look** (2026-10-27) is a new design: an empty canvas as image 1, the accepted first look as image 2 (its
+  style, scale and angle only), "paint one cottage house, a different building from the one in image 2: its own
+  footprint shape, roof form, storeys, facade…". An edit of the first look (as before) only recoloured it, which read as
+  the same house painted another colour.
+- **A back view** is still an edit of its look's front: "the same bicycle, seen from behind".
+
 Fronts first, then their backs (each from its own front).
 
 **Catalog fields:** `variantKey` (the kind's need), `variant` (1…n), `orient`, `purpose`; a back view has `backOf`

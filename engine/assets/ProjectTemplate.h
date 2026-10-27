@@ -19,9 +19,11 @@ namespace aige {
 // story or canon). The editor builds the starter scene on first open.
 // `topDown`: square cells for art drawn from above (Grid ▸ TopDown, 6.1). `ai`: the project's own AI
 // choices (Project Settings ▸ AI: provider, model, art, background), each missing or empty using the app's.
+// `buildMethod`: Places ▸ method (Assembled or Paint; empty: the default).
 std::optional<std::string> CreateProject(const std::filesystem::path& root,
                                          const std::optional<std::filesystem::path>& contentFrom = std::nullopt,
-                                         bool topDown = false, const std::map<std::string, std::string>& ai = {});
+                                         bool topDown = false, const std::map<std::string, std::string>& ai = {},
+                                         const std::string& buildMethod = {});
 
 // Copies a whole project to `to` (which must not exist, or be empty), leaving
 // out .cache/ and ai_log.jsonl. For Save Project As.

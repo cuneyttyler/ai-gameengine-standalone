@@ -59,7 +59,9 @@ nlohmann::json LoadMarks(const std::filesystem::path& folder);
 // What the editor sends: {walk: {rows}, occluders: [{id, name, object?, box, base, edited, prefilled, png?: base64}],
 // removed?: [ids]}. The masks sent are written; removed occluders' masks deleted. "" or why not.
 std::string SaveMarks(const std::filesystem::path& folder, const nlohmann::json& marks);
-// For the build card and the AI: {painted, paintedAt, marked, occluders, edited, blocked, walkable, stale}.
+// ⑤ Mark's Continue: the marks confirmed by the user (until the place is painted again or pre-filled anew).
+std::string ConfirmMarks(const std::filesystem::path& folder);
+// For the build card and the AI: {painted, paintedAt, marked, confirmed, occluders, edited, blocked, walkable, stale}.
 nlohmann::json MarksSummary(const std::filesystem::path& folder);
 
 // What looks wrong in the marks, in words (the AI panel's check; the user decides): a building or tall thing with no

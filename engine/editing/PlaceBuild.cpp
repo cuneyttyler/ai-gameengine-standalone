@@ -436,7 +436,7 @@ void PlaceBuild::Save() const {
                                           {"revisions", revisions_},
                                           {"sketch", {{"done", sketched_}, {"crops", sketchCrops_}, {"sketches", sketches_}}},
                                           {"matched", matched_},
-                                          {"paint", {{"skipped", paintSkipped_}}},
+                                          {"method", method_},
                                           {"usage", usage_},
                                           {"layoutCheck", {{"checked", layoutChecked_}, {"rounds", layoutRounds_}, {"answer", layoutCheck_}}},
                                           {"fit", {{"scale", fitScale_}, {"side", fitSide_}}},
@@ -492,6 +492,8 @@ json PlaceBuild::Defaults() const { return ReadJson(host_.projectRoot / "places"
 
 std::string PlaceBuild::Start(const std::string& words, const json& choices) {
     choices_ = choices.is_object() ? choices : json::object();
+    method_ = host_.buildMethod ? host_.buildMethod() : "Assembled";
+    if (method_ != "Paint") method_ = "Assembled";
     // Choices without words: a request in words made from them.
     const bool said = words.find_first_not_of(" \t\r\n") != std::string::npos;
     if (!said && choices_.empty()) return "say what to build";
@@ -529,6 +531,7 @@ std::string PlaceBuild::StartFromBrief(const std::string& words, const json& bri
         return "the Brief names no build type the engine knows";
     }
     choices_ = json::object();
+    method_ = host_.buildMethod && host_.buildMethod() == "Paint" ? "Paint" : "Assembled";
     query_ = words.empty() ? brief.value("name", brief.value("buildType", "")) : words;
     id_ = PlaceIdFor(host_.projectRoot, query_);
     round_ = 1;
@@ -642,7 +645,23 @@ void PlaceBuild::HandleResponse(int requestId, const json& body) {
         Save();
         return;
     }
-    if (what.kind == "revise" || what.kind == "review") {
+    if (what.kind == "review") {
+        // The approved map's review came (in the background): its changes made while the place is still only planned
+        // (nothing painted, no art yet); after that, its findings kept as advice.
+        reviewing_ = false;
+        const bool untouched = stage_ == "planned" && !painting_ && !Painted() && sourced_.empty() && matched_.value("state", "").empty() && !makingBackground_;
+        if (untouched || stage_ == "revising") {
+            if (stage_ != "revising") beforeRevision_ = stage_, stage_ = "revising";
+            OnRevision(what, body);
+        } else if (body.value("ok", false) && body.contains("answer") && body["answer"].is_object()) {
+            revisions_.push_back({{"by", "review"}, {"text", what.node}, {"summary", body["answer"].value("summary", "")},
+                                  {"issues", body["answer"].value("issues", json::array())}, {"advice", true}});
+            status_ = "The AI's review of the map came after you moved on: its notes are under Revisions, nothing was changed.";
+        }
+        Save();
+        return;
+    }
+    if (what.kind == "revise") {
         if (stage_ == "revising") OnRevision(what, body);
         Save();
         return;
@@ -652,7 +671,6 @@ void PlaceBuild::HandleResponse(int requestId, const json& body) {
         Log({{"step", "painted"}, {"answer", body}});
         if (body.value("ok", false)) {
             PaintingMade(Folder(), body);
-            paintSkipped_ = false;
             // ⑤ Mark starts from the plan; what the user marked by hand stays.
             const json marks = aige::PrefillMarks(solved_, &host_.ontology(), Folder());
             status_ = "Painted in " + std::to_string(static_cast<int>(body.value("seconds", 0.0))) + " s. ⑤ Mark: " +
@@ -2930,9 +2948,9 @@ std::string PlaceBuild::Review() {
     if (story_.is_object() && !story_.empty()) body["context"]["story"] = story_;
     body["verify"] = VerifyLayout(host_.ontology(), brief_, spec_, solved_);
     if (!Send({"review", -1, "", "/places/review-layout", body, 600})) return "the AI is off";
-    beforeRevision_ = stage_;
-    stage_ = "revising";
-    status_ = "The AI is checking the map…";
+    // In the background: the build goes on meanwhile (its answer is applied only if nothing was done since).
+    reviewing_ = true;
+    status_ = "The AI is checking the map in the background; you can go on.";
     Log({{"step", "review"}});
     Save();
     return {};
@@ -4602,7 +4620,8 @@ std::string PlaceBuild::Paint(const std::string& notes) {
                        {"place", {{"name", brief_.value("name", id_)}, {"type", brief_.value("buildType", "")}}},
                        {"story", {{"purpose", story.value("purpose", json())}, {"mood", story.value("mood", json())}, {"logline", story.value("logline", json())}}},
                        {"look", LookFor(brief_.value("buildType", ""))},
-                       {"notes", notes}};
+                       {"notes", notes},
+                       {"model", host_.paintModel && !host_.paintModel().empty() ? host_.paintModel() : std::string("flux-3-image")}};
     if (!Send({"paint", -1, "", "/places/paint", body, 900})) return "the AI is off";
     painting_ = true;
     status_ = "Painting the place from its plan (" + std::to_string(prepared.value("objects", json::array()).size()) + " things in the painting)…";
@@ -4611,14 +4630,18 @@ std::string PlaceBuild::Paint(const std::string& notes) {
     return {};
 }
 
-void PlaceBuild::SkipPaint(bool skip) {
-    paintSkipped_ = skip;
-    Log({{"step", skip ? "paint skipped" : "paint taken up"}});
+std::string PlaceBuild::SetMethod(const std::string& method) {
+    if (method != "Assembled" && method != "Paint") return "a build method is Assembled or Paint";
+    if (method == method_) return {};
+    if (stage_ == "building") return "not while it's being built";
+    method_ = method;
+    Log({{"step", "method"}, {"method", method}});
     Save();
+    return {};
 }
 
 bool PlaceBuild::Painted() const {
-    if (paintSkipped_) return false;
+    if (method_ != "Paint") return false;
     const json p = LoadPainting(Folder());
     return p.is_object() && p.contains("paintedAt");
 }
@@ -4765,7 +4788,13 @@ std::string PlaceBuild::Open(const std::string& id) {
             }
         }
         matched_ = session.value("matched", json::object());
-        paintSkipped_ = session.value("paint", json::object()).value("skipped", false);
+        // Its method; a build from before methods: Paint if it was painted and not skipped, else Assembled.
+        if (session.contains("method") && session["method"].is_string()) {
+            method_ = session["method"].get<std::string>();
+        } else {
+            const bool skipped = session.value("paint", json::object()).value("skipped", false);
+            method_ = !skipped && LoadPainting(folder).value("paintedAt", "") != "" ? "Paint" : "Assembled";
+        }
         usage_ = session.value("usage", json::object());
         if (matched_.value("state", "") == "making") matched_["state"] = "failed"; // the answer can't come now
         if (const json lc = session.value("layoutCheck", json::object()); lc.is_object()) {
@@ -5093,10 +5122,12 @@ json PlaceBuild::State() {
     if (matched_.contains("groundPicture")) state["background"] = matched_["groundPicture"];
     state["backgroundDescription"] = BackgroundDescription();
     state["backgroundMaking"] = makingBackground_;
+    state["method"] = method_; // Assembled or Paint: which steps it has
+    state["reviewing"] = reviewing_; // the approved map checked by the AI in the background
     if (stage_ == "planned" || stage_ == "sourcing" || stage_ == "sourced" || stage_ == "building" || stage_ == "built") {
         // ④ Paint and ⑤ Mark: the painting's files (project-relative) and the marks' counts.
         const std::string rel = "places/" + id_ + "/";
-        json paint = {{"painting", painting_}, {"skipped", paintSkipped_}, {"marks", MarksSummary(Folder())}};
+        json paint = {{"painting", painting_}, {"marks", MarksSummary(Folder())}};
         if (const json p = LoadPainting(Folder()); p.is_object()) {
             paint["size"] = p.value("size", json());
             paint["view"] = p.value("view", json());
@@ -5137,7 +5168,7 @@ json PlaceBuild::Card() const {
     else if (stage_ == "plan") text = "③ Plan: review the zones before building";
     else if (stage_ == "layout") text = "① Confirm and ② Layout: what's built and where it goes";
     else if (painting_) text = "④ Paint: painting the place from its plan…";
-    else if (stage_ == "planned" && !paintSkipped_ && !Painted()) text = "④ Paint: paint the place whole, or build it from its kit";
+    else if (stage_ == "planned" && method_ == "Paint" && !Painted()) text = "④ Paint: paint the place whole";
     else if (stage_ == "planned" && Painted()) {
         const json m = MarksSummary(Folder());
         text = "⑤ Mark: " + std::to_string(m.value("occluders", 0)) + " occluders (" + std::to_string(m.value("edited", 0)) + " edited), " +
@@ -5152,6 +5183,12 @@ json PlaceBuild::Card() const {
     else if (stage_ == "built") text = "⑦ Result: " + status_;
     else if (stage_ == "cancelled") text = "Cancelled";
     else if (stage_ == "failed") text = errors_.empty() ? "Failed" : errors_.front();
+    if (method_ != "Paint") {
+        // Assembled has no Paint and Mark: its Assets and Result are ④ and ⑤.
+        for (const auto& [from, to] : {std::pair<std::string, std::string>{"⑥", "④"}, {"⑦", "⑤"}}) {
+            for (size_t at = text.find(from); at != std::string::npos; at = text.find(from, at + to.size())) text.replace(at, from.size(), to);
+        }
+    }
     return {{"type", "build:card"}, {"buildId", id_}, {"name", brief_.is_object() ? brief_.value("name", "") : ""},
             {"stage", stage_}, {"text", text}, {"query", query_}};
 }

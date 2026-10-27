@@ -405,10 +405,11 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
     }
     if (HandlePaintMessage(type, message)) return true;
     if (type == "build:start") {
-        StartBuild(message.value("query", ""), message.value("choices", nlohmann::json::object()));
+        StartBuild(message.value("query", ""), message.value("choices", nlohmann::json::object()), message.value("method", ""));
     } else if (type == "build:choicesRequest") {
         nlohmann::json options = BuildChoices(Places());
         options["type"] = "build:choices";
+        options["buildMethod"] = ActiveSettings().places.method == "Paint" ? "Paint" : "Assembled"; // the project's, a new build's default
         post_(options);
     } else if (type == "build:request") {
         PostBuild();
@@ -749,7 +750,7 @@ bool EditorApp::HandleProjectMessage(const std::string& type, const nlohmann::js
         for (const auto& [k, v] : aiGiven.items()) {
             if (v.is_string()) ai[k] = v.get<std::string>();
         }
-        if (auto error = CreateProject(root, std::nullopt, message.value("topDown", false), ai)) {
+        if (auto error = CreateProject(root, std::nullopt, message.value("topDown", false), ai, message.value("buildMethod", ""))) {
             post_({{"type", "notify"}, {"text", *error}});
             return true;
         }
@@ -838,7 +839,7 @@ bool EditorApp::HandleDifficultyMessage(const std::string& type, const nlohmann:
 void EditorApp::OnWebMessage(const nlohmann::json& message) {
     const std::string type = message.value("type", "");
     const SlowWatch watch("message " + type);
-    if (type.rfind("build:", 0) == 0 && HandleBuildMessage(type, message)) return;
+    if ((type.rfind("build:", 0) == 0 || type == "scene:backgroundImage") && HandleBuildMessage(type, message)) return;
     if (type == "recovery:request") {
         // The page is up: a crash's unsaved changes offered back (StartRecovery).
         if (!recoveryOffer_.is_null()) post_(recoveryOffer_);
@@ -3480,6 +3481,7 @@ void EditorApp::StartPlay() {
     dragging_ = false;
     stroking_ = false;
     playSnapshot_ = SerializeScene(registry_);
+    playLayers_ = LayersOf(registry_); // the ground and the other tile layers: the scene text doesn't hold them, Stop puts them back
     TagSceneOrigins(registry_); // which entity of the scene each is, for the world's memory (12.5)
     playWorlds_.clear();
     playManifest_ = LoadGameManifest(assets_.GetProject().root); // its music (12.6)
@@ -4011,6 +4013,12 @@ void EditorApp::StepPlannerPlaceBuild() {
         ResumeBuild(id);
         if (!build_ || build_->Id() != id) return set("failed: couldn't open the place's build");
         post_({{"type", "build:open"}}); // the Build panel shows, so it can be watched
+        // The Paint method (docs/places/painted-places.md): the place painted first, its marks pre-filled from the plan
+        // (the user refines them in ⑤ Mark when they like); then the art of what isn't painted.
+        if (build_->Method() == "Paint" && !build_->Painted()) {
+            if (const std::string why = build_->Paint(); !why.empty()) return set("failed: it couldn't be painted: " + why);
+            return set("painting");
+        }
         // The place sketched first (docs/build-fixes.md): one painting from the plan's words, each piece
         // found in it and cropped, the crop the reference its art is drawn from.
         if (!build_->Sketched() && Ai() && Ai()->GetState() == AiClient::State::Ready) {
@@ -4028,6 +4036,21 @@ void EditorApp::StepPlannerPlaceBuild() {
         return set("sourcing");
     }
     if (!build_ || build_->Id() != id) return set("failed: its build was closed in the Build panel");
+    if (status == "painting") {
+        if (build_->Painting()) return;
+        if (!build_->Painted()) return set("failed: " + build_->State().value("status", std::string("it wasn't painted")));
+        // ⑤ Mark is the user's: the build waits for their Continue (the marks pre-filled from the plan meanwhile).
+        post_({{"type", "build:open"}});
+        post_({{"type", "build:showStep"}, {"step", "mark"}});
+        post_({{"type", "notify"}, {"text", build_->Brief().value("name", build_->Id()) + " is painted: mark where one can walk and what a character goes behind, then Continue in ⑤ Mark"}});
+        return set("marking");
+    }
+    if (status == "marking") {
+        if (!MarksSummary(build_->Folder()).value("confirmed", false)) return; // still being marked
+        PreviewAssets(); // what's in the painting needs no art
+        FindAssets();
+        return set("sourcing");
+    }
     if (status == "sketching") {
         if (build_->Sketching()) return; // the place is still being painted
         FindAssets();
@@ -4078,6 +4101,7 @@ std::unique_ptr<GameBuild> EditorApp::MakeGameBuild() {
     };
     host.projectRoot = assets_.GetProject().root;
     host.places = [this]() -> const Ontology& { return Places(); };
+    host.buildMethod = [this] { return PlanBuildMethod(); };
     return std::make_unique<GameBuild>(std::move(host));
 }
 
@@ -4210,6 +4234,7 @@ void EditorApp::StartPlan(const std::string& request, bool replace, const nlohma
     ArchivePlan(); // the plan it replaces is kept, on the home page
     plan_ = MakePlan();
     const std::string why = plan_->Start(request, choices);
+    if (why.empty() && !plannerBuildMethod_.empty()) plan_->SetBuildMethod(plannerBuildMethod_);
     post_({{"type", "ai:message"}, {"role", "assistant"},
            {"text", why.empty() ? "Planning the game in the Planner panel: confirm the Game Brief there when it's ready."
                                 : "Couldn't start the plan: " + why}});
@@ -4235,6 +4260,9 @@ void EditorApp::PostPlanner() {
     else if (gameBuildJob_) state["build"] = {{"active", true}, {"status", "working"}, {"message", "Working (building places, writing files)…"}};
     state["hasPlan"] = PlannerStore(assets_.GetProject().root).HasPlan();
     state["plans"] = ListPlans(); // the home page: this plan and the earlier ones
+    // How its places are built: the plan's (or the home page's choice for the next plan), else the project's.
+    state["buildMethod"] = plan_ && !plan_->BuildMethod().empty() ? plan_->BuildMethod() : !plannerBuildMethod_.empty() ? plannerBuildMethod_ : PlanBuildMethod();
+    state["projectBuildMethod"] = ActiveSettings().places.method;
     if (planChoices_.is_null()) planChoices_ = BriefChoices(StoryOntology::ForProject(assets_.GetProject().root));
     state["choices"] = planChoices_; // and its Choices
     // How the places' builds find their art (the project's setting, the Build panel's too).
@@ -4252,7 +4280,15 @@ void EditorApp::PostPlanner() {
 
 bool EditorApp::HandlePlannerMessage(const std::string& type, const nlohmann::json& message) {
     const fs::path root = assets_.GetProject().root;
+    if (type == "planner:setBuildMethod") {
+        // The Planner's home page: how the plan's places are built (kept with the plan; before a plan, for the next one).
+        plannerBuildMethod_ = message.value("method", "");
+        if (plan_) plan_->SetBuildMethod(plannerBuildMethod_);
+        PostPlanner();
+        return true;
+    }
     if (type == "planner:start") {
+        if (message.contains("buildMethod") && message["buildMethod"].is_string()) plannerBuildMethod_ = message["buildMethod"].get<std::string>();
         StartPlan(message.value("request", ""), message.value("replace", false), message.value("choices", nlohmann::json::object()));
         return true;
     }
@@ -4428,6 +4464,7 @@ bool EditorApp::HandlePlannerMessage(const std::string& type, const nlohmann::js
         build_ = MakeBuild();
         const nlohmann::json brief = place.value("brief", nlohmann::json::object());
         why = build_->StartFromBrief(brief.value("name", place.value("id", "")), brief);
+        if (why.empty()) build_->SetMethod(PlanBuildMethod()); // the plan's method
         post_({{"type", "build:open"}});
         PostBuild();
     } else {
@@ -5110,6 +5147,11 @@ void EditorApp::PollAi() {
                        {"text", "Analyzed " + std::to_string(described) + " asset(s)" +
                                     (errors.empty() ? "" : "; " + std::to_string(errors.size()) + " problem(s): " +
                                                                errors.front().get<std::string>())}});
+            } else if (result->requestId == segmentRequest_ && segmentRequest_ != 0) {
+                segmentRequest_ = 0;
+                nlohmann::json shown = result->body;
+                shown["type"] = "build:segmented";
+                post_(shown);
             } else if (result->requestId == webPreviewRequest_) {
                 webPreviewRequest_ = 0;
                 nlohmann::json shown = result->body;
@@ -5177,7 +5219,7 @@ bool EditorApp::KnownRequest(int requestId) const {
     return requestId == worldSearchRequest_ || requestId == analyzeRequest_ || requestId == artRequest_ ||
            (requestId != 0 && (requestId == characterRequest_ || requestId == animationRequest_)) ||
            requestId == worldCheckRequest_ || consistencyRequests_.contains(requestId) ||
-           (requestId != 0 && requestId == webPreviewRequest_) || webFetchRequests_.contains(requestId);
+           (requestId != 0 && (requestId == webPreviewRequest_ || requestId == segmentRequest_)) || webFetchRequests_.contains(requestId);
 }
 
 void EditorApp::OnBuildResult(int requestId, const nlohmann::json& body) {
@@ -5288,7 +5330,12 @@ void EditorApp::FinishBuildJob() {
     }
 }
 
-void EditorApp::StartBuild(const std::string& query, const nlohmann::json& choices) {
+std::string EditorApp::PlanBuildMethod() const {
+    if (plan_ && !plan_->BuildMethod().empty()) return plan_->BuildMethod();
+    return ActiveSettings().places.method == "Paint" ? "Paint" : "Assembled";
+}
+
+void EditorApp::StartBuild(const std::string& query, const nlohmann::json& choices, const std::string& method) {
     if (buildJob_) {
         post_({{"type", "notify"}, {"text", "The build is still working: a moment"}});
         return;
@@ -5299,6 +5346,7 @@ void EditorApp::StartBuild(const std::string& query, const nlohmann::json& choic
     }
     build_ = MakeBuild();
     const std::string why = build_->Start(query, choices);
+    if (why.empty() && !method.empty()) build_->SetMethod(method); // the Build panel's choice
     if (!why.empty()) post_({{"type", "notify"}, {"text", "Can't build: " + why}});
     post_({{"type", "build:open"}});
     PostBuild();
@@ -5330,6 +5378,8 @@ std::unique_ptr<PlaceBuild> EditorApp::MakeBuild() {
     };
     host.projectRoot = assets_.GetProject().root;
     host.layoutStep = true; // ③ Layout: the zones placed and revised before what's inside them
+    host.buildMethod = [] { return ActiveSettings().places.method; };
+    host.paintModel = [] { return ActiveSettings().ai.paint; };
     return std::make_unique<PlaceBuild>(std::move(host));
 }
 
@@ -5387,16 +5437,36 @@ void EditorApp::CutMatched() {
 
 bool EditorApp::HandlePaintMessage(const std::string& type, const nlohmann::json& message) {
     // ④ Paint and ⑤ Mark (docs/places/painted-places.md).
-    if (type != "build:paint" && type != "build:skipPaint" && type != "build:prefillMarks" && type != "build:marksRequest" && type != "build:saveMarks") {
+    if (type == "build:segment") {
+        // ⑤ Mark's click-to-select: the thing under the clicks in the painting, by the AI service (SAM 2.1).
+        if (!build_ || !Ai() || Ai()->GetState() != AiClient::State::Ready) {
+            post_({{"type", "build:segmented"}, {"ok", false}, {"errors", {"the AI service isn't running"}}});
+            return true;
+        }
+        segmentRequest_ = Ai()->Request("POST", "/images/segment",
+                                        {{"path", "places/" + build_->Id() + "/painting.png"}, {"points", message.value("points", nlohmann::json::array())},
+                                         {"box", message.value("box", nlohmann::json())}},
+                                        300);
+        return true;
+    }
+    if (type == "build:confirmMarks") {
+        // ⑤ Mark's Continue: the marks are the user's now; a Planner build waiting on them goes on.
+        if (build_) {
+            if (const std::string why = ConfirmMarks(build_->Folder()); !why.empty()) post_({{"type", "notify"}, {"text", why}});
+        }
+        PostBuild();
+        return true;
+    }
+    if (type != "build:paint" && type != "build:setMethod" && type != "build:prefillMarks" && type != "build:marksRequest" && type != "build:saveMarks") {
         return false;
     }
     if (!build_) return true;
     std::string why;
     if (type == "build:paint") {
         why = build_->Paint(message.value("notes", ""));
-    } else if (type == "build:skipPaint") {
-        build_->SkipPaint(message.value("skip", true));
-        PreviewAssets(); // what ⑥ Assets makes changes with it
+    } else if (type == "build:setMethod") {
+        why = build_->SetMethod(message.value("method", ""));
+        if (why.empty()) PreviewAssets(); // what ⑥ Assets makes changes with it
     } else if (type == "build:prefillMarks") {
         why = build_->PrefillMarks(message.value("replaceEdited", false));
     } else if (type == "build:saveMarks") {
@@ -5472,6 +5542,7 @@ void EditorApp::PostBuild() {
         buildShown_ = build_->State();
     }
     buildShown_["afterBackground"] = afterBackground_;
+    buildShown_["projectMethod"] = ActiveSettings().places.method == "Paint" ? "Paint" : "Assembled";
     post_(buildShown_);
     const SlowWatch w("PostBuild: the build's card");
     post_(build_->Card());

@@ -84,6 +84,7 @@ function askAi(section: string, field: string): void {
               <div class="field-row">
                 <label :title="field.description">
                   {{ field.name }}
+                  <span v-if="field.description" class="help" :title="field.description">?</span>
                   <button
                     v-if="editorState.ai.state === 'ready'"
                     class="ask-ai"
@@ -114,6 +115,18 @@ function askAi(section: string, field: string): void {
 </template>
 
 <style scoped>
+.help {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  font-size: 10px;
+  border: 1px solid currentColor;
+  opacity: 0.7;
+  cursor: help;
+  margin-left: 4px;
+}
 .backdrop {
   position: fixed;
   inset: 0;

@@ -560,7 +560,19 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("art", &AiSettings::art, "Who draws the prefabs' art (empty: the app's).")
         .Options({"", "mistral", "pixellab", "bfl:flux-2-klein-4b", "bfl:flux-3-image", "bfl:flux-2-pro"})
         .Field("background", &AiSettings::background, "Who paints the places' backgrounds (empty: the app's).")
-        .Options({"", "bfl:flux-3-image"});
+        .Options({"", "bfl:flux-3-image"})
+        .Field("paint", &AiSettings::paint,
+               "Who paints a place whole for the Paint build method (empty: FLUX-3-Image). FLUX-2-Klein-4b: fast, follows "
+               "the plan as a rough draft; FLUX-2-Pro and FLUX-2-Max: rich looks, may drift from the layout; FLUX-3-Image: keeps the layout best; FLUX-3-Image-to-Pro and -to-Klein: FLUX-3-Image "
+               "paints the plan, then FLUX.2 pro or klein repaints its look.")
+        .Options({"", "flux-2-klein-4b", "flux-2-pro", "flux-2-max", "flux-3-image", "flux-3-to-pro", "flux-3-to-klein"});
+    r.Settings("Places", "How the AI builds places: each build and plan starts with this and can choose the other.", &settings.places)
+        .Field("method", &PlacesSettings::method,
+               "Assembled: each building, tree and prop gets its own art, put together on the grid over a painted "
+               "background; every piece can be moved and edited. Paint: the place is painted whole as one picture (as "
+               "Baldur's Gate's areas are), then you mark where one can walk and what a character goes behind; only "
+               "doors, chests, items and characters get art of their own.")
+        .Options({"Assembled", "Paint"});
     r.Settings("Game", "The game as a whole.", &settings.game)
         .Field("startScene", &GameSettings::startScene, "The scene the game starts in (scenes/*.aige).")
         .Field("version", &GameSettings::version, "The game's version: the window's title, the crash log, exports.")

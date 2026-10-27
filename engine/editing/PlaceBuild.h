@@ -67,6 +67,10 @@ public:
         // ③ Layout (the zones and where they go, revised before anything inside them is
         // planned): on in the editor; off, confirming plans everything at once.
         bool layoutStep = false;
+        // The project's build method (Places ▸ method: Assembled or Paint): a new build's, until it chooses the other.
+        std::function<std::string()> buildMethod;
+        // Who paints a place whole (Project Settings ▸ AI ▸ paint): flux-3-image when empty.
+        std::function<std::string()> paintModel;
     };
 
     explicit PlaceBuild(Host host) : host_(std::move(host)) {}
@@ -240,9 +244,11 @@ public:
     // ⑤ Mark pre-filled from the plan. `notes`: the user's, painting again. "" when asked.
     std::string Paint(const std::string& notes = {});
     bool Painting() const { return painting_; }
-    // Paint skipped: the place is built from its kit; false takes painting up again.
-    void SkipPaint(bool skip);
-    // Built from its painting: painted, and Paint not skipped.
+    // How it's built (docs/places/painted-places.md): "Assembled" (Confirm, Layout, Plan, Assets, Build) or "Paint"
+    // (Confirm, Layout, Plan, Paint, Mark, Assets, Build). From the project's setting when started; "" when set.
+    const std::string& Method() const { return method_; }
+    std::string SetMethod(const std::string& method);
+    // Built from its painting: the Paint method, and painted.
     bool Painted() const;
     // ⑤ Mark: pre-filled again (an occluder the user edited stays, unless `replaceEdited`), or saved from the editor.
     std::string PrefillMarks(bool replaceEdited);
@@ -379,7 +385,7 @@ private:
     bool inspecting_ = false;
     bool makingBackground_ = false;
     bool painting_ = false;      // ④ Paint: asked, not answered
-    bool paintSkipped_ = false;  // built from the kit instead
+    std::string method_ = "Assembled"; // Assembled or Paint (Method)
     int buildRounds_ = 0;
     nlohmann::json buildCheck_;            // the last check of the built scene
     std::vector<std::string> redo_;        // needs whose art the check refused, for the next round
@@ -388,6 +394,7 @@ private:
     double firstBuildWorth_ = 0;                    // the first check's worth, to judge the redo by
     bool layoutChecked_ = false;
     int layoutRounds_ = 0;
+    bool reviewing_ = false; // the AI's review of the approved map, in the background (Review)
     bool layoutCheckRevising_ = false; // the layout check's revision: zones may move, even at ③ Plan
     nlohmann::json layoutCheck_; // the last check of the layout (/places/inspect)
     double bestLayoutWorth_ = -1e9; // the best layout checked (its scores' mean, less a point an error)

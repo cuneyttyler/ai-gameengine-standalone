@@ -2891,10 +2891,16 @@ front, a tree's canopy, a wall top). Code can't find those parts reliably in a p
 wooden walls, a tower), and a person can, in minutes. So the build gets a step where the user marks
 them over the painting, pre-filled from the plan and helped by click-to-select.
 
-The steps: ① Confirm → ② Layout → ③ Plan → **④ Paint** → **⑤ Mark** → ⑥ Assets → ⑦ Build. Paint
-is optional. A place that isn't painted is built from its kit as before. A painted place's Assets
-step only makes what the painting doesn't hold: things the player uses (doors, chests, items),
-characters, and anything that moves.
+Two **build methods** (Project Settings ▸ Places ▸ method, asked in New Project; each build chooses
+on the Build panel's start page, each plan on the Planner's home page):
+- **Assembled:** ① Confirm → ② Layout → ③ Plan → ④ Assets → ⑤ Build, each piece's art put
+  together over a painted background, as before.
+- **Paint:** ① Confirm → ② Layout → ③ Plan → **④ Paint** → **⑤ Mark** → ⑥ Assets → ⑦ Build. The
+  Assets step only makes what the painting doesn't hold: things the player uses (doors, chests,
+  items), characters, and anything that moves.
+
+The paint model is a project setting (AI ▸ paint): FLUX-3-Image (default), FLUX-2-Klein-4b,
+FLUX-2-Pro, FLUX-2-Max, FLUX-3-Image-to-Pro, FLUX-3-Image-to-Klein.
 
 **26.1 Paint.** The plan's block-out (`PlaceBlockout`, the game's iso view, colour-coded by kind)
 painted by the Paint Provider (FLUX.3 Image) from the place's words and its legend, in tiles when
@@ -2943,6 +2949,10 @@ The scene check runs on the result, and occluders show in the viewport's debug v
   (pre-fill again).
 - The prompt says that marking is the user's step: the AI pre-fills and checks, and never claims
   that the marks are done.
+
+**Status (2026-10-27): built, to be tried.** 26.1–26.6 and the build methods are in; tests
+`painted_place_test.cpp` (view, pre-fill, edits kept, strip depths) and `brief_test.cpp`. Not yet:
+painting big places in tiles.
 
 Done when: a village painted from its plan is marked in a few minutes (pre-fill, then a few clicks
 and brush strokes) and can be walked in the editor's Play mode. A character goes behind houses and

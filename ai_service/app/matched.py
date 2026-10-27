@@ -734,9 +734,10 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
 
 
 def derive_pieces(painter, folder: Path, pieces: list[dict], every: list[dict], context: dict, seed: int) -> list[str]:
-    """Other looks and back views made from an accepted piece, one edit each: its picture on the key colour as image 1,
-    "the same thing, another version" (variant 2, 3…: from the kind's first look) or "the same thing, seen from behind"
-    (from that look's front). It starts from the right thing, so it stays that thing, in the same style and size. Fronts
+    """Other looks and back views made from an accepted piece. Another look (variant 2, 3…) is a new design painted on an
+    empty canvas with the kind's first look as image 2, the reference for style, scale and angle only (an edit of the first
+    look only recoloured it); a building gets its own footprint shape, roof and facade. A back view is an edit of that
+    look's front, "the same thing, seen from behind". It starts from the right thing, so it stays that thing, in the same style and size. Fronts
     first, then their backs. Returns the slugs made."""
     from concurrent.futures import ThreadPoolExecutor
     by_key = {p["key"]: p for p in every}
@@ -760,16 +761,34 @@ def derive_pieces(painter, folder: Path, pieces: list[dict], every: list[dict], 
         canvas = Image.new("RGB", (side, side), (255, 0, 255))
         canvas.paste(thing, ((side - thing.width) // 2, (side - thing.height) // 2), thing)
         what = str(p.get("role") or "object").replace("-", " ")
+        seed_of = seed + int(p.get("variant", 1)) * 13 + (7 if p.get("view") == "back" else 0)
         if p.get("view") == "back":
+            # A back view: an edit of the front, the same model turned around.
             change = (f"The same {what}, seen from behind: turn it around so its back faces the lower left. Same model, colours, "
                       "size, angle and style.")
+            prompt = (f"Game asset. Isometric view. Flat magenta background (#FF00FF).\n{change}\n"
+                      "Only this one object, alone, nothing under it: no ground, no shadow, no people, no text. Keep the magenta empty.")
+            made = painter.repaint(_png(canvas), prompt, references=[], seed=seed_of, width=side, height=side)
         else:
-            change = (f"Another {what} of the same kind: different colours and details, same size, angle, view and style. "
-                      "Still one single " + what + ".")
-        prompt = (f"Game asset. Isometric view. Flat magenta background (#FF00FF).\n{change}\n"
-                  "Only this one object, alone, nothing under it: no ground, no shadow, no people, no text. Keep the magenta empty.")
-        made = painter.repaint(_png(canvas), prompt, references=[], seed=seed + int(p.get("variant", 1)) * 13 + (7 if p.get("view") == "back" else 0),
-                               width=side, height=side)
+            # Another look: a new design, not a recolour. An edit of the first look only changed its colours, so it's painted
+            # anew on an empty canvas, the first look beside it as the reference for the style, scale and angle alone.
+            kind = " ".join(str(c) for c in p.get("concepts", []) if c)
+            kind = f"{kind} " if kind and kind != what else ""
+            purpose = f" ({p['purpose']})" if p.get("purpose") else ""
+            if p.get("layer") == "building":
+                differ = (f"a different building from the one in image 2: its own footprint shape, roof form, storeys, facade, "
+                          f"doors, windows, chimneys and porch. It must not look like image 2 recoloured: two different {what}s of "
+                          "one town.")
+            else:
+                differ = (f"a different {what} from the one in image 2: another shape, silhouette, build and details, not only "
+                          "other colours.")
+            prompt = (f"Game asset. Isometric view. Flat magenta background (#FF00FF).\n"
+                      f"Image 1 is empty: paint in its middle one {kind}{what}{purpose}, {differ}\n"
+                      "Same art style, palette family, outline, light direction, camera angle and size as image 2 (as big in the "
+                      "picture as image 2's).\n"
+                      "Only this one object, alone, nothing under it: no ground, no shadow, no people, no text. Keep the magenta empty.")
+            empty = Image.new("RGB", (side, side), (255, 0, 255))
+            made = painter.repaint(_png(empty), prompt, references=[_png(canvas)], seed=seed_of, width=side, height=side)
         found = find_items(made)
         if not found:
             return None

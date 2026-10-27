@@ -32,7 +32,7 @@ bool LooksLikeProject(const fs::path& root) {
 }
 
 std::optional<std::string> CreateProject(const fs::path& root, const std::optional<fs::path>& contentFrom,
-                                         bool topDown, const std::map<std::string, std::string>& ai) {
+                                         bool topDown, const std::map<std::string, std::string>& ai, const std::string& buildMethod) {
     if (auto problem = MustBeEmptyOrMissing(root)) return problem;
     std::error_code ec;
     for (const char* folder : kFolders) {
@@ -51,11 +51,12 @@ std::optional<std::string> CreateProject(const fs::path& root, const std::option
         fs::remove_all(root / "assets" / "textures" / "generated", ec);
     }
     std::string aiLine;
-    for (const char* field : {"provider", "model", "art", "background"}) {
+    for (const char* field : {"provider", "model", "art", "background", "paint"}) {
         if (const auto it = ai.find(field); it != ai.end() && !it->second.empty()) aiLine += std::string(" ") + field + "=\"" + it->second + "\"";
     }
     std::ofstream(root / "settings.aige") << "# AIGE Settings v1\n" << (topDown ? "Grid style=TopDown\n" : "")
-                                          << (aiLine.empty() ? "" : "AI" + aiLine + "\n");
+                                          << (aiLine.empty() ? "" : "AI" + aiLine + "\n")
+                                          << (buildMethod.empty() ? "" : "Places method=\"" + buildMethod + "\"\n");
     std::ofstream(root / "README.md")
         << "# " << root.filename().string() << "\n\n"
         << "An AIGE project. Open this folder in the editor (File > Open Project).\n\n"
