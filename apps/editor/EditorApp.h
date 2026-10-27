@@ -181,6 +181,10 @@ private:
     // Build ④ Paint and ⑤ Mark's messages (build:paint, build:skipPaint, build:prefillMarks, build:marksRequest,
     // build:saveMarks); false for any other.
     bool HandlePaintMessage(const std::string& type, const nlohmann::json& message);
+    // File ▸ Preferences' own settings (prefs.ts: interface scale, grid at start, zoom, recovery, paint model, a new
+    // project's build method), kept in prefs.json: prefs:set and prefs:request, answered with prefs:values.
+    nlohmann::json PrefsJson() const;
+    nlohmann::json Pref(const char* key, const nlohmann::json& fallback) const;
     bool wasPainting_ = false;
     std::string plannerBuildMethod_; // the Planner home page's build method for the next plan ("": the project's) // ④ Paint asked: when it's answered, ⑥ Assets is decided again
     void RevertOverride(const std::string& key);
@@ -370,6 +374,9 @@ private:
     // Scene editing polish (4.3).
     bool showGrid_ = true;    // tile borders on empty ground (shown from the start, 8.1)
     float brushScale_ = 1.0f; // the prefab brush places copies at this size
+    int brushCells_ = 1;      // a tile brush paints this many cells across (Shift+wheel: 1 to 4)
+    bool leftPanning_ = false; // the Select tool dragged on empty ground: the camera moves (Shift+drag boxes instead)
+    float leftDownX_ = 0.0f, leftDownY_ = 0.0f;
     int brushRotation_ = 0;   // quarter turns given to flat things the brush places (5.2)
     // Auto-fit (6.4): painting a ground tile lays its terrain and the engine
     // picks the pieces; erasing turns it back into the background.
@@ -478,6 +485,8 @@ private:
         };
         std::vector<AutoUndo> autoUndo;
         bool autoUndone = false;
+        uint64_t autoStep = 0;      // the undo step the auto-applied tweaks made (Ctrl+Z and Ctrl+Y follow it)
+        std::string autoLastState;  // as last sent to the panel
         std::shared_ptr<TaskRunner> task; // set when this is a finished task's combined result
         // Its undo step once applied (0: not applied, or nothing changed in
         // the scene), and what was applied, to apply it again after an undo

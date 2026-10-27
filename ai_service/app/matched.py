@@ -300,15 +300,53 @@ def _is_key(r: int, g: int, b: int) -> bool:
     return abs(r - 255) + g + abs(b - 255) < 150 or (r - g > 90 and b - g > 90 and abs(r - b) < 90)
 
 
-def _cleared(image: Image.Image) -> Image.Image:
+def _border_colour(image: Image.Image) -> tuple[int, int, int]:
+    """The background a painting really has: the median of its border pixels (a model asked for pure magenta often
+    paints a shaded magenta, a maroon or a dark purple instead)."""
+    rgb = image.convert("RGB")
+    w, h = rgb.size
+    px = rgb.load()
+    step = max(1, min(w, h) // 64)
+    border = [px[x, y] for x in range(0, w, step) for y in (0, h - 1)] + [px[x, y] for y in range(0, h, step) for x in (0, w - 1)]
+    return tuple(sorted(c[i] for c in border)[len(border) // 2] for i in range(3))
+
+
+def _background(image: Image.Image, tolerance: int = 70) -> list[list[bool]]:
+    """Which pixels are the background: the key colour, or (when the painting's background isn't the key) pixels close to
+    its border colour that join the border, flood-filled from it, so the same colour inside the thing stays."""
+    rgb = image.convert("RGB")
+    w, h = rgb.size
+    px = rgb.load()
+    back = _border_colour(rgb)
+    if _is_key(*back):
+        return [[_is_key(*px[x, y]) for x in range(w)] for y in range(h)]
+    near = [[_is_key(*px[x, y]) or sum(abs(px[x, y][i] - back[i]) for i in range(3)) < tolerance for x in range(w)] for y in range(h)]
+    out = [[False] * w for _ in range(h)]
+    stack = [(x, y) for x in range(w) for y in (0, h - 1)] + [(x, y) for y in range(h) for x in (0, w - 1)]
+    while stack:
+        x, y = stack.pop()
+        if out[y][x] or not near[y][x]:
+            continue
+        out[y][x] = True
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if 0 <= nx < w and 0 <= ny < h and not out[ny][nx] and near[ny][nx]:
+                stack.append((nx, ny))
+    return out
+
+
+def _cleared(image: Image.Image, background: list[list[bool]] | None = None) -> Image.Image:
     """The key colour made clear, and its tint taken out of every pixel near it: how much a pixel leans to the key
     (red and blue together above green) is how clear it gets and how much of that lean it loses, so a purplish haze
-    or shadow on the key goes, and an edge keeps its own colour."""
+    or shadow on the key goes, and an edge keeps its own colour. `background`: the crop's own background mask (when the
+    painting's background isn't the key: _background)."""
     image = image.convert("RGBA")
     px = image.load()
     for y in range(image.height):
         for x in range(image.width):
             r, g, b, a = px[x, y]
+            if background is not None and background[y][x]:
+                px[x, y] = (0, 0, 0, 0)
+                continue
             if _is_key(r, g, b):
                 px[x, y] = (0, 0, 0, 0)
                 continue
@@ -327,8 +365,10 @@ def find_items(png: bytes) -> list[dict]:
     k = 4
     small = image.resize((max(1, image.width // k), max(1, image.height // k)), Image.NEAREST)
     w, h = small.size
-    px = small.load()
-    solid = [[not _is_key(*px[x, y]) for x in range(w)] for y in range(h)]
+    # The background: the key, or the colour the model really painted round the things (read from the border).
+    keyed = _is_key(*_border_colour(image))
+    back = _background(small)
+    solid = [[not back[y][x] for x in range(w)] for y in range(h)]
     seen = [[False] * w for _ in range(h)]
     blobs = []
     for y in range(h):
@@ -368,7 +408,12 @@ def find_items(png: bytes) -> list[dict]:
     for blob in blobs:
         x0, y0, x1, y1 = blob["box"]
         crop = image.crop((max(0, (x0 - 1) * k), max(0, (y0 - 1) * k), min(image.width, (x1 + 2) * k), min(image.height, (y1 + 2) * k)))
-        items.append({"image": _cleared(crop), "box": [x0 * k, y0 * k, (x1 + 1) * k, (y1 + 1) * k], "area": blob["area"] * k * k})
+        if keyed:
+            cleared = _cleared(crop)
+        else:
+            # Not the key: the crop's background is what joins its edge in the painting's own background colour.
+            cleared = _cleared(crop, _background(crop))
+        items.append({"image": cleared, "box": [x0 * k, y0 * k, (x1 + 1) * k, (y1 + 1) * k], "area": blob["area"] * k * k})
     # Reading order: rows (by their middles), then left to right.
     items.sort(key=lambda i: (i["box"][1] + i["box"][3]) / 2)
     rows: list[list[dict]] = []
@@ -707,7 +752,7 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
         again = [p for p in again if p["key"] not in made_now]
     if derived:
         track.start("derived")
-        steps.append({"derived": derive_pieces(painter, folder, derived, every, context, seed)})
+        steps.append({"derived": derive_pieces(painter, folder, derived, every, context, seed, writer=vision)})
         new += [p for p in derived if (folder / "pieces" / f"{p['slug']}.png").exists()]
         track.done("derived")
     # Things with a front face the lower left (their back view: their back): turned round where they don't.
@@ -733,11 +778,37 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
     return steps
 
 
-def derive_pieces(painter, folder: Path, pieces: list[dict], every: list[dict], context: dict, seed: int) -> list[str]:
-    """Other looks and back views made from an accepted piece. Another look (variant 2, 3…) is a new design painted on an
-    empty canvas with the kind's first look as image 2, the reference for style, scale and angle only (an edit of the first
-    look only recoloured it); a building gets its own footprint shape, roof and facade. A back view is an edit of that
-    look's front, "the same thing, seen from behind". It starts from the right thing, so it stays that thing, in the same style and size. Fronts
+VARIANT_TASK = """You write image prompts for a game's art. Given one thing of a place, write {n} descriptions of other
+things of the same kind for the same place, each one clearly different in FORM, not only in colour: a different number
+of storeys, footprint shape (square, long, L-shaped, round), roof form (gabled, hipped, thatched, flat, steep), size, and
+features (a porch, a balcony, an outside stair, a chimney, a lean-to, a small tower, a shop front, a fenced yard); for a
+small thing, another build, silhouette and parts. For example, for a house: "a one-storey cottage with one small window on
+each side and a low thatched roof" and "a two-storey timber house with a balcony over the door and a steep gabled roof"
+are as different as they should be. Keep each the same kind of thing, the same era, culture and style as the place, and
+about the size such a thing has (it stands on the same footprint). Each one line, concrete and visual (what it's made of,
+its shape, its parts), no names, no story, no background. Answer JSON: {{"variants": ["...", "..."]}}"""
+
+
+def variant_words(writer, kind: str, first: str, place: str, n: int) -> list[str]:
+    """`n` descriptions of other things of the kind, each different in form (VARIANT_TASK); [] without an answer."""
+    import json as _json
+    if writer is None or n <= 0:
+        return []
+    try:
+        answer = _json.loads(writer.complete([{"role": "system", "content": VARIANT_TASK.format(n=n)},
+                                              {"role": "user", "content": f"The place: {place}\nThe kind: {kind}\nThe first one: {first}"}]).text)
+    except Exception:  # noqa: BLE001 - the edit way is used instead
+        return []
+    return [str(v).strip() for v in answer.get("variants", []) if str(v).strip()][:n]
+
+
+def derive_pieces(painter, folder: Path, pieces: list[dict], every: list[dict], context: dict, seed: int, writer=None) -> list[str]:
+    """Other looks and back views made from an accepted piece. Another look (variant 2, 3…) is painted from its own words
+    alone: the LLM (`writer`) writes, for each kind, a description per look that differs in form (storeys, footprint,
+    roof, features: VARIANT_TASK), and each is painted with the place's style line and no reference image
+    (builder_tests/variant_test: an edit of the first look only recoloured it, a reference kept its shape). Without an
+    answer, a look is painted on an empty canvas with the first look as image 2. A back view is an edit of that look's
+    front, "the same thing, seen from behind". It starts from the right thing, so it stays that thing, in the same style and size. Fronts
     first, then their backs. Returns the slugs made."""
     from concurrent.futures import ThreadPoolExecutor
     by_key = {p["key"]: p for p in every}
@@ -748,6 +819,31 @@ def derive_pieces(painter, folder: Path, pieces: list[dict], every: list[dict], 
             front = p["key"][: -len("#back")] if p["key"].endswith("#back") else base
             return by_key.get(front)
         return by_key.get(base)
+
+    # Each kind's other looks in words, one call a kind (their descriptions kept with the art).
+    words: dict[str, str] = {}
+    looks: dict[str, list[dict]] = {}
+    for p in pieces:
+        if p.get("view") != "back":
+            looks.setdefault(p.get("variantKey") or p["key"], []).append(p)
+    place = ", ".join(w for w in (_place_words(context), _style_line(context)) if w)
+
+    def describe(base: str) -> None:
+        first = by_key.get(base) or {}
+        kind = str(first.get("role") or "object").replace("-", " ")
+        concepts = " ".join(str(c) for c in first.get("concepts", []) if c)
+        what = f"{concepts} {kind}".strip() if concepts and concepts != kind else kind
+        said = f"a {what}" + (f": {first['purpose']}" if first.get("purpose") else "") + f" ({first.get('w', 1)}x{first.get('h', 1)} cells)"
+        for p, text in zip(looks[base], variant_words(writer, what, said, place, len(looks[base]))):
+            words[p["key"]] = text
+    if writer is not None and looks:
+        from concurrent.futures import ThreadPoolExecutor as _Pool
+        with _Pool(4) as pool:
+            list(pool.map(describe, list(looks)))
+        try:
+            (folder / "variant-prompts.json").write_text(__import__("json").dumps(words, indent=2), encoding="utf-8")
+        except OSError:
+            pass
 
     def make(p: dict) -> str | None:
         src = source(p)
@@ -769,9 +865,17 @@ def derive_pieces(painter, folder: Path, pieces: list[dict], every: list[dict], 
             prompt = (f"Game asset. Isometric view. Flat magenta background (#FF00FF).\n{change}\n"
                       "Only this one object, alone, nothing under it: no ground, no shadow, no people, no text. Keep the magenta empty.")
             made = painter.repaint(_png(canvas), prompt, references=[], seed=seed_of, width=side, height=side)
+        elif p["key"] in words and hasattr(painter, "create"):
+            # Another look from its own words: no reference image (which would keep the first look's shape).
+            prompt = (f"Game asset. Isometric view. Flat magenta background (#FF00FF).\n"
+                      f"One {words[p['key']]}.\n"
+                      f"Style: {_style_words(context)}; {_style_line(context)}. Seen from the isometric game camera (2:1), its front "
+                      f"facing the lower left; it stands on a {p.get('w', 1)} by {p.get('h', 1)} cell footprint.\n"
+                      "Only this one object, alone, centred, nothing under it: no ground, no shadow, no people, no text. Keep the magenta empty.")
+            made = painter.create(prompt, side, side, seed=seed_of)
         else:
-            # Another look: a new design, not a recolour. An edit of the first look only changed its colours, so it's painted
-            # anew on an empty canvas, the first look beside it as the reference for the style, scale and angle alone.
+            # Without its words: a new design on an empty canvas, the first look beside it as the reference for the style,
+            # scale and angle alone.
             kind = " ".join(str(c) for c in p.get("concepts", []) if c)
             kind = f"{kind} " if kind and kind != what else ""
             purpose = f" ({p['purpose']})" if p.get("purpose") else ""

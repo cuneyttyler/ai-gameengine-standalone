@@ -134,6 +134,9 @@ interface BuildState {
   method?: 'Assembled' | 'Paint' // which steps it has (docs/places/painted-places.md)
   projectMethod?: 'Assembled' | 'Paint'
   reviewing?: boolean // the approved map checked by the AI in the background
+  inScene?: boolean // the place is in the open scene (else Build puts it there again)
+  models?: { art?: string; background?: string } // this build's ("" the project's)
+  projectModels?: { art?: string; background?: string }
   fromPlanner?: boolean // started by the AI Planner: its art strategy is the Game Brief's
   busy?: boolean // working off the UI thread (planning, laying out)
   busyInline?: boolean // and the page shows its steps going on: no overlay
@@ -287,6 +290,24 @@ const buildMethod = computed(() => state.value?.method ?? newMethod.value)
 const STEPS = computed(() => ALL_STEPS.filter((st) => buildMethod.value === 'Paint' || (st.id !== 'paint' && st.id !== 'mark')).map((st, i) => ({
   ...st, label: `${'①②③④⑤⑥⑦'[i]} ${st.label.slice(2)}`,
 })))
+// Who makes a build's art and paints its background (Build ▸ Assets), "" for the project's (Project Settings ▸ AI).
+const ART_MODELS = [
+  { id: 'auto', label: 'Auto (follows the language model)' },
+  { id: 'mistral', label: 'Mistral' },
+  { id: 'pixellab', label: 'PixelLab' },
+  { id: 'bfl:flux-2-klein-4b', label: 'BFL FLUX.2 klein' },
+  { id: 'bfl:flux-3-image', label: 'BFL FLUX.3 Image' },
+  { id: 'bfl:flux-2-pro', label: 'BFL FLUX.2 pro' },
+]
+const BACKGROUND_MODELS = [
+  { id: 'bfl:flux-3-image', label: 'BFL FLUX.3 Image (keeps the map best)' },
+  { id: 'bfl:flux-2-max', label: 'BFL FLUX.2 max (as good, slower)' },
+  { id: 'bfl:flux-2-pro', label: 'BFL FLUX.2 pro' },
+  { id: 'bfl:flux-2-klein-4b', label: 'BFL FLUX.2 klein (fast, loose)' },
+]
+function modelName(id?: string): string {
+  return [...ART_MODELS, ...BACKGROUND_MODELS].find((m) => m.id === id)?.label.replace(/ \(.*\)$/, '') ?? (id || 'default')
+}
 // The build methods (Project Settings ▸ Places ▸ method), in words.
 const METHODS = [
   { id: 'Assembled', label: 'Assembled', title: 'Each building, tree and prop gets its own art, put together on the grid over a painted background; every piece can be moved and edited. Steps: Confirm, Layout, Plan, Assets, Build.' },
@@ -459,8 +480,13 @@ function cyclePart(id: string): void {
 function toggleChosenFeature(id: string): void {
   featuresChosen.value = featuresChosen.value.includes(id) ? featuresChosen.value.filter((f) => f !== id) : [...featuresChosen.value, id]
 }
+// The start page's main choices beside the place and its size: its walls and layout, when its kind has them.
+const MAIN_PATHS = ['walled', 'shape.layout']
+const mainFields = computed(() => (choiceType.value?.fields ?? []).filter((f) => MAIN_PATHS.includes(f.path) && f.values?.length))
+const variety = ref('')
 function choices(): Record<string, unknown> {
   const out: Record<string, unknown> = {}
+  if (variety.value && variety.value !== 'normal') out.variety = variety.value
   if (chosenType.value) out.buildType = chosenType.value
   for (const [path, value] of Object.entries(chosen.value)) out[path] = value
   const lo = Number(countLow.value), hi = Number(countHigh.value || countLow.value)
@@ -942,8 +968,8 @@ const removeOne = ref<BuildEntry | null>(null)
 const backgroundCall = computed(() => aiCalls.value.find((c) => c.path === '/places/background' && c.phase !== 'done' && c.phase !== 'failed'))
 // The next step working (off the UI thread, or a revision being written by the AI): an overlay over the panel with a
 // spinner, what's being done, how long, and the AI call it waits on.
-// Not over a page that shows its own steps going on (the zones laid out after they're planned: busyInline).
-const working = computed(() => (!!state.value?.busy && !state.value?.busyInline) || stage.value === 'revising')
+// Shown in the corner (not over the page) while the build works off the UI thread or a revision is written.
+const working = computed(() => !!state.value?.busy || stage.value === 'revising')
 const workingSince = ref(0)
 const workingNow = ref(0)
 let workingTimer: number | undefined
@@ -1262,7 +1288,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           <strong>{{ state?.status || 'Working…' }}</strong>
           <div class="dim">{{ workingSeconds }}s<template v-if="workingCall"> · {{ callName(workingCall) }}: {{ workingCall.phase
             }}{{ workingCall.outputTokens ? ', ' + workingCall.outputTokens.toLocaleString() + ' tokens' : '' }}</template></div>
-          <div class="dim small">The rest of the editor stays usable meanwhile.</div>
+          <div class="dim small">You can look at the other steps meanwhile.</div>
         </div>
       </div>
     </div>
@@ -1283,9 +1309,6 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <span v-if="state && !browsing" class="title">{{ state.name || state.query }}</span>
       <button v-if="state && !browsing && !['cancelled', 'failed'].includes(stage)" class="browse" title="Start another build or reopen an earlier one" @click="browse">Builds</button>
       <button v-if="browsing" class="browse" @click="browsing = false">Back to {{ state?.name || 'the build' }}</button>
-      <button v-if="state && !browsing && !['cancelled', 'failed', 'interpreting'].includes(stage)" class="browse" :class="{ active: advanced }"
-              title="The build's own documents: its PLL, the solved layout, the Spec, the Brief, the asset plan, the log"
-              @click="(advanced = !advanced), advanced && showAdvanced(advancedWhat)">Advanced</button>
     </div>
 
     <section v-if="state?.notices?.length && !browsing" class="note notices">
@@ -1406,31 +1429,54 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <span class="help" :title="METHODS.find((m) => m.id === newMethod)?.title">?</span>
         <span class="dim">{{ newMethod === state?.projectMethod || !state?.projectMethod ? "the project's" : 'this build only' }}</span>
       </label>
-      <section class="choices">
-        <button class="toggle" @click="choicesOpen = !choicesOpen">
-          {{ choicesOpen ? '▾' : '▸' }} Choices
-          <span class="dim">{{ hasChoices ? `${Object.keys(choices()).length} set: kept as you set them` : 'optional: set what matters, the words decide the rest' }}</span>
-        </button>
-        <div v-if="choicesOpen" class="grid">
-          <label>Build</label>
+      <div class="form-row main-choices">
+        <div class="form-cell">
+          <label>Place <span class="help" title="What kind of place: a settlement, a dungeon, an interior… Decided by the AI from your words unless chosen">?</span></label>
           <select :value="chosenType" @change="setType(($event.target as HTMLSelectElement).value)">
-            <option value="">from the words</option>
+            <option value="">Decided by the AI</option>
             <option v-for="t in choiceTypes" :key="t.id" :value="t.id">{{ t.name }}</option>
           </select>
+        </div>
+        <div v-if="choiceType" class="form-cell">
+          <label>Size <span class="help" :title="`How big: its ${choiceType.unit}`">?</span></label>
+          <select :value="(chosen['scale.class'] as string) ?? ''" @change="setChoice('scale.class', ($event.target as HTMLSelectElement).value)">
+            <option value="">Decided by the AI</option>
+            <option v-for="c in choiceType.classes" :key="c.id" :value="c.id">{{ c.label }} ({{ c.count[0] }}–{{ c.count[1] }} {{ choiceType.unit }})</option>
+          </select>
+        </div>
+        <div v-for="f in mainFields" :key="f.path" class="form-cell">
+          <label>{{ f.label }} <span v-if="f.hint" class="help" :title="f.hint">?</span></label>
+          <select :value="(chosen[f.path] as string) ?? ''" @change="setChoice(f.path, ($event.target as HTMLSelectElement).value)">
+            <option value="">Decided by the AI</option>
+            <option v-for="v in f.values" :key="v" :value="v">{{ v.replace(/-/g, ' ') }}</option>
+          </select>
+        </div>
+        <div class="form-cell">
+          <label>Asset variety <span class="help" title="How many looks each kind of thing gets: Low, one look each; Normal, as the ontology says (many cars, a few shops, one street light); High, about twice as many">?</span></label>
+          <select v-model="variety">
+            <option value="">Decided by the AI</option>
+            <option value="low">Low</option>
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+      </div>
+      <section class="choices">
+        <button class="toggle" @click="choicesOpen = !choicesOpen">
+          {{ choicesOpen ? '▾' : '▸' }} Other choices
+          <span class="dim">{{ hasChoices ? `${Object.keys(choices()).length} set: kept as you set them` : 'optional: set what matters, the words decide the rest' }}</span>
+        </button>
+        <p v-if="choicesOpen && !choiceType" class="dim">Choose the kind of place above for its other choices.</p>
+        <div v-if="choicesOpen" class="grid">
           <template v-if="choiceType">
-            <label>Size</label>
+            <label>How many</label>
             <div>
-              <select :value="(chosen['scale.class'] as string) ?? ''" @change="setChoice('scale.class', ($event.target as HTMLSelectElement).value)">
-                <option value="">from the words</option>
-                <option v-for="c in choiceType.classes" :key="c.id" :value="c.id">{{ c.label }} ({{ c.count[0] }}–{{ c.count[1] }} {{ choiceType.unit }})</option>
-              </select>
-              <span class="dim"> or </span>
               <input v-model="countLow" class="num" type="number" min="1" placeholder="from" />
               –
               <input v-model="countHigh" class="num" type="number" min="1" placeholder="to" />
               <span class="dim"> {{ choiceType.unit }}</span>
             </div>
-            <template v-for="f in choiceType.fields" :key="f.path">
+            <template v-for="f in choiceType.fields.filter((x) => !MAIN_PATHS.includes(x.path))" :key="f.path">
               <label :title="f.hint">{{ f.label }}</label>
               <div>
                 <select v-if="f.values" :value="(chosen[f.path] as string) ?? ''" @change="setChoice(f.path, ($event.target as HTMLSelectElement).value)">
@@ -1554,12 +1600,11 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       @keydown.capture="guardLocked"
     >
       <section v-if="state.layoutForm?.length" class="layout-form">
-        <h4>Layout form</h4>
-        <p class="dim small">How the place is laid out: the shape of its zones, its streets, its blocks and lots. A change lays it out again.</p>
-        <div class="form-grid">
+        <h4>Layout form <span class="help" title="How the place is laid out: the shape of its zones, its streets, its blocks and lots. A change lays it out again.">?</span></h4>
+        <div class="form-row">
           <template v-for="f in state.layoutForm" :key="f.field">
-            <label :title="f.description">{{ f.field.replace(/-/g, ' ') }}</label>
-            <div>
+            <div class="form-cell">
+            <label>{{ f.field.replace(/-/g, ' ') }} <span class="help" :title="[f.description, f.meaning?.[f.value]].filter(Boolean).join(' — ')">?</span></label>
               <select v-if="f.values" :value="f.value" @change="sendToHost({ type: 'build:rootField', field: f.field, value: ($event.target as HTMLSelectElement).value })">
                 <option v-for="v in f.values" :key="v" :value="v">{{ v }}{{ v === f.default ? ' (default)' : '' }}</option>
               </select>
@@ -1571,7 +1616,6 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
                        @change="sendToHost({ type: 'build:rootField', field: f.field, value: { w: Array.isArray(f.value?.w) ? f.value.w[0] : f.value?.w, h: Number(($event.target as HTMLInputElement).value) } })" />
                 cells
               </span>
-              <div v-if="f.meaning?.[f.value]" class="dim small">{{ f.meaning[f.value] }}</div>
             </div>
           </template>
         </div>
@@ -1832,6 +1876,21 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             <option value="library">Library (else made by the Art tool)</option>
             <option value="project">The project (else made by the Art tool)</option>
             <option value="auto">Auto (by each piece's importance)</option>
+          </select>
+          <template v-if="sourcingSettings.defaultSource === 'generate'">
+            <span class="dim">made by</span>
+            <select :value="state.models?.art ?? ''" title="Who makes this build's art (Project Settings ▸ AI ▸ art by default)"
+                    @change="sendToHost({ type: 'build:models', models: { art: ($event.target as HTMLSelectElement).value } })">
+              <option value="">the project's ({{ modelName(state.projectModels?.art) }})</option>
+              <option v-for="m in ART_MODELS" :key="m.id" :value="m.id">{{ m.label }}</option>
+            </select>
+          </template>
+        </div>
+        <div class="row set-all">
+          <span class="dim" title="Who paints the place's background (its ground, painted whole); Project Settings ▸ AI ▸ background by default">Background painted by</span>
+          <select :value="state.models?.background ?? ''" @change="sendToHost({ type: 'build:models', models: { background: ($event.target as HTMLSelectElement).value } })">
+            <option value="">the project's ({{ modelName(state.projectModels?.background) }})</option>
+            <option v-for="m in BACKGROUND_MODELS" :key="m.id" :value="m.id">{{ m.label }}</option>
           </select>
         </div>
         <div class="row set-all">
@@ -2118,9 +2177,10 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           <button v-if="stage === 'sourcing'" title="Stop finding and making art: what's missing is a placeholder" @click="sendToHost({ type: 'build:skipSourcing' })">
             Stop: use placeholders
           </button>
-          <button v-if="stage === 'sourced' || stage === 'built'" class="primary" title="Puts the place into the scene, verifies it and repairs what it can"
+          <button v-if="stage === 'sourced' || stage === 'built' || (stage === 'planned' && state?.inScene === false && !!state?.assetNeeds?.length)" class="primary"
+                  title="Puts the place into the scene, verifies it and repairs what it can"
                   @click="sendToHost({ type: 'build:build' })">
-            {{ stage === 'built' ? 'Build again' : 'Build →' }}
+            {{ stage === 'built' && state?.inScene ? 'Build again' : 'Build →' }}
           </button>
         </div>
       </template>
@@ -2129,6 +2189,13 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
     <!-- ③ Plan: what will be built, before anything is. -->
     <div v-else-if="['plan', 'planned', 'sourcing', 'sourced', 'revising', 'building', 'built'].includes(stage) && state?.plan && !atConfirm" class="body plan-view">
       <!-- ⑤ Result: what the scene got, checked. -->
+      <section v-if="showResult && state.inScene === false" class="note warn-box">
+        <strong>The place isn't in the scene.</strong>
+        It was built, but the editor closed before the scene was saved (or another scene is open). Build puts it in again, with the same plan and art.
+        <div class="actions left">
+          <button class="primary" :disabled="state.busy" @click="sendToHost({ type: 'build:build' })">Build into the scene</button>
+        </div>
+      </section>
       <section v-if="showResult && state.result" :class="['result', { failing: sceneFailing.length }]">
         <p class="headline">
           {{ sceneFailing.length ? `Built, ${sceneFailing.length} check(s) to look at` : 'Built and verified' }}
@@ -2493,96 +2560,110 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       </section>
 
       <template v-if="win.round === 1 || atConfirm">
-        <div class="grid">
-          <label>Name</label>
-          <div><input :value="win.name" @change="edit('name', ($event.target as HTMLInputElement).value)" /> <span class="dim">{{ win.buildTypeName }}</span></div>
+        <div class="form-row confirm-form">
+          <div class="form-cell">
+            <label>Name</label>
+            <div><input :value="win.name" @change="edit('name', ($event.target as HTMLInputElement).value)" /> <span class="dim">{{ win.buildTypeName }}</span></div>
+          </div>
 
-          <label>Size</label>
-          <div :class="markClass('scale.class')">
-            <select :value="win.size.class" @change="edit('scale.class', ($event.target as HTMLSelectElement).value)">
-              <option v-for="c in win.size.classes" :key="c.id" :value="c.id">
-                {{ c.id.replace('-', ' ') }} ({{ c.buildings[0] }}–{{ c.buildings[1] }} {{ win.size.unit ?? 'buildings' }})
-              </option>
-            </select>
-            {{ win.size.unit ?? 'buildings' }}
-            <input class="num" :value="countRange(win.size.buildings)[0]" @change="setBuildings(0, ($event.target as HTMLInputElement).value)" />
-            –
-            <input class="num" :value="countRange(win.size.buildings)[1]" @change="setBuildings(1, ($event.target as HTMLInputElement).value)" />
-            <span class="dim">area {{ amountText(win.size.area) }} cells²</span>
-            <div v-if="mark('scale.class')?.disputed || mark('scale.buildings.count')?.disputed" class="alts">
-              other readings:
-              <button v-for="(alt, i) in mark('scale.class')?.alternatives ?? []" :key="'c' + i" @click="edit('scale.class', alt)">
-                {{ mark('scale.class')?.readings[i] }}: {{ show(alt) }}
-              </button>
-              <button v-for="(alt, i) in mark('scale.buildings.count')?.alternatives ?? []" :key="'b' + i" @click="edit('scale.buildings', { count: alt })">
-                {{ mark('scale.buildings.count')?.readings[i] }}: {{ show(alt) }} {{ win.size.unit ?? 'buildings' }}
-              </button>
+          <div class="form-cell">
+            <label>Size</label>
+            <div :class="markClass('scale.class')">
+              <select :value="win.size.class" @change="edit('scale.class', ($event.target as HTMLSelectElement).value)">
+                <option v-for="c in win.size.classes" :key="c.id" :value="c.id">
+                  {{ c.id.replace('-', ' ') }} ({{ c.buildings[0] }}–{{ c.buildings[1] }} {{ win.size.unit ?? 'buildings' }})
+                </option>
+              </select>
+              {{ win.size.unit ?? 'buildings' }}
+              <input class="num" :value="countRange(win.size.buildings)[0]" @change="setBuildings(0, ($event.target as HTMLInputElement).value)" />
+              –
+              <input class="num" :value="countRange(win.size.buildings)[1]" @change="setBuildings(1, ($event.target as HTMLInputElement).value)" />
+              <span class="dim">area {{ amountText(win.size.area) }} cells²</span>
+              <div v-if="mark('scale.class')?.disputed || mark('scale.buildings.count')?.disputed" class="alts">
+                other readings:
+                <button v-for="(alt, i) in mark('scale.class')?.alternatives ?? []" :key="'c' + i" @click="edit('scale.class', alt)">
+                  {{ mark('scale.class')?.readings[i] }}: {{ show(alt) }}
+                </button>
+                <button v-for="(alt, i) in mark('scale.buildings.count')?.alternatives ?? []" :key="'b' + i" @click="edit('scale.buildings', { count: alt })">
+                  {{ mark('scale.buildings.count')?.readings[i] }}: {{ show(alt) }} {{ win.size.unit ?? 'buildings' }}
+                </button>
+              </div>
             </div>
           </div>
 
-          <label v-if="!atConfirm" title="One street pattern or several; the plan gives each ward one of them">Layout</label>
-          <div v-if="!atConfirm" :class="markClass('shape.layout')">
-            <div class="layouts">
-              <div v-for="l in win.layout.options" :key="l" class="layout" :class="{ active: l in win.layout.value }">
-                <button :title="l in win.layout.value ? 'Leave this pattern out' : 'Add this pattern'" @click="edit('shape.layout', toggleShare(win.layout.value, l))">
-                  <svg viewBox="0 0 40 28" width="40" height="28" v-html="layoutSketch(l)" />
-                  <span>{{ l.replace(/-/g, ' ') }}</span>
-                </button>
-                <span v-if="l in win.layout.value && Object.keys(win.layout.value).length > 1" class="share">
-                  <input
-                    class="num"
-                    :value="Math.round((win.layout.value[l] ?? 0) * 100)"
-                    @change="edit('shape.layout', setShare(win.layout.value, l, Number(($event.target as HTMLInputElement).value) / 100))"
-                  />%
-                </span>
+          <div class="form-cell" v-if="!atConfirm">
+            <label v-if="!atConfirm">Layout <span class="help" title="One street pattern or several; the plan gives each ward one of them">?</span></label>
+            <div v-if="!atConfirm" :class="markClass('shape.layout')">
+              <div class="layouts">
+                <div v-for="l in win.layout.options" :key="l" class="layout" :class="{ active: l in win.layout.value }">
+                  <button :title="l in win.layout.value ? 'Leave this pattern out' : 'Add this pattern'" @click="edit('shape.layout', toggleShare(win.layout.value, l))">
+                    <svg viewBox="0 0 40 28" width="40" height="28" v-html="layoutSketch(l)" />
+                    <span>{{ l.replace(/-/g, ' ') }}</span>
+                  </button>
+                  <span v-if="l in win.layout.value && Object.keys(win.layout.value).length > 1" class="share">
+                    <input
+                      class="num"
+                      :value="Math.round((win.layout.value[l] ?? 0) * 100)"
+                      @change="edit('shape.layout', setShare(win.layout.value, l, Number(($event.target as HTMLInputElement).value) / 100))"
+                    />%
+                  </span>
+                </div>
               </div>
+              <input
+                class="wide"
+                :value="win.layout.description ?? ''"
+                placeholder="Where each goes, if it matters: e.g. a grid core inside the walls, organic lanes outside"
+                @change="edit('shape.description', ($event.target as HTMLInputElement).value)"
+              />
             </div>
-            <input
-              class="wide"
-              :value="win.layout.description ?? ''"
-              placeholder="Where each goes, if it matters: e.g. a grid core inside the walls, organic lanes outside"
-              @change="edit('shape.description', ($event.target as HTMLInputElement).value)"
-            />
           </div>
 
           <template v-for="f in win.settings ?? []" :key="f.path">
-            <label>{{ f.label }}</label>
-            <div :class="markClass(f.path)">
-              <select v-if="f.values" :value="f.value ?? ''" @change="edit(f.path, ($event.target as HTMLSelectElement).value || null)">
-                <option value="">default</option>
-                <option v-for="v in f.values" :key="v" :value="v">{{ v.replace(/-/g, ' ') }}</option>
-              </select>
-              <input v-else-if="f.type === 'count'" class="num" type="number" :min="f.min" :max="f.max" :value="countOf(f.value)" placeholder="default"
-                     @change="edit(f.path, ($event.target as HTMLInputElement).value === '' ? null : Number(($event.target as HTMLInputElement).value))" />
-              <input v-else-if="f.type === 'bool'" type="checkbox" :checked="Boolean(f.value)" @change="edit(f.path, ($event.target as HTMLInputElement).checked)" />
-              <span v-if="f.hint" class="dim"> {{ f.hint }}</span>
+            <div class="form-cell">
+              <label>{{ f.label }} <span v-if="f.hint" class="help" :title="f.hint">?</span></label>
+              <div :class="markClass(f.path)">
+                <select v-if="f.values" :value="f.value ?? ''" @change="edit(f.path, ($event.target as HTMLSelectElement).value || null)">
+                  <option value="">default</option>
+                  <option v-for="v in f.values" :key="v" :value="v">{{ v.replace(/-/g, ' ') }}</option>
+                </select>
+                <input v-else-if="f.type === 'count'" class="num" type="number" :min="f.min" :max="f.max" :value="countOf(f.value)" placeholder="default"
+                       @change="edit(f.path, ($event.target as HTMLInputElement).value === '' ? null : Number(($event.target as HTMLInputElement).value))" />
+                <input v-else-if="f.type === 'bool'" type="checkbox" :checked="Boolean(f.value)" @change="edit(f.path, ($event.target as HTMLInputElement).checked)" />
+              </div>
             </div>
           </template>
 
-          <label v-if="win.walled.options.length">Walls</label>
-          <div v-if="win.walled.options.length" :class="markClass('walled')">
-            <select :value="win.walled.value ?? 'none'" @change="edit('walled', ($event.target as HTMLSelectElement).value)">
-              <option v-for="w in win.walled.options" :key="w" :value="w">{{ w }}</option>
-            </select>
+          <div class="form-cell" v-if="win.walled.options.length">
+            <label v-if="win.walled.options.length">Walls</label>
+            <div v-if="win.walled.options.length" :class="markClass('walled')">
+              <select :value="win.walled.value ?? 'none'" @change="edit('walled', ($event.target as HTMLSelectElement).value)">
+                <option v-for="w in win.walled.options" :key="w" :value="w">{{ w }}</option>
+              </select>
+            </div>
           </div>
 
-          <label>Features</label>
-          <div class="chips">
-            <button v-for="f in win.features.options" :key="f" :class="{ active: win.features.value.includes(f) }" @click="toggleFeature(f)">{{ f }}</button>
+          <div class="form-cell">
+            <label>Features</label>
+            <div class="chips">
+              <button v-for="f in win.features.options" :key="f" :class="{ active: win.features.value.includes(f) }" @click="toggleFeature(f)">{{ f }}</button>
+            </div>
           </div>
 
-          <label>Style</label>
-          <div class="style">
-            <span v-for="(s, key) in win.style" :key="key" :class="markClass('style.' + key)">
-              <template v-if="s.options">
-                {{ key }}
-                <select :value="s.value ?? ''" @change="edit('style.' + key, ($event.target as HTMLSelectElement).value)">
-                  <option value="">—</option>
-                  <option v-for="o in s.options" :key="o" :value="o">{{ o }}</option>
-                </select>
-              </template>
-            </span>
+          <div class="form-cell">
+            <label>Style</label>
+            <div class="style">
+              <span v-for="(s, key) in win.style" :key="key" :class="markClass('style.' + key)">
+                <template v-if="s.options">
+                  {{ key }}
+                  <select :value="s.value ?? ''" @change="edit('style.' + key, ($event.target as HTMLSelectElement).value)">
+                    <option value="">—</option>
+                    <option v-for="o in s.options" :key="o" :value="o">{{ o }}</option>
+                  </select>
+                </template>
+              </span>
+            </div>
           </div>
+
         </div>
 
         <table class="components">
@@ -2781,6 +2862,20 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
 }
 .title {
   font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.header .browse {
+  margin-left: auto;
+}
+.header .title + .browse {
+  margin-left: 0;
+}
+.warn-box {
+  border-left: 3px solid #e5a50a;
 }
 .body {
   flex: 1;
@@ -3311,23 +3406,25 @@ button.link {
   padding-top: 8px;
   border-top: 1px solid #333;
 }
+/* Working: a box in the top-right corner, over nothing else: the pages stay usable meanwhile. */
 .working-overlay {
   position: absolute;
-  inset: 0;
+  top: 38px;
+  right: 10px;
   z-index: 20;
-  background: rgba(17, 17, 27, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  pointer-events: none;
 }
 .working-box {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  max-width: min(520px, 90%);
-  padding: 14px 18px;
+  max-width: 340px;
+  padding: 8px 12px;
   background: #1e1e2e;
   border: 1px solid #3b82f6;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  font-size: 12px;
 }
 .spinner {
   width: 22px;
@@ -3855,15 +3952,36 @@ table.decisions input {
 .layout-form h4 {
   margin: 0 0 4px;
 }
-.layout-form .form-grid {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 6px 12px;
-  align-items: start;
+/* A horizontal form (the layout form, Confirm's main fields): fields side by side, wrapping; descriptions behind "?". */
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: flex-end;
 }
-.layout-form label {
+.form-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 120px;
+}
+.form-cell label {
   text-transform: capitalize;
-  padding-top: 3px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+.form-cell select,
+.form-cell input[type='text'] {
+  max-width: 180px;
+}
+.confirm-form {
+  margin-bottom: 10px;
+}
+.confirm-form .form-cell > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
 }
 .layout-form .size-pair input {
   width: 4em;

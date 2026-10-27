@@ -49,6 +49,7 @@ interface ProposalEntry {
   consistency: { state: 'none' | 'checking' | 'done' | 'failed'; issues: ConsistencyIssue[]; errors: string[] }
   autoApplied: number[]
   autoState: 'applied' | 'undone'
+  autoCanToggle?: boolean // its undo step is the next to undo or redo
   // After Apply: whether the change is in effect (Ctrl+Z / Ctrl+Y follow it).
   applyState?: 'applied' | 'undone' | 'settled'
   canUndo?: boolean
@@ -263,6 +264,14 @@ function handle(message: Record<string, unknown>): void {
       } else {
         entry.consistency = { state: 'failed', issues: [], errors: result.errors ?? [] }
       }
+    }
+  } else if (message.type === 'ai:autoState') {
+    // The auto-applied tweaks followed the undo history (Ctrl+Z, Ctrl+Y): Undo while applied, Apply once undone.
+    const entry = entries.value.find((e) => e.kind === 'proposal' && e.id === message.id) as ProposalEntry | undefined
+    if (entry && message.state !== 'settled') {
+      entry.autoState = message.state as ProposalEntry['autoState']
+      entry.autoCanToggle = !!message.canToggle
+      if (message.state === 'applied') entry.autoNote = ''
     }
   } else if (message.type === 'ai:autoUndone') {
     const entry = entries.value.find((e) => e.kind === 'proposal' && e.id === message.id) as ProposalEntry | undefined
@@ -712,6 +721,15 @@ const examples = [
           <div v-if="entry.autoApplied.length" class="auto-line">
             <template v-if="entry.autoState === 'undone'">
               Undone{{ entry.autoNote ? ` — kept your newer value for ${entry.autoNote}` : '' }}
+              <button
+                v-if="entry.autoCanToggle"
+                class="primary"
+                :disabled="editorState.playing"
+                title="Apply these tweaks again (Ctrl+Y)"
+                @click="undoAuto(entry)"
+              >
+                Apply
+              </button>
             </template>
             <template v-else>
               {{ entry.autoApplied.length }} small {{ entry.autoApplied.length === 1 ? 'tweak' : 'tweaks' }} applied

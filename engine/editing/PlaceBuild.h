@@ -248,6 +248,8 @@ public:
     // (Confirm, Layout, Plan, Paint, Mark, Assets, Build). From the project's setting when started; "" when set.
     const std::string& Method() const { return method_; }
     std::string SetMethod(const std::string& method);
+    // This build's art provider and background model (Build ▸ Assets); "" for the project's (Project Settings ▸ AI).
+    void SetModels(const nlohmann::json& models);
     // Built from its painting: the Paint method, and painted.
     bool Painted() const;
     // ⑤ Mark: pre-filled again (an occluder the user edited stays, unless `replaceEdited`), or saved from the editor.
@@ -386,6 +388,8 @@ private:
     bool makingBackground_ = false;
     bool painting_ = false;      // ④ Paint: asked, not answered
     std::string method_ = "Assembled"; // Assembled or Paint (Method)
+    std::string artModel_, backgroundModel_; // SetModels
+    std::string variety_; // how many looks each kind gets: "low", "high", or "" (the ontology's), from the start page
     int buildRounds_ = 0;
     nlohmann::json buildCheck_;            // the last check of the built scene
     std::vector<std::string> redo_;        // needs whose art the check refused, for the next round

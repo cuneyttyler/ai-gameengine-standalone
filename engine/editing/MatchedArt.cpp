@@ -854,6 +854,10 @@ json MatchedArtSheets(const json& solved, const json& assetPlan, const Ontology*
                 const bool building = row.value("layer", "") == "building";
                 if (v == "high") variants = std::min(building ? 4 : 6, static_cast<int>(std::ceil(root / 1.5)));
                 else if (v == "medium") variants = std::min(3, static_cast<int>(std::ceil(root / 3.0)));
+                // The build's asset variety (its start page): one look each, or twice as many (a role that never varies stays one).
+                const std::string wanted = assetPlan.value("variety", "");
+                if (wanted == "low") variants = 1;
+                else if (wanted == "high" && v != "low" && v != "none") variants = std::min(building ? 6 : 8, std::max(2, variants * 2));
             }
             for (int k = 1; k <= variants; ++k) {
                 json p = piece;

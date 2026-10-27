@@ -4325,16 +4325,21 @@
           "name": "background",
           "options": [
             "",
-            "bfl:flux-3-image"
+            "bfl:flux-3-image",
+            "bfl:flux-2-max",
+            "bfl:flux-2-pro",
+            "bfl:flux-2-klein-4b"
           ],
           "type": "string"
         },
         {
-          "description": "Who paints a place whole for the Paint build method (empty: FLUX-3-Image). FLUX-2-Klein-4b: fast, follows the plan as a rough draft; FLUX-3-Image: keeps the layout best; FLUX-3-Image-to-Pro and -to-Klein: FLUX-3-Image paints the plan, then FLUX.2 pro or klein repaints its look.",
+          "description": "Who paints a place whole for the Paint build method (empty: FLUX-3-Image). FLUX-2-Klein-4b: fast, follows the plan as a rough draft; FLUX-2-Pro and FLUX-2-Max: rich looks, may drift from the layout; FLUX-3-Image: keeps the layout best; FLUX-3-Image-to-Pro and -to-Klein: FLUX-3-Image paints the plan, then FLUX.2 pro or klein repaints its look.",
           "name": "paint",
           "options": [
             "",
             "flux-2-klein-4b",
+            "flux-2-pro",
+            "flux-2-max",
             "flux-3-image",
             "flux-3-to-pro",
             "flux-3-to-klein"

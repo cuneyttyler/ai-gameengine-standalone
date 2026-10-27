@@ -45,12 +45,12 @@ const props = defineProps<{ filter: string }>()
 const library = ref<Library | null>(null)
 const folder = ref('') // '' : everything at the top
 const selected = ref('')
-// The details under the grid: as tall as the user drags it.
-const detailsHeight = ref(150)
+// The details at the right of the grid: as wide as the user drags it.
+const detailsWidth = ref(280)
 const libraryEl = ref<HTMLElement | null>(null)
-function resizeDetails(y: number): void {
+function resizeDetails(x: number): void {
   const box = libraryEl.value?.getBoundingClientRect()
-  if (box) detailsHeight.value = Math.max(80, Math.min(box.height - 120, box.bottom - y))
+  if (box) detailsWidth.value = Math.max(180, Math.min(box.width - 220, box.right - x))
 }
 // Art already in the open project (it came from it, or was added from here): no "Add to the project".
 const added = ref(new Set<string>())
@@ -196,6 +196,7 @@ function when(seconds?: number): string {
       <button :title="folder ? 'Export this folder' : 'Export the whole library'" @click="sendToHost({ type: 'library:export', folder })">Export…</button>
     </div>
 
+    <div class="main">
     <div class="grid">
       <button v-for="f in props.filter ? [] : children" :key="f.id" class="card folder" @dblclick="folder = f.id" @click="folder = f.id" @contextmenu.prevent="folderMenu(f, $event)">
         <span class="icon">▤</span>
@@ -222,8 +223,8 @@ function when(seconds?: number): string {
       </p>
     </div>
 
-    <Splitter v-if="item" direction="vertical" @drag="resizeDetails" />
-    <section v-if="item" class="details" :style="{ height: detailsHeight + 'px' }">
+    <Splitter v-if="item" direction="horizontal" @drag="resizeDetails" />
+    <section v-if="item" class="details" :style="{ width: detailsWidth + 'px' }">
       <img :src="LIBRARY_HOST + item.path" alt="" />
       <div>
         <strong>{{ item.name }}</strong>
@@ -241,6 +242,7 @@ function when(seconds?: number): string {
         </div>
       </div>
     </section>
+    </div>
     <div class="footer dim">
       <span v-if="library">
         {{ library.items.length }} item(s) · sharing generated art:
@@ -292,14 +294,21 @@ function when(seconds?: number): string {
 .crumb.here {
   font-weight: 600;
 }
+/* The grid and, at its right, the picked item's details. */
+.main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
 .grid {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 6px;
-  padding: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+  padding: 8px;
   align-content: start;
 }
 .card {
@@ -328,9 +337,10 @@ function when(seconds?: number): string {
   background: repeating-conic-gradient(#1c1c28 0 25%, #16161f 0 50%) 0 0 / 16px 16px;
 }
 .card .pic img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: scale-down;
+  width: 90%;
+  height: 90%;
+  object-fit: contain;
+  image-rendering: pixelated; /* a small sprite shown big stays crisp */
 }
 .card .in {
   position: absolute;
@@ -366,17 +376,18 @@ function when(seconds?: number): string {
 }
 .details {
   display: flex;
-  gap: 10px;
-  padding: 6px 8px;
-  border-top: 1px solid #262637;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-left: 1px solid #262637;
   overflow: auto;
   flex-shrink: 0;
 }
 .details img {
-  height: 100%;
-  max-height: 100%;
+  width: 100%;
   aspect-ratio: 1;
   object-fit: contain;
+  image-rendering: pixelated;
   background: repeating-conic-gradient(#1c1c28 0 25%, #16161f 0 50%) 0 0 / 16px 16px;
 }
 .row {

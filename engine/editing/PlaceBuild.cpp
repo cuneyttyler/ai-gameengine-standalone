@@ -437,6 +437,8 @@ void PlaceBuild::Save() const {
                                           {"sketch", {{"done", sketched_}, {"crops", sketchCrops_}, {"sketches", sketches_}}},
                                           {"matched", matched_},
                                           {"method", method_},
+                                          {"models", {{"art", artModel_}, {"background", backgroundModel_}}},
+                                          {"variety", variety_},
                                           {"usage", usage_},
                                           {"layoutCheck", {{"checked", layoutChecked_}, {"rounds", layoutRounds_}, {"answer", layoutCheck_}}},
                                           {"fit", {{"scale", fitScale_}, {"side", fitSide_}}},
@@ -492,6 +494,9 @@ json PlaceBuild::Defaults() const { return ReadJson(host_.projectRoot / "places"
 
 std::string PlaceBuild::Start(const std::string& words, const json& choices) {
     choices_ = choices.is_object() ? choices : json::object();
+    // Not the Brief's: how many looks each kind of thing gets (Matched art).
+    variety_ = choices_.value("variety", "");
+    choices_.erase("variety");
     method_ = host_.buildMethod ? host_.buildMethod() : "Assembled";
     if (method_ != "Paint") method_ = "Assembled";
     // Choices without words: a request in words made from them.
@@ -1443,7 +1448,7 @@ void PlaceBuild::StartPlanning() {
     tidied_.clear();
     zonesTotal_ = zonesDone_ = 0;
     spec_ = solved_ = json();
-    status_ = "Planning the zones, roads and walls…";
+    status_ = "Laying out the zones, roads and walls…";
     json body = {{"brief", brief_}, {"context", PlanRootContext(host_.ontology(), brief_)}, {"examples", ExamplesLikeThis()}};
     // The user's answers, in their words: to the questions, and to the decisions that set no field.
     std::string answers = directions_;
@@ -2248,10 +2253,10 @@ json PlaceBuild::ConfirmProgress() {
                              "; asking again: attempt " + std::to_string(p.attempts) + " of " + std::to_string(kAttempts) +
                              ". Without an answer, the zones come from the Brief alone.");
         }
-        add("zones", "Planning the zones", zonesPlanning ? "active" : laidOut ? "done" : "waiting", detail);
+        add("zones", "Laying out the zones", zonesPlanning ? "active" : laidOut ? "done" : "waiting", detail);
     }
     // 5. The map of them.
-    add("layout", "Laying the zones out on the map", laidOut ? "done" : "waiting", json::array());
+    add("layout", "Placing the zones on the map", laidOut ? "done" : "waiting", json::array());
     // How far: each step done counts one, the active one half.
     double done = 0;
     std::string active;
@@ -4517,7 +4522,9 @@ std::string PlaceBuild::MakeMatchedArt(const json& assetPlan, const Ontology* on
         if (name == "pieces" || name == "style-sheet.png" || name == "ground-painted.png" || name == "checked.json") continue;
         fs::remove_all(entry.path(), ec);
     }
-    const json sheets = MatchedArtSheets(solved_, assetPlan, ontology, root / dir);
+    json plan = assetPlan;
+    if (!variety_.empty()) plan["variety"] = variety_; // fewer or more looks a kind than its role's variety
+    const json sheets = MatchedArtSheets(solved_, plan, ontology, root / dir);
     if (sheets.value("sheets", json::array()).empty()) return "nothing to make";
     const json story = story_.is_object() ? story_ : json::object();
     const json body = {{"dir", dir},
@@ -4527,7 +4534,8 @@ std::string PlaceBuild::MakeMatchedArt(const json& assetPlan, const Ontology* on
                        {"story", {{"purpose", story.value("purpose", json())}, {"mood", story.value("mood", json())}, {"logline", story.value("logline", json())}}},
                        {"look", LookFor(brief_.value("buildType", ""))},
                        // The place's background (painted or picked), for the art coloured by it (relation coloured-by).
-                       {"background", matched_.value("groundPicture", json::object()).value("path", "")}};
+                       {"background", matched_.value("groundPicture", json::object()).value("path", "")},
+                       {"provider", artModel_}};
     if (!Send({"matched-art", -1, "", "/assets/matched", body, 3600})) return "the AI is off";
     const json background = matched_.value("groundPicture", json());
     matched_ = {{"state", "making"}, {"dir", dir}, {"sheets", sheets.value("sheets", json::array()).size()}};
@@ -4589,7 +4597,7 @@ std::string PlaceBuild::MakeBackground() {
     if (makingBackground_) return "already painting it";
     const json b = solved_["grid"].value("bounds", json::array({0, 0, 1, 1}));
     const json body = {{"dir", "places/" + id_ + "/background"}, {"terrain", solved_["terrain"]}, {"cells", {b[2], b[3]}},
-                       {"description", BackgroundDescription()}};
+                       {"description", BackgroundDescription()}, {"provider", backgroundModel_}};
     if (!Send({"background", -1, "", "/places/background", body, 1800})) return "the AI is off";
     makingBackground_ = true;
     status_ = "Painting the background: the whole place, then the parts that need more detail…";
@@ -4628,6 +4636,13 @@ std::string PlaceBuild::Paint(const std::string& notes) {
     Log({{"step", "paint"}, {"notes", notes}});
     Save();
     return {};
+}
+
+void PlaceBuild::SetModels(const json& models) {
+    if (models.contains("art") && models["art"].is_string()) artModel_ = models["art"].get<std::string>();
+    if (models.contains("background") && models["background"].is_string()) backgroundModel_ = models["background"].get<std::string>();
+    Log({{"step", "models"}, {"art", artModel_}, {"background", backgroundModel_}});
+    Save();
 }
 
 std::string PlaceBuild::SetMethod(const std::string& method) {
@@ -4788,6 +4803,10 @@ std::string PlaceBuild::Open(const std::string& id) {
             }
         }
         matched_ = session.value("matched", json::object());
+        variety_ = session.value("variety", "");
+        if (const json m = session.value("models", json::object()); m.is_object()) {
+            artModel_ = m.value("art", ""), backgroundModel_ = m.value("background", "");
+        }
         // Its method; a build from before methods: Paint if it was painted and not skipped, else Assembled.
         if (session.contains("method") && session["method"].is_string()) {
             method_ = session["method"].get<std::string>();
@@ -5123,6 +5142,7 @@ json PlaceBuild::State() {
     state["backgroundDescription"] = BackgroundDescription();
     state["backgroundMaking"] = makingBackground_;
     state["method"] = method_; // Assembled or Paint: which steps it has
+    state["models"] = {{"art", artModel_}, {"background", backgroundModel_}};
     state["reviewing"] = reviewing_; // the approved map checked by the AI in the background
     if (stage_ == "planned" || stage_ == "sourcing" || stage_ == "sourced" || stage_ == "building" || stage_ == "built") {
         // ④ Paint and ⑤ Mark: the painting's files (project-relative) and the marks' counts.

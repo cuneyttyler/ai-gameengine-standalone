@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// File ▸ Project Settings (development_plan.md 5.5): the project-wide settings
-// (renderer, camera, combat, game, time…) in their own window with a close
-// button, instead of taking over the Inspector. Generated from the registry.
-import { nextTick, reactive, ref, watch } from 'vue'
+// File ▸ Project Settings (development_plan.md 5.5): the project-wide settings (renderer, camera, combat, game, time…),
+// generated from the registry, laid out as Preferences is: its sections on the left; the chosen one on the right, each
+// setting a row with its name, its control and what it does.
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { askAiAbout, editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 import { trackOverlay, untrackOverlay } from '../overlay'
@@ -18,18 +18,21 @@ interface SettingsSection {
 
 const backdrop = ref<HTMLElement | null>(null)
 const sections = ref<SettingsSection[]>([])
-const collapsed = reactive<Record<string, boolean>>({})
 const errors = reactive<Record<string, string>>({})
+const page = ref('')
+const INPUT = 'Input' // the input map: its own editor, not reflected settings
 
 onHostMessage((message) => {
   if (message.type === 'settings:data') {
     sections.value = message.sections as SettingsSection[]
+    if (!page.value || (page.value !== INPUT && !sections.value.some((s) => s.name === page.value))) page.value = sections.value[0]?.name ?? INPUT
   } else if (message.type === 'inspector:fieldError') {
     const key = `${message.component}.${message.field}`
     if (message.error) errors[key] = message.error as string
     else delete errors[key]
   }
 })
+const current = computed(() => sections.value.find((s) => s.name === page.value))
 
 watch(
   () => projectState.showProjectSettings,
@@ -56,77 +59,66 @@ function askAi(section: string, field: string): void {
   askAiAbout(`Settings.${section}.${field}`)
   close()
 }
+// "startScene" → "Start scene".
+function title(name: string): string {
+  const words = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
 </script>
 
 <template>
-  <div
-    v-if="projectState.showProjectSettings"
-    ref="backdrop"
-    class="backdrop ed-form"
-    tabindex="-1"
-    @mousedown.self="close"
-    @keydown.esc.stop="close"
-  >
+  <div v-if="projectState.showProjectSettings" ref="backdrop" class="backdrop ed-form" tabindex="-1" @mousedown.self="close" @keydown.esc.stop="close">
     <div class="sheet">
       <header>
         <h3>Project Settings</h3>
-        <button title="Close (Esc)" @click="close">×</button>
+        <span class="muted">Saved with the project (settings.aige) when you save; changes apply right away.</span>
+        <button class="close" title="Close (Esc)" @click="close">×</button>
       </header>
-      <p class="muted">Saved with the project (settings.aige) when you save. Changes apply right away.</p>
-      <div class="sections">
-        <section v-for="section in sections" :key="section.name">
-          <button class="collapse" :title="section.description" @click="collapsed[section.name] = !collapsed[section.name]">
-            {{ collapsed[section.name] ? '▸' : '▾' }} {{ section.name }}
-            <span class="muted">{{ section.description }}</span>
+      <div class="panes">
+        <nav>
+          <button v-for="s in sections" :key="s.name" :class="{ active: page === s.name }" :title="s.description" @click="page = s.name">
+            <span class="label">{{ s.name }}</span>
           </button>
-          <div v-if="!collapsed[section.name]" class="fields">
-            <template v-for="field in section.fields" :key="field.name">
-              <div class="field-row">
-                <label :title="field.description">
-                  {{ field.name }}
-                  <span v-if="field.description" class="help" :title="field.description">?</span>
-                  <button
-                    v-if="editorState.ai.state === 'ready'"
-                    class="ask-ai"
-                    title="Ask AI about this setting"
-                    @click="askAi(section.name, field.name)"
-                  >
-                    ✦
-                  </button>
-                </label>
-                <FieldEditor :field="field" :disabled="!!field.locked" :title="field.locked || undefined" @change="set(section.name, field, $event)" />
-              </div>
-              <div v-if="errors[`${section.name}.${field.name}`]" class="field-error">
-                {{ errors[`${section.name}.${field.name}`] }}
-              </div>
-            </template>
-          </div>
-        </section>
-        <section>
-          <button class="collapse" title="What the player presses for each action" @click="collapsed.Input = !collapsed.Input">
-            {{ collapsed.Input ? '▸' : '▾' }} Input
-            <span class="muted">Actions and their keys, mouse and gamepad buttons (input.json).</span>
+          <button :class="{ active: page === INPUT }" title="What the player presses for each action" @click="page = INPUT">
+            <span class="label">Input</span>
           </button>
-          <InputSettings v-if="!collapsed.Input" class="fields" />
-        </section>
+        </nav>
+        <main>
+          <template v-if="page === INPUT">
+            <h4>Input</h4>
+            <p class="lead">Actions and their keys, mouse and gamepad buttons (input.json).</p>
+            <section class="group">
+              <h5>Actions</h5>
+              <InputSettings />
+            </section>
+          </template>
+          <template v-else-if="current">
+            <h4>{{ current.name }}</h4>
+            <p class="lead">{{ current.description }}</p>
+            <section class="group">
+              <h5>Settings</h5>
+              <template v-for="field in current.fields" :key="field.name">
+                <div class="field">
+                  <label>
+                    {{ title(field.name) }}
+                    <button v-if="editorState.ai.state === 'ready'" class="ask-ai" title="Ask AI about this setting" @click="askAi(current.name, field.name)">✦</button>
+                  </label>
+                  <div class="control">
+                    <FieldEditor :field="field" :disabled="!!field.locked" :title="field.locked || undefined" @change="set(current.name, field, $event)" />
+                    <p v-if="field.description" class="desc">{{ field.description }}</p>
+                    <p v-if="errors[`${current.name}.${field.name}`]" class="field-error">{{ errors[`${current.name}.${field.name}`] }}</p>
+                  </div>
+                </div>
+              </template>
+            </section>
+          </template>
+        </main>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.help {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  line-height: 14px;
-  text-align: center;
-  font-size: 10px;
-  border: 1px solid currentColor;
-  opacity: 0.7;
-  cursor: help;
-  margin-left: 4px;
-}
 .backdrop {
   position: fixed;
   inset: 0;
@@ -138,56 +130,120 @@ function askAi(section: string, field: string): void {
   outline: none;
 }
 .sheet {
-  width: min(640px, 92vw);
-  max-height: 84vh;
+  width: min(1000px, 94vw);
+  height: min(680px, 90vh);
   display: flex;
   flex-direction: column;
   background: #181825;
   border: 1px solid #333;
   border-top: 2px solid #3b82f6;
-  padding: 14px 18px;
 }
 header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid #2a2a3a;
+}
+header .close {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #cdd6f4;
+  font-size: 16px;
+  cursor: pointer;
+}
+header .close:hover {
+  border-color: #45475a;
 }
 h3 {
   margin: 0;
 }
-.sections {
-  overflow: auto;
-  margin-top: 8px;
+.panes {
+  flex: 1;
+  display: flex;
+  min-height: 0;
 }
-.collapse {
-  width: 100%;
-  text-align: left;
+nav {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #2a2a3a;
+  background: #141420;
+  padding: 8px 0;
+  overflow: auto;
+}
+nav button {
+  padding: 9px 16px;
   border: none;
-  background: #11111b;
-  color: #eee;
+  border-left: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #cdd6f4;
   font: inherit;
-  font-weight: 600;
-  padding: 6px 8px;
-  margin-top: 6px;
+  text-align: left;
   cursor: pointer;
 }
-.collapse .muted {
-  font-weight: 400;
-  margin-left: 8px;
+nav button:hover {
+  background: #1e1e2e;
 }
-.fields {
-  padding: 4px 8px;
+nav button.active {
+  background: #1e1e2e;
+  border-left-color: #3b82f6;
 }
-.field-row {
+main {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 24px 24px;
+}
+h4 {
+  margin: 0 0 4px;
+  font-size: 1.15em;
+}
+.lead {
+  margin: 0 0 14px;
+  opacity: 0.6;
+  font-size: 0.9em;
+}
+.group {
+  margin: 0 0 22px;
+}
+h5 {
+  margin: 0;
+  padding: 0 0 6px;
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+  border-bottom: 1px solid #3b3b52;
+}
+.field {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid #25253a;
+  align-items: start;
+}
+.field > label {
+  padding-top: 4px;
+  font-weight: 500;
+}
+.control {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 3px 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
 }
-.field-row label {
-  opacity: 0.8;
-  white-space: nowrap;
+.desc {
+  margin: 0;
+  opacity: 0.6;
+  font-size: 0.88em;
 }
 .ask-ai {
   border: none;
@@ -199,11 +255,10 @@ h3 {
 .field-error {
   color: #f59e0b;
   font-size: 0.85em;
-  padding-bottom: 4px;
+  margin: 0;
 }
 .muted {
   opacity: 0.6;
   font-size: 0.9em;
-  margin: 4px 0;
 }
 </style>

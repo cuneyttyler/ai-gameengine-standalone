@@ -309,6 +309,16 @@ function pick(c: Choice, o: string): void {
   }
   picked.value = next
 }
+// The main choices, as selects above the rest (Other choices): genre, perspective, tone and art style.
+const MAIN_CHOICES = ['genre', 'perspective', 'tone', 'artStyle.style']
+const mainChoices = computed<Choice[]>(() => ((state.value.choices ?? []) as Choice[]).filter((c) => MAIN_CHOICES.includes(c.path) && c.type !== 'enumSet'))
+const otherChoices = computed<Choice[]>(() => ((state.value.choices ?? []) as Choice[]).filter((c) => !mainChoices.value.includes(c)))
+function setMain(c: Choice, value: string): void {
+  const next = { ...picked.value }
+  if (value) next[c.path] = value
+  else delete next[c.path]
+  picked.value = next
+}
 const replaceChoices = ref<Record<string, unknown>>({})
 // The home page (⌂ on the step bar): a new plan, and the project's plans (the current one, the earlier ones).
 const home = ref(false)
@@ -407,12 +417,21 @@ function statusMark(status: string): string {
         <span class="muted">{{ (state.buildMethod || state.projectBuildMethod) === state.projectBuildMethod ? "the project's" : 'this plan only' }}</span>
       </label>
       <textarea v-model="request" rows="4" placeholder="A short dark-fantasy action RPG about a disgraced warden recovering a stolen amulet, three towns and a dungeon, about four hours" />
-      <section v-if="state.choices?.length" class="choices">
+      <div v-if="mainChoices.length" class="main-choices">
+        <label v-for="c in mainChoices" :key="c.path" class="main-choice">
+          <span>{{ c.label }}</span>
+          <select :value="(picked[c.path] as string) ?? ''" @change="setMain(c, ($event.target as HTMLSelectElement).value)">
+            <option value="">Decided by the AI</option>
+            <option v-for="o in c.options" :key="o" :value="o">{{ o }}</option>
+          </select>
+        </label>
+      </div>
+      <section v-if="otherChoices.length" class="choices">
         <button class="toggle" @click="choicesOpen = !choicesOpen">
-          {{ choicesOpen ? '▾' : '▸' }} Choices <span class="muted">{{ Object.keys(picked).length ? Object.keys(picked).length + ' chosen: kept as you chose them' : 'from the story ontology, sent with the request' }}</span>
+          {{ choicesOpen ? '▾' : '▸' }} Other choices <span class="muted">{{ Object.keys(picked).length ? Object.keys(picked).length + ' chosen: kept as you chose them' : 'from the story ontology, sent with the request' }}</span>
         </button>
         <div v-if="choicesOpen" class="choice-rows">
-          <div v-for="c in state.choices" :key="c.path" class="choice-row">
+          <div v-for="c in otherChoices" :key="c.path" class="choice-row">
             <span class="label">{{ c.label }}</span>
             <div class="chips">
               <button v-for="o in c.options" :key="o" :class="['chip', { on: isPicked(c, o) }]" @click="pick(c, o)">{{ o }}</button>
@@ -946,6 +965,21 @@ function statusMark(status: string): string {
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+.main-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 6px 0;
+}
+.main-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+}
+.main-choice select {
+  min-width: 140px;
 }
 .method-row {
   display: flex;

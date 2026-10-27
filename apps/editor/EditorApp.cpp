@@ -342,7 +342,9 @@ void EditorApp::StartRecovery() {
 void EditorApp::WriteRecovery() {
     // Every two minutes, while the open scene has changes not saved (never during Play: the scene is the game's then).
     const auto now = std::chrono::steady_clock::now();
-    if (now - recoverySaved_ < std::chrono::minutes(2)) return;
+    const nlohmann::json every = Pref("recoveryMinutes", 2); // Preferences ▸ General (0: never)
+    const int minutes = every.is_number() ? every.get<int>() : 2;
+    if (minutes <= 0 || now - recoverySaved_ < std::chrono::minutes(minutes)) return;
     recoverySaved_ = now;
     if (!dirty_ || playing_ || !recoveryOffer_.is_null()) return; // an offer not answered yet keeps its snapshot
     const fs::path dir = RecoveryDir();
@@ -840,6 +842,15 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     const std::string type = message.value("type", "");
     const SlowWatch watch("message " + type);
     if ((type.rfind("build:", 0) == 0 || type == "scene:backgroundImage") && HandleBuildMessage(type, message)) return;
+    if (type == "prefs:request" || type == "prefs:set") {
+        static const std::set<std::string> kKeys = {"uiScale", "showGridAtStart", "zoomSpeed", "invertZoom", "recoveryMinutes", "paintModel",
+                                                    "defaultBuildMethod"};
+        if (type == "prefs:set" && userPrefs_ && kKeys.contains(message.value("key", "")) && message.contains("value")) {
+            userPrefs_->Set(message.value("key", ""), message["value"]);
+        }
+        post_(PrefsJson());
+        return;
+    }
     if (type == "recovery:request") {
         // The page is up: a crash's unsaved changes offered back (StartRecovery).
         if (!recoveryOffer_.is_null()) post_(recoveryOffer_);
@@ -2571,12 +2582,26 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                 Resize(event.wheelSteps > 0 ? 1.1f : 1.0f / 1.1f);
                 return;
             }
-            // Shift held: turn (6.6), the same way.
+            // Shift held: a tile brush paints more or fewer cells (1 to 4 across); with anything else, turn (6.6).
             if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 && !playing_) {
+                const PrefabInfo* armed = tool_ == Tool::Prefab ? prefabs_.Find(brushPrefab_) : nullptr;
+                if (armed != nullptr && armed->isTile) {
+                    const int next = std::clamp(brushCells_ + (event.wheelSteps > 0 ? 1 : -1), 1, 4);
+                    if (next != brushCells_) {
+                        brushCells_ = next;
+                        editorStateStale_ = true;
+                        post_({{"type", "notify"}, {"text", "Brush: " + std::to_string(next) + " × " + std::to_string(next) + " cells"}});
+                    }
+                    return;
+                }
                 Rotate(event.wheelSteps > 0 ? 1 : -1);
                 return;
             }
-            float zoom = std::clamp(camera_.zoom * std::pow(1.15f, event.wheelSteps), kMinZoom, kMaxZoom);
+            // Preferences ▸ Viewport: how far a step zooms, and which way.
+            const nlohmann::json speedPref = Pref("zoomSpeed", 1.15);
+            const float speed = std::clamp(speedPref.is_number() ? speedPref.get<float>() : 1.15f, 1.02f, 1.5f);
+            const float steps = Pref("invertZoom", false) == true ? -event.wheelSteps : static_cast<float>(event.wheelSteps);
+            float zoom = std::clamp(camera_.zoom * std::pow(speed, steps), kMinZoom, kMaxZoom);
             camera_.ZoomAt(event.x, event.y, zoom);
             return;
         }
@@ -2621,8 +2646,17 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                     dragFromX_ = sceneX;
                     dragFromY_ = sceneY;
                     BeginEdit();
-                } else {
+                } else if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0) {
                     boxing_ = true;
+                    boxFromX_ = boxToX_ = sceneX;
+                    boxFromY_ = boxToY_ = sceneY;
+                } else {
+                    // Empty ground: the drag moves the camera (a click without moving selects the ground cell there).
+                    leftPanning_ = true;
+                    panning_ = true;
+                    panLastX_ = leftDownX_ = event.x;
+                    panLastY_ = leftDownY_ = event.y;
+                    rightDownX_ = event.x, rightDownY_ = event.y; // the move threshold below
                     boxFromX_ = boxToX_ = sceneX;
                     boxFromY_ = boxToY_ = sceneY;
                 }
@@ -2679,6 +2713,16 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                     // Laid out again where it was painted: off the UI thread, then the scene follows.
                     RunBuildJob([module, x0, y0, x1, y1](PlaceBuild& build) { return build.Paint(module, x0, y0, x1, y1); },
                                 "Can't paint here: ", [this] { UpdateBuiltParts(); });
+                }
+                return;
+            }
+            if (leftPanning_ && (event.button == Button::Left || event.button == Button::None)) {
+                leftPanning_ = false;
+                panning_ = false;
+                // A click, not a drag: the ground cell under it.
+                if (std::hypot(event.x - leftDownX_, event.y - leftDownY_) < 5.0f) {
+                    Select(std::nullopt);
+                    if (auto cell = PickLayerCell(boxFromX_, boxFromY_)) SelectCell(*cell);
                 }
                 return;
             }
@@ -2857,11 +2901,17 @@ void EditorApp::ToolStroke(float sceneX, float sceneY, bool first) {
                         break;
                     }
                 }
-                auto painted = prefabs_.Instantiate(registry_, prefab->path, cellX, cellY);
-                if (painted && std::abs(brushScale_ - 1.0f) > 1e-3f) {
-                    ScaleEntity(EngineReflection(), registry_, *painted, brushScale_);
+                // Its footprint: brushCells_ across, centred on the cell (an even size leans up and left).
+                const int from = -(brushCells_ - 1) / 2;
+                for (int dy = from; dy < from + brushCells_; ++dy) {
+                    for (int dx = from; dx < from + brushCells_; ++dx) {
+                        auto painted = prefabs_.Instantiate(registry_, prefab->path, cellX + dx, cellY + dy);
+                        if (painted && std::abs(brushScale_ - 1.0f) > 1e-3f) {
+                            ScaleEntity(EngineReflection(), registry_, *painted, brushScale_);
+                        }
+                        ApplyBrushRotation(painted);
+                    }
                 }
-                ApplyBrushRotation(painted);
                 break;
             }
             if (!first) {
@@ -4898,7 +4948,10 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
                 // White for painting tiles, accent for placing things.
                 const PrefabInfo* prefab = prefabs_.Find(brushPrefab_);
                 bool isTile = prefab != nullptr && prefab->isTile;
-                AddCellOutline(overlay, gx, gy, iso_, isTile ? kWhite : kAccent, isTile ? 0.8f : 0.9f, 1.5f);
+                const int n = isTile ? brushCells_ : 1, from = -(n - 1) / 2;
+                for (int dy = from; dy < from + n; ++dy) {
+                    for (int dx = from; dx < from + n; ++dx) AddCellOutline(overlay, gx + dx, gy + dy, iso_, isTile ? kWhite : kAccent, isTile ? 0.8f : 0.9f, 1.5f);
+                }
                 break;
             }
             case Tool::Erase:
@@ -4946,6 +4999,8 @@ void EditorApp::OnAppActivated() {
 
 void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
     userPrefs_ = std::make_unique<UserPrefs>(UserPrefs::DefaultPath());
+    showGrid_ = Pref("showGridAtStart", true).is_boolean() ? Pref("showGridAtStart", true).get<bool>() : true; // Preferences ▸ Viewport
+    editorStateStale_ = true;
     std::string projectRoot = std::filesystem::absolute(assets_.GetProject().root).string();
     aiConnection_ = std::make_unique<AiConnection>(*userPrefs_, [this, serviceDir, projectRoot]() {
         // The project's LLM (Project Settings ▸ AI), else the one chosen in Preferences, for the service to start with.
@@ -4964,6 +5019,18 @@ void EditorApp::StartAi(const std::filesystem::path& serviceDir) {
     post_(AiStatusJson());
 }
 
+nlohmann::json EditorApp::Pref(const char* key, const nlohmann::json& fallback) const {
+    return userPrefs_ ? userPrefs_->Get(key, fallback) : fallback;
+}
+
+nlohmann::json EditorApp::PrefsJson() const {
+    return {{"type", "prefs:values"},
+            {"values",
+             {{"uiScale", Pref("uiScale", 1.0)}, {"showGridAtStart", Pref("showGridAtStart", true)}, {"zoomSpeed", Pref("zoomSpeed", 1.15)},
+              {"invertZoom", Pref("invertZoom", false)}, {"recoveryMinutes", Pref("recoveryMinutes", 2)}, {"paintModel", Pref("paintModel", "flux-3-image")},
+              {"defaultBuildMethod", Pref("defaultBuildMethod", "Paint")}}}};
+}
+
 std::string EditorApp::ChosenAi(const std::string& which) {
     const AiSettings& project = ActiveSettings().ai;
     auto pref = [&](const char* key, const char* fallback) {
@@ -4980,6 +5047,7 @@ std::string EditorApp::ChosenAi(const std::string& which) {
     }
     if (which == "art") return !project.art.empty() ? project.art : pref("artProvider", "auto");
     if (which == "background") return !project.background.empty() ? project.background : pref("backgroundProvider", "bfl:flux-3-image");
+    if (which == "paint") return !project.paint.empty() ? project.paint : pref("paintModel", "flux-3-image");
     return {};
 }
 
@@ -5379,7 +5447,7 @@ std::unique_ptr<PlaceBuild> EditorApp::MakeBuild() {
     host.projectRoot = assets_.GetProject().root;
     host.layoutStep = true; // ③ Layout: the zones placed and revised before what's inside them
     host.buildMethod = [] { return ActiveSettings().places.method; };
-    host.paintModel = [] { return ActiveSettings().ai.paint; };
+    host.paintModel = [this] { return ChosenAi("paint"); }; // the project's, else Preferences ▸ Art and painting
     return std::make_unique<PlaceBuild>(std::move(host));
 }
 
@@ -5447,6 +5515,12 @@ bool EditorApp::HandlePaintMessage(const std::string& type, const nlohmann::json
                                         {{"path", "places/" + build_->Id() + "/painting.png"}, {"points", message.value("points", nlohmann::json::array())},
                                          {"box", message.value("box", nlohmann::json())}},
                                         300);
+        return true;
+    }
+    if (type == "build:models") {
+        // Build ▸ Assets: this build's art provider and background model ("" for the project's).
+        if (build_) build_->SetModels(message.value("models", nlohmann::json::object()));
+        PostBuild();
         return true;
     }
     if (type == "build:confirmMarks") {
@@ -5543,6 +5617,23 @@ void EditorApp::PostBuild() {
     }
     buildShown_["afterBackground"] = afterBackground_;
     buildShown_["projectMethod"] = ActiveSettings().places.method == "Paint" ? "Paint" : "Assembled";
+    buildShown_["projectModels"] = {{"art", ChosenAi("art")}, {"background", ChosenAi("background")}}; // the defaults
+    // Whether the place is in the open scene (its entities or its ground): a build "built" before the editor closed
+    // unsaved (or in another scene) isn't, and the panel offers Build again.
+    {
+        bool inScene = false;
+        for (auto [e, node] : registry_.view<PlaceNode>().each()) {
+            if (node.place == build_->Id()) {
+                inScene = true;
+                break;
+            }
+        }
+        if (!inScene) {
+            const TileLayer* ground = LayersOf(registry_).Find("place:" + build_->Id());
+            inScene = ground != nullptr && !ground->Empty();
+        }
+        buildShown_["inScene"] = inScene;
+    }
     post_(buildShown_);
     const SlowWatch w("PostBuild: the build's card");
     post_(build_->Card());
@@ -6019,7 +6110,9 @@ void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
     }
     ApplyOutcome autoOutcome;
     if (!autoOps.empty() && !playing_) {
+        const uint64_t before = history_.NextUndo();
         autoOutcome = ApplyAccepted(autoOps);
+        if (history_.NextUndo() != before) pending.autoStep = history_.NextUndo(); // its undo step
         pending.decided = pending.autoApplied.size() == resolved.items.size();
     } else {
         pending.autoApplied.clear();
@@ -6202,6 +6295,16 @@ void EditorApp::FinishTask() {
 }
 
 void EditorApp::PostProposalStates() {
+    // The auto-applied tweaks: applied or undone as the history says (Ctrl+Z, Ctrl+Y, or their own buttons).
+    for (auto& [id, pending] : proposals_) {
+        if (pending.autoStep == 0) continue;
+        const std::string state = history_.IsDone(pending.autoStep) ? "applied" : history_.IsUndone(pending.autoStep) ? "undone" : "settled";
+        const bool canToggle = history_.NextUndo() == pending.autoStep || history_.NextRedo() == pending.autoStep;
+        const std::string key = state + (canToggle ? "t" : "");
+        if (key == pending.autoLastState) continue;
+        pending.autoLastState = key;
+        post_({{"type", "ai:autoState"}, {"id", id}, {"state", state}, {"canToggle", canToggle}});
+    }
     for (auto& [id, pending] : proposals_) {
         if (pending.historyStep == 0) continue;
         const uint64_t step = pending.historyStep;
@@ -6270,10 +6373,20 @@ void EditorApp::StopTask(int id, const std::string& reason) {
 // changed again since (then the newer value wins and it's reported).
 void EditorApp::UndoAutoApplied(int proposalId) {
     auto it = proposals_.find(proposalId);
-    if (it == proposals_.end() || it->second.autoApplied.empty() || it->second.autoUndone || playing_) {
+    if (it == proposals_.end() || it->second.autoApplied.empty() || playing_) {
         return;
     }
     PendingProposal& pending = it->second;
+    // Its own undo step still the last one: undone as Ctrl+Z would (and redone the same way); undone, its redo there: redone.
+    if (pending.autoStep != 0 && history_.NextUndo() == pending.autoStep) {
+        Undo();
+        return;
+    }
+    if (pending.autoStep != 0 && history_.NextRedo() == pending.autoStep) {
+        Redo();
+        return;
+    }
+    if (pending.autoUndone) return;
     std::vector<nlohmann::json> restore;
     nlohmann::json skipped = nlohmann::json::array();
     for (const auto& undo : pending.autoUndo) {

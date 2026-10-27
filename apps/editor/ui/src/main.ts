@@ -31,10 +31,12 @@ if (location.hash === '#welcome') {
     import('./exportGame'), // File ▸ Export Game…
     import('./scenes'), // File ▸ New Scene…, Scenes…
     import('./recovery'), // a crash's unsaved changes offered back
+    import('./prefs'), // the user's preferences (the interface scale applied here)
   ])
     .then(([{ default: App }]) => {
       createApp(App).mount('#app')
       mounted = true
+      void import('./prefs').then((p) => p.requestPrefs())
     })
     .catch((error) => report(String(error?.stack ?? error)))
 }

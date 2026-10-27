@@ -2,6 +2,7 @@
 // New Project (development_plan.md 4.2, 5.4): every choice in one window — its name and where it goes, the grid, and
 // the project's AI (each "Use app default" unless the project should have its own: Project Settings ▸ AI). Shown by
 // the welcome window and by File ▸ New Project; the host creates it and opens it.
+import { prefs } from '../prefs'
 import { computed, ref, watch } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
 
@@ -22,7 +23,7 @@ const art = ref('')
 const background = ref('')
 const paintModel = ref('')
 // How the AI builds places (Project Settings ▸ Places ▸ method); each build and plan can choose the other.
-const buildMethod = ref<'Assembled' | 'Paint'>('Paint')
+const buildMethod = ref<'Assembled' | 'Paint'>(prefs.defaultBuildMethod) // Preferences ▸ New projects
 const METHOD_HELP: Record<string, string> = {
   Assembled: 'Each building, tree and prop gets its own art, put together on the grid over a painted background; every piece can be moved and edited. Steps: Confirm, Layout, Plan, Assets, Build.',
   Paint: "Each place is painted whole as one picture (as Baldur's Gate's areas are), then you mark where one can walk and what a character goes behind; only doors, chests, items and characters get art of their own. Steps: Confirm, Layout, Plan, Paint, Mark, Assets, Build.",
@@ -40,6 +41,7 @@ watch(
   (open) => {
     if (!open) return
     error.value = ''
+    buildMethod.value = prefs.defaultBuildMethod
     sendToHost({ type: 'project:location' })
   },
   { immediate: true },

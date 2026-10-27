@@ -560,7 +560,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("art", &AiSettings::art, "Who draws the prefabs' art (empty: the app's).")
         .Options({"", "mistral", "pixellab", "bfl:flux-2-klein-4b", "bfl:flux-3-image", "bfl:flux-2-pro"})
         .Field("background", &AiSettings::background, "Who paints the places' backgrounds (empty: the app's).")
-        .Options({"", "bfl:flux-3-image"})
+        .Options({"", "bfl:flux-3-image", "bfl:flux-2-max", "bfl:flux-2-pro", "bfl:flux-2-klein-4b"})
         .Field("paint", &AiSettings::paint,
                "Who paints a place whole for the Paint build method (empty: FLUX-3-Image). FLUX-2-Klein-4b: fast, follows "
                "the plan as a rough draft; FLUX-2-Pro and FLUX-2-Max: rich looks, may drift from the layout; FLUX-3-Image: keeps the layout best; FLUX-3-Image-to-Pro and -to-Klein: FLUX-3-Image "

@@ -167,10 +167,16 @@ numbered in reading order and take the looks in turn, so neighbours differ.
 
 **Other looks and back views are made from the first piece** (`derive_pieces`), not boxes on a sheet: a small box
 labelled "a bicycle, version 2" or "a car, seen from behind" was often painted as a little building.
-- **Another look** (2026-10-27) is a new design: an empty canvas as image 1, the accepted first look as image 2 (its
-  style, scale and angle only), "paint one cottage house, a different building from the one in image 2: its own
-  footprint shape, roof form, storeys, facade…". An edit of the first look (as before) only recoloured it, which read as
-  the same house painted another colour.
+- **Another look** (2026-10-27) is painted from its own words, with no reference image. For each kind, the LLM (the
+  vision provider) writes one description per extra look, each different in form: storeys, footprint shape, roof form,
+  size, features (`VARIANT_TASK`: "a one-storey cottage with one small window on each side and a low thatched roof"
+  against "a two-storey timber house with a balcony over the door and a steep gabled roof"). Each is painted in the
+  pieces' framing with the place's style line (kept in `variant-prompts.json`). An edit of the first look only
+  recoloured it, and a reference image kept its shape (`builder_tests/variant_test`). Without the LLM's answer, a look is
+  painted on an empty canvas with the first look as image 2.
+- **Cutting** reads the background a picture really has from its border: a model asked for pure magenta often paints a
+  shaded magenta or a maroon. When it isn't the key colour, the background is what joins the border in that colour
+  (flood-filled), so the same colour inside the thing stays.
 - **A back view** is still an edit of its look's front: "the same bicycle, seen from behind".
 
 Fronts first, then their backs (each from its own front).

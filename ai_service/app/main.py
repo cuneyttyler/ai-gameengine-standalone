@@ -204,6 +204,7 @@ class BackgroundRequest(BaseModel):
     terrain: dict                      # the solved layout's terrain {palette, rows}
     cells: list[int]                   # [W, H]
     description: str = ""              # the background description (the planner's, edited by the user)
+    provider: str = ""                 # this build's background model (Build ▸ Assets); "" for the service's (the project's)
     seed: int = 7
 
 
@@ -232,6 +233,7 @@ class MatchedRequest(BaseModel):
     story: dict = {}
     look: dict = {}
     background: str = ""               # the place's background (project path), for the art coloured by it (coloured-by)
+    provider: str = ""                 # this build's art provider (Build ▸ Assets); "" for the service's (the project's)
 
 
 class AnimationRequest(BaseModel):
@@ -298,7 +300,8 @@ def available_providers() -> dict[str, bool]:
 # What draws the art (Preferences ▸ AI ▸ Art): auto (follows the LLM), Mistral, PixelLab, or a BFL model ("bfl:<model>").
 ART_PROVIDERS = ("auto", "mistral", "pixellab") + tuple(f"bfl:{m}" for m in ("flux-2-klein-4b", "flux-3-image", "flux-2-pro"))
 # What paints a place's background (docs/places/background.md): FLUX.3 Image only, for now (klein invents objects).
-BACKGROUND_PROVIDERS = ("bfl:flux-3-image",)
+# FLUX.3 Image keeps the map best; FLUX.2 max is as good, slower; pro and klein are weaker (builder_tests/background_tests).
+BACKGROUND_PROVIDERS = ("bfl:flux-3-image", "bfl:flux-2-max", "bfl:flux-2-pro", "bfl:flux-2-klein-4b")
 
 
 def make_image_generator(art: str, llm: str | None) -> ImageGenerator | None:
@@ -641,9 +644,16 @@ def create_app(
             return {"ok": False, "errors": [f"No sheets at {request.dir}"]}
         load_dotenv(Path(__file__).resolve().parent.parent / ".env")
         art = state.get("artProvider", "auto")
+        generator = state.get("images")
+        if request.provider and request.provider != art:
+            # This build's own choice: its generator for this call.
+            if request.provider not in ART_PROVIDERS:
+                return {"ok": False, "errors": [f"Unknown art provider {request.provider}: one of {', '.join(ART_PROVIDERS)}"]}
+            art = request.provider
+            generator = make_image_generator(art, getattr(state["provider"], "name", None))
         if art == "auto":
             art = "mistral" if available_providers()["mistral"] else "pixellab"
-        return make(art, root, request.dir, request.sheets, request.model_dump(), generator=state.get("images"), vision=state.get("vision"),
+        return make(art, root, request.dir, request.sheets, request.model_dump(), generator=generator, vision=state.get("vision"),
                     keys={"bfl": os.environ.get("BFL_API_KEY")}, report=progress.reporter())
 
     @app.put("/art-provider")
@@ -682,7 +692,9 @@ def create_app(
         key = os.environ.get("BFL_API_KEY")
         if not key:
             return {"ok": False, "errors": ["No key for BFL: set BFL_API_KEY in ai_service/.env"]}
-        provider = state.get("backgroundProvider", BACKGROUND_PROVIDERS[0])
+        provider = request.provider or state.get("backgroundProvider", BACKGROUND_PROVIDERS[0])
+        if provider not in BACKGROUND_PROVIDERS:
+            return {"ok": False, "errors": [f"Unknown background model {provider}: one of {', '.join(BACKGROUND_PROVIDERS)}"]}
         try:
             made = paint_background(BflPainter(key, provider.split(":", 1)[1]), request.terrain, (request.cells[0], request.cells[1]),
                                     request.description, folder, seed=request.seed, report=progress.reporter())
