@@ -851,6 +851,12 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         post_(PrefsJson());
         return;
     }
+    if (type == "cell:makeAsset") {
+        // The viewport's right-click on ground (a built place's): its picture there, cut out as an image of the project and
+        // made a tile prefab, to paint more of that ground elsewhere (a road over the background).
+        MakeAssetFromCell(message.value("x", 0), message.value("y", 0));
+        return;
+    }
     if (type == "recovery:request") {
         // The page is up: a crash's unsaved changes offered back (StartRecovery).
         if (!recoveryOffer_.is_null()) post_(recoveryOffer_);
@@ -2698,6 +2704,7 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                        {"entity", entity},
                        {"cell", {gx, gy}},
                        {"cellPrefab", cellPrefab},
+                       {"layerCell", !picked && PickLayerCell(sceneX, sceneY).has_value()}, // a ground cell (Make an asset from it)
                        {"brush", tool_ == Tool::Prefab ? brushPrefab_ : std::string()}});
             }
             if (event.button == Button::Right || event.button == Button::Middle || event.button == Button::None) {
@@ -3019,6 +3026,57 @@ std::optional<EditorApp::CellPick> EditorApp::PickLayerCell(float sceneX, float 
         if ((*it)->Get(gx, gy) != TileLayer::kEmpty) return CellPick{(*it)->name, gx, gy};
     }
     return std::nullopt;
+}
+
+void EditorApp::MakeAssetFromCell(int gx, int gy) {
+    if (playing_) return;
+    const TileLayers* layers = FindLayers(registry_);
+    const TileDef* def = nullptr;
+    if (layers != nullptr) {
+        const auto ordered = layers->Ordered();
+        for (auto it = ordered.rbegin(); it != ordered.rend() && def == nullptr; ++it) {
+            if (const uint16_t id = (*it)->Get(gx, gy); id != TileLayer::kEmpty) def = (*it)->Def(id);
+        }
+    }
+    if (def == nullptr || def->sprite.texture.empty()) {
+        post_({{"type", "notify"}, {"text", "No ground picture in that cell"}});
+        return;
+    }
+    const auto image = assets_.LoadTexture(def->sprite.texture);
+    if (!image || image->width == 0) {
+        post_({{"type", "notify"}, {"text", "The ground's picture can't be read: " + def->sprite.texture}});
+        return;
+    }
+    // Its square of the picture: a painted ground's chunk (uvCells across, from uvOrigin), else the sprite's own region.
+    const Sprite& s = def->sprite;
+    float u0 = s.u0, v0 = s.v0, u1 = s.u1, v1 = s.v1;
+    if (s.uvCells > 0) {
+        const float n = static_cast<float>(s.uvCells);
+        u0 = (gx - s.uvOriginX) / n, v0 = (gy - s.uvOriginY) / n, u1 = u0 + 1.0f / n, v1 = v0 + 1.0f / n;
+    }
+    const int x0 = std::clamp(static_cast<int>(std::lround(std::min(u0, u1) * image->width)), 0, static_cast<int>(image->width) - 1);
+    const int y0 = std::clamp(static_cast<int>(std::lround(std::min(v0, v1) * image->height)), 0, static_cast<int>(image->height) - 1);
+    const int x1 = std::clamp(static_cast<int>(std::lround(std::max(u0, u1) * image->width)), x0 + 1, static_cast<int>(image->width));
+    const int y1 = std::clamp(static_cast<int>(std::lround(std::max(v0, v1) * image->height)), y0 + 1, static_cast<int>(image->height));
+    ImageData cut;
+    cut.width = static_cast<uint32_t>(x1 - x0), cut.height = static_cast<uint32_t>(y1 - y0);
+    cut.rgba.resize(static_cast<size_t>(cut.width) * cut.height * 4);
+    for (int y = 0; y < static_cast<int>(cut.height); ++y) {
+        std::copy_n(&image->rgba[(static_cast<size_t>(y0 + y) * image->width + x0) * 4], cut.width * 4, &cut.rgba[static_cast<size_t>(y) * cut.width * 4]);
+    }
+    const std::string stem = std::filesystem::path(s.texture).stem().string();
+    const std::string name = stem + "-cell-" + std::to_string(gx) + "-" + std::to_string(gy);
+    const std::string rel = "assets/cells/" + name + ".png";
+    std::error_code ec;
+    std::filesystem::create_directories(assets_.GetProject().root / "assets" / "cells", ec);
+    if (!WritePng(assets_.GetProject().root / rel, cut)) {
+        post_({{"type", "notify"}, {"text", "Couldn't write " + rel}});
+        return;
+    }
+    RefreshAssets();
+    // A tile prefab of it, lying flat on the grid (the ground's pictures are top-down), solid if the cell was.
+    CreatePrefabFromAsset(rel, 0, true, def->solid, name, true);
+    post_({{"type", "notify"}, {"text", "Made " + name + " (a tile prefab): paint with it from the Prefabs panel"}});
 }
 
 void EditorApp::SelectCell(const CellPick& cell) {

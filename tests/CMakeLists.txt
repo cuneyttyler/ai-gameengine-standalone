@@ -75,6 +75,8 @@ add_executable(aige_tests
     user_library_test.cpp
     live_build_test.cpp
     place_flow_test.cpp
+    layout_tests/layout_revise_test.cpp
+    plan_tests/plan_revise_test.cpp
     big_scene_test.cpp
     catalog_test.cpp
     brief_test.cpp

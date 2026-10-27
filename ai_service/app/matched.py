@@ -628,13 +628,23 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
     # boxes on a sheet. Made before the sheets; kept like any piece.
     blocks = [p for p in todo if p.get("kit")]
     todo = [p for p in todo if not p.get("kit")]
-    groups = _groups(todo)
+    # The method (2026-10-27): "words", each piece painted alone from a description the LLM writes for it (a kind's
+    # looks different in form), no sheets, at most one repaint; "sheets", the earlier style-sheet way (boxes on sheets,
+    # a check, fix rounds), which cost many calls and drew plain one-cell houses.
+    words = context.get("artMethod", "words") != "sheets"
+    if words:
+        todo += [p for p in derived if p.get("view") != "back"]  # other looks: from their own words too
+        derived = [p for p in derived if p.get("view") == "back"]
+    groups = [] if words else _groups(todo)
     # The steps, known now (the fixes are added when the check has said what's wrong).
     track = track or Steps()
     ground = next((s for s in sheets.get("sheets", []) if s.get("kind") == "ground"), None)
     if blocks:
         track.add("blocks", "Wall blocks: the wall, then what's set in it or on it", blocks)
     first_is_style = bool(groups) and style_png is None
+    if words and todo:
+        track.add("describe", "Describing each kind and its looks (the LLM)")
+        track.add("paint", f"Painting {len(todo)} pieces from their descriptions", todo)
     for n, group in enumerate(groups):
         if n == 0 and first_is_style:
             track.add("style", "Style sheet: sets the look of every other sheet", group)
@@ -644,7 +654,7 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
     if vision is not None:
         track.add("check", "Checking the pieces (the vision model)")
     if derived:
-        track.add("derived", "Other looks and back views (edits of their first look)", derived)
+        track.add("derived", "Back views (edits of their front)" if words else "Other looks and back views (edits of their first look)", derived)
     if vision is not None:
         track.add("facing", "Turning pieces to face the right way")
     if ground and not (folder / "ground-painted.png").exists():
@@ -659,97 +669,110 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
         track.done("blocks")
     if had:
         steps.append({"kept": sorted(had)})
-    from concurrent.futures import ThreadPoolExecutor
-    if first_is_style:
-        # The style sheet first: every other sheet is painted in its look.
-        track.start("style")
-        result = style_sheet(painter, model, folder, sheets, context, vision, seed, pieces=groups[0], name="style")
-        style_png = result["png"]
-        made |= set(result["named"])
-        track.done("style")
-        steps.append({"sheet": "style", "pieces": [p["key"] for p in groups[0]], "items": result["items"], "named": list(result["named"]),
-                      "prompt": result["prompt"]})
-        groups = groups[1:]
-
-    def sheet(numbered):
-        # Each later sheet needs only the style sheet: four painted at a time.
-        n, group = numbered
-        track.start(f"add-{n + 1}")
-        result = style_sheet(painter, model, folder, sheets, context, vision, seed + n + 1, pieces=group,
-                             refs=[style_png] if style_png else None, name=f"add-{n + 1}")
-        track.done(f"add-{n + 1}")
-        return f"add-{n + 1}", group, result
-    with ThreadPoolExecutor(4) as pool:
-        for name, group, result in pool.map(sheet, enumerate(groups)):
-            made |= set(result["named"])
-            steps.append({"sheet": name, "pieces": [p["key"] for p in group], "items": result["items"], "named": list(result["named"]),
-                          "prompt": result["prompt"]})
-    # The fix: what no sheet gave, and what the check finds wrong, on one more round of sheets. Every piece not yet
-    # checked is (checked.json: the pieces that passed, whichever run made them), not only this run's.
     checked_path = folder / "checked.json"
     try:
         checked = set(json.loads(checked_path.read_text(encoding="utf-8"))) if checked_path.exists() else set()
     except ValueError:
         checked = set()
-    # Blocks have their own check (make_blocks: the box's outline) and are never painted on a sheet.
-    new = [p for p in every if p["key"] in made and p["slug"] not in checked and not p.get("kit")]
-    if vision is not None:
-        track.start("check", f"Checking the pieces (the vision model): {len(new)} to check")
-    wrong, unchecked, said = set(), set(), {}
-    for start in range(0, len(new), 16):
-        chunk = new[start:start + 16]
-        found = check_pieces(vision, folder, chunk)
-        if found is None:
-            unchecked |= {p["key"] for p in chunk}
-            continue
-        wrong |= {chunk[i]["key"] for i in found}
-        said.update({chunk[i]["slug"]: why for i, why in found.items()})
-    # The shape test (two things found as one, or half of one) for what this run painted only: an earlier piece the
-    # vision model passes stays (a building is taller than its flat box, which this test can't tell from a merge).
-    painted_now = {p["key"] for p in todo}
-    wrong |= {p["key"] for p in new if p["key"] in painted_now and not p.get("kit") and not _fits_its_box(folder, p)}
-    # A building painted with another footprint than its box's (a square house for a long lot): painted again.
-    wrong |= {p["key"] for p in new if p["key"] in painted_now and p.get("layer") == "building" and not p.get("kit") and not _foot_fits(folder, p)}
-    steps.append({"checked": len(new) - len(unchecked), "unchecked": len(unchecked), "wrong": sorted(wrong), "said": said})
-    if vision is not None:
-        missing = sum(1 for p in every if not p.get("kit") and p["key"] not in made)
-        track.done("check", label=f"Checked {len(new) - len(unchecked)} pieces: {len(wrong)} wrong" + (f", {missing} not on their sheet" if missing else ""))
-    # A piece made before is kept beside its repaint: if the repaint fails too, the earlier one comes back.
-    kept_before = {}
-    for p in every:
-        if p["key"] in wrong and p["key"] not in painted_now and (folder / "pieces" / f"{p['slug']}.png").exists():
-            kept_before[p["slug"]] = (folder / "pieces" / f"{p['slug']}.png").read_bytes()
-    again = [p for p in every if not p.get("kit") and (p["key"] not in made or p["key"] in wrong)]
-    # Up to three rounds: what is still not made (or found wrong) is painted again, each time anew.
-    fixed, repainted = 0, set()
-    for round_ in range(3):
-        if not again:
-            break
+    if words:
+        result = paint_from_words(painter, folder, todo, every, context, seed, writer=vision, track=track)
+        steps.append(result["step"])
+        made |= result["made"]
+        new = [p for p in todo if p["key"] in result["made"]]
+        again = [p for p in todo if p["key"] not in result["made"]]
+        wrong, unchecked, repainted = set(), set(), set(result["made"])
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        if first_is_style:
+            # The style sheet first: every other sheet is painted in its look.
+            track.start("style")
+            result = style_sheet(painter, model, folder, sheets, context, vision, seed, pieces=groups[0], name="style")
+            style_png = result["png"]
+            made |= set(result["named"])
+            track.done("style")
+            steps.append({"sheet": "style", "pieces": [p["key"] for p in groups[0]], "items": result["items"], "named": list(result["named"]),
+                          "prompt": result["prompt"]})
+            groups = groups[1:]
 
-        def fix(numbered, round_=round_):
+        def sheet(numbered):
+            # Each later sheet needs only the style sheet: four painted at a time.
             n, group = numbered
-            track.start(f"fix-{fixed + n + 1}")
-            result = style_sheet(painter, model, folder, sheets, context, vision, seed + 50 + 17 * round_ + n, pieces=group,
-                                 refs=[style_png] if style_png else None, name=f"fix-{fixed + n + 1}")
-            track.done(f"fix-{fixed + n + 1}")
-            return n, group, result
-        groups = _groups(again)
-        for n, group in enumerate(groups):
-            track.add(f"fix-{fixed + n + 1}", f"Fix round {round_ + 1} of up to 3: sheet {n + 1} of {len(groups)} (what was missing or wrong)",
-                      group, before=later)
+            track.start(f"add-{n + 1}")
+            result = style_sheet(painter, model, folder, sheets, context, vision, seed + n + 1, pieces=group,
+                                 refs=[style_png] if style_png else None, name=f"add-{n + 1}")
+            track.done(f"add-{n + 1}")
+            return f"add-{n + 1}", group, result
         with ThreadPoolExecutor(4) as pool:
-            for n, group, result in pool.map(fix, enumerate(groups)):
-                steps.append({"sheet": f"fix-{fixed + n + 1}", "pieces": [p["key"] for p in group], "items": result["items"],
-                              "named": list(result["named"])})
-        fixed += len(groups)
-        made_now = {p["key"] for p in again if (folder / "pieces" / f"{p['slug']}.png").exists()}
-        repainted |= made_now
-        if vision is not None and kept_before:
-            # A repaint of an earlier piece that's wrong too: the earlier one back (it was at least one thing).
-            redone = [p for p in again if p["slug"] in kept_before and p["key"] in made_now]
-            for i in check_pieces(vision, folder, redone) or {}:
-                (folder / "pieces" / f"{redone[i]['slug']}.png").write_bytes(kept_before[redone[i]["slug"]])
-        again = [p for p in again if p["key"] not in made_now]
+            for name, group, result in pool.map(sheet, enumerate(groups)):
+                made |= set(result["named"])
+                steps.append({"sheet": name, "pieces": [p["key"] for p in group], "items": result["items"], "named": list(result["named"]),
+                              "prompt": result["prompt"]})
+        # The fix: what no sheet gave, and what the check finds wrong, on one more round of sheets. Every piece not yet
+        # checked is (checked.json: the pieces that passed, whichever run made them), not only this run's.
+        checked_path = folder / "checked.json"
+        try:
+            checked = set(json.loads(checked_path.read_text(encoding="utf-8"))) if checked_path.exists() else set()
+        except ValueError:
+            checked = set()
+        # Blocks have their own check (make_blocks: the box's outline) and are never painted on a sheet.
+        new = [p for p in every if p["key"] in made and p["slug"] not in checked and not p.get("kit")]
+        if vision is not None:
+            track.start("check", f"Checking the pieces (the vision model): {len(new)} to check")
+        wrong, unchecked, said = set(), set(), {}
+        for start in range(0, len(new), 16):
+            chunk = new[start:start + 16]
+            found = check_pieces(vision, folder, chunk)
+            if found is None:
+                unchecked |= {p["key"] for p in chunk}
+                continue
+            wrong |= {chunk[i]["key"] for i in found}
+            said.update({chunk[i]["slug"]: why for i, why in found.items()})
+        # The shape test (two things found as one, or half of one) for what this run painted only: an earlier piece the
+        # vision model passes stays (a building is taller than its flat box, which this test can't tell from a merge).
+        painted_now = {p["key"] for p in todo}
+        wrong |= {p["key"] for p in new if p["key"] in painted_now and not p.get("kit") and not _fits_its_box(folder, p)}
+        # A building painted with another footprint than its box's (a square house for a long lot): painted again.
+        wrong |= {p["key"] for p in new if p["key"] in painted_now and p.get("layer") == "building" and not p.get("kit") and not _foot_fits(folder, p)}
+        steps.append({"checked": len(new) - len(unchecked), "unchecked": len(unchecked), "wrong": sorted(wrong), "said": said})
+        if vision is not None:
+            missing = sum(1 for p in every if not p.get("kit") and p["key"] not in made)
+            track.done("check", label=f"Checked {len(new) - len(unchecked)} pieces: {len(wrong)} wrong" + (f", {missing} not on their sheet" if missing else ""))
+        # A piece made before is kept beside its repaint: if the repaint fails too, the earlier one comes back.
+        kept_before = {}
+        for p in every:
+            if p["key"] in wrong and p["key"] not in painted_now and (folder / "pieces" / f"{p['slug']}.png").exists():
+                kept_before[p["slug"]] = (folder / "pieces" / f"{p['slug']}.png").read_bytes()
+        again = [p for p in every if not p.get("kit") and (p["key"] not in made or p["key"] in wrong)]
+        # Up to three rounds: what is still not made (or found wrong) is painted again, each time anew.
+        fixed, repainted = 0, set()
+        for round_ in range(3):
+            if not again:
+                break
+
+            def fix(numbered, round_=round_):
+                n, group = numbered
+                track.start(f"fix-{fixed + n + 1}")
+                result = style_sheet(painter, model, folder, sheets, context, vision, seed + 50 + 17 * round_ + n, pieces=group,
+                                     refs=[style_png] if style_png else None, name=f"fix-{fixed + n + 1}")
+                track.done(f"fix-{fixed + n + 1}")
+                return n, group, result
+            groups = _groups(again)
+            for n, group in enumerate(groups):
+                track.add(f"fix-{fixed + n + 1}", f"Fix round {round_ + 1} of up to 3: sheet {n + 1} of {len(groups)} (what was missing or wrong)",
+                          group, before=later)
+            with ThreadPoolExecutor(4) as pool:
+                for n, group, result in pool.map(fix, enumerate(groups)):
+                    steps.append({"sheet": f"fix-{fixed + n + 1}", "pieces": [p["key"] for p in group], "items": result["items"],
+                                  "named": list(result["named"])})
+            fixed += len(groups)
+            made_now = {p["key"] for p in again if (folder / "pieces" / f"{p['slug']}.png").exists()}
+            repainted |= made_now
+            if vision is not None and kept_before:
+                # A repaint of an earlier piece that's wrong too: the earlier one back (it was at least one thing).
+                redone = [p for p in again if p["slug"] in kept_before and p["key"] in made_now]
+                for i in check_pieces(vision, folder, redone) or {}:
+                    (folder / "pieces" / f"{redone[i]['slug']}.png").write_bytes(kept_before[redone[i]["slug"]])
+            again = [p for p in again if p["key"] not in made_now]
     if derived:
         track.start("derived")
         steps.append({"derived": derive_pieces(painter, folder, derived, every, context, seed, writer=vision)})
@@ -800,6 +823,132 @@ def variant_words(writer, kind: str, first: str, place: str, n: int) -> list[str
     except Exception:  # noqa: BLE001 - the edit way is used instead
         return []
     return [str(v).strip() for v in answer.get("variants", []) if str(v).strip()][:n]
+
+
+LOOKS_TASK = """You write image prompts for a game's art. For one kind of thing in a place, write one description for
+each numbered item (its footprint is given): every one clearly different in FORM from all the others, not only in
+colour, and shaped to its footprint (a long footprint a long building, a square one a compact one). A building
+gets a real design: how many storeys (one to three), its footprint shape (square, long, L-shaped, round), its roof (form
+and material: thatched, slate, shingle, tiled; gabled, hipped, steep, with dormers), its walls (timber frame, stone,
+plaster, logs), and features that fit what it is for (a porch, a balcony, an outside stair, chimneys, a lean-to, a shop
+front with an awning, a sign, dormers, a bay window); never a plain box. Nothing on the ground around it (no yard,
+fence, paving, cart or plinth): only the thing itself. A small thing gets its build,
+silhouette, material and parts. Keep every one the same kind of thing, the same era, culture and style as the place, and
+the size such a thing has on its footprint. Each one line, concrete and visual, no names, no story, no background.
+Answer JSON: {{"looks": ["...", "..."]}} (one per item, in order)."""
+
+
+def look_words(writer, kind: str, purpose: str, place: str, footprints: list[tuple[int, int]]) -> list[str]:
+    """One description per item of a family (LOOKS_TASK: every house of the place, every workshop), each its footprint,
+    all different in form from each other."""
+    import json as _json
+    if writer is None or not footprints:
+        return []
+    items = "\n".join(f"{i + 1}. footprint {w} by {h} cells" for i, (w, h) in enumerate(footprints))
+    try:
+        answer = _json.loads(writer.complete([{"role": "system", "content": LOOKS_TASK},
+                                              {"role": "user", "content": f"The place: {place}\nThe kind: {kind}" + (f" ({purpose})" if purpose else "") +
+                                               " (a cell is about a person's stride; one storey about two cells tall)\nThe items:\n" + items}]).text)
+    except Exception:  # noqa: BLE001 - the plain description is used instead
+        return []
+    return [str(v).strip() for v in answer.get("looks", []) if str(v).strip()][:len(footprints)]
+
+
+def paint_from_words(painter, folder: Path, pieces: list[dict], every: list[dict], context: dict, seed: int, writer=None,
+                     track: Steps | None = None) -> dict:
+    """Every piece painted alone from its own words (builder_tests/variant_test): one LLM call per kind writes the main
+    look and its other looks, each different in form (LOOKS_TASK); each piece painted in the pieces' framing with the
+    place's style line, no sheet, no reference image; cut from its picture (find_items reads the real background). A
+    piece the cut can't find, or finds as more than one thing, is painted once more; then left for a placeholder. The
+    vision model checks the lot once; what it finds wrong is painted once more with its words and why. At most one
+    repaint each: no fix rounds. Returns {made, step}."""
+    import json as _json
+    from concurrent.futures import ThreadPoolExecutor
+    track = track or Steps()
+    place = ", ".join(w for w in (_place_words(context), _style_line(context)) if w)
+    style = f"Style: {_style_words(context)}; {_style_line(context)}."
+    # A family: every piece of one role and concepts, whatever its footprint (each house kind of the place, each look):
+    # described together, so no two houses come out alike.
+    kinds: dict[str, list[dict]] = {}
+    for p in pieces:
+        kinds.setdefault(f"{p.get('role', '')}|{' '.join(str(c) for c in p.get('concepts', []) if c)}", []).append(p)
+    for looks in kinds.values():
+        looks.sort(key=lambda q: (q.get("variantKey") or q["key"], int(q.get("variant", 1))))
+    # 1. The words: one call a family, its items in order (at most 24 a call).
+    track.start("describe")
+    words: dict[str, str] = {}
+
+    def describe(family: str) -> None:
+        looks = kinds[family]
+        first = looks[0]
+        kind = str(first.get("role") or "object").replace("-", " ")
+        concepts = " ".join(str(c) for c in first.get("concepts", []) if c)
+        what = f"{concepts} {kind}".strip() if concepts and concepts != kind else kind
+        for start in range(0, len(looks), 24):
+            part = looks[start:start + 24]
+            said = look_words(writer, what, str(first.get("purpose") or ""), place, [(int(q.get("w", 1)), int(q.get("h", 1))) for q in part])
+            for i, p in enumerate(part):
+                words[p["key"]] = said[i] if i < len(said) else f"{what}" + (f", {first['purpose']}" if first.get("purpose") else "")
+    with ThreadPoolExecutor(4) as pool:
+        list(pool.map(describe, list(kinds)))
+    track.done("describe", label=f"Described {len(pieces)} pieces in {len(kinds)} families")
+    try:
+        (folder / "piece-prompts.json").write_text(_json.dumps(words, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+    # 2. The pictures: four at a time, each cut from its own.
+    def prompt_of(p: dict, why: str = "") -> str:
+        foot = f"it stands on a {p.get('w', 1)} by {p.get('h', 1)} cell footprint"
+        if p.get("layer") == "building":
+            foot += " (one storey is about two cells tall): the whole building, its roof and all its walls the camera sees"
+        return (f"Game asset. Isometric view. Flat magenta background (#FF00FF).\nOne {words[p['key']]}.\n{style} Seen from the "
+                f"isometric game camera (2:1), its front facing the lower left; {foot}.\n" + (f"Not like the last try: {why}\n" if why else "") +
+                "Only this one object, alone, centred, nothing under it: no ground, no shadow, no people, no text. Keep the magenta empty.")
+
+    def paint(p: dict, attempt: int = 0, why: str = "") -> bool:
+        try:
+            png = painter.create(prompt_of(p, why), 1024, 1024, seed=seed + 31 * int(p.get("variant", 1)) + 7 * attempt + len(p["key"]))
+        except Exception:  # noqa: BLE001 - another try, then a placeholder
+            return False
+        found = find_items(png)
+        if not found:
+            return False
+        biggest = max(found, key=lambda i: i["area"])
+        # Two big things where one was asked (a house and its shed apart): not this one.
+        if len([i for i in found if i["area"] > biggest["area"] * 0.35]) > 1:
+            return False
+        biggest["image"].save(folder / "pieces" / f"{p['slug']}.png")
+        return True
+
+    track.start("paint")
+    made: set[str] = set()
+    tries: dict[str, int] = {}
+    with ThreadPoolExecutor(4) as pool:
+        first = list(pool.map(paint, pieces))
+    again = [p for p, ok in zip(pieces, first) if not ok]
+    made |= {p["key"] for p, ok in zip(pieces, first) if ok}
+    if again:
+        with ThreadPoolExecutor(4) as pool:
+            second = list(pool.map(lambda p: paint(p, 1), again))
+        made |= {p["key"] for p, ok in zip(again, second) if ok}
+        tries.update({p["key"]: 2 for p in again})
+    track.done("paint", label=f"Painted {len(made)} of {len(pieces)} pieces" + (f" ({len(again)} painted twice)" if again else ""))
+    # 3. One look by the vision model; what's wrong painted once more (if it wasn't already), told why.
+    redo: dict[str, str] = {}
+    have = [p for p in pieces if p["key"] in made]
+    for start in range(0, len(have), 16):
+        chunk = have[start:start + 16]
+        for i, why in (check_pieces(writer, folder, chunk) or {}).items():
+            if tries.get(chunk[i]["key"], 1) < 2:
+                redo[chunk[i]["key"]] = why
+    fixed = 0
+    if redo:
+        by_key = {p["key"]: p for p in pieces}
+        with ThreadPoolExecutor(4) as pool:
+            fixed = sum(pool.map(lambda k: paint(by_key[k], 2, redo[k]), list(redo)))
+    return {"made": made, "step": {"painted": sorted(made), "missing": sorted(p["key"] for p in pieces if p["key"] not in made),
+                                   "repainted": sorted(redo), "fixed": fixed, "words": words}}
 
 
 def derive_pieces(painter, folder: Path, pieces: list[dict], every: list[dict], context: dict, seed: int, writer=None) -> list[str]:

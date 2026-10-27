@@ -138,6 +138,9 @@ private:
     json lattice_;
     // On a shared street grid, the one spec every zone's streets are drawn with (Root): {terrain, width, edge, class}.
     json sharedStreet_;
+    // The place's water bodies (its river, lake, pond, moat: modules of class WaterBody), in order: what a relation's
+    // "parent.water" or "water" names, whichever level asks (a dock's parent is its docks zone, whose water is the site's).
+    std::vector<std::string> water_;
     std::deque<json> fillerNodes_; // the filler lots' nodes (kept: their parcels point at them)
     int side_ = 64;
     int width_ = 0, height_ = 0; // a dungeon's or a building's grid (its levels side by side); 0: the square site
@@ -325,6 +328,7 @@ void Compiler::Relations(const ModuleDef& m, const std::string& node, const std:
             else if (member == "parent.street") ref = parentRegion + ".street";
             else if (member == "parent.door" && !parentPrimary.empty()) ref = parentPrimary + ".door";
             else if (member == "parent.road" || member == "parent.main-road") ref = "site/main-road";
+            else if ((member == "parent.water" || member == "water") && !water_.empty()) ref = water_.front();
             if (ref.empty()) ok = false;
             members.push_back(ref);
         }
@@ -603,6 +607,12 @@ void Compiler::Root(const json& root) {
     Emit({{"op", "anchor"}, {"id", "site/entrance-w"}, {"node", id}, {"at", {0, s / 2}}, {"kind", "entrance"}});
     Emit({{"op", "anchor"}, {"id", "site/entrance-e"}, {"node", id}, {"at", {s - 1, s / 2 + s / 10}}, {"kind", "entrance"}});
 
+    // The place's water, for the relations that name it ("along parent.water": the docks zone, each dock).
+    water_.clear();
+    for (const auto& c : children) {
+        const std::string module = c.value("module", "");
+        if (ontology_.Module(module) && (module == "river" || ontology_.IsA(module, "WaterBody"))) water_.push_back(c.value("id", module));
+    }
     // Networks first: the river, the main road(s).
     int mainRoads = 0;
     const ModuleDef* rootModule = m;
@@ -742,6 +752,14 @@ void Compiler::Root(const json& root) {
             json one = {{"type", r.value("type", "near")}, {"to", r["to"]}};
             if (r.contains("weight") && r["weight"].is_number()) one["weight"] = r["weight"]; // raised when a check failed
             rel.push_back(one);
+        }
+        // The module's own relation to the place's water (the ontology's: docks along it), a hard one twice as strong. Only the
+        // water's: a zone's other defaults (near the main road) would outweigh the directions the user gives.
+        for (const auto& mr : cm->relations) {
+            if (mr.members.size() != 2 || mr.members[0] != "self") continue;
+            const std::string to = mr.members[1] == "parent.water" || mr.members[1] == "water" ? (water_.empty() ? "" : water_.front()) : "";
+            if (to.empty()) continue;
+            rel.push_back({{"type", mr.type}, {"to", to}, {"weight", mr.weight * (mr.hard ? 2.0 : 1.0)}});
         }
         if (!rel.empty()) zone["rel"] = rel;
         if (auto it = options_.keepSeeds.find(c.value("id", "")); it != options_.keepSeeds.end()) {
@@ -1197,6 +1215,7 @@ void Compiler::Feature(const json& node, const ModuleDef& m, const std::string& 
         } else if (primary) {
             Emit({{"op", "place"}, {"id", self}, {"node", nodeId}, {"in", parentInstance}, {"slot", primary->name},
                   {"footprint", {{"w", 1}, {"h", 1}}}, {"layer", LayerForSlot(ontology_, *primary)}, {"essential", false}});
+            Relations(m, nodeId, self, parentInstance, parentPrimary, ""); // a dock along the water
         }
         return;
     }

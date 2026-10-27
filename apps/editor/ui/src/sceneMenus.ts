@@ -112,6 +112,10 @@ onHostMessage((message) => {
     const tilePrefab = entity?.prefab ?? ((message.cellPrefab as string) || null)
     const draw = drawItem(tilePrefab)
     const own = entity ? entityMenu(entity).filter((i) => i.label.startsWith('Duplicate')) : []
+    // A built place's ground there: its picture made an asset (a tile prefab) to paint elsewhere.
+    if (message.layerCell) {
+      own.push({ label: 'Make an asset from this cell', action: () => sendToHost({ type: 'cell:makeAsset', x: cell[0], y: cell[1] }) })
+    }
     openContextMenu(x, y, [...draw, ...own, ...(draw.length || own.length ? [separator] : []), ...items])
   }
 })

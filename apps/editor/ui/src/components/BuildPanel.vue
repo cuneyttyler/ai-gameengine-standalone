@@ -568,6 +568,11 @@ function decisionControl(d: Decision): 'enabled' | 'options' | 'text' | 'words' 
   if (decisionOptions(d).length) return 'options'
   return 'words'
 }
+// A yes/no decision's tick: the field's value once set, else what was assumed ("yes…" ticked).
+function decisionYes(d: Decision): boolean {
+  if (typeof d.current === 'boolean') return d.current
+  return /^\s*(yes|true|on)\b/i.test(d.assumed ?? '')
+}
 function decisionOptions(d: Decision): string[] {
   const p = d.path ?? '', w = win.value
   if (!w) return []
@@ -1893,14 +1898,6 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             <option v-for="m in BACKGROUND_MODELS" :key="m.id" :value="m.id">{{ m.label }}</option>
           </select>
         </div>
-        <div class="row set-all">
-          <span class="dim">Every piece from</span>
-          <select value="" @change="setAllSources(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''">
-            <option value="">choose…</option>
-            <option v-for="s in NEED_SOURCES" :key="s.id" :value="s.id">{{ s.label }}</option>
-          </select>
-          <span class="dim">(each piece can still be set on its own below)</span>
-        </div>
         <table class="components needs">
           <thead><tr><th></th><th>Needed</th><th>For</th><th>Gets</th><th>From</th><th>Why</th><th></th></tr></thead>
           <tbody>
@@ -2502,9 +2499,9 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
               <tr v-for="d in win.decisions" :key="d.question">
                 <td>{{ d.question }}</td>
                 <td class="dim">{{ d.assumed }}<span v-if="d.path" class="small"><br />({{ d.path }}: {{ show(d.current) }})</span></td>
-                <td>
+                <td :class="{ center: decisionControl(d) === 'enabled' }">
                   <template v-if="decisionControl(d) === 'enabled'">
-                    <label class="row"><input type="checkbox" :checked="Boolean(d.current)" @change="edit(d.path ?? '', ($event.target as HTMLInputElement).checked)" /> yes</label>
+                    <label class="row tick"><input type="checkbox" :checked="decisionYes(d)" @change="edit(d.path ?? '', ($event.target as HTMLInputElement).checked)" /> yes</label>
                   </template>
                   <select v-else-if="decisionControl(d) === 'options'" :value="(d.current as string) ?? ''" @change="edit(d.path ?? '', ($event.target as HTMLSelectElement).value)">
                     <option v-for="o in decisionOptions(d)" :key="o" :value="o">{{ o.replace(/-/g, ' ') }}</option>
@@ -2560,6 +2557,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       </section>
 
       <template v-if="win.round === 1 || atConfirm">
+        <h4 class="section-title">The place <span class="dim">· what it is, how big, its look</span></h4>
         <div class="form-row confirm-form">
           <div class="form-cell">
             <label>Name</label>
@@ -2666,16 +2664,17 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
 
         </div>
 
-        <table class="components">
+        <h4 class="section-title">Components <span class="dim">· the place's parts: on or off, how many, and what each holds</span></h4>
+        <table class="components unified">
           <thead>
-            <tr><th>Component</th><th>On</th><th>How many</th><th>Art</th><th>Source</th></tr>
+            <tr><th>Component</th><th class="center">On</th><th>How many</th><th>What it holds</th></tr>
           </thead>
           <tbody>
             <tr v-for="c in shownComponents" :key="c.id" :class="{ off: !c.enabled, ...markClass('components.' + c.id + '.enabled') }">
-              <td :title="c.description">{{ c.name }} <span class="dim">{{ c.level }}</span>
+              <td :title="c.description"><strong>{{ c.name }}</strong> <span class="level">{{ c.level }}</span>
                 <div v-if="problemFor('components.' + c.id)" class="error small">{{ problemFor('components.' + c.id) }}</div>
               </td>
-              <td><input type="checkbox" :checked="c.enabled" @change="edit(`components.${c.id}.enabled`, ($event.target as HTMLInputElement).checked)" /></td>
+              <td class="center"><input type="checkbox" :checked="c.enabled" @change="edit(`components.${c.id}.enabled`, ($event.target as HTMLInputElement).checked)" /></td>
               <td :class="markClass(`components.${c.id}.${c.amount === 'count' ? 'count' : 'density'}`)">
                 <template v-if="c.enabled && c.amount === 'count'">
                   <input class="range" :value="show(c.count) === '—' ? '' : show(c.count)" placeholder="any" @change="setCount(c, ($event.target as HTMLInputElement).value)" />
@@ -2698,14 +2697,28 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
                 </template>
                 <span v-else class="dim">—</span>
               </td>
-              <td class="thumbs">
-                <CatalogThumb v-for="t in c.thumbs" :key="t.id" :src="urlOf(t.path)" :rect="t.rect" :size="28" :title="t.id" />
-                <span v-if="c.enabled && c.thumbs.length === 0" class="dim">none in the project</span>
-              </td>
-              <td>
-                <select v-if="c.enabled" :value="c.source ?? 'auto'" @change="edit(`components.${c.id}.assets.source`, ($event.target as HTMLSelectElement).value)">
-                  <option v-for="s in SOURCES" :key="s.id" :value="s.id" :title="s.title">{{ s.label }}</option>
-                </select>
+              <td class="holds">
+                <template v-if="c.enabled && c.params?.length">
+                  <span v-for="p in c.params" :key="p.name" class="param" :class="markClass(`components.${c.id}.params.${p.name}`)">
+                    <label :title="p.description">{{ p.name.replace(/-/g, ' ') }}</label>
+                    <select v-if="p.type === 'enum' || p.type === 'density'" :value="p.value ?? ''" @change="setParam(c, p, ($event.target as HTMLSelectElement).value)">
+                      <option v-for="o in p.options" :key="o" :value="o">{{ o }}</option>
+                    </select>
+                    <input v-else-if="p.type === 'bool'" type="checkbox" :checked="!!p.value" @change="setParam(c, p, ($event.target as HTMLInputElement).checked)" />
+                    <span v-else-if="p.type === 'enumSet'" class="chips">
+                      <button v-for="o in p.options" :key="o" :class="{ active: Array.isArray(p.value) && (p.value as string[]).includes(o) }" @click="toggleInSet(c, p, o)">{{ o }}</button>
+                    </span>
+                    <span v-else-if="p.type === 'mix'" class="mix">
+                      <span v-for="o in p.options" :key="o">{{ o }} <input class="num" :value="mixOf(p)[o] ?? ''" placeholder="0" @change="setMix(c, p, o, ($event.target as HTMLInputElement).value)" /></span>
+                    </span>
+                    <span v-else-if="p.type === 'size'">
+                      <input class="num" :value="sizeText(p.value, 'w')" @change="setSize(c, p, 'w', ($event.target as HTMLInputElement).value)" />×<input class="num" :value="sizeText(p.value, 'h')" @change="setSize(c, p, 'h', ($event.target as HTMLInputElement).value)" />
+                    </span>
+                    <input v-else class="range" :value="show(p.value) === '—' ? '' : show(p.value)" @change="setParam(c, p, parseRange(($event.target as HTMLInputElement).value) ?? ($event.target as HTMLInputElement).value)" />
+                    <span v-if="p.unit" class="dim">{{ p.unit }}</span>
+                  </span>
+                </template>
+                <span v-else class="dim">—</span>
               </td>
             </tr>
           </tbody>
@@ -2714,8 +2727,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       </template>
 
       <template v-if="win.round !== 1 || atConfirm">
-        <h4 v-if="atConfirm" class="contents-head">What each part holds</h4>
-        <div :class="{ 'params-grid': atConfirm }">
+        <div v-if="!atConfirm">
         <section v-for="c in win.components.filter((x) => x.enabled && x.params?.length)" :key="c.id" class="params">
           <h4>{{ c.name }}</h4>
           <div class="grid">
@@ -2873,6 +2885,13 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
 }
 .header .title + .browse {
   margin-left: 0;
+}
+.decisions td.center {
+  text-align: center;
+  vertical-align: middle;
+}
+.decisions .tick {
+  justify-content: center;
 }
 .warn-box {
   border-left: 3px solid #e5a50a;
@@ -3952,27 +3971,110 @@ table.decisions input {
 .layout-form h4 {
   margin: 0 0 4px;
 }
-/* A horizontal form (the layout form, Confirm's main fields): fields side by side, wrapping; descriptions behind "?". */
+/* A horizontal form (the layout form, Confirm's place fields) drawn as a table: each field a column, its name in a header
+   cell over its control; columns side by side, wrapping; every select and input the same width; descriptions behind "?". */
 .form-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 14px;
-  align-items: flex-end;
+  align-items: stretch;
+  border-top: 1px solid #313244;
+  border-left: 1px solid #313244;
 }
 .form-cell {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 120px;
+  width: 176px;
+  border-right: 1px solid #313244;
+  border-bottom: 1px solid #313244;
 }
-.form-cell label {
+.form-cell > label {
   text-transform: capitalize;
   font-size: 11px;
-  opacity: 0.85;
+  padding: 4px 8px;
+  background: #1e1e2e;
+  border-bottom: 1px solid #313244;
+  color: #a6adc8;
+  white-space: nowrap;
+}
+.form-cell > select,
+.form-cell > div,
+.form-cell > span {
+  margin: 6px 8px;
 }
 .form-cell select,
-.form-cell input[type='text'] {
-  max-width: 180px;
+.form-cell input[type='text'],
+.form-cell input:not([type]) {
+  width: 160px;
+  box-sizing: border-box;
+}
+.form-cell input.num {
+  width: 56px;
+}
+.form-cell:has(.chips),
+.form-cell:has(.style),
+.form-cell:has(.layouts) {
+  width: auto;
+  min-width: 176px;
+  flex: 1;
+}
+.section-title {
+  margin: 14px 0 6px;
+  font-size: 13px;
+}
+.section-title .dim {
+  font-weight: normal;
+  font-size: 12px;
+}
+/* Components: one compact table, a row a part. */
+.components.unified {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #313244;
+}
+.components.unified th {
+  background: #1e1e2e;
+  color: #a6adc8;
+  font-weight: normal;
+  font-size: 11px;
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid #313244;
+}
+.components.unified td {
+  padding: 5px 8px;
+  border-top: 1px solid #262637;
+  vertical-align: top;
+}
+.components.unified .center {
+  text-align: center;
+}
+.components.unified .level {
+  font-size: 10px;
+  padding: 0 4px;
+  border: 1px solid #45475a;
+  color: #a6adc8;
+}
+.components.unified tr.off td {
+  opacity: 0.5;
+}
+.components.unified .holds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+.components.unified .param {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.components.unified .param > label {
+  font-size: 11px;
+  color: #a6adc8;
+  text-transform: capitalize;
+}
+.components.unified .param select,
+.components.unified .param input.range {
+  width: 120px;
 }
 .confirm-form {
   margin-bottom: 10px;

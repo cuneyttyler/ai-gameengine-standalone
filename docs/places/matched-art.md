@@ -165,6 +165,19 @@ How many different looks a kind gets comes from how often the place uses it and 
 400 cars get 6; its 12 shops of one footprint 3; its bicycles and street lights 1. In the scene each kind's things are
 numbered in reading order and take the looks in turn, so neighbours differ.
 
+**The art method (2026-10-27): words.** Every piece is painted alone from a description the LLM writes for it, not
+on sheets of boxes (`paint_from_words`; `artMethod: "sheets"` keeps the earlier way). The descriptions are written per
+family: every piece of one role and concepts (each house of the place, each footprint and each look) in one call, so
+no two come out alike, each shaped to its footprint, a building with a real design (storeys, footprint shape, roof form
+and material, walls, porches, balconies, shop fronts, never a plain box) and nothing on the ground round it
+(`LOOKS_TASK`; kept in `piece-prompts.json`). Each is painted in the pieces' framing with the place's style line, no
+reference image, four at a time, and cut from its own picture. A piece the cut can't find, or finds as two things, is
+painted once more; the vision model looks at the lot once, and what it finds wrong is painted once more with why. At
+most one repaint a piece: no fix rounds (the sheet way needed up to three rounds of sheets, 37 steps for one village,
+and drew one-cell houses). On OurVillage's needs: 12 pieces, 12 calls, none repainted
+(`builder_tests/words_test`). Walls and what's set in them are still made as blocks (`make_blocks`); back views are
+edits of their front.
+
 **Other looks and back views are made from the first piece** (`derive_pieces`), not boxes on a sheet: a small box
 labelled "a bicycle, version 2" or "a car, seen from behind" was often painted as a little building.
 - **Another look** (2026-10-27) is painted from its own words, with no reference image. For each kind, the LLM (the

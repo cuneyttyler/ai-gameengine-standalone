@@ -231,6 +231,8 @@ private:
     void DeleteBoxSelection();
     void ClearBoxSelection();
     std::optional<CellPick> PickLayerCell(float sceneX, float sceneY) const;
+    // A ground cell's picture cut out as a project image and made a tile prefab (Make an asset from this cell).
+    void MakeAssetFromCell(int gx, int gy);
     void SelectCell(const CellPick& cell);
     void EraseSelectedCell();
     // The ontology panel (development_plan.md 9).

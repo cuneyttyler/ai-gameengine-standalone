@@ -463,3 +463,61 @@ TEST(SolveTest, APartialSolveRedoesOnlyItsSubtree) {
     const json same = SolveLayout(Library(), ir, none).document;
     EXPECT_EQ(Outside(same, "nothing")["objects"], Outside(full, "nothing")["objects"]);
 }
+
+// A zone or feature "along parent.water" (the docks, each dock): the place's water, whichever level asks. It was dropped
+// before (no member resolved), so the docks and their piers stood anywhere (2026-10-27, a village by a river).
+TEST(CompileTest, DocksAndTheirPiersAreAlongTheRiver) {
+    const json brief = CompleteBrief(Library(), {{"buildType", "settlement"}, {"name", "Riverford"}, {"scale", {{"class", "village"}}},
+                                                 {"components", {{"residential-ward", json::object()}, {"docks", json::object()}, {"river", json::object()}}}});
+    json children = json::array({{{"id", "river"}, {"module", "river"}},
+                                 {{"id", "ward-1"}, {"module", "residential-ward"}, {"quantity", {{"plots", {{"count", 6}}}, {"area", {{"area", 900}}}}}},
+                                 {{"id", "docks"}, {"module", "docks"}, {"quantity", {{"plots", {{"count", 2}}}, {"piers", {{"count", 2}}}, {"area", {{"area", 700}}}}}}});
+    json spec = SpecFromRoot(Library(), brief, {{"children", children}}, "riverford");
+    for (const auto& zone : ZoneIds(Library(), spec)) {
+        const bool docks = SpecNode(spec, zone)->at("module") == "docks";
+        const json answer = docks ? json{{"children", json::array({{{"id", "pier"}, {"module", "dock"}, {"repeat", 2}}})}}
+                                  : json{{"children", json::array({{{"id", "cottages"}, {"module", "house-plot"}, {"repeat", 6}}})}};
+        ApplyZoneAnswer(Library(), brief, spec, zone, answer);
+    }
+    ExpandSpec(Library(), brief, spec);
+    const json ir = CompileSpec(Library(), spec, {.seed = 5, .side = 80});
+    int alongRiver = 0;
+    for (const auto& s : ir["statements"]) {
+        if (s["op"] != "relation" || s.value("type", "") != "along") continue;
+        const json m = s["members"];
+        if (m.size() == 2 && m[1] == "river") ++alongRiver;
+    }
+    // The docks zone: along the river in the zones' partition (its rel); each dock: a relation of its own.
+    bool zoneAlong = false;
+    for (const auto& st : ir["statements"]) {
+        if (st["op"] != "partition") continue;
+        for (const auto& z : st["into"]) {
+            for (const auto& r : z.value("rel", json::array())) zoneAlong |= z["id"] == "docks" && r.value("type", "") == "along" && r.value("to", "") == "river";
+        }
+    }
+    EXPECT_TRUE(zoneAlong);
+    EXPECT_GE(alongRiver, 2); // its two docks
+    // Solved: every pier stands at the water.
+    const json solved = SolveLayout(Library(), ir).document;
+    std::set<std::pair<int, int>> water;
+    const json palette = solved["terrain"]["palette"];
+    int y = 0;
+    for (const auto& row : solved["terrain"]["rows"]) {
+        int x = 0;
+        for (const auto& run : row) {
+            for (int k = 0; k < run[0].get<int>(); ++k, ++x) {
+                if (palette[run[1].get<int>()].get<std::string>().find("water") != std::string::npos) water.insert({x, y});
+            }
+        }
+        ++y;
+    }
+    int piers = 0;
+    for (const auto& o : solved["objects"]) {
+        if (o.value("slot", "") != "pier") continue;
+        ++piers;
+        int best = 1 << 30;
+        for (const auto& [wx, wy] : water) best = std::min(best, std::abs(wx - o["x"].get<int>()) + std::abs(wy - o["y"].get<int>()));
+        EXPECT_LE(best, 3) << o.dump();
+    }
+    EXPECT_GE(piers, 2);
+}

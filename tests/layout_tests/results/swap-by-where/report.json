@@ -1,0 +1,102 @@
+{
+  "about": "Two zones change places, said the long way: each moved to where the other is.",
+  "allZones": {
+    "commons": "commons",
+    "craftsmen-ward": "craftsmen-ward",
+    "market-ward": "market-ward",
+    "outskirts": "outskirts",
+    "residential-ward": "residential-ward"
+  },
+  "failures": [],
+  "land": {
+    "commons": {
+      "after": 420,
+      "before": 420,
+      "kept": 1.0,
+      "middleAfter": [
+        167.73333333333332,
+        163.55714285714285
+      ],
+      "middleBefore": [
+        167.73333333333332,
+        163.55714285714285
+      ]
+    },
+    "craftsmen-ward": {
+      "after": 2195,
+      "before": 2195,
+      "kept": 1.0,
+      "middleAfter": [
+        71.02779043280182,
+        68.49430523917995
+      ],
+      "middleBefore": [
+        71.02779043280182,
+        68.49430523917995
+      ]
+    },
+    "market-ward": {
+      "after": 2068,
+      "before": 2068,
+      "kept": 1.0,
+      "middleAfter": [
+        42.22001934235977,
+        24.920696324951646
+      ],
+      "middleBefore": [
+        42.22001934235977,
+        24.920696324951646
+      ]
+    },
+    "outskirts": {
+      "after": 5111,
+      "before": 11657,
+      "kept": 0.0,
+      "middleAfter": [
+        131.80375660340442,
+        35.893171590686755
+      ],
+      "middleBefore": [
+        175.52629321437763,
+        124.05138543364502
+      ]
+    },
+    "residential-ward": {
+      "after": 11456,
+      "before": 5111,
+      "kept": 0.0,
+      "middleAfter": [
+        175.97346368715083,
+        123.8606843575419
+      ],
+      "middleBefore": [
+        131.80375660340442,
+        35.893171590686755
+      ]
+    }
+  },
+  "name": "swap-by-where",
+  "passed": true,
+  "request": "a walled town with a market ward, a residential ward, a craftsmen ward and outskirts",
+  "revise": "move the residential ward to where the outskirts is now and move the outskirts to where the residential ward is now",
+  "revision": {
+    "by": "you",
+    "issues": [],
+    "notes": [
+      "residential-ward and outskirts changed places, each on the other's land exactly"
+    ],
+    "stage": "layout",
+    "summary": "Residential ward and Outskirts change places.",
+    "text": "move the residential ward to where the outskirts is now and move the outskirts to where the residential ward is now",
+    "time": 1793119198,
+    "undo": 1
+  },
+  "swap": {
+    "outskirts on residential-ward's land": 1.0,
+    "residential-ward on outskirts's land": 1.0
+  },
+  "zones": {
+    "A": "residential-ward",
+    "B": "outskirts"
+  }
+}

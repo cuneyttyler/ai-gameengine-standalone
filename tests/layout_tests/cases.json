@@ -1,0 +1,50 @@
+[
+  {
+    "name": "swap-by-where",
+    "about": "Two zones change places, said the long way: each moved to where the other is.",
+    "request": "a walled town with a market ward, a residential ward, a craftsmen ward and outskirts",
+    "zones": { "A": ["residential"], "B": ["outskirts", "suburb", "farmland", "craftsmen"] },
+    "revise": "move the {A} to where the {B} is now and move the {B} to where the {A} is now",
+    "expect": { "swap": ["A", "B"], "othersKeep": 0.85, "touchingKeep": 0.85 }
+  },
+  {
+    "name": "swap-by-word",
+    "about": "Two zones change places, said in one word.",
+    "request": "a river town with a market ward, a temple ward, a craftsmen ward and docks",
+    "zones": { "A": ["market"], "B": ["craftsmen", "temple"] },
+    "revise": "swap the {A} and the {B}",
+    "expect": { "swap": ["A", "B"], "othersKeep": 0.85, "touchingKeep": 0.85 }
+  },
+  {
+    "name": "move-north",
+    "about": "One zone put north of another; zones away from both stay where they were.",
+    "request": "a town with a market ward, a temple ward, a residential ward and a craftsmen ward",
+    "zones": { "A": ["temple"], "B": ["market"] },
+    "revise": "put the {A} north of the {B}",
+    "expect": { "direction": ["A", "north", "B"], "othersKeep": 0.9, "touchingKeep": 0.0 }
+  },
+  {
+    "name": "grow",
+    "about": "One zone made bigger: it grows; only its neighbours give up land.",
+    "request": "a town with a market ward, a residential ward, a craftsmen ward and outskirts",
+    "zones": { "A": ["residential"] },
+    "revise": "make the {A} bigger",
+    "expect": { "size": ["A", 1.2, null], "othersKeep": 0.9, "touchingKeep": 0.5 }
+  },
+  {
+    "name": "grow-double",
+    "about": "One zone made twice as big.",
+    "request": "a town with a market ward, a residential ward, a craftsmen ward and a temple ward",
+    "zones": { "A": ["craftsmen"] },
+    "revise": "make the {A} twice as big",
+    "expect": { "size": ["A", 1.6, null], "othersKeep": 0.9, "touchingKeep": 0.4 }
+  },
+  {
+    "name": "shrink",
+    "about": "One zone made smaller: it shrinks; zones away from it stay as they were.",
+    "request": "a town with a market ward, a residential ward, a craftsmen ward and outskirts",
+    "zones": { "A": ["market"] },
+    "revise": "make the {A} smaller",
+    "expect": { "size": ["A", null, 0.85], "othersKeep": 0.9, "touchingKeep": 0.6 }
+  }
+]

@@ -1,0 +1,100 @@
+{
+  "about": "One zone made bigger: it grows; only its neighbours give up land.",
+  "allZones": {
+    "commons": "commons",
+    "craftsmen-ward": "craftsmen-ward",
+    "market-ward": "market-ward",
+    "outskirts": "outskirts",
+    "residential-ward": "residential-ward"
+  },
+  "failures": [],
+  "land": {
+    "commons": {
+      "after": 733,
+      "before": 800,
+      "kept": 0.91625,
+      "middleAfter": [
+        126.61800818553888,
+        137.63710777626193
+      ],
+      "middleBefore": [
+        126.9925,
+        136.7825
+      ]
+    },
+    "craftsmen-ward": {
+      "after": 2195,
+      "before": 2195,
+      "kept": 1.0,
+      "middleAfter": [
+        120.96674259681093,
+        217.6984054669704
+      ],
+      "middleBefore": [
+        120.96674259681093,
+        217.6984054669704
+      ]
+    },
+    "market-ward": {
+      "after": 2068,
+      "before": 2068,
+      "kept": 1.0,
+      "middleAfter": [
+        125.66489361702128,
+        172.68955512572535
+      ],
+      "middleBefore": [
+        125.66489361702128,
+        172.68955512572535
+      ]
+    },
+    "outskirts": {
+      "after": 9714,
+      "before": 9714,
+      "kept": 1.0,
+      "middleAfter": [
+        115.0284126003706,
+        40.09131150916203
+      ],
+      "middleBefore": [
+        115.0284126003706,
+        40.09131150916203
+      ]
+    },
+    "residential-ward": {
+      "after": 7000,
+      "before": 5111,
+      "kept": 0.2226570142829192,
+      "middleAfter": [
+        38.02757142857143,
+        83.90942857142858
+      ],
+      "middleBefore": [
+        117.30776756016435,
+        100.81216982977891
+      ]
+    }
+  },
+  "name": "grow",
+  "passed": true,
+  "request": "a town with a market ward, a residential ward, a craftsmen ward and outskirts",
+  "revise": "make the residential ward bigger",
+  "revision": {
+    "by": "you",
+    "issues": [],
+    "notes": [
+      "outskirts: left as it was; the request didn't ask about it",
+      "residential-ward: left out north-of market-ward (the request doesn't say it)",
+      "residential-ward: left out south-of outskirts (the request doesn't say it)"
+    ],
+    "stage": "layout",
+    "summary": "The residential ward's area increased to 7000 cells (from 5111) and its plots to 40 (from 30), taking land from the outskirts, which now has 7000 cells (from 9714) and 20 plots (from 25).",
+    "text": "make the residential ward bigger",
+    "time": 1793119609,
+    "undo": 1
+  },
+  "sizeRatio": 1.3695949911954608,
+  "zones": {
+    "A": "residential-ward"
+  }
+}

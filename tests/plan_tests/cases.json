@@ -1,0 +1,26 @@
+[
+  {
+    "name": "add-10-houses",
+    "about": "Ten more houses in one zone: exactly ten; every other zone's land and things stay exactly as they were.",
+    "request": "a village with a market and two residential wards",
+    "zones": { "A": ["residential", "ward"] },
+    "revise": "add 10 more houses to the {A}",
+    "expect": { "add": ["A", 10] }
+  },
+  {
+    "name": "add-5-workshops",
+    "about": "Five more workshops in the craftsmen's zone, nothing else changed.",
+    "request": "a town with a market ward, a residential ward and a craftsmen ward",
+    "zones": { "A": ["craftsmen"] },
+    "revise": "add 5 more workshops to the {A}",
+    "expect": { "add": ["A", 5] }
+  },
+  {
+    "name": "add-3-buildings",
+    "about": "Three more buildings in the outer zone, said plainly.",
+    "request": "a town with a market ward, a residential ward and outskirts with farms",
+    "zones": { "A": ["outskirts", "suburb", "farmland"] },
+    "revise": "add 3 more buildings to the {A}",
+    "expect": { "add": ["A", 3] }
+  }
+]
