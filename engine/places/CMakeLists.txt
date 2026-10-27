@@ -15,6 +15,7 @@ add_library(aige_places STATIC
     Brief.cpp
     Planner.h
     Planner.cpp
+    ReviseLanguage.cpp
     Solver.h
     Solver.cpp
     Where.h

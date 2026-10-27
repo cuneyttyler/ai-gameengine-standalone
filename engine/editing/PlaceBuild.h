@@ -487,6 +487,9 @@ private:
     nlohmann::json buildProgress_ = nlohmann::json::object(); // ④ Build: {done, total, text}             // a zone asked for more than its land holds keeps what fitted, and says so
     bool roomToRevision_ = false; // FitToRoom's notes go to the revision being solved
     std::set<std::string> anchored_; // a revision's landmarks and the zones it says stay: never moved by it
+    // A revision's zones changed where they stand (a size, what they hold; nothing said of where they go):
+    // laid out again from their own seed, with their own relations, not placed anew.
+    std::set<std::string> inPlace_;
     nlohmann::json layoutQuality_ = nlohmann::json::object(); // the layout's quality checks (§11.3)
     nlohmann::json LayoutQuality(const nlohmann::json& spec, const nlohmann::json& solved) const;
     void ApplySketch(nlohmann::json& zones, int side) const; // the AI's grid sketch, onto the zones

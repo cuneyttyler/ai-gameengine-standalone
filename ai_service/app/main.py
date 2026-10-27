@@ -136,6 +136,7 @@ class RevisePlanRequest(BaseModel):
     where: dict = {}       # the layout now (engine/places Where): areas, banks, directions, a map
     stage: str = ""        # "layout": only the zones are planned yet; "plan": the zones are fixed
     room: list = []        # in the plan: each zone's land and about how many parcels it holds
+    language: dict = {}    # the revision language at this step (data/places/revise-language.json): the answer is a program in it
 
 
 class SketchRequest(BaseModel):
@@ -841,7 +842,7 @@ def create_app(
             return {"ok": False, "errors": ["Say what to change"]}
         return _planning(lambda p: revise_plan(p, request.brief, request.plan, request.result, request.instruction,
                                                request.context, request.mode, where=request.where, stage=request.stage,
-                                               room=request.room))
+                                               room=request.room, language=request.language))
 
     @app.post("/places/review-layout")
     def places_review_layout(request: ReviewLayoutRequest) -> dict:

@@ -44,6 +44,10 @@ AIGE_REVISE_PORT=8811 build/tests/Release/aige_tests --gtest_filter=PlanRevise.*
 - `AIGE_REVISE_CASES=add-10-houses` runs only some of the cases.
 - The model is the one chosen in your Preferences ▸ AI. `AIGE_REVISE_MODEL=<provider>|<model>` picks another.
 
+Each run makes its project in the system temp folder (`aige_revise_tests/`), apart from the results.
+
+`AIGE_REVISE_REPRO=<project>|<words>` with `--gtest_filter=PlanRevise.Reproduce*` reopens a saved build and revises it without the AI. Use it for a revision that fails before it asks the AI.
+
 ## Results
 
 Each case writes to `results/<case>/`:
@@ -52,4 +56,4 @@ Each case writes to `results/<case>/`:
 - `report.json`: the zone found, the words sent, the AI's revision, the building counts, and each other zone's things and land compared;
 - `run.log`.
 
-`results/summary.json` lists every case's verdict. The generated projects are not kept in git.
+`results/summary.json` lists every case's verdict.

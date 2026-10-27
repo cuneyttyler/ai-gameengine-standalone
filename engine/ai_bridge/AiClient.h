@@ -75,7 +75,6 @@ public:
 private:
     std::string token_;
     struct Job;
-    void Worker();
     void RunStart(nlohmann::json schema);
     void RunPropose(int id, const nlohmann::json& request);
     std::optional<nlohmann::json> Send(const std::string& method, const std::string& path, const nlohmann::json* body,
@@ -83,6 +82,7 @@ private:
     void Push(Result result);
     bool LaunchProcess(std::string* error);
     void StopProcess();
+    void Worker(bool quick);
 
     Options options_;
     std::atomic<State> state_{State::Stopped};
@@ -97,6 +97,7 @@ private:
     struct Job {
         bool start = false;
         std::function<void()> run;
+        bool quick = false; // a status poll (GET /progress): its own worker, never behind long requests
     };
     std::deque<Job> jobs_;
     std::deque<Result> results_;

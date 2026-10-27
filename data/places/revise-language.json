@@ -1,0 +1,161 @@
+{
+  "about": "The revision language (docs/places/revise-language.md): what a revision of a place can do, step by step. The AI turns the user's words into these instructions; the engine checks each one and runs it on the plan and the layout (PLL). The Build panel lists them as what can be asked.",
+  "version": 1,
+  "params": {
+    "zone": "a zone of the place, by its id",
+    "node": "a part of the plan, by its id: a zone, or a parcel inside one (zone/parcel)",
+    "kind": "a kind of parcel the zone may hold (a module id, e.g. house-plot)",
+    "module": "a zone module the place may have (e.g. residential-ward)",
+    "count": "a whole number, 1 or more",
+    "factor": "how many times its size: more than 1 to grow, less than 1 to shrink",
+    "cells": "an area in cells",
+    "dx": "cells east (negative: west)",
+    "dy": "cells south (negative: north)",
+    "rel": "where it goes: a list of {type, to}; type is one of near, adjacent, along, far, north-of, south-of, east-of, west-of (to a part, the river or a road) or in-north, in-south, in-east, in-west (to site: that part of the map)",
+    "side": "where in its zone: north, south, east, west or middle",
+    "field": "a setting's name (e.g. street-style, house-kind)",
+    "value": "the setting's new value",
+    "look": "how they look: {field: value} of the kind's settings (e.g. {house-kind: cottage})",
+    "then": "what the other zone does: swap (takes the first one's old land) or place (placed again)",
+    "path": "a Brief setting (e.g. shape.layout, scale.class, components.<id>.assets.variants)"
+  },
+  "instructions": [
+    {
+      "do": "swap",
+      "steps": ["layout"],
+      "params": { "a": "zone", "b": "zone" },
+      "required": ["a", "b"],
+      "says": "Two zones change places: each takes the other's land exactly.",
+      "shown": "Swap {a} and {b}",
+      "examples": ["swap the market and the craftsmen ward", "move the farms to where the houses are and the houses to where the farms are"]
+    },
+    {
+      "do": "occupy",
+      "steps": ["layout"],
+      "params": { "zone": "zone", "where": "zone", "then": "then" },
+      "required": ["zone", "where"],
+      "says": "A zone goes where another is now; that one takes its old land (swap) or is placed again (place).",
+      "shown": "Put {zone} where {where} is",
+      "examples": ["put the temple ward where the market is now"]
+    },
+    {
+      "do": "shift",
+      "steps": ["layout"],
+      "params": { "zone": "zone", "dx": "dx", "dy": "dy" },
+      "required": ["zone"],
+      "says": "A zone moved by so many cells, keeping its shape. \"A little\" is about a fifth of its width.",
+      "shown": "Shift {zone} by {dx}, {dy}",
+      "examples": ["move the docks a little further north", "shift the market 10 cells east"]
+    },
+    {
+      "do": "move",
+      "steps": ["layout"],
+      "params": { "zone": "zone", "rel": "rel" },
+      "required": ["zone", "rel"],
+      "says": "A zone placed anew where the words say (beside, north of, along the river, in the west of the map); the zones around it keep their land unless it has no room.",
+      "shown": "Move {zone}: {rel}",
+      "examples": ["put the temple ward north of the market", "move the farms along the river"]
+    },
+    {
+      "do": "grow",
+      "steps": ["layout"],
+      "params": { "zone": "zone", "by": "factor", "to": "cells" },
+      "required": ["zone"],
+      "defaults": { "by": 1.3 },
+      "says": "A zone made bigger where it stands: it spreads from its middle into open land, then into its neighbours'.",
+      "shown": "Grow {zone} ×{by}",
+      "examples": ["make the residential ward bigger", "make the craftsmen ward twice as big"]
+    },
+    {
+      "do": "shrink",
+      "steps": ["layout"],
+      "params": { "zone": "zone", "by": "factor", "to": "cells" },
+      "required": ["zone"],
+      "defaults": { "by": 0.75 },
+      "says": "A zone made smaller where it stands; it holds fewer buildings in proportion, and the land it gives up is left open.",
+      "shown": "Shrink {zone} ×{by}",
+      "examples": ["make the market smaller", "halve the outskirts"]
+    },
+    {
+      "do": "add-zone",
+      "steps": ["layout"],
+      "params": { "module": "module", "id": "zone", "rel": "rel", "to": "cells" },
+      "required": ["module"],
+      "says": "A new zone, where the words say (or wherever there's room).",
+      "shown": "Add a {module}",
+      "examples": ["add a temple ward east of the market"]
+    },
+    {
+      "do": "remove-zone",
+      "steps": ["layout"],
+      "params": { "zone": "zone" },
+      "required": ["zone"],
+      "says": "A zone taken out; its land is left open.",
+      "shown": "Remove {zone}",
+      "examples": ["remove the outskirts"]
+    },
+    {
+      "do": "keep",
+      "steps": ["layout"],
+      "params": { "zone": "zone" },
+      "required": ["zone"],
+      "says": "A zone held where it is: nothing in this revision moves or shrinks it.",
+      "shown": "Keep {zone} where it is",
+      "examples": ["make the market bigger but keep the temple ward where it is"]
+    },
+    {
+      "do": "add",
+      "steps": ["plan"],
+      "params": { "zone": "zone", "kind": "kind", "count": "count", "look": "look" },
+      "required": ["zone", "kind", "count"],
+      "says": "Exactly so many more parcels of a kind in a zone; the other zones don't change. The zone takes the open land beside it if it's full.",
+      "shown": "Add {count} {kind} to {zone}",
+      "examples": ["add 10 more houses to the residential ward", "add 3 workshops to the craftsmen ward"]
+    },
+    {
+      "do": "remove",
+      "steps": ["plan"],
+      "params": { "zone": "zone", "kind": "kind", "count": "count", "node": "node" },
+      "required": [],
+      "says": "Parcels taken out: so many of a kind from a zone, or one by its id. Nothing else moves.",
+      "shown": "Remove {count} {kind} from {zone}",
+      "examples": ["remove 4 houses from the outskirts", "take out the well in ward 1"]
+    },
+    {
+      "do": "replace",
+      "steps": ["plan"],
+      "params": { "zone": "zone", "kind": "kind", "with": "kind", "count": "count", "look": "look" },
+      "required": ["zone", "kind", "with"],
+      "says": "So many parcels of one kind in a zone turned into another kind (all of them when no count is given).",
+      "shown": "Replace {count} {kind} with {with} in {zone}",
+      "examples": ["turn 3 of the houses in the outskirts into farms"]
+    },
+    {
+      "do": "place",
+      "steps": ["plan"],
+      "params": { "node": "node", "side": "side", "near": "node", "into": "zone" },
+      "required": ["node"],
+      "says": "One parcel moved: to a side of its zone, beside another parcel, or into another zone.",
+      "shown": "Move {node}",
+      "examples": ["move the well to the north of ward 1", "put the inn next to the market square", "move the inn into the market ward"]
+    },
+    {
+      "do": "set",
+      "steps": ["layout", "plan"],
+      "params": { "node": "node", "field": "field", "value": "value" },
+      "required": ["node", "field", "value"],
+      "says": "One setting of a zone or a parcel (its street pattern, its house kind…).",
+      "shown": "Set {node}'s {field} to {value}",
+      "examples": ["give the residential ward a grid of streets", "make the houses in ward 2 longhouses"]
+    },
+    {
+      "do": "set-place",
+      "steps": ["layout", "plan"],
+      "params": { "path": "path", "value": "value" },
+      "required": ["path", "value"],
+      "says": "One setting of the whole place: its layout pattern, its size, how its things look.",
+      "shown": "Set the place's {path} to {value}",
+      "examples": ["make it a radial town", "use more than one kind of art for the houses"]
+    }
+  ]
+}

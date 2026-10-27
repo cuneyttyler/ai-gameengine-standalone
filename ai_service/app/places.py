@@ -581,8 +581,39 @@ MOVE_REASONING = """Reason it out step by step in your thinking, for each zone t
 """
 
 
+def program_shape(language: dict) -> str:
+    """The answer as a program in the revision language (docs/places/revise-language.md): the instructions
+    this step allows, each with its parameters and what it does, written from the language the editor sent."""
+    params = language.get("params", {}) if isinstance(language.get("params"), dict) else {}
+    lines = []
+    for i in language.get("instructions", []):
+        if not isinstance(i, dict) or not i.get("do"):
+            continue
+        required = set(i.get("required", []))
+        args = ", ".join(f'"{k}": <{v}{"" if k in required else ", optional"}>' for k, v in (i.get("params") or {}).items())
+        examples = "; ".join(f'"{e}"' for e in i.get("examples", [])[:2])
+        defaults = i.get("defaults") or {}
+        default_text = f" (default {', '.join(f'{k} {v}' for k, v in defaults.items())})" if defaults else ""
+        lines.append(f'  {{"do": "{i["do"]}", {args}}}\n      {i.get("says", "")}{default_text} Said like: {examples}')
+    kinds = "\n".join(f"  <{k}>: {v}" for k, v in params.items())
+    return ("The request as a program, as JSON:\n"
+            "{\n"
+            '  "now": "<where the parts the request is about are now, from WHERE>",\n'
+            '  "summary": "<one or two sentences to the user: what you did, or why it can\'t be done>",\n'
+            '  "program": [<one instruction per thing the request asks, in order>]\n'
+            "}\n"
+            "The instructions there are, and nothing else:\n" + "\n".join(lines) + "\n"
+            "Their parameters:\n" + kinds + "\n"
+            "Use the ids from the plan for zones, parcels and kinds; a kind must be one the zone's rules list. Give only "
+            "what the request asks: one instruction for each thing it asks, none for anything it doesn't name. A number "
+            "the request says is the number in the instruction (\"10 more houses\" is count 10; \"twice as big\" is by 2; "
+            "\"a bit bigger\" is by 1.2). An empty program, with the reason in summary, when the request can't be done "
+            "with these instructions.")
+
+
 def revise_plan(provider: Provider, brief: dict, plan: dict, result: dict, instruction: str, context: dict,
-                mode: str = "auto", where: dict | None = None, stage: str = "", room: list | None = None) -> dict:
+                mode: str = "auto", where: dict | None = None, stage: str = "", room: list | None = None,
+                language: dict | None = None) -> dict:
     """The user's change to a plan they've seen (place-interaction.md A3: revise before building)."""
     task = ("You revise a game place's plan as its user asks. Change only what the request is about; everything "
             "else stays as planned: never re-plan, resize or move a zone the request doesn't name. Use only the modules, fields and values the rules allow (a zone may hold only "
@@ -617,8 +648,33 @@ def revise_plan(provider: Provider, brief: dict, plan: dict, result: dict, instr
               f"The plan (each zone with its parcels; id: what to name in a change):\n{json.dumps(plan, ensure_ascii=False)}\n\n"
               f"How it was laid out (buildings placed per zone, and what didn't fit):\n{json.dumps(result, ensure_ascii=False)}\n\n"
               f"The modules and rules (the ontology's relevant part):\n{json.dumps(context, ensure_ascii=False)}")
+    if language and language.get("instructions"):
+        # The revision language: the AI only says which instructions, with which parameters; the engine runs them.
+        if stage == "layout":
+            inputs = inputs.replace(MOVE_REASONING, MOVE_REASONING.replace('"move" and in "expect"', '"move" instruction\'s "rel"'))
+        step = think_then_answer(provider, task, inputs, program_shape(language), mode)
+        return _program_result(step)
     step = think_then_answer(provider, task, inputs, REVISE_SHAPE, mode)
     return _revision_result(step)
+
+
+def _program_result(step: StepResult) -> dict:
+    out = {"ok": False, "mode": step.mode, "thinking": step.thinking, "errors": list(step.errors),
+           "usage": step.usage.model_dump()}
+    answer = step.answer
+    if answer is None:
+        return out
+    program = answer.get("program", [])
+    if not isinstance(program, list):
+        out["errors"].append("program is a list of instructions")
+        return out
+    answer["program"] = [i for i in program if isinstance(i, dict) and isinstance(i.get("do"), str)]
+    answer["summary"] = str(answer.get("summary", "")).strip()
+    if not isinstance(answer.get("now", ""), str):
+        answer["now"] = json.dumps(answer["now"], ensure_ascii=False)
+    out["answer"] = answer
+    out["ok"] = True
+    return out
 
 
 def _revision_result(step: StepResult) -> dict:

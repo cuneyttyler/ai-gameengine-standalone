@@ -67,14 +67,18 @@ class Steps:
     def done(self, id: str, ok: bool = True, label: str | None = None) -> None:
         self._set(id, "done" if ok else "failed", label)
 
-    def _set(self, id: str, state: str, label: str | None) -> None:
+    def tick(self, id: str, label: str) -> None:
+        """A long step going on: its words ("12 of 50") and the pieces made so far ticked."""
+        self._set(id, "working", label, pieces=True)
+
+    def _set(self, id: str, state: str, label: str | None, pieces: bool = False) -> None:
         with self.lock:
             for item in self.items:
                 if item["id"] == id:
                     item["state"] = state
                     if label:
                         item["label"] = label
-                    if state in ("done", "failed") and self.root is not None:
+                    if (pieces or state in ("done", "failed")) and self.root is not None:
                         for p in item["pieces"]:
                             p["made"] = bool(p["slug"]) and (self.root / self.rel / "pieces" / f"{p['slug']}.png").exists()
                             if p["made"]:
@@ -921,11 +925,21 @@ def paint_from_words(painter, folder: Path, pieces: list[dict], every: list[dict
         biggest["image"].save(folder / "pieces" / f"{p['slug']}.png")
         return True
 
-    track.start("paint")
+    track.start("paint", f"Painting the pieces: 0 of {len(pieces)}")
     made: set[str] = set()
     tries: dict[str, int] = {}
+    finished = [0]
+    count_lock = __import__("threading").Lock()
+
+    def paint_counted(p: dict) -> bool:
+        ok = paint(p)
+        with count_lock:
+            finished[0] += 1
+            n = finished[0]
+        track.tick("paint", f"Painting the pieces: {n} of {len(pieces)}")
+        return ok
     with ThreadPoolExecutor(4) as pool:
-        first = list(pool.map(paint, pieces))
+        first = list(pool.map(paint_counted, pieces))
     again = [p for p, ok in zip(pieces, first) if not ok]
     made |= {p["key"] for p, ok in zip(pieces, first) if ok}
     if again:

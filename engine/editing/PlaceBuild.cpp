@@ -11,6 +11,7 @@
 #include "places/Compile.h"
 #include "places/PlaceValidate.h"
 #include "places/Planner.h"
+#include "places/ReviseLanguage.h"
 #include "places/Solver.h"
 #include "places/Where.h"
 
@@ -1754,7 +1755,8 @@ void PlaceBuild::UnfreezeLayout(bool keepPlaces, const std::set<std::string>& mo
     keepSeeds_.clear();
     if (keepPlaces) {
         for (const auto& r : solved_.value("regions", json::array())) {
-            if (r.value("statement", "") == "site/zones" && r.contains("seed") && !moving.contains(r.value("id", ""))) {
+            if (r.value("statement", "") == "site/zones" && r.contains("seed") &&
+                (!moving.contains(r.value("id", "")) || inPlace_.contains(r.value("id", "")))) {
                 keepSeeds_[r.value("id", "")] = {r["seed"][0].get<int>(), r["seed"][1].get<int>()};
             }
         }
@@ -2772,6 +2774,19 @@ std::string PlaceBuild::Revise(const std::string& request) {
     }
     json body = RevisionBody();
     body["instruction"] = request;
+    {
+        // The revision language at this step: the AI answers with a program in it (docs/places/revise-language.md).
+        const json instructions = ReviseInstructionsFor(ReviseStep(stage_));
+        json params = json::object();
+        for (const auto& i : instructions) {
+            const json used = i.value("params", json::object());
+            for (const auto& [name, kind] : used.items()) {
+                const std::string k = kind.get<std::string>();
+                params[k] = ReviseLanguage()["params"].value(k, "");
+            }
+        }
+        body["language"] = {{"instructions", instructions}, {"params", params}};
+    }
     if (stage_ == "layout") body["stage"] = "layout";
     else if (LayoutFrozen()) body["stage"] = "plan"; // the zones are set: only what's inside them changes
     if (!Send({"revise", -1, request, "/places/revise-plan", body, 600})) return "the AI is off, and revising by request needs it";
@@ -2985,8 +3000,31 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
     entry["summary"] = answer.value("summary", "");
     entry["issues"] = answer.value("issues", json::array());
     if (answer.contains("now") && answer["now"].is_string()) entry["now"] = answer["now"]; // where it read things are
-    const json changes = answer.value("changes", json::array());
-    const json briefChanges = answer.value("brief", json::object());
+    // The request in the revision language (docs/places/revise-language.md): each instruction checked and
+    // lowered to the plan's changes here; what it ran is shown to the user as read, and what it couldn't, why.
+    json changes = answer.value("changes", json::array());
+    json briefChanges = answer.value("brief", json::object());
+    json programExpect;
+    std::set<std::string> programInPlace, programKeep;
+    if (answer.contains("program") && answer["program"].is_array()) {
+        std::map<std::string, int> cells;
+        if (solved_.contains("grid")) {
+            const int w = solved_["grid"]["bounds"][2].get<int>();
+            for (const auto& r : solved_.value("regions", json::array())) {
+                if (r.value("statement", "") == "site/zones") cells[r.value("id", "")] += static_cast<int>(DecodeCells(r.value("cells", json::array()), w).size());
+            }
+        }
+        LoweredRevision lowered = LowerRevision(ontology, spec_, brief_, cells, ReviseStep(beforeRevision_), answer["program"]);
+        changes = lowered.changes;
+        briefChanges = lowered.brief;
+        programExpect = lowered.expect;
+        programInPlace = lowered.inPlace;
+        programKeep = lowered.keep;
+        entry["program"] = answer["program"];
+        entry["shown"] = lowered.shown;
+        if (!lowered.notes.empty()) entry["couldnt"] = lowered.notes;
+        Log({{"step", "revise program"}, {"program", answer["program"]}, {"lowered", changes}, {"brief", briefChanges}, {"notes", lowered.notes}});
+    }
     // A request about "the others", "the rest" or "all" is about every zone.
     const bool aboutAll = [&] {
         std::string t = what.node;
@@ -3009,7 +3047,7 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
             expect_.push_back({{"node", node}, {"type", type}, {"to", to}});
         };
         json facts = json::array();
-        for (const auto& e : answer.value("expect", json::array())) {
+        for (const auto& e : programExpect.is_array() ? programExpect : answer.value("expect", json::array())) {
             if (!e.is_object()) continue;
             // A fact the layout can check names a node, a relation and another node, all by words; one
             // that doesn't ("to": 6, a room count) is no relation (and would throw where it's read).
@@ -3178,6 +3216,7 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
     }
     // The zones it names that it doesn't move: where the moved ones go, or what it says stays.
     anchored_.clear();
+    anchored_.insert(programKeep.begin(), programKeep.end());
     if (!review) {
         for (const auto& c : spec_["root"].value("children", json::array())) {
             const std::string id = c.value("id", "");
@@ -3275,6 +3314,50 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
             }
         }
     }
+    // A zone made bigger or smaller, or given more or less to hold, with nothing said of where it goes:
+    // it changes where it stands (its seed and its own relations kept), not placed anew somewhere else.
+    inPlace_ = programInPlace;
+    if (!review) {
+        std::set<std::string> placedBy;
+        for (const auto& c : kept) {
+            const std::string op = c.value("op", "");
+            const std::string id = c.value("node", json("")).is_string() ? c["node"].get<std::string>() : "";
+            const bool says = op == "move" || (c.contains("rel") && c["rel"].is_array() && !c["rel"].empty()) ||
+                              (c.contains("placement") && c["placement"].is_string() && !c["placement"].get<std::string>().empty());
+            if (says) placedBy.insert(id);
+        }
+        for (const auto& e : expect_) placedBy.insert(e.value("node", ""));
+        for (auto& c : kept) {
+            const std::string op = c.value("op", "");
+            const std::string id = c.value("node", json("")).is_string() ? c["node"].get<std::string>() : "";
+            if ((op != "set" && op != "zone") || id.empty() || id.find('/') != std::string::npos || placedBy.contains(id)) continue;
+            if (!SpecNode(spec_, id)) continue;
+            c.erase("rel");
+            c.erase("placement");
+            inPlace_.insert(id);
+        }
+        // Smaller, and as many plots as before: the plots it can hold, fewer by as much (else its plots keep it its size).
+        for (auto& c : kept) {
+            const std::string id = c.value("node", json("")).is_string() ? c["node"].get<std::string>() : "";
+            if (!inPlace_.contains(id)) continue;
+            const json* node = SpecNode(spec_, id);
+            auto number = [](const json& q, const char* key, const char* field) -> double {
+                // {"plots": {"count": n}}, or just {"plots": n}.
+                const json v = q.is_object() ? q.value(key, json()) : json();
+                const json x = v.is_object() ? v.value(field, json()) : v;
+                return x.is_number() ? x.get<double>() : 0.0;
+            };
+            const json qNow = node->value("quantity", json::object()), qNew = c.value("quantity", json::object());
+            const double was = number(qNow, "area", "area"), now = number(qNew, "area", "area");
+            const double plotsWas = number(qNow, "plots", "count");
+            const double plotsNew = qNew.contains("plots") ? number(qNew, "plots", "count") : plotsWas;
+            if (was > 0 && now > 0 && now < was && plotsWas > 0 && plotsNew >= plotsWas) {
+                const int fewer = std::max(1, static_cast<int>(std::floor(plotsWas * now / was)));
+                c["quantity"]["plots"] = {{"count", fewer}};
+                notes.push_back(id + ": smaller, so it holds " + std::to_string(fewer) + " plots (was " + std::to_string(static_cast<int>(plotsWas)) + ")");
+            }
+        }
+    }
     {
         std::set<std::string> moved;
         for (const auto& c : kept) {
@@ -3305,7 +3388,7 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
     if (beforeRevision_ == "layout" && !review) {
         for (const auto& id : moving) {
             json* node = SpecNode(spec_, id);
-            if (node == nullptr || !node->contains("rel")) continue;
+            if (node == nullptr || !node->contains("rel") || inPlace_.contains(id)) continue; // where it stands, still
             const json composed = ComposePlace(id, (*node)["rel"], what.node, moving);
             auto same = [](const json& a, const json& b) { return a.value("type", "") == b.value("type", "") && a.value("to", "") == b.value("to", ""); };
             json rel = json::array();
@@ -3336,7 +3419,8 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
     // The zones it changed or moves are placed anew; the others keep their place.
     keepSeeds_.clear();
     for (const auto& r : solved_.value("regions", json::array())) {
-        if (r.value("statement", "") != "site/zones" || !r.contains("seed") || moving.contains(r.value("id", ""))) continue;
+        if (r.value("statement", "") != "site/zones" || !r.contains("seed")) continue;
+        if (moving.contains(r.value("id", "")) && !inPlace_.contains(r.value("id", ""))) continue;
         keepSeeds_[r.value("id", "")] = {r["seed"][0].get<int>(), r["seed"][1].get<int>()};
     }
     revisionKeep_ = keepSeeds_;
@@ -3348,6 +3432,7 @@ void PlaceBuild::OnRevision(const Pending& what, const json& body) {
         WriteJson(Folder() / "brief.json", brief_);
         RelayoutMoving(moving);
         MeetExpectations();
+        inPlace_.clear();
         return;
     }
     // The rest as after planning: the expansion, the fixes, the checks; then laid out again.
@@ -5019,6 +5104,7 @@ json PlaceBuild::State() {
     }
     if (stage_ == "plan" || stage_ == "planned" || stage_ == "revising" || stage_ == "built") {
         state["revisions"] = revisions_;
+        state["reviseLanguage"] = ReviseInstructionsFor("plan"); // what a revision can do here
         if (solved_.is_object()) state["verify"] = VerifyLayout(host_.ontology(), brief_, spec_, solved_);
     }
     if (stage_ == "revising") {
@@ -5105,6 +5191,7 @@ json PlaceBuild::State() {
         state["layout"]["sketched"] = spec_.contains("root") && spec_["root"].contains("sketch");
         if (where.is_object() && where.contains("map")) state["layout"]["map"] = where["map"];
         state["revisions"] = revisions_;
+        state["reviseLanguage"] = ReviseInstructionsFor("layout");
         state["questions"] = questions_;
         state["directions"] = directions_;
         state["decisionAnswers"] = decisionAnswers_;

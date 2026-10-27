@@ -114,6 +114,10 @@ json RunCase(const json& c, int port) {
         if (expect["size"][2].is_number() && ratio > expect["size"][2].get<double>()) {
             fail(a + " is " + std::to_string(ratio) + " times its size: asked at most " + expect["size"][2].dump());
         }
+        // Where it stands: grown, it still covers its old land; shrunk, it's within it.
+        const double stays = ratio >= 1.0 ? Kept(landBefore.at(a), landAfter.at(a)) : Kept(landAfter.at(a), landBefore.at(a));
+        report["staysWhereItWas"] = stays;
+        if (stays < 0.8) fail(a + " moved: only " + std::to_string(static_cast<int>(stays * 100)) + "% of it overlaps where it was");
     }
     // Only what was asked: the zones it doesn't name keep their land (those touching the named
     // ones may give some up when a zone grows or moves; the rest shouldn't move at all).

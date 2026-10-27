@@ -1,7 +1,9 @@
 {
   "about": "One zone made smaller: it shrinks; zones away from it stay as they were.",
   "allZones": {
+    "commons": "commons",
     "craftsmen-ward": "craftsmen-ward",
+    "farmland-ring": "farmland-ring",
     "market-ward": "market-ward",
     "outskirts": "outskirts",
     "residential-ward": "residential-ward"
@@ -10,56 +12,82 @@
     "market-ward is 1.000000 times its size: asked at most 0.85"
   ],
   "land": {
-    "craftsmen-ward": {
-      "after": 3292,
-      "before": 3292,
+    "commons": {
+      "after": 800,
+      "before": 800,
       "kept": 1.0,
       "middleAfter": [
-        51.202612393681655,
-        49.71597812879708
+        23.41125,
+        43.6125
       ],
       "middleBefore": [
-        51.202612393681655,
-        49.71597812879708
+        23.41125,
+        43.6125
+      ]
+    },
+    "craftsmen-ward": {
+      "after": 5486,
+      "before": 5486,
+      "kept": 1.0,
+      "middleAfter": [
+        25.04739336492891,
+        149.54320087495444
+      ],
+      "middleBefore": [
+        25.04739336492891,
+        149.54320087495444
+      ]
+    },
+    "farmland-ring": {
+      "after": 1314,
+      "before": 1314,
+      "kept": 1.0,
+      "middleAfter": [
+        146.69330289193303,
+        240.18797564687975
+      ],
+      "middleBefore": [
+        146.69330289193303,
+        240.18797564687975
       ]
     },
     "market-ward": {
-      "after": 2068,
-      "before": 2068,
-      "kept": 0.0,
+      "after": 3446,
+      "before": 3446,
+      "kept": 1.0,
       "middleAfter": [
-        158.10154738878143,
-        132.1058994197292
+        78.60098665118979,
+        96.4184561810795
       ],
       "middleBefore": [
-        26.50193423597679,
-        20.433268858800773
+        78.60098665118979,
+        96.4184561810795
       ]
     },
     "outskirts": {
-      "after": 7771,
-      "before": 7771,
+      "after": 15542,
+      "before": 15542,
       "kept": 1.0,
       "middleAfter": [
-        37.40535323639171,
-        193.36018530433662
+        113.91410371895509,
+        203.03860507013255
       ],
       "middleBefore": [
-        37.40535323639171,
-        193.36018530433662
+        113.91410371895509,
+        203.03860507013255
       ]
     },
     "residential-ward": {
-      "after": 6666,
-      "before": 6815,
-      "kept": 0.9781364636830521,
+      "after": 17037,
+      "before": 17037,
+      "kept": 1.0,
       "middleAfter": [
-        46.477347734773474,
-        100.76687668766877
+        162.35058989258673,
+        107.4067617538299
       ],
       "middleBefore": [
-        46.5037417461482,
-        101.24431401320616
+        162.35058989258673,
+        107.4067617538299
       ]
     }
   },
@@ -67,20 +95,7 @@
   "passed": false,
   "request": "a town with a market ward, a residential ward, a craftsmen ward and outskirts",
   "revise": "make the market ward smaller",
-  "revision": {
-    "by": "you",
-    "issues": [],
-    "notes": [
-      "market-ward: left out along river (the request doesn't say it)",
-      "market-ward: left out north-west-of craftsmen-ward (the request doesn't say it)",
-      "market-ward: left out near residential-ward (the request doesn't say it)"
-    ],
-    "stage": "layout",
-    "summary": "The market ward's area was reduced from 2068 to 1200 cells while keeping its plots at 12. It is now north-west of the craftsmen's ward, along the river's west bank, and near the residential ward to the south. No other zones were moved or resized.",
-    "text": "make the market ward smaller",
-    "time": 1793119888,
-    "undo": 1
-  },
+  "revision": null,
   "sizeRatio": 1.0,
   "zones": {
     "A": "market-ward"

@@ -27,6 +27,11 @@
 #include <set>
 #include <sstream>
 
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 namespace aige::revise_tests {
 
 using json = nlohmann::json;
@@ -60,10 +65,44 @@ inline bool Chosen(const std::string& name) {
     return false;
 }
 
+// A crash said, not just an exit code: what was thrown, or the Windows exception and where.
+inline void ReportCrashes() {
+    static bool once = false;
+    if (once) return;
+    once = true;
+    std::set_terminate([] {
+        try {
+            if (auto e = std::current_exception()) std::rethrow_exception(e);
+            std::cerr << "terminate: no exception" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "terminate: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "terminate: an unknown exception" << std::endl;
+        }
+        std::cerr.flush();
+        std::_Exit(3);
+    });
+#ifdef _WIN32
+    SetUnhandledExceptionFilter([](EXCEPTION_POINTERS* info) -> LONG {
+        HMODULE module = nullptr;
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           static_cast<LPCSTR>(info->ExceptionRecord->ExceptionAddress), &module);
+        char name[MAX_PATH] = "?";
+        if (module) GetModuleFileNameA(module, name, MAX_PATH);
+        std::cerr << "crash: exception 0x" << std::hex << info->ExceptionRecord->ExceptionCode << " at offset 0x"
+                  << (reinterpret_cast<uintptr_t>(info->ExceptionRecord->ExceptionAddress) - reinterpret_cast<uintptr_t>(module))
+                  << std::dec << " in " << name << std::endl;
+        std::cerr.flush();
+        std::_Exit(4);
+    });
+#endif
+}
+
 // One build in its own project, driven like the Build panel.
 class LiveBuild {
 public:
     LiveBuild(const fs::path& out, int port) : out_(out), port_(port) {
+        ReportCrashes();
         std::error_code ec;
         fs::remove_all(out_, ec);
         fs::create_directories(out_);
@@ -161,7 +200,12 @@ public:
                 const json body = done.answer.get();
                 const auto s = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - done.t0).count();
                 Say(done.path + " " + (body.value("ok", false) ? "ok" : "failed") + " (" + std::to_string(s) + "s)");
-                build_->OnResponse(done.id, body);
+                try {
+                    build_->OnResponse(done.id, body);
+                } catch (const std::exception& e) {
+                    Say("the build threw on the answer to " + done.path + ": " + e.what());
+                    throw;
+                }
             }
         }
     }
@@ -204,7 +248,14 @@ public:
     std::string Revise(const std::string& text) {
         const std::string was = build_->Stage();
         Say("revise at " + was + ": " + text);
-        if (auto why = build_->Revise(text); !why.empty()) return why;
+        std::string why;
+        try {
+            why = build_->Revise(text);
+        } catch (const std::exception& e) {
+            Say(std::string("Revise threw: ") + e.what());
+            return std::string("Revise threw: ") + e.what();
+        }
+        if (!why.empty()) return why;
         Pump();
         if (build_->Stage() != was) return "after the revision the build is at " + build_->Stage() + ": " + build_->State().value("status", "");
         const json& revisions = build_->Revisions();

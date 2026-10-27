@@ -970,6 +970,13 @@ function showAdvanced(what: string): void {
 const removeAsk = ref(false)
 const removeOne = ref<BuildEntry | null>(null)
 // ③ Find the assets: the background painted first, its steps as the service reports them (the whole, then each window).
+// What a long call is doing, in words: its step; before the service has said one, whether it has the call yet.
+function callStepText(call: { step?: string; plan?: { state?: string; label?: string }[] } | undefined): string {
+  if (!call) return 'Sent to the AI service…'
+  if (call.step) return call.step
+  const working = call.plan?.find((st) => st.state === 'working')
+  return working?.label ?? 'Preparing…'
+}
 const backgroundCall = computed(() => aiCalls.value.find((c) => c.path === '/places/background' && c.phase !== 'done' && c.phase !== 'failed'))
 // The next step working (off the UI thread, or a revision being written by the AI): an overlay over the panel with a
 // spinner, what's being done, how long, and the AI call it waits on.
@@ -1997,7 +2004,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             Painting the background<span v-if="backgroundCall?.total" class="dim">: step {{ Math.min(backgroundCall.total, (backgroundCall.done ?? 0) + 1) }} of {{ backgroundCall.total }}</span>
           </h4>
           <div class="bar"><i :style="{ width: `${(100 * (backgroundCall?.done ?? 0)) / Math.max(1, backgroundCall?.total ?? 1)}%` }" /></div>
-          <p>{{ backgroundCall?.step || 'Starting…' }}<span v-if="backgroundCall" class="dim"> · {{ Math.round(backgroundCall.seconds) }}s</span></p>
+          <p>{{ callStepText(backgroundCall) }}<span v-if="backgroundCall" class="dim"> · {{ Math.round(backgroundCall.seconds) }}s</span></p>
           <p class="dim">
             The whole place is painted in one picture, then the parts that need more detail are painted again as windows and blended.
             {{ state.afterBackground === 'matched' ? 'Then every part\'s art is made in its style.'
@@ -2025,7 +2032,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           </h4>
           <template v-if="state.matched.state === 'making'">
             <div class="bar"><i :style="{ width: `${(100 * (matchedCall?.done ?? 0)) / Math.max(1, matchedCall?.total ?? 1)}%` }" /></div>
-            <p>{{ matchedCall?.step || 'Starting…' }}<span v-if="matchedCall" class="dim"> · {{ Math.round(matchedCall.seconds) }}s</span></p>
+            <p>{{ callStepText(matchedCall) }}<span v-if="matchedCall" class="dim"> · {{ Math.round(matchedCall.seconds) }}s</span></p>
             <ol v-if="matchedCall?.plan?.length" class="art-steps">
               <li v-for="s in matchedCall.plan" :key="s.id" :class="s.state">
                 <span class="mark">{{ s.state === 'done' ? '✓' : s.state === 'failed' ? '✗' : s.state === 'working' ? '●' : '○' }}</span>

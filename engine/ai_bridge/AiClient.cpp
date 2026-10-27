@@ -81,8 +81,11 @@ AiClient::AiClient(Options options) : options_(std::move(options)) {
     std::random_device random;
     static const char* hex = "0123456789abcdef";
     for (int i = 0; i < 32; ++i) token_ += hex[random() % 16];
-    // A few workers: requests to the service run at once (it answers them in parallel).
-    for (int k = 0; k < 4; ++k) workers_.emplace_back([this] { Worker(); });
+    // A few workers: requests to the service run at once (it answers them in parallel). And one for the status polls
+    // alone (GET /progress): with four long requests running (the art, a background, its windows), the progress strip
+    // waited behind them and showed nothing until they ended.
+    for (int k = 0; k < 4; ++k) workers_.emplace_back([this] { Worker(false); });
+    workers_.emplace_back([this] { Worker(true); });
 }
 
 AiClient::~AiClient() {
@@ -141,7 +144,7 @@ int AiClient::Request(const std::string& method, const std::string& path, nlohma
             Push({Result::Kind::Response, id, response ? *response : Failure(error)});
         }
         if (counted) --inFlight_;
-    }});
+    }, !counted});
     wake_.notify_all();
     return id;
 }
@@ -161,18 +164,22 @@ void AiClient::Push(Result result) {
     results_.push_back(std::move(result));
 }
 
-void AiClient::Worker() {
+void AiClient::Worker(bool quick) {
     for (;;) {
         Job job;
         {
             std::unique_lock lock(mutex_);
             // A start runs alone; requests wait until the service has started (or failed to).
             // The job to take: a start wherever it is in the queue, else the first request once started.
-            auto next = [this]() -> std::ptrdiff_t {
+            auto next = [this, quick]() -> std::ptrdiff_t {
                 for (size_t i = 0; i < jobs_.size(); ++i) {
-                    if (jobs_[i].start) return starting_ ? -1 : static_cast<std::ptrdiff_t>(i);
+                    if (jobs_[i].start) return quick || starting_ ? -1 : static_cast<std::ptrdiff_t>(i);
                 }
-                if (!jobs_.empty() && !starting_ && state_ != State::Starting) return 0;
+                if (starting_ || state_ == State::Starting) return -1;
+                // This worker's kind of job: the quick one takes status polls only, the others everything else.
+                for (size_t i = 0; i < jobs_.size(); ++i) {
+                    if (jobs_[i].quick == quick) return static_cast<std::ptrdiff_t>(i);
+                }
                 return -1;
             };
             wake_.wait(lock, [&] { return quitting_ || next() >= 0; });
