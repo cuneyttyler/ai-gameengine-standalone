@@ -5,6 +5,7 @@
 #include "assets/SceneIO.h"
 #include "assets/TextureCook.h"
 #include "editing/Edits.h"
+#include "editing/PaintedPlace.h"
 #include "editing/SceneTools.h"
 #include "gameplay/Archetypes.h"
 #include "places/Brief.h"
@@ -879,9 +880,11 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
         }
         return last;
     };
+    std::map<std::string, int> paintedUses; // a painted place's things in its painting, by need
     for (const auto& o : solved.value("objects", json::array())) {
         Need need = NeedOf(ontology, spec, o);
         out["byObject"][o.value("id", "")] = need.key;
+        if (options.paintedIds.contains(o.value("id", ""))) ++paintedUses[need.key];
         auto& entry = needs[need.key];
         if (entry.second == 0) entry.first = need;
         entry.second++;
@@ -1024,8 +1027,15 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
                     continue;
                 }
             }
+            if (const auto p = paintedUses.find(key); p != paintedUses.end() && p->second >= uses) {
+                // Every one of them is in the place's painting (painted-places.md): no art.
+                row["decision"] = {{"step", "P"}, {"action", "use"}, {"reason", "in the painting"}, {"warn", false}};
+                row["source"] = "painted";
+                out["needs"].push_back(row);
+                continue;
+            }
             const Role* roleDef = ontology.FindRole(need.role.substr(0, need.role.find('|')));
-            if (!options.groundPicture.empty() && roleDef != nullptr && roleDef->affordance == "terrain") {
+            if ((!options.groundPicture.empty() || !options.paintedFolder.empty()) && roleDef != nullptr && roleDef->affordance == "terrain") {
                 // Ground (water, a road, a square): the background has it painted; no art, nothing put down.
                 row["decision"] = {{"step", "B"}, {"action", "use"}, {"reason", "painted in the background"}, {"warn", false}};
                 row["source"] = "background";
@@ -1220,7 +1230,7 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
         (void)indoor;
         for (const auto& part : out["look"]["parts"]) {
             const std::string partKey = part.value("key", ""), role = part.value("role", partKey);
-            if (partKey.empty() || !walls) continue;
+            if (partKey.empty() || !walls || !options.paintedFolder.empty()) continue; // a painted place's walls are painted
             const std::string key = "part|" + partKey;
             const Role* r = ontology.FindRole(role);
             const std::string word = r ? r->label : role;
@@ -1287,6 +1297,10 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
     }();
     for (const auto& slotName : lineSlots) {
         if (slotName == "wall" && indoorWalls) continue; // stood up as the place's wall blocks
+        if (!options.paintedFolder.empty()) {
+            out["pieces"][slotName] = {{"role", slotName + "-piece-set"}, {"source", "painted"}, {"why", "in the painting"}};
+            continue;
+        }
         SlotNeed slot;
         slot.role = slotName == "wall" ? "wall-piece-set" : slotName == "hedge" ? "hedge-piece-set" : "fence-piece-set";
         slot.joined = true;
@@ -1396,7 +1410,7 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
         }
         // A background painted whole (docs/places/background.md) is the ground: no tiles made for it (the placeholder
         // tile only carries the cell's terrain: water, solid ground).
-        if (!options.groundPicture.empty()) {
+        if (!options.groundPicture.empty() || !options.paintedFolder.empty()) {
             out["terrains"][t] = {{"prefab", PlaceholderPrefab(prefabs, "tile", t, options.iso.tileWidth, options.iso.tileHeight, SolidTerrain(t), options.iso)},
                                   {"source", "background"}, {"why", "painted in the background"}};
             continue;
@@ -1473,7 +1487,7 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
 nlohmann::json AssetNeedRows(const nlohmann::json& assets) {
     nlohmann::json needs = nlohmann::json::array();
     for (const auto& n : assets.value("needs", nlohmann::json::array())) {
-        if (n.value("source", "") != "background") needs.push_back(n); // ground the background has painted: nothing to find
+        if (n.value("source", "") != "background" && n.value("source", "") != "painted") needs.push_back(n); // painted already: nothing to find
     }
     const nlohmann::json terrains = assets.value("terrains", nlohmann::json::object());
     for (const auto& [t, g] : terrains.items()) {
@@ -1793,7 +1807,9 @@ std::string FacingFromPlace(const json& o, const std::string& orient, const Terr
 
 constexpr int kGroundChunk = 16;   // cells across a picture
 constexpr int kGroundCellPx = 64;  // pixels across a cell: a 64 x 32 diamond needs 32; twice that keeps the ground sharp close up
-constexpr int kGroundCellPxPainted = 192; // with a painted ground picture: its detail kept for a close camera
+// With a painted ground picture: as sharp as a painted ground at zoom 1 to 1.4. Finer is too big to draw: 192 px made
+// 128 x 128 cells 64 pictures of 3072 px (2.3 GB of textures), and the editor stopped while it loaded them.
+constexpr int kGroundCellPxPainted = 64;
 constexpr float kTextureCells = 4; // cells a ground's texture spans before it repeats
 
 // Each ground's own colour (place-refine.md §3): the image model's grass is green one time and
@@ -2413,7 +2429,8 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
     const HeightField heights = textures.empty() || options.iso.topDown ? HeightField{} : MakeHills(grid, solved, options.hills, groundLook, lookOf);
     std::optional<ImageData> groundPicture;
     if (!options.groundPicture.empty() && options.groundPictureCellPx > 0) groundPicture = DecodeImage(prefabs.GetProject().Resolve(options.groundPicture));
-    const PaintedGround paintedGround = textures.empty() && !groundPicture ? PaintedGround{}
+    const bool paintedPlace = !options.paintedFolder.empty();
+    const PaintedGround paintedGround = (textures.empty() && !groundPicture) || paintedPlace ? PaintedGround{}
                                         : PaintGround(prefabs.GetProject(), grid, textures, options.place, casters, heights, lighting, groundLook, takeOf,
                                                       groundPicture ? &*groundPicture : nullptr, options.groundPictureCellPx);
     {
@@ -2422,6 +2439,24 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
         out["groundPictures"] = json(std::vector<std::string>(pictures.begin(), pictures.end()));
     }
     std::set<std::pair<int, int>> painted;
+    if (paintedPlace) {
+        // The painting shows the ground: the cells only say where one can walk (the marks, else the plan's solid ground).
+        const auto blocked = MarkedBlocked(LoadMarks(options.paintedFolder), grid.w, grid.h);
+        TileDef open, solid;
+        open.sprite.a = solid.sprite.a = 0.0f;
+        solid.solid = true;
+        const uint16_t openId = layer.Intern(open), solidId = layer.Intern(solid);
+        for (int y = 0; y < grid.h; ++y) {
+            for (int x = 0; x < grid.w; ++x) {
+                const bool no = blocked.empty() ? SolidTerrain(grid.At(x, y)) || grid.At(x, y) == "void" : blocked[static_cast<size_t>(x)][static_cast<size_t>(y)];
+                const int gx = x + options.originX, gy = y + options.originY;
+                const uint16_t id = no ? solidId : openId;
+                if (layer.Get(gx, gy) != id) edit.Set(layer, gx, gy, id);
+                painted.insert({gx, gy});
+                out["cells"][no ? "blocked" : "walkable"] = out["cells"].value(no ? "blocked" : "walkable", 0) + 1;
+            }
+        }
+    } else
     for (int y = 0; y < grid.h; ++y) {
         for (int x = 0; x < grid.w; ++x) {
             const int gx = x + options.originX, gy = y + options.originY;
@@ -2522,6 +2557,10 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
     for (const json* o : objects) {
         const std::string id = o->value("id", "");
         if (Kept(options, o->value("node", ""), id)) continue; // not this edit's, or locked: as it is
+        if (options.paintedIds.contains(id)) {
+            out["painted"] = out.value("painted", 0) + 1; // in the painting
+            continue;
+        }
         const std::string key = byObject.value(id, "");
         auto it = choices.find(key);
         if (it != choices.end() && it->second.value("source", "") == "dropped") {
@@ -2607,6 +2646,7 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
     for (const auto& line : solved.value("lines", json::array())) lineIds.insert(line.value("id", ""));
     for (const auto& line : solved.value("lines", json::array())) {
         if (Kept(options, line.value("node", ""), line.value("id", ""))) continue;
+        if (paintedPlace) continue; // painted
         if (const std::string lid = line.value("id", ""); lid.size() > 6 && lid.compare(lid.size() - 6, 6, "/fence") == 0) {
             const std::string area = lid.substr(0, lid.size() - 6);
             if (area.find('/') != std::string::npos && lineIds.contains(area.substr(0, area.rfind('/')) + "/fence-line")) continue;
@@ -2728,7 +2768,7 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
     // A dungeon's walls stand behind its floor (the wall cells with floor in front of them,
     // towards the viewer); the ones in front are left out, so the rooms show (as in Diablo).
     // Its torches hang on them, where its lights are.
-    if (lighting.indoor) {
+    if (lighting.indoor && !paintedPlace) {
         std::string wall, wallEnd, torch, torchOnWall;
         bool wallRun = false;
         const json partRows = assetPlan.value("parts", json::object()); // named: items() of a temporary dangles
@@ -2903,6 +2943,11 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
             sprite.b *= options.gradeBrightness * options.gradeTint[2];
         }
     }
+    if (paintedPlace) {
+        // The painting at the back, its occluders over whoever walks behind them (its own colours: not graded again).
+        out["painting"] = AddPaintingEntities(registry, options.paintedFolder, "places/" + options.place, options.place, options.originX,
+                                              options.originY, options.iso);
+    }
     out["locks"] = WireLocksAndKeys(registry, prefabs, solved, options);
     // Furniture characters use (14.3): beds, chairs, counters, forges become smart
     // objects their routines find by type and affordance.
@@ -2931,6 +2976,7 @@ json VerifyPlaceScene(Registry& registry, const json& solved, const json& assetP
     const json byObject = assetPlan.value("byObject", json::object());
     for (const auto& o : solved.value("objects", json::array())) {
         if (dropped.contains(byObject.value(o.value("id", ""), ""))) continue;
+        if (options.paintedIds.contains(o.value("id", ""))) continue; // in the painting
         ++expected;
         auto it = byStatement.find(o.value("id", ""));
         if (it == byStatement.end()) {

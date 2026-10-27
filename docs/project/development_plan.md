@@ -2882,6 +2882,72 @@ well on every check, and looks planned and hand-crafted when its project is open
   from the block-out painting: occlusion and editing for free); filler for a city's empty blocks;
   buildings growing with their lots; shared radial and linear street lattices; tiling big places.
 
+## Phase 26 — Painted places, marked by hand (`docs/places/painted-places.md`)
+
+A place painted whole, the way Baldur's Gate and Pillars of Eternity draw theirs: one picture in
+the game's view, never cut into assets. A painting alone isn't a level. It also needs what the
+player can walk on, and the parts drawn again over a character who walks behind them (a house
+front, a tree's canopy, a wall top). Code can't find those parts reliably in a painting (trees,
+wooden walls, a tower), and a person can, in minutes. So the build gets a step where the user marks
+them over the painting, pre-filled from the plan and helped by click-to-select.
+
+The steps: ① Confirm → ② Layout → ③ Plan → **④ Paint** → **⑤ Mark** → ⑥ Assets → ⑦ Build. Paint
+is optional. A place that isn't painted is built from its kit as before. A painted place's Assets
+step only makes what the painting doesn't hold: things the player uses (doors, chests, items),
+characters, and anything that moves.
+
+**26.1 Paint.** The plan's block-out (`PlaceBlockout`, the game's iso view, colour-coded by kind)
+painted by the Paint Provider (FLUX.3 Image) from the place's words and its legend, in tiles when
+it's big, as the background is (`background.md` §2). The Paint tab has a progress bar, the steps,
+the painting (zoom on click), and "Paint again" with notes. It's saved as `painting.png` with its
+view (`painting.json`: the cell-to-pixel mapping) and the block-out's id map (`blockout-ids.png`).
+
+**26.2 Mark.** An editor over the painting with layers:
+- **Walkable:** cells over the picture, painted walkable or blocked (brush, rectangle, fill).
+- **Occluders:** each one a region (brush, eraser) and a **base line**, where it meets the ground,
+  with two handles. A character whose feet are behind the base line is drawn under the region.
+  There's a list of occluders, each named after the plan object it came from, which can be selected,
+  hidden or deleted.
+- Zoom and pan, undo and redo, the layer's opacity, and keys for the tools. Saved as `marks.json`
+  (base lines, walkable cells, links to plan objects) with one mask PNG per occluder under `marks/`.
+- When the painting is painted again, the step says the marks are stale. The base lines and
+  walkable cells stay, since they follow the plan, and the regions are shown for checking.
+
+**26.3 Pre-fill from the plan.** Before the user starts:
+- **Walkable** from the plan's solid cells and the footprints of things that block.
+- **One occluder for each tall thing** (buildings, trees, walls, towers; read from the role's
+  height), with its region from the block-out's id map, which shows that object's pixels in the
+  same view as the painting, and its base line along the front edges of its footprint.
+- The user trims each region to the painted outline instead of drawing from nothing.
+
+**26.4 Click-to-select.** A point-prompted segmentation model (SAM 2, the small one, on the CPU in
+the AI service: `POST /images/segment`, the image embedding cached per painting):
+- click to add an object's outline to the region, Alt+click to take it away;
+- the brush for touch-ups.
+
+**26.5 The scene from the painting.** Build ⑦ lays:
+- the painting at the back, in chunks of at most 2048 px;
+- an invisible walk layer from the walkable cells, so collision and pathing follow the marks;
+- each occluder cut from the painting by its mask and sliced into strips about half a tile wide,
+  each sorted by the depth of its base line under it, so a long wall on a slant hides a character
+  only where they stand behind it;
+- the Assets step's sprites placed as before.
+
+The scene check runs on the result, and occluders show in the viewport's debug view.
+
+**26.6 AI panel.**
+- The Paint and Mark steps on the build card.
+- The context says the place is painted, with its counts of occluders and walkable cells, and
+  whether the marks are stale.
+- Ops: `place.paint` (paint again, with notes), `place.marks` (read), and `place.prefillMarks`
+  (pre-fill again).
+- The prompt says that marking is the user's step: the AI pre-fills and checks, and never claims
+  that the marks are done.
+
+Done when: a village painted from its plan is marked in a few minutes (pre-fill, then a few clicks
+and brush strokes) and can be walked in the editor's Play mode. A character goes behind houses and
+trees and in front of them correctly, and can't walk through walls or water.
+
 ---
 
 ## Later

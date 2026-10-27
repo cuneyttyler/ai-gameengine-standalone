@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -152,6 +153,12 @@ const Renderer2D::Texture& Renderer2D::Resolve(const std::string& path) {
     if (it != textures_.end()) {
         return it->second.image != VK_NULL_HANDLE ? it->second : builtinAtlas_;
     }
+
+    // While drawing, a frame's loads stop at its budget (the rest next frame).
+    if (budgeted_ && loadedThisFrame_ > 0 && std::chrono::steady_clock::now() > loadUntil_) {
+        return pending_;
+    }
+    ++loadedThisFrame_;
 
     // First use: load through the app-provided loader. A failure is cached
     // as an empty entry so a missing file is reported once, not every frame.
@@ -508,6 +515,14 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
     };
     std::vector<Instance> instances;
     instances.reserve(items.size());
+    // New textures load for up to 30 ms a frame; what's left waits for the next.
+    budgeted_ = true;
+    loadedThisFrame_ = 0;
+    loadUntil_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(30);
+    struct Unbudget {
+        bool& flag;
+        ~Unbudget() { flag = false; }
+    } unbudget{budgeted_};
     for (const auto& item : items) {
         if (const Sprite* s = item.Drawn()) instances.push_back({&item.transform, s, &Resolve(s->texture)});
     }
@@ -532,6 +547,7 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
             culled = skipped;
         }
     }
+    std::erase_if(instances, [this](const Instance& i) { return i.texture == &pending_; });
     if (extra != nullptr || !items.empty()) {
         std::stable_sort(instances.begin(), instances.end(), [](const Instance& a, const Instance& b) {
             return a.transform->depth < b.transform->depth;
@@ -654,7 +670,7 @@ void Renderer2D::Render(VkCommandBuffer cmd, Registry& registry, const Camera2D&
         const Texture* texture = &builtinAtlas_;
         if (!q.texture.empty()) {
             const Texture& resolved = Resolve(q.texture);
-            if (&resolved == &builtinAtlas_) {
+            if (&resolved == &builtinAtlas_ || &resolved == &pending_) {
                 continue;
             }
             texture = &resolved;

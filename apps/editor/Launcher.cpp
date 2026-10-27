@@ -69,7 +69,8 @@ void Launcher::OnWebMessage(const nlohmann::json& message) {
         const std::filesystem::path root = std::filesystem::path(Utf8ToWide(location)) / Utf8ToWide(name);
         UserPrefs(UserPrefs::DefaultPath()).Set("newProjectFolder", location); // offered next time
         std::map<std::string, std::string> ai;
-        for (const auto& [k, v] : message.value("ai", nlohmann::json::object()).items()) {
+        const nlohmann::json aiGiven = message.value("ai", nlohmann::json::object()); // named: items() of a temporary dangles
+        for (const auto& [k, v] : aiGiven.items()) {
             if (v.is_string()) ai[k] = v.get<std::string>();
         }
         if (auto error = CreateProject(root, std::nullopt, message.value("topDown", false), ai)) {

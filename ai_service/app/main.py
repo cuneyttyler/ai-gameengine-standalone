@@ -207,6 +207,17 @@ class BackgroundRequest(BaseModel):
     seed: int = 7
 
 
+class PaintRequest(BaseModel):
+    dir: str                           # the place's folder (places/<id>): blockout.png and its legend are there
+    blockout: str = "blockout.png"     # in dir
+    legend: dict = {}                  # the block-out's colour key (RenderPlanBlockout)
+    place: dict = {}                   # {name, type}
+    story: dict = {}                   # {mood, purpose, logline}
+    look: dict = {}                    # {goals, style}
+    notes: str = ""                    # the user's, when painting again
+    seed: int = 7
+
+
 class MatchedRequest(BaseModel):
     dir: str                           # the sheets' folder (MatchedArtSheets), relative to the project root
     sheets: dict                       # sheets.json
@@ -672,6 +683,36 @@ def create_app(
             return {"ok": False, "errors": [f"The background couldn't be painted: {error}"]}
         return {"ok": True, "provider": provider, "path": made["path"].relative_to(root.resolve()).as_posix(), "cellPx": made["cellPx"],
                 "cells": made["cells"], "calls": made["calls"], "tiles": made["tiles"], "prompt": made["prompt"]}
+
+    @app.post("/places/paint")
+    def places_paint(request: PaintRequest) -> dict:
+        """A place painted whole from its plan's block-out (docs/places/painted-places.md §2), by FLUX.3 Image;
+        written as painting.png in `dir`, at the block-out's size."""
+        import time as _time
+        from .bfl import BflPainter, paint_place
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        folder = (root / request.dir).resolve()
+        if root.resolve() not in folder.parents or not (folder / request.blockout).is_file():
+            return {"ok": False, "errors": [f"No block-out in {request.dir}"]}
+        load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+        key = os.environ.get("BFL_API_KEY")
+        if not key:
+            return {"ok": False, "errors": ["No key for BFL: set BFL_API_KEY in ai_service/.env"]}
+        report = progress.reporter()
+        report(0, 1, "Painting the place from its plan (FLUX.3 Image)")
+        started = _time.monotonic()
+        try:
+            png, prompt = paint_place(BflPainter(key, "flux-3-image"), (folder / request.blockout).read_bytes(), request.legend,
+                                      request.place, request.story, request.look, request.notes, request.seed)
+        except Exception as error:  # noqa: BLE001 - said to the editor
+            return {"ok": False, "errors": [f"The place couldn't be painted: {error}"]}
+        (folder / "painting.png").write_bytes(png)
+        (folder / "painting-prompt.txt").write_text(prompt, encoding="utf-8")
+        report(1, 1, "Painted")
+        return {"ok": True, "provider": "bfl:flux-3-image", "path": (folder / "painting.png").relative_to(root.resolve()).as_posix(),
+                "prompt": prompt, "seconds": round(_time.monotonic() - started, 1)}
 
     @app.post("/animations/generate")
     def animations_generate(request: AnimationRequest) -> dict:

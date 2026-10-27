@@ -27,6 +27,7 @@
 #include "editing/PlaceInspect.h"
 #include "editing/PlaceSketch.h"
 #include "editing/MatchedArt.h"
+#include "editing/PaintedPlace.h"
 #include "editing/SceneTools.h"
 #include "ai_bridge/RecentProjects.h"
 #include "assets/Export.h"
@@ -79,10 +80,13 @@ namespace {
 
 // A step of the UI thread that took long (a message, a part of a frame): the editor froze for it. Written to
 // editor-errors.log with its name and how long, so a freeze says what it was.
+std::string g_failedAt; // the innermost watched step an exception left (TakeFailedStep)
+
 class SlowWatch {
 public:
-    explicit SlowWatch(std::string what) : what_(std::move(what)), start_(std::chrono::steady_clock::now()) {}
+    explicit SlowWatch(std::string what) : what_(std::move(what)), start_(std::chrono::steady_clock::now()), uncaught_(std::uncaught_exceptions()) {}
     ~SlowWatch() {
+        if (std::uncaught_exceptions() > uncaught_ && g_failedAt.empty()) g_failedAt = what_;
         const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_).count();
         if (ms < 500) return;
         const std::filesystem::path prefs = UserPrefs::DefaultPath();
@@ -99,6 +103,7 @@ public:
 private:
     std::string what_;
     std::chrono::steady_clock::time_point start_;
+    int uncaught_ = 0;
 };
 
 // "Build the game", "build it all": the planned game, built (23).
@@ -398,6 +403,7 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         PostBuild();
         return true;
     }
+    if (HandlePaintMessage(type, message)) return true;
     if (type == "build:start") {
         StartBuild(message.value("query", ""), message.value("choices", nlohmann::json::object()));
     } else if (type == "build:choicesRequest") {
@@ -739,7 +745,8 @@ bool EditorApp::HandleProjectMessage(const std::string& type, const nlohmann::js
             return true;
         }
         std::map<std::string, std::string> ai;
-        for (const auto& [k, v] : message.value("ai", nlohmann::json::object()).items()) {
+        const nlohmann::json aiGiven = message.value("ai", nlohmann::json::object()); // named: items() of a temporary dangles
+        for (const auto& [k, v] : aiGiven.items()) {
             if (v.is_string()) ai[k] = v.get<std::string>();
         }
         if (auto error = CreateProject(root, std::nullopt, message.value("topDown", false), ai)) {
@@ -1540,7 +1547,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     } else if (type == "prefab:saveSelected") {
         SaveSelectedAsPrefab(message.value("name", ""));
     } else if (type == "prefab:applySelected") {
-        ApplySelectedToPrefab();
+        ApplySelectedToPrefab(message.value("key", ""));
     } else if (type == "prefab:revert") {
         RevertOverride(message.value("key", ""));
     } else if (type == "script:setProperty" || type == "script:resetProperty") {
@@ -5344,9 +5351,15 @@ nlohmann::json EditorApp::PlanForMatchedArt() {
                            ProjectTerrainSet(prefabs_, assets_.GetProject()), options, &sourcing);
 }
 
-void EditorApp::ApplyBackground(PlaceSceneOptions& options) const {
+void EditorApp::ApplyBackground(PlaceSceneOptions& options) {
     // The place's background (painted by Matched art, or picked): its ground, cell by cell.
     if (!build_) return;
+    if (build_->Painted()) {
+        // Painted whole (docs/places/painted-places.md): the painting is the ground and holds its things.
+        options.paintedFolder = build_->Folder().string();
+        options.paintedIds = PaintedObjectIds(&Places(), build_->Solved());
+        return;
+    }
     if (const nlohmann::json bg = build_->Background(); bg.is_object() && bg.value("cellPx", 0) > 0) {
         options.groundPicture = bg.value("path", "");
         options.groundPictureCellPx = bg.value("cellPx", 0);
@@ -5372,24 +5385,81 @@ void EditorApp::CutMatched() {
                                             std::to_string(report.value("grounds", nlohmann::json::array()).size()) + " grounds in one style"}});
 }
 
+bool EditorApp::HandlePaintMessage(const std::string& type, const nlohmann::json& message) {
+    // ④ Paint and ⑤ Mark (docs/places/painted-places.md).
+    if (type != "build:paint" && type != "build:skipPaint" && type != "build:prefillMarks" && type != "build:marksRequest" && type != "build:saveMarks") {
+        return false;
+    }
+    if (!build_) return true;
+    std::string why;
+    if (type == "build:paint") {
+        why = build_->Paint(message.value("notes", ""));
+    } else if (type == "build:skipPaint") {
+        build_->SkipPaint(message.value("skip", true));
+        PreviewAssets(); // what ⑥ Assets makes changes with it
+    } else if (type == "build:prefillMarks") {
+        why = build_->PrefillMarks(message.value("replaceEdited", false));
+    } else if (type == "build:saveMarks") {
+        why = build_->SaveMarks(message.value("marks", nlohmann::json::object()));
+    }
+    if (type == "build:prefillMarks" || type == "build:marksRequest" || (type == "build:saveMarks" && why.empty() && message.value("reload", false))) {
+        // The marks, for the Mark editor (its masks read from the project's own host).
+        post_({{"type", "build:marks"}, {"place", build_->Id()}, {"marks", LoadMarks(build_->Folder())}, {"painting", LoadPainting(build_->Folder())}});
+    }
+    if (!why.empty()) post_({{"type", "notify"}, {"text", why}});
+    if (type == "build:saveMarks" && why.empty() && message.value("say", false)) post_({{"type", "notify"}, {"text", "Marks saved"}});
+    PostBuild();
+    return true;
+}
+
 void EditorApp::PostBuild() {
     if (!build_) {
         post_({{"type", "build:state"}, {"stage", ""}});
         return;
     }
     if (!buildJob_ && build_->MatchedArtMade()) CutMatched(); // on the UI thread: it changes the project's assets
+    if (wasPainting_ && !build_->Painting() && !buildJob_) {
+        wasPainting_ = false;
+        PreviewAssets(); // painted: what's in the painting needs no art
+    }
+    wasPainting_ = build_->Painting();
     if (buildJob_) {
         // Working (off the UI thread): what it was, marked busy; the build itself isn't touched.
         nlohmann::json shown = buildShown_.is_object() ? buildShown_ : nlohmann::json{{"type", "build:state"}};
         shown["busy"] = true;
         shown["status"] = "Working: planning and laying the place out…";
+        if (shown.contains("confirmProgress") && shown["confirmProgress"].contains("steps")) {
+            // The zones planned, laid out now (the solver, off the UI thread): the steps go on, shown on their page
+            // (no overlay over them).
+            nlohmann::json& progress = shown["confirmProgress"];
+            double done = 0;
+            for (auto& s : progress["steps"]) {
+                const std::string id = s.value("id", "");
+                if (id == "layout") {
+                    s["state"] = "active";
+                    s["detail"] = nlohmann::json::array({"The zones, roads and walls placed on the map by the layout solver, each where its rules want it."});
+                } else {
+                    s["state"] = "done";
+                    if (id == "zones") s["detail"] = nlohmann::json::array();
+                }
+                done += s["state"] == "done" ? 1.0 : 0.5;
+            }
+            progress["fraction"] = done / std::max<size_t>(1, progress["steps"].size());
+            if (progress.contains("now")) progress["since"] = progress["now"]; // the step began when the job did
+            shown["status"] = "Laying the zones out on the map…";
+            shown["busyInline"] = true;
+        }
         post_(shown);
         return;
     }
-    for (const auto& u : usageQueue_) {
-        build_->AddUsage(u.value("step", ""), u.value("inputTokens", 0), u.value("outputTokens", 0), u.value("seconds", 0.0));
-    }
+    // Taken first: a bad one can't hold every later frame up.
+    const std::vector<nlohmann::json> usage = std::move(usageQueue_);
     usageQueue_.clear();
+    auto number = [](const nlohmann::json& m, const char* k) { return m.contains(k) && m[k].is_number() ? m[k].get<double>() : 0.0; };
+    for (const auto& u : usage) {
+        if (!u.is_object() || !u.contains("step") || !u["step"].is_string()) continue;
+        build_->AddUsage(u["step"].get<std::string>(), static_cast<int>(number(u, "inputTokens")), static_cast<int>(number(u, "outputTokens")), number(u, "seconds"));
+    }
     const std::string stage = build_->Stage();
     if (!build_->HasOrigin() && (stage == "plan" || stage == "planned" || stage == "built")) {
         const auto [x, y] = FreeOrigin(registry_, build_->Id(), build_->SiteSide());
@@ -5397,10 +5467,20 @@ void EditorApp::PostBuild() {
     }
     // ③ Assets: the decisions, as soon as the plan is approved.
     if ((stage == "planned" || stage == "sourced") && !build_->HasAssetNeeds() && !buildJob_ && !buildRun_) PreviewAssets();
-    buildShown_ = build_->State();
+    {
+        const SlowWatch w("PostBuild: the build's state");
+        buildShown_ = build_->State();
+    }
     buildShown_["afterBackground"] = afterBackground_;
     post_(buildShown_);
+    const SlowWatch w("PostBuild: the build's card");
     post_(build_->Card());
+}
+
+std::string TakeFailedStep() {
+    std::string step;
+    step.swap(g_failedAt);
+    return step;
 }
 
 AssetSourcing EditorApp::SourcingNow() {
@@ -5655,6 +5735,48 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool
         post_({{"type", "ai:message"}, {"role", "error"}, {"text", "Stop Play mode before asking for changes."}});
         return;
     }
+    // ④ Paint and ⑤ Mark from the AI panel (docs/places/painted-places.md §6): painting the open place again (the words
+    // its notes), pre-filling or checking its marks. Marking itself is the user's: the AI never says it's done.
+    if (!asChange && build_ && !buildJob_ && (build_->Stage() == "planned" || build_->Stage() == "sourced" || build_->Stage() == "built")) {
+        std::string lower = text;
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        const bool repaint = lower.find("paint it again") != std::string::npos || lower.find("repaint") != std::string::npos ||
+                             lower.find("paint the place again") != std::string::npos || lower.find("paint again") != std::string::npos;
+        const bool prefill = lower.find("pre-fill") != std::string::npos || lower.find("prefill") != std::string::npos;
+        const bool check = lower.find("check the marks") != std::string::npos || lower.find("check marks") != std::string::npos ||
+                           lower.find("check the occluders") != std::string::npos;
+        if (repaint || prefill || check) {
+            conversation_.emplace_back("user", text);
+            post_({{"type", "ai:message"}, {"role", "user"}, {"text", text}});
+            std::string answer;
+            if (repaint) {
+                const std::string why = build_->Paint(text);
+                answer = why.empty() ? "Painting " + build_->Brief().value("name", build_->Id()) +
+                                           " again with your words as its notes (④ Paint). The occluders you edited are kept; check them in ⑤ Mark after."
+                                     : "Couldn't paint it: " + why;
+            } else if (prefill) {
+                const bool replace = lower.find("replace") != std::string::npos || lower.find("from scratch") != std::string::npos;
+                const std::string why = build_->PrefillMarks(replace);
+                const nlohmann::json m = MarksSummary(build_->Folder());
+                answer = why.empty() ? "Pre-filled the marks from the plan" + std::string(replace ? ", replacing your edits" : ", keeping what you edited") + ": " +
+                                           std::to_string(m.value("occluders", 0)) + " occluders, " + std::to_string(m.value("blocked", 0)) +
+                                           " cells blocked. Trim them to the painting in ⑤ Mark."
+                                     : "Couldn't pre-fill: " + why;
+                post_({{"type", "build:marks"}, {"place", build_->Id()}, {"marks", LoadMarks(build_->Folder())}, {"painting", LoadPainting(build_->Folder())}});
+            } else {
+                const auto issues = CheckMarks(build_->Solved(), &Places(), build_->Folder());
+                answer = issues.empty() ? "Nothing looks off in the marks: every tall thing has an occluder and no building can be walked through. "
+                                          "Whether each region fits its painted outline is yours to judge in ⑤ Mark."
+                                        : "In the marks:";
+                for (const auto& i : issues) answer += "\n- " + i;
+            }
+            conversation_.emplace_back("assistant", answer);
+            post_({{"type", "ai:message"}, {"role", "assistant"}, {"text", answer}});
+            post_({{"type", "build:open"}});
+            PostBuild();
+            return;
+        }
+    }
     // A change to the place the Build panel has open goes there, as a revision (7.8), while it's
     // being planned. Once it's built it's the scene's: the AI panel edits it (adds things, changes
     // them) like any other part of the scene.
@@ -5716,6 +5838,12 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool
     options.scene = OpenSceneRelative();
     nlohmann::json context =
         BuildEditorContext(registry_, EngineReflection(), prefabs_, assets_, assets_.GetProject(), options);
+    if (build_) {
+        // The place the Build panel has open: its step, and painted or not (docs/places/painted-places.md §6).
+        context["placeBuild"] = {{"id", build_->Id()}, {"name", build_->Brief().value("name", build_->Id())}, {"stage", build_->Stage()},
+                                 {"card", build_->Card().value("text", "")}, {"painted", build_->Painted()}};
+        if (build_->Painted()) context["placeBuild"]["marks"] = MarksSummary(build_->Folder());
+    }
 
     // The last few turns, so follow-ups like "now make them faster" work.
     nlohmann::json history = nlohmann::json::array();
@@ -6578,7 +6706,7 @@ void EditorApp::SaveSelectedAsPrefab(const std::string& requestedName) {
     inspectorStale_ = true;
 }
 
-void EditorApp::ApplySelectedToPrefab() {
+void EditorApp::ApplySelectedToPrefab(const std::string& key) {
     if (playing_ || !selected_ || !registry_.valid(*selected_)) {
         return;
     }
@@ -6586,25 +6714,75 @@ void EditorApp::ApplySelectedToPrefab() {
     if (link == nullptr) {
         return;
     }
-    std::string path = link->path;
-    Entity entity = *selected_;
+    const std::string path = link->path;
+    const Entity entity = *selected_;
+    const std::set<std::string> applied = key.empty() ? ParseOverrides(link->overrides) : std::set<std::string>{key};
+    // One field ("Component.field"): its reflection, to read it here and write it into the prefab.
+    auto fieldOf = [](const std::string& k) -> std::pair<const ComponentInfo*, const FieldInfo*> {
+        const size_t dot = k.find('.');
+        if (dot == std::string::npos || k.find('.', dot + 1) != std::string::npos) return {nullptr, nullptr};
+        const ComponentInfo* info = EngineReflection().FindComponent(k.substr(0, dot));
+        return {info, info ? info->Field(k.substr(dot + 1)) : nullptr};
+    };
+    if (!key.empty() && fieldOf(key).second == nullptr) {
+        post_({{"type", "notify"}, {"text", "That change can only be applied with the others (Apply to prefab)"}});
+        return;
+    }
+    // Sizes: a copy that has its own keeps its share of the prefab's (the place builds size each thing).
+    static const std::set<std::string> kSizes = {"Sprite.width", "Sprite.height", "Collider2D.halfWidth", "Collider2D.halfHeight",
+                                                 "Hurtbox.halfWidth", "Hurtbox.halfHeight"};
+    auto templateSizes = [&] {
+        std::map<std::string, float> out;
+        prefabs_.VisitTemplate(path, [&](Registry& r, Entity t) {
+            for (const auto& k : applied) {
+                const auto [info, field] = fieldOf(k);
+                if (kSizes.contains(k) && info && field && info->has(r, t)) out[k] = ToFloat(field->get(r, t));
+            }
+        });
+        return out;
+    };
+    const std::map<std::string, float> before = templateSizes();
     std::string error;
     bool saved = false;
     ApplyOneShotEdit([&] {
-        // This copy's values become the prefab; every other copy follows,
-        // keeping its own overrides.
-        saved = prefabs_.SaveAsPrefab(registry_, entity, path, &error);
-        if (saved) {
-            prefabs_.SyncAll(registry_, path);
+        if (key.empty()) {
+            saved = prefabs_.SaveAsPrefab(registry_, entity, path, &error); // this copy's values become the prefab
+        } else {
+            const auto [info, field] = fieldOf(key);
+            const auto problem = info->has(registry_, entity) ? prefabs_.SetTemplateField(path, info->name, field->name, field->get(registry_, entity))
+                                                               : std::optional<std::string>("this copy has no " + info->name);
+            saved = !problem;
+            if (problem) error = *problem;
+            if (saved) prefabs_.Revert(registry_, entity, key); // the prefab's value now: no longer this copy's own
         }
-        return saved;
+        if (!saved) return false;
+        const std::map<std::string, float> after = templateSizes();
+        for (auto [other, otherLink] : registry_.view<PrefabInstance>().each()) {
+            if (other == entity || otherLink.path != path) continue;
+            std::set<std::string> keys = ParseOverrides(otherLink.overrides);
+            for (const auto& k : applied) {
+                if (!keys.contains(k)) continue;
+                const auto b = before.find(k), a = after.find(k);
+                const auto [info, field] = fieldOf(k);
+                if (b != before.end() && a != after.end() && b->second > 0.0f && info && field && info->has(registry_, other)) {
+                    field->set(registry_, other, ToFloat(field->get(registry_, other)) * (a->second / b->second));
+                } else {
+                    keys.erase(k); // follows the prefab
+                }
+            }
+            std::string joined;
+            for (const auto& k : keys) joined += (joined.empty() ? "" : ",") + k;
+            otherLink.overrides = joined;
+        }
+        prefabs_.SyncAll(registry_, path);
+        return true;
     });
     if (!saved) {
         post_({{"type", "notify"}, {"text", "Couldn't update prefab: " + error}});
         return;
     }
     post_(PrefabsJson());
-    post_({{"type", "notify"}, {"text", "Updated " + path + " and its copies"}});
+    post_({{"type", "notify"}, {"text", (key.empty() ? "Updated " : "Applied " + key + " to ") + path + " and its copies"}});
     inspectorStale_ = true;
     sceneTreeStale_ = true;
 }

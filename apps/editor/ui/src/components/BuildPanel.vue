@@ -11,6 +11,7 @@ import { openContextMenu } from '../contextMenu'
 import { editorState } from '../editorState'
 import { activatePanel, setPanelVisible } from '../layout'
 import CatalogThumb from './CatalogThumb.vue'
+import MarkEditor from './MarkEditor.vue'
 import { amountText, countRange, layoutSketch, parseRange, setShare, toggleShare, type Shares } from '../buildwindow'
 
 type Rect = [number, number, number, number]
@@ -115,9 +116,25 @@ interface PlanRow {
   rel?: { type: string; to: string; weight?: number }[] // where it's placed, and why (Why?)
   notes?: string[] // what the fixes did to it
 }
+// ④ Paint and ⑤ Mark (docs/places/painted-places.md): the painting's files and the marks' counts.
+interface PaintState {
+  painting?: boolean
+  skipped?: boolean
+  file?: string
+  blockout?: string
+  size?: [number, number]
+  view?: { x0: number; y0: number; x1: number; y1: number; tw: number; th: number; top: number }
+  paintedAt?: string
+  provider?: string
+  seconds?: number
+  prompt?: string
+  marks?: { painted?: boolean; marked?: boolean; occluders?: number; edited?: number; blocked?: number; walkable?: number; stale?: boolean }
+}
 interface BuildState {
+  paint?: PaintState
   fromPlanner?: boolean // started by the AI Planner: its art strategy is the Game Brief's
   busy?: boolean // working off the UI thread (planning, laying out)
+  busyInline?: boolean // and the page shows its steps going on: no overlay
   revisingFrom?: string
   // The place's background: its ground painted whole (or a picture picked for it), laid cell by cell.
   background?: { path: string; cellPx: number; picked?: boolean; provider?: string; calls?: number }
@@ -258,8 +275,10 @@ const STEPS = [
   { id: 'confirm', label: '① Confirm' },
   { id: 'layout', label: '② Layout' },
   { id: 'plan', label: '③ Plan' },
-  { id: 'assets', label: '④ Assets' },
-  { id: 'result', label: '⑤ Result' },
+  { id: 'paint', label: '④ Paint' },
+  { id: 'mark', label: '⑤ Mark' },
+  { id: 'assets', label: '⑥ Assets' },
+  { id: 'result', label: '⑦ Result' },
 ]
 
 interface VerifyRow {
@@ -548,9 +567,39 @@ function backToPlan(): void {
 const confirmTab = ref<'layout' | 'contents'>('contents')
 const showAssets = computed(
   () =>
-    (['planned', 'sourcing', 'sourced'].includes(stage.value) && viewing.value !== 'plan' && viewing.value !== 'confirm') ||
-    (['built', 'building'].includes(stage.value) && viewing.value === 'assets'),
+    !atPaint.value &&
+    ((['planned', 'sourcing', 'sourced'].includes(stage.value) && viewing.value !== 'plan' && viewing.value !== 'confirm') ||
+      (['built', 'building'].includes(stage.value) && viewing.value === 'assets')),
 )
+// ④ Paint and ⑤ Mark: pages of the planned place (the plan approved), before its art and its build.
+const atPaint = computed(() => viewing.value === 'paint' || viewing.value === 'mark')
+const paint = computed<PaintState>(() => state.value?.paint ?? {})
+const paintCall = computed(() => aiCalls.value.find((c) => c.path === '/places/paint' && c.phase !== 'done' && c.phase !== 'failed'))
+const paintNotes = ref('')
+const paintCompare = ref(false)
+const markEditor = ref<InstanceType<typeof MarkEditor> | null>(null)
+// A plan just approved: ④ Paint first, unless it's painted or skipped already.
+watch(stage, (s, was) => {
+  if (s === 'planned' && was && !['planned', 'sourcing', 'sourced', 'built', 'building'].includes(was) && !paint.value.file && !paint.value.skipped) viewing.value = 'paint'
+})
+// Painted: on to ⑤ Mark (the marks pre-filled from the plan).
+watch(
+  () => paint.value.painting,
+  (now, was) => {
+    if (was && !now && paint.value.file && viewing.value === 'paint') viewing.value = 'mark'
+  },
+)
+function startPaint(again = false): void {
+  sendToHost({ type: 'build:paint', notes: again ? paintNotes.value : '' })
+}
+function skipPaint(): void {
+  sendToHost({ type: 'build:skipPaint', skip: true })
+  viewing.value = ''
+}
+function leaveMark(to: string): void {
+  markEditor.value?.save()
+  viewing.value = to
+}
 // ③ Assets' tabs: how each part's art will be found, the background (painted first), and the art found and made.
 const assetsTab = ref<'how' | 'background' | 'found'>('how')
 const assetsFound = computed(() => ['sourcing', 'sourced', 'building', 'built'].includes(stage.value))
@@ -577,7 +626,7 @@ function startArt(): void {
   assetsTab.value = state.value?.background ? 'found' : 'background'
 }
 // ④ Result: the built place alone (the plan is ② Plan's).
-const showResult = computed(() => stage.value === 'built' && viewing.value !== 'plan' && viewing.value !== 'assets')
+const showResult = computed(() => stage.value === 'built' && viewing.value !== 'plan' && viewing.value !== 'assets' && !atPaint.value)
 // What each part's art will be, in words.
 const ACTIONS: Record<string, string> = {
   use: "the project's art",
@@ -600,6 +649,7 @@ const neededBySource = computed(() => {
   return counts
 })
 const activeStep = computed(() => {
+  if (atPaint.value) return viewing.value
   const s = stage.value
   if (s === 'interpreting' || (s === 'planning' && state.value?.planPhase === 'root')) return 'confirm'
   if (atConfirm.value) return confirmTab.value === 'layout' ? 'layout' : 'confirm'
@@ -613,16 +663,24 @@ const REACHED: Record<string, string[]> = {
   confirm: ['layout', 'planning', 'plan', 'planned', 'revising', 'sourcing', 'sourced', 'building', 'built'],
   layout: ['layout', 'plan', 'planned', 'revising', 'sourcing', 'sourced', 'building', 'built'],
   plan: ['plan', 'planned', 'revising', 'sourcing', 'sourced', 'building', 'built'],
+  paint: ['planned', 'sourcing', 'sourced', 'building', 'built'],
+  mark: ['planned', 'sourcing', 'sourced', 'building', 'built'],
   assets: ['planned', 'sourcing', 'sourced', 'building', 'built'],
   result: ['building', 'built'],
 }
 function stepDisabled(id: string): boolean {
   // While revising, as the step it's revising: a layout revised at ① Confirm doesn't open ③ Plan.
   const at = stage.value === 'revising' && state.value?.revisingFrom ? state.value.revisingFrom : stage.value
+  if (id === 'mark' && !paint.value.file) return true // nothing to mark before it's painted
   if (REACHED[id]) return !REACHED[id].includes(at)
   return !win.value
 }
 function step(id: string): void {
+  if (viewing.value === 'mark' && id !== 'mark') markEditor.value?.save()
+  if (id === 'paint' || id === 'mark') {
+    viewing.value = id
+    return
+  }
   // ① Confirm (the contents) and ② Layout are the same stage, two pages.
   if (id === 'confirm' || id === 'layout') confirmTab.value = id === 'layout' ? 'layout' : 'contents'
   if ((id === 'confirm' || id === 'layout') && planStands.value) {
@@ -859,7 +917,8 @@ const removeOne = ref<BuildEntry | null>(null)
 const backgroundCall = computed(() => aiCalls.value.find((c) => c.path === '/places/background' && c.phase !== 'done' && c.phase !== 'failed'))
 // The next step working (off the UI thread, or a revision being written by the AI): an overlay over the panel with a
 // spinner, what's being done, how long, and the AI call it waits on.
-const working = computed(() => !!state.value?.busy || stage.value === 'revising')
+// Not over a page that shows its own steps going on (the zones laid out after they're planned: busyInline).
+const working = computed(() => (!!state.value?.busy && !state.value?.busyInline) || stage.value === 'revising')
 const workingSince = ref(0)
 const workingNow = ref(0)
 let workingTimer: number | undefined
@@ -879,6 +938,7 @@ function stepOfStage(): string {
   if (s === 'interpreting' || s === 'questions' || (s === 'planning' && state.value?.planPhase === 'root')) return 'confirm'
   if (s === 'layout') return 'layout'
   if (s === 'planning' || s === 'plan') return 'plan'
+  if (viewing.value === 'paint' || viewing.value === 'mark') return viewing.value
   if (s === 'planned' || s === 'sourcing' || s === 'sourced') return 'assets'
   if (s === 'building' || s === 'built') return 'result'
   return ''
@@ -1095,10 +1155,10 @@ const STAGE_NAMES: Record<string, string> = {
   layout: '① Confirm · ② Layout',
   plan: '③ Plan',
   planned: 'laid out',
-  sourcing: '④ Assets: finding the art',
-  sourced: '④ Assets: the art is ready',
+  sourcing: '⑥ Assets: finding the art',
+  sourced: '⑥ Assets: the art is ready',
   building: 'building',
-  built: '⑤ Result',
+  built: '⑦ Result',
   cancelled: 'stopped',
   failed: 'stopped',
 }
@@ -1636,6 +1696,64 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
     </div>
 
     <!-- ⑤ Result, while it's built: each step of putting the place into the scene. -->
+    <!-- ④ Paint: the place painted whole from its plan (docs/places/painted-places.md), or skipped for its kit. -->
+    <div v-else-if="viewing === 'paint' && state" class="body window paint-view">
+      <section v-if="paint.painting" class="build-progress">
+        <h4>Painting {{ state.name || 'the place' }} from its plan</h4>
+        <div class="bar indeterminate"><i /></div>
+        <p>{{ paintCall?.step || 'FLUX.3 Image paints the block-out, the layout kept' }}<span v-if="paintCall" class="dim"> · {{ Math.round(paintCall.seconds) }}s</span></p>
+        <p class="dim">About a minute. Then ⑤ Mark opens with what can be walked on and the occluders pre-filled from the plan.</p>
+      </section>
+      <section v-else-if="paint.file && !paint.skipped" class="painting">
+        <div class="pictures">
+          <img :src="urlOf(paint.file) + '?v=' + encodeURIComponent(paint.paintedAt || '')" alt="The painting" class="zoomable" title="Click to zoom" @click="zoom(paint.file, 'The painting')" />
+          <img v-if="paintCompare && paint.blockout" :src="urlOf(paint.blockout) + '?v=' + encodeURIComponent(paint.paintedAt || '')" alt="The block-out" class="zoomable" title="The plan it was painted from" @click="zoom(paint.blockout, 'The block-out')" />
+        </div>
+        <p class="dim">
+          Painted{{ paint.provider ? ' by ' + paint.provider : '' }}{{ paint.seconds ? ' in ' + Math.round(paint.seconds) + ' s' : '' }} ·
+          <label><input v-model="paintCompare" type="checkbox" /> beside its plan</label>
+        </p>
+        <label class="notes">What to change when it's painted again
+          <textarea v-model="paintNotes" rows="2" placeholder="e.g. a darker, rainier mood; the river wider; no snow" />
+        </label>
+      </section>
+      <section v-else class="note">
+        <h4>Paint the place whole?</h4>
+        <p>
+          The place is painted as one picture from its plan: every building, tree, fence and road where the plan put it, with the
+          place's own look. Next you mark where one can walk and what a character goes behind (pre-filled from the plan). Only the
+          things the player uses (doors, chests, items) and characters are made as art of their own.
+        </p>
+        <p v-if="paint.skipped" class="dim">Skipped: the place is built from its kit (each piece's art put together).</p>
+        <img v-if="paint.blockout" :src="urlOf(paint.blockout)" alt="" class="blockout-thumb" />
+      </section>
+      <div class="actions">
+        <button @click="viewing = 'plan'">← ③ Plan</button>
+        <span class="dim">{{ state.status }}</span>
+        <template v-if="!paint.painting">
+          <button v-if="!paint.file || paint.skipped" class="primary" :disabled="state.busy" @click="startPaint()">Paint the place</button>
+          <button v-else :disabled="state.busy" title="Painted again, with your notes; the marks you made by hand are kept" @click="startPaint(true)">Paint again</button>
+          <button v-if="!paint.skipped" title="Build it from its kit instead" @click="skipPaint">{{ paint.file ? 'Use the kit instead' : 'Skip: build from the kit' }}</button>
+          <button v-if="paint.file && !paint.skipped" class="primary" @click="viewing = 'mark'">⑤ Mark →</button>
+          <button v-if="paint.skipped" @click="viewing = ''">⑥ Assets →</button>
+        </template>
+      </div>
+    </div>
+
+    <!-- ⑤ Mark: over the painting, where one can walk and the occluders (a region and its base line each). -->
+    <div v-else-if="viewing === 'mark' && state && paint.file" class="body window mark-view">
+      <p v-if="paint.marks?.stale" class="warn">The place was painted again since these marks: check each occluder's region against the new painting.</p>
+      <MarkEditor ref="markEditor" :place="state.id" :paint="paint" />
+      <div class="actions">
+        <button @click="leaveMark('paint')">← ④ Paint</button>
+        <span class="dim">
+          {{ paint.marks?.occluders ?? 0 }} occluders ({{ paint.marks?.edited ?? 0 }} edited) · {{ paint.marks?.blocked ?? 0 }} cells blocked
+        </span>
+        <button title="Pre-fill from the plan again; what you edited stays" @click="markEditor?.prefill(false)">Pre-fill again</button>
+        <button class="primary" @click="leaveMark('')">⑥ Assets →</button>
+      </div>
+    </div>
+
     <div v-else-if="stage === 'building' && viewing !== 'assets' && viewing !== 'plan'" class="body window">
       <section class="build-progress">
         <h4>Building {{ state?.name || 'the place' }}: step {{ Math.min(state?.buildProgress?.total ?? 5, (state?.buildProgress?.done ?? 0) + 1) }} of {{ state?.buildProgress?.total ?? 5 }}</h4>
@@ -2663,6 +2781,46 @@ button:hover:not(:disabled) {
 }
 button:disabled {
   opacity: 0.5;
+}
+.paint-view .pictures {
+  display: flex;
+  gap: 6px;
+}
+.paint-view .pictures img {
+  flex: 1;
+  min-width: 0;
+  max-height: 60vh;
+  object-fit: contain;
+  background: #111;
+}
+.paint-view .notes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+.paint-view .blockout-thumb {
+  max-width: 100%;
+  max-height: 260px;
+  opacity: 0.85;
+}
+.bar.indeterminate i {
+  width: 30% !important;
+  animation: indeterminate 1.4s linear infinite;
+}
+@keyframes indeterminate {
+  from { margin-left: -30%; }
+  to { margin-left: 100%; }
+}
+.mark-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 520px;
+  height: 100%;
+}
+.mark-view .warn {
+  color: #e5a50a;
+  margin: 2px 0;
 }
 button.primary {
   background: #89b4fa;

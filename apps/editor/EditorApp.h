@@ -63,6 +63,10 @@ class LuaVM;
 // The C++ side is the single source of truth for editor state (selection,
 // tool, dirty flag, play state); the UI only renders what it's told and
 // sends requests. Message types are listed in docs/project/technical.md §9.
+// Where on the UI thread the last exception was thrown (the innermost watched step it left), then cleared; "" if not
+// known. For the error log.
+std::string TakeFailedStep();
+
 class EditorApp {
 public:
     using PostFn = std::function<void(const nlohmann::json&)>;
@@ -170,7 +174,14 @@ private:
     void CreatePrefabFromAsset(const std::string& asset, int tile, bool asTile, bool solid, const std::string& name,
                                bool flat = false);
     void SaveSelectedAsPrefab(const std::string& name);
-    void ApplySelectedToPrefab();
+    // This copy's overrides made the prefab's: all of them (`key` empty) or one ("Sprite.width"). Copies that
+    // override a size keep their own share of it (a copy 80% of the prefab stays 80% of the new size); other
+    // copies follow the prefab.
+    void ApplySelectedToPrefab(const std::string& key = {});
+    // Build ④ Paint and ⑤ Mark's messages (build:paint, build:skipPaint, build:prefillMarks, build:marksRequest,
+    // build:saveMarks); false for any other.
+    bool HandlePaintMessage(const std::string& type, const nlohmann::json& message);
+    bool wasPainting_ = false; // ④ Paint asked: when it's answered, ⑥ Assets is decided again
     void RevertOverride(const std::string& key);
 
     nlohmann::json AiStatusJson();
@@ -596,7 +607,7 @@ private:
     void AfterSourcing(); // the art is in (or skipped): into the scene
     nlohmann::json PlanForMatchedArt(); // ③ Assets: what each part needs (PlanPlaceAssets), as the Assets step sees it
     void CutMatched();                  // the matched art is made: its pieces cut into assets (MatchedArt)
-    void ApplyBackground(PlaceSceneOptions& options) const; // the place's background as the scene's ground
+    void ApplyBackground(PlaceSceneOptions& options); // the place's background as the scene's ground
     bool KnownRequest(int requestId) const;
     // The selection when Play started, restored on Stop. Indices taken from
     // the live registry at Stop would be off once enemies die mid-play.

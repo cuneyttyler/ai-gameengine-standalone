@@ -563,6 +563,7 @@ json MatchedArtSheets(const json& solved, const json& assetPlan, const Ontology*
             const std::string layer = n.value("layer", "");
             // Every need, "dropped" ones too: the plan drops an optional thing it has no art for, and this makes its art.
             if (layer != "building" && layer != "prop" && layer != "decal") continue;
+            if (n.value("source", "") == "painted") continue; // in the place's painting
             const auto it = objectOf.find(n.value("key", ""));
             if (it == objectOf.end()) continue;
             json object = it->second;

@@ -298,6 +298,14 @@ function numberFrom(event: Event): number {
                 <button
                   v-if="field.overridden && !editorState.playing"
                   class="revert"
+                  title="Apply this value to the prefab: every copy gets it (a copy sized on its own keeps its share)"
+                  @click="sendToHost({ type: 'prefab:applySelected', key: `${component.name}.${field.name}` })"
+                >
+                  ⤒
+                </button>
+                <button
+                  v-if="field.overridden && !editorState.playing"
+                  class="revert"
                   title="Revert to the prefab's value"
                   @click="revert(`${component.name}.${field.name}`)"
                 >

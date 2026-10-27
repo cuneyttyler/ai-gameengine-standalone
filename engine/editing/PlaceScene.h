@@ -72,6 +72,11 @@ struct PlaceSceneOptions {
     // shore and light are laid over them as on any ground. Empty: the ground from its terrains' textures.
     std::string groundPicture;
     int groundPictureCellPx = 0;
+    // A painted place (docs/places/painted-places.md): its folder (places/<id>, absolute). The ground is then the
+    // marks' walk layer (invisible, solid where blocked); the things in the painting (`paintedIds`) and the walls and
+    // fences aren't placed; the painting and its occluders are added at the end.
+    std::string paintedFolder;
+    std::set<std::string> paintedIds;
 };
 
 // A place's levels (docs/build-fixes.md): its zones of the ontology's class Level (a dungeon's

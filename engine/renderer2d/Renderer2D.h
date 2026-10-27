@@ -7,6 +7,7 @@
 #include "renderer2d/Text.h"
 #include "rhi/VulkanRHI.h"
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -132,7 +133,10 @@ private:
     void DestroyTexture(Texture& texture);
 
     // The texture to draw a sprite with: cached, freshly loaded, or the
-    // built-in atlas as a fallback. Never fails.
+    // built-in atlas as a fallback. Never fails. While a frame is drawn, new
+    // textures load until its budget is spent (at least one a frame); the rest
+    // are `pending_` and not drawn yet, so a scene of big pictures fills in over
+    // a few frames instead of stopping the editor (the UI shares its thread).
     const Texture& Resolve(const std::string& path);
 
     VulkanRHI& rhi_;
@@ -143,6 +147,10 @@ private:
     VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
 
     Texture builtinAtlas_;
+    Texture pending_;                   // not loaded yet this frame: skipped
+    bool budgeted_ = false;             // inside Render: loads are budgeted
+    int loadedThisFrame_ = 0;
+    std::chrono::steady_clock::time_point loadUntil_;
     TextureLoader loader_;
     // A failed load is cached as an empty Texture (image == VK_NULL_HANDLE).
     std::unordered_map<std::string, Texture> textures_;

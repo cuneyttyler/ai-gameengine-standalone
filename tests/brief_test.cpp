@@ -371,3 +371,48 @@ TEST(BriefTest, LayoutCanCombinePatterns) {
     SetBriefValue(brief, "shape.layout", "spiral");
     EXPECT_TRUE(HasError(ValidateBrief(Library(), brief)));
 }
+
+// A build of a project on disk opened and shown (AIGE_BUILD_STATE=<project root>|<build id>): its state, as the Build
+// panel gets it, must not throw.
+TEST(BriefTest, AGivenBuildsStateIsShown) {
+    const char* env = std::getenv("AIGE_BUILD_STATE");
+    if (env == nullptr) GTEST_SKIP() << "AIGE_BUILD_STATE=<project root>|<build id>";
+    const std::string spec = env;
+    PlaceBuild::Host host;
+    host.ontology = []() -> const Ontology& { return Library(); };
+    host.catalog = [] { return Catalog{}; };
+    host.isoGrid = [] { return true; };
+    host.request = [](const std::string&, const json&, int) { return 1; };
+    host.projectRoot = spec.substr(0, spec.find('|'));
+    host.layoutStep = true; // as the editor builds
+    PlaceBuild build(host);
+    ASSERT_EQ(build.Open(spec.substr(spec.find('|') + 1)), "");
+    try {
+        const json state = build.State();
+        EXPECT_TRUE(state.is_object());
+        const json card = build.Card();
+        EXPECT_TRUE(card.is_object());
+    } catch (const std::exception& error) {
+        FAIL() << error.what();
+    }
+}
+
+// A step's first AI call counted (the Build panel's build:usage): it starts the step's totals, and never throws.
+TEST(BriefTest, AStepsFirstCallIsCounted) {
+    const fs::path root = fs::temp_directory_path() / "aige_build_usage";
+    fs::remove_all(root);
+    fs::create_directories(root);
+    PlaceBuild::Host host;
+    host.ontology = []() -> const Ontology& { return Library(); };
+    host.catalog = [] { return Catalog{}; };
+    host.isoGrid = [] { return true; };
+    host.request = [](const std::string&, const json&, int) { return 1; };
+    host.projectRoot = root;
+    PlaceBuild build(host);
+    ASSERT_EQ(build.Start("Build a village by a river"), "");
+    ASSERT_NO_THROW(build.AddUsage("confirm", 100, 20, 1.5));
+    ASSERT_NO_THROW(build.AddUsage("confirm", 10, 2, 0.5));
+    const json usage = build.State().value("usage", json::object()).value("confirm", json::object());
+    EXPECT_EQ(usage.value("calls", 0), 2);
+    EXPECT_EQ(usage.value("inputTokens", 0), 110);
+}

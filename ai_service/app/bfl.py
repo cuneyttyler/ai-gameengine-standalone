@@ -147,3 +147,74 @@ class BflImageGenerator:
 def _four_mp(w: int, h: int) -> dict:
     k = (4_190_000 / (w * h)) ** 0.5
     return {"width": int(w * k) // 16 * 16, "height": int(h * k) // 16 * 16}
+
+
+# A place painted whole (docs/places/painted-places.md §2): its plan's colour-coded block-out (PlaceBlockout)
+# repainted by FLUX.3 Image with the colour key, which keeps the layout (Phase 25's tests: layout 9, fit 10).
+
+def blockout_prompt(place: dict, story: dict, look: dict, legend: dict | None = None, notes: str = "") -> str:
+    """The prompt that paints a place from its block-out: the colour key (each colour the kind it stands for, in
+    the ontology's words), the ground, the story's mood and the look; the layout kept exactly."""
+    name = place.get("name") or "the place"
+    kind = place.get("type") or "place"
+    text = (
+        f"Paint this isometric game map of a {kind} ({name}) as finished, hand-crafted art, as in classic isometric "
+        "RPGs. The image is a colour-coded BLOCK-OUT of the place's plan, not art: each colour stands for one kind of "
+        "thing (the colour key below), and its shape says how it stands. KEEP THE LAYOUT EXACTLY: the same camera and "
+        "framing, the same diamond-shaped map, and every building, road, river, bridge, fence, tree and thing at the "
+        "same position, size and orientation; add nothing large, remove nothing. Replace every coloured shape by the "
+        "real thing its colour stands for, drawn in full detail; the key's colours themselves must not show.")
+    things = (legend or {}).get("things", [])
+    if things:
+        text += " COLOUR KEY: " + "; ".join(f"{t.get('colour')} {t.get('shape')} = {t.get('what')}" for t in things)[:2600] + "."
+    lines = (legend or {}).get("lines", [])
+    if lines:
+        text += " " + "; ".join(f"{l.get('shape')} = {l.get('kind')}" for l in lines) + "."
+    grounds = (legend or {}).get("ground", [])
+    if grounds:
+        text += " The ground: " + ", ".join(f"{g.get('hex')} cells = {g.get('terrain')}" for g in grounds) + " (brown cells across water are a bridge)."
+    mood = " ".join(str(story.get(k) or "") for k in ("mood", "purpose", "logline")).strip()
+    if mood:
+        text += f" The story of this place: {mood[:500]} Paint its mood in the palette, light, weathering and details."
+    goal = str(look.get("goals") or look.get("style") or "").strip()
+    if goal:
+        text += f" Look: {goal[:300]}"
+    if notes.strip():
+        text += f" Also: {notes.strip()[:600]}"
+    text += (" Roads worn with ruts, water with banks and ripples, woods as dense masses of overlapping crowns, ground "
+             "with natural variation and no visible cells or grid; one light from the upper left; one palette "
+             "everywhere. No text, no labels, no UI, no characters.")
+    return text
+
+
+def counts_sentence(legend: dict | None) -> str:
+    """The plan's buildings and small things counted, so the model adds and swaps nothing."""
+    things = (legend or {}).get("things", [])
+    buildings = [t for t in things if "roof" in t.get("shape", "")]
+    props = [t for t in things if t.get("shape") == "small box"]
+    if not buildings:
+        return ""
+
+    def one(t):
+        return f"{t.get('count', 1)} {t['kind']}{'s' if t.get('count', 1) != 1 else ''} ({t['colour']})"
+    text = "Exactly " + ", ".join(one(t) for t in buildings) + ", each where the draft has a box with a roof; no other buildings anywhere."
+    if props:
+        text += " Small things: " + ", ".join(one(t) for t in props) + "; no others."
+    return text + " Where the draft has trees, woods, grass or water, there are no buildings."
+
+
+def paint_place(painter: BflPainter, blockout_png: bytes, legend: dict, place: dict, story: dict, look: dict,
+                notes: str = "", seed: int = 7) -> tuple[bytes, str]:
+    """A place painted from its block-out; the painting at the block-out's own size (so its pixels line up with the
+    block-out's id map) and the prompt."""
+    import io
+    from PIL import Image
+    src = Image.open(io.BytesIO(blockout_png)).convert("RGB")
+    prompt = (blockout_prompt(place, story, look, legend, notes) + " " + counts_sentence(legend)).strip()
+    png = painter.repaint(blockout_png, prompt, seed=seed, **_four_mp(src.width, src.height))
+    painted = Image.open(io.BytesIO(png)).convert("RGB")
+    if painted.size != src.size:
+        painted = painted.resize(src.size, Image.LANCZOS)
+    out = io.BytesIO()
+    painted.save(out, format="PNG")
+    return out.getvalue(), prompt

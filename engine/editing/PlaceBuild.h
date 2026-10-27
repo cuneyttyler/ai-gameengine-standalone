@@ -236,6 +236,17 @@ public:
     // tiles where it needs detail), from its description. "" when asked.
     std::string MakeBackground();
     bool MakingBackground() const { return makingBackground_; }
+    // ④ Paint (docs/places/painted-places.md): the place painted whole from its plan's block-out (FLUX.3 Image), then
+    // ⑤ Mark pre-filled from the plan. `notes`: the user's, painting again. "" when asked.
+    std::string Paint(const std::string& notes = {});
+    bool Painting() const { return painting_; }
+    // Paint skipped: the place is built from its kit; false takes painting up again.
+    void SkipPaint(bool skip);
+    // Built from its painting: painted, and Paint not skipped.
+    bool Painted() const;
+    // ⑤ Mark: pre-filled again (an occluder the user edited stays, unless `replaceEdited`), or saved from the editor.
+    std::string PrefillMarks(bool replaceEdited);
+    std::string SaveMarks(const nlohmann::json& marks);
     // A finished AI call of the build, added to its step's totals (confirm, layout, plan, assets, result): kept with
     // the build, shown on its step.
     void AddUsage(const std::string& step, int inputTokens, int outputTokens, double seconds);
@@ -367,6 +378,8 @@ private:
     nlohmann::json usage_ = nlohmann::json::object(); // {step: {calls, inputTokens, outputTokens, seconds}}: AddUsage
     bool inspecting_ = false;
     bool makingBackground_ = false;
+    bool painting_ = false;      // ④ Paint: asked, not answered
+    bool paintSkipped_ = false;  // built from the kit instead
     int buildRounds_ = 0;
     nlohmann::json buildCheck_;            // the last check of the built scene
     std::vector<std::string> redo_;        // needs whose art the check refused, for the next round

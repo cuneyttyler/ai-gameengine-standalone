@@ -6,6 +6,7 @@
 #include "assets/TextureCook.h"
 #include "editing/BuildWindow.h"
 #include "editing/MatchedArt.h"
+#include "editing/PaintedPlace.h"
 #include "places/Arrange.h"
 #include "places/Compile.h"
 #include "places/PlaceValidate.h"
@@ -435,6 +436,7 @@ void PlaceBuild::Save() const {
                                           {"revisions", revisions_},
                                           {"sketch", {{"done", sketched_}, {"crops", sketchCrops_}, {"sketches", sketches_}}},
                                           {"matched", matched_},
+                                          {"paint", {{"skipped", paintSkipped_}}},
                                           {"usage", usage_},
                                           {"layoutCheck", {{"checked", layoutChecked_}, {"rounds", layoutRounds_}, {"answer", layoutCheck_}}},
                                           {"fit", {{"scale", fitScale_}, {"side", fitSide_}}},
@@ -642,6 +644,22 @@ void PlaceBuild::HandleResponse(int requestId, const json& body) {
     }
     if (what.kind == "revise" || what.kind == "review") {
         if (stage_ == "revising") OnRevision(what, body);
+        Save();
+        return;
+    }
+    if (what.kind == "paint") {
+        painting_ = false;
+        Log({{"step", "painted"}, {"answer", body}});
+        if (body.value("ok", false)) {
+            PaintingMade(Folder(), body);
+            paintSkipped_ = false;
+            // ⑤ Mark starts from the plan; what the user marked by hand stays.
+            const json marks = aige::PrefillMarks(solved_, &host_.ontology(), Folder());
+            status_ = "Painted in " + std::to_string(static_cast<int>(body.value("seconds", 0.0))) + " s. ⑤ Mark: " +
+                      std::to_string(marks.value("occluders", json::array()).size()) + " occluders pre-filled from the plan, to trim to the painting.";
+        } else {
+            Notice("The place wasn't painted: " + FirstError(body));
+        }
         Save();
         return;
     }
@@ -4536,7 +4554,8 @@ std::string PlaceBuild::BackgroundDescription() const {
     std::string kind = brief_.value("buildType", std::string("place"));
     std::replace(kind.begin(), kind.end(), '-', ' ');
     std::string style;
-    for (const auto& [k, v] : brief_.value("style", json::object()).items()) {
+    const json styleOf = brief_.value("style", json::object()); // named: items() of a temporary dangles
+    for (const auto& [k, v] : styleOf.items()) {
         if (v.is_string() && !v.get<std::string>().empty() && k != "tags") style += (style.empty() ? "" : ", ") + v.get<std::string>();
     }
     std::string text = "A " + kind + " background for a game.";
@@ -4561,9 +4580,69 @@ std::string PlaceBuild::MakeBackground() {
     return {};
 }
 
+std::string PlaceBuild::Paint(const std::string& notes) {
+    if (!solved_.is_object() || !solved_.contains("objects")) return "the plan isn't laid out";
+    if (painting_) return "already painting it";
+    const json prepared = PrepareBlockout(solved_, &host_.ontology(), Folder());
+    const json legend = [&] {
+        std::ifstream in(Folder() / "blockout.legend.json", std::ios::binary);
+        try {
+            return json::parse(in);
+        } catch (const std::exception&) {
+            return json::object();
+        }
+    }();
+    const json story = story_.is_object() ? story_ : json::object();
+    json slim = legend;
+    slim.erase("placed"); // the prompt needs the key, not every box
+    slim.erase("drawn");
+    const json body = {{"dir", "places/" + id_},
+                       {"blockout", "blockout.png"},
+                       {"legend", slim},
+                       {"place", {{"name", brief_.value("name", id_)}, {"type", brief_.value("buildType", "")}}},
+                       {"story", {{"purpose", story.value("purpose", json())}, {"mood", story.value("mood", json())}, {"logline", story.value("logline", json())}}},
+                       {"look", LookFor(brief_.value("buildType", ""))},
+                       {"notes", notes}};
+    if (!Send({"paint", -1, "", "/places/paint", body, 900})) return "the AI is off";
+    painting_ = true;
+    status_ = "Painting the place from its plan (" + std::to_string(prepared.value("objects", json::array()).size()) + " things in the painting)…";
+    Log({{"step", "paint"}, {"notes", notes}});
+    Save();
+    return {};
+}
+
+void PlaceBuild::SkipPaint(bool skip) {
+    paintSkipped_ = skip;
+    Log({{"step", skip ? "paint skipped" : "paint taken up"}});
+    Save();
+}
+
+bool PlaceBuild::Painted() const {
+    if (paintSkipped_) return false;
+    const json p = LoadPainting(Folder());
+    return p.is_object() && p.contains("paintedAt");
+}
+
+std::string PlaceBuild::PrefillMarks(bool replaceEdited) {
+    if (!solved_.is_object()) return "the plan isn't laid out";
+    if (!LoadPainting(Folder()).is_object()) return "the place isn't painted";
+    const json marks = aige::PrefillMarks(solved_, &host_.ontology(), Folder(), replaceEdited);
+    if (!marks.is_object()) return "the painting's view can't be read";
+    Log({{"step", "marks pre-filled"}, {"occluders", marks.value("occluders", json::array()).size()}, {"replaceEdited", replaceEdited}});
+    return {};
+}
+
+std::string PlaceBuild::SaveMarks(const json& marks) {
+    const std::string why = aige::SaveMarks(Folder(), marks);
+    if (why.empty()) Log({{"step", "marks saved"}, {"occluders", marks.value("occluders", json::array()).size()}});
+    return why;
+}
+
 void PlaceBuild::AddUsage(const std::string& step, int inputTokens, int outputTokens, double seconds) {
     if (step.empty()) return;
+    if (!usage_.is_object()) usage_ = json::object();
     json& s = usage_[step];
+    if (!s.is_object()) s = json::object(); // a step not seen yet (operator[] made it null)
     s["calls"] = s.value("calls", 0) + 1;
     s["inputTokens"] = s.value("inputTokens", 0) + std::max(0, inputTokens);
     s["outputTokens"] = s.value("outputTokens", 0) + std::max(0, outputTokens);
@@ -4686,6 +4765,7 @@ std::string PlaceBuild::Open(const std::string& id) {
             }
         }
         matched_ = session.value("matched", json::object());
+        paintSkipped_ = session.value("paint", json::object()).value("skipped", false);
         usage_ = session.value("usage", json::object());
         if (matched_.value("state", "") == "making") matched_["state"] = "failed"; // the answer can't come now
         if (const json lc = session.value("layoutCheck", json::object()); lc.is_object()) {
@@ -5013,6 +5093,24 @@ json PlaceBuild::State() {
     if (matched_.contains("groundPicture")) state["background"] = matched_["groundPicture"];
     state["backgroundDescription"] = BackgroundDescription();
     state["backgroundMaking"] = makingBackground_;
+    if (stage_ == "planned" || stage_ == "sourcing" || stage_ == "sourced" || stage_ == "building" || stage_ == "built") {
+        // ④ Paint and ⑤ Mark: the painting's files (project-relative) and the marks' counts.
+        const std::string rel = "places/" + id_ + "/";
+        json paint = {{"painting", painting_}, {"skipped", paintSkipped_}, {"marks", MarksSummary(Folder())}};
+        if (const json p = LoadPainting(Folder()); p.is_object()) {
+            paint["size"] = p.value("size", json());
+            paint["view"] = p.value("view", json());
+            paint["blockout"] = rel + p.value("blockout", "blockout.png");
+            if (p.contains("paintedAt")) {
+                paint["file"] = rel + p.value("painting", "painting.png");
+                paint["paintedAt"] = p["paintedAt"];
+                paint["provider"] = p.value("provider", "");
+                paint["seconds"] = p.value("seconds", 0.0);
+                paint["prompt"] = p.value("prompt", "");
+            }
+        }
+        state["paint"] = paint;
+    }
     state["usage"] = usage_; // each step's AI calls, tokens and seconds
     if (stage_ == "building") state["buildProgress"] = buildProgress_;
     if (host_.layoutStep && (stage_ == "planned" || stage_ == "sourcing" || stage_ == "sourced" || stage_ == "built")) {
@@ -5038,12 +5136,20 @@ json PlaceBuild::Card() const {
     else if (stage_ == "planning") text = status_.empty() ? "Planning…" : status_;
     else if (stage_ == "plan") text = "③ Plan: review the zones before building";
     else if (stage_ == "layout") text = "① Confirm and ② Layout: what's built and where it goes";
-    else if (stage_ == "planned") text = "④ Assets: find the art, then build";
-    else if (stage_ == "sourced") text = "④ Assets: the art is ready; Build puts it into the scene";
+    else if (painting_) text = "④ Paint: painting the place from its plan…";
+    else if (stage_ == "planned" && !paintSkipped_ && !Painted()) text = "④ Paint: paint the place whole, or build it from its kit";
+    else if (stage_ == "planned" && Painted()) {
+        const json m = MarksSummary(Folder());
+        text = "⑤ Mark: " + std::to_string(m.value("occluders", 0)) + " occluders (" + std::to_string(m.value("edited", 0)) + " edited), " +
+               std::to_string(m.value("blocked", 0)) + " cells blocked" + (m.value("stale", false) ? "; painted again since: check them" : "") +
+               "; then ⑥ Assets";
+    }
+    else if (stage_ == "planned") text = "⑥ Assets: find the art, then build";
+    else if (stage_ == "sourced") text = "⑥ Assets: the art is ready; Build puts it into the scene";
     else if (stage_ == "revising") text = status_.empty() ? "Revising the plan…" : status_;
-    else if (stage_ == "building") text = "④ Assets: building it into the scene…";
-    else if (stage_ == "sourcing") text = "④ Assets: " + status_;
-    else if (stage_ == "built") text = "⑤ Result: " + status_;
+    else if (stage_ == "building") text = "⑦ Building it into the scene…";
+    else if (stage_ == "sourcing") text = "⑥ Assets: " + status_;
+    else if (stage_ == "built") text = "⑦ Result: " + status_;
     else if (stage_ == "cancelled") text = "Cancelled";
     else if (stage_ == "failed") text = errors_.empty() ? "Failed" : errors_.front();
     return {{"type", "build:card"}, {"buildId", id_}, {"name", brief_.is_object() ? brief_.value("name", "") : ""},

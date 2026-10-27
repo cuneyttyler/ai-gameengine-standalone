@@ -22,6 +22,7 @@ add_library(aige_editing STATIC
     PlaceInspect.cpp
     PlaceSketch.cpp
     PlaceBlockout.cpp
+    PaintedPlace.cpp
     MatchedArt.h
     MatchedArt.cpp
     PlaceScene.h

@@ -339,7 +339,8 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
             } catch (const std::exception& error) {
                 // A message that couldn't be handled (or a value of the wrong kind in what it
                 // read): a notice and the crash log, never the end of the editor.
-                LogEditorError("message", error.what());
+                const std::string at = aige::TakeFailedStep();
+                LogEditorError("message", std::string(error.what()) + (at.empty() ? "" : " (in " + at + ")"));
                 app.Notify(std::string("Something went wrong: ") + error.what());
             }
         });
@@ -372,14 +373,24 @@ int WINAPI wWinMain(HINSTANCE hinstance, HINSTANCE, LPWSTR, int) {
                 // One frame's work failed (an AI answer of a shape nothing expected): logged and
                 // shown once, and the editor carries on.
                 static std::string last;
+                const std::string at = aige::TakeFailedStep();
                 if (last != error.what()) {
                     last = error.what();
-                    LogEditorError("frame", error.what());
+                    LogEditorError("frame", std::string(error.what()) + (at.empty() ? "" : " (in " + at + ")"));
                     app.Notify(std::string("Something went wrong: ") + error.what());
                 }
             }
             previousTime = currentTime;
 
+            // The viewport's drawing (textures load here): logged when it held the UI thread long.
+            const auto drawStart = Clock::now();
+            struct DrawWatch {
+                Clock::time_point start;
+                ~DrawWatch() {
+                    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start).count();
+                    if (ms >= 500) LogEditorError("slow", "the viewport's drawing took " + std::to_string(ms) + " ms");
+                }
+            } drawWatch{drawStart};
             renderer.SetFlatDiamonds(aige::ActiveSettings().grid.style != aige::GridStyle::TopDown);
             const auto& background = aige::ActiveSettings().renderer;
             rhi.SetClearColor(background.clearR, background.clearG, background.clearB);
