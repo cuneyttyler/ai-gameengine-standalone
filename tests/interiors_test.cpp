@@ -1,7 +1,10 @@
 #include "assets/UserLibrary.h"
 #include "editing/PaintedPlace.h"
 #include "gameplay/Components.h"
+#include "places/Ontology.h"
 #include "gameplay/Interiors.h"
+#include "gameplay/TileGrid.h"
+#include "gameplay/TileLayer.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 
@@ -57,7 +60,7 @@ TEST(InteriorsTest, ShownWhileThePlayerIsInside) {
     Sprite sprite;
     sprite.texture = "assets/house.png";
     registry.emplace<Sprite>(house, sprite);
-    registry.emplace<Interior>(house, Interior{"assets/house-interior.png", "s"});
+    registry.emplace<Interior>(house).texture = "assets/house-interior.png";
     const Entity player = registry.create();
     auto& at = registry.emplace<WorldTransform2D>(player, 9.0f, 9.0f);
 
@@ -87,7 +90,8 @@ TEST(InteriorsTest, PaintedBuildingHidesItsOccluders) {
     cutaway.texture = "places/v/marks/o1-interior.png";
     cutaway.a = 0.0f;
     registry.emplace<Sprite>(room, cutaway);
-    Interior interior{cutaway.texture, "s"};
+    Interior interior;
+    interior.texture = cutaway.texture;
     interior.cells = "10,10,12,11";
     interior.hides = "painting#o1/";
     registry.emplace<Interior>(room, interior);
@@ -132,11 +136,99 @@ TEST(InteriorsTest, PaintedInteriorsArePairedWithTheirBuilding) {
     const json solved = {{"objects", {{{"id", "h1"}, {"layer", "building"}, {"x", 2}, {"y", 3}, {"w", 3}, {"h", 2}, {"facing", "e"}},
                                       {{"id", "t1"}, {"layer", "prop"}, {"x", 7}, {"y", 7}}}}};
     EXPECT_EQ(PairInteriorMarks(solved, folder), 1);
+    // A building type chosen as a scene interior: its doorway only, no cutaway.
+    EXPECT_EQ(SetInteriorChoice(folder, "house", "scene"), "");
+    EXPECT_EQ(LoadInteriorChoices(folder).value("house", ""), "scene");
     const json marks = json::parse(ReadFile(folder / "marks.json"));
     EXPECT_EQ(marks["occluders"][0]["interior"], "marks/o1-interior.png");
     EXPECT_EQ(marks["occluders"][0]["cells"], json({2, 3, 4, 4}));
     EXPECT_EQ(marks["occluders"][0]["door"], "e");
     EXPECT_FALSE(marks["occluders"][1].contains("interior"));
+}
+
+TEST(InteriorsTest, ASceneInteriorIsSolidButItsDoorway) {
+    Registry registry;
+    TileLayers& layers = LayersOf(registry);
+    TileLayer& ground = layers.Get("ground");
+    const uint16_t grass = ground.Intern(TileDef{});
+    for (int y = 0; y < 10; ++y) {
+        for (int x = 0; x < 10; ++x) ground.Set(x, y, grass);
+    }
+    const Entity inn = registry.create();
+    registry.emplace<WorldTransform2D>(inn, 5.0f, 5.0f);
+    registry.emplace<Obstacle>(inn, Obstacle{2, 0, 2});
+    // Linked: its door leads to the inn's scene, and one comes out a step in front of it.
+    ASSERT_TRUE(LinkInteriorOutside(registry, inn, "scenes/interiors/village-inn.aige", "entrance", "from-village-inn"));
+    const auto& interior = registry.get<Interior>(inn);
+    EXPECT_EQ(interior.kind, "scene");
+    int dx = 0, dy = 0;
+    ASSERT_TRUE(InteriorDoor(registry, inn, interior, dx, dy));
+    EXPECT_EQ(dx, 4);
+    EXPECT_EQ(dy, 5);
+    const TileGrid grid = TileGrid::Build(registry);
+    EXPECT_FALSE(grid.IsSolid(4, 5)); // the doorway
+    EXPECT_TRUE(grid.IsSolid(4, 4));  // inside: not walked (it's another scene)
+    EXPECT_TRUE(grid.IsSolid(3, 5));
+    bool back = false;
+    for (auto [e, marker, world] : registry.view<Marker, WorldTransform2D>().each()) {
+        back = back || (marker.name == "from-village-inn" && world.x == 4.5f && world.y == 6.5f);
+    }
+    EXPECT_TRUE(back);
+    // Not shown in place: a scene interior has no cutaway.
+    registry.emplace<Sprite>(inn, Sprite{});
+    const Entity player = registry.create();
+    registry.emplace<WorldTransform2D>(player, 4.5f, 4.5f);
+    UpdateInteriors(registry, player);
+    EXPECT_FALSE(registry.get<Interior>(inn).shown);
+}
+
+TEST(InteriorsTest, AnInteriorSceneLeadsBackOut) {
+    Registry registry;
+    TileLayers& layers = LayersOf(registry);
+    TileLayer& floor = layers.Get("floor");
+    TileDef wall;
+    wall.solid = true;
+    const uint16_t open = floor.Intern(TileDef{}), solid = floor.Intern(wall);
+    for (int y = 0; y < 6; ++y) {
+        for (int x = 0; x < 6; ++x) floor.Set(x, y, x == 0 || x == 5 || y == 0 || (y == 5 && x != 2) ? solid : open);
+    }
+    ASSERT_TRUE(LinkInteriorInside(registry, 0, 0, 5, 5, "scenes/village.aige", "from-village-inn", "entrance"));
+    bool gateway = false, entrance = false;
+    for (auto [e, g, world] : registry.view<Gateway, WorldTransform2D>().each()) {
+        gateway = g.scene == "scenes/village.aige" && g.marker == "from-village-inn" && world.x == 2.5f && world.y == 5.5f;
+    }
+    for (auto [e, m, world] : registry.view<Marker, WorldTransform2D>().each()) {
+        entrance = entrance || (m.name == "entrance" && world.x == 2.5f && world.y < 5.0f);
+    }
+    EXPECT_TRUE(gateway);
+    EXPECT_TRUE(entrance);
+    // Linked again: still one way out.
+    ASSERT_TRUE(LinkInteriorInside(registry, 0, 0, 5, 5, "scenes/village.aige", "from-village-inn", "entrance"));
+    int ways = 0;
+    for (auto e : registry.view<Gateway>()) ways += registry.valid(e);
+    EXPECT_EQ(ways, 1);
+}
+
+TEST(InteriorsTest, EachBuildingTypeChoosesItsInterior) {
+    Ontology ontology;
+    ontology.Load({EnginePlacesDir()});
+    const json none = json::object();
+    EXPECT_EQ(InteriorKindOf(&ontology, none, "house"), "cutaway");
+    EXPECT_EQ(InteriorKindOf(&ontology, none, "inn"), "scene");
+    EXPECT_EQ(InteriorKindOf(&ontology, none, "tree"), ""); // nothing to choose
+    EXPECT_EQ(InteriorKindOf(&ontology, json{{"inn", "cutaway"}}, "inn"), "cutaway");
+    EXPECT_EQ(InteriorKindOf(&ontology, json{{"house", "none"}}, "house"), "none");
+    const json solved = {{"objects", {{{"role", "house"}, {"layer", "building"}}, {{"role", "house"}, {"layer", "building"}},
+                                      {{"role", "inn"}, {"layer", "building"}}, {{"role", "tree"}, {"layer", "prop"}}}}};
+    const fs::path folder = fs::temp_directory_path() / "aige_interior_choices";
+    fs::remove_all(folder);
+    fs::create_directories(folder);
+    const json table = InteriorChoices(solved, &ontology, folder);
+    ASSERT_EQ(table.size(), 2u); // houses and the inn; trees have no inside
+    for (const auto& row : table) {
+        if (row["role"] == "house") EXPECT_EQ(row["count"], 2);
+        if (row["role"] == "inn") EXPECT_EQ(row["kind"], "scene");
+    }
 }
 
 TEST(InteriorsTest, ALibraryPairStaysAPair) {

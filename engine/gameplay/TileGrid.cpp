@@ -31,9 +31,16 @@ TileGrid TileGrid::Build(Registry& registry) {
             else grid.blocked_.insert(Key(gx, gy));
         };
         // A place one can go into: its walls only, with a doorway (Phase 27).
-        if (const auto* interior = registry.try_get<Interior>(entity); interior && !interior->texture.empty()) {
-            ForEachInteriorWall(sx, sy, std::max(0, obstacle.left), std::max(0, obstacle.right), std::max(0, obstacle.back), interior->door, block);
-            continue;
+        if (const auto* interior = registry.try_get<Interior>(entity)) {
+            const int left = std::max(0, obstacle.left), right = std::max(0, obstacle.right), back = std::max(0, obstacle.back);
+            if (interior->kind == "scene") { // its own scene: solid but for its doorway, which leads there
+                ForEachSceneInteriorCell(sx, sy, left, right, back, interior->door, block);
+                continue;
+            }
+            if (!interior->texture.empty()) {
+                ForEachInteriorWall(sx, sy, left, right, back, interior->door, block);
+                continue;
+            }
         }
         for (int gy = sy - std::max(0, obstacle.back); gy <= sy; ++gy) {
             for (int gx = sx - std::max(0, obstacle.left); gx <= sx + std::max(0, obstacle.right); ++gx) {

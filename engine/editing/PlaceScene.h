@@ -130,6 +130,8 @@ struct AssetSourcing {
     // Needs the place's sketch painted (PlaceBuild::SketchCrops): made by the Art tool from their crop,
     // so every piece keeps the painting's look; found art only if that fails.
     std::set<std::string> sketched;
+    // Each building type's interior chosen in the Build panel (places/<id>/interiors.json, {role: cutaway | scene | none}).
+    nlohmann::json interiors = nlohmann::json::object();
 };
 
 // {"needs": [{key, role, concepts, layer, w, h, uses, importance, styleCritical,

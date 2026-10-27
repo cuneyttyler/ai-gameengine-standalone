@@ -139,9 +139,19 @@ std::vector<std::string> GatewayProblems(const Project& project) {
     for (const std::string& scene : ListScenes(project)) {
         Registry registry;
         if (!LoadScene(registry, project.Resolve(scene).string())) continue;
+        // Gateways, and the doorways of buildings whose interior is a scene of its own once linked (an unbuilt one, no
+        // scene yet, is no problem: it says so when stepped into).
+        std::vector<std::pair<std::string, Gateway>> ways;
         for (auto [entity, gateway] : registry.view<Gateway>().each()) {
             const auto* name = registry.try_get<Name>(entity);
-            const std::string label = "Gateway" + (name ? " \"" + name->value + "\"" : std::string());
+            ways.push_back({"Gateway" + (name ? " \"" + name->value + "\"" : std::string()), gateway});
+        }
+        for (auto [entity, interior] : registry.view<Interior>().each()) {
+            if (interior.kind != "scene" || interior.scene.empty()) continue;
+            const auto* name = registry.try_get<Name>(entity);
+            ways.push_back({"The doorway of" + (name ? " \"" + name->value + "\"" : std::string(" a building")), Gateway{interior.scene, interior.marker}});
+        }
+        for (const auto& [label, gateway] : ways) {
             if (gateway.scene.empty()) {
                 problems.push_back(scene + ": " + label + " has no scene to lead to");
                 continue;

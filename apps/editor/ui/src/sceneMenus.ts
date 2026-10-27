@@ -13,7 +13,9 @@ export interface MenuEntity {
   name: string
   prefab: string | null
   tile: boolean
-  interior?: boolean | null // a building with an interior (Phase 27): whether it shows now; null/absent: none
+  interior?: boolean | null // a building with a cutaway interior: whether it shows now; null/absent: none
+  interiorScene?: string // a building whose interior is its own scene: that scene ("" not built yet)
+  building?: boolean // it has a footprint (an Obstacle): it can have an interior scene
 }
 
 // Extra items other features add (copy/paste, resize, ...), given the target.
@@ -42,6 +44,17 @@ export function entityMenu(entity: MenuEntity): MenuItem[] {
     ...(typeof entity.interior === 'boolean'
       ? [{ label: entity.interior ? 'Show exterior' : 'Show interior', shortcut: keyLabel('view.interior'), disabled: editorState.playing,
            action: () => sendToHost({ type: 'entity:interior', id: entity.id, shown: !entity.interior }) }]
+      : []),
+    // Its interior as its own scene (docs/places/interiors.md §2b): opened, or built in the Build panel.
+    ...(entity.interiorScene
+      ? [{ label: 'Open interior scene', disabled: editorState.playing, action: () => sendToHost({ type: 'entity:openInterior', id: entity.id }) }]
+      : []),
+    ...(entity.building && typeof entity.interior !== 'boolean'
+      ? [{
+          label: entity.interiorScene ? 'Build its interior scene again…' : 'Build its interior scene…',
+          disabled: editorState.playing,
+          action: () => sendToHost({ type: 'entity:buildInterior', id: entity.id }),
+        }]
       : []),
     ...(entity.prefab && !entity.tile ? [{ label: 'Replace prefab…', disabled: editorState.playing, action: () => replacePrefab(entity) }] : []),
     { label: `Duplicate ${label}`, shortcut: keyLabel('edit.duplicate'), action: () => (select(), sendToHost({ type: 'edit:duplicate' })) },

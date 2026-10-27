@@ -270,6 +270,11 @@ struct Interactable {
 // building cut away: rooms, floor and furniture inside the walls' outline), shown while the player is inside its
 // footprint (Interiors.h); its walls then the only solid cells, with a doorway on its `door` side.
 struct Interior {
+    // How it's shown (docs/places/interiors.md): "cutaway", the building drawn cut away in place while the player is
+    // inside; "scene", its own scene, entered through its doorway (a Gateway there of itself).
+    std::string kind = "cutaway";
+    std::string scene;           // kind scene: the interior's scene (scenes/*.aige); empty: not built yet
+    std::string marker;          // kind scene: where one arrives in it
     std::string texture;         // the interior art; empty: none
     std::string door = "s";      // the doorway's side: s, e, n, w
     bool shown = false;          // the interior showing now (the player inside; in the editor, a preview)

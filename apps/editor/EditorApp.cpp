@@ -2690,9 +2690,12 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                                              ? nlohmann::json(registry_.get<PrefabInstance>(*picked).path)
                                              : nlohmann::json(nullptr)},
                               {"tile", registry_.all_of<Tile>(*picked)}};
-                    // Its interior (Phase 27): whether it shows now, null when it has none.
+                    // Its interior: a cutaway (whether it shows now), a scene (built or not), or null when it has none.
                     const auto* interior = registry_.try_get<Interior>(*picked);
-                    entity["interior"] = interior && !interior->texture.empty() ? nlohmann::json(interior->shown) : nlohmann::json(nullptr);
+                    const bool scene = interior && interior->kind == "scene";
+                    entity["interior"] = interior && !scene && !interior->texture.empty() ? nlohmann::json(interior->shown) : nlohmann::json(nullptr);
+                    if (scene) entity["interiorScene"] = interior->scene;
+                    entity["building"] = registry_.all_of<Obstacle>(*picked) || (interior && !interior->cells.empty());
                 }
                 // A ground tile there (a tile layer's cell, a built place's ground): its prefab, to Draw with.
                 std::string cellPrefab;
@@ -5215,6 +5218,28 @@ void EditorApp::PollAi() {
                 }
             }
             post_(AiStatusJson());
+        } else if (result->kind == AiClient::Result::Kind::Response && interiorRequests_.contains(result->requestId)) {
+            // An asset's interior made (docs/places/interiors.md §5): paired with it both ways.
+            const std::string path = interiorRequests_[result->requestId];
+            interiorRequests_.erase(result->requestId);
+            const std::string inside = result->body.value("path", "");
+            if (result->body.value("ok", false) && !inside.empty()) {
+                RefreshAssets();
+                const AssetInfo* exterior = assets_.Find(path);
+                const auto field = [&](const char* key) {
+                    return exterior && exterior->analysis.contains(key) ? exterior->analysis.at(key) : std::string();
+                };
+                SetCatalogFields(assets_, inside, {{"exteriorOf", path}, {"name", field("name").empty() ? std::string() : field("name") + " interior"},
+                                                   {"kind", field("kind")}, {"layer", field("layer")}, {"cells", field("cells")},
+                                                   {"perspective", field("perspective")}, {"source", "generated"}});
+                SetCatalogFields(assets_, path, {{"interior", inside}});
+                post_(CatalogJson());
+                post_(AssetsJson());
+                post_({{"type", "notify"}, {"text", "Its interior is made: " + inside}});
+            } else {
+                const auto errors = result->body.value("errors", nlohmann::json::array());
+                post_({{"type", "notify"}, {"text", "The interior wasn't made" + (errors.empty() ? std::string() : ": " + errors.front().get<std::string>())}});
+            }
         } else if (result->kind == AiClient::Result::Kind::Response) {
             if (result->requestId != 0 && result->requestId == progressRequest_) {
                 progressRequest_ = 0;
@@ -5361,7 +5386,8 @@ bool EditorApp::KnownRequest(int requestId) const {
     return requestId == worldSearchRequest_ || requestId == analyzeRequest_ || requestId == artRequest_ ||
            (requestId != 0 && (requestId == characterRequest_ || requestId == animationRequest_)) ||
            requestId == worldCheckRequest_ || consistencyRequests_.contains(requestId) ||
-           (requestId != 0 && (requestId == webPreviewRequest_ || requestId == segmentRequest_)) || webFetchRequests_.contains(requestId);
+           (requestId != 0 && (requestId == webPreviewRequest_ || requestId == segmentRequest_)) || webFetchRequests_.contains(requestId) ||
+           interiorRequests_.contains(requestId);
 }
 
 void EditorApp::OnBuildResult(int requestId, const nlohmann::json& body) {
@@ -5577,6 +5603,21 @@ void EditorApp::CutMatched() {
                                             std::to_string(report.value("grounds", nlohmann::json::array()).size()) + " grounds in one style"}});
 }
 
+void EditorApp::LinkBuiltInterior(int originX, int originY, int side) {
+    std::ifstream in(build_->Folder() / "interior-of.json");
+    const nlohmann::json link = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+    if (!link.is_object()) return;
+    if (!LinkInteriorInside(registry_, originX, originY, originX + side - 1, originY + side - 1, link.value("exterior", ""), link.value("back", ""),
+                            link.value("marker", "entrance"))) {
+        post_({{"type", "notify"}, {"text", "The interior has no open cell for its way out: add a gateway to " + link.value("exterior", "") + " by hand"}});
+        return;
+    }
+    dirty_ = true;
+    sceneTreeStale_ = true;
+    Save();
+    post_({{"type", "notify"}, {"text", "Its way out leads back to " + link.value("exterior", "") + ", by the building's door"}});
+}
+
 bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::json& message) {
     // Interiors (docs/places/interiors.md §5).
     if (type == "entity:interior" || type == "interiors:showAll") {
@@ -5598,6 +5639,94 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             }
             ApplyInteriors(registry_);
             inspectorStale_ = true;
+        }
+        return true;
+    }
+    if (type == "build:interiorChoice") {
+        // The Assets step: a building type's interior (cutaway, scene or none; "" its default), for this build.
+        if (!build_) return true;
+        if (const std::string why = SetInteriorChoice(build_->Folder(), message.value("role", ""), message.value("kind", "")); !why.empty()) {
+            post_({{"type", "notify"}, {"text", why}});
+        }
+        PreviewAssets();
+        PostBuild();
+        return true;
+    }
+    if (type == "entity:openInterior" || type == "entity:buildInterior") {
+        // A scene interior (docs/places/interiors.md §2b): its scene opened, or built (its own scene made and opened,
+        // the building's door leading there, the Build panel building its inside; linked back when built).
+        std::optional<Entity> target = selected_;
+        if (message.contains("id") && message["id"].is_number_unsigned()) target = static_cast<Entity>(message["id"].get<uint32_t>());
+        if (!target || !registry_.valid(*target) || playing_) return true;
+        Interior* interior = registry_.try_get<Interior>(*target);
+        if (type == "entity:openInterior") {
+            if (interior == nullptr || interior->scene.empty()) {
+                post_({{"type", "notify"}, {"text", "Its interior isn't built yet"}});
+                return true;
+            }
+            OpenScene(interior->scene);
+            return true;
+        }
+        if (buildJob_ || buildRun_) {
+            post_({{"type", "notify"}, {"text", "The Build panel is still building: a moment"}});
+            return true;
+        }
+        const std::string exterior = OpenSceneRelative();
+        if (exterior.empty() || (!registry_.all_of<Obstacle>(*target) && (interior == nullptr || interior->cells.empty()))) {
+            post_({{"type", "notify"}, {"text", exterior.empty() ? "Save the scene first" : "Only a building can have an interior scene"}});
+            return true;
+        }
+        // What it is: its role (the end of its plan statement, "plots[3].inn"), else its name.
+        std::string what;
+        if (const auto* node = registry_.try_get<PlaceNode>(*target); node && !node->statement.empty()) {
+            what = node->statement.substr(node->statement.rfind('.') == std::string::npos ? 0 : node->statement.rfind('.') + 1);
+        }
+        if (what.empty()) {
+            const auto* name = registry_.try_get<Name>(*target);
+            what = name ? name->value : "building";
+        }
+        std::string slug;
+        for (const char c : what) slug += std::isalnum(static_cast<unsigned char>(c)) ? static_cast<char>(std::tolower(static_cast<unsigned char>(c))) : '-';
+        std::string scene = "scenes/interiors/" + std::filesystem::path(exterior).stem().string() + "-" + slug + ".aige";
+        if (interior != nullptr && !interior->scene.empty()) scene = interior->scene; // built again
+        for (int n = 2; (interior == nullptr || interior->scene != scene) && std::filesystem::exists(assets_.GetProject().Resolve(scene)); ++n) {
+            scene = "scenes/interiors/" + std::filesystem::path(exterior).stem().string() + "-" + slug + "-" + std::to_string(n) + ".aige";
+        }
+        const std::string back = "from-" + std::filesystem::path(scene).stem().string();
+        LinkInteriorOutside(registry_, *target, scene, "entrance", back);
+        dirty_ = true;
+        Save();
+        const std::filesystem::path full = assets_.GetProject().Resolve(scene);
+        std::error_code ec;
+        std::filesystem::create_directories(full.parent_path(), ec);
+        if (!std::filesystem::exists(full, ec)) {
+            Registry empty;
+            SaveScene(empty, full.string());
+        }
+        OpenScene(scene);
+        if (OpenSceneRelative() != scene) return true;
+        std::string words = what;
+        std::replace(words.begin(), words.end(), '-', ' ');
+        StartBuild("the interior of the " + words, nlohmann::json::object(), "Assembled");
+        if (build_) {
+            std::filesystem::create_directories(build_->Folder(), ec);
+            std::ofstream(build_->Folder() / "interior-of.json") << nlohmann::json{{"exterior", exterior}, {"back", back}, {"marker", "entrance"}}.dump(2) << "\n";
+        }
+        return true;
+    }
+    if (type == "asset:makeInterior") {
+        // Generate interior: the asset cut away by BFL, written beside it, paired when it comes.
+        const std::string path = message.value("path", "");
+        const AssetInfo* asset = assets_.Find(path);
+        if (asset == nullptr || path.find("..") != std::string::npos) return true;
+        if (!Ai() || Ai()->GetState() != AiClient::State::Ready) {
+            post_({{"type", "notify"}, {"text", "Generate interior needs the AI service: turn AI on"}});
+            return true;
+        }
+        const std::string purpose = asset->analysis.contains("description") ? asset->analysis.at("description") : std::string();
+        if (const int id = Ai()->Request("POST", "/assets/interior", {{"path", path}, {"purpose", purpose}}, 600); id != 0) {
+            interiorRequests_[id] = path;
+            post_({{"type", "notify"}, {"text", "Making the interior of " + path + "…"}});
         }
         return true;
     }
@@ -5789,6 +5918,7 @@ AssetSourcing EditorApp::SourcingNow() {
     std::ifstream in(build_->Folder() / "assets.json");
     const nlohmann::json saved = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
     if (saved.is_object()) sourcing.overrides = saved.value("overrides", nlohmann::json::object());
+    sourcing.interiors = LoadInteriorChoices(build_->Folder());
     return sourcing;
 }
 
@@ -5991,6 +6121,7 @@ void EditorApp::StepBuildRun() {
             build_->Built({{"assets", run.assets}, {"report", run.report}, {"verify", run.verify}, {"repairs", run.repairs}, {"after", run.after},
                            {"origin", {run.options.originX, run.options.originY}},
                            {"image", "places/" + build_->Id() + "/scene.png?v=" + std::to_string(++pictures)}});
+            LinkBuiltInterior(run.options.originX, run.options.originY, built); // a scene interior: its way out
             // Look at it.
             const int side = build_->SiteSide();
             const ScreenPose centre = ProjectIso(run.options.originX + side / 2.0f, run.options.originY + side / 2.0f, iso_);

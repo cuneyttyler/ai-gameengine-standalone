@@ -845,7 +845,13 @@ json MatchedArtSheets(const json& solved, const json& assetPlan, const Ontology*
             const bool views = orient.is_string() && orient != "none" && row.value("layer", "") != "building" && !row.contains("kit");
             if (views) piece["orient"] = orient, piece["view"] = "front";
             // A building one can go into (its role's look has_interior, Phase 27): its interior made with it.
-            if (row.value("layer", "") == "building" && ontology && ontology->RoleLook(role, "has_interior") == true) piece["interior"] = true;
+            // A cutaway one only (a scene interior is built, not painted), as the Build panel chose for its type.
+            const json look = row.value("look", json::object());
+            const bool hasInterior = look.contains("has_interior") ? look.value("has_interior", false) : ontology && ontology->RoleLook(role, "has_interior") == true;
+            const std::string kind = look.contains("interior_kind") ? look.value("interior_kind", std::string("cutaway"))
+                                     : ontology && ontology->RoleLook(role, "interior_kind").is_string() ? ontology->RoleLook(role, "interior_kind").get<std::string>()
+                                                                                                       : std::string("cutaway");
+            if (row.value("layer", "") == "building" && hasInterior && kind == "cutaway") piece["interior"] = true;
             // Several looks for a kind the place uses often, by how much real ones differ (its role's look
             // "variety"): many different cars, a few shops, one street light.
             int variants = 1;

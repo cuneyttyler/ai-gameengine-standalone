@@ -1,11 +1,15 @@
 #include "gameplay/Interiors.h"
 
 #include "gameplay/Components.h"
+#include "gameplay/Archetypes.h"
+#include "gameplay/TileGrid.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -23,10 +27,70 @@ bool InteriorFootprint(Registry& registry, Entity entity, const Interior& interi
     return true;
 }
 
+bool InteriorDoor(Registry& registry, Entity entity, const Interior& interior, int& x, int& y) {
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    if (!InteriorFootprint(registry, entity, interior, x0, y0, x1, y1)) return false;
+    std::tie(x, y) = DoorwayOf(x0, y0, x1, y1, interior.door);
+    return true;
+}
+
+namespace {
+
+void PutMarker(Registry& registry, const std::string& name, float x, float y) {
+    for (auto [e, m] : registry.view<Marker>().each()) {
+        if (m.name == name) {
+            registry.get_or_emplace<WorldTransform2D>(e) = {x, y};
+            return;
+        }
+    }
+    const Entity e = registry.create();
+    registry.emplace<WorldTransform2D>(e, x, y);
+    registry.emplace<Marker>(e, name);
+    registry.emplace<Name>(e, "Marker " + name);
+}
+
+} // namespace
+
+bool LinkInteriorOutside(Registry& outside, Entity building, const std::string& scene, const std::string& marker, const std::string& back) {
+    auto& interior = outside.get_or_emplace<Interior>(building);
+    interior.kind = "scene";
+    interior.scene = scene;
+    interior.marker = marker;
+    int dx = 0, dy = 0;
+    if (!InteriorDoor(outside, building, interior, dx, dy)) return false;
+    const int ox = interior.door == "e" ? 1 : interior.door == "w" ? -1 : 0;
+    const int oy = interior.door == "s" ? 1 : interior.door == "n" ? -1 : 0;
+    PutMarker(outside, back, dx + ox + 0.5f, dy + oy + 0.5f);
+    return true;
+}
+
+bool LinkInteriorInside(Registry& inside, int x0, int y0, int x1, int y1, const std::string& exteriorScene, const std::string& back,
+                        const std::string& marker) {
+    const TileGrid grid = TileGrid::Build(inside);
+    const int mx = (x0 + x1) / 2;
+    // Its entrance: the frontmost row with an open cell, the one nearest the middle.
+    for (int y = y1; y >= y0; --y) {
+        int best = -1;
+        for (int x = x0; x <= x1; ++x) {
+            if (!grid.IsSolid(x, y) && (best < 0 || std::abs(x - mx) < std::abs(best - mx))) best = x;
+        }
+        if (best < 0) continue;
+        for (auto [e, gateway] : inside.view<Gateway>().each()) {
+            if (gateway.scene == exteriorScene && gateway.marker == back) inside.destroy(e); // linked before: once
+        }
+        CreateGateway(inside, best + 0.5f, y + 0.5f, exteriorScene, back);
+        int iy = y;
+        for (int k = 0; k < 2 && iy - 1 >= y0 && !grid.IsSolid(best, iy - 1); ++k) --iy;
+        PutMarker(inside, marker, best + 0.5f, iy + 0.5f);
+        return true;
+    }
+    return false;
+}
+
 void UpdateInteriors(Registry& registry, std::optional<Entity> player) {
     const WorldTransform2D* at = player && registry.valid(*player) ? registry.try_get<WorldTransform2D>(*player) : nullptr;
     for (auto [entity, interior] : registry.view<Interior>().each()) {
-        if (interior.texture.empty()) continue;
+        if (interior.texture.empty() || interior.kind == "scene") continue;
         int x0 = 0, y0 = 0, x1 = -1, y1 = -1;
         bool inside = false;
         if (at != nullptr && InteriorFootprint(registry, entity, interior, x0, y0, x1, y1)) {
@@ -41,7 +105,7 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player) {
 void ApplyInteriors(Registry& registry) {
     std::vector<std::pair<std::string, bool>> hides; // a painted building's occluders, and whether its interior shows
     for (auto [entity, interior, sprite] : registry.view<Interior, Sprite>().each()) {
-        if (interior.texture.empty()) continue;
+        if (interior.texture.empty() || interior.kind == "scene") continue;
         if (!interior.cells.empty()) {
             // Painted: the painting is its outside; the cutaway over it only while inside.
             sprite.texture = interior.texture;

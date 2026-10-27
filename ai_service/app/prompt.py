@@ -400,10 +400,13 @@ GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
   aggression and confidence decide fights; a "combat-style" record says how they fight; Barks are one-line
   remarks (alternatives separated by |). SmartObject marks beds, chairs, counters for packages to use. Actor
   {key, prefab} makes one person persist across scenes (dead stays dead).
-- Interior: a building one can walk into (texture: its interior picture, the same building cut away; door: s, e, n
-  or w). Its collision becomes its walls with a doorway; while the player stands inside, the interior shows (no Lua,
-  no event). An asset's pair is in its catalog fields: interior= on the exterior, exteriorOf= on the interior. To give
-  a building one, add Interior with the texture its art's interior field names; shown previews it in the editor.
+- Interior: a building one can go into, of two kinds (door: s, e, n or w, its doorway's side).
+  kind "cutaway": texture is its interior picture (the same building cut away); its collision becomes its walls with
+  a doorway, and while the player stands inside the interior shows in place (no Lua, no event). An asset's pair is in
+  its catalog fields: interior= on the exterior, exteriorOf= on the interior; shown previews it in the editor.
+  kind "scene": its interior is its own scene (scene, marker: where one arrives); the building is solid but for its
+  doorway, and stepping into the doorway goes there (a Gateway of itself). Big many-roomed buildings (inns, temples,
+  manors, keeps) are scenes; houses and workshops cutaways. Both kinds can be in one scene.
 - Prefer these systems over Lua for anything they cover.
 """
 

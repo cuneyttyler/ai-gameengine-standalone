@@ -3,10 +3,18 @@
 Status: **in development (2026-10-27), Phase 27**. The milestones are in `docs/project/development_plan.md` Phase 27;
 §10 below says what is built.
 
-**The idea.** When the player goes into a building, its inside shows. The building is drawn again as a cutaway: the
-roof and the walls facing the camera are gone, and its rooms, floor and furniture show. The back walls and the
-building's outline stay, so it still sits in the same spot with the town around it. Each building has one complementing
-asset, its **interior**, paired with its **exterior**. Both are drawn on the same canvas, so they swap in place.
+**The idea.** When the player goes into a building, its inside shows, in one of two ways. Both are used in the same
+project and the same scene, each building with its own kind (`Interior.kind`):
+
+- **Cutaway** (houses, workshops, most buildings): the building is drawn again as a cutaway, in place. The roof and the
+  walls facing the camera are gone, and its rooms, floor and furniture show. The back walls and the building's outline
+  stay, so it still sits in the same spot with the town around it. Each such building has one complementing asset,
+  its **interior**, paired with its **exterior**. Both are drawn on the same canvas, so they swap in place.
+- **Scene** (big, many-roomed buildings: inns, temples, manors, keeps; hotels, schools, hospitals): the interior is a
+  scene of its own, built by the place builder's `interior` build type (rooms, doors, furniture). Stepping into the
+  building's doorway goes there; its way out comes back to the doorway. Such a building has **no** cutaway asset.
+
+An asset without an interior can get one any time: the Assets panel's right-click **Generate interior** (§5).
 
 **Always BFL, never skipped.** An interior is an *edit* of the exterior picture, which needs a model that takes a
 reference image. The app relies on BFL for this, as for back views and variants. There is no fallback that skips
@@ -16,9 +24,41 @@ interiors when another provider is set, because Mistral and PixelLab can't take 
 
 - A role's look has `has_interior` (`data/places/roles.json`). It's set on `building`, and every role under it inherits
   it through `broader` (`Ontology::RoleLook`).
-- A role turns it off by setting `"has_interior": false` (a shed, a well house).
-- `CutMatchedArt` marks a piece `interior: true` when its layer is `building` and its role has an interior. That flag is
-  what the art step reads.
+- A role turns it off by setting `"has_interior": false` (a site marker, a landmark, a ruin).
+- A role's look has `interior_kind`: `cutaway` on `building` (inherited), `scene` on the big many-roomed ones (manor,
+  inn, temple, keep, chapel, barracks; hotel, mall, supermarket, school, hospital, police and fire station, city hall,
+  modern church, office and apartment towers, transit station). The asset plan's look carries both keys to the scene.
+- **Per building type, per build:** the Build panel's Assets step has an **Interiors** table, one row per building type
+  in the place whose role has `has_interior` (others aren't listed): **Cutaway**, **Scene (no interior)** or **None**,
+  its role's kind marked "(default)". Kept in `places/<id>/interiors.json` ({role: kind}, `build:interiorChoice`);
+  `InteriorKindOf` gives the build's choice, else the role's kind. The asset plan's look carries it (so the art step
+  makes cutaways only for Cutaway types, and the scene gives Scene types their doorway), and painted places read it too
+  (`InteriorRequests`, `PairInteriorMarks`: a painted Scene building gets a doorway entity, `Interior{kind: scene, cells}`,
+  its walk cells solid but the doorway).
+- `CutMatchedArt` marks a piece `interior: true` when its layer is `building` and its role has a *cutaway* interior.
+  That flag is what the art step reads: a scene interior's building gets no cutaway (its inside is built, not painted).
+
+## 2b. Scene interiors
+
+- **Engine.** `Interior{kind: "scene", scene, marker, door}` on the building. Its collision is its whole footprint but
+  the doorway (`ForEachSceneInteriorCell`); `GameSession::CheckGateways` treats the doorway as a gateway to `scene`'s
+  `marker`. Not built yet (`scene` empty): stepping in says "Its interior isn't built yet". The Inspector edits it, so a
+  designer can turn any building into either kind.
+- **Built places.** `PlaceObject` gives a building whose role's `interior_kind` is `scene` an unlinked scene Interior
+  (its door from the plan's `facing`).
+- **Linking** (`LinkInteriorOutside`, `LinkInteriorInside`, Interiors.h):
+  - outside: the building's Interior points at the interior scene and its arrival marker, and a marker stands a step out
+    of its doorway, where one comes out;
+  - inside: a gateway at the interior's entrance (the open cell nearest the middle of its front row) back to that
+    marker, and the arrival marker two steps in. Linking again keeps one way out.
+- **From the Planner.** A plan's place `inside` another whose build type is `interior` (the Rusty Anchor inn inside
+  Millbrook) is entered through a building's door (`GameBuild::ConnectScenes`): the unlinked scene-kind building whose
+  role is named in the interior's name or prompt, else the biggest scene-kind one, else the biggest building. Without a
+  building, the gateway goes on the scene's edge as before.
+- **From the editor.** A building's right-click **Build its interior scene…** makes `scenes/interiors/<scene>-<role>.aige`,
+  links the doorway to it, opens it and starts the Build panel there with "the interior of the <role>" (the interior
+  build type). The build's folder keeps `interior-of.json`; when it's built, `LinkBuiltInterior` puts its way out at its
+  entrance. **Open interior scene** opens a linked one.
 
 ## 2. Making the interior (`matched.py make_interiors`)
 
@@ -108,12 +148,15 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
 ## 5. In the editor
 
 - **Assets panel:** the right-click menu on an asset with a pair shows **Go to interior** or **Go to exterior**, which
-  selects and scrolls to the other asset. On a prefab, the item goes to the prefab drawn with the paired texture, or to
+  selects and scrolls to the other asset. On an image without one: **Generate interior** (`asset:makeInterior`,
+  `/assets/interior`): the picture cut away by BFL (`matched.cutaway`), written beside it as `<name>-interior.png`, and
+  the two paired in the catalog. On a prefab, the item goes to the prefab drawn with the paired texture, or to
   the asset when no prefab uses it.
 - **Asset details:** shows the pair and sets it by hand ("Interior: …", any project image). This writes both
   catalog fields.
 - **Viewport:**
-  - right-click on a building with an interior: **Show interior** or **Show exterior**;
+  - right-click on a building with a cutaway interior: **Show interior** or **Show exterior**; on a scene-kind one:
+    **Open interior scene** (when built) and **Build its interior scene…**;
   - right-click on the ground: **Show interiors (N)** or **Show exteriors**, for every building;
   - **H** (`view.interior`, rebindable in Help ▸ Keyboard Shortcuts): the selected building's interior or exterior.
 - Host messages:
@@ -182,4 +225,6 @@ the building's own pixels, so it lines up the same way.
 | Library pairing (`UserLibrary::Add`, `CopyToProject`) | built; the AIGE library's catalog carries the same fields |
 | Paint method (`/places/interiors`, `PaintInteriors`, `PairInteriorMarks`, the scene entity, the walls) | built, not yet run live |
 | AI panel (the prompt's Interior entry; context has components and catalog fields; the build card's count) | built |
-| C++ tests (`tests/interiors_test.cpp`) | written |
+| Scene interiors (kind, collision, doorway gateway, linking, Planner, Build its interior scene…) | built |
+| Generate interior (Assets panel) | built |
+| C++ tests (`tests/interiors_test.cpp`) | built, passing |

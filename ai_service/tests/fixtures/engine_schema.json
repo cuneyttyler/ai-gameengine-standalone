@@ -1335,6 +1335,25 @@
       "description": "A place one can go into (Phase 27): its interior shows while the player is inside; only its walls block.",
       "fields": [
         {
+          "description": "cutaway: the building drawn cut away in place; scene: its own scene, through its door.",
+          "name": "kind",
+          "options": [
+            "cutaway",
+            "scene"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "A scene interior: its scene.",
+          "name": "scene",
+          "type": "string"
+        },
+        {
+          "description": "A scene interior: where one arrives in it.",
+          "name": "marker",
+          "type": "string"
+        },
+        {
           "description": "The interior picture (the same building cut away).",
           "name": "texture",
           "type": "texture"

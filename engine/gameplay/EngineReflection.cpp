@@ -229,6 +229,9 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("used", &Interactable::used, "Already used (with once).")
         .DependsOn({"WorldTransform2D"});
     r.Component<Interior>("Interior", "A place one can go into (Phase 27): its interior shows while the player is inside; only its walls block.")
+        .Field("kind", &Interior::kind, "cutaway: the building drawn cut away in place; scene: its own scene, through its door.").Options({"cutaway", "scene"})
+        .Field("scene", &Interior::scene, "A scene interior: its scene.")
+        .Field("marker", &Interior::marker, "A scene interior: where one arrives in it.")
         .Field("texture", &Interior::texture, "The interior picture (the same building cut away).").As(FieldType::Texture)
         .Field("door", &Interior::door, "The doorway's side.").Options({"s", "e", "n", "w"})
         .Field("shown", &Interior::shown, "The interior showing now (in the editor: a preview).")

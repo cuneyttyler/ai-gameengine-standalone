@@ -41,7 +41,8 @@
     "affordance": "environmental-object",
     "look": {
       "variety": "high",
-      "has_interior": true
+      "has_interior": true,
+      "interior_kind": "cutaway"
     },
     "storey": 2.0
   },
@@ -68,7 +69,10 @@
   "manor": {
     "label": "manor",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "look": {
+      "interior_kind": "scene"
+    }
   },
   "outbuilding": {
     "label": "outbuilding",
@@ -93,7 +97,10 @@
   "inn": {
     "label": "inn",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "look": {
+      "interior_kind": "scene"
+    }
   },
   "stable": {
     "label": "stable",
@@ -113,7 +120,10 @@
   "temple": {
     "label": "temple",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "look": {
+      "interior_kind": "scene"
+    }
   },
   "mill": {
     "label": "mill",
@@ -975,17 +985,26 @@
   "keep": {
     "label": "keep",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "look": {
+      "interior_kind": "scene"
+    }
   },
   "barracks": {
     "label": "barracks",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "look": {
+      "interior_kind": "scene"
+    }
   },
   "chapel": {
     "label": "chapel",
     "affordance": "environmental-object",
-    "broader": "temple"
+    "broader": "temple",
+    "look": {
+      "interior_kind": "scene"
+    }
   },
   "storehouse": {
     "label": "storehouse",
@@ -1005,17 +1024,26 @@
   "ruin": {
     "label": "ruin",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "look": {
+      "has_interior": false
+    }
   },
   "site-marker": {
     "label": "site marker",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "look": {
+      "has_interior": false
+    }
   },
   "landmark": {
     "label": "landmark",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "look": {
+      "has_interior": false
+    }
   },
   "campfire": {
     "label": "campfire",
@@ -1998,7 +2026,8 @@
         20
       ],
       "roof": "flat",
-      "cover": 0.75
+      "cover": 0.75,
+      "interior_kind": "scene"
     }
   },
   "office-building": {
@@ -2040,7 +2069,8 @@
         24
       ],
       "roof": "flat",
-      "cover": 0.7
+      "cover": 0.7,
+      "interior_kind": "scene"
     }
   },
   "suburban-house": {
@@ -2096,7 +2126,8 @@
         1
       ],
       "roof": "flat",
-      "cover": 0.6
+      "cover": 0.6,
+      "interior_kind": "scene"
     }
   },
   "mall": {
@@ -2110,7 +2141,8 @@
         3
       ],
       "roof": "flat",
-      "cover": 0.65
+      "cover": 0.65,
+      "interior_kind": "scene"
     }
   },
   "restaurant": {
@@ -2152,7 +2184,8 @@
         12
       ],
       "roof": "flat",
-      "cover": 0.75
+      "cover": 0.75,
+      "interior_kind": "scene"
     }
   },
   "gas-station": {
@@ -2222,7 +2255,8 @@
         3
       ],
       "roof": "flat",
-      "cover": 0.55
+      "cover": 0.55,
+      "interior_kind": "scene"
     }
   },
   "hospital": {
@@ -2236,7 +2270,8 @@
         8
       ],
       "roof": "flat",
-      "cover": 0.65
+      "cover": 0.65,
+      "interior_kind": "scene"
     }
   },
   "police-station": {
@@ -2250,7 +2285,8 @@
         3
       ],
       "roof": "flat",
-      "cover": 0.6
+      "cover": 0.6,
+      "interior_kind": "scene"
     }
   },
   "fire-station": {
@@ -2264,7 +2300,8 @@
         2
       ],
       "roof": "flat",
-      "cover": 0.6
+      "cover": 0.6,
+      "interior_kind": "scene"
     }
   },
   "city-hall": {
@@ -2278,7 +2315,8 @@
         4
       ],
       "roof": "flat",
-      "cover": 0.55
+      "cover": 0.55,
+      "interior_kind": "scene"
     }
   },
   "transit-station": {
@@ -2292,7 +2330,8 @@
         2
       ],
       "roof": "flat",
-      "cover": 0.6
+      "cover": 0.6,
+      "interior_kind": "scene"
     }
   },
   "modern-church": {
@@ -2306,7 +2345,8 @@
         2
       ],
       "roof": "pitched",
-      "cover": 0.5
+      "cover": 0.5,
+      "interior_kind": "scene"
     }
   },
   "vehicle": {

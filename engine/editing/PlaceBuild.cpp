@@ -690,7 +690,7 @@ void PlaceBuild::HandleResponse(int requestId, const json& body) {
     if (what.kind == "interiors") {
         makingInteriors_ = false;
         Log({{"step", "interiors made"}, {"answer", body}});
-        const int paired = PairInteriorMarks(solved_, Folder());
+        const int paired = PairInteriorMarks(solved_, Folder(), &host_.ontology());
         if (body.value("ok", false)) {
             status_ = std::to_string(paired) + " buildings with interiors.";
         } else {
@@ -4838,7 +4838,7 @@ std::string PlaceBuild::PaintInteriors() {
     if (makingInteriors_) return {};
     const json items = InteriorRequests(solved_, &host_.ontology(), Folder());
     if (items.empty()) {
-        PairInteriorMarks(solved_, Folder());
+        PairInteriorMarks(solved_, Folder(), &host_.ontology());
         return {};
     }
     const json story = story_.is_object() ? story_ : json::object();
@@ -5367,6 +5367,8 @@ json PlaceBuild::State() {
         // ④ Paint and ⑤ Mark: the painting's files (project-relative) and the marks' counts.
         const std::string rel = "places/" + id_ + "/";
         json paint = {{"painting", painting_}, {"marks", MarksSummary(Folder())}, {"makingInteriors", makingInteriors_}};
+        // Each building type's interior (docs/places/interiors.md §1): the Assets step's choice.
+        state["interiors"] = InteriorChoices(solved_, &host_.ontology(), Folder());
         if (const json p = LoadPainting(Folder()); p.is_object()) {
             paint["size"] = p.value("size", json());
             paint["view"] = p.value("view", json());

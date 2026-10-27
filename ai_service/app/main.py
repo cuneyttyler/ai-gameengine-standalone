@@ -230,6 +230,12 @@ class InteriorsRequest(BaseModel):
     seed: int = 7
 
 
+class AssetInteriorRequest(BaseModel):
+    path: str                          # the building's picture, relative to the project
+    purpose: str = ""                  # what it is, for its rooms (its analysis' description)
+    seed: int = 7
+
+
 class SegmentRequest(BaseModel):
     path: str                          # the picture, relative to the project (places/<id>/painting.png)
     points: list[list[float]] = []     # [x, y, 1] to add, [x, y, 0] to leave out, in the picture's pixels
@@ -786,6 +792,36 @@ def create_app(
                                {"place": request.place, "story": request.story, "look": request.look}, request.seed)
         report(1, 1, f"Interiors: {len(made)} of {len(request.items)} made")
         return {"ok": True, "made": made, "files": {i: f"marks/{i}-interior.png" for i in made}}
+
+    @app.post("/assets/interior")
+    def assets_interior(request: AssetInteriorRequest) -> dict:
+        """Generate interior (docs/places/interiors.md §5): a building's picture cut away by BFL, written beside it as
+        <name>-interior.png, the same size."""
+        from PIL import Image
+        from .bfl import BflPainter
+        from .matched import cutaway
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        source = (root / request.path).resolve()
+        if root.resolve() not in source.parents or not source.is_file():
+            return {"ok": False, "errors": [f"No picture at {request.path}"]}
+        load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+        key = os.environ.get("BFL_API_KEY")
+        if not key:
+            return {"ok": False, "errors": ["Interiors are painted by BFL: set BFL_API_KEY in ai_service/.env"]}
+        report = progress.reporter()
+        report(0, 1, f"The interior of {source.name}")
+        with Image.open(source) as im:
+            exterior = im.convert("RGBA")
+        purpose = f"of {request.purpose}" if request.purpose else "a building like this has"
+        inside = cutaway(BflPainter(key, "flux-3-image"), exterior, purpose, "", request.seed)
+        if inside is None:
+            return {"ok": False, "errors": ["BFL couldn't cut it away; try again"]}
+        target = source.with_name(source.stem + "-interior.png")
+        inside.save(target)
+        report(1, 1, "Interior made")
+        return {"ok": True, "path": target.relative_to(root.resolve()).as_posix()}
 
     @app.post("/animations/generate")
     def animations_generate(request: AnimationRequest) -> dict:

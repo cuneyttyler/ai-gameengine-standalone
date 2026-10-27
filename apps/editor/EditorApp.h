@@ -182,6 +182,8 @@ private:
     // build:saveMarks); false for any other.
     bool HandlePaintMessage(const std::string& type, const nlohmann::json& message);
     bool HandleInteriorMessage(const std::string& type, const nlohmann::json& message);
+    // A scene interior's build finished (its folder's interior-of.json): a way out at its entrance, back to the building.
+    void LinkBuiltInterior(int originX, int originY, int side);
     // File ▸ Preferences' own settings (prefs.ts: interface scale, grid at start, zoom, recovery, paint model, a new
     // project's build method), kept in prefs.json: prefs:set and prefs:request, answered with prefs:values.
     nlohmann::json PrefsJson() const;
@@ -354,6 +356,7 @@ private:
     // The Assets panel's Web Search: the search in flight, and each file being fetched (its result).
     int webPreviewRequest_ = 0;
     int segmentRequest_ = 0; // ⑤ Mark's click-to-select (POST /images/segment)
+    std::map<int, std::string> interiorRequests_; // Generate interior (POST /assets/interior): request -> the asset
     std::map<int, nlohmann::json> webFetchRequests_;
     // Asset analysis (6.2): border terrains now, descriptions from the AI service.
     int analyzeRequest_ = 0;

@@ -940,6 +940,19 @@ bool GameSession::CheckGateways() {
         gatewayArmed_ = false;
         return true;
     }
+    // A building whose interior is its own scene: its doorway is a gateway there (docs/places/interiors.md).
+    for (auto [entity, interior] : registry_.view<Interior>().each()) {
+        int dx = 0, dy = 0;
+        if (interior.kind != "scene" || !InteriorDoor(registry_, entity, interior, dx, dy) || dx != gx || dy != gy) continue;
+        if (!gatewayArmed_ || interior.scene.empty()) {
+            if (interior.scene.empty() && gatewayArmed_) ShowNotice("Its interior isn't built yet", 2.0);
+            gatewayArmed_ = false;
+            return false;
+        }
+        travel_ = TravelRequest{interior.scene, interior.marker};
+        gatewayArmed_ = false;
+        return true;
+    }
     gatewayArmed_ = true;
     return false;
 }

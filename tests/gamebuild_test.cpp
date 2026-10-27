@@ -110,6 +110,7 @@ TEST(GameBuildTest, TheDesignedGameIsBuiltBoundWrittenAndPlaytested) {
     EXPECT_TRUE(player); // the player's there
     int gateways = 0;
     for (auto [e, g] : riverford.view<aige::Gateway>().each()) ++gateways;
+    for (auto [e, i] : riverford.view<aige::Interior>().each()) gateways += i.kind == "scene" && !i.scene.empty(); // a building's door
     EXPECT_GE(gateways, 2); // to the temple and to the crypt
     // ⑪ the quest's spot is bound to the crypt's altar; Tamsin is in the temple with her dialogue.
     const json bindings = ReadJson(b.p.root / "planner" / "bindings.json");

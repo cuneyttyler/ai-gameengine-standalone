@@ -74,12 +74,23 @@ std::vector<std::string> CheckMarks(const nlohmann::json& solved, const Ontology
 // {backdrop, occluders, strips} or {error}.
 nlohmann::json AddPaintingEntities(Registry& registry, const std::filesystem::path& folder, const std::string& relative,
                                    const std::string& place, int originX, int originY, const IsoParams& iso);
+// Interiors chosen per building type (docs/places/interiors.md §1): places/<id>/interiors.json, {role: cutaway | scene
+// | none}, set on the Build panel's Assets step.
+nlohmann::json LoadInteriorChoices(const std::filesystem::path& folder);
+std::string SetInteriorChoice(const std::filesystem::path& folder, const std::string& role, const std::string& kind);
+// A role's interior: the build's choice, else its look's (interior_kind; cutaway when unsaid). "" for a role without
+// has_interior (nothing to choose).
+std::string InteriorKindOf(const Ontology* ontology, const nlohmann::json& choices, const std::string& role);
+// The Assets step's table: the place's building types whose role has an interior, [{role, label, count, kind, default}].
+nlohmann::json InteriorChoices(const nlohmann::json& solved, const Ontology* ontology, const std::filesystem::path& folder);
+
 // Interiors (docs/places/interiors.md §7): the buildings of the painting that have one (their role's has_interior) and
 // an occluder, without their interior picture yet: [{id, box, mask, role, purpose}] for /places/interiors.
 nlohmann::json InteriorRequests(const nlohmann::json& solved, const Ontology* ontology, const std::filesystem::path& folder);
 // Each occluder whose marks/<id>-interior.png exists gets `interior` (that file), `cells` (its building's footprint,
-// [x0, y0, x1, y1] site cells, inclusive) and `door` (its facing). Returns how many have one.
-int PairInteriorMarks(const nlohmann::json& solved, const std::filesystem::path& folder);
+// [x0, y0, x1, y1] site cells, inclusive) and `door` (its facing); one whose building's interior is a scene gets
+// `interiorKind: scene`, its cells and door. Returns how many have one.
+int PairInteriorMarks(const nlohmann::json& solved, const std::filesystem::path& folder, const Ontology* ontology = nullptr);
 // The walkable cells from marks.json: [x][y] site cells, true where blocked; empty without marks. A building with an
 // interior: its walls blocked, its doorway and inside open.
 std::vector<std::vector<bool>> MarkedBlocked(const nlohmann::json& marks, int w, int h);

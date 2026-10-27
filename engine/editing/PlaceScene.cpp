@@ -762,8 +762,14 @@ std::optional<Entity> PlaceObject(Registry& registry, PrefabLibrary& prefabs, co
         obstacle.right = stand.right;
         obstacle.back = stand.back;
         for (const char* field : {"left", "right", "back"}) RecordOverride(registry, e, "Obstacle", field);
-        // Its interior (Phase 27): the art's pair (its .meta's interior), walked into through the door on its front.
-        if (const auto* sprite = registry.try_get<Sprite>(e); sprite && !sprite->texture.empty()) {
+        // Its interior (docs/places/interiors.md): its own scene (built later, through its door), or the art's pair (its
+        // .meta's interior) shown cut away, walked into through the door on its front.
+        const json look = choice.value("look", json::object());
+        if (look.value("has_interior", true) && look.value("interior_kind", std::string()) == "scene") {
+            auto& interior = registry.emplace_or_replace<Interior>(e);
+            interior.kind = "scene";
+            interior.door = o.value("facing", std::string("s"));
+        } else if (const auto* sprite = registry.try_get<Sprite>(e); sprite && !sprite->texture.empty()) {
             if (const std::string inside = AssetField(prefabs.GetProject(), sprite->texture, "interior"); !inside.empty()) {
                 auto& interior = registry.emplace_or_replace<Interior>(e);
                 interior.texture = inside;
@@ -956,8 +962,13 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
         // shadow, whether it varies (a plant), gives light (a torch), or fills a doorway.
         {
             json look = {{"size", ontology.RoleSize(need.role)}, {"tall", ontology.RoleTall(need.role)}};
-            for (const char* k : {"vary", "light", "doorway", "orient", "run", "relations"}) {
+            for (const char* k : {"vary", "light", "doorway", "orient", "run", "relations", "has_interior", "interior_kind"}) {
                 if (const json v = ontology.RoleLook(need.role, k); !v.is_null()) look[k] = v;
+            }
+            // Its interior as the Build panel chose for its building type (docs/places/interiors.md §1).
+            if (const std::string kind = InteriorKindOf(&ontology, sourcing ? sourcing->interiors : json::object(), need.role); !kind.empty()) {
+                look["has_interior"] = kind != "none";
+                look["interior_kind"] = kind == "none" ? "cutaway" : kind;
             }
             row["look"] = look;
         }

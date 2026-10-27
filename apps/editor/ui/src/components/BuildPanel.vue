@@ -237,6 +237,8 @@ interface BuildState {
   }[]
   sourced?: NonNullable<BuildState['sourcing']> // what was made for this build (Refine after it)
   // ③ Assets: what each part's art is (the project's, the library's, made, or a placeholder).
+  // Each building type whose role has an interior, and its interior here (docs/places/interiors.md §1).
+  interiors?: { role: string; label: string; count: number; kind: 'cutaway' | 'scene' | 'none'; default: string }[]
   assetNeeds?: {
     key: string
     role: string
@@ -1877,6 +1879,24 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           <input type="checkbox" :checked="sourcingSettings.shareAlike" @change="setSourcing({ shareAlike: ($event.target as HTMLInputElement).checked })" />
           Allow share-alike art (CC-BY-SA: the game's art must then be shared alike)
         </label>
+        </section>
+        <section v-if="state?.interiors?.length" class="plan">
+          <h4>Interiors <span class="dim">each building type's inside: drawn cut away in place, or a scene of its own (entered through its door)</span></h4>
+          <table class="components interiors">
+            <thead><tr><th>Building</th><th>Interior</th></tr></thead>
+            <tbody>
+              <tr v-for="i in state.interiors" :key="i.role">
+                <td>{{ i.label }} <span class="dim">×{{ i.count }}</span></td>
+                <td>
+                  <select :value="i.kind" @change="sendToHost({ type: 'build:interiorChoice', role: i.role, kind: ($event.target as HTMLSelectElement).value })">
+                    <option value="cutaway">Cutaway{{ i.default === 'cutaway' ? ' (default)' : '' }}</option>
+                    <option value="scene">Scene (no interior){{ i.default === 'scene' ? ' (default)' : '' }}</option>
+                    <option value="none">None</option>
+                  </select>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </section>
         <section v-if="state?.assetNeeds?.length" class="plan">
         <h4>

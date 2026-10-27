@@ -2963,7 +2963,9 @@ trees and in front of them correctly, and can't walk through walls or water.
 When a character goes into a building (or another closed place), the inside shows: the same building as a cutaway,
 its roof and the walls facing the camera taken away, its rooms, floor and furniture showing, and the walls' outline
 keeping the outside around them. One complementing asset a building: its interior, paired with its exterior.
-The design, the approved look and the status are in `docs/places/interiors.md`. Interiors are always made with BFL
+Two kinds, both in one project and one scene: a **cutaway** (houses, workshops: drawn cut away in place) and a
+**scene** (inns, temples, manors, keeps: a scene of its own, built by the interior build type, entered through the
+doorway; no cutaway asset). The design, the approved look and the status are in `docs/places/interiors.md`. Interiors are always made with BFL
 (an edit of the exterior) and never skipped for another provider.
 
 - **Ontology:** a role's look `has_interior` (inherited: every building has one; set off where a thing has none).

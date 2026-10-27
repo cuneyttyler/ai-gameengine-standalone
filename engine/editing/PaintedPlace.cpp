@@ -5,6 +5,7 @@
 #include "editing/PlaceScene.h"
 #include "gameplay/Components.h"
 #include "gameplay/Interiors.h"
+#include "physics2d/Components.h"
 #include "places/Ontology.h"
 #include "renderer2d/Components.h"
 
@@ -514,14 +515,24 @@ std::vector<std::vector<bool>> MarkedBlocked(const json& marks, int w, int h) {
         const std::string row = rows[y].get<std::string>();
         for (int x = 0; x < w && x < static_cast<int>(row.size()); ++x) out[static_cast<size_t>(x)][static_cast<size_t>(y)] = row[static_cast<size_t>(x)] == '#';
     }
-    // Buildings with an interior: walked into through their door (docs/places/interiors.md §7).
+    // Buildings with an interior: walked into through their door (docs/places/interiors.md §7); a scene interior's
+    // building: solid but its doorway, which leads to its scene.
     for (const auto& o : marks.value("occluders", json::array())) {
         const json cells = o.value("cells", json());
-        if (!o.contains("interior") || !cells.is_array() || cells.size() < 4) continue;
+        const bool scene = o.value("interiorKind", "") == "scene";
+        if ((!o.contains("interior") && !scene) || !cells.is_array() || cells.size() < 4) continue;
         const int x0 = cells[0].get<int>(), y0 = cells[1].get<int>(), x1 = cells[2].get<int>(), y1 = cells[3].get<int>();
         auto set = [&](int x, int y, bool blocked) {
             if (x >= 0 && y >= 0 && x < w && y < h) out[static_cast<size_t>(x)][static_cast<size_t>(y)] = blocked;
         };
+        if (scene) {
+            for (int y = y0; y <= y1; ++y) {
+                for (int x = x0; x <= x1; ++x) set(x, y, true);
+            }
+            const auto [dx, dy] = DoorwayOf(x0, y0, x1, y1, o.value("door", std::string("s")));
+            set(dx, dy, false);
+            continue;
+        }
         for (int y = y0; y <= y1; ++y) {
             for (int x = x0; x <= x1; ++x) set(x, y, false);
         }
@@ -530,10 +541,51 @@ std::vector<std::vector<bool>> MarkedBlocked(const json& marks, int w, int h) {
     return out;
 }
 
+json LoadInteriorChoices(const fs::path& folder) {
+    const json choices = ReadJson(folder / "interiors.json");
+    return choices.is_object() ? choices : json::object();
+}
+
+std::string SetInteriorChoice(const fs::path& folder, const std::string& role, const std::string& kind) {
+    if (role.empty()) return "no building type";
+    if (kind != "cutaway" && kind != "scene" && kind != "none" && !kind.empty()) return "an interior is cutaway, scene or none";
+    json choices = LoadInteriorChoices(folder);
+    if (kind.empty()) choices.erase(role); // back to its kind's default
+    else choices[role] = kind;
+    WriteJsonFile(folder / "interiors.json", choices);
+    return {};
+}
+
+std::string InteriorKindOf(const Ontology* ontology, const json& choices, const std::string& role) {
+    if (ontology == nullptr || ontology->RoleLook(role, "has_interior") != true) return {};
+    if (const std::string chosen = choices.value(role, std::string()); chosen == "cutaway" || chosen == "scene" || chosen == "none") return chosen;
+    const json kind = ontology->RoleLook(role, "interior_kind");
+    return kind.is_string() ? kind.get<std::string>() : "cutaway";
+}
+
+json InteriorChoices(const json& solved, const Ontology* ontology, const fs::path& folder) {
+    json out = json::array();
+    if (ontology == nullptr) return out;
+    const json choices = LoadInteriorChoices(folder);
+    std::map<std::string, int> counts;
+    for (const auto& o : solved.value("objects", json::array())) {
+        if (o.value("layer", "") == "building") ++counts[o.value("role", o.value("slot", ""))];
+    }
+    for (const auto& [role, count] : counts) {
+        if (ontology->RoleLook(role, "has_interior") != true) continue;
+        const json kind = ontology->RoleLook(role, "interior_kind");
+        const Role* r = ontology->FindRole(role);
+        out.push_back({{"role", role}, {"label", r ? r->label : role}, {"count", count}, {"kind", InteriorKindOf(ontology, choices, role)},
+                       {"default", kind.is_string() ? kind.get<std::string>() : "cutaway"}});
+    }
+    return out;
+}
+
 json InteriorRequests(const json& solved, const Ontology* ontology, const fs::path& folder) {
     json out = json::array();
     const json marks = LoadMarks(folder);
     if (!marks.is_object() || ontology == nullptr) return out;
+    const json choices = LoadInteriorChoices(folder);
     const json objects = solved.value("objects", json::array());
     std::map<std::string, const json*> byId;
     for (const auto& o : objects) byId[o.value("id", "")] = &o;
@@ -544,7 +596,7 @@ json InteriorRequests(const json& solved, const Ontology* ontology, const fs::pa
         if (o.value("hidden", false) || !SafeId(id) || it == byId.end() || it->second->value("layer", "") != "building") continue;
         const json& object = *it->second;
         const std::string role = object.value("role", object.value("slot", ""));
-        if (ontology->RoleLook(role, "has_interior") != true) continue;
+        if (InteriorKindOf(ontology, choices, role) != "cutaway") continue;
         if (fs::exists(folder / "marks" / (id + "-interior.png"), ec)) continue;
         out.push_back({{"id", id}, {"box", o.value("box", json::array())}, {"mask", o.value("mask", "marks/" + id + ".png")}, {"role", role},
                        {"purpose", object.value("purpose", json())}});
@@ -552,9 +604,10 @@ json InteriorRequests(const json& solved, const Ontology* ontology, const fs::pa
     return out;
 }
 
-int PairInteriorMarks(const json& solved, const fs::path& folder) {
+int PairInteriorMarks(const json& solved, const fs::path& folder, const Ontology* ontology) {
     json marks = LoadMarks(folder);
     if (!marks.is_object()) return 0;
+    const json choices = LoadInteriorChoices(folder);
     const json objects = solved.value("objects", json::array());
     std::map<std::string, const json*> byId;
     for (const auto& o : objects) byId[o.value("id", "")] = &o;
@@ -563,12 +616,23 @@ int PairInteriorMarks(const json& solved, const fs::path& folder) {
     for (auto& o : marks["occluders"]) {
         const std::string id = o.value("id", "");
         const auto it = byId.find(o.value("object", ""));
-        if (!SafeId(id) || it == byId.end() || !fs::exists(folder / "marks" / (id + "-interior.png"), ec)) {
+        o.erase("interiorKind");
+        const bool scene = it != byId.end() && it->second->value("layer", "") == "building" &&
+                           InteriorKindOf(ontology, choices, it->second->value("role", it->second->value("slot", ""))) == "scene";
+        if (!SafeId(id) || it == byId.end() || (!scene && !fs::exists(folder / "marks" / (id + "-interior.png"), ec))) {
             o.erase("interior"), o.erase("cells"), o.erase("door");
             continue;
         }
         const json& object = *it->second;
         const int x = object.value("x", 0), y = object.value("y", 0), w = std::max(1, object.value("w", 1)), h = std::max(1, object.value("h", 1));
+        if (scene) {
+            o.erase("interior");
+            o["interiorKind"] = "scene";
+            o["cells"] = {x, y, x + w - 1, y + h - 1};
+            o["door"] = object.value("facing", std::string("s"));
+            ++count;
+            continue;
+        }
         o["interior"] = "marks/" + id + "-interior.png";
         o["cells"] = {x, y, x + w - 1, y + h - 1};
         o["door"] = object.value("facing", std::string("s"));
@@ -670,8 +734,22 @@ json AddPaintingEntities(Registry& registry, const fs::path& folder, const std::
         if (strips == 0) continue;
         out["occluders"] = out["occluders"].get<int>() + 1;
         // Its interior (docs/places/interiors.md §7): the cutaway over the painted building, seen while the player is
-        // inside, its occluder's strips hidden meanwhile.
+        // inside, its occluder's strips hidden meanwhile; or, a scene interior, its doorway (a scene's way in).
         const json cells = o.value("cells", json());
+        if (o.value("interiorKind", "") == "scene" && cells.is_array() && cells.size() >= 4) {
+            const int x0 = cells[0].get<int>() + originX, y0 = cells[1].get<int>() + originY;
+            const int x1 = cells[2].get<int>() + originX, y1 = cells[3].get<int>() + originY;
+            const Entity room = registry.create();
+            registry.emplace<WorldTransform2D>(room, (x0 + x1 + 1) / 2.0f, (y0 + y1 + 1) / 2.0f);
+            Interior interior;
+            interior.kind = "scene";
+            interior.door = o.value("door", std::string("s"));
+            interior.cells = std::to_string(x0) + "," + std::to_string(y0) + "," + std::to_string(x1) + "," + std::to_string(y1);
+            registry.emplace<Interior>(room, interior);
+            registry.emplace<PlaceNode>(room, place, "", "painting#" + id + "-interior");
+            registry.emplace<Name>(room, o.value("name", id) + " (its interior scene)");
+            out["interiors"] = out.value("interiors", 0) + 1;
+        }
         if (o.contains("interior") && cells.is_array() && cells.size() >= 4) {
             const int x0 = cells[0].get<int>() + originX, y0 = cells[1].get<int>() + originY;
             const int x1 = cells[2].get<int>() + originX, y1 = cells[3].get<int>() + originY;

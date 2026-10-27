@@ -489,7 +489,15 @@ function assetMenu(asset: Asset, event: MouseEvent): void {
   selectedPath.value = asset.path
   const items: MenuItem[] = [
     { label: 'Details', action: () => (selectedPath.value = asset.path) },
-    ...(pairOf(asset.path) ? [{ label: pairOf(asset.path)!.label, action: () => goToAsset(pairOf(asset.path)!.path) }] : []),
+    ...(pairOf(asset.path)
+      ? [{ label: pairOf(asset.path)!.label, action: () => goToAsset(pairOf(asset.path)!.path) }]
+      : asset.type !== 'audio'
+        ? [{
+            label: 'Generate interior',
+            disabled: editorState.playing || editorState.ai.state !== 'ready',
+            action: () => sendToHost({ type: 'asset:makeInterior', path: asset.path }),
+          }]
+        : []),
     { label: 'Rename…', disabled: editorState.playing, action: () => renameItem(asset.path) },
     { label: 'Move to folder…', disabled: editorState.playing, action: () => askMoveToFolder(asset.path, 'assets') },
     { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: asset.path }) },

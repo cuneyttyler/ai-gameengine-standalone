@@ -11,6 +11,7 @@
 #include "gameplay/Behaviour.h"
 #include "gameplay/Components.h"
 #include "gameplay/Cutscene.h"
+#include "gameplay/Interiors.h"
 #include "gameplay/EngineReflection.h"
 #include "gameplay/Items.h"
 #include "gameplay/Pathfinding.h"
@@ -876,11 +877,38 @@ void GameBuild::ConnectScenes() {
     }
     // Each scene's gateways go round its edge: east, west, south, north, then inward.
     std::map<std::string, int> used;
+    // An interior place inside this one (docs/places/interiors.md §2b): entered through a building's door. Its
+    // building: one whose interior is a scene not yet linked, its role named in the interior's name or prompt (an inn
+    // for "the Rusty Anchor inn"), else the biggest such building, else any building. False: none (the edge then).
+    auto throughDoor = [&](Registry& registry, const Row& outside, const Row& inside) {
+        if (inside.buildType != "interior" || outside.buildType == "interior") return false;
+        std::string words = inside.place + " " + inside.prompt;
+        std::transform(words.begin(), words.end(), words.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        std::optional<Entity> best;
+        int bestScore = -1;
+        for (auto [e, obstacle] : registry.view<Obstacle>().each()) {
+            const auto* interior = registry.try_get<Interior>(e);
+            if (interior && interior->kind == "scene" && !interior->scene.empty()) continue; // taken
+            std::string role;
+            if (const auto* node = registry.try_get<PlaceNode>(e)) role = node->statement.substr(node->statement.rfind('.') + 1);
+            const int size = (obstacle.left + obstacle.right + 1) * (obstacle.back + 1);
+            const bool named = !role.empty() && words.find(role) != std::string::npos;
+            const int score = (named ? 100000 : 0) + (interior && interior->kind == "scene" ? 10000 : 0) + size;
+            if (score > bestScore) bestScore = score, best = e;
+        }
+        if (!best) return false;
+        LinkInteriorOutside(registry, *best, inside.scene, "from-" + PlanSlug(outside.place), "from-" + PlanSlug(inside.place));
+        return true;
+    };
     auto place = [&](const std::string& from, const std::string& to) {
         Row* a = FindRow(from);
         Row* b = FindRow(to);
         Registry registry;
         if (!LoadScene(registry, project.Resolve(a->scene).string())) return;
+        if (throughDoor(registry, *a, *b)) {
+            SaveScene(registry, project.Resolve(a->scene).string());
+            return;
+        }
         const TileGrid grid = TileGrid::Build(registry);
         const Extent e = OpenExtent(registry, grid);
         const int k = used[from]++;
@@ -1299,6 +1327,9 @@ void GameBuild::Playtest() {
         todo.pop_back();
         if (!reachable.insert(s).second || !scenes.count(s)) continue;
         for (auto [e, gw] : scenes[s]->view<Gateway>().each()) todo.push_back(gw.scene);
+        for (auto [e, interior] : scenes[s]->view<Interior>().each()) {
+            if (interior.kind == "scene" && !interior.scene.empty()) todo.push_back(interior.scene); // through a building's door
+        }
     }
     for (const auto& r : rows_) check("scene " + r.scene + " can be reached from the start", reachable.contains(r.scene));
     // Can someone walk there in its scene from where they arrive?
