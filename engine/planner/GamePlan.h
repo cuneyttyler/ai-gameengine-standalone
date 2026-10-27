@@ -10,6 +10,7 @@
 #include <deque>
 #include <filesystem>
 #include <functional>
+#include <chrono>
 #include <map>
 #include <optional>
 #include <string>
@@ -64,9 +65,10 @@ public:
 
     explicit GamePlan(Host host);
 
-    // Starts a new plan from a request (an existing plan in planner/ is replaced). Returns
+    // Starts a new plan from a request (an existing plan in planner/ is replaced), with the user's choices (Brief
+    // paths to values, from the home page's Choices): the readings keep them, the merged Brief has them. Returns
     // why it can't, or "".
-    std::string Start(const std::string& request);
+    std::string Start(const std::string& request, const nlohmann::json& choices = nlohmann::json::object());
     // Reopens planner/: running jobs start again. Returns why it can't, or "".
     std::string Open();
     bool Active() const { return !stage_.empty(); }
@@ -158,9 +160,12 @@ private:
     PlannerStore store_;
     StoryOntology gso_;
     std::string stage_, status_, message_, request_;
+    nlohmann::json choices_ = nlohmann::json::object(); // the user's choices with the request (Start)
     std::deque<Job> jobs_; // a deque: handlers add jobs while holding a reference to theirs
     std::map<int, std::string> pending_; // request id -> job id
     nlohmann::json usage_ = {{"calls", 0}, {"inputTokens", 0}, {"outputTokens", 0}};
+    // Generation time: while any call is in flight (overlapping calls counted once), added to usage_["seconds"].
+    std::optional<std::chrono::steady_clock::time_point> busySince_;
     nlohmann::json concept_ = nlohmann::json::object(); // drafts, marks, assumptions, decisions
     nlohmann::json toReview_ = nlohmann::json::array();
     nlohmann::json findings_ = nlohmann::json::array(); // what stages couldn't fix

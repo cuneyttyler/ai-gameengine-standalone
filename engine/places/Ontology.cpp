@@ -6,6 +6,9 @@
 #include <cctype>
 #include <cmath>
 #include <fstream>
+#include <functional>
+#include <optional>
+#include <set>
 
 namespace aige {
 
@@ -294,6 +297,8 @@ std::vector<std::string> Ontology::Load(const std::vector<fs::path>& dirs) {
                 role.affordance = spec.is_object() ? spec.value("affordance", "") : "";
                 role.size = spec.is_object() ? spec.value("size", 0.0f) : 0.0f;
                 role.tall = spec.is_object() ? spec.value("tall", 0.0f) : 0.0f;
+                role.relative = spec.is_object() ? spec.value("relative", nlohmann::json()) : nlohmann::json();
+                role.storey = spec.is_object() ? spec.value("storey", 0.0f) : 0.0f;
                 role.draw = spec.is_object() ? spec.value("draw", "") : "";
                 role.look = spec.is_object() ? spec.value("look", nlohmann::json::object()) : nlohmann::json::object();
                 roles_[id] = role;
@@ -363,7 +368,49 @@ std::vector<std::string> Ontology::Load(const std::vector<fs::path>& dirs) {
         if (auto more = ReadJson(dir / "extensions.json", problems); more && more->is_object()) extensions.push_back({{"file", *more}});
     }
     ApplyExtensions(extensions, problems);
+    ResolveRelativeSizes(problems);
     return problems;
+}
+
+void Ontology::ResolveRelativeSizes(std::vector<std::string>& problems) {
+    // Each role's height (cell widths) and width, from its relative size where it has one: a share of what it's
+    // measured against (a role, resolved first; or "storey", the building role's storey), its width the same share
+    // unless it says (or has its own size). Then size and tall (height for width) set from them, so the rest of the
+    // engine reads sizes as before. A role without one keeps its own (or its broader role's) numbers.
+    std::map<std::string, std::pair<float, float>> done; // role -> {width, height}
+    std::set<std::string> busy;
+    float storey = 0.0f;
+    for (const auto& [id, r] : roles_) storey = std::max(storey, r.storey);
+    std::function<std::optional<std::pair<float, float>>(const std::string&)> measure =
+        [&](const std::string& id) -> std::optional<std::pair<float, float>> {
+        if (id == "storey") return storey > 0 ? std::optional<std::pair<float, float>>({storey, storey}) : std::nullopt;
+        if (const auto it = done.find(id); it != done.end()) return it->second;
+        const Role* r = FindRole(id);
+        if (r == nullptr || !busy.insert(id).second) return std::nullopt; // unknown, or a loop
+        std::optional<std::pair<float, float>> out;
+        if (r->relative.is_object() && r->relative.contains("to") && r->relative.contains("height")) {
+            if (const auto base = measure(r->relative.value("to", ""))) {
+                const float height = base->second * r->relative.value("height", 1.0f);
+                const float width = r->relative.contains("width") ? base->first * r->relative.value("width", 1.0f)
+                                    : RoleSize(id) > 0                ? RoleSize(id)
+                                                                      : base->first * r->relative.value("height", 1.0f);
+                out = std::make_pair(width, height);
+            } else {
+                problems.push_back("roles.json: " + id + "'s relative size is to " + r->relative.value("to", "") + ", which has no size");
+            }
+        }
+        if (!out && RoleSize(id) > 0) out = std::make_pair(RoleSize(id), RoleSize(id) * (RoleTall(id) > 0 ? RoleTall(id) : 1.0f));
+        busy.erase(id);
+        if (out) done[id] = *out;
+        return out;
+    };
+    for (auto& [id, r] : roles_) {
+        if (!r.relative.is_object()) continue;
+        if (const auto m = measure(id); m && m->first > 0) {
+            r.size = m->first;
+            r.tall = m->second / m->first;
+        }
+    }
 }
 
 void Ontology::ApplyExtensions(const json& extensions, std::vector<std::string>& problems) {

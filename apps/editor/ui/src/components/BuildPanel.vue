@@ -5,6 +5,7 @@
 // holds the Brief; every edit here goes back to it as (path, value).
 import { computed, ref, watch } from 'vue'
 import AiProgress from './AiProgress.vue'
+import { aiCalls, callName } from '../aiProgress'
 import { onHostMessage, sendToHost } from '../ipc'
 import { openContextMenu } from '../contextMenu'
 import { editorState } from '../editorState'
@@ -123,6 +124,7 @@ interface BuildState {
   // What the background is painted from (the planner's, editable): the place and its look, a line per kind of ground.
   backgroundDescription?: string
   backgroundMaking?: boolean
+  afterBackground?: string // the art asked for (find, matched): started once the background is in
   // ③ Matched art: where it is, who made it, and what came of it.
   matched?: {
     state: 'making' | 'made' | 'cut' | 'failed'
@@ -546,18 +548,34 @@ function backToPlan(): void {
 const confirmTab = ref<'layout' | 'contents'>('contents')
 const showAssets = computed(
   () =>
-    (['planned', 'sourcing', 'sourced', 'building'].includes(stage.value) && viewing.value !== 'plan' && viewing.value !== 'confirm') ||
-    (stage.value === 'built' && viewing.value === 'assets'),
+    (['planned', 'sourcing', 'sourced'].includes(stage.value) && viewing.value !== 'plan' && viewing.value !== 'confirm') ||
+    (['built', 'building'].includes(stage.value) && viewing.value === 'assets'),
 )
-// ③ Assets' two tabs: how each part's art will be found, and the art found and made.
-const assetsTab = ref<'how' | 'found'>('how')
+// ③ Assets' tabs: how each part's art will be found, the background (painted first), and the art found and made.
+const assetsTab = ref<'how' | 'background' | 'found'>('how')
 const assetsFound = computed(() => ['sourcing', 'sourced', 'building', 'built'].includes(stage.value))
+const artStarted = computed(() => assetsFound.value || !!state.value?.afterBackground || state.value?.matched?.state === 'making')
 // To the art when work on it starts (finding or making it, building): choosing how a part is found re-previews the
 // plan (which can make it "sourced") and must leave the user where they are.
 watch(stage, (s) => {
-  if (s === 'sourcing' || s === 'building') assetsTab.value = 'found'
-  else if (s === 'planned') assetsTab.value = 'how'
+  if (s === 'sourcing' || s === 'building') {
+    if (assetsTab.value !== 'background') assetsTab.value = 'found'
+  } else if (s === 'planned' && !state.value?.backgroundMaking && state.value?.matched?.state !== 'making') assetsTab.value = 'how'
 })
+// The background painted: on to the art (still there to look at in its tab).
+watch(
+  () => state.value?.backgroundMaking,
+  (making, was) => {
+    if (was && !making && assetsTab.value === 'background') assetsTab.value = 'found'
+  },
+)
+// One button for the art: made in one style when the build generates it, else found part by part. The background
+// first, when there's none yet.
+const makesArt = computed(() => sourcingSettings.value.defaultSource === 'generate')
+function startArt(): void {
+  sendToHost({ type: 'build:findAssets', then: makesArt.value ? 'matched' : 'find' })
+  assetsTab.value = state.value?.background ? 'found' : 'background'
+}
 // ④ Result: the built place alone (the plan is ② Plan's).
 const showResult = computed(() => stage.value === 'built' && viewing.value !== 'plan' && viewing.value !== 'assets')
 // What each part's art will be, in words.
@@ -586,6 +604,7 @@ const activeStep = computed(() => {
   if (s === 'interpreting' || (s === 'planning' && state.value?.planPhase === 'root')) return 'confirm'
   if (atConfirm.value) return confirmTab.value === 'layout' ? 'layout' : 'confirm'
   if (showAssets.value) return 'assets'
+  if (s === 'building') return 'result'
   if (s === 'built') return viewing.value === 'plan' ? 'plan' : 'result'
   if (['planning', 'plan', 'planned', 'sourcing', 'sourced', 'revising'].includes(s)) return 'plan'
   return 'confirm'
@@ -595,10 +614,12 @@ const REACHED: Record<string, string[]> = {
   layout: ['layout', 'plan', 'planned', 'revising', 'sourcing', 'sourced', 'building', 'built'],
   plan: ['plan', 'planned', 'revising', 'sourcing', 'sourced', 'building', 'built'],
   assets: ['planned', 'sourcing', 'sourced', 'building', 'built'],
-  result: ['built'],
+  result: ['building', 'built'],
 }
 function stepDisabled(id: string): boolean {
-  if (REACHED[id]) return !REACHED[id].includes(stage.value)
+  // While revising, as the step it's revising: a layout revised at ① Confirm doesn't open ③ Plan.
+  const at = stage.value === 'revising' && state.value?.revisingFrom ? state.value.revisingFrom : stage.value
+  if (REACHED[id]) return !REACHED[id].includes(at)
   return !win.value
 }
 function step(id: string): void {
@@ -831,8 +852,71 @@ function showAdvanced(what: string): void {
   advancedDoc.value = null
   sendToHost({ type: 'build:advanced', what })
 }
-// Removing older builds, asked first.
+// Removing older builds, asked first; one build (its row's ✕), asked first too.
 const removeAsk = ref(false)
+const removeOne = ref<BuildEntry | null>(null)
+// ③ Find the assets: the background painted first, its steps as the service reports them (the whole, then each window).
+const backgroundCall = computed(() => aiCalls.value.find((c) => c.path === '/places/background' && c.phase !== 'done' && c.phase !== 'failed'))
+// The next step working (off the UI thread, or a revision being written by the AI): an overlay over the panel with a
+// spinner, what's being done, how long, and the AI call it waits on.
+const working = computed(() => !!state.value?.busy || stage.value === 'revising')
+const workingSince = ref(0)
+const workingNow = ref(0)
+let workingTimer: number | undefined
+watch(working, (on) => {
+  window.clearInterval(workingTimer)
+  if (!on) return
+  workingSince.value = workingNow.value = Date.now()
+  workingTimer = window.setInterval(() => (workingNow.value = Date.now()), 500)
+}, { immediate: true })
+const workingSeconds = computed(() => Math.round((workingNow.value - workingSince.value) / 1000))
+const workingCall = computed(() => aiCalls.value.find((c) => c.path.startsWith('/places/') && c.phase !== 'done' && c.phase !== 'failed'))
+// Each step's AI calls, tokens and seconds (as in the Planner): every call of the build seen to end on the progress
+// strip is added to the step the build was at when it began (build:usage; kept with the build).
+type StepUsage = { calls: number; inputTokens: number; outputTokens: number; seconds: number }
+function stepOfStage(): string {
+  const s = stage.value === 'revising' && state.value?.revisingFrom ? state.value.revisingFrom : stage.value
+  if (s === 'interpreting' || s === 'questions' || (s === 'planning' && state.value?.planPhase === 'root')) return 'confirm'
+  if (s === 'layout') return 'layout'
+  if (s === 'planning' || s === 'plan') return 'plan'
+  if (s === 'planned' || s === 'sourcing' || s === 'sourced') return 'assets'
+  if (s === 'building' || s === 'built') return 'result'
+  return ''
+}
+const callStep = new Map<number, string>() // a call in flight: the step it began in
+const counted = new Set<number>()
+watch(aiCalls, (calls) => {
+  for (const c of calls) {
+    if (!c.path.startsWith('/places/') && !c.path.startsWith('/assets/')) continue
+    if (!callStep.has(c.id)) callStep.set(c.id, stepOfStage())
+    if ((c.phase === 'done' || c.phase === 'failed') && !counted.has(c.id)) {
+      counted.add(c.id)
+      const step = callStep.get(c.id) ?? ''
+      if (step && state.value) sendToHost({ type: 'build:usage', step, inputTokens: c.inputTokens, outputTokens: c.outputTokens, seconds: c.seconds })
+    }
+  }
+})
+function usageOf(id: string): StepUsage | undefined {
+  return (state.value as { usage?: Record<string, StepUsage> } | null)?.usage?.[id]
+}
+function shortTokens(n: number): string {
+  return n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n)
+}
+function shortTime(s: number): string {
+  return s >= 60 ? `${Math.floor(s / 60)}m${String(Math.round(s % 60)).padStart(2, '0')}` : `${Math.round(s)}s`
+}
+function stepUsage(id: string): string {
+  const u = usageOf(id)
+  return u && u.calls ? `${shortTokens(u.outputTokens)} · ${shortTime(u.seconds)}` : ''
+}
+function usageTitle(id: string): string {
+  const u = usageOf(id)
+  return u && u.calls
+    ? `${u.calls} AI call(s): read ${u.inputTokens.toLocaleString()} tokens, wrote ${u.outputTokens.toLocaleString()}, ${shortTime(u.seconds)} of AI time`
+    : ''
+}
+// ③ Making the art: its steps, known beforehand (each sheet and the pieces on it, the check, the fixes when decided).
+const matchedCall = computed(() => aiCalls.value.find((c) => c.path === '/assets/matched' && c.phase !== 'done' && c.phase !== 'failed'))
 // ④ Assets: each need's own source; every need's at once.
 const NEED_SOURCES = [
   { id: 'auto', label: 'auto' },
@@ -963,6 +1047,11 @@ function shownArt(n: { made: MadeArt[] }): MadeArt[] {
   const good = n.made.filter((x) => x.ok !== false)
   return good.length ? good.slice(-1) : n.made.slice(-1)
 }
+// A need still missing whose art was made but rejected by the check: that art (the latest), to look at and Keep.
+function rejectedOf(key: string): MadeArt | undefined {
+  const made = [...(state.value?.sourced ?? []), ...(state.value?.sourcing ?? [])].find((s) => s.key === key)?.made ?? []
+  return made.filter((m) => m.ok === false).slice(-1)[0]
+}
 // Keep: the shown piece is the need's art, by the user's word (a piece the check rejected too).
 function keepArt(n: { key: string; made: MadeArt[] }): void {
   const shown = shownArt(n)[0]
@@ -1081,7 +1170,17 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <div class="caption">{{ zoomed.caption }} <span class="dim">{{ zoomed.path }}</span></div>
     </div>
     <!-- Working off the UI thread (7.10): the editor stays usable; the build's own buttons wait. -->
-    <div v-if="state?.busy" class="busy">{{ state.status }}</div>
+    <div v-if="working" class="working-overlay">
+      <div class="working-box">
+        <span class="spinner" />
+        <div>
+          <strong>{{ state?.status || 'Working…' }}</strong>
+          <div class="dim">{{ workingSeconds }}s<template v-if="workingCall"> · {{ callName(workingCall) }}: {{ workingCall.phase
+            }}{{ workingCall.outputTokens ? ', ' + workingCall.outputTokens.toLocaleString() + ' tokens' : '' }}</template></div>
+          <div class="dim small">The rest of the editor stays usable meanwhile.</div>
+        </div>
+      </div>
+    </div>
     <div class="header" @contextmenu.prevent="headerMenu($event)">
       <div class="steps">
         <button
@@ -1089,9 +1188,11 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           :key="s.id"
           :class="{ active: activeStep === s.id }"
           :disabled="stepDisabled(s.id)"
+          :title="usageTitle(s.id)"
           @click="step(s.id)"
         >
           {{ s.label }}
+          <span v-if="stepUsage(s.id)" class="step-usage">{{ stepUsage(s.id) }}</span>
         </button>
       </div>
       <span v-if="state && !browsing" class="title">{{ state.name || state.query }}</span>
@@ -1298,11 +1399,27 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             </div>
           </div>
         </div>
-        <button v-for="b in builds" :key="b.id" class="build-row" :class="{ current: b.id === state?.id && !['cancelled', 'failed'].includes(stage) }" :title="b.query" @click="resume(b.id)">
-          <span class="name">{{ b.name || b.query }}</span>
-          <span class="dim">{{ STAGE_NAMES[b.stage] ?? b.stage }}</span>
-          <span class="dim when">{{ when(b.updated) }}</span>
-        </button>
+        <div v-if="removeOne" class="lightbox ask" @click.self="removeOne = null">
+          <div class="ask-box">
+            <strong>Remove “{{ removeOne.name || removeOne.query }}”?</strong>
+            <p>
+              Deletes the build and its files (its plan, map and history) from the project's places folder.
+              {{ removeOne.id === state?.id ? 'It is open: it will be closed. ' : '' }}What it put in a scene stays there. This can't be undone.
+            </p>
+            <div class="actions">
+              <button @click="removeOne = null">Keep it</button>
+              <button class="primary" @click="sendToHost({ type: 'build:remove', id: removeOne.id }), (removeOne = null)">Remove it</button>
+            </div>
+          </div>
+        </div>
+        <div v-for="b in builds" :key="b.id" class="build-row-wrap">
+          <button class="build-row" :class="{ current: b.id === state?.id && !['cancelled', 'failed'].includes(stage) }" :title="b.query" @click="resume(b.id)">
+            <span class="name">{{ b.name || b.query }}</span>
+            <span class="dim">{{ STAGE_NAMES[b.stage] ?? b.stage }}</span>
+            <span class="dim when">{{ when(b.updated) }}</span>
+          </button>
+          <button class="remove" title="Remove this build (asks first)" @click="removeOne = b">✕</button>
+        </div>
       </section>
     </div>
 
@@ -1518,12 +1635,24 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       </div>
     </div>
 
+    <!-- ⑤ Result, while it's built: each step of putting the place into the scene. -->
+    <div v-else-if="stage === 'building' && viewing !== 'assets' && viewing !== 'plan'" class="body window">
+      <section class="build-progress">
+        <h4>Building {{ state?.name || 'the place' }}: step {{ Math.min(state?.buildProgress?.total ?? 5, (state?.buildProgress?.done ?? 0) + 1) }} of {{ state?.buildProgress?.total ?? 5 }}</h4>
+        <div class="bar"><i :style="{ width: `${(100 * (state?.buildProgress?.done ?? 0)) / Math.max(1, state?.buildProgress?.total ?? 5)}%` }" /></div>
+        <p>{{ state?.buildProgress?.text || state?.status }}</p>
+        <p class="dim">The art for each part, then the ground and everything on it put into the scene, checked, repaired where it can be, and saved as one undo step.</p>
+      </section>
+    </div>
+
     <!-- ③ Assets (after the plan): where the art comes from, then the build. -->
     <div v-else-if="showAssets && (win || state?.sourcing || state?.sourced)" class="body window assets-view">
       <div class="confirm-tabs">
         <button :class="{ active: assetsTab === 'how' }" @click="assetsTab = 'how'">How each is found</button>
-        <button :class="{ active: assetsTab === 'found' }" :disabled="!assetsFound" @click="assetsTab = 'found'">The assets</button>
-        <span class="dim">{{ assetsTab === 'how' ? 'the project, the library, the web or the Art tool, for each part' : 'what was found and made, each refinable' }}</span>
+        <button :class="{ active: assetsTab === 'background' }" :disabled="!state?.background && !state?.backgroundMaking" @click="assetsTab = 'background'">Background</button>
+        <button :class="{ active: assetsTab === 'found' }" :disabled="!artStarted" @click="assetsTab = 'found'">The assets</button>
+        <span class="dim">{{ assetsTab === 'how' ? 'the project, the library, the web or the Art tool, for each part'
+          : assetsTab === 'background' ? 'the whole ground in one picture, painted first' : 'what was found and made, each refinable' }}</span>
       </div>
       <template v-if="assetsTab === 'how' && win">
       <section class="note">
@@ -1548,7 +1677,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         </div>
         <div v-else class="row set-all">
           <span class="dim" title="How a piece set to auto is found: Search looks in the project, your library and the web first (found art is the most reliable), and makes it only when nothing found fits">Default for this build</span>
-          <select :value="sourcingSettings.defaultSource" @change="setSourcing({ defaultSource: ($event.target as HTMLSelectElement).value }); sendToHost({ type: 'build:findAssets' })">
+          <select :value="sourcingSettings.defaultSource" @change="setSourcing({ defaultSource: ($event.target as HTMLSelectElement).value })">
             <option value="search">Search (project, library, web, then make)</option>
             <option value="generate">Generate (the Art tool)</option>
             <option value="library">Library (else made by the Art tool)</option>
@@ -1576,11 +1705,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
               <td>{{ state.background ? state.background.path.split('/').pop() : '—' }}</td>
               <td>{{ state.backgroundMaking ? 'painting…' : state.background ? (state.background.picked ? 'imported' : state.background.provider || 'painted') : 'not yet' }}</td>
               <td class="dim">roads, paths, floors and grass painted as one picture, from the description below</td>
-              <td>
-                <button :disabled="state.backgroundMaking" title="Paint it from the plan and the description (Preferences ▸ AI ▸ Background)" @click="sendToHost({ type: 'build:background', description: backgroundText })">
-                  {{ state.background ? 'Regenerate' : 'Generate' }}
-                </button>
-              </td>
+              <td></td>
             </tr>
             <tr class="background-row">
               <td></td>
@@ -1650,19 +1775,71 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
               : `Matched art: ${state.matched.report?.pieces ?? 0} pieces, ${state.matched.report?.grounds ?? 0} grounds` +
                 (state.matched.report?.flagged ? `, ${state.matched.report.flagged} off the style` : '') }}
           </span>
-          <button v-if="SCENE_BUILD" :disabled="stage === 'sourcing' || stage === 'building' || state?.matched?.state === 'making'"
-                  title="Makes every part's art with the art provider (Preferences ▸ AI ▸ Art) in one style: a style sheet first, then every piece in its style, drawn to the grid"
-                  @click="sendToHost({ type: 'build:matchedArt' }); assetsTab = 'found'">
-            Make matched art
-          </button>
-          <button v-if="SCENE_BUILD" class="primary" :disabled="stage === 'sourcing' || stage === 'building'"
-                  title="Finds each part's art in the project or the library, and searches or makes what's missing"
-                  @click="sendToHost({ type: 'build:findAssets' }); assetsTab = 'found'">
-            {{ assetsFound ? 'Find the assets again' : 'Find the assets →' }}
+          <button v-if="SCENE_BUILD" class="primary"
+                  :disabled="stage === 'sourcing' || stage === 'building' || state?.backgroundMaking || state?.matched?.state === 'making'"
+                  :title="(state?.background ? '' : 'The background first (the whole ground, painted), then: ') + (makesArt
+                    ? 'every part\'s art made by the art provider (Preferences ▸ AI ▸ Art) in one style: a style sheet first, then every piece in its style, drawn to the grid'
+                    : 'each part\'s art found in the project or the library, and what\'s missing searched for or made')"
+                  @click="startArt">
+            {{ makesArt ? (assetsFound ? 'Make the art again' : 'Make the art →') : (assetsFound ? 'Find the assets again' : 'Find the assets →') }}
           </button>
         </div>
       </template>
+      <!-- The background: painted first (the whole place, then each detail window), then on to the art. -->
+      <template v-else-if="assetsTab === 'background'">
+        <section v-if="state?.backgroundMaking" class="build-progress">
+          <h4>
+            Painting the background<span v-if="backgroundCall?.total" class="dim">: step {{ Math.min(backgroundCall.total, (backgroundCall.done ?? 0) + 1) }} of {{ backgroundCall.total }}</span>
+          </h4>
+          <div class="bar"><i :style="{ width: `${(100 * (backgroundCall?.done ?? 0)) / Math.max(1, backgroundCall?.total ?? 1)}%` }" /></div>
+          <p>{{ backgroundCall?.step || 'Starting…' }}<span v-if="backgroundCall" class="dim"> · {{ Math.round(backgroundCall.seconds) }}s</span></p>
+          <p class="dim">
+            The whole place is painted in one picture, then the parts that need more detail are painted again as windows and blended.
+            {{ state.afterBackground === 'matched' ? 'Then every part\'s art is made in its style.'
+              : state.afterBackground === 'find' ? 'Then each part\'s art is found and made.' : '' }}
+          </p>
+        </section>
+        <section v-else-if="state?.background" class="background-view">
+          <img :src="urlOf(state.background.path)" alt="The background" class="zoomable" title="Click to zoom" @click="zoom(state.background.path, 'Background')" />
+          <p class="dim">
+            {{ state.background.picked ? 'Imported' : 'Painted' }}{{ state.background.provider ? ' by ' + state.background.provider : '' }}{{
+              state.background.calls ? ' in ' + state.background.calls + ' calls' : '' }} · {{ state.background.path.split('/').pop() }}
+          </p>
+        </section>
+        <div class="actions">
+          <button @click="assetsTab = 'how'">← How each is found</button>
+          <span class="dim">{{ state?.status }}</span>
+          <button :disabled="!artStarted" @click="assetsTab = 'found'">The assets →</button>
+        </div>
+      </template>
       <template v-else>
+        <section v-if="state?.matched?.state === 'making' || state?.matched?.state === 'made'" class="build-progress">
+          <h4>
+            {{ state.matched.state === 'making' ? 'Making the art in one style' : 'Cutting the pieces' }}<span
+              v-if="state.matched.state === 'making' && matchedCall?.total" class="dim">: {{ matchedCall.done ?? 0 }} of {{ matchedCall.total }} steps done</span>
+          </h4>
+          <template v-if="state.matched.state === 'making'">
+            <div class="bar"><i :style="{ width: `${(100 * (matchedCall?.done ?? 0)) / Math.max(1, matchedCall?.total ?? 1)}%` }" /></div>
+            <p>{{ matchedCall?.step || 'Starting…' }}<span v-if="matchedCall" class="dim"> · {{ Math.round(matchedCall.seconds) }}s</span></p>
+            <ol v-if="matchedCall?.plan?.length" class="art-steps">
+              <li v-for="s in matchedCall.plan" :key="s.id" :class="s.state">
+                <span class="mark">{{ s.state === 'done' ? '✓' : s.state === 'failed' ? '✗' : s.state === 'working' ? '●' : '○' }}</span>
+                <span class="label">{{ s.label }}</span>
+                <div v-if="s.pieces.length" class="pieces">
+                  <span v-for="p in s.pieces" :key="p.slug" :class="['piece', { made: p.made, missing: s.state === 'done' && !p.made }]">
+                    <img v-if="p.path" :src="urlOf(p.path)" alt="" class="zoomable" @click="zoom(p.path, p.name)" />
+                    {{ p.name }}
+                  </span>
+                </div>
+              </li>
+            </ol>
+          </template>
+          <p v-else class="dim">Each piece cut from its sheet and added to the project's assets.</p>
+        </section>
+        <section v-else-if="state?.afterBackground" class="build-progress">
+          <h4>Waiting for the background</h4>
+          <p class="dim">The art starts as soon as it's painted (see the Background tab).</p>
+        </section>
         <!-- Being found and made: each piece as it comes. -->
         <section v-if="stage === 'sourcing' && state?.sourcing" class="sourcing">
           <h4>Finding and making the art: {{ state.progress?.done ?? 0 }} of {{ state.progress?.total ?? state.sourcing.length }} done</h4>
@@ -1688,7 +1865,11 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
               <span class="dim">{{ n.description }}</span>
               <span class="dim">try {{ Math.max(1, n.attempts) }}{{ n.done ? (n.passed ? ' · done' : ' · placeholder') : '' }}</span>
               <span v-if="n.request" class="dim">asked: {{ n.request }}</span>
-              <button v-if="n.done" class="small" @click="openRefine(n.key)">Refine</button>
+              <div v-if="n.done" class="row">
+                <button v-if="!n.passed && n.made.length" class="small" title="It's right: keep it (the check rejected it)" @click="keepArt(n)">Keep</button>
+                <button class="small" title="Art from the project or your library instead" @click="openPicker(n.key)">Pick…</button>
+                <button class="small" @click="openRefine(n.key)">Refine</button>
+              </div>
             </div>
             <div v-if="refining === n.key" class="refine">
               <textarea v-model="refineText" rows="2" placeholder="What to change, e.g. a thatched roof, warmer colours, smaller" @keydown.enter.ctrl="refine(n.key)" />
@@ -1707,9 +1888,16 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             <span v-for="(n, src) in neededBySource" :key="src" class="dim">{{ n }} {{ SOURCE_NAMES[src] ?? src }} · </span>
           </h4>
           <table class="components">
-            <thead><tr><th>Needed</th><th>Gets</th><th>From</th></tr></thead>
+            <thead><tr><th></th><th>Needed</th><th>Gets</th><th>From</th></tr></thead>
             <tbody>
               <tr v-for="n in state.assetNeeds" :key="n.key">
+                <td class="thumb art">
+                  <img v-if="n.entry && n.source !== 'placeholder' && /\.(png|jpg|jpeg)$/i.test(n.entry)" :src="urlOf(n.entry)" alt="" class="zoomable"
+                       @click="zoom(n.entry, n.title || n.role)" />
+                  <img v-else-if="rejectedOf(n.key)" :src="urlOf(rejectedOf(n.key)!.path)" alt="" class="zoomable rejected-thumb"
+                       title="Made, but the check rejected it: Keep it below, or find it another way" @click="zoom(rejectedOf(n.key)!.path, (n.title || n.role) + ' · rejected')" />
+                  <span v-else class="placeholder-box" title="A placeholder: no art for it yet" />
+                </td>
                 <td>{{ n.concepts?.length ? n.concepts.join(', ') + ' ' : '' }}{{ n.role }}<span v-if="(n.uses ?? 1) > 1" class="dim"> ×{{ n.uses }}</span></td>
                 <td>{{ n.name || (n.entry ? n.entry.split('/').pop() : '') }}<span v-if="n.why" class="dim"> {{ n.why }}</span></td>
                 <td :class="{ warning: n.source === 'placeholder' }">{{ SOURCE_NAMES[n.source] ?? n.source }}</td>
@@ -1721,9 +1909,14 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           <strong>{{ unfound.length }} still missing</strong>
           <span class="dim"> · nothing found or made yet; another way for each:</span>
           <div v-for="n in unfound" :key="n.key" class="unfound-row">
+            <img v-if="rejectedOf(n.key)" :src="urlOf(rejectedOf(n.key)!.path)" alt="" class="zoomable rejected-thumb"
+                 :title="'Made, but the check rejected it' + (rejectedOf(n.key)!.seen ? ': seen as ' + rejectedOf(n.key)!.seen : '')"
+                 @click="zoom(rejectedOf(n.key)!.path, (n.title || n.role) + ' · rejected')" />
             <span>{{ n.title || n.role }}</span>
             <span class="dim small">{{ n.decision?.reason || n.why }}</span>
             <span class="spacer"></span>
+            <button v-if="rejectedOf(n.key)" class="small" title="It's right: keep the art the check rejected"
+                    @click="keepArt({ key: n.key, made: [rejectedOf(n.key)!] })">Keep</button>
             <button class="small" title="Made by the Art tool" @click="retryNeed(n.key, 'generate')">Generate</button>
             <button class="small" title="Free art from approved sites" @click="retryNeed(n.key, 'web')">Search the web</button>
             <button class="small" title="From the project or your library" @click="openPicker(n.key)">Pick…</button>
@@ -1809,9 +2002,16 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
             <span v-if="!c.ok && c.items?.length" class="dim small"> ({{ c.items.slice(0, 5).join(', ') }}{{ c.items.length > 5 ? '…' : '' }})</span>
           </li>
         </ul>
+        <h4>
+          The AI's look at it
+          <button class="small" :disabled="state.result.critique?.looking"
+                  title="The vision model looks at the built place as the game draws it, in windows, and says what's wrong (a few minutes for a big place)"
+                  @click="sendToHost({ type: 'build:inspectBuilt' })">
+            {{ state.result.critique && !state.result.critique.looking ? 'Look again' : 'Have the AI look at it' }}
+          </button>
+        </h4>
         <template v-if="state.result.critique">
-          <h4>The AI looked at it</h4>
-          <p v-if="state.result.critique.looking" class="dim">Looking at the built place…</p>
+          <p v-if="state.result.critique.looking" class="dim">Looking at the built place… (a few minutes for a big place: the vision model answers all at once)</p>
           <p v-else-if="state.result.critique.error" class="dim">Couldn't look ({{ state.result.critique.error }}).</p>
           <template v-else>
             <p>{{ state.result.critique.summary }}</p>
@@ -2399,6 +2599,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
   display: flex;
   flex-direction: column;
   height: 100%;
+  position: relative;
   background: #181825;
   font-size: 0.85em;
   color: #cdd6f4;
@@ -2782,6 +2983,37 @@ button.link {
 .build-row.current .name {
   color: #89b4fa;
 }
+.art-steps {  list-style: none;  margin: 8px 0 0;  padding: 0;  max-height: 50vh;  overflow-y: auto;}.art-steps > li {  padding: 4px 0;  border-bottom: 1px solid #313244;}.art-steps > li.waiting .label {  color: #6c7086;}.art-steps > li.working .mark,.art-steps > li.working .label {  color: #89b4fa;}.art-steps > li.done .mark {  color: #a6e3a1;}.art-steps > li.failed .mark {  color: #f38ba8;}.art-steps .mark {  display: inline-block;  width: 16px;}.art-steps .pieces {  display: flex;  flex-wrap: wrap;  gap: 4px 10px;  margin: 3px 0 0 16px;  font-size: 11px;  color: #a6adc8;}.art-steps .piece {  display: inline-flex;  align-items: center;  gap: 4px;}.art-steps .piece.missing {  color: #f38ba8;}.art-steps .piece img {  width: 28px;  height: 28px;  object-fit: contain;  cursor: zoom-in;}
+.step-usage {  display: block;  font-size: 10px;  opacity: 0.6;  font-weight: normal;}
+.background-view img {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  margin: 8px auto;
+  image-rendering: auto;
+  cursor: zoom-in;
+  border: 1px solid #313244;
+}
+.background-view p {
+  text-align: center;
+}
+.build-row-wrap {
+  display: flex;
+  border-bottom: 1px solid #313244;
+}
+.build-row-wrap .build-row {
+  border-bottom: none;
+}
+.build-row-wrap .remove {
+  border: none;
+  background: none;
+  color: #6c7086;
+  padding: 0 8px;
+}
+.build-row-wrap .remove:hover {
+  color: #f38ba8;
+  background: #313244;
+}
 .browse {
   margin-left: auto;
 }
@@ -2847,14 +3079,14 @@ button.link {
   stroke-width: 0.4;
   cursor: pointer;
 }
-.sketch rect.picked {
-  fill-opacity: 0.7;
-}
 .sketch text {
   fill: #cdd6f4;
   text-anchor: middle;
   dominant-baseline: middle;
   pointer-events: none;
+}
+.sketch rect.picked {
+  fill-opacity: 0.7;
 }
 .components tr.picked td {
   background: #313244;
@@ -2873,11 +3105,37 @@ button.link {
   padding-top: 8px;
   border-top: 1px solid #333;
 }
-.busy {
-  padding: 6px 10px;
-  background: var(--accent, #3b82f6);
-  color: #fff;
-  font-size: 12px;
+.working-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(17, 17, 27, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.working-box {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  max-width: min(520px, 90%);
+  padding: 14px 18px;
+  background: #1e1e2e;
+  border: 1px solid #3b82f6;
+}
+.spinner {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border: 3px solid #313244;
+  border-top-color: #89b4fa;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .choices {
   margin: 8px 0;
@@ -3044,6 +3302,23 @@ button.link {
   object-fit: contain;
   image-rendering: pixelated;
 }
+.thumb.art {
+  width: 52px;
+}
+.thumb.art img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  cursor: zoom-in;
+  display: block;
+}
+.placeholder-box {
+  display: block;
+  width: 40px;
+  height: 28px;
+  margin: 10px 4px;
+  border: 1px dashed #6c7086;
+}
 .needs .desc {
   max-width: 340px;
   white-space: nowrap;
@@ -3058,6 +3333,13 @@ button.link {
 }
 .unfound-row .spacer {
   flex: 1;
+}
+.rejected-thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  outline: 1px solid #f38ba8;
+  cursor: zoom-in;
 }
 .picker {
   max-width: 760px !important;

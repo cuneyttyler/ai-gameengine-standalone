@@ -7,29 +7,32 @@ AI settings / project (in progress)
 - Planner writes the place's background description in an editable field; Build ▸ Assets background row: Generate/Regenerate (POST /places/background, done in the service)
 - Background image import: a manual editor feature (e.g. Scene ▸ Background Image…), not in the Build panel
 Assets
-- "How each is found": choosing find/generate should stay on the page, not start generation/search
-- Generation/search: show rejected art's image (not a placeholder), with Keep; add Pick (user library search) as for not-found art
-- Library tab: top/bottom sections resizable; art grid in a folder shows art badly (rectangles); no "Add to project" for art already in the project
+- ~~"How each is found": choosing find/generate should stay on the page, not start generation/search~~ (done 2026-10-27)
+- ~~Generation/search: show rejected art's image (not a placeholder), with Keep; add Pick (user library search) as for not-found art~~ (done 2026-10-27)
+- ~~Library tab: top/bottom sections resizable; art grid in a folder shows art badly (rectangles); no "Add to project" for art already in the project~~ (done 2026-10-27)
 Viewport / editor
-- Clicking a prefab in the viewport selects it in Assets ▸ Prefabs
-- Panel fullscreen: other panels' shortcuts should open them
-- Right-click menu closes on clicking elsewhere
-- Right-click on a prefab/tile: Draw; on a prefab: Replace prefab (also in the Inspector)
-- Selecting a tile: show its prefab image in the Inspector
-- Periodic snapshots for crash recovery; detect a crash and offer recovery at startup
+- ~~Clicking a prefab in the viewport selects it in Assets ▸ Prefabs~~ (done 2026-10-27)
+- ~~Panel fullscreen: other panels' shortcuts should open them~~ (done 2026-10-27)
+- ~~Right-click menu closes on clicking elsewhere~~ (done 2026-10-27)
+- ~~Right-click on a prefab/tile: Draw; on a prefab: Replace prefab (also in the Inspector)~~ (done 2026-10-27)
+- ~~Selecting a tile: show its prefab image in the Inspector~~ (done 2026-10-27)
+- ~~Periodic snapshots for crash recovery; detect a crash and offer recovery at startup~~ (done 2026-10-27)
 Builder
-- Finish opens the Viewport
-- Token counts and seconds per step (as in the Planner)
-- Next step: overlay with a spinner and what's being done
-- Add a sketch step
+- ~~Finish opens the Viewport~~ (done 2026-10-27)
+- ~~Token counts and seconds per step (as in the Planner)~~ (done 2026-10-27)
+- ~~Next step: overlay with a spinner and what's being done~~ (done 2026-10-27)
+- ~~Add a sketch step~~ (dropped 2026-10-27: the painted background and matched art cover it)
 AI Planner
-- Home page: previous plans; a button on each step back to the home page
-- Confirm window decisions (number of characters, places…) decided during story generation and editable
-- Choices section (story ontology options usable with the prompt), as in the Build panel
-- Concept step: a synopsis of the story
-- Story: scene detail window resizable
-- Total generation time next to total tokens
+- ~~Home page: previous plans; a button on each step back to the home page~~ (done 2026-10-27)
+- ~~Confirm window decisions (number of characters, places…) decided during story generation and editable~~ (done 2026-10-27)
+- ~~Choices section (story ontology options usable with the prompt), as in the Build panel~~ (done 2026-10-27)
+- ~~Concept step: a synopsis of the story~~ (done 2026-10-27)
+- ~~Story: scene detail window resizable~~ (done 2026-10-27)
+- ~~Total generation time next to total tokens~~ (done 2026-10-27)
 Ontology (2026-10-27)
+- Relative sizes (asked 2026-10-27): in a generated build some props come out at a size that doesn't match the rest. A
+  size trait on every role, relative to what it appears with (a bush 1/10 of a tree; a tree as tall as a one-storey
+  building), so each piece is scaled against its neighbours in the scene (and painted to it on the sheets)
 - Go through all of data/places (roles.json, relations.json, modules, vocabularies) for the new traits and relations
   (docs/places/ontology-in-use.md): each was set only on the roles the dungeon and city tests needed. Check every role for
   orient, views, axis, faces, turns, run, variety, found, purpose, and every role for its relations (set-in, mounted-on,

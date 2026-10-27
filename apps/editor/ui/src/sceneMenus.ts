@@ -4,7 +4,7 @@
 // what's under the cursor; it has already selected it.
 import { openContextMenu, separator, type MenuItem } from './contextMenu'
 import { promptDialog } from './dialogs'
-import { askAiAbout, editorState } from './editorState'
+import { armPrefab, askAiAbout, editorState } from './editorState'
 import { onHostMessage, sendToHost } from './ipc'
 import { keyLabel } from './keys'
 
@@ -19,10 +19,26 @@ export interface MenuEntity {
 export const entityMenuExtensions: ((entity: MenuEntity) => MenuItem[])[] = []
 export const groundMenuExtensions: ((cell: [number, number]) => MenuItem[])[] = []
 
+// Draw with a prefab: it becomes the brush (a tile painted, a thing placed).
+export function drawItem(prefab: string | null): MenuItem[] {
+  const p = prefab ? editorState.prefabs.find((x) => x.path === prefab) : undefined
+  if (!prefab) return []
+  return [{ label: `Draw with ${p?.name ?? prefab.split('/').pop()}`, disabled: editorState.playing, action: () => armPrefab(prefab) }]
+}
+
+// Replace prefab…: this thing a copy of another (or every copy of its prefab), in the Replace prefab dialog.
+export function replacePrefab(entity: { id: number; prefab: string | null }): void {
+  if (!entity.prefab) return
+  editorState.replaceEntity = entity.id
+  editorState.replacePrefab = entity.prefab
+}
+
 export function entityMenu(entity: MenuEntity): MenuItem[] {
   const select = () => sendToHost({ type: 'entity:select', id: entity.id })
   const label = entity.name || (entity.tile ? 'Tile' : `Entity #${entity.id}`)
   return [
+    ...drawItem(entity.prefab),
+    ...(entity.prefab && !entity.tile ? [{ label: 'Replace prefab…', disabled: editorState.playing, action: () => replacePrefab(entity) }] : []),
     { label: `Duplicate ${label}`, shortcut: keyLabel('edit.duplicate'), action: () => (select(), sendToHost({ type: 'edit:duplicate' })) },
     ...entityMenuExtensions.flatMap((extend) => extend(entity)),
     separator,
@@ -92,6 +108,10 @@ onHostMessage((message) => {
     // Ground (or a tile): the tile's own menu first, then what can go there.
     const cell = message.cell as [number, number]
     const items = groundMenu(cell, (message.brush as string) || editorState.brush)
-    openContextMenu(x, y, entity ? [...entityMenu(entity).slice(0, 1), separator, ...items] : items)
+    // A ground tile there (a tile entity's prefab, or a tile layer's cell): Draw with it first.
+    const tilePrefab = entity?.prefab ?? ((message.cellPrefab as string) || null)
+    const draw = drawItem(tilePrefab)
+    const own = entity ? entityMenu(entity).filter((i) => i.label.startsWith('Duplicate')) : []
+    openContextMenu(x, y, [...draw, ...own, ...(draw.length || own.length ? [separator] : []), ...items])
   }
 })

@@ -1068,6 +1068,14 @@ json CutMatchedArt(AssetDatabase& assets, const Project& project, const json& sh
                 cut = CropImage(*own, *box);
                 const double size = ontology ? ontology->RoleSize(p.value("role", "")) : 0.0;
                 cells = building ? (p.value("w", 1) + p.value("h", 1)) / 2.0 : std::clamp(size > 0 ? size : 0.8, 0.2, 3.0);
+                // A thing as tall as its role says too (its relative size, docs/places/ontology-in-use.md): painted
+                // taller for its width than that (a bush drawn as a tall shrub), it's made narrower until its height
+                // is its role's, so it stands beside the rest at the size they agree on.
+                const double tall = ontology && !building ? ontology->RoleTall(p.value("role", "")) : 0.0;
+                if (tall > 0 && cut.width > 0 && p.value("layer", "") != "decal") {
+                    const double drawn = static_cast<double>(cut.height) / cut.width;
+                    if (drawn > tall * 1.15) cells = std::max(0.15, cells * tall / drawn);
+                }
                 const int w = std::max(1, p.value("w", 1)), h = std::max(1, p.value("h", 1));
                 if (p.contains("kit")) {
                     // One cell of a painted run (KitCell), the run first set to the grid's angle (Level): the run's

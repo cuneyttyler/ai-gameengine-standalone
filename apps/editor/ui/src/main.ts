@@ -30,6 +30,7 @@ if (location.hash === '#welcome') {
     import('./editingMenus'), // copy/paste, resize, grid, delete prefab
     import('./exportGame'), // File ▸ Export Game…
     import('./scenes'), // File ▸ New Scene…, Scenes…
+    import('./recovery'), // a crash's unsaved changes offered back
   ])
     .then(([{ default: App }]) => {
       createApp(App).mount('#app')

@@ -3,8 +3,10 @@
 // engine's reflection registry (apps/editor/EditorApp InspectorJson /
 // SettingsJson) — names, types, descriptions, constraints. Project settings
 // have their own window (ProjectSettingsDialog, 5.5).
-import { reactive, ref } from 'vue'
-import { askAiAbout, editorState } from '../editorState'
+import { computed, reactive, ref } from 'vue'
+import { armPrefab, askAiAbout, editorState } from '../editorState'
+import { replacePrefab } from '../sceneMenus'
+import PrefabThumb from './PrefabThumb.vue'
 import { projectState } from '../projects'
 import { onHostMessage, sendToHost } from '../ipc'
 import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
@@ -47,6 +49,8 @@ function showDifficultyPreview(): void {
 const current = ref<InspectorData | null>(null)
 // A ground cell of a tile layer (a built place's ground), selected with the Select tool.
 const cell = ref<{ layer: string; x: number; y: number; prefab: string; texture: string; solid: boolean } | null>(null)
+// The selected cell's tile prefab, with its picture.
+const cellPrefab = computed(() => (cell.value?.prefab ? editorState.prefabs.find((p) => p.path === cell.value!.prefab) : undefined))
 // A box selection (drag on the ground): how many things and ground cells.
 const many = ref<{ entities: number; cells: number } | null>(null)
 const collapsed = reactive<Record<string, boolean>>({})
@@ -179,9 +183,19 @@ function numberFrom(event: Event): number {
     <template v-else-if="cell && !current">
       <div class="entity-label">Ground cell ({{ cell.x }}, {{ cell.y }})</div>
       <p class="hint">In the tile layer “{{ cell.layer }}”{{ cell.solid ? ', blocking' : '' }}.</p>
-      <p v-if="cell.prefab" class="hint">Tile: {{ cell.prefab }}</p>
+      <div v-if="cellPrefab" class="tile-prefab">
+        <PrefabThumb :prefab="cellPrefab" :box="64" />
+        <div>
+          <div>{{ cellPrefab.name }}</div>
+          <div class="hint">{{ cellPrefab.path }}</div>
+        </div>
+      </div>
+      <p v-else-if="cell.prefab" class="hint">Tile: {{ cell.prefab }}</p>
       <p v-else-if="cell.texture" class="hint">Image: {{ cell.texture }}</p>
-      <button @click="sendToHost({ type: 'edit:delete' })">Erase this cell (Delete)</button>
+      <div class="row-actions">
+        <button v-if="cell.prefab" :disabled="editorState.playing" title="Paint with this tile" @click="armPrefab(cell.prefab)">Draw with it</button>
+        <button @click="sendToHost({ type: 'edit:delete' })">Erase this cell (Delete)</button>
+      </div>
     </template>
 
     <!-- Nothing selected. Project settings have their own window (5.5). -->
@@ -231,6 +245,10 @@ function numberFrom(event: Event): number {
           >
             Revert all
           </button>
+          <button :disabled="current.prefab.missing" title="Put a copy of another prefab in its place" @click="replacePrefab({ id: current.id, prefab: current.prefab.path })">
+            Replace prefab…
+          </button>
+          <button :disabled="current.prefab.missing" title="Draw with this prefab" @click="armPrefab(current.prefab.path)">Draw with it</button>
         </div>
       </div>
 
@@ -598,6 +616,17 @@ button {
 }
 .warning {
   color: #ef4444;
+}
+.tile-prefab {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0;
+}
+.row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 .prefab-actions {
   display: flex;

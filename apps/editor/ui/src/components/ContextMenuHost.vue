@@ -2,6 +2,7 @@
 import { nextTick, ref, watch } from 'vue'
 import { closeContextMenu, menuState, runMenuItem, type MenuItem } from '../contextMenu'
 import { trackOverlay, untrackOverlay } from '../overlay'
+import { onHostMessage } from '../ipc'
 
 const menu = ref<HTMLElement | null>(null)
 const position = ref({ x: 0, y: 0 })
@@ -76,6 +77,10 @@ window.addEventListener('mousedown', (event) => {
   }
 })
 window.addEventListener('blur', () => closeContextMenu())
+// A click in the viewport (a native window over the page: the page never sees it) closes it too.
+onHostMessage((message) => {
+  if (message.type === 'panel:focused' && message.id === 'viewport') closeContextMenu()
+})
 
 function onKeydown(event: KeyboardEvent): void {
   event.stopPropagation()

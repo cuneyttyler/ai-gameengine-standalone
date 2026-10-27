@@ -201,6 +201,14 @@ int RemoveBuilds(const fs::path& projectRoot, const std::string& keep) {
     return removed;
 }
 
+bool RemoveBuild(const fs::path& projectRoot, const std::string& id) {
+    if (id.empty() || id.find_first_of("/\\.") != std::string::npos) return false;
+    const fs::path folder = projectRoot / "places" / id;
+    std::error_code ec;
+    if (!fs::exists(folder / "request.json", ec)) return false; // only a build's folder
+    return fs::remove_all(folder, ec) > 0 && !ec;
+}
+
 json PlaceBuild::Advanced(const std::string& what) const {
     // The build's own documents, for the advanced view (8.2): read as they are on disk.
     static const std::map<std::string, std::vector<std::string>> files = {
@@ -427,6 +435,7 @@ void PlaceBuild::Save() const {
                                           {"revisions", revisions_},
                                           {"sketch", {{"done", sketched_}, {"crops", sketchCrops_}, {"sketches", sketches_}}},
                                           {"matched", matched_},
+                                          {"usage", usage_},
                                           {"layoutCheck", {{"checked", layoutChecked_}, {"rounds", layoutRounds_}, {"answer", layoutCheck_}}},
                                           {"fit", {{"scale", fitScale_}, {"side", fitSide_}}},
                                           {"locks", locks_},
@@ -488,6 +497,7 @@ std::string PlaceBuild::Start(const std::string& words, const json& choices) {
     id_ = PlaceIdFor(host_.projectRoot, query);
     query_ = query;
     round_ = 1;
+    usage_ = json::object();
     drafts_.clear();
     draftProblems_.clear();
     errors_.clear();
@@ -520,6 +530,7 @@ std::string PlaceBuild::StartFromBrief(const std::string& words, const json& bri
     query_ = words.empty() ? brief.value("name", brief.value("buildType", "")) : words;
     id_ = PlaceIdFor(host_.projectRoot, query_);
     round_ = 1;
+    usage_ = json::object();
     drafts_.clear();
     draftProblems_.clear();
     errors_.clear();
@@ -4550,6 +4561,16 @@ std::string PlaceBuild::MakeBackground() {
     return {};
 }
 
+void PlaceBuild::AddUsage(const std::string& step, int inputTokens, int outputTokens, double seconds) {
+    if (step.empty()) return;
+    json& s = usage_[step];
+    s["calls"] = s.value("calls", 0) + 1;
+    s["inputTokens"] = s.value("inputTokens", 0) + std::max(0, inputTokens);
+    s["outputTokens"] = s.value("outputTokens", 0) + std::max(0, outputTokens);
+    s["seconds"] = s.value("seconds", 0.0) + std::max(0.0, seconds);
+    Save();
+}
+
 std::string PlaceBuild::InspectBuilt(const json& body) {
     if (stage_ != "built") return "the place isn't built";
     if (!Send({"inspect-build", -1, "", "/places/inspect", body, 900})) return "the AI is off";
@@ -4632,6 +4653,7 @@ std::string PlaceBuild::Open(const std::string& id) {
     result_ = json();
     hasOrigin_ = false;
     round_ = 1;
+    usage_ = json::object();
     const Ontology& ontology = host_.ontology();
     context_ = InterpretContextFor(ontology, query_, choices_);
     const json session = ReadJson(folder / "session.json");
@@ -4664,6 +4686,7 @@ std::string PlaceBuild::Open(const std::string& id) {
             }
         }
         matched_ = session.value("matched", json::object());
+        usage_ = session.value("usage", json::object());
         if (matched_.value("state", "") == "making") matched_["state"] = "failed"; // the answer can't come now
         if (const json lc = session.value("layoutCheck", json::object()); lc.is_object()) {
             layoutChecked_ = lc.value("checked", false);
@@ -4990,6 +5013,7 @@ json PlaceBuild::State() {
     if (matched_.contains("groundPicture")) state["background"] = matched_["groundPicture"];
     state["backgroundDescription"] = BackgroundDescription();
     state["backgroundMaking"] = makingBackground_;
+    state["usage"] = usage_; // each step's AI calls, tokens and seconds
     if (stage_ == "building") state["buildProgress"] = buildProgress_;
     if (host_.layoutStep && (stage_ == "planned" || stage_ == "sourcing" || stage_ == "sourced" || stage_ == "built")) {
         const Catalog catalog = host_.catalog ? host_.catalog() : Catalog{};

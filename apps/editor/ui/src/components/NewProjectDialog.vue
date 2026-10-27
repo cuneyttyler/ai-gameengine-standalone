@@ -24,13 +24,18 @@ const error = ref('')
 
 onHostMessage((message) => {
   if (message.type === 'project:browsed' && typeof message.path === 'string' && message.path) location.value = message.path
+  // The folder the last project was created in, unless one is picked already.
+  if (message.type === 'project:location' && typeof message.path === 'string' && message.path && !location.value) location.value = message.path
 })
 
 watch(
   () => props.open,
   (open) => {
-    if (open) error.value = ''
+    if (!open) return
+    error.value = ''
+    sendToHost({ type: 'project:location' })
   },
+  { immediate: true },
 )
 
 const where = computed(() => (location.value ? `${location.value.replace(/[\\/]+$/, '')}\\${name.value.trim()}` : ''))

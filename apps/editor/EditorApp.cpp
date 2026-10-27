@@ -77,6 +77,30 @@ namespace aige {
 
 namespace {
 
+// A step of the UI thread that took long (a message, a part of a frame): the editor froze for it. Written to
+// editor-errors.log with its name and how long, so a freeze says what it was.
+class SlowWatch {
+public:
+    explicit SlowWatch(std::string what) : what_(std::move(what)), start_(std::chrono::steady_clock::now()) {}
+    ~SlowWatch() {
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_).count();
+        if (ms < 500) return;
+        const std::filesystem::path prefs = UserPrefs::DefaultPath();
+        if (prefs.empty()) return;
+        std::ofstream log(prefs.parent_path() / "editor-errors.log", std::ios::app);
+        const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        std::tm local{};
+        localtime_s(&local, &now);
+        char stamp[32] = {};
+        std::strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", &local);
+        log << stamp << " [slow] " << what_ << " took " << ms << " ms\n";
+    }
+
+private:
+    std::string what_;
+    std::chrono::steady_clock::time_point start_;
+};
+
 // "Build the game", "build it all": the planned game, built (23).
 bool LooksLikeBuildGameRequest(const std::string& text) {
     std::string t;
@@ -268,13 +292,106 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
     // prefab edits made since the scene was saved.
     prefabs_.SyncAll(registry_);
     UpdateTitle();
+    StartRecovery();
+}
+
+EditorApp::~EditorApp() {
+    // A clean exit: no crash to recover from next time (what wasn't saved was the user's choice). Ended by a fatal
+    // error (unwinding), the snapshot stays.
+    if (std::uncaught_exceptions() > 0) return;
+    std::error_code ec;
+    fs::remove_all(RecoveryDir(), ec);
+}
+
+// --- Crash recovery -----------------------------------------------------------------------
+// While the editor runs, .cache/recovery/running.json says so, and the open scene's unsaved state is written there
+// every two minutes. Opened again with running.json still there (the editor didn't close: a crash), a snapshot newer
+// than its scene file is offered back.
+
+std::filesystem::path EditorApp::RecoveryDir() const {
+    return assets_.GetProject().CacheDir() / "recovery";
+}
+
+void EditorApp::StartRecovery() {
+    const fs::path dir = RecoveryDir();
+    std::error_code ec;
+    if (fs::exists(dir / "running.json", ec)) {
+        const nlohmann::json meta = [&] {
+            std::ifstream in(dir / "snapshot.json");
+            return in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+        }();
+        if (meta.is_object() && fs::exists(dir / "snapshot.scene", ec)) {
+            const fs::path scene = assets_.GetProject().Resolve(meta.value("scene", ""));
+            const auto snapshotTime = fs::last_write_time(dir / "snapshot.scene", ec);
+            const bool newer = !fs::exists(scene, ec) || fs::last_write_time(scene, ec) < snapshotTime;
+            if (newer) recoveryOffer_ = {{"type", "recovery:offer"}, {"scene", meta.value("scene", "")}, {"time", meta.value("time", 0LL)}};
+        }
+    }
+    if (recoveryOffer_.is_null()) fs::remove(dir / "snapshot.scene", ec), fs::remove(dir / "snapshot.json", ec);
+    fs::create_directories(dir, ec);
+    const long long now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    std::ofstream(dir / "running.json") << nlohmann::json{{"started", now}}.dump() << "\n";
+    recoverySaved_ = std::chrono::steady_clock::now();
+}
+
+void EditorApp::WriteRecovery() {
+    // Every two minutes, while the open scene has changes not saved (never during Play: the scene is the game's then).
+    const auto now = std::chrono::steady_clock::now();
+    if (now - recoverySaved_ < std::chrono::minutes(2)) return;
+    recoverySaved_ = now;
+    if (!dirty_ || playing_ || !recoveryOffer_.is_null()) return; // an offer not answered yet keeps its snapshot
+    const fs::path dir = RecoveryDir();
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    {
+        std::ofstream out(dir / "snapshot.scene.tmp", std::ios::binary | std::ios::trunc);
+        out << SerializeScene(registry_);
+    }
+    fs::rename(dir / "snapshot.scene.tmp", dir / "snapshot.scene", ec);
+    const long long time = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    std::ofstream(dir / "snapshot.json") << nlohmann::json{{"scene", OpenSceneRelative()}, {"time", time}}.dump() << "\n";
+}
+
+void EditorApp::AnswerRecovery(bool restore) {
+    const fs::path dir = RecoveryDir();
+    const std::string scene = recoveryOffer_.value("scene", "");
+    recoveryOffer_ = nlohmann::json();
+    std::error_code ec;
+    if (restore) {
+        std::ifstream in(dir / "snapshot.scene", std::ios::binary);
+        std::ostringstream text;
+        text << in.rdbuf();
+        if (scene != OpenSceneRelative()) OpenScene(scene);
+        if (scene == OpenSceneRelative() && !text.str().empty()) {
+            registry_.clear();
+            DeserializeScene(registry_, text.str());
+            prefabs_.SyncAll(registry_);
+            history_.Clear();
+            Select(std::nullopt);
+            dirty_ = true; // restored, not saved: Save keeps it
+            UpdateTitle();
+            UpdateWorldToScreen(registry_, iso_);
+            sceneTreeStale_ = true;
+            inspectorStale_ = true;
+            editorStateStale_ = true;
+            post_({{"type", "notify"}, {"text", "Restored the unsaved changes to " + scene + ": save to keep them"}});
+        } else {
+            post_({{"type", "notify"}, {"text", "Couldn't restore " + scene}});
+        }
+    }
+    fs::remove(dir / "snapshot.scene", ec);
+    fs::remove(dir / "snapshot.json", ec);
 }
 
 // --- IPC --------------------------------------------------------------------
 
 // The Build panel's messages (7.4-7.9), apart: one chain of them all is too deep for the compiler.
 bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json& message) {
-    // While the build works off the UI thread, only what doesn't touch it.
+    // While the build works off the UI thread, only what doesn't touch it; a call's usage waits for it (PostBuild).
+    if (buildJob_ && type == "build:usage") {
+        usageQueue_.push_back(message);
+        return true;
+    }
     if (buildJob_ && type != "build:request" && type != "build:list" && type != "build:sourcingRequest" && type != "build:sourcing" &&
         type != "build:choicesRequest" && type != "build:advanced") {
         post_({{"type", "notify"}, {"text", "The build is still working: a moment"}});
@@ -319,6 +436,21 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         const int removed = RemoveBuilds(assets_.GetProject().root, build_ ? build_->Id() : std::string());
         post_({{"type", "notify"}, {"text", "Removed " + std::to_string(removed) + " older build(s)"}});
         post_({{"type", "build:list"}, {"builds", ListBuilds(assets_.GetProject().root)}});
+    } else if (type == "build:remove") {
+        // One build, from Your builds (the panel asked first); the open one is closed first.
+        const std::string id = message.value("id", "");
+        if (build_ && build_->Id() == id) {
+            if (buildRun_ || build_->Stage() == "sourcing" || build_->MakingBackground()) {
+                post_({{"type", "notify"}, {"text", "The build is still working: stop it first"}});
+                return true;
+            }
+            build_.reset();
+            buildShown_ = nlohmann::json();
+            afterBackground_.clear();
+        }
+        post_({{"type", "notify"}, {"text", RemoveBuild(assets_.GetProject().root, id) ? "Removed the build" : "Couldn't remove that build"}});
+        post_({{"type", "build:list"}, {"builds", ListBuilds(assets_.GetProject().root)}});
+        PostBuild();
     } else if (type == "build:advanced") {
         if (build_) {
             nlohmann::json doc = build_->Advanced(message.value("what", ""));
@@ -412,6 +544,14 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         WriteSourcingSettings(assets_.GetProject().root, settings);
         post_({{"type", "build:sourcing"}, {"webSearch", settings.webSearch}, {"shareAlike", settings.licences.shareAlike},
                {"defaultSource", settings.defaultSource}});
+        // The default changed: what each part would get is shown again (nothing is found or made until asked).
+        if (message.contains("defaultSource") && build_ && !buildJob_) {
+            const std::string stage = build_->Stage();
+            if (stage == "planned" || stage == "sourced" || stage == "built") {
+                PreviewAssets();
+                PostBuild();
+            }
+        }
     } else if (type == "scene:backgroundImage") {
         // Edit ▸ Background Image…: a top-down picture of your own as the place's ground (the whole site), copied into
         // the project; the place's scene is laid with it again at once.
@@ -445,20 +585,28 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
     } else if (type == "build:matchedArt") {
         // ③ Matched art (docs/places/matched-art.md): every need made by the art provider in one style, then cut
         // (CutMatchedArt).
-        if (!build_ || buildJob_ || buildRun_) return true;
-        const std::string stage = build_->Stage();
-        if (stage != "planned" && stage != "sourced" && stage != "built") {
-            post_({{"type", "notify"}, {"text", "Not yet: approve the plan first"}});
-            return true;
-        }
-        if (const std::string why = build_->MakeMatchedArt(PlanForMatchedArt(), &Places()); !why.empty()) {
-            post_({{"type", "notify"}, {"text", "No matched art: " + why}});
-        }
+        MakeMatched();
         PostBuild();
     } else if (type == "build:findAssets") {
-        if (build_) build_->ForgetTried(); // asked again: what's still missing is made again
-        autoRounds_ = 0;
-        FindAssets();
+        // ③ The art: found (each part from its source) or made in one style ("then": "matched"). The background
+        // first (the whole place, then its detail windows) when there's none yet: the art starts when it's in
+        // (OnBuildResult). No background to paint (no plan laid out, the AI off): the art starts now.
+        if (!build_ || buildJob_ || buildRun_) return true;
+        const std::string then = message.value("then", "find") == "matched" ? "matched" : "find";
+        if (then == "find") {
+            build_->ForgetTried(); // asked again: what's still missing is made again
+            autoRounds_ = 0;
+        }
+        afterBackground_.clear();
+        const std::string stage = build_->Stage();
+        if (build_->MakingBackground() ||
+            (build_->Background().is_null() && (stage == "planned" || stage == "sourced" || stage == "built") && build_->MakeBackground().empty())) {
+            afterBackground_ = then;
+            PostBuild();
+            return true;
+        }
+        if (then == "matched") MakeMatched();
+        else FindAssets();
         PostBuild();
     } else if (type == "build:needSource" || type == "build:allSources" || type == "build:pickArt") {
         // ④ Assets: a need's own source (or every need's), or a piece of art picked for it.
@@ -496,6 +644,24 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         PostBuild();
     } else if (type == "build:build") {
         BuildIntoScene();
+        PostBuild();
+    } else if (type == "build:usage") {
+        // A finished AI call of the build (the panel saw it end on the progress strip): its step's totals.
+        if (build_) build_->AddUsage(message.value("step", ""), message.value("inputTokens", 0), message.value("outputTokens", 0), message.value("seconds", 0.0));
+        return true; // the panel shows it with the next state
+    } else if (type == "build:inspectBuilt") {
+        // ⑤ Result, when asked: the vision model looks at the built place as the game draws it, in windows
+        // (docs/build-fixes.md). Minutes for a big place, so never on its own.
+        if (!build_ || buildRun_ || build_->Stage() != "built" || build_->Inspecting()) return true;
+        if (!Ai() || Ai()->GetState() != AiClient::State::Ready) {
+            post_({{"type", "notify"}, {"text", "The AI isn't there to look at it"}});
+            return true;
+        }
+        const auto [ox, oy] = build_->Origin();
+        if (const std::string why = build_->InspectBuilt(InspectBuildRequest(registry_, assets_.GetProject(), iso_, *build_, ox, oy, 56, &Places()));
+            !why.empty()) {
+            post_({{"type", "notify"}, {"text", "Can't look at it: " + why}});
+        }
         PostBuild();
     } else if (type == "build:finish") {
         // The place stays in the scene: saved with it, and the build closed (Your builds reopens it).
@@ -546,7 +712,10 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
 // Difficulty (16.5): the Difficulty tab's requests.
 // New Project's messages: its folder picked, the project made with its choices.
 bool EditorApp::HandleProjectMessage(const std::string& type, const nlohmann::json& message) {
-    if (type == "project:browse") {
+    if (type == "project:location") {
+        // New Project opened: the folder the last project was created in (the user's prefs, read fresh).
+        post_({{"type", "project:location"}, {"path", UserPrefs(UserPrefs::DefaultPath()).Get("newProjectFolder", "")}});
+    } else if (type == "project:browse") {
         // New Project's Browse…: the folder back to its window.
         if (auto folder = ShowFolderDialog(mainWindow_, Utf8ToWide(message.value("title", "Where to create the project")))) {
             post_({{"type", "project:browsed"}, {"path", WideToUtf8(folder->wstring())}});
@@ -558,6 +727,7 @@ bool EditorApp::HandleProjectMessage(const std::string& type, const nlohmann::js
             return true;
         }
         std::filesystem::path root = std::filesystem::path(Utf8ToWide(location)) / Utf8ToWide(name);
+        UserPrefs(UserPrefs::DefaultPath()).Set("newProjectFolder", location); // offered next time
         const std::string templateId = message.value("template", "");
         if (!templateId.empty()) {
             // A template project (24): it plays as its genre from the start.
@@ -660,12 +830,31 @@ bool EditorApp::HandleDifficultyMessage(const std::string& type, const nlohmann:
 
 void EditorApp::OnWebMessage(const nlohmann::json& message) {
     const std::string type = message.value("type", "");
+    const SlowWatch watch("message " + type);
     if (type.rfind("build:", 0) == 0 && HandleBuildMessage(type, message)) return;
+    if (type == "recovery:request") {
+        // The page is up: a crash's unsaved changes offered back (StartRecovery).
+        if (!recoveryOffer_.is_null()) post_(recoveryOffer_);
+        return;
+    }
+    if (type == "recovery:restore" || type == "recovery:discard") {
+        if (!recoveryOffer_.is_null()) AnswerRecovery(type == "recovery:restore");
+        return;
+    }
+    if (type == "entity:replacePrefab") {
+        // Replace prefab (the viewport's right-click menu, the Inspector): this thing a copy of another, as one undo step.
+        if (playing_) return;
+        const ApplyOutcome outcome = ApplyAccepted({{{"op", "command"},
+                                                     {"name", "entity.replacePrefab"},
+                                                     {"args", {{"entity", message.value("id", 0u)}, {"to", message.value("prefab", "")}}}}});
+        if (!outcome.errors.empty()) post_({{"type", "notify"}, {"text", outcome.errors.front()}});
+        return;
+    }
     if (type.rfind("ontology:", 0) == 0 && HandleOntologyMessage(type, message)) return;
     if (type.rfind("library:", 0) == 0 && HandleLibraryMessage(type, message)) return;
     if (type.rfind("difficulty:", 0) == 0 && HandleDifficultyMessage(type, message)) return;
     if (type.rfind("ui:", 0) == 0 && HandleUiMessage(type, message)) return;
-    if ((type == "project:browse" || type == "project:new") && HandleProjectMessage(type, message)) return;
+    if ((type == "project:location" || type == "project:browse" || type == "project:new") && HandleProjectMessage(type, message)) return;
     if (type.rfind("fx:", 0) == 0 && HandleFxMessage(type, message)) return;
     if (type.rfind("magic:", 0) == 0 && HandleMagicMessage(type, message)) return;
     if (type.rfind("storygraph:", 0) == 0 && HandleStoryGraphMessage(type, message)) return;
@@ -2452,11 +2641,21 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                                              : nlohmann::json(nullptr)},
                               {"tile", registry_.all_of<Tile>(*picked)}};
                 }
+                // A ground tile there (a tile layer's cell, a built place's ground): its prefab, to Draw with.
+                std::string cellPrefab;
+                if (!picked) {
+                    if (const auto cell = PickLayerCell(sceneX, sceneY)) {
+                        const TileLayers* layers = FindLayers(registry_);
+                        const TileLayer* layer = layers ? layers->Find(cell->layer) : nullptr;
+                        if (const TileDef* def = layer ? layer->Def(layer->Get(cell->gx, cell->gy)) : nullptr) cellPrefab = def->prefab;
+                    }
+                }
                 post_({{"type", "viewport:contextMenu"},
                        {"x", viewportBounds_.x + static_cast<int>(event.x)},
                        {"y", viewportBounds_.y + static_cast<int>(event.y)},
                        {"entity", entity},
                        {"cell", {gx, gy}},
+                       {"cellPrefab", cellPrefab},
                        {"brush", tool_ == Tool::Prefab ? brushPrefab_ : std::string()}});
             }
             if (event.button == Button::Right || event.button == Button::Middle || event.button == Button::None) {
@@ -2973,8 +3172,11 @@ void EditorApp::Select(std::optional<Entity> entity) {
     selectedCell_.reset(); // a cell or an entity, not both
     ClearBoxSelection();
     selected_ = entity;
+    // Its prefab too: Assets ▸ Prefabs selects it there.
+    const auto* instance = entity ? registry_.try_get<PrefabInstance>(*entity) : nullptr;
     post_({{"type", "selection:changed"},
-           {"id", entity ? nlohmann::json(static_cast<uint32_t>(*entity)) : nlohmann::json(nullptr)}});
+           {"id", entity ? nlohmann::json(static_cast<uint32_t>(*entity)) : nlohmann::json(nullptr)},
+           {"prefab", instance ? instance->path : std::string()}});
     if (entity) {
         post_(InspectorJson(*entity));
     } else {
@@ -3156,6 +3358,11 @@ void EditorApp::Save() {
     }
     dirty_ = false;
     editorStateStale_ = true;
+    if (recoveryOffer_.is_null()) {
+        std::error_code ec; // saved: nothing of it to recover
+        fs::remove(RecoveryDir() / "snapshot.scene", ec);
+        fs::remove(RecoveryDir() / "snapshot.json", ec);
+    }
     post_({{"type", "notify"}, {"text", "Saved " + std::filesystem::path(scenePath_).filename().string()}});
 }
 
@@ -3945,14 +4152,57 @@ void EditorApp::StepGameBuild() {
     // Whatever it does next (an answer, a user action) pumps again.
 }
 
-void EditorApp::StartPlan(const std::string& request, bool replace) {
+bool EditorApp::ArchivePlan() {
+    // The project's plan kept as an earlier one (planner-archive/<when>/), out of the way of a new or reopened plan.
+    const fs::path root = assets_.GetProject().root;
+    if (!PlannerStore(root).HasPlan()) return false;
+    plan_.reset();
+    gameBuild_.reset();
+    const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm tm{};
+    localtime_s(&tm, &now);
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &tm);
+    std::error_code ec;
+    fs::create_directories(root / "planner-archive", ec);
+    fs::rename(root / "planner", root / "planner-archive" / stamp, ec);
+    return !ec;
+}
+
+nlohmann::json EditorApp::ListPlans() const {
+    // [{id ("" the current), request, stage, updated (seconds)}]: the current first, then the earlier ones, latest first.
+    const fs::path root = assets_.GetProject().root;
+    nlohmann::json plans = nlohmann::json::array();
+    auto add = [&](const std::string& id, const fs::path& dir) {
+        std::ifstream in(dir / "state.json");
+        const nlohmann::json s = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+        if (!s.is_object()) return;
+        std::error_code ec;
+        const auto time = fs::last_write_time(dir / "state.json", ec);
+        const long long updated = ec ? 0 : std::chrono::duration_cast<std::chrono::seconds>(std::chrono::clock_cast<std::chrono::system_clock>(time).time_since_epoch()).count();
+        plans.push_back({{"id", id}, {"request", s.value("request", "")}, {"stage", s.value("stage", "")}, {"updated", updated},
+                         {"name", s.value("concept", nlohmann::json::object()).value("title", "")}});
+    };
+    if (PlannerStore(root).HasPlan()) add("", root / "planner");
+    std::vector<std::string> archived;
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(root / "planner-archive", ec)) {
+        if (e.is_directory()) archived.push_back(e.path().filename().string());
+    }
+    std::sort(archived.rbegin(), archived.rend());
+    for (const auto& id : archived) add(id, root / "planner-archive" / id);
+    return plans;
+}
+
+void EditorApp::StartPlan(const std::string& request, bool replace, const nlohmann::json& choices) {
     if (PlannerStore(assets_.GetProject().root).HasPlan() && !replace) {
         post_({{"type", "planner:open"}});
-        post_({{"type", "planner:askReplace"}, {"request", request}});
+        post_({{"type", "planner:askReplace"}, {"request", request}, {"choices", choices}});
         return;
     }
+    ArchivePlan(); // the plan it replaces is kept, on the home page
     plan_ = MakePlan();
-    const std::string why = plan_->Start(request);
+    const std::string why = plan_->Start(request, choices);
     post_({{"type", "ai:message"}, {"role", "assistant"},
            {"text", why.empty() ? "Planning the game in the Planner panel: confirm the Game Brief there when it's ready."
                                 : "Couldn't start the plan: " + why}});
@@ -3977,6 +4227,9 @@ void EditorApp::PostPlanner() {
     if (gameBuild_ && !gameBuildJob_) state["build"] = gameBuild_->State();
     else if (gameBuildJob_) state["build"] = {{"active", true}, {"status", "working"}, {"message", "Working (building places, writing files)…"}};
     state["hasPlan"] = PlannerStore(assets_.GetProject().root).HasPlan();
+    state["plans"] = ListPlans(); // the home page: this plan and the earlier ones
+    if (planChoices_.is_null()) planChoices_ = BriefChoices(StoryOntology::ForProject(assets_.GetProject().root));
+    state["choices"] = planChoices_; // and its Choices
     // How the places' builds find their art (the project's setting, the Build panel's too).
     const SourcingSettings sourcing = ReadSourcingSettings(assets_.GetProject().root);
     state["sourcing"] = {{"webSearch", sourcing.webSearch}, {"shareAlike", sourcing.licences.shareAlike}, {"defaultSource", sourcing.defaultSource}};
@@ -3993,11 +4246,51 @@ void EditorApp::PostPlanner() {
 bool EditorApp::HandlePlannerMessage(const std::string& type, const nlohmann::json& message) {
     const fs::path root = assets_.GetProject().root;
     if (type == "planner:start") {
-        StartPlan(message.value("request", ""), message.value("replace", false));
+        StartPlan(message.value("request", ""), message.value("replace", false), message.value("choices", nlohmann::json::object()));
         return true;
     }
     if (type == "planner:show") {
         post_({{"type", "planner:open"}});
+        PostPlanner();
+        return true;
+    }
+    if (type == "planner:openPlan" || type == "planner:removePlan") {
+        // The home page: an earlier plan opened (the current one kept as earlier in its place), or removed.
+        const std::string id = message.value("id", "");
+        if (id.empty() || id.find_first_of("/\\.") != std::string::npos || !fs::is_directory(root / "planner-archive" / id)) return true;
+        if (gameBuildJob_) {
+            post_({{"type", "notify"}, {"text", "The game is still being built: stop it first"}});
+            return true;
+        }
+        std::error_code ec;
+        if (type == "planner:removePlan") {
+            fs::remove_all(root / "planner-archive" / id, ec);
+            post_({{"type", "notify"}, {"text", ec ? "Couldn't remove the plan: " + ec.message() : "Removed the plan"}});
+        } else {
+            ArchivePlan();
+            fs::rename(root / "planner-archive" / id, root / "planner", ec);
+            if (ec) {
+                post_({{"type", "notify"}, {"text", "Couldn't open the plan: " + ec.message()}});
+            } else {
+                plan_ = MakePlan();
+                if (const std::string why = plan_->Open(); !why.empty()) post_({{"type", "notify"}, {"text", "Can't open the plan: " + why}});
+                post_({{"type", "planner:open"}});
+            }
+        }
+        PostPlanner();
+        return true;
+    }
+    if (type == "planner:remove") {
+        // The project's plan, from the Planner's start page (the panel asked first): its documents and history.
+        if (gameBuildJob_) {
+            post_({{"type", "notify"}, {"text", "The game is still being built: stop it first"}});
+            return true;
+        }
+        plan_.reset();
+        gameBuild_.reset();
+        std::error_code ec;
+        fs::remove_all(PlannerStore(root).Dir(), ec);
+        post_({{"type", "notify"}, {"text", ec ? "Couldn't remove the plan: " + ec.message() : "Removed the plan"}});
         PostPlanner();
         return true;
     }
@@ -4375,11 +4668,13 @@ void EditorApp::AddStatsOverlay(std::vector<UiQuad>& ui) {
 }
 
 void EditorApp::Tick(double frameSeconds) {
-    PollAi();
-    FinishBuildJob();
-    StepBuildRun();
-    StepPlannerPlaceBuild();
-    StepGameBuild();
+    const SlowWatch whole("frame (all of Tick: if only this is logged, it was the rest of the frame's work)");
+    { const SlowWatch w("frame: the AI's answers"); PollAi(); }
+    { const SlowWatch w("frame: a build job ending"); FinishBuildJob(); }
+    { const SlowWatch w("frame: a build step"); StepBuildRun(); }
+    { const SlowWatch w("frame: the recovery snapshot"); WriteRecovery(); } // the unsaved scene, every two minutes
+    { const SlowWatch w("frame: the planner's place build"); StepPlannerPlaceBuild(); }
+    { const SlowWatch w("frame: the game build"); StepGameBuild(); }
     // The Grid setting changed (Project Settings, an AI proposal, undo): the
     // whole scene re-lays on the other grid (6.1).
     if (const IsoParams grid = BootstrapIso(); grid.topDown != iso_.topDown) {
@@ -4889,6 +5184,14 @@ void EditorApp::OnBuildResult(int requestId, const nlohmann::json& body) {
     RunBuildJob([requestId, body](PlaceBuild& build) {
         build.OnResponse(requestId, body);
         return std::string();
+    }, "", [this] {
+        // The art waited for the background: it's painted (or failed), the art is found or made now.
+        if (!afterBackground_.empty() && build_ && !build_->MakingBackground()) {
+            const std::string then = afterBackground_;
+            afterBackground_.clear();
+            if (then == "matched") MakeMatched();
+            else FindAssets();
+        }
     });
 }
 
@@ -4918,6 +5221,7 @@ void EditorApp::AfterSourcing() {
             options.iso = iso_;
             options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
             options.hills = HillsFor(build_->Brief());
+            ApplyBackground(options); // a painted background is the ground: no tiles asked for
             const nlohmann::json assets = PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), catalog, prefabs_, assets_, terrains, options, &sourcing);
             build_->MarkSourced(AssetRows(assets));
             // Some still missing, and a method not tried for them yet (the web failed: the Art tool;
@@ -5034,6 +5338,7 @@ nlohmann::json EditorApp::PlanForMatchedArt() {
     options.iso = iso_;
     options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
     options.hills = HillsFor(build_->Brief());
+    ApplyBackground(options); // a painted background is the ground: no tiles asked for
     const AssetSourcing sourcing = SourcingNow();
     return PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), BuildCatalog(assets_, &Places(), CatalogOptionsNow()), prefabs_, assets_,
                            ProjectTerrainSet(prefabs_, assets_.GetProject()), options, &sourcing);
@@ -5081,18 +5386,19 @@ void EditorApp::PostBuild() {
         post_(shown);
         return;
     }
+    for (const auto& u : usageQueue_) {
+        build_->AddUsage(u.value("step", ""), u.value("inputTokens", 0), u.value("outputTokens", 0), u.value("seconds", 0.0));
+    }
+    usageQueue_.clear();
     const std::string stage = build_->Stage();
     if (!build_->HasOrigin() && (stage == "plan" || stage == "planned" || stage == "built")) {
         const auto [x, y] = FreeOrigin(registry_, build_->Id(), build_->SiteSide());
         build_->SetOrigin(x, y);
     }
-    // ② The layout, checked by the vision model as soon as it's there (its errors revised).
-    if (stage == "layout" && !build_->LayoutChecked() && !buildJob_ && !buildRun_ && Ai() && Ai()->GetState() == AiClient::State::Ready) {
-        build_->CheckLayout();
-    }
     // ③ Assets: the decisions, as soon as the plan is approved.
-    if (stage == "planned" && !build_->HasAssetNeeds() && !buildJob_ && !buildRun_) PreviewAssets();
+    if ((stage == "planned" || stage == "sourced") && !build_->HasAssetNeeds() && !buildJob_ && !buildRun_) PreviewAssets();
     buildShown_ = build_->State();
+    buildShown_["afterBackground"] = afterBackground_;
     post_(buildShown_);
     post_(build_->Card());
 }
@@ -5128,6 +5434,7 @@ void EditorApp::PreviewAssets() {
     options.iso = iso_;
     options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
     options.hills = HillsFor(build_->Brief());
+    ApplyBackground(options); // a painted background is the ground: no tiles asked for
     const TerrainSet terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
     const Catalog catalog = BuildCatalog(assets_, &Places(), CatalogOptionsNow());
     const AssetSourcing sourcing = SourcingNow();
@@ -5149,6 +5456,20 @@ void EditorApp::SetNeedChoice(const std::string& key, const nlohmann::json& choi
     std::ofstream(file) << saved.dump(2) << "\n";
 }
 
+void EditorApp::MakeMatched() {
+    // ③ Matched art (docs/places/matched-art.md): every need made by the art provider in one style, then cut
+    // (CutMatchedArt).
+    if (!build_ || buildJob_ || buildRun_) return;
+    const std::string stage = build_->Stage();
+    if (stage != "planned" && stage != "sourced" && stage != "built") {
+        post_({{"type", "notify"}, {"text", "Not yet: approve the plan first"}});
+        return;
+    }
+    if (const std::string why = build_->MakeMatchedArt(PlanForMatchedArt(), &Places()); !why.empty()) {
+        post_({{"type", "notify"}, {"text", "No matched art: " + why}});
+    }
+}
+
 void EditorApp::FindAssets() {
     // ③ Assets: each part's art decided (the project, the library, the web, the Art tool); what's
     // to be made or fetched starts, and the panel shows it as it comes. Build waits for the user.
@@ -5168,6 +5489,7 @@ void EditorApp::FindAssets() {
     options.iso = iso_;
     options.isoGrid = ActiveSettings().grid.style != GridStyle::TopDown;
     options.hills = HillsFor(build_->Brief());
+    ApplyBackground(options); // a painted background is the ground: no tiles asked for
     const TerrainSet terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
     const Catalog catalog = BuildCatalog(assets_, &Places(), CatalogOptionsNow());
     const AssetSourcing sourcing = SourcingNow();
@@ -5303,10 +5625,6 @@ void EditorApp::StepBuildRun() {
             build_->Built({{"assets", run.assets}, {"report", run.report}, {"verify", run.verify}, {"repairs", run.repairs}, {"after", run.after},
                            {"origin", {run.options.originX, run.options.originY}},
                            {"image", "places/" + build_->Id() + "/scene.png?v=" + std::to_string(++pictures)}});
-            // The vision model looks at it as the game draws it, in windows (docs/build-fixes.md).
-            if (Ai() && Ai()->GetState() == AiClient::State::Ready) {
-                build_->InspectBuilt(InspectBuildRequest(registry_, assets_.GetProject(), iso_, *build_, run.options.originX, run.options.originY, 56, &Places()));
-            }
             // Look at it.
             const int side = build_->SiteSide();
             const ScreenPose centre = ProjectIso(run.options.originX + side / 2.0f, run.options.originY + side / 2.0f, iso_);
@@ -6544,7 +6862,7 @@ std::filesystem::path EditorApp::UserLibraryDir() {
 }
 
 void EditorApp::PostLibrary() {
-    nlohmann::json state = UserLibrary(UserLibraryDir()).State();
+    nlohmann::json state = UserLibrary(UserLibraryDir()).State(assets_.GetProject().root);
     state["type"] = "library:state";
     post_(state);
 }

@@ -41,7 +41,8 @@
     "affordance": "environmental-object",
     "look": {
       "variety": "high"
-    }
+    },
+    "storey": 2.0
   },
   "house": {
     "label": "house",
@@ -134,6 +135,10 @@
       "orient": "none",
       "variety": "medium",
       "views": 1
+    },
+    "relative": {
+      "to": "tree",
+      "height": 0.3
     }
   },
   "tree": {
@@ -145,6 +150,10 @@
     "draw": "a leafy deciduous tree with a full round crown and a short brown trunk",
     "look": {
       "vary": true
+    },
+    "relative": {
+      "to": "storey",
+      "height": 1.0
     }
   },
   "bush": {
@@ -156,6 +165,10 @@
     "draw": "a round, dense, leafy green bush",
     "look": {
       "vary": true
+    },
+    "relative": {
+      "to": "tree",
+      "height": 0.3
     }
   },
   "flower": {
@@ -167,6 +180,10 @@
     "draw": "a small loose clump of wildflowers among their green leaves, low to the ground, with no pot and no planter",
     "look": {
       "vary": true
+    },
+    "relative": {
+      "to": "tree",
+      "height": 0.12
     }
   },
   "crop": {
@@ -178,6 +195,10 @@
     "draw": "a few young green crop plants sprouting straight from the earth, with no box, no planter and no square of soil around them",
     "look": {
       "vary": true
+    },
+    "relative": {
+      "to": "tree",
+      "height": 0.2
     }
   },
   "herb": {
@@ -189,6 +210,10 @@
     "draw": "a small loose clump of garden herbs, with no pot and no planter",
     "look": {
       "vary": true
+    },
+    "relative": {
+      "to": "tree",
+      "height": 0.12
     }
   },
   "grass": {
@@ -200,6 +225,10 @@
     "draw": "a small tuft of tall green grass blades",
     "look": {
       "vary": true
+    },
+    "relative": {
+      "to": "tree",
+      "height": 0.12
     }
   },
   "hedge": {
@@ -208,6 +237,11 @@
     "broader": "plant",
     "look": {
       "run": true
+    },
+    "relative": {
+      "to": "tree",
+      "height": 0.45,
+      "width": 0.8
     }
   },
   "fruit-tree": {
@@ -216,7 +250,11 @@
     "broader": "tree",
     "size": 1.1,
     "tall": 1.4,
-    "draw": "a small fruit tree with red fruit in its leaves"
+    "draw": "a small fruit tree with red fruit in its leaves",
+    "relative": {
+      "to": "tree",
+      "height": 0.8
+    }
   },
   "piece-set": {
     "label": "piece set",
@@ -257,7 +295,11 @@
     "broader": "piece-set",
     "size": 1.0,
     "tall": 0.4,
-    "draw": "a section of wooden pier planks on posts"
+    "draw": "a section of wooden pier planks on posts",
+    "relative": {
+      "to": "door",
+      "height": 0.15
+    }
   },
   "bank-piece": {
     "label": "bank piece",
@@ -293,6 +335,11 @@
       "variety": "medium",
       "views": 2,
       "faces": "room"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 0.5
     }
   },
   "reed": {
@@ -306,6 +353,10 @@
       "vary": true,
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "tree",
+      "height": 0.35
     }
   },
   "log": {
@@ -319,6 +370,10 @@
       "vary": true,
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "storey",
+      "height": 0.12
     }
   },
   "mushroom": {
@@ -332,6 +387,10 @@
       "vary": true,
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "tree",
+      "height": 0.06
     }
   },
   "rock": {
@@ -353,6 +412,10 @@
           "to": "background"
         }
       ]
+    },
+    "relative": {
+      "to": "storey",
+      "height": 0.12
     }
   },
   "mound": {
@@ -373,6 +436,10 @@
           "to": "background"
         }
       ]
+    },
+    "relative": {
+      "to": "storey",
+      "height": 0.2
     }
   },
   "boulder": {
@@ -394,6 +461,10 @@
           "to": "background"
         }
       ]
+    },
+    "relative": {
+      "to": "storey",
+      "height": 0.35
     }
   },
   "bridge": {
@@ -416,6 +487,11 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "storey",
+      "height": 3.0,
+      "width": 0.75
     }
   },
   "gate": {
@@ -433,6 +509,11 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.2,
+      "width": 1.2
     }
   },
   "light-prop": {
@@ -457,12 +538,21 @@
     },
     "draw": "a light that suits the place: a burning torch in an iron wall bracket, a brazier, a candle stand or a lantern, whichever such a place has",
     "size": 0.3,
-    "tall": 1.6
+    "tall": 1.6,
+    "relative": {
+      "to": "door",
+      "height": 1.4
+    }
   },
   "decal": {
     "label": "decal",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "relative": {
+      "to": "door",
+      "height": 0.05,
+      "width": 0.6
+    }
   },
   "well": {
     "label": "well",
@@ -481,6 +571,10 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.9
     }
   },
   "fountain": {
@@ -494,6 +588,10 @@
       "at": "centre",
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.8
     }
   },
   "statue": {
@@ -506,6 +604,10 @@
     "look": {
       "at": "centre",
       "variety": "medium"
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.4
     }
   },
   "garden-bed": {
@@ -514,12 +616,21 @@
     "broader": "prop",
     "size": 1.0,
     "tall": 0.4,
-    "draw": "a raised wooden garden bed with vegetables"
+    "draw": "a raised wooden garden bed with vegetables",
+    "relative": {
+      "to": "tree",
+      "height": 0.08
+    }
   },
   "garden-prop": {
     "label": "garden prop",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "relative": {
+      "to": "door",
+      "height": 0.4,
+      "width": 0.5
+    }
   },
   "grave": {
     "label": "grave",
@@ -530,6 +641,10 @@
     "draw": "a grave with a small stone",
     "look": {
       "orient": "none"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.15
     }
   },
   "headstone": {
@@ -547,6 +662,10 @@
           "to": "grave"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.45
     }
   },
   "crypt": {
@@ -560,12 +679,22 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "storey",
+      "height": 1.2,
+      "width": 1.0
     }
   },
   "awning": {
     "label": "awning",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "relative": {
+      "to": "door",
+      "height": 0.4,
+      "width": 1.5
+    }
   },
   "log-pile": {
     "label": "log pile",
@@ -578,12 +707,21 @@
       "at": "wall",
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "storey",
+      "height": 0.25
     }
   },
   "saw": {
     "label": "saw",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 0.6
+    }
   },
   "boat": {
     "label": "boat",
@@ -591,7 +729,11 @@
     "broader": "prop",
     "size": 1.5,
     "tall": 0.6,
-    "draw": "a small wooden rowing boat"
+    "draw": "a small wooden rowing boat",
+    "relative": {
+      "to": "door",
+      "height": 0.5
+    }
   },
   "trough": {
     "label": "trough",
@@ -602,6 +744,10 @@
     "draw": "a wooden water trough",
     "look": {
       "at": "wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.3
     }
   },
   "hay": {
@@ -615,6 +761,10 @@
       "at": "wall",
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "tree",
+      "height": 0.3
     }
   },
   "shore-prop": {
@@ -623,7 +773,11 @@
     "broader": "prop",
     "size": 0.6,
     "tall": 0.5,
-    "draw": "a few smooth stones and reeds at a riverbank"
+    "draw": "a few smooth stones and reeds at a riverbank",
+    "relative": {
+      "to": "door",
+      "height": 0.3
+    }
   },
   "stall": {
     "label": "stall",
@@ -631,7 +785,11 @@
     "broader": "prop",
     "size": 1.4,
     "tall": 1.0,
-    "draw": "a market stall with a striped cloth awning and goods on its table"
+    "draw": "a market stall with a striped cloth awning and goods on its table",
+    "relative": {
+      "to": "door",
+      "height": 1.3
+    }
   },
   "sign": {
     "label": "sign",
@@ -639,7 +797,11 @@
     "broader": "prop",
     "size": 0.35,
     "tall": 1.0,
-    "draw": "a small wooden signpost"
+    "draw": "a small wooden signpost",
+    "relative": {
+      "to": "door",
+      "height": 0.9
+    }
   },
   "lamp": {
     "label": "lamp",
@@ -655,6 +817,10 @@
       },
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.5
     }
   },
   "barrel": {
@@ -668,6 +834,10 @@
       "at": "wall",
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.45
     }
   },
   "crate": {
@@ -681,6 +851,10 @@
       "at": "wall",
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.4
     }
   },
   "sack": {
@@ -694,6 +868,10 @@
       "at": "wall",
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.35
     }
   },
   "cart": {
@@ -702,7 +880,11 @@
     "broader": "prop",
     "size": 1.2,
     "tall": 0.8,
-    "draw": "a wooden hand cart with two wheels"
+    "draw": "a wooden hand cart with two wheels",
+    "relative": {
+      "to": "door",
+      "height": 0.8
+    }
   },
   "tool": {
     "label": "tool",
@@ -715,6 +897,10 @@
       "at": "wall",
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.6
     }
   },
   "pot": {
@@ -728,6 +914,10 @@
       "at": "wall",
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.3
     }
   },
   "bench": {
@@ -750,6 +940,10 @@
         }
       ],
       "faces": "room"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.35
     }
   },
   "animal": {
@@ -762,12 +956,20 @@
     "broader": "building",
     "size": 2.0,
     "tall": 1.0,
-    "draw": "a canvas tent"
+    "draw": "a canvas tent",
+    "relative": {
+      "to": "storey",
+      "height": 1.0
+    }
   },
   "command-tent": {
     "label": "command tent",
     "affordance": "environmental-object",
-    "broader": "tent"
+    "broader": "tent",
+    "relative": {
+      "to": "storey",
+      "height": 1.3
+    }
   },
   "keep": {
     "label": "keep",
@@ -822,22 +1024,42 @@
       "at": "centre",
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.35,
+      "width": 0.7
     }
   },
   "hitching-post": {
     "label": "hitching post",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "relative": {
+      "to": "door",
+      "height": 0.6,
+      "width": 0.8
+    }
   },
   "lookout": {
     "label": "lookout",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "relative": {
+      "to": "storey",
+      "height": 2.0,
+      "width": 0.6
+    }
   },
   "training-dummy": {
     "label": "training dummy",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "relative": {
+      "to": "door",
+      "height": 1.1,
+      "width": 0.5
+    }
   },
   "weapon-rack": {
     "label": "weapon rack",
@@ -851,6 +1073,11 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.9,
+      "width": 0.9
     }
   },
   "drawbridge": {
@@ -865,6 +1092,11 @@
           "to": "gatehouse"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.1,
+      "width": 1.5
     }
   },
   "standing-stone": {
@@ -874,12 +1106,22 @@
     "look": {
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.5,
+      "width": 0.6
     }
   },
   "shrine": {
     "label": "shrine",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "relative": {
+      "to": "door",
+      "height": 1.1,
+      "width": 0.9
+    }
   },
   "cave-mouth": {
     "label": "cave mouth",
@@ -887,6 +1129,11 @@
     "broader": "prop",
     "look": {
       "orient": "none"
+    },
+    "relative": {
+      "to": "storey",
+      "height": 1.2,
+      "width": 0.75
     }
   },
   "door": {
@@ -912,6 +1159,10 @@
       ],
       "faces": "across",
       "turns": "wall-only"
+    },
+    "relative": {
+      "to": "storey",
+      "height": 0.7
     }
   },
   "stairs": {
@@ -940,6 +1191,11 @@
       ],
       "faces": "away-from-wall",
       "turns": "wall-only"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.6,
+      "width": 1.0
     }
   },
   "chest": {
@@ -955,6 +1211,11 @@
         }
       ],
       "faces": "away-from-wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.35,
+      "width": 0.7
     }
   },
   "altar": {
@@ -974,12 +1235,22 @@
         }
       ],
       "faces": "away-from-wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.6,
+      "width": 1.2
     }
   },
   "trap": {
     "label": "trap",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "relative": {
+      "to": "door",
+      "height": 0.05,
+      "width": 0.8
+    }
   },
   "pillar": {
     "label": "pillar",
@@ -999,6 +1270,11 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "storey",
+      "height": 1.5,
+      "width": 0.25
     }
   },
   "cage": {
@@ -1007,6 +1283,11 @@
     "broader": "prop",
     "look": {
       "at": "wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.9,
+      "width": 0.8
     }
   },
   "sarcophagus": {
@@ -1021,6 +1302,11 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.45,
+      "width": 1.2
     }
   },
   "bookshelf": {
@@ -1036,12 +1322,22 @@
         }
       ],
       "faces": "away-from-wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.1,
+      "width": 1.0
     }
   },
   "lever": {
     "label": "lever",
     "affordance": "interactive-object",
-    "broader": "prop"
+    "broader": "prop",
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 0.3
+    }
   },
   "bed": {
     "label": "bed",
@@ -1057,6 +1353,11 @@
       ],
       "faces": "away-from-wall",
       "turns": "wall-only"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.4,
+      "width": 1.2
     }
   },
   "table": {
@@ -1065,6 +1366,11 @@
     "broader": "prop",
     "look": {
       "at": "centre"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.45,
+      "width": 1.0
     }
   },
   "chair": {
@@ -1083,6 +1389,11 @@
         }
       ],
       "faces": "room"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.55,
+      "width": 0.5
     }
   },
   "nightstand": {
@@ -1100,6 +1411,11 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.35,
+      "width": 0.5
     }
   },
   "fireplace": {
@@ -1120,6 +1436,11 @@
       ],
       "faces": "away-from-wall",
       "turns": "wall-only"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.8,
+      "width": 1.0
     }
   },
   "counter": {
@@ -1135,6 +1456,11 @@
         }
       ],
       "faces": "away-from-wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.6,
+      "width": 1.5
     }
   },
   "stool": {
@@ -1153,6 +1479,11 @@
         }
       ],
       "faces": "room"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.35,
+      "width": 0.4
     }
   },
   "shelf": {
@@ -1168,6 +1499,11 @@
         }
       ],
       "faces": "away-from-wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.0,
+      "width": 0.8
     }
   },
   "workbench": {
@@ -1182,6 +1518,11 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.55,
+      "width": 1.2
     }
   },
   "anvil": {
@@ -1190,6 +1531,11 @@
     "broader": "prop",
     "look": {
       "at": "wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.35,
+      "width": 0.6
     }
   },
   "display-stand": {
@@ -1198,6 +1544,11 @@
     "broader": "prop",
     "look": {
       "at": "wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.7,
+      "width": 0.7
     }
   },
   "lectern": {
@@ -1206,6 +1557,11 @@
     "broader": "prop",
     "look": {
       "at": "wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.7,
+      "width": 0.5
     }
   },
   "throne": {
@@ -1221,6 +1577,11 @@
         }
       ],
       "faces": "away-from-wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.0,
+      "width": 0.8
     }
   },
   "banner": {
@@ -1242,7 +1603,11 @@
       ]
     },
     "size": 0.45,
-    "tall": 1.2
+    "tall": 1.2,
+    "relative": {
+      "to": "door",
+      "height": 1.0
+    }
   },
   "pew": {
     "label": "pew",
@@ -1257,6 +1622,11 @@
         }
       ],
       "faces": "room"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 1.5
     }
   },
   "cupboard": {
@@ -1272,6 +1642,11 @@
         }
       ],
       "faces": "away-from-wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.0,
+      "width": 0.8
     }
   },
   "stove": {
@@ -1287,6 +1662,11 @@
         }
       ],
       "faces": "away-from-wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.55,
+      "width": 0.7
     }
   },
   "wardrobe": {
@@ -1302,6 +1682,11 @@
         }
       ],
       "faces": "away-from-wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.1,
+      "width": 0.9
     }
   },
   "desk": {
@@ -1316,6 +1701,11 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 1.0
     }
   },
   "wall-decor": {
@@ -1337,7 +1727,11 @@
       ]
     },
     "size": 0.4,
-    "tall": 1.2
+    "tall": 1.2,
+    "relative": {
+      "to": "door",
+      "height": 0.5
+    }
   },
   "candle": {
     "label": "candle",
@@ -1353,7 +1747,12 @@
   "stand": {
     "label": "stand",
     "affordance": "environmental-object",
-    "broader": "prop"
+    "broader": "prop",
+    "relative": {
+      "to": "door",
+      "height": 0.8,
+      "width": 0.6
+    }
   },
   "locked-door": {
     "label": "locked door",
@@ -1399,6 +1798,11 @@
     "look": {
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.08,
+      "width": 0.2
     }
   },
   "loot": {
@@ -1410,6 +1814,11 @@
       "orient": "none",
       "variety": "medium",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.25,
+      "width": 0.5
     }
   },
   "enemy": {
@@ -1436,6 +1845,11 @@
     "broader": "decal",
     "look": {
       "at": "centre"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.02,
+      "width": 1.5
     }
   },
   "debris": {
@@ -1456,6 +1870,11 @@
         }
       ],
       "faces": "room"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.08,
+      "width": 0.6
     }
   },
   "bones": {
@@ -1466,6 +1885,11 @@
       "at": "corner",
       "variety": "medium",
       "faces": "room"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.08,
+      "width": 0.5
     }
   },
   "floor-tile": {
@@ -1498,6 +1922,11 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.7,
+      "width": 0.8
     }
   },
   "wall-block": {
@@ -1896,6 +2325,10 @@
           "to": "road-terrain"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.75
     }
   },
   "car": {
@@ -1907,6 +2340,10 @@
     "draw": "a modern car (a sedan, hatchback or SUV) in a varied colour, seen from above at an angle",
     "look": {
       "variety": "high"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.75
     }
   },
   "taxi": {
@@ -1915,7 +2352,11 @@
     "broader": "car",
     "size": 1.0,
     "tall": 0.5,
-    "draw": "a yellow taxi"
+    "draw": "a yellow taxi",
+    "relative": {
+      "to": "door",
+      "height": 0.75
+    }
   },
   "police-car": {
     "label": "police car",
@@ -1923,7 +2364,11 @@
     "broader": "car",
     "size": 1.0,
     "tall": 0.5,
-    "draw": "a police car with a light bar"
+    "draw": "a police car with a light bar",
+    "relative": {
+      "to": "door",
+      "height": 0.8
+    }
   },
   "van": {
     "label": "van",
@@ -1931,7 +2376,11 @@
     "broader": "vehicle",
     "size": 1.2,
     "tall": 0.6,
-    "draw": "a delivery van"
+    "draw": "a delivery van",
+    "relative": {
+      "to": "door",
+      "height": 1.1
+    }
   },
   "truck": {
     "label": "truck",
@@ -1939,7 +2388,11 @@
     "broader": "vehicle",
     "size": 2.0,
     "tall": 0.6,
-    "draw": "a lorry with a box trailer"
+    "draw": "a lorry with a box trailer",
+    "relative": {
+      "to": "door",
+      "height": 1.6
+    }
   },
   "fire-truck": {
     "label": "fire truck",
@@ -1947,7 +2400,11 @@
     "broader": "truck",
     "size": 2.0,
     "tall": 0.6,
-    "draw": "a red fire engine"
+    "draw": "a red fire engine",
+    "relative": {
+      "to": "door",
+      "height": 1.6
+    }
   },
   "bus": {
     "label": "bus",
@@ -1955,7 +2412,11 @@
     "broader": "vehicle",
     "size": 3.0,
     "tall": 0.4,
-    "draw": "a city bus"
+    "draw": "a city bus",
+    "relative": {
+      "to": "door",
+      "height": 1.7
+    }
   },
   "bicycle": {
     "label": "bicycle",
@@ -1966,6 +2427,10 @@
     "draw": "a parked bicycle",
     "look": {
       "variety": "low"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.5
     }
   },
   "street-light": {
@@ -1981,6 +2446,10 @@
         "strength": 1.0
       },
       "at": "edge"
+    },
+    "relative": {
+      "to": "door",
+      "height": 2.2
     }
   },
   "traffic-light": {
@@ -1994,6 +2463,10 @@
       "orient": "none",
       "variety": "low",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.9
     }
   },
   "road-sign": {
@@ -2005,6 +2478,10 @@
     "draw": "a road sign on a pole (a stop sign, a street name, a speed limit)",
     "look": {
       "variety": "low"
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.5
     }
   },
   "bus-stop": {
@@ -2022,6 +2499,10 @@
           "to": "road-terrain"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.3
     }
   },
   "park-bench": {
@@ -2030,7 +2511,11 @@
     "broader": "bench",
     "size": 1.0,
     "tall": 0.6,
-    "draw": "a wooden park bench with iron legs"
+    "draw": "a wooden park bench with iron legs",
+    "relative": {
+      "to": "door",
+      "height": 0.4
+    }
   },
   "trash-bin": {
     "label": "trash bin",
@@ -2043,6 +2528,10 @@
       "orient": "none",
       "variety": "low",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.5
     }
   },
   "fire-hydrant": {
@@ -2056,6 +2545,10 @@
       "orient": "none",
       "variety": "low",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.4
     }
   },
   "mailbox": {
@@ -2067,6 +2560,10 @@
     "draw": "a mailbox",
     "look": {
       "variety": "low"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.6
     }
   },
   "bollard": {
@@ -2080,6 +2577,10 @@
       "orient": "none",
       "variety": "low",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.4
     }
   },
   "planter": {
@@ -2093,6 +2594,10 @@
       "orient": "none",
       "variety": "low",
       "views": 1
+    },
+    "relative": {
+      "to": "tree",
+      "height": 0.2
     }
   },
   "kiosk": {
@@ -2101,7 +2606,11 @@
     "broader": "stall",
     "size": 1.2,
     "tall": 1.0,
-    "draw": "a small news kiosk"
+    "draw": "a small news kiosk",
+    "relative": {
+      "to": "door",
+      "height": 1.3
+    }
   },
   "billboard": {
     "label": "billboard",
@@ -2117,6 +2626,10 @@
           "to": "road-terrain"
         }
       ]
+    },
+    "relative": {
+      "to": "storey",
+      "height": 1.5
     }
   },
   "vending-machine": {
@@ -2133,6 +2646,10 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.95
     }
   },
   "parking-meter": {
@@ -2146,6 +2663,10 @@
       "orient": "none",
       "variety": "low",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.8
     }
   },
   "utility-pole": {
@@ -2159,6 +2680,10 @@
       "orient": "none",
       "variety": "low",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 3.0
     }
   },
   "ac-unit": {
@@ -2167,7 +2692,11 @@
     "broader": "prop",
     "size": 0.6,
     "tall": 0.6,
-    "draw": "an air-conditioning unit"
+    "draw": "an air-conditioning unit",
+    "relative": {
+      "to": "door",
+      "height": 0.45
+    }
   },
   "fuel-pump": {
     "label": "fuel pump",
@@ -2183,6 +2712,10 @@
           "to": "gas-station"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.9
     }
   },
   "flagpole": {
@@ -2196,6 +2729,10 @@
       "orient": "none",
       "variety": "low",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 3.5
     }
   },
   "playground-set": {
@@ -2204,7 +2741,11 @@
     "broader": "prop",
     "size": 2.0,
     "tall": 0.8,
-    "draw": "a children's playground climbing frame with a slide and swings"
+    "draw": "a children's playground climbing frame with a slide and swings",
+    "relative": {
+      "to": "door",
+      "height": 1.3
+    }
   },
   "sports-hoop": {
     "label": "basketball hoop",
@@ -2212,7 +2753,11 @@
     "broader": "prop",
     "size": 0.4,
     "tall": 3.0,
-    "draw": "a basketball hoop on a pole"
+    "draw": "a basketball hoop on a pole",
+    "relative": {
+      "to": "door",
+      "height": 2.0
+    }
   },
   "cafe-table": {
     "label": "café table",
@@ -2220,7 +2765,11 @@
     "broader": "table",
     "size": 0.8,
     "tall": 0.8,
-    "draw": "a small outdoor café table with chairs and a parasol"
+    "draw": "a small outdoor café table with chairs and a parasol",
+    "relative": {
+      "to": "door",
+      "height": 0.5
+    }
   },
   "road-marking": {
     "label": "road marking",
@@ -2267,6 +2816,10 @@
           "to": "coffee-table"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.45
     }
   },
   "tv": {
@@ -2284,6 +2837,10 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.4
     }
   },
   "coffee-table": {
@@ -2295,6 +2852,10 @@
     "draw": "a low coffee table",
     "look": {
       "near": "sofa"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.25
     }
   },
   "fridge": {
@@ -2313,6 +2874,10 @@
         }
       ],
       "faces": "away-from-wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.0
     }
   },
   "sink": {
@@ -2330,6 +2895,10 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.55
     }
   },
   "toilet": {
@@ -2347,6 +2916,10 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.45
     }
   },
   "shower": {
@@ -2364,6 +2937,10 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.15
     }
   },
   "office-desk": {
@@ -2372,7 +2949,11 @@
     "broader": "prop",
     "size": 1.4,
     "tall": 0.6,
-    "draw": "a modern office desk with a monitor"
+    "draw": "a modern office desk with a monitor",
+    "relative": {
+      "to": "door",
+      "height": 0.45
+    }
   },
   "office-chair": {
     "label": "office chair",
@@ -2390,6 +2971,10 @@
         }
       ],
       "faces": "room"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.6
     }
   },
   "filing-cabinet": {
@@ -2407,6 +2992,10 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.75
     }
   },
   "meeting-table": {
@@ -2418,6 +3007,10 @@
     "draw": "a long meeting table",
     "look": {
       "at": "centre"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.45
     }
   },
   "whiteboard": {
@@ -2436,6 +3029,10 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.7
     }
   },
   "reception-desk": {
@@ -2448,6 +3045,10 @@
     "look": {
       "at": "centre",
       "faces": "door"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.6
     }
   },
   "potted-plant": {
@@ -2461,6 +3062,10 @@
       "at": "corner",
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "tree",
+      "height": 0.35
     }
   },
   "checkout-counter": {
@@ -2473,6 +3078,10 @@
     "look": {
       "at": "wall",
       "faces": "door"
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.55
     }
   },
   "store-shelf": {
@@ -2481,7 +3090,11 @@
     "broader": "shelf",
     "size": 2.0,
     "tall": 0.9,
-    "draw": "a shop shelving unit full of goods"
+    "draw": "a shop shelving unit full of goods",
+    "relative": {
+      "to": "door",
+      "height": 1.0
+    }
   },
   "school-desk": {
     "label": "school desk",
@@ -2497,6 +3110,10 @@
           "to": "whiteboard"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.45
     }
   },
   "copier": {
@@ -2514,6 +3131,10 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.65
     }
   },
   "water-cooler": {
@@ -2531,6 +3152,10 @@
           "to": "wall-block"
         }
       ]
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.75
     }
   },
   "locker": {
@@ -2549,6 +3174,10 @@
         }
       ],
       "faces": "away-from-wall"
+    },
+    "relative": {
+      "to": "door",
+      "height": 1.1
     }
   },
   "ceiling-light": {
@@ -2565,6 +3194,10 @@
       },
       "orient": "none",
       "views": 1
+    },
+    "relative": {
+      "to": "door",
+      "height": 0.1
     }
   },
   "flowerbed": {
@@ -2576,6 +3209,10 @@
     "draw": "a neat flowerbed of colourful flowers in a low stone edging",
     "look": {
       "vary": false
+    },
+    "relative": {
+      "to": "tree",
+      "height": 0.06
     }
   },
   "picnic-table": {
@@ -2584,7 +3221,11 @@
     "broader": "table",
     "size": 1.2,
     "tall": 0.5,
-    "draw": "a wooden picnic table with its benches"
+    "draw": "a wooden picnic table with its benches",
+    "relative": {
+      "to": "door",
+      "height": 0.4
+    }
   },
   "background": {
     "label": "background",

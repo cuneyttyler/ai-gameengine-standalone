@@ -138,6 +138,11 @@ struct Role {
     // "": its broader role's (place-refine.md §2).
     float size = 0.0f;
     float tall = 0.0f;
+    // How big it is against what it appears with (docs/places/ontology-in-use.md, Relative sizes): {to: a role, or
+    // "storey" (a building's storey), height: a share of its height, width: of its width}. Resolved at load into size
+    // and tall (its height for its width), so every role's size agrees with the others'.
+    nlohmann::json relative;
+    float storey = 0.0f; // a building role's storey height (cell widths): what "storey" means in a relative size
     std::string draw;
     nlohmann::json look; // how it shows (vary, light {radius, strength}, doorway): place-refine.md §13
 };
@@ -263,6 +268,7 @@ private:
     std::map<std::string, ModuleClass> classes_;
     // A module's "extends" (its parents, the build types offering it) and extensions.json files
     // (fields on modules, children, components), applied once every folder is loaded.
+    void ResolveRelativeSizes(std::vector<std::string>& problems); // roles' relative sizes into size and tall
     void ApplyExtensions(const nlohmann::json& extensions, std::vector<std::string>& problems);
     std::map<std::string, ModuleDef> modules_;
     std::map<std::string, BuildType> builds_;

@@ -31,6 +31,7 @@ interface Item {
   created?: number
   shared?: string
   meta?: Record<string, string>
+  inProject?: boolean // the same picture is among the open project's assets
 }
 interface Library {
   folders: Folder[]
@@ -54,7 +55,7 @@ function resizeDetails(y: number): void {
 // Art already in the open project (it came from it, or was added from here): no "Add to the project".
 const added = ref(new Set<string>())
 function inProject(i: Item): boolean {
-  return added.value.has(i.id) || (i.source === 'project' && !!i.origin && i.origin === projectState.name)
+  return added.value.has(i.id) || !!i.inProject || (i.source === 'project' && !!i.origin && i.origin === projectState.name)
 }
 function toProject(i: Item): void {
   if (inProject(i)) return
@@ -123,7 +124,7 @@ function moveTo(i: Item): MenuItem[] {
 function itemMenu(i: Item, e: MouseEvent): void {
   selected.value = i.id
   const items: MenuItem[] = [
-    { label: 'Add to the project', action: () => sendToHost({ type: 'library:toProject', item: i.id }) },
+    ...(inProject(i) ? [] : [{ label: 'Add to the project', action: () => toProject(i) }]),
     { label: 'Move to', submenu: moveTo(i) },
     {
       label: 'Rename…',
@@ -211,7 +212,8 @@ function when(seconds?: number): string {
         @dblclick="toProject(i)"
         @contextmenu.prevent="itemMenu(i, $event)"
       >
-        <img :src="LIBRARY_HOST + i.path" alt="" loading="lazy" />
+        <span class="pic"><img :src="LIBRARY_HOST + i.path" alt="" decoding="async" /></span>
+        <span v-if="inProject(i)" class="in" title="In the project">✓</span>
         <span class="name">{{ i.name }}</span>
         <span v-if="i.source === 'generated' && i.shared === 'yes'" class="badge" title="Offered to other users">↗</span>
       </button>
@@ -295,7 +297,7 @@ function when(seconds?: number): string {
   min-height: 0;
   overflow: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 6px;
   padding: 6px;
   align-content: start;
@@ -314,12 +316,28 @@ function when(seconds?: number): string {
 .card.picked {
   border-color: #3b82f6;
 }
-.card img {
+/* The picture in a square, at its own size when it's small (a 64 px sprite isn't blown up into a blur), else fitted;
+   a dark checkerboard behind shows its clear edges. */
+.card .pic {
   width: 100%;
   aspect-ratio: 1;
-  object-fit: contain;
-  /* Painted art drawn smooth (pixelated made it blocky); a dark checkerboard shows its clear edges. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
   background: repeating-conic-gradient(#1c1c28 0 25%, #16161f 0 50%) 0 0 / 16px 16px;
+}
+.card .pic img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: scale-down;
+}
+.card .in {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  color: #89b4fa;
+  font-size: 11px;
 }
 .card .icon {
   font-size: 48px;

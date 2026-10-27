@@ -5,6 +5,7 @@
     {"id": "game", "label": "Game", "fields": [
       {"path": "title", "label": "Title", "type": "text", "asked": true},
       {"path": "logline", "label": "Logline", "type": "text", "asked": true, "max": 300},
+      {"path": "synopsis", "label": "Synopsis", "type": "text", "asked": true, "lines": 5, "max": 1500},
       {"path": "genre", "label": "Genre", "type": "enum", "asked": true, "options": ["arpg", "rpg", "action-adventure", "life-sim"]},
       {"path": "perspective", "label": "Perspective", "type": "enum", "asked": true, "options": ["isometric", "top-down"]},
       {"path": "camera", "label": "Camera", "type": "enum", "options": ["follow", "fixed-screen", "rooms"]},

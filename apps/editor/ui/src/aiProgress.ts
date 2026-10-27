@@ -14,6 +14,17 @@ export interface AiCall {
   outputTokens: number
   thinkingTokens: number
   answerTokens: number
+  step?: string // a request of several steps: what it does now, and how far (done of total)
+  done?: number
+  total?: number
+  plan?: AiStep[] // its steps known beforehand (matched art: each sheet and its pieces, the check, the fixes)
+}
+
+export interface AiStep {
+  id: string
+  label: string
+  state: string // waiting, working, done, failed
+  pieces: { name: string; slug: string; made?: boolean; path?: string }[]
 }
 
 export const aiCalls = ref<AiCall[]>([])

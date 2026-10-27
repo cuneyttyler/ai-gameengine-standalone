@@ -52,6 +52,9 @@ void Launcher::OnWebMessage(const nlohmann::json& message) {
         }
     } else if (type == "welcome:demo") {
         Open(demo_);
+    } else if (type == "project:location") {
+        // New Project opened: the folder the last project was created in (the user's prefs, read fresh).
+        post_({{"type", "project:location"}, {"path", UserPrefs(UserPrefs::DefaultPath()).Get("newProjectFolder", "")}});
     } else if (type == "project:browse") {
         // New Project's Browse…: the folder back to its window.
         if (auto folder = ShowFolderDialog(window_, Utf8ToWide(message.value("title", "Where to create the project")))) {
@@ -64,6 +67,7 @@ void Launcher::OnWebMessage(const nlohmann::json& message) {
             return;
         }
         const std::filesystem::path root = std::filesystem::path(Utf8ToWide(location)) / Utf8ToWide(name);
+        UserPrefs(UserPrefs::DefaultPath()).Set("newProjectFolder", location); // offered next time
         std::map<std::string, std::string> ai;
         for (const auto& [k, v] : message.value("ai", nlohmann::json::object()).items()) {
             if (v.is_string()) ai[k] = v.get<std::string>();

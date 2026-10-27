@@ -11,6 +11,8 @@ const backdrop = ref<HTMLElement | null>(null)
 const from = ref('')
 const to = ref('')
 const orient = ref<'keep' | 'mirror' | 'none'>('keep')
+// Opened for one thing: it alone, or every copy of its prefab.
+const which = ref<'one' | 'all'>('all')
 
 watch(
   () => editorState.replacePrefab,
@@ -19,6 +21,7 @@ watch(
       from.value = open
       to.value = ''
       orient.value = 'keep'
+      which.value = editorState.replaceEntity !== null ? 'one' : 'all'
     }
     await nextTick()
     if (open !== null && backdrop.value) {
@@ -30,13 +33,15 @@ watch(
 function close(): void {
   if (backdrop.value) untrackOverlay(backdrop.value)
   editorState.replacePrefab = null
+  editorState.replaceEntity = null
 }
 const fromPrefab = computed(() => editorState.prefabs.find((p) => p.path === from.value))
 // Like for like: tiles for tiles, things for things.
 const choices = computed(() => editorState.prefabs.filter((p) => p.path !== from.value && (!fromPrefab.value || p.isTile === fromPrefab.value.isTile)))
 function replace(): void {
   if (!from.value || !to.value) return
-  sendToHost({ type: 'scene:replacePrefab', from: from.value, to: to.value, orient: orient.value, tile: !!fromPrefab.value?.isTile })
+  if (which.value === 'one' && editorState.replaceEntity !== null) sendToHost({ type: 'entity:replacePrefab', id: editorState.replaceEntity, prefab: to.value })
+  else sendToHost({ type: 'scene:replacePrefab', from: from.value, to: to.value, orient: orient.value, tile: !!fromPrefab.value?.isTile })
   close()
 }
 </script>
@@ -64,7 +69,14 @@ function replace(): void {
           <option value="">a prefab…</option>
           <option v-for="p in choices" :key="p.path" :value="p.path">{{ p.path }}</option>
         </select>
-        <template v-if="!fromPrefab?.isTile">
+        <template v-if="editorState.replaceEntity !== null">
+          <label>Which</label>
+          <select v-model="which">
+            <option value="one">this one</option>
+            <option value="all">every copy in the scene</option>
+          </select>
+        </template>
+        <template v-if="!fromPrefab?.isTile && which === 'all'">
           <label>Facing</label>
           <select v-model="orient">
             <option value="keep">as each copy faces (turned, mirrored)</option>
@@ -76,7 +88,7 @@ function replace(): void {
       <p v-if="fromPrefab?.isTile" class="muted">A ground tile: hand-painted tiles and a built place's ground alike.</p>
       <div class="actions">
         <button @click="close">Cancel</button>
-        <button class="primary" :disabled="!from || !to" @click="replace">Replace every copy</button>
+        <button class="primary" :disabled="!from || !to" @click="replace">{{ which === 'one' ? 'Replace it' : 'Replace every copy' }}</button>
       </div>
     </div>
   </div>

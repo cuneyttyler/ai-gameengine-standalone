@@ -415,3 +415,21 @@ TEST(PlacesOntologyTest, TurtleNamesAndEscapes) {
     // Every module class and module sits under exactly the right level.
     EXPECT_NE(library.find("gbl:Garden\n    a owl:Class, gbo:Module ;\n    rdfs:subClassOf gbo:Feature"), std::string::npos);
 }
+
+// docs/places/ontology-in-use.md, Relative sizes: each role's size against what it appears with, resolved at load.
+TEST(PlacesTest, RelativeSizesAgree) {
+    const Ontology& o = Library();
+    auto height = [&](const char* role) { return o.RoleSize(role) * o.RoleTall(role); };
+    // The tree as tall as a one-storey building (the building role's storey, 2 cells).
+    EXPECT_NEAR(height("tree"), 2.0f, 0.01f);
+    // A bush a third of a tree; a door 0.7 of a storey; a barrel under half a door.
+    EXPECT_NEAR(height("bush"), 0.3f * height("tree"), 0.01f);
+    EXPECT_NEAR(height("door"), 1.4f, 0.01f);
+    EXPECT_LT(height("barrel"), 0.5f * height("door"));
+    // A street lamp taller than a door (it was a third of one before).
+    EXPECT_GT(height("lamp"), height("door"));
+    // A role with no size of its own gets its width from its relative size: a chest 0.7 of a door's width.
+    EXPECT_NEAR(o.RoleSize("chest"), 0.7f, 0.01f);
+    // A role that keeps its own width: the bush stays 0.6 across.
+    EXPECT_NEAR(o.RoleSize("bush"), 0.6f, 0.01f);
+}

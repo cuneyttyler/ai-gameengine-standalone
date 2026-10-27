@@ -11,6 +11,7 @@ import DocView from './DocView.vue'
 import SystemsView from './SystemsView.vue'
 import DataTable from './DataTable.vue'
 import { activatePanel, setPanelVisible } from '../layout'
+import Splitter from './Splitter.vue'
 
 interface Stage {
   id: string
@@ -38,9 +39,11 @@ interface WindowField {
   options?: string[]
   asked: boolean
   assumed: boolean
+  fromStory?: boolean // a number the story decided (written back after the outline): editable, the story goes stale
   mark?: { confidence?: number; differ?: unknown[]; guessed?: boolean }
   min?: number
   max?: number
+  lines?: number // text of several lines: a box
 }
 interface WindowTab {
   id: string
@@ -114,6 +117,7 @@ onHostMessage((message) => {
     activatePanel('planner')
   } else if (message.type === 'planner:askReplace') {
     askReplace.value = (message.request as string) || ''
+    replaceChoices.value = (message.choices as Record<string, unknown>) ?? {}
   } else if (message.type === 'planner:document') {
     item.value = { doc: message.doc as string, content: message.content }
     itemText.value = JSON.stringify(message.content, null, 2)
@@ -260,12 +264,76 @@ watch(
   },
 )
 
+// The time the AI spent generating (calls in flight, overlapping ones once): 42s, 3m 05s, 1h 12m.
+function duration(seconds: number): string {
+  const s = Math.round(seconds)
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
+  return `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`
+}
+// The item pane (a scene's, a document's details) under the step: as tall as the user drags it (kept).
+const bodyEl = ref<HTMLElement | null>(null)
+const itemHeight = ref(Number(localStorage.getItem('planner.itemHeight')) || 320)
+function resizeItem(y: number): void {
+  const box = bodyEl.value?.getBoundingClientRect()
+  if (!box) return
+  itemHeight.value = Math.round(Math.max(120, Math.min(box.height - 80, box.bottom - y)))
+  try {
+    localStorage.setItem('planner.itemHeight', String(itemHeight.value))
+  } catch {
+    /* not kept */
+  }
+}
+// The home page's Choices (as the Build panel's): Brief fields picked from the story ontology's options, sent with the
+// request; the readings keep them. One option for an enum (again: unpicked), any number for a set.
+type Choice = { path: string; label: string; type: string; options: string[] }
+const choicesOpen = ref(false)
+const picked = ref<Record<string, string | string[]>>({})
+function isPicked(c: Choice, o: string): boolean {
+  const v = picked.value[c.path]
+  return Array.isArray(v) ? v.includes(o) : v === o
+}
+function pick(c: Choice, o: string): void {
+  const next = { ...picked.value }
+  if (c.type === 'enumSet') {
+    const now = Array.isArray(next[c.path]) ? [...(next[c.path] as string[])] : []
+    const at = now.indexOf(o)
+    if (at >= 0) now.splice(at, 1)
+    else now.push(o)
+    if (now.length) next[c.path] = now
+    else delete next[c.path]
+  } else if (next[c.path] === o) {
+    delete next[c.path]
+  } else {
+    next[c.path] = o
+  }
+  picked.value = next
+}
+const replaceChoices = ref<Record<string, unknown>>({})
+// The home page (⌂ on the step bar): a new plan, and the project's plans (the current one, the earlier ones).
+const home = ref(false)
+type PlanRow = { id: string; request: string; stage: string; updated: number; name?: string }
+const removing = ref<PlanRow | null>(null)
+function openPlan(id: string): void {
+  home.value = false
+  if (id) sendToHost({ type: 'planner:openPlan', id })
+  else sendToHost({ type: 'planner:request' })
+}
+function removePlan(): void {
+  if (!removing.value) return
+  sendToHost(removing.value.id ? { type: 'planner:removePlan', id: removing.value.id } : { type: 'planner:remove' })
+  removing.value = null
+}
+function planWhen(seconds: number): string {
+  return seconds ? new Date(seconds * 1000).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
+}
 function start() {
   if (!request.value.trim()) return
-  sendToHost({ type: 'planner:start', request: request.value })
+  home.value = false // the plan's page: its Brief, or the question whether to replace the current plan
+  sendToHost({ type: 'planner:start', request: request.value, choices: { ...picked.value } })
 }
 function replace() {
-  sendToHost({ type: 'planner:start', request: askReplace.value, replace: true })
+  sendToHost({ type: 'planner:start', request: askReplace.value, replace: true, choices: replaceChoices.value })
   askReplace.value = ''
 }
 function open(doc: string) {
@@ -316,21 +384,59 @@ function statusMark(status: string): string {
 
 <template>
   <div class="planner ed-form">
-    <div v-if="!state.active" class="start">
+    <div v-if="!state.active || home" class="start">
       <h3>Plan a game</h3>
       <p class="muted">
         Describe the game: the Planner reads it three ways, asks you to confirm a Game Brief, then designs the story, cast,
-        quests, places, systems and interface, checking each step.
+        quests, places, systems and interface, checking each step. A new plan keeps the current one below, to open again.
       </p>
       <textarea v-model="request" rows="4" placeholder="A short dark-fantasy action RPG about a disgraced warden recovering a stolen amulet, three towns and a dungeon, about four hours" />
+      <section v-if="state.choices?.length" class="choices">
+        <button class="toggle" @click="choicesOpen = !choicesOpen">
+          {{ choicesOpen ? '▾' : '▸' }} Choices <span class="muted">{{ Object.keys(picked).length ? Object.keys(picked).length + ' chosen: kept as you chose them' : 'from the story ontology, sent with the request' }}</span>
+        </button>
+        <div v-if="choicesOpen" class="choice-rows">
+          <div v-for="c in state.choices" :key="c.path" class="choice-row">
+            <span class="label">{{ c.label }}</span>
+            <div class="chips">
+              <button v-for="o in c.options" :key="o" :class="['chip', { on: isPicked(c, o) }]" @click="pick(c, o)">{{ o }}</button>
+            </div>
+          </div>
+          <button v-if="Object.keys(picked).length" class="small" @click="picked = {}">Clear the choices</button>
+        </div>
+      </section>
       <div class="row">
         <button class="primary" :disabled="!request.trim()" @click="start">Plan</button>
-        <button v-if="state.hasPlan" @click="sendToHost({ type: 'planner:request' })">Open the project's plan</button>
+        <button v-if="state.active && home" @click="home = false">Back to the plan</button>
+      </div>
+      <section v-if="state.plans?.length" class="plans">
+        <h4>Your plans</h4>
+        <div v-for="p in state.plans" :key="p.id || 'current'" class="plan-row" :class="{ current: !p.id }">
+          <div class="what">
+            <strong>{{ p.name || p.request || 'A plan' }}</strong>
+            <span class="muted">{{ p.id ? 'earlier' : 'current' }} · {{ p.stage || 'started' }} · {{ planWhen(p.updated) }}</span>
+            <span v-if="p.name && p.request" class="muted small">{{ p.request }}</span>
+          </div>
+          <button class="primary small" @click="openPlan(p.id)">Open</button>
+          <button class="small" title="Deletes this plan (asks first)" @click="removing = p">Remove</button>
+        </div>
+      </section>
+      <div v-if="removing" class="ask-remove">
+        <strong>Remove “{{ removing.name || removing.request || 'this plan' }}”?</strong>
+        <p class="muted">
+          Deletes the plan's documents (the Game Brief, story, cast, quests, places…) and its history.
+          What it already built into scenes stays there. This can't be undone.
+        </p>
+        <div class="row">
+          <button @click="removing = null">Keep it</button>
+          <button class="primary" @click="removePlan">Remove it</button>
+        </div>
       </div>
     </div>
 
     <template v-else>
       <div class="stepper">
+        <button class="step home-step" title="Home: your plans, and a new one" @click="home = true">⌂</button>
         <button
           v-for="s in stages"
           :key="s.id"
@@ -360,7 +466,7 @@ function statusMark(status: string): string {
         <span :class="['status', state.status]">{{ state.message }}</span>
         <span class="spacer"></span>
         <span class="muted" :title="`Read ${(state.usage?.inputTokens ?? 0).toLocaleString()} tokens, wrote ${(state.usage?.outputTokens ?? 0).toLocaleString()}`">
-          {{ state.usage?.calls ?? 0 }} AI calls · {{ (state.usage?.outputTokens ?? 0).toLocaleString() }} tokens written · {{ state.decisions }} decisions
+          {{ state.usage?.calls ?? 0 }} AI calls · {{ (state.usage?.outputTokens ?? 0).toLocaleString() }} tokens written · {{ duration(state.usage?.seconds ?? 0) }} generating · {{ state.decisions }} decisions
         </span>
         <button v-if="failedJobs.length" class="retry" @click="sendToHost({ type: 'planner:retryFailed' })">Retry failed ({{ failedJobs.length }})</button>
         <button v-if="staleCount" @click="sendToHost({ type: 'planner:regenerateStale' })">Regenerate stale ({{ staleCount }})</button>
@@ -378,7 +484,7 @@ function statusMark(status: string): string {
         <button @click="replace">Replace</button><button @click="askReplace = ''">Keep it</button>
       </div>
 
-      <div class="body">
+      <div ref="bodyEl" class="body">
         <div class="main">
           <!-- What failed in this stage: why, and Retry -->
           <div v-if="failedHere.length" class="failed-list">
@@ -403,6 +509,7 @@ function statusMark(status: string): string {
                     <span v-if="f.mark?.differ" class="badge warn" :title="`Other readings: ${show(f.mark.differ)}`">differ</span>
                     <span v-else-if="f.mark?.guessed" class="badge warn">guessed</span>
                     <span v-if="f.assumed" class="badge" title="From the genre profile or the scope table">assumed</span>
+                    <span v-if="f.fromStory" class="badge" title="Decided while the story was written; change it and the story is marked stale (Regenerate stale)">from the story</span>
                   </td>
                   <td>
                     <select v-if="f.type === 'enum'" :value="f.value as string" @change="setField(f, ($event.target as HTMLSelectElement).value)">
@@ -430,6 +537,12 @@ function statusMark(status: string): string {
                       :step="f.type === 'int' ? 1 : 0.25"
                       :value="f.value as number"
                       @change="setField(f, ($event.target as HTMLInputElement).value)"
+                    />
+                    <textarea
+                      v-else-if="f.type === 'text' && f.lines"
+                      :rows="f.lines"
+                      :value="show(f.value)"
+                      @change="setField(f, ($event.target as HTMLTextAreaElement).value)"
                     />
                     <input
                       v-else
@@ -745,7 +858,8 @@ function statusMark(status: string): string {
         </div>
 
         <!-- The item: its document, Why?, Regenerate, Edit, Lock -->
-        <div v-if="item" class="item">
+        <Splitter v-if="item" direction="vertical" @drag="resizeItem" />
+        <div v-if="item" class="item" :style="{ height: itemHeight + 'px' }">
           <div class="item-bar">
             <b>{{ item.doc }}</b>
             <span class="spacer"></span>
@@ -796,6 +910,39 @@ function statusMark(status: string): string {
   flex-direction: column;
   gap: 8px;
   max-width: 720px;
+}
+.choices .toggle {  background: none;  border: none;  padding: 4px 0;  cursor: pointer;  color: inherit;}.choice-rows {  display: flex;  flex-direction: column;  gap: 4px;  margin: 4px 0 6px;}.choice-row {  display: flex;  gap: 8px;  align-items: flex-start;}.choice-row .label {  width: 110px;  flex: none;  opacity: 0.7;  padding-top: 3px;}
+.plans h4 {
+  margin: 10px 0 4px;
+}
+.plan-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 4px;
+  border-bottom: 1px solid #2a2a3a;
+}
+.plan-row.current .what strong {
+  color: #89b4fa;
+}
+.plan-row .what {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.home-step {
+  min-width: 28px;
+}
+.ask-remove {
+  border: 1px solid #f38ba8;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ask-remove p {
+  margin: 0;
 }
 .row {
   display: flex;
@@ -869,8 +1016,7 @@ function statusMark(status: string): string {
   padding: 8px 10px;
 }
 .item {
-  height: 45%;
-  min-height: 160px;
+  flex: none;
   border-top: 1px solid #2a2a3a;
   display: flex;
   flex-direction: column;

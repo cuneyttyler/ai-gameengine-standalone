@@ -27,8 +27,9 @@ public:
     explicit UserLibrary(std::filesystem::path dir);
 
     // The whole, for the Library tab: folders, items (with their file's path under the
-    // library's host), the sharing choice and whether to ask it now.
-    nlohmann::json State() const;
+    // library's host), the sharing choice and whether to ask it now. With a project: each item's
+    // inProject, true when the same picture (by its content) is among the project's assets.
+    nlohmann::json State(const std::filesystem::path& projectRoot = {}) const;
 
     // A file into the library (copied, with its .meta and .gen.json): the same picture twice is
     // one item (by its content). Returns the item's id, or "" if the file can't be read.

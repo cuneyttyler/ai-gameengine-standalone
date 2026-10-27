@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import json
+import threading
 from pathlib import Path
 
 from PIL import Image
@@ -38,6 +39,65 @@ def _png(image: Image.Image) -> bytes:
     out = io.BytesIO()
     image.save(out, format="PNG")
     return out.getvalue()
+
+
+class Steps:
+    """A run's steps, known beforehand (each sheet and the pieces on it, the check, the fixes as they're decided),
+    told to `report(done, total, step, plan)` as each starts and ends (from any thread). A made piece's path is
+    `rel`/pieces/<slug>.png (relative to the project at `root`)."""
+
+    def __init__(self, report=None, root: Path | None = None, rel: str = ""):
+        self.items: list[dict] = []
+        self.report = report
+        self.root = root
+        self.rel = rel
+        self.lock = threading.Lock()
+
+    def add(self, id: str, label: str, pieces: list[dict] | None = None, before: tuple[str, ...] = ()) -> None:
+        """A step, at the end, or before the first of the steps `before` (a fix decided late goes before what follows)."""
+        item = {"id": id, "label": label, "state": "waiting", "pieces": [{"name": _piece_name(p), "slug": p.get("slug", "")} for p in pieces or []]}
+        with self.lock:
+            at = next((k for k, i in enumerate(self.items) if i["id"] in before), len(self.items))
+            self.items.insert(at, item)
+        self._tell()
+
+    def start(self, id: str, label: str | None = None) -> None:
+        self._set(id, "working", label)
+
+    def done(self, id: str, ok: bool = True, label: str | None = None) -> None:
+        self._set(id, "done" if ok else "failed", label)
+
+    def _set(self, id: str, state: str, label: str | None) -> None:
+        with self.lock:
+            for item in self.items:
+                if item["id"] == id:
+                    item["state"] = state
+                    if label:
+                        item["label"] = label
+                    if state in ("done", "failed") and self.root is not None:
+                        for p in item["pieces"]:
+                            p["made"] = bool(p["slug"]) and (self.root / self.rel / "pieces" / f"{p['slug']}.png").exists()
+                            if p["made"]:
+                                p["path"] = f"{self.rel}/pieces/{p['slug']}.png"
+        self._tell()
+
+    def _tell(self) -> None:
+        if self.report is None:
+            return
+        with self.lock:
+            plan = [dict(i, pieces=[dict(p) for p in i["pieces"]]) for i in self.items]
+        done = sum(1 for i in plan if i["state"] in ("done", "failed"))
+        now = [i["label"] for i in plan if i["state"] == "working"]
+        self.report(done, len(plan), "; ".join(now) if now else ("Done" if done == len(plan) else ""), plan)
+
+
+def _piece_name(p: dict) -> str:
+    name = str(p.get("words") or p.get("role") or p.get("key", "")).replace("-", " ")
+    if int(p.get("variant", 1) or 1) > 1:
+        name += f" (look {p.get('variant')})"
+    if p.get("view") == "back":
+        name += " (back)"
+    return name
 
 
 def _key_list(sheet: dict) -> str:
@@ -493,7 +553,7 @@ def _groups(pieces: list[dict], buildings: int = 4, small: int = 6) -> list[list
 
 
 def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, context: dict, seed: int = 7,
-                  vision=None) -> list[dict]:
+                  vision=None, track: Steps | None = None) -> list[dict]:
     """The art in sheets of the generic prompt (docs/places/matched-art.md §2): up to 4 buildings and 6 small things a
     klein call; things that work together on sheets of their own; the first sheet sets the look and every later one
     gets it as image 2; what no sheet gave (or the check finds wrong) on one more round of sheets; then the ground
@@ -523,20 +583,45 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
     # boxes on a sheet. Made before the sheets; kept like any piece.
     blocks = [p for p in todo if p.get("kit")]
     todo = [p for p in todo if not p.get("kit")]
+    groups = _groups(todo)
+    # The steps, known now (the fixes are added when the check has said what's wrong).
+    track = track or Steps()
+    ground = next((s for s in sheets.get("sheets", []) if s.get("kind") == "ground"), None)
+    if blocks:
+        track.add("blocks", "Wall blocks: the wall, then what's set in it or on it", blocks)
+    first_is_style = bool(groups) and style_png is None
+    for n, group in enumerate(groups):
+        if n == 0 and first_is_style:
+            track.add("style", "Style sheet: sets the look of every other sheet", group)
+        else:
+            k = n if first_is_style else n + 1
+            track.add(f"add-{k}", f"Sheet {k + (1 if first_is_style else 0)} of {len(groups)}", group)
+    if vision is not None:
+        track.add("check", "Checking the pieces (the vision model)")
+    if derived:
+        track.add("derived", "Other looks and back views (edits of their first look)", derived)
+    if vision is not None:
+        track.add("facing", "Turning pieces to face the right way")
+    if ground and not (folder / "ground-painted.png").exists():
+        track.add("ground", "Ground textures")
+    later = ("derived", "facing", "ground")
     if blocks:
         # Every block of the kit, the kept wall among them: a door or a light missing is an edit of the wall there is.
+        track.start("blocks")
         kit = [p for p in every if p.get("kit")]
         steps += make_blocks(painter, folder, kit, context, style_png, seed + 500, make={p["key"] for p in blocks})
         made |= {p["key"] for p in blocks if (folder / "pieces" / f"{p['slug']}.png").exists()}
+        track.done("blocks")
     if had:
         steps.append({"kept": sorted(had)})
     from concurrent.futures import ThreadPoolExecutor
-    groups = _groups(todo)
-    if groups and style_png is None:
+    if first_is_style:
         # The style sheet first: every other sheet is painted in its look.
+        track.start("style")
         result = style_sheet(painter, model, folder, sheets, context, vision, seed, pieces=groups[0], name="style")
         style_png = result["png"]
         made |= set(result["named"])
+        track.done("style")
         steps.append({"sheet": "style", "pieces": [p["key"] for p in groups[0]], "items": result["items"], "named": list(result["named"]),
                       "prompt": result["prompt"]})
         groups = groups[1:]
@@ -544,8 +629,11 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
     def sheet(numbered):
         # Each later sheet needs only the style sheet: four painted at a time.
         n, group = numbered
-        return f"add-{n + 1}", group, style_sheet(painter, model, folder, sheets, context, vision, seed + n + 1, pieces=group,
-                                                  refs=[style_png] if style_png else None, name=f"add-{n + 1}")
+        track.start(f"add-{n + 1}")
+        result = style_sheet(painter, model, folder, sheets, context, vision, seed + n + 1, pieces=group,
+                             refs=[style_png] if style_png else None, name=f"add-{n + 1}")
+        track.done(f"add-{n + 1}")
+        return f"add-{n + 1}", group, result
     with ThreadPoolExecutor(4) as pool:
         for name, group, result in pool.map(sheet, enumerate(groups)):
             made |= set(result["named"])
@@ -560,6 +648,8 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
         checked = set()
     # Blocks have their own check (make_blocks: the box's outline) and are never painted on a sheet.
     new = [p for p in every if p["key"] in made and p["slug"] not in checked and not p.get("kit")]
+    if vision is not None:
+        track.start("check", f"Checking the pieces (the vision model): {len(new)} to check")
     wrong, unchecked, said = set(), set(), {}
     for start in range(0, len(new), 16):
         chunk = new[start:start + 16]
@@ -576,6 +666,9 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
     # A building painted with another footprint than its box's (a square house for a long lot): painted again.
     wrong |= {p["key"] for p in new if p["key"] in painted_now and p.get("layer") == "building" and not p.get("kit") and not _foot_fits(folder, p)}
     steps.append({"checked": len(new) - len(unchecked), "unchecked": len(unchecked), "wrong": sorted(wrong), "said": said})
+    if vision is not None:
+        missing = sum(1 for p in every if not p.get("kit") and p["key"] not in made)
+        track.done("check", label=f"Checked {len(new) - len(unchecked)} pieces: {len(wrong)} wrong" + (f", {missing} not on their sheet" if missing else ""))
     # A piece made before is kept beside its repaint: if the repaint fails too, the earlier one comes back.
     kept_before = {}
     for p in every:
@@ -590,9 +683,15 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
 
         def fix(numbered, round_=round_):
             n, group = numbered
-            return n, group, style_sheet(painter, model, folder, sheets, context, vision, seed + 50 + 17 * round_ + n, pieces=group,
-                                         refs=[style_png] if style_png else None, name=f"fix-{fixed + n + 1}")
+            track.start(f"fix-{fixed + n + 1}")
+            result = style_sheet(painter, model, folder, sheets, context, vision, seed + 50 + 17 * round_ + n, pieces=group,
+                                 refs=[style_png] if style_png else None, name=f"fix-{fixed + n + 1}")
+            track.done(f"fix-{fixed + n + 1}")
+            return n, group, result
         groups = _groups(again)
+        for n, group in enumerate(groups):
+            track.add(f"fix-{fixed + n + 1}", f"Fix round {round_ + 1} of up to 3: sheet {n + 1} of {len(groups)} (what was missing or wrong)",
+                      group, before=later)
         with ThreadPoolExecutor(4) as pool:
             for n, group, result in pool.map(fix, enumerate(groups)):
                 steps.append({"sheet": f"fix-{fixed + n + 1}", "pieces": [p["key"] for p in group], "items": result["items"],
@@ -607,12 +706,18 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
                 (folder / "pieces" / f"{redone[i]['slug']}.png").write_bytes(kept_before[redone[i]["slug"]])
         again = [p for p in again if p["key"] not in made_now]
     if derived:
+        track.start("derived")
         steps.append({"derived": derive_pieces(painter, folder, derived, every, context, seed)})
         new += [p for p in derived if (folder / "pieces" / f"{p['slug']}.png").exists()]
+        track.done("derived")
     # Things with a front face the lower left (their back view: their back): turned round where they don't.
+    if vision is not None:
+        track.start("facing")
     turned = face_pieces(vision, folder, [p for p in new + again if p.get("view")])
     if turned:
         steps.append({"turned": turned})
+    if vision is not None:
+        track.done("facing", label=f"Turned {len(turned)} piece(s) to face the right way" if turned else "Every piece faces the right way")
     # What passed (the check, or its fix) isn't checked again.
     if vision is not None:
         failing = {p["key"] for p in again}
@@ -620,10 +725,11 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
                  {p["slug"] for p in every if p["key"] in repainted and p["key"] not in failing}
         checked_path.write_text(json.dumps(sorted(checked | passed)), encoding="utf-8")
     # The ground's textures (each terrain's).
-    ground = next((s for s in sheets.get("sheets", []) if s.get("kind") == "ground"), None)
     if ground and not (folder / "ground-painted.png").exists():
+        track.start("ground")
         (folder / "ground-painted.png").write_bytes(_paint_sheet(painter, model, folder, ground, context, [style_png] if style_png else [], seed))
         steps.append({"sheet": "ground"})
+        track.done("ground")
     return steps
 
 
@@ -1121,7 +1227,8 @@ def _piece_prompt(piece: dict, context: dict, style: str, words_for_box: bool) -
     return text
 
 
-def make_one_by_one(generator, provider: str, root: Path, rel: str, sheets: dict, context: dict, vision=None) -> list[dict]:
+def make_one_by_one(generator, provider: str, root: Path, rel: str, sheets: dict, context: dict, vision=None,
+                    track: Steps | None = None) -> list[dict]:
     """Each piece made alone: the style sheet's first (they become the style), then the rest in their look (PixelLab:
     as its style images; Mistral: in words). Written as pieces/<slug>.png."""
     folder = root / rel
@@ -1130,6 +1237,12 @@ def make_one_by_one(generator, provider: str, root: Path, rel: str, sheets: dict
     style_paths: list[str] = []
     style = ""
     ordered = sorted(sheets.get("sheets", []), key=lambda s: 0 if s.get("kind") == "style" else 1)
+    track = track or Steps()
+    for sheet in ordered:
+        for piece in sheet.get("pieces", []):
+            track.add(piece["slug"], ("Style piece: " if sheet.get("kind") == "style" else "") + _piece_name(piece), [piece])
+        if sheet.get("grounds"):
+            track.add(f"grounds-{len(track.items)}", "Ground textures")
     for sheet in ordered:
         if sheet.get("kind") != "style" and not style and vision is not None and style_paths:
             # The style sheet's pieces side by side, their look in words.
@@ -1142,6 +1255,7 @@ def make_one_by_one(generator, provider: str, root: Path, rel: str, sheets: dict
             style = style_line(vision, _png(board))
             steps.append({"style": style})
         for piece in sheet.get("pieces", []):
+            track.start(piece["slug"])
             prompt = _piece_prompt(piece, context, style, True)
             if provider == "pixellab":
                 height = 256 if piece.get("layer") == "building" else 96
@@ -1154,8 +1268,12 @@ def make_one_by_one(generator, provider: str, root: Path, rel: str, sheets: dict
             path = folder / "pieces" / f"{piece['slug']}.png"
             path.write_bytes(image.data)
             steps.append({"piece": piece["key"], "model": image.model, "prompt": image.prompt})
+            track.done(piece["slug"])
             if sheet.get("kind") == "style":
                 style_paths.append(str(path))
+        grounds_step = next((i["id"] for i in track.items if i["id"].startswith("grounds-") and i["state"] == "waiting"), None)
+        if sheet.get("grounds") and grounds_step:
+            track.start(grounds_step)
         for ground in sheet.get("grounds", []):
             prompt = f"A seamless ground texture of {ground.get('words')}, seen from above, {_look(context)}, filling the whole square."
             if style:
@@ -1163,22 +1281,27 @@ def make_one_by_one(generator, provider: str, root: Path, rel: str, sheets: dict
             image = generator.generate(prompt, {"kind": "tile", "height": 128}) if provider == "pixellab" else generator.generate(prompt)
             (folder / "pieces" / f"{ground['slug']}.png").write_bytes(image.data)
             steps.append({"ground": ground["terrain"], "model": image.model, "prompt": image.prompt})
+        if sheet.get("grounds") and grounds_step:
+            track.done(grounds_step)
     return steps
 
 
-def make(art: str, root: Path, rel: str, sheets: dict, context: dict, generator=None, vision=None, keys: dict | None = None) -> dict:
-    """The art for the sheets in `rel`, by `art`: "bfl:<model>", "pixellab" or "mistral" (generator: its image generator)."""
+def make(art: str, root: Path, rel: str, sheets: dict, context: dict, generator=None, vision=None, keys: dict | None = None,
+         report=None) -> dict:
+    """The art for the sheets in `rel`, by `art`: "bfl:<model>", "pixellab" or "mistral" (generator: its image generator).
+    `report(done, total, step, plan)`, if given, hears the run's steps (Steps) as they go."""
     keys = keys or {}
+    track = Steps(report, root, rel)
     try:
         if art.startswith("bfl"):
             model = art.split(":", 1)[1] if ":" in art else "flux-2-klein-4b"
             if not keys.get("bfl"):
                 return {"ok": False, "errors": ["No key for BFL: set BFL_API_KEY in ai_service/.env"]}
-            steps = make_with_bfl(keys["bfl"], model, root, rel, sheets, context, vision=vision)
+            steps = make_with_bfl(keys["bfl"], model, root, rel, sheets, context, vision=vision, track=track)
             return {"ok": True, "provider": f"BFL {model}", "steps": steps}
         if generator is None:
             return {"ok": False, "errors": [f"No image generator for {art}"]}
-        steps = make_one_by_one(generator, "pixellab" if art == "pixellab" else "mistral", root, rel, sheets, context, vision)
+        steps = make_one_by_one(generator, "pixellab" if art == "pixellab" else "mistral", root, rel, sheets, context, vision, track)
         return {"ok": True, "provider": getattr(generator, "name", art), "steps": steps}
     except ProviderError as error:
         return {"ok": False, "errors": [str(error)]}
@@ -1379,13 +1502,14 @@ def background_prompt(description: str, key: list[dict], solid: bool) -> str:
 
 def paint_background(painter, terrain: dict, cells: tuple[int, int], description: str, folder: Path, seed: int = 7,
                      target_px: int = 64, max_tiles: int = 9, overlap: int = 10, check: float = 35.0,
-                     retries: int = 2) -> dict:
+                     retries: int = 2, report=None) -> dict:
     """A place's background painted from its plan (docs/places/background.md): its ground as a top-down colour map;
     the whole painted in one call (every look decided once); if that's coarser than `target_px` a cell, tiles planned
     from the plan (plan_tiles, at most `max_tiles`), each painted again from its part of the whole picture, enlarged,
     and checked against its neighbours (a tile that disagrees with every one by more than `check` repainted, up to
     `retries` times); blended at their inner borders (blend_tiles); solid ground set back to black. Written to
-    `folder` as background-topdown.png (and its steps). Returns {path, cellPx, cells, calls, tiles, prompt}."""
+    `folder` as background-topdown.png (and its steps). Returns {path, cellPx, cells, calls, tiles, prompt}.
+    `report(done, total, step)`, if given, hears each step: the whole, then each tile (1 + tiles steps)."""
     from concurrent.futures import ThreadPoolExecutor
     from PIL import ImageChops, ImageDraw, ImageStat
     W, H = cells
@@ -1400,23 +1524,31 @@ def paint_background(painter, terrain: dict, cells: tuple[int, int], description
     def size_for(w: int, h: int) -> tuple[int, int]:
         k = 2048 / max(w, h)
         return max(16, round(w * k) // 16 * 16), max(16, round(h * k) // 16 * 16)
-    # 1. The whole place, one call.
-    size = size_for(W, H)
-    whole = Image.open(io.BytesIO(painter.repaint(_png(palette.resize(size, Image.NEAREST)), prompt, references=[], seed=seed,
-                                                  width=size[0], height=size[1]))).convert("RGB")
-    calls += 1
-    whole.save(folder / "background-whole.png")
+    report = report or (lambda done=None, total=None, step=None: None)
+    # 2 (planned first, so the steps are known). Tiles, from the plan; as many as reach the target, at most max_tiles.
     tiles = []
-    if 2048 / max(W, H) >= target_px:
-        cell = min(128, int(2048 / max(W, H)))
-        top = whole.resize((W * cell, H * cell), Image.LANCZOS)
-    else:
-        # 2. Tiles, planned from the plan; as many as reach the target, at most max_tiles.
+    if 2048 / max(W, H) < target_px:
         max_cells = max(overlap + 4, int(2048 / target_px))
         tiles = plan_tiles(grid, max_cells, overlap)
         while len(tiles) > max_tiles:
             max_cells += 2
             tiles = plan_tiles(grid, max_cells, overlap)
+    total = 1 + len(tiles)
+    # 1. The whole place, one call.
+    report(0, total, "Painting the whole place")
+    size = size_for(W, H)
+    whole = Image.open(io.BytesIO(painter.repaint(_png(palette.resize(size, Image.NEAREST)), prompt, references=[], seed=seed,
+                                                  width=size[0], height=size[1]))).convert("RGB")
+    calls += 1
+    whole.save(folder / "background-whole.png")
+    if not tiles:
+        cell = min(128, int(2048 / max(W, H)))
+        top = whole.resize((W * cell, H * cell), Image.LANCZOS)
+        report(1, total, "Painted the whole place")
+    else:
+        report(1, total, f"Painting the detail windows: 0 of {len(tiles)}")
+        painted = [0]
+        count = threading.Lock()
         cell = max(24, min(128, int(2048 / max(max(x1 - x0, y1 - y0) for x0, y0, x1, y1 in tiles))))
         first = prompt.splitlines()[0]
         detail = (f"{first}\nImage 1 is one part of it. Make it sharp and detailed at high resolution.\n"
@@ -1430,6 +1562,10 @@ def paint_background(painter, terrain: dict, cells: tuple[int, int], description
             s = size_for(x1 - x0, y1 - y0)
             part = whole.crop((round(x0 * sx), round(y0 * sy), round(x1 * sx), round(y1 * sy))).resize(s, Image.BICUBIC)
             png = painter.repaint(_png(part), detail, references=[], seed=seed + 101 * attempt + x0 * 7 + y0, width=s[0], height=s[1])
+            with count:
+                painted[0] += 1
+                report(1 + painted[0], None, f"Painting the detail windows: {painted[0]} of {total - 1}"
+                       + (" (repainting the ones that didn't match)" if attempt else ""))
             return Image.open(io.BytesIO(png)).convert("RGB").resize(((x1 - x0) * cell, (y1 - y0) * cell), Image.LANCZOS)
         with ThreadPoolExecutor(4) as pool:
             pics = dict(zip(tiles, pool.map(paint, tiles)))
@@ -1451,9 +1587,12 @@ def paint_background(painter, terrain: dict, cells: tuple[int, int], description
                     bad.append(t)
             if not bad:
                 break
+            total += len(bad)
+            report(None, total, f"Checking the windows: {len(bad)} to paint again")
             for t in bad:
                 pics[t] = paint(t, attempt)
                 calls += 1
+        report(total, total, "Blending the windows together")
         top = blend_tiles([(t[0], t[1], pics[t]) for t in tiles], (W, H), cell, overlap, band=max(2, min(6, overlap - 2)))
     # 4. Cut to the plan: solid ground black.
     if solid:

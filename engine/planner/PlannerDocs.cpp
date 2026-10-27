@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <map>
 #include <set>
 
 #ifndef AIGE_PLANNER_DATA_DIR
@@ -338,6 +339,7 @@ std::vector<std::string> RepairGameBrief(json& brief, const StoryOntology& gso, 
 json BriefWindow(const json& brief, const json& marks, const StoryOntology& gso) {
     const GenreProfile* profile = PlannerData::Engine().Profile(Text(brief, "genre"));
     const auto assumed = Strings(brief.value("assumed", json::array()));
+    const auto fromStory = Strings(brief.value("fromStory", json::array())); // the numbers the outline decided
     json tabs = json::array();
     for (const auto& tab : PlannerData::Engine().briefSchema.value("tabs", json::array())) {
         json fields = json::array();
@@ -348,10 +350,11 @@ json BriefWindow(const json& brief, const json& marks, const StoryOntology& gso)
                       {"type", field.value("type", "text")},
                       {"value", BriefGet(brief, path)},
                       {"asked", field.value("asked", false) || (profile && Contains(profile->asked, path))},
-                      {"assumed", Contains(assumed, path)}};
+                      {"assumed", Contains(assumed, path)},
+                      {"fromStory", Contains(fromStory, path)}};
             const auto options = FieldOptions(field, gso);
             if (!options.empty()) f["options"] = options;
-            for (const char* k : {"min", "max"}) {
+            for (const char* k : {"min", "max", "lines"}) { // lines: a text of several lines (a box, not a line)
                 if (field.contains(k)) f[k] = field[k];
             }
             if (marks.is_object() && marks.contains(path)) f["mark"] = marks[path];
@@ -361,6 +364,24 @@ json BriefWindow(const json& brief, const json& marks, const StoryOntology& gso)
         tabs.push_back({{"id", tab.value("id", "")}, {"label", tab.value("label", "")}, {"fields", fields}});
     }
     return tabs;
+}
+
+json BriefChoices(const StoryOntology& gso) {
+    static const std::vector<std::string> chosen = {"genre",     "perspective", "setting.genreFlavour", "setting.era",    "tone",
+                                                    "structure", "pattern",     "worldShape",           "artStyle.style", "systems.combat.style"};
+    std::map<std::string, json> byPath;
+    for (const auto& tab : PlannerData::Engine().briefSchema.value("tabs", json::array())) {
+        for (const auto& field : tab.value("fields", json::array())) byPath[field.value("path", "")] = field;
+    }
+    json out = json::array();
+    for (const auto& path : chosen) {
+        const auto it = byPath.find(path);
+        if (it == byPath.end()) continue;
+        const auto options = FieldOptions(it->second, gso);
+        if (options.empty()) continue;
+        out.push_back({{"path", path}, {"label", it->second.value("label", path)}, {"type", it->second.value("type", "enum")}, {"options", options}});
+    }
+    return out;
 }
 
 json BriefSchemaForAi(const StoryOntology& gso) {

@@ -137,7 +137,7 @@ json MergeGameBriefs(const std::vector<json>& drafts, json* marks) {
 
 GamePlan::GamePlan(Host host) : host_(std::move(host)), store_(host_.projectRoot), gso_(StoryOntology::ForProject(host_.projectRoot)) {}
 
-std::string GamePlan::Start(const std::string& request) {
+std::string GamePlan::Start(const std::string& request, const json& choices) {
     if (request.find_first_not_of(" \t\r\n") == std::string::npos) return "say what game to make";
     std::error_code ec;
     // A new plan replaces the old one (its history goes with it).
@@ -151,6 +151,7 @@ std::string GamePlan::Start(const std::string& request) {
     nextJob_ = 1;
     paused_ = false;
     request_ = request;
+    choices_ = choices.is_object() ? choices : json::object();
     stage_ = "concept";
     status_ = "working";
     message_ = "Reading your request…";
@@ -234,7 +235,7 @@ void GamePlan::Save() {
                         {"lastAnswer", j.lastAnswer}, {"replay", j.replay}, {"replayed", j.replayed}});
     }
     json state = {{"schema", "aige.plan-state/1"}, {"stage", stage_},         {"status", status_},     {"message", message_},
-                  {"request", request_},           {"jobs", jobs},            {"paused", paused_},     {"usage", usage_},
+                  {"request", request_},           {"choices", choices_},     {"jobs", jobs},            {"paused", paused_},     {"usage", usage_},
                   {"concept", concept_},           {"toReview", toReview_},   {"findings", findings_}, {"nextJob", nextJob_},
                   {"stale", Stale()}, {"resume", resume_}, {"autoFixed", autoFixed_}, {"fixRounds", fixRounds_}, {"fixScope", fixScope_},
                   {"pausedForClose", pausedForClose_}};
@@ -249,6 +250,7 @@ void GamePlan::Load() {
     status_ = s.value("status", "");
     message_ = s.value("message", "");
     request_ = s.value("request", "");
+    choices_ = s.value("choices", json::object());
     paused_ = s.value("paused", false);
     usage_ = s.value("usage", usage_);
     concept_ = s.value("concept", json::object());
@@ -442,6 +444,7 @@ bool GamePlan::Send(Job& job) {
     body["label"] = label;
     const int id = host_.request(PathFor(job), body, 600);
     if (id == 0) return false;
+    if (pending_.empty() || !busySince_) busySince_ = std::chrono::steady_clock::now(); // the AI busy from now
     pending_[id] = job.id;
     job.status = "running";
     ++job.attempts;
@@ -454,6 +457,12 @@ void GamePlan::OnResponse(int requestId, const json& body) {
     if (it == pending_.end()) return;
     const std::string jobId = it->second;
     pending_.erase(it);
+    if (pending_.empty() && busySince_) {
+        // Nothing in flight now: the time it was busy, once however many calls overlapped.
+        const double busy = std::chrono::duration<double>(std::chrono::steady_clock::now() - *busySince_).count();
+        usage_["seconds"] = usage_.value("seconds", 0.0) + busy;
+        busySince_.reset();
+    }
     Job* job = FindJob(jobId);
     if (!job) return;
     if (job->status != "running") return; // cancelled meanwhile (Stop fix): its answer is ignored
@@ -869,6 +878,15 @@ void GamePlan::MergeConcept() {
     brief["assumed"] = assumed;
     // What the readings put in a field that isn't one of its options goes back to the profile's.
     const auto repaired = RepairGameBrief(brief, gso_, store_.Defaults());
+    // The user's choices (the home page's): as chosen, whatever the readings made of them; not assumed.
+    if (!choices_.empty()) {
+        json assumedNow = json::array();
+        for (const auto& a : brief.value("assumed", json::array())) {
+            if (!choices_.contains(a.get<std::string>())) assumedNow.push_back(a);
+        }
+        for (const auto& [path, value] : choices_.items()) BriefSet(brief, path, value);
+        brief["assumed"] = assumedNow;
+    }
     brief["request"] = request_;
     brief["confirmed"] = false;
     concept_["marks"] = marks;
@@ -1466,7 +1484,12 @@ json GamePlan::State() const {
                  return ids;
              }()},
             {"storyProgress", {{"written", scenesWritten}, {"total", scenesTotal}}},
-            {"usage", usage_},
+            {"usage", [this] {
+                 // With the time of the calls in flight now (State is asked about once a second while it works).
+                 json u = usage_;
+                 if (busySince_) u["seconds"] = u.value("seconds", 0.0) + std::chrono::duration<double>(std::chrono::steady_clock::now() - *busySince_).count();
+                 return u;
+             }()},
             {"decisions", store_.Decisions().size()},
             {"history", store_.History()},
             {"baseline", store_.State().value("baseline", json())},

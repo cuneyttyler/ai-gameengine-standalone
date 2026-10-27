@@ -7,6 +7,7 @@ CMakeUserPresets.json
 *.log
 
 build_scratch/
+builder_tests/
 *.bak
 projects/*/.cache/
 

@@ -38,10 +38,18 @@ class Entry:
     output_tokens: int = 0  # finished calls' real counts
     live_chars: int = 0  # the call streaming now, not yet counted in output_tokens
     repairing: bool = False
+    step: str = ""  # what a request of several steps is doing now ("Painting the detail windows: 2 of 6")
+    done: int = 0
+    total: int = 0  # its steps (0: not counted)
+    plan: list = field(default_factory=list)  # its steps known beforehand: [{id, label, pieces, state, made}]
 
     def view(self) -> dict:
         now = self.ended or time.monotonic()
         return {
+            "step": self.step,
+            "done": self.done,
+            "total": self.total,
+            "plan": self.plan,
             "id": self.id,
             "path": self.path,
             "label": self.label,
@@ -90,6 +98,27 @@ def label(text: str | None) -> None:
     with _lock:
         if (entry := _entry()) is not None:
             entry.label = str(text)[:80]
+
+
+def reporter():
+    """A request's steps, reported from any thread (a pool's workers don't see the request's context):
+    report(done, total, step, plan); a value left None stays as it was."""
+    entry_id = _current.get()
+
+    def report(done: int | None = None, total: int | None = None, step: str | None = None, plan: list | None = None) -> None:
+        with _lock:
+            if entry_id is None or (entry := _active.get(entry_id)) is None:
+                return
+            if done is not None:
+                entry.done = done
+            if total is not None:
+                entry.total = total
+            if step is not None:
+                entry.step = step
+            if plan is not None:
+                entry.plan = plan
+            entry.calls = max(entry.calls, 1)  # shown on the strips, though its calls aren't streamed
+    return report
 
 
 def repairing(on: bool = True) -> None:

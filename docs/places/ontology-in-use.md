@@ -69,6 +69,28 @@ What uses them:
   is made as an edit of the wall (doors, wall lights) keeps the wall's colours. In the scene every picture is still
   toned towards the background (each picture most of the way to its colour, a little lighter, never brighter).
 
+## Relative sizes
+
+A role's `relative` says how big it is against what it appears with, so every piece of a place agrees in size:
+
+```json
+"tree": {"relative": {"to": "storey", "height": 1.0}},
+"bush": {"relative": {"to": "tree", "height": 0.3}},
+"chest": {"relative": {"to": "door", "height": 0.35, "width": 0.7}}
+```
+
+- `to`: a role, or `storey` (one storey of a building: the `storey` of the `building` role, 2.0 cell widths).
+- `height`: a share of its height. `width`: a share of its width; without it the role keeps its own `size`, else the
+  same share as its height.
+- At load (`Ontology::ResolveRelativeSizes`) each is turned into `size` (cells across) and `tall` (height for width),
+  following chains (a bush to the tree, the tree to a storey); everything that reads sizes reads them as before.
+- The anchors: the tree is as tall as a one-storey building; a door is 0.7 of a storey. Plants are measured against
+  the tree, street things, furniture and vehicles against a door, towers, pillars and cave mouths against a storey.
+  Buildings take their size from their footprint and storeys; walls, wall torches and the dungeon's doors keep their
+  own tuned numbers.
+- Matched art: a cut piece is as wide as its role's `size`, and if it was painted taller for its width than its `tall`,
+  narrower until its height is its role's.
+
 ## Changes to existing facts
 
 - `PlacesSettings.method` (Assembled / Painted) is gone: there is one way to build places.

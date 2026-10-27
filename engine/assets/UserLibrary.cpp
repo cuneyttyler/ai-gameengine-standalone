@@ -5,6 +5,7 @@
 #include <chrono>
 #include <fstream>
 #include <set>
+#include <tuple>
 
 namespace aige {
 
@@ -93,11 +94,33 @@ void UserLibrary::Save(const json& library) const {
     if (ec) fs::copy_file(tmp, dir_ / "library.json", fs::copy_options::overwrite_existing, ec);
 }
 
-json UserLibrary::State() const {
+json UserLibrary::State(const fs::path& projectRoot) const {
     json j = Load();
+    // The project's pictures by content: only those as big as one of the library's files can be the same picture
+    // (the rest aren't read: a project's assets are hundreds of MB, and this runs on the UI thread), each hashed once
+    // (kept while its size and time stay the same).
+    std::set<std::string> inProject;
+    if (!projectRoot.empty()) {
+        static std::map<std::string, std::tuple<uintmax_t, fs::file_time_type, std::string>> hashed;
+        std::set<uintmax_t> sizes;
+        std::error_code ec;
+        for (const auto& item : j["items"]) {
+            if (const uintmax_t s = fs::file_size(dir_ / "files" / item.value("file", ""), ec); !ec) sizes.insert(s);
+        }
+        for (auto it = fs::recursive_directory_iterator(projectRoot / "assets", ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+            if (!it->is_regular_file(ec) || it->path().extension() != ".png") continue;
+            const uintmax_t size = it->file_size(ec);
+            if (!sizes.contains(size)) continue;
+            const fs::file_time_type time = it->last_write_time(ec);
+            auto& [s, t, h] = hashed[it->path().string()];
+            if (h.empty() || s != size || t != time) s = size, t = time, h = HashOf(it->path());
+            inProject.insert(h);
+        }
+    }
     bool generated = false;
     for (auto& item : j["items"]) {
         item["path"] = "files/" + item.value("file", "");
+        if (!projectRoot.empty()) item["inProject"] = inProject.contains(item.value("hash", ""));
         generated = generated || item.value("source", "") == "generated";
     }
     j["askSharing"] = generated && j.value("sharing", "unset") == "unset";

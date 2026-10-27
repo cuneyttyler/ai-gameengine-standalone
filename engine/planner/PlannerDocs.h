@@ -65,6 +65,10 @@ std::vector<std::string> RepairGameBrief(nlohmann::json& brief, const StoryOntol
 nlohmann::json BriefWindow(const nlohmann::json& brief, const nlohmann::json& marks, const StoryOntology& gso);
 // What the AI is told about the Brief's shape (for the concept call).
 nlohmann::json BriefSchemaForAi(const StoryOntology& gso);
+// The AI Planner home page's Choices (as the Build panel's): the Brief fields worth choosing before the readings
+// (genre, perspective, flavour, era, tone, structure, branching, world shape, art style, combat), each with its options
+// (the story ontology's where a field takes a vocabulary): [{path, label, type (enum | enumSet), options}].
+nlohmann::json BriefChoices(const StoryOntology& gso);
 
 // --- Stage documents ------------------------------------------------------------------------
 

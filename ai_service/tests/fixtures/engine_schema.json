@@ -243,6 +243,22 @@
       ]
     },
     {
+      "description": "Replaces one thing in the scene with a copy of another prefab, where it was, keeping how it was turned and mirrored and which built place it belongs to (the viewport's and the Inspector's Replace prefab). For every copy of a prefab, use prefab.replace.",
+      "name": "entity.replacePrefab",
+      "params": [
+        {
+          "description": "The thing to replace.",
+          "name": "entity",
+          "type": "entity"
+        },
+        {
+          "description": "The prefab to put in its place, e.g. prefabs/a-cart.prefab.",
+          "name": "to",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "description": "Replaces one ground tile with another everywhere: hand-painted tiles and a built place's ground (its tile layers) alike, however many cells. Use it for 'use grass in place of cobble'.",
       "name": "terrain.replace",
       "params": [

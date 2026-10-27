@@ -1,6 +1,8 @@
 #include "assets/AssetDatabase.h"
 #include "assets/Catalog.h"
 #include "assets/Prefab.h"
+#include "assets/Sourcing.h"
+#include "assets/SceneIO.h"
 #include "editing/Autotile.h"
 #include "editing/EditHistory.h"
 #include "editing/PlaceBuild.h"
@@ -20,6 +22,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <filesystem>
 #include <iostream>
 #include <fstream>
@@ -485,4 +488,60 @@ TEST(PlaceSceneTest, APlaceWithTwoLevelsHasTwoLevelAreas) {
     json one = spec;
     one["root"]["children"].erase(1);
     EXPECT_TRUE(PlaceLevelAreas(Library(), one, solved).empty());
+}
+
+TEST(PlaceSceneTest, PlansAGivenProjectsAssets) {
+    // What each need of a project's build gets, as ③ Assets decides it with the project's sourcing (a copy of it).
+    const char* arg = std::getenv("AIGE_SCENE_PLAN");
+    if (arg == nullptr) GTEST_SKIP() << "set AIGE_SCENE_PLAN=<project root>|<build id>";
+    const std::string text = arg;
+    const fs::path from = text.substr(0, text.find('|'));
+    const std::string id = text.substr(text.find('|') + 1);
+    const fs::path root = fs::temp_directory_path() / "aige_plan_copy";
+    fs::remove_all(root);
+    fs::copy(from, root, fs::copy_options::recursive);
+    PrefabLibrary prefabs(Project{root});
+    AssetDatabase assets(Project{root});
+    assets.Refresh();
+    const Catalog catalog = BuildCatalog(assets, &Library(), CatalogOptions{});
+    const json spec = json::parse(std::ifstream(root / "places" / id / "spec.json"));
+    const json solved = json::parse(std::ifstream(root / "places" / id / "layout.solved.json"));
+    PlaceSceneOptions options;
+    options.place = id;
+    options.isoGrid = true;
+    AssetSourcing sourcing;
+    sourcing.settings = ReadSourcingSettings(root);
+    sourcing.canGenerate = true;
+    const json plan = PlanPlaceAssets(Library(), spec, solved, catalog, prefabs, assets, ProjectTerrainSet(prefabs, Project{root}), options, &sourcing);
+    int placeholders = 0;
+    for (const auto& n : plan["needs"]) {
+        std::cout << n.value("key", "") << " -> " << n.value("source", "") << " " << n.value("entry", "") << " ("
+                  << n.value("decision", json::object()).value("reason", n.value("why", "")) << ")\n";
+        placeholders += n.value("source", "") == "placeholder";
+    }
+    std::cout << placeholders << " placeholder(s) of " << plan["needs"].size() << "\n";
+    // AIGE_SCENE_PLAN_BUILD=1: built into a scene too, on its background (the session's), each step timed.
+    if (const char* b = std::getenv("AIGE_SCENE_PLAN_BUILD"); b == nullptr || std::string(b) != "1") return;
+    const json session = json::parse(std::ifstream(root / "places" / id / "session.json"));
+    const json bg = session.value("matched", json::object()).value("groundPicture", json::object());
+    options.groundPicture = bg.value("path", "");
+    options.groundPictureCellPx = bg.value("cellPx", 0);
+    auto clock = std::chrono::steady_clock::now();
+    auto lap = [&](const char* what) {
+        const auto now = std::chrono::steady_clock::now();
+        std::cout << what << ": " << std::chrono::duration_cast<std::chrono::milliseconds>(now - clock).count() << " ms\n";
+        clock = now;
+    };
+    const json again = PlanPlaceAssets(Library(), spec, solved, catalog, prefabs, assets, ProjectTerrainSet(prefabs, Project{root}), options, &sourcing);
+    lap("plan");
+    Registry registry;
+    json report;
+    auto command = BuildPlaceScene(registry, prefabs, solved, again, ProjectTerrainSet(prefabs, Project{root}), options, &report);
+    lap("build");
+    const json checks = VerifyPlaceScene(registry, solved, again, options);
+    lap("verify");
+    const std::string sceneText = SerializeScene(registry);
+    lap("serialize (the recovery snapshot)");
+    std::cout << "scene text: " << sceneText.size() / 1024 << " KB\n";
+    std::cout << "report " << report.dump().substr(0, 600) << "\n";
 }

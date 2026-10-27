@@ -626,7 +626,7 @@ def create_app(
         if art == "auto":
             art = "mistral" if available_providers()["mistral"] else "pixellab"
         return make(art, root, request.dir, request.sheets, request.model_dump(), generator=state.get("images"), vision=state.get("vision"),
-                    keys={"bfl": os.environ.get("BFL_API_KEY")})
+                    keys={"bfl": os.environ.get("BFL_API_KEY")}, report=progress.reporter())
 
     @app.put("/art-provider")
     def set_art_provider(request: ArtProviderRequest) -> dict:
@@ -667,7 +667,7 @@ def create_app(
         provider = state.get("backgroundProvider", BACKGROUND_PROVIDERS[0])
         try:
             made = paint_background(BflPainter(key, provider.split(":", 1)[1]), request.terrain, (request.cells[0], request.cells[1]),
-                                    request.description, folder, seed=request.seed)
+                                    request.description, folder, seed=request.seed, report=progress.reporter())
         except Exception as error:  # noqa: BLE001 - said to the editor
             return {"ok": False, "errors": [f"The background couldn't be painted: {error}"]}
         return {"ok": True, "provider": provider, "path": made["path"].relative_to(root.resolve()).as_posix(), "cellPx": made["cellPx"],

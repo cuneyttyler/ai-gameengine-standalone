@@ -275,7 +275,22 @@ json GamePlan::RequestBody(const Job& job) {
     if (buildTypes.empty()) buildTypes = {"settlement", "interior", "dungeon", "wilderness"};
 
     if (job.kind == "interpret") {
-        return {{"request", request_}, {"reading", job.subject}, {"schema", BriefSchemaForAi(gso_)},
+        // The user's choices with the request (the home page's): told as decided, kept exactly.
+        std::string request = request_;
+        if (!choices_.empty()) {
+            std::string chosen;
+            for (const auto& [path, value] : choices_.items()) {
+                std::string v;
+                if (value.is_array()) {
+                    for (const auto& x : value) v += (v.empty() ? "" : ", ") + (x.is_string() ? x.get<std::string>() : x.dump());
+                } else {
+                    v = value.is_string() ? value.get<std::string>() : value.dump();
+                }
+                chosen += "\n- " + path + ": " + v;
+            }
+            request += "\n\nChosen by the user (keep these exactly, fill the rest to fit them):" + chosen;
+        }
+        return {{"request", request}, {"reading", job.subject}, {"schema", BriefSchemaForAi(gso_)},
                 {"scope", PlannerData::Engine().scope.value("classes", json::array())}, {"defaults", store_.Defaults()}};
     }
     if (job.kind == "outline") {
@@ -715,6 +730,47 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
 std::vector<std::string> GamePlan::HandleOutline(Job&, const json& outline, const std::string& decision) {
     json doc = outline;
     doc["schema"] = "aige.outline/1";
+    // The numbers the story decided (its cast by importance, companions, places, factions), written back into the
+    // Brief: ① Concept shows them, marked "from the story", and they can be changed there (the story goes stale).
+    // Written before the outline, which is then made from this Brief (so it isn't stale itself).
+    {
+        json counted = Brief();
+        json fromStory = json::array();
+        auto set = [&](const std::string& path, const json& value) {
+            json* at = &counted;
+            for (size_t start = 0;;) {
+                const size_t dot = path.find('.', start);
+                const std::string key = path.substr(start, dot == std::string::npos ? std::string::npos : dot - start);
+                if (dot == std::string::npos) {
+                    (*at)[key] = value;
+                    break;
+                }
+                if (!at->contains(key) || !(*at)[key].is_object()) (*at)[key] = json::object();
+                at = &(*at)[key];
+                start = dot + 1;
+            }
+            fromStory.push_back(path);
+        };
+        int major = 0, supporting = 0, minor = 0, companions = 0;
+        for (const auto& c : outline.value("cast", json::array())) {
+            const std::string importance = c.value("importance", "");
+            major += importance == "major";
+            supporting += importance == "supporting";
+            minor += importance == "minor" || importance == "extra";
+            const json roles = c.value("gameplayRoles", json::array());
+            companions += !c.value("player", false) && roles.is_array() && std::find(roles.begin(), roles.end(), "companion") != roles.end();
+        }
+        if (outline.contains("cast")) {
+            set("cast.major", major);
+            set("cast.supporting", supporting);
+            set("cast.minor", minor);
+            set("companions", companions);
+        }
+        if (const json places = outline.value("places", json()); places.is_array()) set("scope.places", json::array({places.size(), places.size()}));
+        if (const json factions = outline.value("factions", json()); factions.is_array()) set("factions", factions.size());
+        counted["fromStory"] = fromStory;
+        if (counted != Brief()) store_.Touch("brief", counted, decision);
+    }
     store_.Write("outline", doc, decision, {"brief"});
     const json brief = Brief();
     // The graph seeded: the story, its acts and endings, the cast and their roles, the places

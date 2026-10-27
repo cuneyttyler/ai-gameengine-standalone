@@ -53,6 +53,29 @@ bool IsSafeName(const std::string& name) {
     return true;
 }
 
+// A copy of a prefab replaced by a copy of another, where it was: keeping how it was turned and mirrored ("keep"),
+// the other way ("mirror") or as the new one comes ("none"), and the built place it belongs to. False when the new
+// one couldn't be placed (the old one stays).
+bool ReplaceCopy(CommandContext& context, Entity old, const std::string& to, const std::string& orient) {
+    const auto* world = context.registry.try_get<WorldTransform2D>(old);
+    if (world == nullptr) return false;
+    const auto placed = context.prefabs->Instantiate(context.registry, to, world->x, world->y, false);
+    if (!placed) return false;
+    if (const auto* node = context.registry.try_get<PlaceNode>(old)) context.registry.emplace_or_replace<PlaceNode>(*placed, *node);
+    if (!context.registry.all_of<Obstacle>(old)) context.registry.remove<Obstacle>(*placed);
+    const auto* was = context.registry.try_get<Sprite>(old);
+    const auto* now = context.registry.try_get<Sprite>(*placed);
+    if (was && now && orient != "none") {
+        const bool mirrored = (was->u0 > was->u1) != (orient == "mirror");
+        if (mirrored != (now->u0 > now->u1)) MirrorEntity(EngineReflection(), context.registry, *placed);
+        if (now->flat && was->rotation != now->rotation) {
+            TurnEntity(EngineReflection(), context.registry, *placed, was->rotation - now->rotation);
+        }
+    }
+    context.registry.destroy(old);
+    return true;
+}
+
 } // namespace
 
 void RegisterEditingCommands(ReflectionRegistry& r) {
@@ -320,24 +343,25 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
                 if (instance.path == from) copies.push_back(entity);
             }
             if (copies.empty()) return Fail("no copies of " + from + " in the scene");
-            for (Entity old : copies) {
-                const auto* world = context.registry.try_get<WorldTransform2D>(old);
-                if (world == nullptr) continue;
-                const auto placed = context.prefabs->Instantiate(context.registry, to, world->x, world->y, false);
-                if (!placed) continue;
-                if (const auto* node = context.registry.try_get<PlaceNode>(old)) context.registry.emplace_or_replace<PlaceNode>(*placed, *node);
-                if (!context.registry.all_of<Obstacle>(old)) context.registry.remove<Obstacle>(*placed);
-                const auto* was = context.registry.try_get<Sprite>(old);
-                const auto* now = context.registry.try_get<Sprite>(*placed);
-                if (was && now && orient != "none") {
-                    const bool mirrored = (was->u0 > was->u1) != (orient == "mirror");
-                    if (mirrored != (now->u0 > now->u1)) MirrorEntity(EngineReflection(), context.registry, *placed);
-                    if (now->flat && was->rotation != now->rotation) {
-                        TurnEntity(EngineReflection(), context.registry, *placed, was->rotation - now->rotation);
-                    }
-                }
-                context.registry.destroy(old);
-            }
+            for (Entity old : copies) ReplaceCopy(context, old, to, orient);
+            return {};
+        });
+
+    r.Command("entity.replacePrefab",
+              "Replaces one thing in the scene with a copy of another prefab, where it was, keeping how it was turned "
+              "and mirrored and which built place it belongs to (the viewport's and the Inspector's Replace prefab). "
+              "For every copy of a prefab, use prefab.replace.")
+        .Param("entity", FieldType::EntityRef, "The thing to replace.")
+        .Param("to", FieldType::String, "The prefab to put in its place, e.g. prefabs/a-cart.prefab.")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.prefabs == nullptr) return Fail("prefabs aren't available here");
+            const Entity entity = ToEntity(args[0]);
+            const std::string to = ToString(args[1]);
+            if (!context.registry.valid(entity)) return Fail("no such entity");
+            const PrefabInfo* target = context.prefabs->Find(to);
+            if (target == nullptr) return Fail("no prefab " + to);
+            if (target->isTile) return Fail(to + " is a ground tile: paint it instead");
+            if (!ReplaceCopy(context, entity, to, "keep")) return Fail("it couldn't be replaced");
             return {};
         });
 

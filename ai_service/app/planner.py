@@ -114,13 +114,15 @@ READINGS = {
 CONCEPT_TASK = """① Concept: read a request for a game and fill its Game Brief.
 {reading}
 Rules: genre is one of the genres given (its id); every enum field takes one of its options; numbers stay in
-range; playTime is in hours; tone is a list of tone words from its options; write a title and a logline (one
-sentence, at most 40 words) even if the request has none; setting.world is a short description of the world.
+range; playTime is in hours; tone is a list of tone words from its options; write a title, a logline (one
+sentence, at most 40 words) and a synopsis (one paragraph, 4-6 sentences: who the hero is, what they want, what
+stands in their way, the turn in the middle, how it may end) even if the request has none; setting.world is a short
+description of the world.
 Fill only what the request decides or strongly implies; the engine fills the rest from the genre's profile.
 confidence: per field path, how sure you are (0-1). decisions: questions the user should answer, each with the
 answer you assumed and the field path it sets."""
 
-CONCEPT_SHAPE = """{"brief": {"title": "", "logline": "", "genre": "<genre id>", "perspective": "isometric|top-down",
+CONCEPT_SHAPE = """{"brief": {"title": "", "logline": "", "synopsis": "", "genre": "<genre id>", "perspective": "isometric|top-down",
   "playTime": 3, "setting": {"world": "", "era": "", "genreFlavour": ""}, "tone": [""], "themes": [""],
   "playerCharacter": {"kind": "fixed|created", "name": "", "description": ""}, "mustInclude": [""], ...any other
   schema fields the request decides, nested by their dotted paths},

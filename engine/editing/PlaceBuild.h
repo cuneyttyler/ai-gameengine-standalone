@@ -236,6 +236,9 @@ public:
     // tiles where it needs detail), from its description. "" when asked.
     std::string MakeBackground();
     bool MakingBackground() const { return makingBackground_; }
+    // A finished AI call of the build, added to its step's totals (confirm, layout, plan, assets, result): kept with
+    // the build, shown on its step.
+    void AddUsage(const std::string& step, int inputTokens, int outputTokens, double seconds);
     bool Inspecting() const { return inspecting_; }
     const std::vector<std::string>& ArtToRedo() const { return redo_; }
     void ArtRedone() { redo_.clear(); }
@@ -361,6 +364,7 @@ private:
     std::map<std::string, std::string> sketchSeen_;  // need key -> how it looks in the sketch (the vision model's words)
     nlohmann::json sketches_ = nlohmann::json::array(); // each window's painting and prompt
     nlohmann::json matched_ = nlohmann::json::object(); // {state: making | made | cut | failed, dir, sheets, provider, report}
+    nlohmann::json usage_ = nlohmann::json::object(); // {step: {calls, inputTokens, outputTokens, seconds}}: AddUsage
     bool inspecting_ = false;
     bool makingBackground_ = false;
     int buildRounds_ = 0;
@@ -475,5 +479,7 @@ std::string PlaceIdFor(const std::filesystem::path& projectRoot, const std::stri
 nlohmann::json ListBuilds(const std::filesystem::path& projectRoot);
 // Removes every build under places/ but `keep` (8.2: "Remove older builds"); how many went.
 int RemoveBuilds(const std::filesystem::path& projectRoot, const std::string& keep);
+// Removes one build's folder under places/ (Your builds' remove button); false when there's no such build.
+bool RemoveBuild(const std::filesystem::path& projectRoot, const std::string& id);
 
 } // namespace aige

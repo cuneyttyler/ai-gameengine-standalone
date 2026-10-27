@@ -35,6 +35,8 @@ export const editorState = reactive({
   canRedo: false,
   sceneName: '',
   selectedId: null as number | null,
+  selectedPrefab: '', // the selected thing's prefab (Assets ▸ Prefabs selects it)
+  selectedPrefabAt: 0, // when it was selected: the same prefab clicked again selects it again
   notice: '',
   prefabs: [] as Prefab[],
   ai: {
@@ -65,6 +67,7 @@ export const editorState = reactive({
   showShortcuts: false, // Help ▸ Keyboard Shortcuts
   showOntology: false, // File ▸ Ontology…, the Build panel's menu (development_plan.md 9)
   replacePrefab: null as string | null, // Edit ▸ Replace prefab…: the prefab to replace ('' : choose)
+  replaceEntity: null as number | null, // …of one thing (the viewport's or the Inspector's Replace prefab): it, or every copy
   grid: false, // tile borders on empty ground (G)
   brushScale: 1, // the prefab brush places copies at this size
   brushRotation: 0, // quarter turns for flat things the brush places (R)
@@ -111,6 +114,10 @@ onHostMessage((message) => {
     editorState.hasSave = (message.hasSave as boolean) ?? false
   } else if (message.type === 'selection:changed') {
     editorState.selectedId = (message.id as number | null) ?? null
+    if (message.prefab !== undefined) {
+      editorState.selectedPrefab = (message.prefab as string) ?? ''
+      editorState.selectedPrefabAt = performance.now()
+    }
   } else if (message.type === 'ai:status') {
     editorState.ai.state = message.state as typeof editorState.ai.state
     editorState.ai.text = message.text as string

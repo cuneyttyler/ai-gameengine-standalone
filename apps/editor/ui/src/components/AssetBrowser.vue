@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { armPrefab, editorState } from '../editorState'
 import PrefabThumb from './PrefabThumb.vue'
 import CatalogReview from './CatalogReview.vue'
@@ -477,6 +477,21 @@ function paletteIndex(path: string): number {
 
 watch(visible, (list) => (assetPick.value = keepShown(assetPick.value, list.map((a) => a.path))))
 watch(visiblePrefabs, (list) => (prefabPick.value = keepShown(prefabPick.value, list.map((p) => p.path))))
+// A thing selected in the viewport: its prefab selected here, on the Prefabs tab, shown (its folder opened up) and
+// scrolled to.
+watch(
+  () => editorState.selectedPrefabAt,
+  async () => {
+    const path = editorState.selectedPrefab
+    if (!path || !editorState.selectedId || !editorState.prefabs.some((p) => p.path === path)) return
+    tab.value = 'prefabs'
+    if (!inFolder(path, 'prefabs', prefabFolder.value)) prefabFolder.value = ''
+    if (prefabKind.value !== 'all' && editorState.prefabs.find((p) => p.path === path)?.kind !== prefabKind.value) prefabKind.value = 'all'
+    prefabPick.value = { picked: [path], anchor: path }
+    await nextTick()
+    document.querySelector(`[data-prefab="${CSS.escape(path)}"]`)?.scrollIntoView({ block: 'nearest' })
+  },
+)
 
 function applyToSelected(): void {
   sendToHost({ type: 'asset:apply', path: selectedPath.value, tile: selectedTile.value })
@@ -588,10 +603,11 @@ onMounted(() => {
           <button
             v-for="prefab in visiblePrefabs"
             :key="prefab.path"
+            :data-prefab="prefab.path"
             class="card"
             :class="{
               selected: editorState.tool === 'prefab' && editorState.brush === prefab.path,
-              picked: pickedPrefabs.length > 1 && pickedPrefabs.includes(prefab.path),
+              picked: (pickedPrefabs.length > 1 && pickedPrefabs.includes(prefab.path)) || (!!editorState.selectedId && editorState.selectedPrefab === prefab.path),
               broken: !!prefab.error,
             }"
             :title="

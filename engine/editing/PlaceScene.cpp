@@ -1024,6 +1024,14 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
                     continue;
                 }
             }
+            const Role* roleDef = ontology.FindRole(need.role.substr(0, need.role.find('|')));
+            if (!options.groundPicture.empty() && roleDef != nullptr && roleDef->affordance == "terrain") {
+                // Ground (water, a road, a square): the background has it painted; no art, nothing put down.
+                row["decision"] = {{"step", "B"}, {"action", "use"}, {"reason", "painted in the background"}, {"warn", false}};
+                row["source"] = "background";
+                out["needs"].push_back(row);
+                continue;
+            }
             if (policy == "placeholder") {
                 row["decision"] = {{"step", "U"}, {"action", "placeholder"}, {"reason", "a placeholder, as you chose"}, {"warn", false}};
             } else {
@@ -1034,6 +1042,30 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
                 if (c.entry && c.entry->source == "web") candidates.web.push_back(c);
             }
             const auto tried = sourcing->tried.contains(key) ? sourcing->tried.at(key) : Tried{};
+            // Made in one style for this place (Make the art: assets/matched/<place>/): it, whatever the policy.
+            const std::string madeHere = "assets/matched/" + options.place + "/";
+            // The piece made for this very need first (its variantKey, its first look), else the best fit of those made
+            // here; never a back view (only its front's, through backOf). Its other looks are mixed in below (variantKey).
+            const Candidate* matched = nullptr;
+            int best = -1;
+            for (const auto& c : found.candidates) {
+                if (!c.entry || c.entry->path.rfind(madeHere, 0) != 0 || tried.refused.contains(c.entry->path)) continue;
+                const AssetInfo* a = assets.Find(c.entry->path);
+                auto field = [&](const char* k) {
+                    if (a == nullptr) return std::string();
+                    const auto f = a->analysis.find(k);
+                    return f == a->analysis.end() ? std::string() : f->second;
+                };
+                if (!field("backOf").empty()) continue;
+                const int rank = (field("variantKey") == key ? 2 : 0) + (field("variant").empty() || field("variant") == "1" ? 1 : 0);
+                if (rank > best || (rank == best && c.fit > matched->fit)) {
+                    matched = &c;
+                    best = rank;
+                }
+            }
+            if (matched && !options.place.empty() && !choice.value("exclude", false) && take(*matched)) {
+                row["decision"] = {{"step", "M"}, {"action", "use"}, {"reason", "made in one style for this place"}, {"warn", false}};
+            } else {
             Decision d = choice.value("exclude", false) ? Decision{"A7", "drop", "none", std::nullopt, "excluded by you", false}
                                                         : Decide(policy, profile, candidates, sourcing->settings.licences,
                                                                  sourcing->settings.webSearch || policy == "web", sourcing->canGenerate, tried);
@@ -1087,6 +1119,7 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
                 if (const json n = wishOf(need.node, "variants"); n.is_number() && n.get<int>() > 1) out["pending"].back()["variants"] = std::min(4, n.get<int>());
                 if (const json st = wishOf(need.node, "style"); st.is_string() && !st.get<std::string>().empty()) out["pending"].back()["style"] = st;
                 row["why"] = d.action == "generate" ? "to be made by the Art tool" : "to be found on the web";
+            }
             }
             }
         } else {
@@ -1361,6 +1394,13 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
             out["terrains"][t] = {{"prefab", variants[0]}, {"variants", variants}, {"source", "generated"}, {"entry", madeTiles.front()}};
             continue;
         }
+        // A background painted whole (docs/places/background.md) is the ground: no tiles made for it (the placeholder
+        // tile only carries the cell's terrain: water, solid ground).
+        if (!options.groundPicture.empty()) {
+            out["terrains"][t] = {{"prefab", PlaceholderPrefab(prefabs, "tile", t, options.iso.tileWidth, options.iso.tileHeight, SolidTerrain(t), options.iso)},
+                                  {"source", "background"}, {"why", "painted in the background"}};
+            continue;
+        }
         // Else the Art tool makes one (with the AI, once), a placeholder meanwhile.
         const std::string key = "terrain|" + t;
         bool pending = false;
@@ -1431,9 +1471,13 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
 
 // ③ Assets' rows: each need, and the ground (each terrain: the project's tiles, made ones, or the Art tool).
 nlohmann::json AssetNeedRows(const nlohmann::json& assets) {
-    nlohmann::json needs = assets.value("needs", nlohmann::json::array());
+    nlohmann::json needs = nlohmann::json::array();
+    for (const auto& n : assets.value("needs", nlohmann::json::array())) {
+        if (n.value("source", "") != "background") needs.push_back(n); // ground the background has painted: nothing to find
+    }
     const nlohmann::json terrains = assets.value("terrains", nlohmann::json::object());
     for (const auto& [t, g] : terrains.items()) {
+        if (g.value("source", "") == "background") continue; // the background is the ground: no tiles needed
         nlohmann::json row = {{"key", "terrain|" + t}, {"role", "ground-tile"}, {"concepts", nlohmann::json::array({t})}, {"source", g.value("source", "")},
                               {"entry", g.value("entry", g.value("terrain", ""))}, {"why", g.value("why", "")}, {"component", "ground"}};
         if (g.value("why", "") == "to be made by the Art tool") row["decision"] = {{"action", "generate"}, {"reason", "no " + t + " ground tiles in the project"}};
@@ -1782,7 +1826,8 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
                           const std::function<std::string(const std::string&, int, int)>& takeOf = {},
                           const ImageData* picture = nullptr, int pictureCellPx = 0) {
     // With a picture of the ground (painted whole), its colours; drawn at a finer scale, its detail kept.
-    const int kCellPx = picture ? kGroundCellPxPainted : kGroundCellPx;
+    // The picture's own detail, no more (drawn finer, it only blurs and takes minutes): at least kGroundCellPx / 2.
+    const int kCellPx = picture ? std::clamp(pictureCellPx, kGroundCellPx / 2, kGroundCellPxPainted) : kGroundCellPx;
     PaintedGround out;
     const std::map<std::string, ImageData> textures = LockPalette(rawTextures, look);
     auto nameAt = [&](int x, int y) -> std::string {
@@ -1972,12 +2017,24 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
                     if (ox >= grid.w || oy >= grid.h) continue;
                     const int own = index[static_cast<size_t>(oy) * grid.w + ox];
                     if (isVoid[own]) continue;
+                    GroundRgb color;
+                    if (picture != nullptr && pictureCellPx > 0) {
+                        // A background painted whole (docs/places/background.md): its colour here (bilinear). Its
+                        // edges, shores and roads are painted in it already: no textures, no borders worked out.
+                        const float fx = std::clamp(wx * pictureCellPx - 0.5f, 0.0f, picture->width - 1.0f);
+                        const float fy = std::clamp(wy * pictureCellPx - 0.5f, 0.0f, picture->height - 1.0f);
+                        const int ax = static_cast<int>(fx), ay = static_cast<int>(fy);
+                        const int bx = std::min<int>(ax + 1, picture->width - 1), by = std::min<int>(ay + 1, picture->height - 1);
+                        const float tx = fx - ax, ty = fy - ay;
+                        auto at = [&](int x, int y, int k) { return static_cast<float>(picture->rgba[(static_cast<size_t>(y) * picture->width + x) * 4 + k]); };
+                        auto mix = [&](int k) { return (at(ax, ay, k) * (1 - tx) + at(bx, ay, k) * tx) * (1 - ty) + (at(ax, by, k) * (1 - tx) + at(bx, by, k) * tx) * ty; };
+                        color = {mix(0), mix(1), mix(2)};
+                    } else {
                     // A ragged border: where it looks up its ground, moved a little by noise.
                     const float amp = isMade[own] ? 0.05f : 0.34f;
                     const float dx = (ValueNoise(wx * 1.4f, wy * 1.4f, 1) * 2 - 1) * amp + (ValueNoise(wx * 3.7f, wy * 3.7f, 2) * 2 - 1) * amp * 0.45f;
                     const float dy = (ValueNoise(wx * 1.4f, wy * 1.4f, 3) * 2 - 1) * amp + (ValueNoise(wx * 3.7f, wy * 3.7f, 4) * 2 - 1) * amp * 0.45f;
                     const float soft = isMade[own] ? 0.25f : 1.0f;
-                    GroundRgb color;
                     int water = 0, samples = 0;
                     for (const auto& j : jitter) {
                         int t = groundAt(wx + dx + j[0] * soft, wy + dy + j[1] * soft);
@@ -1994,11 +2051,7 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
                         }
                         if (!ti) ti = plainTexture[t];
                         if (!ti) ti = plainTexture[own];
-                        if (!ti) {
-                            // No texture for it (a background painted whole: docs/places/background.md): the picture's colour.
-                            if (picture != nullptr && pictureCellPx > 0) water += isWater[t] ? 1 : 0, ++samples;
-                            continue;
-                        }
+                        if (!ti) continue;
                         // Its texture and, where slow noise says, the same texture turned and moved
                         // ("texture bombing"): no two stretches of a field sample it alike.
                         const float tu = wx / kTextureCells * ti->width, tv = wy / kTextureCells * ti->height;
@@ -2013,17 +2066,6 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
                     }
                     if (samples == 0) continue;
                     color.r /= samples, color.g /= samples, color.b /= samples;
-                    if (picture != nullptr && pictureCellPx > 0) {
-                        // The painted ground's colour here (bilinear), over the textures'.
-                        const float fx = std::clamp(wx * pictureCellPx - 0.5f, 0.0f, picture->width - 1.0f);
-                        const float fy = std::clamp(wy * pictureCellPx - 0.5f, 0.0f, picture->height - 1.0f);
-                        const int ax = static_cast<int>(fx), ay = static_cast<int>(fy);
-                        const int bx = std::min<int>(ax + 1, picture->width - 1), by = std::min<int>(ay + 1, picture->height - 1);
-                        const float tx = fx - ax, ty = fy - ay;
-                        auto at = [&](int x, int y, int k) { return static_cast<float>(picture->rgba[(static_cast<size_t>(y) * picture->width + x) * 4 + k]); };
-                        auto mix = [&](int k) { return (at(ax, ay, k) * (1 - tx) + at(bx, ay, k) * tx) * (1 - ty) + (at(ax, by, k) * (1 - tx) + at(bx, by, k) * tx) * ty; };
-                        color = {mix(0), mix(1), mix(2)};
-                    }
                     // The shore: land by the water turns to sand; the water by the land, shallow.
                     int nearWater = 0;
                     for (int k = 0; k < 6; ++k) {
@@ -2047,6 +2089,7 @@ PaintedGround PaintGround(const Project& project, const TerrainGrid& grid, const
                             color = {color.r * 0.8f, color.g * 0.8f, color.b * 0.8f};
                             break;
                         }
+                    }
                     }
                     // A slow change of light across the place: no two stretches of grass alike.
                     float light = 1.0f + (ValueNoise(wx * 0.12f, wy * 0.12f, 9) - 0.5f) * 0.14f + (ValueNoise(wx * 0.5f, wy * 0.5f, 10) - 0.5f) * 0.06f;
@@ -2485,6 +2528,7 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
             out["dropped"] = out.value("dropped", 0) + 1; // excluded, or optional with nothing to show
             continue;
         }
+        if (it != choices.end() && it->second.value("source", "") == "background") continue; // ground, painted in the background
         // Mounted on a wall (a relation whose art is "on-run", with that wall cell made): the nearest wall cell shown
         // gets the piece with it painted on; nothing stands on the floor. Its light still shines (from the plan).
         if (it != choices.end() && it->second.contains("onWall")) {

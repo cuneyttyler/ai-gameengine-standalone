@@ -69,6 +69,7 @@ public:
 
     EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& registry, LuaVM& lua, AssetDatabase& assets,
               AudioEngine& audio, Renderer2D& renderer, PostFn post);
+    ~EditorApp(); // a clean exit: the crash-recovery files go
 
     // Starts the AI service from `serviceDir` (ai_service/); call once after
     // construction. Without it, AI features report themselves unavailable.
@@ -182,8 +183,11 @@ private:
     void PreviewAssets();                    // ③ Assets: each part's art decided, nothing fetched yet
     // Each need's own choice (④ Assets): a source, a picked piece of art, a placeholder (assets.json "overrides").
     void SetNeedChoice(const std::string& key, const nlohmann::json& choice);
+    std::vector<nlohmann::json> usageQueue_; // build:usage while a build job runs: added when it's done
+    std::string afterBackground_; // ③ the art asked for ("find", "matched"): started once the background is painted
     int autoRounds_ = 0; // sourcing rounds started on their own (another method for what's still missing)
     void FindAssets();
+    void MakeMatched(); // ③ every need made in one style (build:matchedArt)
     // A ground cell of a tile layer (a built place's ground), selected with the Select tool.
     struct CellPick {
         std::string layer;
@@ -517,6 +521,14 @@ private:
     std::optional<Entity> selected_;
 
     bool dirty_ = false;
+    // Crash recovery (EditorApp.cpp): .cache/recovery, the unsaved scene written there every two minutes; a crash's
+    // snapshot offered back when the page is up.
+    std::filesystem::path RecoveryDir() const;
+    void StartRecovery();
+    void WriteRecovery();
+    void AnswerRecovery(bool restore);
+    std::chrono::steady_clock::time_point recoverySaved_;
+    nlohmann::json recoveryOffer_;
     bool settingsDirty_ = false; // project settings edited since the last save
     std::optional<std::string> pendingSnapshot_;
     bool pendingPushed_ = false;
@@ -534,8 +546,13 @@ private:
     std::unique_ptr<GamePlan> plan_;
     std::unique_ptr<GamePlan> MakePlan();
     bool HandlePlannerMessage(const std::string& type, const nlohmann::json& message);
-    void StartPlan(const std::string& request, bool replace);
+    void StartPlan(const std::string& request, bool replace, const nlohmann::json& choices = nlohmann::json::object());
+    nlohmann::json planChoices_; // the home page's Choices (BriefChoices), made once
     void PostPlanner();
+    // The AI Planner's home page: the project's plan and the earlier ones (planner-archive/<when>/, kept when a new plan
+    // replaced them); one opened swaps with the current.
+    bool ArchivePlan();
+    nlohmann::json ListPlans() const;
     // Building the planned game (23): its heavy steps run off the UI thread, one Pump at a
     // time; AI answers wait while one runs (GameBuild isn't thread-safe).
     std::unique_ptr<GameBuild> gameBuild_;
