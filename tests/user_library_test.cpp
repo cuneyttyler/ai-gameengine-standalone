@@ -2,7 +2,10 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
+#include <map>
 #include <fstream>
 #include <iostream>
 
@@ -86,4 +89,66 @@ TEST(UserLibraryTest, GeneratedArtIsKeptOrganisedSharedAndExported) {
     ASSERT_EQ(library.Remove(house), "");
     EXPECT_EQ(library.State()["items"].size(), 1u);
     fs::remove_all(base);
+}
+
+// Every project's own art in a folder into the user's library (AIGE_LIBRARY_IMPORT=<projects folder>|<library folder>):
+// a folder per project ("Projects ▸ <name>"), a folder inside per kind of art (matched, textures, web…). Left out: the
+// painted ground's chunks (one place's background, cut up), placeholders, and what came from the library already.
+TEST(UserLibraryTest, ProjectsArtIntoTheLibrary) {
+    const char* env = std::getenv("AIGE_LIBRARY_IMPORT");
+    if (env == nullptr) GTEST_SKIP() << "AIGE_LIBRARY_IMPORT=<projects folder>|<library folder>";
+    const std::string spec = env;
+    const fs::path projects = spec.substr(0, spec.find('|')), dir = spec.substr(spec.find('|') + 1);
+    aige::UserLibrary library(dir);
+    // A folder's id by its name and parent, made when there's none (NewFolder answers "" when done).
+    auto folderNamed = [&](const std::string& name, const std::string& parent) {
+        auto find = [&]() -> std::string {
+            for (const auto& f : library.State().value("folders", nlohmann::json::array())) {
+                if (f.value("name", "") == name && f.value("parent", "") == parent) return f.value("id", "");
+            }
+            return {};
+        };
+        if (std::string id = find(); !id.empty()) return id;
+        EXPECT_EQ(library.NewFolder(name, parent), "");
+        return find();
+    };
+    // An earlier run's folders made at the top by mistake (all but Generated and Projects): gone, their items at the top.
+    for (const auto& f : library.State().value("folders", nlohmann::json::array())) {
+        const std::string id = f.value("id", "");
+        if (f.value("parent", "") == "" && id != "Generated" && id != "Projects") library.DeleteFolder(id);
+    }
+    const std::string top = folderNamed("Projects", "");
+    auto folderOf = [&](const std::string& item) {
+        for (const auto& i : library.State().value("items", nlohmann::json::array())) {
+            if (i.value("id", "") == item) return i.value("folder", "");
+        }
+        return std::string();
+    };
+    int added = 0, seen = 0;
+    for (const auto& project : fs::directory_iterator(projects)) {
+        const fs::path assets = project.path() / "assets";
+        if (!project.is_directory() || !fs::is_directory(assets)) continue;
+        const std::string name = project.path().filename().string();
+        const std::string mine = folderNamed(name, top);
+        std::map<std::string, std::string> kinds;
+        for (const auto& entry : fs::recursive_directory_iterator(assets)) {
+            if (!entry.is_regular_file()) continue;
+            std::string ext = entry.path().extension().string();
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (ext != ".png" && ext != ".jpg" && ext != ".jpeg") continue;
+            const std::string rel = fs::relative(entry.path(), assets).generic_string();
+            if (rel.rfind("generated/ground/", 0) == 0 || rel.rfind("generated/placeholders/", 0) == 0 || rel.rfind("library/", 0) == 0) continue;
+            const std::string kind = rel.substr(0, rel.find('/') == std::string::npos ? 0 : rel.find('/'));
+            const std::string label = kind.empty() ? "Other" : kind;
+            if (!kinds.contains(label)) kinds[label] = folderNamed(label, mine);
+            ++seen;
+            const std::string id = library.Add(entry.path(), {{"name", entry.path().stem().string()}, {"source", "project"}, {"origin", name + "/assets/" + rel}},
+                                               kinds[label]);
+            added += !id.empty();
+            // New here (or left at the top before): into its folder. Art already kept elsewhere (Generated) stays there.
+            if (!id.empty() && folderOf(id).empty()) library.Move(id, kinds[label]);
+        }
+    }
+    std::cout << "art seen: " << seen << ", in the library: " << added << "\n";
+    EXPECT_EQ(added, seen);
 }
