@@ -573,6 +573,9 @@ private:
     int animateRequest_ = 0;
     std::string animateKey_;       // the target in flight
     nlohmann::json AnimateTargets();
+    // A building's door `index` set on its prefab (every copy): `reset` first leaves it no other doors (§4.3).
+    // `keepWays`: a door redone keeps how it opens and its lock (Build ▸ Animate); off: the new door's (Animate a part…).
+    void ApplyDoorToPrefab(const std::string& prefab, size_t index, const AnimatedPart& door, bool reset, bool keepWays = true);
     void PostAnimate();
     bool HandleAnimateMessage(const std::string& type, const nlohmann::json& message);
     bool HandleAiSettingsMessage(const std::string& type, const nlohmann::json& message);

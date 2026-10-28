@@ -267,10 +267,14 @@ def describe_assets(provider: Provider, root: Path, paths: list[str], workers: i
 
 
 FIND_PARTS = """You look at one picture from a 2D game (a building's art, or part of a painted scene) and find where its moving
-parts are: {kinds}. Give each one you see, its box in the picture's pixels (x and y of its top-left corner, its width
-and height: the whole part, a door from its sill to its lintel, not the wall around it), what it is, and how sure you
-are. Only parts a player could open or use; none: an empty list. Answer as JSON:
-{{"parts": [{{"kind": "door", "box": [x, y, w, h], "label": "the front door", "confidence": 0.9}}]}}"""
+parts are: {kinds}. A building can have SEVERAL doors (a front door and a side door, a big double door and a small one,
+doors on both of its faces): give EVERY one at ground level, each on its own, the main entrance first; not a loft or
+upper-floor door, not a window or a shutter. For each: its box in the picture's pixels (x and y of its top-left corner,
+its width and height: the whole door, from its threshold to its top, an arched one to the top of its arch, frame edge to
+frame edge, not the wall around it), what it is, how sure you are, "leaves" (1, or 2 for a double door: two halves
+meeting in the middle), "shape" (rect or arched) and "open" (true for an open archway or doorway with no door in it).
+None: an empty list. Answer as JSON:
+{{"parts": [{{"kind": "door", "box": [x, y, w, h], "label": "the front door", "confidence": 0.9, "leaves": 1, "shape": "rect", "open": false}}]}}"""
 
 
 def find_parts(provider: Provider, root: Path, path: str, kinds: list[str], rect: list[int] | None = None) -> dict:
@@ -302,6 +306,8 @@ def find_parts(provider: Provider, root: Path, path: str, kinds: list[str], rect
         if bw < 2 or bh < 2:
             continue
         parts.append({"kind": str(p.get("kind", "door")), "label": str(p.get("label", "")),
+                      "leaves": 2 if p.get("leaves") == 2 else 1, "shape": "arched" if p.get("shape") == "arched" else "rect",
+                      "open": bool(p.get("open", False)),
                       "confidence": float(p.get("confidence", 0.5) or 0.5),
                       "box": [round(ox + x * sx), round(oy + y * sy), round(bw * sx), round(bh * sy)]})
     return {"ok": True, "parts": parts}

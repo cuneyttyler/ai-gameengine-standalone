@@ -24,6 +24,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <climits>
+#include <map>
+#include <set>
 #include <sstream>
 #include <tuple>
 #include <type_traits>
@@ -2589,15 +2592,31 @@ void GameSession::StepActions(float dt) {
     }
     actionEvents_.clear();
     actionEventUsers_.clear();
-    // Animated parts (a building's door; docs/assets/animations.md §4.2). Each opens its project's way or its own:
-    // auto, as someone comes near; use, for the player's door shortcuts (Project Settings ▸ Game ▸ doorActions) or a
-    // double click on it, near it, and for other characters as they come. A locked one opens only for the player
-    // carrying its key (then it's unlocked for good). It closes once everyone has gone. Near is measured from the door
-    // itself (its foot), not the building's middle.
+    // Animated parts (a building's doors; docs/assets/animations.md §4.2, §4.3). Each door opens its project's way or
+    // its own: auto, as someone comes near; use, for the player's door shortcuts (Project Settings ▸ Game ▸
+    // doorActions) or a double click on it, near it, and for other characters as they come. A locked one opens only
+    // for the player carrying its key (then it's unlocked for good). It closes once everyone has gone. Near is measured
+    // from the door itself (its foot). Each door's doorway (the footprint's edge cell nearest it) is passable while
+    // it's open, or opens by itself and isn't locked (PartOpen, read by TileGrid and characters' paths).
     {
-        std::vector<std::pair<Entity, Entity>> overlays; // (owner, overlay)
+        struct DoorAt {
+            Entity owner, overlay;
+            size_t index;
+            float x, y;
+            bool placed; // where it's drawn is known (else its building's middle, until it's drawn)
+        };
+        std::vector<DoorAt> doors;
         for (auto [overlay, link] : registry_.view<AttachmentLink, Transient>().each()) {
-            if (link.slot == "part" && registry_.valid(link.parent)) overlays.push_back({link.parent, overlay});
+            if (link.slot.rfind("part", 0) != 0 || !registry_.valid(link.parent)) continue;
+            const size_t index = link.slot.size() > 4 ? static_cast<size_t>(std::atoi(link.slot.c_str() + 4)) : 0;
+            const auto* w = registry_.try_get<WorldTransform2D>(link.parent);
+            if (!w || !registry_.all_of<AnimatedPart>(link.parent)) continue;
+            float dx = w->x, dy = w->y;
+            const auto* screen = registry_.try_get<ScreenTransform2D>(overlay);
+            const auto* sprite = registry_.try_get<Sprite>(overlay);
+            const bool placed = screen && sprite && sprite->height > 0.0f;
+            if (placed) UnprojectIso(screen->x, screen->y + sprite->height * 0.5f, iso_, dx, dy);
+            doors.push_back({link.parent, overlay, index, dx, dy, placed});
         }
         bool doorKey = false; // a door shortcut pressed this step
         {
@@ -2610,64 +2629,86 @@ void GameSession::StepActions(float dt) {
         }
         const auto click = requestedUse_;
         requestedUse_.reset();
-        // The one door the player's shortcut is for: the nearest within its range.
-        Entity used{entt::null};
+        // Each building's doors as they are now, read once; written back when one is unlocked.
+        std::map<Entity, std::vector<AnimatedPart>> all;
+        for (const auto& d : doors) {
+            if (!all.contains(d.owner)) all[d.owner] = DoorsOf(registry_.get<AnimatedPart>(d.owner));
+        }
+        // The one door the player's shortcut (or double click) is for: the nearest within its range.
+        const DoorAt* used = nullptr;
         float usedDistance = 1e9f;
-        std::vector<std::tuple<Entity, Entity, float, float>> doors; // (owner, overlay, x, y)
-        for (const auto& [owner, overlay] : overlays) {
-            const auto* part = registry_.try_get<AnimatedPart>(owner);
-            const auto* w = registry_.try_get<WorldTransform2D>(owner);
-            if (!part || !w) continue;
-            float dx = w->x, dy = w->y;
-            const auto* screen = registry_.try_get<ScreenTransform2D>(overlay);
-            const auto* sprite = registry_.try_get<Sprite>(overlay);
-            if (screen && sprite && sprite->height > 0.0f) UnprojectIso(screen->x, screen->y + sprite->height * 0.5f, iso_, dx, dy);
-            doors.emplace_back(owner, overlay, dx, dy);
-            if (!at) continue;
-            const float d = std::hypot(at->x - dx, at->y - dy);
+        for (const auto& d : doors) {
+            const auto& list = all[d.owner];
+            if (!at || d.index >= list.size()) continue;
+            const float dist = std::hypot(at->x - d.x, at->y - d.y);
+            const auto* screen = registry_.try_get<ScreenTransform2D>(d.overlay);
+            const auto* sprite = registry_.try_get<Sprite>(d.overlay);
             const bool clicked = click && screen && sprite && std::abs(click->first - screen->x) <= sprite->width * 0.5f &&
                                  std::abs(click->second - screen->y) <= sprite->height * 0.5f;
-            if (d <= part->range + (clicked ? 1.0f : 0.0f) && (doorKey || clicked) && d < usedDistance) used = owner, usedDistance = d;
+            if (dist <= list[d.index].range + (clicked ? 1.0f : 0.0f) && (doorKey || clicked) && dist < usedDistance) used = &d, usedDistance = dist;
         }
-        for (const auto& [owner, overlay, dx, dy] : doors) {
-            auto& part = registry_.get<AnimatedPart>(owner);
-            auto& open = registry_.get_or_emplace<PartOpen>(owner);
-            const bool byUse = DoorOpens(part) == "use";
-            bool playerNear = false, othersNear = false;
-            for (auto [mover, v, mw] : registry_.view<Velocity2D, WorldTransform2D>().each()) {
-                if (std::hypot(mw.x - dx, mw.y - dy) > part.range) continue;
-                (player && mover == *player ? playerNear : othersNear) = true;
-            }
-            bool opening = false;
-            if (owner == used) {
-                if (part.locked) {
-                    auto* inventory = registry_.try_get<Inventory>(*player);
-                    if (part.key.empty() || !inventory || CountItem(*inventory, part.key) <= 0) {
-                        Toast(part.key.empty() ? "Locked." : "Locked: needs " + ItemName(part.key) + ".");
-                    } else {
-                        if (part.consumeKey) RemoveItem(*inventory, part.key, 1);
-                        part.locked = false;
-                        Toast("Unlocked with " + ItemName(part.key) + ".");
-                        opening = true;
-                    }
-                } else {
-                    opening = !open.open || !byUse; // by use: the shortcut opens it, or shuts it again
-                    if (open.open && byUse) {
-                        open.open = false;
-                        TriggerAnimation(registry_, overlay, part.closeClip);
-                        continue;
-                    }
+        std::set<Entity> unlocked;
+        for (const auto& d : doors) {
+            auto& list = all[d.owner];
+            if (d.index >= list.size()) continue;
+            AnimatedPart& door = list[d.index];
+            auto& state = registry_.get_or_emplace<PartOpen>(d.owner);
+            if (state.open.size() < list.size()) state.open.resize(list.size(), 0);
+            if (state.passable.size() < list.size()) state.passable.resize(list.size(), 0);
+            if (state.cells.size() < list.size()) state.cells.resize(list.size(), {INT_MIN, INT_MIN});
+            // Its doorway: the footprint's edge cell nearest the door.
+            if (const auto* interior = registry_.try_get<Interior>(d.owner)) {
+                int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+                if (int ix = 0, iy = 0; !d.placed && d.index == 0 && InteriorDoor(registry_, d.owner, *interior, ix, iy)) {
+                    state.cells[d.index] = {ix, iy}; // not drawn yet: the first door at the interior's own doorway
+                } else if (InteriorFootprint(registry_, d.owner, *interior, x0, y0, x1, y1)) {
+                    const int cx = std::clamp(static_cast<int>(std::floor(d.x)), x0, x1), cy = std::clamp(static_cast<int>(std::floor(d.y)), y0, y1);
+                    const int toEdge[4] = {cx - x0, x1 - cx, cy - y0, y1 - cy};
+                    const int nearest = static_cast<int>(std::min_element(toEdge, toEdge + 4) - toEdge);
+                    state.cells[d.index] = nearest == 0 ? std::make_pair(x0, cy) : nearest == 1 ? std::make_pair(x1, cy)
+                                         : nearest == 2 ? std::make_pair(cx, y0) : std::make_pair(cx, y1);
                 }
             }
-            if (!part.locked && (byUse ? othersNear : (playerNear || othersNear))) opening = true;
-            if (opening && !open.open) {
-                open.open = true;
-                TriggerAnimation(registry_, overlay, part.clip);
-            } else if (open.open && !playerNear && !othersNear) {
-                open.open = false; // everyone gone: it closes
-                TriggerAnimation(registry_, overlay, part.closeClip);
+            const bool byUse = DoorOpens(door) == "use";
+            bool playerNear = false, othersNear = false;
+            for (auto [mover, v, mw] : registry_.view<Velocity2D, WorldTransform2D>().each()) {
+                if (std::hypot(mw.x - d.x, mw.y - d.y) > door.range) continue;
+                (player && mover == *player ? playerNear : othersNear) = true;
             }
+            char& open = state.open[d.index];
+            bool opening = false;
+            if (used == &d) {
+                if (door.locked) {
+                    auto* inventory = registry_.try_get<Inventory>(*player);
+                    if (door.key.empty() || !inventory || CountItem(*inventory, door.key) <= 0) {
+                        Toast(door.key.empty() ? "Locked." : "Locked: needs " + ItemName(door.key) + ".");
+                    } else {
+                        if (door.consumeKey) RemoveItem(*inventory, door.key, 1);
+                        door.locked = false;
+                        unlocked.insert(d.owner);
+                        Toast("Unlocked with " + ItemName(door.key) + ".");
+                        opening = true;
+                    }
+                } else if (open && byUse) {
+                    open = 0; // by use: the shortcut opens it, or shuts it again
+                    TriggerAnimation(registry_, d.overlay, door.closeClip);
+                    state.passable[d.index] = 0;
+                    continue;
+                } else {
+                    opening = true;
+                }
+            }
+            if (!door.locked && (byUse ? othersNear : (playerNear || othersNear))) opening = true;
+            if (opening && !open) {
+                open = 1;
+                TriggerAnimation(registry_, d.overlay, door.clip);
+            } else if (open && !playerNear && !othersNear) {
+                open = 0; // everyone gone: it closes
+                TriggerAnimation(registry_, d.overlay, door.closeClip);
+            }
+            state.passable[d.index] = open || (!door.locked && !byUse);
         }
+        for (Entity owner : unlocked) SetDoors(registry_.get<AnimatedPart>(owner), all[owner]);
     }
     // interact is the Interactables' key too: an Action on it acts only when no Interactable is nearer.
     for (const auto& [name, hit] : pressed) {

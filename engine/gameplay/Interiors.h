@@ -3,6 +3,7 @@
 #include "ecs/Registry.h"
 
 #include <optional>
+#include <vector>
 #include <utility>
 #include <string>
 
@@ -34,6 +35,10 @@ bool InteriorDoor(Registry& registry, Entity entity, const Interior& interior, i
 
 // How a thing's animated door opens (docs/assets/animations.md §4.2): "auto" or "use", its own or the project's.
 std::string DoorOpens(const AnimatedPart& part);
+// Its doors (§4.3): itself (its first) and its `more`, each as an AnimatedPart of its own (their `more` empty);
+// SetDoors writes such a list back (the first into its fields, the rest into `more`).
+std::vector<AnimatedPart> DoorsOf(const AnimatedPart& part);
+void SetDoors(AnimatedPart& part, const std::vector<AnimatedPart>& doors);
 // Its doorway is shut to walkers: a building one can go into whose animated door is closed and locked, or closed and
 // opened by use (it opens for the player's shortcut, and for other characters as they come).
 bool DoorwayShut(Registry& registry, Entity entity);

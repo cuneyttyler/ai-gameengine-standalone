@@ -285,6 +285,22 @@ In code: `AnimatedPart` / `PartOpen` (`engine/gameplay/Components.h`), `DoorOpen
 (`engine/gameplay/Interiors.cpp`), the doorway in `TileGrid::Build`, characters' paths in `Behaviour.cpp`, the rules in
 `GameSession::StepActions`, `RequestUseAt` (the editor's Play and `apps/sandbox/main.cpp` for a double click).
 
+### 4.3 Several doors, double doors, archways
+
+A building can have several doors (a front and a side door, a big double door and a small one, doors on both faces).
+The finder asks for every ground-level door (`/parts/find`: each with its box, `leaves`, `shape`, `open`), the main one
+first; Build ▸ Animate gives each its own row (`<key>`, `<key>#1`, …), each opened and redone on its own. An open
+archway (no door in it) isn't animated ("skipped: an open archway"). A double door (`leaves` 2, or a door wider than
+three quarters of its height) opens as two halves, each on its own side's hinge.
+
+In the big view (click a picture) **Draw the doors** takes as many boxes as the building has doors (numbered, **Clear**
+to start again); **Redo with N doors** makes the building's doors exactly those, one from each box as drawn. **Animate
+a part…** adds a door (or redoes the one whose box it's drawn over).
+
+On the building: AnimatedPart's own fields are its first door; `more` (a JSON list) holds the others, each with the same
+fields (`DoorsOf` / `SetDoors`). Each door has its own overlay ("part", "part1", …), its own open / use / lock, and its
+own doorway in the walls (the footprint's edge cell nearest it), passable while it's open or opens by itself unlocked.
+
 ## 5. In the Inspector
 
 | Component | Fields |

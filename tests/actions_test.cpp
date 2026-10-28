@@ -149,7 +149,10 @@ TEST(ActionsTest, DoorsOpenTheirWayAndLockedOnesNeedTheKey) {
         interact = false;
         w.session->Advance(aige::GameSession::kFixedDt, keys);
     };
-    auto isOpen = [&] { return w.registry.all_of<aige::PartOpen>(house) && w.registry.get<aige::PartOpen>(house).open; };
+    auto isOpen = [&] {
+        const auto* open = w.registry.try_get<aige::PartOpen>(house);
+        return open && !open->open.empty() && open->open[0];
+    };
     auto doorwaySolid = [&] { return aige::TileGrid::Build(w.registry).IsSolid(4, 5); };
 
     // The project's way (use, the default): near isn't enough; its shortcut opens it.

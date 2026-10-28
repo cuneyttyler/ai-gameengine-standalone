@@ -244,7 +244,14 @@ struct Run {
         // (docs/assets/animations.md §4.2), so a path goes through.
         std::set<std::pair<int, int>> doorways;
         for (auto [e, interior, part] : R().view<Interior, AnimatedPart>().each()) {
-            if (int dx = 0, dy = 0; !part.locked && DoorwayShut(R(), e) && InteriorDoor(R(), e, interior, dx, dy)) doorways.insert({dx, dy});
+            if (const auto* open = R().try_get<PartOpen>(e); open && !open->cells.empty()) {
+                const auto list = DoorsOf(part); // each door's doorway, unless it's locked (§4.3)
+                for (size_t i = 0; i < open->cells.size() && i < list.size(); ++i) {
+                    if (!list[i].locked) doorways.insert(open->cells[i]);
+                }
+            } else if (int dx = 0, dy = 0; !part.locked && DoorwayShut(R(), e) && InteriorDoor(R(), e, interior, dx, dy)) {
+                doorways.insert({dx, dy});
+            }
         }
         const SolidQueryFn throughDoors = [&](int x, int y) {
             return ctx.isSolid(x, y) && closedDoorAt(x, y) == entt::null && !doorways.contains({x, y});

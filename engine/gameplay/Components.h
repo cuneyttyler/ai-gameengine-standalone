@@ -319,11 +319,17 @@ struct AnimatedPart {
     bool locked = false;        // shut (its doorway blocked) until the player uses it carrying `key`: then unlocked
     std::string key;            // the item that unlocks it ("": it can't be opened)
     bool consumeKey = false;    // the key is used up
+    // A building's other doors (docs/assets/animations.md §4.3): a JSON list, each with the fields above
+    // ({"sheet", "x", "y", "width", "height", "clip", "closeClip", "range", "opens", "locked", "key", "consumeKey"});
+    // DoorsOf gives them all, this one first.
+    std::string more;
 };
 
-// Runtime (not saved): an animated part open now (a door: its doorway passable).
+// Runtime (not saved): each of a building's animated doors (DoorsOf's order), as play has it now.
 struct PartOpen {
-    bool open = false;
+    std::vector<char> open;                 // open now
+    std::vector<char> passable;             // its doorway passable: open, or auto and not locked
+    std::vector<std::pair<int, int>> cells; // its doorway: the footprint's edge cell nearest the door
 };
 
 // Runtime: an Action's clock.

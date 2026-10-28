@@ -13,6 +13,7 @@
 #include "editing/PlaceBuild.h"
 #include "gameplay/Animation.h"
 #include "gameplay/Components.h"
+#include "gameplay/Interiors.h"
 #include "gameplay/Settings.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
@@ -71,7 +72,8 @@ nlohmann::json DoorRequest(const std::string& buildId, const nlohmann::json& tar
     for (char& ch : name) {
         if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-') ch = '-';
     }
-    return {{"path", target.value("texture", "")}, {"box", box}, {"name", name.substr(0, 60)}, {"exact", exact}};
+    return {{"path", target.value("texture", "")}, {"box", box}, {"name", name.substr(0, 60)}, {"exact", exact},
+            {"leaves", target.value("leaves", 0)}};
 }
 
 nlohmann::json ReadJsonFile(const std::filesystem::path& file) {
@@ -142,8 +144,21 @@ nlohmann::json EditorApp::AnimateTargets() {
                                {"status", "pending"}});
         }
     }
-    // What was done before (this build's animate.json) kept.
+    // What was done before (this build's animate.json) kept; a building's other doors (key "<its key>#<n>") too.
     const nlohmann::json before = ReadJsonFile(build_->Folder() / "animate.json");
+    for (const auto& b : before.value("targets", nlohmann::json::array())) {
+        const std::string key = b.value("key", "");
+        const size_t hash = key.find('#');
+        if (hash == std::string::npos) continue;
+        auto base = std::find_if(targets.begin(), targets.end(), [&](const nlohmann::json& t) { return t.value("key", "") == key.substr(0, hash); });
+        if (base == targets.end()) continue;
+        nlohmann::json extra = b;
+        if (extra.value("status", "") != "done" && extra.value("status", "") != "skipped") extra["status"] = "pending";
+        targets.insert(std::find_if(base, targets.end(), [&](const nlohmann::json& t) {
+                           return t.value("key", "").rfind(key.substr(0, hash), 0) != 0;
+                       }),
+                       extra);
+    }
     for (auto& t : targets) {
         for (const auto& b : before.value("targets", nlohmann::json::array())) {
             if (b.value("key", "") == t.value("key", "") && (b.value("status", "") == "done" || b.value("status", "") == "skipped")) {
@@ -189,17 +204,49 @@ bool EditorApp::HandleAnimateMessage(const std::string& type, const nlohmann::js
     }
     if (type == "build:animateRun") {
         // All that's left (or one): in turn, each found, animated and applied.
-        // A box drawn by hand round its door (the user saw the found one was off): animated from it, not looked for.
-        const std::string only = message.value("key", "");
-        const nlohmann::json drawn = message.value("box", nlohmann::json());
+        // Boxes drawn by hand round its doors (the user saw the found ones were off, or some missing): one door each,
+        // animated from it as drawn, the building's other doors gone (§4.3).
+        std::string only = message.value("key", "");
+        nlohmann::json boxes = message.value("boxes", nlohmann::json::array());
+        if (message.contains("box")) boxes.push_back(message["box"]);
+        std::string onlyBase;
+        if (!only.empty() && !boxes.empty()) {
+            const std::string base = only.substr(0, only.find('#'));
+            auto& list = animate_["targets"];
+            auto first = std::find_if(list.begin(), list.end(), [&](const nlohmann::json& t) { return t.value("key", "") == base; });
+            if (first != list.end()) {
+                nlohmann::json model = *first;
+                list.erase(std::remove_if(list.begin(), list.end(), [&](const nlohmann::json& t) {
+                               return t.value("key", "").rfind(base + "#", 0) == 0;
+                           }),
+                           list.end());
+                first = std::find_if(list.begin(), list.end(), [&](const nlohmann::json& t) { return t.value("key", "") == base; });
+                size_t at = static_cast<size_t>(first - list.begin());
+                for (size_t i = 0; i < boxes.size(); ++i) {
+                    nlohmann::json t = i == 0 ? *first : model;
+                    t["key"] = i == 0 ? base : base + "#" + std::to_string(i);
+                    if (i > 0) t["label"] = model.value("label", std::string("Door")) + " · door " + std::to_string(i + 1);
+                    t["door"] = i;
+                    t["reset"] = i == 0;
+                    t["drawn"] = boxes[i];
+                    t["status"] = "pending";
+                    for (const char* stale : {"preview", "sheet", "found", "error", "given"}) t.erase(stale);
+                    if (i == 0) list[at] = t;
+                    else list.insert(list.begin() + static_cast<std::ptrdiff_t>(at + i), t);
+                }
+                onlyBase = base;
+                only.clear();
+            }
+        }
         for (auto& t : animate_["targets"]) {
             const std::string status = t.value("status", "");
             if (!only.empty() && t.value("key", "") != only) continue;
+            if (!onlyBase.empty()) continue;
             if (status == "failed" || (!only.empty() && status != "skipped")) t["status"] = "pending";
-            if (!only.empty() && drawn.is_array() && drawn.size() == 4) t["drawn"] = drawn;
         }
         animate_["running"] = true;
         animate_["only"] = only;
+        animate_["onlyBase"] = onlyBase;
         AnimateNext();
         return true;
     }
@@ -217,9 +264,10 @@ void EditorApp::AnimateNext() {
         PostAnimate();
         return;
     }
-    const std::string only = animate_.value("only", "");
+    const std::string only = animate_.value("only", ""), onlyBase = animate_.value("onlyBase", "");
     for (auto& t : animate_["targets"]) {
         if (t.value("status", "") != "pending" || (!only.empty() && t.value("key", "") != only)) continue;
+        if (!onlyBase.empty() && t.value("key", "").substr(0, t.value("key", "").find('#')) != onlyBase) continue;
         animateKey_ = t.value("key", "");
         const auto region = t.value("region", nlohmann::json::array());
         if (t.value("kind", "") == "door" && t.contains("drawn")) {
@@ -229,6 +277,12 @@ void EditorApp::AnimateNext() {
             t["status"] = "animating";
             animateRequest_ = Ai()->Request("POST", "/parts/door", DoorRequest(build_->Id(), t, t["drawn"], true), 120);
             t.erase("drawn");
+        } else if (t.value("kind", "") == "door" && t.contains("given")) {
+            // Another door the finder saw in the building's picture: fitted and opened.
+            t["found"] = t["given"];
+            t["box"] = t["given"];
+            t["status"] = "animating";
+            animateRequest_ = Ai()->Request("POST", "/parts/door", DoorRequest(build_->Id(), t, t["given"], false), 120);
         } else if (t.value("kind", "") == "door") {
             // Its door looked for in its picture (or its part of the painting).
             t["status"] = "finding";
@@ -299,12 +353,62 @@ void EditorApp::OnAnimateResult(const nlohmann::json& body) {
         AnimateNext();
     };
     if ((*target)["status"] == "finding") {
-        // The door found: the likeliest box.
-        const nlohmann::json parts = body.value("parts", nlohmann::json::array());
-        if (!body.value("ok", false) || parts.empty()) return fail(body.value("ok", false) ? "no door found in its picture" : body.value("errors", nlohmann::json::array()).dump());
-        nlohmann::json best = parts[0];
-        for (const auto& p : parts) {
-            if (p.value("confidence", 0.0) > best.value("confidence", 0.0)) best = p;
+        // Every door it saw (§4.3): the main one this target's, each other one a target of its own after it; an open
+        // archway (no door in it) left out, and boxes over one another kept once.
+        if (!body.value("ok", false)) return fail(body.value("errors", nlohmann::json::array()).dump());
+        std::vector<nlohmann::json> seen;
+        bool archway = false;
+        for (const auto& p : body.value("parts", nlohmann::json::array())) {
+            if (p.value("open", false)) {
+                archway = true;
+                continue;
+            }
+            if (p.value("confidence", 0.0) < 0.35 || !p.contains("box")) continue;
+            const auto& b = p["box"];
+            const bool overlaps = std::any_of(seen.begin(), seen.end(), [&](const nlohmann::json& q) {
+                const auto& c = q["box"];
+                const float ix = std::max(0.0f, std::min(b[0].get<float>() + b[2].get<float>(), c[0].get<float>() + c[2].get<float>()) -
+                                                    std::max(b[0].get<float>(), c[0].get<float>()));
+                const float iy = std::max(0.0f, std::min(b[1].get<float>() + b[3].get<float>(), c[1].get<float>() + c[3].get<float>()) -
+                                                    std::max(b[1].get<float>(), c[1].get<float>()));
+                return ix * iy > 0.3f * std::min(b[2].get<float>() * b[3].get<float>(), c[2].get<float>() * c[3].get<float>());
+            });
+            if (!overlaps) seen.push_back(p);
+        }
+        if (seen.empty()) {
+            (*target)["status"] = archway ? "skipped" : "failed";
+            (*target)["error"] = archway ? "an open archway: no door to animate" : "no door found in its picture: draw it (click its picture)";
+            AnimateNext();
+            return;
+        }
+        const nlohmann::json best = seen.front();
+        (*target)["door"] = 0;
+        (*target)["reset"] = true;
+        (*target)["leaves"] = best.value("leaves", 0);
+        {
+            // The building's other doors this finding saw: targets of their own, after this one (earlier ones gone).
+            auto& list = animate_["targets"];
+            const std::string base = animateKey_;
+            list.erase(std::remove_if(list.begin(), list.end(), [&](const nlohmann::json& t) { return t.value("key", "").rfind(base + "#", 0) == 0; }),
+                       list.end());
+            auto at = std::find_if(list.begin(), list.end(), [&](const nlohmann::json& t) { return t.value("key", "") == base; });
+            const nlohmann::json model = *at;
+            const std::ptrdiff_t index = at - list.begin();
+            for (size_t i = 1; i < seen.size(); ++i) {
+                nlohmann::json t = model;
+                t["key"] = base + "#" + std::to_string(i);
+                t["label"] = model.value("label", std::string("Door")) + " · " + seen[i].value("label", "door " + std::to_string(i + 1));
+                t["door"] = i;
+                t["reset"] = false;
+                t["given"] = seen[i]["box"];
+                t["leaves"] = seen[i].value("leaves", 0);
+                t["status"] = "pending";
+                for (const char* stale : {"preview", "sheet", "found", "error", "drawn", "box"}) t.erase(stale);
+                list.insert(list.begin() + index + static_cast<std::ptrdiff_t>(i), t);
+            }
+            for (auto& t : list) {
+                if (t.value("key", "") == base) target = &t; // the list moved under it
+            }
         }
         // Opened from its own pixels (the service's app/doors.py: the doorway fitted to the picture, the panel swung
         // inward behind the wall), not drawn by an animator: it keeps the building's art and costs nothing.
@@ -334,13 +438,20 @@ void EditorApp::OnAnimateResult(const nlohmann::json& body) {
         part.y = box[1].get<float>() - region[1].get<float>() + box[3].get<float>() / 2;
         part.width = box[2].get<float>(), part.height = box[3].get<float>();
         part.clip = clip, part.closeClip = closeClip;
-        ApplyPartToPrefab((*target)["prefab"], part);
+        ApplyDoorToPrefab((*target)["prefab"], target->value("door", 0), part, target->value("reset", true));
     } else if ((*target)["kind"] == "door") {
         // A painted door: kept with the build, put over the painting when the place is built (AddPaintingEntities).
         nlohmann::json parts = ReadJsonFile(build_->Folder() / "parts.json");
         if (!parts.is_object()) parts = {{"parts", nlohmann::json::array()}};
         auto& list = parts["parts"];
-        list.erase(std::remove_if(list.begin(), list.end(), [&](const nlohmann::json& p) { return p.value("key", "") == animateKey_; }), list.end());
+        // Its building's doors drawn anew (reset): the others it had gone too.
+        const std::string base = animateKey_.substr(0, animateKey_.find('#'));
+        const bool reset = target->value("reset", false);
+        list.erase(std::remove_if(list.begin(), list.end(), [&](const nlohmann::json& p) {
+                       const std::string key = p.value("key", "");
+                       return key == animateKey_ || (reset && key.rfind(base + "#", 0) == 0);
+                   }),
+                   list.end());
         list.push_back({{"key", animateKey_}, {"box", (*target)["box"]}, {"sheet", sheet}, {"texture", body.value("sheet", "")},
                         {"clip", clip}, {"closeClip", closeClip}, {"label", (*target).value("label", "Door")}});
         std::ofstream(build_->Folder() / "parts.json") << parts.dump(2) << "\n";
@@ -364,6 +475,32 @@ void EditorApp::OnAnimateResult(const nlohmann::json& body) {
                             {"fps", body.value("fps", 8.0)}};
     (*target)["status"] = "done";
     AnimateNext();
+}
+
+void EditorApp::ApplyDoorToPrefab(const std::string& prefab, size_t index, const AnimatedPart& door, bool reset, bool keepWays) {
+    // Its door `index` (the rest kept, or none with `reset`), on the prefab: every copy, here and in the other scenes.
+    const auto failed = prefabs_.EditTemplate(prefab, [&](Registry& r, Entity t) {
+        std::vector<AnimatedPart> doors;
+        if (const auto* now = r.try_get<AnimatedPart>(t); now && !reset && !now->sheet.empty()) doors = DoorsOf(*now);
+        AnimatedPart made = door;
+        if (index < doors.size() && !keepWays) {
+            doors[index] = made;
+        } else if (index < doors.size()) {
+            // Redone: its ways (how it opens, its lock) kept.
+            made.opens = doors[index].opens, made.locked = doors[index].locked, made.key = doors[index].key;
+            made.consumeKey = doors[index].consumeKey, made.range = doors[index].range;
+            doors[index] = made;
+        } else {
+            doors.push_back(made);
+        }
+        SetDoors(r.get_or_emplace<AnimatedPart>(t), doors);
+    });
+    if (failed) {
+        post_({{"type", "notify"}, {"text", "Couldn't change " + prefab + ": " + *failed}});
+        return;
+    }
+    prefabs_.SyncAll(registry_, prefab);
+    RefreshPrefabs();
 }
 
 void EditorApp::ApplyPartToPrefab(const std::string& prefab, const AnimatedPart& part) {

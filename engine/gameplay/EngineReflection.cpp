@@ -276,6 +276,8 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("key", &AnimatedPart::key, "The item that unlocks it (empty: it can't be opened).")
         .Field("consumeKey", &AnimatedPart::consumeKey, "The key is used up unlocking it.")
         .Field("near", &AnimatedPart::opensNear, "Older scenes' switch (off: opens by use); opens says it now.")
+        .Field("more", &AnimatedPart::more, "Its other doors, a JSON list (each with sheet, x, y, width, height, clip, closeClip, "
+               "range, opens, locked, key, consumeKey). Build ▸ Animate and Animate a part… add them.")
         .DependsOn({"Sprite"});
     r.Component<Ramp>("Ramp", "Characters walk between heights here: stairs, a ramp, a ladder. Elsewhere a cliff (a step much "
                               "higher or lower than where one stands) can't be walked up or down.")

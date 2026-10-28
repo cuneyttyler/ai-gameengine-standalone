@@ -2,6 +2,8 @@
 
 #include "gameplay/Components.h"
 #include "gameplay/Settings.h"
+
+#include <nlohmann/json.hpp>
 #include "gameplay/Archetypes.h"
 #include "gameplay/TileGrid.h"
 #include "physics2d/Components.h"
@@ -46,10 +48,59 @@ std::string DoorOpens(const AnimatedPart& part) {
     return ActiveSettings().game.doorsOpen == "auto" ? "auto" : "use";
 }
 
+std::vector<AnimatedPart> DoorsOf(const AnimatedPart& part) {
+    std::vector<AnimatedPart> doors;
+    AnimatedPart first = part;
+    first.more.clear();
+    doors.push_back(first);
+    const nlohmann::json list = nlohmann::json::parse(part.more.empty() ? std::string("[]") : part.more, nullptr, false);
+    for (const auto& d : list.is_array() ? list : nlohmann::json::array()) {
+        if (!d.is_object()) continue;
+        AnimatedPart door;
+        door.sheet = d.value("sheet", std::string());
+        door.x = d.value("x", 0.0f), door.y = d.value("y", 0.0f);
+        door.width = d.value("width", 0.0f), door.height = d.value("height", 0.0f);
+        door.clip = d.value("clip", std::string("open"));
+        door.closeClip = d.value("closeClip", std::string("close"));
+        door.range = d.value("range", 1.8f);
+        door.opens = d.value("opens", std::string("project"));
+        door.locked = d.value("locked", false);
+        door.key = d.value("key", std::string());
+        door.consumeKey = d.value("consumeKey", false);
+        if (!door.sheet.empty()) doors.push_back(door);
+    }
+    return doors;
+}
+
+void SetDoors(AnimatedPart& part, const std::vector<AnimatedPart>& doors) {
+    if (doors.empty()) {
+        part = AnimatedPart{};
+        return;
+    }
+    part = doors.front();
+    nlohmann::json more = nlohmann::json::array();
+    for (size_t i = 1; i < doors.size(); ++i) {
+        const AnimatedPart& d = doors[i];
+        more.push_back({{"sheet", d.sheet}, {"x", d.x}, {"y", d.y}, {"width", d.width}, {"height", d.height}, {"clip", d.clip},
+                        {"closeClip", d.closeClip}, {"range", d.range}, {"opens", d.opens}, {"locked", d.locked}, {"key", d.key},
+                        {"consumeKey", d.consumeKey}});
+    }
+    part.more = more.empty() ? std::string() : more.dump();
+}
+
 bool DoorwayShut(Registry& registry, Entity entity) {
     const auto* part = registry.try_get<AnimatedPart>(entity);
     if (part == nullptr || part->sheet.empty()) return false;
-    if (const auto* open = registry.try_get<PartOpen>(entity); open && open->open) return false;
+    // In play, each door's doorway is known (PartOpen): the interior's own doorway is shut when a door at it is.
+    if (const auto* open = registry.try_get<PartOpen>(entity); open && !open->cells.empty()) {
+        const auto* interior = registry.try_get<Interior>(entity);
+        int dx = 0, dy = 0;
+        if (!interior || !InteriorDoor(registry, entity, *interior, dx, dy)) return false;
+        for (size_t i = 0; i < open->cells.size(); ++i) {
+            if (open->cells[i] == std::make_pair(dx, dy)) return !(i < open->passable.size() && open->passable[i]);
+        }
+        return false;
+    }
     return part->locked || DoorOpens(*part) == "use";
 }
 

@@ -94,11 +94,14 @@ def _slope_of(picture: Image.Image, box: list[int]) -> float:
     return best
 
 
-def door_frames(picture: Image.Image, box: list[int], frames: int = 24, exact: bool = False) -> tuple[list[Image.Image], list[int]] | None:
+def door_frames(picture: Image.Image, box: list[int], frames: int = 24, exact: bool = False,
+                leaves: int = 0) -> tuple[list[Image.Image], list[int]] | None:
     """The door in `box` (x, y, w, h: roughly, as found) opening, `frames` frames, each the doorway's size; and the
     doorway's box in the picture (where the frames go). None when no doorway is found there. `exact`: the box was drawn
     by hand round the door, so the doorway is the slanted shape inside it as drawn (its sides the box's, its top at the
-    box's top on one side, its bottom at the box's bottom on the other), not fitted to the picture's edges."""
+    box's top on one side, its bottom at the box's bottom on the other), not fitted to the picture's edges. `leaves`: 2
+    for a double door (two halves, each swinging inward on its own side's hinge), 1 for one; 0: two when it's wider than
+    three quarters of its height."""
     picture = picture.convert("RGBA")
     slope = _slope_of(picture, box)
     mirrored = slope < 0
@@ -141,23 +144,45 @@ def door_frames(picture: Image.Image, box: list[int], frames: int = 24, exact: b
                 m[i, j] = 255
     wood = wood.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.MinFilter(5))
     mask = ImageChops.multiply(shape, wood)
+    # Along the wall a door is (W, W * slope) on screen; upright, H minus that: a double door is wider than it's tall.
+    if leaves not in (1, 2):
+        leaves = 2 if W > 0.75 * (H - slope * W) else 1
     out = []
     for k in range(frames):
         a = math.radians(SWING * k / max(1, frames - 1))
-        cx = math.cos(a) + math.sin(a)                    # its run across the screen (along the wall, then into it)
-        cy = slope * (math.cos(a) - math.sin(a))          # and its slope
-        width = max(1, math.ceil(W * cx))
-        turn = (1 / cx, 0, 0, (slope - cy) / cx, 1, 0)    # screen (X, Y) <- door (u, v): X = u cx, Y = v + u (cy - slope)
-        panel = door.transform((width, H), Image.AFFINE, turn, Image.BICUBIC)
-        panel.putalpha(ImageChops.multiply(panel.getchannel("A"), shape.transform((width, H), Image.AFFINE, turn)))
-        panel = Image.composite(Image.blend(panel, Image.new("RGBA", panel.size, (12, 8, 6, 255)), 0.55 * math.sin(a)), panel,
-                                panel.getchannel("A"))
         f = Image.new("RGBA", (W, H), DOORWAY)
-        f.alpha_composite(panel.crop((0, 0, min(width, W), H)))
+        if leaves == 1:
+            f.alpha_composite(_leaf(door, shape, a, slope))
+        else:
+            # Two halves, each on its own side's hinge.
+            half = W // 2
+            f.alpha_composite(_leaf(door.crop((0, 0, half, H)), shape.crop((0, 0, half, H)), a, slope), (0, 0))
+            f.alpha_composite(_leaf(door.crop((half, 0, W, H)), shape.crop((half, 0, W, H)), a, slope, hinge_right=True), (half, 0))
         f.putalpha(mask)
         out.append(ImageOps.mirror(f) if mirrored else f)
     x = picture.width - X1 if mirrored else X0
     return out, [x, Y0, W, H]
+
+
+def _leaf(door: Image.Image, shape: Image.Image, a: float, slope: float, hinge_right: bool = False) -> Image.Image:
+    """One leaf (`door`, its pixels; its hinge on its left, or its right) turned `a` radians inward, on a canvas its size.
+
+    Along the wall a step of u from the hinge is (d, d * slope) on screen (d: +1 from a left hinge, -1 from a right one);
+    into the house it's (1, -slope). Turned by a, a point u from the hinge, at height r, moves to
+    X = hinge + u (d cos a + sin a), Y = r - d slope u + u slope (d cos a - sin a); the picture's transform wants it the
+    other way round (the leaf's pixel for each screen pixel), which is this, solved for u and r."""
+    W, H = door.size
+    d = -1.0 if hinge_right else 1.0
+    hinge = float(W) if hinge_right else 0.0
+    k = d * math.cos(a) + math.sin(a)                 # its run across the screen, per unit along it
+    if abs(k) < 0.04:
+        return Image.new("RGBA", (W, H), (0, 0, 0, 0))  # edge on: nothing to see
+    lift = slope * (d - d * math.cos(a) + math.sin(a)) / k
+    turn = (d / k, 0, hinge * (1 - d / k), lift, 1, -hinge * lift)
+    panel = door.transform((W, H), Image.AFFINE, turn, Image.BICUBIC)
+    panel.putalpha(ImageChops.multiply(panel.getchannel("A"), shape.transform((W, H), Image.AFFINE, turn)))
+    return Image.composite(Image.blend(panel, Image.new("RGBA", panel.size, (12, 8, 6, 255)), 0.55 * math.sin(a)), panel,
+                           panel.getchannel("A"))
 
 
 def png(image: Image.Image) -> bytes:

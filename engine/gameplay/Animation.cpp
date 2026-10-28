@@ -1,6 +1,7 @@
 #include "gameplay/Animation.h"
 
 #include "gameplay/Components.h"
+#include "gameplay/Interiors.h"
 #include "gameplay/Items.h"
 #include "gameplay/Settings.h"
 #include "physics2d/Components.h"
@@ -876,17 +877,21 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
             registry.get_or_emplace<Sprite>(made).texture = picture;
         }
     }
-    // Animated parts (a building's door): an overlay each, over the box they came from.
-    for (auto [owner, part, sprite] : registry.view<AnimatedPart, Sprite>(entt::exclude<Transient>).each()) {
+    // Animated parts (a building's doors, §4.3): an overlay each, over the box it came from ("part", "part1", ...).
+    for (auto [owner, whole, sprite] : registry.view<AnimatedPart, Sprite>(entt::exclude<Transient>).each()) {
+      const std::vector<AnimatedPart> doors = DoorsOf(whole);
+      for (size_t index = 0; index < doors.size(); ++index) {
+        const AnimatedPart& part = doors[index];
         if (part.sheet.empty()) continue;
+        const std::string slot = index == 0 ? std::string("part") : "part" + std::to_string(index);
         Entity made{entt::null};
-        if (auto it = shown.find({owner, "part"}); it != shown.end() && registry.get<AttachmentLink>(it->second).item == part.sheet) {
+        if (auto it = shown.find({owner, slot}); it != shown.end() && registry.get<AttachmentLink>(it->second).item == part.sheet) {
             made = it->second;
         } else {
             made = registry.create();
             registry.emplace<Transient>(made);
             registry.emplace<ScreenTransform2D>(made);
-            registry.emplace<AttachmentLink>(made, AttachmentLink{owner, "part", part.sheet});
+            registry.emplace<AttachmentLink>(made, AttachmentLink{owner, slot, part.sheet});
             registry.emplace<Sprite>(made);
             registry.emplace<Animator>(made, part.sheet, "prop");
         }
@@ -905,6 +910,7 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
         attachment.layer = "front";
         attachment.turn = false;
         attachment.size = std::max(part.width, part.height);
+      }
     }
     for (const auto& [key, entity] : shown) {
         if (!kept.contains(entity)) stale.push_back(entity);

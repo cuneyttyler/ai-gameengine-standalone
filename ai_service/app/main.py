@@ -285,6 +285,7 @@ class DoorRequest(BaseModel):
     name: str                       # what its frames are kept as (assets/textures/generated/animations/<name>/)
     frames: int = 24
     exact: bool = False             # the box drawn by hand round the door: used as drawn, not fitted
+    leaves: int = 0                 # 1, 2 (a double door: two halves, each on its own hinge); 0: from its shape
 
 
 class AnimationRequest(BaseModel):
@@ -993,7 +994,8 @@ def create_app(
         if root.resolve() not in source.parents or not source.is_file() or len(request.box) != 4:
             return {"ok": False, "errors": [f"No picture {request.path}"]}
         with Image.open(source) as im:
-            made = door_frames(im.convert("RGBA"), request.box, max(4, min(48, request.frames)), exact=request.exact)
+            made = door_frames(im.convert("RGBA"), request.box, max(4, min(48, request.frames)), exact=request.exact,
+                               leaves=request.leaves)
         if made is None:
             return {"ok": False, "errors": ["no doorway found where the door was seen"]}
         frames, doorway = made

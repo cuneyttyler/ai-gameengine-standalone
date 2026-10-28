@@ -6548,13 +6548,29 @@ void EditorApp::PlacePart(const nlohmann::json& result) {
         made.opens = p.value("opens", std::string("project"));
         made.locked = p.value("locked", false);
         made.key = p.value("key", std::string());
+        // Another door of its (§4.3), or one it has redone: the door whose box this one's middle falls in.
+        auto doorIndex = [&](const AnimatedPart* now) -> size_t {
+            if (!now || now->sheet.empty()) return 0;
+            const auto doors = DoorsOf(*now);
+            for (size_t i = 0; i < doors.size(); ++i) {
+                if (std::abs(doors[i].x - made.x) < doors[i].width / 2 && std::abs(doors[i].y - made.y) < doors[i].height / 2) return i;
+            }
+            return doors.size();
+        };
         const auto* link = registry_.try_get<PrefabInstance>(parentEntity);
         if (link && prefabs_.Find(link->path)) {
             // On the prefab: every copy (in this scene and the others) shows it.
-            ApplyPartToPrefab(link->path, made);
+            size_t index = 0;
+            prefabs_.VisitTemplate(link->path, [&](Registry& r, Entity t) { index = doorIndex(r.try_get<AnimatedPart>(t)); });
+            ApplyDoorToPrefab(link->path, index, made, false, false);
         } else {
             ApplyOneShotEdit([&] {
-                registry_.emplace_or_replace<AnimatedPart>(parentEntity, made);
+                auto& part = registry_.get_or_emplace<AnimatedPart>(parentEntity);
+                const size_t index = doorIndex(&part);
+                std::vector<AnimatedPart> doors = part.sheet.empty() ? std::vector<AnimatedPart>{} : DoorsOf(part);
+                if (index < doors.size()) doors[index] = made;
+                else doors.push_back(made);
+                SetDoors(part, doors);
                 return true;
             });
         }

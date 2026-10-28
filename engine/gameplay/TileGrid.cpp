@@ -6,6 +6,7 @@
 #include "physics2d/Components.h"
 
 #include <cmath>
+#include <set>
 
 namespace aige {
 
@@ -41,7 +42,16 @@ TileGrid TileGrid::Build(Registry& registry) {
                 continue;
             }
             if (!interior->texture.empty()) {
-                ForEachInteriorWall(sx, sy, left, right, back, interior->door, block);
+                // Its other doors (§4.3): each one's doorway in its walls, passable while it is.
+                std::set<std::pair<int, int>> through;
+                if (const auto* open = registry.try_get<PartOpen>(entity)) {
+                    for (size_t i = 0; i < open->cells.size(); ++i) {
+                        if (i < open->passable.size() && open->passable[i]) through.insert(open->cells[i]);
+                    }
+                }
+                ForEachInteriorWall(sx, sy, left, right, back, interior->door, [&](int gx, int gy) {
+                    if (!through.contains({gx, gy})) block(gx, gy);
+                });
                 if (int dx = 0, dy = 0; shut && InteriorDoor(registry, entity, *interior, dx, dy)) block(dx, dy);
                 continue;
             }
