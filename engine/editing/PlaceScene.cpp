@@ -773,6 +773,7 @@ std::optional<Entity> PlaceObject(Registry& registry, PrefabLibrary& prefabs, co
             if (const std::string inside = AssetField(prefabs.GetProject(), sprite->texture, "interior"); !inside.empty()) {
                 auto& interior = registry.emplace_or_replace<Interior>(e);
                 interior.texture = inside;
+                interior.floors = AssetField(prefabs.GetProject(), sprite->texture, "interiorFloors");
                 interior.door = o.value("facing", std::string("s"));
             }
         }

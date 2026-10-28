@@ -37,7 +37,7 @@ export const actions: ActionDef[] = [
   { id: 'tool.erase', label: 'Erase tool', group: 'Tools', keys: ['E'] },
   { id: 'view.frame', label: 'Frame the scene', group: 'View', keys: ['F'] },
   { id: 'view.grid', label: 'Tile borders on empty ground', group: 'View', keys: ['G'] },
-  { id: 'view.interior', label: "The selected building's interior, or its exterior", group: 'View', keys: ['H'] },
+  { id: 'view.interior', label: "The selected building: its interior, each floor in turn, then its exterior", group: 'View', keys: ['H'] },
   { id: 'view.interiors', label: "Every building's interior, or every exterior, in the scene", group: 'View', keys: ['Shift+H'] },
   { id: 'view.stats', label: 'Frame stats', group: 'View', keys: ['F3'], inPlay: true },
   { id: 'panel.scene', label: 'Show / hide the Scene panel', group: 'Panels', keys: ['B'] },

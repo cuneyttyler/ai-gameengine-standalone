@@ -283,6 +283,13 @@ struct Interior {
     // the interior, seen only while shown.
     std::string cells; // its footprint "x0,y0,x1,y1" in world cells (it has no Obstacle); empty: its Obstacle's
     std::string hides; // the sprites hidden while it shows: those whose PlaceNode statement starts with this
+    // A building of several storeys (docs/places/interiors.md §4): one picture a floor, `texture` the ground floor's.
+    std::string floors;  // the upper floors' pictures, ';' between: floor 2, 3…
+    int floor = 1;       // the floor shown (the player's while inside; in the editor, a preview)
+    std::string stairs;  // the cell ("x,y", world cells) whose stepping on goes up or down a floor; empty: its back corner
+    // Runtime only (not reflected): going up or down next, and standing on the stairs since the last step.
+    bool climbing = true;
+    bool onStairs = false;
 };
 
 // A door: open, it doesn't block its cell.

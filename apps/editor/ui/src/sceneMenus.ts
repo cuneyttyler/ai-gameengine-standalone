@@ -14,6 +14,8 @@ export interface MenuEntity {
   prefab: string | null
   tile: boolean
   interior?: boolean | null // a building with a cutaway interior: whether it shows now; null/absent: none
+  interiorFloors?: number // its floors (one picture each)
+  interiorFloor?: number // the one shown
   interiorScene?: string // a building whose interior is its own scene: that scene ("" not built yet)
   building?: boolean // it has a footprint (an Obstacle): it can have an interior scene
 }
@@ -42,9 +44,14 @@ export function entityMenu(entity: MenuEntity): MenuItem[] {
   return [
     ...drawItem(entity.prefab),
     ...(typeof entity.interior === 'boolean'
-      ? [{ label: entity.interior ? 'Show exterior' : 'Show interior', shortcut: keyLabel('view.interior'), disabled: editorState.playing,
+      ? [{ label: entity.interior ? 'Show exterior' : (entity.interiorFloors ?? 1) > 1 ? 'Show interior (ground floor)' : 'Show interior',
+           shortcut: keyLabel('view.interior'), disabled: editorState.playing,
            action: () => sendToHost({ type: 'entity:interior', id: entity.id, shown: !entity.interior }) }]
       : []),
+    // A building of several storeys: each floor's interior (H steps through them).
+    ...Array.from({ length: Math.max(0, (entity.interiorFloors ?? 1) - 1) }, (_, i) => i + 2)
+      .filter((k) => !(entity.interior && entity.interiorFloor === k))
+      .map((k) => ({ label: `Show floor ${k}`, disabled: editorState.playing, action: () => sendToHost({ type: 'entity:interior', id: entity.id, shown: true, floor: k }) })),
     // None yet: one added (on its prefab, so every copy has it).
     ...(!entity.tile && typeof entity.interior !== 'boolean' && entity.interiorScene === undefined
       ? [

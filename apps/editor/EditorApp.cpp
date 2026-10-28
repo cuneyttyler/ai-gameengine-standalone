@@ -2697,6 +2697,7 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                     const auto* interior = registry_.try_get<Interior>(*picked);
                     const bool scene = interior && interior->kind == "scene";
                     entity["interior"] = interior && !scene && !interior->texture.empty() ? nlohmann::json(interior->shown) : nlohmann::json(nullptr);
+                    if (interior && !scene) entity["interiorFloors"] = InteriorFloors(*interior), entity["interiorFloor"] = interior->floor;
                     if (scene) entity["interiorScene"] = interior->scene;
                     entity["building"] = registry_.all_of<Obstacle>(*picked) || (interior && !interior->cells.empty());
                 }
@@ -5235,6 +5236,10 @@ void EditorApp::PollAi() {
             const std::string path = interiorRequests_[result->requestId];
             interiorRequests_.erase(result->requestId);
             const std::string inside = result->body.value("path", "");
+            std::string upper; // the floors above the ground floor
+            for (const auto& f : result->body.value("floors", nlohmann::json::array())) {
+                if (f.is_string() && f.get<std::string>() != inside) upper += (upper.empty() ? "" : ";") + f.get<std::string>();
+            }
             if (result->body.value("ok", false) && !inside.empty()) {
                 RefreshAssets();
                 const AssetInfo* exterior = assets_.Find(path);
@@ -5244,7 +5249,11 @@ void EditorApp::PollAi() {
                 SetCatalogFields(assets_, inside, {{"exteriorOf", path}, {"name", field("name").empty() ? std::string() : field("name") + " interior"},
                                                    {"kind", field("kind")}, {"layer", field("layer")}, {"cells", field("cells")},
                                                    {"perspective", field("perspective")}, {"source", "generated"}});
-                SetCatalogFields(assets_, path, {{"interior", inside}});
+                SetCatalogFields(assets_, path, {{"interior", inside}, {"interiorFloors", upper}});
+                int k = 1;
+                for (const auto& f : result->body.value("floors", nlohmann::json::array())) {
+                    if (f.is_string() && f.get<std::string>() != inside) SetCatalogFields(assets_, f.get<std::string>(), {{"exteriorOf", path}, {"floor", std::to_string(++k)}});
+                }
                 post_(CatalogJson());
                 post_(AssetsJson());
                 post_({{"type", "notify"}, {"text", "Its interior is made: " + inside}});
@@ -5669,7 +5678,7 @@ void EditorApp::AddInterior(const std::string& prefab, std::optional<Entity> ent
     }
     auto& interior = registry->get_or_emplace<Interior>(target);
     interior.kind = kind;
-    if (kind == "cutaway") interior.texture = inside;
+    if (kind == "cutaway") interior.texture = inside, interior.floors = field("interiorFloors");
     if (!prefab.empty()) {
         // Written out with them (the components just added to its loaded template come along), every copy following.
         if (const auto error = prefabs_.SetTemplateField(prefab, "Interior", "kind", kind)) {
@@ -5691,6 +5700,20 @@ int EditorApp::RepairInteriorArt() {
     // A building drawn with an interior picture (its art chosen before interiors were kept out of a build's choices):
     // its exterior again, the picture its Interior's, shown while one is inside.
     int fixed = 0;
+    // Pictures made again (more floors, a new ground floor): each cutaway building's from its exterior's pairing.
+    for (auto [e, interior, sprite] : registry_.view<Interior, Sprite>().each()) {
+        if (interior.kind == "scene" || !interior.cells.empty()) continue;
+        const AssetInfo* outside = assets_.Find(interior.shown && !interior.exteriorTexture.empty() ? interior.exteriorTexture : sprite.texture);
+        if (outside == nullptr || !outside->analysis.contains("interior")) continue;
+        const std::string ground = outside->analysis.at("interior");
+        const std::string upper = outside->analysis.contains("interiorFloors") ? outside->analysis.at("interiorFloors") : std::string();
+        if (interior.texture == ground && interior.floors == upper) continue;
+        interior.texture = ground;
+        interior.floors = upper;
+        interior.floor = std::clamp(interior.floor, 1, InteriorFloors(interior));
+        renderer_.InvalidateTexture(ground);
+        ++fixed;
+    }
     for (auto [e, sprite] : registry_.view<Sprite>().each()) {
         const AssetInfo* asset = assets_.Find(sprite.texture);
         if (asset == nullptr || !asset->analysis.contains("exteriorOf")) continue;
@@ -5700,6 +5723,7 @@ int EditorApp::RepairInteriorArt() {
         auto& interior = registry_.get_or_emplace<Interior>(e);
         interior.kind = "cutaway";
         interior.texture = sprite.texture;
+        if (const AssetInfo* out = assets_.Find(exterior); out && out->analysis.contains("interiorFloors")) interior.floors = out->analysis.at("interiorFloors");
         interior.exteriorTexture.clear();
         interior.shown = false;
         sprite.texture = exterior;
@@ -5709,7 +5733,7 @@ int EditorApp::RepairInteriorArt() {
     if (fixed > 0) {
         dirty_ = true;
         sceneTreeStale_ = inspectorStale_ = true;
-        post_({{"type", "notify"}, {"text", std::to_string(fixed) + " building(s) drawn with their interior got their exterior back (Save keeps it)"}});
+        post_({{"type", "notify"}, {"text", std::to_string(fixed) + " building(s)' interiors brought up to date (Save keeps it)"}});
     }
     return fixed;
 }
@@ -5871,7 +5895,7 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                 for (auto [e, interior] : registry_.view<Interior>().each()) all = all && (interior.kind == "scene" || interior.texture.empty() || interior.shown);
                 const bool show = message.value("shown", !all);
                 for (auto [e, interior] : registry_.view<Interior>().each()) {
-                    if (interior.kind != "scene" && !interior.texture.empty()) interior.shown = show;
+                    if (interior.kind != "scene" && !interior.texture.empty()) interior.shown = show, interior.floor = 1;
                 }
             } else {
                 std::optional<Entity> target = selected_;
@@ -5879,8 +5903,17 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                 Interior* interior = target && registry_.valid(*target) ? registry_.try_get<Interior>(*target) : nullptr;
                 if (interior == nullptr || interior->texture.empty()) {
                     post_({{"type", "notify"}, {"text", "This has no interior"}});
+                } else if (message.contains("shown")) {
+                    interior->shown = message.value("shown", true);
+                    interior->floor = std::clamp(message.value("floor", 1), 1, std::max(1, InteriorFloors(*interior)));
+                } else if (!interior->shown) { // H: outside, then each floor, then outside again
+                    interior->shown = true;
+                    interior->floor = 1;
+                } else if (interior->floor < InteriorFloors(*interior)) {
+                    ++interior->floor;
                 } else {
-                    interior->shown = message.value("shown", !interior->shown);
+                    interior->shown = false;
+                    interior->floor = 1;
                 }
             }
             ApplyInteriors(registry_);

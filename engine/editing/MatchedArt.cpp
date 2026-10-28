@@ -912,7 +912,7 @@ json CutMatchedArt(AssetDatabase& assets, const Project& project, const json& sh
         ImageData image;
         double cells = 1;
         bool style = false;
-        std::optional<ImageData> interior; // its interior (Phase 27), cut and framed exactly as `image`
+        std::vector<ImageData> floors; // its interiors, one a floor (docs/places/interiors.md), cut and framed exactly as `image`
     };
     std::vector<Made> made;
     for (const auto& s : sheets.value("sheets", json::array())) {
@@ -1082,13 +1082,16 @@ json CutMatchedArt(AssetDatabase& assets, const Project& project, const json& sh
                 cut = CropImage(*own, *box);
                 // Its interior (Phase 27): painted on the exterior's own canvas (matched.py make_interiors), so the same
                 // crop, and below the same framing, line it up with the exterior exactly.
-                std::optional<ImageData> inside;
-                if (auto raw = DecodeImage(dir / "pieces" / (p.value("slug", "") + "-interior.png")); raw && raw->width == own->width && raw->height == own->height) {
+                std::vector<ImageData> inside; // floor 1, 2… while each is there
+                for (int k = 1; k <= 4; ++k) {
+                    const std::string file = p.value("slug", "") + (k == 1 ? std::string("-interior.png") : "-interior-" + std::to_string(k) + ".png");
+                    auto raw = DecodeImage(dir / "pieces" / file);
+                    if (!raw || raw->width != own->width || raw->height != own->height) break;
                     for (size_t i = 0; i < raw->rgba.size(); i += 4) {
                         if (IsKey(&raw->rgba[i])) raw->rgba[i + 3] = 0;
                     }
                     Clean(*raw);
-                    inside = CropImage(*raw, *box);
+                    inside.push_back(CropImage(*raw, *box));
                 }
                 const double size = ontology ? ontology->RoleSize(p.value("role", "")) : 0.0;
                 cells = building ? (p.value("w", 1) + p.value("h", 1)) / 2.0 : std::clamp(size > 0 ? size : 0.8, 0.2, 3.0);
@@ -1146,20 +1149,20 @@ json CutMatchedArt(AssetDatabase& assets, const Project& project, const json& sh
                     }
                     cells = framed.width / (2.0 * unit);
                     cut = std::move(framed);
-                    if (inside) {
-                        // The interior framed the same way.
+                    for (ImageData& floor : inside) {
+                        // Each floor framed the same way.
                         ImageData room;
                         room.width = cut.width, room.height = cut.height;
                         room.rgba.assign(static_cast<size_t>(room.width) * room.height * 4, 0);
-                        for (int y = 0; y < std::min<int>(height, static_cast<int>(inside->height)); ++y) {
-                            for (uint32_t x = 0; x < inside->width && x + offset < room.width; ++x) {
-                                std::copy_n(&inside->rgba[(static_cast<size_t>(y) * inside->width + x) * 4], 4, &room.rgba[(static_cast<size_t>(y) * room.width + x + offset) * 4]);
+                        for (int y = 0; y < std::min<int>(height, static_cast<int>(floor.height)); ++y) {
+                            for (uint32_t x = 0; x < floor.width && x + offset < room.width; ++x) {
+                                std::copy_n(&floor.rgba[(static_cast<size_t>(y) * floor.width + x) * 4], 4, &room.rgba[(static_cast<size_t>(y) * room.width + x + offset) * 4]);
                             }
                         }
-                        inside = std::move(room);
+                        floor = std::move(room);
                     }
                 }
-                if (inside && building) {
+                if (!inside.empty() && building) {
                     Clean(cut);
                     made.push_back({p, name, std::move(cut), cells, s.value("kind", "") == "style", std::move(inside)});
                     continue;
@@ -1229,14 +1232,20 @@ json CutMatchedArt(AssetDatabase& assets, const Project& project, const json& sh
         // for a squarish outline).
         fields["flat"] = "0";
         if (building) fields["footprint"] = std::to_string(p.value("w", 1)) + "x" + std::to_string(p.value("h", 1));
-        if (m.interior) {
-            const std::string inside = folder + "/" + p.value("slug", "piece") + "-interior.png";
-            WritePng(project.root / inside, *m.interior);
-            fields["interior"] = inside;
-            catalog.push_back({inside, {{"name", p.value("role", "") + " interior"}, {"kind", "building"}, {"layer", "building"},
-                                        {"description", "the inside of " + p.value("words", p.value("role", ""))}, {"perspective", "isometric"},
-                                        {"cells", Number(m.cells)}, {"flat", "0"}, {"exteriorOf", path}, {"source", "generated"},
-                                        {"author", "matched art"}, {"own", "1"}, {"matched", "1"}}});
+        if (!m.floors.empty()) {
+            // Its floors beside it (floor 1 its interior=, the others its interiorFloors=), each the exterior's interior.
+            std::string upper;
+            for (size_t k = 0; k < m.floors.size(); ++k) {
+                const std::string inside = folder + "/" + p.value("slug", "piece") + (k == 0 ? std::string("-interior.png") : "-interior-" + std::to_string(k + 1) + ".png");
+                WritePng(project.root / inside, m.floors[k]);
+                if (k == 0) fields["interior"] = inside;
+                else upper += (upper.empty() ? "" : ";") + inside;
+                catalog.push_back({inside, {{"name", p.value("role", "") + " interior" + (m.floors.size() > 1 ? ", floor " + std::to_string(k + 1) : std::string())},
+                                            {"kind", "building"}, {"layer", "building"}, {"description", "the inside of " + p.value("words", p.value("role", ""))},
+                                            {"perspective", "isometric"}, {"cells", Number(m.cells)}, {"flat", "0"}, {"exteriorOf", path},
+                                            {"floor", std::to_string(k + 1)}, {"source", "generated"}, {"author", "matched art"}, {"own", "1"}, {"matched", "1"}}});
+            }
+            if (!upper.empty()) fields["interiorFloors"] = upper;
             report["interiors"] = report.value("interiors", 0) + 1;
         }
         catalog.push_back({path, fields});

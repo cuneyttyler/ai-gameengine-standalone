@@ -20,6 +20,9 @@ void ApplyInteriors(Registry& registry);
 struct Interior;
 bool InteriorFootprint(Registry& registry, Entity entity, const Interior& interior, int& x0, int& y0, int& x1, int& y1);
 
+// How many floors it shows (1 + its upper floors' pictures), and floor k's picture (1: `texture`).
+int InteriorFloors(const Interior& interior);
+std::string InteriorPicture(const Interior& interior, int floor);
 // A scene interior's doorway cell (world cells), where stepping in goes to its scene; false without a footprint.
 bool InteriorDoor(Registry& registry, Entity entity, const Interior& interior, int& x, int& y);
 

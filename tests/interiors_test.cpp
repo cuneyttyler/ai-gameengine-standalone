@@ -84,6 +84,40 @@ TEST(InteriorsTest, ShownWhileThePlayerIsInside) {
     EXPECT_EQ(registry.get<Sprite>(house).texture, "assets/house-interior.png");
 }
 
+TEST(InteriorsTest, ItsStairsTakeOneUpAndDownTheFloors) {
+    Registry registry;
+    const Entity house = registry.create();
+    registry.emplace<WorldTransform2D>(house, 5.0f, 5.0f);
+    registry.emplace<Obstacle>(house, Obstacle{2, 0, 2}); // cells 3..5 x 3..5; its back corner 3,3 the stairs
+    registry.emplace<Sprite>(house).texture = "house.png";
+    auto& interior = registry.emplace<Interior>(house);
+    interior.texture = "house-interior.png";
+    interior.floors = "house-interior-2.png;house-interior-3.png";
+    EXPECT_EQ(InteriorFloors(interior), 3);
+    EXPECT_EQ(InteriorPicture(interior, 3), "house-interior-3.png");
+    const Entity player = registry.create();
+    auto& at = registry.emplace<WorldTransform2D>(player, 4.5f, 4.5f);
+    UpdateInteriors(registry, player);
+    EXPECT_EQ(registry.get<Interior>(house).floor, 1);
+    EXPECT_EQ(registry.get<Sprite>(house).texture, "house-interior.png");
+    auto step = [&](float x, float y) {
+        at.x = x, at.y = y;
+        UpdateInteriors(registry, player);
+    };
+    step(3.5f, 3.5f); // on the stairs: up
+    EXPECT_EQ(registry.get<Interior>(house).floor, 2);
+    EXPECT_EQ(registry.get<Sprite>(house).texture, "house-interior-2.png");
+    step(3.5f, 3.5f); // still on them: no more
+    EXPECT_EQ(registry.get<Interior>(house).floor, 2);
+    step(4.5f, 4.5f), step(3.5f, 3.5f); // off and on again: up to the top
+    EXPECT_EQ(registry.get<Interior>(house).floor, 3);
+    step(4.5f, 4.5f), step(3.5f, 3.5f); // from the top: down
+    EXPECT_EQ(registry.get<Interior>(house).floor, 2);
+    step(4.5f, 9.5f); // out: the exterior, and the ground floor next time
+    EXPECT_EQ(registry.get<Sprite>(house).texture, "house.png");
+    EXPECT_EQ(registry.get<Interior>(house).floor, 1);
+}
+
 TEST(InteriorsTest, PaintedBuildingHidesItsOccluders) {
     Registry registry;
     const Entity room = registry.create();

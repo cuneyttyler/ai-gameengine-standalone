@@ -799,7 +799,7 @@ def create_app(
         report = progress.reporter()
         report(0, 1, f"Interiors: {len(request.items)} buildings cut away to show their rooms")
         made = paint_interiors(BflPainter(key, "flux-3-image"), folder, request.items,
-                               {"place": request.place, "story": request.story, "look": request.look}, request.seed)
+                               {"place": request.place, "story": request.story, "look": request.look}, request.seed, vision=state["vision"])
         report(1, 1, f"Interiors: {len(made)} of {len(request.items)} made")
         return {"ok": True, "made": made, "files": {i: f"marks/{i}-interior.png" for i in made}}
 
@@ -843,7 +843,7 @@ def create_app(
         <name>-interior.png, the same size."""
         from PIL import Image
         from .bfl import BflPainter
-        from .matched import cutaway
+        from .matched import count_storeys, floor_name, make_floors
         root: Path | None = state["root"]
         if root is None:
             return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
@@ -859,13 +859,20 @@ def create_app(
         with Image.open(source) as im:
             exterior = im.convert("RGBA")
         purpose = f"of {request.purpose}" if request.purpose else "a building like this has"
-        inside = cutaway(BflPainter(key, "flux-3-image"), exterior, purpose, "", request.seed)
-        if inside is None:
+        storeys = count_storeys(state["vision"], exterior)
+        report(0, 1, f"The interior of {source.name}: {storeys} floor{'s' if storeys > 1 else ''}")
+        floors = make_floors(BflPainter(key, "flux-3-image"), exterior, purpose, "", request.seed, storeys)
+        if not floors or floors[0] is None:
             return {"ok": False, "errors": ["BFL couldn't cut it away; try again"]}
-        target = source.with_name(source.stem + "-interior.png")
-        inside.save(target)
+        paths = []
+        for k, floor in enumerate(floors, 1):
+            if floor is None:
+                break  # the floors above a missing one aren't reached
+            target = source.with_name(floor_name(source.stem, k))
+            floor.save(target)
+            paths.append(target.relative_to(root.resolve()).as_posix())
         report(1, 1, "Interior made")
-        return {"ok": True, "path": target.relative_to(root.resolve()).as_posix()}
+        return {"ok": True, "path": paths[0], "floors": paths}
 
     @app.post("/animations/generate")
     def animations_generate(request: AnimationRequest) -> dict:

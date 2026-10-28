@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
+#include <algorithm>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -87,17 +88,59 @@ bool LinkInteriorInside(Registry& inside, int x0, int y0, int x1, int y1, const 
     return false;
 }
 
+namespace {
+
+// Its upper floors' pictures, in order.
+std::vector<std::string> UpperFloors(const Interior& interior) {
+    std::vector<std::string> out;
+    for (size_t at = 0; at < interior.floors.size();) {
+        const size_t end = std::min(interior.floors.find(';', at), interior.floors.size());
+        if (end > at) out.push_back(interior.floors.substr(at, end - at));
+        at = end + 1;
+    }
+    return out;
+}
+
+} // namespace
+
+int InteriorFloors(const Interior& interior) {
+    return interior.texture.empty() ? 0 : 1 + static_cast<int>(UpperFloors(interior).size());
+}
+
+std::string InteriorPicture(const Interior& interior, int floor) {
+    const auto upper = UpperFloors(interior);
+    return floor >= 2 && floor - 2 < static_cast<int>(upper.size()) ? upper[floor - 2] : interior.texture;
+}
+
 void UpdateInteriors(Registry& registry, std::optional<Entity> player) {
     const WorldTransform2D* at = player && registry.valid(*player) ? registry.try_get<WorldTransform2D>(*player) : nullptr;
     for (auto [entity, interior] : registry.view<Interior>().each()) {
         if (interior.texture.empty() || interior.kind == "scene") continue;
         int x0 = 0, y0 = 0, x1 = -1, y1 = -1;
         bool inside = false;
+        int px = 0, py = 0;
         if (at != nullptr && InteriorFootprint(registry, entity, interior, x0, y0, x1, y1)) {
-            const int px = static_cast<int>(std::floor(at->x)), py = static_cast<int>(std::floor(at->y));
+            px = static_cast<int>(std::floor(at->x)), py = static_cast<int>(std::floor(at->y));
             inside = px >= x0 && px <= x1 && py >= y0 && py <= y1;
         }
+        if (inside && !interior.shown) interior.floor = 1, interior.climbing = true; // in through the door: the ground floor
         interior.shown = inside;
+        if (!inside) {
+            interior.floor = 1;
+            interior.onStairs = false;
+            continue;
+        }
+        // Its stairs: stepping on goes a floor up (down again from the top); stepping off before the next.
+        const int floors = InteriorFloors(interior);
+        int sx = x0, sy = y0;
+        if (!interior.stairs.empty()) std::sscanf(interior.stairs.c_str(), "%d,%d", &sx, &sy);
+        const bool onStairs = floors > 1 && px == sx && py == sy;
+        if (onStairs && !interior.onStairs) {
+            if (interior.floor >= floors) interior.climbing = false;
+            if (interior.floor <= 1) interior.climbing = true;
+            interior.floor = std::clamp(interior.floor + (interior.climbing ? 1 : -1), 1, floors);
+        }
+        interior.onStairs = onStairs;
     }
     ApplyInteriors(registry);
 }
@@ -106,14 +149,18 @@ void ApplyInteriors(Registry& registry) {
     std::vector<std::pair<std::string, bool>> hides; // a painted building's occluders, and whether its interior shows
     for (auto [entity, interior, sprite] : registry.view<Interior, Sprite>().each()) {
         if (interior.texture.empty() || interior.kind == "scene") continue;
+        // The picture of the floor shown; any of its floors' is an interior picture (not the outside to put back).
+        const std::string picture = InteriorPicture(interior, interior.floor);
+        bool showingInside = sprite.texture == interior.texture;
+        for (int k = 2; k <= InteriorFloors(interior) && !showingInside; ++k) showingInside = sprite.texture == InteriorPicture(interior, k);
         if (!interior.cells.empty()) {
             // Painted: the painting is its outside; the cutaway over it only while inside.
-            sprite.texture = interior.texture;
+            sprite.texture = picture;
             sprite.a = interior.shown ? 1.0f : 0.0f;
-        } else if (interior.shown && sprite.texture != interior.texture) {
-            interior.exteriorTexture = sprite.texture; // put back when it's left
-            sprite.texture = interior.texture;
-        } else if (!interior.shown && sprite.texture == interior.texture && !interior.exteriorTexture.empty()) {
+        } else if (interior.shown && sprite.texture != picture) {
+            if (!showingInside) interior.exteriorTexture = sprite.texture; // put back when it's left
+            sprite.texture = picture;
+        } else if (!interior.shown && showingInside && !interior.exteriorTexture.empty()) {
             sprite.texture = interior.exteriorTexture;
         }
         if (!interior.hides.empty()) hides.emplace_back(interior.hides, interior.shown);

@@ -788,7 +788,7 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
     if rooms:
         track.add("interiors", f"Interiors: {len(rooms)} buildings cut away to show their rooms", rooms, before=("facing", "ground"))
         track.start("interiors")
-        made_rooms = make_interiors(painter, folder, rooms, context, seed)
+        made_rooms = make_interiors(painter, folder, rooms, context, seed, vision=vision)
         steps.append({"interiors": made_rooms})
         track.done("interiors", label=f"Interiors: {len(made_rooms)} of {len(rooms)} made")
     # Things with a front face the lower left (their back view: their back): turned round where they don't.
@@ -974,21 +974,117 @@ def paint_from_words(painter, folder: Path, pieces: list[dict], every: list[dict
                                    "repainted": sorted(redo), "fixed": fixed, "words": words}}
 
 
-INTERIOR_PROMPT = """Game asset. Isometric view. Flat magenta background (#FF00FF).
-Image 1 is a building. Paint the same building as a cutaway, from the same camera, at the same place and size in the
-picture: its roof gone and the two walls that face the camera (the front-left and front-right walls) taken away
-entirely, with their windows, doors, shutters, timber frames and gables: nothing of them stands, only a low sill along
-the floor's front edges. So its inside shows: the floor, its rooms and inner walls, a staircase if it has an upper
-storey, and the furniture and things {purpose}, lit warmly. The two back walls stay at their full height; every wall
-keeps exactly the building's outline, footprint, materials and colours. {style}
-Nothing stands between the camera and the rooms. Only this building, nothing round it: no ground, no shadow, no people,
-no text. Keep the magenta empty."""
+STOREYS_TASK = """How many storeys (floors one walks on, the ground floor counted) does this building have? An attic under
+the roof counts only if it has windows or dormers of its own. Answer as JSON: {"storeys": <1-4>, "why": "<a few words>"}."""
+
+_ORDINAL = {1: "ground", 2: "second", 3: "third", 4: "fourth"}
 
 
-def cutaway(painter, exterior: Image.Image, purpose: str, style: str, seed: int) -> Image.Image | None:
-    """A building's interior (docs/places/interiors.md §2): `exterior` (RGBA, transparent round the building) edited
-    into the same building cut away (INTERIOR_PROMPT) on a magenta canvas where it stands as it is, then cut back to
-    exactly its size. Nothing outside its outline is kept. None when the edit fails."""
+def floor_prompt(k: int, n: int, purpose: str, style: str) -> str:
+    """Floor `k` of `n` (docs/places/interiors.md §2, builder_tests/interior_test): the building cut open above it, its
+    camera-facing walls gone on that floor, the floors below closed under it."""
+    above = "the roof and everything else above it" if k == n else f"every storey above it ({n - k} more) and the roof"
+    lines = [
+        "Game asset. Isometric view. Flat magenta background (#FF00FF).",
+        f"Image 1 is a building with {n} storey{'s' if n > 1 else ''}. Paint the same building, from the same camera, at the same "
+        f"place and size in the picture, cut open to show its {_ORDINAL[k]} floor from above, as a game shows a room the player walks in:",
+        f"- {above} is gone, cut away level with the top of this floor's walls: no roof, no gables, no beams across;",
+        "- this floor's two walls that face the camera (front-left and front-right) are gone ENTIRELY, with their windows, doors, "
+        "shutters and timber frames, down to the level of the floor: the floor's front edges are open, nothing stands on them;",
+        "- this floor's two back walls stay, one storey high, with their windows and the hearth, shelves and beds against them;",
+    ]
+    if k > 1:
+        lines.append(f"- the {k - 1} storey{'s' if k > 2 else ''} below stay{'' if k > 2 else 's'} closed, as seen from outside in "
+                     "image 1: the solid base this floor stands on;")
+    stairs = "" if n == 1 else ", a staircase going up in a back corner" if k < n else ", the top of the staircase in a back corner"
+    lines += [
+        f"- the floor fully visible: boards or flagstones, its rooms with low inner partitions only, the furniture and things "
+        f"{purpose}{stairs}, lit warmly;",
+        f"Every wall keeps exactly the building's footprint, materials and colours. {style}",
+        "Nothing stands between the camera and the floor. Only this building: no ground round it, no shadow, no people, no text. "
+        "Keep the magenta empty.",
+    ]
+    return "\n".join(lines)
+
+
+def count_storeys(vision, exterior: Image.Image) -> int:
+    """How many floors the building in the picture has (a vision model's answer, 1 to 4); 1 without one."""
+    if vision is None:
+        return 1
+    import base64
+    url = "data:image/png;base64," + base64.b64encode(_png(exterior.convert("RGB"))).decode()
+    try:
+        answer = vision.complete([{"role": "user", "content": [{"type": "text", "text": STOREYS_TASK}, {"type": "image_url", "image_url": url}]}])
+        text = answer.text if hasattr(answer, "text") else str(answer)
+        return max(1, min(4, int(json.loads(text[text.index("{"): text.rindex("}") + 1]).get("storeys", 1))))
+    except Exception:  # noqa: BLE001 - unread: one floor
+        return 1
+
+
+def footing(picture: Image.Image) -> tuple[int, int, int, int, float]:
+    """Where a building stands (docs/places/interiors.md §2): (its left and right wall corners' x, its front corner's x
+    and y, the slope its base rises at from the front corner). The base is the lowest opaque pixel of each column: a V
+    falling to the front corner; the walls end where it rises well above that line and stays (eaves, the gap past them);
+    what hangs below it (a bush, a step) is passed. The slope is 1/2 in true isometric; a model may paint from higher up.
+    Only solid pixels count (a building's ground shadow is half see-through); a stretch above the line as wide as a
+    thirtieth of the picture (between stilts, under a deck) is passed too."""
+    import numpy as np
+    a = np.array(picture.convert("RGBA"))[:, :, 3] >= 230
+    w = a.shape[1]
+    low = np.full(w, -1)
+    for x in range(w):
+        ys = np.nonzero(a[:, x])[0]
+        if ys.size:
+            low[x] = ys.max()
+    if low.max() < 0:
+        return 0, w - 1, w // 2, picture.height - 1, 0.5
+    front = int(np.argmax(low))
+    fy = int(low[front])
+    rises = [(fy - low[x]) / abs(x - front) for x in range(max(0, front - w // 4), min(w, front + w // 4))
+             if abs(x - front) >= max(1, w // 20) and low[x] >= 0]
+    slope = float(np.median(rises)) if rises else 0.5
+
+    def walk(step: int) -> int:
+        x, best, above = front, front, 0
+        while 0 <= x + step < w:
+            x += step
+            if low[x] < 0 or low[x] < fy - abs(x - front) * slope - 18:
+                above += 1
+                if above >= max(6, w // 30):
+                    break
+                continue
+            above, best = 0, x
+        return best
+    return walk(-1), walk(1), front, fy, slope
+
+
+def fit_floor(inside: Image.Image, exterior: Image.Image) -> tuple[Image.Image, float, float]:
+    """`inside` laid on the building's footprint: its wall corners on the exterior's, its front corner on its front
+    corner, brought to its angle when painted from higher up (a vertical scale). Only what's outside the footprint's
+    columns or below its base goes (the outline isn't a cut: back walls and stairs stand above the roofline's dip).
+    Returns it, the width scale and the angle's (1: as painted)."""
+    import numpy as np
+    eL, eR, eF, eY, eS = footing(exterior)
+    iL, iR, iF, iY, iS = footing(inside)
+    sx = (eR - eL) / max(1, iR - iL)
+    angle = eS / max(0.05, iS)
+    sy = sx * angle
+    big = inside.resize((max(1, round(inside.width * sx)), max(1, round(inside.height * sy))), Image.LANCZOS)
+    out = Image.new("RGBA", exterior.size, (0, 0, 0, 0))
+    out.paste(big, (round(eF - iF * sx), round(eY - iY * sy)), big)
+    px = np.array(out)
+    for x in range(px.shape[1]):
+        if x < eL or x > eR:
+            px[:, x, 3] = 0
+        else:
+            px[int(min(px.shape[0], eY - abs(eF - x) * eS + 3)):, x, 3] = 0
+    return Image.fromarray(px), sx, angle
+
+
+def cutaway(painter, exterior: Image.Image, purpose: str, style: str, seed: int, prompt: str | None = None, clip: bool = True) -> Image.Image | None:
+    """`exterior` (RGBA, transparent round the building) edited on a magenta canvas where it stands as it is, then cut
+    back to exactly its size, its background cleared (and, `clip`, all outside the building's outline). None when the
+    edit fails."""
     side = 1024
     k = min(1.0, side * 0.78 / max(exterior.width, exterior.height))
     shown = exterior.resize((max(1, round(exterior.width * k)), max(1, round(exterior.height * k))), Image.LANCZOS) if k < 1 else exterior
@@ -996,8 +1092,7 @@ def cutaway(painter, exterior: Image.Image, purpose: str, style: str, seed: int)
     canvas = Image.new("RGB", (side, side), (255, 0, 255))
     canvas.paste(shown, (ox, oy), shown)
     try:
-        png = painter.repaint(_png(canvas), INTERIOR_PROMPT.format(purpose=purpose, style=style), references=[], seed=seed,
-                              width=side, height=side)
+        png = painter.repaint(_png(canvas), prompt or floor_prompt(1, 1, purpose, style), references=[], seed=seed, width=side, height=side)
     except Exception:  # noqa: BLE001 - the building stays closed this run; asked again next run
         return None
     painted = Image.open(io.BytesIO(png)).convert("RGB")
@@ -1011,19 +1106,65 @@ def cutaway(painter, exterior: Image.Image, purpose: str, style: str, seed: int)
     px, ex = inside.load(), exterior.load()
     for y in range(inside.height):
         for x in range(inside.width):
-            if back[y][x] or ex[x, y][3] < 128:  # the background, or outside the building's outline
+            if back[y][x] or (clip and ex[x, y][3] < 128):
                 px[x, y] = (0, 0, 0, 0)
     return inside
+
+
+def make_floors(painter, exterior: Image.Image, purpose: str, style: str, seed: int, storeys: int) -> list[Image.Image | None]:
+    """A building's interiors, one a floor (docs/places/interiors.md §2): floor k is the building cut open above it, its
+    front walls gone, the floors below closed, each laid on its footprint (`fit_floor`). A floor painted far off (its
+    angle or its size: a model paints a ground floor from higher up, or smaller) is painted once more, then fitted."""
+    from concurrent.futures import ThreadPoolExecutor
+    import numpy as np
+    # Its footing read wrong (narrower than half its solid width: stilts, a deck, a yard round it): every floor as painted.
+    eL, eR = footing(exterior)[:2]
+    solid = np.nonzero((np.array(exterior.convert("RGBA"))[:, :, 3] >= 230).any(axis=0))[0]
+    trusted = solid.size > 0 and (eR - eL) >= 0.5 * (solid.max() - solid.min())
+
+    def one(k: int) -> Image.Image | None:
+        best = None
+        for attempt in range(2):
+            raw = cutaway(painter, exterior, purpose, style, seed + 977 + 31 * k + 101 * attempt,
+                          prompt=floor_prompt(k, storeys, purpose, style), clip=False)
+            if raw is None:
+                continue
+            fitted, sx, angle = fit_floor(raw, exterior)
+            far = abs(sx - 1) + abs(angle - 1)
+            if best is None or far < best[1]:
+                best = (fitted, far, raw)
+            if 0.75 <= sx <= 1.35 and angle >= 0.65:
+                break
+        if best is None:
+            return None
+        if trusted and best[1] <= 0.7:
+            return best[0]
+        # Its footing misread (a fit that far off is wrong, not the picture): as painted, in the exterior's frame, nothing
+        # past its outline.
+        raw, ex = best[2], exterior.convert("RGBA")
+        px, ep = raw.load(), ex.load()
+        for y in range(raw.height):
+            for x in range(raw.width):
+                if ep[x, y][3] < 128:
+                    px[x, y] = (0, 0, 0, 0)
+        return raw
+    with ThreadPoolExecutor(min(4, storeys)) as pool:
+        return list(pool.map(one, range(1, storeys + 1)))
+
+
+def floor_name(stem: str, k: int) -> str:
+    """Floor k's picture beside a building's: <stem>-interior.png (the ground floor), <stem>-interior-<k>.png above."""
+    return f"{stem}-interior.png" if k == 1 else f"{stem}-interior-{k}.png"
 
 
 def _purpose(p: dict) -> str:
     return f"of {p['purpose']}" if p.get("purpose") else f"a {str(p.get('role') or 'building').replace('-', ' ')} has"
 
 
-def make_interiors(painter, folder: Path, pieces: list[dict], context: dict, seed: int) -> list[str]:
-    """Each building's interior (Assembled): `cutaway` of its exterior picture, written as pieces/<slug>-interior.png,
-    exactly its size, so the cutter (CutMatchedArt) frames both the same way and they swap in place. Always BFL (an edit
-    needs the picture): whichever draws the rest. Returns the slugs made."""
+def make_interiors(painter, folder: Path, pieces: list[dict], context: dict, seed: int, vision=None) -> list[str]:
+    """Each building's interiors (Assembled): its storeys counted (`vision`), one floor each (`make_floors`) from its
+    exterior picture, written as pieces/<slug>-interior.png, -interior-2.png…, exactly its size, so the cutter
+    (CutMatchedArt) frames them as it does the exterior. Always BFL (an edit needs the picture). Returns the slugs made."""
     from concurrent.futures import ThreadPoolExecutor
     style = f"Style: {_style_words(context)}; {_style_line(context)}."
 
@@ -1033,19 +1174,23 @@ def make_interiors(painter, folder: Path, pieces: list[dict], context: dict, see
             return None
         with Image.open(exterior_path) as im:
             exterior = im.convert("RGBA")
-        inside = cutaway(painter, exterior, _purpose(p), style, seed + 977 + len(p["key"]))
-        if inside is None:
+        floors = make_floors(painter, exterior, _purpose(p), style, seed + len(p["key"]), count_storeys(vision, exterior))
+        if not floors or floors[0] is None:
             return None
-        inside.save(folder / "pieces" / f"{p['slug']}-interior.png")
+        for k, floor in enumerate(floors, 1):
+            if floor is None:
+                break  # the floors above a missing one aren't reached
+            floor.save(folder / "pieces" / floor_name(p["slug"], k))
         return p["slug"]
-    with ThreadPoolExecutor(4) as pool:
+    with ThreadPoolExecutor(2) as pool:
         return [s for s in pool.map(make, pieces) if s]
 
 
-def paint_interiors(painter, folder: Path, items: list[dict], context: dict, seed: int, painting: str = "painting.png") -> list[str]:
-    """Each painted building's interior (Paint, docs/places/interiors.md §7): its occluder's region of the painting
-    (`box` [x, y, w, h], `mask` an alpha PNG that size, both from marks.json) edited by `cutaway`, written as
-    marks/<id>-interior.png, the box's size, so it lies exactly over the painted building. Returns the ids made."""
+def paint_interiors(painter, folder: Path, items: list[dict], context: dict, seed: int, painting: str = "painting.png", vision=None) -> list[str]:
+    """Each painted building's interiors (Paint, docs/places/interiors.md §7): its occluder's region of the painting
+    (`box` [x, y, w, h], `mask` an alpha PNG that size, both from marks.json), one floor each (`make_floors`), written as
+    marks/<id>-interior.png, -interior-2.png…, the box's size, so they lie exactly over the painted building. Returns
+    the ids made."""
     from concurrent.futures import ThreadPoolExecutor
     style = f"Style: {_style_words(context)}; {_style_line(context)}."
     with Image.open(folder / painting) as im:
@@ -1062,13 +1207,16 @@ def paint_interiors(painter, folder: Path, items: list[dict], context: dict, see
             mask = mask.resize((w, h), Image.NEAREST)
         exterior = whole.crop((x, y, x + w, y + h))
         exterior.putalpha(mask)
-        inside = cutaway(painter, exterior, _purpose(item), style, seed + 977 + len(item["id"]))
-        if inside is None:
+        floors = make_floors(painter, exterior, _purpose(item), style, seed + len(item["id"]), count_storeys(vision, exterior))
+        if not floors or floors[0] is None:
             return None
         (folder / "marks").mkdir(exist_ok=True)
-        inside.save(folder / "marks" / f"{item['id']}-interior.png")
+        for k, floor in enumerate(floors, 1):
+            if floor is None:
+                break
+            floor.save(folder / "marks" / floor_name(item["id"], k))
         return item["id"]
-    with ThreadPoolExecutor(4) as pool:
+    with ThreadPoolExecutor(2) as pool:
         return [i for i in pool.map(make, items) if i]
 
 

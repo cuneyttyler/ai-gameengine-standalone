@@ -634,6 +634,12 @@ int PairInteriorMarks(const json& solved, const fs::path& folder, const Ontology
             continue;
         }
         o["interior"] = "marks/" + id + "-interior.png";
+        std::string upper; // its upper floors' pictures, while each is there
+        for (int k = 2; k <= 4 && fs::exists(folder / "marks" / (id + "-interior-" + std::to_string(k) + ".png"), ec); ++k) {
+            upper += (upper.empty() ? "" : ";") + std::string("marks/") + id + "-interior-" + std::to_string(k) + ".png";
+        }
+        if (upper.empty()) o.erase("floors");
+        else o["floors"] = upper;
         o["cells"] = {x, y, x + w - 1, y + h - 1};
         o["door"] = object.value("facing", std::string("s"));
         ++count;
@@ -768,6 +774,12 @@ json AddPaintingEntities(Registry& registry, const fs::path& folder, const std::
             interior.door = o.value("door", std::string("s"));
             interior.cells = std::to_string(x0) + "," + std::to_string(y0) + "," + std::to_string(x1) + "," + std::to_string(y1);
             interior.hides = "painting#" + id + "/";
+            for (size_t at = 0; at < o.value("floors", std::string()).size();) { // the upper floors, as the scene names them
+                const std::string all = o.value("floors", std::string());
+                const size_t end = all.find(';', at);
+                interior.floors += (interior.floors.empty() ? "" : ";") + relative + "/" + all.substr(at, end == std::string::npos ? std::string::npos : end - at);
+                at = end == std::string::npos ? all.size() : end + 1;
+            }
             registry.emplace<Interior>(room, interior);
             registry.emplace<PlaceNode>(room, place, "", "painting#" + id + "-interior");
             registry.emplace<Name>(room, o.value("name", id) + " interior");

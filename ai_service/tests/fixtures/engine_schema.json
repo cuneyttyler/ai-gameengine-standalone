@@ -1388,6 +1388,21 @@
           "description": "A painted building's occluders, hidden while the interior shows.",
           "name": "hides",
           "type": "string"
+        },
+        {
+          "description": "The upper floors' pictures (floor 2, 3…), ';' between.",
+          "name": "floors",
+          "type": "string"
+        },
+        {
+          "description": "The floor shown: the player's while inside, a preview in the editor.",
+          "name": "floor",
+          "type": "int"
+        },
+        {
+          "description": "The cell (x,y) that takes one up or down a floor; empty: its back corner.",
+          "name": "stairs",
+          "type": "string"
         }
       ],
       "name": "Interior",

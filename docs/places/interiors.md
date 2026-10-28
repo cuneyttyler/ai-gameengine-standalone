@@ -60,41 +60,43 @@ interiors when another provider is set, because Mistral and PixelLab can't take 
   build type). The build's folder keeps `interior-of.json`; when it's built, `LinkBuiltInterior` puts its way out at its
   entrance. **Open interior scene** opens a linked one.
 
-## 2. Making the interior (`matched.py make_interiors`)
+## 2. Making the interiors: one a floor (`matched.py make_interiors`, `make_floors`)
 
-It runs inside `make_with_bfl`, after the exteriors and back views. It runs for both art methods (words and sheets) and
-shows on the progress list as **Interiors: N buildings cut away to show their rooms**. It takes each piece with
-`interior`, except back views, whose exterior exists and whose interior doesn't yet. A re-run only makes the missing ones.
+It runs inside `make_with_bfl`, after the exteriors and back views, for both art methods, and shows on the progress list
+as **Interiors: N buildings cut away to show their rooms**. It takes each piece with `interior` (a Cutaway type), except
+back views, whose exterior exists and whose interior doesn't yet. A re-run only makes the missing ones. The same
+procedure serves **Generate interior** (`/assets/interior`) and painted places (`paint_interiors`).
 
 For each building:
 
-1. **Canvas.** The exterior (`pieces/<slug>.png`) goes on a 1024×1024 magenta canvas, scaled to at most 78% of it and
-   centred.
-2. **Edit.** `painter.repaint(canvas, INTERIOR_PROMPT)` with no other references. There's one call per building and up
-   to 4 run at once.
-3. **Back to the exterior's frame.** The same box is cut from the result and resized to the exterior's exact size.
-4. **Mask.** A pixel is cleared when it is background (flood-filled from the border, `_background`) or outside the
-   exterior's own outline (exterior alpha < 128). The interior can never spill past the building.
-5. Saved as `pieces/<slug>-interior.png`: the same size as `pieces/<slug>.png`, pixel for pixel in register with it.
+1. **Its storeys** (`count_storeys`): the vision model is shown the exterior and says how many floors one walks on
+   (1-4; an attic counts only with windows or dormers of its own). One without a vision model.
+2. **One interior a floor** (`floor_prompt(k, n)`): floor k is the same building cut open to show that floor from
+   above: everything above it gone (the storeys above, the roof, gables, beams), that floor's two camera-facing walls
+   gone *entirely* (windows, doors, timbers) down to the floor, its back walls one storey high, the floors below closed
+   (as seen outside: the base it stands on), its rooms and furniture, a staircase in a back corner when there's more
+   than one floor. Each is an edit of the exterior on a 1024 magenta canvas (`cutaway`, background cleared, no clip).
+3. **Laid on the footprint** (`footing`, `fit_floor`): where a building stands is read from each picture: the lowest
+   opaque pixel of each column makes a V falling to the front corner; the wall corners are where it stops following
+   its slope (eaves, the gap past the wall; a bush or a step below the line is passed). The floor is scaled so its
+   wall corners land on the exterior's, its front corner on its front corner, and brought to the exterior's angle (a
+   vertical scale) when painted from higher up. Only what's outside the footprint's columns or below its base is
+   cleared: back walls and stairs keep their height (clipping to the exterior's outline cut them).
+4. **Once more when far off**: a floor whose fit needs more than ±25-35% or whose angle is far steeper is painted
+   again with another seed; the closer of the two is kept.
+5. Saved beside the exterior's piece: `pieces/<slug>-interior.png` (floor 1), `-interior-2.png`, `-interior-3.png`…,
+   each exactly its size.
 
-### The look (`INTERIOR_PROMPT`)
+### What the tests showed (`builder_tests/interior_test`, FirstGame's exteriors)
 
-Approved on 2026-10-27, from `builder_tests/words_test/interiors.py` (`interiors.jpg`): a **dollhouse cutaway**.
-
-- The roof is gone.
-- The two walls facing the camera (front-left and front-right) are removed *entirely*, with their windows, doors,
-  shutters, timbers and gables. Only a low sill marks the floor's front edges.
-- **Every storey stays.** The upper floor, the stairs and the back walls at full height are kept, so a two-storey house
-  still reads as two storeys.
-- The rooms, inner walls and furniture follow the building's purpose (`purpose`, or its role), lit warmly, in the
-  place's style.
-
-Rejected along the way:
-
-| Version | What went wrong |
+| Finding | Answer |
 |---|---|
-| front walls cut to knee height | the walls, and especially their windows, still stood in front of the rooms |
-| ground floor only, one storey high | the rooms were clear, but two-storey buildings became one storey and no longer matched their exterior |
+| A cutaway of the whole building (every storey shown at once): the upper floor's boards hide the ground floor | one interior a floor |
+| Front walls cut to knee height: the walls, and their windows, still stand before the rooms | the floor's front walls gone *entirely*, down to the floor |
+| The ground floor came out 10-25% smaller each side | not smaller: painted from higher up (its base rises at 0.71 against the exterior's 0.55); `fit_floor` brings it to the angle |
+| Telling the model "same size, same corners" | no better: the fit is measured, not asked for |
+| Measuring the footprint in the lowest quarter of the picture | a short ground floor holds only its front point there: scaled up and then clipped ("overcut"); the V's corners instead |
+| Clipping to the exterior's outline | cut back walls and stairs; only outside the footprint's columns and below its base now |
 
 ## 3. Cutting and pairing (`MatchedArt.cpp CutMatchedArt`)
 
@@ -144,6 +146,17 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
 - **Editor:** `ApplyInteriors` runs every frame when not playing, so *shown* (from the Inspector, a menu or the
   shortcut) previews it at once. The swap is a view, not an edit: it doesn't mark the scene changed, and Play sets
   `shown` from where the player stands.
+
+### Floors
+
+- `Interior.floors`: the upper floors' pictures (`;` between); `texture` is the ground floor's; `floor` the one shown.
+  The exterior's `.meta` keeps them as `interior=` (floor 1) and `interiorFloors=`; each floor's has `exteriorOf=` and
+  `floor=`. Built places, Add interior and the editor's repair on opening a scene (`RepairInteriorArt`: pictures made
+  again are picked up from the pairing) fill them in.
+- **Play:** in through the door shows floor 1. Its **stairs** cell (`stairs`, "x,y"; empty: the footprint's back
+  corner) takes one up a floor each time it's stepped on (stepping off first), down again from the top; out of the
+  building, the exterior, and floor 1 next time.
+- **Editor:** H steps through exterior, floor 1, floor 2… and back; the right-click menu has **Show floor k**.
 
 ## 5. In the editor
 
