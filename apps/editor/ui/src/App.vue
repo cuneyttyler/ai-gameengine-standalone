@@ -18,6 +18,7 @@ import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import PreferencesDialog from './components/PreferencesDialog.vue'
 import OntologyDialog from './components/OntologyDialog.vue'
 import ReplacePrefabDialog from './components/ReplacePrefabDialog.vue'
+import BackgroundDialog from './components/BackgroundDialog.vue'
 import ProjectSettingsDialog from './components/ProjectSettingsDialog.vue'
 import NewProjectDialog from './components/NewProjectDialog.vue'
 import PackImportDialog from './components/PackImportDialog.vue'
@@ -154,6 +155,7 @@ onBeforeUnmount(() => setShell(null))
   <PreferencesDialog />
   <OntologyDialog />
   <ReplacePrefabDialog />
+  <BackgroundDialog />
   <ProjectSettingsDialog />
   <NewProjectDialog
     :open="projectState.showNewProject"

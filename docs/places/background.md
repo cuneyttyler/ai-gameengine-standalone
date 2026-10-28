@@ -261,8 +261,19 @@ The last row is the reason for the whole picture: **decide every look once, then
 - **Build ▸ Assets ▸ Background** (the row at the top of the art plan): its picture, who painted it, and
   **Generate / Regenerate** (`build:background` → `PlaceBuild::MakeBackground`). The Build step lays it as the ground,
   cell by cell (`PlaceSceneOptions.groundPicture`).
-- **Your own picture.** **Edit ▸ Background Image…** sets a top-down picture of your own as the scene's ground, with or
-  without the AI (not in the Build panel).
+- **Edit ▸ Background Image…** (`BackgroundDialog.vue`): the background painted again, or replaced by a picture file.
+  - **Build:** None, or one of the project's builds (the open one at first). **Model:** the background models
+    (`backgroundModels.ts`, the same list as the Build panel's). **Words:** the chosen build's background description
+    (`BackgroundDescription`, editable); with none, the open scene's last words (`assets/backgrounds/<scene>.json`).
+  - **Regenerate with a build** (`background:regenerate`): that build opened in the Build panel if it isn't, its
+    background model and description set, `MakeBackground` from its plan. When it comes, a built place whose scene is
+    open is laid with it again (`BuildIntoScene`); otherwise the editor says to open its scene and Build.
+  - **Regenerate with no build:** the open scene's ground painted from the words alone (`POST /images/background`, the
+    model's `create`, in the project's view: isometric or top-down), written as `assets/backgrounds/<scene>.png` and
+    drawn as one picture behind everything (an entity "Background", ScreenTransform2D at depth -1e7) over the scene's
+    extent (its ground's cells and tiles, else 32 x 32 cells). Regenerating replaces its picture.
+  - **Use a picture file…** (`background:fromFile`): with a build, a top-down picture as its ground (as before); with
+    none, the scene's backdrop.
 - **Who paints it.** Preferences ▸ AI ▸ Background (the app's default); Project Settings ▸ AI ▸ background (this
   project's, "Use app default" unless set).
 - **The things in its light.** The scene tones the place's sprites to the background's colours (matched-art.md §2d).

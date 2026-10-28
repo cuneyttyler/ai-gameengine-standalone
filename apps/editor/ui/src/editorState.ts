@@ -66,6 +66,7 @@ export const editorState = reactive({
   animateFrom: '', // Generate ▸ Character's "Animate": the image the Animate tab picks
   showShortcuts: false, // Help ▸ Keyboard Shortcuts
   showOntology: false, // File ▸ Ontology…, the Build panel's menu (development_plan.md 9)
+  showBackground: false, // Edit ▸ Background Image…
   replacePrefab: null as string | null, // Edit ▸ Replace prefab…: the prefab to replace ('' : choose)
   replaceEntity: null as number | null, // …of one thing (the viewport's or the Inspector's Replace prefab): it, or every copy
   grid: false, // tile borders on empty ground (G)

@@ -58,6 +58,7 @@
 
 #include <algorithm>
 #include <tuple>
+#include <cfloat>
 #include <climits>
 #include <variant>
 #include <chrono>
@@ -401,13 +402,14 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         return true;
     }
     if (buildJob_ && type != "build:request" && type != "build:list" && type != "build:sourcingRequest" && type != "build:sourcing" &&
-        type != "build:choicesRequest" && type != "build:advanced") {
+        type != "build:choicesRequest" && type != "build:advanced" && type != "background:request") {
         post_({{"type", "notify"}, {"text", "The build is still working: a moment"}});
         PostBuild();
         return true;
     }
     if (HandlePaintMessage(type, message)) return true;
     if (HandleInteriorMessage(type, message)) return true;
+    if (HandleBackgroundMessage(type, message)) return true;
     if (type == "build:start") {
         StartBuild(message.value("query", ""), message.value("choices", nlohmann::json::object()), message.value("method", ""));
     } else if (type == "build:choicesRequest") {
@@ -843,7 +845,7 @@ bool EditorApp::HandleDifficultyMessage(const std::string& type, const nlohmann:
 void EditorApp::OnWebMessage(const nlohmann::json& message) {
     const std::string type = message.value("type", "");
     const SlowWatch watch("message " + type);
-    if ((type.rfind("build:", 0) == 0 || type == "scene:backgroundImage") && HandleBuildMessage(type, message)) return;
+    if ((type.rfind("build:", 0) == 0 || type.rfind("background:", 0) == 0 || type == "scene:backgroundImage") && HandleBuildMessage(type, message)) return;
     if (type == "prefs:request" || type == "prefs:set") {
         static const std::set<std::string> kKeys = {"uiScale", "showGridAtStart", "zoomSpeed", "invertZoom", "recoveryMinutes", "paintModel",
                                                     "defaultBuildMethod"};
@@ -5218,6 +5220,15 @@ void EditorApp::PollAi() {
                 }
             }
             post_(AiStatusJson());
+        } else if (result->kind == AiClient::Result::Kind::Response && result->requestId != 0 && result->requestId == sceneBackgroundRequest_) {
+            // The open scene's background painted (Edit ▸ Background Image, no build).
+            sceneBackgroundRequest_ = 0;
+            if (result->body.value("ok", false)) {
+                SetSceneBackdrop(result->body.value("path", sceneBackground_.value("path", "")));
+            } else {
+                const auto errors = result->body.value("errors", nlohmann::json::array());
+                post_({{"type", "notify"}, {"text", "The background wasn't painted" + (errors.empty() ? std::string() : ": " + errors.front().get<std::string>())}});
+            }
         } else if (result->kind == AiClient::Result::Kind::Response && interiorRequests_.contains(result->requestId)) {
             // An asset's interior made (docs/places/interiors.md §5): paired with it both ways.
             const std::string path = interiorRequests_[result->requestId];
@@ -5387,7 +5398,7 @@ bool EditorApp::KnownRequest(int requestId) const {
            (requestId != 0 && (requestId == characterRequest_ || requestId == animationRequest_)) ||
            requestId == worldCheckRequest_ || consistencyRequests_.contains(requestId) ||
            (requestId != 0 && (requestId == webPreviewRequest_ || requestId == segmentRequest_)) || webFetchRequests_.contains(requestId) ||
-           interiorRequests_.contains(requestId);
+           interiorRequests_.contains(requestId) || (requestId != 0 && requestId == sceneBackgroundRequest_);
 }
 
 void EditorApp::OnBuildResult(int requestId, const nlohmann::json& body) {
@@ -5402,6 +5413,16 @@ void EditorApp::OnBuildResult(int requestId, const nlohmann::json& body) {
         build.OnResponse(requestId, body);
         return std::string();
     }, "", [this] {
+        // A built place's background painted again (Edit ▸ Background Image): its scene laid with it, when it's open.
+        if (relayBackground_ && build_ && !build_->MakingBackground()) {
+            relayBackground_ = false;
+            bool open = false;
+            for (auto [e, node] : registry_.view<PlaceNode>().each()) open = open || node.place == build_->Id();
+            if (build_->Stage() == "built" && !build_->Background().is_null()) {
+                if (open) BuildIntoScene();
+                else post_({{"type", "notify"}, {"text", "Its background is painted: open its scene and Build to lay it there"}});
+            }
+        }
         // The art waited for the background: it's painted (or failed), the art is found or made now.
         if (!afterBackground_.empty() && build_ && !build_->MakingBackground()) {
             const std::string then = afterBackground_;
@@ -5601,6 +5622,135 @@ void EditorApp::CutMatched() {
     build_->MatchedArtDone(report);
     post_({{"type", "notify"}, {"text", "Made " + std::to_string(report.value("pieces", nlohmann::json::array()).size()) + " pieces and " +
                                             std::to_string(report.value("grounds", nlohmann::json::array()).size()) + " grounds in one style"}});
+}
+
+bool EditorApp::HandleBackgroundMessage(const std::string& type, const nlohmann::json& message) {
+    const std::filesystem::path root = assets_.GetProject().root;
+    const std::string stem = std::filesystem::path(OpenSceneRelative()).stem().string();
+    if (type == "background:request") {
+        // The dialog: the builds, the one chosen (the open one at first), its words and model; none: the scene's last.
+        const std::string id = message.contains("build") ? message.value("build", "") : (build_ ? build_->Id() : std::string());
+        nlohmann::json state = {{"type", "background:state"}, {"builds", ListBuilds(root)}, {"build", id}, {"description", ""}, {"model", ""}};
+        if (id.empty()) {
+            std::ifstream in(root / "assets" / "backgrounds" / (stem + ".json"));
+            const nlohmann::json saved = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+            if (saved.is_object()) state["description"] = saved.value("description", ""), state["model"] = saved.value("model", "");
+        } else {
+            std::unique_ptr<PlaceBuild> other;
+            PlaceBuild* b = build_ && build_->Id() == id ? build_.get() : nullptr;
+            if (b == nullptr && (other = MakeBuild())->Open(id).empty()) b = other.get();
+            if (b != nullptr) {
+                state["description"] = b->BackgroundDescription();
+                state["model"] = b->State().value("models", nlohmann::json::object()).value("background", "");
+            }
+        }
+        post_(state);
+        return true;
+    }
+    if (type == "background:regenerate" || type == "background:fromFile") {
+        if (playing_) return true;
+        const std::string id = message.value("build", "");
+        if (!id.empty()) {
+            // A build's background: that build opened in the Build panel (if it isn't), painted again from its plan.
+            if (!build_ || build_->Id() != id) ResumeBuild(id);
+            if (!build_ || build_->Id() != id) return true;
+            if (type == "background:fromFile") return HandleBuildMessage("scene:backgroundImage", message);
+            if (const std::string model = message.value("model", ""); !model.empty()) build_->SetModels({{"background", model}});
+            if (message.contains("description") && message["description"].is_string()) build_->Edit("background.description", message["description"]);
+            if (const std::string why = build_->MakeBackground(); !why.empty()) {
+                post_({{"type", "notify"}, {"text", "No background: " + why}});
+            } else {
+                relayBackground_ = true;
+                post_({{"type", "notify"}, {"text", "Painting " + build_->Brief().value("name", build_->Id()) + "'s background again…"}});
+            }
+            PostBuild();
+            return true;
+        }
+        // No build: the open scene's backdrop.
+        if (stem.empty()) {
+            post_({{"type", "notify"}, {"text", "Save the scene first"}});
+            return true;
+        }
+        std::error_code ec;
+        std::filesystem::create_directories(root / "assets" / "backgrounds", ec);
+        if (type == "background:fromFile") {
+            const auto file = ShowOpenFileDialog(mainWindow_, L"Background image (the scene's ground)", L"Images", L"*.png;*.jpg;*.jpeg");
+            if (!file) return true;
+            const std::string rel = "assets/backgrounds/" + WideToUtf8(file->filename().wstring());
+            std::filesystem::copy_file(*file, root / rel, std::filesystem::copy_options::overwrite_existing, ec);
+            if (ec) {
+                post_({{"type", "notify"}, {"text", "Couldn't copy the picture: " + ec.message()}});
+                return true;
+            }
+            SetSceneBackdrop(rel);
+            return true;
+        }
+        if (!Ai() || Ai()->GetState() != AiClient::State::Ready) {
+            post_({{"type", "notify"}, {"text", "Turn AI on to paint a background"}});
+            return true;
+        }
+        const BackdropFrame frame = SceneBackdropFrame();
+        const float aspect = frame.height > 0 ? frame.width / frame.height : 1.5f;
+        const int width = aspect >= 1 ? 1536 : std::clamp(static_cast<int>(1536 * aspect), 512, 1536);
+        const int height = aspect >= 1 ? std::clamp(static_cast<int>(1536 / aspect), 512, 1536) : 1536;
+        const std::string path = "assets/backgrounds/" + stem + ".png";
+        sceneBackground_ = {{"path", path}, {"description", message.value("description", "")}, {"model", message.value("model", "")}};
+        sceneBackgroundRequest_ = Ai()->Request("POST", "/images/background",
+                                                {{"path", path}, {"description", message.value("description", "")}, {"provider", message.value("model", "")},
+                                                 {"view", ActiveSettings().grid.style != GridStyle::TopDown ? "isometric" : "top-down"},
+                                                 {"width", width}, {"height", height}},
+                                                900);
+        std::ofstream(root / "assets" / "backgrounds" / (stem + ".json")) << sceneBackground_.dump(2) << "\n";
+        post_({{"type", "notify"}, {"text", "Painting the scene's background…"}});
+        return true;
+    }
+    return false;
+}
+
+EditorApp::BackdropFrame EditorApp::SceneBackdropFrame() {
+    // The scene's extent (its ground's cells and its things, else 32 x 32 cells), as the rectangle round it on screen.
+    int x0 = INT_MAX, y0 = INT_MAX, x1 = INT_MIN, y1 = INT_MIN;
+    auto take = [&](int x, int y) { x0 = std::min(x0, x), y0 = std::min(y0, y), x1 = std::max(x1, x), y1 = std::max(y1, y); };
+    if (const TileLayers* layers = FindLayers(registry_)) {
+        for (const TileLayer* layer : layers->Ordered()) {
+            if (layer->Empty()) continue;
+            const auto b = layer->Bounds();
+            take(b[0], b[1]);
+            take(b[2] - 1, b[3] - 1);
+        }
+    }
+    for (auto [e, tile] : registry_.view<Tile>().each()) take(tile.gx, tile.gy);
+    if (x0 > x1) x0 = y0 = 0, x1 = y1 = 31;
+    float minX = FLT_MAX, minY = FLT_MAX, maxX = -FLT_MAX, maxY = -FLT_MAX;
+    for (const auto [cx, cy] : {std::pair{x0, y0}, std::pair{x1 + 1, y0}, std::pair{x0, y1 + 1}, std::pair{x1 + 1, y1 + 1}}) {
+        const ScreenPose p = ProjectIso(static_cast<float>(cx), static_cast<float>(cy), iso_);
+        minX = std::min(minX, p.x), maxX = std::max(maxX, p.x), minY = std::min(minY, p.y), maxY = std::max(maxY, p.y);
+    }
+    return {(minX + maxX) / 2, (minY + maxY) / 2, maxX - minX, maxY - minY};
+}
+
+void EditorApp::SetSceneBackdrop(const std::string& path) {
+    // The one "Background" behind everything (made, or its picture replaced), drawn over the scene's extent.
+    const BackdropFrame frame = SceneBackdropFrame();
+    std::optional<Entity> backdrop;
+    for (auto [e, name, at] : registry_.view<Name, ScreenTransform2D>().each()) {
+        if (name.value == "Background" && at.depth <= -1.0e6f && !registry_.all_of<PlaceNode>(e)) backdrop = e;
+    }
+    if (!backdrop) {
+        backdrop = registry_.create();
+        registry_.emplace<Name>(*backdrop, "Background");
+    }
+    registry_.emplace_or_replace<ScreenTransform2D>(*backdrop, frame.x, frame.y, -1.0e7f);
+    Sprite sprite;
+    sprite.texture = path;
+    sprite.width = frame.width;
+    sprite.height = frame.height;
+    registry_.emplace_or_replace<Sprite>(*backdrop, sprite);
+    renderer_.InvalidateTexture(path);
+    RefreshAssets();
+    dirty_ = true;
+    sceneTreeStale_ = editorStateStale_ = true;
+    post_({{"type", "notify"}, {"text", "The scene's background is " + path}});
 }
 
 void EditorApp::LinkBuiltInterior(int originX, int originY, int side) {

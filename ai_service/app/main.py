@@ -230,6 +230,16 @@ class InteriorsRequest(BaseModel):
     seed: int = 7
 
 
+class SceneBackgroundRequest(BaseModel):
+    path: str                          # where it's written, relative to the project (assets/backgrounds/<scene>.png)
+    description: str                   # the ground, in words
+    provider: str = ""                 # a background model (bfl:...); "" the project's
+    view: str = "isometric"            # isometric or top-down: the project's grid
+    width: int = 1536
+    height: int = 1024
+    seed: int = 7
+
+
 class AssetInteriorRequest(BaseModel):
     path: str                          # the building's picture, relative to the project
     purpose: str = ""                  # what it is, for its rooms (its analysis' description)
@@ -792,6 +802,40 @@ def create_app(
                                {"place": request.place, "story": request.story, "look": request.look}, request.seed)
         report(1, 1, f"Interiors: {len(made)} of {len(request.items)} made")
         return {"ok": True, "made": made, "files": {i: f"marks/{i}-interior.png" for i in made}}
+
+    @app.post("/images/background")
+    def images_background(request: SceneBackgroundRequest) -> dict:
+        """Edit ▸ Background Image with no build (docs/places/background.md): a scene's ground painted from words alone,
+        in the project's view, filling the picture."""
+        from .bfl import BflPainter
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        target = (root / request.path).resolve()
+        if root.resolve() not in target.parents or target.suffix.lower() != ".png":
+            return {"ok": False, "errors": [f"Not a picture in the project: {request.path}"]}
+        load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+        key = os.environ.get("BFL_API_KEY")
+        if not key:
+            return {"ok": False, "errors": ["No key for BFL: set BFL_API_KEY in ai_service/.env"]}
+        provider = request.provider or state.get("backgroundProvider", BACKGROUND_PROVIDERS[0])
+        if provider not in BACKGROUND_PROVIDERS:
+            return {"ok": False, "errors": [f"Unknown background model {provider}: one of {', '.join(BACKGROUND_PROVIDERS)}"]}
+        view = ("seen from above at the game's isometric angle (2:1), the ground receding diagonally" if request.view == "isometric"
+                else "seen straight from above (top-down), as a map")
+        prompt = (f"A game's background: the ground of a scene, {view}. {request.description.strip()}\n"
+                  "The ground fills the whole picture edge to edge: no frame, no border, no sky, no horizon, no text, no people, "
+                  "no buildings unless the words ask for them. Even light, so things placed on it fit.")
+        report = progress.reporter()
+        report(0, 1, f"Painting the scene's background ({provider.split(':', 1)[1]})")
+        try:
+            png = BflPainter(key, provider.split(":", 1)[1]).create(prompt, width=request.width, height=request.height, seed=request.seed)
+        except Exception as error:  # noqa: BLE001 - said to the editor
+            return {"ok": False, "errors": [f"The background couldn't be painted: {error}"]}
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(png)
+        report(1, 1, "Background painted")
+        return {"ok": True, "path": target.relative_to(root.resolve()).as_posix(), "provider": provider, "prompt": prompt}
 
     @app.post("/assets/interior")
     def assets_interior(request: AssetInteriorRequest) -> dict:

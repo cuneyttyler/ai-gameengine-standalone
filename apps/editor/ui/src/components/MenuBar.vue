@@ -48,7 +48,7 @@ const menus = computed<Record<string, MenuItem[]>>(() => ({
     { label: 'Redo', shortcut: keyLabel('edit.redo'), disabled: !editorState.canRedo, action: () => sendToHost({ type: 'edit:redo' }) },
     { label: 'Replace prefab…', disabled: editorState.playing, action: () => (editorState.replacePrefab = '') },
     // A picture of your own as the scene's ground (top-down, the whole site), with or without the AI.
-    { label: 'Background Image…', disabled: editorState.playing, action: () => sendToHost({ type: 'scene:backgroundImage' }) },
+    { label: 'Background Image…', disabled: editorState.playing, action: () => (editorState.showBackground = true) },
     separator,
     ...menuExtensions.edit,
     {

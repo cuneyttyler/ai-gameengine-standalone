@@ -3,6 +3,7 @@
 // build at a time, as a stepper: ① Request · ② Assets · ③ Plan · ④ Build ·
 // ⑤ Result. Not modal: the viewport stays in view. The host (PlaceBuild)
 // holds the Brief; every edit here goes back to it as (path, value).
+import { BACKGROUND_MODELS } from '../backgroundModels'
 import { computed, ref, watch } from 'vue'
 import AiProgress from './AiProgress.vue'
 import { aiCalls, callName } from '../aiProgress'
@@ -303,12 +304,6 @@ const ART_MODELS = [
   { id: 'bfl:flux-2-klein-4b', label: 'BFL FLUX.2 klein' },
   { id: 'bfl:flux-3-image', label: 'BFL FLUX.3 Image' },
   { id: 'bfl:flux-2-pro', label: 'BFL FLUX.2 pro' },
-]
-const BACKGROUND_MODELS = [
-  { id: 'bfl:flux-3-image', label: 'BFL FLUX.3 Image (keeps the map best)' },
-  { id: 'bfl:flux-2-max', label: 'BFL FLUX.2 max (as good, slower)' },
-  { id: 'bfl:flux-2-pro', label: 'BFL FLUX.2 pro' },
-  { id: 'bfl:flux-2-klein-4b', label: 'BFL FLUX.2 klein (fast, loose)' },
 ]
 function modelName(id?: string): string {
   return [...ART_MODELS, ...BACKGROUND_MODELS].find((m) => m.id === id)?.label.replace(/ \(.*\)$/, '') ?? (id || 'default')

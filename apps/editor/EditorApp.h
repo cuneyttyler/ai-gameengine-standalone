@@ -182,6 +182,14 @@ private:
     // build:saveMarks); false for any other.
     bool HandlePaintMessage(const std::string& type, const nlohmann::json& message);
     bool HandleInteriorMessage(const std::string& type, const nlohmann::json& message);
+    // Edit ▸ Background Image… (docs/places/background.md): a build's background painted again, or the open scene's.
+    bool HandleBackgroundMessage(const std::string& type, const nlohmann::json& message);
+    // The open scene's backdrop (no build): `path` behind everything, over the scene's extent (SceneBackdropFrame).
+    void SetSceneBackdrop(const std::string& path);
+    struct BackdropFrame {
+        float x = 0, y = 0, width = 0, height = 0; // its centre and size on screen
+    };
+    BackdropFrame SceneBackdropFrame();
     // A scene interior's build finished (its folder's interior-of.json): a way out at its entrance, back to the building.
     void LinkBuiltInterior(int originX, int originY, int side);
     // File ▸ Preferences' own settings (prefs.ts: interface scale, grid at start, zoom, recovery, paint model, a new
@@ -357,6 +365,9 @@ private:
     int webPreviewRequest_ = 0;
     int segmentRequest_ = 0; // ⑤ Mark's click-to-select (POST /images/segment)
     std::map<int, std::string> interiorRequests_; // Generate interior (POST /assets/interior): request -> the asset
+    int sceneBackgroundRequest_ = 0;  // Edit ▸ Background Image, no build (POST /images/background)
+    nlohmann::json sceneBackground_;  // its {path, description, model}
+    bool relayBackground_ = false;    // a build's background painted again: its scene laid with it when it comes
     std::map<int, nlohmann::json> webFetchRequests_;
     // Asset analysis (6.2): border terrains now, descriptions from the AI service.
     int analyzeRequest_ = 0;
