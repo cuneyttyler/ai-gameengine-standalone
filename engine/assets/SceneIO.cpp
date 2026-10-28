@@ -2,6 +2,7 @@
 #include "assets/SceneFiles.h"
 
 #include "assets/TileLayerIO.h"
+#include "gameplay/TileLayer.h"
 
 #include "gameplay/Components.h"
 #include "gameplay/EngineReflection.h"
@@ -209,6 +210,30 @@ void SaveScene(Registry& registry, const std::string& path) {
     out.close();
     if (!type.empty()) SetSceneType(path, type);
     SaveTileLayers(registry, path); // scenes/<name>.tiles/ (7.2)
+}
+
+bool SceneMatchesFile(Registry& registry, const std::string& path) {
+    if (const TileLayers* layers = FindLayers(registry)) {
+        if (!layers->removed.empty() || layers->savedTo != path) return false;
+        for (const auto& [name, layer] : layers->layers) {
+            if (!layer.DirtyRegions().empty()) return false;
+        }
+    }
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    std::string saved((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::ostringstream now;
+    WriteScene(registry, now, EntitiesInOrder(registry));
+    // As text, without line endings' \r and the type line SaveScene keeps as it is.
+    auto plain = [](std::string text) {
+        std::erase(text, '\r');
+        if (const size_t at = text.find("# type "); at != std::string::npos && at < 64) {
+            const size_t stop = text.find('\n', at);
+            text.erase(at, stop == std::string::npos ? std::string::npos : stop + 1 - at);
+        }
+        return text;
+    };
+    return plain(saved) == plain(now.str());
 }
 
 bool LoadScene(Registry& registry, const std::string& path) {

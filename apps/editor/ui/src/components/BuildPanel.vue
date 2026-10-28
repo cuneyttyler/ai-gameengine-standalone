@@ -703,6 +703,15 @@ watch(stage, (s) => {
     if (assetsTab.value !== 'background') assetsTab.value = 'found'
   } else if (s === 'planned' && !state.value?.backgroundMaking && state.value?.matched?.state !== 'making') assetsTab.value = 'how'
 })
+// The art made (found or made in one style): on to Animate, the doors and the things that are used, before Build.
+watch(
+  () => [stage.value, state.value?.matched?.state] as const,
+  ([s, m], [was, wasM]) => {
+    const sourcedNow = s === 'sourced' && was === 'sourcing'
+    const cutNow = m === 'cut' && (wasM === 'making' || wasM === 'made')
+    if (sourcedNow || cutNow) assetsTab.value = 'animate'
+  },
+)
 // The background painted: on to the art (still there to look at in its tab).
 watch(
   () => state.value?.backgroundMaking,
@@ -1932,6 +1941,15 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       </div>
       <template v-if="assetsTab === 'animate'">
         <AnimatePartsView :only="buildMethod === 'Paint' ? 'thing' : undefined" />
+        <div class="actions">
+          <button @click="assetsTab = 'found'">← The assets</button>
+          <span class="dim">{{ state?.status }}</span>
+          <button v-if="stage === 'sourced' || stage === 'built' || (stage === 'planned' && state?.inScene === false && !!state?.assetNeeds?.length)" class="primary"
+                  title="Puts the place into the scene, verifies it and repairs what it can (what isn't animated can be later)"
+                  @click="sendToHost({ type: 'build:build' })">
+            {{ stage === 'built' && state?.inScene ? 'Build again' : 'Build →' }}
+          </button>
+        </div>
       </template>
       <template v-else-if="assetsTab === 'how' && win">
       <section class="note">
@@ -2280,10 +2298,14 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
           <button v-if="stage === 'sourcing'" title="Stop finding and making art: what's missing is a placeholder" @click="sendToHost({ type: 'build:skipSourcing' })">
             Stop: use placeholders
           </button>
-          <button v-if="stage === 'sourced' || stage === 'built' || (stage === 'planned' && state?.inScene === false && !!state?.assetNeeds?.length)" class="primary"
+          <button v-if="stage === 'sourced' || stage === 'built'" :class="{ primary: stage === 'sourced' }"
+                  title="The doors of buildings and the things that are used, animated before the build" @click="assetsTab = 'animate'">
+            To Animate →
+          </button>
+          <button v-else-if="stage === 'planned' && state?.inScene === false && !!state?.assetNeeds?.length" class="primary"
                   title="Puts the place into the scene, verifies it and repairs what it can"
                   @click="sendToHost({ type: 'build:build' })">
-            {{ stage === 'built' && state?.inScene ? 'Build again' : 'Build →' }}
+            Build →
           </button>
         </div>
       </template>

@@ -222,6 +222,7 @@ private:
     std::string PlanBuildMethod() const;
     void ResumeBuild(const std::string& id); // a build of the project, from places/<id>/
     void PreviewAssets();                    // ③ Assets: each part's art decided, nothing fetched yet
+    nlohmann::json PlannedAssets();          // PlanPlaceAssets for the open build as it stands (needs with their prefabs)
     // Each need's own choice (④ Assets): a source, a picked piece of art, a placeholder (assets.json "overrides").
     void SetNeedChoice(const std::string& key, const nlohmann::json& choice);
     std::vector<nlohmann::json> usageQueue_; // build:usage while a build job runs: added when it's done

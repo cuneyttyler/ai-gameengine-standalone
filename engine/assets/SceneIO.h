@@ -15,6 +15,10 @@ namespace aige {
 // exist comes from the component table (gameplay/ComponentTable.h).
 void SaveScene(Registry& registry, const std::string& path);
 
+// True when SaveScene would write what's already in `path` (its entities and tile layers): an edit undone, or one
+// that changed nothing, leaves nothing to save.
+bool SceneMatchesFile(Registry& registry, const std::string& path);
+
 // Clears `registry` and repopulates it from a scene file written by
 // SaveScene. Returns false (leaving registry untouched) if the file doesn't
 // exist. Unrecognized component lines are skipped rather than failing the

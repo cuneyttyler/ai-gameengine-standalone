@@ -65,7 +65,9 @@ nlohmann::json EditorApp::AnimateTargets() {
     nlohmann::json targets = nlohmann::json::array();
     if (!build_) return targets;
     std::set<std::string> seen;
-    const nlohmann::json plan = ReadJsonFile(build_->Folder() / "assets.json");
+    // The built plan (assets.json, written by Build), else the plan as it stands: the art made, not built yet.
+    nlohmann::json plan = ReadJsonFile(build_->Folder() / "assets.json");
+    if (!plan.is_object() || !plan.contains("needs")) plan = PlannedAssets();
     const bool paint = build_->Method() == "Paint";
     for (const auto& row : plan.value("needs", nlohmann::json::array())) {
         const std::string role = row.value("role", ""), prefab = row.value("prefab", "");

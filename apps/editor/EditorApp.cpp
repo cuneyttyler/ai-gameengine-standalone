@@ -2456,6 +2456,20 @@ bool EditorApp::AskToSaveChanges(const wchar_t* question) {
     if (!IsDirty()) {
         return true;
     }
+    if (!settingsDirty_ && !playing_ && !scenePath_.empty() && SceneMatchesFile(registry_, scenePath_)) {
+        // Marked changed, but the scene is as saved (edits undone, a repair that changed nothing): nothing to ask.
+        // A moved panel is kept without asking.
+        if (!layout_.is_null() && layout_ != savedLayout_) {
+            std::ofstream out(LayoutPath(), std::ios::trunc | std::ios::binary);
+            if (out) {
+                out << layout_.dump(2) << "\n";
+                savedLayout_ = layout_;
+            }
+        }
+        dirty_ = false;
+        UpdateTitle();
+        return true;
+    }
     int answer = MessageBoxW(mainWindow_, question, L"Unsaved changes", MB_YESNOCANCEL | MB_ICONWARNING);
     if (answer == IDCANCEL) {
         return false;
@@ -7078,6 +7092,10 @@ AssetSourcing EditorApp::SourcingNow() {
 
 void EditorApp::PreviewAssets() {
     if (!build_ || buildJob_ || buildRun_) return;
+    build_->SetAssetNeeds(AssetRows(PlannedAssets()));
+}
+
+nlohmann::json EditorApp::PlannedAssets() {
     PlaceSceneOptions options;
     options.place = build_->Id();
     std::tie(options.originX, options.originY) = build_->Origin();
@@ -7088,8 +7106,7 @@ void EditorApp::PreviewAssets() {
     const TerrainSet terrains = ProjectTerrainSet(prefabs_, assets_.GetProject());
     const Catalog catalog = BuildCatalog(assets_, &Places(), CatalogOptionsNow());
     const AssetSourcing sourcing = SourcingNow();
-    const nlohmann::json assets = PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), catalog, prefabs_, assets_, terrains, options, &sourcing);
-    build_->SetAssetNeeds(AssetRows(assets));
+    return PlanPlaceAssets(Places(), build_->Spec(), build_->Solved(), catalog, prefabs_, assets_, terrains, options, &sourcing);
 }
 
 void EditorApp::SetNeedChoice(const std::string& key, const nlohmann::json& choice) {
