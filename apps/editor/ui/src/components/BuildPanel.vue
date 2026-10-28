@@ -2114,7 +2114,13 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <div class="actions">
           <button @click="assetsTab = 'how'">← How each is found</button>
           <span class="dim">{{ state?.status }}</span>
-          <button :disabled="!artStarted" @click="assetsTab = 'found'">The assets →</button>
+          <button v-if="artStarted" @click="assetsTab = 'found'">The assets →</button>
+          <!-- The art not started yet: started from here too (the same as How each is found's button). -->
+          <button v-else-if="SCENE_BUILD" class="primary"
+                  :disabled="stage === 'sourcing' || stage === 'building' || state?.backgroundMaking || state?.paint?.makingInteriors"
+                  @click="startArt">
+            {{ makesArt ? 'Make the art →' : 'Find the assets →' }}
+          </button>
         </div>
       </template>
       <template v-else>
