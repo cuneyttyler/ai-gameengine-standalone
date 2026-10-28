@@ -34,6 +34,8 @@ interface Sheet {
 const sheets = ref<Sheet[]>([])
 const tick = ref(0)
 const picked = ref('')
+// The clip each card plays (by sheet): its idle (a character turning round) until another is clicked.
+const clipShown = reactive<Record<string, string>>({})
 let timer = 0
 
 onHostMessage((message) => {
@@ -75,9 +77,21 @@ function turningOf(sheet: Sheet): Frame[] {
   const order = ['s', 'se', 'e', 'ne', 'n', 'nw', 'w', 'sw']
   return clip ? order.map((d) => clip.directions[d]?.[0]).filter((f): f is Frame => !!f) : []
 }
+// A clip played: a character's every direction in turn (twice round each), another sheet's first direction.
+function clipFrames(sheet: Sheet, name: string): Frame[] {
+  const clip = sheet.clips.find((c) => c.name === name)
+  if (!clip) return []
+  if (sheet.kind !== 'character') return Object.values(clip.directions)[0] ?? []
+  const order = ['s', 'se', 'e', 'ne', 'n', 'nw', 'w', 'sw']
+  return order.flatMap((d) => {
+    const list = clip.directions[d] ?? []
+    return list.length > 1 ? [...list, ...list] : list.length ? [list[0]!, list[0]!, list[0]!, list[0]!] : []
+  })
+}
 function frameStyle(sheet: Sheet): Record<string, string> {
-  const frames = sheet.kind === 'character' ? turningOf(sheet) : framesOf(sheet)
-  const step = sheet.kind === 'character' ? Math.floor(tick.value / 5) : tick.value
+  const chosen = clipShown[sheet.path]
+  const frames = chosen ? clipFrames(sheet, chosen) : sheet.kind === 'character' ? turningOf(sheet) : framesOf(sheet)
+  const step = !chosen && sheet.kind === 'character' ? Math.floor(tick.value / 5) : tick.value
   const f = frames.length ? frames[step % frames.length]! : null
   if (!f || f.w <= 0 || f.h <= 0) return {}
   const scale = Math.min(76 / f.w, 76 / f.h)
@@ -138,20 +152,32 @@ function menu(sheet: Sheet, event: MouseEvent): void {
       No animations yet. Make one with Generate ▸ Animate (Make animation), or import a sprite sheet in Project ▸ Effects.
     </p>
     <div class="grid">
-      <button
+      <div
         v-for="s in shown"
         :key="s.path"
         class="card"
         :class="{ selected: picked === s.path }"
-        :title="`${s.path}\n${s.clips.map((c) => c.name).join(', ')}\nRight-click: make a prefab, add to the selection`"
+        tabindex="0"
+        :title="`${s.path}\nClick a clip to play it; double-click one to open it in Effects\nRight-click: ${characters ? 'make the player or an NPC, animate' : 'make a prefab, add to the selection'}`"
         @click="picked = s.path"
-        @dblclick="showInEffects(s)"
         @contextmenu.prevent="menu(s, $event)"
       >
         <div class="preview"><div class="frame" :style="frameStyle(s)"></div></div>
         <div class="label">{{ name(s) }}</div>
-        <div class="clips muted">{{ s.clips.map((c) => c.name).join(' · ') }}</div>
-      </button>
+        <div class="clips">
+          <button
+            v-for="c in s.clips"
+            :key="c.name"
+            class="clip"
+            :class="{ on: (clipShown[s.path] ?? '') === c.name }"
+            :title="`Play ${c.name}${s.kind === 'character' ? ', every direction in turn' : ''}`"
+            @click.stop="clipShown[s.path] = clipShown[s.path] === c.name ? '' : c.name"
+            @dblclick.stop="showInEffects(s)"
+          >
+            {{ c.name }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -204,10 +230,20 @@ function menu(sheet: Sheet, event: MouseEvent): void {
   white-space: nowrap;
 }
 .clips {
-  font-size: 0.72em;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
   width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+.clip {
+  font-size: 0.7em;
+  padding: 0 4px;
+  opacity: 0.75;
+}
+.clip.on {
+  opacity: 1;
+  border-color: #3b82f6;
+  color: #fff;
 }
 </style>
