@@ -28,3 +28,23 @@ The picture is placed in the first of 4 cells of one strip, and the model edits 
 attack, a spell, breathing…). Painted together, the frames stay the same character. Frame lines it draws anyway (a row
 or column of a frame mostly light) are cleared, each frame brought to the frames' middle height (but a jump), and fitted
 like a character's directions. The frames and a spritesheet are written as PixelLab's were.
+
+## Animation by FLUX 3 video (the default)
+
+Preferences ▸ AI ▸ Animate (`animateProvider`, for now only `bfl:flux-3-video`) picks what animates; the BFL strip above
+is the fallback without it. `ai_service/app/bfl_video.py`, tested in `builder_tests/bfl_video` and
+`builder_tests/bfl_sprites/sheet_test.py`.
+
+1. The pose (a picture, or a character's idle facing that way) on a 1024 square of flat magenta, about two thirds of its
+   height, its feet low.
+2. `POST /v1/flux-3-video`, `mode: i2v`, the pose as **both keyframes** (the first and the last frame: the clip loops),
+   5 seconds, `hd`, 1:1, no audio; the prompt asks for big, clear motion in place (a walk that reads at sprite size:
+   knees lifting, clothes swinging, the body bobbing), the camera still, the magenta plain.
+3. Its frames read with ffmpeg (`imageio-ffmpeg`'s own); **one cycle** found where the pose comes back closest to a
+   frame past the start's settling (0.5 to 2.4 s on); 8 frames taken from it evenly, cut out of the magenta and fitted.
+4. A character: each painted direction so (5 calls for 8 directions, the west side mirrored), added to its sheet as one
+   clip of 8 frames a direction.
+
+What the tests showed: the character stays exactly itself in every frame and direction (the image strip's weakness); a
+gentle walk under a long robe barely reads, so the prompt asks for a brisk, exaggerated one; BFL caps a low-credit
+account at one task at a time (429), so a busy answer is waited for and asked again.

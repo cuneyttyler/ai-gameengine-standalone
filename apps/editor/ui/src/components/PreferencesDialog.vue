@@ -271,6 +271,15 @@ function close(): void {
                 </div>
               </div>
               <div class="field">
+                <label>Animate</label>
+                <div class="control">
+                  <select :value="editorState.ai.animateProvider" :disabled="!editorState.ai.enabled" @change="sendToHost({ type: 'ai:setAnimateProvider', provider: ($event.target as HTMLSelectElement).value })">
+                    <option value="bfl:flux-3-video">BFL FLUX 3 Video (image to video){{ noKey('bfl') }}</option>
+                  </select>
+                  <p class="desc">What makes things move in Generate ▸ Animate: a picture, or a character in every direction, turned into a looping clip and cut into frames.</p>
+                </div>
+              </div>
+              <div class="field">
                 <label>Paint model</label>
                 <div class="control">
                   <select :value="prefs.paintModel" @change="setPref('paintModel', ($event.target as HTMLSelectElement).value)">

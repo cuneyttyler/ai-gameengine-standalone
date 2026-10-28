@@ -263,8 +263,13 @@ class MatchedRequest(BaseModel):
     provider: str = ""                 # this build's art provider (Build ▸ Assets); "" for the service's (the project's)
 
 
+# What animates (Preferences ▸ AI ▸ Animate): FLUX 3 video (image-to-video), for now the only choice.
+ANIMATE_PROVIDERS = ("bfl:flux-3-video",)
+
+
 class AnimationRequest(BaseModel):
     path: str            # the project image to animate
+    provider: str = ""   # Preferences ▸ AI ▸ Animate ("" the default: FLUX 3 video)
     action: str          # walking, swinging a sword, flickering
     description: str = ""
     direction: str = "south"
@@ -274,6 +279,7 @@ class AnimationRequest(BaseModel):
 
 class CharacterAnimateRequest(BaseModel):
     sheet: str           # a character sheet (assets/characters/<name>/<name>.character.anim.json)
+    provider: str = ""   # Preferences ▸ AI ▸ Animate
     action: str          # walking, swinging a sword, casting a spell
     description: str = ""
 
@@ -895,9 +901,9 @@ def create_app(
             return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
         load_dotenv(Path(__file__).resolve().parent.parent / ".env")
         model = bfl_art()
-        if not model and not os.environ.get("PIXELLAB_API_KEY"):
-            return {"ok": False, "errors": ["Animations are drawn by the project's art model when it's BFL's, else PixelLab: "
-                                            "set one in Project Settings ▸ AI ▸ Art (BFL_API_KEY or PIXELLAB_API_KEY in ai_service/.env)"]}
+        video = video_animator(request.provider)
+        if not video and not model and not os.environ.get("PIXELLAB_API_KEY"):
+            return {"ok": False, "errors": ["Animations are made by FLUX 3 video (BFL_API_KEY in ai_service/.env), else PixelLab"]}
         source = (root / request.path).resolve()
         if root.resolve() not in source.parents or not source.is_file():
             return {"ok": False, "errors": ["Pick an image of the project to animate"]}
@@ -906,7 +912,14 @@ def create_app(
         what = request.description or source.stem.replace("-", " ")
         report = progress.reporter()
         try:
-            if model:
+            if video:
+                from . import bfl_video
+                report(0, 1, f"Animating {source.name}: {request.action} (FLUX 3 video)")
+                from PIL import Image
+                with Image.open(source) as im:
+                    size = max(32, min(256, max(im.size)))
+                frames = bfl_video.animate(os.environ["BFL_API_KEY"], source.read_bytes(), request.action, what, request.direction, 8, size)
+            elif model:
                 from .bfl import BflPainter
                 from . import bfl_sprites
                 report(0, 1, f"Animating {source.name}: {request.action} ({model})")
@@ -943,6 +956,10 @@ def create_app(
         are then drawn by it (bfl_sprites), else by PixelLab."""
         art = state.get("artProvider", "auto")
         return art.split(":", 1)[1] if isinstance(art, str) and art.startswith("bfl:") and os.environ.get("BFL_API_KEY") else None
+
+    def video_animator(provider: str) -> bool:
+        """Animate with FLUX 3 video (bfl_video): the Animate choice's, while there's a BFL key."""
+        return (provider or ANIMATE_PROVIDERS[0]) == "bfl:flux-3-video" and bool(os.environ.get("BFL_API_KEY"))
 
     def style_words(root: Path) -> str:
         colours = project_style.project_palette(root)
@@ -1016,12 +1033,14 @@ def create_app(
         mirrored = {"west": "east", "south-west": "south-east", "north-west": "north-east"}
         painted = [d for d in faces if not (d in mirrored and mirrored[d] in faces)]
         model = bfl_art()
-        if not model and not os.environ.get("PIXELLAB_API_KEY"):
-            return {"ok": False, "errors": ["Animations are drawn by the project's art model when it's BFL's, else PixelLab"]}
+        video = video_animator(request.provider)
+        if not video and not model and not os.environ.get("PIXELLAB_API_KEY"):
+            return {"ok": False, "errors": ["Animations are made by FLUX 3 video (BFL_API_KEY in ai_service/.env), else PixelLab"]}
         what = request.description or info.get("description", "") or info.get("name", "the character")
         size = sheet["grid"]["width"]
         report = progress.reporter()
-        report(0, len(painted), f"Animating {info.get('name', 'it')}: {request.action}, {len(painted)} directions ({model or 'PixelLab'})")
+        report(0, len(painted), f"Animating {info.get('name', 'it')}: {request.action}, {len(painted)} directions "
+                                f"({'FLUX 3 video' if video else model or 'PixelLab'})")
         done = [0]
 
         def one(direction: str) -> tuple[str, list[bytes] | str]:
@@ -1031,7 +1050,10 @@ def create_app(
             buf = io.BytesIO()
             pose.save(buf, "PNG")
             try:
-                if model:
+                if video:
+                    from . import bfl_video
+                    frames = bfl_video.animate(os.environ["BFL_API_KEY"], buf.getvalue(), request.action, what, direction, 8, size)
+                elif model:
                     from .bfl import BflPainter
                     from . import bfl_sprites
                     frames = bfl_sprites.animate(BflPainter(os.environ["BFL_API_KEY"], model), buf.getvalue(), request.action, what,

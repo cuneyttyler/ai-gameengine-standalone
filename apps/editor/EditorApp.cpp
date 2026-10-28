@@ -1396,7 +1396,8 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         if (Ai() == nullptr || Ai()->GetState() != AiClient::State::Ready) {
             post_({{"type", reply}, {"result", {{"ok", false}, {"errors", {"AI is off"}}}}});
         } else if (inFlight == 0) {
-            const nlohmann::json request = message.value("request", nlohmann::json::object());
+            nlohmann::json request = message.value("request", nlohmann::json::object());
+            if (!character && userPrefs_) request["provider"] = userPrefs_->Get("animateProvider", "bfl:flux-3-video"); // Preferences ▸ AI ▸ Animate
             inFlight = Ai()->Request("POST", character ? "/characters/generate" : request.contains("sheet") ? "/characters/animate" : "/animations/generate",
                                      request, 900); // a character's every direction: a few minutes
             (character ? characterHistoryId_ : animationHistoryId_) = (character ? characterHistory_ : animationHistory_).Begin(request);
@@ -5226,6 +5227,7 @@ nlohmann::json EditorApp::AiStatusJson() {
             {"artProvider", userPrefs_ ? userPrefs_->Get("artProvider", "auto") : nlohmann::json("auto")},
             {"art", artStatus_.value("art", "")},
             {"artInUse", ChosenAi("art")}, // the project's art model, else the app's: what draws now
+            {"animateProvider", userPrefs_ ? userPrefs_->Get("animateProvider", "bfl:flux-3-video") : nlohmann::json("bfl:flux-3-video")},
             {"backgroundProvider", userPrefs_ ? userPrefs_->Get("backgroundProvider", "bfl:flux-3-image") : nlohmann::json("bfl:flux-3-image")},
             {"backgroundError", backgroundStatus_.value("ok", true) ? "" : (backgroundStatus_.contains("errors") && !backgroundStatus_["errors"].empty()
                                                                             ? backgroundStatus_["errors"][0].get<std::string>() : "")},
@@ -5929,7 +5931,11 @@ void EditorApp::SetSceneBackdrop(const std::string& path) {
 }
 
 bool EditorApp::HandleGenerateMessage(const std::string& type, const nlohmann::json& message) {
-    if (type == "character:request" || type == "animation:request") {
+    if (type == "ai:setAnimateProvider") {
+        // What animates (Preferences ▸ AI ▸ Animate): sent with every Animate request.
+        if (userPrefs_) userPrefs_->Set("animateProvider", message.value("provider", "bfl:flux-3-video"));
+        post_(AiStatusJson());
+    } else if (type == "character:request" || type == "animation:request") {
         post_(GenerateHistoryJson(type == "character:request"));
     } else if (type == "character:clearHistory" || type == "animation:clearHistory") {
         const bool character = type == "character:clearHistory";
