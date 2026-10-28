@@ -123,6 +123,7 @@ function thumb(path: string, created: string): string {
 <template>
   <div class="character ed-form">
     <AiProgress :paths="['/characters/']" />
+    <div class="cols">
     <section class="form">
       <textarea
         v-model="form.description"
@@ -221,12 +222,20 @@ function thumb(path: string, created: string): string {
       </div>
     </section>
   </div>
+  </div>
 </template>
 
 <style scoped>
 .character {
   display: flex;
+  flex-direction: column;
   height: 100%;
+  min-height: 0;
+}
+/* The progress strip above (AiProgress), the columns below it. */
+.cols {
+  display: flex;
+  flex: 1;
   min-height: 0;
 }
 .form {

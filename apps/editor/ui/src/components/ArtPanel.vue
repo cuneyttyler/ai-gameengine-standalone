@@ -181,6 +181,7 @@ const whyOff = computed(() =>
 <template>
   <div class="art ed-form">
     <AiProgress :paths="['/assets/generate', '/assets/describe']" />
+    <div class="cols">
     <section class="form">
       <textarea
         v-model="form.description"
@@ -301,12 +302,20 @@ const whyOff = computed(() =>
       </section>
     </section>
   </div>
+  </div>
 </template>
 
 <style scoped>
 .art {
   display: flex;
+  flex-direction: column;
   height: 100%;
+  min-height: 0;
+}
+/* The progress strip above (AiProgress), the columns below it. */
+.cols {
+  display: flex;
+  flex: 1;
   min-height: 0;
 }
 .form {

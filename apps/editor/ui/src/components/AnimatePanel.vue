@@ -141,6 +141,7 @@ function when(iso: string): string {
 <template>
   <div class="animate ed-form">
     <AiProgress :paths="['/animations/']" />
+    <div class="cols">
     <section class="pick">
       <input v-model="filter" placeholder="Find an image: knight, torch, characters…" spellcheck="false" />
       <div class="grid">
@@ -231,13 +232,21 @@ function when(iso: string): string {
         </div>
       </div>
     </section>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .animate {
   display: flex;
+  flex-direction: column;
   height: 100%;
+  min-height: 0;
+}
+/* The progress strip above (AiProgress), the columns below it. */
+.cols {
+  display: flex;
+  flex: 1;
   min-height: 0;
 }
 .history-head {
