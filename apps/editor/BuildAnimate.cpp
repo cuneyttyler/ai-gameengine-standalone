@@ -1,5 +1,6 @@
 // Build ▸ Animate (docs/assets/animations.md §4.1): a place's moving parts found and animated after its art is made.
-// Assembled: each building's door (found in its art by the vision model, an AnimatedPart on its prefab: every copy) and
+// Assembled: each building's door (found in its art by the vision model, opened from its own pixels by the service's
+// app/doors.py, an AnimatedPart on its prefab: every copy) and
 // each thing that's used (a chest, a gate, a lever: its prefab animated, opened when it's used). Paint: each painted
 // building's door found in its part of the painting (kept in places/<id>/parts.json, put over the painting when the
 // place is built), and the things that are used, as Assembled. One target at a time: find, animate, apply.
@@ -16,6 +17,7 @@
 #include "renderer2d/Components.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -274,23 +276,23 @@ void EditorApp::OnAnimateResult(const nlohmann::json& body) {
         for (const auto& p : parts) {
             if (p.value("confidence", 0.0) > best.value("confidence", 0.0)) best = p;
         }
-        // A margin of a third of its size each side, inside its picture's region: the vision model's box can be off by
-        // half a door (on a 600 px house, ~30 px to one side), and the crop has to hold the whole door.
-        const nlohmann::json region = (*target)["region"];
-        const int rx = region[0].get<int>(), ry = region[1].get<int>(), rw = region[2].get<int>(), rh = region[3].get<int>();
-        const int bx = best["box"][0].get<int>(), by = best["box"][1].get<int>(), bw = best["box"][2].get<int>(), bh = best["box"][3].get<int>();
-        const int mx = bw / 3, my = bh / 3;
-        const int x0 = std::max(rx, bx - mx), y0 = std::max(ry, by - my);
-        const int x1 = std::min(rx + rw, bx + bw + mx), y1 = std::min(ry + rh, by + bh + my);
+        // Opened from its own pixels (the service's app/doors.py: the doorway fitted to the picture, the panel swung
+        // inward behind the wall), not drawn by an animator: it keeps the building's art and costs nothing.
         (*target)["found"] = best["box"];
-        (*target)["box"] = {x0, y0, std::max(1, x1 - x0), std::max(1, y1 - y0)};
+        (*target)["box"] = best["box"];
         (*target)["status"] = "animating";
         PostAnimate();
-        AnimateCrop(*target, (*target)["box"]);
+        std::string name = build_->Id() + "-door-" + target->value("key", std::string("door"));
+        for (char& ch : name) {
+            if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-') ch = '-';
+        }
+        animateRequest_ = Ai()->Request("POST", "/parts/door",
+                                        {{"path", target->value("texture", "")}, {"box", best["box"]}, {"name", name.substr(0, 60)}}, 120);
         return;
     }
     if (!body.value("ok", false)) return fail(body.value("errors", nlohmann::json::array()).dump());
     RefreshAssets(); // the spritesheet the service just wrote
+    if (body.contains("doorway")) (*target)["box"] = body["doorway"]; // a door: its frames go over the doorway
     std::string sheet;
     if (const std::string why = MakeAnimationSheet(body, &sheet); !why.empty()) return fail(why);
     session_.ReloadAnimations();

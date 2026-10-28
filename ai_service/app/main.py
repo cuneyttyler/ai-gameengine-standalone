@@ -279,6 +279,13 @@ class PartsRequest(BaseModel):
     rect: list[int] | None = None   # a box of it to look in (a painting's building), its pixels
 
 
+class DoorRequest(BaseModel):
+    path: str                       # the building's picture (or a painting)
+    box: list[int]                  # its door, as found (x, y, w, h: its pixels)
+    name: str                       # what its frames are kept as (assets/textures/generated/animations/<name>/)
+    frames: int = 24
+
+
 class AnimationRequest(BaseModel):
     clip: str = ""       # the clip it's kept as (open, pull...); "" from the action (open, close, break, else idle)
     path: str            # the project image to animate
@@ -970,6 +977,40 @@ def create_app(
         if root is None or vision is None:
             return {"ok": False, "errors": ["Finding parts needs the project open and a vision model (AI on)"]}
         return find_parts(vision, root, request.path, request.kinds, request.rect)
+
+    @app.post("/parts/door")
+    def parts_door(request: DoorRequest) -> dict:
+        """A building's door opened from its own pixels (Build ▸ Animate; app/doors.py): its frames and a spritesheet
+        into the assets, as /animations/generate gives them, and the doorway's box (where they go on the picture)."""
+        from PIL import Image
+        from .doors import door_frames, png
+        from .pixellab import spritesheet
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        source = (root / request.path).resolve()
+        if root.resolve() not in source.parents or not source.is_file() or len(request.box) != 4:
+            return {"ok": False, "errors": [f"No picture {request.path}"]}
+        with Image.open(source) as im:
+            made = door_frames(im.convert("RGBA"), request.box, max(4, min(48, request.frames)))
+        if made is None:
+            return {"ok": False, "errors": ["no doorway found where the door was seen"]}
+        frames, doorway = made
+        name = re.sub(r"[^a-z0-9_-]+", "-", request.name.lower()).strip("-")[:60] or "door"
+        folder = root / "assets" / "textures" / "generated" / "animations" / name
+        folder.mkdir(parents=True, exist_ok=True)
+        paths = []
+        for k, f in enumerate(frames):
+            file = folder / f"{name}-{k + 1}.png"
+            file.write_bytes(png(f))
+            paths.append(file.relative_to(root).as_posix())
+        sheet = folder / f"{name}-sheet.png"
+        sheet.write_bytes(spritesheet([png(f) for f in frames]))
+        (folder / f"{sheet.name}.gen.json").write_text(json.dumps(
+            {"description": "a door opening", "from": request.path, "frames": len(frames), "provider": "engine", "model": "doors.py",
+             "doorway": doorway, "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}, indent=2) + "\n", encoding="utf-8")
+        return {"ok": True, "name": name, "frames": paths, "sheet": sheet.relative_to(root).as_posix(), "clip": "open", "fps": 20,
+                "doorway": doorway, "humanoid": False}
 
     @app.post("/animations/generate")
     def animations_generate(request: AnimationRequest) -> dict:

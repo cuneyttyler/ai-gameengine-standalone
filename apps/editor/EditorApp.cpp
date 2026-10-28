@@ -6571,7 +6571,7 @@ std::string EditorApp::MakeAnimationSheet(const nlohmann::json& made, std::strin
     const auto dir = kDirections.find(made.value("direction", ""));
     const int frame = static_cast<int>(info->width) / frames;
     nlohmann::json json = AnimSheetFromGrid(texture, frame, static_cast<int>(info->height), frames,
-                                            {dir == kDirections.end() ? clip : clip + "_" + dir->second}, 8.0f);
+                                            {dir == kDirections.end() ? clip : clip + "_" + dir->second}, made.value("fps", 8.0f));
     // Opening and closing are the same motion: the other made from its frames played backwards (no second animation),
     // each played once and held (a door stays open).
     const std::string other = clip == "open" ? "close" : clip == "close" ? "open" : "";

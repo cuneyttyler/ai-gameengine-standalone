@@ -40,6 +40,7 @@ onMounted(() => sendToHost({ type: 'build:animateScan' }))
 
 const shown = computed(() => targets.value.filter((t) => !props.only || t.kind === props.only))
 const left = computed(() => shown.value.filter((t) => t.status === 'pending' || t.status === 'failed').length)
+const credits = computed(() => 5 * shown.value.filter((t) => t.kind === 'thing' && (t.status === 'pending' || t.status === 'failed')).length)
 const doors = computed(() => shown.value.filter((t) => t.kind === 'door').length)
 const things = computed(() => shown.value.length - doors.value)
 const current = computed(() => targets.value.find((t) => t.status === 'finding' || t.status === 'animating'))
@@ -84,8 +85,9 @@ function stop(): void {
       <p>
         What moves in this place: <b>{{ doors }}</b> {{ doors === 1 ? 'door' : 'doors' }} of buildings (found in their
         pictures; they open as someone comes near, close as they go) and <b>{{ things }}</b>
-        {{ things === 1 ? 'thing' : 'things' }} that are used (a chest, a gate, a lever: they play when used). Each is
-        animated on its own, about 5 AutoSprite credits each; more can be added later (right-click ▸ Animate a part…).
+        {{ things === 1 ? 'thing' : 'things' }} that are used (a chest, a gate, a lever: they play when used). A door is
+        opened from its own pixels (free); a thing is animated by AutoSprite, about 5 credits each. More can be added later
+        (right-click ▸ Animate a part…).
       </p>
       <div class="bar"><i :style="{ width: `${(100 * done) / Math.max(1, total)}%` }" /></div>
       <div class="row">
@@ -93,7 +95,7 @@ function stop(): void {
           <template v-if="current"> · now: {{ current.label }} ({{ STATUS[current.status] }})</template></span>
         <span class="spacer"></span>
         <button v-if="running" @click="stop">Stop after this one</button>
-        <button v-else class="primary" :disabled="left === 0" :title="`≈ ${left * 5} AutoSprite credits`" @click="runAll">
+        <button v-else class="primary" :disabled="left === 0" :title="credits ? `≈ ${credits} AutoSprite credits (the things; doors are free)` : 'Doors are opened from their own pixels: no credits'" @click="runAll">
           Animate all ({{ left }})
         </button>
       </div>
