@@ -23,6 +23,8 @@ from .models import (
     RunCommand,
     SetField,
     SetPrefabField,
+    AddPrefabComponent,
+    RemovePrefabComponent,
     SetScriptProperty,
     SetSetting,
     WriteDialogue,
@@ -85,6 +87,16 @@ def check_value(spec: FieldSpec, value: Any, context: EditorContext, where: str)
 
 def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorContext) -> list[str]:
     errors: list[str] = []
+    if proposal.scope in ("tools", "route", "ask"):
+        if proposal.operations:
+            errors.append(f'a "{proposal.scope}" answer has no operations: they come once it has what it asked for')
+        if proposal.scope == "tools" and not proposal.tools:
+            errors.append('a "tools" answer names at least one tool in "tools"')
+        if proposal.scope == "route" and proposal.route is None:
+            errors.append('a "route" answer says which panel in "route"')
+        if proposal.scope == "ask" and (proposal.ask is None or not proposal.ask.question.strip()):
+            errors.append('an "ask" answer has its question in "ask"')
+        return errors
     if proposal.scope == "split":
         if proposal.operations:
             errors.append('a "split" answer has no operations: suggest the smaller requests in "split" instead')
@@ -140,6 +152,25 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
                 errors.append(f"{where}: {op.prefab} has no {op.component}")
             else:
                 errors += check_value(component.field(op.field), op.value, context, where)
+
+        elif isinstance(op, (AddPrefabComponent, RemovePrefabComponent)):
+            prefab = next((p for p in context.prefabs if p.path == op.prefab), None)
+            component = schema.component(op.component)
+            if prefab is None:
+                errors.append(f"{where}: no prefab {op.prefab!r}")
+            elif component is None:
+                errors.append(f"{where}: no component {op.component!r}")
+            elif not component.userEditable:
+                errors.append(f"{where}: {op.component} can't be {'added' if isinstance(op, AddPrefabComponent) else 'removed'} by hand")
+            elif isinstance(op, RemovePrefabComponent) and op.component not in prefab.components:
+                errors.append(f"{where}: {op.prefab} has no {op.component}")
+            elif isinstance(op, AddPrefabComponent):
+                for name, value in op.fields.items():
+                    spec = component.field(name)
+                    if spec is None:
+                        errors.append(f"{where}: {op.component} has no field {name!r}")
+                    else:
+                        errors += check_value(spec, value, context, where)
 
         elif isinstance(op, SetSetting):
             section = schema.settings_section(op.section)

@@ -77,6 +77,32 @@ interface TaskEntry {
   steps: { number: number; summary: string; problems: number; applyErrors: number }[]
   state: 'working' | 'finished' | 'stopped'
   reason: string
+  paused?: { step: number; summary: string; operations: unknown[] } // Review each step: waiting for Continue
+}
+
+// Another panel's work (a whole place, a whole game): a card that opens it with the request filled in.
+interface RouteEntry {
+  kind: 'route'
+  id: number
+  panel: 'build' | 'planner'
+  request: string
+  reason: string
+}
+
+// Unclear: a question back, with answers to click.
+interface AskEntry {
+  kind: 'ask'
+  id: number
+  question: string
+  choices: string[]
+  answered: string
+}
+
+// What it read or looked at before answering (its tools), in a line.
+interface ToolsEntry {
+  kind: 'tools'
+  id: number
+  tools: string[]
 }
 
 // "Too big for one go": suggested smaller requests.
@@ -109,7 +135,7 @@ interface PlanEntry {
   total: number
 }
 
-type Entry = ProposalEntry | MessageEntry | TaskEntry | SplitEntry | BuildEntry | PlanEntry
+type Entry = ProposalEntry | MessageEntry | TaskEntry | SplitEntry | BuildEntry | PlanEntry | RouteEntry | AskEntry | ToolsEntry
 
 const entries = ref<Entry[]>([])
 const input = ref('')
@@ -237,12 +263,40 @@ function handle(message: Record<string, unknown>): void {
       applyErrors: ((message.applyErrors as unknown[]) ?? []).length,
     })
     entry.state = message.state as TaskEntry['state']
+  } else if (message.type === 'ai:taskPaused') {
+    const entry = entries.value.find((e) => e.kind === 'task' && e.id === message.id) as TaskEntry | undefined
+    if (entry) entry.paused = { step: message.step as number, summary: message.summary as string, operations: (message.operations as unknown[]) ?? [] }
   } else if (message.type === 'ai:taskStopped') {
     const entry = entries.value.find((e) => e.kind === 'task' && e.id === message.id) as TaskEntry | undefined
     if (entry) {
       entry.state = 'stopped'
       entry.reason = message.reason as string
     }
+  } else if (message.type === 'panel:show') {
+    // The agent's "openPanel" (docs/ai/agent.md).
+    const id = message.panel as string
+    if (['build', 'planner', 'generate', 'assets', 'project', 'scene'].includes(id)) {
+      setPanelVisible(id as Parameters<typeof setPanelVisible>[0], true)
+      activatePanel(id as Parameters<typeof activatePanel>[0])
+    }
+  } else if (message.type === 'ai:route') {
+    entries.value.push({
+      kind: 'route',
+      id: message.id as number,
+      panel: (message.panel as 'build' | 'planner') ?? 'build',
+      request: (message.request as string) ?? '',
+      reason: (message.reason as string) ?? '',
+    })
+  } else if (message.type === 'ai:ask') {
+    entries.value.push({
+      kind: 'ask',
+      id: message.id as number,
+      question: (message.question as string) ?? '',
+      choices: (message.choices as string[]) ?? [],
+      answered: '',
+    })
+  } else if (message.type === 'ai:tools') {
+    entries.value.push({ kind: 'tools', id: message.id as number, tools: (message.tools as string[]) ?? [] })
   } else if (message.type === 'ai:split') {
     entries.value.push({
       kind: 'split',
@@ -374,6 +428,11 @@ function fixContradictions(entry: ProposalEntry): void {
   })
 }
 
+function continueTask(entry: TaskEntry): void {
+  entry.paused = undefined
+  sendToHost({ type: 'ai:taskContinue', id: entry.id })
+}
+
 function stopTask(entry: TaskEntry): void {
   sendToHost({ type: 'ai:taskStop', id: entry.id })
 }
@@ -386,6 +445,22 @@ function showPanel(id: 'build' | 'planner'): void {
 function askAsChange(entry: BuildEntry): void {
   sendToHost({ type: 'build:cancel' })
   sendToHost({ type: 'ai:send', text: entry.query, asChange: true })
+}
+
+function openRoute(entry: RouteEntry): void {
+  editorState.prefill = { panel: entry.panel, text: entry.request }
+  showPanel(entry.panel)
+}
+
+function answerAsk(entry: AskEntry, choice: string): void {
+  entry.answered = choice
+  sendToHost({ type: 'ai:send', text: choice, asChange: true })
+}
+
+// A split carried out in one go: the parts as the steps of one task, each checked before the next.
+function runSplit(entry: SplitEntry): void {
+  const steps = entry.parts.map((p, i) => `${i + 1}. ${p}`).join('\n')
+  sendToHost({ type: 'ai:send', text: `Do these in order, as one task, step by step:\n${steps}`, asChange: true })
 }
 
 function useSplitPart(part: string): void {
@@ -494,6 +569,10 @@ const examples = [
         />
         Apply small tweaks directly
       </label>
+      <label>
+        <input type="checkbox" :checked="editorState.ai.stepReview" @change="sendToHost({ type: 'ai:setStepReview', on: ($event.target as HTMLInputElement).checked })" />
+        Review each step of a bigger task (it waits for Continue after each)
+      </label>
       <p class="settings-hint">
         Small tweaks are new values for existing fields, settings and script properties. They apply right away and
         can be undone from the chat. Components, spawning, scripts, prefab edits and deletions are always reviewed.
@@ -555,9 +634,17 @@ const examples = [
                     : `Done in ${entry.steps.length} ${entry.steps.length === 1 ? 'step' : 'steps'}`
               }}
             </span>
+            <button v-if="entry.paused" class="primary" title="This step looks right: on to the next" @click="continueTask(entry)">
+              Continue
+            </button>
             <button v-if="entry.state === 'working'" title="Stop; nothing is changed" @click="stopTask(entry)">
               Stop
             </button>
+            <div v-if="entry.paused" class="paused-step">
+              Step {{ entry.paused.step }} done on the working copy: {{ entry.paused.summary }}
+              ({{ entry.paused.operations.length }} {{ entry.paused.operations.length === 1 ? 'change' : 'changes' }}). Nothing
+              reaches the project until the whole is reviewed.
+            </div>
           </div>
           <ol v-if="entry.plan.length" class="task-plan">
             <li v-for="(line, i) in entry.plan" :key="i">{{ line }}</li>
@@ -603,10 +690,42 @@ const examples = [
           </div>
         </div>
 
+        <div v-else-if="entry.kind === 'route'" class="split route">
+          <div class="summary">This is {{ entry.panel === 'build' ? "the Build panel's" : "the Planner's" }} work</div>
+          <div v-if="entry.reason" class="notes">{{ entry.reason }}</div>
+          <div class="build-buttons">
+            <button class="primary" :title="entry.request" @click="openRoute(entry)">
+              {{ entry.panel === 'build' ? 'Open the Build panel with it' : 'Open the Planner with it' }}
+            </button>
+          </div>
+        </div>
+
+        <div v-else-if="entry.kind === 'ask'" class="split ask">
+          <div class="summary">{{ entry.question }}</div>
+          <div class="build-buttons">
+            <button
+              v-for="choice in entry.choices"
+              :key="choice"
+              class="example"
+              :class="{ chosen: entry.answered === choice }"
+              :disabled="!!entry.answered"
+              @click="answerAsk(entry, choice)"
+            >
+              {{ choice }}
+            </button>
+          </div>
+          <div v-if="!entry.answered" class="split-hint">Or answer in your own words below.</div>
+        </div>
+
+        <div v-else-if="entry.kind === 'tools'" class="tools-line">Looked at: {{ entry.tools.join(', ') }}</div>
+
         <div v-else-if="entry.kind === 'split'" class="split">
           <div class="summary">{{ entry.summary }}</div>
           <div v-if="entry.notes" class="notes">{{ entry.notes }}</div>
-          <div class="split-hint">Try these one at a time:</div>
+          <div class="build-buttons">
+            <button class="primary" title="Carry them out as one task, step by step, each checked before the next" @click="runSplit(entry)">Do them all, step by step</button>
+          </div>
+          <div class="split-hint">Or one at a time:</div>
           <button
             v-for="part in entry.parts"
             :key="part"
@@ -1330,5 +1449,13 @@ button.primary:not(:disabled) {
   width: 22px;
   padding: 0;
   height: 20px;
+}
+.tools-line {
+  font-size: 0.82em;
+  opacity: 0.65;
+  padding: 2px 8px;
+}
+.ask .chosen {
+  outline: 1px solid var(--accent, #4a8);
 }
 </style>

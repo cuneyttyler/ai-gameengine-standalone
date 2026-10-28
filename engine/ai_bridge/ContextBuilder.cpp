@@ -431,6 +431,13 @@ nlohmann::json BuildEditorContext(Registry& registry, const ReflectionRegistry& 
         }
         context["ground"] = ground;
     }
+    if (!options.selected.empty()) {
+        nlohmann::json all = nlohmann::json::array();
+        for (Entity e : options.selected) {
+            if (registry.valid(e)) all.push_back(static_cast<uint32_t>(e));
+        }
+        if (all.size() > 1) context["selected"] = all; // "these" means every one of them
+    }
     if (options.selection && registry.valid(*options.selection)) {
         context["selection"] = static_cast<uint32_t>(*options.selection);
     }

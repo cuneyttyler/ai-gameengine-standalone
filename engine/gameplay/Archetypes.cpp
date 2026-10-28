@@ -93,7 +93,8 @@ Entity CreatePlayer(Registry& registry, float worldX, float worldY) {
     registry.emplace<Health>(entity, 20.0f, 20.0f);
     registry.emplace<Stats>(entity, 1.0f, 0.0f, 4.2f);
     registry.emplace<Hurtbox>(entity);
-    registry.emplace<MeleeAttack>(entity, 3.0f, 0.7f, 0.5f, 0.35f, 0.5f);
+    // No attack of its own: interact is the default action (docs/systems/actions.md); a game with fighting adds
+    // MeleeAttack (or RangedAttack) to its player.
     AddCharacterVisuals(registry, entity, kPlayerUV);
     return entity;
 }

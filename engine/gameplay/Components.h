@@ -273,7 +273,7 @@ struct Interactable {
 // a crop grown, a crop harvested. The Interactable is one with set settings (the interact key); both run through
 // GameSession::Act, so the player, a character (the Behaviour step "act") or a script can use it.
 struct Action {
-    std::string trigger = "input"; // input (its action pressed in range), event, timer, touch
+    std::string trigger = "input"; // input (its action pressed in range), event, timer, touch, near (someone within range)
     std::string action = "interact"; // the input action (farm, interact, any of the project's)
     std::string event;             // trigger event: the event
     float seconds = 0.0f;          // trigger timer: after this long
@@ -284,12 +284,34 @@ struct Action {
     std::string gives;             // items given to the user: "wheat*3"
     std::string userAnimation;     // the clip the user plays (farm, use_pickup)
     std::string animation;         // the clip this plays
+    std::string awayAnimation;     // trigger near: the clip played when they've all gone (a door closing)
+    std::string effect;            // an effect played on this (sparks, dust, a flash: an effect record, the project's or a preset)
+    std::string userEffect;        // an effect played on the user
     std::string becomes;           // the prefab it turns into, once the animations have played
     std::string emits;             // an event emitted (its entity this, its other the user)
     std::string setFlag;           // a story flag set
     std::string text;              // shown when it happens
     bool once = false;
     float cooldown = 0.0f;         // seconds before it works again
+};
+
+// Where characters walk between heights (place-refine.md §10): stairs, a ramp, a ladder. On high ground a step too high
+// (a cliff) can't be walked up or down, except onto or off a cell with a Ramp.
+struct Ramp {
+    float rise = 0.0f; // informative: how high it climbs (pixels); 0 = any
+};
+
+// A part of its picture that moves on its own (docs/assets/animations.md §4): a building's door, a window, a sign. Drawn
+// as an overlay over the box it came from (made at run time, never saved), playing `clip` when someone comes within
+// `range` and `closeClip` when they leave (or when used, with near off). On a prefab, every copy has it.
+struct AnimatedPart {
+    std::string sheet;          // its animation sheet (assets/.../<name>.anim.json)
+    float x = 0.0f, y = 0.0f;   // the box's middle, in pixels of this thing's frame
+    float width = 0.0f, height = 0.0f; // the box's size, same pixels
+    std::string clip = "open";
+    std::string closeClip = "close";
+    float range = 1.8f;         // cells
+    bool opensNear = true;      // opens as someone comes near (off: only when this thing is used)
 };
 
 // Runtime: an Action's clock.
@@ -320,7 +342,10 @@ struct Interior {
     // A building of several storeys (docs/places/interiors.md §4): one picture a floor, `texture` the ground floor's.
     std::string floors;  // the upper floors' pictures, ';' between: floor 2, 3…
     int floor = 1;       // the floor shown (the player's while inside; in the editor, a preview)
-    std::string stairs;  // the cell ("x,y", world cells) whose stepping on goes up or down a floor; empty: its back corner
+    // Its staircases (docs/places/interiors.md): the cell of each floor change, "x,y;x,y" (floor 1 to 2, 2 to 3...).
+    // Walking onto one from the floor below goes up, from the floor above down. Empty (or missing ones): the building's
+    // corners in turn, top, right, left — where the interior pictures draw them.
+    std::string stairs;
     // Runtime only (not reflected): going up or down next, and standing on the stairs since the last step.
     bool climbing = true;
     bool onStairs = false;

@@ -34,6 +34,7 @@
 #include "assets/PackImport.h"
 #include "assets/TileEdges.h"
 #include "assets/SceneFiles.h"
+#include "ai_bridge/AiTools.h"
 #include "assets/ProjectMove.h"
 #include "rhi/ShaderUtil.h"
 #include "modules/Modules.h"
@@ -414,13 +415,21 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         return true;
     }
     if (HandlePaintMessage(type, message)) return true;
+    if (HandleAnimateMessage(type, message)) return true;
     if (HandleBackgroundMessage(type, message)) return true;
     if (type == "build:start") {
-        StartBuild(message.value("query", ""), message.value("choices", nlohmann::json::object()), message.value("method", ""));
+        StartBuild(message.value("query", ""), message.value("choices", nlohmann::json::object()), message.value("method", ""),
+                   message.value("picture", ""), message.value("pictureMode", ""));
+    } else if (type == "build:pickPicture") {
+        // A picture to build from (docs/places/scene-types.md): as the painting, or a reference to paint after.
+        if (const auto file = ShowOpenFileDialog(mainWindow_, L"A picture of the place", L"Images", L"*.png;*.jpg;*.jpeg")) {
+            post_({{"type", "build:picture"}, {"path", WideToUtf8(file->wstring())}});
+        }
     } else if (type == "build:choicesRequest") {
         nlohmann::json options = BuildChoices(Places());
         options["type"] = "build:choices";
-        options["buildMethod"] = ActiveSettings().places.method == "Paint" ? "Paint" : "Assembled"; // the project's, a new build's default
+        options["buildMethod"] = SceneMethod(); // the open scene's type, else the project's: a new build's
+        options["sceneTyped"] = !OpenSceneType().empty();
         post_(options);
     } else if (type == "build:request") {
         PostBuild();
@@ -729,6 +738,60 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
 
 // Difficulty (16.5): the Difficulty tab's requests.
 // New Project's messages: its folder picked, the project made with its choices.
+bool EditorApp::HandleAiSettingsMessage(const std::string& type, const nlohmann::json& message) {
+    // Preferences ▸ AI and the AI panel's settings (kept apart from HandleMessage's chain: MSVC's nesting limit).
+    if (type == "ai:setEnabled") {
+        SetAiEnabled(message.value("enabled", true));
+    } else if (type == "ai:setProvider") {
+        if (userPrefs_) {
+            userPrefs_->Set("aiProvider", message.value("provider", "mistral"));
+            userPrefs_->Set("aiModel", message.value("model", ""));
+        }
+        // A new model: the service starts again with it (and says so once it's up).
+        providerStatus_ = nlohmann::json::object();
+        providerRequest_ = 0;
+        if (aiConnection_) aiConnection_->Restart();
+        post_(AiStatusJson());
+    } else if (type == "ai:setArtProvider") {
+        // What draws the prefabs' art: auto (follows the LLM), mistral, pixellab or bfl:<model>. Applied at once,
+        // unless the project has its own (Project Settings ▸ AI).
+        if (userPrefs_) userPrefs_->Set("artProvider", message.value("provider", "auto"));
+        SendProvider();
+        post_(AiStatusJson());
+    } else if (type == "ai:setBackgroundProvider") {
+        // What paints backgrounds (Preferences ▸ AI ▸ Background). Applied at once, unless the project has its own.
+        if (userPrefs_) userPrefs_->Set("backgroundProvider", message.value("provider", "bfl:flux-3-image"));
+        SendProvider();
+        post_(AiStatusJson());
+    } else if (type == "ai:listModels") {
+        // The models the provider offers (its own list), for Preferences ▸ AI ▸ Model.
+        const std::string provider = message.value("provider", "mistral");
+        if (Ai() && Ai()->GetState() == AiClient::State::Ready && (provider == "mistral" || provider == "claude")) {
+            modelsRequest_ = Ai()->Request("GET", "/models?provider=" + provider, nlohmann::json::object(), 30);
+        } else {
+            post_({{"type", "ai:models"}, {"provider", provider}, {"models", nlohmann::json::array()}, {"errors", {"the AI service isn't running"}}});
+        }
+    } else if (type == "ai:setStepReview") {
+        if (userPrefs_) userPrefs_->Set("aiStepReview", message.value("on", false));
+        post_(AiStatusJson());
+    } else if (type == "ai:taskContinue") {
+        // Review each step: the user saw the step, the task goes on.
+        if (task_ && taskPaused_ && message.value("id", 0) == taskId_ && Ai() != nullptr) {
+            taskPaused_ = false;
+            taskRequestId_ = Ai()->Propose(task_->NextInstruction(), task_->Context(assets_), task_->History());
+            post_({{"type", "ai:busy"}, {"busy", true}});
+        }
+    } else if (type == "ai:setReviewPolicy") {
+        if (userPrefs_) {
+            userPrefs_->Set("reviewPolicy", ReviewPolicyName(ParseReviewPolicy(message.value("policy", ""))));
+        }
+        post_(AiStatusJson());
+    } else {
+        return false;
+    }
+    return true;
+}
+
 bool EditorApp::HandleProjectMessage(const std::string& type, const nlohmann::json& message) {
     if (type == "project:location") {
         // New Project opened: the folder the last project was created in (the user's prefs, read fresh).
@@ -887,6 +950,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         return;
     }
     if (type.rfind("ontology:", 0) == 0 && HandleOntologyMessage(type, message)) return;
+    if (type.rfind("ai:", 0) == 0 && HandleAiSettingsMessage(type, message)) return;
     if (type.rfind("library:", 0) == 0 && HandleLibraryMessage(type, message)) return;
     if (type.rfind("difficulty:", 0) == 0 && HandleDifficultyMessage(type, message)) return;
     if (type.rfind("ui:", 0) == 0 && HandleUiMessage(type, message)) return;
@@ -910,6 +974,26 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         }
     } else if (type == "edit:scale") {
         Resize(message.value("factor", 1.0f));
+    } else if (type == "edit:order") {
+        // A flat thing's place among the ground's pieces (Sprite.order): forward, backward, to the front or the back.
+        if (!playing_ && selected_ && registry_.valid(*selected_) && registry_.all_of<Sprite>(*selected_)) {
+            const Entity entity = *selected_;
+            const std::string to = message.value("to", "");
+            const int delta = message.value("delta", 0);
+            ApplyOneShotEdit([&] {
+                auto& sprite = registry_.get<Sprite>(entity);
+                const int was = sprite.order;
+                sprite.order = to == "front" ? 9 : to == "back" ? -9 : std::clamp(sprite.order + delta, -9, 9);
+                if (sprite.order == was) return false;
+                RecordOverride(registry_, entity, "Sprite", "order");
+                return true;
+            });
+            const int now = registry_.get<Sprite>(entity).order;
+            post_({{"type", "notify"},
+                   {"text", std::string(registry_.get<Sprite>(entity).flat ? "Ground order " : "Order (flat things only use it) ") +
+                                std::to_string(now)}});
+            inspectorStale_ = true;
+        }
     } else if (type == "edit:nudge") {
         NudgeSelected(message.value("dx", 0.0f), message.value("dy", 0.0f));
     } else if (type == "edit:copy") {
@@ -954,8 +1038,24 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         post_(ScenesJson());
     } else if (type == "scene:open") {
         OpenScene(message.value("path", ""));
+    } else if (type == "scene:setType") {
+        // How a scene is built (docs/places/scene-types.md): its menu's Type, or the Build panel's method (the open one).
+        const std::string scene = message.value("path", OpenSceneRelative());
+        const std::string kind = message.value("sceneType", "") == "Paint" ? "Paint" : "Assembled";
+        if (!scene.empty() && SetSceneType(assets_.GetProject().Resolve(scene), kind)) {
+            if (scene == OpenSceneRelative()) {
+                nlohmann::json options = BuildChoices(Places());
+                options["type"] = "build:choices";
+                options["buildMethod"] = kind;
+                options["sceneTyped"] = true;
+                post_(options);
+            }
+        } else if (scene.empty()) {
+            post_({{"type", "notify"}, {"text", "Save the scene first: its type is kept in its file"}});
+        }
+        post_(ScenesJson());
     } else if (type == "scene:new") {
-        SceneResult created = CreateScene(assets_.GetProject(), message.value("name", ""));
+        SceneResult created = CreateScene(assets_.GetProject(), message.value("name", ""), message.value("sceneType", ""));
         if (!created.error.empty()) {
             post_({{"type", "notify"}, {"text", "Couldn't create the scene: " + created.error}});
         } else {
@@ -1233,42 +1333,6 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
                 SetTool(static_cast<Tool>(i));
             }
         }
-    } else if (type == "ai:setEnabled") {
-        SetAiEnabled(message.value("enabled", true));
-    } else if (type == "ai:setProvider") {
-        if (userPrefs_) {
-            userPrefs_->Set("aiProvider", message.value("provider", "mistral"));
-            userPrefs_->Set("aiModel", message.value("model", ""));
-        }
-        // A new model: the service starts again with it (and says so once it's up).
-        providerStatus_ = nlohmann::json::object();
-        providerRequest_ = 0;
-        if (aiConnection_) aiConnection_->Restart();
-        post_(AiStatusJson());
-    } else if (type == "ai:setArtProvider") {
-        // What draws the prefabs' art: auto (follows the LLM), mistral, pixellab or bfl:<model>. Applied at once,
-        // unless the project has its own (Project Settings ▸ AI).
-        if (userPrefs_) userPrefs_->Set("artProvider", message.value("provider", "auto"));
-        SendProvider();
-        post_(AiStatusJson());
-    } else if (type == "ai:setBackgroundProvider") {
-        // What paints backgrounds (Preferences ▸ AI ▸ Background). Applied at once, unless the project has its own.
-        if (userPrefs_) userPrefs_->Set("backgroundProvider", message.value("provider", "bfl:flux-3-image"));
-        SendProvider();
-        post_(AiStatusJson());
-    } else if (type == "ai:listModels") {
-        // The models the provider offers (its own list), for Preferences ▸ AI ▸ Model.
-        const std::string provider = message.value("provider", "mistral");
-        if (Ai() && Ai()->GetState() == AiClient::State::Ready && (provider == "mistral" || provider == "claude")) {
-            modelsRequest_ = Ai()->Request("GET", "/models?provider=" + provider, nlohmann::json::object(), 30);
-        } else {
-            post_({{"type", "ai:models"}, {"provider", provider}, {"models", nlohmann::json::array()}, {"errors", {"the AI service isn't running"}}});
-        }
-    } else if (type == "ai:setReviewPolicy") {
-        if (userPrefs_) {
-            userPrefs_->Set("reviewPolicy", ReviewPolicyName(ParseReviewPolicy(message.value("policy", ""))));
-        }
-        post_(AiStatusJson());
     } else if (type == "world:request") {
         world_.Refresh();
         post_(WorldJson());
@@ -2376,6 +2440,7 @@ nlohmann::json EditorApp::ScenesJson() {
                                 {"start", scene == StartScene()},
                                 {"open", scene == OpenSceneRelative()},
                                 {"markers", SceneMarkers(project, scene)},
+                                {"type", SceneType(project.Resolve(scene))},
                                 {"location", nullptr}};
         // The World Bible place this scene shows (6.9).
         if (const WorldEntry* place = world_.LocationOf(scene)) {
@@ -2383,7 +2448,8 @@ nlohmann::json EditorApp::ScenesJson() {
         }
         scenes.push_back(entry);
     }
-    return {{"type", "scenes:list"}, {"scenes", scenes}, {"problems", GatewayProblems(project)}};
+    return {{"type", "scenes:list"}, {"scenes", scenes}, {"problems", GatewayProblems(project)},
+            {"defaultType", ActiveSettings().places.method == "Paint" ? "Paint" : "Assembled"}};
 }
 
 bool EditorApp::AskToSaveChanges(const wchar_t* question) {
@@ -4168,6 +4234,7 @@ void EditorApp::StepPlannerPlaceBuild() {
         {
             Registry empty;
             SaveScene(empty, full.string());
+            SetSceneType(full, PlanBuildMethod()); // the plan's method is the scene's type
         }
         if (OpenSceneRelative() == scene) {
             LoadScene(registry_, full.string());
@@ -4817,6 +4884,23 @@ bool EditorApp::HandleFxMessage(const std::string& type, const nlohmann::json& m
             post_({{"type", "notify"}, {"text", *error}});
         }
         post_(FxJson());
+    } else if (type == "fx:new") {
+        // One of the project's own from nothing: a small working start to change in Records.
+        const std::string kind = message.value("kind", "effect") == "particles" ? "particles" : "effect";
+        const std::string id = message.value("id", "");
+        ActiveRecords().Refresh();
+        if (id.empty()) {
+            post_({{"type", "notify"}, {"text", "Give it a name"}});
+        } else if (ActiveRecords().Find(kind, id) != nullptr) {
+            post_({{"type", "notify"}, {"text", "The project already has " + kind + " " + id}});
+        } else {
+            const nlohmann::json start = kind == "effect"
+                ? nlohmann::json{{"parts", {{{"particles", "sparks"}}, {{"flash", {{"color", "#ffffff"}, {"time", 0.08}}}}}}}
+                : nlohmann::json::object();
+            if (auto error = ActiveRecords().Write(kind, id, start)) post_({{"type", "notify"}, {"text", *error}});
+            else post_({{"type", "notify"}, {"text", "New " + kind + " " + id + ": set its parts in Records ▸ " + kind}});
+        }
+        post_(FxJson());
     } else if (type == "fx:cutscene") {
         std::string error;
         auto c = LoadCutscene(root, message.value("id", ""), &error);
@@ -5232,6 +5316,7 @@ nlohmann::json EditorApp::AiStatusJson() {
             {"enabled", choice == AiChoice::On},
             {"choice", choice == AiChoice::On ? "on" : choice == AiChoice::Off ? "off" : "undecided"},
             {"reviewPolicy", ReviewPolicyName(CurrentReviewPolicy())},
+            {"stepReview", userPrefs_ ? userPrefs_->Get("aiStepReview", false).get<bool>() : false},
             {"provider", userPrefs_ ? userPrefs_->Get("aiProvider", "mistral") : nlohmann::json("mistral")},
             {"model", providerStatus_.value("model", "")},
             {"providerError", providerStatus_.value("ok", true) ? "" : (providerStatus_.contains("errors") && !providerStatus_["errors"].empty()
@@ -5441,6 +5526,12 @@ void EditorApp::PollAi() {
                     post_({{"type", "web:added"}, {"path", path}, {"file", r.value("file", "")}});
                     post_({{"type", "notify"}, {"text", "Added " + path + " (" + r.value("licence", "") + ", " + r.value("author", "") + ")"}});
                 }
+            } else if (animateRequest_ != 0 && result->requestId == animateRequest_) {
+                OnAnimateResult(result->body);
+            } else if (partRequest_ != 0 && result->requestId == partRequest_) {
+                partRequest_ = 0;
+                RefreshAssets();
+                PlacePart(result->body);
             } else if (result->requestId == characterRequest_ || result->requestId == animationRequest_) {
                 const bool character = result->requestId == characterRequest_;
                 (character ? characterRequest_ : animationRequest_) = 0;
@@ -5612,12 +5703,24 @@ void EditorApp::FinishBuildJob() {
     }
 }
 
+std::string EditorApp::OpenSceneType() const {
+    const std::string scene = OpenSceneRelative();
+    return scene.empty() ? std::string() : SceneType(assets_.GetProject().Resolve(scene));
+}
+
+std::string EditorApp::SceneMethod() const {
+    const std::string type = OpenSceneType();
+    if (!type.empty()) return type == "Paint" ? "Paint" : "Assembled";
+    return ActiveSettings().places.method == "Paint" ? "Paint" : "Assembled";
+}
+
 std::string EditorApp::PlanBuildMethod() const {
     if (plan_ && !plan_->BuildMethod().empty()) return plan_->BuildMethod();
     return ActiveSettings().places.method == "Paint" ? "Paint" : "Assembled";
 }
 
-void EditorApp::StartBuild(const std::string& query, const nlohmann::json& choices, const std::string& method) {
+void EditorApp::StartBuild(const std::string& query, const nlohmann::json& choices, const std::string& method,
+                           const std::string& picture, const std::string& pictureMode) {
     if (buildJob_) {
         post_({{"type", "notify"}, {"text", "The build is still working: a moment"}});
         return;
@@ -5627,8 +5730,21 @@ void EditorApp::StartBuild(const std::string& query, const nlohmann::json& choic
         return;
     }
     build_ = MakeBuild();
-    const std::string why = build_->Start(query, choices);
-    if (why.empty() && !method.empty()) build_->SetMethod(method); // the Build panel's choice
+    const std::filesystem::path pictureFile = std::filesystem::u8path(picture);
+    std::string why;
+    if (!picture.empty() && pictureMode != "reference") {
+        why = build_->StartFromPicture(query, pictureFile); // the picture is the place: straight to ⑤ Mark
+        if (why.empty()) {
+            const std::string scene = OpenSceneRelative();
+            if (!scene.empty()) SetSceneType(assets_.GetProject().Resolve(scene), "Paint");
+        }
+    } else {
+        why = build_->Start(query, choices);
+        if (why.empty() && !method.empty()) build_->SetMethod(method); // the Build panel's choice
+        if (why.empty() && !picture.empty()) {
+            if (const std::string bad = build_->SetReference(pictureFile); !bad.empty()) post_({{"type", "notify"}, {"text", "No reference: " + bad}});
+        }
+    }
     if (!why.empty()) post_({{"type", "notify"}, {"text", "Can't build: " + why}});
     post_({{"type", "build:open"}});
     PostBuild();
@@ -5660,7 +5776,7 @@ std::unique_ptr<PlaceBuild> EditorApp::MakeBuild() {
     };
     host.projectRoot = assets_.GetProject().root;
     host.layoutStep = true; // ③ Layout: the zones placed and revised before what's inside them
-    host.buildMethod = [] { return ActiveSettings().places.method; };
+    host.buildMethod = [this] { return SceneMethod(); }; // the open scene's type, else the project's
     host.paintModel = [this] { return ChosenAi("paint"); }; // the project's, else Preferences ▸ Art and painting
     return std::make_unique<PlaceBuild>(std::move(host));
 }
@@ -6351,6 +6467,83 @@ nlohmann::json EditorApp::GenerateHistoryJson(bool character) {
             {"history", (character ? characterHistory_ : animationHistory_).Entries()}};
 }
 
+void EditorApp::PlacePart(const nlohmann::json& result) {
+    // The part, animated: its sheet made, and an overlay put over the thing (docs/assets/animations.md §4): its picture,
+    // its Animator (a prop), attached where the box was, playing its clip when someone comes to it.
+    if (!result.value("ok", false)) {
+        post_({{"type", "notify"}, {"text", "The part wasn't animated: " + (result.contains("errors") && !result["errors"].empty() ? result["errors"][0].get<std::string>() : std::string("no answer"))}});
+        return;
+    }
+    std::string sheet;
+    if (const std::string why = MakeAnimationSheet(result, &sheet); !why.empty()) {
+        post_({{"type", "notify"}, {"text", "The part's sheet couldn't be made: " + why}});
+        return;
+    }
+    session_.ReloadAnimations();
+    const nlohmann::json p = partPending_;
+    const nlohmann::json box = p.value("box", nlohmann::json::array());
+    const float scale = p.value("scale", 1.0f), frameW = p.value("frameW", 1.0f), frameH = p.value("frameH", 1.0f);
+    const float bx = box[0].get<float>(), by = box[1].get<float>(), bw = box[2].get<float>(), bh = box[3].get<float>();
+    const std::string clip = result.value("clip", std::string("open"));
+    Entity parentEntity{entt::null};
+    for (auto [e, name] : registry_.view<Name>().each()) {
+        if (name.value == p.value("parent", "")) parentEntity = e;
+    }
+    // A thing (a building, a sign): its AnimatedPart, on its prefab's copies too when it has one (every house of that
+    // kind gets the moving door). A painted scene's picture, which has many doors: an overlay of its own each, below.
+    const bool painting = registry_.valid(parentEntity) && registry_.all_of<PlaceNode>(parentEntity) &&
+                          registry_.get<PlaceNode>(parentEntity).statement.rfind("painting", 0) == 0;
+    if (registry_.valid(parentEntity) && !painting) {
+        AnimatedPart made;
+        made.sheet = sheet;
+        made.x = bx + bw / 2, made.y = by + bh / 2, made.width = bw, made.height = bh;
+        made.clip = clip;
+        made.closeClip = clip == "open" ? "close" : "";
+        const auto* link = registry_.try_get<PrefabInstance>(parentEntity);
+        if (link && prefabs_.Find(link->path)) {
+            // On the prefab: every copy (in this scene and the others) shows it.
+            ApplyPartToPrefab(link->path, made);
+        } else {
+            ApplyOneShotEdit([&] {
+                registry_.emplace_or_replace<AnimatedPart>(parentEntity, made);
+                return true;
+            });
+        }
+        inspectorStale_ = true;
+        post_({{"type", "notify"}, {"text", "The part is animated (" + clip + "): it opens as someone comes near and closes as they go. "
+                                            "Its AnimatedPart is in the Inspector."}});
+        return;
+    }
+    ApplyOneShotEdit([&] {
+        const Entity part = registry_.create();
+        registry_.emplace<Name>(part, p.value("parent", std::string("thing")) + " · part");
+        if (registry_.valid(parentEntity)) {
+            if (const auto* w = registry_.try_get<WorldTransform2D>(parentEntity)) registry_.emplace<WorldTransform2D>(part, w->x, w->y);
+        }
+        registry_.emplace<ScreenTransform2D>(part);
+        auto& sprite = registry_.emplace<Sprite>(part);
+        sprite.texture = sheet.empty() ? p.value("crop", "") : result.value("sheet", p.value("crop", ""));
+        sprite.width = bw * scale;
+        sprite.height = bh * scale;
+        if (p.value("mirrored", false)) std::swap(sprite.u0, sprite.u1);
+        registry_.emplace<Animator>(part, sheet, "prop");
+        // Where the box was, from the thing's bottom middle (an Attachment's point when it names none).
+        auto& attachment = registry_.emplace<Attachment>(part);
+        attachment.to = p.value("parent", "");
+        attachment.offsetX = (bx + bw / 2) - frameW / 2;
+        attachment.offsetY = (by + bh / 2) - frameH;
+        attachment.layer = "front";
+        attachment.turn = false;
+        auto& action = registry_.emplace<Action>(part);
+        action.trigger = "touch";
+        action.range = 1.8f;
+        action.animation = clip;
+        action.cooldown = 3.0f;
+        return true;
+    });
+    post_({{"type", "notify"}, {"text", "The part is animated (" + clip + "): it plays when someone comes to it. Its Action and Attachment are in the Inspector."}});
+}
+
 std::string EditorApp::MakeAnimationSheet(const nlohmann::json& made, std::string* sheet) {
     // Its spritesheet (the frames in a row, each square) as an aige.anim/1 sheet beside it: one clip, named for what the
     // humanoid and prop animators play ("walking" walks; anything else loops as idle), facing its direction.
@@ -6363,8 +6556,24 @@ std::string EditorApp::MakeAnimationSheet(const nlohmann::json& made, std::strin
     const std::string clip = made.value("clip", std::string("idle"));
     const auto dir = kDirections.find(made.value("direction", ""));
     const int frame = static_cast<int>(info->width) / frames;
-    const nlohmann::json json = AnimSheetFromGrid(texture, frame, static_cast<int>(info->height), frames,
-                                                  {dir == kDirections.end() ? clip : clip + "_" + dir->second}, 8.0f);
+    nlohmann::json json = AnimSheetFromGrid(texture, frame, static_cast<int>(info->height), frames,
+                                            {dir == kDirections.end() ? clip : clip + "_" + dir->second}, 8.0f);
+    // Opening and closing are the same motion: the other made from its frames played backwards (no second animation),
+    // each played once and held (a door stays open).
+    const std::string other = clip == "open" ? "close" : clip == "close" ? "open" : "";
+    if (!other.empty() && json["clips"].contains(clip) && !json["clips"].contains(other)) {
+        nlohmann::json reversed = json["clips"][clip];
+        auto flip = [](nlohmann::json& list) {
+            if (list.is_array()) std::reverse(list.begin(), list.end());
+        };
+        if (reversed.contains("frames")) flip(reversed["frames"]);
+        if (reversed.contains("directions")) {
+            for (auto& [d, list] : reversed["directions"].items()) flip(list);
+        }
+        json["clips"][clip]["loop"] = "once";
+        reversed["loop"] = "once";
+        json["clips"][other] = reversed;
+    }
     const std::filesystem::path path = std::filesystem::path(texture).parent_path() / (std::filesystem::path(texture).stem().string() + ".anim.json");
     std::ofstream out(assets_.GetProject().Resolve(path.generic_string()), std::ios::trunc);
     if (!out) return "can't write " + path.generic_string();
@@ -6527,6 +6736,121 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             std::filesystem::create_directories(build_->Folder(), ec);
             std::ofstream(build_->Folder() / "interior-of.json") << nlohmann::json{{"exterior", exterior}, {"back", back}, {"marker", "entrance"}}.dump(2) << "\n";
         }
+        return true;
+    }
+    if (type == "part:open") {
+        // Animate a part: the thing's picture (its region of its texture) for the dialog to draw a box on.
+        const Entity e = static_cast<Entity>(message.value("id", 0u));
+        const auto* sprite = registry_.valid(e) ? registry_.try_get<Sprite>(e) : nullptr;
+        const AssetInfo* asset = sprite ? assets_.Find(sprite->texture) : nullptr;
+        if (!asset || asset->width == 0) {
+            post_({{"type", "notify"}, {"text", "It has no picture to animate a part of"}});
+            return true;
+        }
+        const float W = static_cast<float>(asset->width), H = static_cast<float>(asset->height);
+        const float u0 = std::min(sprite->u0, sprite->u1), u1 = std::max(sprite->u0, sprite->u1);
+        const auto* name = registry_.try_get<Name>(e);
+        post_({{"type", "part:info"}, {"id", static_cast<uint32_t>(e)}, {"name", name ? name->value : std::string("it")},
+               {"texture", sprite->texture}, {"size", {asset->width, asset->height}},
+               {"region", {std::lround(u0 * W), std::lround(sprite->v0 * H), std::lround((u1 - u0) * W), std::lround((sprite->v1 - sprite->v0) * H)}}});
+        return true;
+    }
+    if (type == "part:animate") {
+        // The box cut out of its picture, animated as a picture is (Generate ▸ Animate), then placed over it (PlacePart).
+        const Entity e = static_cast<Entity>(message.value("id", 0u));
+        const auto* sprite = registry_.valid(e) ? registry_.try_get<Sprite>(e) : nullptr;
+        const nlohmann::json box = message.value("box", nlohmann::json::array());
+        if (!sprite || !box.is_array() || box.size() != 4 || partRequest_ != 0 || !Ai() || Ai()->GetState() != AiClient::State::Ready) {
+            post_({{"type", "notify"}, {"text", partRequest_ ? "A part is still being animated" : "Animating a part needs AI on and a picture"}});
+            return true;
+        }
+        const auto image = DecodeImage(assets_.GetProject().Resolve(sprite->texture));
+        if (!image) {
+            post_({{"type", "notify"}, {"text", "Can't read " + sprite->texture}});
+            return true;
+        }
+        const int W = static_cast<int>(image->width), H = static_cast<int>(image->height);
+        const int rx = static_cast<int>(std::lround(std::min(sprite->u0, sprite->u1) * W)), ry = static_cast<int>(std::lround(sprite->v0 * H));
+        const int bx = rx + box[0].get<int>(), by = ry + box[1].get<int>(), bw = box[2].get<int>(), bh = box[3].get<int>();
+        ImageData crop;
+        crop.width = static_cast<uint32_t>(std::max(1, bw)), crop.height = static_cast<uint32_t>(std::max(1, bh));
+        crop.rgba.assign(static_cast<size_t>(crop.width) * crop.height * 4, 0);
+        for (int y = 0; y < bh; ++y) {
+            for (int x = 0; x < bw; ++x) {
+                const int sx = bx + x, sy = by + y;
+                if (sx < 0 || sy < 0 || sx >= W || sy >= H) continue;
+                std::memcpy(&crop.rgba[(static_cast<size_t>(y) * bw + x) * 4], &image->rgba[(static_cast<size_t>(sy) * W + sx) * 4], 4);
+            }
+        }
+        const std::string stem = std::filesystem::path(sprite->texture).stem().string();
+        int n = 1;
+        std::string path;
+        do {
+            path = "assets/textures/generated/parts/" + stem + "-part-" + std::to_string(n++) + ".png";
+        } while (std::filesystem::exists(assets_.GetProject().Resolve(path)));
+        std::error_code ec;
+        std::filesystem::create_directories(assets_.GetProject().Resolve("assets/textures/generated/parts"), ec);
+        if (!WritePng(assets_.GetProject().Resolve(path), crop)) {
+            post_({{"type", "notify"}, {"text", "Can't write the part's picture"}});
+            return true;
+        }
+        // Its parent found by Name: one of its own, so copies of the same prefab don't share it.
+        std::string parent = registry_.all_of<Name>(e) ? registry_.get<Name>(e).value : std::string("Thing");
+        int same = 0;
+        for (auto [other, name] : registry_.view<Name>().each()) same += name.value == parent;
+        if (same != 1) {
+            parent += " #" + std::to_string(static_cast<uint32_t>(e));
+            ApplyOneShotEdit([&] {
+                registry_.emplace_or_replace<Name>(e, parent);
+                RecordOverride(registry_, e, "Name", "value");
+                return true;
+            });
+        }
+        const float frameW = std::abs(sprite->u1 - sprite->u0) * W, frameH = (sprite->v1 - sprite->v0) * H;
+        partPending_ = {{"parent", parent}, {"crop", path}, {"box", box}, {"frameW", frameW}, {"frameH", frameH},
+                        {"scale", sprite->width / std::max(1.0f, frameW)}, {"mirrored", sprite->u0 > sprite->u1},
+                        {"action", message.value("action", "the door swings open")}};
+        RefreshAssets();
+        partRequest_ = Ai()->Request("POST", "/animations/generate",
+                                     {{"path", path}, {"action", message.value("action", "the door swings open")},
+                                      {"provider", userPrefs_ ? userPrefs_->Get("animateProvider", "autosprite") : nlohmann::json("autosprite")},
+                                      {"description", "a part of " + parent}, {"name", stem + "-part-" + std::to_string(n - 1)}},
+                                     900);
+        post_({{"type", "notify"}, {"text", "Animating the part (a minute or two)…"}});
+        return true;
+    }
+    if (type == "interior:stairsHere") {
+        // The cell under the cursor is the stairs of the floor shown: up from it (down from the top floor).
+        const Entity e = static_cast<Entity>(message.value("id", 0u));
+        auto* interior = registry_.valid(e) ? registry_.try_get<Interior>(e) : nullptr;
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        if (!interior || !hasHover_ || !InteriorFootprint(registry_, e, *interior, x0, y0, x1, y1)) {
+            post_({{"type", "notify"}, {"text", "Point at the cell inside the building where its stairs are"}});
+            return true;
+        }
+        int gx = 0, gy = 0;
+        CellAt(hoverX_, hoverY_, iso_, gx, gy);
+        if (gx < x0 || gx > x1 || gy < y0 || gy > y1) {
+            post_({{"type", "notify"}, {"text", "That cell isn't inside the building"}});
+            return true;
+        }
+        const int floors = InteriorFloors(*interior);
+        const int change = std::clamp(interior->floor < floors ? interior->floor : floors - 1, 1, std::max(1, floors - 1));
+        std::vector<std::string> cells;
+        for (int k = 1; k <= std::max(change, floors - 1); ++k) {
+            const auto c = StairsCell(*interior, k, x0, y0, x1, y1);
+            cells.push_back(std::to_string(k == change ? gx : c.first) + "," + std::to_string(k == change ? gy : c.second));
+        }
+        std::string text;
+        for (const auto& c : cells) text += (text.empty() ? "" : ";") + c;
+        ApplyOneShotEdit([&] {
+            interior->stairs = text;
+            RecordOverride(registry_, e, "Interior", "stairs");
+            return true;
+        });
+        inspectorStale_ = true;
+        post_({{"type", "notify"}, {"text", "Stairs between floors " + std::to_string(change) + " and " + std::to_string(change + 1) +
+                                                " at " + std::to_string(gx) + "," + std::to_string(gy)}});
         return true;
     }
     if (type == "interior:add") {
@@ -7082,6 +7406,7 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool
     }
     ContextOptions options;
     options.selection = selected_;
+    options.selected = selectedMany_;
     options.focus = focus;
     options.scene = OpenSceneRelative();
     nlohmann::json context =
@@ -7156,6 +7481,28 @@ void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
 
     const nlohmann::json& proposal = body["proposal"];
     const std::string scope = proposal.value("scope", "small");
+    ApplyEditorActions(proposal.value("editor", nlohmann::json::array())); // select, frame, open: the editor's, no review
+    if (scope == "tools") {
+        RunAiTools(requestId, instruction, proposal);
+        return;
+    }
+    toolRounds_.erase(requestId);
+    if (scope == "route") {
+        // Another panel's work: a card that opens it with the request filled in.
+        const nlohmann::json route = proposal.value("route", nlohmann::json::object());
+        conversation_.emplace_back("assistant", "That's for the " + route.value("panel", std::string("build")) + " panel: " + route.value("reason", ""));
+        post_({{"type", "ai:route"}, {"id", requestId}, {"panel", route.value("panel", "build")},
+               {"request", route.value("request", instruction)}, {"reason", route.value("reason", "")}});
+        LogAiDecision(requestId, {{"decision", "route"}, {"route", route}});
+        return;
+    }
+    if (scope == "ask") {
+        const nlohmann::json ask = proposal.value("ask", nlohmann::json::object());
+        conversation_.emplace_back("assistant", "Question: " + ask.value("question", ""));
+        post_({{"type", "ai:ask"}, {"id", requestId}, {"question", ask.value("question", "")},
+               {"choices", ask.value("choices", nlohmann::json::array())}});
+        return;
+    }
     if (scope == "split") {
         // Too big for one go: the AI suggests smaller requests instead.
         proposals_[requestId] = {instruction, proposal, true};
@@ -7283,6 +7630,12 @@ ApplyOutcome EditorApp::ApplyAccepted(const std::vector<nlohmann::json>& operati
     if (outcome.prefabsChanged) {
         post_(PrefabsJson());
     }
+    // Files its commands made, moved or deleted: the Assets panel and the scene list read again.
+    for (const auto& op : operations) {
+        const std::string name = op.value("op", "") == "command" ? op.value("name", "") : "";
+        if (name == "asset.import" || name == "asset.delete" || name == "file.move") RefreshAssets();
+        if (name == "scene.create" || name == "scene.delete" || name == "scene.setType" || name == "file.move") post_(ScenesJson());
+    }
     sceneTreeStale_ = true;
     inspectorStale_ = true;
     editorStateStale_ = true;
@@ -7326,6 +7679,15 @@ void EditorApp::FeedTask(const nlohmann::json& answer, int inputTokens) {
         StopTask(taskId_, "AI was turned off.");
         return;
     }
+    if (userPrefs_ && userPrefs_->Get("aiStepReview", false).get<bool>()) {
+        // Review each step: it waits here, the step shown, for Continue (or Stop).
+        taskPaused_ = true;
+        nlohmann::json items = nlohmann::json::array();
+        for (const auto& op : answer.value("operations", nlohmann::json::array())) items.push_back(op);
+        post_({{"type", "ai:taskPaused"}, {"id", taskId_}, {"step", step.number}, {"summary", step.summary}, {"operations", items}});
+        post_({{"type", "ai:busy"}, {"busy", false}});
+        return;
+    }
     taskRequestId_ = Ai()->Propose(task_->NextInstruction(), task_->Context(assets_), task_->History());
     post_({{"type", "ai:busy"}, {"busy", true}});
 }
@@ -7343,7 +7705,138 @@ void EditorApp::OnTaskAnswer(const nlohmann::json& body) {
         StopTask(taskId_, reason);
         return;
     }
-    FeedTask(body["proposal"], body.value("usage", nlohmann::json::object()).value("inputTokens", 0));
+    const nlohmann::json& answer = body["proposal"];
+    if (answer.value("scope", "") == "tools" && task_ && Ai() != nullptr && toolRounds_[taskRequestId_] < 8) {
+        // Something to read first, mid-task: the results go back with the task's next instruction.
+        AiToolContext tools{registry_, EngineReflection(), prefabs_, assets_, assets_.GetProject(), &world_};
+        std::vector<nlohmann::json> results;
+        nlohmann::json names = nlohmann::json::array();
+        for (const auto& call : answer.value("tools", nlohmann::json::array())) {
+            results.push_back(RunAiTool(call.value("tool", ""), call.value("args", nlohmann::json::object()), tools));
+            names.push_back(call.value("tool", ""));
+        }
+        post_({{"type", "ai:tools"}, {"id", taskId_}, {"tools", names}});
+        const int rounds = toolRounds_[taskRequestId_] + 1;
+        toolRounds_.erase(taskRequestId_);
+        taskRequestId_ = Ai()->Propose(task_->NextInstruction() + "\n\n" + AiToolResultsMessage(answer.value("tools", nlohmann::json::array()), results),
+                                       task_->Context(assets_), task_->History());
+        toolRounds_[taskRequestId_] = rounds;
+        return;
+    }
+    FeedTask(answer, body.value("usage", nlohmann::json::object()).value("inputTokens", 0));
+}
+
+void EditorApp::RunAiTools(int requestId, const std::string& instruction, const nlohmann::json& proposal) {
+    const int rounds = toolRounds_[requestId] + 1;
+    toolRounds_.erase(requestId);
+    if (rounds > 8 || Ai() == nullptr) {
+        post_({{"type", "ai:message"}, {"role", "error"}, {"text", "The AI kept asking to look things up without answering; ask again, more precisely."}});
+        return;
+    }
+    AiToolContext tools{registry_, EngineReflection(), prefabs_, assets_, assets_.GetProject(), &world_};
+    tools.check = [this]() {
+        nlohmann::json problems = nlohmann::json::array();
+        for (const auto& p : GatewayProblems(assets_.GetProject())) problems.push_back(p);
+        for (const auto& p : ActiveRecords().Problems()) problems.push_back(p.message);
+        for (const auto& p : session_.Animations().Problems()) problems.push_back(p);
+        for (const auto& p : DryRunScripts(SerializeScene(registry_), assets_.GetProject(), 2.0)) {
+            problems.push_back(p.path + ": " + p.message);
+        }
+        return nlohmann::json{{"problems", problems}};
+    };
+    // A picture of part of the scene (the CPU renderer the Build panel checks with): around an entity, an area, or all
+    // of it; saved for the request to carry to the model.
+    std::vector<std::string> pictures;
+    tools.look = [this, &pictures](const nlohmann::json& args) {
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        if (args.contains("area") && args["area"].is_array() && args["area"].size() == 4) {
+            x0 = args["area"][0].get<int>(), y0 = args["area"][1].get<int>(), x1 = args["area"][2].get<int>(), y1 = args["area"][3].get<int>();
+        } else if (args.contains("entity")) {
+            const Entity e = static_cast<Entity>(args.value("entity", 0u));
+            const auto* at = registry_.valid(e) ? registry_.try_get<WorldTransform2D>(e) : nullptr;
+            if (!at) return nlohmann::json{{"error", "no entity to look at"}};
+            x0 = static_cast<int>(at->x) - 7, y0 = static_cast<int>(at->y) - 7, x1 = x0 + 15, y1 = y0 + 15;
+        } else {
+            int minX = INT_MAX, minY = INT_MAX, maxX = INT_MIN, maxY = INT_MIN;
+            for (auto [e, at] : registry_.view<WorldTransform2D>().each()) {
+                minX = std::min(minX, static_cast<int>(at.x)), minY = std::min(minY, static_cast<int>(at.y));
+                maxX = std::max(maxX, static_cast<int>(at.x) + 1), maxY = std::max(maxY, static_cast<int>(at.y) + 1);
+            }
+            if (minX > maxX) return nlohmann::json{{"error", "the scene is empty"}};
+            x0 = minX, y0 = minY, x1 = std::min(maxX, minX + 96), y1 = std::min(maxY, minY + 96);
+        }
+        if (x1 <= x0 || y1 <= y0) return nlohmann::json{{"error", "an area is [x0, y0, x1, y1] with x1 > x0, y1 > y0"}};
+        const ImageData picture = RenderScenePreview(registry_, assets_.GetProject(), iso_, x0, y0, x1, y1, 1400);
+        if (picture.width == 0) return nlohmann::json{{"error", "nothing to draw there"}};
+        const std::string path = ".cache/ai-look/look-" + std::to_string(pictures.size()) + ".png";
+        std::error_code ec;
+        std::filesystem::create_directories(assets_.GetProject().Resolve(".cache/ai-look"), ec);
+        if (!WritePng(assets_.GetProject().Resolve(path), picture)) return nlohmann::json{{"error", "couldn't keep the picture"}};
+        pictures.push_back(path);
+        return nlohmann::json{{"picture", static_cast<int>(pictures.size())}, {"area", {x0, y0, x1, y1}},
+                              {"note", "the picture comes with this message"}};
+    };
+    tools.playtest = [this](const nlohmann::json& args) {
+        // The open scene played headless for a few seconds, pressing the actions asked for: what happened.
+        const double seconds = std::clamp(args.value("seconds", 5.0), 1.0, 30.0);
+        std::vector<std::string> press;
+        for (const auto& p : args.value("press", nlohmann::json::array())) {
+            if (p.is_string()) press.push_back(p.get<std::string>());
+        }
+        return PlaytestScene(SerializeScene(registry_), assets_.GetProject(), seconds, press);
+    };
+    std::vector<nlohmann::json> results;
+    nlohmann::json names = nlohmann::json::array();
+    const nlohmann::json calls = proposal.value("tools", nlohmann::json::array());
+    for (const auto& call : calls) {
+        results.push_back(RunAiTool(call.value("tool", ""), call.value("args", nlohmann::json::object()), tools));
+        names.push_back(call.value("tool", ""));
+    }
+    post_({{"type", "ai:tools"}, {"id", requestId}, {"tools", names}});
+    // Asked again with what came back: the request, its context afresh, the turns so far and this lookup.
+    ContextOptions options;
+    options.selection = selected_;
+    options.selected = selectedMany_;
+    options.scene = OpenSceneRelative();
+    const nlohmann::json context = BuildEditorContext(registry_, EngineReflection(), prefabs_, assets_, assets_.GetProject(), options);
+    nlohmann::json history = nlohmann::json::array();
+    const size_t first = conversation_.size() > 8 ? conversation_.size() - 8 : 0;
+    for (size_t i = first; i < conversation_.size(); ++i) history.push_back({{"role", conversation_[i].first}, {"content", conversation_[i].second}});
+    history.push_back({{"role", "assistant"}, {"content", proposal.dump()}});
+    const int id = Ai()->Propose(instruction + "\n\n" + AiToolResultsMessage(calls, results), context, history, pictures);
+    requestInstructions_[id] = instruction;
+    toolRounds_[id] = rounds;
+    post_({{"type", "ai:busy"}, {"busy", true}});
+}
+
+void EditorApp::ApplyEditorActions(const nlohmann::json& actions) {
+    // The editor's own (no review: nothing in the project changes): select, frame, open a scene or a panel, play.
+    for (const auto& a : actions) {
+        if (!a.is_object()) continue;
+        const std::string what = a.value("do", "");
+        if (what == "select") {
+            selectedMany_.clear();
+            for (const auto& id : a.value("entities", nlohmann::json::array())) {
+                const Entity e = static_cast<Entity>(id.get<uint32_t>());
+                if (registry_.valid(e)) selectedMany_.push_back(e);
+            }
+            Select(selectedMany_.empty() ? std::nullopt : std::optional<Entity>(selectedMany_.front()));
+        } else if (what == "frame") {
+            const Entity e = static_cast<Entity>(a.value("entity", 0u));
+            if (registry_.valid(e)) Select(e);
+            FrameScene();
+        } else if (what == "openScene" && !playing_) {
+            const std::string path = a.value("path", "");
+            if (!path.empty() && path != OpenSceneRelative()) {
+                if (dirty_) Save();
+                OpenScene(path);
+            }
+        } else if (what == "openPanel") {
+            post_({{"type", "panel:show"}, {"panel", a.value("panel", "")}});
+        } else if (what == "play" && !playing_) {
+            StartPlay();
+        }
+    }
 }
 
 // The task is over (finished, or at its limits): its combined result goes up
@@ -7411,16 +7904,78 @@ void EditorApp::PostProposalStates() {
 
 void EditorApp::UndoProposal(int proposalId) {
     auto it = proposals_.find(proposalId);
-    if (it == proposals_.end() || it->second.historyStep == 0 || history_.NextUndo() != it->second.historyStep) {
+    if (it == proposals_.end()) return;
+    // The files it wrote, put back (even when it changed nothing in the scene).
+    if (!it->second.filesBefore.empty() && !it->second.filesUndone) RestoreProposalFiles(it->second);
+    if (it->second.historyStep == 0 || history_.NextUndo() != it->second.historyStep) {
         return; // later changes come first (Ctrl+Z them)
     }
     Undo();
+}
+
+std::vector<std::string> EditorApp::FilesWrittenBy(const nlohmann::json& op) const {
+    const std::string kind = op.value("op", "");
+    const nlohmann::json args = op.value("args", nlohmann::json::object());
+    const std::string name = op.value("name", "");
+    std::vector<std::string> out;
+    if (kind == "set_prefab_field" || kind == "add_prefab_component" || kind == "remove_prefab_component") out.push_back(op.value("prefab", ""));
+    else if (kind == "set_setting") out.push_back(std::filesystem::relative(assets_.GetProject().SettingsPath(), assets_.GetProject().root).generic_string());
+    else if (kind == "write_dialogue") out.push_back("dialogue/" + op.value("id", "") + ".json");
+    else if (kind == "write_quest") out.push_back("quests/" + op.value("id", "") + ".json");
+    else if (kind == "write_schedule") out.push_back("schedules/" + op.value("id", "") + ".json");
+    else if (kind == "write_cutscene") out.push_back("cutscenes/" + op.value("id", "") + ".json");
+    else if (kind == "write_ui" || kind == "write_anim") out.push_back(op.value("path", ""));
+    else if (kind == "write_record" || kind == "delete_record") out.push_back("records/" + op.value("type", "") + "/" + op.value("id", "") + ".json");
+    else if (kind == "command") {
+        if (name == "script.write") out.push_back(args.value("path", ""));
+        else if (name == "world.write" || name == "world.delete") out.push_back("world/" + args.value("kind", "") + "/" + args.value("id", "") + ".md");
+        else if (name == "prefab.create" || name == "prefab.createFromEntity") out.push_back("prefabs/" + args.value("name", "") + ".prefab");
+        else if (name == "input.addAction" || name == "input.removeAction") out.push_back("input.json");
+        else if (name == "scene.create") out.push_back("scenes/" + args.value("name", "") + ".aige");
+        else if (name == "scene.setType") out.push_back(args.value("path", ""));
+        else if (name == "scene.delete") out.push_back(args.value("path", ""));
+        else if (name == "asset.delete") out.push_back(args.value("path", "")), out.push_back(args.value("path", "") + ".meta");
+    }
+    std::erase_if(out, [](const std::string& p) { return p.empty() || p.find("..") != std::string::npos; });
+    return out;
+}
+
+void EditorApp::RestoreProposalFiles(PendingProposal& pending) {
+    for (const auto& [path, before] : pending.filesBefore) {
+        const std::filesystem::path file = assets_.GetProject().Resolve(path);
+        std::error_code ec;
+        if (before) {
+            std::ofstream out(file, std::ios::binary | std::ios::trunc);
+            out << *before;
+        } else {
+            std::filesystem::remove(file, ec); // it made this one
+        }
+    }
+    pending.filesUndone = true;
+    // What reads those files, read again.
+    LoadSettings(EngineReflection(), assets_.GetProject().SettingsPath().string());
+    ActiveRecords().Refresh();
+    ActiveInputMap() = LoadInputMap(assets_.GetProject().root);
+    RefreshPrefabs();
+    RefreshAssets();
+    session_.ReloadAnimations();
+    post_({{"type", "notify"}, {"text", std::to_string(pending.filesBefore.size()) + " file(s) the AI wrote put back"}});
+    post_(ScenesJson());
 }
 
 void EditorApp::ReapplyProposal(int proposalId) {
     auto it = proposals_.find(proposalId);
     if (it == proposals_.end() || it->second.historyStep == 0 || playing_) {
         return;
+    }
+    if (it->second.filesUndone && !it->second.applied.empty()) {
+        // Its files written again (the scene's side comes back by redo below, when it's there).
+        std::vector<nlohmann::json> fileOps;
+        for (const auto& op : it->second.applied) {
+            if (!FilesWrittenBy(op).empty()) fileOps.push_back(op);
+        }
+        if (!fileOps.empty()) ApplyAccepted(fileOps);
+        it->second.filesUndone = false;
     }
     if (history_.NextRedo() == it->second.historyStep) {
         Redo();
@@ -7449,6 +8004,7 @@ void EditorApp::StopTask(int id, const std::string& reason) {
     }
     LogAiDecision(taskId_, {{"decision", "task-stopped"}, {"reason", reason}, {"steps", task_->Steps().size()}});
     task_.reset();
+    taskPaused_ = false;
     taskRequestId_ = 0;
     proposals_[id].decided = true;
     post_({{"type", "ai:busy"}, {"busy", false}});
@@ -7524,6 +8080,17 @@ void EditorApp::ApplyProposal(int proposalId, const nlohmann::json& decisions) {
     }
 
     std::vector<size_t> indices = acceptedIndices.get<std::vector<size_t>>();
+    // The files it's about to write, as they are now: the panel's Undo puts them back.
+    it->second.filesBefore.clear();
+    it->second.filesUndone = false;
+    for (const auto& op : accepted) {
+        for (const std::string& path : FilesWrittenBy(op)) {
+            if (it->second.filesBefore.contains(path)) continue;
+            std::ifstream in(assets_.GetProject().Resolve(path), std::ios::binary);
+            it->second.filesBefore[path] = in ? std::optional<std::string>(std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>()))
+                                              : std::nullopt;
+        }
+    }
     const uint64_t before = history_.NextUndo();
     ApplyOutcome outcome = ApplyAccepted(accepted, it->second.task.get(), indices); // one undo step (scene side)
     it->second.decided = true;

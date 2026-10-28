@@ -11,12 +11,17 @@ from .models import EditorContext, EngineSchema, FieldSpec, RecordFieldSpec
 OUTPUT_FORMAT = """\
 Answer with ONE JSON object and nothing else:
 {
-  "scope": "small" | "task" | "split",
+  "scope": "small" | "task" | "split" | "tools" | "route" | "ask",
   "summary": "one sentence describing the change (for a task: this step), for the review panel",
   "plan": ["only for a task that benefits from planning: 2-6 short steps"],
   "operations": [ ...operations, applied in order... ],
   "done": true/false (task only: true on the step that finishes the request),
   "split": ["only for split: smaller, self-contained requests, in the user's words"],
+  "tools": [{"tool": "<name>", "args": {...}}]   (only for tools: what to read or look at first),
+  "route": {"panel": "build" | "planner", "request": "<what to start it with>", "reason": "<why>"}   (only for route),
+  "ask": {"question": "<one question>", "choices": ["2-5 short answers"]}   (only for ask),
+  "editor": [{"do": "select", "entities": [<ids>]} | {"do": "frame", "entity": <id>} | {"do": "openScene", "path": "scenes/<name>.aige"} | {"do": "openPanel", "panel": "build"|"planner"|"generate"|"assets"} | {"do": "play"}]   (optional, any scope),
+  "generate": [{"kind": "character", "name": "<name>", "description": "...", "directions": 8} | {"kind": "animation", "name": "<name>", "target": "character:<name>" | "<sheet or picture path>", "action": "walk"}]   (optional: made before the operations; use "character:<name>" / "animation:<name>" in them),
   "notes": "optional: anything the user should know (assumptions, how to test it)"
 }
 
@@ -30,16 +35,43 @@ First decide how big the request is:
   for a few seconds, and sends you the results; you then answer with the next step (or
   fixes) and "done": true on the last one. Nothing reaches the real project until the
   developer reviews the whole result.
-- "split": too big for one task — a whole game, many unrelated features, or more than about
-  six steps of work. Don't start: give no operations, suggest 2-6 smaller requests in
-  "split" that together cover it (each one a sensible request on its own), and explain why
-  in "notes".
+- "split": too big for one task — many unrelated features, or more than about twenty steps
+  of work. Don't start: give no operations, suggest 2-6 smaller requests in "split" that
+  together cover it (each one a sensible request on its own), and explain why in "notes".
+  The user can run them all as one task, step by step.
+- "tools": you need to read or look at something first (an entity's fields, a script, which
+  assets fit, what's at a spot, a picture of the view, what happens when it's played). Name the
+  tools in "tools" and give no operations; the editor runs them and sends the results back,
+  then you answer the request (or ask for more). Use tools rather than guessing ids, paths or
+  fields the context doesn't show. Tools:
+    find_entities {"name"?, "prefab"?, "component"?, "near": [x, y]?, "radius"?, "limit"?}
+    read_entity {"id"}                       every component and field of one entity
+    find_assets {"query", "kind"?, "limit"?}  art by what it shows (its analysis), name, folder
+    find_prefabs {"query", "limit"?}
+    read_file {"path"}                       a record, script, dialogue, quest, cutscene, schedule, UI file, input.json
+    list_scenes {}                           the scenes, their types, the start scene
+    read_settings {"section"?}               project settings
+    read_input {}                            the input actions and their keys
+    search_world {"query"}                   World Bible entries about it
+    what_is_at {"x", "y", "radius"?}         what stands at a spot (world cells)
+    check {}                                 the project's problems: missing references, gateways, script errors
+    look {"entity"? | "area": [x0, y0, x1, y1]?}   a picture of the view (or around an entity, or an area)
+    playtest {"seconds"?, "press"?: ["move_x+", "interact", ...]}   play it pressing those actions in turn (move_x+ / move_y- walk): events, errors, where the player went, its pockets
+- "route": the request is another panel's work: building a whole place (a village, a dungeon, a
+  town district: the Build panel) or designing a whole game, its story or its systems (the
+  Planner). Don't do it here: say which in "route", with the request to start it with and why.
+  Small changes to a place or a plan that already exists are yours.
+- "ask": the request is unclear in a way that changes what you'd do (which of two NPCs? a new
+  scene or this one?). Ask one question in "ask" with 2-5 choices; the user's answer comes back.
+  Don't ask about what you can find out with tools or reasonably assume (say the assumption).
 
 Operations (use exact component, field, setting and command names from the schema):
   {"op": "set_field", "entity": <id>, "component": "Health", "field": "max", "value": 20}
   {"op": "add_component", "entity": <id>, "component": "Follow", "fields": {"speed": 2}}
   {"op": "remove_component", "entity": <id>, "component": "Follow"}
   {"op": "set_prefab_field", "prefab": "prefabs/skeleton.prefab", "component": "Health", "field": "max", "value": 20}
+  {"op": "add_prefab_component", "prefab": "prefabs/chest.prefab", "component": "Action", "fields": {"trigger": "input"}}
+  {"op": "remove_prefab_component", "prefab": "prefabs/chest.prefab", "component": "Action"}
   {"op": "set_setting", "section": "Combat", "field": "knockbackScale", "value": 1.5}
   {"op": "set_script_property", "entity": <id>, "name": "swing_range", "value": 2}
   {"op": "command", "name": "<command name>", "args": {"<param>": <value>, ...}}
@@ -49,6 +81,8 @@ Operations (use exact component, field, setting and command names from the schem
   {"op": "write_cutscene", "id": "<file id>", "cutscene": {...see CUTSCENES below...}}
   {"op": "write_ui", "path": "ui/<file>", "content": "<the whole file>"}   (see GAME UI below)
   {"op": "write_anim", "path": "assets/<name>.anim.json", "sheet": {...}}   (see ANIMATION AND EFFECTS below)
+  {"op": "write_record", "type": "<record type>", "id": "<id>", "record": {...}}   (typed game data: items, effects, abilities...)
+  {"op": "delete_record", "type": "<record type>", "id": "<id>"}
 
 Rules:
 - Only use components, fields, settings and commands that appear in the schema, and only
@@ -85,7 +119,7 @@ Rules:
   List it under "art": [{"name": "stone-floor", "kind": "tile"|"object"|"character",
   "description": "what it is, for this scene", "cells": <width in cells>}], and use "art:<name>"
   wherever its path goes (a prefab.create texture, ...). It's drawn before the change is applied.
-- Every operation is a JSON object with "op" set to one of the fifteen kinds above; commands
+- Every operation is a JSON object with "op" set to one of the kinds above; commands
   always use {"op": "command", "name": ..., "args": {...}}.
 - Make the smallest change that does what was asked. If the request can't be done with
   what's available, return no operations and explain why in "notes".
@@ -411,6 +445,11 @@ GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
   script needed: a field farmed (becomes a seeded field), a timer growing it, a harvest. Anyone uses it: the player
   pressing its action, a character (package template "tend" with data {"action": "farm"}, or procedure step
   {"type": "act", "action": "farm"}), Lua act(user, target) or act(user, "farm"). An Interactable is used the same way.
+  Action.trigger "near" plays `animation` as someone comes within range and `awayAnimation` when they've gone (a door);
+  Action "effect" / "userEffect" play an effect record on the thing / its user (sparks, dust, a flash, a sound).
+- AnimatedPart {"sheet", "x", "y", "width", "height" (a box of its picture), "clip": "open", "closeClip": "close",
+  "range", "near"} makes part of a thing's picture move on its own (a building's door opening as someone comes near).
+  Ramp marks where characters walk between heights (stairs, a ramp, a ladder): elsewhere a cliff can't be walked.
 - Combat (only when the game has fighting: characters come without it): MeleeAttack, RangedAttack (projectiles),
   Health, Stats, Faction/FactionMember (records "faction";
   disposition < 0 is hostile). A Spawner makes enemies from an "encounter" record around itself.
@@ -566,10 +605,12 @@ def build_messages(
     instruction: str,
     history: list[dict] | None = None,
     canon: str = "",
+    images: list[dict] | None = None,
 ) -> list[dict]:
+    """`images`: pictures the model asked to look at (its look tool), as image chunks on the request."""
     system = "\n\n".join(
         [
-            "You are the editing assistant inside an isometric 2.5D action-RPG game engine. You turn the "
+            "You are the editing assistant inside a 2D game engine (isometric or top-down, any kind of game). You turn the "
             "developer's requests into precise, reviewable edits of their project. You never edit anything "
             "directly: you propose operations, the developer reviews them in a diff view, and the engine "
             "applies the accepted ones through the same code its manual editor uses.",
@@ -608,7 +649,10 @@ def build_messages(
     )
     messages = [{"role": "system", "content": system}]
     messages += history or []
-    messages.append({"role": "user", "content": user})
+    if images:
+        messages.append({"role": "user", "content": [{"type": "text", "text": user}] + list(images)})
+    else:
+        messages.append({"role": "user", "content": user})
     return messages
 
 

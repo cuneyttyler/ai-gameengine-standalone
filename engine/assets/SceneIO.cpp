@@ -1,4 +1,5 @@
 #include "assets/SceneIO.h"
+#include "assets/SceneFiles.h"
 
 #include "assets/TileLayerIO.h"
 
@@ -199,12 +200,14 @@ std::vector<Entity> ReadScene(Registry& registry, std::istream& in, const std::v
 } // namespace
 
 void SaveScene(Registry& registry, const std::string& path) {
+    const std::string type = SceneType(path); // its type (docs/places/scene-types.md) kept
     std::ofstream out(path, std::ios::trunc);
     if (!out) {
         throw std::runtime_error("Failed to open scene file for writing: " + path);
     }
     WriteScene(registry, out, EntitiesInOrder(registry));
     out.close();
+    if (!type.empty()) SetSceneType(path, type);
     SaveTileLayers(registry, path); // scenes/<name>.tiles/ (7.2)
 }
 

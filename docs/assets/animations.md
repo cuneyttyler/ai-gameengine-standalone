@@ -221,7 +221,38 @@ A dagger stab and a greatsword swing move differently, so attack animations are 
 weapon: characters × classes × actions, any number of weapons in each class. A weapon's `class` picks its class's
 clips (2.3).
 
-## 4. In the Inspector
+## 4. Animated parts (a door, a window, a sign)
+
+Only the part that moves is animated, not the whole picture (a scene painted whole stays one still picture):
+right-click a building, any thing, or a painted scene's picture ▸ **Animate a part…**, drag a box round the part, say
+how it moves ("the door swings open"). The box is cut out of the picture, animated like any picture (Generate ▸
+Animate's provider; its clip named by what it does: `open`), and placed over it as an **overlay**: a Sprite with its
+Animator (`prop`), an **Attachment** to the thing (where the box was, so it moves and turns with it; the thing gets a
+name of its own if copies share one) and an **Action** (trigger touch: it plays `open` when someone comes to it; set
+it to an input or an event instead in the Inspector). Assembled scenes attach it to the building; Paint scenes to the
+painting. `EditorApp` `part:animate`, `PlacePart`.
+
+### 4.1 Build ▸ Animate
+
+After a place's art is made, the Build panel animates what has to move, so a built place works as built:
+
+- **Assembled**: the Assets page's **Animate** tab. Each building's door is found in its art (the vision model's box,
+  `/parts/find`) and animated; it becomes an **AnimatedPart** on the building's prefab, so every copy has its moving
+  door. Each thing that's used — a chest, a door, a gate, a portcullis, a drawbridge, a lever, a sarcophagus, a
+  cupboard, a cage — is animated whole and its prefab gets an Animator (`prop`) and an Interactable whose verb plays it.
+- **Paint**: the **⑥ Animate** step after ⑤ Mark finds each painted building's door in its part of the painting; the
+  doors are kept with the build (`places/<id>/parts.json`) and put over the painting as overlays when the place is
+  built (`AddPaintingEntities`). Things that are used are sprites of their own, animated on the Assets page as above.
+- **What triggers them** is decided by what they are: a building's door opens as someone comes near and closes as they
+  go (AnimatedPart, or an Action with trigger `near` and an `awayAnimation`); a chest opens when used (its Interactable,
+  the interact key); a lever is pulled when used. All can be changed in the Inspector.
+- **Close** is the `open` frames played backwards (no second animation; each held at its last frame).
+- The page shows each target's picture with its door's box, where it is (copies in the scene, or its cell), what
+  triggers it, its status (to animate, finding its door, animating, animated, failed, skipped), a progress bar, and
+  **Animate all** (about 5 AutoSprite credits each), each one's **Animate** / **Skip**. `apps/editor/BuildAnimate.cpp`,
+  `components/AnimatePartsView.vue`.
+
+## 5. In the Inspector
 
 | Component | Fields |
 |---|---|
@@ -233,7 +264,7 @@ clips (2.3).
 Sheet editor: clips (loop, speed, **Plays on**), directions, frames, **points**. Records editor: item `sprite`,
 `point`, `grip`, `pointing`, `size`, `layer`, `class`, `animation`; animator records.
 
-## 5. Where it lives
+## 6. Where it lives
 
 | | |
 |---|---|

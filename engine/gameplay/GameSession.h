@@ -71,6 +71,9 @@ void UpdateSpriteFacing(Registry& registry);
 
 // Flat (top-down) tiles draw this far below everything else (5.2).
 constexpr float kGroundLayerDepth = -100000.0f;
+// Flat things on the ground (rugs, road pieces, decals): above the tiles, under everything standing, in bands by their
+// Sprite.order (5000 apart, -9..9).
+constexpr float kFlatLayerDepth = -50000.0f;
 
 // Re-derives ScreenTransform2D from WorldTransform2D (characters) and from
 // Tile (ground cells) — the one place world space meets screen space.

@@ -58,9 +58,11 @@ InputMap InputMap::Defaults() {
                                {{Key::W, -1}, {Key::Up, -1}, {Key::S, 1}, {Key::Down, 1},
                                 {Key::PadUp, -1}, {Key::PadDown, 1}},
                                {{PadAxis::LeftY, 1.0f, 0.2f}}));
-    map.actions.push_back(Button("attack", "Swing your weapon the way you face.", "gameplay", {Key::Space, Key::PadX}));
-    map.actions.push_back(Button("interact", "Talk, open, pick up: whatever is in front of you.", "gameplay",
-                                 {Key::E, Key::PadA}));
+    // Interact is the default action (any kind of game); attack only does something for a character with MeleeAttack.
+    map.actions.push_back(Button("attack", "Swing your weapon the way you face (a character with MeleeAttack).", "gameplay",
+                                 {Key::MouseLeft, Key::Q, Key::PadX}));
+    map.actions.push_back(Button("interact", "Talk, open, pick up, use: whatever is in front of you.", "gameplay",
+                                 {Key::E, Key::Space, Key::PadA}));
     map.actions.push_back(Button("fire", "Shoot your ranged weapon the way you face.", "gameplay", {Key::F, Key::PadRB}));
     map.actions.push_back(Button("block", "Hold to block: most of a hit is stopped, for stamina.", "gameplay",
                                  {Key::LeftCtrl, Key::PadLB}));
@@ -120,6 +122,7 @@ nlohmann::json InputMap::ToJson() const {
         }
         if (!action.plays.empty()) json["plays"] = action.plays;
         if (!action.event.empty()) json["event"] = action.event;
+        if (!action.effect.empty()) json["effect"] = action.effect;
         list.push_back(json);
     }
     return {{"schema", "aige.input/1"}, {"actions", list}};
@@ -142,6 +145,7 @@ InputMap InputMap::FromJson(const nlohmann::json& json, std::vector<std::string>
         action.axis = a.value("axis", false);
         action.plays = a.value("plays", "");
         action.event = a.value("event", "");
+        action.effect = a.value("effect", "");
         if (std::find(kContexts.begin(), kContexts.end(), action.context) == kContexts.end()) {
             report(action.name + ": unknown context \"" + action.context + "\"");
             action.context = "gameplay";

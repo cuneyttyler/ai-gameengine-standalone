@@ -39,7 +39,7 @@ TEST(InputMapTest, DefaultsCoverTheGameAndRoundTripThroughJson) {
     ASSERT_EQ(back.actions.size(), map.actions.size());
     EXPECT_EQ(back.Find("move_y")->keys.size(), map.Find("move_y")->keys.size());
     EXPECT_EQ(back.Find("move_y")->keys[0].scale, -1.0f);
-    EXPECT_EQ(back.Find("attack")->keys[1].key, aige::Key::PadX);
+    EXPECT_EQ(back.Find("attack")->keys[2].key, aige::Key::PadX); /* MouseLeft, Q, PadX */
 
     std::vector<std::string> errors;
     aige::InputMap::FromJson(nlohmann::json::parse(R"({"actions": [{"name": "x", "context": "space", "keys": ["Q", "Nope"]}]})"),
@@ -71,7 +71,7 @@ TEST(InputStateTest, PressesContextsAndAxes) {
     auto axes = [&](aige::PadAxis a) { return a == aige::PadAxis::LeftX ? stickX : 0.0f; };
     aige::InputState input;
 
-    held = {aige::Key::Space};
+    held = {aige::Key::MouseLeft}; // attack's default (Space is interact's)
     input.Update(map, keys, axes);
     EXPECT_TRUE(input.Pressed("attack"));
     input.Update(map, keys, axes);
@@ -120,6 +120,7 @@ TEST(InputStateTest, TheGameReadsActionsRebindingAndTheStick) {
         for (int y = 0; y < 12; ++y) aige::CreateTile(registry, x, y, aige::TileKind::Grass); // ground to walk on
     }
     auto player = aige::CreatePlayer(registry, 2.5f, 2.5f);
+    registry.emplace<aige::MeleeAttack>(player, 3.0f, 0.7f, 0.5f, 0.35f, 0.5f); // characters come without an attack
     aige::GameSession session(registry, lua, aige::IsoParams{});
     float stickX = 1.0f;
     session.SetAxisQuery([&](aige::PadAxis a) { return a == aige::PadAxis::LeftX ? stickX : 0.0f; });

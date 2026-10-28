@@ -10,6 +10,7 @@
 #include "gameplay/Interact.h"
 #include "gameplay/Interiors.h"
 #include "gameplay/Items.h"
+#include "gameplay/TileLayer.h"
 #include "gameplay/Localization.h"
 #include "gameplay/Settings.h"
 #include "gameplay/TileGrid.h"
@@ -110,9 +111,29 @@ void UpdatePlayerMove(Registry& registry, Entity player, float inputRight, float
 
     // Physics.playerCollides off (a debugging aid) walks through everything.
     static const SolidQueryFn kNothingSolid = [](int, int) { return false; };
+    // High ground (place-refine.md §10): a cell much higher or lower than the one stood on is a cliff, unless either
+    // has a Ramp (stairs, a ramp, a ladder).
+    const int cx = static_cast<int>(std::floor(world.x)), cy = static_cast<int>(std::floor(world.y));
+    const std::optional<float> here = GroundHeightAt(registry, cx + 0.5f, cy + 0.5f);
+    SolidQueryFn withCliffs = isSolid;
+    if (here) {
+        const float step = ActiveSettings().grid.style == GridStyle::TopDown ? 12.0f : 14.0f; // pixels: a kerb walks, a wall doesn't
+        auto rampAt = [&registry](int x, int y) {
+            for (auto [e, ramp, at] : registry.view<Ramp, WorldTransform2D>().each()) {
+                if (static_cast<int>(std::floor(at.x)) == x && static_cast<int>(std::floor(at.y)) == y) return true;
+            }
+            return false;
+        };
+        withCliffs = [&, h = *here](int x, int y) {
+            if (isSolid(x, y)) return true;
+            if (x == cx && y == cy) return false;
+            const std::optional<float> there = GroundHeightAt(registry, x + 0.5f, y + 0.5f);
+            return there && std::abs(*there - h) > step && !rampAt(x, y) && !rampAt(cx, cy);
+        };
+    }
     Vec2 resolved = ResolveAabbMovement({world.x, world.y}, {collider.halfWidth, collider.halfHeight},
                                          {velocity.x * dt, velocity.y * dt},
-                                         ActiveSettings().physics.playerCollides ? isSolid : kNothingSolid);
+                                         ActiveSettings().physics.playerCollides ? withCliffs : kNothingSolid);
     world.x = resolved.x;
     world.y = resolved.y;
 }
@@ -164,7 +185,16 @@ void UpdateSpriteFacing(Registry& registry) {
     }
 }
 
+void UpdateGroundHeights(Registry& registry) {
+    // Whatever moves stands at the land's height under its foot (place-refine.md §10), eased so a slope doesn't jitter.
+    for (auto [entity, velocity, world, sprite] : registry.view<Velocity2D, WorldTransform2D, Sprite>(entt::exclude<Tile>).each()) {
+        if (sprite.flat) continue;
+        if (const std::optional<float> h = GroundHeightAt(registry, world.x, world.y)) sprite.lift += (*h - sprite.lift) * 0.5f;
+    }
+}
+
 void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
+    UpdateGroundHeights(registry);
     // Tiles are placed by their cell below, so they're skipped here.
     auto view = registry.view<WorldTransform2D, ScreenTransform2D>(entt::exclude<Tile>);
     for (auto entity : view) {
@@ -178,11 +208,12 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
         // the tile they stand on.
         const auto* sprite = registry.try_get<Sprite>(entity);
         if (sprite && sprite->flat) {
-            // Lies on the ground (a rug, a shadow; 5.2): centered on the point,
-            // above the tile it's on, below anything standing there.
+            // Lies on the ground (a rug, a road piece, a shadow; 5.2): centered on the point, above the tiles, under
+            // everything standing; among other flat things by its order first (a road over a grass patch), then by
+            // where it is.
             screen.x = pose.x;
             screen.y = pose.y;
-            screen.depth = pose.depth + 0.25f;
+            screen.depth = kFlatLayerDepth + static_cast<float>(std::clamp(sprite->order, -9, 9)) * 5000.0f + pose.depth;
             continue;
         }
         float lift = sprite ? sprite->height * 0.5f - iso.tileHeight * 0.25f : iso.tileHeight * 0.5f;
@@ -2446,6 +2477,13 @@ bool GameSession::Act(Entity user, Entity target) {
             }
         }
     }
+    // Effects: on the thing, on its user.
+    if (!action->effect.empty()) {
+        if (const auto* at = registry_.try_get<WorldTransform2D>(target)) PlayEffect(action->effect, at->x, at->y, target, hasUser ? user : Entity{entt::null});
+    }
+    if (hasUser && !action->userEffect.empty()) {
+        if (const auto* at = registry_.try_get<WorldTransform2D>(user)) PlayEffect(action->userEffect, at->x, at->y, user, target);
+    }
     if (!action->setFlag.empty()) story_.SetFlag(action->setFlag, true);
     if (!action->emits.empty()) Emit({action->emits, target, hasUser ? user : Entity{entt::null}, 0.0, action->action});
     if (byPlayer && !action->text.empty()) ShowNotice(action->text, 3.0 + action->text.size() / 30.0);
@@ -2484,8 +2522,11 @@ void GameSession::StepActions(float dt) {
     // Input actions that play a clip on the player or emit an event (Project Settings ▸ Input).
     if (player) {
         for (const auto& a : ActiveInputMap().actions) {
-            if (a.axis || (a.plays.empty() && a.event.empty()) || !input_.Pressed(a.name)) continue;
+            if (a.axis || (a.plays.empty() && a.event.empty() && a.effect.empty()) || !input_.Pressed(a.name)) continue;
             if (!a.plays.empty()) TriggerAnimation(registry_, *player, a.plays);
+            if (!a.effect.empty()) {
+                if (const auto* at = registry_.try_get<WorldTransform2D>(*player)) PlayEffect(a.effect, at->x, at->y, *player);
+            }
             if (!a.event.empty()) Emit({a.event, *player, Entity{entt::null}, 0.0, a.name});
         }
     }
@@ -2513,6 +2554,22 @@ void GameSession::StepActions(float dt) {
                 due.push_back({Entity{entt::null}, entity});
                 state.age = 0.0f; // again after as long (unless once)
             }
+        } else if (action.trigger == "near") {
+            // Someone (anyone moving) within range: it happens as the first comes; its away clip once they've all gone.
+            bool someone = false;
+            Entity who{entt::null};
+            if (world) {
+                for (auto [mover, v, mw] : registry_.view<Velocity2D, WorldTransform2D>().each()) {
+                    if (mover != entity && std::hypot(mw.x - world->x, mw.y - world->y) <= action.range) {
+                        someone = true;
+                        who = mover;
+                        break;
+                    }
+                }
+            }
+            if (someone && !state.touching) due.push_back({who, entity});
+            if (!someone && state.touching && !action.awayAnimation.empty()) TriggerAnimation(registry_, entity, action.awayAnimation);
+            state.touching = someone;
         } else if (action.trigger == "touch") {
             const bool on = d <= std::max(0.5f, action.range * 0.5f);
             if (on && !state.touching && player) due.push_back({*player, entity});
@@ -2528,6 +2585,28 @@ void GameSession::StepActions(float dt) {
     }
     actionEvents_.clear();
     actionEventUsers_.clear();
+    // Animated parts (a building's door): open as someone comes near, close as they go.
+    {
+        std::vector<std::pair<Entity, Entity>> overlays; // (owner, overlay)
+        for (auto [overlay, link] : registry_.view<AttachmentLink, Transient>().each()) {
+            if (link.slot == "part" && registry_.valid(link.parent)) overlays.push_back({link.parent, overlay});
+        }
+        for (const auto& [owner, overlay] : overlays) {
+            const auto* part = registry_.try_get<AnimatedPart>(owner);
+            const auto* w = registry_.try_get<WorldTransform2D>(owner);
+            if (!part || !w || !part->opensNear) continue;
+            bool someoneNear = false;
+            for (auto [mover, v, mw] : registry_.view<Velocity2D, WorldTransform2D>().each()) {
+                if (std::hypot(mw.x - w->x, mw.y - w->y) <= part->range) {
+                    someoneNear = true;
+                    break;
+                }
+            }
+            auto& state = registry_.get_or_emplace<ActionState>(overlay); // `touching`: someone was near last step
+            if (someoneNear != state.touching) TriggerAnimation(registry_, overlay, someoneNear ? part->clip : part->closeClip);
+            state.touching = someoneNear;
+        }
+    }
     // interact is the Interactables' key too: an Action on it acts only when no Interactable is nearer.
     for (const auto& [name, hit] : pressed) {
         if (name == "interact") {

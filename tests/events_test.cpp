@@ -76,12 +76,13 @@ TEST_F(EventsTest, CombatEventsReachScripts) {
         on("death", function(e) set_field(self_id(), "Name", "value", "died") end)
     )");
     auto player = aige::CreatePlayer(registry_, 2.5f, 2.5f);
+    registry_.emplace<aige::MeleeAttack>(player, 3.0f, 0.7f, 0.5f, 0.35f, 0.5f); // characters come without an attack
     auto enemy = aige::CreateEnemy(registry_, 3.2f, 2.5f, player, "");
     registry_.get<aige::Health>(enemy).current = 1.0f;
     registry_.emplace_or_replace<aige::Facing>(player, 1.0f, 0.0f);
     aige::GameSession session(registry_, lua_, aige::IsoParams{}, root_);
     bool space = true;
-    session.Advance(aige::GameSession::kFixedDt, [&](aige::Key key) { return key == aige::Key::Space && space; });
+    session.Advance(aige::GameSession::kFixedDt, [&](aige::Key key) { return key == aige::Key::Q && space; /* attack (Space is interact) */ });
     space = false;
     Run(session, 0.5);
     EXPECT_EQ(NameOf(watcher), "died");

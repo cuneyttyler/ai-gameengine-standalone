@@ -33,6 +33,7 @@ protected:
         aige::Registry scratch;
         prefabs_->SaveAsPrefab(scratch, aige::CreateEnemy(scratch, 0.0f, 0.0f, entt::null, ""), "prefabs/skeleton.prefab");
         hero_ = aige::CreatePlayer(registry_, 2.5f, 2.5f);
+        registry_.emplace<aige::MeleeAttack>(hero_, 3.0f, 0.7f, 0.5f, 0.35f, 0.5f); // characters come without an attack
         skeletonA_ = *prefabs_->Instantiate(registry_, "prefabs/skeleton.prefab", 5.5f, 5.5f);
         skeletonB_ = *prefabs_->Instantiate(registry_, "prefabs/skeleton.prefab", 7.5f, 5.5f);
         registry_.get<aige::Name>(skeletonA_).value = "Skeleton A";

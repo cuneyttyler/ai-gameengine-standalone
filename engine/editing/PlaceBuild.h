@@ -82,6 +82,13 @@ public:
     // A Brief already written (the AI Planner's place description, development_plan.md
     // 22.10): straight to ① Confirm with it, no reading of words. `words` names the build.
     std::string StartFromBrief(const std::string& words, const nlohmann::json& brief);
+    // A picture given as the place itself (docs/places/scene-types.md): a Paint build with no Layout, Plan or Paint. The
+    // picture becomes its painting over a square grid fitted to its width, every cell walkable, no occluders; it waits
+    // at ⑤ Mark. `words` name it (else the picture's file name).
+    std::string StartFromPicture(const std::string& words, const std::filesystem::path& picture);
+    // A picture ④ Paint paints after (its look, or itself changed as the words say): copied into the build's folder.
+    std::string SetReference(const std::filesystem::path& picture);
+    bool FromPicture() const { return fromPicture_; }
     const nlohmann::json& Choices() const { return choices_; }
 
     // ② Assets' confirming questions (the AI's, first where each zone goes; or the
@@ -393,6 +400,8 @@ private:
     bool painting_ = false;      // ④ Paint: asked, not answered
     bool makingInteriors_ = false; // the interiors (docs/places/interiors.md §7): asked, not answered
     std::string method_ = "Assembled"; // Assembled or Paint (Method)
+    bool fromPicture_ = false;   // StartFromPicture: no Layout, Plan or Paint
+    std::string reference_;      // SetReference: the picture ④ Paint paints after, in the build's folder
     std::string artModel_, backgroundModel_; // SetModels
     std::string variety_; // how many looks each kind gets: "low", "high", or "" (the ontology's), from the start page
     int buildRounds_ = 0;

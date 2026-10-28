@@ -6,6 +6,7 @@
 // engine preset there.
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { editorState } from '../editorState'
+import { promptDialog } from '../dialogs'
 import SheetEditor from './SheetEditor.vue'
 import { onHostMessage, sendToHost } from '../ipc'
 
@@ -151,6 +152,18 @@ function tryIt(kind: 'effect' | 'particles', id: string): void {
 }
 function customise(kind: 'effect' | 'particles', id: string): void {
   sendToHost({ type: 'fx:customise', kind, id })
+}
+// One of the project's own, from nothing: a name, then its parts in Records (particles, sound, light, flash, shake...).
+async function newFx(kind: 'effect' | 'particles'): Promise<void> {
+  const id = (await promptDialog({
+    title: kind === 'effect' ? 'New effect' : 'New particles',
+    message: kind === 'effect'
+      ? 'A name for the effect (lowercase, dashes): what something looks and sounds like when it happens. Its parts are set in Records ▸ effect; actions, hits and spells play it by this name.'
+      : 'A name for the particles (lowercase, dashes): set how they look and move in Records ▸ particles; effects and emitters use it by this name.',
+    placeholder: kind === 'effect' ? 'harvest-sparkle' : 'wheat-chaff',
+    confirmLabel: 'Create',
+  }))?.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '')
+  if (id) sendToHost({ type: 'fx:new', kind, id })
 }
 
 // --- The timeline ---------------------------------------------------------------
@@ -298,7 +311,7 @@ const cutsceneProblems = computed(() => cutscenes.value.find((c) => c.id === cut
     <!-- Particles and effects --------------------------------------------------->
     <div v-else-if="section === 'effects'" class="two">
       <section class="editor">
-        <div class="section-label">Particles</div>
+        <div class="section-label">Particles <button class="small" title="Particles of the project's own, from nothing" @click="newFx('particles')">+ New</button></div>
         <div v-for="p in particles" :key="p.id" class="item">
           <span class="name">{{ p.id }}</span>
           <span class="badge" :class="p.source">{{ p.source }}</span>
@@ -307,7 +320,7 @@ const cutsceneProblems = computed(() => cutscenes.value.find((c) => c.id === cut
         </div>
       </section>
       <section class="editor">
-        <div class="section-label">Effects</div>
+        <div class="section-label">Effects <button class="small" title="An effect of the project's own, from nothing (or Customise a preset)" @click="newFx('effect')">+ New</button></div>
         <div v-for="e in effects" :key="e.id" class="item">
           <span class="name">{{ e.id }}</span>
           <span class="badge" :class="e.source">{{ e.source }}</span>

@@ -5,7 +5,8 @@
   "level": "zone",
   "description": "Piers, warehouses and a fish market along water.",
   "buildTypes": [
-    "settlement"
+    "settlement",
+    "harbour"
   ],
   "classes": [
     "Ward"

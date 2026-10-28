@@ -13,6 +13,7 @@ import { editorState } from '../editorState'
 import { activatePanel, setPanelVisible } from '../layout'
 import CatalogThumb from './CatalogThumb.vue'
 import MarkEditor from './MarkEditor.vue'
+import AnimatePartsView from './AnimatePartsView.vue'
 import ReviseHelp, { type ReviseInstruction } from './ReviseHelp.vue'
 import { amountText, countRange, layoutSketch, parseRange, setShare, toggleShare, type Shares } from '../buildwindow'
 
@@ -290,13 +291,14 @@ const ALL_STEPS = [
   { id: 'plan', label: '③ Plan' },
   { id: 'paint', label: '④ Paint' },
   { id: 'mark', label: '⑤ Mark' },
+  { id: 'animate', label: '⑥ Animate' },
   { id: 'assets', label: '⑥ Assets' },
   { id: 'result', label: '⑦ Result' },
 ]
 // A build's steps: by its method (Assembled: Confirm, Layout, Plan, Assets, Result; Paint adds Paint and Mark).
 const buildMethod = computed(() => state.value?.method ?? newMethod.value)
 // From a picture given as the painting: Confirm, Mark, Assets, Result (it's already painted, and planned by its marks).
-const STEPS = computed(() => ALL_STEPS.filter((st) => (buildMethod.value === 'Paint' || (st.id !== 'paint' && st.id !== 'mark')) &&
+const STEPS = computed(() => ALL_STEPS.filter((st) => (buildMethod.value === 'Paint' || (st.id !== 'paint' && st.id !== 'mark' && st.id !== 'animate')) &&
   !(state.value?.fromPicture && ['layout', 'plan', 'paint'].includes(st.id))).map((st, i) => ({
   ...st, label: `${'①②③④⑤⑥⑦'[i]} ${st.label.slice(2)}`,
 })))
@@ -462,6 +464,17 @@ const builds = ref<BuildEntry[]>([])
 // The start screen shown over an open build (the header's Builds).
 const browsing = ref(false)
 const query = ref('')
+// The AI panel handed this panel a request (its route card): in the box, ready to Start.
+watch(
+  () => editorState.prefill.panel,
+  (panel) => {
+    if (panel === 'build') {
+      query.value = editorState.prefill.text
+      editorState.prefill = { panel: '', text: '' }
+    }
+  },
+  { immediate: true },
+)
 const showAll = ref(true)
 
 // The choices: the build type, its size, its main settings, features and parts.
@@ -680,7 +693,7 @@ function leaveMark(to: string): void {
   viewing.value = to
 }
 // ③ Assets' tabs: how each part's art will be found, the background (painted first), and the art found and made.
-const assetsTab = ref<'how' | 'background' | 'found'>('how')
+const assetsTab = ref<'how' | 'background' | 'found' | 'animate'>('how')
 const assetsFound = computed(() => ['sourcing', 'sourced', 'building', 'built'].includes(stage.value))
 const artStarted = computed(() => assetsFound.value || !!state.value?.afterBackground || state.value?.matched?.state === 'making')
 // To the art when work on it starts (finding or making it, building): choosing how a part is found re-previews the
@@ -750,13 +763,13 @@ const REACHED: Record<string, string[]> = {
 function stepDisabled(id: string): boolean {
   // While revising, as the step it's revising: a layout revised at ① Confirm doesn't open ③ Plan.
   const at = stage.value === 'revising' && state.value?.revisingFrom ? state.value.revisingFrom : stage.value
-  if (id === 'mark' && !paint.value.file) return true // nothing to mark before it's painted
+  if ((id === 'mark' || id === 'animate') && !paint.value.file) return true // nothing to mark or animate before it's painted
   if (REACHED[id]) return !REACHED[id].includes(at)
   return !win.value
 }
 function step(id: string): void {
   if (viewing.value === 'mark' && id !== 'mark') markEditor.value?.save()
-  if (id === 'paint' || id === 'mark') {
+  if (id === 'paint' || id === 'mark' || id === 'animate') {
     viewing.value = id
     return
   }
@@ -1883,6 +1896,17 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         </span>
         <button title="Pre-fill from the plan again; what you edited stays" @click="markEditor?.prefill(false)">Pre-fill again</button>
         <button class="primary" title="The marks are done: on to the art (a Planner build goes on and builds the place)" @click="confirmMarks">Continue →</button>
+        <button title="The painted buildings' doors, animated (they open as someone comes near)" @click="viewing = 'animate'">⑥ Animate the doors →</button>
+      </div>
+    </div>
+
+    <!-- ⑥ Animate (Paint): each painted building's door found in the painting and animated; put over it when built. -->
+    <div v-else-if="viewing === 'animate' && state && paint.file" class="body window">
+      <AnimatePartsView only="door" />
+      <div class="actions">
+        <button @click="viewing = 'mark'">← ⑤ Mark</button>
+        <span class="dim">The doors go over the painting when the place is built; used things (chests, levers) are animated on the Assets page.</span>
+        <button class="primary" @click="confirmMarks">Continue to the art →</button>
       </div>
     </div>
 
@@ -1901,10 +1925,15 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <button :class="{ active: assetsTab === 'how' }" @click="assetsTab = 'how'">How each is found</button>
         <button :class="{ active: assetsTab === 'background' }" :disabled="!state?.background && !state?.backgroundMaking" @click="assetsTab = 'background'">Background</button>
         <button :class="{ active: assetsTab === 'found' }" :disabled="!artStarted" @click="assetsTab = 'found'">The assets</button>
+        <button :class="{ active: assetsTab === 'animate' }" :disabled="!artStarted" title="Doors of buildings and things that are used (chests, gates, levers), animated" @click="assetsTab = 'animate'">Animate</button>
         <span class="dim">{{ assetsTab === 'how' ? 'the project, the library, the web or the Art tool, for each part'
-          : assetsTab === 'background' ? 'the whole ground in one picture, painted first' : 'what was found and made, each refinable' }}</span>
+          : assetsTab === 'background' ? 'the whole ground in one picture, painted first'
+          : assetsTab === 'animate' ? 'the doors and the things that are used, animated' : 'what was found and made, each refinable' }}</span>
       </div>
-      <template v-if="assetsTab === 'how' && win">
+      <template v-if="assetsTab === 'animate'">
+        <AnimatePartsView :only="buildMethod === 'Paint' ? 'thing' : undefined" />
+      </template>
+      <template v-else-if="assetsTab === 'how' && win">
       <section class="note">
         <label class="row">
           <input type="checkbox" :checked="sourcingSettings.webSearch" @change="setSourcing({ webSearch: ($event.target as HTMLInputElement).checked })" />

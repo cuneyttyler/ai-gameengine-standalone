@@ -5170,7 +5170,7 @@ gbl:Dock
     rdfs:comment "A pier with boats and crates."@en ;
     gbo:moduleId "dock" ;
     gbo:level gbo:Feature ;
-    gbo:allowedIn gbb:settlement ;
+    gbo:allowedIn gbb:settlement, gbb:harbour ;
     gbo:hasField gbl:Dock.boats, gbl:Dock.length ;
     gbo:hasSlot gbl:Dock.slot.boat, gbl:Dock.slot.crate, gbl:Dock.slot.pier ;
     gbo:typicallyRelated [
@@ -5258,7 +5258,7 @@ gbl:Docks
     rdfs:comment "Piers, warehouses and a fish market along water."@en ;
     gbo:moduleId "docks" ;
     gbo:level gbo:Zone ;
-    gbo:allowedIn gbb:settlement ;
+    gbo:allowedIn gbb:settlement, gbb:harbour ;
     gbo:hasField gbl:Docks.area, gbl:Docks.piers, gbl:Docks.plots, gbl:Docks.street-style ;
     gbo:hasChildRule gbl:Docks.child.dock, gbl:Docks.child.fish-market, gbl:Docks.child.road, gbl:Docks.child.warehouse-plot ;
     gbo:typicallyRelated [
@@ -7091,7 +7091,7 @@ gbl:FishMarket
     rdfs:comment "Fish stalls by the water."@en ;
     gbo:moduleId "fish-market" ;
     gbo:level gbo:Feature ;
-    gbo:allowedIn gbb:settlement ;
+    gbo:allowedIn gbb:settlement, gbb:harbour ;
     gbo:hasField gbl:FishMarket.stalls ;
     gbo:hasSlot gbl:FishMarket.slot.stall ;
     gbo:typicallyRelated [
@@ -8869,6 +8869,208 @@ gbl:Hallway.child.office-lights
     gbo:maxCount 1 ;
     gbo:weight 0.9 .
 
+gbl:Harbour
+    a owl:Class, gbo:Module ;
+    rdfs:subClassOf gbo:Site, [
+        a owl:Restriction ;
+        owl:onProperty gbo:hasPart ;
+        owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+        owl:onClass gbl:Docks
+    ], [
+        a owl:Restriction ;
+        owl:onProperty gbo:hasPart ;
+        owl:maxQualifiedCardinality "3"^^xsd:nonNegativeInteger ;
+        owl:onClass gbl:Docks
+    ], [
+        a owl:Restriction ;
+        owl:onProperty gbo:hasPart ;
+        owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+        owl:onClass gbl:Ground
+    ], [
+        a owl:Restriction ;
+        owl:onProperty gbo:hasPart ;
+        owl:maxQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+        owl:onClass gbl:Ground
+    ], [
+        a owl:Restriction ;
+        owl:onProperty gbo:hasPart ;
+        owl:maxQualifiedCardinality "40"^^xsd:nonNegativeInteger ;
+        owl:onClass gbl:HousePlot
+    ], [
+        a owl:Restriction ;
+        owl:onProperty gbo:hasPart ;
+        owl:maxQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+        owl:onClass gbl:Lake
+    ], [
+        a owl:Restriction ;
+        owl:onProperty gbo:hasPart ;
+        owl:maxQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+        owl:onClass gbl:MarketSquare
+    ], [
+        a owl:Restriction ;
+        owl:onProperty gbo:hasPart ;
+        owl:maxQualifiedCardinality "2"^^xsd:nonNegativeInteger ;
+        owl:onClass gbl:Meadow
+    ], [
+        a owl:Restriction ;
+        owl:onProperty gbo:hasPart ;
+        owl:maxQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+        owl:onClass gbl:River
+    ], [
+        a owl:Restriction ;
+        owl:onProperty gbo:hasPart ;
+        owl:minQualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+        owl:onClass gbl:Road
+    ], [
+        a owl:Restriction ;
+        owl:onProperty gbo:hasPart ;
+        owl:maxQualifiedCardinality "20"^^xsd:nonNegativeInteger ;
+        owl:onClass gbl:Road
+    ], [
+        a owl:Restriction ;
+        owl:onProperty gbo:hasPart ;
+        owl:allValuesFrom [
+            a owl:Class ;
+            owl:unionOf ( gbl:Docks gbl:Ground gbl:HousePlot gbl:Lake gbl:MarketSquare gbl:Meadow gbl:River gbl:Road )
+        ]
+    ] ;
+    rdfs:label "Harbour"@en ;
+    rdfs:comment "A harbour on its own: docks with piers, warehouses and a fish market along the water, the houses and lanes of the people who work there."@en ;
+    gbo:moduleId "harbour" ;
+    gbo:level gbo:Site ;
+    gbo:allowedIn gbb:harbour ;
+    gbo:hasField gbl:Harbour.area, gbl:Harbour.buildings, gbl:Harbour.piers, gbl:Harbour.condition, gbl:Harbour.notes, gbl:Harbour.relief, gbl:Harbour.water ;
+    gbo:hasChildRule gbl:Harbour.child.docks, gbl:Harbour.child.ground, gbl:Harbour.child.house-plot, gbl:Harbour.child.lake, gbl:Harbour.child.market-square, gbl:Harbour.child.meadow, gbl:Harbour.child.river, gbl:Harbour.child.road ;
+    gbo:constraint "within(self.buildings, count(descendants(class: BuildingParcel)), tol: 'count')"^^gbo:Expression ;
+    gbo:origin "engine" .
+
+gbl:Harbour.area
+    a gbo:QuantityField, owl:DatatypeProperty ;
+    rdfs:label "area"@en ;
+    rdfs:domain gbl:Harbour ;
+    gbo:fieldName "area" ;
+    gbo:fieldType gbo:area ;
+    gbo:minValue 400.0 ;
+    gbo:defaultValue "[1600,6400]"^^rdf:JSON ;
+    gbo:unit "cells²" .
+
+gbl:Harbour.buildings
+    a gbo:QuantityField, owl:DatatypeProperty ;
+    rdfs:label "buildings"@en ;
+    rdfs:domain gbl:Harbour ;
+    gbo:fieldName "buildings" ;
+    gbo:fieldType gbo:count ;
+    gbo:minValue 1.0 ;
+    gbo:maxValue 400.0 ;
+    gbo:defaultValue "[4,20]"^^rdf:JSON ;
+    gbo:askedInConfirmation true .
+
+gbl:Harbour.piers
+    a gbo:QuantityField, owl:DatatypeProperty ;
+    rdfs:label "piers"@en ;
+    rdfs:domain gbl:Harbour ;
+    gbo:fieldName "piers" ;
+    gbo:fieldType gbo:count ;
+    gbo:minValue 1.0 ;
+    gbo:maxValue 40.0 ;
+    gbo:defaultValue "[2,5]"^^rdf:JSON ;
+    gbo:askedInConfirmation true .
+
+gbl:Harbour.condition
+    a gbo:QualityField, owl:ObjectProperty ;
+    rdfs:label "condition"@en ;
+    rdfs:domain gbl:Harbour ;
+    gbo:fieldName "condition" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"lived-in\""^^rdf:JSON ;
+    gbo:vocabulary gbv:condition .
+
+gbl:Harbour.notes
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "notes"@en ;
+    rdfs:domain gbl:Harbour ;
+    gbo:fieldName "notes" ;
+    gbo:fieldType gbo:description .
+
+gbl:Harbour.relief
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "relief"@en ;
+    rdfs:comment "The lie of the land away from the water."@en ;
+    rdfs:domain gbl:Harbour ;
+    gbo:fieldName "relief" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"flat\""^^rdf:JSON ;
+    gbo:allowedValue "flat", "gentle", "hilly" .
+
+gbl:Harbour.water
+    a gbo:QualityField, owl:DatatypeProperty ;
+    rdfs:label "water"@en ;
+    rdfs:comment "What the docks are on: a river's bank or a lake's (or the sea's) shore."@en ;
+    rdfs:domain gbl:Harbour ;
+    gbo:fieldName "water" ;
+    gbo:fieldType gbo:enum ;
+    gbo:defaultValue "\"river\""^^rdf:JSON ;
+    gbo:allowedValue "river", "lake" ;
+    gbo:askedInConfirmation true .
+
+gbl:Harbour.child.docks
+    a gbo:ChildRule ;
+    gbo:child gbl:Docks ;
+    gbo:minCount 1 ;
+    gbo:maxCount 3 ;
+    gbo:weight 1.0 .
+
+gbl:Harbour.child.ground
+    a gbo:ChildRule ;
+    gbo:child gbl:Ground ;
+    gbo:minCount 1 ;
+    gbo:maxCount 1 ;
+    gbo:weight 1.0 .
+
+gbl:Harbour.child.house-plot
+    a gbo:ChildRule ;
+    gbo:child gbl:HousePlot ;
+    gbo:minCount 0 ;
+    gbo:maxCount 40 ;
+    gbo:weight 0.5 .
+
+gbl:Harbour.child.lake
+    a gbo:ChildRule ;
+    gbo:child gbl:Lake ;
+    gbo:minCount 1 ;
+    gbo:maxCount 1 ;
+    gbo:weight 1.0 ;
+    gbo:when "water == 'lake'"^^gbo:Expression .
+
+gbl:Harbour.child.market-square
+    a gbo:ChildRule ;
+    gbo:child gbl:MarketSquare ;
+    gbo:minCount 0 ;
+    gbo:maxCount 1 ;
+    gbo:weight 0.2 .
+
+gbl:Harbour.child.meadow
+    a gbo:ChildRule ;
+    gbo:child gbl:Meadow ;
+    gbo:minCount 0 ;
+    gbo:maxCount 2 ;
+    gbo:weight 0.2 .
+
+gbl:Harbour.child.river
+    a gbo:ChildRule ;
+    gbo:child gbl:River ;
+    gbo:minCount 1 ;
+    gbo:maxCount 1 ;
+    gbo:weight 1.0 ;
+    gbo:when "water == 'river'"^^gbo:Expression .
+
+gbl:Harbour.child.road
+    a gbo:ChildRule ;
+    gbo:child gbl:Road ;
+    gbo:minCount 1 ;
+    gbo:maxCount 20 ;
+    gbo:weight 1.0 .
+
 gbl:Hay
     a owl:Class, gbo:Module ;
     rdfs:subClassOf gbo:Feature, [
@@ -9329,7 +9531,7 @@ gbl:HousePlot
     rdfs:comment "A house on its plot, facing the street, with a yard and maybe a garden."@en ;
     gbo:moduleId "house-plot" ;
     gbo:level gbo:Parcel ;
-    gbo:allowedIn gbb:settlement ;
+    gbo:allowedIn gbb:settlement, gbb:harbour ;
     gbo:hasField gbl:HousePlot.setback, gbl:HousePlot.size, gbl:HousePlot.condition, gbl:HousePlot.fenced, gbl:HousePlot.house-kind, gbl:HousePlot.wealth ;
     gbo:hasSlot gbl:HousePlot.slot.fence, gbl:HousePlot.slot.house, gbl:HousePlot.slot.outbuilding ;
     gbo:hasChildRule gbl:HousePlot.child.doorstep-set, gbl:HousePlot.child.fence-line, gbl:HousePlot.child.front-yard, gbl:HousePlot.child.garden ;
@@ -11052,7 +11254,7 @@ gbl:MarketSquare
     rdfs:comment "An open square with stalls and a centrepiece."@en ;
     gbo:moduleId "market-square" ;
     gbo:level gbo:Parcel ;
-    gbo:allowedIn gbb:settlement ;
+    gbo:allowedIn gbb:settlement, gbb:harbour ;
     gbo:hasField gbl:MarketSquare.crowd, gbl:MarketSquare.size, gbl:MarketSquare.stalls, gbl:MarketSquare.centrepiece, gbl:MarketSquare.surface ;
     gbo:hasSlot gbl:MarketSquare.slot.centrepiece, gbl:MarketSquare.slot.ground, gbl:MarketSquare.slot.stall ;
     gbo:hasChildRule gbl:MarketSquare.child.clutter, gbl:MarketSquare.child.market-stalls, gbl:MarketSquare.child.well-plaza ;
@@ -19275,7 +19477,7 @@ gbl:WarehousePlot
     rdfs:comment "A warehouse with goods stacked around it."@en ;
     gbo:moduleId "warehouse-plot" ;
     gbo:level gbo:Parcel ;
-    gbo:allowedIn gbb:settlement ;
+    gbo:allowedIn gbb:settlement, gbb:harbour ;
     gbo:hasField gbl:WarehousePlot.size, gbl:WarehousePlot.goods ;
     gbo:hasSlot gbl:WarehousePlot.slot.warehouse ;
     gbo:hasChildRule gbl:WarehousePlot.child.clutter ;
@@ -20446,6 +20648,45 @@ gbb:farmland.large-countryside
     gbo:maxSide 260 ;
     gbo:minZones 2 ;
     gbo:maxZones 6 .
+
+gbb:harbour
+    a gbo:BuildType ;
+    rdfs:label "Harbour"@en ;
+    gbo:rootModule gbl:Harbour ;
+    gbo:component gbl:Docks, gbl:Dock, gbl:WarehousePlot, gbl:FishMarket, gbl:HousePlot, gbl:MarketSquare, gbl:Road, gbl:Ground, gbl:River, gbl:Lake, gbl:Meadow, gbl:Clutter, gbl:NatureScatter ;
+    gbo:stages "[\"site & water\",\"lanes\",\"docks & piers\",\"warehouses & houses\",\"dressing\"]"^^rdf:JSON ;
+    gbo:briefFields "{\"features\":[\"river\",\"lake\",\"coast\"],\"style\":{\"biome\":\"biome\",\"condition\":\"condition\",\"era\":[\"ancient\",\"medieval\",\"renaissance\"]}}"^^rdf:JSON ;
+    gbo:hasScale gbb:harbour.landing, gbb:harbour.harbour, gbb:harbour.port .
+
+gbb:harbour.landing
+    a gbo:ScaleClass ;
+    rdfs:label "landing"@en ;
+    gbo:minBuildings 2 ;
+    gbo:maxBuildings 6 ;
+    gbo:minSide 30 ;
+    gbo:maxSide 50 ;
+    gbo:minZones 1 ;
+    gbo:maxZones 1 .
+
+gbb:harbour.harbour
+    a gbo:ScaleClass ;
+    rdfs:label "harbour"@en ;
+    gbo:minBuildings 6 ;
+    gbo:maxBuildings 24 ;
+    gbo:minSide 50 ;
+    gbo:maxSide 90 ;
+    gbo:minZones 1 ;
+    gbo:maxZones 2 .
+
+gbb:harbour.port
+    a gbo:ScaleClass ;
+    rdfs:label "port"@en ;
+    gbo:minBuildings 24 ;
+    gbo:maxBuildings 80 ;
+    gbo:minSide 90 ;
+    gbo:maxSide 160 ;
+    gbo:minZones 2 ;
+    gbo:maxZones 4 .
 
 gbb:interior
     a gbo:BuildType ;

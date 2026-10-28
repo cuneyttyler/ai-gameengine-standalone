@@ -73,7 +73,8 @@ function onKeydown(event: KeyboardEvent): void {
       <div v-if="current.choices" class="choices">
         <label v-for="c in current.choices" :key="c.value" class="choice" :class="{ on: current.choice === c.value }">
           <input v-model="current.choice" type="radio" :value="c.value" />
-          <span><b>{{ c.label }}</b><span v-if="c.description" class="muted"> — {{ c.description }}</span></span>
+          <span class="choice-label">{{ c.label }}</span>
+          <span v-if="c.description" class="choice-description">{{ c.description }}</span>
         </label>
       </div>
       <label v-if="current.checkbox" class="option">
@@ -168,18 +169,46 @@ button.primary.danger {
 .choices {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin: 8px 0;
+  gap: 6px;
+  margin: 4px 0 14px;
 }
 .choice {
   display: flex;
-  gap: 6px;
-  align-items: flex-start;
-  padding: 4px 6px;
-  border: 1px solid transparent;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid #333;
+  background: #11111b;
   text-align: left;
+  cursor: pointer;
+}
+.choice:hover {
+  border-color: #4b5563;
+  background: #1e1e2e;
 }
 .choice.on {
-  border-color: var(--accent, #4a8);
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.12);
+}
+.choice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.choice:has(input:focus-visible) {
+  outline: 1px solid #3b82f6;
+  outline-offset: 1px;
+}
+.choice-label {
+  font-weight: 600;
+}
+.choice-description {
+  font-size: 0.9em;
+  line-height: 1.4;
+  opacity: 0.7;
 }
 </style>

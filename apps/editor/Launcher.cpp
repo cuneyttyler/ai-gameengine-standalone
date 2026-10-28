@@ -4,6 +4,7 @@
 
 #include "ai_bridge/RecentProjects.h"
 #include "assets/ProjectTemplate.h"
+#include "game/Templates.h"
 
 namespace aige {
 
@@ -51,7 +52,21 @@ void Launcher::OnWebMessage(const nlohmann::json& message) {
             Open(*folder);
         }
     } else if (type == "welcome:demo") {
-        Open(demo_);
+        // The demo: the one shipped beside the editor, else a fresh one made from the isometric action RPG template (in
+        // the user's app data, made once, kept for next time).
+        std::error_code ec;
+        std::filesystem::path demo = demo_;
+        if (!std::filesystem::exists(demo / "project.json", ec)) {
+            demo = UserPrefs::DefaultPath().parent_path() / "demo";
+            if (!std::filesystem::exists(demo / "project.json", ec)) {
+                std::filesystem::create_directories(demo, ec);
+                if (auto error = CreateProjectFromTemplate(demo, "arpg")) {
+                    post_({{"type", "welcome:error"}, {"text", "Couldn't make the demo: " + *error}});
+                    return;
+                }
+            }
+        }
+        Open(demo);
     } else if (type == "project:location") {
         // New Project opened: the folder the last project was created in (the user's prefs, read fresh).
         post_({{"type", "project:location"}, {"path", UserPrefs(UserPrefs::DefaultPath()).Get("newProjectFolder", "")}});

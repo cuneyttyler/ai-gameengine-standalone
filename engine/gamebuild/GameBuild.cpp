@@ -704,6 +704,16 @@ std::string GameBuild::BuildScene(Row& row, PlaceBuild& build) {
     return {};
 }
 
+Entity GameBuild::CreatePlanPlayer(Registry& registry, float x, float y) {
+    // Interact is the default action; the player fights only when the plan has combat (its brief's systems.combat).
+    const Entity player = CreatePlayer(registry, x, y);
+    const json brief = store_.Read("brief").value_or(json::object());
+    const json on = BriefGet(brief, "systems.combat.on"), style = BriefGet(brief, "systems.combat.style");
+    const bool fights = on.is_boolean() ? on.get<bool>() : style.is_string() && style.get<std::string>() != "none";
+    if (fights) registry.emplace_or_replace<MeleeAttack>(player, 3.0f, 0.7f, 0.5f, 0.35f, 0.5f);
+    return player;
+}
+
 int GameBuild::AddStoryMarkers(Registry& registry, const Row& row, const json& solved, int originX, int originY) {
     // Its story anchors as markers: on the part that shows the anchor's module, else in the middle.
     const TileGrid grid = TileGrid::Build(registry);
@@ -734,10 +744,10 @@ int GameBuild::AddStoryMarkers(Registry& registry, const Row& row, const json& s
         if (at) AddMarker(registry, id, at->first + 0.5f, at->second + 0.5f);
     }
     if (const auto at = placed.find("arrive"); at != placed.end()) {
-        if (row.scene == StartScene()) CreatePlayer(registry, at->second.first, at->second.second);
+        if (row.scene == StartScene()) CreatePlanPlayer(registry, at->second.first, at->second.second);
     } else if (auto arrive = NearestOpen(grid, midX, midY)) {
         AddMarker(registry, "arrive", arrive->first + 0.5f, arrive->second + 0.5f);
-        if (row.scene == StartScene()) CreatePlayer(registry, arrive->first + 0.5f, arrive->second + 0.5f);
+        if (row.scene == StartScene()) CreatePlanPlayer(registry, arrive->first + 0.5f, arrive->second + 0.5f);
     }
     return made;
 }
@@ -858,7 +868,7 @@ std::string GameBuild::PlaceholderScene(Row& row) {
         ++k;
     }
     AddMarker(registry, "arrive", w / 2 + 0.5f, w / 2 + 0.5f);
-    if (row.scene == StartScene()) CreatePlayer(registry, w / 2 + 0.5f, w / 2 + 0.5f);
+    if (row.scene == StartScene()) CreatePlanPlayer(registry, w / 2 + 0.5f, w / 2 + 0.5f);
     std::error_code ec;
     fs::create_directories(project.Resolve(row.scene).parent_path(), ec);
     SaveScene(registry, project.Resolve(row.scene).string());

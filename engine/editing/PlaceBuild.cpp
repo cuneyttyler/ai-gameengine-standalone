@@ -439,6 +439,8 @@ void PlaceBuild::Save() const {
                                           {"sketch", {{"done", sketched_}, {"crops", sketchCrops_}, {"sketches", sketches_}}},
                                           {"matched", matched_},
                                           {"method", method_},
+                                          {"fromPicture", fromPicture_},
+                                          {"reference", reference_},
                                           {"models", {{"art", artModel_}, {"background", backgroundModel_}}},
                                           {"variety", variety_},
                                           {"usage", usage_},
@@ -501,6 +503,8 @@ std::string PlaceBuild::Start(const std::string& words, const json& choices) {
     choices_.erase("variety");
     method_ = host_.buildMethod ? host_.buildMethod() : "Assembled";
     if (method_ != "Paint") method_ = "Assembled";
+    fromPicture_ = false;
+    reference_.clear();
     // Choices without words: a request in words made from them.
     const bool said = words.find_first_not_of(" \t\r\n") != std::string::npos;
     if (!said && choices_.empty()) return "say what to build";
@@ -533,12 +537,73 @@ std::string PlaceBuild::Start(const std::string& words, const json& choices) {
     return {};
 }
 
+std::string PlaceBuild::StartFromPicture(const std::string& words, const fs::path& picture) {
+    const auto image = DecodeImage(picture);
+    if (!image || image->width < 64 || image->height < 32) return "the picture can't be read";
+    choices_ = json::object();
+    variety_.clear();
+    method_ = "Paint";
+    fromPicture_ = true;
+    reference_.clear();
+    query_ = words.find_first_not_of(" \t\r\n") != std::string::npos ? words : picture.stem().string();
+    id_ = PlaceIdFor(host_.projectRoot, query_);
+    round_ = 1;
+    usage_ = json::object();
+    drafts_.clear();
+    draftProblems_.clear();
+    errors_.clear();
+    notices_.clear();
+    revisions_ = json::array();
+    result_ = json();
+    hasOrigin_ = false;
+    merge_ = {};
+    spec_ = json();
+    progressStep_.clear();
+    lastRetry_.clear();
+    std::error_code ec;
+    fs::create_directories(Folder(), ec);
+    if (!WritePng(Folder() / "painting.png", *image)) return "can't write the painting";
+    // A square grid fitted to its width, its diamond at the picture's bottom (whatever's above it, sky or roofs).
+    const int W = static_cast<int>(image->width), H = static_cast<int>(image->height);
+    const int n = std::clamp(static_cast<int>(std::lround(W / 64.0)), 8, 160);
+    const double tw = static_cast<double>(W) / n, th = tw / 2.0;
+    const double top = std::max(0.0, H - n * th);
+    solved_ = {{"place", id_}, {"grid", {{"bounds", {0, 0, n, n}}}}, {"objects", json::array()}};
+    WriteJson(Folder() / "layout.solved.json", solved_); // its plan: the grid, nothing on it (it's all in the picture)
+    brief_ = {{"name", query_}, {"fromPicture", true}};
+    WriteJson(Folder() / "painting.json", {{"size", {W, H}},
+                                           {"view", {{"x0", 0}, {"y0", 0}, {"x1", n}, {"y1", n}, {"tw", tw}, {"th", th}, {"top", top}}},
+                                           {"objects", json::array()}});
+    PaintingMade(Folder(), {{"provider", "your picture"}, {"prompt", picture.filename().string()}});
+    aige::PrefillMarks(solved_, &host_.ontology(), Folder()); // every cell walkable to start with
+    WriteJson(Folder() / "request.json", {{"query", query_}, {"picture", picture.filename().string()}});
+    Log({{"step", "from picture"}, {"picture", picture.filename().string()}, {"cells", n}});
+    stage_ = "planned";
+    status_ = "Your picture is the place: ⑤ Mark where one can walk and what a character goes behind, then ⑥ Assets.";
+    Save();
+    return {};
+}
+
+std::string PlaceBuild::SetReference(const fs::path& picture) {
+    const auto image = DecodeImage(picture);
+    if (!image) return "the picture can't be read";
+    std::error_code ec;
+    fs::create_directories(Folder(), ec);
+    if (!WritePng(Folder() / "reference.png", *image)) return "can't keep the picture";
+    reference_ = "reference.png";
+    Log({{"step", "reference"}, {"picture", picture.filename().string()}});
+    Save();
+    return {};
+}
+
 std::string PlaceBuild::StartFromBrief(const std::string& words, const json& brief) {
     if (!brief.is_object() || brief.value("buildType", "").empty() || !host_.ontology().Build(brief.value("buildType", ""))) {
         return "the Brief names no build type the engine knows";
     }
     choices_ = json::object();
     method_ = host_.buildMethod && host_.buildMethod() == "Paint" ? "Paint" : "Assembled";
+    fromPicture_ = false;
+    reference_.clear();
     query_ = words.empty() ? brief.value("name", brief.value("buildType", "")) : words;
     id_ = PlaceIdFor(host_.projectRoot, query_);
     round_ = 1;
@@ -4830,6 +4895,7 @@ std::string PlaceBuild::Paint(const std::string& notes) {
                        {"story", {{"purpose", story.value("purpose", json())}, {"mood", story.value("mood", json())}, {"logline", story.value("logline", json())}}},
                        {"look", LookFor(brief_.value("buildType", ""))},
                        {"notes", notes},
+                       {"reference", reference_},
                        {"model", host_.paintModel && !host_.paintModel().empty() ? host_.paintModel() : std::string("flux-3-image")}};
     if (!Send({"paint", -1, "", "/places/paint", body, 900})) return "the AI is off";
     painting_ = true;
@@ -5030,6 +5096,8 @@ std::string PlaceBuild::Open(const std::string& id) {
             artModel_ = m.value("art", ""), backgroundModel_ = m.value("background", "");
         }
         // Its method; a build from before methods: Paint if it was painted and not skipped, else Assembled.
+        fromPicture_ = session.value("fromPicture", false);
+        reference_ = session.value("reference", std::string());
         if (session.contains("method") && session["method"].is_string()) {
             method_ = session["method"].get<std::string>();
         } else {
@@ -5138,6 +5206,8 @@ std::string PlaceBuild::Open(const std::string& id) {
         if (stage_ == "built") {
             status_ = "Built.";
             ++imageVersion_;
+        } else if (stage_ == "planned" && fromPicture_) {
+            status_ = "Your picture is the place: ⑤ Mark where one can walk and what a character goes behind, then ⑥ Assets.";
         } else if (stage_ == "planned") {
             int buildings = 0;
             for (const auto& o : solved_.value("objects", json::array())) buildings += o.value("layer", "") == "building";
@@ -5366,6 +5436,8 @@ json PlaceBuild::State() {
     state["backgroundDescription"] = BackgroundDescription();
     state["backgroundMaking"] = makingBackground_;
     state["method"] = method_; // Assembled or Paint: which steps it has
+    state["fromPicture"] = fromPicture_; // no Layout, Plan or Paint
+    state["reference"] = reference_;
     state["models"] = {{"art", artModel_}, {"background", backgroundModel_}};
     state["reviewing"] = reviewing_; // the approved map checked by the AI in the background
     if (stage_ == "planned" || stage_ == "sourcing" || stage_ == "sourced" || stage_ == "building" || stage_ == "built") {

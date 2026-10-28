@@ -1,4 +1,10 @@
 #include "editing/PlaceBuild.h"
+#include "assets/Project.h"
+#include "assets/SceneFiles.h"
+#include "assets/SceneIO.h"
+#include "assets/TextureCook.h"
+#include "editing/PaintedPlace.h"
+#include "physics2d/Components.h"
 #include "places/Brief.h"
 #include "places/PlaceValidate.h"
 #include "places/Planner.h"
@@ -880,4 +886,51 @@ TEST(BuildRobustTest, EditingAPartAfterTheBuildChangesOnlyIt) {
     EXPECT_FALSE(build.AboutThisPlace("make the player faster"));
     // Undo goes back through the edits.
     ASSERT_EQ(build.Undo(), "");
+}
+
+// docs/places/scene-types.md: a scene's type kept in its file; a picture given as the place starts at ⑤ Mark.
+TEST(SceneTypes, KeptInTheSceneFile) {
+    Fixture f("aige_scene_types");
+    const Project project{f.root};
+    const SceneResult made = CreateScene(project, "cellar", "Paint");
+    ASSERT_TRUE(made.error.empty()) << made.error;
+    const fs::path file = project.Resolve(made.path);
+    EXPECT_EQ(SceneType(file), "Paint");
+    // Saving the scene keeps it; setting another replaces it.
+    Registry registry;
+    registry.emplace<WorldTransform2D>(registry.create(), 1.0f, 2.0f);
+    SaveScene(registry, file.string());
+    EXPECT_EQ(SceneType(file), "Paint");
+    Registry back;
+    ASSERT_TRUE(LoadScene(back, file.string()));
+    EXPECT_EQ(back.view<WorldTransform2D>().size(), 1u);
+    EXPECT_TRUE(SetSceneType(file, "Assembled"));
+    EXPECT_EQ(SceneType(file), "Assembled");
+    EXPECT_EQ(SceneType(project.Resolve(CreateScene(project, "plain").path)), "");
+}
+
+TEST(SceneTypes, APictureIsThePlace) {
+    Fixture f("aige_from_picture");
+    ImageData image;
+    image.width = 1024;
+    image.height = 640;
+    image.rgba.assign(static_cast<size_t>(image.width) * image.height * 4, 200);
+    ASSERT_TRUE(WritePng(f.root / "village.png", image));
+    PlaceBuild build(f.Host());
+    ASSERT_EQ(build.StartFromPicture("", f.root / "village.png"), "");
+    EXPECT_TRUE(build.FromPicture());
+    EXPECT_EQ(build.Method(), "Paint");
+    EXPECT_TRUE(build.Painted());
+    EXPECT_EQ(build.Stage(), "planned");
+    EXPECT_TRUE(f.sent.empty()); // no AI: no reading, no layout, no painting
+    const json painting = LoadPainting(build.Folder());
+    ASSERT_TRUE(painting.is_object());
+    EXPECT_EQ(painting["size"][0].get<int>(), 1024);
+    EXPECT_EQ(painting["view"]["x1"].get<int>(), 16); // 1024 / 64 cells across
+    const json marks = LoadMarks(build.Folder());
+    ASSERT_TRUE(marks.is_object());
+    // Reopened, it's still a picture build.
+    PlaceBuild again(f.Host());
+    ASSERT_EQ(again.Open(build.Id()), "");
+    EXPECT_TRUE(again.FromPicture());
 }

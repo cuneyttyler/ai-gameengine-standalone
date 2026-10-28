@@ -9,6 +9,7 @@
 #include <map>
 #include <set>
 #include <unordered_map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -133,6 +134,10 @@ struct TileLayers {
 
 // The scene's layers (created empty on first use), or null if it has none.
 TileLayers& LayersOf(Registry& registry);
+
+// The ground's height (screen pixels raised, place-refine.md §10) at a world point: the top layer with a tile there,
+// its corners' lifts blended across the cell; null where no layer has ground (the ground is level there).
+std::optional<float> GroundHeightAt(Registry& registry, float wx, float wy);
 const TileLayers* FindLayers(const Registry& registry);
 // Drops every layer (a scene switch).
 void ResetLayers(Registry& registry);

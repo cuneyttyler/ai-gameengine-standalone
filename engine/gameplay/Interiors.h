@@ -8,11 +8,16 @@
 
 namespace aige {
 
+struct Interior;
+
 // Interiors (development_plan.md Phase 27): a building with an Interior shows it while the player stands inside its
 // footprint, its exterior otherwise.
 
 // Each Interior's `shown` from where the player stands (Play), then the pictures as `shown` says.
 void UpdateInteriors(Registry& registry, std::optional<Entity> player);
+// The cell of floor change `change` (1: floor 1 to 2) of a building whose footprint is [x0, x1] x [y0, y1]: its
+// Interior.stairs' listed cell, else its corners in turn (top, right, left).
+std::pair<int, int> StairsCell(const Interior& interior, int change, int x0, int y0, int x1, int y1);
 // The pictures as each Interior's `shown` says (the interior's texture, or the exterior put back): every frame in the
 // editor too, so the Inspector's shown previews it.
 void ApplyInteriors(Registry& registry);

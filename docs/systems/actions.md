@@ -15,8 +15,19 @@ axes) and the situation it works in (gameplay, dialogue, menu, any).
   optionally:
   - **plays**: a clip the player plays when it's pressed (`parry`, `attack_kick`; any clip of its sheet, by name).
   - **event**: an event emitted when it's pressed, for scripts (`on("parry", function(e) ... end)`).
+  - **effect**: an effect played on the player when it's pressed (a parry's flash).
 
-Left click to attack: rebind `attack` to MouseLeft. Right click to parry: add `parry`, bind MouseRight, plays `parry`.
+**Effects** are records (`effect`: particles, a sound, a short light, a flash, a screen shake, hit-stop, slow motion,
+in any mix): the engine's presets (Project ▸ Effects ▸ Try, **Customise** to copy one into the project) or the
+project's own (**+ New**, then its parts in Records ▸ effect). Actions, input actions, hits, deaths and spells play
+them by name.
+
+**Interact is the default action** (E, Space, the gamepad's A): talk, open, pick up, use. The engine isn't for RPGs
+only, so a character comes with no attack: `attack` (left click, the gamepad's X) does something only for a character
+with **MeleeAttack** (or RangedAttack: `fire`), added in the Inspector when a game has fighting. The action templates
+(RPG, Action RPG, Action-adventure) and a planned game whose brief has combat give their player one.
+
+Right click to parry: add `parry`, bind MouseRight, plays `parry`.
 Scripts ask for actions by name (`action_pressed("farm")`), so rebinding changes nothing in them.
 
 ## 2. Things that react: the Action component
@@ -38,6 +49,8 @@ and merchants add. Both go through the same use (`Act(user, target)`), so anythi
 | `gives` | items given to the user (`wheat*3`) |
 | `userAnimation` | the clip the user plays (farm, use_pickup, pray) |
 | `animation` | the clip this plays |
+| `effect` | an effect played on this when it happens: dust, sparks, a glow, a sound (an effect record) |
+| `userEffect` | an effect played on the user |
 | `becomes` | the prefab it turns into once the animations have played |
 | `emits` | an event emitted, for scripts |
 | `setFlag` | a story flag set |

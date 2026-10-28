@@ -119,6 +119,8 @@ private:
     // The story's markers (its anchors, where one arrives, the player in the first scene) on a built
     // place's scene; the number of anchors that had no part showing them.
     int AddStoryMarkers(Registry& registry, const Row& row, const nlohmann::json& solved, int originX, int originY);
+    // The start scene's player: MeleeAttack only when the plan has combat (interact is the default action).
+    Entity CreatePlanPlayer(Registry& registry, float x, float y);
     // The editor finished a place: its scene gets its markers, and the row is built.
     void FinishInEditor(Row& row);
 

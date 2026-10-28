@@ -15,6 +15,8 @@ add_library(aige_ai_bridge STATIC
     AiClient.cpp
     ContextBuilder.h
     ContextBuilder.cpp
+    AiTools.h
+    AiTools.cpp
     Proposal.h
     Proposal.cpp
     DryRun.h

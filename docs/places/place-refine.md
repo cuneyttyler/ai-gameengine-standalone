@@ -167,8 +167,12 @@ only those zones (`RelayoutMoving`) would fix most.
   ground's corners round the cursor with a soft falloff; what stands there rides with it; one
   undo step per stroke for the ground.
 
-Open: cliffs (a sharp step between levels, with a cliff face); hills in the map's silhouette
-shown with a side; picking a raised cell under the cursor (it picks the flat cell).
+- **Walked.** Moving characters stand at the height under their feet (eased). A cell much higher or lower than the one
+  the player stands on (a step of more than 14 px) is a cliff and can't be walked up or down, except onto or off a
+  cell with a **Ramp** (stairs, a ramp, a ladder: the builder's stairs pieces get one; add it in the Inspector).
+
+Open: cliff faces drawn (a sharp step with its side); characters (NPCs) obeying cliffs on their paths; picking a
+raised cell under the cursor (it picks the flat cell).
 
 ## 11. In the ontology and the Build panel
 

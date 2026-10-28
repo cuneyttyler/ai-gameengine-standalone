@@ -1,5 +1,7 @@
 #pragma once
 
+#include <nlohmann/json.hpp>
+
 #include <string>
 #include <vector>
 
@@ -22,5 +24,11 @@ struct ScriptProblem {
 // reach (say, only when health is low) aren't found.
 std::vector<ScriptProblem> DryRunScripts(const std::string& sceneText, const Project& project, double seconds = 2.0,
                                          const std::vector<std::string>& onlyScripts = {});
+
+// The AI panel's playtest (docs/ai/agent.md): the scene played headless for `seconds`, pressing the input actions in
+// `press` one after another (each held a moment, then let go; "move_x+", "move_y-" walk), and what happened: the
+// events, script errors, where the player went, what's in its pockets. As JSON for the model.
+nlohmann::json PlaytestScene(const std::string& sceneText, const Project& project, double seconds,
+                             const std::vector<std::string>& press);
 
 } // namespace aige

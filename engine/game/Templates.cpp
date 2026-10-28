@@ -54,7 +54,8 @@ std::optional<std::string> CreateProjectFromTemplate(const fs::path& root, const
             CreateTile(registry, x, y, edge ? TileKind::Wall : (!action && x >= 14 && x <= 19 && y >= 4 && y <= 9) ? TileKind::Dirt : TileKind::Grass);
         }
     }
-    CreatePlayer(registry, 6.5f, 12.5f);
+    const Entity player = CreatePlayer(registry, 6.5f, 12.5f);
+    if (action) registry.emplace<MeleeAttack>(player, 3.0f, 0.7f, 0.5f, 0.35f, 0.5f); // the action templates fight
     const std::string guideKey = action ? "character/elder" : "character/neighbour";
     const std::string guideName = action ? "Elder Maren" : "Neighbour Ola";
     const Entity guide = CreateNpc(registry, 9.5f, 12.5f);

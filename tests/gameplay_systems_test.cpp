@@ -318,13 +318,14 @@ TEST_F(SystemsTest, KillsGiveExperienceAndDropLootInPlay) {
         for (int y = 0; y < 8; ++y) aige::CreateTile(registry, x, y, aige::TileKind::Grass);
     }
     auto hero = aige::CreatePlayer(registry, 2.5f, 2.5f);
+    registry.emplace<aige::MeleeAttack>(hero, 3.0f, 0.7f, 0.5f, 0.35f, 0.5f); // characters come without an attack
     registry.emplace<aige::Progression>(hero);
     auto enemy = aige::CreateEnemy(registry, 3.2f, 2.5f, hero, "");
     registry.get<aige::Health>(enemy).current = 1.0f;
     registry.emplace<aige::Rewards>(enemy, 150.0f, 5, 5, "");
     registry.emplace_or_replace<aige::Facing>(hero, 1.0f, 0.0f);
     aige::GameSession session(registry, lua, aige::IsoParams{});
-    std::set<aige::Key> held = {aige::Key::Space};
+    std::set<aige::Key> held = {aige::Key::Q}; // attack (Space is interact)
     bool levelUp = false;
     session.Advance(aige::GameSession::kFixedDt, [&](aige::Key k) { return held.contains(k); });
     for (const auto& e : session.DeliveredEvents()) levelUp |= e.name == "level_up";

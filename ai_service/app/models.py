@@ -217,6 +217,21 @@ class SetPrefabField(BaseModel):
     value: Any
 
 
+class AddPrefabComponent(BaseModel):
+    """Adds a component to a prefab (every copy follows), with its fields."""
+    op: Literal["add_prefab_component"]
+    prefab: str
+    component: str
+    fields: dict[str, Any] = {}
+
+
+class RemovePrefabComponent(BaseModel):
+    """Removes a component from a prefab (copies follow, unless they added it themselves)."""
+    op: Literal["remove_prefab_component"]
+    prefab: str
+    component: str
+
+
 class SetSetting(BaseModel):
     op: Literal["set_setting"]
     section: str
@@ -317,7 +332,8 @@ class DeleteRecord(BaseModel):
 
 Operation = Annotated[
     Union[
-        SetField, AddComponent, RemoveComponent, SetPrefabField, SetSetting, SetScriptProperty, RunCommand,
+        SetField, AddComponent, RemoveComponent, SetPrefabField, AddPrefabComponent, RemovePrefabComponent, SetSetting,
+        SetScriptProperty, RunCommand,
         WriteDialogue, WriteQuest, WriteSchedule, WriteCutscene, WriteUi, WriteAnim, WriteRecord, DeleteRecord,
         StoryGraphOp,
     ],
@@ -333,10 +349,53 @@ class ArtRequest(BaseModel):
     cells: float = 1.0             # how wide, in cells
 
 
+class ToolCall(BaseModel):
+    """Something the model reads or looks at before it answers (docs/ai/agent.md): the editor runs it and asks again
+    with what came back."""
+    tool: str
+    args: dict = {}
+
+
+class Route(BaseModel):
+    """A request that's another panel's work: a whole place (the Build panel) or a whole game or story (the Planner)."""
+    panel: Literal["build", "planner"]
+    request: str = ""   # what to start it with, in the user's words
+    reason: str = ""
+
+
+class Ask(BaseModel):
+    """A question back when the request is unclear, with answers to click."""
+    question: str
+    choices: list[str] = []
+
+
+class EditorAction(BaseModel):
+    """Something done in the editor itself, not to the project: select, frame the view, open a scene or a panel, play.
+    Done when the answer arrives (no review: nothing in the project changes)."""
+    do: Literal["select", "frame", "openScene", "openPanel", "play"]
+    entities: list[int] = []
+    entity: int | None = None
+    path: str = ""
+    panel: str = ""
+
+
+class GenerateRequest(BaseModel):
+    """A character or an animation the change needs: made by the service before the operations are checked, and
+    "character:<name>" / "animation:<name>" in them becomes its sheet's path."""
+    kind: Literal["character", "animation"]
+    name: str
+    description: str = ""       # a character: what it is; an animation of a picture: what it is
+    directions: int = 8         # a character: 4 or 8
+    target: str = ""            # an animation: a character sheet path, "character:<name>", or a picture's path
+    action: str = ""            # an animation: walk, attack, "the lid swings open"...
+
+
 class Proposal(BaseModel):
     summary: str
     # Art to make first: the service draws each, and "art:<name>" in the operations becomes its path.
     art: list[ArtRequest] = []
+    # Characters and animations to make first (Generate's, by the service).
+    generate: list[GenerateRequest] = []
     operations: list[Operation] = []
     notes: str = ""
     # How big the request is, decided by the model (development_plan.md 2.9):
@@ -345,10 +404,17 @@ class Proposal(BaseModel):
     #           last one; the editor applies each to a working copy, plays it and
     #           sends the results back for the next step
     #   split - too big for one go; no operations, `split` suggests smaller requests
-    scope: Literal["small", "task", "split"] = "small"
+    #   tools - it reads or looks first: `tools`, no operations; the editor answers with the results
+    #   route - another panel's work: `route`
+    #   ask   - unclear: `ask`, a question with choices
+    scope: Literal["small", "task", "split", "tools", "route", "ask"] = "small"
     plan: list[str] = []
     done: bool = False
     split: list[str] = []
+    tools: list[ToolCall] = []
+    route: Route | None = None
+    ask: Ask | None = None
+    editor: list[EditorAction] = []
     # Set by the service, not the model: operations of a task step that still
     # didn't validate after the repair round and were left out, with why. The
     # editor reports them back so the next step can do them properly.

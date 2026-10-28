@@ -557,6 +557,121 @@
     }
   },
   {
+    "id": "harbour",
+    "name": "Harbour",
+    "root": "harbour",
+    "words": [
+      "harbour",
+      "harbor",
+      "docks",
+      "dock",
+      "port",
+      "wharf",
+      "quay",
+      "pier",
+      "fishing village"
+    ],
+    "unit": {
+      "field": "buildings",
+      "class": "BuildingParcel",
+      "label": "buildings"
+    },
+    "stages": [
+      "site & water",
+      "lanes",
+      "docks & piers",
+      "warehouses & houses",
+      "dressing"
+    ],
+    "components": [
+      "docks",
+      "dock",
+      "warehouse-plot",
+      "fish-market",
+      "house-plot",
+      "market-square",
+      "road",
+      "ground",
+      "river",
+      "lake",
+      "meadow",
+      "clutter",
+      "nature-scatter"
+    ],
+    "scale": [
+      {
+        "class": "landing",
+        "buildings": [
+          2,
+          6
+        ],
+        "side": [
+          30,
+          50
+        ],
+        "zones": [
+          1,
+          1
+        ]
+      },
+      {
+        "class": "harbour",
+        "buildings": [
+          6,
+          24
+        ],
+        "side": [
+          50,
+          90
+        ],
+        "zones": [
+          1,
+          2
+        ]
+      },
+      {
+        "class": "port",
+        "buildings": [
+          24,
+          80
+        ],
+        "side": [
+          90,
+          160
+        ],
+        "zones": [
+          2,
+          4
+        ]
+      }
+    ],
+    "briefFields": {
+      "style": {
+        "era": [
+          "ancient",
+          "medieval",
+          "renaissance"
+        ],
+        "biome": "biome",
+        "condition": "condition"
+      },
+      "features": [
+        "river",
+        "lake",
+        "coast"
+      ]
+    },
+    "look": {
+      "reference": "Age of Empires II, Anno 1404, Baldur's Gate harbours",
+      "goals": [
+        "wooden piers reaching out over the water, boats moored along them",
+        "warehouses and a fish market facing the waterfront, crates, barrels and nets stacked by them",
+        "a waterfront road along the shore with lanes up to the houses behind",
+        "water with banks, ripples and wet planks; one light from the upper left"
+      ]
+    }
+  },
+  {
     "id": "castle",
     "name": "Castle",
     "root": "castle",

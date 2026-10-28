@@ -47,6 +47,7 @@ export const editorState = reactive({
     // 'undecided' until the user answers the first-run question; until then nothing runs.
     choice: 'undecided' as 'undecided' | 'on' | 'off',
     reviewPolicy: 'reviewAll' as 'reviewAll' | 'autoApplyTweaks',
+    stepReview: false, // a task waits after each step for Continue
     provider: 'mistral' as string, // the model that writes: mistral or claude
     model: '',
     providerError: '',
@@ -69,9 +70,12 @@ export const editorState = reactive({
   showShortcuts: false, // Help ▸ Keyboard Shortcuts
   showOntology: false, // File ▸ Ontology…, the Build panel's menu (development_plan.md 9)
   showBackground: false, // Edit ▸ Background Image…
+  partDialog: null as number | null, // Animate a part…: the entity whose picture a part is animated of
   fxSheet: '', // Assets ▸ Animations ▸ Show in Effects: the sheet to open there
   fxSheetEdit: false, // …and open in the sheet editor (Edit)
   animateSheet: '', // a character sheet for Generate ▸ Animate to animate (Assets ▸ Characters ▸ Animate…)
+  // A request handed to the Build panel or the Planner (the AI panel's route card): filled into its box.
+  prefill: { panel: '', text: '' } as { panel: string; text: string },
   replacePrefab: null as string | null, // Edit ▸ Replace prefab…: the prefab to replace ('' : choose)
   replaceEntity: null as number | null, // …of one thing (the viewport's or the Inspector's Replace prefab): it, or every copy
   grid: false, // tile borders on empty ground (G)
@@ -130,6 +134,7 @@ onHostMessage((message) => {
     editorState.ai.enabled = message.enabled as boolean
     editorState.ai.choice = message.choice as typeof editorState.ai.choice
     editorState.ai.reviewPolicy = message.reviewPolicy as typeof editorState.ai.reviewPolicy
+    editorState.ai.stepReview = Boolean(message.stepReview)
     editorState.ai.provider = (message.provider as string) ?? 'mistral'
     editorState.ai.model = (message.model as string) ?? ''
     editorState.ai.providerError = (message.providerError as string) ?? ''

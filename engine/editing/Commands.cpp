@@ -1,6 +1,10 @@
 #include "editing/Commands.h"
 
 #include "assets/PackImport.h"
+#include "assets/SceneFiles.h"
+#include "assets/ProjectMove.h"
+#include "gameplay/InputMap.h"
+#include <sstream>
 #include "assets/Prefab.h"
 #include "assets/TextureCook.h"
 #include "gameplay/BootstrapLevel.h"
@@ -445,6 +449,139 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
                 return Fail("can't write " + path);
             }
             out << ToString(args[1]);
+            return {};
+        });
+
+    // Scenes and input actions (docs/ai/agent.md): what the user does in New Scene, a scene's Type and Project
+    // Settings ▸ Input, for the AI panel too.
+    r.Command("scene.create", "Creates a new, empty scene (scenes/<name>.aige) with its type: how the Build panel and the Planner "
+                              "build it. Connect it to others with Gateway components and markers.")
+        .Param("name", FieldType::String, "The scene's name: letters, digits, - and _ (becomes scenes/<name>.aige).")
+        .Param("type", FieldType::String, "Assembled (pieces put together on the grid) or Paint (painted whole, then marked).")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.project == nullptr) return Fail("no project is open");
+            const std::string type = ToString(args[1]) == "Paint" ? "Paint" : "Assembled";
+            const SceneResult made = CreateScene(*context.project, ToString(args[0]), type);
+            if (!made.error.empty()) return Fail(made.error);
+            return {};
+        });
+    r.Command("scene.setType", "Sets how a scene is built: Assembled or Paint (the Build panel and the Planner use it).")
+        .Param("path", FieldType::String, "The scene: scenes/<name>.aige.")
+        .Param("type", FieldType::String, "Assembled or Paint.")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.project == nullptr) return Fail("no project is open");
+            const std::string path = ToString(args[0]);
+            if (path.rfind("scenes/", 0) != 0 || path.find("..") != std::string::npos) return Fail("a scene is scenes/<name>.aige");
+            if (!SetSceneType(context.project->Resolve(path), ToString(args[1]) == "Paint" ? "Paint" : "Assembled")) {
+                return Fail("no scene " + path);
+            }
+            return {};
+        });
+    r.Command("file.move", "Moves or renames a prefab, an asset or a scene (prefabs/, assets/, scenes/); every reference to it in "
+                           "the project (scenes, prefabs, settings, story, scripts) follows. A prefab stays under prefabs/, an "
+                           "asset under assets/ (its .meta goes along), a scene under scenes/.")
+        .Param("from", FieldType::String, "Its path now: prefabs/x.prefab, assets/.../x.png, scenes/x.aige.")
+        .Param("to", FieldType::String, "Its new path, the same kind of place and extension.")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.project == nullptr) return Fail("no project is open");
+            const MoveResult moved = MoveProjectFile(*context.project, ToString(args[0]), ToString(args[1]));
+            if (!moved.error.empty()) return Fail(moved.error);
+            return {};
+        });
+    r.Command("asset.delete", "Deletes an asset file (assets/..., with its .meta). Things still using it show a placeholder: "
+                              "replace them first (prefab.replace, entity.replacePrefab).")
+        .Param("path", FieldType::String, "The asset: assets/....")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.project == nullptr) return Fail("no project is open");
+            const std::string path = ToString(args[0]);
+            if (path.rfind("assets/", 0) != 0 || path.find("..") != std::string::npos) return Fail("an asset is assets/...");
+            if (!std::filesystem::exists(context.project->Resolve(path))) return Fail("no asset " + path);
+            std::error_code ec;
+            for (const char* suffix : {"", ".meta", ".gen.json"}) std::filesystem::remove(context.project->Resolve(path + suffix), ec);
+            return {};
+        });
+    r.Command("scene.delete", "Deletes a scene (scenes/<name>.aige). Refused for the start scene, the open one, and a scene a "
+                              "gateway or setting still leads to: change those first.")
+        .Param("path", FieldType::String, "The scene: scenes/<name>.aige.")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.project == nullptr) return Fail("no project is open");
+            const std::string error = DeleteScene(*context.project, ToString(args[0]));
+            if (!error.empty()) return Fail(error);
+            return {};
+        });
+    r.Command("asset.import", "Copies a file from the user's computer into the project (an image to assets/textures/, a sound "
+                              "to assets/audio/), keeping its name (a number added when it's taken). The user gives the path.")
+        .Param("from", FieldType::String, "The file's full path on the computer (C:/Users/.../tree.png).")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.project == nullptr) return Fail("no project is open");
+            const std::filesystem::path from = std::filesystem::u8path(ToString(args[0]));
+            if (!std::filesystem::is_regular_file(from)) return Fail("no file " + ToString(args[0]));
+            std::string ext = from.extension().string();
+            for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            const bool image = ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" || ext == ".bmp";
+            const bool sound = ext == ".wav" || ext == ".ogg" || ext == ".mp3" || ext == ".flac";
+            if (!image && !sound) return Fail("only images and sounds are imported");
+            const std::filesystem::path folder = context.project->Resolve(image ? "assets/textures" : "assets/audio");
+            std::error_code ec;
+            std::filesystem::create_directories(folder, ec);
+            std::filesystem::path to = folder / from.filename();
+            for (int n = 2; std::filesystem::exists(to); ++n) {
+                to = folder / (from.stem().string() + "_" + std::to_string(n) + from.extension().string());
+            }
+            if (!std::filesystem::copy_file(from, to, ec)) return Fail("can't copy: " + ec.message());
+            return {};
+        });
+    r.Command("input.addAction", "Adds (or changes) one of the game's input actions (Project Settings ▸ Input): its keys, and "
+                                 "optionally a clip the player plays and an event and effect when it's pressed. Things react "
+                                 "to it with an Action component (trigger input, action <name>).")
+        .Param("name", FieldType::String, "The action: lowercase, _ for spaces (farm, parry, kick).")
+        .Param("description", FieldType::String, "What it does, for the player (may be empty).")
+        .Param("keys", FieldType::String, "Its keys, comma-separated: E, Space, F, Q, MouseLeft, MouseRight, PadA, PadX...")
+        .Param("plays", FieldType::String, "A clip the player plays when it's pressed (may be empty).")
+        .Param("event", FieldType::String, "An event emitted when it's pressed, for scripts (may be empty).")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.project == nullptr) return Fail("no project is open");
+            std::string name = ToString(args[0]);
+            for (char& ch : name) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            if (name.empty()) return Fail("an action needs a name");
+            InputMap map = LoadInputMap(context.project->root);
+            InputAction* action = map.Find(name);
+            if (!action) {
+                map.actions.push_back({});
+                action = &map.actions.back();
+                action->name = name;
+            }
+            if (!ToString(args[1]).empty()) action->description = ToString(args[1]);
+            std::stringstream keys(ToString(args[2]));
+            std::string key;
+            std::vector<KeyBinding> bound;
+            while (std::getline(keys, key, ',')) {
+                key.erase(0, key.find_first_not_of(' '));
+                key.erase(key.find_last_not_of(' ') + 1);
+                if (key.empty()) continue;
+                const auto k = KeyFromName(key);
+                if (!k) return Fail("no key named " + key + " (E, Space, F, MouseLeft, MouseRight, PadA...)");
+                bound.push_back({*k, 1.0f});
+            }
+            if (!bound.empty()) action->keys = bound;
+            action->plays = ToString(args[3]);
+            action->event = ToString(args[4]);
+            if (!SaveInputMap(context.project->root, map)) return Fail("can't write input.json");
+            ActiveInputMap() = map;
+            return {};
+        });
+    r.Command("input.removeAction", "Removes one of the project's own input actions (the engine's can only be rebound).")
+        .Param("name", FieldType::String, "The action.")
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.project == nullptr) return Fail("no project is open");
+            const std::string name = ToString(args[0]);
+            if (InputMap::Defaults().Find(name)) return Fail(name + " is one of the engine's actions: rebind it instead");
+            InputMap map = LoadInputMap(context.project->root);
+            const size_t before = map.actions.size();
+            std::erase_if(map.actions, [&](const InputAction& a) { return a.name == name; });
+            if (map.actions.size() == before) return Fail("no action " + name);
+            if (!SaveInputMap(context.project->root, map)) return Fail("can't write input.json");
+            ActiveInputMap() = map;
             return {};
         });
 

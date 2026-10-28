@@ -109,9 +109,13 @@ TEST(InteriorsTest, ItsStairsTakeOneUpAndDownTheFloors) {
     EXPECT_EQ(registry.get<Sprite>(house).texture, "house-interior-2.png");
     step(3.5f, 3.5f); // still on them: no more
     EXPECT_EQ(registry.get<Interior>(house).floor, 2);
-    step(4.5f, 4.5f), step(3.5f, 3.5f); // off and on again: up to the top
+    step(4.5f, 4.5f), step(5.5f, 3.5f); // floor 2's stairs up stand in the right corner: up to the top
     EXPECT_EQ(registry.get<Interior>(house).floor, 3);
-    step(4.5f, 4.5f), step(3.5f, 3.5f); // from the top: down
+    step(4.5f, 4.5f), step(5.5f, 3.5f); // from the top, the same stairs: down
+    EXPECT_EQ(registry.get<Interior>(house).floor, 2);
+    step(4.5f, 4.5f), step(3.5f, 3.5f); // the first stairs again: down to the ground floor
+    EXPECT_EQ(registry.get<Interior>(house).floor, 1);
+    step(4.5f, 4.5f), step(3.5f, 3.5f); // and up
     EXPECT_EQ(registry.get<Interior>(house).floor, 2);
     step(4.5f, 9.5f); // out: the exterior, and the ground floor next time
     EXPECT_EQ(registry.get<Sprite>(house).texture, "house.png");

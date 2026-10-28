@@ -753,6 +753,8 @@ std::optional<Entity> PlaceObject(Registry& registry, PrefabLibrary& prefabs, co
             if (sprite->width < want) ScaleEntity(EngineReflection(), registry, e, want / sprite->width);
         }
     }
+    // Stairs and ramps join heights (place-refine.md §10): characters walk up and down through them, not cliffs.
+    if (choice.value("role", "") == "stairs" || o.value("slot", "") == "stairs") registry.emplace_or_replace<Ramp>(e);
     // A solid thing (its role's, roles.json) blocks its whole footprint; one that isn't, nothing, whatever its prefab
     // says (a prefab made earlier is reused as it is).
     if (layer != "building" && choice.contains("solid")) {

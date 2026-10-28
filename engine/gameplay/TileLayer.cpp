@@ -1,5 +1,7 @@
 #include "gameplay/TileLayer.h"
 
+#include <cmath>
+
 #include <algorithm>
 #include <climits>
 
@@ -255,6 +257,23 @@ size_t TileLayers::CellCount() const {
     size_t total = 0;
     for (const auto& [name, layer] : layers) total += layer.CellCount();
     return total;
+}
+
+std::optional<float> GroundHeightAt(Registry& registry, float wx, float wy) {
+    const TileLayers* found = registry.ctx().find<TileLayers>();
+    if (found == nullptr) return std::nullopt;
+    const TileLayers& layers = *found;
+    const int x = static_cast<int>(std::floor(wx)), y = static_cast<int>(std::floor(wy));
+    const auto ordered = layers.Ordered();
+    for (auto l = ordered.rbegin(); l != ordered.rend(); ++l) {
+        if ((*l)->Get(x, y) == TileLayer::kEmpty) continue;
+        const TileLayer::CornerLift* lift = (*l)->Lift(x, y);
+        if (lift == nullptr) return 0.0f;
+        const auto& c = *lift; // top (x,y), right (x+1,y), bottom (x+1,y+1), left (x,y+1)
+        const float fx = wx - x, fy = wy - y;
+        return (c[0] * (1 - fx) + c[1] * fx) * (1 - fy) + (c[3] * (1 - fx) + c[2] * fx) * fy;
+    }
+    return std::nullopt;
 }
 
 TileLayers& LayersOf(Registry& registry) {

@@ -173,6 +173,7 @@ TEST_F(DifficultyTest, ApplyingScalesEntitiesFromTheirBase) {
 TEST_F(DifficultyTest, TheCombatPreview) {
     aige::Registry registry;
     auto hero = aige::CreatePlayer(registry, 1.5f, 1.5f);
+    registry.emplace<aige::MeleeAttack>(hero, 3.0f, 0.7f, 0.5f, 0.35f, 0.5f); // characters come without an attack
     auto skeleton = aige::CreateEnemy(registry, 5.5f, 5.5f, hero, "");
     registry.get<aige::Health>(hero) = {20.0f, 20.0f};
     registry.get<aige::Health>(skeleton) = {12.0f, 12.0f};

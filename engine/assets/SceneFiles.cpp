@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <sstream>
 
@@ -69,14 +70,44 @@ std::string ScenePathFor(const std::string& name) {
     return slug.empty() ? "" : "scenes/" + slug.substr(0, 48) + ".aige";
 }
 
-SceneResult CreateScene(const Project& project, const std::string& name) {
+SceneResult CreateScene(const Project& project, const std::string& name, const std::string& type) {
     const std::string path = ScenePathFor(name);
     if (path.empty()) return {"", "a scene needs a name with letters or digits"};
     if (Exists(project, path)) return {"", path + " already exists"};
     std::error_code ec;
     fs::create_directories(project.root / "scenes", ec);
-    std::ofstream(project.Resolve(path), std::ios::binary) << "# AIGE Scene v1\n";
+    std::ofstream(project.Resolve(path), std::ios::binary) << "# AIGE Scene v1\n" << (type.empty() ? "" : "# type " + type + "\n");
     return {path, ""};
+}
+
+std::string SceneType(const fs::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    std::string line;
+    for (int i = 0; i < 8 && std::getline(in, line); ++i) { // the header's lines, before the first entity
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.rfind("# type ", 0) == 0) return line.substr(7);
+        if (line == "entity") break;
+    }
+    return {};
+}
+
+bool SetSceneType(const fs::path& file, const std::string& type) {
+    std::ifstream in(file, std::ios::binary);
+    if (!in) return false;
+    std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
+    const std::string line = type.empty() ? std::string() : "# type " + type + "\n";
+    if (const size_t at = text.find("# type "); at != std::string::npos && at < 64) {
+        size_t stop = text.find('\n', at);
+        stop = stop == std::string::npos ? text.size() : stop + 1;
+        text.replace(at, stop - at, line);
+    } else {
+        const size_t first = text.find('\n');
+        text.insert(first == std::string::npos ? text.size() : first + 1, line);
+    }
+    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    out << text;
+    return static_cast<bool>(out);
 }
 
 SceneResult DuplicateScene(const Project& project, const std::string& scene, const std::string& name) {

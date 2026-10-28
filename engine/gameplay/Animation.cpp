@@ -876,6 +876,36 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
             registry.get_or_emplace<Sprite>(made).texture = picture;
         }
     }
+    // Animated parts (a building's door): an overlay each, over the box they came from.
+    for (auto [owner, part, sprite] : registry.view<AnimatedPart, Sprite>(entt::exclude<Transient>).each()) {
+        if (part.sheet.empty()) continue;
+        Entity made{entt::null};
+        if (auto it = shown.find({owner, "part"}); it != shown.end() && registry.get<AttachmentLink>(it->second).item == part.sheet) {
+            made = it->second;
+        } else {
+            made = registry.create();
+            registry.emplace<Transient>(made);
+            registry.emplace<ScreenTransform2D>(made);
+            registry.emplace<AttachmentLink>(made, AttachmentLink{owner, "part", part.sheet});
+            registry.emplace<Sprite>(made);
+            registry.emplace<Animator>(made, part.sheet, "prop");
+        }
+        kept.insert(made);
+        auto& attachment = registry.get_or_emplace<Attachment>(made);
+        attachment.point.clear();
+        // From the bottom middle of the thing's frame (an Attachment's point when it names none) to the box's middle.
+        float frameW = 0.0f, frameH = 0.0f;
+        if (int w = 0, h = 0; library.TextureSize(sprite.texture, &w, &h)) {
+            frameW = static_cast<float>(w) * std::abs(sprite.u1 - sprite.u0);
+            frameH = static_cast<float>(h) * std::abs(sprite.v1 - sprite.v0);
+        }
+        attachment.offsetX = part.x - frameW * 0.5f;
+        attachment.offsetY = part.y - frameH;
+        attachment.pivotX = attachment.pivotY = 0.5f;
+        attachment.layer = "front";
+        attachment.turn = false;
+        attachment.size = std::max(part.width, part.height);
+    }
     for (const auto& [key, entity] : shown) {
         if (!kept.contains(entity)) stale.push_back(entity);
     }
@@ -895,7 +925,11 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
         }
         const float scale = frameWidth > 0.0f ? parent->width / frameWidth : 1.0f;
         int w = 0, h = 0;
-        if (!library.TextureSize(sprite.texture, &w, &h)) continue;
+        if (const auto* own = registry.try_get<AnimatorState>(entity); own && own->frameWidth > 0.0f) {
+            w = static_cast<int>(own->frameWidth), h = static_cast<int>(own->frameHeight); // animated: one frame of its sheet
+        } else if (!library.TextureSize(sprite.texture, &w, &h)) {
+            continue;
+        }
         const float k = attachment.size > 0.0f ? attachment.size * scale / static_cast<float>(std::max(w, h)) : scale;
         sprite.width = static_cast<float>(w) * k;
         sprite.height = static_cast<float>(h) * k;
@@ -927,6 +961,7 @@ void PlaceAttachments(Registry& registry) {
         screen.x = px - (dx * c - dy * s);
         screen.y = py - (dx * s + dy * c);
         sprite.angle = turn;
+        if (attachment.layer == "own") continue; // its depth is where it stands (a painted door: over its building's occluder)
         const bool front = attachment.layer == "front" || (attachment.layer != "behind" && point.front);
         screen.depth = at->depth + (front ? 0.01f : -0.01f);
     }

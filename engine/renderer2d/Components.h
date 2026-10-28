@@ -42,6 +42,9 @@ struct Sprite {
     bool flat = false;
     // Lit by itself (windows at night, glowing runes): 2D lighting leaves it alone (18.6).
     bool emissive = false;
+    // A flat thing's place among the ground's pieces (-9..9, higher on top: a road over a grass patch, a rug over the
+    // road); flat things are all drawn under what stands. Edit ▸ Bring forward / Send backward (Ctrl+] / Ctrl+[).
+    int order = 0;
     // Turned (degrees, clockwise) around its position: a rigid body's angle (20.3).
     float angle = 0.0f;
     // Quarter turns clockwise of a flat image (0-3), so one road piece can

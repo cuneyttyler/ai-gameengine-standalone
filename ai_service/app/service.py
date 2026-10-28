@@ -79,11 +79,12 @@ def _parse(text: str, schema: EngineSchema) -> tuple[Proposal | None, list[str]]
         return None, problems
 
 
-def _with_art(proposal: Proposal, made: dict[str, str]) -> Proposal:
-    """The operations with "art:<name>" replaced by the path of the art made for it."""
+def _with_art(proposal: Proposal, made: dict[str, str], prefix: str = "art:") -> Proposal:
+    """The operations with "art:<name>" (or another prefix: "character:", "animation:") replaced by the path of what
+    was made for it."""
     def swap(value):
-        if isinstance(value, str) and value.startswith("art:") and value[4:] in made:
-            return made[value[4:]]
+        if isinstance(value, str) and value.startswith(prefix) and value[len(prefix):] in made:
+            return made[value[len(prefix):]]
         if isinstance(value, list):
             return [swap(v) for v in value]
         if isinstance(value, dict):
@@ -102,12 +103,16 @@ def propose(
     history: list[dict] | None = None,
     canon: str = "",
     make_art=None,
+    make_generated=None,
+    images: list[dict] | None = None,
 ) -> ProposalResult:
     """`make_art(requests) -> {name: path}` draws a proposal's art (the Art tool); without it, a
-    proposal that needs art is told it can't have it."""
+    proposal that needs art is told it can't have it. `make_generated(requests) -> {"character:<name>" |
+    "animation:<name>": path}` makes its characters and animations (Generate's)."""
     result = ProposalResult(proposal=None, errors=[])
     made: dict[str, str] = {}
-    messages = build_messages(schema, context, instruction, history, canon)
+    generated: dict[str, str] = {}
+    messages = build_messages(schema, context, instruction, history, canon, images)
     for attempt in range(1, MAX_ATTEMPTS + 1):
         result.attempts = attempt
         try:
@@ -130,6 +135,19 @@ def propose(
                 context = context.model_copy(update={"assets": list(context.assets) + [{"path": p, "type": "texture"} for p in made.values()]})
             if missing:
                 errors = [f"art {', '.join(missing)} couldn't be made: use art the project has"]
+        if proposal is not None and proposal.generate and not errors:
+            # Characters first (an animation may be of one), each once.
+            wanted = [g for g in sorted(proposal.generate, key=lambda g: g.kind != "character")
+                      if f"{g.kind}:{g.name}" not in generated]
+            if wanted and make_generated is not None:
+                generated.update(make_generated(wanted))
+            missing = [f"{g.kind} {g.name}" for g in proposal.generate if f"{g.kind}:{g.name}" not in generated]
+            for prefix in ("character:", "animation:"):
+                proposal = _with_art(proposal, {k[len(prefix):]: v for k, v in generated.items() if k.startswith(prefix)}, prefix)
+            if generated:
+                context = context.model_copy(update={"assets": list(context.assets) + [{"path": p, "type": "animation"} for p in generated.values()]})
+            if missing:
+                errors = [f"{', '.join(missing)} couldn't be made (the animator or the art provider is off or failed)"]
         if proposal is not None and not errors:
             errors = validate_proposal(proposal, schema, context)
         if not errors:

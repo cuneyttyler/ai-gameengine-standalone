@@ -5,7 +5,8 @@
   "level": "parcel",
   "description": "A house on its plot, facing the street, with a yard and maybe a garden.",
   "buildTypes": [
-    "settlement"
+    "settlement",
+    "harbour"
   ],
   "classes": [
     "Dwelling"

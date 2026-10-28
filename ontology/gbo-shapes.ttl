@@ -4893,6 +4893,114 @@ gbs:HallwayShape
         ] )
     ] .
 
+gbs:HarbourShape
+    a sh:NodeShape ;
+    sh:targetClass gbl:Harbour ;
+    sh:property [
+        sh:path gbl:Harbour.area ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 400.0
+    ], [
+        sh:path gbl:Harbour.buildings ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 400
+    ], [
+        sh:path gbl:Harbour.piers ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxInclusive 40
+    ], [
+        sh:path gbl:Harbour.condition ;
+        sh:maxCount 1 ;
+        sh:in ( gbv:condition.new gbv:condition.lived-in gbv:condition.worn gbv:condition.ruined )
+    ], [
+        sh:path gbl:Harbour.notes ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ], [
+        sh:path gbl:Harbour.relief ;
+        sh:maxCount 1 ;
+        sh:in ( "flat" "gentle" "hilly" )
+    ], [
+        sh:path gbl:Harbour.water ;
+        sh:maxCount 1 ;
+        sh:in ( "river" "lake" )
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Docks
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 3
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Ground
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:HousePlot
+        ] ;
+        sh:qualifiedMaxCount 40
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Lake
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:MarketSquare
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Meadow
+        ] ;
+        sh:qualifiedMaxCount 2
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:River
+        ] ;
+        sh:qualifiedMaxCount 1
+    ], [
+        sh:path gbo:hasPart ;
+        sh:qualifiedValueShape [
+            sh:class gbl:Road
+        ] ;
+        sh:qualifiedMinCount 1 ;
+        sh:qualifiedMaxCount 20
+    ], [
+        sh:path gbo:hasPart ;
+        sh:or ( [
+            sh:class gbl:Docks
+        ] [
+            sh:class gbl:Ground
+        ] [
+            sh:class gbl:HousePlot
+        ] [
+            sh:class gbl:Lake
+        ] [
+            sh:class gbl:MarketSquare
+        ] [
+            sh:class gbl:Meadow
+        ] [
+            sh:class gbl:River
+        ] [
+            sh:class gbl:Road
+        ] )
+    ] .
+
 gbs:HayShape
     a sh:NodeShape ;
     sh:targetClass gbl:Hay ;

@@ -10,6 +10,10 @@
 #include <cstdlib>
 #include <cstdio>
 #include <algorithm>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -103,6 +107,23 @@ std::vector<std::string> UpperFloors(const Interior& interior) {
 
 } // namespace
 
+std::pair<int, int> StairsCell(const Interior& interior, int change, int x0, int y0, int x1, int y1) {
+    // The listed cell of floor change `change` (1: floor 1 to 2), else the footprint's corners in turn: top, right, left.
+    std::vector<std::pair<int, int>> listed;
+    std::stringstream in(interior.stairs);
+    std::string part;
+    while (std::getline(in, part, ';')) {
+        int x = 0, y = 0;
+        if (std::sscanf(part.c_str(), "%d,%d", &x, &y) == 2) listed.push_back({x, y});
+    }
+    if (change >= 1 && change <= static_cast<int>(listed.size())) return listed[static_cast<size_t>(change - 1)];
+    switch ((std::max(change, 1) - 1) % 3) {
+        case 1: return {x1, y0}; // the right corner
+        case 2: return {x0, y1}; // the left corner
+        default: return {x0, y0}; // the back (top) corner
+    }
+}
+
 int InteriorFloors(const Interior& interior) {
     return interior.texture.empty() ? 0 : 1 + static_cast<int>(UpperFloors(interior).size());
 }
@@ -130,15 +151,17 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player) {
             interior.onStairs = false;
             continue;
         }
-        // Its stairs: stepping on goes a floor up (down again from the top); stepping off before the next.
+        // Its stairs: each floor change has its cell; walked onto from the floor below it goes up, from the floor above
+        // down; off it before it goes again.
         const int floors = InteriorFloors(interior);
-        int sx = x0, sy = y0;
-        if (!interior.stairs.empty()) std::sscanf(interior.stairs.c_str(), "%d,%d", &sx, &sy);
-        const bool onStairs = floors > 1 && px == sx && py == sy;
-        if (onStairs && !interior.onStairs) {
-            if (interior.floor >= floors) interior.climbing = false;
-            if (interior.floor <= 1) interior.climbing = true;
-            interior.floor = std::clamp(interior.floor + (interior.climbing ? 1 : -1), 1, floors);
+        bool onStairs = false;
+        if (floors > 1) {
+            const auto up = StairsCell(interior, interior.floor, x0, y0, x1, y1);   // up from this floor
+            const auto down = StairsCell(interior, interior.floor - 1, x0, y0, x1, y1); // down to the one below
+            const bool onUp = interior.floor < floors && px == up.first && py == up.second;
+            const bool onDown = interior.floor > 1 && px == down.first && py == down.second;
+            onStairs = onUp || onDown;
+            if (onStairs && !interior.onStairs) interior.floor = std::clamp(interior.floor + (onUp ? 1 : -1), 1, floors);
         }
         interior.onStairs = onStairs;
     }

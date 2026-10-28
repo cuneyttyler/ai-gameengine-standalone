@@ -5,7 +5,8 @@
   "level": "feature",
   "description": "Fish stalls by the water.",
   "buildTypes": [
-    "settlement"
+    "settlement",
+    "harbour"
   ],
   "quantity": {
     "stalls": {

@@ -275,6 +275,60 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             if (outcome) outcome->prefabsChanged = true;
         }
 
+    } else if (kind == "add_prefab_component" || kind == "remove_prefab_component") {
+        // A component on a prefab itself: every copy follows (docs/ai/agent.md).
+        const bool adding = kind == "add_prefab_component";
+        item.kind = adding ? "add_component" : "remove_component";
+        item.touchesFiles = true;
+        const std::string path = op.value("prefab", "");
+        const std::string componentName = op.value("component", "");
+        const PrefabInfo* info = prefabs.Find(path);
+        item.target = (info ? info->name : path) + " (prefab) · " + (adding ? "+ " : "− ") + componentName;
+        const ComponentInfo* component = reflection.FindComponent(componentName);
+        if (info == nullptr) {
+            error = "no prefab " + path;
+            return item;
+        }
+        if (component == nullptr || !component->userEditable) {
+            error = component ? componentName + " can't be changed by hand" : "unknown component " + componentName;
+            return item;
+        }
+        bool has = false;
+        prefabs.VisitTemplate(path, [&](Registry& r, Entity e) { has = component->has(r, e); });
+        if (adding == has) {
+            error = path + (adding ? " already has " : " has no ") + componentName;
+            return item;
+        }
+        nlohmann::json fields = op.value("fields", nlohmann::json::object());
+        std::vector<std::pair<const FieldInfo*, FieldValue>> values;
+        for (auto it = fields.begin(); adding && it != fields.end(); ++it) {
+            const FieldInfo* field = component->Field(it.key());
+            if (field == nullptr) {
+                error = componentName + " has no field " + it.key();
+                return item;
+            }
+            auto value = ReadValue(*field, it.value(), registry, error);
+            if (!value) return item;
+            values.emplace_back(field, *value);
+        }
+        if (adding) item.after = fields;
+        if (apply) {
+            auto failed = prefabs.EditTemplate(path, [&](Registry& r, Entity e) {
+                if (adding) {
+                    component->add(r, e);
+                    for (const auto& [field, value] : values) field->set(r, e, value);
+                } else {
+                    component->remove(r, e);
+                }
+            });
+            if (failed) {
+                error = *failed;
+                return item;
+            }
+            prefabs.SyncAll(registry, path);
+            if (outcome) outcome->prefabsChanged = true;
+        }
+
     } else if (kind == "set_setting") {
         item.kind = "setting";
         item.touchesFiles = true;

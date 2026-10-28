@@ -153,9 +153,11 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
   The exterior's `.meta` keeps them as `interior=` (floor 1) and `interiorFloors=`; each floor's has `exteriorOf=` and
   `floor=`. Built places, Add interior and the editor's repair on opening a scene (`RepairInteriorArt`: pictures made
   again are picked up from the pairing) fill them in.
-- **Play:** in through the door shows floor 1. Its **stairs** cell (`stairs`, "x,y"; empty: the footprint's back
-  corner) takes one up a floor each time it's stepped on (stepping off first), down again from the top; out of the
-  building, the exterior, and floor 1 next time.
+- **Play:** in through the door shows floor 1. Each floor change has its **stairs** cell (`stairs`, "x,y;x,y": floor 1
+  to 2, 2 to 3…; missing ones: the footprint's corners in turn, top, right, left — where the interior pictures draw each
+  staircase). Walked onto from the floor below it goes up, from the floor above down (stepping off before it goes
+  again); out of the building, the exterior, and floor 1 next time. Right-click inside a building showing a floor ▸
+  **Stairs here** sets that floor's stairs to the cell under the cursor (Assembled and Paint alike).
 - **Editor:** H steps through exterior, floor 1, floor 2… and back; the right-click menu has **Show floor k**.
 
 ## 5. In the editor

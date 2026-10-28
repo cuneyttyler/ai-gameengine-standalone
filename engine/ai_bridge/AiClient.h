@@ -50,7 +50,9 @@ public:
     std::string StatusText() const;
 
     // Queues a request; its answer arrives through Poll() with this id.
-    int Propose(const std::string& instruction, nlohmann::json context, nlohmann::json history = nlohmann::json::array());
+    // `images`: pictures the model asked to look at (its look tool), project paths.
+    int Propose(const std::string& instruction, nlohmann::json context, nlohmann::json history = nlohmann::json::array(),
+                const std::vector<std::string>& images = {});
 
     // Queues any other call to the service ("PUT /project", "POST /world/search");
     // its answer arrives through Poll() as a Response result with this id.

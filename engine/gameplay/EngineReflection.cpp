@@ -238,7 +238,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
     r.Component<Action>("Action", "Does something when its trigger happens, to whoever uses it: the player pressing its action "
                                   "near it, a character (Behaviour step act), a script (act), an event or a timer. A field "
                                   "farmed, a crop grown, a crop harvested (docs/systems/actions.md).")
-        .Field("trigger", &Action::trigger, "input: its action pressed within range; event: its event emitted; timer: seconds after it appears; touch: walked onto.").Options({"input", "event", "timer", "touch"})
+        .Field("trigger", &Action::trigger, "input: its action pressed within range; event: its event emitted; timer: seconds after it appears; touch: walked onto; near: someone comes within range.").Options({"input", "event", "timer", "touch", "near"})
         .Field("action", &Action::action, "The input action (Project Settings ▸ Input): interact, or one of the project's (farm, chop...).")
         .Field("event", &Action::event, "trigger event: the event's name.")
         .Field("seconds", &Action::seconds, "trigger timer: seconds after it appears.").Min(0)
@@ -249,12 +249,32 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("gives", &Action::gives, "Items given to the user: wheat*3, gold*5.")
         .Field("userAnimation", &Action::userAnimation, "The clip the user plays (farm, use_pickup, pray).")
         .Field("animation", &Action::animation, "The clip this plays.")
+        .Field("awayAnimation", &Action::awayAnimation, "trigger near: the clip played when they've all gone (a door closing).")
+        .Field("effect", &Action::effect, "An effect played on this when it happens (dust, sparks, a glow: an effect record, the project's own or a preset).")
+        .Field("userEffect", &Action::userEffect, "An effect played on the user.")
         .Field("becomes", &Action::becomes, "A prefab it turns into, in its place, once the animations have played.").As(FieldType::Prefab).Optional()
         .Field("emits", &Action::emits, "An event emitted, for scripts (its entity this, its other the user).")
         .Field("setFlag", &Action::setFlag, "A story flag set.")
         .Field("text", &Action::text, "Shown when it happens.")
         .Field("once", &Action::once, "Works only once.")
         .Field("cooldown", &Action::cooldown, "Seconds before it works again.").Min(0)
+        .DependsOn({"WorldTransform2D"});
+    r.Component<AnimatedPart>("AnimatedPart", "A part of its picture that moves on its own (a door, a window, a sign): drawn "
+                                              "over the box it came from, playing its clip when someone comes near and its "
+                                              "close clip when they leave. Build ▸ Animate makes them; or right-click ▸ Animate a part…")
+        .Field("sheet", &AnimatedPart::sheet, "Its animation sheet (assets/.../<name>.anim.json).")
+        .Field("x", &AnimatedPart::x, "The box's middle across, in pixels of this thing's picture.")
+        .Field("y", &AnimatedPart::y, "The box's middle down, in pixels of this thing's picture.")
+        .Field("width", &AnimatedPart::width, "The box's width, same pixels.").Min(0)
+        .Field("height", &AnimatedPart::height, "The box's height, same pixels.").Min(0)
+        .Field("clip", &AnimatedPart::clip, "Played when someone comes near (or it's used).")
+        .Field("closeClip", &AnimatedPart::closeClip, "Played when they leave.")
+        .Field("range", &AnimatedPart::range, "How near, in cells.").Range(0.3, 10)
+        .Field("near", &AnimatedPart::opensNear, "Opens as someone comes near (off: only when this thing is used).")
+        .DependsOn({"Sprite"});
+    r.Component<Ramp>("Ramp", "Characters walk between heights here: stairs, a ramp, a ladder. Elsewhere a cliff (a step much "
+                              "higher or lower than where one stands) can't be walked up or down.")
+        .Field("rise", &Ramp::rise, "How high it climbs, in pixels (informative; 0: any).").Min(0)
         .DependsOn({"WorldTransform2D"});
     r.Component<Interior>("Interior", "A place one can go into (Phase 27): its interior shows while the player is inside; only its walls block.")
         .Field("kind", &Interior::kind, "cutaway: the building drawn cut away in place; scene: its own scene, through its door.").Options({"cutaway", "scene"})
@@ -268,7 +288,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("hides", &Interior::hides, "A painted building's occluders, hidden while the interior shows.")
         .Field("floors", &Interior::floors, "The upper floors' pictures (floor 2, 3…), ';' between.")
         .Field("floor", &Interior::floor, "The floor shown: the player's while inside, a preview in the editor.")
-        .Field("stairs", &Interior::stairs, "The cell (x,y) that takes one up or down a floor; empty: its back corner.");
+        .Field("stairs", &Interior::stairs, "Each floor change's stairs cell, x,y;x,y (floor 1 to 2, 2 to 3...): walked onto from below goes up, from above down. Empty: its corners in turn (top, right, left). Right-click inside it ▸ Stairs here.");
     r.Component<Door>("Door", "A door (13.5): the interact action opens and closes it; open, it doesn't block.")
         .Field("open", &Door::open, "Open now.")
         .Field("openTexture", &Door::openTexture, "The picture when open (empty: unchanged).").As(FieldType::Texture)
@@ -410,7 +430,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("pivotY", &Attachment::pivotY, "Where this picture is held, down (0-1).").Range(0, 1)
         .Field("pointing", &Attachment::pointing, "Which way this picture's art points (degrees: 0 right, -90 up).").Range(-360, 360)
         .Field("size", &Attachment::size, "Its longest side in the other's frame pixels (0: its own size at the other's scale).").Min(0)
-        .Field("layer", &Attachment::layer, "In front of or behind the other: auto follows the point.").Options({"auto", "front", "behind"})
+        .Field("layer", &Attachment::layer, "In front of or behind the other: auto follows the point; own keeps its own depth (where it stands).").Options({"auto", "front", "behind", "own"})
         .Field("turn", &Attachment::turn, "Turned with the point's angle (off: kept upright, a hat).")
         .DependsOn({"Sprite"});
     r.Component<ParticleEmitter>("ParticleEmitter", "Emits particles (18.4): a particles record or preset "
@@ -521,6 +541,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "Lies flat on the ground: for art drawn top-down. The image is mapped onto the cell's diamond "
                "(width x height) instead of standing upright.")
         .Field("rotation", &Sprite::rotation, "Quarter turns clockwise of a flat image (0-3).").Range(0, 3)
+        .Field("order", &Sprite::order, "A flat thing's place among the ground's pieces, higher on top (a road over grass, a rug over the road). Ctrl+] / Ctrl+[.").Range(-9, 9)
         .Field("lift", &Sprite::lift, "Raised off the ground by this many pixels (standing on high ground).").Range(-512, 512)
         .Field("emissive", &Sprite::emissive, "Lit by itself (a lit window, glowing runes): darkness doesn't dim it.")
         .Field("angle", &Sprite::angle, "Turned around its position, in degrees (a rigid body sets it).").Range(-3600, 3600)

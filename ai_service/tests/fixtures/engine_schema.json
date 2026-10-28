@@ -291,6 +291,129 @@
       ]
     },
     {
+      "description": "Creates a new, empty scene (scenes/<name>.aige) with its type: how the Build panel and the Planner build it. Connect it to others with Gateway components and markers.",
+      "name": "scene.create",
+      "params": [
+        {
+          "description": "The scene's name: letters, digits, - and _ (becomes scenes/<name>.aige).",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "Assembled (pieces put together on the grid) or Paint (painted whole, then marked).",
+          "name": "type",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "description": "Sets how a scene is built: Assembled or Paint (the Build panel and the Planner use it).",
+      "name": "scene.setType",
+      "params": [
+        {
+          "description": "The scene: scenes/<name>.aige.",
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "description": "Assembled or Paint.",
+          "name": "type",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "description": "Moves or renames a prefab, an asset or a scene (prefabs/, assets/, scenes/); every reference to it in the project (scenes, prefabs, settings, story, scripts) follows. A prefab stays under prefabs/, an asset under assets/ (its .meta goes along), a scene under scenes/.",
+      "name": "file.move",
+      "params": [
+        {
+          "description": "Its path now: prefabs/x.prefab, assets/.../x.png, scenes/x.aige.",
+          "name": "from",
+          "type": "string"
+        },
+        {
+          "description": "Its new path, the same kind of place and extension.",
+          "name": "to",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "description": "Deletes an asset file (assets/..., with its .meta). Things still using it show a placeholder: replace them first (prefab.replace, entity.replacePrefab).",
+      "name": "asset.delete",
+      "params": [
+        {
+          "description": "The asset: assets/....",
+          "name": "path",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "description": "Deletes a scene (scenes/<name>.aige). Refused for the start scene, the open one, and a scene a gateway or setting still leads to: change those first.",
+      "name": "scene.delete",
+      "params": [
+        {
+          "description": "The scene: scenes/<name>.aige.",
+          "name": "path",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "description": "Copies a file from the user's computer into the project (an image to assets/textures/, a sound to assets/audio/), keeping its name (a number added when it's taken). The user gives the path.",
+      "name": "asset.import",
+      "params": [
+        {
+          "description": "The file's full path on the computer (C:/Users/.../tree.png).",
+          "name": "from",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "description": "Adds (or changes) one of the game's input actions (Project Settings ▸ Input): its keys, and optionally a clip the player plays and an event and effect when it's pressed. Things react to it with an Action component (trigger input, action <name>).",
+      "name": "input.addAction",
+      "params": [
+        {
+          "description": "The action: lowercase, _ for spaces (farm, parry, kick).",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "What it does, for the player (may be empty).",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "description": "Its keys, comma-separated: E, Space, F, Q, MouseLeft, MouseRight, PadA, PadX...",
+          "name": "keys",
+          "type": "string"
+        },
+        {
+          "description": "A clip the player plays when it's pressed (may be empty).",
+          "name": "plays",
+          "type": "string"
+        },
+        {
+          "description": "An event emitted when it's pressed, for scripts (may be empty).",
+          "name": "event",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "description": "Removes one of the project's own input actions (the engine's can only be rebound).",
+      "name": "input.removeAction",
+      "params": [
+        {
+          "description": "The action.",
+          "name": "name",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "description": "Creates or replaces a World Bible entry (canon: characters, factions, locations, items, events, lore, style).",
       "name": "world.write",
       "params": [
@@ -1376,13 +1499,14 @@
       "description": "Does something when its trigger happens, to whoever uses it: the player pressing its action near it, a character (Behaviour step act), a script (act), an event or a timer. A field farmed, a crop grown, a crop harvested (docs/systems/actions.md).",
       "fields": [
         {
-          "description": "input: its action pressed within range; event: its event emitted; timer: seconds after it appears; touch: walked onto.",
+          "description": "input: its action pressed within range; event: its event emitted; timer: seconds after it appears; touch: walked onto; near: someone comes within range.",
           "name": "trigger",
           "options": [
             "input",
             "event",
             "timer",
-            "touch"
+            "touch",
+            "near"
           ],
           "type": "string"
         },
@@ -1440,6 +1564,21 @@
           "type": "string"
         },
         {
+          "description": "trigger near: the clip played when they've all gone (a door closing).",
+          "name": "awayAnimation",
+          "type": "string"
+        },
+        {
+          "description": "An effect played on this when it happens (dust, sparks, a glow: an effect record, the project's own or a preset).",
+          "name": "effect",
+          "type": "string"
+        },
+        {
+          "description": "An effect played on the user.",
+          "name": "userEffect",
+          "type": "string"
+        },
+        {
           "description": "A prefab it turns into, in its place, once the animations have played.",
           "name": "becomes",
           "optional": true,
@@ -1473,6 +1612,81 @@
         }
       ],
       "name": "Action",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "Sprite"
+      ],
+      "description": "A part of its picture that moves on its own (a door, a window, a sign): drawn over the box it came from, playing its clip when someone comes near and its close clip when they leave. Build ▸ Animate makes them; or right-click ▸ Animate a part…",
+      "fields": [
+        {
+          "description": "Its animation sheet (assets/.../<name>.anim.json).",
+          "name": "sheet",
+          "type": "string"
+        },
+        {
+          "description": "The box's middle across, in pixels of this thing's picture.",
+          "name": "x",
+          "type": "float"
+        },
+        {
+          "description": "The box's middle down, in pixels of this thing's picture.",
+          "name": "y",
+          "type": "float"
+        },
+        {
+          "description": "The box's width, same pixels.",
+          "min": 0.0,
+          "name": "width",
+          "type": "float"
+        },
+        {
+          "description": "The box's height, same pixels.",
+          "min": 0.0,
+          "name": "height",
+          "type": "float"
+        },
+        {
+          "description": "Played when someone comes near (or it's used).",
+          "name": "clip",
+          "type": "string"
+        },
+        {
+          "description": "Played when they leave.",
+          "name": "closeClip",
+          "type": "string"
+        },
+        {
+          "description": "How near, in cells.",
+          "max": 10.0,
+          "min": 0.3,
+          "name": "range",
+          "type": "float"
+        },
+        {
+          "description": "Opens as someone comes near (off: only when this thing is used).",
+          "name": "near",
+          "type": "bool"
+        }
+      ],
+      "name": "AnimatedPart",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "Characters walk between heights here: stairs, a ramp, a ladder. Elsewhere a cliff (a step much higher or lower than where one stands) can't be walked up or down.",
+      "fields": [
+        {
+          "description": "How high it climbs, in pixels (informative; 0: any).",
+          "min": 0.0,
+          "name": "rise",
+          "type": "float"
+        }
+      ],
+      "name": "Ramp",
       "userEditable": true
     },
     {
@@ -1545,7 +1759,7 @@
           "type": "int"
         },
         {
-          "description": "The cell (x,y) that takes one up or down a floor; empty: its back corner.",
+          "description": "Each floor change's stairs cell, x,y;x,y (floor 1 to 2, 2 to 3...): walked onto from below goes up, from above down. Empty: its corners in turn (top, right, left). Right-click inside it ▸ Stairs here.",
           "name": "stairs",
           "type": "string"
         }
@@ -2230,12 +2444,13 @@
           "type": "float"
         },
         {
-          "description": "In front of or behind the other: auto follows the point.",
+          "description": "In front of or behind the other: auto follows the point; own keeps its own depth (where it stands).",
           "name": "layer",
           "options": [
             "auto",
             "front",
-            "behind"
+            "behind",
+            "own"
           ],
           "type": "string"
         },
@@ -2784,6 +2999,13 @@
           "max": 3.0,
           "min": 0.0,
           "name": "rotation",
+          "type": "int"
+        },
+        {
+          "description": "A flat thing's place among the ground's pieces, higher on top (a road over grass, a rug over the road). Ctrl+] / Ctrl+[.",
+          "max": 9.0,
+          "min": -9.0,
+          "name": "order",
           "type": "int"
         },
         {

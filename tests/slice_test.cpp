@@ -84,6 +84,7 @@ TEST(SliceTest, CombatEventsCarryEntitySounds) {
     aige::Registry registry;
     MakeFloor(registry, 8);
     auto player = aige::CreatePlayer(registry, 2.5f, 2.5f);
+    registry.emplace<aige::MeleeAttack>(player, 3.0f, 0.7f, 0.5f, 0.35f, 0.5f); // characters come without an attack
     registry.emplace<aige::Sounds>(player, "swing.wav", "ouch.wav", "", "");
     auto enemy = aige::CreateEnemy(registry, 3.2f, 2.5f, entt::null, "");
     registry.get<aige::Health>(enemy).current = 1.0f;

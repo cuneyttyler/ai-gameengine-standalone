@@ -6,6 +6,7 @@
 // "Regenerate stale" redoes exactly those. A place's draft Brief opens in the Build panel.
 import { computed, ref, watch } from 'vue'
 import AiProgress from './AiProgress.vue'
+import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 import DocView from './DocView.vue'
 import SystemsView from './SystemsView.vue'
@@ -103,6 +104,17 @@ const state = ref<Record<string, any>>({ active: false })
 const view = ref('')
 const tab = ref('game')
 const request = ref('')
+// The AI panel handed the Planner a request (its route card): in the box, ready to start a plan.
+watch(
+  () => editorState.prefill.panel,
+  (panel) => {
+    if (panel === 'planner') {
+      request.value = editorState.prefill.text
+      editorState.prefill = { panel: '', text: '' }
+    }
+  },
+  { immediate: true },
+)
 const askReplace = ref('')
 const item = ref<{ doc: string; content: unknown } | null>(null)
 const itemText = ref('')

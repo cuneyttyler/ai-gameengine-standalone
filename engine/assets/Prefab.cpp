@@ -347,6 +347,24 @@ bool PrefabLibrary::VisitTemplate(const std::string& path, const std::function<v
     return true;
 }
 
+std::optional<std::string> PrefabLibrary::EditTemplate(const std::string& path,
+                                                       const std::function<void(Registry&, Entity)>& edit) {
+    Template* prefab = Load(path);
+    if (prefab == nullptr || !prefab->error.empty()) {
+        return "no prefab " + path;
+    }
+    edit(prefab->registry, prefab->entity);
+    std::ofstream out(project_.Resolve(path), std::ios::trunc);
+    if (!out) {
+        return "can't write " + path;
+    }
+    out << SerializeEntities(prefab->registry, {prefab->entity});
+    out.close();
+    templates_.erase(path); // reload from disk next time (and report it changed)
+    Refresh();
+    return std::nullopt;
+}
+
 void PrefabLibrary::Revert(Registry& registry, Entity instance, const std::string& overrideKey) {
     if (auto* link = registry.try_get<PrefabInstance>(instance)) {
         auto keys = ParseOverrides(link->overrides);

@@ -55,6 +55,7 @@
 namespace aige {
 
 class LuaVM;
+struct AnimatedPart;
 
 // Everything the editor does between the Vue UI, the native viewport and
 // the scene: tools, selection, undo, camera, save, Play mode. The host
@@ -211,7 +212,12 @@ private:
     // A request to build a place ("a village by a river") starts a build
     // (7.4) unless `asChange`; anything else becomes a proposal.
     void SendToAi(const std::string& text, const std::string& focus, bool asChange = false);
-    void StartBuild(const std::string& query, const nlohmann::json& choices = nlohmann::json::object(), const std::string& method = {});
+    void StartBuild(const std::string& query, const nlohmann::json& choices = nlohmann::json::object(), const std::string& method = {},
+                    const std::string& picture = {}, const std::string& pictureMode = {});
+    // The open scene's type (docs/places/scene-types.md), "" when it has none; and the method a build in it takes: its
+    // type, else the project's.
+    std::string OpenSceneType() const;
+    std::string SceneMethod() const;
     // The build method a plan's places start with: the plan's, else the project's (Places ▸ method).
     std::string PlanBuildMethod() const;
     void ResumeBuild(const std::string& id); // a build of the project, from places/<id>/
@@ -518,7 +524,14 @@ private:
         uint64_t historyStep = 0;
         std::vector<nlohmann::json> applied;
         std::string lastState; // as last sent to the panel
+        // The files its operations wrote (prefabs, scripts, records, settings, input.json...), as they were before:
+        // the AI panel's Undo puts them back (a file it made is deleted), Apply again writes them anew.
+        std::map<std::string, std::optional<std::string>> filesBefore;
+        bool filesUndone = false;
     };
+    // The project files an operation writes (docs/ai/agent.md: undo for files).
+    std::vector<std::string> FilesWrittenBy(const nlohmann::json& op) const;
+    void RestoreProposalFiles(PendingProposal& pending);
     // The AI panel's Undo / Apply after a proposal was applied: follows Ctrl+Z
     // and Ctrl+Y (each applied proposal is one undo step).
     void PostProposalStates();
@@ -541,6 +554,27 @@ private:
     ReviewPolicy CurrentReviewPolicy() const;
     std::map<int, PendingProposal> proposals_; // by request id
     std::map<int, std::string> requestInstructions_;
+    // The AI panel as an agent (docs/ai/agent.md): how many rounds of tools a request has had (capped), and running them.
+    std::map<int, int> toolRounds_;
+    bool taskPaused_ = false; // a task waiting at a step for the user's Continue (Review each step)
+    // Animate a part (docs/assets/animations.md §4): the request in flight and what it's for.
+    int partRequest_ = 0;
+    nlohmann::json partPending_;
+    void PlacePart(const nlohmann::json& result);
+    void ApplyPartToPrefab(const std::string& prefab, const AnimatedPart& part);
+    // Build ▸ Animate (BuildAnimate.cpp): the open build's moving parts, found and animated one at a time.
+    nlohmann::json animate_;       // {targets: [...], running, only, done, failed, total}
+    int animateRequest_ = 0;
+    std::string animateKey_;       // the target in flight
+    nlohmann::json AnimateTargets();
+    void PostAnimate();
+    bool HandleAnimateMessage(const std::string& type, const nlohmann::json& message);
+    bool HandleAiSettingsMessage(const std::string& type, const nlohmann::json& message);
+    void AnimateNext();
+    void AnimateCrop(nlohmann::json& target, const nlohmann::json& box);
+    void OnAnimateResult(const nlohmann::json& body);
+    void RunAiTools(int requestId, const std::string& instruction, const nlohmann::json& proposal);
+    void ApplyEditorActions(const nlohmann::json& actions);
     // The conversation so far, sent back as context for follow-ups ("make
     // them faster too"). Plain text turns, newest last.
     std::vector<std::pair<std::string, std::string>> conversation_;

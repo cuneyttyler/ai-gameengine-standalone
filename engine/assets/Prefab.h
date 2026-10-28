@@ -81,6 +81,8 @@ public:
     // Calls `visit` with the prefab's template entity (read-only use), e.g. to
     // describe its values; false if the prefab can't be loaded.
     bool VisitTemplate(const std::string& path, const std::function<void(Registry&, Entity)>& visit);
+    // Like VisitTemplate, then the changed template written back to its file (components added or removed).
+    std::optional<std::string> EditTemplate(const std::string& path, const std::function<void(Registry&, Entity)>& edit);
 
     // Changes one field of the prefab itself (rewriting its file); copies pick
     // it up on the next Sync. Returns why not if it can't.

@@ -1,4 +1,5 @@
 #include "editing/PaintedPlace.h"
+#include "gameplay/Animation.h"
 
 #include "assets/TextureCook.h"
 #include "editing/PlaceBlockout.h"
@@ -674,6 +675,49 @@ json AddPaintingEntities(Registry& registry, const fs::path& folder, const std::
         registry.emplace<PlaceNode>(back, place, "", "painting#backdrop");
         registry.emplace<Name>(back, "Painting");
         out["backdrop"] = true;
+    }
+
+    // Its animated parts (Build ▸ Animate: the doors, docs/assets/animations.md §4): each an overlay on the painting where
+    // its box was, standing on the cell below it (drawn over its building's occluder, under who stands in front), opening
+    // as someone comes near.
+    {
+        std::ifstream in(folder / "parts.json", std::ios::binary);
+        const json parts = in ? json::parse(in, nullptr, false) : json();
+        int made = 0;
+        for (const auto& part : parts.is_object() ? parts.value("parts", json::array()) : json::array()) {
+            const json box = part.value("box", json());
+            const std::string sheet = part.value("sheet", "");
+            if (!box.is_array() || box.size() < 4 || sheet.empty()) continue;
+            const double px = box[0].get<double>() + box[2].get<double>() / 2, bottom = box[1].get<double>() + box[3].get<double>();
+            const auto cell = view.Cell(px, bottom);
+            const Entity e = registry.create();
+            registry.emplace<WorldTransform2D>(e, static_cast<float>(cell.first + originX) + 0.5f, static_cast<float>(cell.second + originY) + 0.5f);
+            registry.emplace<ScreenTransform2D>(e);
+            Sprite s;
+            s.texture = part.value("texture", "");
+            s.width = static_cast<float>(box[2].get<double>() * kx);
+            s.height = static_cast<float>(box[3].get<double>() * ky);
+            registry.emplace<Sprite>(e, s);
+            registry.emplace<Animator>(e, sheet, "prop");
+            Attachment attach;
+            attach.to = "Painting";
+            attach.offsetX = static_cast<float>(px - image->width / 2.0);
+            attach.offsetY = static_cast<float>(box[1].get<double>() + box[3].get<double>() / 2 - image->height);
+            attach.layer = "own";
+            attach.turn = false;
+            attach.size = static_cast<float>(std::max(box[2].get<double>(), box[3].get<double>()));
+            registry.emplace<Attachment>(e, attach);
+            Action action;
+            action.trigger = "near";
+            action.range = part.value("range", 1.8f);
+            action.animation = part.value("clip", std::string("open"));
+            action.awayAnimation = part.value("closeClip", std::string("close"));
+            registry.emplace<Action>(e, action);
+            registry.emplace<PlaceNode>(e, place, "", "painting#part-" + std::to_string(made));
+            registry.emplace<Name>(e, part.value("label", std::string("Door")));
+            ++made;
+        }
+        out["parts"] = made;
     }
 
     const json marks = LoadMarks(folder);

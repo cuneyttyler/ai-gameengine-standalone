@@ -998,7 +998,12 @@ def floor_prompt(k: int, n: int, purpose: str, style: str) -> str:
     if k > 1:
         lines.append(f"- the {k - 1} storey{'s' if k > 2 else ''} below stay{'' if k > 2 else 's'} closed, as seen from outside in "
                      "image 1: the solid base this floor stands on;")
-    stairs = "" if n == 1 else ", a staircase going up in a back corner" if k < n else ", the top of the staircase in a back corner"
+    # Each floor change's staircase in its own corner (the game's: Interiors.cpp StairsCell): from floor 1 the back (top)
+    # corner, then the right corner, then the left, round again.
+    corners = ["the back corner (the top of the picture)", "the right corner", "the left corner"]
+    up = f"a staircase going up in {corners[(k - 1) % 3]}" if k < n else ""
+    down = f"the top of the staircase from below in {corners[(k - 2) % 3]}" if k > 1 else ""
+    stairs = "" if n == 1 else ", " + " and ".join(s for s in (up, down) if s)
     lines += [
         f"- the floor fully visible: boards or flagstones, its rooms with low inner partitions only, the furniture and things "
         f"{purpose}{stairs}, lit warmly;",

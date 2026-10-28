@@ -3,6 +3,7 @@
 #include "ecs/Dormant.h"
 #include "gameplay/Combat.h"
 #include "gameplay/Components.h"
+#include "gameplay/TileLayer.h"
 #include "gameplay/GameSession.h"
 #include "gameplay/Pathfinding.h"
 #include "gameplay/Schedule.h"
@@ -229,15 +230,40 @@ struct Run {
             return true;
         }
         const auto goal = Cell(to.first, to.second);
+        // A closed door on the way is opened (docs/systems/actions.md): its cell counts as open for the path, and the
+        // character uses the door when it gets there (its own key for a locked one).
+        auto closedDoorAt = [this](int x, int y) -> Entity {
+            for (auto [e, door, w] : R().view<Door, WorldTransform2D>().each()) {
+                if (!door.open && static_cast<int>(std::floor(w.x)) == x && static_cast<int>(std::floor(w.y)) == y) return e;
+            }
+            return entt::null;
+        };
+        const SolidQueryFn throughDoors = [&](int x, int y) { return ctx.isSolid(x, y) && closedDoorAt(x, y) == entt::null; };
         if (goal != state.goal || state.next >= state.path.size()) {
             state.goal = goal;
             state.path.clear();
             state.next = 0;
-            if (auto path = FindPath(ctx.isSolid, Cell(at.x, at.y), goal, 6000)) state.path = *path;
+            // High ground: no step up or down a cliff, except where a Ramp is (place-refine.md §10).
+            const StepQueryFn noCliffs = [this](int fx, int fy, int tx, int ty) {
+                const std::optional<float> a = GroundHeightAt(R(), fx + 0.5f, fy + 0.5f), b = GroundHeightAt(R(), tx + 0.5f, ty + 0.5f);
+                if (!a || !b || std::abs(*a - *b) <= 14.0f) return true;
+                for (auto [e, ramp, w] : R().view<Ramp, WorldTransform2D>().each()) {
+                    const int rx = static_cast<int>(std::floor(w.x)), ry = static_cast<int>(std::floor(w.y));
+                    if ((rx == fx && ry == fy) || (rx == tx && ry == ty)) return true;
+                }
+                return false;
+            };
+            if (auto path = FindPath(ctx.act ? throughDoors : ctx.isSolid, Cell(at.x, at.y), goal, 6000, noCliffs)) state.path = *path;
             state.stuck = 0.0f;
             if (state.path.empty()) return false;
         }
         auto [gx, gy] = state.path[state.next];
+        if (const Entity door = closedDoorAt(gx, gy); door != entt::null && ctx.act) {
+            ctx.act(actor, door); // opened (or not: locked without its key, and the way is blocked)
+            state.stuck += dt;
+            if (state.stuck > 3.0f) state.path.clear(); // still shut: look for another way
+            return false;
+        }
         float tx = gx + 0.5f, ty = gy + 0.5f;
         if (state.next + 1 == state.path.size()) {
             tx = to.first;

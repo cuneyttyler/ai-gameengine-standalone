@@ -8,7 +8,7 @@
 namespace aige {
 
 std::optional<std::vector<std::pair<int, int>>> FindPath(const SolidQueryFn& isSolid, std::pair<int, int> from,
-                                                         std::pair<int, int> to, int maxExpanded) {
+                                                         std::pair<int, int> to, int maxExpanded, const StepQueryFn& canStep) {
     using Cell = std::pair<int, int>;
     if (isSolid(to.first, to.second) || isSolid(from.first, from.second)) {
         return std::nullopt;
@@ -49,6 +49,7 @@ std::optional<std::vector<std::pair<int, int>>> FindPath(const SolidQueryFn& isS
                 if (dx == 0 && dy == 0) continue;
                 Cell next{current.cell.first + dx, current.cell.second + dy};
                 if (isSolid(next.first, next.second)) continue;
+                if (canStep && !canStep(current.cell.first, current.cell.second, next.first, next.second)) continue; // a cliff
                 if (dx != 0 && dy != 0 &&
                     (isSolid(current.cell.first + dx, current.cell.second) ||
                      isSolid(current.cell.first, current.cell.second + dy))) {

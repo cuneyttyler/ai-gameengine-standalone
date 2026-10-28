@@ -117,10 +117,12 @@ void AiClient::Start(nlohmann::json schema) {
     wake_.notify_all();
 }
 
-int AiClient::Propose(const std::string& instruction, nlohmann::json context, nlohmann::json history) {
+int AiClient::Propose(const std::string& instruction, nlohmann::json context, nlohmann::json history,
+                      const std::vector<std::string>& images) {
     std::lock_guard lock(mutex_);
     int id = nextRequestId_++;
     nlohmann::json request = {{"instruction", instruction}, {"context", std::move(context)}, {"history", std::move(history)}};
+    if (!images.empty()) request["images"] = images;
     ++inFlight_;
     jobs_.push_back({false, [this, id, request = std::move(request)] {
         RunPropose(id, request);

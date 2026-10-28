@@ -30,7 +30,12 @@ struct SceneResult {
     std::string path;
     std::string error;
 };
-SceneResult CreateScene(const Project& project, const std::string& name);
+SceneResult CreateScene(const Project& project, const std::string& name, const std::string& type = "");
+
+// A scene's type (docs/places/scene-types.md): how it's built, Assembled or Paint, from its file's header ("# type
+// Paint"); "" when it has none (the project's method then). Setting it rewrites that line only.
+std::string SceneType(const std::filesystem::path& file);
+bool SetSceneType(const std::filesystem::path& file, const std::string& type);
 SceneResult DuplicateScene(const Project& project, const std::string& scene, const std::string& name);
 
 // Which files refer to `scene` (gateways in other scenes, the settings).

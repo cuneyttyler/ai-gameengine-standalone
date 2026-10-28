@@ -52,6 +52,14 @@ export function entityMenu(entity: MenuEntity): MenuItem[] {
     ...Array.from({ length: Math.max(0, (entity.interiorFloors ?? 1) - 1) }, (_, i) => i + 2)
       .filter((k) => !(entity.interior && entity.interiorFloor === k))
       .map((k) => ({ label: `Show floor ${k}`, disabled: editorState.playing, action: () => sendToHost({ type: 'entity:interior', id: entity.id, shown: true, floor: k }) })),
+    // Its stairs (docs/places/interiors.md): the cell under the cursor takes one up from the floor shown (or down, from
+    // its top floor).
+    ...((entity.interiorFloors ?? 1) > 1 && entity.interior
+      ? [{ label: `Stairs here (floor ${entity.interiorFloor ?? 1})`, disabled: editorState.playing,
+           action: () => sendToHost({ type: 'interior:stairsHere', id: entity.id }) }]
+      : []),
+    // A part of its picture animated (a door, a window, a sign; a part of a painted scene): docs/assets/animations.md §4.
+    ...(!entity.tile ? [{ label: 'Animate a part…', disabled: editorState.playing, action: () => (editorState.partDialog = entity.id) }] : []),
     // None yet: one added (on its prefab, so every copy has it).
     ...(!entity.tile && typeof entity.interior !== 'boolean' && entity.interiorScene === undefined
       ? [

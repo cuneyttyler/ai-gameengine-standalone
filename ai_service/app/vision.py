@@ -260,3 +260,41 @@ def describe_assets(provider: Provider, root: Path, paths: list[str], workers: i
     order = {item["id"]: i for i, item in enumerate(wanted)}
     results.sort(key=lambda r: order.get(r["id"], 0))
     return {"ok": bool(results) or not wanted, "assets": results, "errors": errors}
+
+
+FIND_PARTS = """You look at one picture from a 2D game (a building's art, or part of a painted scene) and find where its moving
+parts are: {kinds}. Give each one you see, its box in the picture's pixels (x and y of its top-left corner, its width
+and height: the whole part, a door from its sill to its lintel, not the wall around it), what it is, and how sure you
+are. Only parts a player could open or use; none: an empty list. Answer as JSON:
+{{"parts": [{{"kind": "door", "box": [x, y, w, h], "label": "the front door", "confidence": 0.9}}]}}"""
+
+
+def find_parts(provider: Provider, root: Path, path: str, kinds: list[str], rect: list[int] | None = None) -> dict:
+    """The moving parts (doors, gates, shutters…) in a project picture, or in `rect` of it: their boxes in the
+    picture's own pixels (the rect's offset added back)."""
+    file = (root / path).resolve()
+    if root.resolve() not in file.parents or not file.is_file():
+        return {"ok": False, "errors": [f"No picture {path}"]}
+    chunk, (w, h) = image_chunk(file, rect)
+    content = [{"type": "text", "text": FIND_PARTS.format(kinds=", ".join(kinds) or "doors")},
+               {"type": "text", "text": f"The picture: {w}x{h} pixels."}, chunk]
+    try:
+        completion = provider.complete([{"role": "user", "content": content}])
+        answer = json.loads(completion.text)
+    except (ProviderError, json.JSONDecodeError) as error:
+        return {"ok": False, "errors": [f"The parts couldn't be found: {error}"]}
+    # Its boxes are in the pixels it was told (the picture's, or its rect's): the rect's offset added back.
+    sx = sy = 1.0
+    ox, oy = (rect[0], rect[1]) if rect else (0, 0)
+    parts = []
+    for p in answer.get("parts", []) if isinstance(answer, dict) else []:
+        box = p.get("box") if isinstance(p, dict) else None
+        if not (isinstance(box, list) and len(box) == 4 and all(isinstance(v, (int, float)) for v in box)):
+            continue
+        x, y, bw, bh = box
+        if bw < 2 or bh < 2:
+            continue
+        parts.append({"kind": str(p.get("kind", "door")), "label": str(p.get("label", "")),
+                      "confidence": float(p.get("confidence", 0.5) or 0.5),
+                      "box": [round(ox + x * sx), round(oy + y * sy), round(bw * sx), round(bh * sy)]})
+    return {"ok": True, "parts": parts}

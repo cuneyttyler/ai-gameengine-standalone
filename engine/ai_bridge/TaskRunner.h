@@ -22,8 +22,8 @@ class ReflectionRegistry;
 // Internal safety limits for one multi-step task — not a user setting; they
 // only stop a runaway loop (development_plan.md 2.9).
 struct TaskLimits {
-    int maxSteps = 6;
-    int maxInputTokens = 250000;
+    int maxSteps = 20;           // a farm, a quest line with its people and places (docs/ai/agent.md)
+    int maxInputTokens = 800000;
     double dryRunSeconds = 2.0;
 };
 

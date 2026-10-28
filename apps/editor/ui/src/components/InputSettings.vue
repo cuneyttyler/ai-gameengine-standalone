@@ -24,6 +24,7 @@ interface Action {
   axes?: AxisBinding[]
   plays?: string // a clip the player plays when it's pressed (parry, attack_kick)
   event?: string // emitted when it's pressed, for scripts
+  effect?: string // an effect played on the player when it's pressed
 }
 
 const actions = ref<Action[]>([])
@@ -108,8 +109,8 @@ function removeAction(action: Action): void {
   actions.value = actions.value.filter((a) => a !== action)
   save()
 }
-function setField(action: Action, field: 'description' | 'plays' | 'event' | 'context', value: string): void {
-  if (field === 'plays' || field === 'event') {
+function setField(action: Action, field: 'description' | 'plays' | 'event' | 'effect' | 'context', value: string): void {
+  if (field === 'plays' || field === 'event' || field === 'effect') {
     if (value.trim()) action[field] = value.trim()
     else delete action[field]
   } else {
@@ -179,6 +180,7 @@ function resetDefaults(): void {
             <template v-if="!action.axis">
               <input class="small-in" :value="action.plays ?? ''" placeholder="clip" spellcheck="false" title="A clip the player plays when it's pressed (parry, attack_kick)" @change="setField(action, 'plays', ($event.target as HTMLInputElement).value)" />
               <input class="small-in" :value="action.event ?? ''" placeholder="event" spellcheck="false" title="An event emitted when it's pressed, for scripts (on(&quot;parry&quot;, ...))" @change="setField(action, 'event', ($event.target as HTMLInputElement).value)" />
+              <input class="small-in" :value="action.effect ?? ''" placeholder="effect" spellcheck="false" title="An effect played on the player when it's pressed (an effect record: Project ▸ Effects)" @change="setField(action, 'effect', ($event.target as HTMLInputElement).value)" />
             </template>
           </td>
           <td>

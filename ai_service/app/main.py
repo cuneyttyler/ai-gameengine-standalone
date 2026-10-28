@@ -52,6 +52,7 @@ class ProposeRequest(BaseModel):
     instruction: str
     context: EditorContext = EditorContext()
     history: list[dict] = []
+    images: list[str] = []   # pictures the model asked to look at (its look tool), project paths
 
 
 class ProjectRequest(BaseModel):
@@ -272,7 +273,14 @@ ANIMATE_PROVIDERS = ("autosprite", "pixellab:animate-v3")
 COPIES_MODEL = "flux-2-klein-4b"
 
 
+class PartsRequest(BaseModel):
+    path: str                       # a project picture: a building's art, a painting
+    kinds: list[str] = ["door"]     # what to find: door, gate, shutter, hatch...
+    rect: list[int] | None = None   # a box of it to look in (a painting's building), its pixels
+
+
 class AnimationRequest(BaseModel):
+    clip: str = ""       # the clip it's kept as (open, pull...); "" from the action (open, close, break, else idle)
     path: str            # the project image to animate
     provider: str = ""   # Preferences ▸ AI ▸ Animate ("" the default: AutoSprite)
     action: str          # walking, swinging a sword, flickering
@@ -543,6 +551,48 @@ def create_app(
         if index is not None:
             # Retrieval: the canon related to what's asked (and about what).
             canon = index.canon_for(" ".join(filter(None, [request.instruction, request.context.focus])))
+        def looked() -> list[dict]:
+            """The pictures it asked to look at, as image chunks (in the project; at most four)."""
+            from .vision import map_chunk
+            root = state["root"]
+            chunks = []
+            for path in request.images[:4]:
+                file = (root / path).resolve() if root else None
+                if file and root.resolve() in file.parents and file.is_file():
+                    chunks.append(map_chunk(file))
+            return chunks
+
+        def make_generated(requests) -> dict:
+            """A proposal's characters and animations (docs/ai/agent.md), made as Generate makes them: {"character:<name>"
+            | "animation:<name>": the sheet's path}. An animation of "character:<name>" uses the one just made."""
+            made: dict[str, str] = {}
+            for g in requests[:4]:
+                try:
+                    if g.kind == "character":
+                        answer = characters_generate(CharacterRequest(name=g.name, description=g.description or g.name,
+                                                                      directions=8 if g.directions >= 8 else 4, isometric=True))
+                        if answer.get("ok"):
+                            made[f"character:{g.name}"] = answer["sheet"]
+                        continue
+                    target = g.target
+                    if target.startswith("character:"):
+                        target = made.get(target, "")
+                    if not target:
+                        continue
+                    if target.endswith(".character.anim.json"):
+                        answer = characters_animate(CharacterAnimateRequest(sheet=target, action=g.action or "walk",
+                                                                            description=g.description))
+                        if answer.get("ok"):
+                            made[f"animation:{g.name}"] = answer["sheet"]
+                    else:
+                        answer = animations_generate(AnimationRequest(path=target, action=g.action or "idle",
+                                                                      description=g.description, name=g.name))
+                        if answer.get("ok"):
+                            made[f"animation:{g.name}"] = answer["sheet"]
+                except Exception:  # noqa: BLE001 - not made: the proposal is told
+                    continue
+            return made
+
         def make_art(requests) -> dict:
             """A proposal's art, drawn by the Art tool (with its brief), into the project."""
             root, images = state["root"], state["images"]
@@ -569,7 +619,8 @@ def create_app(
 
         try:
             result = propose(
-                writer, state["schema"], request.context, request.instruction, request.history, canon, make_art
+                writer, state["schema"], request.context, request.instruction, request.history, canon, make_art,
+                make_generated, looked()
             )
         except ProviderError as error:
             return ProposeResponse(ok=False, errors=[str(error)])
@@ -905,6 +956,17 @@ def create_app(
         report(1, 1, "Interior made")
         return {"ok": True, "path": paths[0], "floors": paths}
 
+    @app.post("/parts/find")
+    def parts_find(request: PartsRequest) -> dict:
+        """The moving parts of a picture (Build ▸ Animate: a building's door; docs/assets/animations.md §4): their boxes,
+        found by the vision model."""
+        from .vision import find_parts
+        root: Path | None = state["root"]
+        vision = state.get("vision")
+        if root is None or vision is None:
+            return {"ok": False, "errors": ["Finding parts needs the project open and a vision model (AI on)"]}
+        return find_parts(vision, root, request.path, request.kinds, request.rect)
+
     @app.post("/animations/generate")
     def animations_generate(request: AnimationRequest) -> dict:
         """An asset of the project animated (PixelLab): its frames and a spritesheet, into the assets."""
@@ -1009,6 +1071,8 @@ def create_app(
         clip = clip_for(request.action, humanoid is not False)
         if humanoid is False and clip not in ("open", "close", "break"):
             clip = "idle"  # a thing's own motion (a flame, a flag): it loops
+        if request.clip.strip():
+            clip = re.sub(r"[^a-z0-9_]+", "_", request.clip.strip().lower()).strip("_") or clip
         return {"ok": True, "name": name, "frames": made, "sheet": sheet.relative_to(root).as_posix(), "humanoid": humanoid,
                 "clip": clip}
 

@@ -1,0 +1,119 @@
+{
+  "schema": "aige.module/1",
+  "id": "harbour",
+  "name": "Harbour",
+  "level": "site",
+  "description": "A harbour on its own: docks with piers, warehouses and a fish market along the water, the houses and lanes of the people who work there.",
+  "buildTypes": [
+    "harbour"
+  ],
+  "quantity": {
+    "buildings": {
+      "type": "count",
+      "default": [
+        4,
+        20
+      ],
+      "min": 1,
+      "max": 400,
+      "ask": true
+    },
+    "piers": {
+      "type": "count",
+      "default": [
+        2,
+        5
+      ],
+      "min": 1,
+      "max": 40,
+      "ask": true
+    },
+    "area": {
+      "type": "area",
+      "default": [
+        1600,
+        6400
+      ],
+      "min": 400,
+      "unit": "cells²"
+    }
+  },
+  "quality": {
+    "water": {
+      "type": "enum",
+      "values": [
+        "river",
+        "lake"
+      ],
+      "default": "river",
+      "ask": true,
+      "description": "What the docks are on: a river's bank or a lake's (or the sea's) shore."
+    },
+    "condition": {
+      "type": "enum",
+      "vocabulary": "condition",
+      "default": "lived-in"
+    },
+    "relief": {
+      "type": "enum",
+      "values": [
+        "flat",
+        "gentle",
+        "hilly"
+      ],
+      "default": "flat",
+      "description": "The lie of the land away from the water."
+    },
+    "notes": {
+      "type": "description"
+    }
+  },
+  "slots": {},
+  "children": {
+    "river": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1,
+      "when": "water == 'river'"
+    },
+    "lake": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1,
+      "when": "water == 'lake'"
+    },
+    "docks": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 3
+    },
+    "house-plot": {
+      "min": 0,
+      "weight": 0.5,
+      "max": 40
+    },
+    "market-square": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 1
+    },
+    "road": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 20
+    },
+    "ground": {
+      "min": 1,
+      "weight": 1.0,
+      "max": 1
+    },
+    "meadow": {
+      "min": 0,
+      "weight": 0.2,
+      "max": 2
+    }
+  },
+  "constraints": [
+    "within(self.buildings, count(descendants(class: BuildingParcel)), tol: 'count')"
+  ]
+}

@@ -15,6 +15,10 @@ function updateMenus(): void {
     { label: 'Paste at cursor', shortcut: keyLabel('edit.paste'), action: () => sendToHost({ type: 'edit:paste' }) },
     { label: 'Bigger', shortcut: keyLabel('edit.bigger'), disabled: editorState.selectedId === null, action: () => sendToHost({ type: 'edit:scale', factor: 1.1 }) },
     { label: 'Smaller', shortcut: keyLabel('edit.smaller'), disabled: editorState.selectedId === null, action: () => sendToHost({ type: 'edit:scale', factor: 1 / 1.1 }) },
+    { label: 'Bring forward', shortcut: keyLabel('edit.forward'), disabled: editorState.selectedId === null, action: () => sendToHost({ type: 'edit:order', delta: 1 }) },
+    { label: 'Send backward', shortcut: keyLabel('edit.backward'), disabled: editorState.selectedId === null, action: () => sendToHost({ type: 'edit:order', delta: -1 }) },
+    { label: 'Bring to front', shortcut: keyLabel('edit.toFront'), disabled: editorState.selectedId === null, action: () => sendToHost({ type: 'edit:order', to: 'front' }) },
+    { label: 'Send to back', shortcut: keyLabel('edit.toBack'), disabled: editorState.selectedId === null, action: () => sendToHost({ type: 'edit:order', to: 'back' }) },
   ]
   menuExtensions.view = [
     { label: 'Frame stats', shortcut: keyLabel('view.stats'), action: () => sendToHost({ type: 'view:stats' }) },
@@ -43,6 +47,12 @@ entityMenuExtensions.push((entity) => [
   { label: 'Bigger', shortcut: keyLabel('edit.bigger'), action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:scale', factor: 1.1 })) },
   { label: 'Smaller', shortcut: keyLabel('edit.smaller'), action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:scale', factor: 1 / 1.1 })) },
   { label: 'Turn a quarter', shortcut: keyLabel('edit.rotate'), action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:rotate' })) },
+  ...(entity.tile
+    ? []
+    : [
+        { label: 'Bring forward (ground)', shortcut: keyLabel('edit.forward'), action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:order', delta: 1 })) },
+        { label: 'Send backward (ground)', shortcut: keyLabel('edit.backward'), action: () => (sendToHost({ type: 'entity:select', id: entity.id }), sendToHost({ type: 'edit:order', delta: -1 })) },
+      ]),
 ])
 
 groundMenuExtensions.push((cell) => [

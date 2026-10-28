@@ -41,6 +41,7 @@ struct InputAction {
     // Pressed (docs/systems/actions.md): a clip the player plays (parry, attack_kick) and an event emitted for scripts.
     std::string plays;
     std::string event;
+    std::string effect; // an effect played on the player when it's pressed
 };
 
 struct InputMap {
