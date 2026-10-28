@@ -8,6 +8,7 @@
 #include "gameplay/BootstrapLevel.h"
 #include "gameplay/Components.h"
 #include "gameplay/GameSession.h"
+#include "gameplay/Items.h"
 #include "gameplay/TileGrid.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
@@ -285,6 +286,38 @@ TEST_F(PrefabTest, PrefabScriptPropertiesSyncUnlessOverridden) {
     prefabs.SyncAll(registry);
     EXPECT_DOUBLE_EQ(std::get<double>(registry.get<aige::LuaScript>(a).properties.at("speed")), 4.0);
     EXPECT_DOUBLE_EQ(std::get<double>(registry.get<aige::LuaScript>(b).properties.at("speed")), 9.0);
+}
+
+TEST_F(PrefabTest, AThingBecomesAnotherPrefabInItsPlace) {
+    // A chest opened: replaced where it stood by another prefab, what's left in it kept; and from a script.
+    aige::PrefabLibrary prefabs(project());
+    MakeEnemyPrefab(prefabs);
+    aige::LuaVM lua;
+    aige::Registry registry;
+    aige::GameSession session(registry, lua, aige::BootstrapIso(), root_);
+    session.SetSpawner([&](const std::string& prefab, float x, float y) { return prefabs.Instantiate(registry, prefab, x, y); });
+    const aige::Entity chest = registry.create();
+    registry.emplace<aige::WorldTransform2D>(chest, 4.5f, 2.5f);
+    registry.emplace<aige::Container>(chest, aige::Container{"potion*2", 7, "", true});
+    registry.emplace<aige::Interactable>(chest).becomes = "prefabs/enemy.prefab";
+    const auto opened = session.BecomePrefab(chest, "prefabs/enemy.prefab");
+    ASSERT_TRUE(opened.has_value());
+    EXPECT_FALSE(registry.valid(chest));
+    EXPECT_FLOAT_EQ(registry.get<aige::WorldTransform2D>(*opened).x, 4.5f);
+    EXPECT_EQ(registry.get<aige::Container>(*opened).items, "potion*2");
+    EXPECT_EQ(registry.get<aige::Container>(*opened).gold, 7);
+
+    WriteFile(root_ / "scripts/turn.lua",
+              "done = false\n"
+              "function update(dt)\n"
+              "  if not done then done = true; become(self_id(), 'prefabs/enemy.prefab') end\n"
+              "end\n");
+    const aige::Entity lever = registry.create();
+    registry.emplace<aige::WorldTransform2D>(lever, 8.5f, 8.5f);
+    registry.emplace<aige::LuaScript>(lever).path = "scripts/turn.lua";
+    session.Advance(aige::GameSession::kFixedDt * 1.5, [](aige::Key) { return false; });
+    EXPECT_FALSE(registry.valid(lever));
+    EXPECT_EQ(registry.view<aige::PrefabInstance>().size(), 2u);
 }
 
 TEST_F(PrefabTest, ScriptsReadWriteFieldsAndSpawnPrefabs) {

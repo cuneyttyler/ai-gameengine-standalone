@@ -22,3 +22,4 @@ B. AI Chat Panel tests
     - Generate art for a requested object, make prefab and put them into the scene in the correct place
    - Generate art, animate existing art, animate prefabs
    - Find an asset or prefab in the project or library according to user's description and use it
+   - Should send the id of the selected prefab(s) in the viewport to chat so it knows what to edit.

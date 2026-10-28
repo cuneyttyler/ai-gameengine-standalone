@@ -82,7 +82,9 @@ const suggestedName = computed(() =>
     .join('-'),
 )
 const aiReady = computed(() => editorState.ai.state === 'ready')
-const noKey = computed(() => editorState.ai.available.pixellab === false)
+// Drawn by the project's art model when it's BFL's, else PixelLab.
+const byBfl = computed(() => editorState.ai.artProvider.startsWith('bfl:'))
+const noKey = computed(() => (byBfl.value ? editorState.ai.available.bfl === false : editorState.ai.available.pixellab === false))
 
 function generate(): void {
   error.value = ''
@@ -162,11 +164,11 @@ function thumb(path: string, created: string): string {
         </button>
         <span v-if="busy" class="muted">Drawing {{ form.directions }} directions (a minute or two)…</span>
         <span v-else-if="!aiReady" class="muted">Needs AI to be on.</span>
-        <span v-else-if="noKey" class="muted">Needs PIXELLAB_API_KEY in ai_service/.env.</span>
+        <span v-else-if="noKey" class="muted">Needs {{ byBfl ? 'BFL_API_KEY' : 'PIXELLAB_API_KEY' }} in ai_service/.env.</span>
       </div>
       <div v-if="error" class="error">{{ error }}</div>
       <p class="muted small">
-        Drawn by PixelLab in the project’s colours. Each direction lands in
+        Drawn by {{ byBfl ? `the project's art model (${editorState.ai.artProvider.slice(4)}): facing you first, each other direction an edit of it, the west side mirrored` : 'PixelLab' }}, in the project’s colours. Each direction lands in
         assets/textures/generated/characters/{{ form.name || suggestedName || '<name>' }}/ and shows in the Assets panel.
       </p>
     </section>

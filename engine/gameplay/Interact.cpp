@@ -166,6 +166,7 @@ InteractResult Interact(Registry& registry, Entity player, Entity target, StoryS
         if (!interactable->setFlag.empty()) story.SetFlag(interactable->setFlag, true);
         result.text = interactable->text;
         result.event = interactable->event;
+        result.becomes = interactable->becomes;
         if (interactable->once) interactable->used = true;
     }
     return result;

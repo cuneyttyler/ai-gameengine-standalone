@@ -130,6 +130,9 @@ public:
     // prefab library). Without one, spawn returns nil.
     using SpawnFn = std::function<std::optional<Entity>(const std::string& prefab, float x, float y)>;
     void SetSpawner(SpawnFn spawner) { spawner_ = std::move(spawner); }
+    // `target` replaced in its place by `prefab` (an Interactable's becomes, Lua's become): turned and mirrored as it
+    // was, what's left in its Container kept. The new thing, or none without a spawner.
+    std::optional<Entity> BecomePrefab(Entity target, const std::string& prefab);
 
     // Dialogue and quests (development_plan.md 3.2b). With a library, E talks
     // to the nearest Talk entity in range, conversations pause the game, and

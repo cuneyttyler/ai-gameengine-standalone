@@ -264,6 +264,7 @@ struct Interactable {
     std::string event;              // emitted when used (scripts listen)
     bool once = false;
     bool used = false;
+    std::string becomes;            // a prefab it turns into when used, in its place (a chest opened, a lever pulled)
 };
 
 // A building or other closed place one can go into (development_plan.md Phase 27): its interior picture (the same

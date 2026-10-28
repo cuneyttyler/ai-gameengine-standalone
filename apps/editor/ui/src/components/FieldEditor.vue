@@ -5,6 +5,7 @@
 // form (enums by option name, entity references by id); the host validates
 // it again before anything is written.
 import { computed } from 'vue'
+import { editorState } from '../editorState'
 
 export type FieldType =
   | 'float'
@@ -16,6 +17,7 @@ export type FieldType =
   | 'texture'
   | 'script'
   | 'audio'
+  | 'prefab'
 
 export interface FieldData {
   name: string
@@ -155,6 +157,17 @@ function emitNumber(event: Event): void {
       >
         {{ fileName(path) }}
       </option>
+    </select>
+
+    <select
+      v-else-if="field.type === 'prefab'"
+      :value="field.value as string"
+      :title="field.value as string"
+      :disabled="disabled"
+      @change="emit('change', ($event.target as HTMLSelectElement).value)"
+    >
+      <option value="">(none)</option>
+      <option v-for="p in editorState.prefabs.filter((x) => !x.isTile)" :key="p.path" :value="p.path">{{ p.path.replace(/^prefabs\//, '') }}</option>
     </select>
 
     <span v-else-if="field.type === 'script'" class="script-field">

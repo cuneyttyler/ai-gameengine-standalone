@@ -226,6 +226,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("text", &Interactable::text, "Shown when it's used (a sign, a book).")
         .Field("event", &Interactable::event, "An event emitted when it's used, for scripts.")
         .Field("once", &Interactable::once, "Works only once.")
+        .Field("becomes", &Interactable::becomes, "A prefab it turns into when used, in its place (an open chest; give that one a becomes back for a toggle).").As(FieldType::Prefab)
         .Field("used", &Interactable::used, "Already used (with once).")
         .DependsOn({"WorldTransform2D"});
     r.Component<Interior>("Interior", "A place one can go into (Phase 27): its interior shows while the player is inside; only its walls block.")

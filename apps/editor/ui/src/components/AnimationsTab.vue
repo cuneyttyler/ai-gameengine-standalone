@@ -81,7 +81,8 @@ function name(sheet: Sheet): string {
   return sheet.path.split('/').pop()!.replace(/\.anim\.json$/, '')
 }
 
-function showInEffects(sheet: Sheet): void {
+function showInEffects(sheet: Sheet, edit = false): void {
+  editorState.fxSheetEdit = edit
   editorState.fxSheet = sheet.path
   panelTab.project = 'fx'
 }
@@ -95,6 +96,7 @@ function menu(sheet: Sheet, event: MouseEvent): void {
       action: () => sendToHost({ type: 'entity:addAnimator', sheet: sheet.path }),
     },
     separator,
+    { label: 'Edit…', action: () => showInEffects(sheet, true) },
     { label: 'Show in Effects', action: () => showInEffects(sheet) },
     { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: sheet.path }) },
   ]

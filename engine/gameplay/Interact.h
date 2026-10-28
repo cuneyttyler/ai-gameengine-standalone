@@ -28,6 +28,7 @@ struct InteractResult {
     std::string event;       // the Interactable's event, for scripts
     bool openShop = false;   // a Merchant: the host opens its shop
     bool used = false;       // something happened
+    std::string becomes;     // the prefab it turns into, in its place (its Interactable's becomes)
 };
 
 // Uses `target` as `player`: unlocks with a key, opens or closes a door, takes a

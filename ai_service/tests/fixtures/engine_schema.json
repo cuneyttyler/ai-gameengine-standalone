@@ -1322,6 +1322,11 @@
           "type": "bool"
         },
         {
+          "description": "A prefab it turns into when used, in its place (an open chest; give that one a becomes back for a toggle).",
+          "name": "becomes",
+          "type": "prefab"
+        },
+        {
           "description": "Already used (with once).",
           "name": "used",
           "type": "bool"

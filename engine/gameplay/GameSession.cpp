@@ -554,6 +554,31 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
         return entity ? sol::make_object(lua_.State(), ToId(*entity)) : sol::lua_nil;
     };
 
+    // become(id, "prefabs/chest-open.prefab") -> the new id, or nil: replaced in its place by the prefab, turned as it
+    // was, what's left in it kept (an Interactable's becomes does the same when it's used).
+    env["become"] = [this](lua_Integer id, const std::string& prefab) -> sol::object {
+        const Entity entity = ToEntity(id);
+        if (!registry_.valid(entity)) return sol::lua_nil;
+        const auto made = BecomePrefab(entity, prefab);
+        return made ? sol::make_object(lua_.State(), ToId(*made)) : sol::lua_nil;
+    };
+    // use(id) -> boolean: used as the player would use it (unlocked with a key they carry, opened, taken, its flag,
+    // its event, its becomes).
+    env["use"] = [this](lua_Integer id) {
+        const Entity entity = ToEntity(id);
+        if (!registry_.valid(entity) || !FindPlayer(registry_)) return false;
+        UseInteractable(entity);
+        return true;
+    };
+    // set_texture(id, "assets/....png") -> boolean: its picture changed (a look, not another prefab).
+    env["set_texture"] = [this](lua_Integer id, const std::string& texture) {
+        const Entity entity = ToEntity(id);
+        Sprite* sprite = registry_.valid(entity) ? registry_.try_get<Sprite>(entity) : nullptr;
+        if (sprite == nullptr) return false;
+        sprite->texture = texture;
+        return true;
+    };
+
     // Story (gameplay/Story): quests and flags, shared with dialogue.
     env["start_quest"] = [this](const std::string& id) {
         if (storyLibrary_) story_.StartQuest(id, *storyLibrary_);
@@ -2297,6 +2322,28 @@ void GameSession::UseInteractable(Entity target) {
         for (const auto& name : NamesOf(target)) story_.OnUsed(name, *storyLibrary_); // use/examine objectives
     }
     if (result.openShop) shopRequest_ = target;
+    if (!result.becomes.empty() && registry_.valid(target)) BecomePrefab(target, result.becomes);
+}
+
+std::optional<Entity> GameSession::BecomePrefab(Entity target, const std::string& prefab) {
+    // Replaced in its place by `prefab` (an opened chest): turned and mirrored as it was, what's left in it kept. A
+    // saved game keeps it (the old one removed, the new one spawned).
+    const auto* at = registry_.try_get<WorldTransform2D>(target);
+    if (at == nullptr || !spawner_) return std::nullopt;
+    const auto made = spawner_(prefab, at->x, at->y);
+    if (!made || !registry_.valid(*made)) return std::nullopt;
+    if (const auto* was = registry_.try_get<Sprite>(target)) {
+        if (auto* now = registry_.try_get<Sprite>(*made)) {
+            now->rotation = was->rotation, now->angle = was->angle;
+            if ((was->u0 > was->u1) != (now->u0 > now->u1)) std::swap(now->u0, now->u1); // mirrored as it was
+        }
+    }
+    if (const auto* was = registry_.try_get<Container>(target)) {
+        auto& now = registry_.get_or_emplace<Container>(*made);
+        now.items = was->items, now.gold = was->gold, now.looted = was->looted;
+    }
+    registry_.destroy(target);
+    return made;
 }
 
 // --- Events, timers and coroutines (12.2) -------------------------------------

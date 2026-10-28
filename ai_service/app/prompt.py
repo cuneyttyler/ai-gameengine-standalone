@@ -392,7 +392,8 @@ GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
 - Attributes, Progression (level, experience) and perk records shape a character; item and perk modifiers
   change attributes. Experience comes from kills and quest rewards.
 - Interactable makes something usable with E (doors, chests, levers, signs: verb, locked + key item,
-  requiresFlag, setFlag, text, event). Merchant opens a shop.
+  requiresFlag, setFlag, text, event, becomes: a prefab it turns into when used, in its place, e.g. an open
+  chest; give that prefab a becomes back for a toggle). Merchant opens a shop.
 - Combat: MeleeAttack, RangedAttack (projectiles), Health, Stats, Faction/FactionMember (records "faction";
   disposition < 0 is hostile). A Spawner makes enemies from an "encounter" record around itself.
 - Character AI: Behaviour holds a stack of "package" records (template: work, sleep, sandbox, patrol, follow,
@@ -428,6 +429,9 @@ second while playing). These are ALL the engine functions — there are no other
   get_field(id, component, field)   -> value, or nil   e.g. get_field(self_id(), "Follow", "speed")
   set_field(id, component, field, value) -> boolean
   spawn(prefab_path, x, y)          -> id, or nil
+  become(id, prefab_path)           -> the new id, or nil: replaced in its place (a chest opened); what's in it kept
+  use(id)                           -> boolean: used as the player would (unlock, open, take, its flag/event/becomes)
+  set_texture(id, texture_path)     -> boolean: only its picture changed
   start_quest(id)                      starts quests/<id>.json
   complete_objective(quest, objective) completes that objective if it's open in the quest's current stage
   quest_state(id)                   -> "inactive" | "active" | "completed" | "failed"

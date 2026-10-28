@@ -77,7 +77,9 @@ const shown = computed(() => {
   return images.value.filter((p) => words.every((w) => p.toLowerCase().includes(w))).slice(0, 120)
 })
 const aiReady = computed(() => editorState.ai.state === 'ready')
-const noKey = computed(() => editorState.ai.available.pixellab === false)
+// Drawn by the project's art model when it's BFL's, else PixelLab.
+const byBfl = computed(() => editorState.ai.artProvider.startsWith('bfl:'))
+const noKey = computed(() => (byBfl.value ? editorState.ai.available.bfl === false : editorState.ai.available.pixellab === false))
 
 function generate(): void {
   error.value = ''
@@ -187,11 +189,11 @@ function when(iso: string): string {
         </button>
         <span v-if="busy" class="muted">Drawing 4 frames (about a minute)…</span>
         <span v-else-if="!aiReady" class="muted">Needs AI to be on.</span>
-        <span v-else-if="noKey" class="muted">Needs PIXELLAB_API_KEY in ai_service/.env.</span>
+        <span v-else-if="noKey" class="muted">Needs {{ byBfl ? 'BFL_API_KEY' : 'PIXELLAB_API_KEY' }} in ai_service/.env.</span>
       </div>
       <div v-if="error" class="error">{{ error }}</div>
       <p class="muted small">
-        PixelLab draws 4 frames at 64 × 64 from the image (it’s fitted into that square). The frames and a spritesheet
+        {{ byBfl ? `The project's art model (${editorState.ai.artProvider.slice(4)}) paints 4 frames together from the image, the size it is.` : 'PixelLab draws 4 frames at 64 × 64 from the image (it’s fitted into that square).' }} The frames and a spritesheet
         of them go into assets/textures/generated/animations/.
       </p>
       <div class="history-head">

@@ -6,6 +6,7 @@
 // engine preset there.
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { editorState } from '../editorState'
+import SheetEditor from './SheetEditor.vue'
 import { onHostMessage, sendToHost } from '../ipc'
 
 const PROJECT_HOST = 'https://aige-project.local/'
@@ -65,6 +66,7 @@ const particles = ref<Listed[]>([])
 const effects = ref<Listed[]>([])
 const cutscenes = ref<CutsceneInfo[]>([])
 const selectedSheet = ref('')
+const editing = ref(false) // the selected sheet open in the sheet editor
 // Assets ▸ Animations ▸ Show in Effects: that sheet, on the Sheets page.
 watch(
   () => editorState.fxSheet,
@@ -72,7 +74,9 @@ watch(
     if (!path) return
     section.value = 'sheets'
     selectedSheet.value = path
+    editing.value = editorState.fxSheetEdit
     editorState.fxSheet = ''
+    editorState.fxSheetEdit = false
   },
   { immediate: true },
 )
@@ -249,7 +253,9 @@ const cutsceneProblems = computed(() => cutscenes.value.find((c) => c.id === cut
         <p v-if="!sheets.length" class="muted small pad">No sheets yet (assets/*.anim.json). Make one below.</p>
       </aside>
       <section class="editor">
-        <template v-if="sheet">
+        <SheetEditor v-if="sheet && editing" :path="sheet.path" @close="editing = false" />
+        <template v-else-if="sheet">
+          <div class="edit-bar"><button class="primary" title="Its clips, directions and frames, by hand" @click="editing = true">Edit</button></div>
           <p class="muted small">{{ sheet.texture }} · {{ sheet.size[0] }}×{{ sheet.size[1] }}. Give an entity an
             <b>Animator</b> with this sheet (and an animator: humanoid, quadruped, flyer, prop or a record).</p>
           <div v-for="clip in sheet.clips" :key="clip.name" class="clip">

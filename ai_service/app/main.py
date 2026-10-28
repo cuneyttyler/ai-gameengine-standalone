@@ -881,19 +881,35 @@ def create_app(
         if root is None:
             return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
         load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-        if not os.environ.get("PIXELLAB_API_KEY"):
-            return {"ok": False, "errors": ["Animations are made by PixelLab: set PIXELLAB_API_KEY in ai_service/.env"]}
+        model = bfl_art()
+        if not model and not os.environ.get("PIXELLAB_API_KEY"):
+            return {"ok": False, "errors": ["Animations are drawn by the project's art model when it's BFL's, else PixelLab: "
+                                            "set one in Project Settings ▸ AI ▸ Art (BFL_API_KEY or PIXELLAB_API_KEY in ai_service/.env)"]}
         source = (root / request.path).resolve()
         if root.resolve() not in source.parents or not source.is_file():
             return {"ok": False, "errors": ["Pick an image of the project to animate"]}
         from .pixellab import PixelLabImageGenerator, animate, spritesheet
         name = re.sub(r"[^a-z0-9-]+", "-", (request.name or source.stem + "-" + request.action).lower()).strip("-")[:48] or "animation"
+        what = request.description or source.stem.replace("-", " ")
+        report = progress.reporter()
         try:
-            frames = animate(PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]), source.read_bytes(),
-                             request.description or source.stem.replace("-", " "), request.action, request.direction, request.view,
-                             project_style.project_palette(root))
+            if model:
+                from .bfl import BflPainter
+                from . import bfl_sprites
+                report(0, 1, f"Animating {source.name}: {request.action} ({model})")
+                from PIL import Image
+                with Image.open(source) as im:
+                    size = max(32, min(256, max(im.size)))
+                frames = bfl_sprites.animate(BflPainter(os.environ["BFL_API_KEY"], model), source.read_bytes(), request.action, what,
+                                             request.direction, request.view, 4, size)
+            else:
+                frames = animate(PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]), source.read_bytes(), what, request.action,
+                                 request.direction, request.view, project_style.project_palette(root))
         except (ProviderError, OSError) as error:
             return {"ok": False, "errors": [str(error)]}
+        except Exception as error:  # noqa: BLE001 - BFL's: said to the editor
+            return {"ok": False, "errors": [f"BFL couldn't animate it: {error}"]}
+        report(1, 1, "Animated")
         folder = root / "assets" / "textures" / "generated" / "animations" / name
         folder.mkdir(parents=True, exist_ok=True)
         made = []
@@ -909,25 +925,52 @@ def create_app(
         (folder / f"{sheet.name}.gen.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
         return {"ok": True, "name": name, "frames": made, "sheet": sheet.relative_to(root).as_posix()}
 
+    def bfl_art() -> str | None:
+        """The project's art model when it's BFL's (Preferences / Project Settings ▸ AI ▸ Art): characters and animations
+        are then drawn by it (bfl_sprites), else by PixelLab."""
+        art = state.get("artProvider", "auto")
+        return art.split(":", 1)[1] if isinstance(art, str) and art.startswith("bfl:") and os.environ.get("BFL_API_KEY") else None
+
+    def style_words(root: Path) -> str:
+        colours = project_style.project_palette(root)
+        return f"Colours like the project's other art: {', '.join(colours[:8])}." if colours else ""
+
     @app.post("/characters/generate")
     def characters_generate(request: CharacterRequest) -> dict:
-        """A character from 4 or 8 directions (PixelLab), each into the project's assets."""
+        """A character from 4 or 8 directions, each into the project's assets: by the project's art model when it's BFL's
+        (bfl_sprites: painted facing the camera, each direction an edit of it), else PixelLab."""
         root: Path | None = state["root"]
         if root is None:
             return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
         load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-        if not os.environ.get("PIXELLAB_API_KEY"):
-            return {"ok": False, "errors": ["Characters are made by PixelLab: set PIXELLAB_API_KEY in ai_service/.env"]}
-        from .pixellab import PixelLabImageGenerator
         name = re.sub(r"[^a-z0-9-]+", "-", request.name.lower()).strip("-")[:40] or "character"
-        try:
-            images = PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]).character(
-                request.description, 8 if request.directions == 8 else 4, max(32, min(256, request.size)), request.view,
-                request.isometric, project_style.project_palette(root))
-        except ProviderError as error:
-            return {"ok": False, "errors": [str(error)]}
+        directions, size = 8 if request.directions == 8 else 4, max(32, min(256, request.size))
+        model = bfl_art()
+        report = progress.reporter()
+        if model:
+            from .bfl import BflPainter
+            from . import bfl_sprites
+            report(0, 1, f"Drawing {name} from {directions} directions ({model})")
+            try:
+                images = bfl_sprites.character(BflPainter(os.environ["BFL_API_KEY"], model), request.description, directions, size,
+                                               request.view, request.isometric, style_words(root))
+            except Exception as error:  # noqa: BLE001 - said to the editor
+                return {"ok": False, "errors": [f"BFL couldn't draw it: {error}"]}
+            provider, model_name = "bfl", model
+        else:
+            if not os.environ.get("PIXELLAB_API_KEY"):
+                return {"ok": False, "errors": ["Characters are drawn by the project's art model when it's BFL's, else PixelLab: "
+                                                "set one in Project Settings ▸ AI ▸ Art (BFL_API_KEY or PIXELLAB_API_KEY in ai_service/.env)"]}
+            from .pixellab import PixelLabImageGenerator
+            try:
+                images = PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]).character(
+                    request.description, directions, size, request.view, request.isometric, project_style.project_palette(root))
+            except ProviderError as error:
+                return {"ok": False, "errors": [str(error)]}
+            provider, model_name = "pixellab", "pixellab character"
+        report(1, 1, f"{name} drawn")
         if not images:
-            return {"ok": False, "errors": ["PixelLab finished but sent no images"]}
+            return {"ok": False, "errors": [f"{provider} finished but sent no images"]}
         folder = root / "assets" / "textures" / "generated" / "characters" / name
         folder.mkdir(parents=True, exist_ok=True)
         made = []
@@ -935,7 +978,7 @@ def create_app(
             file = folder / f"{name}-{direction}.png"
             file.write_bytes(data)
             meta = {"description": request.description, "family": name, "kind": "character", "direction": direction,
-                    "provider": "pixellab", "model": "pixellab character", "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+                    "provider": provider, "model": model_name, "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}
             (folder / f"{file.name}.gen.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
             made.append({"path": file.relative_to(root).as_posix(), "direction": direction})
         return {"ok": True, "name": name, "assets": made}

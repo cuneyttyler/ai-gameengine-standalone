@@ -5906,6 +5906,102 @@ bool EditorApp::HandleGenerateMessage(const std::string& type, const nlohmann::j
         post_(AnimationsJson());
     } else if (type == "animations:request") {
         post_(AnimationsJson());
+    } else if (type == "fx:sheet-read" || type == "fx:sheet-save" || type == "fx:sheet-addPictures") {
+        // The sheet editor (Project ▸ Effects ▸ Sheets ▸ Edit): a sheet's file as it is, written back, or pictures added.
+        const std::string path = message.value("path", "");
+        const std::filesystem::path file = assets_.GetProject().Resolve(path);
+        if (path.find("..") != std::string::npos || !path.ends_with(".anim.json")) return true;
+        nlohmann::json json;
+        if (type == "fx:sheet-save") {
+            json = message.value("json", nlohmann::json::object());
+            std::string error;
+            const auto sheet = AnimSheetFromJson(json, path, &error);
+            if (!sheet) {
+                post_({{"type", "notify"}, {"text", "Not saved: " + error}});
+                return true;
+            }
+            std::ofstream(file, std::ios::trunc) << json.dump(2) << "\n";
+            const auto problems = ValidateAnimSheet(*sheet);
+            post_({{"type", "notify"}, {"text", "Saved " + path + (problems.empty() ? std::string() : " (it " + problems.front() + ")")}});
+        } else {
+            std::ifstream in(file);
+            json = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+            if (!json.is_object()) {
+                post_({{"type", "notify"}, {"text", "Can't read " + path}});
+                return true;
+            }
+        }
+        if (type == "fx:sheet-addPictures") {
+            // New rows of slots at the bottom (the slots there keep their numbers): a strip of frames as tall as a slot is
+            // split into them, any other picture fitted into one slot.
+            const int gw = json.value("grid", nlohmann::json::object()).value("width", 0), gh = json.value("grid", nlohmann::json::object()).value("height", 0);
+            const std::string texture = json.value("texture", "");
+            auto atlas = DecodeImage(assets_.GetProject().Resolve(texture));
+            if (gw <= 0 || gh <= 0 || !atlas) {
+                post_({{"type", "notify"}, {"text", gw <= 0 ? "Its frames are regions, not a grid: pictures can't be added as slots" : "Can't read its picture " + texture}});
+                return true;
+            }
+            const int columns = std::max(1, static_cast<int>(atlas->width) / gw), rows = static_cast<int>(atlas->height) / gh;
+            std::vector<ImageData> cells;
+            auto cellOf = [&](const ImageData& image, int x0, int w, int h) { // fitted into a slot, centred, its foot at the bottom
+                ImageData cell;
+                cell.width = static_cast<uint32_t>(gw), cell.height = static_cast<uint32_t>(gh);
+                cell.rgba.assign(static_cast<size_t>(gw) * gh * 4, 0);
+                const float k = std::min({1.0f, static_cast<float>(gw) / w, static_cast<float>(gh) / h});
+                const int ow = std::max(1, static_cast<int>(w * k)), oh = std::max(1, static_cast<int>(h * k));
+                const int ox = (gw - ow) / 2, oy = gh - oh;
+                for (int y = 0; y < oh; ++y) {
+                    for (int x = 0; x < ow; ++x) {
+                        const int sx = x0 + std::min(w - 1, static_cast<int>(x / k)), sy = std::min(h - 1, static_cast<int>(y / k));
+                        std::copy_n(&image.rgba[(static_cast<size_t>(sy) * image.width + sx) * 4], 4, &cell.rgba[(static_cast<size_t>(oy + y) * gw + ox + x) * 4]);
+                    }
+                }
+                return cell;
+            };
+            for (const auto& picture : message.value("pictures", nlohmann::json::array())) {
+                if (!picture.is_string()) continue;
+                const auto image = DecodeImage(assets_.GetProject().Resolve(picture.get<std::string>()));
+                if (!image || image->width == 0) continue;
+                const int w = static_cast<int>(image->width), h = static_cast<int>(image->height);
+                if (h == gh && w > gw && w % gw == 0) {
+                    for (int x0 = 0; x0 < w; x0 += gw) cells.push_back(cellOf(*image, x0, gw, gh));
+                } else if (w > h && h > 0 && w % h == 0 && w / h > 1) { // a strip of square frames, another size
+                    for (int x0 = 0; x0 < w; x0 += h) cells.push_back(cellOf(*image, x0, h, h));
+                } else {
+                    cells.push_back(cellOf(*image, 0, w, h));
+                }
+            }
+            if (cells.empty()) return true;
+            const int added = (static_cast<int>(cells.size()) + columns - 1) / columns;
+            ImageData grown;
+            grown.width = static_cast<uint32_t>(columns * gw), grown.height = static_cast<uint32_t>((rows + added) * gh);
+            grown.rgba.assign(static_cast<size_t>(grown.width) * grown.height * 4, 0);
+            for (uint32_t y = 0; y < std::min(atlas->height, static_cast<uint32_t>(rows * gh)); ++y) {
+                std::copy_n(&atlas->rgba[static_cast<size_t>(y) * atlas->width * 4], static_cast<size_t>(std::min(atlas->width, grown.width)) * 4,
+                            &grown.rgba[static_cast<size_t>(y) * grown.width * 4]);
+            }
+            for (size_t k = 0; k < cells.size(); ++k) {
+                const int slot = rows * columns + static_cast<int>(k);
+                const int cx = (slot % columns) * gw, cy = (slot / columns) * gh;
+                for (int y = 0; y < gh; ++y) {
+                    std::copy_n(&cells[k].rgba[static_cast<size_t>(y) * gw * 4], static_cast<size_t>(gw) * 4, &grown.rgba[(static_cast<size_t>(cy + y) * grown.width + cx) * 4]);
+                }
+            }
+            if (!WritePng(assets_.GetProject().Resolve(texture), grown)) {
+                post_({{"type", "notify"}, {"text", "Can't write " + texture}});
+                return true;
+            }
+            json["size"] = {grown.width, grown.height};
+            std::ofstream(file, std::ios::trunc) << json.dump(2) << "\n";
+            renderer_.InvalidateTexture(texture);
+            RefreshAssets();
+            post_({{"type", "notify"}, {"text", "Slots " + std::to_string(rows * columns) + "–" + std::to_string(rows * columns + static_cast<int>(cells.size()) - 1) + " added: click them to put them in a clip"}});
+        }
+        post_({{"type", "fx:sheet"}, {"path", path}, {"json", json}});
+        if (type != "fx:sheet-read") {
+            post_(FxJson());
+            post_(AnimationsJson());
+        }
     } else if (type == "character:makePlayer") {
         std::vector<std::string> pictures;
         for (const auto& p : message.value("pictures", nlohmann::json::array())) {
