@@ -78,7 +78,7 @@ const shown = computed(() => {
 })
 const aiReady = computed(() => editorState.ai.state === 'ready')
 // Drawn by the project's art model when it's BFL's, else PixelLab.
-const byBfl = computed(() => editorState.ai.artProvider.startsWith('bfl:'))
+const byBfl = computed(() => editorState.ai.artInUse.startsWith('bfl:'))
 const noKey = computed(() => (byBfl.value ? editorState.ai.available.bfl === false : editorState.ai.available.pixellab === false))
 
 function generate(): void {
@@ -193,7 +193,7 @@ function when(iso: string): string {
       </div>
       <div v-if="error" class="error">{{ error }}</div>
       <p class="muted small">
-        {{ byBfl ? `The project's art model (${editorState.ai.artProvider.slice(4)}) paints 4 frames together from the image, the size it is.` : 'PixelLab draws 4 frames at 64 × 64 from the image (it’s fitted into that square).' }} The frames and a spritesheet
+        {{ byBfl ? `The project's art model (${editorState.ai.artInUse.slice(4)}) paints 4 frames together from the image, the size it is.` : 'PixelLab draws 4 frames at 64 × 64 from the image (it’s fitted into that square).' }} The frames and a spritesheet
         of them go into assets/textures/generated/animations/.
       </p>
       <div class="history-head">

@@ -5199,6 +5199,7 @@ nlohmann::json EditorApp::AiStatusJson() {
             {"available", providerStatus_.value("available", nlohmann::json::object())},
             {"artProvider", userPrefs_ ? userPrefs_->Get("artProvider", "auto") : nlohmann::json("auto")},
             {"art", artStatus_.value("art", "")},
+            {"artInUse", ChosenAi("art")}, // the project's art model, else the app's: what draws now
             {"backgroundProvider", userPrefs_ ? userPrefs_->Get("backgroundProvider", "bfl:flux-3-image") : nlohmann::json("bfl:flux-3-image")},
             {"backgroundError", backgroundStatus_.value("ok", true) ? "" : (backgroundStatus_.contains("errors") && !backgroundStatus_["errors"].empty()
                                                                             ? backgroundStatus_["errors"][0].get<std::string>() : "")},

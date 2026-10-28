@@ -83,7 +83,7 @@ const suggestedName = computed(() =>
 )
 const aiReady = computed(() => editorState.ai.state === 'ready')
 // Drawn by the project's art model when it's BFL's, else PixelLab.
-const byBfl = computed(() => editorState.ai.artProvider.startsWith('bfl:'))
+const byBfl = computed(() => editorState.ai.artInUse.startsWith('bfl:'))
 const noKey = computed(() => (byBfl.value ? editorState.ai.available.bfl === false : editorState.ai.available.pixellab === false))
 
 function generate(): void {
@@ -168,7 +168,7 @@ function thumb(path: string, created: string): string {
       </div>
       <div v-if="error" class="error">{{ error }}</div>
       <p class="muted small">
-        Drawn by {{ byBfl ? `the project's art model (${editorState.ai.artProvider.slice(4)}): facing you first, each other direction an edit of it, the west side mirrored` : 'PixelLab' }}, in the project’s colours. Each direction lands in
+        Drawn by {{ byBfl ? `the project's art model (${editorState.ai.artInUse.slice(4)}): facing you first, each other direction an edit of it, the west side mirrored` : 'PixelLab' }}, in the project’s colours. Each direction lands in
         assets/textures/generated/characters/{{ form.name || suggestedName || '<name>' }}/ and shows in the Assets panel.
       </p>
     </section>
