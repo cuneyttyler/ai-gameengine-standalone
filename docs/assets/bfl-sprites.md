@@ -68,9 +68,9 @@ and ignored the poses; FLUX.2 klein 4b kept the poses but painted mannequins; ch
 into each square to its mannequin's worked better in profile (its colours brought back by matching them to the original)
 but left mannequin heads facing the camera.
 
-## Animation by editing copies (the default)
+## Animation by editing copies
 
-Preferences ▸ AI ▸ Animate: **BFL image** (`bfl:image`, the default), FLUX.2 klein 4b, `bfl_sprites.animate_copies`,
+No longer offered in Preferences (AutoSprite is the default, docs/assets/autosprite.md); `bfl:image`, FLUX.2 klein 4b, `bfl_sprites.animate_copies`,
 tested in `builder_tests/bfl_strip` (`COPIES=1`) on FirstGame's a-male-herbalist. **One call a direction, 8 frames.**
 
 1. The pose copied into all 8 squares of a 4 x 2 grid (1024 x 512, 256 px squares) on flat magenta, about 85 % of a

@@ -12,6 +12,14 @@ import { panelTab } from '../paneltabs'
 const PROJECT_HOST = 'https://aige-project.local/'
 const DIRECTIONS = ['south', 'south-east', 'east', 'north-east', 'north', 'north-west', 'west', 'south-west']
 const ACTIONS = ['walking', 'running', 'idle breathing', 'attacking with a sword', 'casting a spell', 'jumping', 'flickering flame']
+// AutoSprite's motions (autosprite.io/docs/reference-animation-types), by group; anything else is "custom", said in words.
+const MOTIONS: [string, string[]][] = [
+  ['Basic', ['idle', 'walk', 'run', 'attack', 'jump']],
+  ['Combat', ['punch', 'kick', 'block', 'hurt', 'hit_react', 'dodge', 'dodge_lean', 'death', 'shoot']],
+  ['Magic and skills', ['cast', 'pickup', 'push', 'pull', 'throw']],
+  ['Emotes', ['wave', 'sit', 'kneel', 'point', 'sleep', 'victory', 'dance', 'talk']],
+  ['Movement', ['dash', 'fall', 'climb', 'swim', 'crouch', 'roll', 'fly', 'slide']],
+]
 
 const images = ref<string[]>([])
 const characters = ref<{ path: string; texture: string; character?: { name?: string; description?: string } }[]>([])
@@ -25,6 +33,8 @@ const form = reactive({
   view: 'low top-down' as 'low top-down' | 'high top-down' | 'side',
   name: '',
 })
+// With AutoSprite: one of its motions, or "custom" (form.action says it).
+const motion = ref('walk')
 const busy = ref(false)
 const error = ref('')
 // Every request made here and what came back, kept by the editor with the project (it stays when the tab changes).
@@ -112,21 +122,23 @@ const aiReady = computed(() => editorState.ai.state === 'ready')
 const whyOff = computed(() =>
   busy.value ? 'Still drawing the last one…'
   : !aiReady.value ? `Turn AI on (${editorState.ai.text || editorState.ai.state})`
-  : noKey.value ? `Needs ${byBfl.value ? 'BFL_API_KEY' : 'PIXELLAB_API_KEY'} in ai_service/.env`
+  : noKey.value ? `Needs ${keyName.value} in ai_service/.env`
   : !form.path && !form.sheet ? 'Pick a character or an image on the left'
-  : !form.action.trim() ? 'Say the action'
+  : (!byAutoSprite.value || motion.value === 'custom') && !form.action.trim() ? 'Say the action'
   : '',
 )
-// Drawn by the project's art model when it's BFL's, else PixelLab.
-const byBfl = computed(() => editorState.ai.animateProvider.startsWith('bfl:'))
-const noKey = computed(() => (byBfl.value ? editorState.ai.available.bfl === false : editorState.ai.available.pixellab === false))
+// What animates (Preferences ▸ AI ▸ Animate): AutoSprite (the default) or PixelLab.
+const byAutoSprite = computed(() => editorState.ai.animateProvider === 'autosprite')
+const keyName = computed(() => (byAutoSprite.value ? 'AUTO_SPRITE_API_KEY' : 'PIXELLAB_API_KEY'))
+const noKey = computed(() => editorState.ai.available[byAutoSprite.value ? 'autosprite' : 'pixellab'] === false)
 
 function generate(): void {
   error.value = ''
   busy.value = true
+  const action = byAutoSprite.value && motion.value !== 'custom' ? motion.value : form.action.trim()
   const request = form.sheet
-    ? { sheet: form.sheet, action: form.action.trim(), description: form.description.trim() }
-    : { ...form, sheet: undefined, action: form.action.trim(), description: form.description.trim() }
+    ? { sheet: form.sheet, action, description: form.description.trim() }
+    : { ...form, sheet: undefined, action, description: form.description.trim() }
   sendToHost({ type: 'animation:generate', request })
 }
 
@@ -216,9 +228,18 @@ function when(iso: string): string {
         <label>Image</label>
         <span class="path" :title="form.sheet || form.path">{{ form.sheet ? `${form.sheet.split('/').pop()} (every direction)` : form.path || 'pick one on the left' }}</span>
       </div>
-      <div class="row">
+      <div v-if="byAutoSprite" class="row">
+        <label>Motion</label>
+        <select v-model="motion">
+          <optgroup v-for="[group, kinds] in MOTIONS" :key="group" :label="group">
+            <option v-for="k in kinds" :key="k" :value="k">{{ k.replace('_', ' ') }}</option>
+          </optgroup>
+          <option value="custom">custom: say it…</option>
+        </select>
+      </div>
+      <div v-if="!byAutoSprite || motion === 'custom'" class="row">
         <label>Action</label>
-        <input v-model="form.action" list="animate-actions" placeholder="walking" />
+        <input v-model="form.action" list="animate-actions" :placeholder="byAutoSprite ? 'the lid swings open, gold glints inside' : 'walking'" />
         <datalist id="animate-actions">
           <option v-for="a in ACTIONS" :key="a" :value="a" />
         </datalist>
@@ -227,13 +248,13 @@ function when(iso: string): string {
         <label>What it is</label>
         <input v-model="form.description" placeholder="optional: a knight in plate armour" />
       </div>
-      <div class="row">
+      <div v-if="!byAutoSprite" class="row">
         <label>Facing</label>
         <select v-model="form.direction">
           <option v-for="d in DIRECTIONS" :key="d" :value="d">{{ d }}</option>
         </select>
       </div>
-      <div class="row">
+      <div v-if="!byAutoSprite" class="row">
         <label>View</label>
         <select v-model="form.view">
           <option value="low top-down">low top-down</option>
@@ -250,14 +271,14 @@ function when(iso: string): string {
         <button class="primary" :disabled="!!whyOff" :title="whyOff" @click="generate">
           Animate
         </button>
-        <span v-if="busy" class="muted">Drawing 4 frames (about a minute)…</span>
+        <span v-if="busy" class="muted">{{ byAutoSprite ? (form.sheet ? 'Animating all 8 directions (2 to 5 minutes)…' : 'Animating (about a minute)…') : 'Animating (a few minutes)…' }}</span>
         <span v-else-if="!aiReady" class="muted">Needs AI to be on.</span>
-        <span v-else-if="noKey" class="muted">Needs {{ byBfl ? 'BFL_API_KEY' : 'PIXELLAB_API_KEY' }} in ai_service/.env.</span>
+        <span v-else-if="noKey" class="muted">Needs {{ keyName }} in ai_service/.env.</span>
         <span v-else-if="whyOff" class="muted">{{ whyOff }}</span>
       </div>
       <div v-if="error" class="error">{{ error }}</div>
       <p class="muted small">
-        {{ editorState.ai.animateProvider === 'bfl:flux-3-video' ? 'BFL FLUX 3 video moves the picture in a looping clip, cut into frames.' : byBfl ? 'BFL (FLUX.2 klein 4b) draws 8 looping frames from the picture, one call a direction.' : 'PixelLab (Animate with text v3) makes 8 looping frames from the picture, up to 256 px.' }} A character: every direction, added to its sheet. Otherwise the frames and a spritesheet
+        {{ byAutoSprite ? 'AutoSprite animates the picture as it is drawn (a person, or a thing: told apart by what it is); a character in all 8 directions in one go.' : 'PixelLab (Animate with text v3) makes 8 looping frames from the picture, up to 256 px.' }} A character: every direction, added to its sheet. Otherwise the frames and a spritesheet
         of them go into assets/textures/generated/animations/.
       </p>
       <div class="history-head">

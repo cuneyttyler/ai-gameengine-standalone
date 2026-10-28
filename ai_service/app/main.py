@@ -263,15 +263,16 @@ class MatchedRequest(BaseModel):
     provider: str = ""                 # this build's art provider (Build ▸ Assets); "" for the service's (the project's)
 
 
-# What animates (Preferences ▸ AI ▸ Animate): BFL's FLUX.2 klein 4b editing copies of the pose (the default, one call a
-# direction), PixelLab's Animate with text v3, or BFL's FLUX 3 video.
-ANIMATE_PROVIDERS = ("bfl:image", "pixellab:animate-v3", "bfl:flux-3-video")
+# What animates (Preferences ▸ AI ▸ Animate): AutoSprite (the default: a character's 8 directions in one render) or
+# PixelLab's Animate with text v3. BFL's (FLUX.2 klein 4b editing copies of the pose, FLUX 3 video) are still taken
+# when asked for by name, no longer offered.
+ANIMATE_PROVIDERS = ("autosprite", "pixellab:animate-v3")
 COPIES_MODEL = "flux-2-klein-4b"
 
 
 class AnimationRequest(BaseModel):
     path: str            # the project image to animate
-    provider: str = ""   # Preferences ▸ AI ▸ Animate ("" the default: BFL image)
+    provider: str = ""   # Preferences ▸ AI ▸ Animate ("" the default: AutoSprite)
     action: str          # walking, swinging a sword, flickering
     description: str = ""
     direction: str = "south"
@@ -341,7 +342,8 @@ def available_providers() -> dict[str, bool]:
     return {"mistral": bool(os.environ.get("MISTRAL_API_KEY")),
             "claude": bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")),
             "pixellab": bool(os.environ.get("PIXELLAB_API_KEY")),
-            "bfl": bool(os.environ.get("BFL_API_KEY"))}
+            "bfl": bool(os.environ.get("BFL_API_KEY")),
+            "autosprite": bool(os.environ.get("AUTO_SPRITE_API_KEY") or os.environ.get("AUTOSPRITE_API_KEY"))}
 
 
 # What draws the art (Preferences ▸ AI ▸ Art): auto (follows the LLM), Mistral, PixelLab, or a BFL model ("bfl:<model>").
@@ -906,8 +908,9 @@ def create_app(
         video = video_animator(request.provider)
         v3 = pixellab_animator(request.provider)
         copies = copies_animator(request.provider)
-        if not copies and not v3 and not video and not model and not os.environ.get("PIXELLAB_API_KEY"):
-            return {"ok": False, "errors": ["Animations are made by BFL (BFL_API_KEY in ai_service/.env) or PixelLab (PIXELLAB_API_KEY)"]}
+        auto = autosprite_animator(request.provider)
+        if not auto and not copies and not v3 and not video and not model and not os.environ.get("PIXELLAB_API_KEY"):
+            return {"ok": False, "errors": ["Animations are made by AutoSprite (AUTO_SPRITE_API_KEY in ai_service/.env) or PixelLab (PIXELLAB_API_KEY)"]}
         source = (root / request.path).resolve()
         if root.resolve() not in source.parents or not source.is_file():
             return {"ok": False, "errors": ["Pick an image of the project to animate"]}
@@ -915,8 +918,28 @@ def create_app(
         name = re.sub(r"[^a-z0-9-]+", "-", (request.name or source.stem + "-" + request.action).lower()).strip("-")[:48] or "animation"
         what = request.description or source.stem.replace("-", " ")
         report = progress.reporter()
+        humanoid = None
         try:
-            if copies:
+            if auto:
+                from . import autosprite
+                from PIL import Image
+                report(0, 1, f"Animating {source.name}: {request.action} (AutoSprite)")
+                told = source.with_name(source.name + ".gen.json")  # what the picture was made as, when it was made here
+                made_as = json.loads(told.read_text(encoding="utf-8")).get("description", "") if told.is_file() else ""
+                humanoid = autosprite.is_humanoid(" ".join([request.description, made_as, source.stem]), False, state["provider"])
+                with Image.open(source) as im:
+                    size = max(32, min(256, max(im.size)))
+                    height = (im.convert("RGBA").getbbox() or (0, 0, 0, size))[3] - (im.convert("RGBA").getbbox() or (0, 0, 0, 0))[1]
+                lab = autosprite.AutoSprite(autosprite.api_key())
+                character = lab.create(source.stem, source.read_bytes(), humanoid, request.description or made_as or what)
+                shot, _ = lab.animate(character, request.action, 12, 256,
+                                      on_status=lambda text: report(0, 1, f"Animating {source.name}: {text}"))
+                frames = []
+                for f in autosprite.fitted({"one": shot}, size, height)["one"]:
+                    buf = io.BytesIO()
+                    f.save(buf, "PNG")
+                    frames.append(buf.getvalue())
+            elif copies:
                 from .bfl import BflPainter
                 from . import bfl_sprites
                 report(0, 1, f"Animating {source.name}: {request.action} (BFL {COPIES_MODEL})")
@@ -967,10 +990,11 @@ def create_app(
         sheet = folder / f"{name}-sheet.png"
         sheet.write_bytes(spritesheet(frames))
         meta = {"description": request.description, "action": request.action, "direction": request.direction, "from": request.path,
-                "frames": len(frames), "provider": "pixellab", "model": "pixellab animate-with-text",
+                "frames": len(frames), "provider": "autosprite" if auto else "pixellab",
+                "model": "autosprite" if auto else "pixellab animate-with-text", "humanoid": humanoid,
                 "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}
         (folder / f"{sheet.name}.gen.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
-        return {"ok": True, "name": name, "frames": made, "sheet": sheet.relative_to(root).as_posix()}
+        return {"ok": True, "name": name, "frames": made, "sheet": sheet.relative_to(root).as_posix(), "humanoid": humanoid}
 
     def bfl_art() -> str | None:
         """The project's art model when it's BFL's (Preferences / Project Settings ▸ AI ▸ Art): characters and animations
@@ -987,8 +1011,13 @@ def create_app(
         return provider == "pixellab:animate-v3" and bool(os.environ.get("PIXELLAB_API_KEY"))
 
     def copies_animator(provider: str) -> bool:
-        """Animate by BFL image edits of the pose's copies (bfl_sprites.animate_copies, the default), while there's a BFL key."""
-        return (provider or ANIMATE_PROVIDERS[0]) == "bfl:image" and bool(os.environ.get("BFL_API_KEY"))
+        """Animate by BFL image edits of the pose's copies (bfl_sprites.animate_copies): when asked for, with a BFL key."""
+        return provider == "bfl:image" and bool(os.environ.get("BFL_API_KEY"))
+
+    def autosprite_animator(provider: str) -> bool:
+        """Animate with AutoSprite (the default), while there's its key."""
+        from .autosprite import api_key
+        return (provider or ANIMATE_PROVIDERS[0]) == "autosprite" and bool(api_key())
 
     def style_words(root: Path) -> str:
         colours = project_style.project_palette(root)
@@ -1063,17 +1092,20 @@ def create_app(
         painted = [d for d in faces if not (d in mirrored and mirrored[d] in faces)]
         if video_animator(request.provider) or pixellab_animator(request.provider):
             painted = [d for d in ("south", "east", "north") if d in faces]  # the calls it makes (see below)
+        auto = autosprite_animator(request.provider)
+        if auto:
+            painted = list(faces)  # AutoSprite's isometric pack: all 8 in one render
         model = bfl_art()
         video = video_animator(request.provider)
         v3 = pixellab_animator(request.provider)
         copies = copies_animator(request.provider)
-        if not copies and not v3 and not video and not model and not os.environ.get("PIXELLAB_API_KEY"):
-            return {"ok": False, "errors": ["Animations are made by BFL (BFL_API_KEY in ai_service/.env) or PixelLab (PIXELLAB_API_KEY)"]}
+        if not auto and not copies and not v3 and not video and not model and not os.environ.get("PIXELLAB_API_KEY"):
+            return {"ok": False, "errors": ["Animations are made by AutoSprite (AUTO_SPRITE_API_KEY in ai_service/.env) or PixelLab (PIXELLAB_API_KEY)"]}
         what = request.description or info.get("description", "") or info.get("name", "the character")
         size = sheet["grid"]["width"]
         report = progress.reporter()
         report(0, len(painted), f"Animating {info.get('name', 'it')}: {request.action}, {len(painted)} directions "
-                                f"({'BFL ' + COPIES_MODEL if copies else 'PixelLab v3' if v3 else 'FLUX 3 video' if video else model or 'PixelLab'})")
+                                f"({'AutoSprite' if auto else 'BFL ' + COPIES_MODEL if copies else 'PixelLab v3' if v3 else 'FLUX 3 video' if video else model or 'PixelLab'})")
         done = [0]
 
         def one(direction: str) -> tuple[str, list[bytes] | str]:
@@ -1111,7 +1143,28 @@ def create_app(
             done[0] += 1
             report(done[0], len(painted), f"Animating {info.get('name', 'it')}: {direction} done")
             return direction, frames
-        if copies:
+        if auto:
+            # AutoSprite: the character uploaded once (its id kept in the sheet), then ONE isometric pack, every direction
+            # in one render (15 credits); the figure brought to the idle pose's height.
+            from . import autosprite
+            front = charsheet.frame(sheet, atlas, "idle", "south") or charsheet.frame(sheet, atlas, next(iter(sheet["clips"])), "south")
+            if front is None:
+                return {"ok": False, "errors": ["The character has no south pose to start from"]}
+            buf = io.BytesIO()
+            front.save(buf, "PNG")
+            lab = autosprite.AutoSprite(autosprite.api_key())
+            try:
+                if not info.get("autosprite"):
+                    humanoid = autosprite.is_humanoid(" ".join([what, info.get("name", "")]), True, state["provider"])
+                    info["autosprite"], info["humanoid"] = lab.create(info.get("name", "character"), buf.getvalue(), humanoid, what), humanoid
+                    sheet["character"] = info
+                shot, _ = lab.pack(info["autosprite"], request.action, 12, 256,
+                                   on_status=lambda text: report(0, len(painted), f"Animating {info.get('name', 'it')}: {text}"))
+            except Exception as error:  # noqa: BLE001 - said to the editor
+                return {"ok": False, "errors": [f"AutoSprite: {error}"]}
+            box = front.getbbox() or (0, 0, size, size)
+            results = autosprite.fitted({d: f for d, f in shot.items() if d in faces}, size, box[3] - box[1])
+        elif copies:
             # One call a direction it faces, west's side mirrored from east's (south-east, east, north-east): five for eight,
             # one after another (a low-credit BFL account runs one task at a time).
             results = {d: one(d)[1] for d in painted}
@@ -1131,17 +1184,18 @@ def create_app(
         frames = {d: f for d, f in results.items() if isinstance(f, list) and f}
         errors = [f"{d}: {f}" for d, f in results.items() if not isinstance(f, list)]
         for west, east in mirrored.items():
-            if west in faces and east in frames:
+            if west in faces and east in frames and west not in frames:
                 frames[west] = [Image.open(io.BytesIO(f)).convert("RGBA").transpose(Image.FLIP_LEFT_RIGHT) for f in frames[east]]
         if not frames:
             return {"ok": False, "errors": errors or ["nothing was drawn"]}
         clip = charsheet.clip_for(request.action)
-        sheet, atlas = charsheet.add_clip(sheet, atlas, clip, frames, fps=12.0 if video else 10.0 if v3 or copies else 8.0 if clip in ("walk", "idle") else 10.0,
+        sheet, atlas = charsheet.add_clip(sheet, atlas, clip, frames, fps=12.0 if video or auto else 10.0 if v3 or copies else 8.0 if clip in ("walk", "idle") else 10.0,
                                           loop="loop" if clip in ("walk", "idle") or clip not in ("attack", "cast", "hurt", "die", "use") else "once")
         name = Path(request.sheet).name.replace(".character.anim.json", "")
         path, texture = charsheet.write(root, Path(request.sheet).parent.as_posix(), name, sheet, atlas)
         report(len(painted), len(painted), f"{clip} added")
         return {"ok": True, "sheet": path, "texture": texture, "clip": clip, "directions": sorted(frames), "errors": errors,
+                "humanoid": info.get("humanoid"),
                 "assets": [{"path": path}, {"path": texture}]}
 
     @app.post("/characters/from-pictures")

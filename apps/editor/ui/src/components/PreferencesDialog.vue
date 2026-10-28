@@ -274,11 +274,10 @@ function close(): void {
                 <label>Animate</label>
                 <div class="control">
                   <select :value="editorState.ai.animateProvider" :disabled="!editorState.ai.enabled" @change="sendToHost({ type: 'ai:setAnimateProvider', provider: ($event.target as HTMLSelectElement).value })">
-                    <option value="bfl:image">BFL image (FLUX.2 klein 4b: 8 frames, one call a direction){{ noKey('bfl') }}</option>
-                    <option value="pixellab:animate-v3">PixelLab Animate with text v3 (8 frames, up to 256 px){{ noKey('pixellab') }}</option>
-                    <option value="bfl:flux-3-video">BFL FLUX 3 Video (image to video, costlier){{ noKey('bfl') }}</option>
+                    <option value="autosprite">AutoSprite (its motions or your own; a character's 8 directions at once){{ noKey('autosprite') }}</option>
+                    <option value="pixellab:animate-v3">PixelLab Animate with text v3 (8 frames, up to 256 px; slow){{ noKey('pixellab') }}</option>
                   </select>
-                  <p class="desc">What makes things move in Generate ▸ Animate: a picture, or a character (south, east and north; west mirrored), looping.</p>
+                  <p class="desc">What makes things move in Generate ▸ Animate: a picture, or a character in every direction.</p>
                 </div>
               </div>
               <div class="field">
