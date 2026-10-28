@@ -66,14 +66,12 @@ function playStyle(t: Target, w: number, h: number): Record<string, string> {
   }
 }
 // A door plays over its box on the building; a thing plays over its whole picture.
-function doorPlay(t: Target): Record<string, string> {
-  const s = scaleOf(t)
+function doorPlay(t: Target, s = scaleOf(t)): Record<string, string> {
   const [x, y] = t.region
   const [bx, by, bw, bh] = t.box!
   return { ...playStyle(t, bw * s, bh * s), left: `${(bx - x) * s}px`, top: `${(by - y) * s}px` }
 }
-function thingPlay(t: Target): Record<string, string> {
-  const s = scaleOf(t)
+function thingPlay(t: Target, s = scaleOf(t)): Record<string, string> {
   return { ...playStyle(t, t.region[2] * s, t.region[3] * s), left: '0', top: '0' }
 }
 
@@ -94,14 +92,27 @@ const STATUS: Record<Target['status'], string> = {
 }
 
 // Its door's box over its picture (the thumbnail is its region, scaled to at most 120 x 90 px).
-function boxStyle(t: Target): Record<string, string> {
+function boxStyle(t: Target, s = scaleOf(t)): Record<string, string> {
   if (!t.box) return { display: 'none' }
-  const s = scaleOf(t)
   const [x, y] = t.region
   return { left: `${(t.box[0] - x) * s}px`, top: `${(t.box[1] - y) * s}px`, width: `${t.box[2] * s}px`, height: `${t.box[3] * s}px` }
 }
 function scaleOf(t: Target): number {
   return Math.min(120 / Math.max(1, t.region[2]), 90 / Math.max(1, t.region[3]))
+}
+// The big view (a click on a picture): as large as fits the window, at most 4x.
+const big = ref<Target | null>(null)
+function bigScale(t: Target): number {
+  return Math.min((window.innerWidth * 0.8) / Math.max(1, t.region[2]), (window.innerHeight * 0.75) / Math.max(1, t.region[3]), 4)
+}
+function picStyle(t: Target, s: number): Record<string, string> {
+  return {
+    width: `${t.region[2]}px`,
+    height: `${t.region[3]}px`,
+    backgroundImage: `url('${PROJECT_HOST}${t.texture}')`,
+    backgroundPosition: `-${t.region[0]}px -${t.region[1]}px`,
+    transform: `scale(${s})`,
+  }
 }
 
 function runAll(): void {
@@ -141,17 +152,9 @@ function stop(): void {
     </section>
     <p v-if="!shown.length" class="dim">Nothing that moves yet: buildings and used things show here once their art is made (or the place is painted).</p>
     <div v-for="t in shown" :key="t.key" class="target" :class="t.status">
-      <div class="thumb" :style="{ width: `${t.region[2] * scaleOf(t)}px`, height: `${t.region[3] * scaleOf(t)}px` }">
-        <div
-          class="pic"
-          :style="{
-            width: `${t.region[2]}px`,
-            height: `${t.region[3]}px`,
-            backgroundImage: `url('${PROJECT_HOST}${t.texture}')`,
-            backgroundPosition: `-${t.region[0]}px -${t.region[1]}px`,
-            transform: `scale(${scaleOf(t)})`,
-          }"
-        ></div>
+      <div class="thumb" :style="{ width: `${t.region[2] * scaleOf(t)}px`, height: `${t.region[3] * scaleOf(t)}px` }"
+           :title="t.status === 'done' ? 'Animated: click to see it big' : 'Click to see it big'" @click="big = t">
+        <div class="pic" :style="picStyle(t, scaleOf(t))"></div>
         <div v-if="t.preview && t.status === 'done' && t.kind === 'door' && t.box" class="play" :style="doorPlay(t)"></div>
         <div v-else-if="t.preview && t.status === 'done' && t.kind === 'thing'" class="play thing" :style="thingPlay(t)"></div>
         <div v-else-if="t.box" class="box" :style="boxStyle(t)"></div>
@@ -169,6 +172,22 @@ function stop(): void {
           {{ t.status === 'done' ? 'Again' : 'Animate' }}
         </button>
         <button v-if="t.status !== 'finding' && t.status !== 'animating'" @click="skip(t)">{{ t.status === 'skipped' ? 'Include' : 'Skip' }}</button>
+      </div>
+    </div>
+    <div v-if="big" class="big-backdrop" tabindex="-1" @mousedown.self="big = null" @keydown.esc="big = null">
+      <div class="big-sheet">
+        <div class="big-head">
+          <b>{{ big.label }}</b>
+          <span class="dim">{{ big.status === 'done' ? (big.kind === 'door' ? 'its door opening and closing' : 'its animation') : STATUS[big.status] }}</span>
+          <span class="spacer"></span>
+          <button @click="big = null">Close</button>
+        </div>
+        <div class="thumb big-thumb" :style="{ width: `${big.region[2] * bigScale(big)}px`, height: `${big.region[3] * bigScale(big)}px` }">
+          <div class="pic" :style="picStyle(big, bigScale(big))"></div>
+          <div v-if="big.preview && big.status === 'done' && big.kind === 'door' && big.box" class="play" :style="doorPlay(big, bigScale(big))"></div>
+          <div v-else-if="big.preview && big.status === 'done' && big.kind === 'thing'" class="play thing" :style="thingPlay(big, bigScale(big))"></div>
+          <div v-else-if="big.box" class="box" :style="boxStyle(big, bigScale(big))"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -227,6 +246,34 @@ function stop(): void {
   transform-origin: 0 0;
   background-repeat: no-repeat;
   image-rendering: pixelated;
+}
+.thumb {
+  cursor: zoom-in;
+}
+.big-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.big-sheet {
+  background: var(--panel, #222);
+  border: 1px solid var(--border, #444);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.big-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.big-thumb {
+  cursor: default;
 }
 .play {
   position: absolute;
