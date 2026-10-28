@@ -254,3 +254,44 @@ def _images_by_direction(answer: dict) -> dict[str, bytes]:
 
     visit(answer)
     return out
+
+
+def animate_v3(generator: "PixelLabImageGenerator", picture: bytes, action: str, frames: int = 8, side: int = 256,
+               wait_s: float = 600.0) -> list[bytes]:
+    """`picture` moving (Animate with text v3, docs/assets/bfl-sprites.md): fitted into a `side` square (at most 256) as
+    both the first and the last frame, so it loops; `frames` frames (4-16, even), no background; PNG bytes each."""
+    side = max(32, min(256, side))
+    with Image.open(io.BytesIO(picture)) as source:
+        image = source.convert("RGBA")
+    part = image.crop(image.getbbox() or (0, 0, image.width, image.height))
+    k = side * 0.9 / max(part.width, part.height)
+    part = part.resize((max(1, round(part.width * k)), max(1, round(part.height * k))), Image.Resampling.LANCZOS)
+    square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    square.paste(part, ((side - part.width) // 2, side - round(side * 0.04) - part.height), part)
+    buf = io.BytesIO()
+    square.save(buf, "PNG")
+    frame = {"type": "base64", "base64": base64.b64encode(buf.getvalue()).decode(), "format": "png"}
+    count = max(4, min(16, frames // 2 * 2))
+    started = generator._call("POST", "/animate-with-text-v3", {"first_frame": frame, "last_frame": frame, "frame_count": count,
+                                                                "action": action[:300], "no_background": True})
+    job = started.get("background_job_id")
+    if not job:
+        raise ProviderError("PixelLab didn't start the animation")
+    deadline = time.time() + wait_s
+    while time.time() < deadline:
+        state = generator._call("GET", f"/background-jobs/{job}")
+        if state.get("status") == "completed":
+            out = []
+            for item in (state.get("last_response") or {}).get("images") or []:
+                if isinstance(item, dict) and isinstance(item.get("image"), dict):
+                    item = item["image"]
+                text = str(item.get("base64", "")) if isinstance(item, dict) else ""
+                if text:
+                    out.append(base64.b64decode(text.split(",", 1)[1] if text.startswith("data:") else text))
+            if not out:
+                raise ProviderError("PixelLab finished the animation but sent no frames")
+            return out
+        if state.get("status") == "failed":
+            raise ProviderError(f"PixelLab couldn't animate it: {state.get('last_response') or 'failed'}")
+        time.sleep(3)
+    raise ProviderError("PixelLab is still animating it: try again in a minute")

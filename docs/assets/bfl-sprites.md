@@ -54,3 +54,18 @@ cycle is 1-2 seconds of a 24-frames-a-second clip, hence frames sized to the cyc
 at its in-game size on FirstGame's ground). The character stays exactly itself in every frame and direction (the image strip's weakness); a
 gentle walk under a long robe barely reads, so the prompt asks for a brisk, exaggerated one; BFL caps a low-credit
 account at one task at a time (429), so a busy answer is waited for and asked again.
+
+## Animation by PixelLab (the default)
+
+Preferences ▸ AI ▸ Animate: **PixelLab Animate with text v3** (`pixellab:animate-v3`, the default) or BFL FLUX 3 video
+(`bfl:flux-3-video`, costlier). `pixellab.animate_v3`, tested in `builder_tests/pixellab_v3` on FirstGame's
+a-male-herbalist (BFL-painted): the pose fitted into a square of up to 256 px as both the first and the last frame (it
+loops), the action in words, 8 frames, no background (`POST /v2/animate-with-text-v3`, a background job polled). A
+character: south, east and north, one call each, west mirrored, the diagonals left to the nearest direction; the clip
+at 10 frames a second.
+
+Tried and not used with BFL's image models (cheap, one call a direction): a walk cycle drawn as stick figures or grey
+mannequins, one a square of a grid, for the model to paint the character over. FLUX.3 Image klein copied the character
+and ignored the poses; FLUX.2 klein 4b kept the poses but painted mannequins; changing the pose of the character copied
+into each square to its mannequin's worked better in profile (its colours brought back by matching them to the original)
+but left mannequin heads facing the camera.
