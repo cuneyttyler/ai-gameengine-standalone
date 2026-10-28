@@ -274,6 +274,7 @@ function close(): void {
                 <label>Animate</label>
                 <div class="control">
                   <select :value="editorState.ai.animateProvider" :disabled="!editorState.ai.enabled" @change="sendToHost({ type: 'ai:setAnimateProvider', provider: ($event.target as HTMLSelectElement).value })">
+                    <option value="bfl:image">BFL image (FLUX.2 klein 4b: 8 frames, one call a direction){{ noKey('bfl') }}</option>
                     <option value="pixellab:animate-v3">PixelLab Animate with text v3 (8 frames, up to 256 px){{ noKey('pixellab') }}</option>
                     <option value="bfl:flux-3-video">BFL FLUX 3 Video (image to video, costlier){{ noKey('bfl') }}</option>
                   </select>

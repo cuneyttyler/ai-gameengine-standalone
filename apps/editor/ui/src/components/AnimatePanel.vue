@@ -257,7 +257,7 @@ function when(iso: string): string {
       </div>
       <div v-if="error" class="error">{{ error }}</div>
       <p class="muted small">
-        {{ byBfl ? 'BFL FLUX 3 video moves the picture in a looping clip, cut into frames.' : 'PixelLab (Animate with text v3) makes 8 looping frames from the picture, up to 256 px.' }} A character: every direction, added to its sheet. Otherwise the frames and a spritesheet
+        {{ editorState.ai.animateProvider === 'bfl:flux-3-video' ? 'BFL FLUX 3 video moves the picture in a looping clip, cut into frames.' : byBfl ? 'BFL (FLUX.2 klein 4b) draws 8 looping frames from the picture, one call a direction.' : 'PixelLab (Animate with text v3) makes 8 looping frames from the picture, up to 256 px.' }} A character: every direction, added to its sheet. Otherwise the frames and a spritesheet
         of them go into assets/textures/generated/animations/.
       </p>
       <div class="history-head">

@@ -263,13 +263,15 @@ class MatchedRequest(BaseModel):
     provider: str = ""                 # this build's art provider (Build ▸ Assets); "" for the service's (the project's)
 
 
-# What animates (Preferences ▸ AI ▸ Animate): PixelLab's Animate with text v3 (the default), or BFL's FLUX 3 video.
-ANIMATE_PROVIDERS = ("pixellab:animate-v3", "bfl:flux-3-video")
+# What animates (Preferences ▸ AI ▸ Animate): BFL's FLUX.2 klein 4b editing copies of the pose (the default, one call a
+# direction), PixelLab's Animate with text v3, or BFL's FLUX 3 video.
+ANIMATE_PROVIDERS = ("bfl:image", "pixellab:animate-v3", "bfl:flux-3-video")
+COPIES_MODEL = "flux-2-klein-4b"
 
 
 class AnimationRequest(BaseModel):
     path: str            # the project image to animate
-    provider: str = ""   # Preferences ▸ AI ▸ Animate ("" the default: PixelLab v3)
+    provider: str = ""   # Preferences ▸ AI ▸ Animate ("" the default: BFL image)
     action: str          # walking, swinging a sword, flickering
     description: str = ""
     direction: str = "south"
@@ -903,8 +905,9 @@ def create_app(
         model = bfl_art()
         video = video_animator(request.provider)
         v3 = pixellab_animator(request.provider)
-        if not v3 and not video and not model and not os.environ.get("PIXELLAB_API_KEY"):
-            return {"ok": False, "errors": ["Animations are made by PixelLab (PIXELLAB_API_KEY in ai_service/.env) or FLUX 3 video (BFL_API_KEY)"]}
+        copies = copies_animator(request.provider)
+        if not copies and not v3 and not video and not model and not os.environ.get("PIXELLAB_API_KEY"):
+            return {"ok": False, "errors": ["Animations are made by BFL (BFL_API_KEY in ai_service/.env) or PixelLab (PIXELLAB_API_KEY)"]}
         source = (root / request.path).resolve()
         if root.resolve() not in source.parents or not source.is_file():
             return {"ok": False, "errors": ["Pick an image of the project to animate"]}
@@ -913,7 +916,16 @@ def create_app(
         what = request.description or source.stem.replace("-", " ")
         report = progress.reporter()
         try:
-            if v3:
+            if copies:
+                from .bfl import BflPainter
+                from . import bfl_sprites
+                report(0, 1, f"Animating {source.name}: {request.action} (BFL {COPIES_MODEL})")
+                from PIL import Image
+                with Image.open(source) as im:
+                    size = max(32, min(256, max(im.size)))
+                frames = bfl_sprites.animate_copies(BflPainter(os.environ["BFL_API_KEY"], COPIES_MODEL), source.read_bytes(),
+                                                    request.action, request.direction, size)
+            elif v3:
                 from .pixellab import animate_v3
                 report(0, 1, f"Animating {source.name}: {request.action} (PixelLab v3)")
                 from PIL import Image
@@ -971,8 +983,12 @@ def create_app(
         return provider == "bfl:flux-3-video" and bool(os.environ.get("BFL_API_KEY"))
 
     def pixellab_animator(provider: str) -> bool:
-        """Animate with PixelLab's Animate with text v3 (the default), while there's a PixelLab key."""
-        return (provider or ANIMATE_PROVIDERS[0]) == "pixellab:animate-v3" and bool(os.environ.get("PIXELLAB_API_KEY"))
+        """Animate with PixelLab's Animate with text v3: when it's the Animate choice, while there's a PixelLab key."""
+        return provider == "pixellab:animate-v3" and bool(os.environ.get("PIXELLAB_API_KEY"))
+
+    def copies_animator(provider: str) -> bool:
+        """Animate by BFL image edits of the pose's copies (bfl_sprites.animate_copies, the default), while there's a BFL key."""
+        return (provider or ANIMATE_PROVIDERS[0]) == "bfl:image" and bool(os.environ.get("BFL_API_KEY"))
 
     def style_words(root: Path) -> str:
         colours = project_style.project_palette(root)
@@ -1050,13 +1066,14 @@ def create_app(
         model = bfl_art()
         video = video_animator(request.provider)
         v3 = pixellab_animator(request.provider)
-        if not v3 and not video and not model and not os.environ.get("PIXELLAB_API_KEY"):
-            return {"ok": False, "errors": ["Animations are made by PixelLab (PIXELLAB_API_KEY in ai_service/.env) or FLUX 3 video (BFL_API_KEY)"]}
+        copies = copies_animator(request.provider)
+        if not copies and not v3 and not video and not model and not os.environ.get("PIXELLAB_API_KEY"):
+            return {"ok": False, "errors": ["Animations are made by BFL (BFL_API_KEY in ai_service/.env) or PixelLab (PIXELLAB_API_KEY)"]}
         what = request.description or info.get("description", "") or info.get("name", "the character")
         size = sheet["grid"]["width"]
         report = progress.reporter()
         report(0, len(painted), f"Animating {info.get('name', 'it')}: {request.action}, {len(painted)} directions "
-                                f"({'PixelLab v3' if v3 else 'FLUX 3 video' if video else model or 'PixelLab'})")
+                                f"({'BFL ' + COPIES_MODEL if copies else 'PixelLab v3' if v3 else 'FLUX 3 video' if video else model or 'PixelLab'})")
         done = [0]
 
         def one(direction: str) -> tuple[str, list[bytes] | str]:
@@ -1066,7 +1083,12 @@ def create_app(
             buf = io.BytesIO()
             pose.save(buf, "PNG")
             try:
-                if v3:
+                if copies:
+                    from .bfl import BflPainter
+                    from . import bfl_sprites
+                    frames = bfl_sprites.animate_copies(BflPainter(os.environ["BFL_API_KEY"], COPIES_MODEL), buf.getvalue(),
+                                                        request.action, direction, size)
+                elif v3:
                     from .pixellab import PixelLabImageGenerator, animate_v3
                     frames = animate_v3(PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]), buf.getvalue(), request.action, 8,
                                         max(64, min(256, size * 4)),
@@ -1089,7 +1111,11 @@ def create_app(
             done[0] += 1
             report(done[0], len(painted), f"Animating {info.get('name', 'it')}: {direction} done")
             return direction, frames
-        if video or v3:
+        if copies:
+            # One call a direction it faces, west's side mirrored from east's (south-east, east, north-east): five for eight,
+            # one after another (a low-credit BFL account runs one task at a time).
+            results = {d: one(d)[1] for d in painted}
+        elif video or v3:
             # As few calls as keep it good: south, east and north alone, one each; west is east mirrored, and the diagonals
             # are left to the nearest direction the clip has (the animator's), their idle poses still their own. PixelLab's
             # all at once (its queue is the wait); BFL's one after another (a low-credit account runs one task at a time).
@@ -1110,7 +1136,7 @@ def create_app(
         if not frames:
             return {"ok": False, "errors": errors or ["nothing was drawn"]}
         clip = charsheet.clip_for(request.action)
-        sheet, atlas = charsheet.add_clip(sheet, atlas, clip, frames, fps=12.0 if video else 10.0 if v3 else 8.0 if clip in ("walk", "idle") else 10.0,
+        sheet, atlas = charsheet.add_clip(sheet, atlas, clip, frames, fps=12.0 if video else 10.0 if v3 or copies else 8.0 if clip in ("walk", "idle") else 10.0,
                                           loop="loop" if clip in ("walk", "idle") or clip not in ("attack", "cast", "hurt", "die", "use") else "once")
         name = Path(request.sheet).name.replace(".character.anim.json", "")
         path, texture = charsheet.write(root, Path(request.sheet).parent.as_posix(), name, sheet, atlas)

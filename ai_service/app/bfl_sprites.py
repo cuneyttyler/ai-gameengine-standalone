@@ -169,3 +169,174 @@ def animate(painter, picture: bytes, action: str, description: str = "", directi
                 cut[key] = canvas
     fitted = _fit(cut, size)
     return [_png(fitted[str(i)]) for i in range(frames) if str(i) in fitted]
+
+
+
+# --- Animation by editing copies (docs/assets/bfl-sprites.md, builder_tests/bfl_strip) ---------------------------------
+# The pose in every square of a 4 x 2 grid; the model changes only each copy's legs, arms and height to its phase (an edit
+# keeps the facing; drawn from empty squares, a front-facing walk turned to profile). One call a direction, 8 frames.
+_SIDE_WALK = ["contact: the near leg forward, its heel down, the far leg back, the arms swinging against the legs",
+              "down: the near leg bearing the weight, the knee bent, the body at its lowest",
+              "passing: the far leg swinging past, its foot off the ground, the body rising",
+              "up: the body at its highest, the far leg reaching forward",
+              "contact: the far leg forward, its heel down, the near leg back (the mirror of square 1)",
+              "down: the far leg bearing the weight, the body at its lowest",
+              "passing: the near leg swinging past, its foot off the ground",
+              "up: the body at its highest, the near leg reaching forward, about to return to square 1"]
+_FRONT_WALK = ["both feet down, the left foot a little ahead, the arms down",
+               "the left knee lifting toward the camera, the left foot off the ground, the right arm swinging forward",
+               "the left knee at its highest, the body at its highest",
+               "the left foot coming down, the body lowering",
+               "both feet down, the right foot a little ahead (the mirror of square 1)",
+               "the right knee lifting toward the camera, the right foot off the ground, the left arm swinging forward",
+               "the right knee at its highest, the body at its highest",
+               "the right foot coming down, about to return to square 1"]
+# Seen from behind, a knee lifting away hides behind the body: a stride (the far foot higher, the back heel up) reads.
+_BACK_WALK = ["the left leg striding forward, away from the camera, its foot set higher in the square; the right leg back, its "
+              "heel raised, sole showing; the arms low, swinging a little at the sides",
+              "the weight on the left foot, the right heel high, its sole showing",
+              "the right foot passing the left, lifted off the ground, the body at its highest",
+              "the right leg reaching forward, away from the camera",
+              "the right leg striding forward, its foot set higher in the square; the left leg back, its heel raised, sole showing "
+              "(the mirror of square 1)",
+              "the weight on the right foot, the left heel high, its sole showing",
+              "the left foot passing the right, lifted off the ground, the body at its highest",
+              "the left leg reaching forward, about to return to square 1"]
+_ACTION_PHASES = {
+    "idle": ["at rest", "breathing in, the chest rising a little", "the shoulders at their highest", "breathing out",
+             "at rest, the weight shifting slightly to one foot", "breathing in", "the shoulders at their highest",
+             "breathing out, back to square 1"],
+    "attack": ["ready stance", "winding up, the weapon arm drawn back", "the wind-up at its fullest", "the strike starting",
+               "the strike at full reach", "the follow-through", "recovering", "back to the ready stance of square 1"],
+    "cast": ["standing ready", "the hands rising", "the hands raised, light gathering", "the light brightest between the hands",
+             "the spell released, a flash", "the hands lowering", "recovering", "back to square 1"],
+}
+
+
+def _phases(clip: str, direction: str) -> list[str]:
+    if clip in ("walk", "run"):
+        if direction == "south":
+            phases = _FRONT_WALK
+        elif direction == "north":
+            phases = _BACK_WALK
+        else:
+            phases = _SIDE_WALK
+        extra = ", running: longer strides, both feet off the ground in the passing squares" if clip == "run" else ""
+        return [p + extra for p in phases]
+    return _ACTION_PHASES.get(clip, [f"moment {i + 1} of 8 of: {clip.replace('_', ' ')}, evenly spaced, ending back where it began"
+                                     for i in range(8)])
+
+
+def _match_colours(frame: Image.Image, ref: Image.Image) -> Image.Image:
+    """Its colours brought to the original's (each channel's mean and spread over the opaque pixels)."""
+    import numpy as np
+    f, r = np.asarray(frame).astype(np.float32), np.asarray(ref).astype(np.float32)
+    fm, rm = f[..., 3] > 128, r[..., 3] > 128
+    if fm.sum() < 10 or rm.sum() < 10:
+        return frame
+    out = f.copy()
+    for c in range(3):
+        a, b = f[..., c][fm], r[..., c][rm]
+        out[..., c][fm] = np.clip((a - a.mean()) / (a.std() + 1e-3) * b.std() + b.mean(), 0, 255)
+    return Image.fromarray(out.astype(np.uint8))
+
+
+def _unturned(cells: list[Image.Image]) -> list[Image.Image]:
+    """Facing the camera or away, a copy the model turned to profile (its chest, a quarter to half way down, under 70 % of
+    the frames' usual width) is replaced by the opposite phase's frame, else the nearest unturned one."""
+    import numpy as np
+
+    def chest(c: Image.Image) -> float:
+        a = np.asarray(c)[..., 3] > 128
+        ys = np.nonzero(a.any(axis=1))[0]
+        if len(ys) < 8:
+            return 0.0
+        top, bottom = ys[0], ys[-1]
+        band = [np.nonzero(row)[0] for row in a[top + (bottom - top) // 4:top + (bottom - top) // 2] if row.any()]
+        return float(np.median([r[-1] - r[0] for r in band])) if band else 0.0
+    widths = [chest(c) for c in cells]
+    usual = float(np.median(widths))
+    ok = [w >= usual * 0.7 for w in widths]
+    if all(ok) or not any(ok):
+        return cells
+    n = len(cells)
+    out = list(cells)
+    for i in range(n):
+        if not ok[i]:
+            for j in [(i + n // 2) % n] + sorted(range(n), key=lambda j: min(abs(i - j), n - abs(i - j))):
+                if ok[j]:
+                    out[i] = cells[j]
+                    break
+    return out
+
+
+def animate_copies(painter, picture: bytes, action: str, direction: str = "south", size: int = 64, seed: int = 7) -> list[bytes]:
+    """`picture` doing `action` facing `direction`: 8 PNG frames (`size` px square), one call."""
+    import time
+    import numpy as np
+    from .charsheet import clip_for
+    cols, rows, cell = 4, 2, 256
+    pose = Image.open(io.BytesIO(picture)).convert("RGBA")
+    part = pose.crop(pose.getbbox() or (0, 0, pose.width, pose.height))
+    part = part.resize((max(1, round(part.width * 216 / max(1, part.height))), 216), Image.LANCZOS)
+    grid = Image.new("RGB", (cols * cell, rows * cell), (255, 0, 255))
+    for i in range(cols * rows):
+        grid.paste(part, ((i % cols) * cell + (cell - part.width) // 2, (i // cols) * cell + cell - 18 - part.height), part)
+    clip = clip_for(action)
+    phases = _phases(clip, direction)
+    facing = {"south": "facing the camera", "north": "facing away from the camera"}.get(direction, f"facing {direction.replace('-', ' ')}")
+    prompt = (f"Image 1 is a 4 x 2 grid of the same game sprite, 8 times, on flat magenta. Make it the 8 frames of ONE "
+              f"{clip.replace('_', ' ')} cycle, in place: change ONLY the legs, feet and arms of each copy (and how high its body is), "
+              "square by square: " + " ".join(f"square {i + 1}, {p};" for i, p in enumerate(phases))
+              + f" Keep everything else of every copy exactly as it is: {facing} as drawn, the same outfit, colours, face, size and "
+              "place in the square, the feet on the same ground line. Smooth, even steps from square to square. No lines or borders "
+              "between the squares, no text.")
+    buf = io.BytesIO()
+    grid.save(buf, "PNG")
+    painted = None
+    for attempt in range(8):  # moderation refuses at one seed what it passes at another; a busy account (429) waits
+        try:
+            painted = painter._run(painter.body(buf.getvalue(), prompt, references=[], width=cols * cell, height=rows * cell,
+                                                seed=seed + 37 * attempt))
+            break
+        except Exception as error:  # noqa: BLE001
+            if " 429 " in str(error):
+                time.sleep(10)
+            elif attempt >= 2:
+                raise
+    if painted is None:
+        raise RuntimeError("BFL stayed busy")
+    sheet = Image.open(io.BytesIO(painted)).convert("RGB").resize((cols * cell, rows * cell), Image.LANCZOS)
+    rgb = np.array(sheet)
+    light = rgb.min(axis=2) > 170  # frame lines drawn anyway: a row or column of a square mostly light
+    for i in range(cols * rows):
+        x0, y0 = (i % cols) * cell, (i // cols) * cell
+        block = light[y0:y0 + cell, x0:x0 + cell]
+        for x in np.nonzero(block.mean(axis=0) > 0.5)[0]:
+            rgb[y0:y0 + cell, x0 + x][block[:, x]] = (255, 0, 255)
+        for y in np.nonzero(block.mean(axis=1) > 0.5)[0]:
+            rgb[y0 + y, x0:x0 + cell][block[y]] = (255, 0, 255)
+    sheet = Image.fromarray(rgb)
+    cells = [_cut(_png(sheet.crop(((i % cols) * cell, (i // cols) * cell, (i % cols + 1) * cell, (i // cols + 1) * cell))))
+             for i in range(cols * rows)]
+    if direction in ("south", "north"):
+        cells = _unturned(cells)
+    boxes = [c.getbbox() for c in cells if c.getbbox()]
+    if not boxes:
+        raise RuntimeError("nothing was painted")
+    box = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+    k = size * 0.94 / max(box[2] - box[0], box[3] - box[1])
+    # The original at the frames' size, its colours the ones to keep.
+    ref_part = pose.crop(pose.getbbox() or (0, 0, pose.width, pose.height))
+    rk = size * 0.9 / max(ref_part.size)
+    ref_part = ref_part.resize((max(1, round(ref_part.width * rk)), max(1, round(ref_part.height * rk))), Image.LANCZOS)
+    ref = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ref.paste(ref_part, ((size - ref_part.width) // 2, size - ref_part.height), ref_part)
+    out = []
+    for c in cells:
+        piece = c.crop(box)
+        piece = piece.resize((max(1, round(piece.width * k)), max(1, round(piece.height * k))), Image.LANCZOS)
+        frame = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        frame.paste(piece, ((size - piece.width) // 2, size - round(size * 0.03) - piece.height), piece)
+        out.append(_png(_match_colours(frame, ref)))
+    return out

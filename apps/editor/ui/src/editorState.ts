@@ -53,7 +53,7 @@ export const editorState = reactive({
     available: {} as Record<string, boolean>,
     artProvider: 'auto' as string, // what draws the prefabs' art: auto (follows the LLM), mistral, pixellab, bfl:<model>
     artInUse: 'auto' as string, // the project's art model, else the app's: what draws now
-    animateProvider: 'pixellab:animate-v3' as string, // what animates (Preferences ▸ AI ▸ Animate)
+    animateProvider: 'bfl:image' as string, // what animates (Preferences ▸ AI ▸ Animate)
     art: '', // the generator in use
     artError: '',
     backgroundProvider: 'bfl:flux-3-image' as string, // what paints backgrounds (Preferences ▸ AI ▸ Background)
@@ -136,7 +136,7 @@ onHostMessage((message) => {
     editorState.ai.available = (message.available as Record<string, boolean>) ?? {}
     editorState.ai.artProvider = (message.artProvider as string) ?? 'auto'
     editorState.ai.artInUse = (message.artInUse as string) ?? editorState.ai.artProvider
-    editorState.ai.animateProvider = (message.animateProvider as string) ?? 'pixellab:animate-v3'
+    editorState.ai.animateProvider = (message.animateProvider as string) ?? 'bfl:image'
     editorState.ai.art = (message.art as string) ?? ''
     editorState.ai.artError = (message.artError as string) ?? ''
     editorState.ai.backgroundProvider = (message.backgroundProvider as string) ?? 'bfl:flux-3-image'
