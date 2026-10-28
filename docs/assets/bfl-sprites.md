@@ -42,9 +42,15 @@ is the fallback without it. `ai_service/app/bfl_video.py`, tested in `builder_te
    knees lifting, clothes swinging, the body bobbing), the camera still, the magenta plain.
 3. Its frames read with ffmpeg (`imageio-ffmpeg`'s own); **one cycle** found where the pose comes back closest to a
    frame past the start's settling (0.5 to 2.4 s on); 8 frames taken from it evenly, cut out of the magenta and fitted.
-4. A character: each painted direction so (5 calls for 8 directions, the west side mirrored), added to its sheet as one
-   clip of 8 frames a direction.
+4. **As many frames as play the cycle at its real speed** at 12 a second (6 to 24): the clip's `fps` is 12.
+5. **A character: 3 calls an action** (south, east, north; one clip each, one after another, since a low-credit BFL account
+   runs one task at a time). West is east mirrored; the diagonals are left out of the action's clip, so the animator
+   plays the nearest direction it has (walking north-east shows the east walk); standing, the diagonals keep their own
+   idle poses. HD, 1:1, 5 seconds: the least BFL charges.
 
-What the tests showed: the character stays exactly itself in every frame and direction (the image strip's weakness); a
+What the tests showed (`builder_tests/bfl_video`): every direction in ONE call (five figures side by side on one 16:9
+clip, `onecall.py`) costs a fifth but moves badly, so it isn't used; 8 frames played at 8 a second looked choppy, the
+cycle is 1-2 seconds of a 24-frames-a-second clip, hence frames sized to the cycle at 12 a second (`ingame.py` shows it
+at its in-game size on FirstGame's ground). The character stays exactly itself in every frame and direction (the image strip's weakness); a
 gentle walk under a long robe barely reads, so the prompt asks for a brisk, exaggerated one; BFL caps a low-credit
 account at one task at a time (429), so a busy answer is waited for and asked again.

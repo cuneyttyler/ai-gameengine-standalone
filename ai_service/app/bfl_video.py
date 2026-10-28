@@ -68,8 +68,12 @@ def _cycle(frames: list[Image.Image]) -> tuple[int, int]:
 
 
 def animate(api_key: str, picture: bytes, action: str, description: str = "", direction: str = "south", frames: int = 8,
-            size: int = 64, seed: int | None = None) -> list[bytes]:
-    """`picture` (a sprite on transparency) moving: `frames` PNGs of one cycle, `size` px square."""
+            size: int = 64, seed: int | None = None, resolution: str = "hd", clip_file: Path | None = None,
+            info: dict | None = None, play_fps: float | None = None) -> list[bytes]:
+    """`picture` (a sprite on transparency) moving: `frames` PNGs of one cycle, `size` px square. `clip_file`: the clip kept
+    there (and taken from there when it's already made: the frames cut again without asking BFL). `info` gets the cycle's
+    "seconds" and the "fps" that plays the frames at its real speed (frames ÷ seconds). `play_fps`: instead of `frames`, as
+    many frames as play the cycle at its real speed at that rate (6 to 24)."""
     pose = Image.open(io.BytesIO(picture)).convert("RGBA")
     part = pose.crop(pose.getbbox() or (0, 0, pose.width, pose.height))
     k = 640 / max(1, part.height)
@@ -83,13 +87,16 @@ def animate(api_key: str, picture: bytes, action: str, description: str = "", di
     prompt = (f"A game sprite: {what}, {_FACING.get(direction, direction)}. It {_motion(action)}. It keeps facing the same way the whole "
               "time and never moves across the frame. The camera is completely still: no camera movement, no zoom, no cuts. It stays "
               "at the same place and size in the frame. The flat magenta background stays plain and unchanged.")
-    body = {"prompt": prompt, "mode": "i2v", "keyframes": [key, key], "duration": SECONDS, "resolution": "hd", "aspect_ratio": "1:1",
+    body = {"prompt": prompt, "mode": "i2v", "keyframes": [key, key], "duration": SECONDS, "resolution": resolution, "aspect_ratio": "1:1",
             "generate_audio": False}
     # BFL caps a low-credit account at one task at a time (429): waited for, then asked again.
     import time
-    for attempt in range(12):
+    clip = clip_file.read_bytes() if clip_file and clip_file.exists() else b""
+    for attempt in range(0 if clip else 12):
         try:
             clip = BflPainter(api_key, VIDEO_MODEL, timeout_s=900)._run(body)
+            if clip_file:
+                clip_file.write_bytes(clip)
             break
         except Exception as error:  # noqa: BLE001 - only a busy answer is retried
             if " 429 " not in str(error) or attempt == 11:
@@ -99,6 +106,11 @@ def animate(api_key: str, picture: bytes, action: str, description: str = "", di
     if not every:
         raise RuntimeError("BFL's video had no frames")
     start, length = _cycle(every)
+    if play_fps:
+        frames = max(6, min(24, round(play_fps * length * SECONDS / len(every))))
+    if info is not None:
+        seconds = length * SECONDS / len(every)
+        info.update({"seconds": seconds, "fps": frames / max(0.1, seconds)})
     picked = [every[min(len(every) - 1, start + round(i * length / frames))] for i in range(frames)]
     cut = {str(i): _cut(_png(f)) for i, f in enumerate(picked)}
     fitted = _fit(cut, size)
@@ -109,3 +121,4 @@ def _png(image: Image.Image) -> bytes:
     buf = io.BytesIO()
     image.save(buf, "PNG")
     return buf.getvalue()
+

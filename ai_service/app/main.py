@@ -1032,6 +1032,8 @@ def create_app(
         faces = charsheet.directions_of(sheet)
         mirrored = {"west": "east", "south-west": "south-east", "north-west": "north-east"}
         painted = [d for d in faces if not (d in mirrored and mirrored[d] in faces)]
+        if video_animator(request.provider):
+            painted = [d for d in ("south", "east", "north") if d in faces]  # the calls it makes (see below)
         model = bfl_art()
         video = video_animator(request.provider)
         if not video and not model and not os.environ.get("PIXELLAB_API_KEY"):
@@ -1052,7 +1054,8 @@ def create_app(
             try:
                 if video:
                     from . import bfl_video
-                    frames = bfl_video.animate(os.environ["BFL_API_KEY"], buf.getvalue(), request.action, what, direction, 8, size)
+                    frames = bfl_video.animate(os.environ["BFL_API_KEY"], buf.getvalue(), request.action, what, direction, size=size,
+                                               play_fps=12)
                 elif model:
                     from .bfl import BflPainter
                     from . import bfl_sprites
@@ -1067,8 +1070,14 @@ def create_app(
             done[0] += 1
             report(done[0], len(painted), f"Animating {info.get('name', 'it')}: {direction} done")
             return direction, frames
-        with ThreadPoolExecutor(3) as pool:
-            results = dict(pool.map(one, painted))
+        if video:
+            # FLUX 3 video, as few calls as keep it good: south, east and north alone, one clip each, one after another (a
+            # low-credit account runs one task at a time); west is east mirrored, and the diagonals are left to the nearest
+            # direction the clip has (the animator's), their idle poses still their own.
+            results = {d: one(d)[1] for d in ("south", "east", "north") if d in faces}
+        else:
+            with ThreadPoolExecutor(3) as pool:
+                results = dict(pool.map(one, painted))
         frames = {d: f for d, f in results.items() if isinstance(f, list) and f}
         errors = [f"{d}: {f}" for d, f in results.items() if not isinstance(f, list)]
         for west, east in mirrored.items():
@@ -1077,7 +1086,7 @@ def create_app(
         if not frames:
             return {"ok": False, "errors": errors or ["nothing was drawn"]}
         clip = charsheet.clip_for(request.action)
-        sheet, atlas = charsheet.add_clip(sheet, atlas, clip, frames, fps=8.0 if clip in ("walk", "idle") else 10.0,
+        sheet, atlas = charsheet.add_clip(sheet, atlas, clip, frames, fps=12.0 if video else 8.0 if clip in ("walk", "idle") else 10.0,
                                           loop="loop" if clip in ("walk", "idle") or clip not in ("attack", "cast", "hurt", "die", "use") else "once")
         name = Path(request.sheet).name.replace(".character.anim.json", "")
         path, texture = charsheet.write(root, Path(request.sheet).parent.as_posix(), name, sheet, atlas)
