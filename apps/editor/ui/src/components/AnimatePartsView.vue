@@ -2,7 +2,7 @@
 // Build ▸ Animate (docs/assets/animations.md §4.1): what moves in the open build — each building's door (found in its
 // art, or in its part of the painting), each thing that's used (a chest, a gate, a lever) — animated one at a time
 // (Generate ▸ Animate's provider), each with what triggers it. Progress, where each is, its door's box.
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
 
 const PROJECT_HOST = 'https://aige-project.local/'
@@ -19,6 +19,7 @@ interface Target {
   where: string
   status: 'pending' | 'finding' | 'animating' | 'done' | 'failed' | 'skipped'
   error?: string
+  preview?: { sheet: string; count: number; fps: number } // animated: its frames in a row, played here
 }
 
 const props = defineProps<{ only?: 'door' | 'thing' }>()
@@ -37,6 +38,44 @@ onHostMessage((message) => {
   total.value = (message.total as number) ?? 0
 })
 onMounted(() => sendToHost({ type: 'build:animateScan' }))
+
+// The animated ones play: opening, held open, closing, held shut (a door), on one clock.
+const clock = ref(0)
+const timer = window.setInterval(() => (clock.value += 1 / 20), 50)
+onUnmounted(() => window.clearInterval(timer))
+function frameOf(p: NonNullable<Target['preview']>): number {
+  const n = Math.max(1, p.count)
+  const run = n / Math.max(1, p.fps)
+  const hold = 0.8
+  const t = clock.value % (2 * (run + hold))
+  if (t < run) return Math.min(n - 1, Math.floor(t * p.fps))
+  if (t < run + hold) return n - 1
+  if (t < 2 * run + hold) return Math.max(0, n - 1 - Math.floor((t - run - hold) * p.fps))
+  return 0
+}
+// Its frame: the spritesheet scaled so one frame fills the box, moved to the frame (percentages: no pixel sizes needed).
+function playStyle(t: Target, w: number, h: number): Record<string, string> {
+  const p = t.preview!
+  const n = Math.max(1, p.count)
+  return {
+    width: `${w}px`,
+    height: `${h}px`,
+    backgroundImage: `url('${PROJECT_HOST}${p.sheet}')`,
+    backgroundSize: `${n * 100}% 100%`,
+    backgroundPosition: `${n > 1 ? (frameOf(p) / (n - 1)) * 100 : 0}% 0`,
+  }
+}
+// A door plays over its box on the building; a thing plays over its whole picture.
+function doorPlay(t: Target): Record<string, string> {
+  const s = scaleOf(t)
+  const [x, y] = t.region
+  const [bx, by, bw, bh] = t.box!
+  return { ...playStyle(t, bw * s, bh * s), left: `${(bx - x) * s}px`, top: `${(by - y) * s}px` }
+}
+function thingPlay(t: Target): Record<string, string> {
+  const s = scaleOf(t)
+  return { ...playStyle(t, t.region[2] * s, t.region[3] * s), left: '0', top: '0' }
+}
 
 const shown = computed(() => targets.value.filter((t) => !props.only || t.kind === props.only))
 const left = computed(() => shown.value.filter((t) => t.status === 'pending' || t.status === 'failed').length)
@@ -113,7 +152,9 @@ function stop(): void {
             transform: `scale(${scaleOf(t)})`,
           }"
         ></div>
-        <div v-if="t.box" class="box" :style="boxStyle(t)"></div>
+        <div v-if="t.preview && t.status === 'done' && t.kind === 'door' && t.box" class="play" :style="doorPlay(t)"></div>
+        <div v-else-if="t.preview && t.status === 'done' && t.kind === 'thing'" class="play thing" :style="thingPlay(t)"></div>
+        <div v-else-if="t.box" class="box" :style="boxStyle(t)"></div>
       </div>
       <div class="info">
         <div><b>{{ t.label }}</b> <span class="chip">{{ t.kind === 'door' ? 'door' : t.role }}</span></div>
@@ -186,6 +227,14 @@ function stop(): void {
   transform-origin: 0 0;
   background-repeat: no-repeat;
   image-rendering: pixelated;
+}
+.play {
+  position: absolute;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+.play.thing {
+  background-color: var(--panel, #222);
 }
 .box {
   position: absolute;

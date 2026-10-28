@@ -141,6 +141,7 @@ nlohmann::json EditorApp::AnimateTargets() {
                 t["status"] = b["status"];
                 if (b.contains("box")) t["box"] = b["box"];
                 if (b.contains("sheet")) t["sheet"] = b["sheet"];
+                if (b.contains("preview")) t["preview"] = b["preview"];
             }
         }
     }
@@ -343,6 +344,10 @@ void EditorApp::OnAnimateResult(const nlohmann::json& body) {
         if (const auto error = prefabs_.SetTemplateField(prefab, "Animator", "sheet", FieldValue{sheet})) return fail(*error);
         RefreshPrefabs();
     }
+    // What the Animate tab plays for it: its spritesheet (the frames in a row), how many, how fast.
+    (*target)["preview"] = {{"sheet", body.value("sheet", std::string())},
+                            {"count", body.value("frames", nlohmann::json::array()).size()},
+                            {"fps", body.value("fps", 8.0)}};
     (*target)["status"] = "done";
     AnimateNext();
 }
