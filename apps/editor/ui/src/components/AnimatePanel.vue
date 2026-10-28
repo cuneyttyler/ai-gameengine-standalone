@@ -4,6 +4,7 @@
 // them in a row, in assets/textures/generated/animations/<name>/.
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import AiProgress from './AiProgress.vue'
+import { confirmDialog } from '../dialogs'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 
@@ -23,7 +24,16 @@ const form = reactive({
 })
 const busy = ref(false)
 const error = ref('')
-const made = ref<{ name: string; frames: string[]; sheet: string; at: number }[]>([])
+// Every request made here and what came back, kept by the editor with the project (it stays when the tab changes).
+interface HistoryEntry {
+  id: number
+  created: string
+  request: Record<string, unknown>
+  state: 'working' | 'done' | 'failed'
+  errors: string[]
+  results: { path: string; discarded: boolean }[]
+}
+const history = ref<HistoryEntry[]>([])
 const frame = ref(0)
 let timer = 0
 
@@ -31,18 +41,19 @@ onHostMessage((message) => {
   if (message.type === 'assets:list') {
     const list = (message.assets as { path: string }[]) ?? []
     images.value = list.map((a) => a.path).filter((p) => /\.png$/i.test(p) && !p.includes('/placeholders/') && !p.endsWith('-sheet.png'))
+  } else if (message.type === 'animation:list') {
+    history.value = (message.history as HistoryEntry[]) ?? []
+    busy.value = message.busy as boolean
   } else if (message.type === 'animation:result') {
     busy.value = false
-    const result = message.result as { ok: boolean; errors?: string[]; name?: string; frames?: string[]; sheet?: string }
+    const result = message.result as { ok: boolean; errors?: string[] }
     error.value = result.ok ? '' : (result.errors?.[0] ?? 'The animation couldn’t be made')
-    if (result.ok && result.frames?.length) {
-      made.value.unshift({ name: result.name ?? '', frames: result.frames, sheet: result.sheet ?? '', at: Date.now() })
-    }
   }
 })
 
 onMounted(() => {
   sendToHost({ type: 'assets:request' })
+  sendToHost({ type: 'animation:request' })
   timer = window.setInterval(() => (frame.value = (frame.value + 1) % 4), 160)
 })
 onUnmounted(() => window.clearInterval(timer))
@@ -74,8 +85,45 @@ function generate(): void {
   sendToHost({ type: 'animation:generate', request: { ...form, action: form.action.trim(), description: form.description.trim() } })
 }
 
-function url(path: string, at = 0): string {
-  return `${PROJECT_HOST}${path}?v=${at}`
+function url(path: string, at: number | string = 0): string {
+  return `${PROJECT_HOST}${path}?v=${encodeURIComponent(String(at))}`
+}
+
+// An entry's spritesheet and frames (what's still there).
+function sheetOf(entry: HistoryEntry): string {
+  return entry.results.find((r) => !r.discarded && r.path.endsWith('-sheet.png'))?.path ?? ''
+}
+function framesOf(entry: HistoryEntry): string[] {
+  return entry.results.filter((r) => !r.discarded && !r.path.endsWith('-sheet.png')).map((r) => r.path)
+}
+// The clip its action is, for the animators: walking walks, an attack attacks, a spell casts; anything else loops.
+function clipFor(action: string): string {
+  const a = action.toLowerCase()
+  return /walk|run/.test(a) ? 'walk' : /attack|strik|swing/.test(a) ? 'attack' : /cast|spell/.test(a) ? 'cast' : /hurt|hit/.test(a) ? 'hurt' : /die|death/.test(a) ? 'die' : 'idle'
+}
+function make(entry: HistoryEntry, prefab: boolean): void {
+  const r = entry.request as { action?: string; direction?: string; name?: string }
+  const sheet = sheetOf(entry)
+  const name = (r.name || sheet.split('/').pop()!.replace(/-sheet\.png$/, '')).replace(/[^A-Za-z0-9_-]/g, '-')
+  sendToHost({ type: 'animation:make', sheet, frames: framesOf(entry), clip: clipFor(r.action ?? ''), direction: r.direction ?? '', name, prefab })
+}
+function useAgain(entry: HistoryEntry): void {
+  const r = entry.request as Partial<typeof form>
+  form.path = r.path ?? ''
+  form.action = r.action ?? 'walking'
+  form.description = r.description ?? ''
+  form.direction = r.direction ?? 'south'
+  form.view = r.view ?? 'low top-down'
+  form.name = r.name ?? ''
+}
+async function clearHistory(): Promise<void> {
+  if (await confirmDialog({ message: 'Forget the Animate history? The animations stay.', confirmLabel: 'Clear', danger: true })) {
+    sendToHost({ type: 'animation:clearHistory' })
+  }
+}
+function when(iso: string): string {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
 }
 </script>
 
@@ -146,13 +194,29 @@ function url(path: string, at = 0): string {
         PixelLab draws 4 frames at 64 × 64 from the image (it’s fitted into that square). The frames and a spritesheet
         of them go into assets/textures/generated/animations/.
       </p>
-      <div v-for="m in made" :key="m.at" class="card">
-        <div class="title">{{ m.name }}</div>
-        <div class="frames">
-          <div class="thumb play"><img :src="url(m.frames[frame % m.frames.length] ?? '', m.at)" alt="playing" /></div>
-          <div v-for="f in m.frames" :key="f" class="thumb small-thumb"><img :src="url(f, m.at)" alt="" /></div>
+      <div class="history-head">
+        <span class="muted small">History ({{ history.length }})</span>
+        <span class="spacer"></span>
+        <button v-if="history.length" title="Forget the history (the animations stay)" @click="clearHistory">Clear history</button>
+      </div>
+      <div v-for="entry in history" :key="entry.id" class="card">
+        <div class="title">{{ entry.request.name || entry.request.action }} <span class="muted small">{{ entry.request.direction }}</span></div>
+        <div class="muted small">{{ when(entry.created) }} · {{ String(entry.request.path ?? '').split('/').pop() }}</div>
+        <div v-if="entry.state === 'working'" class="muted small">Drawing…</div>
+        <div v-else-if="entry.state === 'failed'" class="error small">{{ entry.errors[0] ?? 'Failed' }}</div>
+        <template v-else-if="framesOf(entry).length">
+          <div class="frames">
+            <div class="thumb play"><img :src="url(framesOf(entry)[frame % framesOf(entry).length] ?? '', entry.created)" alt="playing" /></div>
+            <div v-for="f in framesOf(entry)" :key="f" class="thumb small-thumb"><img :src="url(f, entry.created)" alt="" /></div>
+          </div>
+          <div class="muted small">{{ sheetOf(entry) }}</div>
+        </template>
+        <div class="actions">
+          <button v-if="sheetOf(entry)" title="An animation sheet of it (Project ▸ Effects ▸ Sheets), for an Animator" @click="make(entry, false)">Make animation</button>
+          <button v-if="sheetOf(entry)" title="A prefab that plays it (a character's action through the humanoid animator, else looping)" @click="make(entry, true)">Make prefab</button>
+          <button title="Put this request back in the form" @click="useAgain(entry)">Use again</button>
+          <button :disabled="busy || !aiReady || noKey" title="Send the same request again" @click="useAgain(entry), generate()">Generate again</button>
         </div>
-        <div class="muted small">{{ m.sheet }}</div>
       </div>
     </section>
   </div>
@@ -163,6 +227,21 @@ function url(path: string, at = 0): string {
   display: flex;
   height: 100%;
   min-height: 0;
+}
+.history-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 6px;
+}
+.spacer {
+  flex: 1;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
 }
 .pick {
   width: 300px;

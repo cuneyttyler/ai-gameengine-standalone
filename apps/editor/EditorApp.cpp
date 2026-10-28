@@ -41,6 +41,7 @@
 #include "game/SaveGames.h"
 #include "game/GameAudio.h"
 #include "gameplay/InputMap.h"
+#include "gameplay/Animation.h"
 #include "gameplay/Interiors.h"
 #include "world/StoryReferences.h"
 #include "editing/SceneEditing.h"
@@ -270,6 +271,8 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
       schedules_(assets.GetProject().root),
       transcript_(assets.GetProject().CacheDir() / "ai_conversation.json"),
       artHistory_(assets.GetProject().CacheDir() / "art_history.json"),
+      characterHistory_(assets.GetProject().CacheDir() / "character_history.json"),
+      animationHistory_(assets.GetProject().CacheDir() / "animation_history.json"),
       audio_(audio),
       renderer_(renderer),
       scenePath_(StartScenePath(assets.GetProject()).string()),
@@ -283,6 +286,8 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
     transcript_.Load();
     conversation_ = transcript_.Context();
     artHistory_.Load();
+    characterHistory_.Load();
+    animationHistory_.Load();
     post_ = [this, raw = std::move(post_)](const nlohmann::json& message) {
         if (message.is_object() && AiTranscript::Records(message.value("type", ""))) {
             transcript_.Record(message, conversation_);
@@ -846,6 +851,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     const std::string type = message.value("type", "");
     const SlowWatch watch("message " + type);
     if (HandleInteriorMessage(type, message)) return; // interiors (docs/places/interiors.md): the viewport's, the Assets panel's, the Build panel's
+    if (HandleGenerateMessage(type, message)) return; // Generate ▸ Character / Animate's history, and animations (Assets ▸ Animations)
     if ((type.rfind("build:", 0) == 0 || type.rfind("background:", 0) == 0 || type == "scene:backgroundImage") && HandleBuildMessage(type, message)) return;
     if (type == "prefs:request" || type == "prefs:set") {
         static const std::set<std::string> kKeys = {"uiScale", "showGridAtStart", "zoomSpeed", "invertZoom", "recoveryMinutes", "paintModel",
@@ -1390,9 +1396,11 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         if (Ai() == nullptr || Ai()->GetState() != AiClient::State::Ready) {
             post_({{"type", reply}, {"result", {{"ok", false}, {"errors", {"AI is off"}}}}});
         } else if (inFlight == 0) {
-            inFlight = Ai()->Request("POST", character ? "/characters/generate" : "/animations/generate",
-                                     message.value("request", nlohmann::json::object()), 420);
+            const nlohmann::json request = message.value("request", nlohmann::json::object());
+            inFlight = Ai()->Request("POST", character ? "/characters/generate" : "/animations/generate", request, 420);
+            (character ? characterHistoryId_ : animationHistoryId_) = (character ? characterHistory_ : animationHistory_).Begin(request);
         }
+        post_(GenerateHistoryJson(character));
     } else if (type == "art:discard") {
         // Only generated art, by its project-relative path.
         const std::string path = message.value("path", "");
@@ -5384,7 +5392,17 @@ void EditorApp::PollAi() {
                 const bool character = result->requestId == characterRequest_;
                 (character ? characterRequest_ : animationRequest_) = 0;
                 RefreshAssets(); // the new textures
+                // Into its history: what it made (an animation's sheet first, then its frames).
+                nlohmann::json kept = result->body;
+                if (!character) {
+                    nlohmann::json assets = nlohmann::json::array();
+                    if (!kept.value("sheet", "").empty()) assets.push_back({{"path", kept.value("sheet", "")}, {"kind", "sheet"}});
+                    for (const auto& f : kept.value("frames", nlohmann::json::array())) assets.push_back({{"path", f}, {"kind", "frame"}});
+                    kept["assets"] = assets;
+                }
+                (character ? characterHistory_ : animationHistory_).Finish(character ? characterHistoryId_ : animationHistoryId_, kept);
                 post_({{"type", character ? "character:result" : "animation:result"}, {"result", result->body}});
+                post_(GenerateHistoryJson(character));
             } else if (result->requestId == artRequest_) {
                 artRequest_ = 0;
                 artHistory_.Finish(artHistoryId_, result->body);
@@ -5866,6 +5884,124 @@ void EditorApp::SetSceneBackdrop(const std::string& path) {
     dirty_ = true;
     sceneTreeStale_ = editorStateStale_ = true;
     post_({{"type", "notify"}, {"text", "The scene's background is " + path}});
+}
+
+bool EditorApp::HandleGenerateMessage(const std::string& type, const nlohmann::json& message) {
+    if (type == "character:request" || type == "animation:request") {
+        post_(GenerateHistoryJson(type == "character:request"));
+    } else if (type == "character:clearHistory" || type == "animation:clearHistory") {
+        const bool character = type == "character:clearHistory";
+        (character ? characterHistory_ : animationHistory_).Clear();
+        post_(GenerateHistoryJson(character));
+    } else if (type == "animation:make") {
+        // Generate ▸ Animate's Make animation / Make prefab: its sheet, and, asked, a prefab playing it.
+        std::string sheet;
+        if (const std::string why = MakeAnimationSheet(message, &sheet); !why.empty()) {
+            post_({{"type", "notify"}, {"text", "Couldn't make the animation: " + why}});
+        } else if (!message.value("prefab", false)) {
+            post_({{"type", "notify"}, {"text", "Animation " + sheet + " made: in Assets ▸ Animations"}});
+        } else if (const std::string why = PrefabForSheet(sheet, message.value("name", std::string("animation"))); !why.empty()) {
+            post_({{"type", "notify"}, {"text", "Animation " + sheet + " made, but not its prefab: " + why}});
+        }
+        post_(AnimationsJson());
+    } else if (type == "animations:request") {
+        post_(AnimationsJson());
+    } else if (type == "animation:prefab") {
+        // Assets ▸ Animations: a prefab that plays the sheet.
+        const std::string sheet = message.value("sheet", "");
+        std::string name = std::filesystem::path(sheet).stem().string();
+        if (name.size() > 5 && name.ends_with(".anim")) name.resize(name.size() - 5);
+        if (const std::string why = PrefabForSheet(sheet, name); !why.empty()) post_({{"type", "notify"}, {"text", "No prefab: " + why}});
+    } else if (type == "entity:addAnimator") {
+        // Assets ▸ Animations ▸ Add to selected: the selection plays the sheet (an override on a prefab's copy).
+        session_.ReloadAnimations();
+        const std::string path = message.value("sheet", "");
+        const AnimSheet* sheet = session_.Animations().Find(path);
+        if (playing_ || sheet == nullptr || !selected_ || !registry_.valid(*selected_)) {
+            post_({{"type", "notify"}, {"text", sheet == nullptr ? "No animation sheet " + path : "Select a thing in the scene first"}});
+            return true;
+        }
+        auto& animator = registry_.get_or_emplace<Animator>(*selected_);
+        animator.sheet = path;
+        animator.animator = sheet->Clip("walk") || sheet->Clip("attack") || sheet->Clip("cast") ? "humanoid" : "prop";
+        for (const char* field : {"sheet", "animator"}) RecordOverride(registry_, *selected_, "Animator", field);
+        dirty_ = true;
+        inspectorStale_ = sceneTreeStale_ = true;
+        post_({{"type", "notify"}, {"text", "It plays " + path + " (" + animator.animator + ")"}});
+    } else {
+        return false;
+    }
+    return true;
+}
+
+nlohmann::json EditorApp::AnimationsJson() {
+    // Assets ▸ Animations: every animation sheet of the project, as the Effects panel lists them.
+    return {{"type", "animations:list"}, {"sheets", FxJson().value("sheets", nlohmann::json::array())}};
+}
+
+std::string EditorApp::PrefabForSheet(const std::string& path, std::string name) {
+    // A prefab that plays an animation sheet: its picture (showing its first frame until it plays) and an Animator, the
+    // humanoid one when the sheet has a character's clips (walk, attack, cast), else the prop one (its idle, looping).
+    session_.ReloadAnimations();
+    const AnimSheet* sheet = session_.Animations().Find(path);
+    if (sheet == nullptr) return "no animation sheet " + path;
+    const AssetInfo* picture = assets_.Find(sheet->texture);
+    if (picture == nullptr || picture->width == 0) return "its picture " + sheet->texture + " isn't in the project";
+    for (char& c : name) {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_') c = '-';
+    }
+    std::string prefab = "prefabs/" + name + ".prefab";
+    for (int n = 2; prefabs_.Find(prefab) != nullptr; ++n) prefab = "prefabs/" + name + "-" + std::to_string(n) + ".prefab";
+    name = std::filesystem::path(prefab).stem().string();
+    CreatePrefabFromAsset(sheet->texture, 0, false, false, name, false);
+    if (prefabs_.Find(prefab) == nullptr) return "the prefab wasn't made";
+    const bool character = sheet->Clip("walk") || sheet->Clip("attack") || sheet->Clip("cast");
+    const AnimClip* first = sheet->Clip("idle") ? sheet->Clip("idle") : sheet->clips.empty() ? nullptr : &sheet->clips.begin()->second;
+    const AnimFrame* frame = first && !first->directions.empty() && !first->directions.begin()->second.empty() ? &first->directions.begin()->second.front() : nullptr;
+    prefabs_.VisitTemplate(prefab, [&](Registry& r, Entity e) {
+        auto& animator = r.get_or_emplace<Animator>(e);
+        animator.sheet = path;
+        animator.animator = character ? "humanoid" : "prop";
+        if (auto* sprite = r.try_get<Sprite>(e); sprite && frame && frame->w > 0 && frame->h > 0) {
+            const float tw = static_cast<float>(picture->width), th = static_cast<float>(picture->height);
+            sprite->u0 = frame->x / tw, sprite->u1 = (frame->x + frame->w) / tw;
+            sprite->v0 = frame->y / th, sprite->v1 = (frame->y + frame->h) / th;
+            sprite->width *= frame->w / tw;
+            sprite->height *= frame->h / th;
+        }
+    });
+    // Written out with the Animator (the components just changed on its loaded template come along).
+    if (const auto error = prefabs_.SetTemplateField(prefab, "Animator", "sheet", path)) return *error;
+    RefreshPrefabs();
+    post_({{"type", "notify"}, {"text", prefab + " plays " + path + (character ? " (as a character)" : " (looping)")}});
+    return {};
+}
+
+nlohmann::json EditorApp::GenerateHistoryJson(bool character) {
+    return {{"type", character ? "character:list" : "animation:list"}, {"busy", (character ? characterRequest_ : animationRequest_) != 0},
+            {"history", (character ? characterHistory_ : animationHistory_).Entries()}};
+}
+
+std::string EditorApp::MakeAnimationSheet(const nlohmann::json& made, std::string* sheet) {
+    // Its spritesheet (the frames in a row, each square) as an aige.anim/1 sheet beside it: one clip, named for what the
+    // humanoid and prop animators play ("walking" walks; anything else loops as idle), facing its direction.
+    const std::string texture = made.value("sheet", "");
+    const AssetInfo* info = assets_.Find(texture);
+    const int frames = static_cast<int>(made.value("frames", nlohmann::json::array()).size());
+    if (info == nullptr || frames <= 0 || info->width == 0) return "its spritesheet isn't in the project any more";
+    static const std::map<std::string, std::string> kDirections = {{"south", "s"}, {"south-east", "se"}, {"east", "e"}, {"north-east", "ne"},
+                                                                   {"north", "n"}, {"north-west", "nw"}, {"west", "w"}, {"south-west", "sw"}};
+    const std::string clip = made.value("clip", std::string("idle"));
+    const auto dir = kDirections.find(made.value("direction", ""));
+    const int frame = static_cast<int>(info->width) / frames;
+    const nlohmann::json json = AnimSheetFromGrid(texture, frame, static_cast<int>(info->height), frames,
+                                                  {dir == kDirections.end() ? clip : clip + "_" + dir->second}, 8.0f);
+    const std::filesystem::path path = std::filesystem::path(texture).parent_path() / (std::filesystem::path(texture).stem().string() + ".anim.json");
+    std::ofstream out(assets_.GetProject().Resolve(path.generic_string()), std::ios::trunc);
+    if (!out) return "can't write " + path.generic_string();
+    out << json.dump(2) << "\n";
+    *sheet = path.generic_string();
+    return {};
 }
 
 void EditorApp::LinkBuiltInterior(int originX, int originY, int side) {

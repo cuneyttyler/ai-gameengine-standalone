@@ -2,8 +2,9 @@
 // Generate ▸ Character: a character drawn from 4 or 8 directions by PixelLab, each
 // direction a texture in assets/textures/generated/characters/<name>/ (with a
 // .gen.json saying how it was made). The Animate tab then makes it move.
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import AiProgress from './AiProgress.vue'
+import { confirmDialog } from '../dialogs'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 import { panelTab } from '../paneltabs'
@@ -20,15 +21,51 @@ const form = reactive({
 })
 const busy = ref(false)
 const error = ref('')
-const made = ref<{ name: string; assets: { path: string; direction: string }[]; at: number }[]>([])
+// Every request made here and what came back, kept by the editor with the project (it stays when the tab changes).
+interface HistoryEntry {
+  id: number
+  created: string
+  request: Record<string, unknown>
+  state: 'working' | 'done' | 'failed'
+  errors: string[]
+  results: { path: string; discarded: boolean }[]
+}
+const history = ref<HistoryEntry[]>([])
 
 onHostMessage((message) => {
-  if (message.type !== 'character:result') return
-  busy.value = false
-  const result = message.result as { ok: boolean; errors?: string[]; name?: string; assets?: { path: string; direction: string }[] }
-  error.value = result.ok ? '' : (result.errors?.[0] ?? 'The character couldn’t be made')
-  if (result.ok && result.assets?.length) made.value.unshift({ name: result.name ?? '', assets: result.assets, at: Date.now() })
+  if (message.type === 'character:list') {
+    history.value = (message.history as HistoryEntry[]) ?? []
+    busy.value = message.busy as boolean
+  } else if (message.type === 'character:result') {
+    busy.value = false
+    const result = message.result as { ok: boolean; errors?: string[] }
+    error.value = result.ok ? '' : (result.errors?.[0] ?? 'The character couldn’t be made')
+  }
 })
+onMounted(() => sendToHost({ type: 'character:request' }))
+
+// "Use again": the form as it was for that request.
+function useAgain(entry: HistoryEntry): void {
+  const r = entry.request as Partial<typeof form>
+  form.description = r.description ?? ''
+  form.name = r.name ?? ''
+  form.directions = r.directions ?? 4
+  form.size = r.size ?? 64
+  form.view = r.view ?? 'low top-down'
+  form.isometric = !!r.isometric
+}
+async function clearHistory(): Promise<void> {
+  if (await confirmDialog({ message: 'Forget the Character history? The characters stay.', confirmLabel: 'Clear', danger: true })) {
+    sendToHost({ type: 'character:clearHistory' })
+  }
+}
+function when(iso: string): string {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
+}
+function direction(path: string): string {
+  return /-(south|south-east|east|north-east|north|north-west|west|south-west)\.png$/.exec(path)?.[1] ?? ''
+}
 
 const suggestedName = computed(() =>
   form.description
@@ -62,8 +99,8 @@ function animate(path: string): void {
   panelTab.generate = 'animate'
 }
 
-function thumb(path: string, at: number): string {
-  return `${PROJECT_HOST}${path}?v=${at}`
+function thumb(path: string, created: string): string {
+  return `${PROJECT_HOST}${path}?v=${encodeURIComponent(created)}`
 }
 </script>
 
@@ -129,18 +166,30 @@ function thumb(path: string, at: number): string {
       </p>
     </section>
     <section class="gallery">
-      <p v-if="made.length === 0" class="muted">Characters made here show up here and in the Assets panel.</p>
-      <div v-for="c in made" :key="c.at" class="card">
-        <div class="title">{{ c.name }}</div>
-        <div class="dirs">
-          <div v-for="a in c.assets" :key="a.path" class="dir">
-            <div class="thumb"><img :src="thumb(a.path, c.at)" :alt="a.direction" /></div>
-            <div class="muted small">{{ a.direction }}</div>
+      <div class="history-head">
+        <span class="muted small">History ({{ history.length }})</span>
+        <span class="spacer"></span>
+        <button v-if="history.length" title="Forget the history (the characters stay)" @click="clearHistory">Clear history</button>
+      </div>
+      <p v-if="history.length === 0" class="muted">Characters made here show up here and in the Assets panel.</p>
+      <div v-for="entry in history" :key="entry.id" class="card">
+        <div class="title" :title="String(entry.request.description ?? '')">{{ entry.request.name || entry.request.description }}</div>
+        <div class="muted small">{{ when(entry.created) }} · {{ entry.request.directions }} directions · {{ entry.request.size }} px · {{ entry.request.view }}</div>
+        <div v-if="entry.state === 'working'" class="muted small">Drawing…</div>
+        <div v-else-if="entry.state === 'failed'" class="error small">{{ entry.errors[0] ?? 'Failed' }}</div>
+        <div v-else class="dirs">
+          <div v-for="a in entry.results.filter((r) => !r.discarded)" :key="a.path" class="dir">
+            <div class="thumb"><img :src="thumb(a.path, entry.created)" :alt="direction(a.path)" /></div>
+            <div class="muted small">{{ direction(a.path) }}</div>
             <div class="actions">
               <button title="A placeable prefab with this sprite" @click="makePrefab(a.path)">Prefab</button>
               <button title="Animate this direction" @click="animate(a.path)">Animate</button>
             </div>
           </div>
+        </div>
+        <div class="actions">
+          <button title="Put this request back in the form" @click="useAgain(entry)">Use again</button>
+          <button :disabled="busy || !aiReady || noKey" title="Send the same request again" @click="useAgain(entry), generate()">Generate again</button>
         </div>
       </div>
     </section>
@@ -165,6 +214,15 @@ function thumb(path: string, at: number): string {
 }
 .form textarea {
   resize: vertical;
+}
+.history-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.spacer {
+  flex: 1;
 }
 .row {
   display: flex;

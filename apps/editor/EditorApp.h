@@ -547,6 +547,18 @@ private:
     // Kept per project (4.5): the chat as the panel showed it, and the Art tab's requests.
     AiTranscript transcript_;
     ArtHistory artHistory_;
+    // Generate ▸ Character and Animate: every request and what came back (kept with the project, like Art's).
+    ArtHistory characterHistory_;
+    ArtHistory animationHistory_;
+    int characterHistoryId_ = 0;
+    int animationHistoryId_ = 0;
+    nlohmann::json GenerateHistoryJson(bool character);
+    bool HandleGenerateMessage(const std::string& type, const nlohmann::json& message);
+    nlohmann::json AnimationsJson();
+    // A prefab playing the animation sheet at `path` (named `name`, numbered if taken); "" or why not.
+    std::string PrefabForSheet(const std::string& path, std::string name);
+    // An animation made with Generate ▸ Animate: an animation sheet of it (FX ▸ Animations), and a prefab that plays it.
+    std::string MakeAnimationSheet(const nlohmann::json& made, std::string* sheet);
     int artHistoryId_ = 0;
     AudioEngine& audio_;
     Renderer2D& renderer_;

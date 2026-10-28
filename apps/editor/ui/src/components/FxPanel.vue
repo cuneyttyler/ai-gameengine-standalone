@@ -4,7 +4,8 @@
 // particles and effects to try in the viewport, and cutscenes on a timeline. Records
 // of particles, effects and animators are edited in Records; Customise copies an
 // engine preset there.
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 
 const PROJECT_HOST = 'https://aige-project.local/'
@@ -64,6 +65,17 @@ const particles = ref<Listed[]>([])
 const effects = ref<Listed[]>([])
 const cutscenes = ref<CutsceneInfo[]>([])
 const selectedSheet = ref('')
+// Assets ▸ Animations ▸ Show in Effects: that sheet, on the Sheets page.
+watch(
+  () => editorState.fxSheet,
+  (path) => {
+    if (!path) return
+    section.value = 'sheets'
+    selectedSheet.value = path
+    editorState.fxSheet = ''
+  },
+  { immediate: true },
+)
 const playing = reactive<Record<string, number>>({}) // clip key -> frame index
 let timer: number | undefined
 
