@@ -1,3 +1,4 @@
+#include "assets/Catalog.h"
 #include "assets/UserLibrary.h"
 #include "editing/PaintedPlace.h"
 #include "gameplay/Components.h"
@@ -229,6 +230,19 @@ TEST(InteriorsTest, EachBuildingTypeChoosesItsInterior) {
         if (row["role"] == "house") EXPECT_EQ(row["count"], 2);
         if (row["role"] == "inn") EXPECT_EQ(row["kind"], "scene");
     }
+}
+
+TEST(InteriorsTest, AnInteriorIsNeverABuildsArt) {
+    // Named "house interior", it read as a house: a build drew houses with it.
+    AssetInfo inside;
+    inside.path = "assets/matched/v/house-interior.png";
+    inside.width = inside.height = 256;
+    inside.analysis = {{"name", "house interior"}, {"kind", "building"}, {"layer", "building"}, {"exteriorOf", "assets/matched/v/house.png"}};
+    EXPECT_TRUE(CatalogEntriesFor(inside, nullptr, CatalogOptions{}).empty());
+    AssetInfo outside = inside;
+    outside.path = "assets/matched/v/house.png";
+    outside.analysis = {{"name", "house"}, {"kind", "building"}, {"layer", "building"}, {"roles", "house"}, {"interior", inside.path}};
+    EXPECT_FALSE(CatalogEntriesFor(outside, nullptr, CatalogOptions{}).empty());
 }
 
 TEST(InteriorsTest, ALibraryPairStaysAPair) {

@@ -184,6 +184,12 @@ private:
     bool HandleInteriorMessage(const std::string& type, const nlohmann::json& message);
     // Edit ▸ Background Image… (docs/places/background.md): a build's background painted again, or the open scene's.
     bool HandleBackgroundMessage(const std::string& type, const nlohmann::json& message);
+    // Buildings drawn with an interior picture: their exterior again, an Interior for the picture. How many.
+    int RepairInteriorArt();
+    // Add interior (a prefab's or a building's right-click): its Interior of `kind` on the prefab (every copy) or the
+    // entity, with a footprint when it has none; a cutaway's picture its art's pair, generated first when it has none.
+    void AddInterior(const std::string& prefab, std::optional<Entity> entity, const std::string& kind);
+    std::map<std::string, std::pair<std::string, std::optional<Entity>>> interiorFor_; // an asset being cut away -> who waits
     // The open scene's backdrop (no build): `path` behind everything, over the scene's extent (SceneBackdropFrame).
     void SetSceneBackdrop(const std::string& path);
     struct BackdropFrame {

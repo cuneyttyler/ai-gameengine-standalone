@@ -20,10 +20,18 @@ function updateMenus(): void {
     { label: 'Frame stats', shortcut: keyLabel('view.stats'), action: () => sendToHost({ type: 'view:stats' }) },
     { label: 'Physics shapes (colliders, triggers, bodies)', action: () => sendToHost({ type: 'view:physics' }) },
     { label: `${editorState.grid ? '✓ ' : ''}Tile grid on empty ground`, shortcut: keyLabel('view.grid'), action: () => sendToHost({ type: 'view:grid' }) },
+    // Interiors (docs/places/interiors.md): the selected building's, or every building's in the scene.
+    {
+      label: "Selected building's interior / exterior",
+      shortcut: keyLabel('view.interior'),
+      disabled: editorState.selectedId === null || editorState.playing,
+      action: () => sendToHost({ type: 'entity:interior' }),
+    },
+    { label: 'All interiors / exteriors', shortcut: keyLabel('view.interiors'), disabled: editorState.playing, action: () => sendToHost({ type: 'interiors:showAll' }) },
   ]
 }
 
-watch(() => [editorState.selectedId, editorState.grid, keyState.map], updateMenus, { immediate: true })
+watch(() => [editorState.selectedId, editorState.grid, editorState.playing, keyState.map], updateMenus, { immediate: true })
 
 entityMenuExtensions.push((entity) => [
   ...(entity.tile

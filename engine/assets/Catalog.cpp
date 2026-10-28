@@ -259,6 +259,7 @@ std::vector<CatalogEntry> CatalogEntriesFor(const AssetInfo& asset, const Ontolo
     std::vector<CatalogEntry> out;
     if (asset.type == AssetType::Audio || !asset.error.empty()) return out;
     const auto& whole = asset.analysis;
+    if (whole.contains("exteriorOf")) return out; // a building's interior (docs/places/interiors.md): shown by it, never chosen
     const std::string folder = fs::path(asset.path).parent_path().generic_string();
 
     struct Part {

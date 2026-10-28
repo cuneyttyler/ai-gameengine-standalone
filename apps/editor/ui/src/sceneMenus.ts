@@ -45,6 +45,13 @@ export function entityMenu(entity: MenuEntity): MenuItem[] {
       ? [{ label: entity.interior ? 'Show exterior' : 'Show interior', shortcut: keyLabel('view.interior'), disabled: editorState.playing,
            action: () => sendToHost({ type: 'entity:interior', id: entity.id, shown: !entity.interior }) }]
       : []),
+    // None yet: one added (on its prefab, so every copy has it).
+    ...(!entity.tile && typeof entity.interior !== 'boolean' && entity.interiorScene === undefined
+      ? [
+          { label: 'Add interior: cutaway', disabled: editorState.playing, action: () => sendToHost({ type: 'interior:add', id: entity.id, kind: 'cutaway' }) },
+          { label: 'Add interior: its own scene', disabled: editorState.playing, action: () => sendToHost({ type: 'interior:add', id: entity.id, kind: 'scene' }) },
+        ]
+      : []),
     // Its interior as its own scene (docs/places/interiors.md §2b): opened, or built in the Build panel.
     ...(entity.interiorScene
       ? [{ label: 'Open interior scene', disabled: editorState.playing, action: () => sendToHost({ type: 'entity:openInterior', id: entity.id }) }]
@@ -130,8 +137,8 @@ onHostMessage((message) => {
     const interiors = message.interiors as { count: number; shown: number } | undefined
     if (interiors?.count) {
       items.splice(items.length - 2, 0, interiors.shown < interiors.count
-        ? { label: `Show interiors (${interiors.count})`, action: () => sendToHost({ type: 'interiors:showAll', shown: true }) }
-        : { label: 'Show exteriors', action: () => sendToHost({ type: 'interiors:showAll', shown: false }) })
+        ? { label: `Show interiors (${interiors.count})`, shortcut: keyLabel('view.interiors'), action: () => sendToHost({ type: 'interiors:showAll', shown: true }) }
+        : { label: 'Show exteriors', shortcut: keyLabel('view.interiors'), action: () => sendToHost({ type: 'interiors:showAll', shown: false }) })
     }
     // A ground tile there (a tile entity's prefab, or a tile layer's cell): Draw with it first.
     const tilePrefab = entity?.prefab ?? ((message.cellPrefab as string) || null)

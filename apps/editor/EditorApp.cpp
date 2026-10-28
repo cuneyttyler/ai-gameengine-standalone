@@ -408,7 +408,6 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         return true;
     }
     if (HandlePaintMessage(type, message)) return true;
-    if (HandleInteriorMessage(type, message)) return true;
     if (HandleBackgroundMessage(type, message)) return true;
     if (type == "build:start") {
         StartBuild(message.value("query", ""), message.value("choices", nlohmann::json::object()), message.value("method", ""));
@@ -845,6 +844,7 @@ bool EditorApp::HandleDifficultyMessage(const std::string& type, const nlohmann:
 void EditorApp::OnWebMessage(const nlohmann::json& message) {
     const std::string type = message.value("type", "");
     const SlowWatch watch("message " + type);
+    if (HandleInteriorMessage(type, message)) return; // interiors (docs/places/interiors.md): the viewport's, the Assets panel's, the Build panel's
     if ((type.rfind("build:", 0) == 0 || type.rfind("background:", 0) == 0 || type == "scene:backgroundImage") && HandleBuildMessage(type, message)) return;
     if (type == "prefs:request" || type == "prefs:set") {
         static const std::set<std::string> kKeys = {"uiScale", "showGridAtStart", "zoomSpeed", "invertZoom", "recoveryMinutes", "paintModel",
@@ -2382,6 +2382,7 @@ void EditorApp::OpenScene(const std::string& scene) {
     LoadScene(registry_, path);
     scenePath_ = path;
     prefabs_.SyncAll(registry_); // prefab edits since it was saved
+    RepairInteriorArt();
     history_.Clear();
     // Proposals applied to the scene we left can't be undone from here.
     for (auto& [id, pending] : proposals_) {
@@ -5247,8 +5248,15 @@ void EditorApp::PollAi() {
                 post_(CatalogJson());
                 post_(AssetsJson());
                 post_({{"type", "notify"}, {"text", "Its interior is made: " + inside}});
+                // Add interior waited for it: the prefab or building gets it now.
+                if (auto waiting = interiorFor_.find(path); waiting != interiorFor_.end()) {
+                    const auto [prefab, entity] = waiting->second;
+                    interiorFor_.erase(waiting);
+                    AddInterior(prefab, entity, "cutaway");
+                }
             } else {
                 const auto errors = result->body.value("errors", nlohmann::json::array());
+                interiorFor_.erase(path);
                 post_({{"type", "notify"}, {"text", "The interior wasn't made" + (errors.empty() ? std::string() : ": " + errors.front().get<std::string>())}});
             }
         } else if (result->kind == AiClient::Result::Kind::Response) {
@@ -5624,6 +5632,88 @@ void EditorApp::CutMatched() {
                                             std::to_string(report.value("grounds", nlohmann::json::array()).size()) + " grounds in one style"}});
 }
 
+void EditorApp::AddInterior(const std::string& prefab, std::optional<Entity> entity, const std::string& kind) {
+    // Where it goes: the prefab's template (every copy), or the one entity.
+    Registry* registry = nullptr;
+    Entity target = entt::null;
+    if (!prefab.empty()) {
+        prefabs_.VisitTemplate(prefab, [&](Registry& r, Entity e) { registry = &r, target = e; });
+    } else if (entity && registry_.valid(*entity)) {
+        registry = &registry_, target = *entity;
+    }
+    if (registry == nullptr || !registry->valid(target)) {
+        post_({{"type", "notify"}, {"text", "Add interior: pick a building (a prefab or a thing in the scene)"}});
+        return;
+    }
+    const auto* sprite = registry->try_get<Sprite>(target);
+    const std::string texture = sprite ? sprite->texture : std::string();
+    const AssetInfo* art = texture.empty() ? nullptr : assets_.Find(texture);
+    const auto field = [&](const char* key) { return art && art->analysis.contains(key) ? art->analysis.at(key) : std::string(); };
+    // A cutaway's picture: its art's pair, else made first (then this again).
+    std::string inside = field("interior");
+    if (kind == "cutaway" && inside.empty()) {
+        if (texture.empty() || art == nullptr) {
+            post_({{"type", "notify"}, {"text", "Add interior: it has no picture to cut away"}});
+            return;
+        }
+        interiorFor_[texture] = {prefab, entity};
+        HandleInteriorMessage("asset:makeInterior", {{"path", texture}});
+        return;
+    }
+    // Its footprint (the walls, the doorway, where one is inside): its own, else from its art's (WxH, or its width
+    // in cells, square).
+    if (!registry->all_of<Obstacle>(target)) {
+        int w = 0, h = 0;
+        if (std::sscanf(field("footprint").c_str(), "%dx%d", &w, &h) != 2) w = h = std::max(1, static_cast<int>(std::lround(std::atof(field("cells").c_str()))));
+        registry->emplace<Obstacle>(target, Obstacle{std::max(1, w) - 1, 0, std::max(1, h) - 1});
+    }
+    auto& interior = registry->get_or_emplace<Interior>(target);
+    interior.kind = kind;
+    if (kind == "cutaway") interior.texture = inside;
+    if (!prefab.empty()) {
+        // Written out with them (the components just added to its loaded template come along), every copy following.
+        if (const auto error = prefabs_.SetTemplateField(prefab, "Interior", "kind", kind)) {
+            post_({{"type", "notify"}, {"text", "Couldn't change " + prefab + ": " + *error}});
+            return;
+        }
+        RefreshPrefabs();
+    }
+    ApplyInteriors(registry_);
+    dirty_ = true;
+    sceneTreeStale_ = inspectorStale_ = editorStateStale_ = true;
+    post_({{"type", "notify"},
+           {"text", (prefab.empty() ? std::string("It") : prefab) + (kind == "scene"
+                        ? " has a scene interior: right-click a copy ▸ Build its interior scene…"
+                        : " has its interior: H shows it, Shift+H every building's")}});
+}
+
+int EditorApp::RepairInteriorArt() {
+    // A building drawn with an interior picture (its art chosen before interiors were kept out of a build's choices):
+    // its exterior again, the picture its Interior's, shown while one is inside.
+    int fixed = 0;
+    for (auto [e, sprite] : registry_.view<Sprite>().each()) {
+        const AssetInfo* asset = assets_.Find(sprite.texture);
+        if (asset == nullptr || !asset->analysis.contains("exteriorOf")) continue;
+        const std::string exterior = asset->analysis.at("exteriorOf");
+        const Interior* had = registry_.try_get<Interior>(e);
+        if (assets_.Find(exterior) == nullptr || (had && (had->shown || !had->cells.empty()))) continue; // shown on purpose, or painted
+        auto& interior = registry_.get_or_emplace<Interior>(e);
+        interior.kind = "cutaway";
+        interior.texture = sprite.texture;
+        interior.exteriorTexture.clear();
+        interior.shown = false;
+        sprite.texture = exterior;
+        RecordOverride(registry_, e, "Sprite", "texture");
+        ++fixed;
+    }
+    if (fixed > 0) {
+        dirty_ = true;
+        sceneTreeStale_ = inspectorStale_ = true;
+        post_({{"type", "notify"}, {"text", std::to_string(fixed) + " building(s) drawn with their interior got their exterior back (Save keeps it)"}});
+    }
+    return fixed;
+}
+
 bool EditorApp::HandleBackgroundMessage(const std::string& type, const nlohmann::json& message) {
     const std::filesystem::path root = assets_.GetProject().root;
     const std::string stem = std::filesystem::path(OpenSceneRelative()).stem().string();
@@ -5776,7 +5866,13 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
         // player stands.
         if (!playing_) {
             if (type == "interiors:showAll") {
-                for (auto [e, interior] : registry_.view<Interior>().each()) interior.shown = message.value("shown", true);
+                // Every cutaway building: as told, else all inside when any isn't, all outside when all are.
+                bool all = true;
+                for (auto [e, interior] : registry_.view<Interior>().each()) all = all && (interior.kind == "scene" || interior.texture.empty() || interior.shown);
+                const bool show = message.value("shown", !all);
+                for (auto [e, interior] : registry_.view<Interior>().each()) {
+                    if (interior.kind != "scene" && !interior.texture.empty()) interior.shown = show;
+                }
             } else {
                 std::optional<Entity> target = selected_;
                 if (message.contains("id") && message["id"].is_number_unsigned()) target = static_cast<Entity>(message["id"].get<uint32_t>());
@@ -5862,6 +5958,21 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             std::filesystem::create_directories(build_->Folder(), ec);
             std::ofstream(build_->Folder() / "interior-of.json") << nlohmann::json{{"exterior", exterior}, {"back", back}, {"marker", "entrance"}}.dump(2) << "\n";
         }
+        return true;
+    }
+    if (type == "interior:add") {
+        // Add interior: on a prefab (the Assets panel), or a building in the scene (its prefab, else itself).
+        if (playing_) return true;
+        std::string prefab = message.value("prefab", "");
+        std::optional<Entity> entity;
+        if (message.contains("id") && message["id"].is_number_unsigned()) {
+            const auto e = static_cast<Entity>(message["id"].get<uint32_t>());
+            if (registry_.valid(e)) {
+                if (const auto* link = registry_.try_get<PrefabInstance>(e)) prefab = link->path;
+                else entity = e;
+            }
+        }
+        AddInterior(prefab, entity, message.value("kind", "cutaway") == "scene" ? "scene" : "cutaway");
         return true;
     }
     if (type == "asset:makeInterior") {
@@ -6212,6 +6323,7 @@ void EditorApp::StepBuildRun() {
         }
         default: {
             history_.PushCommand(std::move(run.command));
+            RepairInteriorArt();
             // The ground's pictures were painted again under the same names: drawn anew.
             for (const auto& picture : run.report.value("groundPictures", nlohmann::json::array())) {
                 if (picture.is_string()) renderer_.InvalidateTexture(picture.get<std::string>());

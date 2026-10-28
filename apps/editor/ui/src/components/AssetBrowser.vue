@@ -249,6 +249,13 @@ function prefabMenu(prefab: (typeof editorState.prefabs)[number], event: MouseEv
   const items: MenuItem[] = [
     { label: prefab.isTile ? 'Paint with it' : 'Place it', disabled: editorState.playing, action: () => armPrefab(prefab.path) },
     ...(pairOf(prefab.texture) ? [{ label: pairOf(prefab.texture)!.label, action: () => goToPairedPrefab(prefab.texture) }] : []),
+    // Its interior, on the prefab (every copy): a cutaway (its picture's, made first when it has none), or a scene.
+    ...(!prefab.isTile && !assets.value.find((a) => a.path === prefab.texture)?.analysis?.exteriorOf
+      ? [
+          { label: 'Add interior: cutaway', disabled: editorState.playing, action: () => sendToHost({ type: 'interior:add', prefab: prefab.path, kind: 'cutaway' }) },
+          { label: 'Add interior: its own scene', disabled: editorState.playing, action: () => sendToHost({ type: 'interior:add', prefab: prefab.path, kind: 'scene' }) },
+        ]
+      : []),
     separator,
     { label: 'Rename…', disabled: editorState.playing, action: () => renameItem(prefab.path) },
     { label: 'Move to folder…', disabled: editorState.playing, action: () => askMoveToFolder(prefab.path, 'prefabs') },

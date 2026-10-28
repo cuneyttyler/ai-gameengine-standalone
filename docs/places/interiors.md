@@ -158,7 +158,15 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
   - right-click on a building with a cutaway interior: **Show interior** or **Show exterior**; on a scene-kind one:
     **Open interior scene** (when built) and **Build its interior scene…**;
   - right-click on the ground: **Show interiors (N)** or **Show exteriors**, for every building;
-  - **H** (`view.interior`, rebindable in Help ▸ Keyboard Shortcuts): the selected building's interior or exterior.
+  - **H** (`view.interior`): the selected building's interior or exterior; **Shift+H** (`view.interiors`): every
+    building's in the scene (all inside when any isn't, else all outside). Both rebindable, and in **View**.
+- **Add interior** (a prefab's right-click in the Assets panel, a building's in the viewport; `interior:add`): one
+  step. **Cutaway**: its picture's interior (generated first by BFL when it has none, then added when it comes);
+  **its own scene**: a scene interior (then Build its interior scene…). On the prefab, so every copy has it (the
+  entity itself when it's no prefab's), with a footprint (Obstacle) from its art's `footprint`/`cells` when it has none.
+- **Repair** (`RepairInteriorArt`, on opening a scene and after a build): a building drawn with an interior picture
+  (art chosen before interiors were kept out of the catalog: `CatalogEntriesFor` skips anything with `exteriorOf`)
+  gets its exterior back and an Interior for the picture.
 - Host messages:
   - `entity:interior {id?, shown?}`: the selection or `id`; toggles when `shown` is absent;
   - `interiors:showAll {shown}`.

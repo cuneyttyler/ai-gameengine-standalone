@@ -52,6 +52,7 @@ const handlers: Record<string, () => void> = {
   'view.frame': send('view:frame'),
   'view.grid': send('view:grid'),
   'view.interior': send('entity:interior'),
+  'view.interiors': send('interiors:showAll'),
   'view.stats': send('view:stats'),
   'play.toggle': send('play:toggle'),
   'panel.scene': () => togglePanel('scene'),
