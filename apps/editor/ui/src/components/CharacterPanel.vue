@@ -63,6 +63,11 @@ function when(iso: string): string {
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
 }
+function makePlayer(entry: HistoryEntry): void {
+  const pictures = entry.results.filter((r) => !r.discarded).map((r) => r.path)
+  const name = String(entry.request.name || pictures[0]?.split('/').slice(-2, -1)[0] || 'hero')
+  sendToHost({ type: 'character:makePlayer', pictures, name })
+}
 function direction(path: string): string {
   return /-(south|south-east|east|north-east|north|north-west|west|south-west)\.png$/.exec(path)?.[1] ?? ''
 }
@@ -188,6 +193,15 @@ function thumb(path: string, created: string): string {
           </div>
         </div>
         <div class="actions">
+          <button
+            v-if="entry.state === 'done' && entry.results.some((r) => !r.discarded)"
+            class="primary"
+            :disabled="editorState.playing"
+            title="The player: moves, collides, fights, facing the way it walks; placed in the scene in the player's stead"
+            @click="makePlayer(entry)"
+          >
+            Make player
+          </button>
           <button title="Put this request back in the form" @click="useAgain(entry)">Use again</button>
           <button :disabled="busy || !aiReady || noKey" title="Send the same request again" @click="useAgain(entry), generate()">Generate again</button>
         </div>

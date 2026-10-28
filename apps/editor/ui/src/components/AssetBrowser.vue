@@ -488,6 +488,17 @@ function setInterior(path: string, interior: string): void {
   sendToHost({ type: 'asset:setInterior', path, interior })
 }
 
+const FACING = /-(south|south-east|east|north-east|north|north-west|west|south-west)\.png$/
+
+function makePlayer(path: string): void {
+  const folder = path.slice(0, path.lastIndexOf('/'))
+  const stem = path.slice(path.lastIndexOf('/') + 1).replace(FACING, '')
+  const pictures = assets.value
+    .map((a) => a.path)
+    .filter((p) => p.slice(0, p.lastIndexOf('/')) === folder && FACING.test(p) && p.slice(p.lastIndexOf('/') + 1).replace(FACING, '') === stem)
+  sendToHost({ type: 'character:makePlayer', pictures, name: stem || folder.split('/').pop() || 'hero' })
+}
+
 function assetMenu(asset: Asset, event: MouseEvent): void {
   if (pickedAssets.value.length > 1 && pickedAssets.value.includes(asset.path)) {
     manyMenu('assets', event)
@@ -497,6 +508,10 @@ function assetMenu(asset: Asset, event: MouseEvent): void {
   selectedPath.value = asset.path
   const items: MenuItem[] = [
     { label: 'Details', action: () => (selectedPath.value = asset.path) },
+    // A generated character (its pictures …-south.png, -east.png… in one folder): the player, facing the way it walks.
+    ...(FACING.test(asset.path)
+      ? [{ label: 'Make player', disabled: editorState.playing, action: () => makePlayer(asset.path) }]
+      : []),
     ...(pairOf(asset.path)
       ? [{ label: pairOf(asset.path)!.label, action: () => goToAsset(pairOf(asset.path)!.path) }]
       : asset.type !== 'audio'

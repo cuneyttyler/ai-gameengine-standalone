@@ -5906,6 +5906,14 @@ bool EditorApp::HandleGenerateMessage(const std::string& type, const nlohmann::j
         post_(AnimationsJson());
     } else if (type == "animations:request") {
         post_(AnimationsJson());
+    } else if (type == "character:makePlayer") {
+        std::vector<std::string> pictures;
+        for (const auto& p : message.value("pictures", nlohmann::json::array())) {
+            if (p.is_string()) pictures.push_back(p.get<std::string>());
+        }
+        if (const std::string why = MakePlayer(pictures, message.value("name", std::string("hero"))); !why.empty()) {
+            post_({{"type", "notify"}, {"text", "No player: " + why}});
+        }
     } else if (type == "animation:prefab") {
         // Assets ▸ Animations: a prefab that plays the sheet.
         const std::string sheet = message.value("sheet", "");
@@ -5932,6 +5940,94 @@ bool EditorApp::HandleGenerateMessage(const std::string& type, const nlohmann::j
         return false;
     }
     return true;
+}
+
+std::string EditorApp::MakePlayer(const std::vector<std::string>& pictures, std::string name) {
+    if (playing_) return "stop Play first";
+    // Its direction pictures (…-south.png, -east.png…), side by side in one picture.
+    static const std::vector<std::pair<std::string, std::string>> kDirections = {
+        {"south", "s"}, {"south-east", "se"}, {"east", "e"}, {"north-east", "ne"}, {"north", "n"}, {"north-west", "nw"}, {"west", "w"}, {"south-west", "sw"}};
+    std::vector<std::pair<std::string, ImageData>> faces; // direction, picture
+    for (const auto& [word, dir] : kDirections) {
+        for (const auto& path : pictures) {
+            if (!path.ends_with("-" + word + ".png")) continue;
+            if (auto image = DecodeImage(assets_.GetProject().Resolve(path)); image && image->width > 0) faces.push_back({dir, std::move(*image)});
+        }
+    }
+    if (faces.empty()) return "none of its pictures face a direction (…-south.png)";
+    uint32_t fw = 0, fh = 0;
+    for (const auto& [dir, image] : faces) fw = std::max(fw, image.width), fh = std::max(fh, image.height);
+    ImageData strip;
+    strip.width = fw * static_cast<uint32_t>(faces.size()), strip.height = fh;
+    strip.rgba.assign(static_cast<size_t>(strip.width) * fh * 4, 0);
+    for (size_t k = 0; k < faces.size(); ++k) {
+        const ImageData& image = faces[k].second;
+        for (uint32_t y = 0; y < image.height; ++y) {
+            std::copy_n(&image.rgba[static_cast<size_t>(y) * image.width * 4], static_cast<size_t>(image.width) * 4,
+                        &strip.rgba[(static_cast<size_t>(y) * strip.width + k * fw) * 4]);
+        }
+    }
+    for (char& c : name) {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_') c = '-';
+    }
+    const std::string folder = std::filesystem::path(pictures.front()).parent_path().generic_string();
+    const std::string texture = folder + "/" + name + "-facing.png";
+    if (!WritePng(assets_.GetProject().Resolve(texture), strip)) return "can't write " + texture;
+    // Standing and walking, each facing its way (one picture each until it has walking frames).
+    nlohmann::json clips = nlohmann::json::object();
+    for (const char* clip : {"idle", "walk"}) {
+        for (size_t k = 0; k < faces.size(); ++k) {
+            clips[clip]["directions"][faces[k].first] = nlohmann::json::array({static_cast<int>(k)});
+        }
+    }
+    const nlohmann::json sheetJson = {{"schema", "aige.anim/1"}, {"texture", texture}, {"grid", {{"width", fw}, {"height", fh}}},
+                                      {"size", {strip.width, strip.height}}, {"fps", 8}, {"clips", clips}};
+    const std::string sheet = folder + "/" + name + "-facing.anim.json";
+    {
+        std::ofstream out(assets_.GetProject().Resolve(sheet), std::ios::trunc);
+        if (!out) return "can't write " + sheet;
+        out << sheetJson.dump(2) << "\n";
+    }
+    RefreshAssets();
+    // The player: the engine's (moves, collides, the Player team, health, a sword), drawn as the character.
+    std::string prefab = "prefabs/" + name + "-player.prefab";
+    for (int n = 2; prefabs_.Find(prefab) != nullptr; ++n) prefab = "prefabs/" + name + "-player-" + std::to_string(n) + ".prefab";
+    {
+        Registry scratch;
+        const Entity e = CreatePlayer(scratch, 0.0f, 0.0f);
+        scratch.get<Name>(e).value = name;
+        auto& sprite = scratch.get<Sprite>(e);
+        sprite.texture = texture;
+        sprite.u0 = 0.0f, sprite.v0 = 0.0f, sprite.u1 = 1.0f / static_cast<float>(faces.size()), sprite.v1 = 1.0f;
+        const float tall = std::max(48.0f, iso_.tileHeight * 2.0f); // about two cells tall
+        sprite.height = tall;
+        sprite.width = tall * static_cast<float>(fw) / static_cast<float>(fh);
+        auto& animator = scratch.emplace<Animator>(e);
+        animator.sheet = sheet;
+        animator.animator = "humanoid";
+        prefabs_.SaveAsPrefab(scratch, e, prefab);
+    }
+    RefreshPrefabs();
+    if (prefabs_.Find(prefab) == nullptr) return "the prefab wasn't made";
+    // In the open scene, where the player was (the old one goes), else in the middle of the view.
+    float x = 0, y = 0;
+    if (auto old = FindPlayer(registry_)) {
+        const auto& at = registry_.get<WorldTransform2D>(*old);
+        x = at.x, y = at.y;
+        registry_.destroy(*old);
+    } else {
+        int width = 0, height = 0;
+        viewport_.GetFramebufferSize(width, height);
+        float sceneX = 0, sceneY = 0;
+        camera_.ViewportToScene(width * 0.5f, height * 0.5f, sceneX, sceneY);
+        UnprojectIso(sceneX, sceneY, iso_, x, y);
+    }
+    if (auto placed = prefabs_.Instantiate(registry_, prefab, x, y)) Select(*placed);
+    UpdateWorldToScreen(registry_, iso_);
+    dirty_ = true;
+    sceneTreeStale_ = inspectorStale_ = editorStateStale_ = true;
+    post_({{"type", "notify"}, {"text", prefab + " is the player (F5 to play; Save keeps it)"}});
+    return {};
 }
 
 nlohmann::json EditorApp::AnimationsJson() {

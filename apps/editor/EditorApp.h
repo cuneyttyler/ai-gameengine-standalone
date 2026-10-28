@@ -557,6 +557,9 @@ private:
     nlohmann::json AnimationsJson();
     // A prefab playing the animation sheet at `path` (named `name`, numbered if taken); "" or why not.
     std::string PrefabForSheet(const std::string& path, std::string name);
+    // Make player (Generate ▸ Character): a player prefab of a generated character, facing the way it moves (its
+    // direction pictures one sheet), placed in the open scene in the player's stead. "" or why not.
+    std::string MakePlayer(const std::vector<std::string>& pictures, std::string name);
     // An animation made with Generate ▸ Animate: an animation sheet of it (FX ▸ Animations), and a prefab that plays it.
     std::string MakeAnimationSheet(const nlohmann::json& made, std::string* sheet);
     int artHistoryId_ = 0;
