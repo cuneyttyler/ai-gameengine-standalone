@@ -33,12 +33,16 @@ TileGrid TileGrid::Build(Registry& registry) {
         // A place one can go into: its walls only, with a doorway (Phase 27).
         if (const auto* interior = registry.try_get<Interior>(entity)) {
             const int left = std::max(0, obstacle.left), right = std::max(0, obstacle.right), back = std::max(0, obstacle.back);
+            // Its door shut (locked, or opened by use and not yet): its doorway too (docs/assets/animations.md §4.2).
+            const bool shut = DoorwayShut(registry, entity);
             if (interior->kind == "scene") { // its own scene: solid but for its doorway, which leads there
                 ForEachSceneInteriorCell(sx, sy, left, right, back, interior->door, block);
+                if (int dx = 0, dy = 0; shut && InteriorDoor(registry, entity, *interior, dx, dy)) block(dx, dy);
                 continue;
             }
             if (!interior->texture.empty()) {
                 ForEachInteriorWall(sx, sy, left, right, back, interior->door, block);
+                if (int dx = 0, dy = 0; shut && InteriorDoor(registry, entity, *interior, dx, dy)) block(dx, dy);
                 continue;
             }
         }

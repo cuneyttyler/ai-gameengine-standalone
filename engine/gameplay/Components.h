@@ -310,8 +310,20 @@ struct AnimatedPart {
     float width = 0.0f, height = 0.0f; // the box's size, same pixels
     std::string clip = "open";
     std::string closeClip = "close";
-    float range = 1.8f;         // cells
-    bool opensNear = true;      // opens as someone comes near (off: only when this thing is used)
+    float range = 1.8f;         // cells, from the part itself (a door: its foot)
+    bool opensNear = true;      // older scenes' switch: off is opens = "use"
+    // How it opens (docs/assets/animations.md §4.2): "project" (Project Settings ▸ Game: doorsOpen), "auto" (as someone
+    // comes near) or "use" (the player's door shortcuts or a double click on it, near it; other characters open it as
+    // they come). It closes once everyone has gone.
+    std::string opens = "project";
+    bool locked = false;        // shut (its doorway blocked) until the player uses it carrying `key`: then unlocked
+    std::string key;            // the item that unlocks it ("": it can't be opened)
+    bool consumeKey = false;    // the key is used up
+};
+
+// Runtime (not saved): an animated part open now (a door: its doorway passable).
+struct PartOpen {
+    bool open = false;
 };
 
 // Runtime: an Action's clock.

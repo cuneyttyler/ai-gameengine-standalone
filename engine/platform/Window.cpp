@@ -2,6 +2,7 @@
 
 #include <GLFW/glfw3.h>
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace aige {
@@ -115,6 +116,16 @@ void Window::GetFramebufferSize(int& width, int& height) const {
 
 void Window::SetResizeCallback(std::function<void(int, int)> callback) {
     resizeCallback_ = std::move(callback);
+}
+
+void Window::GetCursorPosition(float& x, float& y) const {
+    double cx = 0.0, cy = 0.0;
+    glfwGetCursorPos(handle_, &cx, &cy);
+    int ww = 1, wh = 1, fw = 1, fh = 1;
+    glfwGetWindowSize(handle_, &ww, &wh);
+    glfwGetFramebufferSize(handle_, &fw, &fh);
+    x = static_cast<float>(cx * fw / std::max(1, ww));
+    y = static_cast<float>(cy * fh / std::max(1, wh));
 }
 
 bool Window::IsKeyDown(Key key) const {

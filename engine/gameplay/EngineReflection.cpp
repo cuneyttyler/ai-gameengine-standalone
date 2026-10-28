@@ -269,8 +269,13 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("height", &AnimatedPart::height, "The box's height, same pixels.").Min(0)
         .Field("clip", &AnimatedPart::clip, "Played when someone comes near (or it's used).")
         .Field("closeClip", &AnimatedPart::closeClip, "Played when they leave.")
-        .Field("range", &AnimatedPart::range, "How near, in cells.").Range(0.3, 10)
-        .Field("near", &AnimatedPart::opensNear, "Opens as someone comes near (off: only when this thing is used).")
+        .Field("range", &AnimatedPart::range, "How near, in cells, from the part itself.").Range(0.3, 10)
+        .Field("opens", &AnimatedPart::opens, "How it opens: project (Project Settings ▸ Game ▸ doorsOpen), auto (as someone "
+               "comes near) or use (the door shortcuts or a double click, near it).").Options({"project", "auto", "use"})
+        .Field("locked", &AnimatedPart::locked, "Shut, its doorway blocked, until the player uses it with the key.")
+        .Field("key", &AnimatedPart::key, "The item that unlocks it (empty: it can't be opened).")
+        .Field("consumeKey", &AnimatedPart::consumeKey, "The key is used up unlocking it.")
+        .Field("near", &AnimatedPart::opensNear, "Older scenes' switch (off: opens by use); opens says it now.")
         .DependsOn({"Sprite"});
     r.Component<Ramp>("Ramp", "Characters walk between heights here: stairs, a ramp, a ladder. Elsewhere a cliff (a step much "
                               "higher or lower than where one stands) can't be walked up or down.")
@@ -660,7 +665,12 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("startScene", &GameSettings::startScene, "The scene the game starts in (scenes/*.aige).")
         .Field("version", &GameSettings::version, "The game's version: the window's title, the crash log, exports.")
         .Field("debugConsole", &GameSettings::debugConsole, "` opens the debug console in play (exports leave it off unless asked).")
-        .Field("splash", &GameSettings::splash, "A picture shown for a moment when the game starts (assets/...).");
+        .Field("splash", &GameSettings::splash, "A picture shown for a moment when the game starts (assets/...).")
+        .Field("doorsOpen", &GameSettings::doorsOpen, "How buildings' doors open, unless a door says otherwise: use (its "
+               "shortcuts or a double click, near it) or auto (as someone comes near).").Options({"use", "auto"})
+        .Field("doorActions", &GameSettings::doorActions, "The input actions that open a door, comma-separated (Input: "
+               "interact is E, Space, the pad's A).")
+        .Field("doorDoubleClick", &GameSettings::doorDoubleClick, "A double click on a door opens it, the player near it.");
     r.Settings("Time", "The game clock (routines follow it).", &settings.time)
         .Field("startHour", &TimeSettings::startHour, "Time of day when a game starts, in hours.").Range(0, 23.99)
         .Field("minutesPerSecond", &TimeSettings::minutesPerSecond,

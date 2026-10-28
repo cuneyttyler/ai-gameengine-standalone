@@ -9,6 +9,7 @@
 namespace aige {
 
 struct Interior;
+struct AnimatedPart;
 
 // Interiors (development_plan.md Phase 27): a building with an Interior shows it while the player stands inside its
 // footprint, its exterior otherwise.
@@ -30,6 +31,12 @@ int InteriorFloors(const Interior& interior);
 std::string InteriorPicture(const Interior& interior, int floor);
 // A scene interior's doorway cell (world cells), where stepping in goes to its scene; false without a footprint.
 bool InteriorDoor(Registry& registry, Entity entity, const Interior& interior, int& x, int& y);
+
+// How a thing's animated door opens (docs/assets/animations.md §4.2): "auto" or "use", its own or the project's.
+std::string DoorOpens(const AnimatedPart& part);
+// Its doorway is shut to walkers: a building one can go into whose animated door is closed and locked, or closed and
+// opened by use (it opens for the player's shortcut, and for other characters as they come).
+bool DoorwayShut(Registry& registry, Entity entity);
 
 // Scene interiors linked both ways (docs/places/interiors.md §2b). Outside: `building`'s Interior becomes a scene
 // interior leading to `scene`'s `marker`, and a marker `back` stands a step out of its doorway (where one comes out).

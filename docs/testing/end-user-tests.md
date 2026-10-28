@@ -107,6 +107,15 @@ project (FirstGame).
   away; unequipped, gone; never saved into the scene; clicking it selects its wearer.
 - ✓ An Attachment puts any entity on another's point (a hat, a lantern, a rider).
 - ◐ Holds a weapon (the magenta rod): the hand's points from a generated attack (needs a run with AutoSprite).
+- ◐ Build ▸ Animate: each building's door found and opened from its own pixels (free; the beam over it and a post in
+  front stay drawn); chests, gates, levers animated by AutoSprite (to be checked on a built place).
+- ◐ Doors open the project's way (Project Settings ▸ Game ▸ doorsOpen): use — E / Space / the pad's A or a double
+  click, near it; pressed again it shuts — or auto, as someone comes near; it closes once everyone has gone.
+- ◐ A door's own way (Inspector ▸ AnimatedPart ▸ opens); locked with a key: "Locked: needs …", its doorway blocks the
+  way in; carrying the key it unlocks and opens.
+- ◐ NPCs walk through doors that open by use (they open them as they come); not through locked ones.
+- ◐ Right-click ▸ Animate a part… on a building made or imported by hand: Find the door, a door / something else, opens,
+  locked, key; every copy of its prefab gets it.
 
 ## 9. Build panel (docs/places)
 

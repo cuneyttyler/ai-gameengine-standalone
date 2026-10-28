@@ -30,6 +30,7 @@
 #include "scripting/LuaVM.h"
 
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <cstdio>
@@ -311,6 +312,9 @@ int main(int argc, char** argv) {
         double frameMs = 0.0, updateMs = 0.0, benchFrames = 0.0, benchFrameMs = 0.0, benchUpdateMs = 0.0;
 
         const auto startTime = Clock::now();
+        bool mouseWasDown = false;
+        Clock::time_point lastClick{};
+        float lastClickX = 0.0f, lastClickY = 0.0f;
         while (!window.ShouldClose() && !game.QuitRequested()) {
             window.PollEvents();
             if (exitAfter >= 0.0 && std::chrono::duration<double>(Clock::now() - startTime).count() > exitAfter) {
@@ -321,6 +325,26 @@ int main(int argc, char** argv) {
             double frameSeconds = std::chrono::duration<double>(currentTime - previousTime).count();
             previousTime = currentTime;
             const auto updateStart = Clock::now();
+            // A double click (two presses of the left button within 0.35 s, near each other): a door under it opens
+            // when the player is near (docs/assets/animations.md §4.2).
+            {
+                const bool down = window.IsKeyDown(aige::Key::MouseLeft);
+                if (down && !mouseWasDown) {
+                    float mx = 0.0f, my = 0.0f;
+                    window.GetCursorPosition(mx, my);
+                    const auto now = Clock::now();
+                    if (std::chrono::duration<double>(now - lastClick).count() < 0.35 && std::abs(mx - lastClickX) < 8.0f &&
+                        std::abs(my - lastClickY) < 8.0f) {
+                        float sx = 0.0f, sy = 0.0f;
+                        camera.ViewportToScene(mx, my, sx, sy);
+                        session.RequestUseAt(sx, sy);
+                        lastClick = Clock::time_point{};
+                    } else {
+                        lastClick = now, lastClickX = mx, lastClickY = my;
+                    }
+                }
+                mouseWasDown = down;
+            }
             game.Frame(frameSeconds, isKeyDown, padAxis);
             for (const auto& line : game.TakeLog()) std::cout << line << std::endl;
             if (game.TakeCameraSnap()) {

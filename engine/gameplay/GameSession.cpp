@@ -370,6 +370,10 @@ void GameSession::RequestPlayerAttack(float worldX, float worldY) {
     requestedAttack_ = std::make_pair(worldX, worldY);
 }
 
+void GameSession::RequestUseAt(float sceneX, float sceneY) {
+    if (ActiveSettings().game.doorDoubleClick) requestedUse_ = std::make_pair(sceneX, sceneY);
+}
+
 void GameSession::BindScriptApi(sol::environment& env, Entity self) {
     Registry& registry = registry_;
     lua_State* L = env.lua_state();
@@ -2585,26 +2589,84 @@ void GameSession::StepActions(float dt) {
     }
     actionEvents_.clear();
     actionEventUsers_.clear();
-    // Animated parts (a building's door): open as someone comes near, close as they go.
+    // Animated parts (a building's door; docs/assets/animations.md §4.2). Each opens its project's way or its own:
+    // auto, as someone comes near; use, for the player's door shortcuts (Project Settings ▸ Game ▸ doorActions) or a
+    // double click on it, near it, and for other characters as they come. A locked one opens only for the player
+    // carrying its key (then it's unlocked for good). It closes once everyone has gone. Near is measured from the door
+    // itself (its foot), not the building's middle.
     {
         std::vector<std::pair<Entity, Entity>> overlays; // (owner, overlay)
         for (auto [overlay, link] : registry_.view<AttachmentLink, Transient>().each()) {
             if (link.slot == "part" && registry_.valid(link.parent)) overlays.push_back({link.parent, overlay});
         }
+        bool doorKey = false; // a door shortcut pressed this step
+        {
+            std::stringstream names(ActiveSettings().game.doorActions);
+            for (std::string name; std::getline(names, name, ',');) {
+                name.erase(0, name.find_first_not_of(' '));
+                name.erase(name.find_last_not_of(' ') + 1);
+                if (!name.empty() && input_.Pressed(name)) doorKey = true;
+            }
+        }
+        const auto click = requestedUse_;
+        requestedUse_.reset();
+        // The one door the player's shortcut is for: the nearest within its range.
+        Entity used{entt::null};
+        float usedDistance = 1e9f;
+        std::vector<std::tuple<Entity, Entity, float, float>> doors; // (owner, overlay, x, y)
         for (const auto& [owner, overlay] : overlays) {
             const auto* part = registry_.try_get<AnimatedPart>(owner);
             const auto* w = registry_.try_get<WorldTransform2D>(owner);
-            if (!part || !w || !part->opensNear) continue;
-            bool someoneNear = false;
+            if (!part || !w) continue;
+            float dx = w->x, dy = w->y;
+            const auto* screen = registry_.try_get<ScreenTransform2D>(overlay);
+            const auto* sprite = registry_.try_get<Sprite>(overlay);
+            if (screen && sprite && sprite->height > 0.0f) UnprojectIso(screen->x, screen->y + sprite->height * 0.5f, iso_, dx, dy);
+            doors.emplace_back(owner, overlay, dx, dy);
+            if (!at) continue;
+            const float d = std::hypot(at->x - dx, at->y - dy);
+            const bool clicked = click && screen && sprite && std::abs(click->first - screen->x) <= sprite->width * 0.5f &&
+                                 std::abs(click->second - screen->y) <= sprite->height * 0.5f;
+            if (d <= part->range + (clicked ? 1.0f : 0.0f) && (doorKey || clicked) && d < usedDistance) used = owner, usedDistance = d;
+        }
+        for (const auto& [owner, overlay, dx, dy] : doors) {
+            auto& part = registry_.get<AnimatedPart>(owner);
+            auto& open = registry_.get_or_emplace<PartOpen>(owner);
+            const bool byUse = DoorOpens(part) == "use";
+            bool playerNear = false, othersNear = false;
             for (auto [mover, v, mw] : registry_.view<Velocity2D, WorldTransform2D>().each()) {
-                if (std::hypot(mw.x - w->x, mw.y - w->y) <= part->range) {
-                    someoneNear = true;
-                    break;
+                if (std::hypot(mw.x - dx, mw.y - dy) > part.range) continue;
+                (player && mover == *player ? playerNear : othersNear) = true;
+            }
+            bool opening = false;
+            if (owner == used) {
+                if (part.locked) {
+                    auto* inventory = registry_.try_get<Inventory>(*player);
+                    if (part.key.empty() || !inventory || CountItem(*inventory, part.key) <= 0) {
+                        Toast(part.key.empty() ? "Locked." : "Locked: needs " + ItemName(part.key) + ".");
+                    } else {
+                        if (part.consumeKey) RemoveItem(*inventory, part.key, 1);
+                        part.locked = false;
+                        Toast("Unlocked with " + ItemName(part.key) + ".");
+                        opening = true;
+                    }
+                } else {
+                    opening = !open.open || !byUse; // by use: the shortcut opens it, or shuts it again
+                    if (open.open && byUse) {
+                        open.open = false;
+                        TriggerAnimation(registry_, overlay, part.closeClip);
+                        continue;
+                    }
                 }
             }
-            auto& state = registry_.get_or_emplace<ActionState>(overlay); // `touching`: someone was near last step
-            if (someoneNear != state.touching) TriggerAnimation(registry_, overlay, someoneNear ? part->clip : part->closeClip);
-            state.touching = someoneNear;
+            if (!part.locked && (byUse ? othersNear : (playerNear || othersNear))) opening = true;
+            if (opening && !open.open) {
+                open.open = true;
+                TriggerAnimation(registry_, overlay, part.clip);
+            } else if (open.open && !playerNear && !othersNear) {
+                open.open = false; // everyone gone: it closes
+                TriggerAnimation(registry_, overlay, part.closeClip);
+            }
         }
     }
     // interact is the Interactables' key too: an Action on it acts only when no Interactable is nearer.

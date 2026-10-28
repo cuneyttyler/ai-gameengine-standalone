@@ -468,6 +468,9 @@ private:
     // Right-click: a press that doesn't move far is a context menu, not a pan.
     float rightDownX_ = 0.0f, rightDownY_ = 0.0f;
     bool rightMoved_ = false;
+    // Play: the last left click, for a double click on a door (docs/assets/animations.md §4.2).
+    std::chrono::steady_clock::time_point lastPlayClick_{};
+    float lastPlayClickX_ = 0.0f, lastPlayClickY_ = 0.0f;
     nlohmann::json ArtJson();
     std::string worldCheckKey_;
     bool RequestConsistencyCheck(int proposalId, const nlohmann::json& operations);
@@ -560,6 +563,8 @@ private:
     bool taskPaused_ = false; // a task waiting at a step for the user's Continue (Review each step)
     // Animate a part (docs/assets/animations.md §4): the request in flight and what it's for.
     int partRequest_ = 0;
+    int partFindRequest_ = 0;           // Animate a part ▸ Find the door: the vision model's box
+    nlohmann::json partFindRegion_;     // the picture's region it was looked for in
     nlohmann::json partPending_;
     void PlacePart(const nlohmann::json& result);
     void ApplyPartToPrefab(const std::string& prefab, const AnimatedPart& part);

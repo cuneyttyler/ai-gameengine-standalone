@@ -13,6 +13,7 @@
 #include "editing/PlaceBuild.h"
 #include "gameplay/Animation.h"
 #include "gameplay/Components.h"
+#include "gameplay/Settings.h"
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 
@@ -55,6 +56,15 @@ const UsedThing* UsedFor(const std::string& role) {
     return nullptr;
 }
 
+// How a building's door will open: the project's way (Project Settings ▸ Game ▸ doorsOpen; each door can say its own
+// in the Inspector, AnimatedPart ▸ opens, locked, key).
+std::string DoorTrigger() {
+    const GameSettings& game = ActiveSettings().game;
+    if (game.doorsOpen == "auto") return "by itself as someone comes near (Project Settings ▸ Game; each door can differ: Inspector ▸ AnimatedPart)";
+    return "with " + game.doorActions + (game.doorDoubleClick ? " or a double click" : std::string()) +
+           ", near it (Project Settings ▸ Game; each door can differ: Inspector ▸ AnimatedPart ▸ opens, locked)";
+}
+
 nlohmann::json ReadJsonFile(const std::filesystem::path& file) {
     std::ifstream in(file, std::ios::binary);
     return in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
@@ -94,7 +104,7 @@ nlohmann::json EditorApp::AnimateTargets() {
         for (auto [e, link] : registry_.view<PrefabInstance>().each()) copies += link.path == prefab;
         targets.push_back({{"key", prefab}, {"kind", building ? "door" : "thing"}, {"role", role}, {"label", row.value("title", role)},
                            {"prefab", prefab}, {"texture", texture}, {"region", region},
-                           {"trigger", building ? "near: opens as someone comes to it, closes as they go" : std::string("used (") + used->verb + ")"},
+                           {"trigger", building ? DoorTrigger() : std::string("used (") + used->verb + ")"},
                            {"where", std::to_string(copies) + (copies == 1 ? " copy" : " copies") + " in the scene"},
                            {"status", "pending"}});
     }
@@ -118,7 +128,7 @@ nlohmann::json EditorApp::AnimateTargets() {
                                {"label", o.value("slot", std::string("building")) + " " + id.substr(id.rfind('/') + 1)},
                                {"texture", "places/" + build_->Id() + "/" + painting.value("painting", "painting.png")},
                                {"region", {x0, y0, x1 - x0, y1 - y0}},
-                               {"trigger", "near: opens as someone comes to it, closes as they go"},
+                               {"trigger", "near: opens as someone comes to it, closes as they go"}, // painted: its overlay's Action
                                {"where", "cell " + std::to_string(static_cast<int>(x)) + "," + std::to_string(static_cast<int>(y))},
                                {"status", "pending"}});
         }

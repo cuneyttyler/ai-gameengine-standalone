@@ -5,6 +5,7 @@
 #include "gameplay/Components.h"
 #include "gameplay/TileLayer.h"
 #include "gameplay/GameSession.h"
+#include "gameplay/Interiors.h"
 #include "gameplay/Pathfinding.h"
 #include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
@@ -14,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
 #include <sstream>
 
 namespace aige {
@@ -238,7 +240,16 @@ struct Run {
             }
             return entt::null;
         };
-        const SolidQueryFn throughDoors = [&](int x, int y) { return ctx.isSolid(x, y) && closedDoorAt(x, y) == entt::null; };
+        // A building's doorway shut by its animated door (not locked): it opens as a character comes to it
+        // (docs/assets/animations.md §4.2), so a path goes through.
+        std::set<std::pair<int, int>> doorways;
+        for (auto [e, interior, part] : R().view<Interior, AnimatedPart>().each()) {
+            if (int dx = 0, dy = 0; !part.locked && DoorwayShut(R(), e) && InteriorDoor(R(), e, interior, dx, dy)) doorways.insert({dx, dy});
+        }
+        const SolidQueryFn throughDoors = [&](int x, int y) {
+            return ctx.isSolid(x, y) && closedDoorAt(x, y) == entt::null && !doorways.contains({x, y});
+        };
+        const SolidQueryFn throughDoorways = [&](int x, int y) { return ctx.isSolid(x, y) && !doorways.contains({x, y}); };
         if (goal != state.goal || state.next >= state.path.size()) {
             state.goal = goal;
             state.path.clear();
@@ -253,7 +264,7 @@ struct Run {
                 }
                 return false;
             };
-            if (auto path = FindPath(ctx.act ? throughDoors : ctx.isSolid, Cell(at.x, at.y), goal, 6000, noCliffs)) state.path = *path;
+            if (auto path = FindPath(ctx.act ? throughDoors : throughDoorways, Cell(at.x, at.y), goal, 6000, noCliffs)) state.path = *path;
             state.stuck = 0.0f;
             if (state.path.empty()) return false;
         }

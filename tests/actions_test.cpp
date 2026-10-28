@@ -5,6 +5,9 @@
 #include "gameplay/Components.h"
 #include "gameplay/GameSession.h"
 #include "gameplay/InputMap.h"
+#include "gameplay/Interiors.h"
+#include "gameplay/TileGrid.h"
+#include "renderer2d/Components.h"
 #include "gameplay/Items.h"
 #include "physics2d/Components.h"
 #include "scripting/LuaVM.h"
@@ -123,4 +126,64 @@ TEST(ActionsTest, InputActionsKeepPlaysAndEvent) {
     EXPECT_EQ(found->event, "parried");
     ASSERT_EQ(found->keys.size(), 1u);
     EXPECT_EQ(found->keys[0].key, aige::Key::MouseRight);
+}
+
+// docs/assets/animations.md §4.2: a building's animated door opens its project's way (use: the door shortcuts) or its
+// own (auto: as someone comes near); shut, its doorway blocks the way; locked, only the key opens it.
+TEST(ActionsTest, DoorsOpenTheirWayAndLockedOnesNeedTheKey) {
+    ActionsWorld w;
+    const aige::Entity house = w.registry.create();
+    w.registry.emplace<aige::WorldTransform2D>(house, 5.5f, 5.5f);
+    w.registry.emplace<aige::Obstacle>(house, aige::Obstacle{2, 0, 2}); // cells 3..5 x 3..5, its doorway 4,5 (south)
+    w.registry.emplace<aige::Sprite>(house).texture = "house.png";
+    w.registry.emplace<aige::Interior>(house).texture = "house-interior.png";
+    auto& part = w.registry.emplace<aige::AnimatedPart>(house);
+    part.sheet = "assets/door.anim.json";
+    auto& at = w.registry.get<aige::WorldTransform2D>(w.player);
+    at.x = 4.5f, at.y = 6.9f; // just outside the door
+    bool interact = false;
+    auto keys = [&](aige::Key k) { return interact && k == aige::Key::E; };
+    auto step = [&](bool press) {
+        interact = press;
+        w.session->Advance(aige::GameSession::kFixedDt, keys);
+        interact = false;
+        w.session->Advance(aige::GameSession::kFixedDt, keys);
+    };
+    auto isOpen = [&] { return w.registry.all_of<aige::PartOpen>(house) && w.registry.get<aige::PartOpen>(house).open; };
+    auto doorwaySolid = [&] { return aige::TileGrid::Build(w.registry).IsSolid(4, 5); };
+
+    // The project's way (use, the default): near isn't enough; its shortcut opens it.
+    ASSERT_EQ(aige::DoorOpens(part), "use");
+    step(false);
+    EXPECT_FALSE(isOpen());
+    EXPECT_TRUE(doorwaySolid());
+    step(true);
+    EXPECT_TRUE(isOpen());
+    EXPECT_FALSE(doorwaySolid());
+    // Everyone gone: it closes.
+    at.x = 1.5f, at.y = 1.5f;
+    step(false);
+    EXPECT_FALSE(isOpen());
+
+    // Its own way, auto: it opens as the player comes.
+    w.registry.get<aige::AnimatedPart>(house).opens = "auto";
+    at.x = 4.5f, at.y = 6.9f;
+    step(false);
+    EXPECT_TRUE(isOpen());
+    at.x = 1.5f, at.y = 1.5f;
+    step(false);
+
+    // Locked: shut even near and pressed, until the player carries the key.
+    auto& locked = w.registry.get<aige::AnimatedPart>(house);
+    locked.locked = true;
+    locked.key = "iron-key";
+    at.x = 4.5f, at.y = 6.9f;
+    step(false);
+    step(true);
+    EXPECT_FALSE(isOpen());
+    EXPECT_TRUE(doorwaySolid());
+    aige::AddItem(w.registry.get_or_emplace<aige::Inventory>(w.player), "iron-key");
+    step(true);
+    EXPECT_TRUE(isOpen());
+    EXPECT_FALSE(w.registry.get<aige::AnimatedPart>(house).locked);
 }

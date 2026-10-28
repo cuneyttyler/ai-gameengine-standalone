@@ -132,6 +132,10 @@ struct GameSettings {
     std::string version = "1.0";                  // shown in the window's title and the crash log (24)
     bool debugConsole = true;                     // ` opens the debug console in play (exports: only when asked)
     std::string splash;                           // a picture shown when the game starts (assets/...)
+    // Buildings' doors (docs/assets/animations.md §4.2), unless a door says otherwise (its AnimatedPart's opens).
+    std::string doorsOpen = "use";                // "use": the door shortcuts or a double click; "auto": as someone comes near
+    std::string doorActions = "interact";         // the input actions that open a door, comma-separated (Project Settings ▸ Input)
+    bool doorDoubleClick = true;                  // a double click on a door opens it, the player near it
 };
 
 // Streaming big scenes (24): only the chunks around the player are simulated.

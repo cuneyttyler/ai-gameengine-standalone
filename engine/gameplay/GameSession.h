@@ -106,6 +106,9 @@ public:
 
     // The player attacks toward a world point on the next step (mouse click).
     void RequestPlayerAttack(float worldX, float worldY);
+    // A double click at a scene point (docs/assets/animations.md §4.2): a door under it opens if the player is near it
+    // (Project Settings ▸ Game ▸ doorDoubleClick).
+    void RequestUseAt(float sceneX, float sceneY);
 
     struct ScriptError {
         Entity entity;
@@ -412,6 +415,7 @@ private:
     std::string musicOverride_;
     SpawnFn spawner_;
     std::optional<std::pair<float, float>> requestedAttack_;
+    std::optional<std::pair<float, float>> requestedUse_; // a double click's scene point, for doors
 
     const StoryLibrary* storyLibrary_ = nullptr;
     StoryState story_;

@@ -259,12 +259,39 @@ After a place's art is made, the Build panel animates what has to move, so a bui
   **Animate all** (doors free; things about 5 AutoSprite credits each), each one's **Animate** / **Skip**. `apps/editor/BuildAnimate.cpp`,
   `components/AnimatePartsView.vue`.
 
+### 4.2 How doors open
+
+A building's animated door (its **AnimatedPart**) opens one of two ways:
+
+- **use**: the player's door shortcuts — Project Settings ▸ Game ▸ **doorActions**, input actions comma-separated
+  (`interact` by default: E, Space, the pad's A; add others, e.g. `interact, open_door`) — or a **double click** on
+  the door (**doorDoubleClick**), the player within its range. Pressed again, it shuts. Other characters open it as
+  they come (they don't press keys). While it's shut its doorway blocks the way in; a path still goes through it for
+  characters, who open it as they reach it.
+- **auto**: by itself, as anyone comes near.
+
+The project's way is Project Settings ▸ Game ▸ **doorsOpen** (`use` by default). Each door can say its own: Inspector
+▸ AnimatedPart ▸ **opens** (`project`, `auto`, `use`), and **locked** / **key** / **consumeKey**: a locked door stays
+shut, its doorway blocked, and "Locked: needs Iron Key" shows when the player tries it; carrying the key, it unlocks
+for good and opens. Either way it closes once everyone has gone. Near is measured from the door itself (its foot), not
+the building's middle, so a big building's door opens too.
+
+**Animate a part…** (right-click a building, or anything with a picture) does the same for a building generated or
+imported by hand: drag a box round the door or press **Find the door** (the vision model), choose **a door** (opened
+from its own pixels) or **something else** (AutoSprite, from the motion you give), and for a door how it opens and
+whether it's locked, with which key. On a prefab's copy, every copy gets it.
+
+In code: `AnimatedPart` / `PartOpen` (`engine/gameplay/Components.h`), `DoorOpens` / `DoorwayShut`
+(`engine/gameplay/Interiors.cpp`), the doorway in `TileGrid::Build`, characters' paths in `Behaviour.cpp`, the rules in
+`GameSession::StepActions`, `RequestUseAt` (the editor's Play and `apps/sandbox/main.cpp` for a double click).
+
 ## 5. In the Inspector
 
 | Component | Fields |
 |---|---|
 | Animator | `sheet`, `animator`, `speed`, `corpseSeconds`, `clips` (state = clips), `pick`, `attackClass` |
 | Interactable | … `animation` (played when used), `becomeAfterAnimation` |
+| AnimatedPart | `sheet`, the box (`x`, `y`, `width`, `height`), `clip`, `closeClip`, `range`, `opens`, `locked`, `key`, `consumeKey` |
 | Attachment | `to`, `point`, `offsetX`, `offsetY`, `angle`, `pivotX`, `pivotY`, `pointing`, `size`, `layer`, `turn` |
 | Equipment | its slots, `show` |
 

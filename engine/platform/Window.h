@@ -42,6 +42,8 @@ public:
 
     // Keys, mouse buttons and the first gamepad's buttons (development_plan.md 12.3).
     bool IsKeyDown(Key key) const;
+    // The cursor, in framebuffer pixels from the top left (a double click on a door, docs/assets/animations.md §4.2).
+    void GetCursorPosition(float& x, float& y) const;
     float PadAxisValue(PadAxis axis) const;
     // The whole primary monitor, or back to the window it was (12.7).
     void SetFullscreen(bool fullscreen);

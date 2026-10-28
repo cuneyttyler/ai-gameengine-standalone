@@ -2754,6 +2754,15 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                 return;
             }
             if (playing_) {
+                // A double click: a door under it opens, the player near it (Project Settings ▸ Game ▸ doorDoubleClick).
+                const auto now = std::chrono::steady_clock::now();
+                if (now - lastPlayClick_ < std::chrono::milliseconds(350) && std::abs(sceneX - lastPlayClickX_) < 8.0f &&
+                    std::abs(sceneY - lastPlayClickY_) < 8.0f) {
+                    session_.RequestUseAt(sceneX, sceneY);
+                    lastPlayClick_ = {};
+                } else {
+                    lastPlayClick_ = now, lastPlayClickX_ = sceneX, lastPlayClickY_ = sceneY;
+                }
                 // Diablo-style: click to attack toward the cursor.
                 float worldX = 0.0f;
                 float worldY = 0.0f;
@@ -5542,6 +5551,22 @@ void EditorApp::PollAi() {
                 }
             } else if (animateRequest_ != 0 && result->requestId == animateRequest_) {
                 OnAnimateResult(result->body);
+            } else if (partFindRequest_ != 0 && result->requestId == partFindRequest_) {
+                // Find the door: its likeliest box, in the dialog's pixels.
+                partFindRequest_ = 0;
+                nlohmann::json found = {{"type", "part:found"}, {"ok", false}, {"error", "no door found"}};
+                nlohmann::json best;
+                for (const auto& p : result->body.value("parts", nlohmann::json::array())) {
+                    if (best.is_null() || p.value("confidence", 0.0) > best.value("confidence", 0.0)) best = p;
+                }
+                if (best.is_object() && partFindRegion_.size() == 4) {
+                    const auto& b = best["box"];
+                    found = {{"type", "part:found"}, {"ok", true},
+                             {"box", {b[0].get<int>() - partFindRegion_[0].get<int>(), b[1].get<int>() - partFindRegion_[1].get<int>(), b[2], b[3]}}};
+                } else if (!result->body.value("ok", false)) {
+                    found["error"] = result->body.value("errors", nlohmann::json::array()).dump();
+                }
+                post_(found);
             } else if (partRequest_ != 0 && result->requestId == partRequest_) {
                 partRequest_ = 0;
                 RefreshAssets();
@@ -6488,12 +6513,19 @@ void EditorApp::PlacePart(const nlohmann::json& result) {
         post_({{"type", "notify"}, {"text", "The part wasn't animated: " + (result.contains("errors") && !result["errors"].empty() ? result["errors"][0].get<std::string>() : std::string("no answer"))}});
         return;
     }
+    RefreshAssets(); // the spritesheet the service just wrote
     std::string sheet;
     if (const std::string why = MakeAnimationSheet(result, &sheet); !why.empty()) {
         post_({{"type", "notify"}, {"text", "The part's sheet couldn't be made: " + why}});
         return;
     }
     session_.ReloadAnimations();
+    if (partPending_.value("door", false) && result.contains("doorway")) {
+        // A door: its frames go over the doorway it was fitted to (the box in its region's pixels).
+        const nlohmann::json& d = result["doorway"];
+        const nlohmann::json& r = partPending_["region"];
+        partPending_["box"] = {d[0].get<int>() - r[0].get<int>(), d[1].get<int>() - r[1].get<int>(), d[2], d[3]};
+    }
     const nlohmann::json p = partPending_;
     const nlohmann::json box = p.value("box", nlohmann::json::array());
     const float scale = p.value("scale", 1.0f), frameW = p.value("frameW", 1.0f), frameH = p.value("frameH", 1.0f);
@@ -6513,6 +6545,9 @@ void EditorApp::PlacePart(const nlohmann::json& result) {
         made.x = bx + bw / 2, made.y = by + bh / 2, made.width = bw, made.height = bh;
         made.clip = clip;
         made.closeClip = clip == "open" ? "close" : "";
+        made.opens = p.value("opens", std::string("project"));
+        made.locked = p.value("locked", false);
+        made.key = p.value("key", std::string());
         const auto* link = registry_.try_get<PrefabInstance>(parentEntity);
         if (link && prefabs_.Find(link->path)) {
             // On the prefab: every copy (in this scene and the others) shows it.
@@ -6524,8 +6559,11 @@ void EditorApp::PlacePart(const nlohmann::json& result) {
             });
         }
         inspectorStale_ = true;
-        post_({{"type", "notify"}, {"text", "The part is animated (" + clip + "): it opens as someone comes near and closes as they go. "
-                                            "Its AnimatedPart is in the Inspector."}});
+        const std::string how = made.opens == "auto"  ? "as someone comes near"
+                                : made.opens == "use" ? "with the door shortcuts or a double click"
+                                                      : "as Project Settings ▸ Game ▸ doorsOpen says";
+        post_({{"type", "notify"}, {"text", "The part is animated (" + clip + "): it opens " + how + (made.locked ? ", once unlocked with its key" : "") +
+                                            ", and closes as they go. Its AnimatedPart is in the Inspector."}});
         return;
     }
     ApplyOneShotEdit([&] {
@@ -6769,8 +6807,22 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                {"region", {std::lround(u0 * W), std::lround(sprite->v0 * H), std::lround((u1 - u0) * W), std::lround((sprite->v1 - sprite->v0) * H)}}});
         return true;
     }
+    if (type == "part:find") {
+        // Animate a part ▸ Find the door: the vision model's box for it, in the dialog's (its region's) pixels.
+        const Entity e = static_cast<Entity>(message.value("id", 0u));
+        const auto* sprite = registry_.valid(e) ? registry_.try_get<Sprite>(e) : nullptr;
+        const nlohmann::json region = message.value("region", nlohmann::json::array());
+        if (!sprite || region.size() != 4 || !Ai() || Ai()->GetState() != AiClient::State::Ready) {
+            post_({{"type", "part:found"}, {"ok", false}, {"error", "Finding the door needs AI on"}});
+            return true;
+        }
+        partFindRegion_ = region;
+        partFindRequest_ = Ai()->Request("POST", "/parts/find", {{"path", sprite->texture}, {"kinds", {"door", "gate"}}, {"rect", region}}, 180);
+        return true;
+    }
     if (type == "part:animate") {
         // The box cut out of its picture, animated as a picture is (Generate ▸ Animate), then placed over it (PlacePart).
+        // A door: opened from its own pixels instead (/parts/door, the service's app/doors.py), free and true to the art.
         const Entity e = static_cast<Entity>(message.value("id", 0u));
         const auto* sprite = registry_.valid(e) ? registry_.try_get<Sprite>(e) : nullptr;
         const nlohmann::json box = message.value("box", nlohmann::json::array());
@@ -6825,6 +6877,17 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                         {"scale", sprite->width / std::max(1.0f, frameW)}, {"mirrored", sprite->u0 > sprite->u1},
                         {"action", message.value("action", "the door swings open")}};
         RefreshAssets();
+        if (message.value("kind", std::string("door")) == "door") {
+            partPending_["door"] = true;
+            partPending_["region"] = {bx - box[0].get<int>(), by - box[1].get<int>()};
+            partPending_["opens"] = message.value("opens", std::string("project"));
+            partPending_["locked"] = message.value("locked", false);
+            partPending_["key"] = message.value("key", std::string());
+            partRequest_ = Ai()->Request("POST", "/parts/door",
+                                         {{"path", sprite->texture}, {"box", {bx, by, bw, bh}}, {"name", stem + "-door-" + std::to_string(n - 1)}}, 120);
+            post_({{"type", "notify"}, {"text", "Opening the door from its own pixels…"}});
+            return true;
+        }
         partRequest_ = Ai()->Request("POST", "/animations/generate",
                                      {{"path", path}, {"action", message.value("action", "the door swings open")},
                                       {"provider", userPrefs_ ? userPrefs_->Get("animateProvider", "autosprite") : nlohmann::json("autosprite")},

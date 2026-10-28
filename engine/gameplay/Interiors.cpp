@@ -1,6 +1,7 @@
 #include "gameplay/Interiors.h"
 
 #include "gameplay/Components.h"
+#include "gameplay/Settings.h"
 #include "gameplay/Archetypes.h"
 #include "gameplay/TileGrid.h"
 #include "physics2d/Components.h"
@@ -37,6 +38,19 @@ bool InteriorDoor(Registry& registry, Entity entity, const Interior& interior, i
     if (!InteriorFootprint(registry, entity, interior, x0, y0, x1, y1)) return false;
     std::tie(x, y) = DoorwayOf(x0, y0, x1, y1, interior.door);
     return true;
+}
+
+std::string DoorOpens(const AnimatedPart& part) {
+    if (part.opens == "auto" || part.opens == "use") return part.opens;
+    if (!part.opensNear) return "use";
+    return ActiveSettings().game.doorsOpen == "auto" ? "auto" : "use";
+}
+
+bool DoorwayShut(Registry& registry, Entity entity) {
+    const auto* part = registry.try_get<AnimatedPart>(entity);
+    if (part == nullptr || part->sheet.empty()) return false;
+    if (const auto* open = registry.try_get<PartOpen>(entity); open && open->open) return false;
+    return part->locked || DoorOpens(*part) == "use";
 }
 
 namespace {
