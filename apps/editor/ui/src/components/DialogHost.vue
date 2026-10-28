@@ -70,6 +70,12 @@ function onKeydown(event: KeyboardEvent): void {
         :placeholder="current.placeholder"
         spellcheck="false"
       />
+      <div v-if="current.choices" class="choices">
+        <label v-for="c in current.choices" :key="c.value" class="choice" :class="{ on: current.choice === c.value }">
+          <input v-model="current.choice" type="radio" :value="c.value" />
+          <span><b>{{ c.label }}</b><span v-if="c.description" class="muted"> — {{ c.description }}</span></span>
+        </label>
+      </div>
       <label v-if="current.checkbox" class="option">
         <input v-model="checked" type="checkbox" />
         {{ current.checkbox }}
@@ -158,5 +164,22 @@ button.primary {
 button.primary.danger {
   background: #b91c1c;
   border-color: #b91c1c;
+}
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+.choice {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  text-align: left;
+}
+.choice.on {
+  border-color: var(--accent, #4a8);
 }
 </style>

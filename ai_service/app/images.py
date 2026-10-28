@@ -122,7 +122,8 @@ def build_prompt(description: str, kind: str, style: str, variant: str = "") -> 
     if variant:
         subject = f"{subject}, {variant.strip()}"
     backdrop = TILE_BACKDROP if kind == "tile" else BACKDROP
-    return f"{KINDS[kind].format(description=subject)}, {STYLE.get(style, STYLE['pixel'])}, {backdrop}"
+    from .style import art_style_words
+    return f"{KINDS[kind].format(description=subject)}, {art_style_words() or STYLE.get(style, STYLE['pixel'])}, {backdrop}"
 
 
 def generate_sprites(

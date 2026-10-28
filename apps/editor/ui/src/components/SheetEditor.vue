@@ -20,6 +20,8 @@ interface ClipJson {
   frames?: FrameList
   directions?: Record<string, FrameList | string>
   events?: unknown[]
+  plays?: string | string[] // the animator states it plays for besides its name's (docs/assets/animations.md §2.1)
+  points?: Record<string, unknown>
 }
 interface SheetJson {
   schema?: string
@@ -68,6 +70,19 @@ const size = computed<[number, number]>(() => sheet.value?.size ?? [gw.value, gh
 const columns = computed(() => (gw.value > 0 ? Math.max(1, Math.floor(size.value[0] / gw.value)) : 1))
 const slots = computed(() => (gw.value > 0 && gh.value > 0 ? columns.value * Math.max(1, Math.floor(size.value[1] / gh.value)) : 0))
 const clip = computed<ClipJson | undefined>(() => sheet.value?.clips[clipName.value])
+// "Plays on": the states it plays for besides its name's (a clip "punch" playing on attack), as words.
+const playsOn = computed({
+  get: () => {
+    const p = clip.value?.plays
+    return Array.isArray(p) ? p.join(' ') : (p ?? '')
+  },
+  set: (text: string) => {
+    if (!clip.value) return
+    const words = text.split(/[\s,]+/).filter(Boolean)
+    if (words.length) clip.value.plays = words
+    else delete clip.value.plays
+  },
+})
 const scale = computed(() => (gw.value > 0 ? Math.min(3, Math.max(0.5, 56 / Math.max(gw.value, gh.value))) : 1))
 
 function rowsOf(c?: ClipJson): string[] {
@@ -112,6 +127,71 @@ const playing = computed(() => {
   const fps = c?.fps ?? sheet.value?.fps ?? 8
   return { frame: list[Math.floor((tick.value * 0.05 * fps)) % list.length]!, flip: !!mirror }
 })
+
+// --- Points (docs/assets/animations.md §3.1): where a hand, a head… is on each frame, for things held and worn ---
+type Point = [number, number, number, number] // x, y (frame pixels), angle (degrees, clockwise from right), in front (1/0)
+const POINT_NAMES = ['hand', 'offhand', 'head', 'back']
+const pointName = ref('hand')
+const newPoint = ref('')
+const pointFront = ref(true)
+const pointScale = computed(() => scale.value * 1.6)
+const pointNames = computed(() => [...new Set([...POINT_NAMES, ...Object.keys(clip.value?.points ?? {})])])
+function readPoint(dir: string, k: number): Point | undefined {
+  const named = (clip.value?.points as Record<string, unknown> | undefined)?.[pointName.value]
+  if (!named) return undefined
+  const list = (Array.isArray(named) ? named : ((named as Record<string, Point[]>)[dir === '-' ? '' : dir] ?? (named as Record<string, Point[]>)[''])) as Point[] | undefined
+  return list?.length ? list[Math.min(k, list.length - 1)] : undefined
+}
+function pointList(dir: string): Point[] {
+  const c = clip.value!
+  const all = (c.points ??= {}) as Record<string, unknown>
+  let named = all[pointName.value]
+  if (!named || Array.isArray(named)) named = all[pointName.value] = Array.isArray(named) ? { '': named } : {}
+  const byDir = named as Record<string, Point[]>
+  return (byDir[dir === '-' ? '' : dir] ??= [])
+}
+let dragging: { k: number; el: HTMLElement } | null = null
+function setPoint(dir: string, k: number, x: number, y: number, angle?: number): void {
+  const list = pointList(dir)
+  const last: Point = list[list.length - 1] ?? [x, y, 0, pointFront.value ? 1 : 0]
+  while (list.length < k) list.push([...last] as Point) // earlier frames keep the last point until set
+  const was = list[k]
+  list[k] = [Math.round(x * 10) / 10, Math.round(y * 10) / 10, angle ?? was?.[2] ?? 0, pointFront.value ? 1 : 0]
+}
+function pointDown(event: PointerEvent, k: number): void {
+  if (!clip.value || mirrorOf(clip.value, row.value)) return
+  const el = event.currentTarget as HTMLElement
+  el.setPointerCapture(event.pointerId)
+  dragging = { k, el }
+  const box = el.getBoundingClientRect()
+  setPoint(row.value, k, (event.clientX - box.left) / pointScale.value, (event.clientY - box.top) / pointScale.value)
+}
+function pointMove(event: PointerEvent, k: number): void {
+  if (!dragging || dragging.k !== k) return
+  const p = readPoint(row.value, k)
+  if (!p) return
+  const box = dragging.el.getBoundingClientRect()
+  const dx = (event.clientX - box.left) / pointScale.value - p[0]
+  const dy = (event.clientY - box.top) / pointScale.value - p[1]
+  if (dx * dx + dy * dy < 4) return
+  setPoint(row.value, k, p[0], p[1], Math.round((Math.atan2(dy, dx) * 180) / Math.PI))
+}
+function pointUp(): void {
+  dragging = null
+}
+function addPointName(): void {
+  const name = newPoint.value.trim().replace(/\s+/g, '_')
+  if (name) pointName.value = name
+  newPoint.value = ''
+}
+function clearPoints(): void {
+  const all = clip.value?.points as Record<string, unknown> | undefined
+  if (!all?.[pointName.value]) return
+  const named = all[pointName.value]
+  if (Array.isArray(named) || row.value === '-') delete all[pointName.value]
+  else delete (named as Record<string, unknown>)[row.value]
+  if (!Object.keys(all).length) delete clip.value!.points
+}
 
 function addSlot(index: number): void {
   const c = clip.value
@@ -253,6 +333,8 @@ const shownImages = computed(() => {
             </select>
             <label class="small">fps</label>
             <input v-model.number="clip.fps" type="number" min="1" max="60" class="num" :placeholder="String(sheet.fps ?? 8)" />
+            <label class="small" title="The animator states it plays for besides its name's: attack, cast, use, hurt, die, open, close, break, or an action of your own">plays on</label>
+            <input v-model.lazy="playsOn" class="plays" placeholder="attack" spellcheck="false" />
             <span class="spacer"></span>
             <button @click="renameClip">Rename</button>
             <button class="danger" @click="removeClip">Remove</button>
@@ -283,6 +365,42 @@ const shownImages = computed(() => {
               <option v-for="d in DIRECTIONS.filter((x) => x !== dir)" :key="d" :value="d">mirror of {{ d }}</option>
             </select>
             <button v-if="dir !== '-'" title="Remove this direction" @click.stop="removeDirection(dir)">×</button>
+          </div>
+          <div class="points">
+            <div class="row">
+              <label class="small" title="Where a hand, a head… is on each frame: things held and worn are drawn there">points</label>
+              <select v-model="pointName">
+                <option v-for="n in pointNames" :key="n" :value="n">{{ n }}</option>
+              </select>
+              <input v-model="newPoint" placeholder="new point" class="plays" spellcheck="false" @keydown.enter="addPointName" />
+              <label class="small"><input v-model="pointFront" type="checkbox" /> in front</label>
+              <button title="This point's positions in this direction" @click="clearPoints">Clear</button>
+            </div>
+            <p class="muted small">Click where the {{ pointName }} is in each frame of {{ row === '-' ? 'the clip' : row }}; drag for its angle. Green: in front of the body, red: behind.</p>
+            <div v-if="mirrorOf(clip, row)" class="muted small">{{ row }} mirrors {{ mirrorOf(clip, row) }}: its points are mirrored from it.</div>
+            <div v-else class="frames">
+              <div
+                v-for="(f, k) in framesOf(clip, row)"
+                :key="k"
+                class="point-frame"
+                :style="frameStyle(f, pointScale)"
+                @pointerdown="pointDown($event, k)"
+                @pointermove="pointMove($event, k)"
+                @pointerup="pointUp"
+              >
+                <svg v-if="readPoint(row, k)" class="point-mark">
+                  <line
+                    :x1="readPoint(row, k)![0] * pointScale"
+                    :y1="readPoint(row, k)![1] * pointScale"
+                    :x2="readPoint(row, k)![0] * pointScale + Math.cos((readPoint(row, k)![2] * Math.PI) / 180) * 16"
+                    :y2="readPoint(row, k)![1] * pointScale + Math.sin((readPoint(row, k)![2] * Math.PI) / 180) * 16"
+                    :stroke="readPoint(row, k)![3] ? '#3c3' : '#e33'"
+                    stroke-width="2"
+                  />
+                  <circle :cx="readPoint(row, k)![0] * pointScale" :cy="readPoint(row, k)![1] * pointScale" r="3" :fill="readPoint(row, k)![3] ? '#3c3' : '#e33'" />
+                </svg>
+              </div>
+            </div>
           </div>
           <div class="row">
             <label class="small">add direction</label>
@@ -324,6 +442,26 @@ const shownImages = computed(() => {
 }
 .num {
   width: 52px;
+}
+.plays {
+  width: 110px;
+}
+.points {
+  border-top: 1px solid var(--border, #444);
+  margin-top: 6px;
+  padding-top: 4px;
+}
+.point-frame {
+  position: relative;
+  cursor: crosshair;
+  outline: 1px solid var(--border, #444);
+}
+.point-mark {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 .split {
   display: flex;

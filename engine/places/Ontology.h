@@ -145,6 +145,7 @@ struct Role {
     float storey = 0.0f; // a building role's storey height (cell widths): what "storey" means in a relative size
     std::string draw;
     nlohmann::json look; // how it shows (vary, light {radius, strength}, doorway): place-refine.md §13
+    int solid = -1;      // blocks walking (1) or not (0); -1: its broader role's (roles.json "solid")
 };
 
 struct RelationType {
@@ -229,6 +230,8 @@ public:
     const BuildType* DefaultBuild() const;
     const RelationType* Relation(const std::string& id) const;
     const Role* FindRole(const std::string& id) const;
+    // Whether a thing of this role blocks walking: its "solid", else its broader role's; a building's always does.
+    bool IsSolid(const std::string& role) const;
     const Concept* FindConcept(const std::string& scheme, const std::string& id) const;
     const std::vector<Concept>* Scheme(const std::string& id) const;
     const Tolerances& Tolerance() const { return tolerances_; }

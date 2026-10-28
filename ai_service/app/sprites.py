@@ -160,7 +160,8 @@ def make_sprite(data: bytes, options: SpriteOptions) -> tuple[bytes, dict]:
         sprite = crop_to_content(sprite, options.padding)
         cropped = sprite.size
         sprite = to_size(sprite, options.height, options.style)
-    if options.style == "pixel":
+    from .style import pixel_art
+    if options.style == "pixel" and pixel_art():  # a painted or vector style keeps its colours
         sprite = reduce_palette(sprite, options.colors)
     out = io.BytesIO()
     sprite.save(out, format="PNG")

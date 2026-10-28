@@ -42,6 +42,7 @@ struct Equipment {
     std::string feet;
     std::string ring;
     std::string amulet;
+    bool show = true; // what it wears and wields drawn on it, from the items' sprites (docs/assets/animations.md §3.3)
 };
 
 const std::vector<std::string>& EquipmentSlots();

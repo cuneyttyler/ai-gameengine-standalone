@@ -141,6 +141,8 @@ struct AiContext {
     std::function<void(const std::string& event, Entity entity)> emit;
     // A scripted package's step (14.6): run its Lua; false when it's finished.
     std::function<bool(Entity actor, const std::string& script, float dt)> runScript;
+    // The step "act" (docs/systems/actions.md): `actor` uses `target` (its Action or Interactable); true when it did.
+    std::function<bool(Entity actor, Entity target)> act;
 };
 
 // Is the package's schedule and are its conditions true now?

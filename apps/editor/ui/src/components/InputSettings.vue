@@ -1,7 +1,8 @@
 <script setup lang="ts">
-// Project Settings ▸ Input (development_plan.md 12.3): the game's actions
-// (move, attack, interact…) and what triggers each: keys, mouse buttons and
-// gamepad buttons and sticks. Saved to the project's input.json.
+// Project Settings ▸ Input (development_plan.md 12.3, docs/systems/actions.md): the game's actions (move, attack,
+// interact… and the project's own: farm, parry, kick) and what triggers each: keys, mouse buttons and gamepad buttons
+// and sticks. An action of the project's can be added and removed, and can play a clip on the player or emit an event
+// when pressed; things react to it with an Action component. Saved to the project's input.json.
 import { onMounted, ref } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
 
@@ -21,9 +22,13 @@ interface Action {
   axis?: boolean
   keys: (string | KeyBinding)[]
   axes?: AxisBinding[]
+  plays?: string // a clip the player plays when it's pressed (parry, attack_kick)
+  event?: string // emitted when it's pressed, for scripts
 }
 
 const actions = ref<Action[]>([])
+const builtIn = ref<string[]>([]) // the engine's own actions: rebound, never removed
+const newAction = ref('')
 const keyNames = ref<string[]>([])
 const axisNames = ref<string[]>([])
 const capturing = ref<{ action: string; scale: number } | null>(null)
@@ -35,6 +40,7 @@ onHostMessage((message) => {
     actions.value = (message.map as { actions: Action[] }).actions
     keyNames.value = message.keys as string[]
     axisNames.value = message.axes as string[]
+    builtIn.value = (message.builtIn as string[]) ?? []
     error.value = ((message.errors as string[]) ?? []).join('; ')
   } else if (message.type === 'input:saved') {
     error.value = (message.error as string | null) ?? ''
@@ -91,6 +97,27 @@ function onCapture(event: KeyboardEvent): void {
   capturing.value = null
 }
 
+function addAction(): void {
+  const name = newAction.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+  newAction.value = ''
+  if (!name || actions.value.some((a) => a.name === name)) return
+  actions.value.push({ name, description: '', context: 'gameplay', keys: [] })
+  save()
+}
+function removeAction(action: Action): void {
+  actions.value = actions.value.filter((a) => a !== action)
+  save()
+}
+function setField(action: Action, field: 'description' | 'plays' | 'event' | 'context', value: string): void {
+  if (field === 'plays' || field === 'event') {
+    if (value.trim()) action[field] = value.trim()
+    else delete action[field]
+  } else {
+    action[field] = value
+  }
+  save()
+}
+
 function resetDefaults(): void {
   sendToHost({ type: 'input:reset' })
 }
@@ -104,14 +131,27 @@ function resetDefaults(): void {
     </p>
     <table>
       <thead>
-        <tr><th>Action</th><th>When</th><th>Bindings</th></tr>
+        <tr><th>Action</th><th>When</th><th>Bindings</th><th title="A clip the player plays when it's pressed, and an event for scripts">Plays / event</th><th></th></tr>
       </thead>
       <tbody>
         <tr v-for="action in actions" :key="action.name">
           <td :title="action.description">
             <b>{{ action.name }}</b><span v-if="action.axis" class="muted"> (axis)</span>
+            <input
+              v-if="!builtIn.includes(action.name)"
+              class="desc"
+              :value="action.description"
+              placeholder="what it does"
+              spellcheck="false"
+              @change="setField(action, 'description', ($event.target as HTMLInputElement).value)"
+            />
           </td>
-          <td class="muted">{{ action.context }}</td>
+          <td class="muted">
+            <select v-if="!builtIn.includes(action.name)" class="small" :value="action.context" @change="setField(action, 'context', ($event.target as HTMLSelectElement).value)">
+              <option v-for="c in ['gameplay', 'dialogue', 'menu', 'any']" :key="c" :value="c">{{ c }}</option>
+            </select>
+            <template v-else>{{ action.context }}</template>
+          </td>
           <td class="bindings">
             <span v-for="(binding, i) in action.keys" :key="i" class="chip">
               <span v-if="action.axis" class="muted">{{ scaleOf(binding) > 0 ? '+' : '−' }}</span>{{ keyOf(binding) }}
@@ -135,9 +175,23 @@ function resetDefaults(): void {
               </select>
             </template>
           </td>
+          <td>
+            <template v-if="!action.axis">
+              <input class="small-in" :value="action.plays ?? ''" placeholder="clip" spellcheck="false" title="A clip the player plays when it's pressed (parry, attack_kick)" @change="setField(action, 'plays', ($event.target as HTMLInputElement).value)" />
+              <input class="small-in" :value="action.event ?? ''" placeholder="event" spellcheck="false" title="An event emitted when it's pressed, for scripts (on(&quot;parry&quot;, ...))" @change="setField(action, 'event', ($event.target as HTMLInputElement).value)" />
+            </template>
+          </td>
+          <td>
+            <button v-if="!builtIn.includes(action.name)" class="small" title="Remove this action" @click="removeAction(action)">Remove</button>
+          </td>
         </tr>
       </tbody>
     </table>
+    <div class="add">
+      <input v-model="newAction" placeholder="a new action: farm, parry, kick…" spellcheck="false" @keydown.enter="addAction" />
+      <button :disabled="!newAction.trim()" @click="addAction">Add action</button>
+      <span class="muted">Things react to it with an Action component (Inspector).</span>
+    </div>
     <div class="actions">
       <button @click="resetDefaults">Reset to defaults</button>
       <span v-if="saved" class="muted">Saved</span>
@@ -147,6 +201,22 @@ function resetDefaults(): void {
 </template>
 
 <style scoped>
+.desc {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  font-size: 0.85em;
+}
+.small-in {
+  width: 80px;
+  font-size: 0.85em;
+}
+.add {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
 .input-settings {
   display: flex;
   flex-direction: column;

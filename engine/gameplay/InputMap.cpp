@@ -118,6 +118,8 @@ nlohmann::json InputMap::ToJson() const {
             }
             json["axes"] = axes;
         }
+        if (!action.plays.empty()) json["plays"] = action.plays;
+        if (!action.event.empty()) json["event"] = action.event;
         list.push_back(json);
     }
     return {{"schema", "aige.input/1"}, {"actions", list}};
@@ -138,6 +140,8 @@ InputMap InputMap::FromJson(const nlohmann::json& json, std::vector<std::string>
         action.description = a.value("description", "");
         action.context = a.value("context", "gameplay");
         action.axis = a.value("axis", false);
+        action.plays = a.value("plays", "");
+        action.event = a.value("event", "");
         if (std::find(kContexts.begin(), kContexts.end(), action.context) == kContexts.end()) {
             report(action.name + ": unknown context \"" + action.context + "\"");
             action.context = "gameplay";

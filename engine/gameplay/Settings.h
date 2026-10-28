@@ -104,7 +104,20 @@ struct AiSettings {
     std::string art;        // who draws the prefabs' art: mistral, pixellab, bfl:<model>
     std::string background; // who paints the places' backgrounds: bfl:flux-3-image
     std::string paint;      // who paints a place whole (the Paint method): flux-2-klein-4b, flux-3-image, flux-3-to-pro, flux-3-to-klein
+    // The art's look, for every art prompt (prefabs, matched art, backgrounds, paint, characters): pixel-16, pixel-32,
+    // painted, flat-vector; "" from the project (each pipeline's own look). The planner's art style fills it.
+    std::string artStyle;
 };
+
+// An art style in words for a prompt (ai_service/app/style.py ART_STYLES has the same); "" for none.
+inline std::string ArtStyleWords(const std::string& style) {
+    if (style == "pixel-16") return "16-bit 1990s pixel art: crisp square pixels, a limited palette, clean dark outlines";
+    if (style == "pixel-32") return "detailed 32-bit era pixel art: crisp square pixels, rich shading, clean outlines";
+    if (style == "painted") return "hand-painted digital game art: soft painterly shading and brush texture, not pixel art";
+    if (style == "flat-vector") return "flat vector game art: clean geometric shapes, flat colours, simple shading, not pixel art";
+    return {};
+}
+inline bool PixelArtStyle(const std::string& style) { return style.empty() || style.rfind("pixel", 0) == 0; }
 
 // How the AI builds the project's places (docs/places/painted-places.md): "Assembled" (each piece's art made and put
 // together on the grid over the painted background: Confirm, Layout, Plan, Assets, Build) or "Paint" (the place painted

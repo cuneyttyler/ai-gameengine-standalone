@@ -7,6 +7,7 @@
 #include "editing/BuildWindow.h"
 #include "editing/MatchedArt.h"
 #include "editing/PaintedPlace.h"
+#include "gameplay/Settings.h"
 #include "places/Arrange.h"
 #include "places/Compile.h"
 #include "places/PlaceValidate.h"
@@ -4167,7 +4168,8 @@ bool PlaceBuild::SendArt(const std::string& key) {
     description += ". " + ArtDirection();
     if (!s.request.empty()) description += ". The user asks for this change: " + s.request;
     if (!s.reasons.empty()) description += ". Last time it came out wrong: " + s.reasons + "; fix that.";
-    json body = {{"name", name}, {"description", description}, {"kind", kind}, {"height", height}, {"style", "pixel"}};
+    json body = {{"name", name}, {"description", description}, {"kind", kind}, {"height", height},
+                 {"style", PixelArtStyle(ActiveSettings().ai.artStyle) ? "pixel" : "smooth"}};
     // The piece's place (place-refine.md §14): the text model first writes what exactly to draw
     // for it there (a dungeon's light is a wall torch, not a street lamp), its view and the way it
     // faces, its proportions; the image model draws that.
@@ -4255,7 +4257,10 @@ std::string PlaceBuild::ArtDirection() const {
     // Its light: the build type's (place-refine.md §13). Indoors, a dark place lit by its fires.
     const BuildType* type = host_.ontology().Build(brief_.value("buildType", ""));
     const bool indoor = type && type->look.is_object() && type->look.value("lighting", "") == "indoor";
-    std::string look = std::string("Art direction shared by every piece of this place: a 16-bit 1990s 2D RPG pixel-art look, ") +
+    // The project's art style (Project Settings ▸ AI ▸ Art style), else the old 90s pixel look.
+    const std::string style = ArtStyleWords(ActiveSettings().ai.artStyle);
+    std::string look = "Art direction shared by every piece of this place: " +
+                       (style.empty() ? std::string("a 16-bit 1990s 2D RPG pixel-art look") : style) + ", " +
                        (indoor ? "lit from nearby torches and fires in the dark: warm orange highlights, deep cold shadows, dark and muted colours, "
                                : "soft daylight from the upper left, a warm, muted, earthy palette, ") +
                        "gentle shading, a crisp darker outline, readable at small size, no text";

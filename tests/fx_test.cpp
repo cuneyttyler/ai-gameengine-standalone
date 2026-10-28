@@ -11,13 +11,16 @@
 #include "gameplay/Cutscene.h"
 #include "gameplay/Effects.h"
 #include "gameplay/GameSession.h"
+#include "gameplay/Items.h"
 #include "gameplay/Settings.h"
 #include "physics2d/Components.h"
+#include "records/Records.h"
 #include "renderer2d/Components.h"
 #include "scripting/LuaVM.h"
 
 #include <filesystem>
 #include <fstream>
+#include <memory>
 
 namespace fs = std::filesystem;
 
@@ -305,4 +308,189 @@ TEST(FxTest, TheAiWritesSheets) {
     bad.push_back({{"op", "write_anim"}, {"path", "sprites/x.json"}, {"sheet", {{"texture", "assets/none.png"}, {"clips", nlohmann::json::object()}}}});
     resolved = aige::ResolveProposal({{"summary", "x"}, {"operations", bad}}, registry, aige::EngineReflection(), prefabs, project);
     EXPECT_FALSE(resolved.items[0].error.empty());
+}
+
+namespace {
+
+// docs/assets/animations.md: attack variants, a clip playing on a state, points, a prop's open.
+const char* kActionsSheet = R"({"schema": "aige.anim/1", "texture": "assets/hero.png", "size": [128, 128],
+    "grid": {"width": 32, "height": 32}, "fps": 10,
+    "points": {"head": [16, 4, 0, 1]},
+    "clips": {
+        "idle": {"frames": [0]},
+        "attack": {"frames": [12, 13], "loop": "once"},
+        "attack_sword": {"frames": [4, 5], "loop": "once", "points": {"hand": [[20, 16, -45, 1], [24, 18, 0, 0]]}},
+        "punch": {"frames": [8, 9], "loop": "once", "plays": "attack"},
+        "dance": {"frames": [1, 2, 3]},
+        "open": {"frames": [6, 7], "loop": "once"}}})";
+
+// A PNG's first 24 bytes: enough for its size.
+std::string PngHeader(int w, int h) {
+    std::string s = "\x89PNG\r\n\x1a\n";
+    s += std::string("\0\0\0\x0dIHDR", 8);
+    for (int v : {w, h}) {
+        for (int shift : {24, 16, 8, 0}) s += static_cast<char>((v >> shift) & 0xff);
+    }
+    return s;
+}
+
+struct ActionsProject {
+    ActionsProject() {
+        root = fs::temp_directory_path() /
+               ("aige_actions_" + std::string(::testing::UnitTest::GetInstance()->current_test_info()->name()));
+        fs::remove_all(root);
+        fs::create_directories(root / "assets");
+        fs::create_directories(root / "records" / "item");
+        std::ofstream(root / "assets" / "hero.anim.json") << kActionsSheet;
+        std::ofstream(root / "assets" / "hero.png", std::ios::binary) << PngHeader(128, 128);
+        std::ofstream(root / "assets" / "sword.png", std::ios::binary) << PngHeader(8, 32);
+        std::ofstream(root / "records" / "item" / "iron-sword.json")
+            << R"({"name": "Iron Sword", "kind": "weapon", "slot": "weapon", "sprite": "assets/sword.png", "grip": [0.5, 0.9],
+                  "pointing": -90, "class": "sword"})";
+        aige::ActiveRecords().Open(aige::EngineReflection(), root);
+        library = std::make_unique<aige::AnimLibrary>(root);
+        library->Refresh();
+    }
+    ~ActionsProject() {
+        aige::ActiveRecords().Close();
+        fs::remove_all(root);
+    }
+    fs::path root;
+    std::unique_ptr<aige::AnimLibrary> library;
+};
+
+aige::Entity Hero(aige::Registry& registry, const std::string& pick = "weapon") {
+    auto hero = registry.create();
+    registry.emplace<aige::Sprite>(hero);
+    registry.emplace<aige::Velocity2D>(hero);
+    auto& animator = registry.emplace<aige::Animator>(hero, "assets/hero.anim.json", "humanoid");
+    animator.pick = pick;
+    return hero;
+}
+
+} // namespace
+
+TEST(FxTest, SheetsCarryPlaysOnAndPoints) {
+    std::string error;
+    auto sheet = aige::AnimSheetFromJson(nlohmann::json::parse(kActionsSheet), "assets/hero.anim.json", &error);
+    ASSERT_TRUE(sheet) << error;
+    EXPECT_EQ(sheet->Clip("punch")->plays, std::vector<std::string>{"attack"});
+    const auto* sword = sheet->Clip("attack_sword");
+    aige::AnimPoint p;
+    ASSERT_TRUE(sheet->PointOn(*sword, "", 1, false, 32, "hand", &p));
+    EXPECT_FLOAT_EQ(p.x, 24.0f);
+    EXPECT_FALSE(p.front);
+    ASSERT_TRUE(sheet->PointOn(*sword, "", 0, true, 32, "hand", &p)); // mirrored
+    EXPECT_FLOAT_EQ(p.x, 12.0f);
+    EXPECT_FLOAT_EQ(p.angle, 225.0f);
+    ASSERT_TRUE(sheet->PointOn(*sheet->Clip("idle"), "", 0, false, 32, "head", &p)); // the sheet's
+    EXPECT_FLOAT_EQ(p.y, 4.0f);
+}
+
+TEST(FxTest, AttacksChooseTheirClip) {
+    ActionsProject project;
+    aige::Registry registry;
+    // In order: attack, attack_sword, punch.
+    auto hero = Hero(registry, "order");
+    std::vector<std::string> clips;
+    for (int round = 0; round < 3; ++round) {
+        aige::TriggerAnimation(registry, hero, "attacking");
+        aige::UpdateAnimators(registry, *project.library, 0.01f);
+        clips.push_back(registry.get<aige::AnimatorState>(hero).clip);
+        for (int i = 0; i < 30; ++i) aige::UpdateAnimators(registry, *project.library, 0.02f);
+        EXPECT_EQ(registry.get<aige::AnimatorState>(hero).state, "idle");
+    }
+    EXPECT_EQ(clips, (std::vector<std::string>{"attack", "attack_sword", "punch"}));
+    // A sword wielded: its class's clip.
+    auto knight = Hero(registry);
+    registry.emplace<aige::Equipment>(knight).weapon = "iron-sword";
+    aige::TriggerAnimation(registry, knight, "attacking");
+    aige::UpdateAnimators(registry, *project.library, 0.01f);
+    EXPECT_EQ(registry.get<aige::AnimatorState>(knight).clip, "attack_sword");
+    // Unarmed: the punch.
+    auto brawler = Hero(registry);
+    aige::TriggerAnimation(registry, brawler, "attacking");
+    aige::UpdateAnimators(registry, *project.library, 0.01f);
+    EXPECT_EQ(registry.get<aige::AnimatorState>(brawler).clip, "punch");
+    // By hand: the Animator's clips.
+    auto monk = Hero(registry);
+    registry.get<aige::Animator>(monk).clips = "attack=attack";
+    aige::TriggerAnimation(registry, monk, "attacking");
+    aige::UpdateAnimators(registry, *project.library, 0.01f);
+    EXPECT_EQ(registry.get<aige::AnimatorState>(monk).clip, "attack");
+}
+
+TEST(FxTest, ClipsPlayByName) {
+    ActionsProject project;
+    aige::Registry registry;
+    auto hero = Hero(registry);
+    aige::UpdateAnimators(registry, *project.library, 0.01f);
+    // A clip outside the animator's states: once, then back to idle.
+    aige::TriggerAnimation(registry, hero, "dance");
+    aige::UpdateAnimators(registry, *project.library, 0.01f);
+    EXPECT_EQ(registry.get<aige::AnimatorState>(hero).oneShot, "dance");
+    EXPECT_NEAR(aige::AnimationLength(registry, *project.library, hero, "dance"), 0.3f, 1e-4f);
+    for (int i = 0; i < 20; ++i) aige::UpdateAnimators(registry, *project.library, 0.02f);
+    EXPECT_TRUE(registry.get<aige::AnimatorState>(hero).oneShot.empty());
+    EXPECT_EQ(registry.get<aige::AnimatorState>(hero).state, "idle");
+    // A variant by name, and a clip that plays on a state.
+    aige::TriggerAnimation(registry, hero, "attack_sword");
+    aige::UpdateAnimators(registry, *project.library, 0.01f);
+    EXPECT_EQ(registry.get<aige::AnimatorState>(hero).state, "attack");
+    EXPECT_EQ(registry.get<aige::AnimatorState>(hero).clip, "attack_sword");
+    for (int i = 0; i < 20; ++i) aige::UpdateAnimators(registry, *project.library, 0.02f);
+    aige::TriggerAnimation(registry, hero, "punch");
+    aige::UpdateAnimators(registry, *project.library, 0.01f);
+    EXPECT_EQ(registry.get<aige::AnimatorState>(hero).state, "attack");
+    EXPECT_EQ(registry.get<aige::AnimatorState>(hero).clip, "punch");
+    // A prop opens and stays open.
+    auto chest = registry.create();
+    registry.emplace<aige::Sprite>(chest);
+    registry.emplace<aige::Animator>(chest, "assets/hero.anim.json", "prop");
+    aige::UpdateAnimators(registry, *project.library, 0.01f);
+    aige::TriggerAnimation(registry, chest, "open");
+    for (int i = 0; i < 20; ++i) aige::UpdateAnimators(registry, *project.library, 0.02f);
+    EXPECT_EQ(registry.get<aige::AnimatorState>(chest).state, "open");
+}
+
+TEST(FxTest, EquipmentShowsOnTheHand) {
+    ActionsProject project;
+    aige::Registry registry;
+    auto knight = Hero(registry);
+    registry.emplace<aige::ScreenTransform2D>(knight, 100.0f, 100.0f, 5.0f);
+    registry.get<aige::Sprite>(knight).width = 64.0f; // twice its 32 px frames
+    registry.get<aige::Sprite>(knight).height = 64.0f;
+    registry.emplace<aige::Equipment>(knight).weapon = "iron-sword";
+    aige::TriggerAnimation(registry, knight, "attack_sword");
+    aige::UpdateAnimators(registry, *project.library, 0.01f);
+    // A transient sword: not in the scene's order, sized at the knight's scale.
+    aige::Entity sword{entt::null};
+    for (auto [e, link] : registry.view<aige::AttachmentLink>().each()) sword = e;
+    ASSERT_TRUE(registry.valid(sword));
+    EXPECT_TRUE(registry.all_of<aige::Transient>(sword));
+    EXPECT_EQ(aige::EntitiesInOrder(registry).size(), 1u);
+    EXPECT_FLOAT_EQ(registry.get<aige::Sprite>(sword).height, 64.0f);
+    // On the hand (20, 16) of the frame: the knight's top-left (68, 68) + 2x = (108, 100); the grip there, its art
+    // turned from pointing up to the hand's -45.
+    aige::PlaceAttachments(registry);
+    const auto& at = registry.get<aige::ScreenTransform2D>(sword);
+    EXPECT_FLOAT_EQ(registry.get<aige::Sprite>(sword).angle, 45.0f);
+    const float a = 45.0f * 3.14159265f / 180.0f, dy = 0.4f * 64.0f;
+    EXPECT_NEAR(at.x, 108.0f + dy * std::sin(a), 0.01f);
+    EXPECT_NEAR(at.y, 100.0f - dy * std::cos(a), 0.01f);
+    EXPECT_GT(at.depth, 5.0f); // in front
+    // Unequipped: gone.
+    registry.get<aige::Equipment>(knight).weapon.clear();
+    aige::UpdateAnimators(registry, *project.library, 0.01f);
+    EXPECT_FALSE(registry.valid(sword));
+    // An Attachment of the scene's, by Name, on the bottom middle.
+    registry.emplace<aige::Name>(knight, "knight");
+    auto hat = registry.create();
+    registry.emplace<aige::Sprite>(hat).texture = "assets/sword.png";
+    registry.emplace<aige::ScreenTransform2D>(hat);
+    registry.emplace<aige::Attachment>(hat).to = "knight";
+    aige::UpdateAnimators(registry, *project.library, 0.01f);
+    aige::PlaceAttachments(registry);
+    EXPECT_EQ(registry.get<aige::AttachmentLink>(hat).parent, knight);
+    EXPECT_NEAR(registry.get<aige::ScreenTransform2D>(hat).y, 132.0f, 0.01f);
 }

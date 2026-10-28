@@ -188,6 +188,7 @@ class WebFetchRequest(BaseModel):
 
 class ArtProviderRequest(BaseModel):
     provider: str = "auto"
+    style: str = ""   # Project Settings ▸ AI ▸ Art style (style.ART_STYLES); "" from the project
 
 
 class ArrangeRequest(BaseModel):
@@ -220,6 +221,7 @@ class PaintRequest(BaseModel):
     notes: str = ""                    # the user's, when painting again
     model: str = "flux-3-image"        # flux-2-klein-4b, flux-3-image, flux-3-to-pro, flux-3-to-klein (Project Settings ▸ AI ▸ paint)
     seed: int = 7
+    reference: str = ""                # in dir: a picture the painting is made after (docs/places/scene-types.md)
 
 
 class InteriorsRequest(BaseModel):
@@ -283,6 +285,8 @@ class AnimationRequest(BaseModel):
 class CharacterAnimateRequest(BaseModel):
     sheet: str           # a character sheet (assets/characters/<name>/<name>.character.anim.json)
     provider: str = ""   # Preferences ▸ AI ▸ Animate
+    hold: bool = False   # holding a weapon: drawn with a rod, kept as the hand's points and removed (AutoSprite)
+    weaponClass: str = ""  # its weapon class (sword, axe…): the clip attack_<class>
     action: str          # walking, swinging a sword, casting a spell
     description: str = ""
 
@@ -715,6 +719,8 @@ def create_app(
             key = "PIXELLAB_API_KEY" if request.provider == "pixellab" else "BFL_API_KEY" if request.provider.startswith("bfl") else "MISTRAL_API_KEY"
             return {"ok": False, "errors": [f"No key for {request.provider}: set {key} in ai_service/.env"], "available": available_providers()}
         state["images"], state["artProvider"] = images, request.provider
+        from .style import set_art_style
+        set_art_style(request.style)
         return {"ok": True, "artProvider": request.provider, "art": images.name, "available": available_providers()}
 
     @app.put("/background-provider")
@@ -793,8 +799,10 @@ def create_app(
         report(0, 1, f"Painting the place from its plan ({PAINT_MODELS[request.model]})")
         started = _time.monotonic()
         try:
+            reference = (folder / request.reference) if request.reference else None
             png, prompt = paint_place(key, request.model, (folder / request.blockout).read_bytes(), request.legend,
-                                      request.place, request.story, request.look, request.notes, request.seed)
+                                      request.place, request.story, request.look, request.notes, request.seed,
+                                      reference.read_bytes() if reference and reference.is_file() else None)
         except Exception as error:  # noqa: BLE001 - said to the editor
             return {"ok": False, "errors": [f"The place couldn't be painted: {error}"]}
         (folder / "painting.png").write_bytes(png)
@@ -1029,7 +1037,11 @@ def create_app(
 
     def style_words(root: Path) -> str:
         colours = project_style.project_palette(root)
-        return f"Colours like the project's other art: {', '.join(colours[:8])}." if colours else ""
+        words = project_style.art_style_words()
+        text = f"Art style: {words}." if words else ""
+        if colours:
+            text += f" Colours like the project's other art: {', '.join(colours[:8])}."
+        return text.strip()
 
     @app.post("/characters/generate")
     def characters_generate(request: CharacterRequest) -> dict:
@@ -1115,6 +1127,7 @@ def create_app(
         report(0, len(painted), f"Animating {info.get('name', 'it')}: {request.action}, {len(painted)} directions "
                                 f"({'AutoSprite' if auto else 'BFL ' + COPIES_MODEL if copies else 'PixelLab v3' if v3 else 'FLUX 3 video' if video else model or 'PixelLab'})")
         done = [0]
+        hands: dict[str, list] = {}
 
         def one(direction: str) -> tuple[str, list[bytes] | str]:
             pose = charsheet.frame(sheet, atlas, "idle", direction) or charsheet.frame(sheet, atlas, next(iter(sheet["clips"])), direction)
@@ -1167,12 +1180,19 @@ def create_app(
                     info["autosprite"], info["humanoid"] = lab.create(info.get("name", "character"), buf.getvalue(), humanoid, what), humanoid
                     sheet["character"] = info
                 shot, shot_meta = lab.pack(info["autosprite"], request.action, 12, 256,
-                                   on_status=lambda text: report(0, len(painted), f"Animating {info.get('name', 'it')}: {text}"))
+                                           on_status=lambda text: report(0, len(painted), f"Animating {info.get('name', 'it')}: {text}"),
+                                           holding=autosprite.ROD if request.hold else "")
             except Exception as error:  # noqa: BLE001 - said to the editor
                 return {"ok": False, "errors": [f"AutoSprite: {error}"]}
             box = front.getbbox() or (0, 0, size, size)
+            hands: dict[str, list] = {}
+            if request.hold:
+                for d in list(shot):
+                    shot[d], hands[d] = autosprite.take_rod(shot[d])
             shot = autosprite.cleaned({d: f for d, f in shot.items() if d in faces}, front)
             results = autosprite.fitted(shot, size, box[3] - box[1])
+            if hands:
+                hands = autosprite.fit_points(shot, size, box[3] - box[1], {d: p for d, p in hands.items() if d in shot})
             auto_fps = autosprite.fps_of(shot_meta, 12)
         elif copies:
             # One call a direction it faces, west's side mirrored from east's (south-east, east, north-east): five for eight,
@@ -1201,8 +1221,11 @@ def create_app(
             return {"ok": False, "errors": errors or ["nothing was drawn"]}
         clip = charsheet.clip_for(request.action, info.get("humanoid", True) is not False)
         base = clip.split("_")[0]
+        if request.weaponClass.strip():
+            clip = f"{base}_{re.sub(r'[^a-z0-9]+', '_', request.weaponClass.strip().lower()).strip('_')}"
         sheet, atlas = charsheet.add_clip(sheet, atlas, clip, frames, fps=auto_fps if auto else 12.0 if video else 10.0 if v3 or copies else 8.0 if clip in ("walk", "idle") else 10.0,
-                                          loop="loop" if base in ("walk", "idle") or base not in ("attack", "cast", "hurt", "die", "use", "open", "close", "break") else "once")
+                                          loop="loop" if base in ("walk", "idle") or base not in ("attack", "cast", "hurt", "die", "use", "open", "close", "break") else "once",
+                                          points={"hand": hands} if auto and hands else None)
         name = Path(request.sheet).name.replace(".character.anim.json", "")
         path, texture = charsheet.write(root, Path(request.sheet).parent.as_posix(), name, sheet, atlas)
         report(len(painted), len(painted), f"{clip} added")

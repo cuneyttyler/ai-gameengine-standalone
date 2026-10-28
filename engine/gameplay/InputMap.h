@@ -38,6 +38,9 @@ struct InputAction {
     bool axis = false;                // a value in [-1, 1] rather than pressed or not
     std::vector<KeyBinding> keys;
     std::vector<AxisBinding> axes;
+    // Pressed (docs/systems/actions.md): a clip the player plays (parry, attack_kick) and an event emitted for scripts.
+    std::string plays;
+    std::string event;
 };
 
 struct InputMap {

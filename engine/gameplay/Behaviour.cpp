@@ -58,7 +58,11 @@ const char* kTemplates = R"JSON({
   "wait": {"type": "idle"},
   "use-object": {"type": "use-object", "type_": "@data:object", "around": "@location", "radius": 12},
   "approach-player": {"type": "talk-to-player", "dialogue": "@data:dialogue"},
-  "script": {"type": "script", "script": "@data:script"}
+  "script": {"type": "script", "script": "@data:script"},
+  "tend": {"type": "loop", "children": [{"type": "selector", "children": [
+      {"type": "sequence", "children": [{"type": "act", "action": "@data:action", "around": "@location", "radius": "@data:radius"},
+                                          {"type": "wait", "min": 1, "max": 3}]},
+      {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "wait", "seconds": 6}]}]}]}
 })JSON";
 
 void Flatten(const nlohmann::json& node, Procedure& out, std::string* error) {
@@ -515,6 +519,40 @@ struct Run {
             }
             ns["left"] = left;
             return AiStatus::Running;
+        }
+        if (type == "act") {
+            // The nearest thing with this action (free: not used up, not cooling down), walked to, used.
+            if (!ns.contains("target")) {
+                const std::string action = Str(node, "action", "interact");
+                const auto around = Point(Str(node, "around", "@location")).value_or(std::pair{At().x, At().y});
+                const float radius = Num(node, "radius", 12.0f);
+                std::optional<Entity> best;
+                float bestD = 1e9f;
+                for (auto [e, w] : R().view<WorldTransform2D>().each()) {
+                    if (e == actor) continue;
+                    if (const auto* a = R().try_get<Action>(e)) {
+                        if (a->trigger != "input" || a->action != action) continue;
+                        if (const auto* s = R().try_get<ActionState>(e); s && ((a->once && s->done) || s->cooling > 0.0f)) continue;
+                    } else if (!(action == "interact" && R().all_of<Interactable>(e))) {
+                        continue;
+                    }
+                    const float d = std::hypot(w.x - around.first, w.y - around.second);
+                    if (d <= radius && d < bestD) bestD = d, best = e;
+                }
+                if (!best) return AiStatus::Failure;
+                ns["target"] = static_cast<uint32_t>(*best);
+            }
+            const Entity target = static_cast<Entity>(ns.value("target", 0u));
+            if (!R().valid(target) || !R().all_of<WorldTransform2D>(target)) {
+                Reset(index, p);
+                return AiStatus::Failure;
+            }
+            const auto& tw = R().get<WorldTransform2D>(target);
+            const float reach = R().all_of<Action>(target) ? R().get<Action>(target).range : 1.1f;
+            if (!Walk({tw.x, tw.y}, std::max(0.6f, reach - 0.2f))) return AiStatus::Running;
+            const bool did = ctx.act && ctx.act(actor, target);
+            Reset(index, p);
+            return did ? AiStatus::Success : AiStatus::Failure;
         }
         if (type == "talk-to-player") {
             auto player = FindPlayer(R());

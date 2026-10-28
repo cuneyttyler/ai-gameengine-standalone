@@ -194,7 +194,8 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("hands", &Equipment::hands, "Gloves.")
         .Field("feet", &Equipment::feet, "Boots.")
         .Field("ring", &Equipment::ring, "A ring.")
-        .Field("amulet", &Equipment::amulet, "An amulet.");
+        .Field("amulet", &Equipment::amulet, "An amulet.")
+        .Field("show", &Equipment::show, "What it wears and wields drawn on it (the items' sprites, on its points).");
     r.Component<ItemPickup>("ItemPickup", "An item lying in the world (13.3): picked up by walking over it, or with "
                                           "the interact action when onUse. The item \"gold\" is gold.")
         .Field("item", &ItemPickup::item, "An item record id, or gold.")
@@ -229,8 +230,31 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("text", &Interactable::text, "Shown when it's used (a sign, a book).")
         .Field("event", &Interactable::event, "An event emitted when it's used, for scripts.")
         .Field("once", &Interactable::once, "Works only once.")
-        .Field("becomes", &Interactable::becomes, "A prefab it turns into when used, in its place (an open chest; give that one a becomes back for a toggle).").As(FieldType::Prefab)
+        .Field("becomes", &Interactable::becomes, "A prefab it turns into when used, in its place (an open chest; give that one a becomes back for a toggle).").As(FieldType::Prefab).Optional()
+        .Field("animation", &Interactable::animation, "The clip played when it's used (empty: its verb's, Open plays open, when its sheet has one).")
+        .Field("becomeAfterAnimation", &Interactable::becomeAfterAnimation, "Its becomes waits until that animation has played.")
         .Field("used", &Interactable::used, "Already used (with once).")
+        .DependsOn({"WorldTransform2D"});
+    r.Component<Action>("Action", "Does something when its trigger happens, to whoever uses it: the player pressing its action "
+                                  "near it, a character (Behaviour step act), a script (act), an event or a timer. A field "
+                                  "farmed, a crop grown, a crop harvested (docs/systems/actions.md).")
+        .Field("trigger", &Action::trigger, "input: its action pressed within range; event: its event emitted; timer: seconds after it appears; touch: walked onto.").Options({"input", "event", "timer", "touch"})
+        .Field("action", &Action::action, "The input action (Project Settings ▸ Input): interact, or one of the project's (farm, chop...).")
+        .Field("event", &Action::event, "trigger event: the event's name.")
+        .Field("seconds", &Action::seconds, "trigger timer: seconds after it appears.").Min(0)
+        .Field("range", &Action::range, "How close the user must be, in cells.").Range(0.3, 20)
+        .Field("requires", &Action::requiresItem, "An item the user must carry (seeds); empty: none.")
+        .Field("requiresFlag", &Action::requiresFlag, "A story flag that must be set first.")
+        .Field("takes", &Action::takes, "Items taken from the user: seeds, ore*2.")
+        .Field("gives", &Action::gives, "Items given to the user: wheat*3, gold*5.")
+        .Field("userAnimation", &Action::userAnimation, "The clip the user plays (farm, use_pickup, pray).")
+        .Field("animation", &Action::animation, "The clip this plays.")
+        .Field("becomes", &Action::becomes, "A prefab it turns into, in its place, once the animations have played.").As(FieldType::Prefab).Optional()
+        .Field("emits", &Action::emits, "An event emitted, for scripts (its entity this, its other the user).")
+        .Field("setFlag", &Action::setFlag, "A story flag set.")
+        .Field("text", &Action::text, "Shown when it happens.")
+        .Field("once", &Action::once, "Works only once.")
+        .Field("cooldown", &Action::cooldown, "Seconds before it works again.").Min(0)
         .DependsOn({"WorldTransform2D"});
     r.Component<Interior>("Interior", "A place one can go into (Phase 27): its interior shows while the player is inside; only its walls block.")
         .Field("kind", &Interior::kind, "cutaway: the building drawn cut away in place; scene: its own scene, through its door.").Options({"cutaway", "scene"})
@@ -372,6 +396,22 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("animator", &Animator::animator, "humanoid, quadruped, flyer, prop, or an animator record's id.")
         .Field("speed", &Animator::speed, "Playback rate.").Range(0, 10)
         .Field("corpseSeconds", &Animator::corpseSeconds, "A dead one stays this long, for its death clip.").Range(0, 30)
+        .Field("clips", &Animator::clips, "The clips a state plays, by hand: attack=attack_punch|attack_kick; open=lid_up (empty: the sheet's clips for it).")
+        .Field("pick", &Animator::pick, "Among several clips for a state: the weapon's, at random, in order (a combo), or the first.").Options({"weapon", "random", "order", "first"})
+        .Field("attackClass", &Animator::attackClass, "Stands in for the weapon's class when choosing its attack clips (sword, axe, unarmed...).")
+        .DependsOn({"Sprite"});
+    r.Component<Attachment>("Attachment", "On another entity's point (a sword in a hand, a hat on a head, a rider on a saddle): moves, turns and layers with it.")
+        .Field("to", &Attachment::to, "The other entity's Name.")
+        .Field("point", &Attachment::point, "Its point (hand, offhand, head, back...); empty: its bottom middle.")
+        .Field("offsetX", &Attachment::offsetX, "Added across, in pixels of the other's frame.")
+        .Field("offsetY", &Attachment::offsetY, "Added down, in pixels of the other's frame.")
+        .Field("angle", &Attachment::angle, "Added turn, degrees.").Range(-360, 360)
+        .Field("pivotX", &Attachment::pivotX, "Where this picture is held, across (0-1): a sword's grip.").Range(0, 1)
+        .Field("pivotY", &Attachment::pivotY, "Where this picture is held, down (0-1).").Range(0, 1)
+        .Field("pointing", &Attachment::pointing, "Which way this picture's art points (degrees: 0 right, -90 up).").Range(-360, 360)
+        .Field("size", &Attachment::size, "Its longest side in the other's frame pixels (0: its own size at the other's scale).").Min(0)
+        .Field("layer", &Attachment::layer, "In front of or behind the other: auto follows the point.").Options({"auto", "front", "behind"})
+        .Field("turn", &Attachment::turn, "Turned with the point's angle (off: kept upright, a hat).")
         .DependsOn({"Sprite"});
     r.Component<ParticleEmitter>("ParticleEmitter", "Emits particles (18.4): a particles record or preset "
                                                     "(fire, smoke, embers, fireflies...).")
@@ -582,7 +622,12 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "Who paints a place whole for the Paint build method (empty: FLUX-3-Image). FLUX-2-Klein-4b: fast, follows "
                "the plan as a rough draft; FLUX-2-Pro and FLUX-2-Max: rich looks, may drift from the layout; FLUX-3-Image: keeps the layout best; FLUX-3-Image-to-Pro and -to-Klein: FLUX-3-Image "
                "paints the plan, then FLUX.2 pro or klein repaints its look.")
-        .Options({"", "flux-2-klein-4b", "flux-2-pro", "flux-2-max", "flux-3-image", "flux-3-to-pro", "flux-3-to-klein"});
+        .Options({"", "flux-2-klein-4b", "flux-2-pro", "flux-2-max", "flux-3-image", "flux-3-to-pro", "flux-3-to-klein"})
+        .Field("artStyle", &AiSettings::artStyle,
+               "The art's look, in every art prompt (prefabs, backgrounds, paint, characters): 16-bit or 32-bit pixel art, "
+               "painted, flat vector; empty: from the project (each kind of art its own look, matched to the art already "
+               "made). The planner's art style sets it.")
+        .Options({"", "pixel-16", "pixel-32", "painted", "flat-vector"});
     r.Settings("Places", "How the AI builds places: each build and plan starts with this and can choose the other.", &settings.places)
         .Field("method", &PlacesSettings::method,
                "Assembled: each building, tree and prop gets its own art, put together on the grid over a painted "

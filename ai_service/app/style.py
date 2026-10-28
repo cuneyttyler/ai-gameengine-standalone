@@ -12,6 +12,34 @@ from PIL import Image
 
 KEEP = 12  # references kept, the latest
 
+# The project's art style (Project Settings ▸ AI ▸ Art style; the planner's choice): words every art prompt is drawn
+# with, in place of the old fixed "pixel art". "" (from the project): each pipeline's own look, and the style references.
+ART_STYLES = {
+    "pixel-16": "16-bit 1990s pixel art: crisp square pixels, a limited palette, clean dark outlines",
+    "pixel-32": "detailed 32-bit era pixel art: crisp square pixels, rich shading, clean outlines",
+    "painted": "hand-painted digital game art: soft painterly shading and brush texture, not pixel art",
+    "flat-vector": "flat vector game art: clean geometric shapes, flat colours, simple shading, not pixel art",
+}
+_art_style = {"style": ""}
+
+
+def set_art_style(style: str) -> None:
+    _art_style["style"] = style if style in ART_STYLES else ""
+
+
+def art_style() -> str:
+    return _art_style["style"]
+
+
+def art_style_words() -> str:
+    """The chosen style in words; "" when it's left to the project."""
+    return ART_STYLES.get(_art_style["style"], "")
+
+
+def pixel_art() -> bool:
+    """Whether art is cleaned up as pixel art (snapped, its palette reduced): a pixel style, or none chosen."""
+    return _art_style["style"] in ("", "pixel-16", "pixel-32")
+
 
 def palette(image: Image.Image, colours: int = 8) -> list[str]:
     """Its main colours (opaque pixels), as hex, the commonest first."""

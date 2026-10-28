@@ -179,6 +179,9 @@ def blockout_prompt(place: dict, story: dict, look: dict, legend: dict | None = 
     goal = str(look.get("goals") or look.get("style") or "").strip()
     if goal:
         text += f" Look: {goal[:300]}"
+    from .style import art_style_words
+    if art_style_words():
+        text += f" Art style: {art_style_words()}."
     if notes.strip():
         text += f" Also: {notes.strip()[:600]}"
     text += (" Roads worn with ruts, water with banks and ripples, woods as dense masses of overlapping crowns, ground "
@@ -232,7 +235,7 @@ PAINT_MODELS = {"flux-2-klein-4b": "FLUX-2-Klein-4b", "flux-2-pro": "FLUX-2-Pro"
 
 
 def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: dict, story: dict, look: dict,
-                notes: str = "", seed: int = 7) -> tuple[bytes, str]:
+                notes: str = "", seed: int = 7, reference: bytes | None = None) -> tuple[bytes, str]:
     """A place painted from its block-out by one of PAINT_MODELS; the painting at the block-out's own size (so its
     pixels line up with the block-out's id map) and the prompt(s).
     - flux-3-image: the block-out with the colour key and the counts (keeps the layout best).
@@ -247,15 +250,21 @@ def paint_place(key: str, model: str, blockout_png: bytes, legend: dict, place: 
     size = _four_mp(src.width, src.height)
     keyed = (blockout_prompt(place, story, look, legend, notes) + " " + counts_sentence(legend)).strip()
     draft = draft_prompt(place, story, look, legend, notes)
+    # A picture given to paint after (the Build panel's "as a reference"): its look, on the plan's layout.
+    refs = [reference] if reference else []
+    after = (" The second image is a picture of how this place should look: paint it in that picture's look, palette and "
+             "details (or as that picture, changed as the notes say), but keep the first image's layout exactly.") if reference else ""
+    keyed += after
+    draft += after
     if model in ("flux-2-pro", "flux-2-max"):
-        png, prompt = BflPainter(key, model).repaint(blockout_png, keyed, seed=seed, **size), keyed
+        png, prompt = BflPainter(key, model).repaint(blockout_png, keyed, references=refs, seed=seed, **size), keyed
     elif model == "flux-2-klein-4b":
         big = src.resize((4096, round(4096 * src.height / src.width)), Image.LANCZOS)
         buf = io.BytesIO()
         big.save(buf, format="PNG")
-        png, prompt = BflPainter(key, "flux-2-klein-4b").repaint(buf.getvalue(), draft, seed=seed, **size), draft
+        png, prompt = BflPainter(key, "flux-2-klein-4b").repaint(buf.getvalue(), draft, references=refs, seed=seed, **size), draft
     else:
-        png, prompt = BflPainter(key, "flux-3-image").repaint(blockout_png, keyed, seed=seed, **size), keyed
+        png, prompt = BflPainter(key, "flux-3-image").repaint(blockout_png, keyed, references=refs, seed=seed, **size), keyed
         if model == "flux-3-to-klein":
             png = BflPainter(key, "flux-2-klein-4b").repaint(png, draft, seed=seed, **size)
             prompt += "\n---\n" + draft

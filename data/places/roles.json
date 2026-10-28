@@ -44,27 +44,32 @@
       "has_interior": true,
       "interior_kind": "cutaway"
     },
-    "storey": 2.0
+    "storey": 2.0,
+    "solid": true
   },
   "house": {
     "label": "house",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "solid": true
   },
   "townhouse": {
     "label": "townhouse",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "solid": true
   },
   "shack": {
     "label": "shack",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "solid": true
   },
   "farmhouse": {
     "label": "farmhouse",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "solid": true
   },
   "manor": {
     "label": "manor",
@@ -72,27 +77,32 @@
     "broader": "building",
     "look": {
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "outbuilding": {
     "label": "outbuilding",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "solid": true
   },
   "barn": {
     "label": "barn",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "solid": true
   },
   "shed": {
     "label": "shed",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "solid": true
   },
   "workshop": {
     "label": "workshop",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "solid": true
   },
   "inn": {
     "label": "inn",
@@ -100,22 +110,26 @@
     "broader": "building",
     "look": {
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "stable": {
     "label": "stable",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "solid": true
   },
   "shop": {
     "label": "shop",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "solid": true
   },
   "warehouse": {
     "label": "warehouse",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "solid": true
   },
   "temple": {
     "label": "temple",
@@ -123,17 +137,20 @@
     "broader": "building",
     "look": {
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "mill": {
     "label": "mill",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "solid": true
   },
   "guard-tower": {
     "label": "guard tower",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "solid": true
   },
   "plant": {
     "label": "plant",
@@ -150,7 +167,8 @@
     "relative": {
       "to": "tree",
       "height": 0.3
-    }
+    },
+    "solid": false
   },
   "tree": {
     "label": "tree",
@@ -165,7 +183,8 @@
     "relative": {
       "to": "storey",
       "height": 1.0
-    }
+    },
+    "solid": true
   },
   "bush": {
     "label": "bush",
@@ -180,7 +199,8 @@
     "relative": {
       "to": "tree",
       "height": 0.3
-    }
+    },
+    "solid": false
   },
   "flower": {
     "label": "flower",
@@ -195,7 +215,8 @@
     "relative": {
       "to": "tree",
       "height": 0.12
-    }
+    },
+    "solid": false
   },
   "crop": {
     "label": "crop",
@@ -210,7 +231,8 @@
     "relative": {
       "to": "tree",
       "height": 0.2
-    }
+    },
+    "solid": false
   },
   "herb": {
     "label": "herb",
@@ -225,7 +247,8 @@
     "relative": {
       "to": "tree",
       "height": 0.12
-    }
+    },
+    "solid": false
   },
   "grass": {
     "label": "grass",
@@ -240,7 +263,8 @@
     "relative": {
       "to": "tree",
       "height": 0.12
-    }
+    },
+    "solid": false
   },
   "hedge": {
     "label": "hedge",
@@ -253,7 +277,8 @@
       "to": "tree",
       "height": 0.45,
       "width": 0.8
-    }
+    },
+    "solid": true
   },
   "fruit-tree": {
     "label": "fruit tree",
@@ -265,7 +290,8 @@
     "relative": {
       "to": "tree",
       "height": 0.8
-    }
+    },
+    "solid": true
   },
   "piece-set": {
     "label": "piece set",
@@ -274,7 +300,8 @@
       "run": true,
       "variety": "low",
       "axis": true
-    }
+    },
+    "solid": false
   },
   "wall-piece-set": {
     "label": "wall piece set",
@@ -288,17 +315,20 @@
           "to": "background"
         }
       ]
-    }
+    },
+    "solid": true
   },
   "fence-piece-set": {
     "label": "fence piece set",
     "affordance": "environmental-object",
-    "broader": "piece-set"
+    "broader": "piece-set",
+    "solid": true
   },
   "hedge-piece-set": {
     "label": "hedge piece set",
     "affordance": "environmental-object",
-    "broader": "piece-set"
+    "broader": "piece-set",
+    "solid": true
   },
   "pier-piece": {
     "label": "pier piece",
@@ -310,7 +340,8 @@
     "relative": {
       "to": "door",
       "height": 0.15
-    }
+    },
+    "solid": false
   },
   "bank-piece": {
     "label": "bank piece",
@@ -323,7 +354,8 @@
           "to": "background"
         }
       ]
-    }
+    },
+    "solid": false
   },
   "cliff-piece": {
     "label": "cliff piece",
@@ -336,7 +368,8 @@
           "to": "background"
         }
       ]
-    }
+    },
+    "solid": true
   },
   "prop": {
     "label": "prop",
@@ -351,7 +384,8 @@
       "to": "door",
       "height": 0.5,
       "width": 0.5
-    }
+    },
+    "solid": false
   },
   "reed": {
     "label": "reed",
@@ -368,7 +402,8 @@
     "relative": {
       "to": "tree",
       "height": 0.35
-    }
+    },
+    "solid": false
   },
   "log": {
     "label": "log",
@@ -385,7 +420,8 @@
     "relative": {
       "to": "storey",
       "height": 0.12
-    }
+    },
+    "solid": true
   },
   "mushroom": {
     "label": "mushroom",
@@ -402,7 +438,8 @@
     "relative": {
       "to": "tree",
       "height": 0.06
-    }
+    },
+    "solid": false
   },
   "rock": {
     "label": "rock",
@@ -427,7 +464,8 @@
     "relative": {
       "to": "storey",
       "height": 0.12
-    }
+    },
+    "solid": true
   },
   "mound": {
     "label": "mound",
@@ -451,7 +489,8 @@
     "relative": {
       "to": "storey",
       "height": 0.2
-    }
+    },
+    "solid": false
   },
   "boulder": {
     "label": "boulder",
@@ -476,7 +515,8 @@
     "relative": {
       "to": "storey",
       "height": 0.35
-    }
+    },
+    "solid": true
   },
   "bridge": {
     "label": "bridge",
@@ -484,7 +524,8 @@
     "broader": "prop",
     "look": {
       "orient": "none"
-    }
+    },
+    "solid": false
   },
   "tower": {
     "label": "tower",
@@ -503,7 +544,8 @@
       "to": "storey",
       "height": 3.0,
       "width": 0.75
-    }
+    },
+    "solid": true
   },
   "gate": {
     "label": "gate",
@@ -525,7 +567,8 @@
       "to": "door",
       "height": 1.2,
       "width": 1.2
-    }
+    },
+    "solid": false
   },
   "light-prop": {
     "label": "light prop",
@@ -553,7 +596,8 @@
     "relative": {
       "to": "door",
       "height": 1.4
-    }
+    },
+    "solid": true
   },
   "decal": {
     "label": "decal",
@@ -563,7 +607,8 @@
       "to": "door",
       "height": 0.05,
       "width": 0.6
-    }
+    },
+    "solid": false
   },
   "well": {
     "label": "well",
@@ -586,7 +631,8 @@
     "relative": {
       "to": "door",
       "height": 0.9
-    }
+    },
+    "solid": true
   },
   "fountain": {
     "label": "fountain",
@@ -603,7 +649,8 @@
     "relative": {
       "to": "door",
       "height": 0.8
-    }
+    },
+    "solid": true
   },
   "statue": {
     "label": "statue",
@@ -619,7 +666,8 @@
     "relative": {
       "to": "door",
       "height": 1.4
-    }
+    },
+    "solid": true
   },
   "garden-bed": {
     "label": "garden bed",
@@ -631,7 +679,8 @@
     "relative": {
       "to": "tree",
       "height": 0.08
-    }
+    },
+    "solid": false
   },
   "garden-prop": {
     "label": "garden prop",
@@ -641,7 +690,8 @@
       "to": "door",
       "height": 0.4,
       "width": 0.5
-    }
+    },
+    "solid": false
   },
   "grave": {
     "label": "grave",
@@ -656,7 +706,8 @@
     "relative": {
       "to": "door",
       "height": 0.15
-    }
+    },
+    "solid": true
   },
   "headstone": {
     "label": "headstone",
@@ -677,7 +728,8 @@
     "relative": {
       "to": "door",
       "height": 0.45
-    }
+    },
+    "solid": true
   },
   "crypt": {
     "label": "crypt",
@@ -695,7 +747,8 @@
       "to": "storey",
       "height": 1.2,
       "width": 1.0
-    }
+    },
+    "solid": true
   },
   "awning": {
     "label": "awning",
@@ -705,7 +758,8 @@
       "to": "door",
       "height": 0.4,
       "width": 1.5
-    }
+    },
+    "solid": false
   },
   "log-pile": {
     "label": "log pile",
@@ -722,7 +776,8 @@
     "relative": {
       "to": "storey",
       "height": 0.25
-    }
+    },
+    "solid": true
   },
   "saw": {
     "label": "saw",
@@ -732,7 +787,8 @@
       "to": "door",
       "height": 0.5,
       "width": 0.6
-    }
+    },
+    "solid": false
   },
   "boat": {
     "label": "boat",
@@ -744,7 +800,8 @@
     "relative": {
       "to": "door",
       "height": 0.5
-    }
+    },
+    "solid": true
   },
   "trough": {
     "label": "trough",
@@ -759,7 +816,8 @@
     "relative": {
       "to": "door",
       "height": 0.3
-    }
+    },
+    "solid": true
   },
   "hay": {
     "label": "hay",
@@ -776,7 +834,8 @@
     "relative": {
       "to": "tree",
       "height": 0.3
-    }
+    },
+    "solid": true
   },
   "shore-prop": {
     "label": "shore prop",
@@ -788,7 +847,8 @@
     "relative": {
       "to": "door",
       "height": 0.3
-    }
+    },
+    "solid": false
   },
   "stall": {
     "label": "stall",
@@ -800,7 +860,8 @@
     "relative": {
       "to": "door",
       "height": 1.3
-    }
+    },
+    "solid": true
   },
   "sign": {
     "label": "sign",
@@ -812,7 +873,8 @@
     "relative": {
       "to": "door",
       "height": 0.9
-    }
+    },
+    "solid": true
   },
   "lamp": {
     "label": "lamp",
@@ -832,7 +894,8 @@
     "relative": {
       "to": "door",
       "height": 1.5
-    }
+    },
+    "solid": true
   },
   "barrel": {
     "label": "barrel",
@@ -849,7 +912,8 @@
     "relative": {
       "to": "door",
       "height": 0.45
-    }
+    },
+    "solid": true
   },
   "crate": {
     "label": "crate",
@@ -866,7 +930,8 @@
     "relative": {
       "to": "door",
       "height": 0.4
-    }
+    },
+    "solid": true
   },
   "sack": {
     "label": "sack",
@@ -883,7 +948,8 @@
     "relative": {
       "to": "door",
       "height": 0.35
-    }
+    },
+    "solid": false
   },
   "cart": {
     "label": "cart",
@@ -895,7 +961,8 @@
     "relative": {
       "to": "door",
       "height": 0.8
-    }
+    },
+    "solid": true
   },
   "tool": {
     "label": "tool",
@@ -912,7 +979,8 @@
     "relative": {
       "to": "door",
       "height": 0.6
-    }
+    },
+    "solid": false
   },
   "pot": {
     "label": "pot",
@@ -929,7 +997,8 @@
     "relative": {
       "to": "door",
       "height": 0.3
-    }
+    },
+    "solid": false
   },
   "bench": {
     "label": "bench",
@@ -955,7 +1024,8 @@
     "relative": {
       "to": "door",
       "height": 0.35
-    }
+    },
+    "solid": false
   },
   "animal": {
     "label": "animal",
@@ -971,7 +1041,8 @@
     "relative": {
       "to": "storey",
       "height": 1.0
-    }
+    },
+    "solid": true
   },
   "command-tent": {
     "label": "command tent",
@@ -980,7 +1051,8 @@
     "relative": {
       "to": "storey",
       "height": 1.3
-    }
+    },
+    "solid": true
   },
   "keep": {
     "label": "keep",
@@ -988,7 +1060,8 @@
     "broader": "building",
     "look": {
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "barracks": {
     "label": "barracks",
@@ -996,7 +1069,8 @@
     "broader": "building",
     "look": {
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "chapel": {
     "label": "chapel",
@@ -1004,22 +1078,26 @@
     "broader": "temple",
     "look": {
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "storehouse": {
     "label": "storehouse",
     "affordance": "environmental-object",
-    "broader": "warehouse"
+    "broader": "warehouse",
+    "solid": true
   },
   "gatehouse": {
     "label": "gatehouse",
     "affordance": "environmental-object",
-    "broader": "building"
+    "broader": "building",
+    "solid": true
   },
   "smithy": {
     "label": "smithy",
     "affordance": "environmental-object",
-    "broader": "workshop"
+    "broader": "workshop",
+    "solid": true
   },
   "ruin": {
     "label": "ruin",
@@ -1027,7 +1105,8 @@
     "broader": "building",
     "look": {
       "has_interior": false
-    }
+    },
+    "solid": true
   },
   "site-marker": {
     "label": "site marker",
@@ -1035,7 +1114,8 @@
     "broader": "building",
     "look": {
       "has_interior": false
-    }
+    },
+    "solid": false
   },
   "landmark": {
     "label": "landmark",
@@ -1043,7 +1123,8 @@
     "broader": "building",
     "look": {
       "has_interior": false
-    }
+    },
+    "solid": true
   },
   "campfire": {
     "label": "campfire",
@@ -1058,7 +1139,8 @@
       "to": "door",
       "height": 0.35,
       "width": 0.7
-    }
+    },
+    "solid": true
   },
   "hitching-post": {
     "label": "hitching post",
@@ -1068,7 +1150,8 @@
       "to": "door",
       "height": 0.6,
       "width": 0.8
-    }
+    },
+    "solid": true
   },
   "lookout": {
     "label": "lookout",
@@ -1078,7 +1161,8 @@
       "to": "storey",
       "height": 2.0,
       "width": 0.6
-    }
+    },
+    "solid": true
   },
   "training-dummy": {
     "label": "training dummy",
@@ -1088,7 +1172,8 @@
       "to": "door",
       "height": 1.1,
       "width": 0.5
-    }
+    },
+    "solid": true
   },
   "weapon-rack": {
     "label": "weapon rack",
@@ -1107,7 +1192,8 @@
       "to": "door",
       "height": 0.9,
       "width": 0.9
-    }
+    },
+    "solid": true
   },
   "drawbridge": {
     "label": "drawbridge",
@@ -1126,7 +1212,8 @@
       "to": "door",
       "height": 0.1,
       "width": 1.5
-    }
+    },
+    "solid": false
   },
   "standing-stone": {
     "label": "standing stone",
@@ -1140,7 +1227,8 @@
       "to": "door",
       "height": 1.5,
       "width": 0.6
-    }
+    },
+    "solid": true
   },
   "shrine": {
     "label": "shrine",
@@ -1150,7 +1238,8 @@
       "to": "door",
       "height": 1.1,
       "width": 0.9
-    }
+    },
+    "solid": true
   },
   "cave-mouth": {
     "label": "cave mouth",
@@ -1163,7 +1252,8 @@
       "to": "storey",
       "height": 1.2,
       "width": 0.75
-    }
+    },
+    "solid": false
   },
   "door": {
     "label": "door",
@@ -1192,7 +1282,8 @@
     "relative": {
       "to": "storey",
       "height": 0.7
-    }
+    },
+    "solid": false
   },
   "stairs": {
     "label": "stairs",
@@ -1225,7 +1316,8 @@
       "to": "door",
       "height": 0.6,
       "width": 1.0
-    }
+    },
+    "solid": false
   },
   "chest": {
     "label": "chest",
@@ -1245,7 +1337,8 @@
       "to": "door",
       "height": 0.35,
       "width": 0.7
-    }
+    },
+    "solid": true
   },
   "altar": {
     "label": "altar",
@@ -1269,7 +1362,8 @@
       "to": "door",
       "height": 0.6,
       "width": 1.2
-    }
+    },
+    "solid": true
   },
   "trap": {
     "label": "trap",
@@ -1279,7 +1373,8 @@
       "to": "door",
       "height": 0.05,
       "width": 0.8
-    }
+    },
+    "solid": false
   },
   "pillar": {
     "label": "pillar",
@@ -1304,7 +1399,8 @@
       "to": "storey",
       "height": 1.5,
       "width": 0.25
-    }
+    },
+    "solid": true
   },
   "cage": {
     "label": "cage",
@@ -1317,7 +1413,8 @@
       "to": "door",
       "height": 0.9,
       "width": 0.8
-    }
+    },
+    "solid": true
   },
   "sarcophagus": {
     "label": "sarcophagus",
@@ -1336,7 +1433,8 @@
       "to": "door",
       "height": 0.45,
       "width": 1.2
-    }
+    },
+    "solid": true
   },
   "bookshelf": {
     "label": "bookshelf",
@@ -1356,7 +1454,8 @@
       "to": "door",
       "height": 1.1,
       "width": 1.0
-    }
+    },
+    "solid": true
   },
   "lever": {
     "label": "lever",
@@ -1366,7 +1465,8 @@
       "to": "door",
       "height": 0.5,
       "width": 0.3
-    }
+    },
+    "solid": false
   },
   "bed": {
     "label": "bed",
@@ -1387,7 +1487,8 @@
       "to": "door",
       "height": 0.4,
       "width": 1.2
-    }
+    },
+    "solid": true
   },
   "table": {
     "label": "table",
@@ -1400,7 +1501,8 @@
       "to": "door",
       "height": 0.45,
       "width": 1.0
-    }
+    },
+    "solid": true
   },
   "chair": {
     "label": "chair",
@@ -1423,7 +1525,8 @@
       "to": "door",
       "height": 0.55,
       "width": 0.5
-    }
+    },
+    "solid": false
   },
   "nightstand": {
     "label": "nightstand",
@@ -1445,7 +1548,8 @@
       "to": "door",
       "height": 0.35,
       "width": 0.5
-    }
+    },
+    "solid": true
   },
   "fireplace": {
     "label": "fireplace",
@@ -1470,7 +1574,8 @@
       "to": "door",
       "height": 0.8,
       "width": 1.0
-    }
+    },
+    "solid": true
   },
   "counter": {
     "label": "counter",
@@ -1490,7 +1595,8 @@
       "to": "door",
       "height": 0.6,
       "width": 1.5
-    }
+    },
+    "solid": true
   },
   "stool": {
     "label": "stool",
@@ -1513,7 +1619,8 @@
       "to": "door",
       "height": 0.35,
       "width": 0.4
-    }
+    },
+    "solid": false
   },
   "shelf": {
     "label": "shelf",
@@ -1533,7 +1640,8 @@
       "to": "door",
       "height": 1.0,
       "width": 0.8
-    }
+    },
+    "solid": true
   },
   "workbench": {
     "label": "workbench",
@@ -1552,7 +1660,8 @@
       "to": "door",
       "height": 0.55,
       "width": 1.2
-    }
+    },
+    "solid": true
   },
   "anvil": {
     "label": "anvil",
@@ -1565,7 +1674,8 @@
       "to": "door",
       "height": 0.35,
       "width": 0.6
-    }
+    },
+    "solid": true
   },
   "display-stand": {
     "label": "display stand",
@@ -1578,7 +1688,8 @@
       "to": "door",
       "height": 0.7,
       "width": 0.7
-    }
+    },
+    "solid": true
   },
   "lectern": {
     "label": "lectern",
@@ -1591,7 +1702,8 @@
       "to": "door",
       "height": 0.7,
       "width": 0.5
-    }
+    },
+    "solid": true
   },
   "throne": {
     "label": "throne",
@@ -1611,7 +1723,8 @@
       "to": "door",
       "height": 1.0,
       "width": 0.8
-    }
+    },
+    "solid": true
   },
   "banner": {
     "label": "banner",
@@ -1636,7 +1749,8 @@
     "relative": {
       "to": "door",
       "height": 1.0
-    }
+    },
+    "solid": true
   },
   "pew": {
     "label": "pew",
@@ -1656,7 +1770,8 @@
       "to": "door",
       "height": 0.5,
       "width": 1.5
-    }
+    },
+    "solid": true
   },
   "cupboard": {
     "label": "cupboard",
@@ -1676,7 +1791,8 @@
       "to": "door",
       "height": 1.0,
       "width": 0.8
-    }
+    },
+    "solid": true
   },
   "stove": {
     "label": "stove",
@@ -1696,7 +1812,8 @@
       "to": "door",
       "height": 0.55,
       "width": 0.7
-    }
+    },
+    "solid": true
   },
   "wardrobe": {
     "label": "wardrobe",
@@ -1716,7 +1833,8 @@
       "to": "door",
       "height": 1.1,
       "width": 0.9
-    }
+    },
+    "solid": true
   },
   "desk": {
     "label": "desk",
@@ -1735,7 +1853,8 @@
       "to": "door",
       "height": 0.5,
       "width": 1.0
-    }
+    },
+    "solid": true
   },
   "wall-decor": {
     "label": "wall decor",
@@ -1760,7 +1879,8 @@
     "relative": {
       "to": "door",
       "height": 0.5
-    }
+    },
+    "solid": false
   },
   "candle": {
     "label": "candle",
@@ -1771,7 +1891,8 @@
     "look": {
       "orient": "none",
       "views": 1
-    }
+    },
+    "solid": false
   },
   "stand": {
     "label": "stand",
@@ -1781,7 +1902,8 @@
       "to": "door",
       "height": 0.8,
       "width": 0.6
-    }
+    },
+    "solid": true
   },
   "locked-door": {
     "label": "locked door",
@@ -1796,7 +1918,8 @@
         "wall-block",
         "wall-piece-set"
       ]
-    }
+    },
+    "solid": false
   },
   "secret-door": {
     "label": "secret door",
@@ -1807,7 +1930,8 @@
         "wall-block",
         "wall-piece-set"
       ]
-    }
+    },
+    "solid": false
   },
   "portcullis": {
     "label": "portcullis",
@@ -1818,7 +1942,8 @@
         "wall-block",
         "wall-piece-set"
       ]
-    }
+    },
+    "solid": false
   },
   "key": {
     "label": "key",
@@ -1879,7 +2004,8 @@
       "to": "door",
       "height": 0.02,
       "width": 1.5
-    }
+    },
+    "solid": false
   },
   "debris": {
     "label": "debris",
@@ -1904,7 +2030,8 @@
       "to": "door",
       "height": 0.08,
       "width": 0.6
-    }
+    },
+    "solid": false
   },
   "bones": {
     "label": "bones",
@@ -1919,7 +2046,8 @@
       "to": "door",
       "height": 0.08,
       "width": 0.5
-    }
+    },
+    "solid": false
   },
   "floor-tile": {
     "label": "floor tile",
@@ -1956,7 +2084,8 @@
       "to": "door",
       "height": 0.7,
       "width": 0.8
-    }
+    },
+    "solid": false
   },
   "wall-block": {
     "label": "wall block",
@@ -1978,7 +2107,8 @@
           "to": "background"
         }
       ]
-    }
+    },
+    "solid": true
   },
   "wall-torch": {
     "label": "wall torch",
@@ -2005,7 +2135,8 @@
         }
       ],
       "faces": "away-from-wall"
-    }
+    },
+    "solid": false
   },
   "curtain-wall": {
     "label": "curtain wall",
@@ -2013,7 +2144,8 @@
     "broader": "wall-block",
     "size": 1.0,
     "tall": 2.4,
-    "draw": "a section of a castle's crenellated stone curtain wall, tall, of big grey ashlar blocks, a walkway behind the battlements"
+    "draw": "a section of a castle's crenellated stone curtain wall, tall, of big grey ashlar blocks, a walkway behind the battlements",
+    "solid": true
   },
   "office-tower": {
     "label": "office tower",
@@ -2028,7 +2160,8 @@
       "roof": "flat",
       "cover": 0.75,
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "office-building": {
     "label": "office building",
@@ -2042,7 +2175,8 @@
       ],
       "roof": "flat",
       "cover": 0.8
-    }
+    },
+    "solid": true
   },
   "apartment-block": {
     "label": "apartment block",
@@ -2056,7 +2190,8 @@
       ],
       "roof": "flat",
       "cover": 0.75
-    }
+    },
+    "solid": true
   },
   "apartment-tower": {
     "label": "apartment tower",
@@ -2071,7 +2206,8 @@
       "roof": "flat",
       "cover": 0.7,
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "suburban-house": {
     "label": "suburban house",
@@ -2085,7 +2221,8 @@
       ],
       "roof": "pitched",
       "cover": 0.45
-    }
+    },
+    "solid": true
   },
   "row-house": {
     "label": "row house",
@@ -2099,7 +2236,8 @@
       ],
       "roof": "pitched",
       "cover": 0.85
-    }
+    },
+    "solid": true
   },
   "retail-store": {
     "label": "retail store",
@@ -2113,7 +2251,8 @@
       ],
       "roof": "flat",
       "cover": 0.85
-    }
+    },
+    "solid": true
   },
   "supermarket": {
     "label": "supermarket",
@@ -2128,7 +2267,8 @@
       "roof": "flat",
       "cover": 0.6,
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "mall": {
     "label": "shopping mall",
@@ -2143,7 +2283,8 @@
       "roof": "flat",
       "cover": 0.65,
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "restaurant": {
     "label": "restaurant",
@@ -2157,7 +2298,8 @@
       ],
       "roof": "flat",
       "cover": 0.8
-    }
+    },
+    "solid": true
   },
   "cafe": {
     "label": "café",
@@ -2171,7 +2313,8 @@
       ],
       "roof": "flat",
       "cover": 0.8
-    }
+    },
+    "solid": true
   },
   "hotel": {
     "label": "hotel",
@@ -2186,7 +2329,8 @@
       "roof": "flat",
       "cover": 0.75,
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "gas-station": {
     "label": "gas station",
@@ -2200,7 +2344,8 @@
       ],
       "roof": "flat",
       "cover": 0.4
-    }
+    },
+    "solid": true
   },
   "parking-garage": {
     "label": "parking garage",
@@ -2214,7 +2359,8 @@
       ],
       "roof": "flat",
       "cover": 0.9
-    }
+    },
+    "solid": true
   },
   "factory": {
     "label": "factory",
@@ -2228,7 +2374,8 @@
       ],
       "roof": "flat",
       "cover": 0.7
-    }
+    },
+    "solid": true
   },
   "logistics-warehouse": {
     "label": "logistics warehouse",
@@ -2242,7 +2389,8 @@
       ],
       "roof": "flat",
       "cover": 0.65
-    }
+    },
+    "solid": true
   },
   "school": {
     "label": "school",
@@ -2257,7 +2405,8 @@
       "roof": "flat",
       "cover": 0.55,
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "hospital": {
     "label": "hospital",
@@ -2272,7 +2421,8 @@
       "roof": "flat",
       "cover": 0.65,
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "police-station": {
     "label": "police station",
@@ -2287,7 +2437,8 @@
       "roof": "flat",
       "cover": 0.6,
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "fire-station": {
     "label": "fire station",
@@ -2302,7 +2453,8 @@
       "roof": "flat",
       "cover": 0.6,
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "city-hall": {
     "label": "city hall",
@@ -2317,7 +2469,8 @@
       "roof": "flat",
       "cover": 0.55,
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "transit-station": {
     "label": "transit station",
@@ -2332,7 +2485,8 @@
       "roof": "flat",
       "cover": 0.6,
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "modern-church": {
     "label": "church",
@@ -2347,7 +2501,8 @@
       "roof": "pitched",
       "cover": 0.5,
       "interior_kind": "scene"
-    }
+    },
+    "solid": true
   },
   "vehicle": {
     "label": "vehicle",
@@ -2370,7 +2525,8 @@
     "relative": {
       "to": "door",
       "height": 0.75
-    }
+    },
+    "solid": true
   },
   "car": {
     "label": "car",
@@ -2385,7 +2541,8 @@
     "relative": {
       "to": "door",
       "height": 0.75
-    }
+    },
+    "solid": true
   },
   "taxi": {
     "label": "taxi",
@@ -2397,7 +2554,8 @@
     "relative": {
       "to": "door",
       "height": 0.75
-    }
+    },
+    "solid": true
   },
   "police-car": {
     "label": "police car",
@@ -2409,7 +2567,8 @@
     "relative": {
       "to": "door",
       "height": 0.8
-    }
+    },
+    "solid": true
   },
   "van": {
     "label": "van",
@@ -2421,7 +2580,8 @@
     "relative": {
       "to": "door",
       "height": 1.1
-    }
+    },
+    "solid": true
   },
   "truck": {
     "label": "truck",
@@ -2433,7 +2593,8 @@
     "relative": {
       "to": "door",
       "height": 1.6
-    }
+    },
+    "solid": true
   },
   "fire-truck": {
     "label": "fire truck",
@@ -2445,7 +2606,8 @@
     "relative": {
       "to": "door",
       "height": 1.6
-    }
+    },
+    "solid": true
   },
   "bus": {
     "label": "bus",
@@ -2457,7 +2619,8 @@
     "relative": {
       "to": "door",
       "height": 1.7
-    }
+    },
+    "solid": true
   },
   "bicycle": {
     "label": "bicycle",
@@ -2472,7 +2635,8 @@
     "relative": {
       "to": "door",
       "height": 0.5
-    }
+    },
+    "solid": true
   },
   "street-light": {
     "label": "street light",
@@ -2491,7 +2655,8 @@
     "relative": {
       "to": "door",
       "height": 2.2
-    }
+    },
+    "solid": true
   },
   "traffic-light": {
     "label": "traffic light",
@@ -2508,7 +2673,8 @@
     "relative": {
       "to": "door",
       "height": 1.9
-    }
+    },
+    "solid": true
   },
   "road-sign": {
     "label": "road sign",
@@ -2523,7 +2689,8 @@
     "relative": {
       "to": "door",
       "height": 1.5
-    }
+    },
+    "solid": true
   },
   "bus-stop": {
     "label": "bus stop",
@@ -2544,7 +2711,8 @@
     "relative": {
       "to": "door",
       "height": 1.3
-    }
+    },
+    "solid": false
   },
   "park-bench": {
     "label": "park bench",
@@ -2556,7 +2724,8 @@
     "relative": {
       "to": "door",
       "height": 0.4
-    }
+    },
+    "solid": false
   },
   "trash-bin": {
     "label": "trash bin",
@@ -2573,7 +2742,8 @@
     "relative": {
       "to": "door",
       "height": 0.5
-    }
+    },
+    "solid": true
   },
   "fire-hydrant": {
     "label": "fire hydrant",
@@ -2590,7 +2760,8 @@
     "relative": {
       "to": "door",
       "height": 0.4
-    }
+    },
+    "solid": true
   },
   "mailbox": {
     "label": "mailbox",
@@ -2605,7 +2776,8 @@
     "relative": {
       "to": "door",
       "height": 0.6
-    }
+    },
+    "solid": true
   },
   "bollard": {
     "label": "bollard",
@@ -2622,7 +2794,8 @@
     "relative": {
       "to": "door",
       "height": 0.4
-    }
+    },
+    "solid": true
   },
   "planter": {
     "label": "planter",
@@ -2639,7 +2812,8 @@
     "relative": {
       "to": "tree",
       "height": 0.2
-    }
+    },
+    "solid": true
   },
   "kiosk": {
     "label": "kiosk",
@@ -2651,7 +2825,8 @@
     "relative": {
       "to": "door",
       "height": 1.3
-    }
+    },
+    "solid": true
   },
   "billboard": {
     "label": "billboard",
@@ -2671,7 +2846,8 @@
     "relative": {
       "to": "storey",
       "height": 1.5
-    }
+    },
+    "solid": true
   },
   "vending-machine": {
     "label": "vending machine",
@@ -2691,7 +2867,8 @@
     "relative": {
       "to": "door",
       "height": 0.95
-    }
+    },
+    "solid": true
   },
   "parking-meter": {
     "label": "parking meter",
@@ -2708,7 +2885,8 @@
     "relative": {
       "to": "door",
       "height": 0.8
-    }
+    },
+    "solid": true
   },
   "utility-pole": {
     "label": "utility pole",
@@ -2725,7 +2903,8 @@
     "relative": {
       "to": "door",
       "height": 3.0
-    }
+    },
+    "solid": true
   },
   "ac-unit": {
     "label": "air-conditioning unit",
@@ -2737,7 +2916,8 @@
     "relative": {
       "to": "door",
       "height": 0.45
-    }
+    },
+    "solid": true
   },
   "fuel-pump": {
     "label": "fuel pump",
@@ -2757,7 +2937,8 @@
     "relative": {
       "to": "door",
       "height": 0.9
-    }
+    },
+    "solid": true
   },
   "flagpole": {
     "label": "flagpole",
@@ -2774,7 +2955,8 @@
     "relative": {
       "to": "door",
       "height": 3.5
-    }
+    },
+    "solid": true
   },
   "playground-set": {
     "label": "playground set",
@@ -2786,7 +2968,8 @@
     "relative": {
       "to": "door",
       "height": 1.3
-    }
+    },
+    "solid": true
   },
   "sports-hoop": {
     "label": "basketball hoop",
@@ -2798,7 +2981,8 @@
     "relative": {
       "to": "door",
       "height": 2.0
-    }
+    },
+    "solid": true
   },
   "cafe-table": {
     "label": "café table",
@@ -2810,7 +2994,8 @@
     "relative": {
       "to": "door",
       "height": 0.5
-    }
+    },
+    "solid": true
   },
   "road-marking": {
     "label": "road marking",
@@ -2823,7 +3008,8 @@
       "orient": "none",
       "variety": "low",
       "views": 1
-    }
+    },
+    "solid": false
   },
   "manhole": {
     "label": "manhole cover",
@@ -2836,7 +3022,8 @@
       "orient": "none",
       "variety": "low",
       "views": 1
-    }
+    },
+    "solid": false
   },
   "sofa": {
     "label": "sofa",
@@ -2861,7 +3048,8 @@
     "relative": {
       "to": "door",
       "height": 0.45
-    }
+    },
+    "solid": true
   },
   "tv": {
     "label": "television",
@@ -2882,7 +3070,8 @@
     "relative": {
       "to": "door",
       "height": 0.4
-    }
+    },
+    "solid": true
   },
   "coffee-table": {
     "label": "coffee table",
@@ -2897,7 +3086,8 @@
     "relative": {
       "to": "door",
       "height": 0.25
-    }
+    },
+    "solid": true
   },
   "fridge": {
     "label": "fridge",
@@ -2919,7 +3109,8 @@
     "relative": {
       "to": "door",
       "height": 1.0
-    }
+    },
+    "solid": true
   },
   "sink": {
     "label": "sink",
@@ -2940,7 +3131,8 @@
     "relative": {
       "to": "door",
       "height": 0.55
-    }
+    },
+    "solid": true
   },
   "toilet": {
     "label": "toilet",
@@ -2961,7 +3153,8 @@
     "relative": {
       "to": "door",
       "height": 0.45
-    }
+    },
+    "solid": true
   },
   "shower": {
     "label": "shower",
@@ -2982,7 +3175,8 @@
     "relative": {
       "to": "door",
       "height": 1.15
-    }
+    },
+    "solid": true
   },
   "office-desk": {
     "label": "office desk",
@@ -2994,7 +3188,8 @@
     "relative": {
       "to": "door",
       "height": 0.45
-    }
+    },
+    "solid": true
   },
   "office-chair": {
     "label": "office chair",
@@ -3016,7 +3211,8 @@
     "relative": {
       "to": "door",
       "height": 0.6
-    }
+    },
+    "solid": false
   },
   "filing-cabinet": {
     "label": "filing cabinet",
@@ -3037,7 +3233,8 @@
     "relative": {
       "to": "door",
       "height": 0.75
-    }
+    },
+    "solid": true
   },
   "meeting-table": {
     "label": "meeting table",
@@ -3052,7 +3249,8 @@
     "relative": {
       "to": "door",
       "height": 0.45
-    }
+    },
+    "solid": true
   },
   "whiteboard": {
     "label": "whiteboard",
@@ -3074,7 +3272,8 @@
     "relative": {
       "to": "door",
       "height": 0.7
-    }
+    },
+    "solid": true
   },
   "reception-desk": {
     "label": "reception desk",
@@ -3090,7 +3289,8 @@
     "relative": {
       "to": "door",
       "height": 0.6
-    }
+    },
+    "solid": true
   },
   "potted-plant": {
     "label": "potted plant",
@@ -3107,7 +3307,8 @@
     "relative": {
       "to": "tree",
       "height": 0.35
-    }
+    },
+    "solid": true
   },
   "checkout-counter": {
     "label": "checkout counter",
@@ -3123,7 +3324,8 @@
     "relative": {
       "to": "door",
       "height": 0.55
-    }
+    },
+    "solid": true
   },
   "store-shelf": {
     "label": "store shelf",
@@ -3135,7 +3337,8 @@
     "relative": {
       "to": "door",
       "height": 1.0
-    }
+    },
+    "solid": true
   },
   "school-desk": {
     "label": "school desk",
@@ -3155,7 +3358,8 @@
     "relative": {
       "to": "door",
       "height": 0.45
-    }
+    },
+    "solid": true
   },
   "copier": {
     "label": "copier",
@@ -3176,7 +3380,8 @@
     "relative": {
       "to": "door",
       "height": 0.65
-    }
+    },
+    "solid": true
   },
   "water-cooler": {
     "label": "water cooler",
@@ -3197,7 +3402,8 @@
     "relative": {
       "to": "door",
       "height": 0.75
-    }
+    },
+    "solid": true
   },
   "locker": {
     "label": "locker",
@@ -3219,7 +3425,8 @@
     "relative": {
       "to": "door",
       "height": 1.1
-    }
+    },
+    "solid": true
   },
   "ceiling-light": {
     "label": "ceiling light",
@@ -3239,7 +3446,8 @@
     "relative": {
       "to": "door",
       "height": 0.1
-    }
+    },
+    "solid": false
   },
   "flowerbed": {
     "label": "flowerbed",
@@ -3254,7 +3462,8 @@
     "relative": {
       "to": "tree",
       "height": 0.06
-    }
+    },
+    "solid": false
   },
   "picnic-table": {
     "label": "picnic table",
@@ -3266,7 +3475,8 @@
     "relative": {
       "to": "door",
       "height": 0.4
-    }
+    },
+    "solid": true
   },
   "background": {
     "label": "background",

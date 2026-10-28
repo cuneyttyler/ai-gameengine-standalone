@@ -326,6 +326,14 @@ ANIMATION AND EFFECTS (docs/systems/effects-animation.md; context "fx")
   are grid indices, row by row, or {"region": [x, y, w, h], "duration": s}); then add_component Animator
   {"sheet": "<path>", "animator": "humanoid"|"quadruped"|"flyer"|"prop"|"<animator record>"}. The humanoid
   animator plays idle, walk, attack, cast, use, hurt, die from the entity's movement and combat by itself.
+- Clips and actions (docs/assets/animations.md): a state plays the clip of its name, its variants (attack_slash,
+  attack_punch) and any clip whose "plays" names it ("punch": {"plays": "attack", ...}). Animator {"clips":
+  "attack=attack_punch|attack_kick", "pick": "weapon"|"random"|"order"|"first", "attackClass": "sword"} chooses by hand.
+  Any clip plays by name: Lua play(id, "dance") (once, then back), a cutscene's animate trigger "dance".
+- Held and worn things: sheets carry points per frame (clip "points": {"hand": {"s": [[x, y, angle, front], ...]}}).
+  An item record with "sprite", "grip": [0.5, 0.9], "pointing": -90, "class": "sword" shows in the hand of whoever has
+  it in Equipment.weapon. Attachment {"to": "<Name>", "point": "hand"|"head"|..., "pivotX", "pivotY", "pointing",
+  "size", "layer": "auto"|"front"|"behind"} puts any entity on another's point (a hat, a lantern, a rider).
 - Particles: add_component ParticleEmitter {"particles": "<id from context fx.particles>"} (fire, smoke, embers,
   fireflies...), or a "particles" record of your own. Effects (records "effect", presets in fx.effects): what a
   hit, a death or a spell looks and sounds like: {"parts": [{"particles": "sparks"}, {"sound": "<audio>"},
@@ -393,8 +401,18 @@ GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
   change attributes. Experience comes from kills and quest rewards.
 - Interactable makes something usable with E (doors, chests, levers, signs: verb, locked + key item,
   requiresFlag, setFlag, text, event, becomes: a prefab it turns into when used, in its place, e.g. an open
-  chest; give that prefab a becomes back for a toggle). Merchant opens a shop.
-- Combat: MeleeAttack, RangedAttack (projectiles), Health, Stats, Faction/FactionMember (records "faction";
+  chest; give that prefab a becomes back for a toggle; animation: the clip it plays, Open plays open). Merchant opens
+  a shop.
+- Actions (docs/systems/actions.md): the game's input actions are in input.json (interact is the default action, E
+  and Space; a project adds its own: farm, parry, each with keys, "plays" a clip on the player, "event" for scripts).
+  Action {"trigger": "input"|"event"|"timer"|"touch", "action": "farm", "event", "seconds", "range", "requires":
+  "seeds", "requiresFlag", "takes": "seeds", "gives": "wheat*3", "userAnimation": "farm", "animation", "becomes":
+  "<prefab>", "emits", "setFlag", "text", "once", "cooldown"} makes anything do something to whoever uses it, no
+  script needed: a field farmed (becomes a seeded field), a timer growing it, a harvest. Anyone uses it: the player
+  pressing its action, a character (package template "tend" with data {"action": "farm"}, or procedure step
+  {"type": "act", "action": "farm"}), Lua act(user, target) or act(user, "farm"). An Interactable is used the same way.
+- Combat (only when the game has fighting: characters come without it): MeleeAttack, RangedAttack (projectiles),
+  Health, Stats, Faction/FactionMember (records "faction";
   disposition < 0 is hostile). A Spawner makes enemies from an "encounter" record around itself.
 - Character AI: Behaviour holds a stack of "package" records (template: work, sleep, sandbox, patrol, follow,
   guard, ambush, script...; location, schedule, data); the first that holds runs. Perception (sight, hearing),

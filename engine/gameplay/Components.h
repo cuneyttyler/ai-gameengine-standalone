@@ -265,6 +265,39 @@ struct Interactable {
     bool once = false;
     bool used = false;
     std::string becomes;            // a prefab it turns into when used, in its place (a chest opened, a lever pulled)
+    std::string animation;          // played when used ("" = its verb's clip: Open plays open, when there is one)
+    bool becomeAfterAnimation = true; // its becomes waits until that animation has played
+};
+
+// Something that happens to a thing when its trigger does, to whoever uses it (docs/systems/actions.md): a field farmed,
+// a crop grown, a crop harvested. The Interactable is one with set settings (the interact key); both run through
+// GameSession::Act, so the player, a character (the Behaviour step "act") or a script can use it.
+struct Action {
+    std::string trigger = "input"; // input (its action pressed in range), event, timer, touch
+    std::string action = "interact"; // the input action (farm, interact, any of the project's)
+    std::string event;             // trigger event: the event
+    float seconds = 0.0f;          // trigger timer: after this long
+    float range = 1.3f;            // how close the user must be, in cells
+    std::string requiresItem;      // an item the user must carry ("requires")
+    std::string requiresFlag;      // a story flag that must be set
+    std::string takes;             // items taken from the user: "seeds", "ore*2"
+    std::string gives;             // items given to the user: "wheat*3"
+    std::string userAnimation;     // the clip the user plays (farm, use_pickup)
+    std::string animation;         // the clip this plays
+    std::string becomes;           // the prefab it turns into, once the animations have played
+    std::string emits;             // an event emitted (its entity this, its other the user)
+    std::string setFlag;           // a story flag set
+    std::string text;              // shown when it happens
+    bool once = false;
+    float cooldown = 0.0f;         // seconds before it works again
+};
+
+// Runtime: an Action's clock.
+struct ActionState {
+    float age = 0.0f;      // since it appeared (its timer)
+    float cooling = 0.0f;  // left of its cooldown
+    bool done = false;     // used (with once)
+    bool touching = false; // the player on it last step (touch)
 };
 
 // A building or other closed place one can go into (development_plan.md Phase 27): its interior picture (the same

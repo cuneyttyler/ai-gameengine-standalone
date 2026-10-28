@@ -662,8 +662,10 @@ std::optional<Entity> PlaceObject(Registry& registry, PrefabLibrary& prefabs, co
     // it faces a way), and a little bigger or smaller.
     const bool varied = look.value("vary", false);
     const unsigned v = CellVariety(o.value("x", 0) + 7919, o.value("y", 0) + 104729);
-    const float jx = varied ? (static_cast<float>(v % 97) / 96.0f - 0.5f) * 0.7f : 0.0f; // up to a third of a cell: no lattice
-    const float jy = varied ? (static_cast<float>((v >> 7) % 97) / 96.0f - 0.5f) * 0.7f : 0.0f;
+    // A solid thing moves less, so it stays on the cell it blocks.
+    const float spread = choice.value("solid", false) ? 0.3f : 0.7f;
+    const float jx = varied ? (static_cast<float>(v % 97) / 96.0f - 0.5f) * spread : 0.0f; // up to a third of a cell: no lattice
+    const float jy = varied ? (static_cast<float>((v >> 7) % 97) / 96.0f - 0.5f) * spread : 0.0f;
     // Where its foot lands. A sprite stands with its bottom a quarter cell (of height) below its point; art drawn to
     // the grid (matched art) has its lowest pixel where its footprint's front edge is: for a building or a run's piece
     // the front corner, half a cell below its front cell's middle; for a thing, half its width (in cells) below its
@@ -749,6 +751,20 @@ std::optional<Entity> PlaceObject(Registry& registry, PrefabLibrary& prefabs, co
         if (const auto* sprite = registry.try_get<Sprite>(e); sprite && sprite->width > 0) {
             const float want = FootprintPixels(o.value("w", 1), o.value("h", 1), options) * 0.9f;
             if (sprite->width < want) ScaleEntity(EngineReflection(), registry, e, want / sprite->width);
+        }
+    }
+    // A solid thing (its role's, roles.json) blocks its whole footprint; one that isn't, nothing, whatever its prefab
+    // says (a prefab made earlier is reused as it is).
+    if (layer != "building" && choice.contains("solid")) {
+        if (choice.value("solid", false)) {
+            auto& obstacle = registry.emplace_or_replace<Obstacle>(e);
+            obstacle.left = stand.left;
+            obstacle.right = stand.right;
+            obstacle.back = stand.back;
+            for (const char* field : {"left", "right", "back"}) RecordOverride(registry, e, "Obstacle", field);
+        } else if (registry.all_of<Obstacle>(e)) {
+            registry.remove<Obstacle>(e);
+            RecordOverride(registry, e, "Obstacle", ""); // removed from its prefab's
         }
     }
     // A building is as wide as its footprint (unless its art is drawn to the grid), and blocks all of it.
@@ -1000,7 +1016,9 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
                 found = std::move(broader);
             }
         }
-        const bool solid = need.kind == "building";
+        // Blocks walking: a building, or a thing whose role is solid (roles.json: a statue, a well, a cart).
+        const bool solid = need.kind == "building" || ontology.IsSolid(need.role);
+        row["solid"] = solid;
         const NeedProfile profile = ProfileOf(need.layer, need.essential, false, uses);
         row["importance"] = ImportanceName(profile.importance);
         row["styleCritical"] = profile.styleCritical;
@@ -3193,6 +3211,117 @@ void RebuildPlaceCommand::Redo(Registry& registry) {
     registry.destroy(before.begin(), before.end());
     AppendEntities(registry, built_);
     built_.clear();
+}
+
+int FitObstaclesToArt(Registry& registry, const Project& project, const IsoParams& iso) {
+    if (iso.topDown || iso.tileWidth <= 0.0f) return 0;
+    // Each picture's ground silhouette (its lowest 40 %): how far it reaches left and right of its middle, as shares of
+    // its width (kept by picture).
+    static std::map<std::string, std::pair<float, float>> reach;
+    int changed = 0;
+    for (auto [e, obstacle, sprite] : registry.view<Obstacle, Sprite>().each()) {
+        if ((obstacle.left <= 0 && obstacle.back <= 0) || sprite.texture.empty() || sprite.flat) continue;
+        auto it = reach.find(sprite.texture);
+        if (it == reach.end()) {
+            std::pair<float, float> r{0.5f, 0.5f};
+            if (const auto image = DecodeImage(project.Resolve(sprite.texture)); image && image->width > 2 && image->height > 2) {
+                const int w = static_cast<int>(image->width), h = static_cast<int>(image->height);
+                auto opaque = [&](int x, int y) { return image->rgba[(static_cast<size_t>(y) * w + x) * 4 + 3] > 128; };
+                int top = h, bottom = -1;
+                for (int y = 0; y < h; ++y) {
+                    for (int x = 0; x < w; ++x) {
+                        if (opaque(x, y)) {
+                            top = std::min(top, y), bottom = std::max(bottom, y);
+                            break;
+                        }
+                    }
+                }
+                if (bottom > top) {
+                    int x0 = w, x1 = -1;
+                    for (int y = bottom - static_cast<int>((bottom - top) * 0.4f); y <= bottom; ++y) {
+                        for (int x = 0; x < w; ++x) {
+                            if (opaque(x, y)) x0 = std::min(x0, x), x1 = std::max(x1, x);
+                        }
+                    }
+                    if (x1 > x0) r = {0.5f - static_cast<float>(x0) / w, static_cast<float>(x1 + 1) / w - 0.5f};
+                }
+            }
+            it = reach.emplace(sprite.texture, r).first;
+        }
+        // Its pixels on screen; mirrored, its left is its right. A cell further along x reaches half a tile further
+        // left, along y further right; the footprint's own corner is half a tile out from its front cell's middle.
+        float left = it->second.first * std::abs(sprite.width), right = it->second.second * std::abs(sprite.width);
+        if (sprite.u0 > sprite.u1) std::swap(left, right);
+        const float half = iso.tileWidth * 0.5f;
+        const int fitLeft = std::clamp(static_cast<int>(std::lround(left / half)) - 1, 0, obstacle.left);
+        const int fitBack = std::clamp(static_cast<int>(std::lround(right / half)) - 1, 0, obstacle.back);
+        if (fitLeft == obstacle.left && fitBack == obstacle.back) continue;
+        obstacle.left = fitLeft;
+        obstacle.back = fitBack;
+        for (const char* field : {"left", "back"}) RecordOverride(registry, e, "Obstacle", field);
+        ++changed;
+    }
+    return changed;
+}
+
+int RepairPlaceSolidity(Registry& registry, const Project& project, const Ontology& ontology, bool topDown) {
+    struct Plan {
+        json spec;
+        std::map<std::string, json> objects;
+    };
+    std::map<std::string, Plan> plans;
+    auto planOf = [&](const std::string& place) -> const Plan* {
+        auto it = plans.find(place);
+        if (it == plans.end()) {
+            Plan plan;
+            auto read = [&](const std::string& name) {
+                std::ifstream in(project.Resolve("places/" + place + "/" + name), std::ios::binary);
+                return in ? json::parse(in, nullptr, false) : json();
+            };
+            plan.spec = read("spec.json");
+            const json solved = read("layout.solved.json");
+            if (solved.is_object()) {
+                for (const auto& o : solved.value("objects", json::array())) {
+                    if (o.is_object() && o.contains("id")) plan.objects[o.value("id", "")] = o;
+                }
+            }
+            it = plans.emplace(place, std::move(plan)).first;
+        }
+        return it->second.spec.is_object() ? &it->second : nullptr;
+    };
+    std::vector<Entity> placed;
+    for (auto [e, node] : registry.view<PlaceNode>().each()) {
+        if (!node.place.empty() && !node.statement.empty()) placed.push_back(e);
+    }
+    int changed = 0;
+    PlaceSceneOptions options;
+    options.iso.topDown = topDown;
+    for (Entity e : placed) {
+        const auto& node = registry.get<PlaceNode>(e);
+        const Plan* plan = planOf(node.place);
+        if (!plan) continue;
+        auto it = plan->objects.find(node.statement);
+        if (it == plan->objects.end() || it->second.value("layer", "prop") == "building") continue;
+        const Need need = NeedOf(ontology, plan->spec, it->second);
+        if (need.kind == "building") continue;
+        const bool solid = ontology.IsSolid(need.role);
+        const Stand stand = StandOf(it->second, options);
+        if (solid) {
+            const auto* had = registry.try_get<Obstacle>(e);
+            if (had && had->left == stand.left && had->right == stand.right && had->back == stand.back) continue;
+            auto& obstacle = registry.emplace_or_replace<Obstacle>(e);
+            obstacle.left = stand.left;
+            obstacle.right = stand.right;
+            obstacle.back = stand.back;
+            for (const char* field : {"left", "right", "back"}) RecordOverride(registry, e, "Obstacle", field);
+            ++changed;
+        } else if (registry.all_of<Obstacle>(e)) {
+            registry.remove<Obstacle>(e);
+            RecordOverride(registry, e, "Obstacle", "");
+            ++changed;
+        }
+    }
+    return changed;
 }
 
 } // namespace aige

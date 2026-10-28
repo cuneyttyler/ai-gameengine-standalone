@@ -1333,7 +1333,10 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         if (type == "input:save") {
             post_({{"type", "input:saved"}, {"error", error ? nlohmann::json(*error) : nlohmann::json(nullptr)}});
         }
-        post_({{"type", "input:data"}, {"map", ActiveInputMap().ToJson()}, {"keys", keys}, {"axes", axes}, {"errors", errors}});
+        nlohmann::json builtIn = nlohmann::json::array(); // the engine's own: rebound, never removed
+        for (const auto& action : InputMap::Defaults().actions) builtIn.push_back(action.name);
+        post_({{"type", "input:data"}, {"map", ActiveInputMap().ToJson()}, {"keys", keys}, {"axes", axes}, {"errors", errors},
+               {"builtIn", builtIn}});
     } else if (type == "records:request") {
         ActiveRecords().Refresh();
         post_(RecordsJson());
@@ -4273,6 +4276,16 @@ std::unique_ptr<GameBuild> EditorApp::MakeGameBuild() {
 void EditorApp::ApplyArtFromBrief() {
     if (!plan_) return;
     const nlohmann::json brief = plan_->Document("brief");
+    // Its art style is the project's (Project Settings ▸ AI ▸ Art style): every art prompt draws in it.
+    const nlohmann::json style = BriefGet(brief, "artStyle.style");
+    if (style.is_string()) {
+        const std::string chosen = style.get<std::string>() == "from-project" ? std::string() : style.get<std::string>();
+        if (chosen != ActiveSettings().ai.artStyle) {
+            ActiveSettings().ai.artStyle = chosen;
+            SaveSettings(EngineReflection(), assets_.GetProject().SettingsPath().string());
+            SendProvider();
+        }
+    }
     const nlohmann::json art = BriefGet(brief, "plan.art");
     if (!art.is_object()) return;
     SourcingSettings settings = ReadSourcingSettings(assets_.GetProject().root);
@@ -4519,7 +4532,7 @@ bool EditorApp::HandlePlannerMessage(const std::string& type, const nlohmann::js
     if (type == "planner:editBrief") {
         const std::string path = message.value("path", "");
         plan_->EditBrief(path, message.value("value", nlohmann::json()));
-        if (path.rfind("plan.art", 0) == 0) ApplyArtFromBrief(); // the builds' art strategy
+        if (path.rfind("plan.art", 0) == 0 || path.rfind("artStyle", 0) == 0) ApplyArtFromBrief(); // the builds' art strategy
     }
     else if (type == "planner:confirm") {
         why = plan_->Confirm();
@@ -5172,7 +5185,7 @@ void EditorApp::SendProvider() {
     if (!Ai() || Ai()->GetState() != AiClient::State::Ready || !userPrefs_) return;
     // Each the project's choice (Project Settings ▸ AI), else the app's (Preferences ▸ AI); Mistral's small model unless
     // another was chosen (fast and cheap).
-    artProviderRequest_ = Ai()->Request("PUT", "/art-provider", {{"provider", ChosenAi("art")}});
+    artProviderRequest_ = Ai()->Request("PUT", "/art-provider", {{"provider", ChosenAi("art")}, {"style", ActiveSettings().ai.artStyle}});
     backgroundProviderRequest_ = Ai()->Request("PUT", "/background-provider", {{"provider", ChosenAi("background")}});
     providerRequest_ = Ai()->Request("PUT", "/provider", {{"provider", ChosenAi("provider")}, {"model", ChosenAi("model")}});
 }
@@ -5797,6 +5810,15 @@ int EditorApp::RepairInteriorArt() {
         dirty_ = true;
         sceneTreeStale_ = inspectorStale_ = true;
         post_({{"type", "notify"}, {"text", std::to_string(fixed) + " building(s)' interiors brought up to date (Save keeps it)"}});
+    }
+    // Built before roles said what's solid: statues, wells, carts block their footprints now (roles.json "solid"); and
+    // buildings block what their art covers.
+    const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
+    if (const int solid = RepairPlaceSolidity(registry_, assets_.GetProject(), Places(), topDown) + FitObstaclesToArt(registry_, assets_.GetProject(), iso_); solid > 0) {
+        dirty_ = true;
+        inspectorStale_ = true;
+        post_({{"type", "notify"}, {"text", std::to_string(solid) + " thing(s) made solid or passable by their roles, or fitted to their art (Save keeps it)"}});
+        fixed += solid;
     }
     return fixed;
 }

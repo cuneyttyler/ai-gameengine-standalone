@@ -301,6 +301,7 @@ std::vector<std::string> Ontology::Load(const std::vector<fs::path>& dirs) {
                 role.storey = spec.is_object() ? spec.value("storey", 0.0f) : 0.0f;
                 role.draw = spec.is_object() ? spec.value("draw", "") : "";
                 role.look = spec.is_object() ? spec.value("look", nlohmann::json::object()) : nlohmann::json::object();
+                if (spec.is_object() && spec.contains("solid") && spec["solid"].is_boolean()) role.solid = spec["solid"].get<bool>() ? 1 : 0;
                 roles_[id] = role;
             }
         }
@@ -680,6 +681,15 @@ const RelationType* Ontology::Relation(const std::string& id) const {
 const Role* Ontology::FindRole(const std::string& id) const {
     auto it = roles_.find(id);
     return it == roles_.end() ? nullptr : &it->second;
+}
+
+bool Ontology::IsSolid(const std::string& role) const {
+    std::set<std::string> seen;
+    for (const Role* r = FindRole(role); r && seen.insert(r->id).second; r = FindRole(r->broader)) {
+        if (r->id == "building") return true;
+        if (r->solid >= 0) return r->solid == 1;
+    }
+    return false;
 }
 
 const std::vector<Concept>* Ontology::Scheme(const std::string& id) const {

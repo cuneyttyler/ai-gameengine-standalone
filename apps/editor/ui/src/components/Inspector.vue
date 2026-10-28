@@ -384,7 +384,7 @@ function numberFrom(event: Event): number {
       <div v-if="!editorState.playing" class="footer">
         <select v-if="current.addable.length > 0" class="add" @change="addComponent">
           <option value="">+ Add component</option>
-          <option v-for="item in current.addable" :key="item.name" :value="item.name" :title="item.description">
+          <option v-for="item in [...current.addable].sort((a, b) => a.name.localeCompare(b.name))" :key="item.name" :value="item.name" :title="item.description">
             {{ item.name }}
           </option>
         </select>

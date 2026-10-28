@@ -74,9 +74,10 @@ def _append(atlas: Image.Image | None, size: int, frames: list[Image.Image]) -> 
 
 
 def add_clip(sheet: dict, atlas: Image.Image | None, clip: str, by_direction: dict[str, list], fps: float = 8.0,
-             loop: str = "loop") -> tuple[dict, Image.Image]:
+             loop: str = "loop", points: dict[str, dict[str, list]] | None = None) -> tuple[dict, Image.Image]:
     """`clip` with each direction's frames ({"south": [png…], …}, the full or short names) added to the sheet: its frames
-    in new rows of the picture, the clip naming their slots."""
+    in new rows of the picture, the clip naming their slots. `points`: {"hand": {"south": [[x, y, angle, front]…]}} on
+    the frames (docs/assets/animations.md §3.1)."""
     size = sheet["grid"]["width"]
     order = [d for d in DIRECTIONS if d in by_direction or SHORT[d] in by_direction]
     frames, directions = [], {}
@@ -86,6 +87,8 @@ def add_clip(sheet: dict, atlas: Image.Image | None, clip: str, by_direction: di
         frames += [_fit(_image(f), size) for f in list_]
     atlas, first = _append(atlas, size, frames)
     sheet["clips"][clip] = {"loop": loop, "fps": fps, "directions": {d: [first + i for i in slots] for d, slots in directions.items()}}
+    if points:
+        sheet["clips"][clip]["points"] = {name: {SHORT.get(d, d): list_ for d, list_ in by.items()} for name, by in points.items()}
     sheet["size"] = [atlas.width, atlas.height]
     return sheet, atlas
 

@@ -160,6 +160,15 @@ nlohmann::json RepairPlaceScene(Registry& registry, PrefabLibrary& prefabs, cons
 
 // A rebuild of a place as one undo step: Undo takes the new build out and puts
 // the previous one back (from its text), Redo the other way.
+// Scenes built before roles said what's solid (roles.json "solid"): each placed thing (its PlaceNode) blocks its whole
+// footprint when its role is solid and nothing when it isn't, read from its build's plan (places/<id>/spec.json and
+// layout.solved.json). Buildings are left as they are. Returns how many it changed.
+int RepairPlaceSolidity(Registry& registry, const Project& project, const Ontology& ontology, bool topDown);
+// A thing blocking several cells (an isometric building) blocks no further than its art reaches: its walls' width near
+// the ground, either side of the point it stands on, in cells (its eaves left out). Only ever shrinks its Obstacle.
+// Returns how many it changed.
+int FitObstaclesToArt(Registry& registry, const Project& project, const IsoParams& iso);
+
 class RebuildPlaceCommand : public EditCommand {
 public:
     RebuildPlaceCommand(std::string place, std::string previous) : place_(std::move(place)), previous_(std::move(previous)) {}

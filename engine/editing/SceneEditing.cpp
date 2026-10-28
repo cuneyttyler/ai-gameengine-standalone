@@ -35,6 +35,10 @@ std::optional<Entity> PickEntity(Registry& registry, float sceneX, float sceneY,
         }
     }
     if (best) {
+        // A picture shown from Equipment (a sword in a hand) isn't in the scene: its wearer is picked.
+        if (registry.all_of<Transient>(*best)) {
+            if (const auto* link = registry.try_get<AttachmentLink>(*best); link && registry.valid(link->parent)) return link->parent;
+        }
         return best;
     }
 

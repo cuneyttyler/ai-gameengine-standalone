@@ -540,6 +540,15 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
         .Field("slot", FieldType::Enum, "Where it's worn or wielded (none: carried only).")
         .Options({"none", "weapon", "offhand", "head", "body", "hands", "feet", "ring", "amulet"})
         .Field("damage", FieldType::Float, "Added to attack while wielded.").Min(0)
+        // Shown on its wearer (docs/assets/animations.md §3.3) and choosing its attack clips (§2.3).
+        .Field("sprite", FieldType::Texture, "Its picture held or worn (the icon is the inventory's).")
+        .Field("point", FieldType::String, "The wearer's point it's on (empty: by slot: weapon on hand, head on head...).")
+        .Field("grip", FieldType::Float, "Where it's held, 0-1 of its picture across and down ([0.5, 0.9]: the hilt).").List()
+        .Field("pointing", FieldType::Float, "Which way its art points (degrees: 0 right, -90 up).")
+        .Field("size", FieldType::Float, "Its longest side in the wearer's frame pixels (0: its own size).").Min(0)
+        .Field("layer", FieldType::Enum, "In front of or behind the wearer: auto follows the point.").Options({"auto", "front", "behind"})
+        .Field("class", FieldType::String, "Its weapon class (sword, axe, spear, dagger, greatsword, bow, staff...): its attack clips.")
+        .Field("animation", FieldType::String, "Its attack clip or variant (slash: attack_slash).")
         .Field("armor", FieldType::Float, "Added to defense while worn.").Min(0)
         .Object("modifiers",
                 {MakeRecordValue("attribute", FieldType::String, "An attribute: maxHealth, attack, moveSpeed, resistFire..."),

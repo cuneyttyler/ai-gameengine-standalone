@@ -136,6 +136,8 @@ interface BuildState {
   paint?: PaintState
   method?: 'Assembled' | 'Paint' // which steps it has (docs/places/painted-places.md)
   projectMethod?: 'Assembled' | 'Paint'
+  fromPicture?: boolean // built from a picture given as its painting: no Layout, Plan or Paint (docs/places/scene-types.md)
+  reference?: string // a picture the painting is made after
   reviewing?: boolean // the approved map checked by the AI in the background
   inScene?: boolean // the place is in the open scene (else Build puts it there again)
   models?: { art?: string; background?: string } // this build's ("" the project's)
@@ -293,7 +295,9 @@ const ALL_STEPS = [
 ]
 // A build's steps: by its method (Assembled: Confirm, Layout, Plan, Assets, Result; Paint adds Paint and Mark).
 const buildMethod = computed(() => state.value?.method ?? newMethod.value)
-const STEPS = computed(() => ALL_STEPS.filter((st) => buildMethod.value === 'Paint' || (st.id !== 'paint' && st.id !== 'mark')).map((st, i) => ({
+// From a picture given as the painting: Confirm, Mark, Assets, Result (it's already painted, and planned by its marks).
+const STEPS = computed(() => ALL_STEPS.filter((st) => (buildMethod.value === 'Paint' || (st.id !== 'paint' && st.id !== 'mark')) &&
+  !(state.value?.fromPicture && ['layout', 'plan', 'paint'].includes(st.id))).map((st, i) => ({
   ...st, label: `${'①②③④⑤⑥⑦'[i]} ${st.label.slice(2)}`,
 })))
 // Who makes a build's art and paints its background (Build ▸ Assets), "" for the project's (Project Settings ▸ AI).
@@ -313,9 +317,22 @@ const METHODS = [
   { id: 'Assembled', label: 'Assembled', title: 'Each building, tree and prop gets its own art, put together on the grid over a painted background; every piece can be moved and edited. Steps: Confirm, Layout, Plan, Assets, Build.' },
   { id: 'Paint', label: 'Paint', title: "The place is painted whole as one picture (as Baldur's Gate's areas are), then you mark where one can walk and what a character goes behind; only doors, chests, items and characters get art of their own. Steps: Confirm, Layout, Plan, Paint, Mark, Assets, Build." },
 ] as const
-// The method a new build starts with: the project's, until changed here.
+// The method a new build starts with: the open scene's type (its menu's Type, or set here: the scene changes too).
 const newMethod = ref<'Assembled' | 'Paint'>('Assembled')
 const newMethodTouched = ref(false)
+const sceneTyped = ref(false) // the open scene has a type (else the project's method)
+// A picture to start from (docs/places/scene-types.md): as the painting itself (Paint: no Layout, Plan or Paint), or as
+// a reference the painting is made after.
+const picture = ref('')
+const pictureMode = ref<'painting' | 'reference'>('painting')
+function pickPicture(): void {
+  sendToHost({ type: 'build:pickPicture' })
+}
+function setNewMethod(method: 'Assembled' | 'Paint'): void {
+  newMethod.value = method
+  newMethodTouched.value = true
+  sendToHost({ type: 'scene:setType', sceneType: method }) // the open scene's
+}
 
 interface VerifyRow {
   id: string
@@ -526,6 +543,10 @@ onHostMessage((message) => {
   } else if (message.type === 'build:choices') {
     choiceTypes.value = (message.types as ChoiceType[]) ?? []
     if (!newMethodTouched.value && (message.buildMethod === 'Paint' || message.buildMethod === 'Assembled')) newMethod.value = message.buildMethod
+    sceneTyped.value = Boolean(message.sceneTyped)
+  } else if (message.type === 'build:picture') {
+    picture.value = (message.path as string) ?? ''
+    if (picture.value && pictureMode.value === 'painting') newMethod.value = 'Paint'
   } else if (message.type === 'build:list') {
     builds.value = (message.builds as BuildEntry[]) ?? []
   } else if (message.type === 'build:showStep') {
@@ -1202,7 +1223,13 @@ function urlOf(path: string): string {
 }
 function start(): void {
   // The words and the choices together; either may be empty, not both.
-  if (query.value.trim() || hasChoices.value) sendToHost({ type: 'build:start', query: query.value.trim(), choices: choices(), method: newMethod.value })
+  if (query.value.trim() || hasChoices.value || picture.value) {
+    sendToHost({
+      type: 'build:start', query: query.value.trim(), choices: choices(), method: picture.value && pictureMode.value === 'painting' ? 'Paint' : newMethod.value,
+      picture: picture.value, pictureMode: pictureMode.value,
+    })
+    if (picture.value && pictureMode.value === 'painting') viewing.value = 'mark'
+  }
 }
 function browse(): void {
   browsing.value = true
@@ -1433,16 +1460,29 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <p class="dim">Describe a place to build. You'll confirm the details before anything is made.</p>
       <div class="ask">
         <input v-model="query" placeholder="e.g. a large village by a river, with gardens and a market" @keydown.enter="start" />
-        <button class="primary" :disabled="!query.trim() && !hasChoices" @click="start">Start</button>
+        <button class="primary" :disabled="!query.trim() && !hasChoices && !picture" @click="start">Start</button>
       </div>
       <label class="method-row">
         Build method
-        <select v-model="newMethod" @change="newMethodTouched = true">
+        <select :value="newMethod" :disabled="!!picture && pictureMode === 'painting'" @change="setNewMethod(($event.target as HTMLSelectElement).value as 'Assembled' | 'Paint')">
           <option v-for="m in METHODS" :key="m.id" :value="m.id" :title="m.title">{{ m.label }}</option>
         </select>
         <span class="help" :title="METHODS.find((m) => m.id === newMethod)?.title">?</span>
-        <span class="dim">{{ newMethod === state?.projectMethod || !state?.projectMethod ? "the project's" : 'this build only' }}</span>
+        <span class="dim">{{ sceneTyped ? "the scene's type (its menu's Type)" : "the project's; choosing sets the scene's type" }}</span>
       </label>
+      <div class="method-row picture-row">
+        From a picture
+        <button @click="pickPicture">{{ picture ? 'Another…' : 'Choose…' }}</button>
+        <template v-if="picture">
+          <span class="path" :title="picture">{{ picture.split(/[\\/]/).pop() }}</span>
+          <select v-model="pictureMode">
+            <option value="painting" title="The picture is the place: no Layout, Plan or Paint; you mark where one can walk and what one goes behind">as the painting (Paint: skips Layout, Plan, Paint)</option>
+            <option value="reference" title="The place is laid out and planned as usual; the painting is made after this picture (its look, or the picture edited: say how in the words)">as a reference for the painting</option>
+          </select>
+          <button title="No picture" @click="picture = ''">×</button>
+        </template>
+        <span v-else class="dim">a picture of the place to build from, or to paint after</span>
+      </div>
       <div class="form-row main-choices">
         <div class="form-cell">
           <label>Place <span class="help" title="What kind of place: a settlement, a dungeon, an interior… Decided by the AI from your words unless chosen">?</span></label>

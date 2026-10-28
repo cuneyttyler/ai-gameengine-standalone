@@ -184,9 +184,12 @@ class AutoSprite:
         return out, meta
 
     def pack(self, character: str, action: str, frames: int = 12, size: int = 256,
-             on_status: Callable[[str], None] | None = None) -> tuple[dict[str, list[Image.Image]], dict]:
-        """`character` doing `action` in all 8 directions, one render: {"south": frames, …} and a sheet's description."""
+             on_status: Callable[[str], None] | None = None, holding: str = "") -> tuple[dict[str, list[Image.Image]], dict]:
+        """`character` doing `action` in all 8 directions, one render: {"south": frames, …} and a sheet's description.
+        `holding`: what it holds, said (a custom motion then: the action in words, with it)."""
         kind, prompt = motion_of(action)
+        if holding:
+            kind, prompt = "custom", f"{action.replace('_', ' ')}. {holding}"
         body: dict = {"action": kind, "frameCount": max(2, min(56, frames)), "frameSize": max(32, min(1024, size))}
         if kind == "custom":
             body |= {"name": re.sub(r"[^A-Za-z0-9 ]+", "", prompt)[:37] or "custom", "prompt": prompt[:1000], "loop": False}
@@ -295,16 +298,85 @@ def cleaned(by_direction: dict[str, list[Image.Image]], reference: Image.Image |
     return out
 
 
-def fitted(by_direction: dict[str, list[Image.Image]], size: int, height: int) -> dict[str, list[Image.Image]]:
-    """Every direction's frames cut from one box (the motion kept), scaled so the figure is `height` px tall, into
-    `size` squares, feet at the bottom."""
+# What a character holds while an attack is made (docs/assets/animations.md §3.4): a rod of one colour, found in each
+# frame (its grip end the hand, its direction the angle) and removed, so any weapon can be drawn there instead.
+ROD = ("Holding a plain straight stick of one flat bright magenta colour (#FF00FF), as long as an arm, in the right hand "
+       "as the weapon, swung with the motion")
+
+
+def _rod(a):
+    r, g, b = a[..., 0].astype(int), a[..., 1].astype(int), a[..., 2].astype(int)
+    return (r > 150) & (b > 150) & (g < 0.6 * (r + b) / 2) & (a[..., 3] > 60)
+
+
+def take_rod(frames: list[Image.Image]) -> tuple[list[Image.Image], list[list[float]]]:
+    """The rod found in each frame and removed: the frames without it, and a point a frame [x, y, angle, front] (the
+    grip end, the rod's direction in degrees clockwise from right, 1 when it's in front of the body: as much of it
+    shows as in the frame showing most). A frame without it takes the nearest frame's point."""
+    import math
+    import numpy as np
+    out, found, counts = [], [], []
+    for f in frames:
+        a = np.array(f.convert("RGBA"))
+        mask = _rod(a)
+        counts.append(int(mask.sum()))
+        point = None
+        if mask.sum() >= 12:
+            ys, xs = np.nonzero(mask)
+            body = (a[..., 3] > 128) & ~mask
+            by, bx = np.nonzero(body)
+            cx, cy = (bx.mean(), by.mean()) if len(bx) else (xs.mean(), ys.mean())
+            pts = np.stack([xs, ys], axis=1).astype(float)
+            mean = pts.mean(axis=0)
+            _, vectors = np.linalg.eigh(np.cov((pts - mean).T))
+            axis = vectors[:, -1]
+            t = (pts - mean) @ axis
+            ends = [mean + axis * t.min(), mean + axis * t.max()]
+            grip, tip = sorted(ends, key=lambda e: (e[0] - cx) ** 2 + (e[1] - cy) ** 2)
+            point = [float(grip[0]), float(grip[1]), math.degrees(math.atan2(tip[1] - grip[1], tip[0] - grip[0])), 1]
+        # Removed: the rod and its pink fringe.
+        r, g, b = a[..., 0].astype(int), a[..., 1].astype(int), a[..., 2].astype(int)
+        fringe = (r > 110) & (b > 110) & (g < 0.7 * np.minimum(r, b))
+        a[mask | fringe, 3] = 0
+        out.append(Image.fromarray(a))
+        found.append(point)
+    most = max(counts) if counts else 0
+    for i, point in enumerate(found):
+        if point is not None:
+            point[3] = 1 if counts[i] >= 0.6 * most else 0
+    known = [i for i, p in enumerate(found) if p is not None]
+    points = [list(found[min(known, key=lambda j: abs(j - i))]) if known else [0.0, 0.0, 0.0, 1] for i in range(len(found))]
+    return out, points
+
+
+def _box(by_direction: dict[str, list[Image.Image]], size: int, height: int):
     boxes = [f.getbbox() for frames in by_direction.values() for f in frames if f.getbbox()]
     if not boxes:
-        return by_direction
+        return None, 1.0
     box = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
     tall = [b[3] - b[1] for b in boxes]
     k = height / max(1, sorted(tall)[len(tall) // 2])  # the usual figure's height to the pose's
-    k = min(k, size / max(1, box[2] - box[0]), size / max(1, box[3] - box[1]))
+    return box, min(k, size / max(1, box[2] - box[0]), size / max(1, box[3] - box[1]))
+
+
+def fit_points(by_direction: dict[str, list[Image.Image]], size: int, height: int,
+               points: dict[str, list[list[float]]]) -> dict[str, list[list[float]]]:
+    """Points on the frames as they were, moved as fitted() moves the frames."""
+    box, k = _box(by_direction, size, height)
+    if box is None:
+        return points
+    w, h = max(1, round((box[2] - box[0]) * k)), max(1, round((box[3] - box[1]) * k))
+    ox, oy = (size - w) // 2, size - h
+    return {d: [[round((p[0] - box[0]) * k + ox, 1), round((p[1] - box[1]) * k + oy, 1), round(p[2]), p[3]] for p in pts]
+            for d, pts in points.items()}
+
+
+def fitted(by_direction: dict[str, list[Image.Image]], size: int, height: int) -> dict[str, list[Image.Image]]:
+    """Every direction's frames cut from one box (the motion kept), scaled so the figure is `height` px tall, into
+    `size` squares, feet at the bottom."""
+    box, k = _box(by_direction, size, height)
+    if box is None:
+        return by_direction
     out = {}
     for direction, frames in by_direction.items():
         row = []

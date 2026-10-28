@@ -9,6 +9,13 @@ import json
 
 from .providers import Provider
 
+def _style_line() -> str:
+    """The project's art style (Project Settings ▸ AI ▸ Art style), when one is chosen: it overrides the pixel artist."""
+    from .style import art_style_words
+    words = art_style_words()
+    return f"\n\nThe project's art style, whatever else is said above: {words}. Brief it in that style." if words else ""
+
+
 TASK = """You write the prompt an image model draws ONE sprite from, for a 2D game seen in the view given.
 The sprite is one piece of a place (given): it must fit that place, its style and its other pieces.
 
@@ -61,7 +68,7 @@ def write_art_prompt(provider: Provider, description: str, context: dict, kind: 
     description given when the model's answer isn't usable."""
     asked = {"kind": kind, "what": description, **context}
     reply = provider.complete([
-        {"role": "system", "content": TASK},
+        {"role": "system", "content": TASK + _style_line()},
         {"role": "user", "content": json.dumps(asked, ensure_ascii=False)},
     ])
     try:

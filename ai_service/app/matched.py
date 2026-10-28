@@ -292,9 +292,11 @@ def _thing_words_alone(piece: dict, context: dict) -> str:
 def _style_words(context: dict) -> str:
     """The art style only: the build type's reference games, for how things are drawn. Never its goals (what a place
     holds: streets, cars, parks), which turn a sheet of assets into a scene."""
+    from .style import art_style_words
     look = context.get("look") or {}
     reference = look.get("reference")
-    text = "finished isometric game art, clean and detailed"
+    words = art_style_words()
+    text = f"finished isometric game art in {words}" if words else "finished isometric game art, clean and detailed"
     if isinstance(reference, str) and reference.strip():
         text += f", drawn like {reference.rsplit(':', 1)[0].strip()[:120]}"
     return text

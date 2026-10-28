@@ -133,6 +133,11 @@ public:
     // `target` replaced in its place by `prefab` (an Interactable's becomes, Lua's become): turned and mirrored as it
     // was, what's left in its Container kept. The new thing, or none without a spawner.
     std::optional<Entity> BecomePrefab(Entity target, const std::string& prefab);
+    // `user` (the player, a character, nobody for a timer) uses `target` (docs/systems/actions.md): its Action, else its
+    // Interactable. True when it happened (not used up, cooling down, out of range or missing what it requires).
+    bool Act(Entity user, Entity target);
+    // The nearest thing `user` can act on with `action` (an Action's, or interact for an Interactable) within `radius`.
+    std::optional<Entity> ActionTarget(Entity user, const std::string& action, float radius) const;
 
     // Dialogue and quests (development_plan.md 3.2b). With a library, E talks
     // to the nearest Talk entity in range, conversations pause the game, and
@@ -377,7 +382,12 @@ private:
     void StepGameplay(float dt, const SolidQueryFn& isSolid, bool firstStep);
     void OnDeaths(size_t firstEvent);
     int LevelOf(Entity entity) const;
-    void UseInteractable(Entity target);
+    void UseInteractable(Entity target, Entity user = entt::null); // the player when no user
+    // Actions (docs/systems/actions.md): input actions' plays and events, and Action triggers (presses, timers,
+    // touches, events).
+    void StepActions(float dt);
+    std::vector<std::string> actionEvents_; // events delivered since the last StepActions, for trigger: event
+    std::vector<std::pair<Entity, Entity>> actionEventUsers_;
     // Phase 14: character AI each step; a remark shown under the action; a
     // scripted package's Lua (false when its run() has finished).
     void StepCharacters(float dt, const SolidQueryFn& isSolid);
@@ -488,6 +498,13 @@ private:
     std::vector<ScriptEvent> delivered_;
     std::vector<ScriptHandler> handlers_;
     std::vector<ScriptTimer> timers_;
+    // An Interactable's becomes waiting for its animation to play (docs/assets/animations.md §2.4).
+    struct PendingBecome {
+        Entity target{entt::null};
+        std::string prefab;
+        float seconds = 0.0f;
+    };
+    std::vector<PendingBecome> pendingBecomes_;
     std::vector<std::unique_ptr<ScriptTask>> tasks_;
     int nextScriptId_ = 1;
 };

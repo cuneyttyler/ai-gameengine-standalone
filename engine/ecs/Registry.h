@@ -19,10 +19,13 @@ using Entity = entt::entity;
 // registry, and the scene writer uses this order, so an entity's index here
 // survives a save/load round trip even though its id does not — which is
 // how the editor keeps the selection across undo and Play/Stop.
+// Made at run time from something else (a sword shown from Equipment): never saved, never in the order.
+struct Transient {};
+
 inline std::vector<Entity> EntitiesInOrder(Registry& registry) {
     std::vector<Entity> entities;
     for (auto entity : registry.view<Entity>()) {
-        entities.push_back(entity);
+        if (!registry.all_of<Transient>(entity)) entities.push_back(entity);
     }
     std::reverse(entities.begin(), entities.end());
     return entities;

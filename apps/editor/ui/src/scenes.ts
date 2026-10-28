@@ -4,7 +4,7 @@
 // Manager tab, and File ▸ New Scene… / Scenes….
 import { reactive, watch } from 'vue'
 import { openContextMenu, separator, type MenuItem } from './contextMenu'
-import { confirmDialog, promptDialog } from './dialogs'
+import { confirmDialog, promptDialog, promptWithChoice } from './dialogs'
 import { editorState } from './editorState'
 import { onHostMessage, sendToHost } from './ipc'
 import { menuExtensions } from './menus'
@@ -17,17 +17,25 @@ export interface SceneEntry {
   open: boolean // open in the editor
   markers: string[]
   location: { key: string; name: string; summary: string } | null // the World Bible place it shows (6.9)
+  type?: string // how it's built: Assembled or Paint (docs/places/scene-types.md); the Build panel and the Planner use it
 }
+
+export const SCENE_TYPES = [
+  { value: 'Assembled', label: 'Assembled', description: 'each building, tree and prop its own art, put together on the grid; every piece movable' },
+  { value: 'Paint', label: 'Paint', description: 'the place painted whole as one picture (or one you give), then marked: where one walks, what one goes behind' },
+]
 
 export const sceneList = reactive({
   scenes: [] as SceneEntry[],
   problems: [] as string[], // gateways that lead nowhere
+  defaultType: 'Assembled', // the project's (Project Settings ▸ Places ▸ Method): a new scene's
 })
 
 onHostMessage((message) => {
   if (message.type === 'scenes:list') {
     sceneList.scenes = message.scenes as SceneEntry[]
     sceneList.problems = (message.problems as string[]) ?? []
+    sceneList.defaultType = (message.defaultType as string) ?? 'Assembled'
   } else if (message.type === 'scene:changed' || message.type === 'file:moved') {
     sendToHost({ type: 'scenes:request' })
   }
@@ -37,14 +45,16 @@ sendToHost({ type: 'scenes:request' })
 export { showTab } from './paneltabs'
 
 export async function newScene(): Promise<void> {
-  const name = await promptDialog({
+  const answer = await promptWithChoice({
     title: 'New scene',
     message:
-      'A name for the new scene in this project (saved as scenes/<name>.aige). It is added to the Scene panel and opened, empty: paint its ground, then add a Marker and a Gateway to connect it to the other scenes.',
+      'A name for the new scene in this project (saved as scenes/<name>.aige), and how it is built: the Build panel and the Planner build it that way. It is added to the Scene panel and opened, empty.',
     placeholder: 'cellar',
     confirmLabel: 'Create',
+    choices: SCENE_TYPES,
+    choice: sceneList.defaultType || 'Assembled',
   })
-  if (name?.trim()) sendToHost({ type: 'scene:new', name: name.trim() })
+  if (answer?.value.trim()) sendToHost({ type: 'scene:new', name: answer.value.trim(), sceneType: answer.choice })
 }
 
 export function openScene(scene: SceneEntry): void {
@@ -91,6 +101,14 @@ export function sceneMenu(scene: SceneEntry, event: MouseEvent): void {
     separator,
     { label: 'Rename…', disabled: editorState.playing, action: () => renameScene(scene) },
     { label: 'Duplicate…', action: () => duplicateScene(scene) },
+    {
+      label: `Type: ${scene.type ?? 'Assembled'}`,
+      disabled: editorState.playing,
+      submenu: SCENE_TYPES.map((t) => ({
+        label: (scene.type ?? 'Assembled') === t.value ? `✓ ${t.label}` : t.label,
+        action: () => sendToHost({ type: 'scene:setType', path: scene.path, sceneType: t.value }),
+      })),
+    },
     separator,
     { label: 'New scene…', disabled: editorState.playing, action: newScene },
     separator,

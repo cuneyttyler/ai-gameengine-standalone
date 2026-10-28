@@ -35,6 +35,9 @@ const form = reactive({
 })
 // With AutoSprite: one of its motions, or "custom" (form.action says it).
 const motion = ref('walk')
+// A character holding a weapon (AutoSprite): drawn with a rod, kept as its hand's points, so any weapon shows there.
+const hold = ref(false)
+const weaponClass = ref('')
 const busy = ref(false)
 const error = ref('')
 // Every request made here and what came back, kept by the editor with the project (it stays when the tab changes).
@@ -137,7 +140,7 @@ function generate(): void {
   busy.value = true
   const action = byAutoSprite.value && motion.value !== 'custom' ? motion.value : form.action.trim()
   const request = form.sheet
-    ? { sheet: form.sheet, action, description: form.description.trim() }
+    ? { sheet: form.sheet, action, description: form.description.trim(), hold: byAutoSprite.value && hold.value, weaponClass: weaponClass.value.trim() }
     : { ...form, sheet: undefined, action, description: form.description.trim() }
   sendToHost({ type: 'animation:generate', request })
 }
@@ -236,6 +239,11 @@ function when(iso: string): string {
           </optgroup>
           <option value="custom">custom: say it…</option>
         </select>
+      </div>
+      <div v-if="byAutoSprite && form.sheet" class="row">
+        <label>Weapon</label>
+        <label class="small" title="Drawn holding a rod, found in each frame as the hand's points and removed: any weapon (Equipment) is drawn there"><input v-model="hold" type="checkbox" /> holds a weapon</label>
+        <input v-model="weaponClass" placeholder="class: sword, axe, spear…" spellcheck="false" title="Its weapon class: the clip is attack_<class>, chosen when a weapon of that class is wielded" />
       </div>
       <div v-if="!byAutoSprite || motion === 'custom'" class="row">
         <label>Action</label>

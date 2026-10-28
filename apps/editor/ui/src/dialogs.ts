@@ -16,6 +16,9 @@ interface DialogRequest {
   // A confirm can carry one option the user ticks (5.6: "Also remove the assets").
   checkbox: string
   checked: boolean
+  // A prompt can carry one choice too (New scene: its type), with a line saying each.
+  choices?: { value: string; label: string; description?: string }[]
+  choice?: string
   resolve: (result: boolean | string | null) => void
 }
 
@@ -100,6 +103,35 @@ export function confirmWithOption(
       checkbox: options.checkbox,
       checked: options.checked ?? false,
       resolve: (r) => resolve({ confirmed: r === true, checked: request.checked }),
+    }
+    dialogState.queue.push(request)
+  })
+}
+
+// A prompt with a choice beside it: the text and the choice, or null when cancelled.
+export function promptWithChoice(
+  options: Options & {
+    value?: string
+    placeholder?: string
+    choices: { value: string; label: string; description?: string }[]
+    choice?: string
+  },
+): Promise<{ value: string; choice: string } | null> {
+  return new Promise((resolve) => {
+    const request: DialogRequest = {
+      kind: 'prompt',
+      title: options.title ?? '',
+      message: options.message,
+      confirmLabel: options.confirmLabel ?? 'OK',
+      cancelLabel: options.cancelLabel ?? 'Cancel',
+      danger: false,
+      value: options.value ?? '',
+      placeholder: options.placeholder ?? '',
+      checkbox: '',
+      checked: false,
+      choices: options.choices,
+      choice: options.choice ?? options.choices[0]?.value ?? '',
+      resolve: (r) => resolve(typeof r === 'string' ? { value: r, choice: request.choice ?? '' } : null),
     }
     dialogState.queue.push(request)
   })

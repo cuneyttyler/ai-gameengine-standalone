@@ -190,6 +190,22 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
         screen.y = pose.y - lift;
         screen.depth = pose.depth + 0.5f;
     }
+    // A thing on several cells (a building) is drawn in front of or behind the player by the footprint point nearest
+    // them, not by the one cell it stands on: in front of anyone behind any part of it, behind anyone in front of any
+    // part of it, along its long sides too.
+    if (const auto player = FindPlayer(registry); player && registry.all_of<WorldTransform2D>(*player)) {
+        const auto& at = registry.get<WorldTransform2D>(*player);
+        const float own = ProjectIso(at.x, at.y, iso).depth;
+        for (auto [entity, obstacle, world, screen] : registry.view<Obstacle, WorldTransform2D, ScreenTransform2D>(entt::exclude<Tile>).each()) {
+            if (obstacle.left <= 0 && obstacle.right <= 0 && obstacle.back <= 0) continue;
+            if (const auto* sprite = registry.try_get<Sprite>(entity); !sprite || sprite->flat) continue;
+            const float cx = std::floor(world.x), cy = std::floor(world.y);
+            const float nx = std::clamp(at.x, cx - obstacle.left, cx + obstacle.right + 1.0f);
+            const float ny = std::clamp(at.y, cy - obstacle.back, cy + 1.0f);
+            const float nearest = ProjectIso(nx, ny, iso).depth;
+            screen.depth = nearest + 0.5f + (own < nearest ? 0.01f : -0.01f);
+        }
+    }
 
     auto tiles = registry.view<Tile, ScreenTransform2D>();
     for (auto entity : tiles) {
@@ -212,6 +228,7 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
         screen.y = pose.y - extra * 0.5f;
         screen.depth = pose.depth;
     }
+    PlaceAttachments(registry); // held and worn things, on their wearers' points
 }
 
 namespace {
@@ -562,6 +579,16 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
         const auto made = BecomePrefab(entity, prefab);
         return made ? sol::make_object(lua_.State(), ToId(*made)) : sol::lua_nil;
     };
+    // act(user, target) or act(user, "farm") -> boolean: `user` uses `target` (its Action or Interactable), or the nearest
+    // thing with that action within 1.5 cells (docs/systems/actions.md).
+    env["act"] = [this](lua_Integer userId, sol::object target) {
+        const Entity user = ToEntity(userId);
+        if (target.is<std::string>()) {
+            const auto found = ActionTarget(user, target.as<std::string>(), 1.5f);
+            return found ? Act(user, *found) : false;
+        }
+        return target.is<lua_Integer>() ? Act(user, ToEntity(target.as<lua_Integer>())) : false;
+    };
     // use(id) -> boolean: used as the player would use it (unlocked with a key they carry, opened, taken, its flag,
     // its event, its becomes).
     env["use"] = [this](lua_Integer id) {
@@ -708,6 +735,10 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
     };
     env["tween_done"] = [this](int id) { return TweenDone(id); };
     env["anim_trigger"] = [this](lua_Integer id, const std::string& trigger) { TriggerAnimation(registry_, ToEntity(id), trigger); };
+    // play(id, "dig"): a state, a variant ("attack_kick") or a clip by name, once; "stop": back to its default state.
+    env["play"] = [this](lua_Integer id, const std::string& name) { TriggerAnimation(registry_, ToEntity(id), name); };
+    // anim_set(id, "angry", 1): a parameter for an animator record's conditions.
+    env["anim_set"] = [this](lua_Integer id, const std::string& name, float value) { SetAnimationParameter(registry_, ToEntity(id), name, value); };
     // Difficulty (16): the level's id, a category's step (1-5), and changing it.
     env["difficulty"] = [this]() { return difficultyLevel_.empty() ? difficultyModel_.DefaultLevel() : difficultyLevel_; };
     env["difficulty_step"] = [this](const std::string& category) {
@@ -2005,6 +2036,17 @@ void GameSession::CueEffects(size_t firstEvent) {
 }
 
 void GameSession::StepFx(float dt) {
+    // Becomes that waited for an animation.
+    for (auto& pending : pendingBecomes_) pending.seconds -= dt;
+    std::vector<PendingBecome> due;
+    std::erase_if(pendingBecomes_, [&](const PendingBecome& p) {
+        if (p.seconds > 0.0f) return false;
+        due.push_back(p);
+        return true;
+    });
+    for (const auto& p : due) {
+        if (registry_.valid(p.target)) BecomePrefab(p.target, p.prefab);
+    }
     // Animators (18.2) and the events on their frames.
     for (const auto& fired : UpdateAnimators(registry_, animations_, dt)) {
         float x = 0, y = 0;
@@ -2293,6 +2335,7 @@ void GameSession::StepCharacters(float dt, const SolidQueryFn& isSolid) {
         }
     };
     context.emit = [this](const std::string& event, Entity entity) { Emit({event, entity}); };
+    context.act = [this](Entity actor, Entity target) { return Act(actor, target); };
     context.runScript = [this](Entity actor, const std::string& script, float stepDt) {
         return RunScriptedPackage(actor, script, stepDt);
     };
@@ -2307,22 +2350,195 @@ std::optional<GameSession::InteractTarget> GameSession::CurrentInteraction() {
     return std::nullopt;
 }
 
-void GameSession::UseInteractable(Entity target) {
+void GameSession::UseInteractable(Entity target, Entity user) {
     const auto player = FindPlayer(registry_);
-    if (!player) return;
-    const InteractResult result = Interact(registry_, *player, target, story_, LevelOf(*player), gameplayRng_);
-    if (!result.text.empty()) {
+    if (user == entt::null) {
+        if (!player) return;
+        user = *player;
+    }
+    if (!registry_.valid(user)) return;
+    const bool byPlayer = player && user == *player;
+    const InteractResult result = Interact(registry_, user, target, story_, LevelOf(user), gameplayRng_);
+    if (byPlayer && !result.text.empty()) {
         ShowNotice(result.text, 4.0 + result.text.size() / 30.0); // time to read it
-    } else if (!result.message.empty()) {
+    } else if (byPlayer && !result.message.empty()) {
         ShowNotice(result.message, 2.5, "alert");
     }
-    if (!result.event.empty()) Emit({result.event, target, *player, 0.0, ""});
-    if (result.used) Emit({"interact", registry_.valid(target) ? target : Entity{entt::null}, *player, 0.0, ""});
-    if (result.used && storyLibrary_ != nullptr) {
+    if (!result.event.empty()) Emit({result.event, target, user, 0.0, ""});
+    if (result.used) Emit({"interact", registry_.valid(target) ? target : Entity{entt::null}, user, 0.0, ""});
+    if (result.used && byPlayer && storyLibrary_ != nullptr) {
         for (const auto& name : NamesOf(target)) story_.OnUsed(name, *storyLibrary_); // use/examine objectives
     }
-    if (result.openShop) shopRequest_ = target;
-    if (!result.becomes.empty() && registry_.valid(target)) BecomePrefab(target, result.becomes);
+    if (result.openShop && byPlayer) shopRequest_ = target;
+    // Its animation (its own, else its verb's: Open plays open), and its becomes once that has played.
+    float playing = 0.0f;
+    if (result.used && registry_.valid(target)) {
+        if (const auto* thing = registry_.try_get<Interactable>(target)) {
+            std::string clip = thing->animation;
+            if (clip.empty()) {
+                for (char c : thing->verb) clip += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+            playing = AnimationLength(registry_, animations_, target, clip);
+            if (playing > 0.0f) TriggerAnimation(registry_, target, clip);
+            if (!thing->becomeAfterAnimation) playing = 0.0f;
+        }
+    }
+    if (!result.becomes.empty() && registry_.valid(target)) {
+        if (playing > 0.0f) pendingBecomes_.push_back({target, result.becomes, playing});
+        else BecomePrefab(target, result.becomes);
+    }
+}
+
+bool GameSession::Act(Entity user, Entity target) {
+    if (!registry_.valid(target)) return false;
+    const auto* action = registry_.try_get<Action>(target);
+    if (!action) {
+        if (!registry_.all_of<Interactable>(target)) return false;
+        UseInteractable(target, user);
+        return true;
+    }
+    auto& state = registry_.get_or_emplace<ActionState>(target);
+    if ((action->once && state.done) || state.cooling > 0.0f) return false;
+    const auto player = FindPlayer(registry_);
+    const bool byPlayer = player && user == *player;
+    const bool hasUser = registry_.valid(user);
+    if (hasUser && action->trigger == "input") {
+        const auto* a = registry_.try_get<WorldTransform2D>(user);
+        const auto* b = registry_.try_get<WorldTransform2D>(target);
+        if (a && b && std::hypot(a->x - b->x, a->y - b->y) > action->range + 0.25f) return false;
+    }
+    // What it needs from its user.
+    auto* inventory = hasUser ? registry_.try_get<Inventory>(user) : nullptr;
+    if (!action->requiresItem.empty() && (!inventory || CountItem(*inventory, action->requiresItem) < 1)) {
+        if (byPlayer) ShowNotice("Needs " + action->requiresItem, 2.5, "alert");
+        return false;
+    }
+    if (!action->requiresFlag.empty() && !story_.Flag(action->requiresFlag)) return false;
+    // Animations, then what it takes and gives.
+    float playing = 0.0f;
+    if (hasUser && !action->userAnimation.empty()) {
+        playing = std::max(playing, AnimationLength(registry_, animations_, user, action->userAnimation));
+        TriggerAnimation(registry_, user, action->userAnimation);
+    }
+    if (!action->animation.empty()) {
+        playing = std::max(playing, AnimationLength(registry_, animations_, target, action->animation));
+        TriggerAnimation(registry_, target, action->animation);
+    }
+    if (hasUser) {
+        if (const auto* at = registry_.try_get<WorldTransform2D>(target); at && registry_.all_of<WorldTransform2D>(user)) {
+            const auto& from = registry_.get<WorldTransform2D>(user);
+            const float dx = at->x - from.x, dy = at->y - from.y, l = std::hypot(dx, dy);
+            if (l > 0.01f) registry_.emplace_or_replace<Facing>(user, dx / l, dy / l); // it turns to what it uses
+        }
+        for (const auto& stack : ParseItems(action->takes)) {
+            if (!inventory) break;
+            if (stack.item == "gold") inventory->gold = std::max(0, inventory->gold - stack.count);
+            else RemoveItem(*inventory, stack.item, stack.count);
+        }
+        if (!action->gives.empty()) {
+            auto& pockets = registry_.get_or_emplace<Inventory>(user);
+            for (const auto& stack : ParseItems(action->gives)) {
+                if (stack.item == "gold") {
+                    pockets.gold += stack.count;
+                } else if (const int n = AddItem(pockets, stack.item, stack.count); n > 0) {
+                    Emit({"item_added", user, target, static_cast<double>(n), stack.item});
+                }
+            }
+        }
+    }
+    if (!action->setFlag.empty()) story_.SetFlag(action->setFlag, true);
+    if (!action->emits.empty()) Emit({action->emits, target, hasUser ? user : Entity{entt::null}, 0.0, action->action});
+    if (byPlayer && !action->text.empty()) ShowNotice(action->text, 3.0 + action->text.size() / 30.0);
+    state.done = true;
+    state.cooling = action->cooldown;
+    // Becomes, once the animations have played.
+    if (!action->becomes.empty()) {
+        if (playing > 0.0f) pendingBecomes_.push_back({target, action->becomes, playing});
+        else BecomePrefab(target, action->becomes);
+    }
+    return true;
+}
+
+std::optional<Entity> GameSession::ActionTarget(Entity user, const std::string& action, float radius) const {
+    auto& registry = const_cast<Registry&>(registry_);
+    const auto* at = registry.valid(user) ? registry.try_get<WorldTransform2D>(user) : nullptr;
+    if (!at) return std::nullopt;
+    std::optional<Entity> best;
+    float bestDistance = 1e9f;
+    for (auto [entity, world] : registry.view<WorldTransform2D>().each()) {
+        if (entity == user) continue;
+        if (const auto* a = registry.try_get<Action>(entity)) {
+            if (a->trigger != "input" || a->action != action) continue;
+            if (const auto* s = registry.try_get<ActionState>(entity); s && ((a->once && s->done) || s->cooling > 0.0f)) continue;
+        } else if (!(action == "interact" && registry.all_of<Interactable>(entity))) {
+            continue;
+        }
+        const float d = std::hypot(world.x - at->x, world.y - at->y);
+        if (d <= radius && d < bestDistance) best = entity, bestDistance = d;
+    }
+    return best;
+}
+
+void GameSession::StepActions(float dt) {
+    const auto player = FindPlayer(registry_);
+    // Input actions that play a clip on the player or emit an event (Project Settings ▸ Input).
+    if (player) {
+        for (const auto& a : ActiveInputMap().actions) {
+            if (a.axis || (a.plays.empty() && a.event.empty()) || !input_.Pressed(a.name)) continue;
+            if (!a.plays.empty()) TriggerAnimation(registry_, *player, a.plays);
+            if (!a.event.empty()) Emit({a.event, *player, Entity{entt::null}, 0.0, a.name});
+        }
+    }
+    // Pressed: the nearest thing with that action within its range (one a press).
+    std::map<std::string, std::pair<Entity, float>> pressed;
+    std::vector<std::pair<Entity, Entity>> due; // (user, target)
+    const auto* at = player ? registry_.try_get<WorldTransform2D>(*player) : nullptr;
+    std::vector<Entity> things;
+    for (auto [entity, action] : registry_.view<Action>().each()) things.push_back(entity);
+    for (Entity entity : things) {
+        if (!registry_.valid(entity)) continue;
+        const auto& action = registry_.get<Action>(entity);
+        auto& state = registry_.get_or_emplace<ActionState>(entity);
+        state.age += dt;
+        state.cooling = std::max(0.0f, state.cooling - dt);
+        const auto* world = registry_.try_get<WorldTransform2D>(entity);
+        const float d = at && world ? std::hypot(world->x - at->x, world->y - at->y) : 1e9f;
+        if (action.trigger == "input") {
+            if (player && input_.Pressed(action.action) && d <= action.range) {
+                auto it = pressed.find(action.action);
+                if (it == pressed.end() || d < it->second.second) pressed[action.action] = {entity, d};
+            }
+        } else if (action.trigger == "timer") {
+            if (state.age >= action.seconds && !(action.once && state.done) && state.cooling <= 0.0f) {
+                due.push_back({Entity{entt::null}, entity});
+                state.age = 0.0f; // again after as long (unless once)
+            }
+        } else if (action.trigger == "touch") {
+            const bool on = d <= std::max(0.5f, action.range * 0.5f);
+            if (on && !state.touching && player) due.push_back({*player, entity});
+            state.touching = on;
+        } else if (action.trigger == "event") {
+            for (size_t i = 0; i < actionEvents_.size(); ++i) {
+                if (actionEvents_[i] == action.event) {
+                    due.push_back({actionEventUsers_[i].second, entity});
+                    break;
+                }
+            }
+        }
+    }
+    actionEvents_.clear();
+    actionEventUsers_.clear();
+    // interact is the Interactables' key too: an Action on it acts only when no Interactable is nearer.
+    for (const auto& [name, hit] : pressed) {
+        if (name == "interact") {
+            if (const auto thing = FindInteractable(registry_, *player)) {
+                const auto* w = registry_.try_get<WorldTransform2D>(*thing);
+                if (w && at && std::hypot(w->x - at->x, w->y - at->y) < hit.second) continue;
+            }
+        }
+        due.push_back({*player, hit.first});
+    }
+    for (const auto& [user, target] : due) Act(user, target);
 }
 
 std::optional<Entity> GameSession::BecomePrefab(Entity target, const std::string& prefab) {
@@ -2393,6 +2609,8 @@ void GameSession::DispatchEvents() {
         batch.swap(pendingEvents_);
         for (const auto& event : batch) {
             delivered_.push_back(event);
+            actionEvents_.push_back(event.name);
+            actionEventUsers_.push_back({event.entity, event.other});
             // Achievements (24): what the event is about, by name and by text (a prefab, a trigger).
             {
                 std::vector<std::string> about = {event.text};
@@ -2476,6 +2694,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
     if (input_.Pressed("debug_ai")) showAiDebug_ = !showAiDebug_;
     if (input_.Pressed("debug_physics")) showPhysicsDebug_ = !showPhysicsDebug_;
     HandleStoryInput(isKeyDown);
+    StepActions(static_cast<float>(std::min(frameSeconds, 0.25)));
     if (noticeSeconds_ > 0.0) {
         noticeSeconds_ -= frameSeconds;
         if (noticeSeconds_ <= 0.0) {
