@@ -233,6 +233,68 @@ def _png_on_white(picture: bytes) -> bytes:
     return buf.getvalue()
 
 
+def strip_outline(frame: Image.Image, passes: int = 4, dark: int = 70) -> Image.Image:
+    """Without the dark outline AutoSprite draws round its figures: near-black pixels on the silhouette's edge peeled
+    off, a ring at a time (its frames are 256 px; the line is 2 to 3 px)."""
+    import numpy as np
+    a = np.array(frame.convert("RGBA"))
+    for _ in range(passes):
+        solid = a[..., 3] > 24
+        inside = solid.copy()  # solid with all four neighbours solid
+        inside[1:, :] &= solid[:-1, :]
+        inside[:-1, :] &= solid[1:, :]
+        inside[:, 1:] &= solid[:, :-1]
+        inside[:, :-1] &= solid[:, 1:]
+        edge = solid & ~inside & (a[..., :3].max(axis=2) < dark)
+        if not edge.any():
+            break
+        a[edge, 3] = 0
+    a[a[..., 3] <= 24, 3] = 0  # the faint fringe left beyond it
+    return Image.fromarray(a)
+
+
+def match_colours(frame: Image.Image, reference: Image.Image) -> Image.Image:
+    """Its colours brought to the reference's (each channel's mean and spread over the solid pixels): AutoSprite's
+    frames come out darker than the picture they're made from."""
+    import numpy as np
+    f, r = np.asarray(frame.convert("RGBA")).astype(np.float32), np.asarray(reference.convert("RGBA")).astype(np.float32)
+    fm, rm = f[..., 3] > 128, r[..., 3] > 128
+    if fm.sum() < 10 or rm.sum() < 10:
+        return frame
+    out = f.copy()
+    for c in range(3):
+        x, y = f[..., c][fm], r[..., c][rm]
+        out[..., c][fm] = np.clip((x - x.mean()) / (x.std() + 1e-3) * y.std() + y.mean(), 0, 255)
+    return Image.fromarray(out.astype(np.uint8))
+
+
+def cleaned(by_direction: dict[str, list[Image.Image]], reference: Image.Image | None) -> dict[str, list[Image.Image]]:
+    """Outlines stripped and, with a reference (the pose it was made from), colours matched to it, one shift for all
+    frames (so they don't flicker)."""
+    out = {d: [strip_outline(f) for f in frames] for d, frames in by_direction.items()}
+    if reference is None:
+        return out
+    every = [f for frames in out.values() for f in frames]
+    if not every:
+        return out
+    # One colour shift for all: measured on all the frames side by side.
+    strip = Image.new("RGBA", (sum(f.width for f in every), max(f.height for f in every)), (0, 0, 0, 0))
+    x = 0
+    for f in every:
+        strip.paste(f, (x, 0))
+        x += f.width
+    matched = match_colours(strip, reference)
+    x = 0
+    for d, frames in out.items():
+        for i, f in enumerate(frames):
+            piece = matched.crop((x, 0, x + f.width, f.height))
+            piece.putalpha(f.getchannel("A"))
+            frames[i] = piece
+            x += f.width
+
+    return out
+
+
 def fitted(by_direction: dict[str, list[Image.Image]], size: int, height: int) -> dict[str, list[Image.Image]]:
     """Every direction's frames cut from one box (the motion kept), scaled so the figure is `height` px tall, into
     `size` squares, feet at the bottom."""

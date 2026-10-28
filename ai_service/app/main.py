@@ -935,7 +935,9 @@ def create_app(
                 shot, _ = lab.animate(character, request.action, 12, 256,
                                       on_status=lambda text: report(0, 1, f"Animating {source.name}: {text}"))
                 frames = []
-                for f in autosprite.fitted({"one": shot}, size, height)["one"]:
+                with Image.open(source) as im:
+                    picture = im.convert("RGBA")
+                for f in autosprite.fitted(autosprite.cleaned({"one": shot}, picture), size, height)["one"]:
                     buf = io.BytesIO()
                     f.save(buf, "PNG")
                     frames.append(buf.getvalue())
@@ -994,7 +996,13 @@ def create_app(
                 "model": "autosprite" if auto else "pixellab animate-with-text", "humanoid": humanoid,
                 "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}
         (folder / f"{sheet.name}.gen.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
-        return {"ok": True, "name": name, "frames": made, "sheet": sheet.relative_to(root).as_posix(), "humanoid": humanoid}
+        # The clip it's kept as on its sheet (the editor's): named by what it does, so an animator plays it.
+        from .charsheet import clip_for
+        clip = clip_for(request.action, humanoid is not False)
+        if humanoid is False and clip not in ("open", "close", "break"):
+            clip = "idle"  # a thing's own motion (a flame, a flag): it loops
+        return {"ok": True, "name": name, "frames": made, "sheet": sheet.relative_to(root).as_posix(), "humanoid": humanoid,
+                "clip": clip}
 
     def bfl_art() -> str | None:
         """The project's art model when it's BFL's (Preferences / Project Settings ▸ AI ▸ Art): characters and animations
@@ -1163,7 +1171,8 @@ def create_app(
             except Exception as error:  # noqa: BLE001 - said to the editor
                 return {"ok": False, "errors": [f"AutoSprite: {error}"]}
             box = front.getbbox() or (0, 0, size, size)
-            results = autosprite.fitted({d: f for d, f in shot.items() if d in faces}, size, box[3] - box[1])
+            shot = autosprite.cleaned({d: f for d, f in shot.items() if d in faces}, front)
+            results = autosprite.fitted(shot, size, box[3] - box[1])
             auto_fps = autosprite.fps_of(shot_meta, 12)
         elif copies:
             # One call a direction it faces, west's side mirrored from east's (south-east, east, north-east): five for eight,
@@ -1190,9 +1199,10 @@ def create_app(
                                 for f in frames[east]]
         if not frames:
             return {"ok": False, "errors": errors or ["nothing was drawn"]}
-        clip = charsheet.clip_for(request.action)
+        clip = charsheet.clip_for(request.action, info.get("humanoid", True) is not False)
+        base = clip.split("_")[0]
         sheet, atlas = charsheet.add_clip(sheet, atlas, clip, frames, fps=auto_fps if auto else 12.0 if video else 10.0 if v3 or copies else 8.0 if clip in ("walk", "idle") else 10.0,
-                                          loop="loop" if clip in ("walk", "idle") or clip not in ("attack", "cast", "hurt", "die", "use") else "once")
+                                          loop="loop" if base in ("walk", "idle") or base not in ("attack", "cast", "hurt", "die", "use", "open", "close", "break") else "once")
         name = Path(request.sheet).name.replace(".character.anim.json", "")
         path, texture = charsheet.write(root, Path(request.sheet).parent.as_posix(), name, sheet, atlas)
         report(len(painted), len(painted), f"{clip} added")

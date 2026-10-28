@@ -19,8 +19,26 @@ _CLIPS = (("run", "walk"), ("walk", "walk"), ("attack", "attack"), ("strik", "at
           ("use", "use"))
 
 
-def clip_for(action: str) -> str:
+# Motions that are variants of an animator state (docs/assets/animations.md §2.1): a punch is one of the attacks.
+_VARIANTS = (("punch", "attack_punch"), ("kick", "attack_kick"), ("shoot", "attack_shoot"), ("slash", "attack_slash"),
+             ("thrust", "attack_thrust"), ("stab", "attack_stab"), ("pickup", "use_pickup"), ("pick up", "use_pickup"),
+             ("push", "use_push"), ("pull", "use_pull"), ("throw", "use_throw"), ("hit_react", "hurt"), ("hit react", "hurt"))
+# A thing's (a prop's) states.
+_PROP = (("open", "open"), ("close", "close"), ("shut", "close"), ("break", "break"), ("shatter", "break"), ("smash", "break"),
+         ("destroy", "break"))
+
+
+def clip_for(action: str, humanoid: bool = True) -> str:
+    """The clip an action is kept as: named by the animator state it plays (walk, attack, cast, die, open…), a variant
+    of one (attack_punch), or its own name. A thing that isn't a person: open, close, break, else its looping idle."""
     a = action.lower()
+    if not humanoid:
+        for word, clip in _PROP:
+            if word in a:
+                return clip
+    for word, clip in _VARIANTS:
+        if word in a:
+            return clip
     for word, clip in _CLIPS:
         if word in a:
             return clip
