@@ -102,6 +102,45 @@ function scaleOf(t: Target): number {
 }
 // The big view (a click on a picture): as large as fits the window, at most 4x.
 const big = ref<Target | null>(null)
+// In the big view: a box drawn round the door by hand (the picture's pixels), to redo it from.
+const drawing = ref(false)
+const drawn = ref<[number, number, number, number] | null>(null)
+let drawFrom: [number, number] | null = null
+function openBig(t: Target): void {
+  big.value = t
+  drawing.value = false
+  drawn.value = null
+}
+function pointAt(event: MouseEvent, t: Target): [number, number] {
+  const r = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const s = bigScale(t)
+  return [Math.round(t.region[0] + (event.clientX - r.left) / s), Math.round(t.region[1] + (event.clientY - r.top) / s)]
+}
+function drawDown(event: MouseEvent): void {
+  if (!drawing.value || !big.value) return
+  drawFrom = pointAt(event, big.value)
+  drawn.value = [drawFrom[0], drawFrom[1], 1, 1]
+}
+function drawMove(event: MouseEvent): void {
+  if (!drawFrom || !big.value) return
+  const [x, y] = pointAt(event, big.value)
+  drawn.value = [Math.min(x, drawFrom[0]), Math.min(y, drawFrom[1]), Math.abs(x - drawFrom[0]) + 1, Math.abs(y - drawFrom[1]) + 1]
+}
+function drawUp(): void {
+  drawFrom = null
+}
+function drawnStyle(t: Target): Record<string, string> {
+  if (!drawn.value) return { display: 'none' }
+  const s = bigScale(t)
+  const [x, y, w, h] = drawn.value
+  return { left: `${(x - t.region[0]) * s}px`, top: `${(y - t.region[1]) * s}px`, width: `${w * s}px`, height: `${h * s}px` }
+}
+// Redo: a door from the box drawn (or looked for again without one); a thing animated again.
+function redo(t: Target): void {
+  const box = drawn.value && drawn.value[2] >= 4 && drawn.value[3] >= 6 ? drawn.value : undefined
+  sendToHost({ type: 'build:animateRun', key: t.key, ...(box ? { box } : {}) })
+  big.value = null
+}
 function bigScale(t: Target): number {
   return Math.min((window.innerWidth * 0.8) / Math.max(1, t.region[2]), (window.innerHeight * 0.75) / Math.max(1, t.region[3]), 4)
 }
@@ -153,7 +192,7 @@ function stop(): void {
     <p v-if="!shown.length" class="dim">Nothing that moves yet: buildings and used things show here once their art is made (or the place is painted).</p>
     <div v-for="t in shown" :key="t.key" class="target" :class="t.status">
       <div class="thumb" :style="{ width: `${t.region[2] * scaleOf(t)}px`, height: `${t.region[3] * scaleOf(t)}px` }"
-           :title="t.status === 'done' ? 'Animated: click to see it big' : 'Click to see it big'" @click="big = t">
+           :title="t.status === 'done' ? 'Animated: click to see it big' : 'Click to see it big'" @click="openBig(t)">
         <div class="pic" :style="picStyle(t, scaleOf(t))"></div>
         <div v-if="t.preview && t.status === 'done' && t.kind === 'door' && t.box" class="play" :style="doorPlay(t)"></div>
         <div v-else-if="t.preview && t.status === 'done' && t.kind === 'thing'" class="play thing" :style="thingPlay(t)"></div>
@@ -180,13 +219,25 @@ function stop(): void {
           <b>{{ big.label }}</b>
           <span class="dim">{{ big.status === 'done' ? (big.kind === 'door' ? 'its door opening and closing' : 'its animation') : STATUS[big.status] }}</span>
           <span class="spacer"></span>
+          <template v-if="big.kind === 'door'">
+            <button :class="{ active: drawing }" :disabled="running" title="Drag a box round the door, then Redo: it's opened from that box as drawn"
+                    @click="drawing = !drawing; drawn = null">{{ drawing ? 'Drawing the door…' : 'Draw the door' }}</button>
+            <button class="primary" :disabled="running || (drawing && !drawn)"
+                    :title="drawn ? 'Opened again from the box you drew' : 'Looked for and opened again'" @click="redo(big)">
+              {{ drawn ? 'Redo with this box' : 'Redo' }}
+            </button>
+          </template>
+          <button v-else class="primary" :disabled="running" title="Animated again (about 5 AutoSprite credits)" @click="redo(big)">Redo</button>
           <button @click="big = null">Close</button>
         </div>
-        <div class="thumb big-thumb" :style="{ width: `${big.region[2] * bigScale(big)}px`, height: `${big.region[3] * bigScale(big)}px` }">
+        <p v-if="drawing" class="dim small">Drag round the door, sill to lintel and frame to frame; what's in front of it (a post, a step) is kept drawn.</p>
+        <div class="thumb big-thumb" :class="{ drawing }" :style="{ width: `${big.region[2] * bigScale(big)}px`, height: `${big.region[3] * bigScale(big)}px` }"
+             @mousedown.prevent="drawDown" @mousemove="drawMove" @mouseup="drawUp" @mouseleave="drawUp">
           <div class="pic" :style="picStyle(big, bigScale(big))"></div>
           <div v-if="big.preview && big.status === 'done' && big.kind === 'door' && big.box" class="play" :style="doorPlay(big, bigScale(big))"></div>
           <div v-else-if="big.preview && big.status === 'done' && big.kind === 'thing'" class="play thing" :style="thingPlay(big, bigScale(big))"></div>
           <div v-else-if="big.box" class="box" :style="boxStyle(big, bigScale(big))"></div>
+          <div v-if="drawing" class="box drawn" :style="drawnStyle(big)"></div>
         </div>
       </div>
     </div>
@@ -274,6 +325,15 @@ function stop(): void {
 }
 .big-thumb {
   cursor: default;
+}
+.big-thumb.drawing {
+  cursor: crosshair;
+}
+.box.drawn {
+  border-color: #f5c542;
+}
+button.active {
+  border-color: var(--accent, #4a8);
 }
 .play {
   position: absolute;

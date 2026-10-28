@@ -94,9 +94,11 @@ def _slope_of(picture: Image.Image, box: list[int]) -> float:
     return best
 
 
-def door_frames(picture: Image.Image, box: list[int], frames: int = 24) -> tuple[list[Image.Image], list[int]] | None:
+def door_frames(picture: Image.Image, box: list[int], frames: int = 24, exact: bool = False) -> tuple[list[Image.Image], list[int]] | None:
     """The door in `box` (x, y, w, h: roughly, as found) opening, `frames` frames, each the doorway's size; and the
-    doorway's box in the picture (where the frames go). None when no doorway is found there."""
+    doorway's box in the picture (where the frames go). None when no doorway is found there. `exact`: the box was drawn
+    by hand round the door, so the doorway is the slanted shape inside it as drawn (its sides the box's, its top at the
+    box's top on one side, its bottom at the box's bottom on the other), not fitted to the picture's edges."""
     picture = picture.convert("RGBA")
     slope = _slope_of(picture, box)
     mirrored = slope < 0
@@ -104,7 +106,13 @@ def door_frames(picture: Image.Image, box: list[int], frames: int = 24) -> tuple
         picture = ImageOps.mirror(picture)
         box = [picture.width - box[0] - box[2], box[1], box[2], box[3]]
         slope = -slope
-    fitted = fit_doorway(picture, box, slope)
+    if exact:
+        x, y, w, h = (int(round(v)) for v in box)
+        x, y = max(0, x), max(0, y)
+        w, h = min(w, picture.width - x), min(h, picture.height - y)
+        fitted = (x, x + w, float(y), float(y + h) - slope * w) if w >= 4 and h - slope * w >= 6 else None
+    else:
+        fitted = fit_doorway(picture, box, slope)
     if fitted is None:
         return None
     left, right, top, bottom = fitted
