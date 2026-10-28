@@ -168,6 +168,14 @@ function thumb(item: Item): string {
 }
 
 const aiReady = computed(() => editorState.ai.state === 'ready')
+// Why Generate is off, in words (shown beside it): "" when it's on.
+const whyOff = computed(() =>
+  busy.value ? 'Still drawing the last one…'
+  : !aiReady.value ? `Turn AI on (${editorState.ai.text || editorState.ai.state})`
+  : !form.description.trim() ? 'Write a description'
+  : !(form.name || suggestedName.value) ? 'Name it'
+  : '',
+)
 </script>
 
 <template>
@@ -209,13 +217,15 @@ const aiReady = computed(() => editorState.ai.state === 'ready')
         <label></label>
         <button
           class="primary"
-          :disabled="busy || !aiReady || !form.description.trim() || !(form.name || suggestedName)"
+          :disabled="!!whyOff"
+          :title="whyOff"
           @click="generate"
         >
           Generate {{ variantList.length > 1 ? variantList.length + ' variants' : '' }}
         </button>
         <span v-if="busy" class="muted">Drawing {{ expected }} {{ expected === 1 ? 'image' : 'images' }} (~10 s each)…</span>
         <span v-else-if="!aiReady" class="muted">Needs AI to be on.</span>
+        <span v-else-if="whyOff" class="muted">{{ whyOff }}</span>
       </div>
       <div v-if="error" class="error">{{ error }}</div>
       <p class="muted small">

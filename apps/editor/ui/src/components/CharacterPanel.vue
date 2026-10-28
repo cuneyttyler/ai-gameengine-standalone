@@ -82,6 +82,15 @@ const suggestedName = computed(() =>
     .join('-'),
 )
 const aiReady = computed(() => editorState.ai.state === 'ready')
+// Why Generate is off, in words (shown beside it): "" when it's on.
+const whyOff = computed(() =>
+  busy.value ? 'Still drawing the last one…'
+  : !aiReady.value ? `Turn AI on (${editorState.ai.text || editorState.ai.state})`
+  : noKey.value ? `Needs ${byBfl.value ? 'BFL_API_KEY' : 'PIXELLAB_API_KEY'} in ai_service/.env`
+  : !form.description.trim() ? 'Write a description'
+  : !(form.name || suggestedName.value) ? 'Name it'
+  : '',
+)
 // Drawn by the project's art model when it's BFL's, else PixelLab.
 const byBfl = computed(() => editorState.ai.artInUse.startsWith('bfl:'))
 const noKey = computed(() => (byBfl.value ? editorState.ai.available.bfl === false : editorState.ai.available.pixellab === false))
@@ -157,7 +166,8 @@ function thumb(path: string, created: string): string {
         <label></label>
         <button
           class="primary"
-          :disabled="busy || !aiReady || noKey || !form.description.trim() || !(form.name || suggestedName)"
+          :disabled="!!whyOff"
+          :title="whyOff"
           @click="generate"
         >
           Generate character
@@ -165,6 +175,7 @@ function thumb(path: string, created: string): string {
         <span v-if="busy" class="muted">Drawing {{ form.directions }} directions (a minute or two)…</span>
         <span v-else-if="!aiReady" class="muted">Needs AI to be on.</span>
         <span v-else-if="noKey" class="muted">Needs {{ byBfl ? 'BFL_API_KEY' : 'PIXELLAB_API_KEY' }} in ai_service/.env.</span>
+        <span v-else-if="whyOff" class="muted">{{ whyOff }}</span>
       </div>
       <div v-if="error" class="error">{{ error }}</div>
       <p class="muted small">

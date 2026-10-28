@@ -77,6 +77,15 @@ const shown = computed(() => {
   return images.value.filter((p) => words.every((w) => p.toLowerCase().includes(w))).slice(0, 120)
 })
 const aiReady = computed(() => editorState.ai.state === 'ready')
+// Why Animate is off, in words (shown beside it): "" when it's on.
+const whyOff = computed(() =>
+  busy.value ? 'Still drawing the last one…'
+  : !aiReady.value ? `Turn AI on (${editorState.ai.text || editorState.ai.state})`
+  : noKey.value ? `Needs ${byBfl.value ? 'BFL_API_KEY' : 'PIXELLAB_API_KEY'} in ai_service/.env`
+  : !form.path ? 'Pick an image on the left'
+  : !form.action.trim() ? 'Say the action'
+  : '',
+)
 // Drawn by the project's art model when it's BFL's, else PixelLab.
 const byBfl = computed(() => editorState.ai.artInUse.startsWith('bfl:'))
 const noKey = computed(() => (byBfl.value ? editorState.ai.available.bfl === false : editorState.ai.available.pixellab === false))
@@ -184,12 +193,13 @@ function when(iso: string): string {
       </div>
       <div class="row">
         <label></label>
-        <button class="primary" :disabled="busy || !aiReady || noKey || !form.path || !form.action.trim()" @click="generate">
+        <button class="primary" :disabled="!!whyOff" :title="whyOff" @click="generate">
           Animate
         </button>
         <span v-if="busy" class="muted">Drawing 4 frames (about a minute)…</span>
         <span v-else-if="!aiReady" class="muted">Needs AI to be on.</span>
         <span v-else-if="noKey" class="muted">Needs {{ byBfl ? 'BFL_API_KEY' : 'PIXELLAB_API_KEY' }} in ai_service/.env.</span>
+        <span v-else-if="whyOff" class="muted">{{ whyOff }}</span>
       </div>
       <div v-if="error" class="error">{{ error }}</div>
       <p class="muted small">
