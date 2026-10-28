@@ -1158,12 +1158,13 @@ def create_app(
                     humanoid = autosprite.is_humanoid(" ".join([what, info.get("name", "")]), True, state["provider"])
                     info["autosprite"], info["humanoid"] = lab.create(info.get("name", "character"), buf.getvalue(), humanoid, what), humanoid
                     sheet["character"] = info
-                shot, _ = lab.pack(info["autosprite"], request.action, 12, 256,
+                shot, shot_meta = lab.pack(info["autosprite"], request.action, 12, 256,
                                    on_status=lambda text: report(0, len(painted), f"Animating {info.get('name', 'it')}: {text}"))
             except Exception as error:  # noqa: BLE001 - said to the editor
                 return {"ok": False, "errors": [f"AutoSprite: {error}"]}
             box = front.getbbox() or (0, 0, size, size)
             results = autosprite.fitted({d: f for d, f in shot.items() if d in faces}, size, box[3] - box[1])
+            auto_fps = autosprite.fps_of(shot_meta, 12)
         elif copies:
             # One call a direction it faces, west's side mirrored from east's (south-east, east, north-east): five for eight,
             # one after another (a low-credit BFL account runs one task at a time).
@@ -1185,11 +1186,12 @@ def create_app(
         errors = [f"{d}: {f}" for d, f in results.items() if not isinstance(f, list)]
         for west, east in mirrored.items():
             if west in faces and east in frames and west not in frames:
-                frames[west] = [Image.open(io.BytesIO(f)).convert("RGBA").transpose(Image.FLIP_LEFT_RIGHT) for f in frames[east]]
+                frames[west] = [(f if isinstance(f, Image.Image) else Image.open(io.BytesIO(f))).convert("RGBA").transpose(Image.FLIP_LEFT_RIGHT)
+                                for f in frames[east]]
         if not frames:
             return {"ok": False, "errors": errors or ["nothing was drawn"]}
         clip = charsheet.clip_for(request.action)
-        sheet, atlas = charsheet.add_clip(sheet, atlas, clip, frames, fps=12.0 if video or auto else 10.0 if v3 or copies else 8.0 if clip in ("walk", "idle") else 10.0,
+        sheet, atlas = charsheet.add_clip(sheet, atlas, clip, frames, fps=auto_fps if auto else 12.0 if video else 10.0 if v3 or copies else 8.0 if clip in ("walk", "idle") else 10.0,
                                           loop="loop" if clip in ("walk", "idle") or clip not in ("attack", "cast", "hurt", "die", "use") else "once")
         name = Path(request.sheet).name.replace(".character.anim.json", "")
         path, texture = charsheet.write(root, Path(request.sheet).parent.as_posix(), name, sheet, atlas)

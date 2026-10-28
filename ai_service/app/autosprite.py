@@ -196,16 +196,30 @@ class AutoSprite:
         job = started.get("jobId")
         if not job:
             raise ProviderError(f"AutoSprite started no pack: {str(started)[:200]}")
-        done = self.wait(job, on_status)
+        return self.pack_result(self.wait(job, on_status))
+
+    def pack_result(self, done: dict) -> tuple[dict[str, list[Image.Image]], dict]:
+        """A finished pack job's sheets by direction. The east side's are named iso_<action>_<direction>; the west
+        side's come as kind "custom", named "Walk Left", "Walk Northwest"…"""
         out, meta = {}, {}
         for sheet_id in done.get("spritesheetIds") or []:
             meta, frames_ = self.sheet(sheet_id)
-            where = str(meta.get("kind", "")).rsplit("_", 1)[-1]
-            if where in PACK_DIRECTIONS:
+            words = [str(meta.get("kind", "")).rsplit("_", 1)[-1].lower(), str(meta.get("name", "")).rsplit(" ", 1)[-1].lower()]
+            where = next((w for w in words if w in PACK_DIRECTIONS), None)
+            if where:
                 out[PACK_DIRECTIONS[where]] = frames_
         if not out:
             raise ProviderError("AutoSprite's pack had no directions")
         return out, meta
+
+
+def fps_of(meta: dict, frames: int) -> float:
+    """Its playing speed: AutoSprite plays a sheet at 24 frames a second times its speedMultiplier."""
+    try:
+        k = float(meta.get("speedMultiplier") or 0)
+    except (TypeError, ValueError):
+        k = 0.0
+    return max(4.0, min(24.0, 24.0 * k)) if k > 0 else 12.0
 
 
 def _png_on_white(picture: bytes) -> bytes:
