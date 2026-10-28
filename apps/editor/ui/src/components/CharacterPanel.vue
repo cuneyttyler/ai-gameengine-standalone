@@ -63,6 +63,24 @@ function when(iso: string): string {
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
 }
+// A result that's a character sheet (made since sheets): its sheet and picture.
+function sheetOf(entry: HistoryEntry): string {
+  return entry.results.find((r) => !r.discarded && r.path.endsWith('.character.anim.json'))?.path ?? ''
+}
+function pictureOf(entry: HistoryEntry): string {
+  return entry.results.find((r) => !r.discarded && r.path.endsWith('.character.png'))?.path ?? ''
+}
+function prefab(entry: HistoryEntry, npc: boolean): void {
+  sendToHost({ type: 'character:prefab', sheet: sheetOf(entry), npc })
+}
+function animateSheet(entry: HistoryEntry): void {
+  editorState.animateSheet = sheetOf(entry)
+  panelTab.generate = 'animate'
+}
+function makeSheet(entry: HistoryEntry): void {
+  const pictures = entry.results.filter((r) => !r.discarded).map((r) => r.path)
+  sendToHost({ type: 'character:fromPictures', pictures, name: String(entry.request.name || pictures[0]?.split('/').slice(-2, -1)[0] || 'character') })
+}
 function makePlayer(entry: HistoryEntry): void {
   const pictures = entry.results.filter((r) => !r.discarded).map((r) => r.path)
   const name = String(entry.request.name || pictures[0]?.split('/').slice(-2, -1)[0] || 'hero')
@@ -196,6 +214,10 @@ function thumb(path: string, created: string): string {
         <div class="muted small">{{ when(entry.created) }} · {{ entry.request.directions }} directions · {{ entry.request.size }} px · {{ entry.request.view }}</div>
         <div v-if="entry.state === 'working'" class="muted small">Drawing…</div>
         <div v-else-if="entry.state === 'failed'" class="error small">{{ entry.errors[0] ?? 'Failed' }}</div>
+        <div v-else-if="sheetOf(entry)" class="sheet">
+          <img :src="thumb(pictureOf(entry), entry.created)" alt="its sheet" class="sheet-picture" />
+          <div class="muted small">{{ sheetOf(entry) }} · every direction, its idle; Animate adds actions</div>
+        </div>
         <div v-else class="dirs">
           <div v-for="a in entry.results.filter((r) => !r.discarded)" :key="a.path" class="dir">
             <div class="thumb"><img :src="thumb(a.path, entry.created)" :alt="direction(a.path)" /></div>
@@ -207,15 +229,15 @@ function thumb(path: string, created: string): string {
           </div>
         </div>
         <div class="actions">
-          <button
-            v-if="entry.state === 'done' && entry.results.some((r) => !r.discarded)"
-            class="primary"
-            :disabled="editorState.playing"
-            title="The player: moves, collides, fights, facing the way it walks; placed in the scene in the player's stead"
-            @click="makePlayer(entry)"
-          >
-            Make player
-          </button>
+          <template v-if="sheetOf(entry)">
+            <button class="primary" :disabled="editorState.playing" title="The player: moves, collides, fights, facing the way it walks; in the player's stead" @click="prefab(entry, false)">Make player</button>
+            <button :disabled="editorState.playing" title="A person of the world playing it, in the middle of the view" @click="prefab(entry, true)">Make NPC</button>
+            <button title="Its actions (walking, attacking…), every direction at once" @click="animateSheet(entry)">Animate…</button>
+          </template>
+          <template v-else-if="entry.state === 'done' && entry.results.some((r) => !r.discarded)">
+            <button class="primary" :disabled="editorState.playing" title="Its direction pictures as one character sheet (Assets ▸ Characters)" @click="makeSheet(entry)">Make character sheet</button>
+            <button :disabled="editorState.playing" title="The player from its loose pictures (facing the way it walks)" @click="makePlayer(entry)">Make player</button>
+          </template>
           <button title="Put this request back in the form" @click="useAgain(entry)">Use again</button>
           <button :disabled="busy || !aiReady || noKey" title="Send the same request again" @click="useAgain(entry), generate()">Generate again</button>
         </div>
@@ -250,6 +272,12 @@ function thumb(path: string, created: string): string {
 }
 .form textarea {
   resize: vertical;
+}
+.sheet-picture {
+  max-width: 100%;
+  max-height: 180px;
+  image-rendering: pixelated;
+  background: #15151e;
 }
 .history-head {
   display: flex;

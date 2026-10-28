@@ -1397,7 +1397,8 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             post_({{"type", reply}, {"result", {{"ok", false}, {"errors", {"AI is off"}}}}});
         } else if (inFlight == 0) {
             const nlohmann::json request = message.value("request", nlohmann::json::object());
-            inFlight = Ai()->Request("POST", character ? "/characters/generate" : "/animations/generate", request, 420);
+            inFlight = Ai()->Request("POST", character ? "/characters/generate" : request.contains("sheet") ? "/characters/animate" : "/animations/generate",
+                                     request, 900); // a character's every direction: a few minutes
             (character ? characterHistoryId_ : animationHistoryId_) = (character ? characterHistory_ : animationHistory_).Begin(request);
         }
         post_(GenerateHistoryJson(character));
@@ -1821,6 +1822,30 @@ void EditorApp::Rotate(int direction) {
         return;
     }
     const Entity entity = *selected_;
+    if (registry_.all_of<Animator>(entity) && !registry_.all_of<Tile>(entity)) {
+        // A character (docs/assets/character-sheets.md): its facing an eighth round on screen, its animation that side.
+        const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
+        std::string faces;
+        ApplyOneShotEdit([&] {
+            Facing& f = registry_.get_or_emplace<Facing>(entity);
+            const float sx0 = topDown ? f.x : f.x - f.y, sy0 = topDown ? f.y : (f.x + f.y) * 0.5f;
+            constexpr float kEighth = 3.14159265f / 4.0f;
+            int sector = static_cast<int>(std::lround(std::atan2(sx0, sy0) / kEighth));
+            sector = ((sector + direction) % 8 + 8) % 8;
+            const float sx = std::sin(sector * kEighth), sy = std::cos(sector * kEighth); // on screen: +x east, +y south
+            float fx = topDown ? sx : sy + sx * 0.5f, fy = topDown ? sy : sy - sx * 0.5f;
+            const float length = std::max(1e-4f, std::sqrt(fx * fx + fy * fy));
+            f.x = fx / length, f.y = fy / length;
+            RecordOverride(registry_, entity, "Facing", "x");
+            RecordOverride(registry_, entity, "Facing", "y");
+            static const char* names[8] = {"south", "south-east", "east", "north-east", "north", "north-west", "west", "south-west"};
+            faces = names[sector];
+            return true;
+        });
+        inspectorStale_ = true;
+        post_({{"type", "notify"}, {"text", "Faces " + faces}});
+        return;
+    }
     std::optional<std::string> problem;
     ApplyOneShotEdit([&] {
         problem = TurnEntity(EngineReflection(), registry_, entity, direction);
@@ -4854,6 +4879,7 @@ void EditorApp::Tick(double frameSeconds) {
     const SlowWatch whole("frame (all of Tick: if only this is logged, it was the rest of the frame's work)");
     { const SlowWatch w("frame: the AI's answers"); PollAi(); }
     if (!playing_) ApplyInteriors(registry_); // the Inspector's Interior ▸ shown previews it
+    if (!playing_) UpdateAnimators(registry_, session_.Animations(), static_cast<float>(frameSeconds)); // characters idle, facing their way
     { const SlowWatch w("frame: a build job ending"); FinishBuildJob(); }
     { const SlowWatch w("frame: a build step"); StepBuildRun(); }
     { const SlowWatch w("frame: the recovery snapshot"); WriteRecovery(); } // the unsaved scene, every two minutes
@@ -5241,6 +5267,17 @@ void EditorApp::PollAi() {
                 const auto errors = result->body.value("errors", nlohmann::json::array());
                 post_({{"type", "notify"}, {"text", "The background wasn't painted" + (errors.empty() ? std::string() : ": " + errors.front().get<std::string>())}});
             }
+        } else if (result->kind == AiClient::Result::Kind::Response && characterSheetRequests_.contains(result->requestId)) {
+            characterSheetRequests_.erase(result->requestId);
+            if (result->body.value("ok", false)) {
+                RefreshAssets();
+                session_.ReloadAnimations();
+                post_(AnimationsJson());
+                post_({{"type", "notify"}, {"text", "Character sheet " + result->body.value("sheet", "") + " made: in Assets ▸ Characters"}});
+            } else {
+                const auto errors = result->body.value("errors", nlohmann::json::array());
+                post_({{"type", "notify"}, {"text", "No character sheet" + (errors.empty() ? std::string() : ": " + errors.front().get<std::string>())}});
+            }
         } else if (result->kind == AiClient::Result::Kind::Response && interiorRequests_.contains(result->requestId)) {
             // An asset's interior made (docs/places/interiors.md §5): paired with it both ways.
             const std::string path = interiorRequests_[result->requestId];
@@ -5402,6 +5439,9 @@ void EditorApp::PollAi() {
                     kept["assets"] = assets;
                 }
                 (character ? characterHistory_ : animationHistory_).Finish(character ? characterHistoryId_ : animationHistoryId_, kept);
+                if (const std::string texture = result->body.value("texture", ""); !texture.empty()) renderer_.InvalidateTexture(texture);
+                session_.ReloadAnimations(); // a character sheet made or grown
+                post_(AnimationsJson());
                 post_({{"type", character ? "character:result" : "animation:result"}, {"result", result->body}});
                 post_(GenerateHistoryJson(character));
             } else if (result->requestId == artRequest_) {
@@ -5435,7 +5475,8 @@ bool EditorApp::KnownRequest(int requestId) const {
            (requestId != 0 && (requestId == characterRequest_ || requestId == animationRequest_)) ||
            requestId == worldCheckRequest_ || consistencyRequests_.contains(requestId) ||
            (requestId != 0 && (requestId == webPreviewRequest_ || requestId == segmentRequest_)) || webFetchRequests_.contains(requestId) ||
-           interiorRequests_.contains(requestId) || (requestId != 0 && requestId == sceneBackgroundRequest_);
+           interiorRequests_.contains(requestId) || (requestId != 0 && requestId == sceneBackgroundRequest_) ||
+           characterSheetRequests_.contains(requestId);
 }
 
 void EditorApp::OnBuildResult(int requestId, const nlohmann::json& body) {
@@ -6003,6 +6044,41 @@ bool EditorApp::HandleGenerateMessage(const std::string& type, const nlohmann::j
             post_(FxJson());
             post_(AnimationsJson());
         }
+    } else if (type == "entity:face") {
+        // The Inspector's Facing ▸ turn to: that side of it on screen, as a world facing for the grid.
+        static const std::vector<std::string> kNames = {"south", "south-east", "east", "north-east", "north", "north-west", "west", "south-west"};
+        const auto at = std::find(kNames.begin(), kNames.end(), message.value("direction", ""));
+        const auto entity = static_cast<Entity>(message.value("id", 0u));
+        if (playing_ || at == kNames.end() || !registry_.valid(entity)) return true;
+        const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
+        const float a = static_cast<float>(at - kNames.begin()) * 3.14159265f / 4.0f;
+        const float sx = std::sin(a), sy = std::cos(a); // on screen: +x east, +y south
+        float fx = topDown ? sx : sy + sx * 0.5f, fy = topDown ? sy : sy - sx * 0.5f;
+        const float length = std::max(1e-4f, std::sqrt(fx * fx + fy * fy));
+        ApplyOneShotEdit([&] {
+            Facing& f = registry_.get_or_emplace<Facing>(entity);
+            f.x = fx / length, f.y = fy / length;
+            RecordOverride(registry_, entity, "Facing", "x");
+            RecordOverride(registry_, entity, "Facing", "y");
+            return true;
+        });
+        inspectorStale_ = true;
+    } else if (type == "character:prefab") {
+        // A character sheet as the player or an NPC (Generate ▸ Character, Assets ▸ Characters).
+        if (const std::string why = MakeCharacterPrefab(message.value("sheet", ""), message.value("npc", false)); !why.empty()) {
+            post_({{"type", "notify"}, {"text", std::string(message.value("npc", false) ? "No NPC: " : "No player: ") + why}});
+        }
+    } else if (type == "character:fromPictures") {
+        // Make character sheet: a character's loose direction pictures (made before character sheets) as one sheet.
+        if (!Ai() || Ai()->GetState() != AiClient::State::Ready) {
+            post_({{"type", "notify"}, {"text", "Turn AI on to make the sheet"}});
+            return true;
+        }
+        if (const int id = Ai()->Request("POST", "/characters/from-pictures",
+                                         {{"pictures", message.value("pictures", nlohmann::json::array())}, {"name", message.value("name", "")}}, 120);
+            id != 0) {
+            characterSheetRequests_[id] = message.value("name", "");
+        }
     } else if (type == "character:makePlayer") {
         std::vector<std::string> pictures;
         for (const auto& p : message.value("pictures", nlohmann::json::array())) {
@@ -6128,8 +6204,80 @@ std::string EditorApp::MakePlayer(const std::vector<std::string>& pictures, std:
 }
 
 nlohmann::json EditorApp::AnimationsJson() {
-    // Assets ▸ Animations: every animation sheet of the project, as the Effects panel lists them.
-    return {{"type", "animations:list"}, {"sheets", FxJson().value("sheets", nlohmann::json::array())}};
+    // Assets ▸ Animations and ▸ Characters: every animation sheet of the project, as the Effects panel lists them, each
+    // with its kind (a character sheet's "character", and what it says of its character).
+    nlohmann::json sheets = FxJson().value("sheets", nlohmann::json::array());
+    for (auto& sheet : sheets) {
+        std::ifstream in(assets_.GetProject().Resolve(sheet.value("path", "")));
+        const nlohmann::json raw = in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+        if (!raw.is_object()) continue;
+        sheet["kind"] = raw.value("kind", "");
+        if (raw.contains("character")) sheet["character"] = raw["character"];
+    }
+    return {{"type", "animations:list"}, {"sheets", sheets}};
+}
+
+std::string EditorApp::MakeCharacterPrefab(const std::string& path, bool npc) {
+    if (playing_) return "stop Play first";
+    RefreshAssets();
+    session_.ReloadAnimations();
+    const AnimSheet* sheet = session_.Animations().Find(path);
+    if (sheet == nullptr) return "no character sheet " + path;
+    const AssetInfo* picture = assets_.Find(sheet->texture);
+    if (picture == nullptr || picture->width == 0) return "its picture " + sheet->texture + " isn't in the project";
+    // Its first frame facing the camera, until it plays.
+    const AnimClip* idle = sheet->Clip("idle") ? sheet->Clip("idle") : sheet->clips.empty() ? nullptr : &sheet->clips.begin()->second;
+    bool flip = false;
+    const auto* frames = idle ? idle->FramesFor("s", &flip) : nullptr;
+    if (frames == nullptr || frames->empty()) return "it has no frames";
+    const AnimFrame frame = frames->front();
+    std::string name = std::filesystem::path(path).filename().string();
+    if (const size_t at = name.find(".character"); at != std::string::npos) name.resize(at);
+    const std::string kind = npc ? "-npc" : "-player";
+    std::string prefab = "prefabs/" + name + kind + ".prefab";
+    for (int n = 2; prefabs_.Find(prefab) != nullptr; ++n) prefab = "prefabs/" + name + kind + "-" + std::to_string(n) + ".prefab";
+    const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
+    {
+        Registry scratch;
+        const Entity e = npc ? CreateNpc(scratch, 0.0f, 0.0f) : CreatePlayer(scratch, 0.0f, 0.0f);
+        scratch.get_or_emplace<Name>(e).value = name;
+        auto& sprite = scratch.get_or_emplace<Sprite>(e);
+        const float tw = static_cast<float>(picture->width), th = static_cast<float>(picture->height);
+        sprite.texture = sheet->texture;
+        sprite.u0 = frame.x / tw, sprite.u1 = (frame.x + frame.w) / tw, sprite.v0 = frame.y / th, sprite.v1 = (frame.y + frame.h) / th;
+        if (flip) std::swap(sprite.u0, sprite.u1);
+        sprite.height = std::max(48.0f, iso_.tileHeight * 2.0f); // about two cells tall
+        sprite.width = sprite.height * frame.w / std::max(1.0f, frame.h);
+        auto& animator = scratch.emplace_or_replace<Animator>(e);
+        animator.sheet = path;
+        animator.animator = "humanoid";
+        // Facing the camera (south on screen).
+        auto& facing = scratch.emplace_or_replace<Facing>(e);
+        facing.x = topDown ? 0.0f : 0.7071f, facing.y = topDown ? 1.0f : 0.7071f;
+        prefabs_.SaveAsPrefab(scratch, e, prefab);
+    }
+    RefreshPrefabs();
+    if (prefabs_.Find(prefab) == nullptr) return "the prefab wasn't made";
+    // In the open scene: the player where the player was (the old one goes); an NPC in the middle of the view.
+    float x = 0, y = 0;
+    std::optional<Entity> old = npc ? std::nullopt : FindPlayer(registry_);
+    if (old) {
+        const auto& at = registry_.get<WorldTransform2D>(*old);
+        x = at.x, y = at.y;
+        registry_.destroy(*old);
+    } else {
+        int width = 0, height = 0;
+        viewport_.GetFramebufferSize(width, height);
+        float sceneX = 0, sceneY = 0;
+        camera_.ViewportToScene(width * 0.5f, height * 0.5f, sceneX, sceneY);
+        UnprojectIso(sceneX, sceneY, iso_, x, y);
+    }
+    if (auto placed = prefabs_.Instantiate(registry_, prefab, x, y)) Select(*placed);
+    UpdateWorldToScreen(registry_, iso_);
+    dirty_ = true;
+    sceneTreeStale_ = inspectorStale_ = editorStateStale_ = true;
+    post_({{"type", "notify"}, {"text", prefab + (npc ? " is in the scene (R turns it; Save keeps it)" : " is the player (F5 to play; R turns it; Save keeps it)")}});
+    return {};
 }
 
 std::string EditorApp::PrefabForSheet(const std::string& path, std::string name) {
@@ -8327,6 +8475,14 @@ nlohmann::json EditorApp::AssetsJson() {
             {"error", asset.error},
             {"version", assetVersions_[asset.path]},
         };
+        // When its file was written (seconds; for generated art, when it was made): lists sorted newest first.
+        {
+            std::error_code ec;
+            const auto written = std::filesystem::last_write_time(assets_.GetProject().Resolve(asset.path), ec);
+            entry["time"] = ec ? 0LL
+                               : static_cast<long long>(std::chrono::duration_cast<std::chrono::seconds>(
+                                     std::chrono::clock_cast<std::chrono::system_clock>(written).time_since_epoch()).count());
+        }
         if (asset.type == AssetType::Audio) {
             entry["duration"] = asset.durationSeconds;
         } else {

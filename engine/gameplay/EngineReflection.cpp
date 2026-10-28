@@ -85,6 +85,9 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("y", &WorldTransform2D::y, "Grid y; increases down-left on screen.")
         .DependsOn({"ScreenTransform2D"});
 
+    r.Component<Facing>("Facing", "Which way it faces (world units): its animation shows that side (R in the editor turns it an eighth).")
+        .Field("x", &Facing::x, "East-west part of the way it faces.")
+        .Field("y", &Facing::y, "North-south part of the way it faces.");
     r.Component<Velocity2D>("Velocity2D",
                             "Movement this frame, in cells per second. Velocity2D + Collider2D marks the player.")
         .Field("x", &Velocity2D::x, "Cells per second along grid x.")

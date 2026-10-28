@@ -560,6 +560,10 @@ private:
     // Make player (Generate ▸ Character): a player prefab of a generated character, facing the way it moves (its
     // direction pictures one sheet), placed in the open scene in the player's stead. "" or why not.
     std::string MakePlayer(const std::vector<std::string>& pictures, std::string name);
+    // A character sheet as a prefab (docs/assets/character-sheets.md): the player (in the player's stead) or an NPC, its
+    // Animator playing the sheet, facing the camera; "" or why not.
+    std::string MakeCharacterPrefab(const std::string& sheet, bool npc);
+    std::map<int, std::string> characterSheetRequests_; // Make character sheet (POST /characters/from-pictures): request -> name
     // An animation made with Generate ▸ Animate: an animation sheet of it (FX ▸ Animations), and a prefab that plays it.
     std::string MakeAnimationSheet(const nlohmann::json& made, std::string* sheet);
     int artHistoryId_ = 0;

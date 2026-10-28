@@ -70,6 +70,7 @@ export const editorState = reactive({
   showBackground: false, // Edit ▸ Background Image…
   fxSheet: '', // Assets ▸ Animations ▸ Show in Effects: the sheet to open there
   fxSheetEdit: false, // …and open in the sheet editor (Edit)
+  animateSheet: '', // a character sheet for Generate ▸ Animate to animate (Assets ▸ Characters ▸ Animate…)
   replacePrefab: null as string | null, // Edit ▸ Replace prefab…: the prefab to replace ('' : choose)
   replaceEntity: null as number | null, // …of one thing (the viewport's or the Inspector's Replace prefab): it, or every copy
   grid: false, // tile borders on empty ground (G)

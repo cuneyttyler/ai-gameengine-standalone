@@ -625,6 +625,24 @@
       "userEditable": true
     },
     {
+      "dependencies": [],
+      "description": "Which way it faces (world units): its animation shows that side (R in the editor turns it an eighth).",
+      "fields": [
+        {
+          "description": "East-west part of the way it faces.",
+          "name": "x",
+          "type": "float"
+        },
+        {
+          "description": "North-south part of the way it faces.",
+          "name": "y",
+          "type": "float"
+        }
+      ],
+      "name": "Facing",
+      "userEditable": true
+    },
+    {
       "dependencies": [
         "WorldTransform2D"
       ],

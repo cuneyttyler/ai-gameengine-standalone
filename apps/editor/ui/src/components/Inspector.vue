@@ -275,6 +275,14 @@ function numberFrom(event: Event): number {
         </header>
 
         <div v-if="!collapsed[component.name]" class="fields">
+          <!-- Facing: a direction on screen (the editor works out the world facing for the grid). -->
+          <div v-if="component.name === 'Facing'" class="field-row">
+            <label>turn to</label>
+            <select :value="''" :disabled="editorState.playing" title="Which side of it shows (R and Shift+R turn it an eighth)" @change="sendToHost({ type: 'entity:face', id: current!.id, direction: ($event.target as HTMLSelectElement).value })">
+              <option value="">a direction…</option>
+              <option v-for="d in ['south', 'south-east', 'east', 'north-east', 'north', 'north-west', 'west', 'south-west']" :key="d" :value="d">{{ d }}</option>
+            </select>
+          </div>
           <template v-for="field in component.fields" :key="field.name">
             <div class="field-row" :class="{ overridden: field.overridden }">
               <label :title="field.overridden ? `${field.description}\n(Changed on this copy)` : field.description">

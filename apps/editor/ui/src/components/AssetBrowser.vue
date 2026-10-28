@@ -599,6 +599,7 @@ onMounted(() => {
       <div class="tabs">
         <button :class="{ active: tab === 'prefabs' }" @click="tab = 'prefabs'">Prefabs</button>
         <button :class="{ active: tab === 'assets' }" @click="tab = 'assets'">Assets</button>
+        <button :class="{ active: tab === 'characters' }" title="The project's characters: one sheet each, every direction and action; right-click to make the player, an NPC, or animate" @click="tab = 'characters'">Characters</button>
         <button :class="{ active: tab === 'animations' }" title="The project's animation sheets, playing: right-click to make a prefab or give the selection one" @click="tab = 'animations'">Animations</button>
         <button :class="{ active: tab === 'web' }" title="Free art from the web (OpenGameArt, licence-checked): search, pick, add" @click="tab = 'web'">Web Search</button>
         <button :class="{ active: tab === 'library' }" title="Your own art, for every project: generated, from the web and the AIGE library, in your folders" @click="tab = 'library'">Library</button>
@@ -611,7 +612,7 @@ onMounted(() => {
         </button>
       </div>
       <input
-        v-if="tab === 'prefabs' || tab === 'assets' || tab === 'animations' || tab === 'catalog' || tab === 'library'"
+        v-if="tab === 'prefabs' || tab === 'assets' || tab === 'characters' || tab === 'animations' || tab === 'catalog' || tab === 'library'"
         v-model="filter"
         class="filter"
         type="search"
@@ -650,6 +651,7 @@ onMounted(() => {
 
     <div v-if="tab === 'library'" class="body library-body"><LibraryTab :filter="filter" /></div>
     <div v-if="tab === 'animations'" class="body library-body"><AnimationsTab :filter="filter" /></div>
+    <div v-if="tab === 'characters'" class="body library-body"><AnimationsTab :filter="filter" characters /></div>
     <div v-if="tab === 'web'" class="body library-body"><WebSearchTab /></div>
     <div v-if="tab === 'prefabs'" class="body">
       <nav class="folders" title="Folders inside prefabs/ — drop a card on one to move it">

@@ -8,7 +8,8 @@ import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 import { panelTab } from '../paneltabs'
 
-const props = defineProps<{ filter: string }>()
+// `characters`: Assets ▸ Characters, the character sheets alone (each turning round), with their own menu.
+const props = defineProps<{ filter: string; characters?: boolean }>()
 const PROJECT_HOST = 'https://aige-project.local/'
 
 interface Frame {
@@ -26,6 +27,8 @@ interface Sheet {
   texture: string
   size: [number, number]
   clips: Clip[]
+  kind?: string
+  character?: { name?: string; description?: string }
 }
 
 const sheets = ref<Sheet[]>([])
@@ -44,7 +47,11 @@ onUnmounted(() => window.clearInterval(timer))
 
 const shown = computed(() => {
   const words = props.filter.toLowerCase().split(/\s+/).filter(Boolean)
-  return sheets.value.filter((s) => words.every((w) => (s.path + ' ' + s.clips.map((c) => c.name).join(' ')).toLowerCase().includes(w)))
+  return sheets.value.filter(
+    (s) =>
+      (s.kind === 'character') === !!props.characters &&
+      words.every((w) => (s.path + ' ' + (s.character?.description ?? '') + ' ' + s.clips.map((c) => c.name).join(' ')).toLowerCase().includes(w)),
+  )
 })
 
 // Its first clip's frames (idle first), facing the first way it has.
@@ -62,9 +69,16 @@ function sizeOf(sheet: Sheet): [number, number] {
   }
   return sizes[sheet.path]!
 }
+// A character turning round: its idle pose each way, in turn.
+function turningOf(sheet: Sheet): Frame[] {
+  const clip = sheet.clips.find((c) => c.name === 'idle') ?? sheet.clips[0]
+  const order = ['s', 'se', 'e', 'ne', 'n', 'nw', 'w', 'sw']
+  return clip ? order.map((d) => clip.directions[d]?.[0]).filter((f): f is Frame => !!f) : []
+}
 function frameStyle(sheet: Sheet): Record<string, string> {
-  const frames = framesOf(sheet)
-  const f = frames.length ? frames[tick.value % frames.length]! : null
+  const frames = sheet.kind === 'character' ? turningOf(sheet) : framesOf(sheet)
+  const step = sheet.kind === 'character' ? Math.floor(tick.value / 5) : tick.value
+  const f = frames.length ? frames[step % frames.length]! : null
   if (!f || f.w <= 0 || f.h <= 0) return {}
   const scale = Math.min(76 / f.w, 76 / f.h)
   const [tw, th] = sizeOf(sheet)
@@ -78,7 +92,7 @@ function frameStyle(sheet: Sheet): Record<string, string> {
   }
 }
 function name(sheet: Sheet): string {
-  return sheet.path.split('/').pop()!.replace(/\.anim\.json$/, '')
+  return sheet.character?.name || sheet.path.split('/').pop()!.replace(/(\.character)?\.anim\.json$/, '')
 }
 
 function showInEffects(sheet: Sheet, edit = false): void {
@@ -88,6 +102,17 @@ function showInEffects(sheet: Sheet, edit = false): void {
 }
 function menu(sheet: Sheet, event: MouseEvent): void {
   picked.value = sheet.path
+  if (sheet.kind === 'character') {
+    openContextMenu(event.clientX, event.clientY, [
+      { label: 'Make player', disabled: editorState.playing, action: () => sendToHost({ type: 'character:prefab', sheet: sheet.path, npc: false }) },
+      { label: 'Make NPC', disabled: editorState.playing, action: () => sendToHost({ type: 'character:prefab', sheet: sheet.path, npc: true }) },
+      { label: 'Animate…', action: () => ((editorState.animateSheet = sheet.path), (panelTab.generate = 'animate')) },
+      separator,
+      { label: 'Edit…', action: () => showInEffects(sheet, true) },
+      { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: sheet.path }) },
+    ])
+    return
+  }
   const items: MenuItem[] = [
     { label: 'Make prefab', disabled: editorState.playing, action: () => sendToHost({ type: 'animation:prefab', sheet: sheet.path }) },
     {
@@ -106,7 +131,10 @@ function menu(sheet: Sheet, event: MouseEvent): void {
 
 <template>
   <div class="animations">
-    <p v-if="!sheets.length" class="muted pad">
+    <p v-if="!shown.length && characters" class="muted pad">
+      No characters yet. Make one with Generate ▸ Character: one sheet, every direction, and its actions added in Generate ▸ Animate.
+    </p>
+    <p v-else-if="!shown.length" class="muted pad">
       No animations yet. Make one with Generate ▸ Animate (Make animation), or import a sprite sheet in Project ▸ Effects.
     </p>
     <div class="grid">

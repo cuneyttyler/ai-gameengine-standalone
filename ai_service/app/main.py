@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hmac
 from datetime import datetime, timezone
+import io
 import json
 import re
 import os
@@ -269,6 +270,18 @@ class AnimationRequest(BaseModel):
     direction: str = "south"
     view: str = "low top-down"
     name: str = ""
+
+
+class CharacterAnimateRequest(BaseModel):
+    sheet: str           # a character sheet (assets/characters/<name>/<name>.character.anim.json)
+    action: str          # walking, swinging a sword, casting a spell
+    description: str = ""
+
+
+class CharacterPicturesRequest(BaseModel):
+    pictures: list[str]  # a character's direction pictures (…-south.png…)
+    name: str
+    description: str = ""
 
 
 class CharacterRequest(BaseModel):
@@ -971,17 +984,110 @@ def create_app(
         report(1, 1, f"{name} drawn")
         if not images:
             return {"ok": False, "errors": [f"{provider} finished but sent no images"]}
-        folder = root / "assets" / "textures" / "generated" / "characters" / name
-        folder.mkdir(parents=True, exist_ok=True)
-        made = []
-        for direction, data in images.items():
-            file = folder / f"{name}-{direction}.png"
-            file.write_bytes(data)
-            meta = {"description": request.description, "family": name, "kind": "character", "direction": direction,
-                    "provider": provider, "model": model_name, "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-            (folder / f"{file.name}.gen.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
-            made.append({"path": file.relative_to(root).as_posix(), "direction": direction})
-        return {"ok": True, "name": name, "assets": made}
+        # One character sheet (docs/assets/character-sheets.md): its idle clip, a pose each direction.
+        from . import charsheet
+        sheet = charsheet.new_sheet("", size, {"name": name, "description": request.description, "directions": directions, "size": size,
+                                               "view": request.view, "isometric": request.isometric, "provider": provider, "model": model_name,
+                                               "created": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+        sheet, atlas = charsheet.add_clip(sheet, None, "idle", {d: [data] for d, data in images.items()})
+        path, texture = charsheet.write(root, f"assets/characters/{name}", name, sheet, atlas)
+        return {"ok": True, "name": name, "sheet": path, "texture": texture, "assets": [{"path": path}, {"path": texture}]}
+
+    @app.post("/characters/animate")
+    def characters_animate(request: CharacterAnimateRequest) -> dict:
+        """A character sheet's action, every direction it faces (docs/assets/character-sheets.md): each painted direction
+        animated from its idle pose (the project's art model when it's BFL's, else PixelLab), the west side the east side
+        mirrored; added to the sheet as one clip."""
+        from concurrent.futures import ThreadPoolExecutor
+        from PIL import Image
+        from . import charsheet
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+        target = (root / request.sheet).resolve()
+        if root.resolve() not in target.parents or not target.is_file():
+            return {"ok": False, "errors": [f"No character sheet {request.sheet}"]}
+        sheet, atlas = charsheet.read(root, request.sheet)
+        if sheet.get("kind") != "character":
+            return {"ok": False, "errors": [f"{request.sheet} isn't a character sheet"]}
+        info = sheet.get("character", {})
+        faces = charsheet.directions_of(sheet)
+        mirrored = {"west": "east", "south-west": "south-east", "north-west": "north-east"}
+        painted = [d for d in faces if not (d in mirrored and mirrored[d] in faces)]
+        model = bfl_art()
+        if not model and not os.environ.get("PIXELLAB_API_KEY"):
+            return {"ok": False, "errors": ["Animations are drawn by the project's art model when it's BFL's, else PixelLab"]}
+        what = request.description or info.get("description", "") or info.get("name", "the character")
+        size = sheet["grid"]["width"]
+        report = progress.reporter()
+        report(0, len(painted), f"Animating {info.get('name', 'it')}: {request.action}, {len(painted)} directions ({model or 'PixelLab'})")
+        done = [0]
+
+        def one(direction: str) -> tuple[str, list[bytes] | str]:
+            pose = charsheet.frame(sheet, atlas, "idle", direction) or charsheet.frame(sheet, atlas, next(iter(sheet["clips"])), direction)
+            if pose is None:
+                return direction, "no pose to start from"
+            buf = io.BytesIO()
+            pose.save(buf, "PNG")
+            try:
+                if model:
+                    from .bfl import BflPainter
+                    from . import bfl_sprites
+                    frames = bfl_sprites.animate(BflPainter(os.environ["BFL_API_KEY"], model), buf.getvalue(), request.action, what,
+                                                 direction, info.get("view", "low top-down"), 4, size)
+                else:
+                    from .pixellab import PixelLabImageGenerator, animate
+                    frames = animate(PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]), buf.getvalue(), what, request.action,
+                                     direction, info.get("view", "low top-down"), project_style.project_palette(root))
+            except Exception as error:  # noqa: BLE001 - that direction is said; the others stand
+                return direction, str(error)[:200]
+            done[0] += 1
+            report(done[0], len(painted), f"Animating {info.get('name', 'it')}: {direction} done")
+            return direction, frames
+        with ThreadPoolExecutor(3) as pool:
+            results = dict(pool.map(one, painted))
+        frames = {d: f for d, f in results.items() if isinstance(f, list) and f}
+        errors = [f"{d}: {f}" for d, f in results.items() if not isinstance(f, list)]
+        for west, east in mirrored.items():
+            if west in faces and east in frames:
+                frames[west] = [Image.open(io.BytesIO(f)).convert("RGBA").transpose(Image.FLIP_LEFT_RIGHT) for f in frames[east]]
+        if not frames:
+            return {"ok": False, "errors": errors or ["nothing was drawn"]}
+        clip = charsheet.clip_for(request.action)
+        sheet, atlas = charsheet.add_clip(sheet, atlas, clip, frames, fps=8.0 if clip in ("walk", "idle") else 10.0,
+                                          loop="loop" if clip in ("walk", "idle") or clip not in ("attack", "cast", "hurt", "die", "use") else "once")
+        name = Path(request.sheet).name.replace(".character.anim.json", "")
+        path, texture = charsheet.write(root, Path(request.sheet).parent.as_posix(), name, sheet, atlas)
+        report(len(painted), len(painted), f"{clip} added")
+        return {"ok": True, "sheet": path, "texture": texture, "clip": clip, "directions": sorted(frames), "errors": errors,
+                "assets": [{"path": path}, {"path": texture}]}
+
+    @app.post("/characters/from-pictures")
+    def characters_from_pictures(request: CharacterPicturesRequest) -> dict:
+        """A character's loose direction pictures (…-south.png, -east.png…, made before character sheets) as one sheet."""
+        from PIL import Image
+        from . import charsheet
+        root: Path | None = state["root"]
+        if root is None:
+            return {"ok": False, "errors": ["The editor hasn't told the service which project is open"]}
+        by_direction: dict[str, list] = {}
+        for picture in request.pictures:
+            source = (root / picture).resolve()
+            word = next((d for d in sorted(charsheet.DIRECTIONS, key=len, reverse=True) if source.stem.endswith("-" + d)), None)
+            if root.resolve() not in source.parents or not source.is_file() or word is None:
+                continue
+            with Image.open(source) as im:
+                by_direction[word] = [im.convert("RGBA")]
+        if not by_direction:
+            return {"ok": False, "errors": ["none of the pictures face a direction (…-south.png)"]}
+        size = max(max(f[0].size) for f in by_direction.values())
+        name = re.sub(r"[^a-z0-9-]+", "-", request.name.lower()).strip("-")[:40] or "character"
+        sheet = charsheet.new_sheet("", size, {"name": name, "description": request.description, "directions": len(by_direction), "size": size,
+                                               "from": request.pictures[:8]})
+        sheet, atlas = charsheet.add_clip(sheet, None, "idle", by_direction)
+        path, texture = charsheet.write(root, f"assets/characters/{name}", name, sheet, atlas)
+        return {"ok": True, "name": name, "sheet": path, "texture": texture}
 
     @app.put("/provider")
     def set_provider(request: ProviderRequest) -> dict:

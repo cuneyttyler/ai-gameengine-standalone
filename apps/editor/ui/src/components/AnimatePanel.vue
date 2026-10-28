@@ -7,14 +7,17 @@ import AiProgress from './AiProgress.vue'
 import { confirmDialog } from '../dialogs'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
+import { panelTab } from '../paneltabs'
 
 const PROJECT_HOST = 'https://aige-project.local/'
 const DIRECTIONS = ['south', 'south-east', 'east', 'north-east', 'north', 'north-west', 'west', 'south-west']
 const ACTIONS = ['walking', 'running', 'idle breathing', 'attacking with a sword', 'casting a spell', 'jumping', 'flickering flame']
 
 const images = ref<string[]>([])
+const characters = ref<{ path: string; texture: string; character?: { name?: string; description?: string } }[]>([])
 const filter = ref('')
 const form = reactive({
+  sheet: '', // a character sheet: every direction at once, added to it as a clip
   path: '',
   action: 'walking',
   description: '',
@@ -38,9 +41,15 @@ const frame = ref(0)
 let timer = 0
 
 onHostMessage((message) => {
-  if (message.type === 'assets:list') {
-    const list = (message.assets as { path: string }[]) ?? []
-    images.value = list.map((a) => a.path).filter((p) => /\.png$/i.test(p) && !p.includes('/placeholders/') && !p.endsWith('-sheet.png'))
+  if (message.type === 'animations:list') {
+    characters.value = ((message.sheets as { path: string; texture: string; kind?: string; character?: { name?: string; description?: string } }[]) ?? [])
+      .filter((s) => s.kind === 'character')
+  } else if (message.type === 'assets:list') {
+    // Newest first: what was just made is at the top.
+    const list = [...((message.assets as { path: string; time?: number }[]) ?? [])].sort((a, b) => (b.time ?? 0) - (a.time ?? 0))
+    images.value = list
+      .map((a) => a.path)
+      .filter((p) => /\.png$/i.test(p) && !p.includes('/placeholders/') && !p.endsWith('-sheet.png') && !p.endsWith('.character.png'))
   } else if (message.type === 'animation:list') {
     history.value = (message.history as HistoryEntry[]) ?? []
     busy.value = message.busy as boolean
@@ -53,10 +62,32 @@ onHostMessage((message) => {
 
 onMounted(() => {
   sendToHost({ type: 'assets:request' })
+  sendToHost({ type: 'animations:request' })
   sendToHost({ type: 'animation:request' })
   timer = window.setInterval(() => (frame.value = (frame.value + 1) % 4), 160)
 })
 onUnmounted(() => window.clearInterval(timer))
+
+// Assets ▸ Characters ▸ Animate… (and a Character result's): that character.
+watch(
+  () => editorState.animateSheet,
+  (sheet) => {
+    if (sheet) {
+      form.sheet = sheet
+      form.path = ''
+      editorState.animateSheet = ''
+    }
+  },
+  { immediate: true },
+)
+function pickCharacter(path: string): void {
+  form.sheet = path
+  form.path = ''
+}
+const shownCharacters = computed(() => {
+  const words = filter.value.toLowerCase().split(/\s+/).filter(Boolean)
+  return characters.value.filter((c) => words.every((w) => (c.path + ' ' + (c.character?.description ?? '')).toLowerCase().includes(w)))
+})
 
 // The Character tab's "Animate" picks the image.
 watch(
@@ -82,7 +113,7 @@ const whyOff = computed(() =>
   busy.value ? 'Still drawing the last one…'
   : !aiReady.value ? `Turn AI on (${editorState.ai.text || editorState.ai.state})`
   : noKey.value ? `Needs ${byBfl.value ? 'BFL_API_KEY' : 'PIXELLAB_API_KEY'} in ai_service/.env`
-  : !form.path ? 'Pick an image on the left'
+  : !form.path && !form.sheet ? 'Pick a character or an image on the left'
   : !form.action.trim() ? 'Say the action'
   : '',
 )
@@ -93,18 +124,26 @@ const noKey = computed(() => (byBfl.value ? editorState.ai.available.bfl === fal
 function generate(): void {
   error.value = ''
   busy.value = true
-  sendToHost({ type: 'animation:generate', request: { ...form, action: form.action.trim(), description: form.description.trim() } })
+  const request = form.sheet
+    ? { sheet: form.sheet, action: form.action.trim(), description: form.description.trim() }
+    : { ...form, sheet: undefined, action: form.action.trim(), description: form.description.trim() }
+  sendToHost({ type: 'animation:generate', request })
 }
 
 function url(path: string, at: number | string = 0): string {
   return `${PROJECT_HOST}${path}?v=${encodeURIComponent(String(at))}`
 }
 
+// A character's animation: the sheet it went into.
+function characterOf(entry: HistoryEntry): string {
+  return entry.results.find((r) => !r.discarded && r.path.endsWith('.character.anim.json'))?.path ?? ''
+}
 // An entry's spritesheet and frames (what's still there).
 function sheetOf(entry: HistoryEntry): string {
   return entry.results.find((r) => !r.discarded && r.path.endsWith('-sheet.png'))?.path ?? ''
 }
 function framesOf(entry: HistoryEntry): string[] {
+  if (characterOf(entry)) return []
   return entry.results.filter((r) => !r.discarded && !r.path.endsWith('-sheet.png')).map((r) => r.path)
 }
 // The clip its action is, for the animators: walking walks, an attack attacks, a spell casts; anything else loops.
@@ -145,13 +184,27 @@ function when(iso: string): string {
     <section class="pick">
       <input v-model="filter" placeholder="Find an image: knight, torch, characters…" spellcheck="false" />
       <div class="grid">
+        <template v-if="shownCharacters.length">
+          <div class="group muted small">Characters: every direction at once</div>
+          <button
+            v-for="c in shownCharacters"
+            :key="c.path"
+            class="cell character"
+            :class="{ active: form.sheet === c.path }"
+            :title="`${c.character?.name ?? c.path}: animated in every direction, added to its sheet`"
+            @click="pickCharacter(c.path)"
+          >
+            <img :src="url(c.texture)" alt="" loading="lazy" />
+          </button>
+          <div class="group muted small">Images</div>
+        </template>
         <button
           v-for="p in shown"
           :key="p"
           class="cell"
-          :class="{ active: form.path === p }"
+          :class="{ active: !form.sheet && form.path === p }"
           :title="p"
-          @click="form.path = p"
+          @click="(form.path = p), (form.sheet = '')"
         >
           <img :src="url(p)" alt="" loading="lazy" />
         </button>
@@ -161,7 +214,7 @@ function when(iso: string): string {
     <section class="form">
       <div class="row">
         <label>Image</label>
-        <span class="path" :title="form.path">{{ form.path || 'pick one on the left' }}</span>
+        <span class="path" :title="form.sheet || form.path">{{ form.sheet ? `${form.sheet.split('/').pop()} (every direction)` : form.path || 'pick one on the left' }}</span>
       </div>
       <div class="row">
         <label>Action</label>
@@ -217,6 +270,9 @@ function when(iso: string): string {
         <div class="muted small">{{ when(entry.created) }} · {{ String(entry.request.path ?? '').split('/').pop() }}</div>
         <div v-if="entry.state === 'working'" class="muted small">Drawing…</div>
         <div v-else-if="entry.state === 'failed'" class="error small">{{ entry.errors[0] ?? 'Failed' }}</div>
+        <div v-else-if="characterOf(entry)" class="muted small">
+          Added to {{ characterOf(entry).split('/').pop() }} as a clip, every direction: see it in Assets ▸ Characters
+        </div>
         <template v-else-if="framesOf(entry).length">
           <div class="frames">
             <div class="thumb play"><img :src="url(framesOf(entry)[frame % framesOf(entry).length] ?? '', entry.created)" alt="playing" /></div>
@@ -225,6 +281,8 @@ function when(iso: string): string {
           <div class="muted small">{{ sheetOf(entry) }}</div>
         </template>
         <div class="actions">
+          <button v-if="characterOf(entry)" class="primary" :disabled="editorState.playing" title="The player playing it (facing the way it walks)" @click="sendToHost({ type: 'character:prefab', sheet: characterOf(entry), npc: false })">Make player</button>
+          <button v-if="characterOf(entry)" title="Its sheet in the sheet editor" @click="(editorState.fxSheetEdit = true), (editorState.fxSheet = characterOf(entry)), (panelTab.project = 'fx')">Edit…</button>
           <button v-if="sheetOf(entry)" title="An animation sheet of it (Project ▸ Effects ▸ Sheets), for an Animator" @click="make(entry, false)">Make animation</button>
           <button v-if="sheetOf(entry)" title="A prefab that plays it (a character's action through the humanoid animator, else looping)" @click="make(entry, true)">Make prefab</button>
           <button title="Put this request back in the form" @click="useAgain(entry)">Use again</button>
@@ -248,6 +306,10 @@ function when(iso: string): string {
   display: flex;
   flex: 1;
   min-height: 0;
+}
+.group {
+  width: 100%;
+  margin-top: 4px;
 }
 .history-head {
   display: flex;
