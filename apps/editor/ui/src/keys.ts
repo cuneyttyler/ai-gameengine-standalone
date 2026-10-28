@@ -53,6 +53,8 @@ const handlers: Record<string, () => void> = {
   'view.grid': send('view:grid'),
   'view.interior': send('entity:interior'),
   'view.interiors': send('interiors:showAll'),
+  'view.floorUp': send('interiors:floor', { delta: 1 }),
+  'view.floorDown': send('interiors:floor', { delta: -1 }),
   'view.stats': send('view:stats'),
   'play.toggle': send('play:toggle'),
   'panel.scene': () => togglePanel('scene'),

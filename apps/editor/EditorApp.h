@@ -374,6 +374,7 @@ private:
     int sceneBackgroundRequest_ = 0;  // Edit ▸ Background Image, no build (POST /images/background)
     nlohmann::json sceneBackground_;  // its {path, description, model}
     bool relayBackground_ = false;    // a build's background painted again: its scene laid with it when it comes
+    int sceneFloor_ = 0;              // Page Up / Down with nothing selected: every building's floor (0: outside)
     std::map<int, nlohmann::json> webFetchRequests_;
     // Asset analysis (6.2): border terrains now, descriptions from the AI service.
     int analyzeRequest_ = 0;

@@ -39,6 +39,8 @@ export const actions: ActionDef[] = [
   { id: 'view.grid', label: 'Tile borders on empty ground', group: 'View', keys: ['G'] },
   { id: 'view.interior', label: "The selected building: its interior, each floor in turn, then its exterior", group: 'View', keys: ['H'] },
   { id: 'view.interiors', label: "Every building's interior, or every exterior, in the scene", group: 'View', keys: ['Shift+H'] },
+  { id: 'view.floorUp', label: 'A floor up: the selected building, or every building (from outside, floor 1)', group: 'View', keys: ['PageUp'] },
+  { id: 'view.floorDown', label: 'A floor down: the selected building, or every building (from floor 1, outside)', group: 'View', keys: ['PageDown'] },
   { id: 'view.stats', label: 'Frame stats', group: 'View', keys: ['F3'], inPlay: true },
   { id: 'panel.scene', label: 'Show / hide the Scene panel', group: 'Panels', keys: ['B'] },
   { id: 'panel.assets', label: 'Show / hide the Assets panel', group: 'Panels', keys: ['J'] },

@@ -28,6 +28,8 @@ function updateMenus(): void {
       action: () => sendToHost({ type: 'entity:interior' }),
     },
     { label: 'All interiors / exteriors', shortcut: keyLabel('view.interiors'), disabled: editorState.playing, action: () => sendToHost({ type: 'interiors:showAll' }) },
+    { label: 'Floor up', shortcut: keyLabel('view.floorUp'), disabled: editorState.playing, action: () => sendToHost({ type: 'interiors:floor', delta: 1 }) },
+    { label: 'Floor down', shortcut: keyLabel('view.floorDown'), disabled: editorState.playing, action: () => sendToHost({ type: 'interiors:floor', delta: -1 }) },
   ]
 }
 

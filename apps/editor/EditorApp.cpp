@@ -298,6 +298,7 @@ EditorApp::EditorApp(HWND mainWindow, ViewportWindow& viewport, Registry& regist
     // Scenes store full copies of every instance; syncing on open applies any
     // prefab edits made since the scene was saved.
     prefabs_.SyncAll(registry_);
+    RepairInteriorArt(); // interiors made again since it was saved (more floors): picked up
     UpdateTitle();
     StartRecovery();
 }
@@ -5884,6 +5885,36 @@ void EditorApp::LinkBuiltInterior(int originX, int originY, int side) {
 
 bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::json& message) {
     // Interiors (docs/places/interiors.md §5).
+    if (type == "interiors:floor") {
+        // Page Up / Page Down (docs/places/interiors.md §5): a floor up or down, the selected building's (0: outside),
+        // or with none selected the whole scene's level (each building its floor, or its top one).
+        if (playing_) return true;
+        const int delta = message.value("delta", 1) >= 0 ? 1 : -1;
+        Interior* one = selected_ && registry_.valid(*selected_) ? registry_.try_get<Interior>(*selected_) : nullptr;
+        if (one != nullptr && one->kind != "scene" && !one->texture.empty()) {
+            const int level = std::clamp((one->shown ? one->floor : 0) + delta, 0, InteriorFloors(*one));
+            one->shown = level > 0;
+            one->floor = std::max(1, level);
+            post_({{"type", "notify"}, {"text", level == 0 ? std::string("Outside") : "Floor " + std::to_string(level)}});
+        } else {
+            int most = 0;
+            for (auto [e, interior] : registry_.view<Interior>().each()) {
+                if (interior.kind != "scene" && !interior.texture.empty()) most = std::max(most, InteriorFloors(interior));
+            }
+            sceneFloor_ = std::clamp(sceneFloor_ + delta, 0, most);
+            for (auto [e, interior] : registry_.view<Interior>().each()) {
+                if (interior.kind == "scene" || interior.texture.empty()) continue;
+                interior.shown = sceneFloor_ > 0;
+                interior.floor = std::clamp(sceneFloor_, 1, InteriorFloors(interior));
+            }
+            post_({{"type", "notify"}, {"text", most == 0 ? std::string("No interiors in this scene")
+                                                : sceneFloor_ == 0 ? std::string("Every building: outside")
+                                                                   : "Every building: floor " + std::to_string(sceneFloor_) + " (or its top)"}});
+        }
+        ApplyInteriors(registry_);
+        inspectorStale_ = true;
+        return true;
+    }
     if (type == "entity:interior" || type == "interiors:showAll") {
         // Interiors (development_plan.md Phase 27): one building's (the selection's, or `id`'s) interior shown or its
         // exterior, toggled unless `shown` says; or every building's. A view, not an edit: Play sets them from where the
