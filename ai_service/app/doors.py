@@ -140,10 +140,11 @@ def door_frames(picture: Image.Image, box: list[int], frames: int = 24, exact: b
     for i in range(W):
         for j in range(H):
             r, g, b, a = px[i, j]
-            if a and abs(r - ref[0]) + abs(g - ref[1]) + abs(b - ref[2]) <= spread:
+            # Its wood, and what's dark on it (iron hinges and straps, the gaps between planks): the door's too.
+            if a and (abs(r - ref[0]) + abs(g - ref[1]) + abs(b - ref[2]) <= spread or r + g + b < 3 * 70):
                 m[i, j] = 255
     wood = wood.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.MinFilter(5))
-    mask = ImageChops.multiply(shape, wood)
+    mask = _door_only(ImageChops.multiply(shape, wood), shape)
     # Along the wall a door is (W, W * slope) on screen; upright, H minus that: a double door is wider than it's tall.
     if leaves not in (1, 2):
         leaves = 2 if W > 0.75 * (H - slope * W) else 1
@@ -162,6 +163,40 @@ def door_frames(picture: Image.Image, box: list[int], frames: int = 24, exact: b
         out.append(ImageOps.mirror(f) if mirrored else f)
     x = picture.width - X1 if mirrored else X0
     return out, [x, Y0, W, H]
+
+
+def _door_only(mask: Image.Image, shape: Image.Image) -> Image.Image:
+    """The doorway less only what stands in front of the door: of what isn't the door's colour inside the doorway, a
+    piece enclosed by the door (a handle, a knocker, a painted sign) or small (under 4% of it) is the door's, else the
+    frames would leave it showing, the closed door's, over the opening door; a bigger piece reaching the doorway's
+    edge (a post, a step, a railing) stays out, drawn in front."""
+    W, H = mask.size
+    inside = shape.load()
+    on = mask.load()
+    area = sum(1 for i in range(W) for j in range(H) if inside[i, j]) or 1
+    seen = bytearray(W * H)
+    out = mask.copy()
+    o = out.load()
+    for sx in range(W):
+        for sy in range(H):
+            if seen[sy * W + sx] or not inside[sx, sy] or on[sx, sy]:
+                continue
+            piece, edge, stack = [], False, [(sx, sy)]
+            seen[sy * W + sx] = 1
+            while stack:
+                x, y = stack.pop()
+                piece.append((x, y))
+                for a, b in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                    if not (0 <= a < W and 0 <= b < H) or not inside[a, b]:
+                        edge = True
+                        continue
+                    if not seen[b * W + a] and not on[a, b]:
+                        seen[b * W + a] = 1
+                        stack.append((a, b))
+            if not edge or len(piece) < 0.04 * area:
+                for x, y in piece:
+                    o[x, y] = 255
+    return out
 
 
 def _leaf(door: Image.Image, shape: Image.Image, a: float, slope: float, hinge_right: bool = False) -> Image.Image:
