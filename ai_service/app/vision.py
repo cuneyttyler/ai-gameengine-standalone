@@ -146,10 +146,12 @@ class AssetDescription(BaseModel):
         return re.sub(r"[^a-z0-9-]+", "-", str(value or "").lower()).strip("-")[:48]
 
 
-def image_chunk(path: Path, rect: list[int] | None = None) -> tuple[dict, tuple[int, int]]:
+def image_chunk(path: Path, rect: list[int] | None = None, preview: int = 0,
+                sent: list | None = None) -> tuple[dict, tuple[int, int]]:
     """The image (or `rect` of it: x, y, w, h) as a PNG data URI chunk, at about
-    PREVIEW pixels on its longest side, and its real size. Small pixel art is
-    enlarged by a whole factor, pixels kept sharp, so the model sees its shapes."""
+    PREVIEW pixels (or `preview`) on its longest side, and its real size. Small pixel art is
+    enlarged by a whole factor, pixels kept sharp, so the model sees its shapes. `sent` gets the size sent."""
+    PREVIEW = preview or globals()["PREVIEW"]
     with Image.open(path) as source:
         image = source.convert("RGBA")
     if rect:
@@ -171,6 +173,8 @@ def image_chunk(path: Path, rect: list[int] | None = None) -> tuple[dict, tuple[
     out = io.BytesIO()
     backdrop.convert("RGB").save(out, format="PNG")
     data = base64.b64encode(out.getvalue()).decode("ascii")
+    if sent is not None:
+        sent[:] = list(image.size)
     return {"type": "image_url", "image_url": f"data:image/png;base64,{data}"}, size
 
 
@@ -275,16 +279,19 @@ def find_parts(provider: Provider, root: Path, path: str, kinds: list[str], rect
     file = (root / path).resolve()
     if root.resolve() not in file.parents or not file.is_file():
         return {"ok": False, "errors": [f"No picture {path}"]}
-    chunk, (w, h) = image_chunk(file, rect)
+    # Sharp enough to place a door (not the 256 px a description needs), its boxes asked in the pixels it's shown
+    # and scaled back: told the real size of a picture shown smaller, the model guessed the scale and missed.
+    seen: list = []
+    chunk, (w, h) = image_chunk(file, rect, preview=1024, sent=seen)
     content = [{"type": "text", "text": FIND_PARTS.format(kinds=", ".join(kinds) or "doors")},
-               {"type": "text", "text": f"The picture: {w}x{h} pixels."}, chunk]
+               {"type": "text", "text": f"The picture: {seen[0]}x{seen[1]} pixels."}, chunk]
     try:
         completion = provider.complete([{"role": "user", "content": content}])
         answer = json.loads(completion.text)
     except (ProviderError, json.JSONDecodeError) as error:
         return {"ok": False, "errors": [f"The parts couldn't be found: {error}"]}
     # Its boxes are in the pixels it was told (the picture's, or its rect's): the rect's offset added back.
-    sx = sy = 1.0
+    sx, sy = w / max(1, seen[0]), h / max(1, seen[1])
     ox, oy = (rect[0], rect[1]) if rect else (0, 0)
     parts = []
     for p in answer.get("parts", []) if isinstance(answer, dict) else []:
