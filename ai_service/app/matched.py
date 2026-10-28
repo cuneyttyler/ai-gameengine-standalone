@@ -724,15 +724,10 @@ def make_with_bfl(api_key: str, model: str, root: Path, rel: str, sheets: dict, 
         new = [p for p in every if p["key"] in made and p["slug"] not in checked and not p.get("kit")]
         if vision is not None:
             track.start("check", f"Checking the pieces (the vision model): {len(new)} to check")
-        wrong, unchecked, said = set(), set(), {}
-        for start in range(0, len(new), 16):
-            chunk = new[start:start + 16]
-            found = check_pieces(vision, folder, chunk)
-            if found is None:
-                unchecked |= {p["key"] for p in chunk}
-                continue
-            wrong |= {chunk[i]["key"] for i in found}
-            said.update({chunk[i]["slug"]: why for i, why in found.items()})
+        found, missed, why = check_all(vision, folder, new)
+        wrong = {new[i]["key"] for i in found}
+        unchecked = {new[i]["key"] for i in missed}
+        said = {new[i]["slug"]: w for i, w in why.items()}
         # The shape test (two things found as one, or half of one) for what this run painted only: an earlier piece the
         # vision model passes stays (a building is taller than its flat box, which this test can't tell from a merge).
         painted_now = {p["key"] for p in todo}
@@ -962,11 +957,10 @@ def paint_from_words(painter, folder: Path, pieces: list[dict], every: list[dict
     # 3. One look by the vision model; what's wrong painted once more (if it wasn't already), told why.
     redo: dict[str, str] = {}
     have = [p for p in pieces if p["key"] in made]
-    for start in range(0, len(have), 16):
-        chunk = have[start:start + 16]
-        for i, why in (check_pieces(writer, folder, chunk) or {}).items():
-            if tries.get(chunk[i]["key"], 1) < 2:
-                redo[chunk[i]["key"]] = why
+    found, _, said = check_all(writer, folder, have)
+    for i in found:
+        if tries.get(have[i]["key"], 1) < 2:
+            redo[have[i]["key"]] = said[i]
     fixed = 0
     if redo:
         by_key = {p["key"]: p for p in pieces}
@@ -1464,12 +1458,47 @@ def _foot_fits(folder: Path, piece: dict) -> bool:
     return abs(front / max(1, w) - want) <= 0.1
 
 
+_QUICK: dict[str, object] = {}
+
+
+def quick_vision(vision):
+    """The model for the pieces' check: Mistral Medium (MISTRAL_CHECK_VISION_MODEL picks another) in place of the slow
+    vision model. On 16 pieces it answered in 3.5 s where Large 4 took 88 s, catching what's broken (ground attached,
+    the wrong thing) though passing a tree drawn for a bush more often. Other providers are used as they are."""
+    import os
+    from .providers import MistralProvider
+    model = os.environ.get("MISTRAL_CHECK_VISION_MODEL", "mistral-medium-latest")
+    key = os.environ.get("MISTRAL_API_KEY")
+    if not isinstance(vision, MistralProvider) or not key or vision.model == model:
+        return vision
+    if model not in _QUICK:
+        _QUICK[model] = MistralProvider(api_key=key, model=model, timeout_s=60.0)
+    return _QUICK[model]
+
+
+def check_all(vision, folder: Path, pieces: list[dict], size: int = 16) -> tuple[set[int], set[int], dict[int, str]]:
+    """check_pieces on every `size` pieces at once (4 boards in flight): (the wrong indices, the unchecked ones, why)."""
+    from concurrent.futures import ThreadPoolExecutor
+    chunks = [(start, pieces[start:start + size]) for start in range(0, len(pieces), size)]
+    wrong, unchecked, said = set(), set(), {}
+    with ThreadPoolExecutor(4) as pool:
+        for (start, chunk), found in zip(chunks, pool.map(lambda c: check_pieces(vision, folder, c[1]), chunks)):
+            if found is None:
+                unchecked |= set(range(start, start + len(chunk)))
+                continue
+            for i, why in found.items():
+                wrong.add(start + i)
+                said[start + i] = why
+    return wrong, unchecked, said
+
+
 def check_pieces(vision, folder: Path, pieces: list[dict]) -> dict[int, str] | None:
-    """The pieces that aren't one isolated thing of their kind (index -> what's wrong), by the vision model; None when
-    the check couldn't be made (they're unchecked, not right)."""
+    """The pieces that aren't one isolated thing of their kind (index -> what's wrong), by the vision model (its quick
+    one: quick_vision); None when the check couldn't be made (they're unchecked, not right)."""
     have = [(n, p) for n, p in enumerate(pieces) if (folder / "pieces" / f"{p['slug']}.png").exists()]
     if vision is None or not have:
         return {}
+    vision = quick_vision(vision)
     import base64
     images = []
     for _, p in have:

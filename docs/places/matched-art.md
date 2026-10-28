@@ -43,7 +43,10 @@ fit and place them on the grid. The background is the same: the plan's ground ha
 5. **Small things** are never painted on a sheet: drawn at their true size they get too little detail, and scaled
    up their box looks like a building's. Each is an **edit of the example small thing** ("turn this into a lamp
    post"): it keeps the example's angle, close-up framing, finish and clean separation.
-6. **Fix.** Every piece is checked once (the vision model: one thing, of its kind, cleanly separated). A wrong one
+6. **Fix.** Every piece is checked once (the vision model: one thing, of its kind, cleanly separated). The check uses
+   the quick vision model, Mistral Medium (`MISTRAL_CHECK_VISION_MODEL`), 16 pieces a board and four boards at once:
+   on 16 pieces it took 3.5 s where Large 4 took 88 s, catching what's broken but passing a tree drawn for a bush more
+   often. The build's check of found or made art (`/assets/describe` with `wanted`) uses it too. A wrong one
    is edited from its example again, the reason said. Pieces the user marks are remade the same way, in batches
    (`remake`).
 7. **Cut and fit.** The key colour is keyed out (soft edges, its tint taken off), specks dropped. Each piece is

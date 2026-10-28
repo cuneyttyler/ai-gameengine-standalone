@@ -661,6 +661,10 @@ def create_app(
             return {"ok": False, "errors": ["No vision model available (MISTRAL_API_KEY)"]}
         if len(request.paths) + len(request.items) > 400:
             return {"ok": False, "errors": ["At most 400 images at a time"]}
+        if request.wanted:
+            # A build's check of art made or found for a part: the quick vision model (matched.quick_vision).
+            from .matched import quick_vision
+            vision = quick_vision(vision)
         return describe_assets(vision, root, request.paths, items=request.items, roles=request.roles or None,
                                judge=request.wanted or None)
 
