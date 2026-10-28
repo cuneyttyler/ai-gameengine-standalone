@@ -187,6 +187,11 @@ function identifyAll(): void {
 function runAll(): void {
   sendToHost({ type: 'build:animateRun' })
 }
+// Everything already animated, animated again (with Preferences ▸ AI's animators now: PixelLab for doors and things).
+const doneCount = computed(() => shown.value.filter((t) => t.status === 'done').length)
+function againAll(): void {
+  sendToHost({ type: 'build:animateRun', again: true })
+}
 function runOne(t: Target): void {
   sendToHost({ type: 'build:animateRun', key: t.key })
 }
@@ -225,6 +230,8 @@ function stop(): void {
           <button :class="{ primary: toIdentify === 0 }" :disabled="toAnimate === 0"
                   :title="identified ? `${identified} doors identified (and the things) animated by PixelLab` : 'Identify the doors first'"
                   @click="runAll">② Animate ({{ toAnimate }})</button>
+          <button v-if="doneCount" title="Everything already animated, animated again (Preferences ▸ AI ▸ Non-humanoid animation for doors and things)"
+                  @click="againAll">Animate all again ({{ doneCount }})</button>
         </template>
       </div>
     </section>

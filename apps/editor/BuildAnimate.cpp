@@ -244,6 +244,7 @@ bool EditorApp::HandleAnimateMessage(const std::string& type, const nlohmann::js
         // ① its doors looked for (all buildings, or one: found again), or ② what's ready animated (all, or one).
         const bool identify = type == "build:animateIdentify";
         const std::string only = message.value("key", "");
+        const bool again = !identify && message.value("again", false); // everything done animated again too
         for (auto& t : animate_["targets"]) {
             const std::string key = t.value("key", ""), status = t.value("status", "");
             const bool door = t.value("kind", "") == "door";
@@ -252,7 +253,9 @@ bool EditorApp::HandleAnimateMessage(const std::string& type, const nlohmann::js
                 t["status"] = "pending";
                 for (const char* stale : {"drawn", "given", "box", "found", "error"}) t.erase(stale);
             }
-            if (!identify && (!only.empty() || status == "failed") && status != "skipped") {
+            if (!identify && (!only.empty() || status == "failed" || (again && status == "done")) && status != "skipped") {
+                // A door animated before it had an identified box: the doorway it was fitted to, used as drawn.
+                if (door && !t.contains("drawn") && !t.contains("given") && t.contains("box")) t["drawn"] = t["box"];
                 const bool ready = !door || t.contains("drawn") || t.contains("given");
                 if (ready) t["status"] = door ? "identified" : "pending";
             }
