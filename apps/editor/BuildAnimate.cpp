@@ -67,13 +67,14 @@ std::string DoorTrigger() {
 }
 
 // /parts/door's request for a target's door: its picture, the box (found, or drawn by hand: `exact`, used as drawn).
-nlohmann::json DoorRequest(const std::string& buildId, const nlohmann::json& target, const nlohmann::json& box, bool exact) {
+nlohmann::json DoorRequest(const std::string& buildId, const nlohmann::json& target, const nlohmann::json& box, bool exact,
+                           const std::string& animator) {
     std::string name = buildId + "-door-" + target.value("key", std::string("door"));
     for (char& ch : name) {
         if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-') ch = '-';
     }
     return {{"path", target.value("texture", "")}, {"box", box}, {"name", name.substr(0, 60)}, {"exact", exact},
-            {"leaves", target.value("leaves", 0)}};
+            {"leaves", target.value("leaves", 0)}, {"animator", animator}};
 }
 
 nlohmann::json ReadJsonFile(const std::filesystem::path& file) {
@@ -153,7 +154,8 @@ nlohmann::json EditorApp::AnimateTargets() {
         auto base = std::find_if(targets.begin(), targets.end(), [&](const nlohmann::json& t) { return t.value("key", "") == key.substr(0, hash); });
         if (base == targets.end()) continue;
         nlohmann::json extra = b;
-        if (extra.value("status", "") != "done" && extra.value("status", "") != "skipped") extra["status"] = "pending";
+        const std::string was = extra.value("status", "");
+        if (was != "done" && was != "skipped") extra["status"] = extra.contains("drawn") || extra.contains("given") ? "identified" : "pending";
         targets.insert(std::find_if(base, targets.end(), [&](const nlohmann::json& t) {
                            return t.value("key", "").rfind(key.substr(0, hash), 0) != 0;
                        }),
@@ -161,11 +163,14 @@ nlohmann::json EditorApp::AnimateTargets() {
     }
     for (auto& t : targets) {
         for (const auto& b : before.value("targets", nlohmann::json::array())) {
-            if (b.value("key", "") == t.value("key", "") && (b.value("status", "") == "done" || b.value("status", "") == "skipped")) {
-                t["status"] = b["status"];
-                if (b.contains("box")) t["box"] = b["box"];
-                if (b.contains("sheet")) t["sheet"] = b["sheet"];
-                if (b.contains("preview")) t["preview"] = b["preview"];
+            if (b.value("key", "") != t.value("key", "")) continue;
+            const std::string was = b.value("status", "");
+            const bool identified = b.contains("drawn") || b.contains("given");
+            if (was == "done" || was == "skipped") t["status"] = b["status"];
+            else if (identified) t["status"] = "identified";
+            else continue;
+            for (const char* kept : {"box", "sheet", "preview", "drawn", "given", "door", "reset", "leaves", "error"}) {
+                if (b.contains(kept)) t[kept] = b[kept];
             }
         }
     }
@@ -190,6 +195,9 @@ void EditorApp::PostAnimate() {
 }
 
 bool EditorApp::HandleAnimateMessage(const std::string& type, const nlohmann::json& message) {
+    // Build ▸ Animate (docs/assets/animations.md §4.1), in two steps: ① Identify doors (each building's doors found
+    // in its picture, shown to be checked, drawn by hand where they're off), ② Animate (each door identified, and each
+    // thing that's used, animated and applied).
     if (type == "build:animateScan") {
         animate_ = {{"targets", AnimateTargets()}, {"running", animateRequest_ != 0}};
         PostAnimate();
@@ -197,56 +205,61 @@ bool EditorApp::HandleAnimateMessage(const std::string& type, const nlohmann::js
     }
     if (type == "build:animateSkip" || type == "build:animateUnskip") {
         for (auto& t : animate_["targets"]) {
-            if (t.value("key", "") == message.value("key", "")) t["status"] = type == "build:animateSkip" ? "skipped" : "pending";
+            if (t.value("key", "") != message.value("key", "")) continue;
+            const bool ready = t.value("kind", "") == "door" && (t.contains("drawn") || t.contains("given"));
+            t["status"] = type == "build:animateSkip" ? "skipped" : ready ? "identified" : "pending";
         }
         PostAnimate();
         return true;
     }
-    if (type == "build:animateRun") {
-        // All that's left (or one): in turn, each found, animated and applied.
-        // Boxes drawn by hand round its doors (the user saw the found ones were off, or some missing): one door each,
-        // animated from it as drawn, the building's other doors gone (§4.3).
-        std::string only = message.value("key", "");
-        nlohmann::json boxes = message.value("boxes", nlohmann::json::array());
-        if (message.contains("box")) boxes.push_back(message["box"]);
-        std::string onlyBase;
-        if (!only.empty() && !boxes.empty()) {
-            const std::string base = only.substr(0, only.find('#'));
-            auto& list = animate_["targets"];
-            auto first = std::find_if(list.begin(), list.end(), [&](const nlohmann::json& t) { return t.value("key", "") == base; });
-            if (first != list.end()) {
-                nlohmann::json model = *first;
-                list.erase(std::remove_if(list.begin(), list.end(), [&](const nlohmann::json& t) {
-                               return t.value("key", "").rfind(base + "#", 0) == 0;
-                           }),
-                           list.end());
-                first = std::find_if(list.begin(), list.end(), [&](const nlohmann::json& t) { return t.value("key", "") == base; });
-                size_t at = static_cast<size_t>(first - list.begin());
-                for (size_t i = 0; i < boxes.size(); ++i) {
-                    nlohmann::json t = i == 0 ? *first : model;
-                    t["key"] = i == 0 ? base : base + "#" + std::to_string(i);
-                    if (i > 0) t["label"] = model.value("label", std::string("Door")) + " · door " + std::to_string(i + 1);
-                    t["door"] = i;
-                    t["reset"] = i == 0;
-                    t["drawn"] = boxes[i];
-                    t["status"] = "pending";
-                    for (const char* stale : {"preview", "sheet", "found", "error", "given"}) t.erase(stale);
-                    if (i == 0) list[at] = t;
-                    else list.insert(list.begin() + static_cast<std::ptrdiff_t>(at + i), t);
-                }
-                onlyBase = base;
-                only.clear();
+    if (type == "build:animateSetDoors") {
+        // Boxes drawn by hand round a building's doors: its doors are those, identified, one target each (§4.3).
+        const std::string base = message.value("key", std::string()).substr(0, message.value("key", std::string()).find('#'));
+        const nlohmann::json boxes = message.value("boxes", nlohmann::json::array());
+        auto& list = animate_["targets"];
+        auto first = std::find_if(list.begin(), list.end(), [&](const nlohmann::json& t) { return t.value("key", "") == base; });
+        if (first == list.end() || boxes.empty()) return true;
+        const nlohmann::json model = *first;
+        list.erase(std::remove_if(list.begin(), list.end(), [&](const nlohmann::json& t) { return t.value("key", "").rfind(base + "#", 0) == 0; }),
+                   list.end());
+        first = std::find_if(list.begin(), list.end(), [&](const nlohmann::json& t) { return t.value("key", "") == base; });
+        const size_t at = static_cast<size_t>(first - list.begin());
+        for (size_t i = 0; i < boxes.size(); ++i) {
+            nlohmann::json t = model;
+            t["key"] = i == 0 ? base : base + "#" + std::to_string(i);
+            if (i > 0) t["label"] = model.value("label", std::string("Door")) + " · door " + std::to_string(i + 1);
+            t["door"] = i;
+            t["reset"] = i == 0;
+            t["drawn"] = boxes[i];
+            t["box"] = boxes[i];
+            t["status"] = "identified";
+            for (const char* stale : {"preview", "sheet", "found", "error", "given"}) t.erase(stale);
+            if (i == 0) list[at] = t;
+            else list.insert(list.begin() + static_cast<std::ptrdiff_t>(at + i), t);
+        }
+        PostAnimate();
+        return true;
+    }
+    if (type == "build:animateIdentify" || type == "build:animateRun") {
+        // ① its doors looked for (all buildings, or one: found again), or ② what's ready animated (all, or one).
+        const bool identify = type == "build:animateIdentify";
+        const std::string only = message.value("key", "");
+        for (auto& t : animate_["targets"]) {
+            const std::string key = t.value("key", ""), status = t.value("status", "");
+            const bool door = t.value("kind", "") == "door";
+            if (!only.empty() && key != only) continue;
+            if (identify && door && (!only.empty() ? status != "skipped" : status == "pending" || status == "failed")) {
+                t["status"] = "pending";
+                for (const char* stale : {"drawn", "given", "box", "found", "error"}) t.erase(stale);
+            }
+            if (!identify && (!only.empty() || status == "failed") && status != "skipped") {
+                const bool ready = !door || t.contains("drawn") || t.contains("given");
+                if (ready) t["status"] = door ? "identified" : "pending";
             }
         }
-        for (auto& t : animate_["targets"]) {
-            const std::string status = t.value("status", "");
-            if (!only.empty() && t.value("key", "") != only) continue;
-            if (!onlyBase.empty()) continue;
-            if (status == "failed" || (!only.empty() && status != "skipped")) t["status"] = "pending";
-        }
         animate_["running"] = true;
+        animate_["mode"] = identify ? "identify" : "animate";
         animate_["only"] = only;
-        animate_["onlyBase"] = onlyBase;
         AnimateNext();
         return true;
     }
@@ -264,32 +277,32 @@ void EditorApp::AnimateNext() {
         PostAnimate();
         return;
     }
-    const std::string only = animate_.value("only", ""), onlyBase = animate_.value("onlyBase", "");
+    const bool identify = animate_.value("mode", std::string("animate")) == "identify";
+    const std::string only = animate_.value("only", "");
     for (auto& t : animate_["targets"]) {
-        if (t.value("status", "") != "pending" || (!only.empty() && t.value("key", "") != only)) continue;
-        if (!onlyBase.empty() && t.value("key", "").substr(0, t.value("key", "").find('#')) != onlyBase) continue;
+        if (!only.empty() && t.value("key", "") != only) continue;
+        const std::string status = t.value("status", "");
+        const bool door = t.value("kind", "") == "door";
         animateKey_ = t.value("key", "");
-        const auto region = t.value("region", nlohmann::json::array());
-        if (t.value("kind", "") == "door" && t.contains("drawn")) {
-            // Drawn by hand: opened from that box as drawn.
-            t["found"] = t["drawn"];
-            t["box"] = t["drawn"];
-            t["status"] = "animating";
-            animateRequest_ = Ai()->Request("POST", "/parts/door", DoorRequest(build_->Id(), t, t["drawn"], true), 120);
-            t.erase("drawn");
-        } else if (t.value("kind", "") == "door" && t.contains("given")) {
-            // Another door the finder saw in the building's picture: fitted and opened.
-            t["found"] = t["given"];
-            t["box"] = t["given"];
-            t["status"] = "animating";
-            animateRequest_ = Ai()->Request("POST", "/parts/door", DoorRequest(build_->Id(), t, t["given"], false), 120);
-        } else if (t.value("kind", "") == "door") {
-            // Its door looked for in its picture (or its part of the painting).
+        if (identify) {
+            if (!door || status != "pending") continue;
+            // ① Its doors looked for in its picture (or its part of the painting).
             t["status"] = "finding";
-            animateRequest_ = Ai()->Request("POST", "/parts/find", {{"path", t.value("texture", "")}, {"kinds", {"door", "gate"}}, {"rect", region}}, 180);
-        } else {
+            animateRequest_ = Ai()->Request("POST", "/parts/find",
+                                            {{"path", t.value("texture", "")}, {"kinds", {"door", "gate"}}, {"rect", t.value("region", nlohmann::json::array())}}, 180);
+        } else if (door && status == "identified") {
+            // ② Opened: from its box as drawn by hand, else fitted to the picture round the one found.
+            const bool drawn = t.contains("drawn");
+            t["box"] = drawn ? t["drawn"] : t["given"];
             t["status"] = "animating";
-            AnimateCrop(t, region);
+            // Preferences ▸ AI ▸ Non-humanoid animation: PixelLab or FLUX video.
+            const std::string animator = userPrefs_ ? userPrefs_->Get("objectAnimateProvider", "pixellab").get<std::string>() : "pixellab";
+            animateRequest_ = Ai()->Request("POST", "/parts/door", DoorRequest(build_->Id(), t, t["box"], drawn, animator), 900);
+        } else if (!door && status == "pending") {
+            t["status"] = "animating";
+            AnimateCrop(t, t.value("region", nlohmann::json::array()));
+        } else {
+            continue;
         }
         PostAnimate();
         return;
@@ -337,6 +350,7 @@ void EditorApp::AnimateCrop(nlohmann::json& target, const nlohmann::json& box) {
                                      {"clip", door ? "open" : used ? used->clip : "open"},
                                      {"description", target.value("label", "")},
                                      {"provider", userPrefs_ ? userPrefs_->Get("animateProvider", "autosprite") : nlohmann::json("autosprite")},
+                                     {"objectProvider", userPrefs_ ? userPrefs_->Get("objectAnimateProvider", "pixellab") : nlohmann::json("pixellab")},
                                      {"name", std::filesystem::path(path).stem().string()}},
                                     900);
 }
@@ -377,7 +391,7 @@ void EditorApp::OnAnimateResult(const nlohmann::json& body) {
         }
         if (seen.empty()) {
             (*target)["status"] = archway ? "skipped" : "failed";
-            (*target)["error"] = archway ? "an open archway: no door to animate" : "no door found in its picture: draw it (click its picture)";
+            (*target)["error"] = archway ? "an open archway: no door to animate" : "no door found in its picture: draw its doors (click its picture)";
             AnimateNext();
             return;
         }
@@ -401,22 +415,22 @@ void EditorApp::OnAnimateResult(const nlohmann::json& body) {
                 t["door"] = i;
                 t["reset"] = false;
                 t["given"] = seen[i]["box"];
+                t["box"] = seen[i]["box"];
                 t["leaves"] = seen[i].value("leaves", 0);
-                t["status"] = "pending";
-                for (const char* stale : {"preview", "sheet", "found", "error", "drawn", "box"}) t.erase(stale);
+                t["status"] = "identified";
+                for (const char* stale : {"preview", "sheet", "found", "error", "drawn"}) t.erase(stale);
                 list.insert(list.begin() + index + static_cast<std::ptrdiff_t>(i), t);
             }
             for (auto& t : list) {
                 if (t.value("key", "") == base) target = &t; // the list moved under it
             }
         }
-        // Opened from its own pixels (the service's app/doors.py: the doorway fitted to the picture, the panel swung
-        // inward behind the wall), not drawn by an animator: it keeps the building's art and costs nothing.
-        (*target)["found"] = best["box"];
+        // Shown to be checked (② Animate opens it): its box as found.
+        (*target)["given"] = best["box"];
         (*target)["box"] = best["box"];
-        (*target)["status"] = "animating";
-        PostAnimate();
-        animateRequest_ = Ai()->Request("POST", "/parts/door", DoorRequest(build_->Id(), *target, best["box"], false), 120);
+        (*target)["status"] = "identified";
+        for (const char* stale : {"preview", "sheet", "error", "drawn"}) target->erase(stale);
+        AnimateNext();
         return;
     }
     if (!body.value("ok", false)) return fail(body.value("errors", nlohmann::json::array()).dump());

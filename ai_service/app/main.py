@@ -286,9 +286,11 @@ class DoorRequest(BaseModel):
     frames: int = 24
     exact: bool = False             # the box drawn by hand round the door: used as drawn, not fitted
     leaves: int = 0                 # 1, 2 (a double door: two halves, each on its own hinge); 0: from its shape
+    animator: str = "pixellab"      # pixellab or bfl:flux-video (its crop animated, kept to the doorway), or engine (its own pixels swung)
 
 
 class AnimationRequest(BaseModel):
+    objectProvider: str = "pixellab"  # what animates a thing (not a person): Preferences ▸ AI ▸ Non-humanoid animation
     clip: str = ""       # the clip it's kept as (open, pull...); "" from the action (open, close, break, else idle)
     path: str            # the project image to animate
     provider: str = ""   # Preferences ▸ AI ▸ Animate ("" the default: AutoSprite)
@@ -999,6 +1001,32 @@ def create_app(
         if made is None:
             return {"ok": False, "errors": ["no doorway found where the door was seen"]}
         frames, doorway = made
+        provider, warnings, fps = "engine", [], 20
+        by_bfl = request.animator == "bfl:flux-video" and bool(os.environ.get("BFL_API_KEY"))
+        if by_bfl or (request.animator == "pixellab" and os.environ.get("PIXELLAB_API_KEY")):
+            # PixelLab (docs/assets/animations.md §4.1): the doorway's crop opened, kept to the doorway (what's around
+            # it, and in front of it, the building's own); the engine's door if it can't.
+            from PIL import ImageChops
+            from .pixellab import PixelLabImageGenerator, animate_object
+            x, y, w, h = doorway
+            with Image.open(source) as im:
+                crop = im.convert("RGBA").crop((x, y, x + w, y + h))
+            mask = frames[0].getchannel("A")
+            opening = ("the door swings slowly open inward on its hinges, showing the dark inside of the building; "
+                       "the frame, the arch and the wall around it stay still; no people")
+            try:
+                if by_bfl:
+                    from .bfl_video import animate_object as animate_by_video
+                    opened = animate_by_video(os.environ["BFL_API_KEY"], crop, opening, "a building's closed wooden door", 12)
+                else:
+                    opened = animate_object(PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]), crop, opening, 8)
+                frames = []
+                for f in opened:
+                    f.putalpha(ImageChops.multiply(f.getchannel("A"), mask))
+                    frames.append(f)
+                provider, fps = ("bfl", 12) if by_bfl else ("pixellab", 12)
+            except Exception as error:  # noqa: BLE001 - the door opened its own way instead
+                warnings.append(f"{'FLUX video' if by_bfl else 'PixelLab'} couldn't animate it ({str(error)[:200]}): opened from its own pixels instead")
         name = re.sub(r"[^a-z0-9_-]+", "-", request.name.lower()).strip("-")[:60] or "door"
         folder = root / "assets" / "textures" / "generated" / "animations" / name
         folder.mkdir(parents=True, exist_ok=True)
@@ -1010,10 +1038,11 @@ def create_app(
         sheet = folder / f"{name}-sheet.png"
         sheet.write_bytes(spritesheet([png(f) for f in frames]))
         (folder / f"{sheet.name}.gen.json").write_text(json.dumps(
-            {"description": "a door opening", "from": request.path, "frames": len(frames), "provider": "engine", "model": "doors.py",
+            {"description": "a door opening", "from": request.path, "frames": len(frames), "provider": provider,
+             "model": {"pixellab": "animate-with-text-v3", "bfl": "flux-3-video"}.get(provider, "doors.py"),
              "doorway": doorway, "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}, indent=2) + "\n", encoding="utf-8")
-        return {"ok": True, "name": name, "frames": paths, "sheet": sheet.relative_to(root).as_posix(), "clip": "open", "fps": 20,
-                "doorway": doorway, "humanoid": False}
+        return {"ok": True, "name": name, "frames": paths, "sheet": sheet.relative_to(root).as_posix(), "clip": "open", "fps": fps,
+                "doorway": doorway, "humanoid": False, "provider": provider, "warnings": warnings}
 
     @app.post("/animations/generate")
     def animations_generate(request: AnimationRequest) -> dict:
@@ -1037,8 +1066,40 @@ def create_app(
         what = request.description or source.stem.replace("-", " ")
         report = progress.reporter()
         humanoid = None
+        # A thing (not a person: a chest, a lever, a flag) by PixelLab, a person by AutoSprite (a character animator: given
+        # a thing it adds a person and redraws it; docs/assets/animations.md §4.1).
+        thing = False
+        thing_by_bfl = request.objectProvider == "bfl:flux-video" and bool(os.environ.get("BFL_API_KEY"))
+        if thing_by_bfl or (request.objectProvider == "pixellab" and os.environ.get("PIXELLAB_API_KEY")):
+            from . import autosprite
+            told = source.with_name(source.name + ".gen.json")
+            made_as = json.loads(told.read_text(encoding="utf-8")).get("description", "") if told.is_file() else ""
+            humanoid = autosprite.is_humanoid(" ".join([request.description, made_as, source.stem]), False, state["provider"])
+            thing = humanoid is False
         try:
-            if auto:
+            if thing:
+                from PIL import Image
+                from .charsheet import clip_for
+                from .pixellab import animate_object
+                once = (request.clip.strip() or clip_for(request.action, False)) in ("open", "close", "break")
+                report(0, 1, f"Animating {source.name}: {request.action} ({'FLUX video' if thing_by_bfl else 'PixelLab'})")
+                with Image.open(source) as im:
+                    picture = im.convert("RGBA")
+                if max(picture.size) > 384:  # its frames at most 384 px a side
+                    picture.thumbnail((384, 384), Image.Resampling.LANCZOS)
+                if thing_by_bfl:
+                    from .bfl_video import animate_object as animate_by_video
+                    made = animate_by_video(os.environ["BFL_API_KEY"], picture, request.action, what, 12, loop=not once)
+                else:
+                    made = animate_object(PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]), picture,
+                                          f"{request.action}; only {what} moves, nothing else appears", 8, loop=not once,
+                                          on_status=lambda text: report(0, 1, f"Animating {source.name}: {text}"))
+                frames = []
+                for f in made:
+                    buf = io.BytesIO()
+                    f.save(buf, "PNG")
+                    frames.append(buf.getvalue())
+            elif auto:
                 from . import autosprite
                 from PIL import Image
                 report(0, 1, f"Animating {source.name}: {request.action} (AutoSprite)")
@@ -1110,8 +1171,8 @@ def create_app(
         sheet = folder / f"{name}-sheet.png"
         sheet.write_bytes(spritesheet(frames))
         meta = {"description": request.description, "action": request.action, "direction": request.direction, "from": request.path,
-                "frames": len(frames), "provider": "autosprite" if auto else "pixellab",
-                "model": "autosprite" if auto else "pixellab animate-with-text", "humanoid": humanoid,
+                "frames": len(frames), "provider": ("bfl" if thing_by_bfl else "pixellab") if thing else "autosprite" if auto else "pixellab",
+                "model": "pixellab animate-with-text-v3" if thing else "autosprite" if auto else "pixellab animate-with-text", "humanoid": humanoid,
                 "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}
         (folder / f"{sheet.name}.gen.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
         # The clip it's kept as on its sheet (the editor's): named by what it does, so an animator plays it.

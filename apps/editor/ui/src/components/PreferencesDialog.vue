@@ -271,13 +271,24 @@ function close(): void {
                 </div>
               </div>
               <div class="field">
-                <label>Animate</label>
+                <label>Humanoid animation</label>
                 <div class="control">
                   <select :value="editorState.ai.animateProvider" :disabled="!editorState.ai.enabled" @change="sendToHost({ type: 'ai:setAnimateProvider', provider: ($event.target as HTMLSelectElement).value })">
                     <option value="autosprite">AutoSprite (its motions or your own; a character's 8 directions at once){{ noKey('autosprite') }}</option>
                     <option value="pixellab:animate-v3">PixelLab Animate with text v3 (8 frames, up to 256 px; slow){{ noKey('pixellab') }}</option>
                   </select>
-                  <p class="desc">What makes things move in Generate ▸ Animate: a picture, or a character in every direction.</p>
+                  <p class="desc">What makes a person or a creature move (Generate ▸ Animate, a character in every direction).</p>
+                </div>
+              </div>
+              <div class="field">
+                <label>Non-humanoid animation</label>
+                <div class="control">
+                  <select :value="editorState.ai.objectAnimateProvider" :disabled="!editorState.ai.enabled" @change="sendToHost({ type: 'ai:setObjectAnimateProvider', provider: ($event.target as HTMLSelectElement).value })">
+                    <option value="pixellab">PixelLab Animate with text v3 (the thing kept as drawn; 8 frames){{ noKey('pixellab') }}</option>
+                    <option value="bfl:flux-video">BFL FLUX video (a 5 s clip, 12 frames taken from it){{ noKey('bfl') }}</option>
+                  </select>
+                  <p class="desc">What makes a thing move: a door opening (Build ▸ Animate), a chest, a lever, a flag. AutoSprite animates
+                    characters: given a thing, it adds a person.</p>
                 </div>
               </div>
               <div class="field">

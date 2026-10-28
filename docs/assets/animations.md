@@ -234,7 +234,21 @@ painting. `EditorApp` `part:animate`, `PlacePart`.
 
 ### 4.1 Build ▸ Animate
 
-After a place's art is made, the Build panel animates what has to move, so a built place works as built:
+After a place's art is made, the Build panel animates what has to move, so a built place works as built, in two steps
+(the page says so at its top):
+
+1. **① Identify doors**: each building's doors looked for in its picture (`/parts/find`, every ground-level door) and
+   shown with their boxes ("door found: check it"). Check them: click a picture for the big view; where a box is off or a
+   door is missing, **Draw the doors** (a box each, **Clear** to start again) and **Use these doors**. **Identify** on a
+   row looks for that building's doors again.
+2. **② Animate**: each door identified opened by **PixelLab** (Animate with text v3: the doorway's crop as the first
+   frame, 8 frames, kept to the doorway; the in-engine swing if PixelLab fails), and each thing that's used animated
+   (`/animations/generate`). They play in the list as they're done.
+
+Who animates (Preferences ▸ AI): **Humanoid animation** (AutoSprite, or PixelLab) for people and creatures; **Non-humanoid
+animation** (PixelLab) for things: a door, a chest, a lever, a flag. AutoSprite is a character animator: given a door it
+added a person in every frame and redrew the door; PixelLab kept the door as drawn and opened it inward into a dark room.
+A request says which is which by the picture's words (`is_humanoid`).
 
 - **Assembled**: the Assets page's **Animate** tab (the panel moves to it when the art is made; **To Animate →**). Each
   building's door is found in its art (the vision model's box, `/parts/find`, Mistral Large 4: on a test house it was

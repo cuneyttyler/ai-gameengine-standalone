@@ -17,7 +17,7 @@ interface Target {
   box?: [number, number, number, number]
   trigger: string
   where: string
-  status: 'pending' | 'finding' | 'animating' | 'done' | 'failed' | 'skipped'
+  status: 'pending' | 'finding' | 'identified' | 'animating' | 'done' | 'failed' | 'skipped'
   error?: string
   preview?: { sheet: string; count: number; fps: number } // animated: its frames in a row, played here
 }
@@ -76,15 +76,18 @@ function thingPlay(t: Target, s = scaleOf(t)): Record<string, string> {
 }
 
 const shown = computed(() => targets.value.filter((t) => !props.only || t.kind === props.only))
-const left = computed(() => shown.value.filter((t) => t.status === 'pending' || t.status === 'failed').length)
-const credits = computed(() => 5 * shown.value.filter((t) => t.kind === 'thing' && (t.status === 'pending' || t.status === 'failed')).length)
-const doors = computed(() => shown.value.filter((t) => t.kind === 'door').length)
+// ① Doors still to identify; ② what's ready to animate (doors identified, things that are used).
+const toIdentify = computed(() => shown.value.filter((t) => t.kind === 'door' && (t.status === 'pending' || (t.status === 'failed' && !t.box))).length)
+const toAnimate = computed(() => shown.value.filter((t) => (t.kind === 'door' ? t.status === 'identified' : t.status === 'pending' || t.status === 'failed')).length)
+const identified = computed(() => shown.value.filter((t) => t.kind === 'door' && t.status === 'identified').length)
+const doors = computed(() => new Set(shown.value.filter((t) => t.kind === 'door').map((t) => t.key.split('#')[0])).size) // buildings
 const things = computed(() => shown.value.length - doors.value)
 const current = computed(() => targets.value.find((t) => t.status === 'finding' || t.status === 'animating'))
 
 const STATUS: Record<Target['status'], string> = {
-  pending: 'to animate',
-  finding: 'finding its door…',
+  pending: 'to do',
+  finding: 'identifying its doors…',
+  identified: 'door found: check it',
   animating: 'animating…',
   done: 'animated',
   failed: 'failed',
@@ -148,13 +151,23 @@ function rectStyle(t: Target, b: number[]): Record<string, string> {
   const [x, y, w, h] = b as [number, number, number, number]
   return { left: `${(x - t.region[0]) * s}px`, top: `${(y - t.region[1]) * s}px`, width: `${w * s}px`, height: `${h * s}px` }
 }
-// Redo: a door from each box drawn (the building's doors are then those), or looked for again without any; a thing
-// animated again.
-function redo(t: Target): void {
-  const boxes = usable.value
-  sendToHost({ type: 'build:animateRun', key: t.key, ...(boxes.length ? { boxes } : {}) })
+// The boxes drawn: the building's doors are those (identified, ready for ② Animate).
+function useDrawn(t: Target): void {
+  if (!usable.value.length) return
+  sendToHost({ type: 'build:animateSetDoors', key: t.key, boxes: usable.value })
+  drawing.value = false
+  drawn.value = []
   big.value = null
 }
+function identifyOne(t: Target): void {
+  sendToHost({ type: 'build:animateIdentify', key: t.key })
+  big.value = null
+}
+function animateOne(t: Target): void {
+  sendToHost({ type: 'build:animateRun', key: t.key })
+  big.value = null
+}
+const pendingLabel = (t: Target) => (t.kind === 'door' ? 'to identify' : 'to animate')
 function bigScale(t: Target): number {
   return Math.min((window.innerWidth * 0.8) / Math.max(1, t.region[2]), (window.innerHeight * 0.75) / Math.max(1, t.region[3]), 4)
 }
@@ -168,6 +181,9 @@ function picStyle(t: Target, s: number): Record<string, string> {
   }
 }
 
+function identifyAll(): void {
+  sendToHost({ type: 'build:animateIdentify' })
+}
 function runAll(): void {
   sendToHost({ type: 'build:animateRun' })
 }
@@ -186,21 +202,30 @@ function stop(): void {
   <div class="animate-parts">
     <section class="head">
       <p>
-        What moves in this place: <b>{{ doors }}</b> {{ doors === 1 ? 'door' : 'doors' }} of buildings (found in their
-        pictures; they open as someone comes near, close as they go) and <b>{{ things }}</b>
-        {{ things === 1 ? 'thing' : 'things' }} that are used (a chest, a gate, a lever: they play when used). A door is
-        opened from its own pixels (free); a thing is animated by AutoSprite, about 5 credits each. More can be added later
-        (right-click ▸ Animate a part…).
+        What moves in this place: <b>{{ doors }}</b> {{ doors === 1 ? 'building' : 'buildings' }} with doors and <b>{{ things }}</b>
+        {{ things === 1 ? 'thing' : 'things' }} that are used (a chest, a gate, a lever). Two steps:
       </p>
+      <ol class="steps-info">
+        <li><b>Identify doors.</b> Each building's doors are looked for in its picture (the vision model; a minute or so each)
+          and shown with their boxes. Check them: click a picture to see it big, and where a box is off or a door is missing,
+          <i>Draw the doors</i> (a box each; Clear to start again) and <i>Use these doors</i>.</li>
+        <li><b>Animate.</b> Each door identified is opened by PixelLab from its own picture (a few minutes each, PixelLab's
+          queue), kept to its doorway; each thing that's used is animated too (PixelLab; AutoSprite for people: Preferences ▸
+          AI). They play here as they're done, and in the game as the project's doors open (Project Settings ▸ Game).</li>
+      </ol>
       <div class="bar"><i :style="{ width: `${(100 * done) / Math.max(1, total)}%` }" /></div>
       <div class="row">
         <span class="dim">{{ done }} of {{ total }} animated<template v-if="failed"> · {{ failed }} failed</template>
           <template v-if="current"> · now: {{ current.label }} ({{ STATUS[current.status] }})</template></span>
         <span class="spacer"></span>
         <button v-if="running" @click="stop">Stop after this one</button>
-        <button v-else class="primary" :disabled="left === 0" :title="credits ? `≈ ${credits} AutoSprite credits (the things; doors are free)` : 'Doors are opened from their own pixels: no credits'" @click="runAll">
-          Animate all ({{ left }})
-        </button>
+        <template v-else>
+          <button :class="{ primary: toIdentify > 0 }" :disabled="toIdentify === 0" title="① Look for each building's doors in its picture"
+                  @click="identifyAll">① Identify doors ({{ toIdentify }})</button>
+          <button :class="{ primary: toIdentify === 0 }" :disabled="toAnimate === 0"
+                  :title="identified ? `${identified} doors identified (and the things) animated by PixelLab` : 'Identify the doors first'"
+                  @click="runAll">② Animate ({{ toAnimate }})</button>
+        </template>
       </div>
     </section>
     <p v-if="!shown.length" class="dim">Nothing that moves yet: buildings and used things show here once their art is made (or the place is painted).</p>
@@ -220,10 +245,11 @@ function stop(): void {
         <div v-if="t.error" class="error small">{{ t.error }}</div>
       </div>
       <div class="side">
-        <span class="status">{{ STATUS[t.status] }}</span>
-        <button v-if="t.status === 'pending' || t.status === 'failed' || t.status === 'done'" :disabled="running" @click="runOne(t)">
-          {{ t.status === 'done' ? 'Again' : 'Animate' }}
-        </button>
+        <span class="status">{{ t.status === 'pending' ? pendingLabel(t) : STATUS[t.status] }}</span>
+        <button v-if="t.kind === 'door' && t.status !== 'finding' && t.status !== 'animating' && t.status !== 'skipped'" :disabled="running"
+                title="Look for its doors again" @click="identifyOne(t)">Identify</button>
+        <button v-if="(t.kind === 'door' ? t.box && ['identified', 'failed', 'done'].includes(t.status) : ['pending', 'failed', 'done'].includes(t.status))"
+                :disabled="running" @click="runOne(t)">{{ t.status === 'done' ? 'Again' : 'Animate' }}</button>
         <button v-if="t.status !== 'finding' && t.status !== 'animating'" @click="skip(t)">{{ t.status === 'skipped' ? 'Include' : 'Skip' }}</button>
       </div>
     </div>
@@ -235,16 +261,23 @@ function stop(): void {
           <span class="spacer"></span>
           <template v-if="big.kind === 'door'">
             <button :class="{ active: drawing }" :disabled="running"
-                    title="Drag a box round each door (as many as it has), then Redo: each is opened from its box as drawn"
+                    title="Drag a box round each door (as many as it has), then Use these doors"
                     @click="drawing = !drawing; drawn = []">{{ drawing ? 'Drawing doors…' : 'Draw the doors' }}</button>
             <button v-if="drawing" :disabled="!drawn.length" title="Clear the boxes drawn" @click="clearDrawn">Clear</button>
-            <button class="primary" :disabled="running || (drawing && !usable.length)"
-                    :title="usable.length ? 'Its doors opened again, one from each box you drew' : 'Its doors looked for and opened again'"
-                    @click="redo(big)">
-              {{ usable.length ? `Redo with ${usable.length} ${usable.length === 1 ? 'door' : 'doors'}` : 'Redo' }}
+            <button v-if="drawing" class="primary" :disabled="running || !usable.length"
+                    title="Its doors are the ones you drew (identified: ② Animate opens them)" @click="useDrawn(big)">
+              Use {{ usable.length === 1 ? 'this door' : `these ${usable.length} doors` }}
             </button>
+            <template v-else>
+              <button :disabled="running" title="Its doors looked for again" @click="identifyOne(big)">Identify again</button>
+              <button class="primary" :disabled="running || !big.box" title="This door opened by PixelLab, from its box" @click="animateOne(big)">
+                {{ big.status === 'done' ? 'Animate again' : 'Animate' }}
+              </button>
+            </template>
           </template>
-          <button v-else class="primary" :disabled="running" title="Animated again (about 5 AutoSprite credits)" @click="redo(big)">Redo</button>
+          <button v-else class="primary" :disabled="running" title="Animated again (PixelLab, or AutoSprite for a person)" @click="animateOne(big)">
+            {{ big.status === 'done' ? 'Animate again' : 'Animate' }}
+          </button>
           <button @click="big = null">Close</button>
         </div>
         <p v-if="drawing" class="dim small">Drag round each door, threshold to top and frame to frame (a double door as one box); what's
@@ -352,6 +385,14 @@ function stop(): void {
 }
 .big-thumb.drawing {
   cursor: crosshair;
+}
+.steps-info {
+  margin: 0 0 8px;
+  padding-left: 20px;
+  line-height: 1.45;
+}
+.steps-info li {
+  margin-bottom: 4px;
 }
 .box.drawn {
   border-color: #f5c542;

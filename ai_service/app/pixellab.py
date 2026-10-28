@@ -256,6 +256,59 @@ def _images_by_direction(answer: dict) -> dict[str, bytes]:
     return out
 
 
+def animate_object(generator: "PixelLabImageGenerator", picture: Image.Image, action: str, frames: int = 8, loop: bool = False,
+                   wait_s: float = 900.0, on_status=None) -> list[Image.Image]:
+    """A thing (not a person: a door, a chest, a lever, a flag) moving, by PixelLab's Animate with text v3
+    (docs/assets/animations.md §4.1): `picture` centred in its 256 square at 90%, the first frame (`loop`: the last too,
+    so a flag or a flame loops; else it ends where the motion does, a door open), `frames` frames (at most 8 at 256);
+    each frame put back at the picture's own size, where it was. On a test door it kept the art and opened it inward
+    into a dark room, where AutoSprite (a character animator) added a person and redrew the door."""
+    side = 256
+    w, h = picture.size
+    k = side * 0.9 / max(1, w, h)
+    sw, sh = max(1, round(w * k)), max(1, round(h * k))
+    ox, oy = (side - sw) // 2, (side - sh) // 2
+    square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    square.paste(picture.convert("RGBA").resize((sw, sh), Image.Resampling.LANCZOS), (ox, oy))
+    buf = io.BytesIO()
+    square.save(buf, "PNG")
+    frame = {"type": "base64", "base64": base64.b64encode(buf.getvalue()).decode(), "format": "png"}
+    body = {"first_frame": frame, "frame_count": max(4, min(8, frames // 2 * 2)), "action": action[:300], "no_background": True}
+    if loop:
+        body["last_frame"] = frame
+    started = generator._call("POST", "/animate-with-text-v3", body)
+    job = started.get("background_job_id")
+    if not job:
+        raise ProviderError("PixelLab didn't start the animation")
+    deadline = time.time() + wait_s
+    while time.time() < deadline:
+        state = generator._call("GET", f"/background-jobs/{job}")
+        if on_status is not None and state.get("status") == "processing":
+            answer = state.get("last_response") or {}
+            place = answer.get("queue_position")
+            on_status(f"queued, position {place}" if isinstance(place, int) and place > 0 and not answer.get("generation_started_at") else "drawing")
+        if state.get("status") == "completed":
+            out = []
+            for item in (state.get("last_response") or {}).get("images") or []:
+                if isinstance(item, dict) and isinstance(item.get("image"), dict):
+                    item = item["image"]
+                text = str(item.get("base64", "")) if isinstance(item, dict) else ""
+                if not text:
+                    continue
+                with Image.open(io.BytesIO(base64.b64decode(text.split(",", 1)[1] if text.startswith("data:") else text))) as made:
+                    made = made.convert("RGBA")
+                if made.size != (side, side):
+                    made = made.resize((side, side), Image.Resampling.LANCZOS)
+                out.append(made.crop((ox, oy, ox + sw, oy + sh)).resize((w, h), Image.Resampling.LANCZOS))
+            if not out:
+                raise ProviderError("PixelLab finished the animation but sent no frames")
+            return out
+        if state.get("status") == "failed":
+            raise ProviderError(f"PixelLab couldn't animate it: {state.get('last_response') or 'failed'}")
+        time.sleep(3)
+    raise ProviderError("PixelLab is still animating it: try again in a minute")
+
+
 def animate_v3(generator: "PixelLabImageGenerator", picture: bytes, action: str, frames: int = 8, side: int = 256,
                wait_s: float = 900.0, on_status=None) -> list[bytes]:
     """`picture` moving (Animate with text v3, docs/assets/bfl-sprites.md): fitted into a `side` square (at most 256) as

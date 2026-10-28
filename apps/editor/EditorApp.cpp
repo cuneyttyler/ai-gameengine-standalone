@@ -1464,7 +1464,10 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
             post_({{"type", reply}, {"result", {{"ok", false}, {"errors", {"AI is off"}}}}});
         } else if (inFlight == 0) {
             nlohmann::json request = message.value("request", nlohmann::json::object());
-            if (!character && userPrefs_) request["provider"] = userPrefs_->Get("animateProvider", "autosprite"); // Preferences ▸ AI ▸ Animate
+            if (!character && userPrefs_) {
+                request["provider"] = userPrefs_->Get("animateProvider", "autosprite");             // Preferences ▸ AI ▸ Humanoid animation
+                request["objectProvider"] = userPrefs_->Get("objectAnimateProvider", "pixellab");   // ▸ Non-humanoid animation
+            }
             inFlight = Ai()->Request("POST", character ? "/characters/generate" : request.contains("sheet") ? "/characters/animate" : "/animations/generate",
                                      request, 900); // a character's every direction: a few minutes
             (character ? characterHistoryId_ : animationHistoryId_) = (character ? characterHistory_ : animationHistory_).Begin(request);
@@ -5349,6 +5352,7 @@ nlohmann::json EditorApp::AiStatusJson() {
             {"art", artStatus_.value("art", "")},
             {"artInUse", ChosenAi("art")}, // the project's art model, else the app's: what draws now
             {"animateProvider", userPrefs_ ? userPrefs_->Get("animateProvider", "autosprite") : nlohmann::json("autosprite")},
+            {"objectAnimateProvider", userPrefs_ ? userPrefs_->Get("objectAnimateProvider", "pixellab") : nlohmann::json("pixellab")},
             {"backgroundProvider", userPrefs_ ? userPrefs_->Get("backgroundProvider", "bfl:flux-3-image") : nlohmann::json("bfl:flux-3-image")},
             {"backgroundError", backgroundStatus_.value("ok", true) ? "" : (backgroundStatus_.contains("errors") && !backgroundStatus_["errors"].empty()
                                                                             ? backgroundStatus_["errors"][0].get<std::string>() : "")},
@@ -6109,8 +6113,12 @@ void EditorApp::SetSceneBackdrop(const std::string& path) {
 
 bool EditorApp::HandleGenerateMessage(const std::string& type, const nlohmann::json& message) {
     if (type == "ai:setAnimateProvider") {
-        // What animates (Preferences ▸ AI ▸ Animate): sent with every Animate request.
+        // What animates a person (Preferences ▸ AI ▸ Humanoid animation): sent with every Animate request.
         if (userPrefs_) userPrefs_->Set("animateProvider", message.value("provider", "autosprite"));
+        post_(AiStatusJson());
+    } else if (type == "ai:setObjectAnimateProvider") {
+        // What animates a thing (Preferences ▸ AI ▸ Non-humanoid animation): a door, a chest, a lever, a flag.
+        if (userPrefs_) userPrefs_->Set("objectAnimateProvider", message.value("provider", "pixellab"));
         post_(AiStatusJson());
     } else if (type == "character:request" || type == "animation:request") {
         post_(GenerateHistoryJson(type == "character:request"));
@@ -6907,6 +6915,7 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
         partRequest_ = Ai()->Request("POST", "/animations/generate",
                                      {{"path", path}, {"action", message.value("action", "the door swings open")},
                                       {"provider", userPrefs_ ? userPrefs_->Get("animateProvider", "autosprite") : nlohmann::json("autosprite")},
+                                      {"objectProvider", userPrefs_ ? userPrefs_->Get("objectAnimateProvider", "pixellab") : nlohmann::json("pixellab")},
                                       {"description", "a part of " + parent}, {"name", stem + "-part-" + std::to_string(n - 1)}},
                                      900);
         post_({{"type", "notify"}, {"text", "Animating the part (a minute or two)…"}});

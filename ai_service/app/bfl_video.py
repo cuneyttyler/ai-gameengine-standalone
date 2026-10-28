@@ -117,6 +117,52 @@ def animate(api_key: str, picture: bytes, action: str, description: str = "", di
     return [_png(fitted[str(i)]) for i in range(frames) if str(i) in fitted]
 
 
+def animate_object(api_key: str, picture: Image.Image, action: str, description: str = "", frames: int = 12, loop: bool = False,
+                   resolution: str = "hd") -> list[Image.Image]:
+    """A thing (not a person: a door, a chest, a lever, a flag) moving, by FLUX 3 video (docs/assets/animations.md §4.1):
+    `picture` at 80% of a magenta square, the first keyframe (`loop`: the last too, so a flag or a flame loops; else it
+    ends where the motion does, a door open); `frames` frames taken evenly from the clip (a loop: one cycle of it), each
+    cut out of the magenta and put back at the picture's own size, where it was."""
+    picture = picture.convert("RGBA")
+    w, h = picture.size
+    side = 1024
+    k = side * 0.8 / max(1, w, h)
+    sw, sh = max(1, round(w * k)), max(1, round(h * k))
+    ox, oy = (side - sw) // 2, (side - sh) // 2
+    square = Image.new("RGB", (side, side), (255, 0, 255))
+    square.paste(picture.resize((sw, sh), Image.LANCZOS), (ox, oy), picture.resize((sw, sh), Image.LANCZOS))
+    buf = io.BytesIO()
+    square.save(buf, "PNG")
+    key = base64.b64encode(buf.getvalue()).decode()
+    what = description.strip() or "the thing in the picture"
+    prompt = (f"A game sprite of {what}, in its art style. {action}. Only it moves, as described; nothing else appears, no people. "
+              "The camera is completely still: no camera movement, no zoom, no cuts. It stays at the same place and size in "
+              "the frame. The flat magenta background stays plain and unchanged.")
+    body = {"prompt": prompt, "mode": "i2v", "keyframes": [key, key] if loop else [key], "duration": SECONDS,
+            "resolution": resolution, "aspect_ratio": "1:1", "generate_audio": False}
+    import time
+    clip = b""
+    for attempt in range(12):  # a low-credit account: one task at a time (429), waited for
+        try:
+            clip = BflPainter(api_key, VIDEO_MODEL, timeout_s=900)._run(body)
+            break
+        except Exception as error:  # noqa: BLE001 - only a busy answer is retried
+            if " 429 " not in str(error) or attempt == 11:
+                raise
+            time.sleep(15)
+    every = _frames(clip)
+    if not every:
+        raise RuntimeError("BFL's video had no frames")
+    start, length = _cycle(every) if loop else (0, len(every) - 1)
+    picked = [every[min(len(every) - 1, start + round(i * length / max(1, frames - 1)))] for i in range(frames)]
+    out = []
+    for f in picked:
+        f = f.resize((side, side), Image.LANCZOS) if f.size != (side, side) else f
+        cut = _cut(_png(f.crop((ox, oy, ox + sw, oy + sh))))
+        out.append(cut.resize((w, h), Image.LANCZOS))
+    return out
+
+
 def _png(image: Image.Image) -> bytes:
     buf = io.BytesIO()
     image.save(buf, "PNG")
