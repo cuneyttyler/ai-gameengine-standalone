@@ -919,7 +919,8 @@ def create_app(
                 from PIL import Image
                 with Image.open(source) as im:
                     side = max(64, min(256, max(im.size)))
-                frames = animate_v3(PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]), source.read_bytes(), request.action, 8, side)
+                frames = animate_v3(PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]), source.read_bytes(), request.action, 8, side,
+                                    on_status=lambda text: report(0, 1, f"Animating {source.name}: {text}"))
             elif video:
                 from . import bfl_video
                 report(0, 1, f"Animating {source.name}: {request.action} (FLUX 3 video)")
@@ -1068,7 +1069,8 @@ def create_app(
                 if v3:
                     from .pixellab import PixelLabImageGenerator, animate_v3
                     frames = animate_v3(PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]), buf.getvalue(), request.action, 8,
-                                        max(64, min(256, size * 4)))
+                                        max(64, min(256, size * 4)),
+                                        on_status=lambda text: report(done[0], len(painted), f"Animating {info.get('name', 'it')}: {direction} {text}"))
                 elif video:
                     from . import bfl_video
                     frames = bfl_video.animate(os.environ["BFL_API_KEY"], buf.getvalue(), request.action, what, direction, size=size,
@@ -1088,10 +1090,15 @@ def create_app(
             report(done[0], len(painted), f"Animating {info.get('name', 'it')}: {direction} done")
             return direction, frames
         if video or v3:
-            # As few calls as keep it good: south, east and north alone, one each, one after another (a low-credit BFL
-            # account runs one task at a time); west is east mirrored, and the diagonals are left to the nearest direction
-            # the clip has (the animator's), their idle poses still their own.
-            results = {d: one(d)[1] for d in ("south", "east", "north") if d in faces}
+            # As few calls as keep it good: south, east and north alone, one each; west is east mirrored, and the diagonals
+            # are left to the nearest direction the clip has (the animator's), their idle poses still their own. PixelLab's
+            # all at once (its queue is the wait); BFL's one after another (a low-credit account runs one task at a time).
+            wanted = [d for d in ("south", "east", "north") if d in faces]
+            if v3:
+                with ThreadPoolExecutor(3) as pool:
+                    results = dict(pool.map(one, wanted))
+            else:
+                results = {d: one(d)[1] for d in wanted}
         else:
             with ThreadPoolExecutor(3) as pool:
                 results = dict(pool.map(one, painted))

@@ -257,9 +257,10 @@ def _images_by_direction(answer: dict) -> dict[str, bytes]:
 
 
 def animate_v3(generator: "PixelLabImageGenerator", picture: bytes, action: str, frames: int = 8, side: int = 256,
-               wait_s: float = 600.0) -> list[bytes]:
+               wait_s: float = 900.0, on_status=None) -> list[bytes]:
     """`picture` moving (Animate with text v3, docs/assets/bfl-sprites.md): fitted into a `side` square (at most 256) as
-    both the first and the last frame, so it loops; `frames` frames (4-16, even), no background; PNG bytes each."""
+    both the first and the last frame, so it loops; `frames` frames (4-16, even), no background; PNG bytes each.
+    `on_status(text)` hears how it goes ("queued, position 3", "drawing"): PixelLab's queue can take minutes."""
     side = max(32, min(256, side))
     with Image.open(io.BytesIO(picture)) as source:
         image = source.convert("RGBA")
@@ -280,6 +281,10 @@ def animate_v3(generator: "PixelLabImageGenerator", picture: bytes, action: str,
     deadline = time.time() + wait_s
     while time.time() < deadline:
         state = generator._call("GET", f"/background-jobs/{job}")
+        if on_status is not None and state.get("status") == "processing":
+            answer = state.get("last_response") or {}
+            place = answer.get("queue_position")
+            on_status(f"queued, position {place}" if isinstance(place, int) and place > 0 and not answer.get("generation_started_at") else "drawing")
         if state.get("status") == "completed":
             out = []
             for item in (state.get("last_response") or {}).get("images") or []:
