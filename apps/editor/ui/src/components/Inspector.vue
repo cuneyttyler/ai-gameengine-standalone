@@ -290,6 +290,7 @@ function numberFrom(event: Event): number {
             :fields="component.fields"
             :choices="current.choices"
             :disabled="editorState.playing"
+            :id="current.id"
             @set="(name, value) => setField('Interior', component.fields.find((f) => f.name === name)!, value)"
           />
           <template v-for="field in component.fields.filter((f) => component.name !== 'Interior' || !['floors', 'stairs', 'entries', 'texture'].includes(f.name))" :key="field.name">

@@ -206,6 +206,22 @@ std::vector<std::string> UpperFloors(const Interior& interior) {
 
 } // namespace
 
+std::vector<std::pair<int, int>> StairsCells(const Interior& interior, int change, int x0, int y0, int x1, int y1) {
+    std::vector<std::string> parts;
+    std::stringstream in(interior.stairs);
+    for (std::string part; std::getline(in, part, ';');) parts.push_back(part);
+    std::vector<std::pair<int, int>> cells;
+    if (change >= 1 && change <= static_cast<int>(parts.size())) {
+        std::stringstream each(parts[static_cast<size_t>(change - 1)]);
+        for (std::string cell; std::getline(each, cell, '|');) {
+            int x = 0, y = 0;
+            if (std::sscanf(cell.c_str(), "%d,%d", &x, &y) == 2) cells.push_back({x, y});
+        }
+    }
+    if (cells.empty()) cells.push_back(StairsCell(interior, change, x0, y0, x1, y1));
+    return cells;
+}
+
 std::pair<int, int> StairsCell(const Interior& interior, int change, int x0, int y0, int x1, int y1) {
     // The listed cell of floor change `change` (1: floor 1 to 2), else the footprint's corners in turn: top, right, left.
     std::vector<std::pair<int, int>> listed;
@@ -255,10 +271,13 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player) {
         const int floors = InteriorFloors(interior);
         bool onStairs = false;
         if (floors > 1) {
-            const auto up = StairsCell(interior, interior.floor, x0, y0, x1, y1);   // up from this floor
-            const auto down = StairsCell(interior, interior.floor - 1, x0, y0, x1, y1); // down to the one below
-            const bool onUp = interior.floor < floors && px == up.first && py == up.second;
-            const bool onDown = interior.floor > 1 && px == down.first && py == down.second;
+            const auto up = StairsCells(interior, interior.floor, x0, y0, x1, y1);   // up from this floor
+            const auto down = StairsCells(interior, interior.floor - 1, x0, y0, x1, y1); // down to the one below
+            const auto on = [&](const std::vector<std::pair<int, int>>& cells) {
+                return std::find(cells.begin(), cells.end(), std::make_pair(px, py)) != cells.end();
+            };
+            const bool onUp = interior.floor < floors && on(up);
+            const bool onDown = interior.floor > 1 && on(down);
             onStairs = onUp || onDown;
             if (onStairs && !interior.onStairs) interior.floor = std::clamp(interior.floor + (onUp ? 1 : -1), 1, floors);
         }

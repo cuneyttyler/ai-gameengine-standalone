@@ -182,14 +182,11 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
 - **Repair** (`RepairInteriorArt`, on opening a scene and after a build): a building drawn with an interior picture
   (art chosen before interiors were kept out of the catalog: `CatalogEntriesFor` skips anything with `exteriorOf`)
   gets its exterior back and an Interior for the picture.
-- **Inspector ▸ Interior** (`InteriorEditor.vue`): its floors (each floor's picture, one removed, one added), each floor
-  change's stairs cell (typed, or back to its corner) and its ways in (each removed, or all), written back as its
-  `texture`, `floors`, `stairs` and `entries` fields.
+- **Inspector ▸ Interior** (`InteriorEditor.vue`): its floors (each floor's picture, one removed, one added), a summary of
+  its stairs and ways in, and **Edit building…**: the building editor (§5c).
 - **Viewport right-click** on a building with a cutaway interior: **Floors ▸ N** (fewer floors than it was painted with:
-  its upper floors' pictures past that dropped), **Find the stairs** (the vision model says which corner each floor's
-  stairs up are in: top, right, left, front, or the middle; `/parts/stairs`), **Stairs here** (the cell under the cursor)
-  and **Entry point here** (a cell of its edge made a way in, or not any more). On the ground: **Ramp here** (a Ramp:
-  characters walk between heights there).
+  its upper floors' pictures past that dropped). On the ground: **Ramp here** (a Ramp: characters walk between heights
+  there).
 - **Build panel ▸ Assets ▸ Interiors:** each building type's **Floors** (Auto: counted from its picture; or 1-4), used
   when its interiors are painted. The count itself counts only storeys of wall below the eaves (dormers, gable windows,
   an attic aren't one).
@@ -205,6 +202,15 @@ its door side's middle. Set by hand (`Interior.entries`, cells relative to its f
 keeps them), they're its only ways in: each door uses the nearest one, a way in without a door is always open, and its
 door side's middle is shut unless it's one of them. Inside, the whole footprint is walkable; its walls are the ring of
 cells round it, open in front of each way in.
+
+### 5c. The building editor
+
+Inspector ▸ Interior ▸ **Edit building…** (`BuildingEditor.vue`, `interior:art` / `interior:setArt`): the building's
+exterior and each floor's interior as tabs, its footprint's cells drawn over them as the scene draws them (diamonds in the
+pictures' pixels), and a brush (size, Draw, Erase, Clear) for two layers: **Stairs** (on floor *k*: the stairs from it up
+to *k+1*; several cells may be one staircase, `x,y|x,y` in `stairs`) and **Ways in** (cells of its edge). Blue cells are
+stairs (paler on the floor above: where they come up), green ways in. **Find the stairs (AI)** asks the vision model which
+corner each floor's stairs are in. Saved on this building (its copy: an override).
 
 ## 6. Libraries
 

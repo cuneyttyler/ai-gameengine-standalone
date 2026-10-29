@@ -4,8 +4,9 @@
 // text lists the engine reads), through the Inspector's own setField.
 import { computed, ref } from 'vue'
 import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
+import { editorState } from '../editorState'
 
-const props = defineProps<{ fields: FieldData[]; choices?: Choices; disabled?: boolean }>()
+const props = defineProps<{ fields: FieldData[]; choices?: Choices; disabled?: boolean; id?: number }>()
 const emit = defineEmits<{ (e: 'set', field: string, value: string | number): void }>()
 
 const PROJECT_HOST = 'https://aige-project.local/'
@@ -72,23 +73,13 @@ function removeEntry(index: number): void {
       <button class="small" :disabled="disabled || !adding" @click="addFloor">Add</button>
     </div>
 
-    <template v-if="floorCount > 1">
-      <h5>Stairs <span class="dim">a cell each floor change (x,y); empty: its corner. Right-click inside it ▸ Stairs here.</span></h5>
-      <div v-for="change in floorCount - 1" :key="change" class="row">
-        <span class="label">Floor {{ change }} ↔ {{ change + 1 }}</span>
-        <input :value="stairs[change - 1] ?? ''" :disabled="disabled" placeholder="its corner" spellcheck="false"
-               @change="setStairs(change, ($event.target as HTMLInputElement).value)" />
-        <button class="small" :disabled="disabled || !stairs[change - 1]" title="Back to its corner" @click="setStairs(change, '')">Corner</button>
-      </div>
-    </template>
-
-    <h5>Ways in <span class="dim">cells of its edge (dx,dy from its top-left). Right-click on its edge ▸ Entry point here.</span></h5>
-    <p v-if="!entries.length" class="dim small">None set: where its doors are (else its door side's middle).</p>
-    <div v-for="(cell, i) in entries" :key="cell" class="row">
-      <span class="label">{{ cell }}</span>
-      <button class="small" :disabled="disabled" title="No longer a way in" @click="removeEntry(i)">✕</button>
-    </div>
-    <button v-if="entries.length > 1" class="small" :disabled="disabled" @click="emit('set', 'entries', '')">Clear all</button>
+    <h5>Stairs and ways in</h5>
+    <p class="dim small">
+      {{ floorCount > 1 ? `Stairs: ${stairs.filter(Boolean).length ? stairs.filter(Boolean).length + ' of ' + (floorCount - 1) + ' drawn' : 'its corners'}` : 'One floor: no stairs' }} ·
+      Ways in: {{ entries.length ? entries.length + ' drawn' : 'where its doors are' }}
+    </p>
+    <button v-if="id !== undefined && ground" :disabled="disabled" title="Its exterior and each floor's interior: draw its stairs and its ways in"
+            @click="editorState.buildingEditor = id">Edit building…</button>
   </div>
 </template>
 

@@ -5578,6 +5578,7 @@ void EditorApp::PollAi() {
                         return true;
                     });
                     inspectorStale_ = true;
+                    post_({{"type", "interior:stairsFound"}, {"id", static_cast<uint32_t>(stairsFor_)}, {"stairs", text}});
                     post_({{"type", "notify"}, {"text", "Its stairs: " + std::to_string(found) + " of " + std::to_string(k - 1) +
                                                             " found (" + text + "); right-click inside it ▸ Stairs here to move one"}});
                 } else {
@@ -7001,6 +7002,84 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
         post_({{"type", "part:progress"}, {"text", message.value("kind", std::string("other")) == "character"
                                                        ? "Animating the character (AutoSprite: a few minutes)…"
                                                        : "Animating the part (PixelLab: a few minutes)…"}});
+        return true;
+    }
+    if (type == "interior:art") {
+        // Inspector ▸ Interior ▸ Show art… (docs/places/interiors.md §5c): the building's pictures (outside, each floor's
+        // inside), each footprint cell as a diamond in the pictures' pixels (as the scene draws it), and its stairs and
+        // ways in, to draw over.
+        const Entity e = static_cast<Entity>(message.value("id", 0u));
+        const auto* interior = registry_.valid(e) ? registry_.try_get<Interior>(e) : nullptr;
+        const auto* sprite = registry_.valid(e) ? registry_.try_get<Sprite>(e) : nullptr;
+        const auto* screen = registry_.valid(e) ? registry_.try_get<ScreenTransform2D>(e) : nullptr;
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        if (!interior || !sprite || !screen || interior->texture.empty() || !InteriorFootprint(registry_, e, *interior, x0, y0, x1, y1)) {
+            post_({{"type", "notify"}, {"text", "It has no cut-away interior to draw on"}});
+            return true;
+        }
+        const std::string outside = interior->exteriorTexture.empty() || sprite->texture != interior->texture ? sprite->texture : interior->exteriorTexture;
+        const AssetInfo* asset = assets_.Find(outside);
+        const float W = asset && asset->width ? static_cast<float>(asset->width) : sprite->width;
+        const float H = asset && asset->height ? static_cast<float>(asset->height) : sprite->height;
+        const bool mirrored = sprite->u0 > sprite->u1;
+        const float left = screen->x - sprite->width / 2, top = screen->y - sprite->height / 2;
+        auto pixel = [&](float wx, float wy) {
+            const ScreenPose p = ProjectIso(wx, wy, iso_);
+            float px = (p.x - left) / std::max(1.0f, sprite->width) * W, py = (p.y - sprite->lift - top) / std::max(1.0f, sprite->height) * H;
+            if (mirrored) px = W - px;
+            return nlohmann::json::array({std::round(px * 10) / 10, std::round(py * 10) / 10});
+        };
+        nlohmann::json cells = nlohmann::json::array();
+        for (int gy = y0; gy <= y1; ++gy) {
+            for (int gx = x0; gx <= x1; ++gx) {
+                cells.push_back({{"x", gx}, {"y", gy}, {"edge", gx == x0 || gx == x1 || gy == y0 || gy == y1},
+                                 {"poly", {pixel(gx, gy), pixel(gx + 1.0f, gy), pixel(gx + 1.0f, gy + 1.0f), pixel(gx, gy + 1.0f)}}});
+            }
+        }
+        nlohmann::json floors = nlohmann::json::array({outside});
+        for (int k = 1; k <= InteriorFloors(*interior); ++k) floors.push_back(InteriorPicture(*interior, k));
+        nlohmann::json stairs = nlohmann::json::array();
+        for (int k = 1; k < InteriorFloors(*interior); ++k) {
+            nlohmann::json change = nlohmann::json::array();
+            for (const auto& [sx, sy] : StairsCells(*interior, k, x0, y0, x1, y1)) change.push_back({sx, sy});
+            stairs.push_back(change);
+        }
+        nlohmann::json entries = nlohmann::json::array();
+        for (const auto& [ex, ey] : InteriorEntries(registry_, e, *interior)) entries.push_back({ex, ey});
+        const auto* name = registry_.try_get<Name>(e);
+        post_({{"type", "interior:artInfo"}, {"id", static_cast<uint32_t>(e)}, {"name", name ? name->value : std::string("Building")},
+               {"pictures", floors}, {"size", {W, H}}, {"cells", cells}, {"stairs", stairs}, {"entries", entries}});
+        return true;
+    }
+    if (type == "interior:setArt") {
+        // What was drawn: each floor change's stairs cells, and its ways in (cells of its edge), on this building.
+        const Entity e = static_cast<Entity>(message.value("id", 0u));
+        auto* interior = registry_.valid(e) ? registry_.try_get<Interior>(e) : nullptr;
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        if (!interior || !InteriorFootprint(registry_, e, *interior, x0, y0, x1, y1)) return true;
+        std::string stairs;
+        for (const auto& change : message.value("stairs", nlohmann::json::array())) {
+            std::string cells;
+            for (const auto& c : change) {
+                if (c.is_array() && c.size() == 2) cells += (cells.empty() ? "" : "|") + std::to_string(c[0].get<int>()) + "," + std::to_string(c[1].get<int>());
+            }
+            stairs += (stairs.empty() ? "" : ";") + cells;
+        }
+        std::string entries;
+        for (const auto& c : message.value("entries", nlohmann::json::array())) {
+            if (c.is_array() && c.size() == 2) {
+                entries += (entries.empty() ? "" : ";") + std::to_string(c[0].get<int>() - x0) + "," + std::to_string(c[1].get<int>() - y0);
+            }
+        }
+        ApplyOneShotEdit([&] {
+            interior->stairs = stairs;
+            interior->entries = entries;
+            RecordOverride(registry_, e, "Interior", "stairs");
+            RecordOverride(registry_, e, "Interior", "entries");
+            return true;
+        });
+        inspectorStale_ = true;
+        post_({{"type", "notify"}, {"text", "Its stairs and ways in are set"}});
         return true;
     }
     if (type == "interior:findStairs") {
