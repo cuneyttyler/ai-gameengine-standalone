@@ -64,8 +64,8 @@ interface LayoutState {
   treeFraction: number // the Scene panel: the tree's share, the Inspector below or beside it
 }
 
-const KEY = 'aige.editor.layout3' // 3: the bottom panels under the left one too (older layouts start from the default)
-const LAYOUT_VERSION = 3
+const KEY = 'aige.editor.layout4' // 4: the left panel the whole height, the bottom panels under the viewport (older ones: the default)
+const LAYOUT_VERSION = 4
 
 function read(key: string): unknown {
   try {
@@ -245,7 +245,7 @@ export function toggleBottom(): void {
       return
     }
   }
-  // Else under the left panel and the viewport (the left panel above it, the AI panel beside), at its height.
+  // Else under the viewport (the left and right panels keep the whole height), at its height.
   setRoot(putBottom(layout.root, kept.panels.filter((p) => !isOpen(p)), kept.active, kept.share))
 }
 

@@ -171,48 +171,26 @@ function replace(root: DockNode, id: string, make: (node: DockNode) => DockNode)
   return root
 }
 
-// The bottom panels put back under the left panel and the viewport (the smallest part of the layout holding both, the
-// AI panel beside it keeping the whole height), as the default has them: a column of that part over a new group of
-// `panels` (the first in front), `share` of its height. Without either, along the window's bottom edge.
+// The bottom panels put back under the viewport only (the left and right panels keep the whole height): a column of the
+// viewport's group over a new group of `panels` (the first in front), `share` of its height. Without a viewport, along
+// the window's bottom edge.
 export function putBottom(root: DockNode | null, panels: PanelId[], active: PanelId | null, share: number): DockNode | null {
   if (!panels.length) return root
   const group: TabsNode = { kind: 'tabs', id: `g${Date.now().toString(36)}`, tabs: [...panels], active: active && panels.includes(active) ? active : panels[0]!, edge: 'bottom' }
-  const left = groupOf(root, 'scene'), view = groupOf(root, 'viewport')
-  if (!root || !left || !view) {
+  const view = groupOf(root, 'viewport')
+  if (!root || !view) {
     let next = dropPanel(root, panels[0]!, { kind: 'edge', side: 'bottom' })
     const g = groupOf(next, panels[0]!)
     for (const p of panels.slice(1)) if (g) next = dropPanel(next, p, { kind: 'tab', group: g.id })
     return next
   }
   const next = clone(root)!
-  const holds = (n: DockNode, id: string): boolean => n.id === id || (n.kind === 'split' && n.children.some((c) => holds(c, id)))
-  // The smallest node holding both groups.
-  let part: DockNode = next
-  for (;;) {
-    if (part.kind !== 'split') break
-    const inner: DockNode | undefined = part.children.find((c) => holds(c, left.id) && holds(c, view.id))
-    if (!inner) break
-    part = inner
-  }
   const s = share > 0 && share < 1 ? share : 0.28
-  // A row holding them and others (the AI panel): only the run of its children from one to the other goes over it.
-  if (part.kind === 'split' && part.dir === 'row') {
-    const a = part.children.findIndex((c) => holds(c, left.id)), b = part.children.findIndex((c) => holds(c, view.id))
-    const from = Math.min(a, b), to = Math.max(a, b)
-    if (from >= 0 && (from > 0 || to < part.children.length - 1)) {
-      const run = part.children.slice(from, to + 1), runSizes = part.sizes.slice(from, to + 1)
-      const total = runSizes.reduce((x, y) => x + y, 0) || 1
-      const row: SplitNode = { kind: 'split', id: `s${Date.now().toString(36)}r`, dir: 'row', children: run, sizes: runSizes.map((x) => x / total) }
-      const column: SplitNode = { kind: 'split', id: `s${Date.now().toString(36)}c`, dir: 'column', children: [row, group], sizes: [1 - s, s] }
-      part.children.splice(from, run.length, column)
-      part.sizes.splice(from, run.length, total)
-      return normalize(next)
-    }
-  }
-  const column: SplitNode = { kind: 'split', id: `s${Date.now().toString(36)}`, dir: 'column', children: [part, group], sizes: [1 - s, s] }
-  if (part === next) return normalize(column)
-  const parent = parentOf(next, part.id)!
-  parent.children[parent.children.findIndex((c) => c.id === part.id)] = column
+  const target = findGroup(next, view.id)!
+  const column: SplitNode = { kind: 'split', id: `s${Date.now().toString(36)}`, dir: 'column', children: [target, group], sizes: [1 - s, s] }
+  if (next.id === target.id) return normalize(column)
+  const parent = parentOf(next, target.id)!
+  parent.children[parent.children.findIndex((c) => c.id === target.id)] = column
   return normalize(next)
 }
 
@@ -408,31 +386,23 @@ export function resizePair(root: DockNode | null, splitId: string, index: number
 
 // The editor's first layout: Scene on the left, the viewport with Assets under
 // it in the middle, AI on the right.
-// The scene tree and the viewport side by side, the bottom panels under both of them (the left panel's foot
-// included), the AI panel the whole height on the right.
+// The left panel (the scene tree) the whole height on the left, the AI panel on the right, the bottom panels under the
+// viewport only, between them.
 export function defaultTree(): DockNode {
   return {
     kind: 'split',
     id: 's1',
     dir: 'row',
-    sizes: [0.78, 0.22],
+    sizes: [0.2, 0.58, 0.22],
     children: [
+      { kind: 'tabs', id: 'g1', tabs: ['scene'], active: 'scene', edge: 'left' },
       {
         kind: 'split',
         id: 's2',
         dir: 'column',
         sizes: [0.72, 0.28],
         children: [
-          {
-            kind: 'split',
-            id: 's3',
-            dir: 'row',
-            sizes: [0.26, 0.74],
-            children: [
-              { kind: 'tabs', id: 'g1', tabs: ['scene'], active: 'scene', edge: 'left' },
-              { kind: 'tabs', id: 'g2', tabs: ['viewport'], active: 'viewport' },
-            ],
-          },
+          { kind: 'tabs', id: 'g2', tabs: ['viewport'], active: 'viewport' },
           { kind: 'tabs', id: 'g3', tabs: ['assets', 'project', 'generate'], active: 'assets', edge: 'bottom' },
         ],
       },
