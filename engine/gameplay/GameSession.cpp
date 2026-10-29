@@ -1394,6 +1394,7 @@ HudData GameSession::MakeHud(float viewportWidth, float viewportHeight) {
         } else if (auto target = CurrentInteraction(); target && !target->talk) {
             hud.promptText = InteractPrompt(registry_, target->entity);
         }
+        if (hud.promptText.empty()) hud.promptText = doorPrompt_; // a door opened by use (docs/assets/animations.md §4.2)
         // The key or button the interact action is bound to, for the device in use (17.6).
         if (!hud.promptText.empty()) {
             hud.promptKey = ActionGlyph(ActiveInputMap(), "interact", input_.UsingPad());
@@ -2646,6 +2647,28 @@ void GameSession::StepActions(float dt) {
             const bool clicked = click && screen && sprite && std::abs(click->first - screen->x) <= sprite->width * 0.5f &&
                                  std::abs(click->second - screen->y) <= sprite->height * 0.5f;
             if (dist <= list[d.index].range + (clicked ? 1.0f : 0.0f) && (doorKey || clicked) && dist < usedDistance) used = &d, usedDistance = dist;
+        }
+        // The prompt (the HUD's, as at a chest): the nearest door opened by use within its range.
+        doorPrompt_.clear();
+        float promptDistance = 1e9f;
+        for (const auto& d : doors) {
+            const auto& list = all[d.owner];
+            if (!at || d.index >= list.size()) continue;
+            const AnimatedPart& door = list[d.index];
+            const float dist = std::hypot(at->x - d.x, at->y - d.y);
+            if (dist > door.range || dist >= promptDistance) continue;
+            const auto* state = registry_.try_get<PartOpen>(d.owner);
+            const bool open = state && d.index < state->open.size() && state->open[d.index];
+            if (door.locked) {
+                auto* inventory = registry_.try_get<Inventory>(*player);
+                const bool hasKey = !door.key.empty() && inventory && CountItem(*inventory, door.key) > 0;
+                doorPrompt_ = hasKey ? "Unlock the door" : door.key.empty() ? "Locked" : "Locked: needs " + ItemName(door.key);
+            } else if (DoorOpens(door) == "use") {
+                doorPrompt_ = open ? "Close the door" : "Open the door";
+            } else {
+                continue;
+            }
+            promptDistance = dist;
         }
         std::set<Entity> unlocked;
         for (const auto& d : doors) {

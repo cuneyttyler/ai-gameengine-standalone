@@ -416,6 +416,7 @@ private:
     SpawnFn spawner_;
     std::optional<std::pair<float, float>> requestedAttack_;
     std::optional<std::pair<float, float>> requestedUse_; // a double click's scene point, for doors
+    std::string doorPrompt_; // the door the player stands at: what its shortcut does ("Open the door", "Locked: needs …")
 
     const StoryLibrary* storyLibrary_ = nullptr;
     StoryState story_;

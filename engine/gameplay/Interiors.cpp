@@ -107,7 +107,8 @@ bool DoorwayShut(Registry& registry, Entity entity) {
         for (size_t i = 0; i < open->cells.size(); ++i) {
             if (open->cells[i] == std::make_pair(dx, dy)) return !(i < open->passable.size() && open->passable[i]);
         }
-        return false;
+        // No door at it: the way in is where its doors are drawn (each its own doorway), not this side's middle.
+        return true;
     }
     return part->locked || DoorOpens(*part) == "use";
 }

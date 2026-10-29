@@ -904,7 +904,8 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
             frameW = static_cast<float>(w) * std::abs(sprite.u1 - sprite.u0);
             frameH = static_cast<float>(h) * std::abs(sprite.v1 - sprite.v0);
         }
-        attachment.offsetX = part.x - frameW * 0.5f;
+        // A copy turned to face the other way (its picture mirrored): the door's place mirrored too.
+        attachment.offsetX = sprite.u0 > sprite.u1 ? frameW * 0.5f - part.x : part.x - frameW * 0.5f;
         attachment.offsetY = part.y - frameH;
         attachment.pivotX = attachment.pivotY = 0.5f;
         attachment.layer = "front";
@@ -967,6 +968,8 @@ void PlaceAttachments(Registry& registry) {
         screen.x = px - (dx * c - dy * s);
         screen.y = py - (dx * s + dy * c);
         sprite.angle = turn;
+        // A building's door on a mirrored copy: its frames mirrored as its picture is (the animator sets them unmirrored).
+        if (link.slot.rfind("part", 0) == 0 && (parent->u0 > parent->u1) != (sprite.u0 > sprite.u1)) std::swap(sprite.u0, sprite.u1);
         if (attachment.layer == "own") continue; // its depth is where it stands (a painted door: over its building's occluder)
         const bool front = attachment.layer == "front" || (attachment.layer != "behind" && point.front);
         screen.depth = at->depth + (front ? 0.01f : -0.01f);
