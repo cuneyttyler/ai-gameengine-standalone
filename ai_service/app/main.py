@@ -1019,7 +1019,8 @@ def create_app(
                     from .bfl_video import animate_object as animate_by_video
                     opened = animate_by_video(os.environ["BFL_API_KEY"], crop, opening, "a building's closed wooden door", 12)
                 else:
-                    opened = animate_object(PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]), crop, opening, 8)
+                    # With its background: the frames are cut to the doorway here (without, PixelLab cut holes in the door).
+                    opened = animate_object(PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]), crop, opening, 8, no_background=False)
                 # Each frame over the open doorway (its last frame, on dark): where the animator left a frame see-through
                 # (asked for no background, it can take part of the door for it), the building's closed door would show.
                 base = Image.new("RGBA", crop.size, (26, 18, 13, 255))

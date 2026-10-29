@@ -257,7 +257,7 @@ def _images_by_direction(answer: dict) -> dict[str, bytes]:
 
 
 def animate_object(generator: "PixelLabImageGenerator", picture: Image.Image, action: str, frames: int = 8, loop: bool = False,
-                   wait_s: float = 900.0, on_status=None) -> list[Image.Image]:
+                   wait_s: float = 900.0, on_status=None, no_background: bool = True) -> list[Image.Image]:
     """A thing (not a person: a door, a chest, a lever, a flag) moving, by PixelLab's Animate with text v3
     (docs/assets/animations.md §4.1): `picture` centred in its 256 square at 90%, the first frame (`loop`: the last too,
     so a flag or a flame loops; else it ends where the motion does, a door open), `frames` frames (at most 8 at 256);
@@ -273,7 +273,9 @@ def animate_object(generator: "PixelLabImageGenerator", picture: Image.Image, ac
     buf = io.BytesIO()
     square.save(buf, "PNG")
     frame = {"type": "base64", "base64": base64.b64encode(buf.getvalue()).decode(), "format": "png"}
-    body = {"first_frame": frame, "frame_count": max(4, min(8, frames // 2 * 2)), "action": action[:300], "no_background": True}
+    # `no_background` off for a part kept to its own outline after (a door, cut to its doorway): asked to take the
+    # background away, PixelLab took the dark gaps between planks and the floor's stripes too, holes 6-38% of a door.
+    body = {"first_frame": frame, "frame_count": max(4, min(8, frames // 2 * 2)), "action": action[:300], "no_background": no_background}
     if loop:
         body["last_frame"] = frame
     started = generator._call("POST", "/animate-with-text-v3", body)
