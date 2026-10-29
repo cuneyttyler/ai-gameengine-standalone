@@ -130,10 +130,19 @@ function migrate(): LayoutState | null {
 // opens when a build starts, 7.4).
 const startsHidden: PanelId[] = ['build', 'planner']
 
+// Hidden on purpose (Ctrl+J), read before the layout is (it's loaded below, and dockView after it).
+let bottomOut = (() => {
+  try {
+    return JSON.parse(localStorage.getItem('aige.editor.bottomHidden2') ?? 'null') !== null
+  } catch {
+    return false
+  }
+})()
+
 // The bottom panels are always there: a layout without a bottom area (its tabs all closed or moved away) gets Assets
 // docked along the bottom edge again.
 function withBottom(root: DockNode | null): DockNode | null {
-  if (!root || dockView.bottomHidden || edgeArea(root, 'bottom')) return root
+  if (!root || bottomOut || edgeArea(root, 'bottom')) return root
   return dropPanel(root, 'assets', { kind: 'edge', side: 'bottom' })
 }
 
@@ -212,7 +221,7 @@ export function toggleBottom(): void {
     hiddenBottom = { panels, active: front, share: shareOf(layout.root, area.id) }
     let next = layout.root
     for (const p of panels) next = removePanel(next, p)
-    dockView.bottomHidden = true
+    dockView.bottomHidden = bottomOut = true
     keepHidden()
     setRoot(next)
     return
@@ -220,7 +229,7 @@ export function toggleBottom(): void {
   // Back along the bottom edge: its first panel docked there, the rest its tabs, at the height it had.
   const kept = hiddenBottom
   hiddenBottom = null
-  dockView.bottomHidden = false
+  dockView.bottomHidden = bottomOut = false
   keepHidden()
   const panels = kept.panels.filter((p) => !isOpen(p))
   let next = layout.root
