@@ -303,7 +303,9 @@ void EditorApp::AnimateNext() {
             // ① Its doors looked for in its picture (or its part of the painting).
             t["status"] = "finding";
             animateRequest_ = Ai()->Request("POST", "/parts/find",
-                                            {{"path", t.value("texture", "")}, {"kinds", {"door", "gate"}}, {"rect", t.value("region", nlohmann::json::array())}}, 180);
+                                            {{"path", t.value("texture", "")}, {"kinds", {"door", "gate"}}, {"rect", t.value("region", nlohmann::json::array())},
+                                             {"refine", true}}, // each door looked at again close up (a long wall's boxes drift)
+                                            600);
         } else if (door && status == "identified" && t.value("open", false)) {
             // ② An open doorway: its entry point on the building (always passable), nothing to animate.
             const bool drawn = t.contains("drawn");
@@ -554,6 +556,13 @@ void EditorApp::ApplyDoorToPrefab(const std::string& prefab, size_t index, const
         if (const auto* part = r.try_get<AnimatedPart>(t)) doors = DoorsOf(*part);
     });
     if (whole && !texture.empty()) SetAssetDoors(assets_.GetProject(), texture, doors);
+    // Copies that had their door taken off (a "-AnimatedPart" override) get it back: it's being animated now.
+    std::vector<Entity> copies;
+    for (auto [e, link] : registry_.view<PrefabInstance>().each()) {
+        if (link.path == prefab && link.overrides.find("-AnimatedPart") != std::string::npos) copies.push_back(e);
+    }
+    for (Entity e : copies) prefabs_.Revert(registry_, e, "-AnimatedPart");
+    if (!copies.empty()) dirty_ = true;
     prefabs_.SyncAll(registry_, prefab);
     RefreshPrefabs();
 }

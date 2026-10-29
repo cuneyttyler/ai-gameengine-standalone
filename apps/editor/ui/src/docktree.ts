@@ -329,21 +329,31 @@ export function resizePair(root: DockNode | null, splitId: string, index: number
 
 // The editor's first layout: Scene on the left, the viewport with Assets under
 // it in the middle, AI on the right.
+// The scene tree and the viewport side by side, the bottom panels under both of them (the left panel's foot
+// included), the AI panel the whole height on the right.
 export function defaultTree(): DockNode {
   return {
     kind: 'split',
     id: 's1',
     dir: 'row',
-    sizes: [0.2, 0.58, 0.22],
+    sizes: [0.78, 0.22],
     children: [
-      { kind: 'tabs', id: 'g1', tabs: ['scene'], active: 'scene', edge: 'left' },
       {
         kind: 'split',
         id: 's2',
         dir: 'column',
         sizes: [0.72, 0.28],
         children: [
-          { kind: 'tabs', id: 'g2', tabs: ['viewport'], active: 'viewport' },
+          {
+            kind: 'split',
+            id: 's3',
+            dir: 'row',
+            sizes: [0.26, 0.74],
+            children: [
+              { kind: 'tabs', id: 'g1', tabs: ['scene'], active: 'scene', edge: 'left' },
+              { kind: 'tabs', id: 'g2', tabs: ['viewport'], active: 'viewport' },
+            ],
+          },
           { kind: 'tabs', id: 'g3', tabs: ['assets', 'project', 'generate'], active: 'assets', edge: 'bottom' },
         ],
       },

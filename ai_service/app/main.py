@@ -210,6 +210,7 @@ class BackgroundRequest(BaseModel):
     description: str = ""              # the background description (the planner's, edited by the user)
     provider: str = ""                 # this build's background model (Build ▸ Assets); "" for the service's (the project's)
     seed: int = 7
+    cellPx: int = 64                   # pixels a cell, as the scene draws it (its tile's width): the ground as sharp as what's on it
 
 
 class PaintRequest(BaseModel):
@@ -277,6 +278,7 @@ class PartsRequest(BaseModel):
     path: str                       # a project picture: a building's art, a painting
     kinds: list[str] = ["door"]     # what to find: door, gate, shutter, hatch...
     rect: list[int] | None = None   # a box of it to look in (a painting's building), its pixels
+    refine: bool = False            # each part found looked at again, close up (on a long wall the first boxes drift)
 
 
 class DoorRequest(BaseModel):
@@ -819,7 +821,8 @@ def create_app(
             return {"ok": False, "errors": [f"Unknown background model {provider}: one of {', '.join(BACKGROUND_PROVIDERS)}"]}
         try:
             made = paint_background(BflPainter(key, provider.split(":", 1)[1]), request.terrain, (request.cells[0], request.cells[1]),
-                                    request.description, folder, seed=request.seed, report=progress.reporter())
+                                    request.description, folder, seed=request.seed, report=progress.reporter(),
+                                    target_px=max(32, min(128, request.cellPx)))
         except Exception as error:  # noqa: BLE001 - said to the editor
             return {"ok": False, "errors": [f"The background couldn't be painted: {error}"]}
         return {"ok": True, "provider": provider, "path": made["path"].relative_to(root.resolve()).as_posix(), "cellPx": made["cellPx"],
@@ -981,7 +984,28 @@ def create_app(
         vision = state.get("vision")
         if root is None or vision is None:
             return {"ok": False, "errors": ["Finding parts needs the project open and a vision model (AI on)"]}
-        return find_parts(vision, root, request.path, request.kinds, request.rect)
+        found = find_parts(vision, root, request.path, request.kinds, request.rect)
+        if not request.refine or not found.get("ok") or not found.get("parts"):
+            return found
+        # A second, close look at each (in parallel): its box and as much again round it, the one part there taken.
+        from concurrent.futures import ThreadPoolExecutor
+        from PIL import Image
+        with Image.open((root / request.path).resolve()) as im:
+            W, H = im.size
+
+        def closer(part):
+            x, y, w, h = part["box"]
+            x0, y0 = max(0, int(x - w * 0.8)), max(0, int(y - h * 0.5))
+            x1, y1 = min(W, int(x + w * 1.8)), min(H, int(y + h * 1.5))
+            again = find_parts(vision, root, request.path, request.kinds, [x0, y0, x1 - x0, y1 - y0])
+            near = [p for p in again.get("parts", []) if p.get("confidence", 0) >= 0.5] if again.get("ok") else []
+            if not near:
+                return part
+            best = min(near, key=lambda p: abs(p["box"][0] + p["box"][2] / 2 - (x + w / 2)) + abs(p["box"][1] + p["box"][3] / 2 - (y + h / 2)))
+            return {**part, "box": best["box"], "refined": True}
+        with ThreadPoolExecutor(4) as pool:
+            found["parts"] = list(pool.map(closer, found["parts"]))
+        return found
 
     @app.post("/parts/door")
     def parts_door(request: DoorRequest) -> dict:

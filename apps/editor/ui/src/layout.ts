@@ -15,6 +15,7 @@ import {
   allPanels,
   defaultTree,
   dropPanel,
+  edgeArea,
   findGroup,
   groupOf,
   homeSide,
@@ -59,7 +60,8 @@ interface LayoutState {
   treeFraction: number // the Scene panel: the tree's share, the Inspector below or beside it
 }
 
-const KEY = 'aige.editor.layout2'
+const KEY = 'aige.editor.layout3' // 3: the bottom panels under the left one too (older layouts start from the default)
+const LAYOUT_VERSION = 3
 
 function read(key: string): unknown {
   try {
@@ -126,6 +128,13 @@ function migrate(): LayoutState | null {
 // opens when a build starts, 7.4).
 const startsHidden: PanelId[] = ['build', 'planner']
 
+// The bottom panels are always there: a layout without a bottom area (its tabs all closed or moved away) gets Assets
+// docked along the bottom edge again.
+function withBottom(root: DockNode | null): DockNode | null {
+  if (!root || edgeArea(root, 'bottom')) return root
+  return dropPanel(root, 'assets', { kind: 'edge', side: 'bottom' })
+}
+
 function addNewPanels(root: DockNode | null, known: PanelId[] | undefined): DockNode | null {
   const before = known ?? (['viewport', 'scene', 'assets', 'ai'] as PanelId[])
   let next = root
@@ -142,9 +151,10 @@ function addNewPanels(root: DockNode | null, known: PanelId[] | undefined): Dock
 function load(): LayoutState {
   const saved = read(KEY) as Partial<LayoutState> | null
   if (saved && typeof saved === 'object' && 'root' in saved) {
-    const root = saved.root === null ? null : addNewPanels(parseTree(saved.root), saved.known)
+    const fresh = (saved as { version?: number }).version !== LAYOUT_VERSION
+    const root = saved.root === null || fresh ? null : addNewPanels(parseTree(saved.root), saved.known)
     return {
-      root: saved.root === null ? null : (root ?? defaultTree()),
+      root: withBottom(root ?? defaultTree()),
       lastGroup: saved.lastGroup && typeof saved.lastGroup === 'object' ? saved.lastGroup : {},
       treeFraction: typeof saved.treeFraction === 'number' ? Math.min(0.9, Math.max(0.1, saved.treeFraction)) : 0.45,
     }
@@ -170,7 +180,7 @@ export function toggleMaximize(id: PanelId): void {
 }
 
 function snapshot(): LayoutState {
-  return { known: [...panelIds], root: layout.root, lastGroup: layout.lastGroup, treeFraction: layout.treeFraction }
+  return { known: [...panelIds], root: layout.root, lastGroup: layout.lastGroup, treeFraction: layout.treeFraction, version: LAYOUT_VERSION } as LayoutState
 }
 
 export function saveLayout(): void {
@@ -187,9 +197,10 @@ export function saveLayout(): void {
 function applySaved(saved: unknown): void {
   if (!saved || typeof saved !== 'object' || !('root' in saved)) return
   const s = saved as Partial<LayoutState>
+  if ((s as { version?: number }).version !== LAYOUT_VERSION) return // laid out before the bottom panels moved: the default
   const root = s.root === null ? null : addNewPanels(parseTree(s.root), s.known)
   if (s.root !== null && !root) return
-  layout.root = root
+  layout.root = withBottom(root)
   layout.lastGroup = s.lastGroup && typeof s.lastGroup === 'object' ? s.lastGroup : {}
   if (typeof s.treeFraction === 'number') layout.treeFraction = Math.min(0.9, Math.max(0.1, s.treeFraction))
   try {
@@ -206,7 +217,7 @@ onHostMessage((message) => {
 sendToHost({ type: 'layout:request' })
 
 function setRoot(root: DockNode | null): void {
-  layout.root = root
+  layout.root = withBottom(root)
   saveLayout()
 }
 

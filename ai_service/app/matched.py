@@ -2061,12 +2061,19 @@ def background_words(description: str, key: list[dict]) -> tuple[list[str], dict
     return general, grounds
 
 
+# How big a cell is (the scene's): a person stands about one cell tall, so the ground's detail is drawn at that size.
+SCALE = ("Scale: each square of the colour map is about as wide as a person is tall (about 1.8 m): a cobblestone or a "
+         "flagstone is about a quarter of a square, a footpath one or two squares wide, a cart track two, grass blades and "
+         "pebbles tiny, a puddle a square or two.")
+
+
 def background_prompt(description: str, key: list[dict], solid: bool) -> str:
     """The whole picture's prompt (docs/places/background.md §2): the description's general lines, then the colour map
     and one line per colour in plain words, black kept black, only the ground."""
     general, grounds = background_words(description, key)
     lines = general or ["A background for a game."]
     lines.append("Seen from directly above (top-down).")
+    lines.append(SCALE)
     lines.append("Image 1 is a colour map of the ground. Paint each colour as its ground. Keep every area and every edge exactly where it is.")
     lines.append("Colours:")
     lines += [f"- {_hex(k['rgb'])} = {grounds.get(k['terrain'], k['words'])}" for k in key]
@@ -2078,10 +2085,11 @@ def background_prompt(description: str, key: list[dict], solid: bool) -> str:
 
 
 def paint_background(painter, terrain: dict, cells: tuple[int, int], description: str, folder: Path, seed: int = 7,
-                     target_px: int = 64, max_tiles: int = 9, overlap: int = 10, check: float = 35.0,
+                     target_px: int = 64, max_tiles: int = 49, overlap: int = 8, check: float = 35.0,
                      retries: int = 2, report=None) -> dict:
     """A place's background painted from its plan (docs/places/background.md): its ground as a top-down colour map;
-    the whole painted in one call (every look decided once); if that's coarser than `target_px` a cell, tiles planned
+    the whole painted in one call (every look decided once); if that's coarser than `target_px` a cell (the scene's: a
+    person about a cell tall, so the ground as sharp as what stands on it), tiles planned
     from the plan (plan_tiles, at most `max_tiles`), each painted again from its part of the whole picture, enlarged,
     and checked against its neighbours (a tile that disagrees with every one by more than `check` repainted, up to
     `retries` times); blended at their inner borders (blend_tiles); solid ground set back to black. Written to
@@ -2126,9 +2134,10 @@ def paint_background(painter, terrain: dict, cells: tuple[int, int], description
         report(1, total, f"Painting the detail windows: 0 of {len(tiles)}")
         painted = [0]
         count = threading.Lock()
-        cell = max(24, min(128, int(2048 / max(max(x1 - x0, y1 - y0) for x0, y0, x1, y1 in tiles))))
+        cell = max(24, min(target_px, int(2048 / max(max(x1 - x0, y1 - y0) for x0, y0, x1, y1 in tiles))))
         first = prompt.splitlines()[0]
-        detail = (f"{first}\nImage 1 is one part of it. Make it sharp and detailed at high resolution.\n"
+        detail = (f"{first}\nImage 1 is one part of it, {{cells}} squares across. Make it sharp and detailed at high resolution.\n"
+                  f"{SCALE}\n"
                   "Keep everything exactly as it is: every area, edge, line and colour stays where it is.\n"
                   "Only the ground: no buildings, no people, no objects, no text.")
         (folder / "background-tile-prompt.txt").write_text(detail, encoding="utf-8")
@@ -2138,7 +2147,8 @@ def paint_background(painter, terrain: dict, cells: tuple[int, int], description
             x0, y0, x1, y1 = t
             s = size_for(x1 - x0, y1 - y0)
             part = whole.crop((round(x0 * sx), round(y0 * sy), round(x1 * sx), round(y1 * sy))).resize(s, Image.BICUBIC)
-            png = painter.repaint(_png(part), detail, references=[], seed=seed + 101 * attempt + x0 * 7 + y0, width=s[0], height=s[1])
+            png = painter.repaint(_png(part), detail.replace("{cells}", str(max(x1 - x0, y1 - y0))), references=[],
+                                  seed=seed + 101 * attempt + x0 * 7 + y0, width=s[0], height=s[1])
             with count:
                 painted[0] += 1
                 report(1 + painted[0], None, f"Painting the detail windows: {painted[0]} of {total - 1}"

@@ -6592,12 +6592,7 @@ void EditorApp::PlacePart(const nlohmann::json& result) {
                 return true;
             });
         }
-        inspectorStale_ = true;
-        const std::string how = made.opens == "auto"  ? "as someone comes near"
-                                : made.opens == "use" ? "with the door shortcuts or a double click"
-                                                      : "as Project Settings ▸ Game ▸ doorsOpen says";
-        post_({{"type", "notify"}, {"text", "The part is animated (" + clip + "): it opens " + how + (made.locked ? ", once unlocked with its key" : "") +
-                                            ", and closes as they go. Its AnimatedPart is in the Inspector."}});
+        inspectorStale_ = true; // (the Animate a part window says it's done: part:done)
         return;
     }
     ApplyOneShotEdit([&] {
