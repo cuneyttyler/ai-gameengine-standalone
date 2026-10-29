@@ -1020,10 +1020,16 @@ def create_app(
                     opened = animate_by_video(os.environ["BFL_API_KEY"], crop, opening, "a building's closed wooden door", 12)
                 else:
                     opened = animate_object(PixelLabImageGenerator(os.environ["PIXELLAB_API_KEY"]), crop, opening, 8)
+                # Each frame over the open doorway (its last frame, on dark): where the animator left a frame see-through
+                # (asked for no background, it can take part of the door for it), the building's closed door would show.
+                base = Image.new("RGBA", crop.size, (26, 18, 13, 255))
+                base.alpha_composite(opened[-1])
                 frames = []
                 for f in opened:
-                    f.putalpha(ImageChops.multiply(f.getchannel("A"), mask))
-                    frames.append(f)
+                    under = base.copy()
+                    under.alpha_composite(f)
+                    under.putalpha(mask)
+                    frames.append(under)
                 provider, fps = ("bfl", 12) if by_bfl else ("pixellab", 12)
             except Exception as error:  # noqa: BLE001 - the door opened its own way instead
                 warnings.append(f"{'FLUX video' if by_bfl else 'PixelLab'} couldn't animate it ({str(error)[:200]}): opened from its own pixels instead")

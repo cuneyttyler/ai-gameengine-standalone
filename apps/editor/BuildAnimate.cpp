@@ -69,11 +69,19 @@ std::string DoorTrigger() {
 // /parts/door's request for a target's door: its picture, the box (found, or drawn by hand: `exact`, used as drawn).
 nlohmann::json DoorRequest(const std::string& buildId, const nlohmann::json& target, const nlohmann::json& box, bool exact,
                            const std::string& animator) {
-    std::string name = buildId + "-door-" + target.value("key", std::string("door"));
+    // Its own name: the build, its building (the prefab's or painted object's name) and which of its doors, kept from
+    // the end when it's long (each door's frames in their own folder: cut at the front, every door shared one).
+    const std::string key = target.value("key", std::string("door"));
+    const size_t hash = key.find('#');
+    std::string building = key.substr(0, hash);
+    building = std::filesystem::path(building).stem().string();
+    if (const size_t colon = building.rfind(':'); colon != std::string::npos) building = building.substr(colon + 1);
+    std::string name = buildId + "-" + building + "-door" + (hash == std::string::npos ? std::string() : "-" + key.substr(hash + 1));
     for (char& ch : name) {
         if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-') ch = '-';
     }
-    return {{"path", target.value("texture", "")}, {"box", box}, {"name", name.substr(0, 60)}, {"exact", exact},
+    if (name.size() > 60) name = name.substr(name.size() - 60);
+    return {{"path", target.value("texture", "")}, {"box", box}, {"name", name}, {"exact", exact},
             {"leaves", target.value("leaves", 0)}, {"animator", animator}};
 }
 
