@@ -195,11 +195,41 @@ export function putBottom(root: DockNode | null, panels: PanelId[], active: Pane
     part = inner
   }
   const s = share > 0 && share < 1 ? share : 0.28
+  // A row holding them and others (the AI panel): only the run of its children from one to the other goes over it.
+  if (part.kind === 'split' && part.dir === 'row') {
+    const a = part.children.findIndex((c) => holds(c, left.id)), b = part.children.findIndex((c) => holds(c, view.id))
+    const from = Math.min(a, b), to = Math.max(a, b)
+    if (from >= 0 && (from > 0 || to < part.children.length - 1)) {
+      const run = part.children.slice(from, to + 1), runSizes = part.sizes.slice(from, to + 1)
+      const total = runSizes.reduce((x, y) => x + y, 0) || 1
+      const row: SplitNode = { kind: 'split', id: `s${Date.now().toString(36)}r`, dir: 'row', children: run, sizes: runSizes.map((x) => x / total) }
+      const column: SplitNode = { kind: 'split', id: `s${Date.now().toString(36)}c`, dir: 'column', children: [row, group], sizes: [1 - s, s] }
+      part.children.splice(from, run.length, column)
+      part.sizes.splice(from, run.length, total)
+      return normalize(next)
+    }
+  }
   const column: SplitNode = { kind: 'split', id: `s${Date.now().toString(36)}`, dir: 'column', children: [part, group], sizes: [1 - s, s] }
   if (part === next) return normalize(column)
   const parent = parentOf(next, part.id)!
   parent.children[parent.children.findIndex((c) => c.id === part.id)] = column
   return normalize(next)
+}
+
+// What a lone group sat beside, to put it back there: the adjacent node's first group, and the side the group was on
+// of it ("left": the group was left of it).
+export function neighbourOf(root: DockNode | null, groupId: string): { group: string; side: Side } | null {
+  if (!root) return null
+  const parent = parentOf(root, groupId)
+  if (!parent) return null
+  const i = parent.children.findIndex((c) => c.id === groupId)
+  const j = i + 1 < parent.children.length ? i + 1 : i - 1
+  if (j < 0) return null
+  let first: DockNode = parent.children[j]!
+  while (first.kind === 'split') first = first.children[0]!
+  const after = j > i
+  const side: Side = parent.dir === 'row' ? (after ? 'left' : 'right') : after ? 'top' : 'bottom'
+  return { group: first.id, side }
 }
 
 // The share of its parent split a node has (0 when it's the root or isn't there), and setting it.

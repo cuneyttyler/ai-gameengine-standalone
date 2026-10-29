@@ -22,9 +22,11 @@ import {
   isShown,
   panelsIn,
   parseTree,
+  neighbourOf,
   putBottom,
   removePanel,
   resizePair,
+  setShare,
   shareOf,
   type DockNode,
   type DropTarget,
@@ -328,9 +330,29 @@ export function setPanelVisible(id: PanelId, on: boolean): void {
       setRoot(activate(layout.root, id))
       return
     }
+    // Back where it was: the layout as it was when nothing else changed meanwhile; else into its old group; else
+    // beside what it sat beside, on the same side; else along its usual window edge.
+    const place = places[id]
+    delete places[id]
+    const now = panelsIn(layout.root)
+    if (place && now.length === place.without.length && now.every((p) => place.without.includes(p))) {
+      const before = parseTree(place.before)
+      if (before) {
+        setRoot(activate(before, id))
+        return
+      }
+    }
     const back = layout.lastGroup[id]
-    const target: DropTarget = back && findGroup(layout.root, back) ? { kind: 'tab', group: back } : { kind: 'edge', side: homeSide[id] }
-    setRoot(dropPanel(layout.root, id, target))
+    const target: DropTarget = back && findGroup(layout.root, back)
+      ? { kind: 'tab', group: back }
+      : place?.neighbour && findGroup(layout.root, place.neighbour.group)
+        ? { kind: 'side', group: place.neighbour.group, side: place.neighbour.side }
+        : { kind: 'edge', side: homeSide[id] }
+    let next = dropPanel(layout.root, id, target)
+    // Beside its neighbour again: at the size it had there.
+    const mine = target.kind === 'side' ? groupOf(next, id) : null
+    if (mine && place?.share) next = setShare(next, mine.id, place.share)
+    setRoot(next)
     return
   }
   const group = groupOf(layout.root, id)
@@ -341,8 +363,18 @@ export function setPanelVisible(id: PanelId, on: boolean): void {
     return
   }
   layout.lastGroup[id] = group.id
-  setRoot(removePanel(layout.root, id))
+  const next = removePanel(layout.root, id)
+  places[id] = {
+    before: JSON.parse(JSON.stringify(layout.root)),
+    without: panelsIn(next),
+    neighbour: group.tabs.length === 1 ? neighbourOf(layout.root, group.id) : null,
+    share: shareOf(layout.root, group.id),
+  }
+  setRoot(next)
 }
+
+// Where each hidden panel was (setPanelVisible puts it back there).
+const places: Partial<Record<PanelId, { before: DockNode | null; without: PanelId[]; neighbour: { group: string; side: Side } | null; share: number }>> = {}
 
 // In the bottom area (its group there).
 function inBottom(id: PanelId): boolean {
