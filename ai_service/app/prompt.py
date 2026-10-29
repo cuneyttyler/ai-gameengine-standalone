@@ -448,7 +448,14 @@ GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
   Action.trigger "near" plays `animation` as someone comes within range and `awayAnimation` when they've gone (a door);
   Action "effect" / "userEffect" play an effect record on the thing / its user (sparks, dust, a flash, a sound).
 - AnimatedPart {"sheet", "x", "y", "width", "height" (a box of its picture), "clip": "open", "closeClip": "close",
-  "range", "near"} makes part of a thing's picture move on its own (a building's door opening as someone comes near).
+  "range", "opens", "locked", "key", "consumeKey", "more"} is a building's door (part of its picture that moves).
+  "opens": "project" (Project Settings ▸ Game ▸ doorsOpen: "use" or "auto"), "auto" (as someone comes near), "use" (the
+  player's door shortcuts, settings Game.doorActions, or a double click, near it; other characters open it as they
+  come), or "open" (an open doorway: always passable, nothing to animate, no sheet). "locked" with "key" (an item id):
+  shut, its doorway blocked, until the player uses it carrying the key. "more": the building's other doors, a JSON list
+  of objects with the same fields (a front and a side door). Set a door's way with set_field on AnimatedPart (the first
+  door) or set_prefab_field on the building's prefab (every copy). A door's animation itself is made in Build ▸ Animate
+  (doors and objects by PixelLab, characters by AutoSprite) or right-click ▸ Animate a part…, not by you.
   Ramp marks where characters walk between heights (stairs, a ramp, a ladder): elsewhere a cliff can't be walked.
 - Combat (only when the game has fighting: characters come without it): MeleeAttack, RangedAttack (projectiles),
   Health, Stats, Faction/FactionMember (records "faction";
