@@ -5,40 +5,40 @@ The working list, kept up to date as items move. Order is the order they're done
 
 ## In progress
 
-- [ ] Build, run the tests, commit this round (everything under "Done (this round)")
+- [ ] Build the editor with the last changes (open doorways, walking inside buildings, Animate a part waiting, characters
+      by AutoSprite / objects by PixelLab): written and committed, the build stopped before it finished
+- [ ] FirstGame: Animate all again (each door into its own files, kept with its picture for reuse)
 
 ## Still to do
 
+- [ ] Doors in Paint scenes: open / use / locked and several doors (painted doors still open by proximity only)
+- [ ] A door closes only after it has finished opening (a quick walk past cuts the clip)
+- [ ] The finder's boxes on long walls (it puts every door at one height; a second, close look per door)
 - [ ] Cliff faces drawn where high ground drops (blocked already, not yet shown)
 - [ ] The magenta-rod hand points, run with AutoSprite and checked (spends credits: with the user)
 - [ ] AI panel: web search for assets from words; `look` while playing; a playtest holding several keys at once
+- [ ] Tests: build and run when asked (the C++ door tests and the schema fixture need the new fields)
 
 ## Done (this round)
 
-- [x] AI panel as an agent: tools (find / read / what_is_at / check / look / playtest pressing actions), the tool
-      loop, tasks up to 20 steps, Review each step, split requests run as one task, routing to the Build panel and
-      the Planner, clarifying questions, every selected entity sent, Undo for the files it writes
-- [x] Agent actions: scene.create (with a type) / setType / delete, file.move (rename), asset.import / delete,
-      input.addAction / removeAction, write / delete records, components on prefabs (add / remove), Generate
-      (characters, animations) before its operations, editor actions (select, frame, open, play)
-- [x] Harbour place type (docks, piers, warehouses, fish market)
-- [x] Ground draw order: `Sprite.order`, Edit ▸ Bring forward / Send backward, Ctrl+] / Ctrl+[
-- [x] Stairs between floors (Interiors, Paint's Mark, Stairs here), high ground (heights, slopes, cliffs block)
-- [x] Animated parts (doors, chests) and Build ▸ Animate (Assembled: Assets ▸ Animate; Paint: ⑥ Animate), their
-      triggers decided (near for doors, interact for chests)
-- [x] NPCs opening doors on their way; cliff-aware paths
-- [x] Effects on actions, custom effects (FX ▸ New)
-- [x] Open the demo: made from the arpg template
+- [x] Doors animated by PixelLab (asked with their background: no holes), clipped to the doorway; the in-engine swing
+      when PixelLab fails; FLUX video as the other non-humanoid animator; characters by AutoSprite
+- [x] Build ▸ Animate in two steps: ① Identify doors (every ground-level door, double doors, open doorways; check, Draw
+      the doors, Clear, Use these doors), ② Animate; Animate all again; each door its own files
+- [x] Several doors a building, each its own overlay, way of opening, lock and doorway
+- [x] Doors open the project's way or their own: use (shortcuts, double click, a prompt) or auto; locked doors need
+      the key; NPCs open doors on their way; the way in is where the doors are drawn
+- [x] Doors placed where they're drawn (scaled as the building is), mirrored on a mirrored copy
+- [x] Open doorways as entry points; inside a building all of it walkable
+- [x] Animated buildings reused: doors kept with the picture, given to every prefab of it, carried through the libraries
+- [x] Animate a part: a door (PixelLab), an open doorway, another object (PixelLab, described), a character (AutoSprite);
+      Find the door; it waits for the result
+- [x] Art checks on the quick vision model; scene switch asks to save only when changed
 
 ## Done (earlier)
 
-- [x] Actions: custom input actions, the Action component, Act for the player, characters (act, tend) and scripts
-- [x] Interact the default action; attack a component added later
-- [x] Animation: clips by state, Plays on, attack variants, any clip by name; points, Attachment, Equipment shown;
-      the sheet editor's point tool; AutoSprite as the animator (8 directions a pack, outline stripped)
-- [x] Solid roles (roles.json `solid`), buildings' blocked area fitted to their art, draw order by the footprint,
-      built scenes repaired on opening
-- [x] Scene types (Assembled / Paint), build from a picture (as the painting or a reference)
-- [x] Art style as a project setting, set by the planner, in every art prompt
-- [x] Inspector ▸ Add component sorted; the AI panel's prompt knows actions, clips, attachments
-- [x] docs/testing/end-user-tests.md: the v1.0 end-user tests
+- [x] AI panel as an agent: tools, tasks, routing, questions, file undo, scene / asset / prefab-component commands
+- [x] Actions, the Action component, interact as the default action; effects on actions
+- [x] Animation: clips by state, attack variants, points, attachments; AutoSprite characters (8 directions a pack)
+- [x] Solid roles, buildings' blocked area fitted to their art; scene types; build from a picture; art style setting
+- [x] Stairs between floors, high ground; harbour place type; ground draw order
