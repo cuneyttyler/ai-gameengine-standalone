@@ -2670,18 +2670,8 @@ void EditorApp::SwitchProject(const std::filesystem::path& root, bool askAboutCh
     if (playing_) {
         StopPlay();
     }
-    if (askAboutChanges && IsDirty()) {
-        int answer = MessageBoxW(mainWindow_, L"Save changes to the scene before switching projects?",
-                                 L"Unsaved changes", MB_YESNOCANCEL | MB_ICONWARNING);
-        if (answer == IDCANCEL) {
-            return;
-        }
-        if (answer == IDYES) {
-            Save();
-            if (IsDirty()) {
-                return; // the save failed: stay
-            }
-        }
+    if (askAboutChanges && !AskToSaveChanges(L"Save changes to the scene before switching projects?")) {
+        return; // cancelled, or the save failed
     }
     // A fresh editor process on the other project: every system (assets,
     // prefabs, AI service, undo) starts clean, exactly as when launched.

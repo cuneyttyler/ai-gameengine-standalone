@@ -115,6 +115,9 @@ public:
 
     // True when the scene has unsaved edits (asked before closing).
     bool IsDirty() const { return dirty_ || settingsDirty_; }
+    // Asks to save only when there's something to save (the scene differs from its file, or settings changed): false
+    // when cancelled or the save failed. Quitting, switching scenes and projects all ask through it.
+    bool ConfirmUnsaved(const wchar_t* question) { return AskToSaveChanges(question); }
     void Save();
     // The panel layout (6.8), per project: the UI sends every change; Save
     // writes it to <project>/editor-layout.json, which is sent back on open.

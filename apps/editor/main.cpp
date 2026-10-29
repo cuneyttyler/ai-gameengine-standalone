@@ -157,19 +157,8 @@ bool ConfirmClose(HWND hwnd) {
             g_app->PausePlannerForClose();
         }
     }
-    if (g_app == nullptr || !g_app->IsDirty()) {
-        return true;
-    }
-    int answer = MessageBoxW(hwnd, L"Save changes to the scene before closing?", L"Unsaved changes",
-                             MB_YESNOCANCEL | MB_ICONWARNING);
-    if (answer == IDCANCEL) {
-        return false;
-    }
-    if (answer == IDYES) {
-        g_app->Save();
-        return !g_app->IsDirty(); // stay open if the save failed
-    }
-    return true;
+    // Asked only when the scene differs from its file (an edit undone, or a repair that changed nothing, isn't a change).
+    return g_app == nullptr || g_app->ConfirmUnsaved(L"Save changes to the scene before closing?");
 }
 
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
