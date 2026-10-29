@@ -171,6 +171,37 @@ function replace(root: DockNode, id: string, make: (node: DockNode) => DockNode)
   return root
 }
 
+// The bottom panels put back under the left panel and the viewport (the smallest part of the layout holding both, the
+// AI panel beside it keeping the whole height), as the default has them: a column of that part over a new group of
+// `panels` (the first in front), `share` of its height. Without either, along the window's bottom edge.
+export function putBottom(root: DockNode | null, panels: PanelId[], active: PanelId | null, share: number): DockNode | null {
+  if (!panels.length) return root
+  const group: TabsNode = { kind: 'tabs', id: `g${Date.now().toString(36)}`, tabs: [...panels], active: active && panels.includes(active) ? active : panels[0]!, edge: 'bottom' }
+  const left = groupOf(root, 'scene'), view = groupOf(root, 'viewport')
+  if (!root || !left || !view) {
+    let next = dropPanel(root, panels[0]!, { kind: 'edge', side: 'bottom' })
+    const g = groupOf(next, panels[0]!)
+    for (const p of panels.slice(1)) if (g) next = dropPanel(next, p, { kind: 'tab', group: g.id })
+    return next
+  }
+  const next = clone(root)!
+  const holds = (n: DockNode, id: string): boolean => n.id === id || (n.kind === 'split' && n.children.some((c) => holds(c, id)))
+  // The smallest node holding both groups.
+  let part: DockNode = next
+  for (;;) {
+    if (part.kind !== 'split') break
+    const inner: DockNode | undefined = part.children.find((c) => holds(c, left.id) && holds(c, view.id))
+    if (!inner) break
+    part = inner
+  }
+  const s = share > 0 && share < 1 ? share : 0.28
+  const column: SplitNode = { kind: 'split', id: `s${Date.now().toString(36)}`, dir: 'column', children: [part, group], sizes: [1 - s, s] }
+  if (part === next) return normalize(column)
+  const parent = parentOf(next, part.id)!
+  parent.children[parent.children.findIndex((c) => c.id === part.id)] = column
+  return normalize(next)
+}
+
 // The share of its parent split a node has (0 when it's the root or isn't there), and setting it.
 export function shareOf(root: DockNode | null, id: string): number {
   if (!root) return 0

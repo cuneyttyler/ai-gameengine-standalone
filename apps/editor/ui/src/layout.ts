@@ -22,9 +22,9 @@ import {
   isShown,
   panelsIn,
   parseTree,
+  putBottom,
   removePanel,
   resizePair,
-  setShare,
   shareOf,
   type DockNode,
   type DropTarget,
@@ -143,7 +143,7 @@ let bottomOut = (() => {
 // docked along the bottom edge again.
 function withBottom(root: DockNode | null): DockNode | null {
   if (!root || bottomOut || edgeArea(root, 'bottom')) return root
-  return dropPanel(root, 'assets', { kind: 'edge', side: 'bottom' })
+  return putBottom(removePanel(root, 'assets'), ['assets'], 'assets', 0.28)
 }
 
 function addNewPanels(root: DockNode | null, known: PanelId[] | undefined): DockNode | null {
@@ -193,6 +193,8 @@ interface HiddenBottom {
   panels: PanelId[]
   active: PanelId | null
   share: number
+  before?: DockNode | null // the whole layout as it was: put back as it was when nothing else changed meanwhile
+  without?: PanelId[] // what was open once the bottom was taken out (to tell whether anything changed)
 }
 let hiddenBottom: HiddenBottom | null = (() => {
   try {
@@ -218,9 +220,10 @@ export function toggleBottom(): void {
     const panels = panelsIn(area)
     if (!area || !panels.length) return
     const front = panels.find((p) => isFront(p)) ?? null
-    hiddenBottom = { panels, active: front, share: shareOf(layout.root, area.id) }
     let next = layout.root
     for (const p of panels) next = removePanel(next, p)
+    hiddenBottom = { panels, active: front, share: shareOf(layout.root, area.id), before: JSON.parse(JSON.stringify(layout.root)),
+                     without: panelsIn(next) }
     dockView.bottomHidden = bottomOut = true
     keepHidden()
     setRoot(next)
@@ -231,17 +234,17 @@ export function toggleBottom(): void {
   hiddenBottom = null
   dockView.bottomHidden = bottomOut = false
   keepHidden()
-  const panels = kept.panels.filter((p) => !isOpen(p))
-  let next = layout.root
-  if (panels.length) {
-    next = dropPanel(next, panels[0]!, { kind: 'edge', side: 'bottom' })
-    const group = groupOf(next, panels[0]!)
-    for (const p of panels.slice(1)) if (group) next = dropPanel(next, p, { kind: 'tab', group: group.id })
-    if (kept.active && panels.includes(kept.active)) next = activate(next, kept.active)
-    const area = edgeArea(next, 'bottom')
-    if (area && kept.share > 0) next = setShare(next, area.id, kept.share)
+  // Nothing moved meanwhile: the layout exactly as it was.
+  const now = panelsIn(layout.root)
+  if (kept.before && kept.without && now.length === kept.without.length && now.every((p) => kept.without!.includes(p))) {
+    const before = parseTree(kept.before)
+    if (before) {
+      setRoot(before)
+      return
+    }
   }
-  setRoot(next)
+  // Else under the left panel and the viewport (the left panel above it, the AI panel beside), at its height.
+  setRoot(putBottom(layout.root, kept.panels.filter((p) => !isOpen(p)), kept.active, kept.share))
 }
 
 export function toggleMaximize(id: PanelId): void {
