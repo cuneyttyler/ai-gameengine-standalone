@@ -904,9 +904,12 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
             frameW = static_cast<float>(w) * std::abs(sprite.u1 - sprite.u0);
             frameH = static_cast<float>(h) * std::abs(sprite.v1 - sprite.v0);
         }
-        // A copy turned to face the other way (its picture mirrored): the door's place mirrored too.
-        attachment.offsetX = sprite.u0 > sprite.u1 ? frameW * 0.5f - part.x : part.x - frameW * 0.5f;
-        attachment.offsetY = part.y - frameH;
+        // In the scene's pixels (PlaceAttachments places a picture's attachments in its sprite's, not its texture's): the
+        // box's place scaled as the building is drawn (a 598 px picture drawn 192 px wide put its door three times too far
+        // out); a copy turned to face the other way (its picture mirrored), its door's place mirrored too.
+        const float kx = frameW > 0.0f ? sprite.width / frameW : 1.0f, ky = frameH > 0.0f ? sprite.height / frameH : 1.0f;
+        attachment.offsetX = (sprite.u0 > sprite.u1 ? frameW * 0.5f - part.x : part.x - frameW * 0.5f) * kx;
+        attachment.offsetY = (part.y - frameH) * ky;
         attachment.pivotX = attachment.pivotY = 0.5f;
         attachment.layer = "front";
         attachment.turn = false;
