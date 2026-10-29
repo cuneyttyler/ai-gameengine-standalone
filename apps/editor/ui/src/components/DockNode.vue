@@ -85,7 +85,7 @@ function tabMenu(panel: PanelId, event: MouseEvent): void {
   <div v-if="node.kind === 'split'" class="split" :class="node.dir">
     <template v-for="(child, i) in node.children" :key="child.id">
       <Splitter
-        v-if="i > 0 && !(dockView.bottomHidden && child.edge === 'bottom')"
+        v-if="i > 0"
         :direction="node.dir === 'row' ? 'horizontal' : 'vertical'"
         @drag="(p: number) => onSplitDrag(i - 1, p)"
         @end="saveLayout"
@@ -93,7 +93,7 @@ function tabMenu(panel: PanelId, event: MouseEvent): void {
       <div
         :ref="(el) => { if (el) childEls[i] = el as HTMLElement }"
         class="cell"
-        :style="dockView.bottomHidden && child.edge === 'bottom' ? { display: 'none' } : { flex: `${node.sizes[i]} 1 0` }"
+        :style="{ flex: `${node.sizes[i]} 1 0` }"
       >
         <DockNode :node="child" />
       </div>

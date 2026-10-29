@@ -24,6 +24,8 @@ import {
   parseTree,
   removePanel,
   resizePair,
+  setShare,
+  shareOf,
   type DockNode,
   type DropTarget,
   type PanelId,
@@ -131,7 +133,7 @@ const startsHidden: PanelId[] = ['build', 'planner']
 // The bottom panels are always there: a layout without a bottom area (its tabs all closed or moved away) gets Assets
 // docked along the bottom edge again.
 function withBottom(root: DockNode | null): DockNode | null {
-  if (!root || edgeArea(root, 'bottom')) return root
+  if (!root || dockView.bottomHidden || edgeArea(root, 'bottom')) return root
   return dropPanel(root, 'assets', { kind: 'edge', side: 'bottom' })
 }
 
@@ -173,23 +175,64 @@ export const dockView = reactive({
   // out of sight (still mounted); double-clicking again brings them back.
   maximized: null as PanelId | null,
   focused: null as PanelId | null, // the panel last clicked in (the maximise shortcut's)
-  // The bottom area hidden for now (Ctrl+J): kept as it is, its tabs and size back when shown again.
-  bottomHidden: (() => {
-    try {
-      return localStorage.getItem('aige.editor.bottomHidden') === '1'
-    } catch {
-      return false
-    }
-  })(),
+  // The bottom area hidden for now (Ctrl+J): taken out of the layout (so everything else takes its room, as when a
+  // panel moves), what it held kept to put back, its panels, the one in front and its share of the height.
+  bottomHidden: false,
 })
 
-export function toggleBottom(): void {
-  dockView.bottomHidden = !dockView.bottomHidden
+interface HiddenBottom {
+  panels: PanelId[]
+  active: PanelId | null
+  share: number
+}
+let hiddenBottom: HiddenBottom | null = (() => {
   try {
-    localStorage.setItem('aige.editor.bottomHidden', dockView.bottomHidden ? '1' : '0')
+    const kept = JSON.parse(localStorage.getItem('aige.editor.bottomHidden2') ?? 'null')
+    return kept && Array.isArray(kept.panels) ? (kept as HiddenBottom) : null
+  } catch {
+    return null
+  }
+})()
+dockView.bottomHidden = hiddenBottom !== null
+
+function keepHidden(): void {
+  try {
+    localStorage.setItem('aige.editor.bottomHidden2', JSON.stringify(hiddenBottom))
   } catch {
     // a convenience: not kept is fine
   }
+}
+
+export function toggleBottom(): void {
+  if (!hiddenBottom) {
+    const area = edgeArea(layout.root, 'bottom')
+    const panels = panelsIn(area)
+    if (!area || !panels.length) return
+    const front = panels.find((p) => isFront(p)) ?? null
+    hiddenBottom = { panels, active: front, share: shareOf(layout.root, area.id) }
+    let next = layout.root
+    for (const p of panels) next = removePanel(next, p)
+    dockView.bottomHidden = true
+    keepHidden()
+    setRoot(next)
+    return
+  }
+  // Back along the bottom edge: its first panel docked there, the rest its tabs, at the height it had.
+  const kept = hiddenBottom
+  hiddenBottom = null
+  dockView.bottomHidden = false
+  keepHidden()
+  const panels = kept.panels.filter((p) => !isOpen(p))
+  let next = layout.root
+  if (panels.length) {
+    next = dropPanel(next, panels[0]!, { kind: 'edge', side: 'bottom' })
+    const group = groupOf(next, panels[0]!)
+    for (const p of panels.slice(1)) if (group) next = dropPanel(next, p, { kind: 'tab', group: group.id })
+    if (kept.active && panels.includes(kept.active)) next = activate(next, kept.active)
+    const area = edgeArea(next, 'bottom')
+    if (area && kept.share > 0) next = setShare(next, area.id, kept.share)
+  }
+  setRoot(next)
 }
 
 export function toggleMaximize(id: PanelId): void {
@@ -264,7 +307,11 @@ export function setPanelVisible(id: PanelId, on: boolean): void {
   dockView.maximized = null
   if (on) {
     // A panel of the hidden bottom area: the area shown again.
-    if (dockView.bottomHidden && isOpen(id) && inBottom(id)) toggleBottom()
+    if (hiddenBottom && hiddenBottom.panels.includes(id)) {
+      toggleBottom()
+      setRoot(activate(layout.root, id))
+      return
+    }
     if (isOpen(id)) {
       setRoot(activate(layout.root, id))
       return
@@ -298,7 +345,7 @@ export function togglePanel(id: PanelId): void {
     setPanelVisible(id, true)
     return
   }
-  setPanelVisible(id, !isFront(id) || (dockView.bottomHidden && inBottom(id)))
+  setPanelVisible(id, !isFront(id))
 }
 
 export function toggleViewport(): void {

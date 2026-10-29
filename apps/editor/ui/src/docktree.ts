@@ -171,6 +171,24 @@ function replace(root: DockNode, id: string, make: (node: DockNode) => DockNode)
   return root
 }
 
+// The share of its parent split a node has (0 when it's the root or isn't there), and setting it.
+export function shareOf(root: DockNode | null, id: string): number {
+  if (!root) return 0
+  const parent = parentOf(root, id)
+  if (!parent) return 0
+  return parent.sizes[parent.children.findIndex((c) => c.id === id)] ?? 0
+}
+export function setShare(root: DockNode | null, id: string, share: number): DockNode | null {
+  if (!root || share <= 0 || share >= 1) return root
+  const next = clone(root)!
+  const parent = parentOf(next, id)
+  if (!parent || parent.children.length < 2) return next
+  const i = parent.children.findIndex((c) => c.id === id)
+  const rest = 1 - (parent.sizes[i] ?? 0)
+  parent.sizes = parent.sizes.map((s, j) => (j === i ? share : rest > 0 ? (s / rest) * (1 - share) : (1 - share) / (parent.children.length - 1)))
+  return next
+}
+
 function parentOf(root: DockNode, id: string): SplitNode | null {
   if (root.kind !== 'split') return null
   for (const child of root.children) {
