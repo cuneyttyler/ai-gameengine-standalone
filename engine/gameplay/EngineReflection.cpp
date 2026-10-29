@@ -271,7 +271,8 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("closeClip", &AnimatedPart::closeClip, "Played when they leave.")
         .Field("range", &AnimatedPart::range, "How near, in cells, from the part itself.").Range(0.3, 10)
         .Field("opens", &AnimatedPart::opens, "How it opens: project (Project Settings ▸ Game ▸ doorsOpen), auto (as someone "
-               "comes near) or use (the door shortcuts or a double click, near it).").Options({"project", "auto", "use"})
+               "comes near), use (the door shortcuts or a double click, near it), or open (an open doorway: always passable, no "
+               "door to animate).").Options({"project", "auto", "use", "open"})
         .Field("locked", &AnimatedPart::locked, "Shut, its doorway blocked, until the player uses it with the key.")
         .Field("key", &AnimatedPart::key, "The item that unlocks it (empty: it can't be opened).")
         .Field("consumeKey", &AnimatedPart::consumeKey, "The key is used up unlocking it.")

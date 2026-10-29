@@ -314,7 +314,8 @@ struct AnimatedPart {
     bool opensNear = true;      // older scenes' switch: off is opens = "use"
     // How it opens (docs/assets/animations.md §4.2): "project" (Project Settings ▸ Game: doorsOpen), "auto" (as someone
     // comes near) or "use" (the player's door shortcuts or a double click on it, near it; other characters open it as
-    // they come). It closes once everyone has gone.
+    // they come). It closes once everyone has gone. "open": an open doorway (§4.5), no door in it: its entry point,
+    // always passable, nothing to animate (no sheet).
     std::string opens = "project";
     bool locked = false;        // shut (its doorway blocked) until the player uses it carrying `key`: then unlocked
     std::string key;            // the item that unlocks it ("": it can't be opened)

@@ -43,7 +43,7 @@ bool InteriorDoor(Registry& registry, Entity entity, const Interior& interior, i
 }
 
 std::string DoorOpens(const AnimatedPart& part) {
-    if (part.opens == "auto" || part.opens == "use") return part.opens;
+    if (part.opens == "auto" || part.opens == "use" || part.opens == "open") return part.opens;
     if (!part.opensNear) return "use";
     return ActiveSettings().game.doorsOpen == "auto" ? "auto" : "use";
 }
@@ -64,7 +64,7 @@ std::vector<AnimatedPart> DoorsFromJson(const std::string& text) {
         door.locked = d.value("locked", false);
         door.key = d.value("key", std::string());
         door.consumeKey = d.value("consumeKey", false);
-        if (!door.sheet.empty()) doors.push_back(door);
+        if (!door.sheet.empty() || door.opens == "open") doors.push_back(door); // a door, or an open doorway (§4.5)
     }
     return doors;
 }
@@ -98,7 +98,7 @@ void SetDoors(AnimatedPart& part, const std::vector<AnimatedPart>& doors) {
 
 bool DoorwayShut(Registry& registry, Entity entity) {
     const auto* part = registry.try_get<AnimatedPart>(entity);
-    if (part == nullptr || part->sheet.empty()) return false;
+    if (part == nullptr || (part->sheet.empty() && part->opens != "open" && part->more.empty())) return false;
     // In play, each door's doorway is known (PartOpen): the interior's own doorway is shut when a door at it is.
     if (const auto* open = registry.try_get<PartOpen>(entity); open && !open->cells.empty()) {
         const auto* interior = registry.try_get<Interior>(entity);

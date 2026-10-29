@@ -291,6 +291,7 @@ class DoorRequest(BaseModel):
 
 class AnimationRequest(BaseModel):
     objectProvider: str = "pixellab"  # what animates a thing (not a person): Preferences ▸ AI ▸ Non-humanoid animation
+    thing: bool = False  # it's a thing, not a person (a part of a building, a chest): the thing's animator, not guessed
     clip: str = ""       # the clip it's kept as (open, pull...); "" from the action (open, close, break, else idle)
     path: str            # the project image to animate
     provider: str = ""   # Preferences ▸ AI ▸ Animate ("" the default: AutoSprite)
@@ -1081,7 +1082,8 @@ def create_app(
             from . import autosprite
             told = source.with_name(source.name + ".gen.json")
             made_as = json.loads(told.read_text(encoding="utf-8")).get("description", "") if told.is_file() else ""
-            humanoid = autosprite.is_humanoid(" ".join([request.description, made_as, source.stem]), False, state["provider"])
+            humanoid = False if request.thing else autosprite.is_humanoid(" ".join([request.description, made_as, source.stem]), False,
+                                                                          state["provider"])
             thing = humanoid is False
         try:
             if thing:

@@ -6,6 +6,7 @@
 #include "physics2d/Components.h"
 
 #include <cmath>
+#include <cstdint>
 #include <set>
 
 namespace aige {
@@ -48,6 +49,28 @@ TileGrid TileGrid::Build(Registry& registry) {
                     for (size_t i = 0; i < open->cells.size(); ++i) {
                         if (i < open->passable.size() && open->passable[i]) through.insert(open->cells[i]);
                     }
+                }
+                const int x0 = sx - left, x1 = sx + right, y0 = sy - back, y1 = sy;
+                if (interior->shown) {
+                    // Inside (docs/places/interiors.md §5): all of its footprint walkable (its edge cells were its walls, and
+                    // a small building's edge is most of it), its walls the ring of cells round it, open in front of each
+                    // passable doorway (the way out).
+                    int dx = INT32_MIN, dy = INT32_MIN;
+                    if (!shut && InteriorDoor(registry, entity, *interior, dx, dy)) through.insert({dx, dy});
+                    std::set<std::pair<int, int>> out;
+                    for (const auto& [cx, cy] : through) {
+                        if (cx == x0) out.insert({x0 - 1, cy});
+                        if (cx == x1) out.insert({x1 + 1, cy});
+                        if (cy == y0) out.insert({cx, y0 - 1});
+                        if (cy == y1) out.insert({cx, y1 + 1});
+                    }
+                    for (int gx = x0 - 1; gx <= x1 + 1; ++gx) {
+                        for (int gy = y0 - 1; gy <= y1 + 1; ++gy) {
+                            const bool ring = gx == x0 - 1 || gx == x1 + 1 || gy == y0 - 1 || gy == y1 + 1;
+                            if (ring && !out.contains({gx, gy})) block(gx, gy);
+                        }
+                    }
+                    continue;
                 }
                 ForEachInteriorWall(sx, sy, left, right, back, interior->door, [&](int gx, int gy) {
                     if (!through.contains({gx, gy})) block(gx, gy);

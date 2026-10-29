@@ -6517,14 +6517,23 @@ nlohmann::json EditorApp::GenerateHistoryJson(bool character) {
 
 void EditorApp::PlacePart(const nlohmann::json& result) {
     // The part, animated: its sheet made, and an overlay put over the thing (docs/assets/animations.md §4): its picture,
-    // its Animator (a prop), attached where the box was, playing its clip when someone comes to it.
+    // its Animator (a prop), attached where the box was, playing its clip when someone comes to it. The dialog waits for
+    // it (part:done: what it made, to play, or why not).
     if (!result.value("ok", false)) {
-        post_({{"type", "notify"}, {"text", "The part wasn't animated: " + (result.contains("errors") && !result["errors"].empty() ? result["errors"][0].get<std::string>() : std::string("no answer"))}});
+        const std::string why = result.contains("errors") && !result["errors"].empty() ? result["errors"][0].get<std::string>() : std::string("no answer");
+        post_({{"type", "notify"}, {"text", "The part wasn't animated: " + why}});
+        post_({{"type", "part:done"}, {"ok", false}, {"error", why}});
         return;
     }
+    const bool opening = result.value("opening", false);
+    post_({{"type", "part:done"}, {"ok", true}, {"opening", opening}, {"sheet", result.value("sheet", std::string())},
+           {"count", result.value("frames", nlohmann::json::array()).size()}, {"fps", result.value("fps", 8.0)},
+           {"warnings", result.value("warnings", nlohmann::json::array())}});
     RefreshAssets(); // the spritesheet the service just wrote
     std::string sheet;
-    if (const std::string why = MakeAnimationSheet(result, &sheet); !why.empty()) {
+    if (opening) {
+        // No sheet: an entry point only.
+    } else if (const std::string why = MakeAnimationSheet(result, &sheet); !why.empty()) {
         post_({{"type", "notify"}, {"text", "The part's sheet couldn't be made: " + why}});
         return;
     }
@@ -6559,7 +6568,7 @@ void EditorApp::PlacePart(const nlohmann::json& result) {
         made.key = p.value("key", std::string());
         // Another door of its (§4.3), or one it has redone: the door whose box this one's middle falls in.
         auto doorIndex = [&](const AnimatedPart* now) -> size_t {
-            if (!now || now->sheet.empty()) return 0;
+            if (!now || (now->sheet.empty() && now->opens != "open" && now->more.empty())) return 0;
             const auto doors = DoorsOf(*now);
             for (size_t i = 0; i < doors.size(); ++i) {
                 if (std::abs(doors[i].x - made.x) < doors[i].width / 2 && std::abs(doors[i].y - made.y) < doors[i].height / 2) return i;
@@ -6576,7 +6585,7 @@ void EditorApp::PlacePart(const nlohmann::json& result) {
             ApplyOneShotEdit([&] {
                 auto& part = registry_.get_or_emplace<AnimatedPart>(parentEntity);
                 const size_t index = doorIndex(&part);
-                std::vector<AnimatedPart> doors = part.sheet.empty() ? std::vector<AnimatedPart>{} : DoorsOf(part);
+                std::vector<AnimatedPart> doors = part.sheet.empty() && part.opens != "open" && part.more.empty() ? std::vector<AnimatedPart>{} : DoorsOf(part);
                 if (index < doors.size()) doors[index] = made;
                 else doors.push_back(made);
                 SetDoors(part, doors);
@@ -6902,6 +6911,13 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                         {"scale", sprite->width / std::max(1.0f, frameW)}, {"mirrored", sprite->u0 > sprite->u1},
                         {"action", message.value("action", "the door swings open")}};
         RefreshAssets();
+        if (message.value("kind", std::string("door")) == "opening") {
+            // An open doorway (§4.5): its entry point on the building, nothing to animate.
+            partPending_["door"] = true;
+            partPending_["opens"] = std::string("open");
+            PlacePart({{"ok", true}, {"opening", true}});
+            return true;
+        }
         if (message.value("kind", std::string("door")) == "door") {
             partPending_["door"] = true;
             partPending_["region"] = {bx - box[0].get<int>(), by - box[1].get<int>()};
@@ -6909,17 +6925,25 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             partPending_["locked"] = message.value("locked", false);
             partPending_["key"] = message.value("key", std::string());
             partRequest_ = Ai()->Request("POST", "/parts/door",
-                                         {{"path", sprite->texture}, {"box", {bx, by, bw, bh}}, {"name", stem + "-door-" + std::to_string(n - 1)}}, 120);
-            post_({{"type", "notify"}, {"text", "Opening the door from its own pixels…"}});
+                                         {{"path", sprite->texture}, {"box", {bx, by, bw, bh}}, {"name", stem + "-door-" + std::to_string(n - 1)},
+                                          {"exact", true}, // the box drawn (or found) round the door, as it is
+                                          {"animator", userPrefs_ ? userPrefs_->Get("objectAnimateProvider", "pixellab") : nlohmann::json("pixellab")}},
+                                         900); // PixelLab's queue: minutes (it gave up at two)
+            post_({{"type", "part:progress"}, {"text", "Opening the door (PixelLab: a few minutes)…"}});
             return true;
         }
         partRequest_ = Ai()->Request("POST", "/animations/generate",
                                      {{"path", path}, {"action", message.value("action", "the door swings open")},
                                       {"provider", userPrefs_ ? userPrefs_->Get("animateProvider", "autosprite") : nlohmann::json("autosprite")},
                                       {"objectProvider", userPrefs_ ? userPrefs_->Get("objectAnimateProvider", "pixellab") : nlohmann::json("pixellab")},
+                                      // A character: the character's animator (Preferences ▸ AI ▸ Humanoid animation: AutoSprite); a
+                                      // thing (a sign, a window, a flag): the thing's (PixelLab), not guessed.
+                                      {"thing", message.value("kind", std::string("other")) != "character"},
                                       {"description", "a part of " + parent}, {"name", stem + "-part-" + std::to_string(n - 1)}},
                                      900);
-        post_({{"type", "notify"}, {"text", "Animating the part (a minute or two)…"}});
+        post_({{"type", "part:progress"}, {"text", message.value("kind", std::string("other")) == "character"
+                                                       ? "Animating the character (AutoSprite: a few minutes)…"
+                                                       : "Animating the part (PixelLab: a few minutes)…"}});
         return true;
     }
     if (type == "interior:stairsHere") {

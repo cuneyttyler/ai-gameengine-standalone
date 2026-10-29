@@ -882,7 +882,9 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
       const std::vector<AnimatedPart> doors = DoorsOf(whole);
       for (size_t index = 0; index < doors.size(); ++index) {
         const AnimatedPart& part = doors[index];
-        if (part.sheet.empty()) continue;
+        // An open doorway (§4.5): an overlay unseen, no animator, only so where its doorway is is known in play.
+        const bool opening = part.sheet.empty() && part.opens == "open";
+        if (part.sheet.empty() && !opening) continue;
         const std::string slot = index == 0 ? std::string("part") : "part" + std::to_string(index);
         Entity made{entt::null};
         if (auto it = shown.find({owner, slot}); it != shown.end() && registry.get<AttachmentLink>(it->second).item == part.sheet) {
@@ -893,7 +895,7 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
             registry.emplace<ScreenTransform2D>(made);
             registry.emplace<AttachmentLink>(made, AttachmentLink{owner, slot, part.sheet});
             registry.emplace<Sprite>(made);
-            registry.emplace<Animator>(made, part.sheet, "prop");
+            if (!opening) registry.emplace<Animator>(made, part.sheet, "prop");
         }
         kept.insert(made);
         auto& attachment = registry.get_or_emplace<Attachment>(made);
@@ -914,6 +916,12 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
         attachment.layer = "front";
         attachment.turn = false;
         attachment.size = std::max(part.width, part.height);
+        if (opening) {
+            // Its box's size, unseen (no texture: the sizing below leaves it so).
+            auto& unseen = registry.get<Sprite>(made);
+            unseen.width = part.width * kx, unseen.height = part.height * ky, unseen.a = 0.0f;
+            attachment.size = 0.0f;
+        }
       }
     }
     for (const auto& [key, entity] : shown) {

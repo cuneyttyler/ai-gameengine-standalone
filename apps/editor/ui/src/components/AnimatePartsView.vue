@@ -108,6 +108,7 @@ const big = ref<Target | null>(null)
 // In the big view: boxes drawn round its doors by hand (the picture's pixels), one door each, to redo them from.
 const drawing = ref(false)
 const drawn = ref<[number, number, number, number][]>([])
+const openings = ref(false) // the boxes drawn are open doorways (entry points, nothing to animate)
 let drawFrom: [number, number] | null = null
 function openBig(t: Target): void {
   big.value = t
@@ -154,7 +155,7 @@ function rectStyle(t: Target, b: number[]): Record<string, string> {
 // The boxes drawn: the building's doors are those (identified, ready for ② Animate).
 function useDrawn(t: Target): void {
   if (!usable.value.length) return
-  sendToHost({ type: 'build:animateSetDoors', key: t.key, boxes: usable.value })
+  sendToHost({ type: 'build:animateSetDoors', key: t.key, boxes: usable.value, open: openings.value })
   drawing.value = false
   drawn.value = []
   big.value = null
@@ -245,7 +246,7 @@ function stop(): void {
         <div v-else-if="t.box" class="box" :style="boxStyle(t)"></div>
       </div>
       <div class="info">
-        <div><b>{{ t.label }}</b> <span class="chip">{{ t.kind === 'door' ? 'door' : t.role }}</span></div>
+        <div><b>{{ t.label }}</b> <span class="chip">{{ t.kind === 'door' ? ((t as { open?: boolean }).open ? 'open doorway' : 'door') : t.role }}</span></div>
         <div class="dim small">{{ t.where }}</div>
         <div class="dim small">Triggered: {{ t.trigger }}</div>
         <div v-if="t.box" class="dim small">Door at {{ t.box[0] }},{{ t.box[1] }} ({{ t.box[2] }}×{{ t.box[3] }} px)</div>
@@ -271,6 +272,8 @@ function stop(): void {
                     title="Drag a box round each door (as many as it has), then Use these doors"
                     @click="drawing = !drawing; drawn = []">{{ drawing ? 'Drawing doors…' : 'Draw the doors' }}</button>
             <button v-if="drawing" :disabled="!drawn.length" title="Clear the boxes drawn" @click="clearDrawn">Clear</button>
+            <label v-if="drawing" class="inline" title="No door in them (an archway): they're the building's ways in, always open, nothing to animate">
+              <input v-model="openings" type="checkbox" /> Open doorways</label>
             <button v-if="drawing" class="primary" :disabled="running || !usable.length"
                     title="Its doors are the ones you drew (identified: ② Animate opens them)" @click="useDrawn(big)">
               Use {{ usable.length === 1 ? 'this door' : `these ${usable.length} doors` }}

@@ -178,7 +178,7 @@ nlohmann::json EditorApp::AnimateTargets() {
             if (was == "done" || was == "skipped") t["status"] = b["status"];
             else if (identified) t["status"] = "identified";
             else continue;
-            for (const char* kept : {"box", "sheet", "preview", "drawn", "given", "door", "reset", "leaves", "error"}) {
+            for (const char* kept : {"box", "sheet", "preview", "drawn", "given", "door", "reset", "leaves", "error", "open"}) {
                 if (b.contains(kept)) t[kept] = b[kept];
             }
         }
@@ -225,6 +225,7 @@ bool EditorApp::HandleAnimateMessage(const std::string& type, const nlohmann::js
         // Boxes drawn by hand round a building's doors: its doors are those, identified, one target each (§4.3).
         const std::string base = message.value("key", std::string()).substr(0, message.value("key", std::string()).find('#'));
         const nlohmann::json boxes = message.value("boxes", nlohmann::json::array());
+        const bool openings = message.value("open", false); // open doorways: entry points, nothing to animate
         auto& list = animate_["targets"];
         auto first = std::find_if(list.begin(), list.end(), [&](const nlohmann::json& t) { return t.value("key", "") == base; });
         if (first == list.end() || boxes.empty()) return true;
@@ -241,6 +242,7 @@ bool EditorApp::HandleAnimateMessage(const std::string& type, const nlohmann::js
             t["reset"] = i == 0;
             t["drawn"] = boxes[i];
             t["box"] = boxes[i];
+            t["open"] = openings;
             t["status"] = "identified";
             for (const char* stale : {"preview", "sheet", "found", "error", "given"}) t.erase(stale);
             if (i == 0) list[at] = t;
@@ -302,6 +304,20 @@ void EditorApp::AnimateNext() {
             t["status"] = "finding";
             animateRequest_ = Ai()->Request("POST", "/parts/find",
                                             {{"path", t.value("texture", "")}, {"kinds", {"door", "gate"}}, {"rect", t.value("region", nlohmann::json::array())}}, 180);
+        } else if (door && status == "identified" && t.value("open", false)) {
+            // ② An open doorway: its entry point on the building (always passable), nothing to animate.
+            const bool drawn = t.contains("drawn");
+            t["box"] = drawn ? t["drawn"] : t["given"];
+            const nlohmann::json region = t["region"], box = t["box"];
+            AnimatedPart opening;
+            opening.opens = "open";
+            opening.x = box[0].get<float>() - region[0].get<float>() + box[2].get<float>() / 2;
+            opening.y = box[1].get<float>() - region[1].get<float>() + box[3].get<float>() / 2;
+            opening.width = box[2].get<float>(), opening.height = box[3].get<float>();
+            if (t.contains("prefab")) ApplyDoorToPrefab(t["prefab"], t.value("door", 0), opening, t.value("reset", true), false);
+            t["status"] = "done";
+            t.erase("preview");
+            continue;
         } else if (door && status == "identified") {
             // ② Opened: from its box as drawn by hand, else fitted to the picture round the one found.
             const bool drawn = t.contains("drawn");
@@ -363,6 +379,7 @@ void EditorApp::AnimateCrop(nlohmann::json& target, const nlohmann::json& box) {
                                      {"description", target.value("label", "")},
                                      {"provider", userPrefs_ ? userPrefs_->Get("animateProvider", "autosprite") : nlohmann::json("autosprite")},
                                      {"objectProvider", userPrefs_ ? userPrefs_->Get("objectAnimateProvider", "pixellab") : nlohmann::json("pixellab")},
+                                     {"thing", true}, // a chest, a gate, a lever: the thing's animator (PixelLab), not a character's
                                      {"name", std::filesystem::path(path).stem().string()}},
                                     900);
 }
@@ -383,12 +400,8 @@ void EditorApp::OnAnimateResult(const nlohmann::json& body) {
         // archway (no door in it) left out, and boxes over one another kept once.
         if (!body.value("ok", false)) return fail(body.value("errors", nlohmann::json::array()).dump());
         std::vector<nlohmann::json> seen;
-        bool archway = false;
         for (const auto& p : body.value("parts", nlohmann::json::array())) {
-            if (p.value("open", false)) {
-                archway = true;
-                continue;
-            }
+            // An open doorway (an archway, no door in it) is kept too: its entry point, nothing to animate (§4.5).
             if (p.value("confidence", 0.0) < 0.35 || !p.contains("box")) continue;
             const auto& b = p["box"];
             const bool overlaps = std::any_of(seen.begin(), seen.end(), [&](const nlohmann::json& q) {
@@ -402,8 +415,8 @@ void EditorApp::OnAnimateResult(const nlohmann::json& body) {
             if (!overlaps) seen.push_back(p);
         }
         if (seen.empty()) {
-            (*target)["status"] = archway ? "skipped" : "failed";
-            (*target)["error"] = archway ? "an open archway: no door to animate" : "no door found in its picture: draw its doors (click its picture)";
+            (*target)["status"] = "failed";
+            (*target)["error"] = "no door found in its picture: draw its doors (click its picture)";
             AnimateNext();
             return;
         }
@@ -429,6 +442,7 @@ void EditorApp::OnAnimateResult(const nlohmann::json& body) {
                 t["given"] = seen[i]["box"];
                 t["box"] = seen[i]["box"];
                 t["leaves"] = seen[i].value("leaves", 0);
+                t["open"] = seen[i].value("open", false);
                 t["status"] = "identified";
                 for (const char* stale : {"preview", "sheet", "found", "error", "drawn"}) t.erase(stale);
                 list.insert(list.begin() + index + static_cast<std::ptrdiff_t>(i), t);
@@ -440,6 +454,7 @@ void EditorApp::OnAnimateResult(const nlohmann::json& body) {
         // Shown to be checked (② Animate opens it): its box as found.
         (*target)["given"] = best["box"];
         (*target)["box"] = best["box"];
+        (*target)["open"] = best.value("open", false);
         (*target)["status"] = "identified";
         for (const char* stale : {"preview", "sheet", "error", "drawn"}) target->erase(stale);
         AnimateNext();
@@ -507,7 +522,9 @@ void EditorApp::ApplyDoorToPrefab(const std::string& prefab, size_t index, const
     // Its door `index` (the rest kept, or none with `reset`), on the prefab: every copy, here and in the other scenes.
     const auto failed = prefabs_.EditTemplate(prefab, [&](Registry& r, Entity t) {
         std::vector<AnimatedPart> doors;
-        if (const auto* now = r.try_get<AnimatedPart>(t); now && !reset && !now->sheet.empty()) doors = DoorsOf(*now);
+        if (const auto* now = r.try_get<AnimatedPart>(t); now && !reset && (!now->sheet.empty() || now->opens == "open" || !now->more.empty())) {
+            doors = DoorsOf(*now);
+        }
         AnimatedPart made = door;
         if (index < doors.size() && !keepWays) {
             doors[index] = made;

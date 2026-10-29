@@ -330,6 +330,14 @@ prefab its doors, the picture's `.meta` gets `doors=` (a JSON list, `DoorsJson`)
 
 A picture copied without its door sheets keeps no doors (they're only given when every sheet is there).
 
+### 4.5 Open doorways
+
+Some buildings have no door in their doorway (an archway, an open stable front). They still need a way in: the finder
+reports them (`open: true`) and Build ▸ Animate keeps them as entry points ("open doorway"), applied in ② Animate
+without animating anything; in the big view, **Draw the doors** with **Open doorways** ticked marks them by hand, and
+**Animate a part…** has **an open doorway**. On the building it's a door with `opens = open` and no sheet: its doorway
+in the walls is always passable (characters walk in), there's no prompt and nothing plays.
+
 ## 5. In the Inspector
 
 | Component | Fields |

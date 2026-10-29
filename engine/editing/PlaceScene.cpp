@@ -840,13 +840,13 @@ bool GiveAssetDoors(PrefabLibrary& prefabs, const std::string& prefab) {
             texture = s->texture;
             whole = std::min(s->u0, s->u1) <= 0.001f && s->v0 <= 0.001f && std::max(s->u0, s->u1) >= 0.999f && s->v1 >= 0.999f;
         }
-        if (const auto* part = r.try_get<AnimatedPart>(t)) has = !part->sheet.empty();
+        if (const auto* part = r.try_get<AnimatedPart>(t)) has = !part->sheet.empty() || part->opens == "open" || !part->more.empty();
     });
     if (texture.empty() || !whole || has) return false;
     const auto doors = AssetDoors(prefabs.GetProject(), texture);
     // Only doors whose sheets are here (a picture copied without them keeps none).
     for (const auto& d : doors) {
-        if (!fs::exists(prefabs.GetProject().Resolve(d.sheet))) return false;
+        if (!d.sheet.empty() && !fs::exists(prefabs.GetProject().Resolve(d.sheet))) return false; // (an open doorway has none)
     }
     if (doors.empty()) return false;
     return !prefabs.EditTemplate(prefab, [&](Registry& r, Entity t) { SetDoors(r.get_or_emplace<AnimatedPart>(t), doors); });
