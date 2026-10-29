@@ -10,6 +10,7 @@ import PrefabThumb from './PrefabThumb.vue'
 import { projectState } from '../projects'
 import { onHostMessage, sendToHost } from '../ipc'
 import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
+import InteriorEditor from './InteriorEditor.vue'
 import { difficultyView, showTab } from '../paneltabs'
 
 interface ScriptProperty {
@@ -283,7 +284,15 @@ function numberFrom(event: Event): number {
               <option v-for="d in ['south', 'south-east', 'east', 'north-east', 'north', 'north-west', 'west', 'south-west']" :key="d" :value="d">{{ d }}</option>
             </select>
           </div>
-          <template v-for="field in component.fields" :key="field.name">
+          <!-- Interior: its floors, stairs and ways in edited as what they are (the raw lists below are the same fields). -->
+          <InteriorEditor
+            v-if="component.name === 'Interior'"
+            :fields="component.fields"
+            :choices="current.choices"
+            :disabled="editorState.playing"
+            @set="(name, value) => setField('Interior', component.fields.find((f) => f.name === name)!, value)"
+          />
+          <template v-for="field in component.fields.filter((f) => component.name !== 'Interior' || !['floors', 'stairs', 'entries', 'texture'].includes(f.name))" :key="field.name">
             <div class="field-row" :class="{ overridden: field.overridden }">
               <label :title="field.overridden ? `${field.description}\n(Changed on this copy)` : field.description">
                 {{ field.name }}

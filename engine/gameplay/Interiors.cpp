@@ -42,6 +42,18 @@ bool InteriorDoor(Registry& registry, Entity entity, const Interior& interior, i
     return true;
 }
 
+std::vector<std::pair<int, int>> InteriorEntries(Registry& registry, Entity entity, const Interior& interior) {
+    std::vector<std::pair<int, int>> out;
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    if (interior.entries.empty() || !InteriorFootprint(registry, entity, interior, x0, y0, x1, y1)) return out;
+    std::stringstream in(interior.entries);
+    for (std::string part; std::getline(in, part, ';');) {
+        int dx = 0, dy = 0;
+        if (std::sscanf(part.c_str(), "%d,%d", &dx, &dy) == 2) out.push_back({x0 + dx, y0 + dy});
+    }
+    return out;
+}
+
 std::string DoorOpens(const AnimatedPart& part) {
     if (part.opens == "auto" || part.opens == "use" || part.opens == "open") return part.opens;
     if (!part.opensNear) return "use";
@@ -98,8 +110,21 @@ void SetDoors(AnimatedPart& part, const std::vector<AnimatedPart>& doors) {
 
 bool DoorwayShut(Registry& registry, Entity entity) {
     const auto* part = registry.try_get<AnimatedPart>(entity);
+    if (const auto* interior = registry.try_get<Interior>(entity); (part == nullptr || part->sheet.empty()) && interior && !interior->entries.empty()) {
+        // No animated doors, ways in set by hand: its own doorway only if it's one of them.
+        int dx = 0, dy = 0;
+        if (!InteriorDoor(registry, entity, *interior, dx, dy)) return false;
+        const auto ways = InteriorEntries(registry, entity, *interior);
+        return std::find(ways.begin(), ways.end(), std::make_pair(dx, dy)) == ways.end();
+    }
     if (part == nullptr || (part->sheet.empty() && part->opens != "open" && part->more.empty())) return false;
     // In play, each door's doorway is known (PartOpen): the interior's own doorway is shut when a door at it is.
+    if (const auto* interior = registry.try_get<Interior>(entity); interior && !interior->entries.empty()) {
+        int dx = 0, dy = 0;
+        if (!InteriorDoor(registry, entity, *interior, dx, dy)) return false;
+        const auto ways = InteriorEntries(registry, entity, *interior);
+        if (std::find(ways.begin(), ways.end(), std::make_pair(dx, dy)) == ways.end()) return true; // not a way in
+    }
     if (const auto* open = registry.try_get<PartOpen>(entity); open && !open->cells.empty()) {
         const auto* interior = registry.try_get<Interior>(entity);
         int dx = 0, dy = 0;

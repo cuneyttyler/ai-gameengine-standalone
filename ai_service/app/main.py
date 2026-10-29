@@ -249,6 +249,7 @@ class AssetInteriorRequest(BaseModel):
     path: str                          # the building's picture, relative to the project
     purpose: str = ""                  # what it is, for its rooms (its analysis' description)
     seed: int = 7
+    storeys: int = 0                   # its floors, as the user says (0: counted by the vision model)
 
 
 class SegmentRequest(BaseModel):
@@ -279,6 +280,10 @@ class PartsRequest(BaseModel):
     kinds: list[str] = ["door"]     # what to find: door, gate, shutter, hatch...
     rect: list[int] | None = None   # a box of it to look in (a painting's building), its pixels
     refine: bool = False            # each part found looked at again, close up (on a long wall the first boxes drift)
+
+
+class StairsRequest(BaseModel):
+    floors: list[str]               # each floor's picture but the top's (floor 1, 2...), relative to the project
 
 
 class DoorRequest(BaseModel):
@@ -960,7 +965,7 @@ def create_app(
         with Image.open(source) as im:
             exterior = im.convert("RGBA")
         purpose = f"of {request.purpose}" if request.purpose else "a building like this has"
-        storeys = count_storeys(state["vision"], exterior)
+        storeys = request.storeys or count_storeys(state["vision"], exterior)
         report(0, 1, f"The interior of {source.name}: {storeys} floor{'s' if storeys > 1 else ''}")
         floors = make_floors(BflPainter(key, "flux-3-image"), exterior, purpose, "", request.seed, storeys)
         if not floors or floors[0] is None:
@@ -1006,6 +1011,16 @@ def create_app(
         with ThreadPoolExecutor(4) as pool:
             found["parts"] = list(pool.map(closer, found["parts"]))
         return found
+
+    @app.post("/parts/stairs")
+    def parts_stairs(request: StairsRequest) -> dict:
+        """Where each floor's stairs up are in a building's interior pictures (a corner, or its middle)."""
+        from .vision import find_stairs
+        root: Path | None = state["root"]
+        vision = state.get("vision")
+        if root is None or vision is None:
+            return {"ok": False, "errors": ["Finding the stairs needs the project open and a vision model (AI on)"]}
+        return find_stairs(vision, root, request.floors[:4])
 
     @app.post("/parts/door")
     def parts_door(request: DoorRequest) -> dict:

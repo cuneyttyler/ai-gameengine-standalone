@@ -43,12 +43,17 @@ TileGrid TileGrid::Build(Registry& registry) {
                 continue;
             }
             if (!interior->texture.empty()) {
-                // Its other doors (§4.3): each one's doorway in its walls, passable while it is.
-                std::set<std::pair<int, int>> through;
+                // Its other doors (§4.3): each one's doorway in its walls, passable while it is. Its ways in set by
+                // hand (§5b): open, unless a shut door stands at one.
+                std::set<std::pair<int, int>> through, doorCells;
                 if (const auto* open = registry.try_get<PartOpen>(entity)) {
                     for (size_t i = 0; i < open->cells.size(); ++i) {
+                        doorCells.insert(open->cells[i]);
                         if (i < open->passable.size() && open->passable[i]) through.insert(open->cells[i]);
                     }
+                }
+                for (const auto& way : InteriorEntries(registry, entity, *interior)) {
+                    if (!doorCells.contains(way)) through.insert(way);
                 }
                 const int x0 = sx - left, x1 = sx + right, y0 = sy - back, y1 = sy;
                 if (interior->shown) {

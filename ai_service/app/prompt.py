@@ -472,6 +472,11 @@ GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
   kind "scene": its interior is its own scene (scene, marker: where one arrives); the building is solid but for its
   doorway, and stepping into the doorway goes there (a Gateway of itself). Big many-roomed buildings (inns, temples,
   manors, keeps) are scenes; houses and workshops cutaways. Both kinds can be in one scene.
+  A cutaway's floors: texture (floor 1) and floors ("floor 2;floor 3" pictures; fewer when the building has fewer
+  storeys: storeys are walls below the eaves, a roof's dormers aren't one). stairs: each floor change's cell, "x,y;x,y"
+  (scene cells; empty: its corners in turn). entries: its ways in set by hand, "dx,dy;dx,dy" cells of its footprint's
+  edge from its top-left (empty: where its doors are, else its door side's middle). Change them with set_field.
+- Ramp: on a cell, characters walk between ground heights there (stairs, a slope, a ladder); elsewhere a height change is a cliff.
 - Prefer these systems over Lua for anything they cover.
 """
 

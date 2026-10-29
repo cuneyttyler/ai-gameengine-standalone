@@ -338,6 +338,16 @@ without animating anything; in the big view, **Draw the doors** with **Open door
 **Animate a part…** has **an open doorway**. On the building it's a door with `opens = open` and no sheet: its doorway
 in the walls is always passable (characters walk in), there's no prompt and nothing plays.
 
+### 4.6 Doors in a painted place
+
+A painted place's door is an entity of its own over the painting (its sprite the door's frames). Its **DoorPart** gives
+it a building's door's ways: `opens` (project, auto, use), `locked` / `key` / `consumeKey`, its clips and range; the
+prompt and the double click work the same. Places painted before keep their doors' near Action (they open as someone
+comes near).
+
+Every door finishes opening (and stands open a moment) before it shuts, so walking past quickly doesn't cut its clip.
+The finder looks at each door it found again, close up (`refine`), since on a long wall its first boxes drift.
+
 ## 5. In the Inspector
 
 | Component | Fields |

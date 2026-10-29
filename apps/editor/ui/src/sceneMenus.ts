@@ -52,6 +52,20 @@ export function entityMenu(entity: MenuEntity): MenuItem[] {
     ...Array.from({ length: Math.max(0, (entity.interiorFloors ?? 1) - 1) }, (_, i) => i + 2)
       .filter((k) => !(entity.interior && entity.interiorFloor === k))
       .map((k) => ({ label: `Show floor ${k}`, disabled: editorState.playing, action: () => sendToHost({ type: 'entity:interior', id: entity.id, shown: true, floor: k }) })),
+    // Its stairs found (docs/places/interiors.md §5): the vision model says which corner each floor's are in.
+    ...((entity.interiorFloors ?? 1) > 1
+      ? [{ label: 'Find the stairs', disabled: editorState.playing || editorState.ai.state !== 'ready',
+           action: () => sendToHost({ type: 'interior:findStairs', id: entity.id }) }]
+      : []),
+    // Its ways in (docs/places/interiors.md §5b): the cell under the cursor, on its edge, made one (or not any more).
+    ...(entity.interiorFloors
+      ? [{ label: 'Entry point here', disabled: editorState.playing, action: () => sendToHost({ type: 'interior:entryHere', id: entity.id }) }]
+      : []),
+    // Fewer floors than it was painted with (two storeys counted as three): its upper floors past that dropped.
+    ...((entity.interiorFloors ?? 1) > 1
+      ? [{ label: 'Floors', disabled: editorState.playing, submenu: Array.from({ length: (entity.interiorFloors ?? 1) - 1 }, (_, i) => i + 1)
+            .map((k) => ({ label: `${k} ${k === 1 ? 'floor' : 'floors'}`, action: () => sendToHost({ type: 'interior:setFloors', id: entity.id, floors: k }) })) }]
+      : []),
     // Its stairs (docs/places/interiors.md): the cell under the cursor takes one up from the floor shown (or down, from
     // its top floor).
     ...((entity.interiorFloors ?? 1) > 1 && entity.interior
@@ -132,6 +146,8 @@ function groundMenu(cell: [number, number], brush: string): MenuItem[] {
         if (name) sendToHost({ type: 'scene:addMarker', name, gx: cell[0], gy: cell[1] })
       },
     },
+    // High ground: characters walk between heights only where a ramp is (stairs, a slope, a ladder); elsewhere a cliff.
+    { label: 'Ramp here (walk between heights)', action: () => sendToHost({ type: 'scene:rampHere', gx: cell[0], gy: cell[1] }) },
     separator,
     { label: 'Frame scene', shortcut: keyLabel('view.frame'), action: () => sendToHost({ type: 'view:frame' }) },
   ]

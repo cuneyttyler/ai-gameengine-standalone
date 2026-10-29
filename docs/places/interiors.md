@@ -182,10 +182,29 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
 - **Repair** (`RepairInteriorArt`, on opening a scene and after a build): a building drawn with an interior picture
   (art chosen before interiors were kept out of the catalog: `CatalogEntriesFor` skips anything with `exteriorOf`)
   gets its exterior back and an Interior for the picture.
+- **Inspector ▸ Interior** (`InteriorEditor.vue`): its floors (each floor's picture, one removed, one added), each floor
+  change's stairs cell (typed, or back to its corner) and its ways in (each removed, or all), written back as its
+  `texture`, `floors`, `stairs` and `entries` fields.
+- **Viewport right-click** on a building with a cutaway interior: **Floors ▸ N** (fewer floors than it was painted with:
+  its upper floors' pictures past that dropped), **Find the stairs** (the vision model says which corner each floor's
+  stairs up are in: top, right, left, front, or the middle; `/parts/stairs`), **Stairs here** (the cell under the cursor)
+  and **Entry point here** (a cell of its edge made a way in, or not any more). On the ground: **Ramp here** (a Ramp:
+  characters walk between heights there).
+- **Build panel ▸ Assets ▸ Interiors:** each building type's **Floors** (Auto: counted from its picture; or 1-4), used
+  when its interiors are painted. The count itself counts only storeys of wall below the eaves (dormers, gable windows,
+  an attic aren't one).
 - Host messages:
   - `entity:interior {id?, shown?}`: the selection or `id`; toggles when `shown` is absent;
   - `interiors:showAll {shown}`.
   - `viewport:contextMenu` sends `entity.interior` (true, false, or null for none) and `interiors {count, shown}`.
+
+### 5b. Ways in
+
+A building's ways in are where its doors are drawn (each door's doorway: its footprint's edge cell nearest it), else
+its door side's middle. Set by hand (`Interior.entries`, cells relative to its footprint's top-left, so a moved copy
+keeps them), they're its only ways in: each door uses the nearest one, a way in without a door is always open, and its
+door side's middle is shut unless it's one of them. Inside, the whole footprint is walkable; its walls are the ring of
+cells round it, open in front of each way in.
 
 ## 6. Libraries
 

@@ -242,7 +242,7 @@ interface BuildState {
   sourced?: NonNullable<BuildState['sourcing']> // what was made for this build (Refine after it)
   // ③ Assets: what each part's art is (the project's, the library's, made, or a placeholder).
   // Each building type whose role has an interior, and its interior here (docs/places/interiors.md §1).
-  interiors?: { role: string; label: string; count: number; kind: 'cutaway' | 'scene' | 'none'; default: string }[]
+  interiors?: { role: string; label: string; count: number; kind: 'cutaway' | 'scene' | 'none'; default: string; floors?: number }[]
   assetNeeds?: {
     key: string
     role: string
@@ -1965,7 +1965,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
         <section v-if="state?.interiors?.length" class="plan">
           <h4>Interiors <span class="dim">each building type's inside: drawn cut away in place, or a scene of its own (entered through its door)</span></h4>
           <table class="components interiors">
-            <thead><tr><th>Building</th><th>Interior</th></tr></thead>
+            <thead><tr><th>Building</th><th>Interior</th><th>Floors</th></tr></thead>
             <tbody>
               <tr v-for="i in state.interiors" :key="i.role">
                 <td>{{ i.label }} <span class="dim">×{{ i.count }}</span></td>
@@ -1974,6 +1974,13 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
                     <option value="cutaway">Cutaway{{ i.default === 'cutaway' ? ' (default)' : '' }}</option>
                     <option value="scene">Scene (no interior){{ i.default === 'scene' ? ' (default)' : '' }}</option>
                     <option value="none">None</option>
+                  </select>
+                </td>
+                <td>
+                  <select :value="i.floors ?? 0" title="Its storeys (each floor's interior painted); Auto: counted from its picture"
+                          @change="sendToHost({ type: 'build:interiorFloors', role: i.role, floors: Number(($event.target as HTMLSelectElement).value) })">
+                    <option :value="0">Auto</option>
+                    <option v-for="n in 4" :key="n" :value="n">{{ n }}</option>
                   </select>
                 </td>
               </tr>

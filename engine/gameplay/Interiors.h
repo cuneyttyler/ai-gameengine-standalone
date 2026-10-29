@@ -33,6 +33,9 @@ std::string InteriorPicture(const Interior& interior, int floor);
 // A scene interior's doorway cell (world cells), where stepping in goes to its scene; false without a footprint.
 bool InteriorDoor(Registry& registry, Entity entity, const Interior& interior, int& x, int& y);
 
+// Its ways in set by hand (Interior.entries), as cells of the scene; empty when none are set.
+std::vector<std::pair<int, int>> InteriorEntries(Registry& registry, Entity entity, const Interior& interior);
+
 // How a thing's animated door opens (docs/assets/animations.md §4.2): "auto" or "use", its own or the project's.
 std::string DoorOpens(const AnimatedPart& part);
 // Its doors (§4.3): itself (its first) and its `more`, each as an AnimatedPart of its own (their `more` empty);

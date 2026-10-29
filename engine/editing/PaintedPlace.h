@@ -76,6 +76,9 @@ nlohmann::json AddPaintingEntities(Registry& registry, const std::filesystem::pa
                                    const std::string& place, int originX, int originY, const IsoParams& iso);
 // Interiors chosen per building type (docs/places/interiors.md §1): places/<id>/interiors.json, {role: cutaway | scene
 // | none}, set on the Build panel's Assets step.
+// A building type's floors, as the user chose in the Build panel (0: counted from its picture by the vision model).
+std::string SetInteriorFloors(const std::filesystem::path& folder, const std::string& role, int floors);
+int InteriorFloorsOf(const nlohmann::json& choices, const std::string& role);
 nlohmann::json LoadInteriorChoices(const std::filesystem::path& folder);
 std::string SetInteriorChoice(const std::filesystem::path& folder, const std::string& role, const std::string& kind);
 // A role's interior: the build's choice, else its look's (interior_kind; cutaway when unsaid). "" for a role without

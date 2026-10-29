@@ -564,6 +564,8 @@ private:
     // Animate a part (docs/assets/animations.md §4): the request in flight and what it's for.
     int partRequest_ = 0;
     int partFindRequest_ = 0;           // Animate a part ▸ Find the door: the vision model's box
+    int stairsRequest_ = 0;             // Find the stairs: the building it's for
+    Entity stairsFor_{entt::null};
     nlohmann::json partFindRegion_;     // the picture's region it was looked for in
     nlohmann::json partPending_;
     void PlacePart(const nlohmann::json& result);

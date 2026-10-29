@@ -243,6 +243,9 @@ struct Run {
         // A building's doorway shut by its animated door (not locked): it opens as a character comes to it
         // (docs/assets/animations.md §4.2), so a path goes through.
         std::set<std::pair<int, int>> doorways;
+        for (auto [e, interior] : R().view<Interior>().each()) {
+            for (const auto& way : InteriorEntries(R(), e, interior)) doorways.insert(way);
+        }
         for (auto [e, interior, part] : R().view<Interior, AnimatedPart>().each()) {
             if (const auto* open = R().try_get<PartOpen>(e); open && !open->cells.empty()) {
                 const auto list = DoorsOf(part); // each door's doorway, unless it's locked (§4.3)

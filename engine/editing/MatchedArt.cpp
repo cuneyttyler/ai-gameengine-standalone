@@ -851,7 +851,10 @@ json MatchedArtSheets(const json& solved, const json& assetPlan, const Ontology*
             const std::string kind = look.contains("interior_kind") ? look.value("interior_kind", std::string("cutaway"))
                                      : ontology && ontology->RoleLook(role, "interior_kind").is_string() ? ontology->RoleLook(role, "interior_kind").get<std::string>()
                                                                                                        : std::string("cutaway");
-            if (row.value("layer", "") == "building" && hasInterior && kind == "cutaway") piece["interior"] = true;
+            if (row.value("layer", "") == "building" && hasInterior && kind == "cutaway") {
+                piece["interior"] = true;
+                if (look.value("storeys", 0) > 0) piece["storeys"] = look["storeys"]; // the Build panel's floors
+            }
             // Several looks for a kind the place uses often, by how much real ones differ (its role's look
             // "variety"): many different cars, a few shops, one street light.
             int variants = 1;

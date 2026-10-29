@@ -1040,6 +1040,8 @@ json PlanPlaceAssets(const Ontology& ontology, const json& spec, const json& sol
                 look["has_interior"] = kind != "none";
                 look["interior_kind"] = kind == "none" ? "cutaway" : kind;
             }
+            // Its floors, as the Build panel says (else counted from its picture when its interior is made).
+            if (const int floors = InteriorFloorsOf(sourcing ? sourcing->interiors : json::object(), need.role); floors > 0) look["storeys"] = floors;
             row["look"] = look;
         }
         {

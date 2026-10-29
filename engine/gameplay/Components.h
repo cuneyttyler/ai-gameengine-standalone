@@ -326,8 +326,21 @@ struct AnimatedPart {
     std::string more;
 };
 
+// A painted place's door (docs/assets/animations.md §4.6): this entity's own sprite is the door, drawn over the
+// painting; it opens as a building's door does (AnimatedPart's opens, locked, key), its clips played on itself.
+struct DoorPart {
+    std::string clip = "open";
+    std::string closeClip = "close";
+    float range = 1.8f;
+    std::string opens = "project"; // project, auto, use (as AnimatedPart's)
+    bool locked = false;
+    std::string key;
+    bool consumeKey = false;
+};
+
 // Runtime (not saved): each of a building's animated doors (DoorsOf's order), as play has it now.
 struct PartOpen {
+    std::vector<float> age;                 // seconds since it opened (it closes only once it has finished opening)
     std::vector<char> open;                 // open now
     std::vector<char> passable;             // its doorway passable: open, or auto and not locked
     std::vector<std::pair<int, int>> cells; // its doorway: the footprint's edge cell nearest the door
@@ -365,6 +378,9 @@ struct Interior {
     // Walking onto one from the floor below goes up, from the floor above down. Empty (or missing ones): the building's
     // corners in turn, top, right, left — where the interior pictures draw them.
     std::string stairs;
+    // Its ways in (docs/places/interiors.md §5b), set by hand: cells of its footprint's edge, "dx,dy;dx,dy" from its
+    // footprint's top-left (so a copy moved keeps them). Empty: its doors' cells, else its door side's middle.
+    std::string entries;
     // Runtime only (not reflected): going up or down next, and standing on the stairs since the last step.
     bool climbing = true;
     bool onStairs = false;

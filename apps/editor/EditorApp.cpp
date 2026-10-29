@@ -5556,6 +5556,43 @@ void EditorApp::PollAi() {
                 }
             } else if (animateRequest_ != 0 && result->requestId == animateRequest_) {
                 OnAnimateResult(result->body);
+            } else if (stairsRequest_ != 0 && result->requestId == stairsRequest_) {
+                // Its stairs, a corner (or the middle) a floor: its footprint's cell there (a mirrored copy: left and
+                // right the other way round, as its pictures are).
+                stairsRequest_ = 0;
+                auto* interior = registry_.valid(stairsFor_) ? registry_.try_get<Interior>(stairsFor_) : nullptr;
+                int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+                if (interior && result->body.value("ok", false) && InteriorFootprint(registry_, stairsFor_, *interior, x0, y0, x1, y1)) {
+                    const auto* sprite = registry_.try_get<Sprite>(stairsFor_);
+                    const bool mirrored = sprite && sprite->u0 > sprite->u1;
+                    std::string text;
+                    int found = 0;
+                    int k = 1;
+                    for (const auto& where : result->body.value("stairs", nlohmann::json::array())) {
+                        std::string w = where.is_string() ? where.get<std::string>() : "none";
+                        if (mirrored && w == "left") w = "right";
+                        else if (mirrored && w == "right") w = "left";
+                        auto cell = StairsCell(*interior, k, x0, y0, x1, y1); // its corner, when none was seen
+                        if (w == "top") cell = {x0, y0};
+                        else if (w == "right") cell = {x1, y0};
+                        else if (w == "left") cell = {x0, y1};
+                        else if (w == "front") cell = {x1, y1};
+                        else if (w == "middle") cell = {(x0 + x1) / 2, (y0 + y1) / 2};
+                        found += w != "none";
+                        text += (text.empty() ? "" : ";") + std::to_string(cell.first) + "," + std::to_string(cell.second);
+                        ++k;
+                    }
+                    ApplyOneShotEdit([&] {
+                        interior->stairs = text;
+                        RecordOverride(registry_, stairsFor_, "Interior", "stairs");
+                        return true;
+                    });
+                    inspectorStale_ = true;
+                    post_({{"type", "notify"}, {"text", "Its stairs: " + std::to_string(found) + " of " + std::to_string(k - 1) +
+                                                            " found (" + text + "); right-click inside it ▸ Stairs here to move one"}});
+                } else {
+                    post_({{"type", "notify"}, {"text", "The stairs couldn't be found: set them by hand (right-click inside it ▸ Stairs here)"}});
+                }
             } else if (partFindRequest_ != 0 && result->requestId == partFindRequest_) {
                 // Find the door: its likeliest box, in the dialog's pixels.
                 partFindRequest_ = 0;
@@ -6747,6 +6784,41 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
         }
         return true;
     }
+    if (type == "build:interiorFloors") {
+        // The Assets step: a building type's floors (0: counted from its picture), for this build.
+        if (!build_) return true;
+        if (const std::string why = SetInteriorFloors(build_->Folder(), message.value("role", ""), message.value("floors", 0)); !why.empty()) {
+            post_({{"type", "notify"}, {"text", why}});
+        }
+        PreviewAssets();
+        PostBuild();
+        return true;
+    }
+    if (type == "interior:setFloors") {
+        // A building's floors set by hand (right-click ▸ Floors): its upper floors' pictures past that dropped (two
+        // storeys counted as three), or the count kept for its next interior.
+        const Entity e = static_cast<Entity>(message.value("id", 0u));
+        auto* interior = registry_.valid(e) ? registry_.try_get<Interior>(e) : nullptr;
+        const int want = std::max(1, message.value("floors", 1));
+        if (!interior || interior->texture.empty()) return true;
+        ApplyOneShotEdit([&] {
+            std::vector<std::string> upper;
+            std::stringstream in(interior->floors);
+            for (std::string f; std::getline(in, f, ';');) {
+                if (!f.empty()) upper.push_back(f);
+            }
+            if (static_cast<int>(upper.size()) + 1 > want) upper.resize(static_cast<size_t>(want - 1));
+            std::string joined;
+            for (const auto& f : upper) joined += (joined.empty() ? "" : ";") + f;
+            interior->floors = joined;
+            interior->floor = std::min(interior->floor, want);
+            RecordOverride(registry_, e, "Interior", "floors");
+            return true;
+        });
+        inspectorStale_ = true;
+        post_({{"type", "notify"}, {"text", "It has " + std::to_string(want) + (want == 1 ? " floor" : " floors") + " now"}});
+        return true;
+    }
     if (type == "build:interiorChoice") {
         // The Assets step: a building type's interior (cutaway, scene or none; "" its default), for this build.
         if (!build_) return true;
@@ -6939,6 +7011,85 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
         post_({{"type", "part:progress"}, {"text", message.value("kind", std::string("other")) == "character"
                                                        ? "Animating the character (AutoSprite: a few minutes)…"
                                                        : "Animating the part (PixelLab: a few minutes)…"}});
+        return true;
+    }
+    if (type == "interior:findStairs") {
+        // Find the stairs (docs/places/interiors.md §5): each floor's picture but the top's looked at, its stairs up placed
+        // in the corner (or the middle) the vision model says.
+        const Entity e = static_cast<Entity>(message.value("id", 0u));
+        const auto* interior = registry_.valid(e) ? registry_.try_get<Interior>(e) : nullptr;
+        if (!interior || InteriorFloors(*interior) < 2 || !Ai() || Ai()->GetState() != AiClient::State::Ready) {
+            post_({{"type", "notify"}, {"text", "Finding the stairs needs a building of several floors and AI on"}});
+            return true;
+        }
+        nlohmann::json floors = nlohmann::json::array();
+        for (int k = 1; k < InteriorFloors(*interior); ++k) floors.push_back(InteriorPicture(*interior, k));
+        stairsFor_ = e;
+        stairsRequest_ = Ai()->Request("POST", "/parts/stairs", {{"floors", floors}}, 300);
+        post_({{"type", "notify"}, {"text", "Looking for its stairs…"}});
+        return true;
+    }
+    if (type == "scene:rampHere") {
+        // High ground (place-refine.md §10): a Ramp on the cell under the cursor (characters walk between heights there),
+        // or the one there taken away.
+        if (playing_ || (!hasHover_ && !message.contains("gx"))) return true;
+        int gx = 0, gy = 0;
+        CellAt(hoverX_, hoverY_, iso_, gx, gy);
+        gx = message.value("gx", gx), gy = message.value("gy", gy); // the cell right-clicked
+        std::optional<Entity> there;
+        for (auto [r, ramp, w] : registry_.view<Ramp, WorldTransform2D>().each()) {
+            if (static_cast<int>(std::floor(w.x)) == gx && static_cast<int>(std::floor(w.y)) == gy) there = r;
+        }
+        ApplyOneShotEdit([&] {
+            if (there) {
+                registry_.destroy(*there);
+            } else {
+                const Entity r = registry_.create();
+                registry_.emplace<Name>(r, "Ramp " + std::to_string(gx) + "," + std::to_string(gy));
+                registry_.emplace<WorldTransform2D>(r, gx + 0.5f, gy + 0.5f);
+                registry_.emplace<Ramp>(r);
+            }
+            return true;
+        });
+        sceneTreeStale_ = true;
+        post_({{"type", "notify"}, {"text", there ? "Ramp taken away" : "A ramp at " + std::to_string(gx) + "," + std::to_string(gy) +
+                                                                          ": characters walk between heights there"}});
+        return true;
+    }
+    if (type == "interior:entryHere") {
+        // A way in (docs/places/interiors.md §5b): the cell under the cursor, on the building's footprint's edge, added
+        // (or taken away when it's one already). Its doors then use the nearest; without any, the door side's middle.
+        const Entity e = static_cast<Entity>(message.value("id", 0u));
+        auto* interior = registry_.valid(e) ? registry_.try_get<Interior>(e) : nullptr;
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        if (!interior || !hasHover_ || !InteriorFootprint(registry_, e, *interior, x0, y0, x1, y1)) {
+            post_({{"type", "notify"}, {"text", "Point at a cell of the building's edge, where it's entered"}});
+            return true;
+        }
+        int gx = 0, gy = 0;
+        CellAt(hoverX_, hoverY_, iso_, gx, gy);
+        if (gx < x0 || gx > x1 || gy < y0 || gy > y1 || (gx != x0 && gx != x1 && gy != y0 && gy != y1)) {
+            post_({{"type", "notify"}, {"text", "A way in is a cell of the building's edge (its footprint's outer row)"}});
+            return true;
+        }
+        const std::string cell = std::to_string(gx - x0) + "," + std::to_string(gy - y0);
+        std::vector<std::string> ways;
+        std::stringstream in(interior->entries);
+        bool removed = false;
+        for (std::string w; std::getline(in, w, ';');) {
+            if (w == cell) removed = true;
+            else if (!w.empty()) ways.push_back(w);
+        }
+        if (!removed) ways.push_back(cell);
+        std::string text;
+        for (const auto& w : ways) text += (text.empty() ? "" : ";") + w;
+        ApplyOneShotEdit([&] {
+            interior->entries = text;
+            RecordOverride(registry_, e, "Interior", "entries");
+            return true;
+        });
+        inspectorStale_ = true;
+        post_({{"type", "notify"}, {"text", removed ? "No longer a way in" : "A way in at " + std::to_string(gx) + "," + std::to_string(gy)}});
         return true;
     }
     if (type == "interior:stairsHere") {

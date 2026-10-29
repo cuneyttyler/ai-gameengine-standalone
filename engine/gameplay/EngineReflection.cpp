@@ -280,6 +280,17 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("more", &AnimatedPart::more, "Its other doors, a JSON list (each with sheet, x, y, width, height, clip, closeClip, "
                "range, opens, locked, key, consumeKey). Build ▸ Animate and Animate a part… add them.")
         .DependsOn({"Sprite"});
+    r.Component<DoorPart>("DoorPart", "A painted place's door: this entity's sprite is the door over the painting (Build ▸ "
+                                      "Animate made it); it opens as a building's door does.")
+        .Field("clip", &DoorPart::clip, "Played as it opens.")
+        .Field("closeClip", &DoorPart::closeClip, "Played as it shuts.")
+        .Field("range", &DoorPart::range, "How near, in cells.").Range(0.3, 10)
+        .Field("opens", &DoorPart::opens, "How it opens: project (Project Settings ▸ Game ▸ doorsOpen), auto (as someone comes "
+               "near) or use (the door shortcuts or a double click, near it).").Options({"project", "auto", "use"})
+        .Field("locked", &DoorPart::locked, "Shut until the player uses it with the key.")
+        .Field("key", &DoorPart::key, "The item that unlocks it (empty: it can't be opened).")
+        .Field("consumeKey", &DoorPart::consumeKey, "The key is used up unlocking it.")
+        .DependsOn({"WorldTransform2D"});
     r.Component<Ramp>("Ramp", "Characters walk between heights here: stairs, a ramp, a ladder. Elsewhere a cliff (a step much "
                               "higher or lower than where one stands) can't be walked up or down.")
         .Field("rise", &Ramp::rise, "How high it climbs, in pixels (informative; 0: any).").Min(0)
@@ -296,7 +307,9 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("hides", &Interior::hides, "A painted building's occluders, hidden while the interior shows.")
         .Field("floors", &Interior::floors, "The upper floors' pictures (floor 2, 3…), ';' between.")
         .Field("floor", &Interior::floor, "The floor shown: the player's while inside, a preview in the editor.")
-        .Field("stairs", &Interior::stairs, "Each floor change's stairs cell, x,y;x,y (floor 1 to 2, 2 to 3...): walked onto from below goes up, from above down. Empty: its corners in turn (top, right, left). Right-click inside it ▸ Stairs here.");
+        .Field("stairs", &Interior::stairs, "Each floor change's stairs cell, x,y;x,y (floor 1 to 2, 2 to 3...): walked onto from below goes up, from above down. Empty: its corners in turn (top, right, left). Right-click inside it ▸ Stairs here.")
+        .Field("entries", &Interior::entries, "Its ways in, set by hand: cells of its footprint's edge, dx,dy;dx,dy from its "
+               "footprint's top-left. Empty: where its doors are (else its door side's middle). Right-click on its edge ▸ Entry point here.");
     r.Component<Door>("Door", "A door (13.5): the interact action opens and closes it; open, it doesn't block.")
         .Field("open", &Door::open, "Open now.")
         .Field("openTexture", &Door::openTexture, "The picture when open (empty: unchanged).").As(FieldType::Texture)

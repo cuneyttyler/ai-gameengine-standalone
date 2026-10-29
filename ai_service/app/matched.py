@@ -970,8 +970,11 @@ def paint_from_words(painter, folder: Path, pieces: list[dict], every: list[dict
                                    "repainted": sorted(redo), "fixed": fixed, "words": words}}
 
 
-STOREYS_TASK = """How many storeys (floors one walks on, the ground floor counted) does this building have? An attic under
-the roof counts only if it has windows or dormers of its own. Answer as JSON: {"storeys": <1-4>, "why": "<a few words>"}."""
+STOREYS_TASK = """How many storeys does this building have? Count only full storeys of WALL below the eaves (where the roof
+starts): the ground floor, and each floor above it whose walls stand under the roof's edge (a row of windows in the wall,
+or a band of timber framing). The roof is NOT a storey: dormers, windows in the gable or the roof, an attic, a loft under
+the roof never count. A cottage with a window in its gable is 1; a house with two rows of windows in its walls and
+dormers in its roof is 2. Answer as JSON: {"storeys": <1-4>, "why": "<the rows you counted>"}."""
 
 _ORDINAL = {1: "ground", 2: "second", 3: "third", 4: "fourth"}
 
@@ -1175,7 +1178,8 @@ def make_interiors(painter, folder: Path, pieces: list[dict], context: dict, see
             return None
         with Image.open(exterior_path) as im:
             exterior = im.convert("RGBA")
-        floors = make_floors(painter, exterior, _purpose(p), style, seed + len(p["key"]), count_storeys(vision, exterior))
+        storeys = int(p.get("storeys") or 0) or count_storeys(vision, exterior)  # the Build panel's, else counted
+        floors = make_floors(painter, exterior, _purpose(p), style, seed + len(p["key"]), storeys)
         if not floors or floors[0] is None:
             return None
         for k, floor in enumerate(floors, 1):
@@ -1208,7 +1212,8 @@ def paint_interiors(painter, folder: Path, items: list[dict], context: dict, see
             mask = mask.resize((w, h), Image.NEAREST)
         exterior = whole.crop((x, y, x + w, y + h))
         exterior.putalpha(mask)
-        floors = make_floors(painter, exterior, _purpose(item), style, seed + len(item["id"]), count_storeys(vision, exterior))
+        storeys = int(item.get("storeys") or 0) or count_storeys(vision, exterior)  # the Build panel's, else counted
+        floors = make_floors(painter, exterior, _purpose(item), style, seed + len(item["id"]), storeys)
         if not floors or floors[0] is None:
             return None
         (folder / "marks").mkdir(exist_ok=True)

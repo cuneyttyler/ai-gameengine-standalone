@@ -557,6 +557,21 @@ std::string SetInteriorChoice(const fs::path& folder, const std::string& role, c
     return {};
 }
 
+std::string SetInteriorFloors(const fs::path& folder, const std::string& role, int floors) {
+    if (role.empty()) return "no building type";
+    json choices = LoadInteriorChoices(folder);
+    if (!choices.contains("floors") || !choices["floors"].is_object()) choices["floors"] = json::object();
+    if (floors <= 0) choices["floors"].erase(role); // counted from its picture
+    else choices["floors"][role] = std::min(4, floors);
+    WriteJsonFile(folder / "interiors.json", choices);
+    return {};
+}
+
+int InteriorFloorsOf(const json& choices, const std::string& role) {
+    const json floors = choices.value("floors", json::object());
+    return floors.is_object() ? floors.value(role, 0) : 0;
+}
+
 std::string InteriorKindOf(const Ontology* ontology, const json& choices, const std::string& role) {
     if (ontology == nullptr || ontology->RoleLook(role, "has_interior") != true) return {};
     if (const std::string chosen = choices.value(role, std::string()); chosen == "cutaway" || chosen == "scene" || chosen == "none") return chosen;
@@ -577,7 +592,7 @@ json InteriorChoices(const json& solved, const Ontology* ontology, const fs::pat
         const json kind = ontology->RoleLook(role, "interior_kind");
         const Role* r = ontology->FindRole(role);
         out.push_back({{"role", role}, {"label", r ? r->label : role}, {"count", count}, {"kind", InteriorKindOf(ontology, choices, role)},
-                       {"default", kind.is_string() ? kind.get<std::string>() : "cutaway"}});
+                       {"default", kind.is_string() ? kind.get<std::string>() : "cutaway"}, {"floors", InteriorFloorsOf(choices, role)}});
     }
     return out;
 }
@@ -600,7 +615,7 @@ json InteriorRequests(const json& solved, const Ontology* ontology, const fs::pa
         if (InteriorKindOf(ontology, choices, role) != "cutaway") continue;
         if (fs::exists(folder / "marks" / (id + "-interior.png"), ec)) continue;
         out.push_back({{"id", id}, {"box", o.value("box", json::array())}, {"mask", o.value("mask", "marks/" + id + ".png")}, {"role", role},
-                       {"purpose", object.value("purpose", json())}});
+                       {"purpose", object.value("purpose", json())}, {"storeys", InteriorFloorsOf(choices, role)}});
     }
     return out;
 }
@@ -707,12 +722,15 @@ json AddPaintingEntities(Registry& registry, const fs::path& folder, const std::
             attach.turn = false;
             attach.size = static_cast<float>(std::max(box[2].get<double>(), box[3].get<double>()));
             registry.emplace<Attachment>(e, attach);
-            Action action;
-            action.trigger = "near";
-            action.range = part.value("range", 1.8f);
-            action.animation = part.value("clip", std::string("open"));
-            action.awayAnimation = part.value("closeClip", std::string("close"));
-            registry.emplace<Action>(e, action);
+            // Its ways (§4.6): the project's, or its own (DoorPart in the Inspector): use, auto, locked with a key.
+            DoorPart door;
+            door.range = part.value("range", 1.8f);
+            door.clip = part.value("clip", std::string("open"));
+            door.closeClip = part.value("closeClip", std::string("close"));
+            door.opens = part.value("opens", std::string("project"));
+            door.locked = part.value("locked", false);
+            door.key = part.value("key", std::string());
+            registry.emplace<DoorPart>(e, door);
             registry.emplace<PlaceNode>(e, place, "", "painting#part-" + std::to_string(made));
             registry.emplace<Name>(e, part.value("label", std::string("Door")));
             ++made;

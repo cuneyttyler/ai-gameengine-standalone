@@ -277,6 +277,34 @@ None: an empty list. Answer as JSON:
 {{"parts": [{{"kind": "door", "box": [x, y, w, h], "label": "the front door", "confidence": 0.9, "leaves": 1, "shape": "rect", "open": false}}]}}"""
 
 
+STAIRS = """This is one floor of a building from an isometric 2D game, drawn cut away (the walls in front and the floors
+above removed) so its rooms show. Where is the STAIRCASE (or ladder) going up to the next floor? Say which part of the
+building it's in, as the building is drawn: "top" (the back corner, furthest from the viewer), "right" (the right-hand
+corner), "left" (the left-hand corner), "front" (the front corner, nearest the viewer) or "middle". None drawn: "none".
+Answer as JSON: {"stairs": "top", "why": "<a few words>"}"""
+
+
+def find_stairs(provider: Provider, root: Path, floors: list[str]) -> dict:
+    """Where each floor's stairs up are (docs/places/interiors.md §5): one of the building's corners (top, right, left,
+    front) or its middle, by the vision model, for each floor's picture but the top's. Choosing among places is what it's
+    good at; it misplaces exact boxes."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(path: str) -> str:
+        file = (root / path).resolve()
+        if root.resolve() not in file.parents or not file.is_file():
+            return "none"
+        chunk, _ = image_chunk(file, None, preview=768)
+        try:
+            answer = json.loads(provider.complete([{"role": "user", "content": [{"type": "text", "text": STAIRS}, chunk]}]).text)
+        except (ProviderError, json.JSONDecodeError, ValueError):
+            return "none"
+        where = str(answer.get("stairs", "none")).lower() if isinstance(answer, dict) else "none"
+        return where if where in ("top", "right", "left", "front", "middle") else "none"
+    with ThreadPoolExecutor(4) as pool:
+        return {"ok": True, "stairs": list(pool.map(one, floors))}
+
+
 def find_parts(provider: Provider, root: Path, path: str, kinds: list[str], rect: list[int] | None = None) -> dict:
     """The moving parts (doors, gates, shutters…) in a project picture, or in `rect` of it: their boxes in the
     picture's own pixels (the rect's offset added back)."""
