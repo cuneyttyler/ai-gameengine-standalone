@@ -48,12 +48,9 @@ std::string DoorOpens(const AnimatedPart& part) {
     return ActiveSettings().game.doorsOpen == "auto" ? "auto" : "use";
 }
 
-std::vector<AnimatedPart> DoorsOf(const AnimatedPart& part) {
+std::vector<AnimatedPart> DoorsFromJson(const std::string& text) {
     std::vector<AnimatedPart> doors;
-    AnimatedPart first = part;
-    first.more.clear();
-    doors.push_back(first);
-    const nlohmann::json list = nlohmann::json::parse(part.more.empty() ? std::string("[]") : part.more, nullptr, false);
+    const nlohmann::json list = nlohmann::json::parse(text.empty() ? std::string("[]") : text, nullptr, false);
     for (const auto& d : list.is_array() ? list : nlohmann::json::array()) {
         if (!d.is_object()) continue;
         AnimatedPart door;
@@ -72,20 +69,31 @@ std::vector<AnimatedPart> DoorsOf(const AnimatedPart& part) {
     return doors;
 }
 
+std::string DoorsJson(const std::vector<AnimatedPart>& doors) {
+    nlohmann::json list = nlohmann::json::array();
+    for (const AnimatedPart& d : doors) {
+        list.push_back({{"sheet", d.sheet}, {"x", d.x}, {"y", d.y}, {"width", d.width}, {"height", d.height}, {"clip", d.clip},
+                        {"closeClip", d.closeClip}, {"range", d.range}, {"opens", d.opens}, {"locked", d.locked}, {"key", d.key},
+                        {"consumeKey", d.consumeKey}});
+    }
+    return list.empty() ? std::string() : list.dump();
+}
+
+std::vector<AnimatedPart> DoorsOf(const AnimatedPart& part) {
+    AnimatedPart first = part;
+    first.more.clear();
+    std::vector<AnimatedPart> doors{first};
+    for (auto& d : DoorsFromJson(part.more)) doors.push_back(d);
+    return doors;
+}
+
 void SetDoors(AnimatedPart& part, const std::vector<AnimatedPart>& doors) {
     if (doors.empty()) {
         part = AnimatedPart{};
         return;
     }
     part = doors.front();
-    nlohmann::json more = nlohmann::json::array();
-    for (size_t i = 1; i < doors.size(); ++i) {
-        const AnimatedPart& d = doors[i];
-        more.push_back({{"sheet", d.sheet}, {"x", d.x}, {"y", d.y}, {"width", d.width}, {"height", d.height}, {"clip", d.clip},
-                        {"closeClip", d.closeClip}, {"range", d.range}, {"opens", d.opens}, {"locked", d.locked}, {"key", d.key},
-                        {"consumeKey", d.consumeKey}});
-    }
-    part.more = more.empty() ? std::string() : more.dump();
+    part.more = DoorsJson(std::vector<AnimatedPart>(doors.begin() + 1, doors.end()));
 }
 
 bool DoorwayShut(Registry& registry, Entity entity) {

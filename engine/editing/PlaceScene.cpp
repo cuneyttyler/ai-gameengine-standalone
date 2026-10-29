@@ -12,6 +12,7 @@
 #include "gameplay/Components.h"
 #include "gameplay/EngineReflection.h"
 #include "gameplay/Behaviour.h"
+#include "gameplay/Interiors.h"
 #include "gameplay/Items.h"
 #include "records/Records.h"
 #include "gameplay/TileGrid.h"
@@ -419,7 +420,9 @@ std::string PrefabForEntry(PrefabLibrary& prefabs, const AssetDatabase& assets, 
     }
     for (const auto& info : prefabs.Prefabs()) {
         if (!info.isTile && info.texture == entry.path && info.u0 <= 0.001f && info.v0 <= 0.001f && info.u1 >= 0.999f && info.v1 >= 0.999f) {
-            return info.path;
+            const std::string path = info.path;
+            GiveAssetDoors(prefabs, path); // its picture's doors, when it has none yet (the loop's list may change)
+            return path;
         }
     }
     auto plans = PlanPackImport(assets, {entry.path}, prefabs, options.iso, {});
@@ -433,7 +436,9 @@ std::string PrefabForEntry(PrefabLibrary& prefabs, const AssetDatabase& assets, 
     }
     if (!CreatePrefabFromPlan(prefabs, plan, options.iso).empty()) return {};
     prefabs.Refresh();
-    return prefabs.Find(plan.path) ? plan.path : std::string();
+    if (!prefabs.Find(plan.path)) return {};
+    GiveAssetDoors(prefabs, plan.path); // a building animated before (here, or in a library it came from) opens again
+    return plan.path;
 }
 
 // A tile layer palette entry from a tile prefab, turned `rotation` quarter turns.
@@ -800,6 +805,52 @@ std::optional<Entity> PlaceObject(Registry& registry, PrefabLibrary& prefabs, co
 }
 
 } // namespace
+
+// --- A picture's doors (docs/assets/animations.md §4.4) ---------------------------------------
+
+std::vector<AnimatedPart> AssetDoors(const Project& project, const std::string& asset) {
+    std::ifstream in(project.Resolve(asset + ".meta"));
+    for (std::string line; std::getline(in, line);) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.rfind("doors=", 0) == 0) return DoorsFromJson(line.substr(6));
+    }
+    return {};
+}
+
+void SetAssetDoors(const Project& project, const std::string& asset, const std::vector<AnimatedPart>& doors) {
+    const fs::path meta = project.Resolve(asset + ".meta");
+    std::vector<std::string> lines;
+    {
+        std::ifstream in(meta);
+        for (std::string line; std::getline(in, line);) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.rfind("doors=", 0) != 0) lines.push_back(line);
+        }
+    }
+    if (const std::string json = DoorsJson(doors); !json.empty()) lines.push_back("doors=" + json);
+    std::ofstream out(meta, std::ios::binary | std::ios::trunc);
+    for (const auto& line : lines) out << line << "\n";
+}
+
+bool GiveAssetDoors(PrefabLibrary& prefabs, const std::string& prefab) {
+    std::string texture;
+    bool whole = false, has = false;
+    prefabs.VisitTemplate(prefab, [&](Registry& r, Entity t) {
+        if (const auto* s = r.try_get<Sprite>(t)) {
+            texture = s->texture;
+            whole = std::min(s->u0, s->u1) <= 0.001f && s->v0 <= 0.001f && std::max(s->u0, s->u1) >= 0.999f && s->v1 >= 0.999f;
+        }
+        if (const auto* part = r.try_get<AnimatedPart>(t)) has = !part->sheet.empty();
+    });
+    if (texture.empty() || !whole || has) return false;
+    const auto doors = AssetDoors(prefabs.GetProject(), texture);
+    // Only doors whose sheets are here (a picture copied without them keeps none).
+    for (const auto& d : doors) {
+        if (!fs::exists(prefabs.GetProject().Resolve(d.sheet))) return false;
+    }
+    if (doors.empty()) return false;
+    return !prefabs.EditTemplate(prefab, [&](Registry& r, Entity t) { SetDoors(r.get_or_emplace<AnimatedPart>(t), doors); });
+}
 
 // --- Where it goes -----------------------------------------------------------------------------
 

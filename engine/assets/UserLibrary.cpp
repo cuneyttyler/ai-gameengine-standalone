@@ -76,6 +76,41 @@ void SetMetaField(const fs::path& file, const std::string& key, const std::strin
     for (const auto& line : lines) out << line << "\n";
 }
 
+// The project a file is in: the first folder up with its settings.aige, or "".
+fs::path ProjectRootOf(const fs::path& file) {
+    std::error_code ec;
+    for (fs::path up = file.parent_path(); !up.empty(); up = up.parent_path()) {
+        if (fs::is_regular_file(up / "settings.aige", ec)) return up;
+        if (up == up.root_path()) break;
+    }
+    return {};
+}
+
+// A building's door animations (its .meta's doors=, docs/assets/animations.md §4.4) copied from `fromRoot` (paths in
+// `doors` relative to it) to `toRoot` / `toFolder`, each sheet (.anim.json) with its own picture, named `stem`-door-<n>;
+// the doors' sheets pointing at them there (relative to `toRoot`). The doors that couldn't be copied are left out.
+json CopyDoors(const json& doors, const fs::path& fromRoot, const fs::path& toRoot, const std::string& toFolder, const std::string& stem) {
+    json out = json::array();
+    std::error_code ec;
+    fs::create_directories(toRoot / toFolder, ec);
+    for (size_t i = 0; i < doors.size(); ++i) {
+        json door = doors[i];
+        const fs::path anim = fromRoot / door.value("sheet", std::string());
+        std::ifstream in(anim, std::ios::binary);
+        json sheet = in ? json::parse(in, nullptr, false) : json();
+        if (!sheet.is_object() || !sheet.contains("texture")) continue;
+        const std::string name = stem + "-door-" + std::to_string(i);
+        const std::string picture = toFolder + "/" + name + ".png", file = toFolder + "/" + name + ".anim.json";
+        fs::copy_file(fromRoot / sheet.value("texture", std::string()), toRoot / picture, fs::copy_options::overwrite_existing, ec);
+        if (ec) continue;
+        sheet["texture"] = picture;
+        std::ofstream(toRoot / file, std::ios::binary | std::ios::trunc) << sheet.dump(2) << "\n";
+        door["sheet"] = file;
+        out.push_back(door);
+    }
+    return out;
+}
+
 json* Find(json& list, const std::string& id) {
     for (auto& e : list) {
         if (e.value("id", "") == id) return &e;
@@ -153,7 +188,18 @@ std::string UserLibrary::Add(const fs::path& file, const json& info, const std::
     if (hash.empty()) return {};
     json library = Load();
     for (const auto& item : library["items"]) {
-        if (item.value("hash", "") == hash) return item.value("id", ""); // already kept
+        if (item.value("hash", "") != hash) continue;
+        // Already kept: its door animations brought up to date (animated since, or again).
+        const auto now = ReadMeta(file);
+        if (const auto d = now.find("doors"); d != now.end()) {
+            const fs::path root = ProjectRootOf(file);
+            const json doors = json::parse(d->second, nullptr, false);
+            if (!root.empty() && doors.is_array()) {
+                const json kept = CopyDoors(doors, root, dir_ / "files", "doors", hash.substr(0, 8));
+                SetMetaField(dir_ / "files" / item.value("file", ""), "doors", kept.empty() ? std::string() : kept.dump());
+            }
+        }
+        return item.value("id", "");
     }
     fs::create_directories(dir_ / "files", ec);
     const std::string name = hash.substr(0, 8) + "-" + SafeName(file.filename().string());
@@ -162,6 +208,13 @@ std::string UserLibrary::Add(const fs::path& file, const json& info, const std::
     if (ec) return {};
     CopyBeside(file, target);
     const auto meta = ReadMeta(file);
+    // Its door animations (a building animated in Build ▸ Animate): their sheets kept beside it (files/doors/).
+    if (const auto d = meta.find("doors"); d != meta.end()) {
+        const fs::path root = ProjectRootOf(file);
+        const json doors = json::parse(d->second, nullptr, false);
+        const json kept = !root.empty() && doors.is_array() ? CopyDoors(doors, root, dir_ / "files", "doors", hash.substr(0, 8)) : json::array();
+        SetMetaField(target, "doors", kept.empty() ? std::string() : kept.dump());
+    }
     // Its interior (a project path in its .meta): found from the project's root, one of the file's folders up.
     std::string interior;
     if (const auto it = meta.find("interior"); it != meta.end() && !it->second.empty()) {
@@ -409,6 +462,14 @@ std::string UserLibrary::CopyToProject(const std::string& item, const fs::path& 
     if (ec) return {};
     CopyBeside(from, to);
     const std::string path = "assets/library/" + name;
+    // Its door animations back into the project (assets/library/doors/), the .meta pointing at them there.
+    const auto kept = ReadMeta(from);
+    if (const auto d = kept.find("doors"); d != kept.end()) {
+        const json doors = json::parse(d->second, nullptr, false);
+        const json copied = doors.is_array() ? CopyDoors(doors, dir_ / "files", projectRoot, "assets/library/doors", fs::path(name).stem().string())
+                                             : json::array();
+        SetMetaField(to, "doors", copied.empty() ? std::string() : copied.dump());
+    }
     // The pair under the new paths: its interior copied too; an interior alone is no one's here.
     SetMetaField(to, "exteriorOf", "");
     SetMetaField(to, "interior", "");

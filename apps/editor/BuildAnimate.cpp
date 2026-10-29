@@ -11,6 +11,7 @@
 #include "assets/TextureCook.h"
 #include "editing/PaintedPlace.h"
 #include "editing/PlaceBuild.h"
+#include "editing/PlaceScene.h"
 #include "gameplay/Animation.h"
 #include "gameplay/Components.h"
 #include "gameplay/Interiors.h"
@@ -524,6 +525,18 @@ void EditorApp::ApplyDoorToPrefab(const std::string& prefab, size_t index, const
         post_({{"type", "notify"}, {"text", "Couldn't change " + prefab + ": " + *failed}});
         return;
     }
+    // Its picture keeps them too (§4.4): every prefab of it, in this project or another (through a library), opens so.
+    std::string texture;
+    std::vector<AnimatedPart> doors;
+    bool whole = false;
+    prefabs_.VisitTemplate(prefab, [&](Registry& r, Entity t) {
+        if (const auto* s = r.try_get<Sprite>(t)) {
+            texture = s->texture;
+            whole = std::min(s->u0, s->u1) <= 0.001f && s->v0 <= 0.001f && std::max(s->u0, s->u1) >= 0.999f && s->v1 >= 0.999f;
+        }
+        if (const auto* part = r.try_get<AnimatedPart>(t)) doors = DoorsOf(*part);
+    });
+    if (whole && !texture.empty()) SetAssetDoors(assets_.GetProject(), texture, doors);
     prefabs_.SyncAll(registry_, prefab);
     RefreshPrefabs();
 }

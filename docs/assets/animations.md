@@ -315,6 +315,21 @@ On the building: AnimatedPart's own fields are its first door; `more` (a JSON li
 fields (`DoorsOf` / `SetDoors`). Each door has its own overlay ("part", "part1", …), its own open / use / lock, and its
 own doorway in the walls (the footprint's edge cell nearest it), passable while it's open or opens by itself unlocked.
 
+### 4.4 Reusing an animated building
+
+A building's doors are kept with its picture, as its interior is: when Build ▸ Animate (or Animate a part…) gives a
+prefab its doors, the picture's `.meta` gets `doors=` (a JSON list, `DoorsJson`) beside `interior=`. Then:
+
+- **In the project**: any prefab of that picture, made by a build (`PrefabForEntry`), by hand (Prefabs ▸ New from an
+  asset) or already there without doors, gets them (`GiveAssetDoors`); a scene's copies follow their prefab.
+- **Your library**: keeping the picture keeps its door animations (each sheet and its picture, in the library's
+  `files/doors/`), with its interior; keeping it again after it's animated anew brings them up to date. Copying it into a
+  project copies them to `assets/library/doors/`, the `.meta` pointing at them there.
+- **The AIGE library**: its files are in the project (`<project>/library`), so a building of it animated once opens in
+  every build after.
+
+A picture copied without its door sheets keeps no doors (they're only given when every sheet is there).
+
 ## 5. In the Inspector
 
 | Component | Fields |

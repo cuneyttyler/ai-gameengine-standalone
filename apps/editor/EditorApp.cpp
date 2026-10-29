@@ -25,6 +25,7 @@
 #include "editing/Edits.h"
 #include "editing/LevelBuild.h"
 #include "editing/PlaceInspect.h"
+#include "editing/PlaceScene.h"
 #include "editing/PlaceSketch.h"
 #include "editing/MatchedArt.h"
 #include "editing/PaintedPlace.h"
@@ -8607,10 +8608,12 @@ void EditorApp::CreatePrefabFromAsset(const std::string& asset, int tile, bool a
         post_({{"type", "notify"}, {"text", "Couldn't create prefab: " + error}});
         return;
     }
+    // A building whose picture was animated before (here, or in a library it came from): its doors with it.
+    const bool doors = !asTile && GiveAssetDoors(prefabs_, path);
     brushPrefab_ = path;
     SetTool(Tool::Prefab);
     post_(PrefabsJson());
-    post_({{"type", "notify"}, {"text", "Created " + path + " — click in the viewport to place it"}});
+    post_({{"type", "notify"}, {"text", "Created " + path + (doors ? " with its picture's doors" : "") + " — click in the viewport to place it"}});
 }
 
 void EditorApp::SaveSelectedAsPrefab(const std::string& requestedName) {

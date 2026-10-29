@@ -21,6 +21,8 @@
 
 namespace aige {
 
+struct AnimatedPart;
+
 // Putting a solved layout into the scene (development_plan.md 7.7).
 //
 //   PlanPlaceAssets   each thing the layout needs (a cottage, a fence piece,
@@ -87,6 +89,13 @@ struct PlaceLevelArea {
     int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
     std::vector<std::pair<int, int>> stairs;
 };
+// A building's doors kept with its picture (docs/assets/animations.md §4.4): its .meta's doors= (as interior= keeps its
+// interior), so every prefab of that picture, in any build, project or library, opens the same way.
+std::vector<AnimatedPart> AssetDoors(const Project& project, const std::string& asset);
+void SetAssetDoors(const Project& project, const std::string& asset, const std::vector<AnimatedPart>& doors);
+// A prefab showing a picture whole, without doors of its own: given the picture's (true when it got some).
+bool GiveAssetDoors(PrefabLibrary& prefabs, const std::string& prefab);
+
 std::vector<PlaceLevelArea> PlaceLevelAreas(const Ontology& ontology, const nlohmann::json& spec, const nlohmann::json& solved);
 
 // The cells the place really covers {x0, y0, x1, y1}: its ground that isn't "void" (an interior's

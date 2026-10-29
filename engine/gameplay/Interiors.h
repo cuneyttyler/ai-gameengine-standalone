@@ -39,6 +39,10 @@ std::string DoorOpens(const AnimatedPart& part);
 // SetDoors writes such a list back (the first into its fields, the rest into `more`).
 std::vector<AnimatedPart> DoorsOf(const AnimatedPart& part);
 void SetDoors(AnimatedPart& part, const std::vector<AnimatedPart>& doors);
+// Doors as a JSON list and back ({"sheet", "x", "y", "width", "height", "clip", "closeClip", "range", "opens", "locked",
+// "key", "consumeKey"} each): `more`'s form, and a picture's .meta doors= (docs/assets/animations.md §4.4).
+std::string DoorsJson(const std::vector<AnimatedPart>& doors);
+std::vector<AnimatedPart> DoorsFromJson(const std::string& text);
 // Its doorway is shut to walkers: a building one can go into whose animated door is closed and locked, or closed and
 // opened by use (it opens for the player's shortcut, and for other characters as they come).
 bool DoorwayShut(Registry& registry, Entity entity);
