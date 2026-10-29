@@ -173,7 +173,24 @@ export const dockView = reactive({
   // out of sight (still mounted); double-clicking again brings them back.
   maximized: null as PanelId | null,
   focused: null as PanelId | null, // the panel last clicked in (the maximise shortcut's)
+  // The bottom area hidden for now (Ctrl+J): kept as it is, its tabs and size back when shown again.
+  bottomHidden: (() => {
+    try {
+      return localStorage.getItem('aige.editor.bottomHidden') === '1'
+    } catch {
+      return false
+    }
+  })(),
 })
+
+export function toggleBottom(): void {
+  dockView.bottomHidden = !dockView.bottomHidden
+  try {
+    localStorage.setItem('aige.editor.bottomHidden', dockView.bottomHidden ? '1' : '0')
+  } catch {
+    // a convenience: not kept is fine
+  }
+}
 
 export function toggleMaximize(id: PanelId): void {
   dockView.maximized = dockView.maximized === id || !isOpen(id) ? null : id
@@ -246,6 +263,8 @@ export function setPanelVisible(id: PanelId, on: boolean): void {
   }
   dockView.maximized = null
   if (on) {
+    // A panel of the hidden bottom area: the area shown again.
+    if (dockView.bottomHidden && isOpen(id) && inBottom(id)) toggleBottom()
     if (isOpen(id)) {
       setRoot(activate(layout.root, id))
       return
@@ -257,8 +276,18 @@ export function setPanelVisible(id: PanelId, on: boolean): void {
   }
   const group = groupOf(layout.root, id)
   if (!group) return
+  // The bottom area's only panel: the area hidden (Ctrl+J), not taken away (it's always there).
+  if (inBottom(id) && panelsIn(edgeArea(layout.root, 'bottom')).length === 1) {
+    if (!dockView.bottomHidden) toggleBottom()
+    return
+  }
   layout.lastGroup[id] = group.id
   setRoot(removePanel(layout.root, id))
+}
+
+// In the bottom area (its group there).
+function inBottom(id: PanelId): boolean {
+  return panelsIn(edgeArea(layout.root, 'bottom')).includes(id)
 }
 
 // The panel shortcuts (B, J, I, M): a panel on screen hides; one behind
@@ -269,7 +298,7 @@ export function togglePanel(id: PanelId): void {
     setPanelVisible(id, true)
     return
   }
-  setPanelVisible(id, !isFront(id))
+  setPanelVisible(id, !isFront(id) || (dockView.bottomHidden && inBottom(id)))
 }
 
 export function toggleViewport(): void {

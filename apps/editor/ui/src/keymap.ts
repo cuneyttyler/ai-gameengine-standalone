@@ -47,6 +47,7 @@ export const actions: ActionDef[] = [
   { id: 'view.floorDown', label: 'A floor down: the selected building, or every building (from floor 1, outside)', group: 'View', keys: ['PageDown'] },
   { id: 'view.stats', label: 'Frame stats', group: 'View', keys: ['F3'], inPlay: true },
   { id: 'panel.scene', label: 'Show / hide the Scene panel', group: 'Panels', keys: ['B'] },
+  { id: 'panel.bottom', label: 'Show / hide the bottom panels (they keep their tabs and size)', group: 'Panels', keys: ['Ctrl+J'], whileTyping: true },
   { id: 'panel.assets', label: 'Show / hide the Assets panel', group: 'Panels', keys: ['J'] },
   { id: 'panel.project', label: 'Show / hide the Project panel (scenes, World Bible, story)', group: 'Panels', keys: ['P'] },
   { id: 'panel.generate', label: 'Show / hide the Generate panel (level, art)', group: 'Panels', keys: ['K'] },

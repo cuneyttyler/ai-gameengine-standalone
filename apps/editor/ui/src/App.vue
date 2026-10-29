@@ -7,7 +7,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { editorState } from './editorState'
 import { bodyRect, dragView, scheduleMeasure, setShell, TAB_HEIGHT } from './dockdrag'
-import { groupOf } from './docktree'
+import { edgeArea, groupOf, type DockNode as LayoutNode } from './docktree'
 import StatusBar from './components/StatusBar.vue'
 import AssetBrowser from './components/AssetBrowser.vue'
 import AiPanel from './components/AiPanel.vue'
@@ -63,6 +63,8 @@ function hostStyle(id: PanelId): Record<string, string> {
   const group = groupOf(layout.root, id)
   const body = group ? bodyRect(group.id) : null
   if (!group || !body || !isFront(id)) return { display: 'none' }
+  // The bottom area hidden (Ctrl+J): its panels with it.
+  if (dockView.bottomHidden && insideBottom(group.id)) return { display: 'none' }
   return {
     left: `${body.x}px`,
     top: `${body.y}px`,
@@ -73,9 +75,17 @@ function hostStyle(id: PanelId): Record<string, string> {
 
 const hidden = computed(() => hiddenPanels())
 
+// A tab group in the bottom area (it, or within it).
+function insideBottom(groupId: string): boolean {
+  const area = edgeArea(layout.root, 'bottom')
+  const has = (n: LayoutNode | null): boolean => !!n && (n.id === groupId || (n.kind === 'split' && n.children.some(has)))
+  return has(area)
+}
+
 // The tree changed shape: the groups' boxes have to be measured again once
 // the DOM has caught up.
 watch(() => layout.root, scheduleMeasure, { deep: true, flush: 'post' })
+watch(() => dockView.bottomHidden, scheduleMeasure, { flush: 'post' }) // the bottom area hidden or shown: the rest grows or shrinks
 
 onMounted(() => {
   setShell(shell.value)

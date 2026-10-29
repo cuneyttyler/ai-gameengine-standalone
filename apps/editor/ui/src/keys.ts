@@ -6,7 +6,7 @@ import { reactive } from 'vue'
 import { editorState, armPrefab } from './editorState'
 import { onHostMessage, sendToHost } from './ipc'
 import { actionFor, actions, comboOf, effectiveKeymap, label, type Keymap } from './keymap'
-import { dockView, toggleMaximize, togglePanel, toggleViewport } from './layout'
+import { dockView, toggleBottom, toggleMaximize, togglePanel, toggleViewport } from './layout'
 
 export const keyState = reactive({
   overrides: {} as Keymap,
@@ -62,6 +62,7 @@ const handlers: Record<string, () => void> = {
   'view.stats': send('view:stats'),
   'play.toggle': send('play:toggle'),
   'panel.scene': () => togglePanel('scene'),
+  'panel.bottom': () => toggleBottom(),
   'panel.assets': () => togglePanel('assets'),
   'panel.project': () => togglePanel('project'),
   'panel.generate': () => togglePanel('generate'),
