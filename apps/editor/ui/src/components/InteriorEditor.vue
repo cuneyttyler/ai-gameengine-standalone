@@ -6,6 +6,7 @@ import { computed, ref } from 'vue'
 import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
 import { editorState } from '../editorState'
 import { sendToHost } from '../ipc'
+import { confirmDialog } from '../dialogs'
 
 const props = defineProps<{ fields: FieldData[]; choices?: Choices; disabled?: boolean; id?: number }>()
 const emit = defineEmits<{ (e: 'set', field: string, value: string | number): void }>()
@@ -55,10 +56,15 @@ function setStairs(change: number, cell: string): void {
   emit('set', 'stairs', next.join(';'))
 }
 // Its floors painted again from its exterior (as many as it has now): a new design, its stairs found again on it.
-function redesign(): void {
-  if (props.id === undefined) return
-  if (!window.confirm(`Paint its ${floorCount.value} floor(s) again from its exterior? Its pictures are replaced (every copy of its prefab), its stairs found again.`)) return
-  sendToHost({ type: 'interior:redesign', id: props.id })
+async function redesign(): Promise<void> {
+  const id = props.id
+  if (id === undefined) return
+  const ok = await confirmDialog({
+    title: 'Redesign interiors',
+    message: `Paint its ${floorCount.value} floor(s) again from its exterior, one after another so the stairs meet? Its pictures are replaced (every copy of its prefab) and its stairs found again.`,
+    confirmLabel: 'Redesign',
+  })
+  if (ok) sendToHost({ type: 'interior:redesign', id })
 }
 function removeEntry(index: number): void {
   emit('set', 'entries', entries.value.filter((_, i) => i !== index).join(';'))

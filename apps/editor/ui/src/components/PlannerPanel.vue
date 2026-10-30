@@ -13,6 +13,7 @@ import SystemsView from './SystemsView.vue'
 import DataTable from './DataTable.vue'
 import { activatePanel, setPanelVisible } from '../layout'
 import Splitter from './Splitter.vue'
+import { confirmDialog } from '../dialogs'
 
 interface Stage {
   id: string
@@ -188,8 +189,8 @@ const uiInOrder = computed(() => {
 const buildRows = computed(() => (state.value.build?.rows ?? []) as { place: string; status: string; step?: string; planPhase?: string }[])
 const buildingRow = computed(() => buildRows.value.find((r) => r.status === 'building'))
 const buildDone = computed(() => buildRows.value.filter((r) => r.status === 'built' || r.status === 'placeholder').length)
-function rebuildPlace(place: string) {
-  if (window.confirm(`Build ${place.replace(/^location\//, '')} again from the start? Its scene is replaced.`))
+async function rebuildPlace(place: string) {
+  if (await confirmDialog({ message: `Build ${place.replace(/^location\//, '')} again from the start? Its scene is replaced.`, confirmLabel: 'Rebuild' }))
     sendToHost({ type: 'planner:buildRow', place, action: 'rebuild' })
 }
 const buildRetryable = computed(() => buildRows.value.filter((r) => r.status === 'failed' || r.status === 'placeholder'))
@@ -205,8 +206,9 @@ function artSourceName(source: string): string {
     } as Record<string, string>)[source] ?? source
   )
 }
-function restartBuilds() {
-  if (window.confirm('Build every place again from the start, with the art setting as it is now?')) sendToHost({ type: 'planner:restartBuilds' })
+async function restartBuilds() {
+  if (await confirmDialog({ message: 'Build every place again from the start, with the art setting as it is now?', confirmLabel: 'Rebuild all' }))
+    sendToHost({ type: 'planner:restartBuilds' })
 }
 function retryFailedPlaces() {
   for (const r of buildRetryable.value) sendToHost({ type: 'planner:buildRow', place: r.place, action: 'retry' })
