@@ -535,6 +535,7 @@ void EditorApp::ApplyDoorToPrefab(const std::string& prefab, size_t index, const
             made.opens = doors[index].opens, made.locked = doors[index].locked, made.key = doors[index].key;
             made.consumeKey = doors[index].consumeKey, made.range = doors[index].range;
             made.trigger = doors[index].trigger, made.prompt = doors[index].prompt, made.door = doors[index].door;
+            made.fires = doors[index].fires;
             doors[index] = made;
         } else {
             doors.push_back(made);
@@ -582,6 +583,7 @@ void EditorApp::ApplyDoorToPrefab(const std::string& prefab, size_t index, const
             made.opens = list[mine].opens, made.locked = list[mine].locked, made.key = list[mine].key;
             made.consumeKey = list[mine].consumeKey, made.range = list[mine].range;
             made.trigger = list[mine].trigger, made.prompt = list[mine].prompt, made.door = list[mine].door;
+            made.fires = list[mine].fires;
         }
         if (mine < list.size()) list[mine] = made;
         else list.push_back(made);

@@ -1373,6 +1373,35 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
                {"key", entry.Key()},
                {"error", error ? nlohmann::json(*error) : nlohmann::json(nullptr)}});
         post_(WorldJson());
+    } else if (type == "input:choices") {
+        // Project Settings ▸ Input's plays / event / effect: what the project has. The characters' clips; the effects
+        // (Project ▸ Effects); the events the engine sends and those this scene's things and the actions send or wait for.
+        std::set<std::string> clips, events = {"interact", "talk", "item_added", "level_up", "achievement", "cutscene_started",
+                                               "cutscene_ended", "bark", "anim_event", "ui_action", "difficulty_changed"};
+        for (const auto& sheet : AnimationsJson().value("sheets", nlohmann::json::array())) {
+            if (sheet.value("kind", "") != "character") continue;
+            for (const auto& clip : sheet.value("clips", nlohmann::json::array())) clips.insert(clip.value("name", ""));
+        }
+        nlohmann::json effects = nlohmann::json::array();
+        for (const auto& fx : FxJson().value("effects", nlohmann::json::array())) effects.push_back(fx.value("id", ""));
+        for (auto [e, part] : registry_.view<AnimatedPart>().each()) {
+            for (const auto& d : DoorsOf(part)) {
+                if (!d.fires.empty()) events.insert(d.fires);
+                if (DoorOpens(d) == "event" && !d.trigger.empty()) events.insert(d.trigger);
+            }
+        }
+        for (auto [e, thing] : registry_.view<Interactable>().each()) {
+            if (!thing.event.empty()) events.insert(thing.event);
+        }
+        for (auto [e, action] : registry_.view<Action>().each()) {
+            if (!action.event.empty()) events.insert(action.event);
+        }
+        for (const auto& a : ActiveInputMap().actions) {
+            if (!a.event.empty()) events.insert(a.event);
+        }
+        clips.erase("");
+        events.erase("");
+        post_({{"type", "input:choices"}, {"clips", clips}, {"effects", effects}, {"events", events}});
     } else if (type == "input:request" || type == "input:reset" || type == "input:save") {
         // Project Settings ▸ Input (12.3): the project's actions and bindings, input.json.
         const auto root = assets_.GetProject().root;
@@ -6714,6 +6743,7 @@ void EditorApp::PlacePart(const nlohmann::json& result) {
         made.opens = p.value("opens", std::string("project"));
         made.trigger = p.value("trigger", std::string());
         made.prompt = p.value("prompt", std::string());
+        made.fires = p.value("fires", std::string());
         made.locked = p.value("locked", false);
         made.key = p.value("key", std::string());
         made.floor = p.value("floor", 0); // the picture it moves on: the outside, or an interior's floor
@@ -7106,6 +7136,7 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                         // What activates it and what the player is shown (a door: by default as the project's doors; another part: use).
                         {"opens", message.value("opens", std::string(message.value("kind", std::string("door")) == "door" ? "project" : "use"))},
                         {"trigger", message.value("trigger", std::string())}, {"prompt", message.value("prompt", std::string())},
+                        {"fires", message.value("fires", std::string())},
                         {"locked", message.value("locked", false)}, {"key", message.value("key", std::string())}};
         RefreshAssets();
         if (message.value("kind", std::string("door")) == "opening") {
@@ -7192,8 +7223,9 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             for (const AnimatedPart& d : DoorsOf(*part)) {
                 const float cx = mirrored ? frameW - d.x : d.x;
                 doors.push_back({{"box", {cx - d.width / 2, d.y - d.height / 2, d.width, d.height}}, {"opens", d.opens}, {"locked", d.locked},
-                                 {"key", d.key}, {"consumeKey", d.consumeKey}, {"animated", !d.sheet.empty()}, {"trigger", d.trigger},
-                                 {"prompt", d.prompt}, {"door", d.door}});
+                                 {"key", d.key}, {"consumeKey", d.consumeKey}, {"animated", !d.sheet.empty() && d.sheet != "spot"},
+                                 {"spot", d.sheet == "spot"}, {"trigger", d.trigger}, {"prompt", d.prompt}, {"door", d.door},
+                                 {"fires", d.fires}, {"floor", d.floor}});
             }
         }
         const auto* name = registry_.try_get<Name>(e);
@@ -7338,6 +7370,47 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                 }()}});
         return true;
     }
+    if (type == "part:addSpot") {
+        // The building editor ▸ Doors and parts ▸ Add a spot: a box drawn on one of its pictures (the outside, or floor
+        // k's), activated as a part is but with nothing animated (a stove one cooks at): its event sent, its prompt shown.
+        const Entity e = static_cast<Entity>(message.value("id", 0u));
+        const auto* sprite = registry_.valid(e) ? registry_.try_get<Sprite>(e) : nullptr;
+        const nlohmann::json box = message.value("box", nlohmann::json::array());
+        const AssetInfo* asset = sprite ? assets_.Find(sprite->texture) : nullptr;
+        if (!sprite || box.size() != 4 || playing_) return true;
+        const float W = asset && asset->width ? static_cast<float>(asset->width) : sprite->width;
+        const float frameW = std::abs(sprite->u1 - sprite->u0) * W;
+        const float bx = box[0].get<float>(), by = box[1].get<float>(), bw = box[2].get<float>(), bh = box[3].get<float>();
+        if (bw < 2.0f || bh < 2.0f) return true;
+        AnimatedPart made;
+        made.sheet = "spot";
+        made.x = sprite->u0 > sprite->u1 ? frameW - (bx + bw / 2) : bx + bw / 2, made.y = by + bh / 2, made.width = bw, made.height = bh;
+        made.clip = made.closeClip = "";
+        made.opens = "use";
+        made.door = false;
+        made.floor = std::max(0, message.value("floor", 0));
+        auto count = [](const AnimatedPart* now) -> size_t {
+            return !now || (now->sheet.empty() && now->opens != "open" && now->more.empty()) ? 0 : DoorsOf(*now).size();
+        };
+        const auto* link = registry_.try_get<PrefabInstance>(e);
+        if (link && prefabs_.Find(link->path)) {
+            // On the prefab: every copy has it (a copy keeping its own parts too).
+            size_t index = 0;
+            prefabs_.VisitTemplate(link->path, [&](Registry& r, Entity t) { index = count(r.try_get<AnimatedPart>(t)); });
+            ApplyDoorToPrefab(link->path, index, made, false, false);
+        } else {
+            ApplyOneShotEdit([&] {
+                auto& part = registry_.get_or_emplace<AnimatedPart>(e);
+                std::vector<AnimatedPart> doors = count(&part) ? DoorsOf(part) : std::vector<AnimatedPart>{};
+                doors.push_back(made);
+                SetDoors(part, doors);
+                return true;
+            });
+        }
+        inspectorStale_ = true;
+        post_({{"type", "notify"}, {"text", "A spot added: set what activates it and the event it sends"}});
+        return true;
+    }
     if (type == "interior:setArt") {
         // What was drawn: each floor change's stairs cells, and its ways in (cells of its edge), on this building.
         const Entity e = static_cast<Entity>(message.value("id", 0u));
@@ -7434,6 +7507,7 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                     door.trigger = d.value("trigger", door.trigger);
                     door.prompt = d.value("prompt", door.prompt);
                     door.door = d.value("door", door.door);
+                    door.fires = d.value("fires", door.fires);
                     kept.push_back(door);
                 }
                 if (kept.empty()) registry_.remove<AnimatedPart>(e);

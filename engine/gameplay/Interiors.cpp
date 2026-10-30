@@ -98,6 +98,7 @@ std::vector<AnimatedPart> DoorsFromJson(const std::string& text) {
         door.opens = d.value("opens", std::string("project"));
         door.trigger = d.value("trigger", std::string());
         door.prompt = d.value("prompt", std::string());
+        door.fires = d.value("fires", std::string());
         door.door = d.value("door", true);
         door.floor = d.value("floor", 0);
         door.locked = d.value("locked", false);
@@ -114,7 +115,7 @@ std::string DoorsJson(const std::vector<AnimatedPart>& doors) {
         list.push_back({{"sheet", d.sheet}, {"x", d.x}, {"y", d.y}, {"width", d.width}, {"height", d.height}, {"clip", d.clip},
                         {"closeClip", d.closeClip}, {"range", d.range}, {"opens", d.opens}, {"locked", d.locked}, {"key", d.key},
                         {"consumeKey", d.consumeKey}, {"trigger", d.trigger}, {"prompt", d.prompt}, {"door", d.door},
-                        {"floor", d.floor}});
+                        {"floor", d.floor}, {"fires", d.fires}});
     }
     return list.empty() ? std::string() : list.dump();
 }

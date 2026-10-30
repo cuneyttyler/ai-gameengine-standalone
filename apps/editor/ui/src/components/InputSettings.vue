@@ -3,8 +3,10 @@
 // interact… and the project's own: farm, parry, kick) and what triggers each: keys, mouse buttons and gamepad buttons
 // and sticks. An action of the project's can be added and removed, and can play a clip on the player or emit an event
 // when pressed; things react to it with an Action component. Saved to the project's input.json.
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
+import { promptDialog } from '../dialogs'
+import { engineKey } from '../inputActions'
 
 interface KeyBinding {
   key: string
@@ -35,6 +37,8 @@ const axisNames = ref<string[]>([])
 const capturing = ref<{ action: string; scale: number } | null>(null)
 const error = ref('')
 const saved = ref(false)
+// What plays / event / effect can be (input:choices): the characters' clips, the project's events and effects.
+const choices = ref<{ clips: string[]; events: string[]; effects: string[] }>({ clips: [], events: [], effects: [] })
 
 onHostMessage((message) => {
   if (message.type === 'input:data') {
@@ -43,12 +47,30 @@ onHostMessage((message) => {
     axisNames.value = message.axes as string[]
     builtIn.value = (message.builtIn as string[]) ?? []
     error.value = ((message.errors as string[]) ?? []).join('; ')
+  } else if (message.type === 'input:choices') {
+    choices.value = { clips: (message.clips as string[]) ?? [], events: (message.events as string[]) ?? [], effects: (message.effects as string[]) ?? [] }
   } else if (message.type === 'input:saved') {
     error.value = (message.error as string | null) ?? ''
     saved.value = !error.value
   }
 })
-onMounted(() => sendToHost({ type: 'input:request' }))
+onMounted(() => {
+  sendToHost({ type: 'input:request' })
+  sendToHost({ type: 'input:choices' })
+})
+// Capturing a key: read on the window (the + Key button clicked is gone, the focus with it), before anything else.
+const onWindowKey = (event: KeyboardEvent) => onCapture(event)
+watch(capturing, (now) => {
+  if (now) window.addEventListener('keydown', onWindowKey, true)
+  else window.removeEventListener('keydown', onWindowKey, true)
+})
+onUnmounted(() => window.removeEventListener('keydown', onWindowKey, true))
+// An event of its own, named here (the event picker's New event…).
+async function newEvent(action: Action, select: HTMLSelectElement): Promise<void> {
+  const name = await promptDialog({ title: 'New event', message: `The event ${action.name} sends when it's pressed (scripts, triggers and quests react to it).`, placeholder: 'cooked', confirmLabel: 'Use' })
+  if (name && name.trim()) setField(action, 'event', name.trim())
+  select.value = action.event ?? ''
+}
 
 const keyOf = (b: string | KeyBinding) => (typeof b === 'string' ? b : b.key)
 const scaleOf = (b: string | KeyBinding) => (typeof b === 'string' ? 1 : b.scale ?? 1)
@@ -68,20 +90,6 @@ function addKey(action: Action, key: string, scale = 1): void {
   if (action.keys.some((b) => keyOf(b) === key && scaleOf(b) === scale)) return
   action.keys.push(action.axis ? { key, scale } : key)
   save()
-}
-
-// The browser's key codes, as the engine names them (platform/Input.h).
-function engineKey(event: KeyboardEvent): string | null {
-  const code = event.code
-  if (/^Key[A-Z]$/.test(code)) return code.slice(3)
-  if (/^Digit[0-9]$/.test(code)) return 'Num' + code.slice(5)
-  if (/^F([1-9]|1[0-2])$/.test(code)) return code
-  const named: Record<string, string> = {
-    ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Space: 'Space', Enter: 'Enter',
-    NumpadEnter: 'Enter', Escape: 'Escape', Tab: 'Tab', Backspace: 'Backspace', ShiftLeft: 'LeftShift',
-    ShiftRight: 'RightShift', ControlLeft: 'LeftCtrl', ControlRight: 'RightCtrl', AltLeft: 'LeftAlt', AltRight: 'RightAlt',
-  }
-  return named[code] ?? null
 }
 
 function onCapture(event: KeyboardEvent): void {
@@ -125,11 +133,16 @@ function resetDefaults(): void {
 </script>
 
 <template>
-  <div class="input-settings" @keydown.capture="onCapture">
+  <div class="input-settings">
     <p class="muted">
       What the player presses for each action. Click <b>+ Key</b> and press a key, or pick a mouse or gamepad button.
       Saved to <code>input.json</code>.
     </p>
+    <div class="add">
+      <input v-model="newAction" placeholder="a new action: farm, parry, kick…" spellcheck="false" @keydown.enter="addAction" />
+      <button :disabled="!newAction.trim()" @click="addAction">Add action</button>
+      <span class="muted">Things react to it with an Action component (Inspector), or a part's input action.</span>
+    </div>
     <table>
       <thead>
         <tr><th>Action</th><th>When</th><th>Bindings</th><th title="A clip the player plays when it's pressed, and an event for scripts">Plays / event</th><th></th></tr>
@@ -178,9 +191,23 @@ function resetDefaults(): void {
           </td>
           <td>
             <template v-if="!action.axis">
-              <input class="small-in" :value="action.plays ?? ''" placeholder="clip" spellcheck="false" title="A clip the player plays when it's pressed (parry, attack_kick)" @change="setField(action, 'plays', ($event.target as HTMLInputElement).value)" />
-              <input class="small-in" :value="action.event ?? ''" placeholder="event" spellcheck="false" title="An event emitted when it's pressed, for scripts (on(&quot;parry&quot;, ...))" @change="setField(action, 'event', ($event.target as HTMLInputElement).value)" />
-              <input class="small-in" :value="action.effect ?? ''" placeholder="effect" spellcheck="false" title="An effect played on the player when it's pressed (an effect record: Project ▸ Effects)" @change="setField(action, 'effect', ($event.target as HTMLInputElement).value)" />
+              <select class="small-in" :value="action.plays ?? ''" title="A clip the player plays when it's pressed (the characters' clips)" @change="setField(action, 'plays', ($event.target as HTMLSelectElement).value)">
+                <option value="">no clip</option>
+                <option v-if="action.plays && !choices.clips.includes(action.plays)" :value="action.plays">{{ action.plays }} (missing)</option>
+                <option v-for="c in choices.clips" :key="c" :value="c">{{ c }}</option>
+              </select>
+              <select class="small-in" :value="action.event ?? ''" title="An event sent when it's pressed: scripts, triggers and quests react to it"
+                      @change="($event.target as HTMLSelectElement).value === '+new' ? newEvent(action, $event.target as HTMLSelectElement) : setField(action, 'event', ($event.target as HTMLSelectElement).value)">
+                <option value="">no event</option>
+                <option v-if="action.event && !choices.events.includes(action.event)" :value="action.event">{{ action.event }}</option>
+                <option v-for="e in choices.events" :key="e" :value="e">{{ e }}</option>
+                <option value="+new">New event…</option>
+              </select>
+              <select class="small-in" :value="action.effect ?? ''" title="An effect played on the player when it's pressed (Project ▸ Effects)" @change="setField(action, 'effect', ($event.target as HTMLSelectElement).value)">
+                <option value="">no effect</option>
+                <option v-if="action.effect && !choices.effects.includes(action.effect)" :value="action.effect">{{ action.effect }} (missing)</option>
+                <option v-for="f in choices.effects" :key="f" :value="f">{{ f }}</option>
+              </select>
             </template>
           </td>
           <td>
@@ -189,11 +216,6 @@ function resetDefaults(): void {
         </tr>
       </tbody>
     </table>
-    <div class="add">
-      <input v-model="newAction" placeholder="a new action: farm, parry, kick…" spellcheck="false" @keydown.enter="addAction" />
-      <button :disabled="!newAction.trim()" @click="addAction">Add action</button>
-      <span class="muted">Things react to it with an Action component (Inspector).</span>
-    </div>
     <div class="actions">
       <button @click="resetDefaults">Reset to defaults</button>
       <span v-if="saved" class="muted">Saved</span>

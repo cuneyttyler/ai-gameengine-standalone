@@ -2687,12 +2687,14 @@ void GameSession::StepActions(float dt) {
         }
         // Whether the player can activate a part now: by use (the door shortcuts, a double click), its own input action,
         // or a locked one's lock (by either).
+        // One always playing: by its input action, if it has one (it sends its event).
         auto byPlayer = [&](const AnimatedPart& part) {
             const std::string way = DoorOpens(part);
-            return part.locked || way == "use" || way == "action";
+            return part.locked || way == "use" || way == "action" || (way == "always" && !part.trigger.empty());
         };
         auto pressedFor = [&](const AnimatedPart& part) {
-            return DoorOpens(part) == "action" ? input_.Pressed(part.trigger) : doorKey;
+            const std::string way = DoorOpens(part);
+            return way == "action" || way == "always" ? input_.Pressed(part.trigger) : doorKey;
         };
         // Usable where one is: a part on an interior's floor while that floor shows, the outside's others from outside;
         // a door from either side.
@@ -2713,7 +2715,7 @@ void GameSession::StepActions(float dt) {
             const auto* sprite = registry_.try_get<Sprite>(d.overlay);
             const bool clicked = click && screen && sprite && std::abs(click->first - screen->x) <= sprite->width * 0.5f &&
                                  std::abs(click->second - screen->y) <= sprite->height * 0.5f;
-            const bool pressed = pressedFor(list[d.index]) || (clicked && DoorOpens(list[d.index]) != "action");
+            const bool pressed = pressedFor(list[d.index]) || (clicked && DoorOpens(list[d.index]) != "action" && DoorOpens(list[d.index]) != "always");
             if (dist <= list[d.index].range + (clicked ? 1.0f : 0.0f) && pressed && dist < usedDistance) used = &d, usedDistance = dist;
         }
         // The prompt (the HUD's, as at a chest): the nearest part the player activates within its range; its own words
@@ -2801,6 +2803,8 @@ void GameSession::StepActions(float dt) {
             const bool byUse = way == "use";
             const bool toggled = way == "action" || way == "event"; // stays as it's left, no one closes it by leaving
             char& open = state.open[d.index];
+            // Activated by the player (unlocked): its event sent.
+            if (used == &d && !door.locked && !door.fires.empty()) Emit({door.fires, d.owner, player ? *player : entt::null});
             // A part with one clip (no closing one: a fire, a pot stirred): still on its first frame until it's activated,
             // playing while it is, still again once it's shut.
             if (way != "always" && door.closeClip.empty()) {

@@ -7,6 +7,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 import { trackOverlay, untrackOverlay } from '../overlay'
+import ActionPicker from './ActionPicker.vue'
 
 const PROJECT_HOST = 'https://aige-project.local/'
 const backdrop = ref<HTMLElement | null>(null)
@@ -16,6 +17,7 @@ const action = ref('the door swings open')
 const kind = ref<'door' | 'opening' | 'other' | 'character'>('door')
 const opens = ref<'project' | 'auto' | 'use' | 'action' | 'event' | 'always'>('project')
 const trigger = ref('') // action / event: its name
+const fires = ref('') // the game event it sends each time the player activates it
 const prompt = ref('') // what the player is shown near it ("Pull the lever")
 const locked = ref(false)
 const key = ref('')
@@ -123,6 +125,7 @@ function animate(): void {
     action: action.value.trim() || 'the door swings open',
     opens: kind.value === 'other' && opens.value === 'project' ? 'use' : opens.value,
     trigger: trigger.value.trim(),
+    fires: fires.value.trim(),
     prompt: prompt.value.trim(),
     locked: locked.value,
     key: key.value.trim(),
@@ -195,10 +198,18 @@ const boxStyle = computed(() => {
             <option value="event">a game event (a script's, a trigger's)</option>
             <option value="always">always playing (a loop)</option>
           </select>
-          <input v-if="opens === 'action' || opens === 'event'" v-model="trigger" spellcheck="false"
-                 :placeholder="opens === 'action' ? 'the input action (interact)' : 'the event (bridge_down)'" />
+          <input v-if="opens === 'event'" v-model="trigger" spellcheck="false" placeholder="the event (bridge_down)" />
         </div>
-        <div v-if="['project', 'use', 'action'].includes(opens)" class="row">
+        <div v-if="opens === 'action' || opens === 'always'" class="row">
+          <label :title="opens === 'always' ? 'Optional: it plays anyway; pressing this near it sends its event' : 'Pressed near it: it plays'">
+            Input action{{ opens === 'always' ? ' (optional)' : '' }}</label>
+          <ActionPicker v-model="trigger" />
+        </div>
+        <div v-if="opens !== 'auto' && opens !== 'event'" class="row">
+          <label title="Sent each time the player activates it: scripts, triggers and quests react to it">Sends event</label>
+          <input v-model="fires" spellcheck="false" placeholder="optional (cooked)" />
+        </div>
+        <div v-if="['project', 'use', 'action'].includes(opens) || (opens === 'always' && trigger)" class="row">
           <label>Prompt</label>
           <input v-model="prompt" :placeholder="kind === 'door' ? 'Open the door|Close the door' : 'Pull the lever'"
                  title="Shown near it; 'shut|open' for each way" />

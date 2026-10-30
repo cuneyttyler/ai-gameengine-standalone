@@ -278,6 +278,8 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("trigger", &AnimatedPart::trigger, "action: the input action's name (Project Settings ▸ Input); event: the event's name.")
         .Field("prompt", &AnimatedPart::prompt, "What the player is shown near it (\"Pull the lever\"); \"shut|open\" for each way "
                "(\"Open the door|Close the door\"); empty: a door's own, another part's \"Use\".")
+        .Field("fires", &AnimatedPart::fires, "The game event sent each time the player activates it (\"cooked\"), for scripts, "
+               "triggers and quests; an always playing part sends it by its input action.")
         .Field("floor", &AnimatedPart::floor, "Which picture it moves on: 0 the outside, k its interior's floor k (shown only "
                "while that floor shows).").Min(0)
         .Field("door", &AnimatedPart::door, "A doorway of its building: a way in, blocked while shut (a window or a lever isn't).")

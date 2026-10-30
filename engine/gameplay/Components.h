@@ -324,6 +324,9 @@ struct AnimatedPart {
     // What the player is shown near it ("Pull the lever"); "shut|open" for each way ("Open the door|Close the door");
     // "": a door's "Open the door", another part's "Use".
     std::string prompt;
+    // The game event sent each time the player activates it ("cooked"): scripts, triggers and quests react to it. A
+    // part always playing sends it too, by its input action (trigger). sheet "spot": a spot with no animation, only this.
+    std::string fires;
     // A doorway of its building (a way in, blocked while shut). Only a building's parts are (Building Plan); a window, a
     // sign or a lever on one isn't. Set by Build ▸ Animate and Animate a part…
     bool door = true;

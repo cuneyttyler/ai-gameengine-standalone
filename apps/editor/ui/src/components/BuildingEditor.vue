@@ -7,12 +7,14 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 import { trackOverlay, untrackOverlay } from '../overlay'
+import ActionPicker from './ActionPicker.vue'
 
 const PROJECT_HOST = 'https://aige-project.local/'
 interface Cell { x: number; y: number; edge: boolean; poly: [number, number][] }
 interface Door {
   box: [number, number, number, number]; opens: string; locked: boolean; key: string; consumeKey: boolean; animated: boolean; index?: number
   trigger: string; prompt: string; door: boolean
+  fires: string; floor: number; spot?: boolean // fires: the event it sends; floor: its picture (0 the outside); spot: nothing animated
 }
 interface Info {
   id: number; name: string; pictures: string[]; size: [number, number]; cells: Cell[]; stairs: [number, number][][]; entries: [number, number][]
@@ -37,6 +39,9 @@ const layer = ref<'stairs' | 'entries' | 'doors' | 'solid'>('stairs')
 const solids = reactive<Record<number, Set<string>>>({}) // floor k -> its solid quarter cells "qx,qy"
 const doors = ref<Door[]>([]) // its doors (AnimatedPart), as edited here
 const picked = ref<number | null>(null) // the door clicked
+const addingSpot = ref(false) // Add a spot: the next box dragged on the picture is one
+const spotBox = ref<[number, number, number, number] | null>(null) // being dragged: x, y from where it started, then w, h
+let spotFrom: [number, number] | null = null
 const tool = ref<'draw' | 'erase'>('draw')
 const brush = ref(14) // its radius, in the picture's pixels
 const stairs = reactive<Record<number, Set<string>>>({}) // floor change k (floor k up to k + 1) -> its cells "x,y"
@@ -139,6 +144,7 @@ function save(): void {
     solids: Object.fromEntries(Object.entries(solids).map(([k, set]) => [k, [...set].map((c) => c.split(',').map(Number))])),
     doors: doors.value.map((d) => ({
       index: d.index, opens: d.opens, locked: d.locked, key: d.key, consumeKey: d.consumeKey, trigger: d.trigger, prompt: d.prompt, door: d.door,
+      fires: d.fires,
     })),
   })
   dirty.value = false
@@ -212,12 +218,22 @@ function stroke(event: MouseEvent): void {
     if (tool.value === 'erase' && set.has(key)) set.delete(key), (dirty.value = true)
   }
 }
+// A picture point under the mouse, in the picture's pixels.
+function pointAt(event: MouseEvent): [number, number] {
+  const r = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  return [(event.clientX - r.left) / scale.value, (event.clientY - r.top) / scale.value]
+}
 function down(event: MouseEvent): void {
+  if (layer.value === 'doors' && addingSpot.value) {
+    spotFrom = pointAt(event)
+    spotBox.value = [spotFrom[0], spotFrom[1], 0, 0]
+    return
+  }
   if (layer.value === 'doors') {
     // A door picked: the one under the click.
     const r = (event.currentTarget as HTMLElement).getBoundingClientRect()
     const px = (event.clientX - r.left) / scale.value, py = (event.clientY - r.top) / scale.value
-    const hit = doors.value.findIndex((d) => px >= d.box[0] && px <= d.box[0] + d.box[2] && py >= d.box[1] && py <= d.box[1] + d.box[3])
+    const hit = doors.value.findIndex((d) => (d.floor ?? 0) === (info.value?.plan === false ? 0 : tab.value) && px >= d.box[0] && px <= d.box[0] + d.box[2] && py >= d.box[1] && py <= d.box[1] + d.box[3])
     picked.value = hit >= 0 ? hit : null
     return
   }
@@ -237,7 +253,8 @@ function doorColour(d: Door): string {
     : way === 'action' || way === 'event' ? '#569cd6' : '#f5c542'
 }
 // A part's name: a door (a way in of a building) or another part.
-const partName = (d: Door, i: number) => `${d.door && info.value?.building !== false ? 'Door' : 'Part'} ${i + 1}`
+const partName = (d: Door, i: number) => `${d.spot ? 'Spot' : d.door && info.value?.building !== false ? 'Door' : 'Part'} ${i + 1}`
+const pictureName = (d: Door) => ((d.floor ?? 0) > 0 ? `floor ${d.floor}` : 'outside')
 function editDoor(): void {
   dirty.value = true
 }
@@ -247,10 +264,25 @@ function removeDoor(i: number): void {
   dirty.value = true
 }
 function move(event: MouseEvent): void {
+  if (spotFrom) {
+    const [x, y] = pointAt(event)
+    spotBox.value = [Math.min(x, spotFrom[0]), Math.min(y, spotFrom[1]), Math.abs(x - spotFrom[0]), Math.abs(y - spotFrom[1])]
+    return
+  }
   if (painting) stroke(event)
 }
 function up(): void {
   painting = false
+  if (!spotFrom) return
+  spotFrom = null
+  const box = spotBox.value
+  spotBox.value = null
+  addingSpot.value = false
+  if (!info.value || !box || box[2] < 4 || box[3] < 4) return
+  // Saved first (what's drawn here isn't lost), then the spot added, then the building read again with it.
+  if (dirty.value) save()
+  sendToHost({ type: 'part:addSpot', id: info.value.id, box: box.map(Math.round), floor: tab.value })
+  sendToHost({ type: 'interior:art', id: info.value.id })
 }
 function clearLayer(): void {
   if (layer.value === 'entries' && byRoom.value) roomWays.value = new Set()
@@ -338,7 +370,9 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
                      :stroke="layer === 'entries' && q.edge ? 'rgba(255,255,255,0.1)' : 'none'" stroke-width="1" pointer-events="none" />
           </template>
           <!-- Its doors: a box each, coloured by how it opens (red: locked); the picked one thicker. -->
-          <g v-for="(d, i) in doors" :key="'door' + i" :opacity="layer === 'doors' ? 1 : 0.6">
+          <rect v-if="spotBox" :x="spotBox[0] * scale" :y="spotBox[1] * scale" :width="spotBox[2] * scale" :height="spotBox[3] * scale"
+                fill="rgba(197, 134, 192, 0.2)" stroke="#c586c0" stroke-width="2" stroke-dasharray="4 3" />
+          <g v-for="(d, i) in doors" v-show="(d.floor ?? 0) === (info.plan === false ? 0 : tab)" :key="'door' + i" :opacity="layer === 'doors' ? 1 : 0.6">
             <rect :x="d.box[0] * scale" :y="d.box[1] * scale" :width="d.box[2] * scale" :height="d.box[3] * scale" fill="none"
                   :stroke="doorColour(d)" :stroke-width="picked === i ? 3 : 1.5" />
             <text :x="d.box[0] * scale + 3" :y="d.box[1] * scale + 13" :fill="doorColour(d)" font-size="12">{{ d.locked ? '🔒 ' : '' }}{{ i + 1 }}</text>
@@ -348,8 +382,11 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
       <!-- The door picked: how it opens, its lock. -->
       <div v-if="layer === 'doors'" class="door-panel">
         <p v-if="!doors.length" class="muted small">No moving parts: animate one (Build ▸ Animate, or right-click ▸ Animate a part…).</p>
+        <button class="small" :class="{ active: addingSpot }" :disabled="editorState.playing"
+                title="A spot activated as a part is, with nothing animated (a stove one cooks at): drag a box on this picture"
+                @click="addingSpot = !addingSpot">{{ addingSpot ? 'Drag a box on the picture…' : 'Add a spot (no animation)' }}</button>
         <div v-for="(d, i) in doors" :key="'row' + i" class="door-row" :class="{ picked: picked === i }" @click="picked = i">
-          <b :style="{ color: doorColour(d) }">{{ partName(d, i) }}</b> <span class="muted small">{{ opensText(d) }}{{ d.animated ? '' : ' · not animated' }}</span>
+          <b :style="{ color: doorColour(d) }">{{ partName(d, i) }}</b> <span class="muted small">{{ opensText(d) }} · {{ pictureName(d) }}{{ d.animated || d.spot ? '' : ' · not animated' }}</span>
         </div>
         <template v-if="picked !== null && doors[picked]">
           <label v-if="info.building !== false" class="inline" title="A way in of the building: blocked while shut. A window, a sign or a lever on it isn't.">
@@ -365,11 +402,17 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
               <option v-if="doors[picked]!.door" value="open">always open (a doorway)</option>
             </select>
           </label>
-          <label v-if="doors[picked]!.opens === 'action' || doors[picked]!.opens === 'event'">
-            {{ doors[picked]!.opens === 'action' ? 'Input action (Project Settings ▸ Input)' : 'Event name' }}
-            <input v-model="doors[picked]!.trigger" spellcheck="false" :placeholder="doors[picked]!.opens === 'action' ? 'interact' : 'bridge_down'" @change="editDoor" />
+          <label v-if="doors[picked]!.opens === 'event'">Event name
+            <input v-model="doors[picked]!.trigger" spellcheck="false" placeholder="bridge_down" @change="editDoor" />
           </label>
-          <label v-if="['project', 'use', 'action'].includes(doors[picked]!.opens)" title="Shown near it; 'shut|open' for each way">
+          <label v-if="doors[picked]!.opens === 'action' || doors[picked]!.opens === 'always'">
+            Input action{{ doors[picked]!.opens === 'always' ? ' (optional: pressed near it, it sends its event)' : '' }}
+            <ActionPicker v-model="doors[picked]!.trigger" @update:model-value="editDoor" />
+          </label>
+          <label v-if="!['auto', 'event'].includes(doors[picked]!.opens)" title="Sent each time the player activates it: scripts, triggers and quests react to it">
+            Sends event <input v-model="doors[picked]!.fires" spellcheck="false" placeholder="optional (cooked)" @change="editDoor" />
+          </label>
+          <label v-if="['project', 'use', 'action'].includes(doors[picked]!.opens) || (doors[picked]!.opens === 'always' && doors[picked]!.trigger)" title="Shown near it; 'shut|open' for each way">
             Prompt <input v-model="doors[picked]!.prompt" :placeholder="doors[picked]!.door ? 'Open the door|Close the door' : 'Pull the lever'" @change="editDoor" />
           </label>
           <label class="inline"><input v-model="doors[picked]!.locked" type="checkbox" @change="editDoor" /> Locked</label>
