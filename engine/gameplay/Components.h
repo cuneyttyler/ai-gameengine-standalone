@@ -387,7 +387,7 @@ struct Interior {
     int floor = 1;       // the floor shown (the player's while inside; in the editor, a preview)
     // Its staircases (docs/places/interiors.md): the cell of each floor change, "x,y;x,y" (floor 1 to 2, 2 to 3...).
     // Walking onto one from the floor below goes up, from the floor above down. Empty (or missing ones): the building's
-    // corners in turn, top, right, left — where the interior pictures draw them.
+    // back wall by the back corner: the back-right wall for floor changes 1, 3…, the back-left for 2, 4… (as the pictures draw them).
     std::string stairs;
     // Its ways in (docs/places/interiors.md §5b), set by hand: cells of its footprint's edge, "dx,dy;dx,dy" from its
     // footprint's top-left (so a copy moved keeps them). Empty: its doors' cells, else its door side's middle.

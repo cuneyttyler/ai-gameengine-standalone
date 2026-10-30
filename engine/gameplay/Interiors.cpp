@@ -232,7 +232,8 @@ std::vector<std::pair<int, int>> StairsCells(const Interior& interior, int chang
 }
 
 std::pair<int, int> StairsCell(const Interior& interior, int change, int x0, int y0, int x1, int y1) {
-    // The listed cell of floor change `change` (1: floor 1 to 2), else the footprint's corners in turn: top, right, left.
+    // The listed cell of floor change `change` (1: floor 1 to 2), else where the interior pictures draw it: along a back
+    // wall by the back (top) corner, the back-right wall (row y0) for changes 1, 3…, the back-left (column x0) for 2, 4…
     std::vector<std::pair<int, int>> listed;
     std::stringstream in(interior.stairs);
     std::string part;
@@ -241,11 +242,8 @@ std::pair<int, int> StairsCell(const Interior& interior, int change, int x0, int
         if (std::sscanf(part.c_str(), "%d,%d", &x, &y) == 2) listed.push_back({x, y});
     }
     if (change >= 1 && change <= static_cast<int>(listed.size())) return listed[static_cast<size_t>(change - 1)];
-    switch ((std::max(change, 1) - 1) % 3) {
-        case 1: return {x1, y0}; // the right corner
-        case 2: return {x0, y1}; // the left corner
-        default: return {x0, y0}; // the back (top) corner
-    }
+    if (std::max(change, 1) % 2 == 1) return {std::min(x0 + 1, x1), y0}; // the back-right wall, by the back corner
+    return {x0, std::min(y0 + 1, y1)};                                     // the back-left wall
 }
 
 int InteriorFloors(const Interior& interior) {

@@ -305,6 +305,90 @@ def find_stairs(provider: Provider, root: Path, floors: list[str]) -> dict:
         return {"ok": True, "stairs": list(pool.map(one, floors))}
 
 
+LOCATE_STAIRS = """The picture is one floor of a building in a 2D isometric game, cut away to show its rooms from above. Find its
+staircase going UP to the floor above (straight flights of steps against a wall, or a ladder). Give the smallest box
+round all of its steps, in pixels of the picture as you see it ({w} wide, {h} high; x from the left edge, y from the top
+edge). Answer as JSON exactly: {{"left": <x>, "top": <y>, "right": <x>, "bottom": <y>}}, or {{"none": true}} when there is
+no staircase going up."""
+
+
+def locate_stairs(provider: Provider, picture: Image.Image) -> list[int] | None:
+    """The box round a floor picture's staircase going up, [x, y, w, h] in its own pixels (docs/places/interiors.md §2:
+    the floor above is painted with it marked); None when there's none or it can't be read."""
+    shown = picture.convert("RGBA")
+    k = min(1.0, 1024 / max(shown.width, shown.height))
+    if k < 1:
+        shown = shown.resize((round(shown.width * k), round(shown.height * k)), Image.LANCZOS)
+    flat = Image.new("RGB", shown.size, (255, 255, 255))
+    flat.paste(shown, (0, 0), shown)
+    buffer = io.BytesIO()
+    flat.save(buffer, "PNG")
+    url = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+    content = [{"type": "text", "text": LOCATE_STAIRS.format(w=shown.width, h=shown.height)}, {"type": "image_url", "image_url": url}]
+    try:
+        text = provider.complete([{"role": "user", "content": content}]).text
+        answer = json.loads(text[text.index("{"): text.rindex("}") + 1])
+        if "box_2d" in answer:
+            # Mistral's grounding answer, whatever it's asked: [x0, y0, x1, y1] in thousandths of the picture.
+            x0, y0, x1, y1 = (float(v) / 1000 * size for v, size in zip(answer["box_2d"], (shown.width, shown.height) * 2))
+        else:
+            x0, y0, x1, y1 = (float(answer[key]) for key in ("left", "top", "right", "bottom"))
+    except (ProviderError, json.JSONDecodeError, ValueError, AttributeError, KeyError, TypeError):
+        return None
+    if x1 - x0 < 2 or y1 - y0 < 2:
+        return None
+    return [round(x0 / k), round(y0 / k), round((x1 - x0) / k), round((y1 - y0) / k)]
+
+
+LOCATE_DOORS = """The picture is a building in a 2D isometric game, seen from outside. Find each of its doors one walks in by (on
+the ground floor's walls; not windows, not shutters). Give the smallest box round each as [x0, y0, x1, y1] in thousandths
+of the picture (0-1000; x from the left edge, y from the top edge). Answer as JSON exactly:
+{"doors": [{"box_2d": [x0, y0, x1, y1]}, ...]}, or {"doors": []} when it has none."""
+
+
+def _boxes(answer, w: int, h: int) -> list[list[float]]:
+    """Boxes [x0, y0, x1, y1] in the shown picture's pixels from a vision answer in thousandths of it (Mistral's grounding
+    box_2d [x0, y0, x1, y1], or named edges), alone or in a list."""
+    items = answer if isinstance(answer, list) else answer.get("doors", [answer]) if isinstance(answer, dict) else []
+    out = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        # A list of four anywhere in it (box_2d, or packed under another key): Mistral's thousandths.
+        packed = next((v for v in item.values() if isinstance(v, list) and len(v) == 4), None)
+        try:
+            if packed is not None:
+                x0, y0, x1, y1 = (float(v) / 1000 * s for v, s in zip(packed, (w, h) * 2))
+            else:
+                x0, y0, x1, y1 = (float(item[key]) / 1000 * s for key, s in zip(("left", "top", "right", "bottom"), (w, h) * 2))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if x1 - x0 >= 2 and y1 - y0 >= 2:
+            out.append([x0, y0, x1, y1])
+    return out
+
+
+def locate_doors(provider: Provider, picture: Image.Image) -> list[list[int]]:
+    """The boxes round a building picture's doors, [x, y, w, h] each in its own pixels (docs/places/interiors.md §2: the
+    ground floor is painted with them marked, so its entrance is where the door is); [] when none can be read."""
+    shown = picture.convert("RGBA")
+    k = min(1.0, 1024 / max(shown.width, shown.height))
+    if k < 1:
+        shown = shown.resize((round(shown.width * k), round(shown.height * k)), Image.LANCZOS)
+    flat = Image.new("RGB", shown.size, (255, 255, 255))
+    flat.paste(shown, (0, 0), shown)
+    buffer = io.BytesIO()
+    flat.save(buffer, "PNG")
+    url = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+    content = [{"type": "text", "text": LOCATE_DOORS}, {"type": "image_url", "image_url": url}]
+    try:
+        text = provider.complete([{"role": "user", "content": content}]).text
+        answer = json.loads(text[min(i for i in (text.find("{"), text.find("[")) if i >= 0):])
+    except (ProviderError, json.JSONDecodeError, ValueError, AttributeError):
+        return []
+    return [[round(x0 / k), round(y0 / k), round((x1 - x0) / k), round((y1 - y0) / k)] for x0, y0, x1, y1 in _boxes(answer, shown.width, shown.height)]
+
+
 def find_parts(provider: Provider, root: Path, path: str, kinds: list[str], rect: list[int] | None = None) -> dict:
     """The moving parts (doors, gates, shutters…) in a project picture, or in `rect` of it: their boxes in the
     picture's own pixels (the rect's offset added back)."""

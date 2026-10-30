@@ -77,9 +77,20 @@ For each building:
    (as seen outside: the base it stands on), its rooms and furniture, a staircase in a back corner when there's more
    than one floor. Each is an edit of the exterior on a 1024 magenta canvas (`cutaway`, background cleared, no clip).
    Floor 1 is told it's the *ground* floor: its floor at ground level, its front walls cut down to a low sill at the
-   base (a model otherwise paints it raised a storey, walls under it). The floors are painted **one after another**,
-   each with the floor below as a second image (placed the same way): its staircase arrives where that floor's goes up,
-   its walls the same.
+   base (a model otherwise paints it raised a storey, walls under it). Each floor holds its own rooms (the ground floor
+   the hearth or kitchen and the work, the floors above bedrooms, the top one bedrooms or storage), and the top floor
+   nothing going up. With a vision model the floors are painted one after another, each with a **blockout** as a second
+   image (the building's outline in flat grey, placed as the exterior is):
+   - the ground floor (`doors_blockout`): each door, found on the exterior (`vision.locate_doors`), a blue box (its
+     entrance there), and its stairs up a red box along the back-right wall from the back corner (`stairs_area`, from
+     its footprint; where `Interiors.cpp StairsCell` puts their cell);
+   - each floor above (`stairs_blockout`): the floor below's staircase found on it (`vision.locate_stairs`, asked up to
+     three times), a red band along the top of its box: "the RED band is where the stairs from the floor below arrive
+     on this floor": an opening with a railing, the top steps going down.
+   Without a vision model, each floor on its own: its stairs along a back wall (changes 1, 3… the back-right, 2, 4… the
+   back-left). Showing the floor below's picture itself was tried: the model copied its rooms; saying which way the
+   stairs rise was tried: it did worse. Mistral answers boxes in thousandths of the picture ([x0, y0, x1, y1]), so
+   that's what it's asked for.
 3. **Laid on the footprint** (`footing`, `fit_floor`): where a building stands is read from each picture: the lowest
    opaque pixel of each column makes a V falling to the front corner; the wall corners are where it stops following
    its slope (eaves, the gap past the wall; a bush or a step below the line is passed). The floor is scaled so its
@@ -160,7 +171,7 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
   `floor=`. Built places, Add interior and the editor's repair on opening a scene (`RepairInteriorArt`: pictures made
   again are picked up from the pairing) fill them in.
 - **Play:** in through the door shows floor 1. Each floor change has its **stairs** cell (`stairs`, "x,y;x,y": floor 1
-  to 2, 2 to 3…; missing ones: the footprint's corners in turn, top, right, left — where the interior pictures draw each
+  to 2, 2 to 3…; missing ones: along a back wall by the back corner, the back-right wall for changes 1, 3…, the back-left for 2, 4… — where the interior pictures draw each
   staircase). Walked onto from the floor below it goes up, from the floor above down (stepping off before it goes
   again); out of the building, the exterior, and floor 1 next time. Right-click inside a building showing a floor ▸
   **Stairs here** sets that floor's stairs to the cell under the cursor (Assembled and Paint alike).
