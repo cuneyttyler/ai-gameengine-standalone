@@ -5449,10 +5449,16 @@ void EditorApp::PollAi() {
                         post_(AssetsJson());
                         inspectorStale_ = true;
                     }
+                    post_({{"type", "interior:redesigned"}, {"id", static_cast<uint32_t>(e)}, {"ok", true}});
                 }
             } else {
                 const auto errors = result->body.value("errors", nlohmann::json::array());
                 interiorFor_.erase(path);
+                if (auto redone = interiorRedesign_.find(path); redone != interiorRedesign_.end()) {
+                    post_({{"type", "interior:redesigned"}, {"id", static_cast<uint32_t>(redone->second)}, {"ok", false},
+                           {"error", errors.empty() ? std::string("the service gave no reason") : errors.front().get<std::string>()}});
+                    interiorRedesign_.erase(redone);
+                }
                 post_({{"type", "notify"}, {"text", "The interior wasn't made" + (errors.empty() ? std::string() : ": " + errors.front().get<std::string>())}});
             }
         } else if (result->kind == AiClient::Result::Kind::Response) {

@@ -7,7 +7,8 @@ import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
 import { editorState } from '../editorState'
 import { sendToHost } from '../ipc'
 import { confirmDialog } from '../dialogs'
-import AiProgress from './AiProgress.vue'
+import { aiCalls } from '../aiProgress'
+import { redesigns } from '../redesigns'
 
 const props = defineProps<{ fields: FieldData[]; choices?: Choices; disabled?: boolean; id?: number }>()
 const emit = defineEmits<{ (e: 'set', field: string, value: string | number): void }>()
@@ -65,8 +66,15 @@ async function redesign(): Promise<void> {
     message: `Paint its ${floorCount.value} floor(s) again from its exterior, one after another so the stairs meet? Its pictures are replaced (every copy of its prefab) and its stairs found again.`,
     confirmLabel: 'Redesign',
   })
-  if (ok) sendToHost({ type: 'interior:redesign', id })
+  if (!ok) return
+  redesigns[id] = { state: 'working', text: '' }
+  sendToHost({ type: 'interior:redesign', id })
 }
+// This building's redesign: working (its bar: the floors painted of all, from the service's progress), done, failed.
+const redesign_ = computed(() => (props.id === undefined ? undefined : redesigns[props.id]))
+const paint = computed(() => aiCalls.value.find((c) => c.path === '/assets/interior' && c.phase !== 'done' && c.phase !== 'failed'))
+const percent = computed(() => (paint.value?.total ? Math.round((100 * (paint.value.done ?? 0)) / paint.value.total) : null))
+
 function removeEntry(index: number): void {
   emit('set', 'entries', entries.value.filter((_, i) => i !== index).join(';'))
 }
@@ -97,8 +105,15 @@ function removeEntry(index: number): void {
     <button v-if="id !== undefined && ground" :disabled="disabled || editorState.ai.state !== 'ready'"
             title="Its floors painted again from its exterior (BFL, floor by floor, each on the one below so the stairs meet): a new design"
             @click="redesign">Redesign interiors…</button>
-    <!-- Its floors being painted (one after another: which one, how far), then its stairs being found. -->
-    <AiProgress :paths="['/assets/interior', '/parts/stairs']" />
+    <!-- Its redesign: a bar while its floors are painted, then that it's done (or why not). -->
+    <div v-if="redesign_" class="redesign" :class="redesign_.state">
+      <template v-if="redesign_.state === 'working'">
+        <span class="small">Redesigning its interiors{{ paint?.step ? `: ${paint.step}` : '…' }}</span>
+        <div class="bar"><div v-if="percent !== null" class="fill" :style="{ width: `${percent}%` }"></div><div v-else class="run"></div></div>
+      </template>
+      <span v-else class="small">{{ redesign_.text }}</span>
+      <button v-if="redesign_.state !== 'working'" class="small" title="Dismiss" @click="delete redesigns[id!]">✕</button>
+    </div>
   </div>
 </template>
 
@@ -120,6 +135,51 @@ h5 {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+.redesign {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.redesign.done,
+.redesign.failed {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.redesign.done span {
+  color: #4ade80;
+}
+.redesign.failed span {
+  color: #f87171;
+}
+.bar {
+  position: relative;
+  height: 4px;
+  background: #2a2a3a;
+  overflow: hidden;
+}
+.fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #3b82f6;
+  transition: width 0.4s;
+}
+.run {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 30%;
+  background: #3b82f6;
+  animation: run 1.4s linear infinite;
+}
+@keyframes run {
+  from {
+    left: -30%;
+  }
+  to {
+    left: 100%;
+  }
 }
 .thumb {
   width: 32px;
