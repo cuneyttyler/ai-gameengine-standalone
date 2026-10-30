@@ -58,31 +58,51 @@ TileGrid TileGrid::Build(Registry& registry) {
                     if (!doorCells.contains(way)) through.insert(way);
                 }
                 const int x0 = sx - left, x1 = sx + right, y0 = sy - back, y1 = sy;
-                // A door narrower than its cell: its doorway's cell (from outside), or the cell outside it where the wall
-                // ring opens (from inside), is wall but for the door's gap (PartOpen::gaps).
+                // A gap in a way-in cell: the doorway's cell (from outside), or the cell outside it where the wall ring opens
+                // (from inside), is wall but for [lo, hi] along the wall on `side` (0 back row, 1 front, 2 left, 3 right).
+                auto gap = [&](int cx, int cy, int s, float lo, float hi) {
+                    if (interior->shown) {
+                        if (s == 0) cy = y0 - 1;
+                        else if (s == 1) cy = y1 + 1;
+                        else if (s == 2) cx = x0 - 1;
+                        else cx = x1 + 1;
+                    }
+                    const bool alongX = s <= 1; // the wall runs along x: the gap spans x
+                    const float c0 = alongX ? static_cast<float>(cx) : static_cast<float>(cy);
+                    if (alongX) {
+                        grid.AddPart(cx, cy, c0, cy, lo, cy + 1.0f);
+                        grid.AddPart(cx, cy, hi, cy, c0 + 1.0f, cy + 1.0f);
+                        grid.passPoints_[Key(cx, cy)] = {(lo + hi) * 0.5f, cy + 0.5f};
+                    } else {
+                        grid.AddPart(cx, cy, cx, c0, cx + 1.0f, lo);
+                        grid.AddPart(cx, cy, cx, hi, cx + 1.0f, c0 + 1.0f);
+                        grid.passPoints_[Key(cx, cy)] = {cx + 0.5f, (lo + hi) * 0.5f};
+                    }
+                };
+                // Ways in drawn as quarter cells: one goes through only where they're painted along the wall (a drawn
+                // way in wins over its door's own gap). A corner cell, or one painted all the way along, stays open.
+                std::set<std::pair<int, int>> drawnGaps;
+                for (const auto& [cell, quarters] : InteriorWayQuarters(registry, entity, *interior)) {
+                    const auto [cx, cy] = cell;
+                    const bool onRow = cy == y0 || cy == y1, onColumn = cx == x0 || cx == x1;
+                    if (onRow == onColumn || !through.contains(cell)) continue; // a corner, inside, or shut
+                    const int s = onRow ? (cy == y0 ? 0 : 1) : (cx == x0 ? 2 : 3);
+                    float lo = 1e9f, hi = -1e9f;
+                    for (const auto& [qx, qy] : quarters) {
+                        const float along = onRow ? qx : qy;
+                        lo = std::min(lo, along), hi = std::max(hi, along + 0.5f);
+                    }
+                    drawnGaps.insert(cell);
+                    const float base = onRow ? static_cast<float>(cx) : static_cast<float>(cy);
+                    if (lo > base + 1e-3f || hi < base + 1.0f - 1e-3f) gap(cx, cy, s, lo, hi);
+                }
+                // A door narrower than its cell: through the door's own gap (PartOpen::gaps).
                 if (const auto* open = registry.try_get<PartOpen>(entity)) {
                     for (size_t i = 0; i < open->gaps.size() && i < open->cells.size(); ++i) {
                         const auto& [middle, half, side] = open->gaps[i];
                         if (side < 0.0f || !(i < open->passable.size() && open->passable[i])) continue;
-                        auto [cx, cy] = open->cells[i];
-                        const int s = static_cast<int>(side);
-                        if (interior->shown) {
-                            if (s == 0) cy = y0 - 1;
-                            else if (s == 1) cy = y1 + 1;
-                            else if (s == 2) cx = x0 - 1;
-                            else cx = x1 + 1;
-                        }
-                        const bool alongX = s <= 1; // the wall runs along x: the gap spans x
-                        const float c0 = (alongX ? cx : cy), lo = middle - half, hi = middle + half;
-                        if (alongX) {
-                            grid.AddPart(cx, cy, c0, cy, lo, cy + 1.0f);
-                            grid.AddPart(cx, cy, hi, cy, c0 + 1.0f, cy + 1.0f);
-                            grid.passPoints_[Key(cx, cy)] = {middle, cy + 0.5f};
-                        } else {
-                            grid.AddPart(cx, cy, cx, c0, cx + 1.0f, lo);
-                            grid.AddPart(cx, cy, cx, hi, cx + 1.0f, c0 + 1.0f);
-                            grid.passPoints_[Key(cx, cy)] = {cx + 0.5f, middle};
-                        }
+                        if (drawnGaps.contains(open->cells[i])) continue;
+                        gap(open->cells[i].first, open->cells[i].second, static_cast<int>(side), middle - half, middle + half);
                     }
                 }
                 if (interior->shown) {

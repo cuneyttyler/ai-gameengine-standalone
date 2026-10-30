@@ -49,7 +49,28 @@ std::vector<std::pair<int, int>> InteriorEntries(Registry& registry, Entity enti
     std::stringstream in(interior.entries);
     for (std::string part; std::getline(in, part, ';');) {
         int dx = 0, dy = 0;
-        if (std::sscanf(part.c_str(), "%d,%d", &dx, &dy) == 2) out.push_back({x0 + dx, y0 + dy});
+        if (std::sscanf(part.c_str(), "q%d,%d", &dx, &dy) == 2) {
+            // A quarter cell (half cells from the top-left): its cell is a way in.
+            const std::pair<int, int> cell{x0 + TileLayer::FloorDiv(dx, 2), y0 + TileLayer::FloorDiv(dy, 2)};
+            if (std::find(out.begin(), out.end(), cell) == out.end()) out.push_back(cell);
+        } else if (std::sscanf(part.c_str(), "%d,%d", &dx, &dy) == 2) {
+            out.push_back({x0 + dx, y0 + dy});
+        }
+    }
+    return out;
+}
+
+std::map<std::pair<int, int>, std::vector<std::pair<float, float>>> InteriorWayQuarters(Registry& registry, Entity entity,
+                                                                                       const Interior& interior) {
+    std::map<std::pair<int, int>, std::vector<std::pair<float, float>>> out;
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    if (interior.entries.empty() || !InteriorFootprint(registry, entity, interior, x0, y0, x1, y1)) return out;
+    std::stringstream in(interior.entries);
+    for (std::string part; std::getline(in, part, ';');) {
+        int qx = 0, qy = 0;
+        if (std::sscanf(part.c_str(), "q%d,%d", &qx, &qy) != 2) continue;
+        const float wx = x0 + qx * 0.5f, wy = y0 + qy * 0.5f;
+        out[{static_cast<int>(std::floor(wx)), static_cast<int>(std::floor(wy))}].push_back({wx, wy});
     }
     return out;
 }

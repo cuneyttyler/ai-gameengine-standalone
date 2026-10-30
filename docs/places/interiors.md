@@ -157,7 +157,12 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
   or the ring's cell in front of it (from inside), is wall but for a gap as wide as the door's picture, where it is
   (`PartOpen::gaps`, made with the doors' rules in `GameSession::StepActions`: its width from its overlay on screen,
   never narrower than the player plus a little; its side the footprint's edge nearest its foot). An open doorway, or a
-  way in with no door, stays a whole cell.
+  way in with no door, stays a whole cell, unless it's drawn:
+- **Ways in drawn as quarter cells** (the building editor's Ways in layer; `Interior.entries` "q" parts, half cells from
+  the footprint's top-left, next to whole-cell parts from before): a way-in cell lets one through only along the wall
+  where its quarters are painted (a door half a cell wide: two quarters), from outside and from inside alike
+  (`InteriorWayQuarters`); a drawn way in wins over its door's own gap. A corner cell, or one painted all along, stays
+  open.
 - **Solid things inside** (`Interior.solids`: furniture, a counter): each floor's quarter cells, painted in the building
   editor's Solid layer; while that floor shows they block (a cell whose four quarters all do is a wall, paths go round).
 - Both are **partly blocked cells** (`TileGrid::AddPart`, `BlocksBox`): the game registers them each step

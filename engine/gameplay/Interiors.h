@@ -2,6 +2,7 @@
 
 #include "ecs/Registry.h"
 
+#include <map>
 #include <optional>
 #include <vector>
 #include <utility>
@@ -30,6 +31,10 @@ struct Interior;
 bool InteriorFootprint(Registry& registry, Entity entity, const Interior& interior, int& x0, int& y0, int& x1, int& y1);
 
 // How many floors it shows (1 + its upper floors' pictures), and floor k's picture (1: `texture`).
+// Its ways in drawn as quarter cells (Interior::entries' "q" parts), by cell: each painted quarter's top-left in world
+// cells. A way-in cell drawn this way lets one through only where its quarters are (TileGrid: the rest is wall).
+std::map<std::pair<int, int>, std::vector<std::pair<float, float>>> InteriorWayQuarters(Registry& registry, Entity entity,
+                                                                                       const Interior& interior);
 // A storey's height on screen (scene pixels): its storeyHeight, else as its floors are painted (from its picture).
 float InteriorStorey(Registry& registry, Entity entity, const Interior& interior);
 // Floor `floor`'s solid things (Interior::solids): each quarter cell's top-left, in cells from its footprint's top-left.

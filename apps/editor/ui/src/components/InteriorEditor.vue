@@ -101,7 +101,7 @@ function removeEntry(index: number): void {
     <h5>Stairs and ways in</h5>
     <p class="dim small">
       {{ floorCount > 1 ? `Stairs: ${stairs.filter(Boolean).length ? stairs.filter(Boolean).length + ' of ' + (floorCount - 1) + ' drawn' : 'its corners'}` : 'One floor: no stairs' }} ·
-      Ways in: {{ entries.length ? entries.length + ' drawn' : 'where its doors are' }}
+      Ways in: {{ entries.length ? 'drawn' : 'where its doors are' }}
     </p>
     <button v-if="id !== undefined && ground" :disabled="disabled" title="Its exterior and each floor's interior: draw its stairs and its ways in"
             @click="editorState.buildingEditor = id">Edit building…</button>

@@ -7117,6 +7117,22 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                {"projectOpens", ActiveSettings().game.doorsOpen}, {"plan", plan}, {"building", IsBuilding(e)},
                // Floor k drawn (k - 1) storeys up in its picture; each floor's solid things (quarter cells).
                {"storeyPx", plan ? InteriorStorey(registry_, e, *interior) * H / std::max(1.0f, sprite->height) : 0.0f},
+               // Its ways in as quarter cells (half cells from the footprint's top-left); a whole cell drawn before as its four.
+               {"wayQuarters", [&] {
+                    nlohmann::json quarters = nlohmann::json::array();
+                    std::stringstream in(plan ? interior->entries : std::string());
+                    for (std::string part; std::getline(in, part, ';');) {
+                        int a = 0, b = 0;
+                        if (std::sscanf(part.c_str(), "q%d,%d", &a, &b) == 2) {
+                            quarters.push_back({a, b});
+                        } else if (std::sscanf(part.c_str(), "%d,%d", &a, &b) == 2) {
+                            for (int i = 0; i < 2; ++i) {
+                                for (int j = 0; j < 2; ++j) quarters.push_back({2 * a + i, 2 * b + j});
+                            }
+                        }
+                    }
+                    return quarters;
+                }()},
                {"solids", [&] {
                     nlohmann::json all = nlohmann::json::object();
                     for (int k = 1; plan && k <= InteriorFloors(*interior); ++k) {
@@ -7144,9 +7160,16 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             stairs += (stairs.empty() ? "" : ";") + cells;
         }
         std::string entries;
-        for (const auto& c : message.value("entries", nlohmann::json::array())) {
-            if (c.is_array() && c.size() == 2) {
-                entries += (entries.empty() ? "" : ";") + std::to_string(c[0].get<int>() - x0) + "," + std::to_string(c[1].get<int>() - y0);
+        if (message.contains("wayQuarters")) {
+            // Drawn as quarter cells (the building editor's Ways in): "q" parts, each its quarter from the top-left.
+            for (const auto& q : message["wayQuarters"]) {
+                if (q.is_array() && q.size() == 2) entries += (entries.empty() ? "q" : ";q") + std::to_string(q[0].get<int>()) + "," + std::to_string(q[1].get<int>());
+            }
+        } else {
+            for (const auto& c : message.value("entries", nlohmann::json::array())) {
+                if (c.is_array() && c.size() == 2) {
+                    entries += (entries.empty() ? "" : ";") + std::to_string(c[0].get<int>() - x0) + "," + std::to_string(c[1].get<int>() - y0);
+                }
             }
         }
         ApplyOneShotEdit([&] {
