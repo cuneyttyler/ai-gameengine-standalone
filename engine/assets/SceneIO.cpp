@@ -233,7 +233,15 @@ bool SceneMatchesFile(Registry& registry, const std::string& path) {
         }
         return text;
     };
-    return plain(saved) == plain(now.str());
+    if (plain(saved) == plain(now.str())) return true;
+    // Written by an older engine (a field added since is missing from it, written now with its default): the file as
+    // this engine reads and writes it, so only a real change counts.
+    Registry read;
+    std::istringstream again(saved);
+    ReadScene(read, again);
+    std::ostringstream rewritten;
+    WriteScene(read, rewritten, EntitiesInOrder(read));
+    return plain(rewritten.str()) == plain(now.str());
 }
 
 bool LoadScene(Registry& registry, const std::string& path) {
