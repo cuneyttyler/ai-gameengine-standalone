@@ -922,10 +922,13 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
             unseen.width = part.width * kx, unseen.height = part.height * ky, unseen.a = 0.0f;
             attachment.size = 0.0f;
         } else {
-            // Its building's interior showing (one is inside): its front walls cut away, the doors in them too; it still
-            // opens and shuts (play reads where it is, not whether it shows).
+            // Shown on its own picture only: the outside's parts (its doors) while one is outside (inside, its front walls
+            // and the doors in them are cut away; they still open and shut: play reads where they are), a floor's while
+            // that floor shows.
             const auto* interior = registry.try_get<Interior>(owner);
-            registry.get<Sprite>(made).a = interior && interior->shown && interior->kind != "scene" ? 0.0f : 1.0f;
+            const bool inside = interior && interior->shown && interior->kind != "scene";
+            const bool seen = part.floor <= 0 ? !inside : inside && interior->floor == part.floor;
+            registry.get<Sprite>(made).a = seen ? 1.0f : 0.0f;
         }
       }
     }

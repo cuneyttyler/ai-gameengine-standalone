@@ -327,6 +327,9 @@ struct AnimatedPart {
     // A doorway of its building (a way in, blocked while shut). Only a building's parts are (Building Plan); a window, a
     // sign or a lever on one isn't. Set by Build ▸ Animate and Animate a part…
     bool door = true;
+    // Which picture it moves on: 0 the outside (shown while one is outside), k the interior's floor k (shown while that
+    // floor shows): a fireplace animated on floor 1's picture.
+    int floor = 0;
     bool locked = false;        // shut (its doorway blocked) until the player uses it carrying `key`: then unlocked
     std::string key;            // the item that unlocks it ("": it can't be opened)
     bool consumeKey = false;    // the key is used up

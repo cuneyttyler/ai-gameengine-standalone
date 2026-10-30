@@ -2694,12 +2694,20 @@ void GameSession::StepActions(float dt) {
         auto pressedFor = [&](const AnimatedPart& part) {
             return DoorOpens(part) == "action" ? input_.Pressed(part.trigger) : doorKey;
         };
+        // Usable where one is: a part on an interior's floor while that floor shows, the outside's others from outside;
+        // a door from either side.
+        auto usableHere = [&](const DoorAt& d, const AnimatedPart& part) {
+            const auto* inside = registry_.try_get<Interior>(d.owner);
+            const bool in = inside && inside->shown && inside->kind != "scene";
+            if (part.floor > 0) return in && inside->floor == part.floor;
+            return part.door || !in;
+        };
         // The one part the player's shortcut (or double click) is for: the nearest within its range.
         const DoorAt* used = nullptr;
         float usedDistance = 1e9f;
         for (const auto& d : doors) {
             const auto& list = all[d.owner];
-            if (!at || d.index >= list.size() || !byPlayer(list[d.index])) continue;
+            if (!at || d.index >= list.size() || !byPlayer(list[d.index]) || !usableHere(d, list[d.index])) continue;
             const float dist = std::hypot(at->x - d.x, at->y - d.y);
             const auto* screen = registry_.try_get<ScreenTransform2D>(d.overlay);
             const auto* sprite = registry_.try_get<Sprite>(d.overlay);
@@ -2714,7 +2722,7 @@ void GameSession::StepActions(float dt) {
         float promptDistance = 1e9f;
         for (const auto& d : doors) {
             const auto& list = all[d.owner];
-            if (!at || d.index >= list.size()) continue;
+            if (!at || d.index >= list.size() || !usableHere(d, list[d.index])) continue;
             const AnimatedPart& door = list[d.index];
             const float dist = std::hypot(at->x - d.x, at->y - d.y);
             if (dist > door.range || dist >= promptDistance) continue;

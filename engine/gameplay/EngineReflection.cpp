@@ -278,6 +278,8 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("trigger", &AnimatedPart::trigger, "action: the input action's name (Project Settings ▸ Input); event: the event's name.")
         .Field("prompt", &AnimatedPart::prompt, "What the player is shown near it (\"Pull the lever\"); \"shut|open\" for each way "
                "(\"Open the door|Close the door\"); empty: a door's own, another part's \"Use\".")
+        .Field("floor", &AnimatedPart::floor, "Which picture it moves on: 0 the outside, k its interior's floor k (shown only "
+               "while that floor shows).").Min(0)
         .Field("door", &AnimatedPart::door, "A doorway of its building: a way in, blocked while shut (a window or a lever isn't).")
         .Field("locked", &AnimatedPart::locked, "Shut, its doorway blocked, until the player uses it with the key.")
         .Field("key", &AnimatedPart::key, "The item that unlocks it (empty: it can't be opened).")

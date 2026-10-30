@@ -6,7 +6,7 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { openContextMenu, separator, type MenuItem } from '../contextMenu'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
-import { panelTab } from '../paneltabs'
+import { showTab } from '../paneltabs'
 
 // `characters`: Assets ▸ Characters, the character sheets alone (each turning round), with their own menu.
 const props = defineProps<{ filter: string; characters?: boolean }>()
@@ -112,7 +112,7 @@ function name(sheet: Sheet): string {
 function showInEffects(sheet: Sheet, edit = false): void {
   editorState.fxSheetEdit = edit
   editorState.fxSheet = sheet.path
-  panelTab.project = 'fx'
+  showTab('fx') // the Project panel brought up on Effects (it may be hidden or behind another)
 }
 function menu(sheet: Sheet, event: MouseEvent): void {
   picked.value = sheet.path
@@ -120,10 +120,18 @@ function menu(sheet: Sheet, event: MouseEvent): void {
     openContextMenu(event.clientX, event.clientY, [
       { label: 'Make player', disabled: editorState.playing, action: () => sendToHost({ type: 'character:prefab', sheet: sheet.path, npc: false }) },
       { label: 'Make NPC', disabled: editorState.playing, action: () => sendToHost({ type: 'character:prefab', sheet: sheet.path, npc: true }) },
-      { label: 'Animate…', action: () => ((editorState.animateSheet = sheet.path), (panelTab.generate = 'animate')) },
+      { label: 'Animate…', action: () => ((editorState.animateSheet = sheet.path), showTab('animate')) },
       separator,
       { label: 'Edit…', action: () => showInEffects(sheet, true) },
       { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: sheet.path }) },
+      separator,
+      {
+        label: 'Delete…',
+        danger: true,
+        disabled: editorState.playing,
+        confirm: `Delete ${sheet.path}? Its picture goes too unless another sheet uses it; what plays it will show nothing.`,
+        action: () => sendToHost({ type: 'animation:delete', path: sheet.path }),
+      },
     ])
     return
   }
@@ -138,6 +146,14 @@ function menu(sheet: Sheet, event: MouseEvent): void {
     { label: 'Edit…', action: () => showInEffects(sheet, true) },
     { label: 'Show in Effects', action: () => showInEffects(sheet) },
     { label: 'Show in Explorer', action: () => sendToHost({ type: 'asset:reveal', path: sheet.path }) },
+    separator,
+    {
+      label: 'Delete…',
+      danger: true,
+      disabled: editorState.playing,
+      confirm: `Delete ${sheet.path}? Its picture goes too unless another sheet uses it; what plays it will show nothing.`,
+      action: () => sendToHost({ type: 'animation:delete', path: sheet.path }),
+    },
   ]
   openContextMenu(event.clientX, event.clientY, items)
 }

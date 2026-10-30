@@ -75,6 +75,7 @@ onHostMessage((message) => {
     }
     if (current.value?.id !== data.id) {
       Object.keys(errors).forEach((key) => delete errors[key])
+      partShown.value = 0
     }
     current.value = data
     cell.value = null
@@ -148,6 +149,27 @@ function savePrefab(): void {
     sendToHost({ type: 'prefab:saveSelected', name: newPrefabName.value.trim() })
   }
   savingPrefab.value = false
+}
+
+// AnimatedPart: which of its parts is shown (0: its own fields; k: the k-th of "more", edited here and written back).
+interface MorePart { opens: string; trigger: string; prompt: string; range: number; locked: boolean; key: string; consumeKey: boolean; door: boolean; floor: number }
+const partShown = ref(0)
+const partsField = (component: { fields: FieldData[] }) => component.fields.find((f) => f.name === 'more')
+function moreParts(component: { fields: FieldData[] }): MorePart[] {
+  try {
+    const list = JSON.parse(String(partsField(component)?.value ?? '') || '[]')
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+function setMorePart(component: { fields: FieldData[] }, key: keyof MorePart, value: unknown): void {
+  const field = partsField(component)
+  const list = moreParts(component) as unknown as Record<string, unknown>[]
+  const part = list[partShown.value - 1]
+  if (!field || !part) return
+  part[key] = value
+  setField('AnimatedPart', field, JSON.stringify(list))
 }
 
 function revert(key: string): void {
@@ -303,7 +325,59 @@ function numberFrom(event: Event): number {
                     @click="editorState.buildingEditor = current!.id">
               {{ current.building && current.components.some((s) => s.name === 'Interior') ? 'Edit doors…' : 'Edit parts…' }}</button>
           </div>
-          <template v-for="field in component.fields.filter((f) => (component.name !== 'Interior' || !['floors', 'stairs', 'entries', 'texture', 'solids', 'layout'].includes(f.name)) && (component.name !== 'AnimatedPart' || !['more', 'near'].includes(f.name)) && (component.name !== 'AnimatedPart' || current!.building || f.name !== 'door'))" :key="field.name">
+          <!-- More than one part: each picked to see and set (the first is its own fields below; the others written into "more"). -->
+          <div v-if="component.name === 'AnimatedPart' && moreParts(component).length" class="field-row part-tabs">
+            <button v-for="(p, k) in [null, ...moreParts(component)]" :key="k" :class="{ active: Math.min(partShown, moreParts(component).length) === k }"
+                    @click="partShown = k">
+              {{ (k === 0 ? component.fields.find((f) => f.name === 'door')?.value : p?.door) && current.building ? 'Door' : 'Part' }} {{ k + 1 }}
+            </button>
+          </div>
+          <template v-if="component.name === 'AnimatedPart' && partShown > 0 && moreParts(component)[partShown - 1]">
+            <div class="field-row">
+              <label title="What sets it moving">activation</label>
+              <select :value="moreParts(component)[partShown - 1]!.opens" :disabled="editorState.playing" @change="setMorePart(component, 'opens', ($event.target as HTMLSelectElement).value)">
+                <option value="project">as the project's doors</option>
+                <option value="use">on use</option>
+                <option value="auto">by itself, as someone comes near</option>
+                <option value="action">an input action, near it</option>
+                <option value="event">a game event</option>
+                <option value="always">always playing (a loop)</option>
+                <option v-if="moreParts(component)[partShown - 1]!.door" value="open">always open (a doorway)</option>
+              </select>
+            </div>
+            <div v-if="['action', 'event'].includes(moreParts(component)[partShown - 1]!.opens)" class="field-row">
+              <label :title="moreParts(component)[partShown - 1]!.opens === 'action' ? 'An input action (Project Settings ▸ Input)' : 'The event that plays it'">trigger</label>
+              <input :value="moreParts(component)[partShown - 1]!.trigger" spellcheck="false" :disabled="editorState.playing"
+                     :placeholder="moreParts(component)[partShown - 1]!.opens === 'action' ? 'interact' : 'bridge_down'"
+                     @change="setMorePart(component, 'trigger', ($event.target as HTMLInputElement).value)" />
+            </div>
+            <div v-if="['project', 'use', 'action'].includes(moreParts(component)[partShown - 1]!.opens)" class="field-row">
+              <label title="Shown near it; 'shut|open' for each way">prompt</label>
+              <input :value="moreParts(component)[partShown - 1]!.prompt" :disabled="editorState.playing" placeholder="Pull the lever"
+                     @change="setMorePart(component, 'prompt', ($event.target as HTMLInputElement).value)" />
+            </div>
+            <div class="field-row">
+              <label title="How near (in cells) one must be to use it">range</label>
+              <input type="number" step="0.1" min="0" :value="moreParts(component)[partShown - 1]!.range" :disabled="editorState.playing"
+                     @change="setMorePart(component, 'range', Number(($event.target as HTMLInputElement).value))" />
+            </div>
+            <div class="field-row">
+              <label title="It won't move without its key">locked</label>
+              <input type="checkbox" :checked="moreParts(component)[partShown - 1]!.locked" :disabled="editorState.playing"
+                     @change="setMorePart(component, 'locked', ($event.target as HTMLInputElement).checked)" />
+            </div>
+            <div v-if="moreParts(component)[partShown - 1]!.locked" class="field-row">
+              <label title="The item that unlocks it">key</label>
+              <input :value="moreParts(component)[partShown - 1]!.key" spellcheck="false" :disabled="editorState.playing"
+                     @change="setMorePart(component, 'key', ($event.target as HTMLInputElement).value)" />
+            </div>
+            <div v-if="current.building" class="field-row">
+              <label title="A way in of the building: blocked while shut">door</label>
+              <input type="checkbox" :checked="moreParts(component)[partShown - 1]!.door" :disabled="editorState.playing"
+                     @change="setMorePart(component, 'door', ($event.target as HTMLInputElement).checked)" />
+            </div>
+          </template>
+          <template v-for="field in component.name === 'AnimatedPart' && partShown > 0 && moreParts(component)[partShown - 1] ? [] : component.fields.filter((f) => (component.name !== 'Interior' || !['floors', 'stairs', 'entries', 'texture', 'solids', 'layout'].includes(f.name)) && (component.name !== 'AnimatedPart' || !['more', 'near'].includes(f.name)) && (component.name !== 'AnimatedPart' || current!.building || f.name !== 'door'))" :key="field.name">
             <div class="field-row" :class="{ overridden: field.overridden }">
               <label :title="field.overridden ? `${field.description}\n(Changed on this copy)` : field.description">
                 {{ (component.name === 'AnimatedPart' || component.name === 'DoorPart') && field.name === 'opens' ? 'activation' : field.name }}
@@ -549,6 +623,15 @@ header {
 .remove:hover {
   opacity: 1;
   border-color: #ef4444;
+}
+.part-tabs {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.part-tabs button.active {
+  background: var(--accent, #3b6fd6);
+  color: #fff;
 }
 .field-row {
   display: flex;

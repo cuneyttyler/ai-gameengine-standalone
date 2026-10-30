@@ -565,6 +565,29 @@ void EditorApp::ApplyDoorToPrefab(const std::string& prefab, size_t index, const
     for (Entity e : copies) prefabs_.Revert(registry_, e, "-AnimatedPart");
     if (!copies.empty()) dirty_ = true;
     prefabs_.SyncAll(registry_, prefab);
+    // Copies keeping their own parts (their AnimatedPart changed on them: the building editor's doors): this one put in
+    // theirs too, as it was put in the prefab's.
+    for (auto [e, link] : registry_.view<PrefabInstance>().each()) {
+        if (link.path != prefab || link.overrides.find("AnimatedPart.") == std::string::npos) continue;
+        auto& own = registry_.get_or_emplace<AnimatedPart>(e);
+        std::vector<AnimatedPart> list;
+        if (!reset && (!own.sheet.empty() || own.opens == "open" || !own.more.empty())) list = DoorsOf(own);
+        AnimatedPart made = door;
+        // Its own part this one redoes (on the same picture, its box holding this one's middle), else a new one.
+        size_t mine = list.size();
+        for (size_t i = 0; i < list.size(); ++i) {
+            if (list[i].floor == door.floor && std::abs(list[i].x - door.x) < list[i].width / 2 && std::abs(list[i].y - door.y) < list[i].height / 2) mine = i;
+        }
+        if (mine < list.size() && keepWays) {
+            made.opens = list[mine].opens, made.locked = list[mine].locked, made.key = list[mine].key;
+            made.consumeKey = list[mine].consumeKey, made.range = list[mine].range;
+            made.trigger = list[mine].trigger, made.prompt = list[mine].prompt, made.door = list[mine].door;
+        }
+        if (mine < list.size()) list[mine] = made;
+        else list.push_back(made);
+        SetDoors(own, list);
+        dirty_ = inspectorStale_ = true;
+    }
     RefreshPrefabs();
 }
 

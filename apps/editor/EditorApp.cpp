@@ -6218,6 +6218,28 @@ bool EditorApp::HandleGenerateMessage(const std::string& type, const nlohmann::j
         post_(AnimationsJson());
     } else if (type == "animations:request") {
         post_(AnimationsJson());
+    } else if (type == "animation:delete") {
+        // Assets ▸ Animations ▸ Delete…: the sheet's file, and its picture when no other sheet plays it (what still
+        // plays it shows nothing).
+        const std::string path = message.value("path", "");
+        if (path.rfind("assets/", 0) != 0 || path.find("..") != std::string::npos || !path.ends_with(".anim.json")) return true;
+        const nlohmann::json all = FxJson().value("sheets", nlohmann::json::array());
+        std::string texture;
+        for (const auto& s : all) {
+            if (s.value("path", "") == path) texture = s.value("texture", "");
+        }
+        bool shared = texture.empty() || texture.rfind("assets/", 0) != 0 || texture.find("..") != std::string::npos;
+        for (const auto& s : all) {
+            if (s.value("path", "") != path && s.value("texture", "") == texture) shared = true;
+        }
+        std::error_code ec;
+        for (const char* suffix : {"", ".meta", ".gen.json"}) {
+            std::filesystem::remove(assets_.GetProject().Resolve(path + suffix), ec);
+            if (!shared) std::filesystem::remove(assets_.GetProject().Resolve(texture + suffix), ec);
+        }
+        RefreshAssets();
+        post_(AnimationsJson()); // the Effects panel's list too: it reloads the sheets
+        post_({{"type", "notify"}, {"text", "Deleted " + path}});
     } else if (type == "fx:sheet-read" || type == "fx:sheet-save" || type == "fx:sheet-addPictures") {
         // The sheet editor (Project ▸ Effects ▸ Sheets ▸ Edit): a sheet's file as it is, written back, or pictures added.
         const std::string path = message.value("path", "");
@@ -6646,13 +6668,17 @@ void EditorApp::PlacePart(const nlohmann::json& result) {
         made.prompt = p.value("prompt", std::string());
         made.locked = p.value("locked", false);
         made.key = p.value("key", std::string());
-        made.door = p.value("door", false) && IsBuilding(parentEntity); // a way in: a building's door only (not a lever, a sign)
+        made.floor = p.value("floor", 0); // the picture it moves on: the outside, or an interior's floor
+        made.door = made.floor == 0 && p.value("door", false) && IsBuilding(parentEntity); // a way in: a building's door only (not a lever, a sign, a floor's things)
         // Another door of its (§4.3), or one it has redone: the door whose box this one's middle falls in.
         auto doorIndex = [&](const AnimatedPart* now) -> size_t {
             if (!now || (now->sheet.empty() && now->opens != "open" && now->more.empty())) return 0;
             const auto doors = DoorsOf(*now);
             for (size_t i = 0; i < doors.size(); ++i) {
-                if (std::abs(doors[i].x - made.x) < doors[i].width / 2 && std::abs(doors[i].y - made.y) < doors[i].height / 2) return i;
+                if (doors[i].floor == made.floor && std::abs(doors[i].x - made.x) < doors[i].width / 2 &&
+                    std::abs(doors[i].y - made.y) < doors[i].height / 2) {
+                    return i; // redone: the part on the same picture whose box its middle falls in
+                }
             }
             return doors.size();
         };
@@ -7019,7 +7045,14 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             });
         }
         const float frameW = std::abs(sprite->u1 - sprite->u0) * W, frameH = (sprite->v1 - sprite->v0) * H;
-        partPending_ = {{"parent", parent}, {"crop", path}, {"box", box}, {"frameW", frameW}, {"frameH", frameH},
+        // The picture it's animated on: the outside, or the interior's floor showing.
+        int onFloor = 0;
+        if (const auto* inside = registry_.try_get<Interior>(e); inside && inside->shown) {
+            for (int k = 1; k <= InteriorFloors(*inside); ++k) {
+                if (sprite->texture == InteriorPicture(*inside, k)) onFloor = k;
+            }
+        }
+        partPending_ = {{"parent", parent}, {"crop", path}, {"box", box}, {"frameW", frameW}, {"frameH", frameH}, {"floor", onFloor},
                         {"scale", sprite->width / std::max(1.0f, frameW)}, {"mirrored", sprite->u0 > sprite->u1},
                         {"action", message.value("action", "the door swings open")},
                         // What activates it and what the player is shown (a door: by default as the project's doors; another part: use).

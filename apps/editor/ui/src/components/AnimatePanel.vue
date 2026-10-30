@@ -7,7 +7,7 @@ import AiProgress from './AiProgress.vue'
 import { confirmDialog } from '../dialogs'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
-import { panelTab } from '../paneltabs'
+import { panelTab, showTab } from '../paneltabs'
 
 const PROJECT_HOST = 'https://aige-project.local/'
 const DIRECTIONS = ['south', 'south-east', 'east', 'north-east', 'north', 'north-west', 'west', 'south-west']
@@ -311,7 +311,7 @@ function when(iso: string): string {
         </template>
         <div class="actions">
           <button v-if="characterOf(entry)" class="primary" :disabled="editorState.playing" title="The player playing it (facing the way it walks)" @click="sendToHost({ type: 'character:prefab', sheet: characterOf(entry), npc: false })">Make player</button>
-          <button v-if="characterOf(entry)" title="Its sheet in the sheet editor" @click="(editorState.fxSheetEdit = true), (editorState.fxSheet = characterOf(entry)), (panelTab.project = 'fx')">Edit…</button>
+          <button v-if="characterOf(entry)" title="Its sheet in the sheet editor" @click="(editorState.fxSheetEdit = true), (editorState.fxSheet = characterOf(entry)), showTab('fx')">Edit…</button>
           <button v-if="sheetOf(entry)" title="An animation sheet of it (Project ▸ Effects ▸ Sheets), for an Animator" @click="make(entry, false)">Make animation</button>
           <button v-if="sheetOf(entry)" title="A prefab that plays it (a character's action through the humanoid animator, else looping)" @click="make(entry, true)">Make prefab</button>
           <button title="Put this request back in the form" @click="useAgain(entry)">Use again</button>
