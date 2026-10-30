@@ -836,19 +836,20 @@ def variant_words(writer, kind: str, first: str, place: str, n: int) -> list[str
 
 
 LOOKS_TASK = """You write image prompts for a game's art. For one kind of thing in a place, write one description for
-each numbered item (its footprint is given): every one clearly different in FORM from all the others, not only in
-colour, and shaped to its footprint (a long footprint a long building, a square one a compact one). A building
-gets a real design: how many storeys (one to three), its footprint shape (square, long, L-shaped, round), its roof (form
-and material: thatched, slate, shingle, tiled; gabled, hipped, steep, with dormers), its walls (timber frame, stone,
-plaster, logs), and features that fit what it is for (a porch, a balcony, an outside stair, chimneys, a lean-to, a shop
-front with an awning, a sign, dormers, a bay window); never a plain box. Nothing on the ground around it (no yard,
+each numbered item (its footprint is given). FIRST, every one must read at a glance as what it is: a warehouse must look
+like a warehouse, a smithy like a smithy, not like a house; give it the outward signs of what it is for (the kind's
+outside signs are given: use them, every item). THEN make each one different in FORM from the others (not only in colour)
+in ways that keep it that kind, shaped to its footprint (a long footprint a long building, a square one a compact one). A
+building gets a real design: how many storeys (one to three), its footprint shape, its roof (form and material), its
+walls (material), and the features of its kind; never a plain box, and no features of another kind (no dormers and
+balconies of a home on a barn or a warehouse). Nothing on the ground around it (no yard,
 fence, paving, cart or plinth): only the thing itself. A small thing gets its build,
 silhouette, material and parts. Keep every one the same kind of thing, the same era, culture and style as the place, and
 the size such a thing has on its footprint. Each one line, concrete and visual, no names, no story, no background.
 Answer JSON: {{"looks": ["...", "..."]}} (one per item, in order)."""
 
 
-def look_words(writer, kind: str, purpose: str, place: str, footprints: list[tuple[int, int]]) -> list[str]:
+def look_words(writer, kind: str, purpose: str, place: str, footprints: list[tuple[int, int]], outside: str = "") -> list[str]:
     """One description per item of a family (LOOKS_TASK: every house of the place, every workshop), each its footprint,
     all different in form from each other."""
     import json as _json
@@ -858,6 +859,7 @@ def look_words(writer, kind: str, purpose: str, place: str, footprints: list[tup
     try:
         answer = _json.loads(writer.complete([{"role": "system", "content": LOOKS_TASK},
                                               {"role": "user", "content": f"The place: {place}\nThe kind: {kind}" + (f" ({purpose})" if purpose else "") +
+                                               (f"\nIts outside signs: {outside}" if outside else "") +
                                                " (a cell is about a person's stride; one storey about two cells tall)\nThe items:\n" + items}]).text)
     except Exception:  # noqa: BLE001 - the plain description is used instead
         return []
@@ -894,9 +896,13 @@ def paint_from_words(painter, folder: Path, pieces: list[dict], every: list[dict
         kind = str(first.get("role") or "object").replace("-", " ")
         concepts = " ".join(str(c) for c in first.get("concepts", []) if c)
         what = f"{concepts} {kind}".strip() if concepts and concepts != kind else kind
+        outside = role_description(str(first.get("role") or ""), "outside")[1]  # what makes it read as its kind (the ontology's)
+        for q in looks:
+            q["_outside"] = outside
         for start in range(0, len(looks), 24):
             part = looks[start:start + 24]
-            said = look_words(writer, what, str(first.get("purpose") or ""), place, [(int(q.get("w", 1)), int(q.get("h", 1))) for q in part])
+            said = look_words(writer, what, str(first.get("purpose") or ""), place, [(int(q.get("w", 1)), int(q.get("h", 1))) for q in part],
+                              outside)
             for i, p in enumerate(part):
                 words[p["key"]] = said[i] if i < len(said) else f"{what}" + (f", {first['purpose']}" if first.get("purpose") else "")
     with ThreadPoolExecutor(4) as pool:
@@ -912,7 +918,10 @@ def paint_from_words(painter, folder: Path, pieces: list[dict], every: list[dict
         foot = f"it stands on a {p.get('w', 1)} by {p.get('h', 1)} cell footprint"
         if p.get("layer") == "building":
             foot += " (one storey is about two cells tall): the whole building, its roof and all its walls the camera sees"
-        return (f"Game asset. Isometric view. Flat magenta background (#FF00FF).\nOne {words[p['key']]}.\n{style} Seen from the "
+        kind = str(p.get("role") or "").replace("-", " ")
+        signs = p.get("_outside") or ""
+        what = (f"\nIt must read at a glance as a {kind}" + (f", {signs}" if signs else "") + ".") if kind and p.get("layer") == "building" else ""
+        return (f"Game asset. Isometric view. Flat magenta background (#FF00FF).\nOne {words[p['key']]}.{what}\n{style} Seen from the "
                 f"isometric game camera (2:1), its front facing the lower left; {foot}.\n" + (f"Not like the last try: {why}\n" if why else "") +
                 "Only this one object, alone, centred, nothing under it: no ground, no shadow, no people, no text. Keep the magenta empty.")
 
@@ -986,9 +995,9 @@ _FLOOR_USE = {
 }
 
 
-def role_description(role: str) -> tuple[str, str]:
-    """A building role's label and description from the ontology (data/places/roles.json: its own, else its nearest broader
-    role's), ("", "") when it isn't one."""
+def role_description(role: str, key: str = "description") -> tuple[str, str]:
+    """A role's label and description from the ontology (data/places/roles.json: its own, else its nearest broader role's;
+    `key` "outside" for how it looks from outside), ("", "") when it has none."""
     global _ROLES
     try:
         _ROLES
@@ -1003,8 +1012,8 @@ def role_description(role: str) -> tuple[str, str]:
         seen.add(r)
         spec = _ROLES[r] if isinstance(_ROLES[r], dict) else {}
         label = label or spec.get("label", r)
-        if spec.get("description"):
-            return label, spec["description"]
+        if spec.get(key):
+            return label, spec[key]
         r = spec.get("broader", "")
     return label, ""
 
@@ -1961,6 +1970,10 @@ def rename_from_sheets(root: Path, rel: str, sheets: dict, vision) -> list[dict]
 
 def _piece_prompt(piece: dict, context: dict, style: str, words_for_box: bool) -> str:
     text = f"One {piece.get('words') or piece.get('role')}, a single game asset, {_look(context)}, seen from an isometric angle (2:1)."
+    if piece.get("layer") == "building" and piece.get("role"):
+        signs = role_description(str(piece["role"]), "outside")[1]
+        if signs:
+            text += f" It must read at a glance as a {str(piece['role']).replace('-', ' ')}: {signs}."
     if words_for_box and piece.get("layer") == "building":
         text += f" Its footprint is {piece.get('w')} by {piece.get('h')} cells; the whole building in view, nothing cut off."
     if style:

@@ -170,10 +170,14 @@ numbered in reading order and take the looks in turn, so neighbours differ.
 
 **The art method (2026-10-27): words.** Every piece is painted alone from a description the LLM writes for it, not
 on sheets of boxes (`paint_from_words`; `artMethod: "sheets"` keeps the earlier way). The descriptions are written per
-family: every piece of one role and concepts (each house of the place, each footprint and each look) in one call, so
-no two come out alike, each shaped to its footprint, a building with a real design (storeys, footprint shape, roof form
-and material, walls, porches, balconies, shop fronts, never a plain box) and nothing on the ground round it
-(`LOOKS_TASK`; kept in `piece-prompts.json`). Each is painted in the pieces' framing with the place's style line, no
+family: every piece of one role and concepts (each house of the place, each footprint and each look) in one call.
+First each must read at a glance as its kind, from its role's **outside signs** (`roles.json` "outside": a warehouse's
+wide cart doors and a high loading door with a hoist beam, a smithy's open front and big chimney, an inn's hanging
+sign), then no two alike in form, in ways that keep the kind, each shaped to its footprint, a building with a real
+design (storeys, footprint shape, roof, walls, the features of its kind, never a plain box, none of another kind's) and
+nothing on the ground round it (`LOOKS_TASK`; kept in `piece-prompts.json`). The painting prompt names the kind and its
+outside signs too ("It must read at a glance as a warehouse, …"), and so does the one-by-one way (`_piece_prompt`).
+(Before, warehouse looks were written for variety with a house's features, dormers and jetties, and painted as houses.) Each is painted in the pieces' framing with the place's style line, no
 reference image, four at a time, and cut from its own picture. A piece the cut can't find, or finds as two things, is
 painted once more; the vision model looks at the lot once, and what it finds wrong is painted once more with why. At
 most one repaint a piece: no fix rounds (the sheet way needed up to three rounds of sheets, 37 steps for one village,
