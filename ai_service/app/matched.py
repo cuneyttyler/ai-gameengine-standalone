@@ -976,132 +976,95 @@ or a band of timber framing). The roof is NOT a storey: dormers, windows in the 
 the roof never count. A cottage with a window in its gable is 1; a house with two rows of windows in its walls and
 dormers in its roof is 2. Answer as JSON: {"storeys": <1-4>, "why": "<the rows you counted>"}."""
 
-_ORDINAL = {1: "ground", 2: "second", 3: "third", 4: "fourth"}
-
 
 # What each floor holds (so the floors differ): the ground floor's living and working rooms, the floors above sleeping
 # and keeping, the top one under the roof.
 _FLOOR_USE = {
     "ground": "its main rooms: the hearth or kitchen, a table, the working or selling space, the entrance",
     "middle": "bedrooms and private rooms: beds, chests, a washstand, a small table",
-    "top": "the top floor's rooms: bedrooms or storage, crates, sacks, a bed under a window",
+    "top": "the top floor's rooms: bedrooms or storage, crates, sacks",
 }
 
 
-def floor_prompt(k: int, n: int, purpose: str, style: str, below: bool = False) -> str:
-    """Floor `k` of `n` (docs/places/interiors.md §2, builder_tests/interior_test): the building cut open above it, its
-    camera-facing walls gone on that floor, the floors below closed under it, its own rooms (`_FLOOR_USE`). Its stairs:
-    one going up (not on the top floor) and the top of the one from below arriving (not on the ground floor), each along a
-    back wall, which every floor shows (the game's: Interiors.cpp StairsCell): floor change 1, 3… along the back-right
-    wall, 2, 4… along the back-left, each rising to the back corner. `below`: image 2 is a blockout: on the ground floor its
-    doors (blue) and its stairs up (red, `doors_blockout`), above it where the stairs from the floor below arrive (a red
-    band, `stairs_blockout`); the building's outline grey."""
-    above = "the roof and everything else above it" if k == n else f"every storey above it ({n - k} more) and the roof"
-    use = _FLOOR_USE["ground" if k == 1 else "top" if k == n else "middle"]
-    lines = [
-        "Game asset. Isometric view. Flat magenta background (#FF00FF).",
-        f"Image 1 is a building with {n} storey{'s' if n > 1 else ''}. Paint the same building, from the same camera, at the same "
-        f"place and size in the picture, cut open to show its {_ORDINAL[k]} floor from above, as a game shows a room the player walks in:",
-        f"- {above} is gone, cut away level with the top of this floor's walls: no roof, no gables, no beams across;",
-        "- this floor's two walls that face the camera (front-left and front-right) are gone ENTIRELY, with their windows, doors, "
-        "shutters and timber frames, down to the level of the floor: the floor's front edges are open, nothing stands on them;",
-        "- this floor's two back walls stay, one storey high, with their windows;",
-    ]
-    if k == 1:
-        lines.append("- this is the GROUND floor: its floor lies at ground level, where the walls of image 1 meet the ground (on "
-                     "the stone footing only): no storey, no wall, no windows below it or in front of it; the front walls are cut "
-                     "down to a low sill a few stones high right at the base, so the floor is seen from above at ground height;")
-    else:
-        lines.append(f"- the {k - 1} storey{'s' if k > 2 else ''} below stay{'' if k > 2 else 's'} closed, as seen from outside in "
-                     "image 1, exactly as tall as there: the solid base this floor stands on;")
-    lines.append(f"- this floor holds {use}, {purpose}; its own layout and furniture;")
-    # Each floor change's staircase along a back wall (both show on every floor), rising to the back corner: change 1, 3…
-    # the back-right wall, 2, 4… the back-left.
-    wall = lambda change: "the back-RIGHT wall" if change % 2 == 1 else "the back-LEFT wall"  # noqa: E731
-    if k == 1 and below:
-        lines.append("- image 2 is a blockout: the grey is this building's outline (nothing else to copy); each BLUE box is one of "
-                     "its doors: this floor's entrance is there, a gap in the low front sill with a threshold and a doormat inside, "
-                     "the rooms laid out so one walks in there" + ("; the RED box is where this floor's staircase going UP stands: "
-                     "a straight staircase exactly there, against the wall" if n > 1 else "") + ". No blue, red or grey block in the "
-                     "picture;")
-    elif n > 1 and k < n:
-        lines.append(f"- a straight staircase going UP to the floor above runs along {wall(k)}, against it, its steps rising toward "
-                     "the back corner (the top of the picture) and ending at the cut top of the walls;")
-    if k > 1 and below:
-        lines.append("- image 2 is a blockout: the grey is this building's outline (nothing else to copy); the RED band is where the "
-                     "stairs from the floor below arrive on this floor. Exactly there: an opening in the floor with a wooden railing "
-                     "round it, the top steps of that staircase visible INSIDE the opening going DOWN into it; nothing rises from it. "
-                     "No red, no grey block in the picture;")
-    elif k > 1:
-        lines.append(f"- along {wall(k - 1)}, by the back corner, the stairs from the floor below ARRIVE: a long opening in the floor "
-                     "against that wall, a wooden railing round it, the top steps of the staircase visible INSIDE the opening going "
-                     "DOWN into it; nothing rises from it;")
-    if n > 1 and k == n:
-        lines.append("- this is the TOP floor: NO staircase going up anywhere, no ladder up; only the opening where the stairs from "
-                     "below arrive;")
-    lines += [
-        "- the floor fully visible: boards or flagstones, its rooms with low inner partitions only, lit warmly;",
-        f"Every wall keeps exactly the building's footprint, materials and colours. {style}",
-        "Nothing stands between the camera and the floor. Only this building: no ground round it, no shadow, no people, no text. "
-        "Keep the magenta empty.",
-    ]
-    return "\n".join(lines)
-
-
-def stairs_blockout(below: Image.Image, box: list[int], exterior: Image.Image | None = None) -> Image.Image:
-    """The floor above's reference (docs/places/interiors.md §2): not the floor below's picture (the model copied its rooms)
-    but a blockout of it: the building's shape in flat grey and, in red, the box where the floor below's staircase goes up,
-    so the floor above puts its stairs' opening there. Not the whole staircase's box: a thick band along its top side (a
-    third of its height), where the stairs from below arrive on the floor above. The grey is the `exterior`'s outline when given (the
-    building's true size: a floor picture can run past its frame), else the floor below's. In the exterior's frame,
-    transparent round it."""
+def _floor_frame(exterior: Image.Image, storeys: int):
+    """The footprint's corners (left, right, front, back) on the ground in the exterior's frame, and a storey's height
+    on screen: what stands above the back corner, about seventeen twentieths of it walls, shared by its storeys."""
     import numpy as np
-    from PIL import ImageDraw
-    a = np.array((exterior if exterior is not None else below).convert("RGBA"))[:, :, 3] >= 128
-    out = np.zeros((*a.shape, 4), dtype=np.uint8)
-    out[a] = (170, 170, 170, 255)
-    picture = Image.fromarray(out)
-    x, y, w, h = box
-    band = max(6, round(h / 3))
-    ImageDraw.Draw(picture).rectangle([x, y, x + w, y + band], fill=(230, 30, 30, 255))
-    return picture
-
-
-def stairs_area(exterior: Image.Image, storeys: int, change: int = 1) -> list[int]:
-    """Where floor change `change`'s staircase stands in the exterior's frame, from its footing (the footprint's corners):
-    along the back-right wall for changes 1, 3…, the back-left for 2, 4…, from the back corner two fifths of the way along
-    it, a storey high (the walls' height shared by its storeys). [x, y, w, h]: the box round it (Interiors.cpp StairsCell
-    puts its cell there)."""
     eL, eR, eF, eY, slope = footing(exterior)
-    yl, yr = eY - (eF - eL) * slope, eY - (eR - eF) * slope   # the left and right corners
-    bx, by = eL + eR - eF, yl + yr - eY                       # the back corner
-    ex, ey = (eR, yr) if change % 2 == 1 else (eL, yl)        # the wall's other end
-    tx, ty = bx + (ex - bx) * 0.4, by + (ey - by) * 0.4
-    import numpy as np
+    left = np.array([eL, eY - (eF - eL) * slope])
+    right = np.array([eR, eY - (eR - eF) * slope])
+    front = np.array([eF, eY], dtype=float)
+    back = left + right - front
     solid = np.nonzero((np.array(exterior.convert("RGBA"))[:, :, 3] >= 128).any(axis=1))[0]
-    top = int(solid.min()) if solid.size else 0
-    storey = max(8.0, (by - top) * 0.6 / max(1, storeys))   # what stands above the back corner, three fifths walls
-    x0, x1 = min(bx, tx), max(bx, tx)
-    return [round(x0), round(min(by, ty) - storey), round(max(8, x1 - x0)), round(abs(ty - by) + storey)]
+    storey = max(8.0, (back[1] - (int(solid.min()) if solid.size else 0)) * 0.85 / max(1, storeys))
+    return left, right, front, back, storey
 
 
-def doors_blockout(exterior: Image.Image, doors: list[list[int]], stairs: list[int] | None = None) -> Image.Image:
-    """The ground floor's reference (docs/places/interiors.md §2): the building's outline in flat grey, each of its doors a
-    blue box where it is, so the floor's entrance is there, and (`stairs`) a red box where its staircase going up stands.
-    In the exterior's frame, transparent round it."""
+def stairs_ramp(exterior: Image.Image, k: int, storeys: int) -> list[tuple[float, float]]:
+    """Floor k's staircase as a ramp in the exterior's frame (docs/places/interiors.md §2): its foot on floor k, three
+    fifths of the way along the back-left wall (odd k: rising left to right) or the back-right (even k: right to left)
+    from the upper corner, its top at the upper corner on floor k + 1's level; a fifth of the footprint wide."""
+    import numpy as np
+    left, right, front, back, storey = _floor_frame(exterior, storeys)
+    along, across = (left, right) if k % 2 == 1 else (right, left)
+    foot = back + (along - back) * 0.6
+    inward = (across - back) * 0.22
+    up = lambda q, level: tuple((q - np.array([0.0, (level - 1) * storey])).tolist())  # noqa: E731
+    return [up(foot, k), up(back, k + 1), up(back + inward, k + 1), up(foot + inward, k)]
+
+
+def stairs_opening(exterior: Image.Image, k: int, storeys: int) -> list[tuple[float, float]]:
+    """Where floor k - 1's staircase comes up on floor k, flat on floor k's level in the exterior's frame: the plan of that
+    staircase (along the back-left wall for an odd floor below, the back-right for an even one, from the upper corner three
+    fifths of its length, a third of the footprint deep: wider than the staircase): the opening in this floor, cut when it's laid on the exterior."""
+    import numpy as np
+    left, right, front, back, storey = _floor_frame(exterior, storeys)
+    along, across = (left, right) if (k - 1) % 2 == 1 else (right, left)
+    foot = back + (along - back) * 0.6
+    inward = (across - back) * 0.35
+    up = lambda q: tuple((q - np.array([0.0, (k - 1) * storey])).tolist())  # noqa: E731
+    return [up(back), up(foot), up(foot + inward), up(back + inward)]
+
+
+def room_blockout(exterior: Image.Image, k: int, storeys: int, doors: list[list[int]] | None = None) -> Image.Image:
+    """Floor k's room alone (docs/places/interiors.md §2), to be painted by itself and edited into the exterior after: its
+    storey a GREEN box where it stands in the exterior's frame (from its level to the next), its floor CYAN (filled with
+    its rooms), its staircase up a RED ramp
+    (not on the top floor), the opening where the floor below's arrives a flat YELLOW box on its floor (not on the ground
+    floor), on the ground floor its doors BLUE boxes; nothing else (transparent round it)."""
     import numpy as np
     from PIL import ImageDraw
-    a = np.array(exterior.convert("RGBA"))[:, :, 3] >= 128
-    out = np.zeros((*a.shape, 4), dtype=np.uint8)
-    out[a] = (170, 170, 170, 255)
-    picture = Image.fromarray(out)
+    left, right, front, back, storey = _floor_frame(exterior, storeys)
+    picture = Image.new("RGBA", exterior.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(picture)
-    for x, y, w, h in doors:
+    up = lambda q, level: tuple((q - np.array([0.0, (level - 1) * storey])).tolist())  # noqa: E731
+    draw.polygon([up(left, k), up(front, k), up(right, k), up(right, k + 1), up(back, k + 1), up(left, k + 1)], fill=(60, 190, 90, 255))
+    edge = (30, 110, 50, 255)
+    draw.line([up(left, k + 1), up(front, k + 1), up(right, k + 1)], fill=edge, width=2)
+    draw.line([up(front, k), up(front, k + 1)], fill=edge, width=2)
+    # Its floor CYAN (to be filled with its rooms), under the yellow (to stay empty) and the stairs.
+    draw.polygon([up(left, k), up(front, k), up(right, k), up(back, k)], fill=(70, 200, 230, 255))
+    draw.line([up(left, k), up(front, k), up(right, k), up(back, k), up(left, k)], fill=(255, 255, 255, 255), width=3)
+    for x, y, w, h in doors or []:
         draw.rectangle([x, y, x + w, y + h], fill=(30, 80, 230, 255))
-    if stairs:
-        x, y, w, h = stairs
-        draw.rectangle([x, y, x + w, y + h], fill=(230, 30, 30, 255))
+    if k > 1:
+        draw.polygon(stairs_opening(exterior, k, storeys), fill=(240, 200, 30, 255))
+    if k < storeys:
+        draw.polygon(stairs_ramp(exterior, k, storeys), fill=(230, 30, 30, 255))
     return picture
+
+
+def centred(picture: Image.Image) -> tuple[Image.Image, tuple[int, int]]:
+    """`picture` (RGBA) with what's drawn in it moved to its middle, and how far it moved (dx, dy): a room's blockout is
+    painted centred, the room moved back by (-dx, -dy) to lie where it stands on the exterior."""
+    box = picture.getbbox()
+    if box is None:
+        return picture, (0, 0)
+    dx = round(picture.width / 2 - (box[0] + box[2]) / 2)
+    dy = round(picture.height / 2 - (box[1] + box[3]) / 2)
+    out = Image.new("RGBA", picture.size, (0, 0, 0, 0))
+    out.paste(picture, (dx, dy), picture)
+    return out, (dx, dy)
 
 
 def count_storeys(vision, exterior: Image.Image) -> int:
@@ -1155,29 +1118,6 @@ def footing(picture: Image.Image) -> tuple[int, int, int, int, float]:
     return walk(-1), walk(1), front, fy, slope
 
 
-def fit_floor(inside: Image.Image, exterior: Image.Image) -> tuple[Image.Image, float, float]:
-    """`inside` laid on the building's footprint: its wall corners on the exterior's, its front corner on its front
-    corner, brought to its angle when painted from higher up (a vertical scale). Only what's outside the footprint's
-    columns or below its base goes (the outline isn't a cut: back walls and stairs stand above the roofline's dip).
-    Returns it, the width scale and the angle's (1: as painted)."""
-    import numpy as np
-    eL, eR, eF, eY, eS = footing(exterior)
-    iL, iR, iF, iY, iS = footing(inside)
-    sx = (eR - eL) / max(1, iR - iL)
-    angle = eS / max(0.05, iS)
-    sy = sx * angle
-    big = inside.resize((max(1, round(inside.width * sx)), max(1, round(inside.height * sy))), Image.LANCZOS)
-    out = Image.new("RGBA", exterior.size, (0, 0, 0, 0))
-    out.paste(big, (round(eF - iF * sx), round(eY - iY * sy)), big)
-    px = np.array(out)
-    for x in range(px.shape[1]):
-        if x < eL or x > eR:
-            px[:, x, 3] = 0
-        else:
-            px[int(min(px.shape[0], eY - abs(eF - x) * eS + 3)):, x, 3] = 0
-    return Image.fromarray(px), sx, angle
-
-
 def _on_canvas(picture: Image.Image, side: int = 1024) -> tuple[Image.Image, int, int, Image.Image]:
     """`picture` (RGBA) on a magenta canvas `side` square, in its middle, as large as fits in about four fifths of it:
     the canvas, where it lies, and the picture as placed."""
@@ -1189,17 +1129,58 @@ def _on_canvas(picture: Image.Image, side: int = 1024) -> tuple[Image.Image, int
     return canvas, ox, oy, shown
 
 
-def cutaway(painter, exterior: Image.Image, purpose: str, style: str, seed: int, prompt: str | None = None, clip: bool = True,
-            below: Image.Image | None = None) -> Image.Image | None:
-    """`exterior` (RGBA, transparent round the building) edited on a magenta canvas where it stands as it is, then cut
-    back to exactly its size, its background cleared (and, `clip`, all outside the building's outline). `below`: the floor
-    under this one (in the exterior's frame), a second image placed the same way. None when the edit fails."""
+_REFERENCE = ("Image 2 is the building from outside: ONLY its design reference: its walls' materials, timber framing, windows and "
+              "colours (this floor's back walls look like its walls). Do not paint the building of image 2 or anything else of it.\n"
+              "Only this floor's room: nothing round it, no ground, no shadow, no people, no text. No green, red, yellow, blue or "
+              "white shape left in the picture. Keep the magenta empty.")
+
+
+def room_prompt(k: int, n: int, purpose: str, style: str = "", doors: bool = False) -> str:
+    """Floor k of n painted as its room alone from its blockout (image 1, `room_blockout`), the exterior its design
+    reference (image 2) (docs/places/interiors.md §2): the green box its storey, the cyan its floor to fill with its rooms,
+    the red ramp its stairs up (odd floors against the back-left wall rising left to right, even ones the back-right wall
+    rising right to left), the yellow box a flat rug in the upper corner flush with the wall (where the stairs from below
+    come up: the hole is cut there when it's laid on the exterior), the blue boxes the ground floor's doors."""
+    use = _FLOOR_USE["ground" if k == 1 else "top" if k == n else "middle"]
+    lines = ["Game asset. Isometric view. Flat magenta background (#FF00FF).",
+             "Image 1 is a blockout of one floor of a building, as a game shows a room the player walks in, cut away from above. "
+             "Paint exactly what it shows, at exactly its place, size and angle in the picture:",
+             "- the GREEN box is this floor's storey: its floor at the bottom of the box (the white outline), its two BACK walls up to "
+             "the top of the box, one storey high, with windows; its two FRONT walls gone, the floor's front edges open; no ceiling, no "
+             "roof, nothing above the box, nothing below the floor but its thin edge;",
+             f"- the CYAN area is this floor: fill it with its rooms and furniture - this area holds {use}, {purpose}; its rooms with "
+             "low inner partitions only, the floor fully visible, lit warmly;"]
+    if k == 1 and doors:
+        lines.append("- each BLUE box is one of its doors, in its front walls: this floor's entrance is there, a gap in a low front "
+                     "sill with a threshold and a doormat inside;")
+    if k < n:
+        wall = ("against the back-LEFT wall, rising from LEFT to RIGHT" if k % 2 == 1 else
+                "against the back-RIGHT wall, rising from RIGHT to LEFT")
+        lines.append(f"- the RED ramp is this floor's staircase going UP to the next floor: a straight wooden staircase exactly there, "
+                     f"{wall}, its top at the upper corner;")
+    if k > 1:
+        side = "back-LEFT" if (k - 1) % 2 == 1 else "back-RIGHT"
+        lines.append(f"- the YELLOW box is a large flat woven rug lying on the floor boards, exactly filling it: it's in the upper corner "
+                     f"of the room (the top of the picture), right next to the {side} wall, touching it along its length, nothing "
+                     "between the rug and the wall; flat on the floor; nothing stands on it, nothing tall there; the rug reaches right "
+                     "into the upper corner next to the walls: its corner is the room's corner; no bed or furniture in the upper corner;")
+    lines += ["- no other stairs;"] + ([style] if style else []) + ["", _REFERENCE]
+    return "\n".join(lines)
+
+
+def paint_room(painter, exterior: Image.Image, k: int, storeys: int, purpose: str, style: str, seed: int,
+               doors: list[list[int]] | None = None) -> Image.Image | None:
+    """Floor k's room alone (docs/places/interiors.md §2): its blockout centred on a magenta canvas (image 1), the exterior
+    beside it (image 2, a design reference), painted, the room moved back to where it stands in the exterior's frame, the
+    magenta cleared. None when the painting fails."""
+    blockout, (dx, dy) = centred(room_blockout(exterior, k, storeys, doors if k == 1 else None))
     side = 1024
-    canvas, ox, oy, shown = _on_canvas(exterior, side)
-    references = [_png(_on_canvas(below.resize(exterior.size, Image.LANCZOS) if below.size != exterior.size else below, side)[0])] if below is not None else []
+    canvas, ox, oy, shown = _on_canvas(blockout, side)
+    reference = _on_canvas(exterior, side)[0]
     try:
-        png = painter.repaint(_png(canvas), prompt or floor_prompt(1, 1, purpose, style), references=references, seed=seed, width=side, height=side)
-    except Exception:  # noqa: BLE001 - the building stays closed this run; asked again next run
+        png = painter.repaint(_png(canvas), room_prompt(k, storeys, purpose, style, bool(doors) and k == 1),
+                              references=[_png(reference)], seed=seed, width=side, height=side)
+    except Exception:  # noqa: BLE001 - this floor stays unpainted this run
         return None
     painted = Image.open(io.BytesIO(png)).convert("RGB")
     if painted.size != (side, side):
@@ -1208,89 +1189,89 @@ def cutaway(painter, exterior: Image.Image, purpose: str, style: str, seed: int,
     if part.size != exterior.size:
         part = part.resize(exterior.size, Image.LANCZOS)
     back = _background(part)
-    inside = part.convert("RGBA")
-    px, ex = inside.load(), exterior.load()
-    for y in range(inside.height):
-        for x in range(inside.width):
-            if back[y][x] or (clip and ex[x, y][3] < 128):
+    room = part.convert("RGBA")
+    px = room.load()
+    for y in range(room.height):
+        for x in range(room.width):
+            if back[y][x]:
                 px[x, y] = (0, 0, 0, 0)
-    return inside
+    placed = Image.new("RGBA", room.size, (0, 0, 0, 0))
+    placed.paste(room, (-dx, -dy), room)
+    return placed
+
+
+def stairs_hole(exterior: Image.Image, k: int, storeys: int) -> Image.Image:
+    """Where floor k's floor is cut open so the floor below's staircase shows (a mask in the exterior's frame): half the
+    yellow box both ways, from its corner at the upper corner; floor k's own stairs up kept over it."""
+    import numpy as np
+    from PIL import ImageDraw
+    opening = stairs_opening(exterior, k, storeys)
+    corner = np.array(opening[0])
+    half = [tuple((corner + (np.array(q) - corner) * 0.5).tolist()) for q in opening]
+    mask = Image.new("L", exterior.size, 0)
+    draw = ImageDraw.Draw(mask)
+    draw.polygon(half, fill=255)
+    if k < storeys:
+        draw.polygon(stairs_ramp(exterior, k, storeys), fill=0)
+    return mask
+
+
+def lay_floor(exterior: Image.Image, rooms: dict, k: int, storeys: int) -> Image.Image:
+    """Floor k's picture (docs/places/interiors.md §2): the exterior's own storeys below it (cut at its front edge on its
+    level), the floor below's room seen (a little darker) through the hole where its staircase comes up, and its room on
+    top with that hole cut. The ground floor: its room alone."""
+    import numpy as np
+    from PIL import ImageEnhance
+    left, right, front, back, storey = _floor_frame(exterior, storeys)
+    w, h = exterior.size
+    if k == 1:
+        out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        out.alpha_composite(rooms[1])
+        return out
+    xs = np.arange(w)
+    edge = np.where(xs <= front[0], left[1] + (front[1] - left[1]) * (xs - left[0]) / max(1.0, front[0] - left[0]),
+                    front[1] + (right[1] - front[1]) * (xs - front[0]) / max(1.0, right[0] - front[0])) - (k - 1) * storey
+    below = np.array(exterior.convert("RGBA")).copy()
+    below[np.arange(h)[:, None] < edge[None, :]] = 0
+    out = Image.fromarray(below)
+    hole = stairs_hole(exterior, k, storeys)
+    if rooms.get(k - 1) is not None:
+        seen = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        seen.paste(ImageEnhance.Brightness(rooms[k - 1]).enhance(0.7), (0, 0), hole)
+        out.alpha_composite(seen)
+    room = np.array(rooms[k]).copy()
+    room[np.array(hole) > 0, 3] = 0
+    out.alpha_composite(Image.fromarray(room))
+    return out
 
 
 def make_floors(painter, exterior: Image.Image, purpose: str, style: str, seed: int, storeys: int, report=None,
                 vision=None) -> list[Image.Image | None]:
-    """A building's interiors, one a floor (docs/places/interiors.md §2): floor k is the building cut open above it, its
-    front walls gone, the floors below closed, each laid on its footprint (`fit_floor`). A floor painted far off (its
-    angle or its size: a model paints a ground floor from higher up, or smaller) is painted once more, then fitted."""
-    import numpy as np
-    # Its footing read wrong (narrower than half its solid width: stilts, a deck, a yard round it): every floor as painted.
-    eL, eR = footing(exterior)[:2]
-    solid = np.nonzero((np.array(exterior.convert("RGBA"))[:, :, 3] >= 230).any(axis=0))[0]
-    trusted = solid.size > 0 and (eR - eL) >= 0.5 * (solid.max() - solid.min())
-
-    def one(k: int, below: Image.Image | None) -> Image.Image | None:
-        best = None
-        for attempt in range(2):
-            raw = cutaway(painter, exterior, purpose, style, seed + 977 + 31 * k + 101 * attempt,
-                          prompt=floor_prompt(k, storeys, purpose, style, below=below is not None), clip=False, below=below)
-            if raw is None:
-                continue
-            fitted, sx, angle = fit_floor(raw, exterior)
-            far = abs(sx - 1) + abs(angle - 1)
-            if best is None or far < best[1]:
-                best = (fitted, far, raw)
-            if 0.75 <= sx <= 1.35 and angle >= 0.65:
-                break
-        if best is None:
-            return None
-        if trusted and best[1] <= 0.7:
-            return best[0]
-        # Its footing misread (a fit that far off is wrong, not the picture): as painted, in the exterior's frame, nothing
-        # past its outline.
-        raw, ex = best[2], exterior.convert("RGBA")
-        px, ep = raw.load(), ex.load()
-        for y in range(raw.height):
-            for x in range(raw.width):
-                if ep[x, y][3] < 128:
-                    px[x, y] = (0, 0, 0, 0)
-        return raw
-    # With a vision model, one after another, each from a blockout (the building's outline grey): the ground floor's
-    # doors (found on the exterior) blue and its stairs up red (from its footprint: `stairs_area`), so its entrance and
-    # its stairs are there; each floor above, a red band where the floor below's staircase (found on it) arrives, so its
-    # stairs come up there; its rooms its own. Without one, each on its own in parallel, their stairs by the back walls
-    # the prompt puts them against.
-    made: list[Image.Image | None] = [None] * storeys
+    """A building's interiors, one a floor (docs/places/interiors.md §2): each floor's room painted by itself from its
+    blockout (`paint_room`: its storey, its stairs up, the flat rug where the stairs from below come up, the ground floor's
+    doors found on the exterior by the vision model), the floors at once; then each laid on the exterior's own storeys
+    below it with a hole showing the floor below's stairs (`lay_floor`). Each in the exterior's frame, its size."""
+    doors: list[list[int]] = []
     if vision is not None:
-        from .vision import locate_doors, locate_stairs
-        for k in range(1, storeys + 1):
-            if report:
-                report(k - 1, storeys, f"Floor {k} of {storeys}" + (" (its stairs where the floor below's come up)" if k > 1 else " (the ground floor: its doors and stairs)"))
-            below = None
-            if k == 1:
-                doors = locate_doors(vision, exterior)
-                if doors:
-                    below = doors_blockout(exterior, doors, stairs_area(exterior, storeys, 1) if storeys > 1 else None)
-            elif made[k - 2] is not None:
-                box = None
-                for _ in range(3):  # the vision model misses a staircase now and then
-                    box = locate_stairs(vision, made[k - 2])
-                    if box:
-                        break
-                if box:
-                    below = stairs_blockout(made[k - 2], box, exterior)
-            made[k - 1] = one(k, below)
-        if report:
-            report(storeys, storeys, "Floors painted")
-        return made
+        from .vision import locate_doors
+        doors = locate_doors(vision, exterior)
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    rooms: dict = {}
     if report:
         report(0, storeys, f"Painting {storeys} floor{'s' if storeys > 1 else ''}")
     with ThreadPoolExecutor(min(4, storeys)) as pool:
-        jobs = {pool.submit(one, k, None): k for k in range(1, storeys + 1)}
+        jobs = {pool.submit(paint_room, painter, exterior, k, storeys, purpose, style, seed + 977 + 31 * k, doors): k
+                for k in range(1, storeys + 1)}
         for finished, job in enumerate(as_completed(jobs), 1):
-            made[jobs[job] - 1] = job.result()
+            rooms[jobs[job]] = job.result()
             if report:
                 report(finished, storeys, f"{finished} of {storeys} floors painted")
+    made: list[Image.Image | None] = []
+    for k in range(1, storeys + 1):
+        if rooms.get(k) is None:
+            made.append(None)
+            continue
+        made.append(lay_floor(exterior, rooms, k, storeys))
     return made
 
 

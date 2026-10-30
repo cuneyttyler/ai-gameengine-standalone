@@ -5429,7 +5429,8 @@ void EditorApp::PollAi() {
                     interiorFor_.erase(waiting);
                     AddInterior(prefab, entity, "cutaway");
                 }
-                // Redesigned: its old stairs don't fit the new pictures; found again on them.
+                // Redesigned: its old stairs don't fit the new pictures; the new ones are where they're painted (the default
+                // cells, Interiors.cpp StairsCells), so none are listed.
                 if (auto redone = interiorRedesign_.find(path); redone != interiorRedesign_.end()) {
                     const Entity e = redone->second;
                     interiorRedesign_.erase(redone);
@@ -5441,7 +5442,6 @@ void EditorApp::PollAi() {
                         if (auto* interior = registry_.try_get<Interior>(e)) {
                             interior->texture = inside, interior->floors = upper, interior->stairs.clear();
                             ApplyInteriors(registry_);
-                            if (InteriorFloors(*interior) > 1) HandleInteriorMessage("interior:findStairs", {{"id", static_cast<uint32_t>(e)}});
                         }
                         assetVersions_[inside]++;
                         for (const auto& f : result->body.value("floors", nlohmann::json::array())) {

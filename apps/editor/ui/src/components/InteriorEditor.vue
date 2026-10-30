@@ -57,13 +57,13 @@ function setStairs(change: number, cell: string): void {
   while (next.length && !next[next.length - 1]) next.pop()
   emit('set', 'stairs', next.join(';'))
 }
-// Its floors painted again from its exterior (as many as it has now): a new design, its stairs found again on it.
+// Its floors painted again from its exterior (as many as it has now): a new design, its stairs where they're painted.
 async function redesign(): Promise<void> {
   const id = props.id
   if (id === undefined) return
   const ok = await confirmDialog({
     title: 'Redesign interiors',
-    message: `Paint its ${floorCount.value} floor(s) again from its exterior, one after another so the stairs meet? Its pictures are replaced (every copy of its prefab) and its stairs found again.`,
+    message: `Paint its ${floorCount.value} floor(s) again from its exterior? Its pictures are replaced (every copy of its prefab), its stairs where they're painted.`,
     confirmLabel: 'Redesign',
   })
   if (!ok) return
@@ -103,7 +103,7 @@ function removeEntry(index: number): void {
     <button v-if="id !== undefined && ground" :disabled="disabled" title="Its exterior and each floor's interior: draw its stairs and its ways in"
             @click="editorState.buildingEditor = id">Edit building…</button>
     <button v-if="id !== undefined && ground" :disabled="disabled || editorState.ai.state !== 'ready'"
-            title="Its floors painted again from its exterior (BFL, floor by floor, each on the one below so the stairs meet): a new design"
+            title="Its floors painted again from its exterior (BFL: each floor's room from a blockout, laid on the exterior): a new design"
             @click="redesign">Redesign interiors…</button>
     <!-- Its redesign: a bar while its floors are painted, then that it's done (or why not). -->
     <div v-if="redesign_" class="redesign" :class="redesign_.state">

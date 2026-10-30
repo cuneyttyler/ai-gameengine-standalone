@@ -9,6 +9,6 @@ export const redesigns = reactive<Record<number, { state: 'working' | 'done' | '
 onHostMessage((message) => {
   if (message.type !== 'interior:redesigned') return
   redesigns[Number(message.id)] = message.ok
-    ? { state: 'done', text: 'Done: its interiors are redesigned (its stairs are found again on the new floors).' }
+    ? { state: 'done', text: 'Done: its interiors are redesigned.' }
     : { state: 'failed', text: `They weren't redesigned: ${String(message.error ?? '')}` }
 })

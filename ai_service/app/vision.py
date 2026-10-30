@@ -305,41 +305,6 @@ def find_stairs(provider: Provider, root: Path, floors: list[str]) -> dict:
         return {"ok": True, "stairs": list(pool.map(one, floors))}
 
 
-LOCATE_STAIRS = """The picture is one floor of a building in a 2D isometric game, cut away to show its rooms from above. Find its
-staircase going UP to the floor above (straight flights of steps against a wall, or a ladder). Give the smallest box
-round all of its steps, in pixels of the picture as you see it ({w} wide, {h} high; x from the left edge, y from the top
-edge). Answer as JSON exactly: {{"left": <x>, "top": <y>, "right": <x>, "bottom": <y>}}, or {{"none": true}} when there is
-no staircase going up."""
-
-
-def locate_stairs(provider: Provider, picture: Image.Image) -> list[int] | None:
-    """The box round a floor picture's staircase going up, [x, y, w, h] in its own pixels (docs/places/interiors.md §2:
-    the floor above is painted with it marked); None when there's none or it can't be read."""
-    shown = picture.convert("RGBA")
-    k = min(1.0, 1024 / max(shown.width, shown.height))
-    if k < 1:
-        shown = shown.resize((round(shown.width * k), round(shown.height * k)), Image.LANCZOS)
-    flat = Image.new("RGB", shown.size, (255, 255, 255))
-    flat.paste(shown, (0, 0), shown)
-    buffer = io.BytesIO()
-    flat.save(buffer, "PNG")
-    url = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
-    content = [{"type": "text", "text": LOCATE_STAIRS.format(w=shown.width, h=shown.height)}, {"type": "image_url", "image_url": url}]
-    try:
-        text = provider.complete([{"role": "user", "content": content}]).text
-        answer = json.loads(text[text.index("{"): text.rindex("}") + 1])
-        if "box_2d" in answer:
-            # Mistral's grounding answer, whatever it's asked: [x0, y0, x1, y1] in thousandths of the picture.
-            x0, y0, x1, y1 = (float(v) / 1000 * size for v, size in zip(answer["box_2d"], (shown.width, shown.height) * 2))
-        else:
-            x0, y0, x1, y1 = (float(answer[key]) for key in ("left", "top", "right", "bottom"))
-    except (ProviderError, json.JSONDecodeError, ValueError, AttributeError, KeyError, TypeError):
-        return None
-    if x1 - x0 < 2 or y1 - y0 < 2:
-        return None
-    return [round(x0 / k), round(y0 / k), round((x1 - x0) / k), round((y1 - y0) / k)]
-
-
 LOCATE_DOORS = """The picture is a building in a 2D isometric game, seen from outside. Find each of its doors one walks in by (on
 the ground floor's walls; not windows, not shutters). Give the smallest box round each as [x0, y0, x1, y1] in thousandths
 of the picture (0-1000; x from the left edge, y from the top edge). Answer as JSON exactly:

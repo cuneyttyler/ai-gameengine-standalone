@@ -66,6 +66,15 @@ class BflPainter:
         """The image repainted as the prompt says, its composition kept; PNG bytes."""
         return self._run(self.body(image_png, prompt, **options))
 
+    def fill(self, image_png: bytes, mask_png: bytes, prompt: str, seed: int | None = None) -> bytes:
+        """The image with only its masked part (white in `mask_png`, the same size) painted again as the prompt says
+        (FLUX.1 Fill: model flux-pro-1.0-fill); PNG bytes."""
+        body: dict = {"image": _b64(image_png), "mask": _b64(mask_png), "prompt": prompt, "output_format": "png",
+                      "safety_tolerance": 2}
+        if seed is not None:
+            body["seed"] = seed
+        return self._run(body)
+
     def create(self, prompt: str, width: int = 1024, height: int = 1024, seed: int | None = None) -> bytes:
         """An image from words alone; PNG bytes."""
         body: dict = {"prompt": prompt, "width": width // 16 * 16, "height": height // 16 * 16, "safety_tolerance": 2}

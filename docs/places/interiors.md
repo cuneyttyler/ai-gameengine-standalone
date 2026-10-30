@@ -71,34 +71,29 @@ For each building:
 
 1. **Its storeys** (`count_storeys`): the vision model is shown the exterior and says how many floors one walks on
    (1-4; an attic counts only with windows or dormers of its own). One without a vision model.
-2. **One interior a floor** (`floor_prompt(k, n)`): floor k is the same building cut open to show that floor from
-   above: everything above it gone (the storeys above, the roof, gables, beams), that floor's two camera-facing walls
-   gone *entirely* (windows, doors, timbers) down to the floor, its back walls one storey high, the floors below closed
-   (as seen outside: the base it stands on), its rooms and furniture, a staircase in a back corner when there's more
-   than one floor. Each is an edit of the exterior on a 1024 magenta canvas (`cutaway`, background cleared, no clip).
-   Floor 1 is told it's the *ground* floor: its floor at ground level, its front walls cut down to a low sill at the
-   base (a model otherwise paints it raised a storey, walls under it). Each floor holds its own rooms (the ground floor
-   the hearth or kitchen and the work, the floors above bedrooms, the top one bedrooms or storage), and the top floor
-   nothing going up. With a vision model the floors are painted one after another, each with a **blockout** as a second
-   image (the building's outline in flat grey, placed as the exterior is):
-   - the ground floor (`doors_blockout`): each door, found on the exterior (`vision.locate_doors`), a blue box (its
-     entrance there), and its stairs up a red box along the back-right wall from the back corner (`stairs_area`, from
-     its footprint; where `Interiors.cpp StairsCell` puts their cell);
-   - each floor above (`stairs_blockout`): the floor below's staircase found on it (`vision.locate_stairs`, asked up to
-     three times), a red band along the top of its box: "the RED band is where the stairs from the floor below arrive
-     on this floor": an opening with a railing, the top steps going down.
-   Without a vision model, each floor on its own: its stairs along a back wall (changes 1, 3… the back-right, 2, 4… the
-   back-left). Showing the floor below's picture itself was tried: the model copied its rooms; saying which way the
-   stairs rise was tried: it did worse. Mistral answers boxes in thousandths of the picture ([x0, y0, x1, y1]), so
-   that's what it's asked for.
-3. **Laid on the footprint** (`footing`, `fit_floor`): where a building stands is read from each picture: the lowest
-   opaque pixel of each column makes a V falling to the front corner; the wall corners are where it stops following
-   its slope (eaves, the gap past the wall; a bush or a step below the line is passed). The floor is scaled so its
-   wall corners land on the exterior's, its front corner on its front corner, and brought to the exterior's angle (a
-   vertical scale) when painted from higher up. Only what's outside the footprint's columns or below its base is
-   cleared: back walls and stairs keep their height (clipping to the exterior's outline cut them).
-4. **Once more when far off**: a floor whose fit needs more than ±25-35% or whose angle is far steeper is painted
-   again with another seed; the closer of the two is kept.
+2. **Each floor's room painted by itself** (`paint_room`, `room_prompt`): from a **blockout** of that room alone
+   (`room_blockout`, centred on a 1024 magenta canvas, then moved back), the exterior beside it as a design reference
+   (image 2: its walls' materials, framing, windows, colours), the floors at once. The blockout, in the exterior's frame:
+   - the floor's storey a GREEN box from its level to the next (a storey: what stands above the footprint's back corner,
+     seventeen twentieths of it walls, shared by the storeys: `_floor_frame`); its floor CYAN ("fill it with its rooms
+     and furniture": the ground floor its main rooms, the floors above bedrooms, the top one bedrooms or storage);
+   - its stairs up a RED ramp from its level to the next, at the far end: odd floors against the back-left wall rising
+     left to right, even floors against the back-right wall rising right to left, each top at the upper corner
+     (`stairs_ramp`; not on the top floor);
+   - where the floor below's stairs come up a flat YELLOW box against that floor's wall at the upper corner, a third of
+     the room deep (`stairs_opening`): "a large flat woven rug … right next to the wall, nothing between the rug and the
+     wall … no bed or furniture in the upper corner" (asked to stay empty, the model filled it; a rug it leaves be);
+   - on the ground floor each door, found on the exterior by the vision model (`vision.locate_doors`; Mistral answers
+     boxes in thousandths of the picture), a BLUE box: its entrance there.
+3. **Laid on the exterior** (`lay_floor`): floor k's picture is the exterior's own storeys below it (cut at its front
+   edge on its level), the floor below's room seen a little darker through a hole where its staircase comes up (half
+   the yellow box both ways from the upper corner, its own stairs up kept over it: `stairs_hole`), its room on top. So
+   each floor stands exactly as high as the exterior says, and the stairs from below are that floor's real stairs. The
+   ground floor is its room alone.
+4. Tried and dropped: painting the whole building cut open (the model painted the wrong number of storeys below, split
+   floors in two levels, copied the floor below when shown it); the stairs from below drawn as a ramp or a box (it drew
+   stairs going up, or put the opening mid-floor); a masked BFL fill to clear the area (it painted a bed back);
+   FLUX.2 klein (copied the blockout's colours, lost the style).
 5. Saved beside the exterior's piece: `pieces/<slug>-interior.png` (floor 1), `-interior-2.png`, `-interior-3.png`…,
    each exactly its size.
 
@@ -171,7 +166,7 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
   `floor=`. Built places, Add interior and the editor's repair on opening a scene (`RepairInteriorArt`: pictures made
   again are picked up from the pairing) fill them in.
 - **Play:** in through the door shows floor 1. Each floor change has its **stairs** cell (`stairs`, "x,y;x,y": floor 1
-  to 2, 2 to 3…; missing ones: along a back wall by the back corner, the back-right wall for changes 1, 3…, the back-left for 2, 4… — where the interior pictures draw each
+  to 2, 2 to 3…; missing ones: from the back corner three fifths along the back-left wall for changes 1, 3…, the back-right for 2, 4… (the corner left out) — where the interior pictures draw each
   staircase). Walked onto from the floor below it goes up, from the floor above down (stepping off before it goes
   again); out of the building, the exterior, and floor 1 next time. Right-click inside a building showing a floor ▸
   **Stairs here** sets that floor's stairs to the cell under the cursor (Assembled and Paint alike).
@@ -182,7 +177,7 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
   above the ground floor). The building the player is in shows the player's floor.
 - **Editor:** H steps through exterior, floor 1, floor 2… and back; the right-click menu has **Show floor k**.
 - **Redesign interiors…** (Inspector ▸ Building Plan): its floors painted again from its exterior, as many as it has
-  now, with a new seed; its prefab (or itself) takes them and its stairs are found again on the new pictures.
+  now, with a new seed; its prefab (or itself) takes them, its stairs listed none (the defaults are where they are painted).
 
 ## 5. In the editor
 

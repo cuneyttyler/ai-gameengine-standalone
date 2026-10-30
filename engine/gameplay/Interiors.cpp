@@ -227,13 +227,21 @@ std::vector<std::pair<int, int>> StairsCells(const Interior& interior, int chang
             if (std::sscanf(cell.c_str(), "%d,%d", &x, &y) == 2) cells.push_back({x, y});
         }
     }
-    if (cells.empty()) cells.push_back(StairsCell(interior, change, x0, y0, x1, y1));
+    if (!cells.empty()) return cells;
+    // None listed: where the interior pictures draw it (matched.py stairs_ramp), from the back corner three fifths of the
+    // way along the back-left wall (column x0) for floor changes 1, 3…, the back-right (row y0) for 2, 4…; the corner
+    // itself left out, so a floor's way up and its way down never share a cell.
+    const bool odd = std::max(change, 1) % 2 == 1;
+    const int length = odd ? y1 - y0 : x1 - x0;
+    const int run = std::max(1, static_cast<int>(std::lround(length * 0.6)));
+    for (int i = 1; i <= std::min(run, length); ++i) cells.push_back(odd ? std::make_pair(x0, y0 + i) : std::make_pair(x0 + i, y0));
+    if (cells.empty()) cells.push_back({x0, y0}); // a footprint one cell deep
     return cells;
 }
 
 std::pair<int, int> StairsCell(const Interior& interior, int change, int x0, int y0, int x1, int y1) {
     // The listed cell of floor change `change` (1: floor 1 to 2), else where the interior pictures draw it: along a back
-    // wall by the back (top) corner, the back-right wall (row y0) for changes 1, 3…, the back-left (column x0) for 2, 4…
+    // wall by the back (top) corner, the back-left wall (column x0) for changes 1, 3…, the back-right (row y0) for 2, 4…
     std::vector<std::pair<int, int>> listed;
     std::stringstream in(interior.stairs);
     std::string part;
@@ -242,8 +250,8 @@ std::pair<int, int> StairsCell(const Interior& interior, int change, int x0, int
         if (std::sscanf(part.c_str(), "%d,%d", &x, &y) == 2) listed.push_back({x, y});
     }
     if (change >= 1 && change <= static_cast<int>(listed.size())) return listed[static_cast<size_t>(change - 1)];
-    if (std::max(change, 1) % 2 == 1) return {std::min(x0 + 1, x1), y0}; // the back-right wall, by the back corner
-    return {x0, std::min(y0 + 1, y1)};                                     // the back-left wall
+    if (std::max(change, 1) % 2 == 1) return {x0, std::min(y0 + 1, y1)}; // the back-left wall, by the back corner
+    return {std::min(x0 + 1, x1), y0};                                     // the back-right wall
 }
 
 int InteriorFloors(const Interior& interior) {
