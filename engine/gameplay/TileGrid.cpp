@@ -250,12 +250,18 @@ void TileGrid::AddRoom(Registry& registry, Entity entity, const Interior& interi
         auto& gaps = open[side];
         std::sort(gaps.begin(), gaps.end());
         float from = 0.0f;
+        // In short pieces (a quarter cell long), so a wall not quite along the grid's axes stays thin along its line.
         auto wall = [&](float t0, float t1) {
             if (t1 - t0 < 1e-3f) return;
-            const float x0 = ax + vx * t0, y0 = ay + vy * t0, x1 = ax + vx * t1, y1 = ay + vy * t1;
+            const float length = std::hypot(vx, vy) * (t1 - t0);
+            const int pieces = std::max(1, static_cast<int>(std::ceil(length / 0.25f)));
             const float ox = nx * kThick, oy = ny * kThick;
-            AddBox(std::min({x0, x1, x0 + ox, x1 + ox}), std::min({y0, y1, y0 + oy, y1 + oy}),
-                   std::max({x0, x1, x0 + ox, x1 + ox}), std::max({y0, y1, y0 + oy, y1 + oy}));
+            for (int p = 0; p < pieces; ++p) {
+                const float a = t0 + (t1 - t0) * p / pieces, b = t0 + (t1 - t0) * (p + 1) / pieces;
+                const float x0 = ax + vx * a, y0 = ay + vy * a, x1 = ax + vx * b, y1 = ay + vy * b;
+                AddBox(std::min({x0, x1, x0 + ox, x1 + ox}), std::min({y0, y1, y0 + oy, y1 + oy}),
+                       std::max({x0, x1, x0 + ox, x1 + ox}), std::max({y0, y1, y0 + oy, y1 + oy}));
+            }
         };
         for (const auto& [lo, hi] : gaps) {
             wall(from, std::clamp(lo, 0.0f, 1.0f));

@@ -163,8 +163,8 @@ stairs stay along the walls they're painted on). Then, instead of its footprint'
   it is (`PartOpen::feet`); a shut door closes a drawn way in it. Inside, all walkable; its solid things as before.
 - **Stairs** (`UpdateInteriors`): where its room's are (odd floors' along its picture's back-left wall, even floors'
   its back-right, `along` of the wall from the back corner, `deep` of the other wall deep, half a cell's leeway at their
-  side), a step a room cell: climbed from the foot, the floor above on the top step; down from the top, the floor below
-  a step down. The building editor's floor tabs show them in blue.
+  side), a step a room cell: climbed from the foot, the floor above on the top step; from the floor above, stepping onto
+  their top (a scene cell of them) takes one down (just switched at a top, again only once off it). The building editor's floor tabs show them in blue.
 
 A building painted before has no layout: its footprint's cells, as below.
 

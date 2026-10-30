@@ -377,6 +377,15 @@ bool InteriorRoom(Registry& registry, Entity entity, const Interior& interior, c
     room.bx = back.first, room.by = back.second;
     room.exx = xEnd.first - back.first, room.exy = xEnd.second - back.second;
     room.eyx = yEnd.first - back.first, room.eyy = yEnd.second - back.second;
+    // Squared to the world's axes (a picture painted a little steeper than 2:1 makes them slightly skewed), each wall its
+    // length along the axis it mostly runs: walls along the grid, so one slides along them as along any other.
+    auto square = [](float& x, float& y) {
+        const float length = std::hypot(x, y);
+        if (std::abs(x) >= std::abs(y)) x = x < 0.0f ? -length : length, y = 0.0f;
+        else y = y < 0.0f ? -length : length, x = 0.0f;
+    };
+    square(room.exx, room.exy);
+    square(room.eyx, room.eyy);
     room.along = along, room.deep = deep;
     room.storey = storey * sprite->height / h;
     return std::hypot(room.exx, room.exy) > 0.1f && std::hypot(room.eyx, room.eyy) > 0.1f;
@@ -432,11 +441,11 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player, const Iso
         const Building* b = buildingAt(world.x, world.y);
         auto* on = registry.try_get<OnFloor>(mover);
         if (b == nullptr) {
-            if (on) on->building = entt::null, on->floor = 1, on->onStairs = false, on->climbing = false, on->atTop = false;
+            if (on) on->building = entt::null, on->floor = 1, on->onStairs = false, on->climbing = false, on->justSwitched = false;
             continue;
         }
         if (on == nullptr) on = &registry.emplace<OnFloor>(mover);
-        if (on->building != b->entity) on->building = b->entity, on->floor = 1, on->onStairs = false, on->climbing = false, on->atTop = false;
+        if (on->building != b->entity) on->building = b->entity, on->floor = 1, on->onStairs = false, on->climbing = false, on->justSwitched = false;
         bool onStairs = false;
         on->climb = 0.0f;
         if (b->floors > 1) {
@@ -446,6 +455,7 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player, const Iso
             struct OnFlight {
                 bool on = false;
                 float down = 0.0f, step = 1.0f;
+                float top = 1.0f; // its top: a scene cell along it (from the floor above, stepping on it takes one down)
                 bool single = false;
             };
             auto flight = [&](int change) {
@@ -477,6 +487,7 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player, const Iso
                         f.single = length <= 2.0f;
                         f.down = std::clamp(at / std::max(1.0f, length), 0.0f, 1.0f);
                         f.step = std::min(1.0f, 2.0f / std::max(1.0f, length));
+                        f.top = std::min(1.0f, 4.0f / std::max(1.0f, length)); // four room cells: a scene cell
                         return f;
                     }
                     const bool leftWall = change % 2 == 1; // odd floors' stairs along the back-left wall
@@ -490,6 +501,7 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player, const Iso
                     f.down = std::clamp(along * wallLength / std::max(0.5f, run), 0.0f, 1.0f);
                     // A step half a scene cell (getting on, the top, a step down): one can't stand nearer a wall than that.
                     f.step = std::min(1.0f, 0.5f / std::max(0.5f, run));
+                    f.top = std::min(1.0f, 1.0f / std::max(1.0f, run));
                     return f;
                 }
                 auto cells = StairsCells(interior, change, b->x0, b->y0, b->x1, b->y1);
@@ -501,31 +513,43 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player, const Iso
                 f.on = it != cells.end();
                 f.single = cells.size() == 1;
                 f.step = 1.0f / std::max<size_t>(1, cells.size());
+                f.top = f.step;
                 f.down = f.on ? (static_cast<float>(it - cells.begin()) + 0.5f) * f.step : 0.0f;
                 return f;
             };
             const OnFlight up = flight(on->floor), down = flight(on->floor - 1);
-            if (up.on && up.single) {
+            // Up: got on at the foot of its floor's stairs and climbed to their top. Down: onto the top of the stairs
+            // from the floor below (a scene cell of them), from this floor. Having just switched at a top, it switches
+            // again only once it has left it (so arriving at the top doesn't send it straight back). Where a floor's
+            // stairs up lie over the top of the stairs from below, down wins there.
+            bool wentDown = false;
+            if (down.on && down.single) {
                 onStairs = true;
-                if (!on->onStairs) ++on->floor;
-            } else if (down.on && down.single) {
-                onStairs = true;
-                if (!on->onStairs) --on->floor;
-            } else if (up.on) {
-                if (up.down > 1.0f - up.step) on->climbing = true; // got on at the foot
-                if (on->climbing && up.down < up.step) {
-                    ++on->floor; // climbed to the top: on the floor above, at the top of its stairs down
-                    on->climbing = false, on->atTop = true;
+                if (!on->onStairs) --on->floor, wentDown = true;
+            } else if (down.on && down.down < down.top) {
+                if (!on->justSwitched) {
+                    --on->floor; // onto the top from this floor: on the floor below, high on its stairs
+                    on->justSwitched = true, on->climbing = true, wentDown = true;
                 }
-            } else if (down.on) {
-                if (down.down < down.step) {
-                    on->atTop = true; // on the top, from this floor
-                } else if (on->atTop && down.down < 2.0f * down.step + 1e-3f) {
-                    --on->floor; // a step down from the top: on the floor below, on its stairs
-                    on->atTop = false, on->climbing = true;
+            }
+            if (!wentDown) {
+                if (up.on && up.single) {
+                    onStairs = true;
+                    if (!on->onStairs) ++on->floor;
+                } else if (up.on) {
+                    if (up.down > 1.0f - up.step) on->climbing = true; // got on at the foot
+                    if (on->climbing && up.down < up.step && !on->justSwitched) {
+                        ++on->floor; // climbed to the top: on the floor above, at the top of its stairs down
+                        on->climbing = false, on->justSwitched = true;
+                    }
                 }
-            } else {
-                on->climbing = false, on->atTop = false; // off the stairs
+            }
+            // Left the top it switched at: armed again; off the stairs: neither climbing.
+            {
+                const OnFlight upNow = flight(on->floor), downNow = flight(on->floor - 1);
+                const bool atAnyTop = (downNow.on && downNow.down < downNow.top) || (upNow.on && upNow.down < upNow.top);
+                if (!atAnyTop) on->justSwitched = false;
+                if (!upNow.on && !downNow.on) on->climbing = false;
             }
             // Climbing its floor's stairs: as high as it is up them.
             if (on->climbing) {

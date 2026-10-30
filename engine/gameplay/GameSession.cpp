@@ -146,7 +146,11 @@ void UpdatePlayerMove(Registry& registry, Entity player, float inputRight, float
             const float step = moveSpeed * strength * dt;
             const Vec2 along = blockedX ? Vec2{0.0f, velocity.y > 0.0f ? 1.0f : -1.0f} : Vec2{velocity.x > 0.0f ? 1.0f : -1.0f, 0.0f};
             resolved = ResolveAabbMovement({world.x, world.y}, {collider.halfWidth, collider.halfHeight}, {along.x * step, along.y * step}, solid);
-            if (std::abs(resolved.x - world.x) + std::abs(resolved.y - world.y) > 1e-6f) registry.emplace_or_replace<Facing>(player, along.x, along.y);
+            if (std::abs(resolved.x - world.x) + std::abs(resolved.y - world.y) > 1e-6f) {
+                // Walking its way (the animation's direction is the velocity's): facing it too.
+                velocity.x = along.x * moveSpeed * strength, velocity.y = along.y * moveSpeed * strength;
+                registry.emplace_or_replace<Facing>(player, along.x, along.y);
+            }
         }
     }
     world.x = resolved.x;
