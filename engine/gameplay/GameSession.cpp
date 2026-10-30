@@ -254,6 +254,19 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
             const float ny = std::clamp(at.y, cy - obstacle.back, cy + 1.0f);
             const float nearest = ProjectIso(nx, ny, iso).depth;
             screen.depth = nearest + 0.5f + (own < nearest ? 0.01f : -0.01f);
+            // Its interior showing (the player is inside): drawn behind everything in it, its painted room (from its
+            // layout, which may reach past its footprint) or its footprint; what stands behind the building still behind.
+            if (const auto* interior = registry.try_get<Interior>(entity); interior && interior->shown && interior->kind != "scene") {
+                float back = ProjectIso(cx - obstacle.left, cy - obstacle.back, iso).depth;
+                if (RoomFrame room; InteriorRoom(registry, entity, *interior, iso, room)) {
+                    const float us[4] = {0.0f, 1.0f, 0.0f, 1.0f}, vs[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+                    for (int c = 0; c < 4; ++c) {
+                        const float px = room.bx + room.exx * us[c] + room.eyx * vs[c], py = room.by + room.exy * us[c] + room.eyy * vs[c];
+                        back = std::min(back, ProjectIso(px, py, iso).depth);
+                    }
+                }
+                screen.depth = back - 0.5f;
+            }
         }
     }
 

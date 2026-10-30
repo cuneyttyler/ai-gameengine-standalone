@@ -467,8 +467,9 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player, const Iso
                         const auto it = std::find(drawn.begin(), drawn.end(), here);
                         f.on = it != drawn.end();
                         f.single = drawn.size() == 1;
-                        f.step = 1.0f / drawn.size();
-                        f.down = f.on ? (static_cast<float>(it - drawn.begin()) + 0.5f) * f.step : 0.0f;
+                        f.down = f.on ? (static_cast<float>(it - drawn.begin()) + 0.5f) / drawn.size() : 0.0f;
+                        // A step at least half a scene cell (a room cell is a quarter): one can't stand nearer a wall than that.
+                        f.step = std::min(1.0f, std::max(1.0f, 0.5f / 0.25f) / drawn.size());
                         return f;
                     }
                     const bool leftWall = change % 2 == 1; // odd floors' stairs along the back-left wall
@@ -480,7 +481,8 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player, const Iso
                     f.on = along >= -0.1f && along * wallLength <= run + 0.1f && across * acrossLength >= -0.25f &&
                            across * acrossLength <= r.deep * acrossLength + 0.5f;
                     f.down = std::clamp(along * wallLength / std::max(0.5f, run), 0.0f, 1.0f);
-                    f.step = std::min(1.0f, 0.25f / std::max(0.25f, run)); // a step a room cell (a quarter of a scene cell)
+                    // A step half a scene cell (getting on, the top, a step down): one can't stand nearer a wall than that.
+                    f.step = std::min(1.0f, 0.5f / std::max(0.5f, run));
                     return f;
                 }
                 auto cells = StairsCells(interior, change, b->x0, b->y0, b->x1, b->y1);
