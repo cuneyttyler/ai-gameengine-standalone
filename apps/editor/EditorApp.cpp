@@ -5415,7 +5415,8 @@ void EditorApp::PollAi() {
                 SetCatalogFields(assets_, inside, {{"exteriorOf", path}, {"name", field("name").empty() ? std::string() : field("name") + " interior"},
                                                    {"kind", field("kind")}, {"layer", field("layer")}, {"cells", field("cells")},
                                                    {"perspective", field("perspective")}, {"source", "generated"}});
-                SetCatalogFields(assets_, path, {{"interior", inside}, {"interiorFloors", upper}});
+                const std::string layout = result->body.value("layout", std::string()); // the floors' layout (their stairs)
+                SetCatalogFields(assets_, path, {{"interior", inside}, {"interiorFloors", upper}, {"interiorLayout", layout}});
                 int k = 1;
                 for (const auto& f : result->body.value("floors", nlohmann::json::array())) {
                     if (f.is_string() && f.get<std::string>() != inside) SetCatalogFields(assets_, f.get<std::string>(), {{"exteriorOf", path}, {"floor", std::to_string(++k)}});
@@ -5438,9 +5439,10 @@ void EditorApp::PollAi() {
                         if (const auto* link = registry_.try_get<PrefabInstance>(e); link && prefabs_.Find(link->path)) {
                             prefabs_.SetTemplateField(link->path, "Interior", "stairs", std::string());
                             prefabs_.SetTemplateField(link->path, "Interior", "floors", upper);
+                            prefabs_.SetTemplateField(link->path, "Interior", "layout", layout);
                         }
                         if (auto* interior = registry_.try_get<Interior>(e)) {
-                            interior->texture = inside, interior->floors = upper, interior->stairs.clear();
+                            interior->texture = inside, interior->floors = upper, interior->stairs.clear(), interior->layout = layout;
                             ApplyInteriors(registry_);
                         }
                         assetVersions_[inside]++;
@@ -5971,7 +5973,7 @@ void EditorApp::AddInterior(const std::string& prefab, std::optional<Entity> ent
     }
     auto& interior = registry->get_or_emplace<Interior>(target);
     interior.kind = kind;
-    if (kind == "cutaway") interior.texture = inside, interior.floors = field("interiorFloors");
+    if (kind == "cutaway") interior.texture = inside, interior.floors = field("interiorFloors"), interior.layout = field("interiorLayout");
     if (!prefab.empty()) {
         // Written out with them (the components just added to its loaded template come along), every copy following.
         if (const auto error = prefabs_.SetTemplateField(prefab, "Interior", "kind", kind)) {
@@ -6017,9 +6019,11 @@ int EditorApp::RepairInteriorArt() {
         if (outside == nullptr || !outside->analysis.contains("interior")) continue;
         const std::string ground = outside->analysis.at("interior");
         const std::string upper = outside->analysis.contains("interiorFloors") ? outside->analysis.at("interiorFloors") : std::string();
-        if (interior.texture == ground && interior.floors == upper) continue;
+        const std::string layout = outside->analysis.contains("interiorLayout") ? outside->analysis.at("interiorLayout") : std::string();
+        if (interior.texture == ground && interior.floors == upper && interior.layout == layout) continue;
         interior.texture = ground;
         interior.floors = upper;
+        interior.layout = layout;
         interior.floor = std::clamp(interior.floor, 1, InteriorFloors(interior));
         renderer_.InvalidateTexture(ground);
         ++fixed;
@@ -7117,6 +7121,69 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                {"projectOpens", ActiveSettings().game.doorsOpen}, {"plan", plan}, {"building", IsBuilding(e)},
                // Floor k drawn (k - 1) storeys up in its picture; each floor's solid things (quarter cells).
                {"storeyPx", plan ? InteriorStorey(registry_, e, *interior) * H / std::max(1.0f, sprite->height) : 0.0f},
+               // Painted from a layout: each floor's stairs where they're painted, in its picture (floor k's up from it,
+               // (k - 1) storeys up; odd floors' along its back-left wall, even floors' its back-right).
+               {"layoutStairs", [&] {
+                    nlohmann::json all = nlohmann::json::object();
+                    float bx, by, rx, ry, lx, ly, storey, pw, ph, along, deep;
+                    if (!plan || std::sscanf(interior->layout.c_str(), "%f,%f;%f,%f;%f,%f;%f;%f,%f;%f,%f", &bx, &by, &rx, &ry, &lx, &ly,
+                                             &storey, &pw, &ph, &along, &deep) != 11) {
+                        return all;
+                    }
+                    const float k2 = W / std::max(1.0f, pw); // its layout's pixels to these pictures'
+                    for (int k = 1; k < InteriorFloors(*interior); ++k) {
+                        const bool leftWall = k % 2 == 1;
+                        const float ax = (leftWall ? lx : rx) - bx, ay = (leftWall ? ly : ry) - by; // along the wall
+                        const float cx = (leftWall ? rx : lx) - bx, cy = (leftWall ? ry : ly) - by; // across
+                        const float lift = (k - 1) * storey;
+                        auto p = [&](float a, float c) {
+                            float x = bx + ax * a + cx * c, y = by + ay * a + cy * c - lift;
+                            if (mirrored) x = pw - x;
+                            return nlohmann::json::array({std::round(x * k2 * 10) / 10, std::round(y * k2 * 10) / 10});
+                        };
+                        all[std::to_string(k)] = nlohmann::json::array({p(0, 0), p(along, 0), p(along, deep), p(0, deep)});
+                    }
+                    return all;
+                }()},
+               // Painted from a layout: its room's edge cells in its picture (its ways in are drawn on them), and those drawn.
+               {"roomEdges", [&] {
+                    nlohmann::json edges = nlohmann::json::array();
+                    float bx, by, rx, ry, lx, ly, storey, pw, ph, along, deep;
+                    RoomFrame room;
+                    if (!plan || !InteriorRoom(registry_, e, *interior, iso_, room) ||
+                        std::sscanf(interior->layout.c_str(), "%f,%f;%f,%f;%f,%f;%f;%f,%f;%f,%f", &bx, &by, &rx, &ry, &lx, &ly, &storey,
+                                    &pw, &ph, &along, &deep) != 11) {
+                        return edges;
+                    }
+                    const float k2 = W / std::max(1.0f, pw);
+                    const int cols = RoomSideCells(room, 0), rows = RoomSideCells(room, 1);
+                    auto p = [&](float u, float v) {
+                        float x = bx + (rx - bx) * u + (lx - bx) * v, y = by + (ry - by) * u + (ly - by) * v;
+                        if (mirrored) x = pw - x;
+                        return nlohmann::json::array({std::round(x * k2 * 10) / 10, std::round(y * k2 * 10) / 10});
+                    };
+                    for (int side = 0; side < 4; ++side) {
+                        const int n = side == 0 || side == 2 ? cols : rows;
+                        for (int i = 0; i < n; ++i) {
+                            const float a0 = static_cast<float>(i) / n, a1 = static_cast<float>(i + 1) / n;
+                            float u0, u1, v0, v1;
+                            if (side == 0) u0 = a0, u1 = a1, v0 = 0.0f, v1 = 1.0f / rows;
+                            else if (side == 1) v0 = a0, v1 = a1, u0 = 0.0f, u1 = 1.0f / cols;
+                            else if (side == 2) u0 = a0, u1 = a1, v0 = 1.0f - 1.0f / rows, v1 = 1.0f;
+                            else v0 = a0, v1 = a1, u0 = 1.0f - 1.0f / cols, u1 = 1.0f;
+                            edges.push_back({{"key", std::to_string(side) + "," + std::to_string(i)},
+                                             {"poly", {p(u0, v0), p(u1, v0), p(u1, v1), p(u0, v1)}}});
+                        }
+                    }
+                    return edges;
+                }()},
+               {"roomWays", [&] {
+                    nlohmann::json ways = nlohmann::json::array();
+                    if (plan) {
+                        for (const auto& [side, index] : InteriorRoomWays(*interior)) ways.push_back(std::to_string(side) + "," + std::to_string(index));
+                    }
+                    return ways;
+                }()},
                // Its ways in as quarter cells (half cells from the footprint's top-left); a whole cell drawn before as its four.
                {"wayQuarters", [&] {
                     nlohmann::json quarters = nlohmann::json::array();
@@ -7160,7 +7227,15 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             stairs += (stairs.empty() ? "" : ";") + cells;
         }
         std::string entries;
-        if (message.contains("wayQuarters")) {
+        if (message.contains("roomWays")) {
+            // Drawn on its room's edge cells (painted from a layout): "r" parts, each its side and its cell along it.
+            for (const auto& w : message["roomWays"]) {
+                int side = 0, index = 0;
+                if (w.is_string() && std::sscanf(w.get<std::string>().c_str(), "%d,%d", &side, &index) == 2) {
+                    entries += (entries.empty() ? "r" : ";r") + std::to_string(side) + "," + std::to_string(index);
+                }
+            }
+        } else if (message.contains("wayQuarters")) {
             // Drawn as quarter cells (the building editor's Ways in): "q" parts, each its quarter from the top-left.
             for (const auto& q : message["wayQuarters"]) {
                 if (q.is_array() && q.size() == 2) entries += (entries.empty() ? "q" : ";q") + std::to_string(q[0].get<int>()) + "," + std::to_string(q[1].get<int>());

@@ -308,35 +308,95 @@ std::string InteriorPicture(const Interior& interior, int floor) {
     return floor >= 2 && floor - 2 < static_cast<int>(upper.size()) ? upper[floor - 2] : interior.texture;
 }
 
-void UpdateInteriors(Registry& registry, std::optional<Entity> player) {
-    // The buildings one goes into (cutaways), each its footprint and a storey's height on screen.
+std::vector<std::pair<int, int>> InteriorRoomWays(const Interior& interior) {
+    std::vector<std::pair<int, int>> ways;
+    std::stringstream in(interior.entries);
+    for (std::string part; std::getline(in, part, ';');) {
+        int side = 0, index = 0;
+        if (std::sscanf(part.c_str(), "r%d,%d", &side, &index) == 2) ways.push_back({side, index});
+    }
+    return ways;
+}
+
+int RoomSideCells(const RoomFrame& room, int side) {
+    const float length = side == 0 || side == 2 ? std::hypot(room.exx, room.exy) : std::hypot(room.eyx, room.eyy);
+    return std::max(1, static_cast<int>(std::lround(length * 2.0f))); // half a scene cell each
+}
+
+bool InteriorRoom(Registry& registry, Entity entity, const Interior& interior, const IsoParams& iso, RoomFrame& room) {
+    float bx, by, rx, ry, lx, ly, storey, w, h, along, deep;
+    if (interior.layout.empty() || std::sscanf(interior.layout.c_str(), "%f,%f;%f,%f;%f,%f;%f;%f,%f;%f,%f", &bx, &by, &rx, &ry, &lx, &ly,
+                                               &storey, &w, &h, &along, &deep) != 11) {
+        return false;
+    }
+    const auto* sprite = registry.try_get<Sprite>(entity);
+    const auto* screen = registry.try_get<ScreenTransform2D>(entity);
+    if (!sprite || !screen || w <= 0.0f || h <= 0.0f || sprite->width <= 0.0f || sprite->height <= 0.0f) return false;
+    // A point of its picture on the ground (as interior:art places its cells), in the world.
+    const bool mirrored = sprite->u0 > sprite->u1;
+    const float left = screen->x - sprite->width / 2, top = screen->y - sprite->height / 2;
+    auto world = [&](float px, float py) {
+        const float sx = left + (mirrored ? w - px : px) * sprite->width / w, sy = top + sprite->lift + py * sprite->height / h;
+        float wx = 0.0f, wy = 0.0f;
+        UnprojectIso(sx, sy, iso, wx, wy);
+        return std::pair<float, float>{wx, wy};
+    };
+    // Its picture's own corners (mirrored, its right one is drawn on the left: its stairs, painted along its picture's
+    // walls, stay along the same ones).
+    const auto back = world(bx, by), xEnd = world(rx, ry), yEnd = world(lx, ly);
+    room.bx = back.first, room.by = back.second;
+    room.exx = xEnd.first - back.first, room.exy = xEnd.second - back.second;
+    room.eyx = yEnd.first - back.first, room.eyy = yEnd.second - back.second;
+    room.along = along, room.deep = deep;
+    room.storey = storey * sprite->height / h;
+    return std::hypot(room.exx, room.exy) > 0.1f && std::hypot(room.eyx, room.eyy) > 0.1f;
+}
+
+void UpdateInteriors(Registry& registry, std::optional<Entity> player, const IsoParams* iso) {
+    // The buildings one goes into (cutaways), each its footprint and a storey's height on screen; and, painted from a
+    // layout (Interior.layout), its painted room in the world: its stairs there exactly.
     struct Building {
         Entity entity;
         int x0, y0, x1, y1, floors;
         float storey;
+        bool hasRoom = false;
+        RoomFrame room;
     };
     std::vector<Building> buildings;
     for (auto [entity, interior] : registry.view<Interior>().each()) {
         if (interior.texture.empty() || interior.kind == "scene") continue;
         Building b{entity, 0, 0, -1, -1, InteriorFloors(interior), interior.storeyHeight};
         if (!InteriorFootprint(registry, entity, interior, b.x0, b.y0, b.x1, b.y1)) continue;
+        b.hasRoom = iso && InteriorRoom(registry, entity, interior, *iso, b.room);
         if (b.storey <= 0.0f) {
-            b.storey = InteriorStorey(registry, entity, interior);
+            b.storey = b.hasRoom ? b.room.storey : InteriorStorey(registry, entity, interior);
         }
         buildings.push_back(b);
     }
     auto buildingAt = [&](float wx, float wy) -> const Building* {
         const int px = static_cast<int>(std::floor(wx)), py = static_cast<int>(std::floor(wy));
         for (const auto& b : buildings) {
+            if (b.hasRoom) {
+                // In its room: u, v within it (a tenth of a cell's leeway: one in its doorway is in).
+                const RoomFrame& r = b.room;
+                const float det = r.exx * r.eyy - r.exy * r.eyx;
+                if (std::abs(det) < 1e-6f) continue;
+                const float dx = wx - r.bx, dy = wy - r.by;
+                const float u = (dx * r.eyy - dy * r.eyx) / det, v = (r.exx * dy - r.exy * dx) / det;
+                const float eu = 0.1f / std::max(0.1f, std::hypot(r.exx, r.exy)), ev = 0.1f / std::max(0.1f, std::hypot(r.eyx, r.eyy));
+                if (u >= -eu && u <= 1.0f + eu && v >= -ev && v <= 1.0f + ev) return &b;
+                continue;
+            }
             if (px >= b.x0 && px <= b.x1 && py >= b.y0 && py <= b.y1) return &b;
         }
         return nullptr;
     };
     // Each character's floor (the player's and everyone's): in through a door, the ground floor. A floor's stairs up
-    // (their cells from the top, by the back corner, down to the foot) are climbed: got on at their foot, it rises with
-    // them and stands on the floor above on their top cell; on from the side, they're only floor. Down: onto their top
-    // from the floor above, then a step down: on the floor below, on its stairs (that high), and down them. Stairs of one
-    // cell: walked onto, up or down (off them before they go again).
+    // (from their top, by the back corner, to their foot) are climbed: got on at their foot, it rises with them and stands
+    // on the floor above on their top step; on from the side, they're only floor. Down: onto their top from the floor
+    // above, then a step down: on the floor below, on its stairs (that high), and down them. A building painted from a
+    // layout: its stairs where its room's are (odd floors' along its back-left wall, even floors' its back-right; a step
+    // half a cell); else its stairs cells (a step a cell; stairs of one cell walked onto, up or down).
     for (auto [mover, velocity, world] : registry.view<Velocity2D, WorldTransform2D>().each()) {
         const Building* b = buildingAt(world.x, world.y);
         auto* on = registry.try_get<OnFloor>(mover);
@@ -350,53 +410,74 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player) {
         on->climb = 0.0f;
         if (b->floors > 1) {
             const Interior& interior = registry.get<Interior>(b->entity);
-            const std::pair<int, int> cell{static_cast<int>(std::floor(world.x)), static_cast<int>(std::floor(world.y))};
-            // A floor change's stairs, top first (nearest the back corner).
+            // Where it stands on a floor change's stairs: on them, how far down from their top (0 the top, 1 the foot), and
+            // a step's share of them; and stairs of a single step.
+            struct OnFlight {
+                bool on = false;
+                float down = 0.0f, step = 1.0f;
+                bool single = false;
+            };
             auto flight = [&](int change) {
+                OnFlight f;
+                if (change < 1 || change >= b->floors) return f;
+                if (b->hasRoom) {
+                    // Its room's frame: u along its back-right wall (to its right corner), v along its back-left (to its left).
+                    const RoomFrame& r = b->room;
+                    const float det = r.exx * r.eyy - r.exy * r.eyx;
+                    if (std::abs(det) < 1e-6f) return f;
+                    const float dx = world.x - r.bx, dy = world.y - r.by;
+                    const float u = (dx * r.eyy - dy * r.eyx) / det, v = (r.exx * dy - r.exy * dx) / det;
+                    const bool leftWall = change % 2 == 1; // odd floors' stairs along the back-left wall
+                    const float along = leftWall ? v : u, across = leftWall ? u : v;
+                    const float wallLength = leftWall ? std::hypot(r.eyx, r.eyy) : std::hypot(r.exx, r.exy);
+                    const float acrossLength = leftWall ? std::hypot(r.exx, r.exy) : std::hypot(r.eyx, r.eyy);
+                    const float run = r.along * wallLength; // the stairs' length, in cells
+                    // A little leeway past their side (half a cell): one walks beside the steps as much as on them.
+                    f.on = along >= -0.1f && along * wallLength <= run + 0.1f && across * acrossLength >= -0.25f &&
+                           across * acrossLength <= r.deep * acrossLength + 0.5f;
+                    f.down = std::clamp(along * wallLength / std::max(0.5f, run), 0.0f, 1.0f);
+                    f.step = std::min(1.0f, 0.5f / std::max(0.5f, run));
+                    return f;
+                }
                 auto cells = StairsCells(interior, change, b->x0, b->y0, b->x1, b->y1);
                 std::stable_sort(cells.begin(), cells.end(), [&](const auto& a, const auto& c) {
                     return std::hypot(a.first - b->x0, a.second - b->y0) < std::hypot(c.first - b->x0, c.second - b->y0);
                 });
-                return cells;
+                const std::pair<int, int> cell{static_cast<int>(std::floor(world.x)), static_cast<int>(std::floor(world.y))};
+                const auto it = std::find(cells.begin(), cells.end(), cell);
+                f.on = it != cells.end();
+                f.single = cells.size() == 1;
+                f.step = 1.0f / std::max<size_t>(1, cells.size());
+                f.down = f.on ? (static_cast<float>(it - cells.begin()) + 0.5f) * f.step : 0.0f;
+                return f;
             };
-            const auto up = on->floor < b->floors ? flight(on->floor) : std::vector<std::pair<int, int>>{};
-            const auto down = on->floor > 1 ? flight(on->floor - 1) : std::vector<std::pair<int, int>>{};
-            const auto at = [&](const std::vector<std::pair<int, int>>& cells) {
-                return static_cast<int>(std::find(cells.begin(), cells.end(), cell) - cells.begin());
-            };
-            const int onUp = at(up), onDown = at(down); // its place on them (0 the top), or past the end: not on them
-            const bool onUpFlight = onUp < static_cast<int>(up.size()), onDownFlight = onDown < static_cast<int>(down.size());
-            if (onUpFlight && up.size() == 1) {
+            const OnFlight up = flight(on->floor), down = flight(on->floor - 1);
+            if (up.on && up.single) {
                 onStairs = true;
                 if (!on->onStairs) ++on->floor;
-            } else if (onDownFlight && down.size() == 1) {
+            } else if (down.on && down.single) {
                 onStairs = true;
                 if (!on->onStairs) --on->floor;
-            } else if (onUpFlight) {
-                if (onUp == static_cast<int>(up.size()) - 1) on->climbing = true; // got on at the foot
-                if (on->climbing && onUp == 0) {
+            } else if (up.on) {
+                if (up.down > 1.0f - up.step) on->climbing = true; // got on at the foot
+                if (on->climbing && up.down < up.step) {
                     ++on->floor; // climbed to the top: on the floor above, at the top of its stairs down
                     on->climbing = false, on->atTop = true;
                 }
-            } else if (onDownFlight) {
-                if (onDown == 0) {
+            } else if (down.on) {
+                if (down.down < down.step) {
                     on->atTop = true; // on the top, from this floor
-                } else if (on->atTop) {
+                } else if (on->atTop && down.down < 2.0f * down.step + 1e-3f) {
                     --on->floor; // a step down from the top: on the floor below, on its stairs
                     on->atTop = false, on->climbing = true;
                 }
             } else {
                 on->climbing = false, on->atTop = false; // off the stairs
             }
-            // Climbing its floor's stairs: how far up it stands, from the foot cell's middle to the top cell's.
-            const auto climbing = on->floor < b->floors && on->climbing ? flight(on->floor) : std::vector<std::pair<int, int>>{};
-            if (climbing.size() > 1 && at(climbing) < static_cast<int>(climbing.size())) {
-                const auto& top = climbing.front();
-                const auto& foot = climbing.back();
-                const float ax = foot.first + 0.5f, ay = foot.second + 0.5f;
-                const float vx = top.first - foot.first, vy = top.second - foot.second;
-                const float length2 = std::max(1e-4f, vx * vx + vy * vy);
-                on->climb = std::clamp(((world.x - ax) * vx + (world.y - ay) * vy) / length2, 0.0f, 1.0f);
+            // Climbing its floor's stairs: as high as it is up them.
+            if (on->climbing) {
+                const OnFlight now = flight(on->floor);
+                if (now.on) on->climb = 1.0f - now.down;
             }
         }
         on->onStairs = onStairs;

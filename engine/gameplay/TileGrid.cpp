@@ -13,7 +13,7 @@
 
 namespace aige {
 
-TileGrid TileGrid::Build(Registry& registry) {
+TileGrid TileGrid::Build(Registry& registry, const IsoParams* iso) {
     TileGrid grid;
     auto view = registry.view<Tile>();
     for (auto entity : view) {
@@ -42,6 +42,12 @@ TileGrid TileGrid::Build(Registry& registry) {
             if (interior->kind == "scene") { // its own scene: solid but for its doorway, which leads there
                 ForEachSceneInteriorCell(sx, sy, left, right, back, interior->door, block);
                 if (int dx = 0, dy = 0; shut && InteriorDoor(registry, entity, *interior, dx, dy)) block(dx, dy);
+                continue;
+            }
+            // Painted from a layout: its walls the painted room's edges (both from inside and out), open at its ways in
+            // (InteriorRoomWays) or, none drawn, where its doors meet them; inside them all walkable.
+            if (RoomFrame room; !interior->texture.empty() && iso && InteriorRoom(registry, entity, *interior, *iso, room)) {
+                grid.AddRoom(registry, entity, *interior, room);
                 continue;
             }
             if (!interior->texture.empty()) {
@@ -173,11 +179,106 @@ bool TileGrid::IsSolid(int gx, int gy) const {
     return true;
 }
 
+void TileGrid::AddBox(float x0, float y0, float x1, float y1) {
+    for (int gx = static_cast<int>(std::floor(x0)); gx <= static_cast<int>(std::floor(x1 - 1e-4f)); ++gx) {
+        for (int gy = static_cast<int>(std::floor(y0)); gy <= static_cast<int>(std::floor(y1 - 1e-4f)); ++gy) AddPart(gx, gy, x0, y0, x1, y1);
+    }
+}
+
 void TileGrid::AddPart(int gx, int gy, float x0, float y0, float x1, float y1) {
     x0 = std::max(x0, static_cast<float>(gx)), y0 = std::max(y0, static_cast<float>(gy));
     x1 = std::min(x1, gx + 1.0f), y1 = std::min(y1, gy + 1.0f);
     if (x1 - x0 < 1e-3f || y1 - y0 < 1e-3f) return;
     parts_[Key(gx, gy)].push_back({x0, y0, x1, y1});
+}
+
+void TileGrid::AddRoom(Registry& registry, Entity entity, const Interior& interior, const RoomFrame& room) {
+    // Its four edges (in its picture's terms: side 0 its back-right wall, 1 its back-left, 2 its front-left, 3 its
+    // front-right), each from a corner to a corner in the world, and its middle (which way is out).
+    const float bx = room.bx, by = room.by;
+    const float corners[4][2][2] = {{{bx, by}, {bx + room.exx, by + room.exy}},
+                                    {{bx, by}, {bx + room.eyx, by + room.eyy}},
+                                    {{bx + room.eyx, by + room.eyy}, {bx + room.eyx + room.exx, by + room.eyy + room.exy}},
+                                    {{bx + room.exx, by + room.exy}, {bx + room.exx + room.eyx, by + room.exy + room.eyy}}};
+    const float mx = bx + (room.exx + room.eyx) * 0.5f, my = by + (room.exy + room.eyy) * 0.5f;
+    // Its gaps: each side's open stretches (0-1 along it).
+    std::vector<std::pair<float, float>> open[4];
+    const auto ways = InteriorRoomWays(interior);
+    const auto* doors = registry.try_get<PartOpen>(entity);
+    for (const auto& [side, index] : ways) {
+        if (side < 0 || side > 3) continue;
+        const int n = RoomSideCells(room, side);
+        open[side].push_back({static_cast<float>(index) / n, static_cast<float>(index + 1) / n});
+    }
+    // A door on a side (its foot nearest it): open where it is, as wide as it is, while it's passable; shut, it closes a
+    // drawn way in it.
+    if (doors) {
+        for (size_t i = 0; i < doors->feet.size(); ++i) {
+            const auto& [fx, fy, half] = doors->feet[i];
+            if (half <= 0.0f) continue;
+            int best = -1;
+            float bestDistance = 1e9f, bestT = 0.0f, bestLength = 1.0f;
+            for (int side = 0; side < 4; ++side) {
+                const float ax = corners[side][0][0], ay = corners[side][0][1];
+                const float vx = corners[side][1][0] - ax, vy = corners[side][1][1] - ay;
+                const float length2 = std::max(1e-4f, vx * vx + vy * vy);
+                const float t = std::clamp(((fx - ax) * vx + (fy - ay) * vy) / length2, 0.0f, 1.0f);
+                const float distance = std::hypot(ax + vx * t - fx, ay + vy * t - fy);
+                if (distance < bestDistance) best = side, bestDistance = distance, bestT = t, bestLength = std::sqrt(length2);
+            }
+            if (best < 0 || bestDistance > 1.5f) continue;
+            const bool passable = i < doors->passable.size() && doors->passable[i];
+            const float lo = bestT - half / bestLength, hi = bestT + half / bestLength;
+            if (!passable) {
+                auto& gaps = open[best];
+                gaps.erase(std::remove_if(gaps.begin(), gaps.end(), [&](const auto& g) { return g.first < hi && g.second > lo; }), gaps.end());
+            } else if (ways.empty()) {
+                open[best].push_back({lo, hi});
+            }
+        }
+    }
+    // Each side a thin wall just outside it, but its open stretches.
+    constexpr float kThick = 0.2f;
+    for (int side = 0; side < 4; ++side) {
+        const float ax = corners[side][0][0], ay = corners[side][0][1];
+        const float vx = corners[side][1][0] - ax, vy = corners[side][1][1] - ay;
+        // Out: away from the middle.
+        float nx = -vy, ny = vx;
+        const float nl = std::max(1e-4f, std::hypot(nx, ny));
+        nx /= nl, ny /= nl;
+        if ((ax + vx * 0.5f - mx) * nx + (ay + vy * 0.5f - my) * ny < 0.0f) nx = -nx, ny = -ny;
+        auto& gaps = open[side];
+        std::sort(gaps.begin(), gaps.end());
+        float from = 0.0f;
+        auto wall = [&](float t0, float t1) {
+            if (t1 - t0 < 1e-3f) return;
+            const float x0 = ax + vx * t0, y0 = ay + vy * t0, x1 = ax + vx * t1, y1 = ay + vy * t1;
+            const float ox = nx * kThick, oy = ny * kThick;
+            AddBox(std::min({x0, x1, x0 + ox, x1 + ox}), std::min({y0, y1, y0 + oy, y1 + oy}),
+                   std::max({x0, x1, x0 + ox, x1 + ox}), std::max({y0, y1, y0 + oy, y1 + oy}));
+        };
+        for (const auto& [lo, hi] : gaps) {
+            wall(from, std::clamp(lo, 0.0f, 1.0f));
+            from = std::max(from, std::clamp(hi, 0.0f, 1.0f));
+        }
+        wall(from, 1.0f);
+    }
+    // Inside (and the edge cells' bits outside it, reached only through its gaps): walkable whatever the place's layers
+    // say; its solid things on the floor showing (Interior::solids, quarter cells from its footprint's top-left).
+    const float xs[4] = {bx, bx + room.exx, bx + room.eyx, bx + room.exx + room.eyx};
+    const float ys[4] = {by, by + room.exy, by + room.eyy, by + room.exy + room.eyy};
+    const int gx0 = static_cast<int>(std::floor(*std::min_element(xs, xs + 4))), gx1 = static_cast<int>(std::floor(*std::max_element(xs, xs + 4)));
+    const int gy0 = static_cast<int>(std::floor(*std::min_element(ys, ys + 4))), gy1 = static_cast<int>(std::floor(*std::max_element(ys, ys + 4)));
+    for (int gx = gx0; gx <= gx1; ++gx) {
+        for (int gy = gy0; gy <= gy1; ++gy) inside_.insert(Key(gx, gy));
+    }
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    if (interior.shown && InteriorFootprint(registry, entity, interior, x0, y0, x1, y1)) {
+        for (const auto& [qx, qy] : InteriorSolids(interior, interior.floor)) {
+            const float wx = x0 + qx, wy = y0 + qy;
+            AddPart(static_cast<int>(std::floor(wx)), static_cast<int>(std::floor(wy)), wx, wy, wx + 0.5f, wy + 0.5f);
+        }
+    }
 }
 
 bool TileGrid::BlocksBox(float x0, float y0, float x1, float y1) const {

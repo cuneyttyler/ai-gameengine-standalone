@@ -982,7 +982,8 @@ def create_app(
             floor.save(target)
             paths.append(target.relative_to(root.resolve()).as_posix())
         report(1, 1, "Interior made")
-        return {"ok": True, "path": paths[0], "floors": paths}
+        from .matched import floor_layout
+        return {"ok": True, "path": paths[0], "floors": paths, "layout": floor_layout(exterior, storeys)}
 
     @app.post("/parts/find")
     def parts_find(request: PartsRequest) -> dict:

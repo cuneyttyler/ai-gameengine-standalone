@@ -1032,6 +1032,21 @@ def _floor_frame(exterior: Image.Image, storeys: int):
     return left, right, front, back, storey
 
 
+# Each floor's stairs in its room (stairs_ramp, the game's InteriorLayout): from the back corner, this much of its wall's
+# length along it, this much of the other wall's deep.
+STAIRS_ALONG, STAIRS_DEEP = 0.6, 0.22
+
+
+def floor_layout(exterior: Image.Image, storeys: int) -> str:
+    """The floors' layout (docs/places/interiors.md §2), as the game reads it (Interior.layout): the painted room's
+    floor in the picture (its back, right and left corners, ground level, in the picture's pixels), a storey's height in
+    those pixels, the picture's size, and the stairs' share of the walls: "bx,by;rx,ry;lx,ly;storey;w,h;along,deep". Every
+    floor's picture is painted from it, so its stairs and walls are where the game puts them."""
+    left, right, front, back, storey = _floor_frame(exterior, storeys)
+    return (f"{back[0]:.1f},{back[1]:.1f};{right[0]:.1f},{right[1]:.1f};{left[0]:.1f},{left[1]:.1f};{storey:.1f};"
+            f"{exterior.width},{exterior.height};{STAIRS_ALONG},{STAIRS_DEEP}")
+
+
 def stairs_ramp(exterior: Image.Image, k: int, storeys: int) -> list[tuple[float, float]]:
     """Floor k's staircase as a ramp in the exterior's frame (docs/places/interiors.md §2): its foot on floor k, three
     fifths of the way along the back-left wall (odd k: rising left to right) or the back-right (even k: right to left)
@@ -1039,8 +1054,8 @@ def stairs_ramp(exterior: Image.Image, k: int, storeys: int) -> list[tuple[float
     import numpy as np
     left, right, front, back, storey = _floor_frame(exterior, storeys)
     along, across = (left, right) if k % 2 == 1 else (right, left)
-    foot = back + (along - back) * 0.6
-    inward = (across - back) * 0.22
+    foot = back + (along - back) * STAIRS_ALONG
+    inward = (across - back) * STAIRS_DEEP
     up = lambda q, level: tuple((q - np.array([0.0, (level - 1) * storey])).tolist())  # noqa: E731
     return [up(foot, k), up(back, k + 1), up(back + inward, k + 1), up(foot + inward, k)]
 
@@ -1181,6 +1196,9 @@ def room_prompt(k: int, n: int, purpose: str, style: str = "", doors: bool = Fal
     lines = ["Game asset. Isometric view. Flat magenta background (#FF00FF).",
              "Image 1 is a blockout of one floor of a building, as a game shows a room the player walks in, cut away from above. "
              "Paint exactly what it shows, at exactly its place, size and angle in the picture:",
+             f"- this is floor {k} of the building's {n} floor{'s' if n > 1 else ''}"
+             + (" (the ground floor, at ground level, where one comes in)" if k == 1 else " (the top floor, under the roof)" if k == n else "")
+             + ";",
              "- the GREEN box is this floor's storey: its floor at the bottom of the box (the white outline), its two BACK walls up to "
              "the top of the box, one storey high, with windows; its two FRONT walls gone, the floor's front edges open; no ceiling, no "
              "roof, nothing above the box, nothing below the floor but its thin edge;",

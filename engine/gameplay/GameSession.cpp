@@ -2222,7 +2222,7 @@ int GameSession::LevelOf(Entity entity) const {
 void GameSession::StepGameplay(float dt, const SolidQueryFn& isSolid, bool firstStep) {
     UpdateAttributes(registry_, dt);
     const auto player = FindPlayer(registry_);
-    UpdateInteriors(registry_, player); // inside a building: its interior shows (Phase 27)
+    UpdateInteriors(registry_, player, &iso_); // inside a building: its interior shows (Phase 27)
     if (player && !registry_.all_of<Dead>(*player)) {
         // Block while held; dodge, fire on press (once a frame).
         if (input_.Down("block") && !registry_.all_of<Dodging>(*player)) registry_.emplace_or_replace<Blocking>(*player);
@@ -2728,6 +2728,7 @@ void GameSession::StepActions(float dt) {
             if (state.cells.size() < list.size()) state.cells.resize(list.size(), {INT_MIN, INT_MIN});
             if (state.age.size() < list.size()) state.age.resize(list.size(), 0.0f);
             if (state.gaps.size() < list.size()) state.gaps.resize(list.size(), {0.0f, 0.0f, -1.0f});
+            if (state.feet.size() < list.size()) state.feet.resize(list.size(), {0.0f, 0.0f, 0.0f});
             state.age[d.index] += dt;
             // Its doorway: the footprint's edge cell nearest the door (a building's doors only: not a window, a lever).
             if (const auto* interior = registry_.try_get<Interior>(d.owner); interior && door.door) {
@@ -2751,6 +2752,7 @@ void GameSession::StepActions(float dt) {
                 // cell is wall). Its width from its picture on screen (along a wall, a cell is half a tile wide), never
                 // narrower than the player with a little room; its side the footprint's edge nearest its foot.
                 state.gaps[d.index] = {0.0f, 0.0f, -1.0f};
+                state.feet[d.index] = {0.0f, 0.0f, 0.0f};
                 const auto* doorSprite = registry_.try_get<Sprite>(d.overlay);
                 if (int x0 = 0, y0 = 0, x1 = 0, y1 = 0; d.placed && !door.sheet.empty() && DoorOpens(door) != "open" && doorSprite &&
                                                         InteriorFootprint(registry_, d.owner, *interior, x0, y0, x1, y1)) {
@@ -2762,6 +2764,7 @@ void GameSession::StepActions(float dt) {
                     float playerHalf = 0.3f;
                     if (const auto* c = player ? registry_.try_get<Collider2D>(*player) : nullptr) playerHalf = std::max(c->halfWidth, c->halfHeight);
                     const float half = std::max(doorSprite->width / std::max(1.0f, iso_.tileWidth), playerHalf + 0.06f);
+                    state.feet[d.index] = {d.x, d.y, half};
                     if (half < 0.5f) {
                         const float base = side <= 1 ? static_cast<float>(cx) : static_cast<float>(cy);
                         const float middle = std::clamp(side <= 1 ? d.x : d.y, base + half, base + 1.0f - half);
@@ -3041,7 +3044,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         return 0;
     }
 
-    grid_ = TileGrid::Build(registry_);
+    grid_ = TileGrid::Build(registry_, &iso_);
     auto isSolid = [this](int gx, int gy) { return grid_.IsSolid(gx, gy); };
     // Parts of cells that block (a door's cell but its gap, an interior's solid things): every mover's collision checks
     // them, and paths cross such a cell at its pass point.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ecs/Registry.h"
+#include "gameplay/Isometric.h"
 
 #include <map>
 #include <optional>
@@ -17,7 +18,23 @@ struct AnimatedPart;
 // footprint, its exterior otherwise.
 
 // Each Interior's `shown` from where the player stands (Play), then the pictures as `shown` says.
-void UpdateInteriors(Registry& registry, std::optional<Entity> player);
+// A building's painted room in the world (Interior.layout, docs/places/interiors.md §2): its back corner, its walls to its
+// right and left corners (world vectors), the stairs' share of the walls, a storey's height on screen.
+struct RoomFrame {
+    float bx = 0.0f, by = 0.0f;
+    float exx = 0.0f, exy = 0.0f; // along its picture's back-right wall
+    float eyx = 0.0f, eyy = 0.0f; // along its picture's back-left wall (its odd floors' stairs)
+    float along = 0.6f, deep = 0.22f;
+    float storey = 0.0f;
+};
+// Its ways in on its room's grid (Interior::entries' "r" parts): each {side, index}, side 0 its picture's back-right wall,
+// 1 its back-left, 2 its front-left, 3 its front-right; index its cells along it (half a scene cell each, RoomSideCells).
+std::vector<std::pair<int, int>> InteriorRoomWays(const Interior& interior);
+int RoomSideCells(const RoomFrame& room, int side);
+// Its room, from its layout and where its picture is drawn (`iso`: the scene's projection); false without a layout.
+bool InteriorRoom(Registry& registry, Entity entity, const Interior& interior, const IsoParams& iso, RoomFrame& room);
+// `iso`: the scene's projection, for buildings painted from a layout (their stairs where their rooms' are).
+void UpdateInteriors(Registry& registry, std::optional<Entity> player, const IsoParams* iso = nullptr);
 // The cell of floor change `change` (1: floor 1 to 2) of a building whose footprint is [x0, x1] x [y0, y1]: its
 // Interior.stairs' listed cell, else its corners in turn (top, right, left).
 std::pair<int, int> StairsCell(const Interior& interior, int change, int x0, int y0, int x1, int y1);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ecs/Registry.h"
+#include "gameplay/Isometric.h"
 #include "gameplay/TileLayer.h"
 
 #include <array>
@@ -12,13 +13,18 @@
 
 namespace aige {
 
+struct Interior;
+struct RoomFrame;
+
 // Snapshot of every Tile in a registry, keyed by cell, for collision queries
 // and "what's in this cell" lookups. Cheap to rebuild; GameSession rebuilds
 // it once per Advance so tiles edited mid-play take effect immediately.
 // Cells holding an Obstacle entity count as solid.
 class TileGrid {
 public:
-    static TileGrid Build(Registry& registry);
+    // `iso`: the scene's projection, for buildings painted from a layout (their walls the painted room's); without it
+    // (an editor's lookups) their footprints' cells.
+    static TileGrid Build(Registry& registry, const IsoParams* iso = nullptr);
 
     // Empty cells count as solid: the walkable area is exactly the set of
     // placed, non-solid tiles, painted (entities) or in a tile layer (7.2),
@@ -35,6 +41,10 @@ public:
     bool PassPoint(int gx, int gy, float& x, float& y) const;
     // A blocked part of cell (gx, gy): the world box, clipped to the cell.
     void AddPart(int gx, int gy, float x0, float y0, float x1, float y1);
+    // A blocked world box over however many cells it spans.
+    void AddBox(float x0, float y0, float x1, float y1);
+    // A building painted from a layout: its painted room's walls (open at its ways in, or its doors), inside walkable.
+    void AddRoom(Registry& registry, Entity entity, const Interior& interior, const RoomFrame& room);
 
 private:
     struct Cell {

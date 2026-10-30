@@ -319,6 +319,8 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("storeyHeight", &Interior::storeyHeight, "A storey's height on screen in pixels: how much higher one stands each floor up (0: from its picture).").Min(0)
         .Field("floor", &Interior::floor, "The floor shown: the player's while inside, a preview in the editor.")
         .Field("stairs", &Interior::stairs, "Each floor change's stairs cell, x,y;x,y (floor 1 to 2, 2 to 3...): walked onto from below goes up, from above down. Empty: its corners in turn (top, right, left). Right-click inside it ▸ Stairs here.")
+        .Field("layout", &Interior::layout, "Its floors' layout, as they were painted (the room's corners in its picture, a storey, "
+               "its stairs): its stairs where they're painted. Redesign interiors writes it.")
         .Field("solids", &Interior::solids, "Its solid things inside, each floor's quarter cells one can't walk through: "
                "floor:qx,qy|qx,qy;… in half cells from its footprint's top-left (Edit building… ▸ Solid).")
         .Field("entries", &Interior::entries, "Its ways in, set by hand: cells of its footprint's edge, dx,dy;dx,dy from its "

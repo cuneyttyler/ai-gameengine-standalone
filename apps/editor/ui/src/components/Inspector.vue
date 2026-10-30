@@ -303,7 +303,7 @@ function numberFrom(event: Event): number {
                     @click="editorState.buildingEditor = current!.id">
               {{ current.building && current.components.some((s) => s.name === 'Interior') ? 'Edit doors…' : 'Edit parts…' }}</button>
           </div>
-          <template v-for="field in component.fields.filter((f) => (component.name !== 'Interior' || !['floors', 'stairs', 'entries', 'texture', 'solids'].includes(f.name)) && (component.name !== 'AnimatedPart' || !['more', 'near'].includes(f.name)) && (component.name !== 'AnimatedPart' || current!.building || f.name !== 'door'))" :key="field.name">
+          <template v-for="field in component.fields.filter((f) => (component.name !== 'Interior' || !['floors', 'stairs', 'entries', 'texture', 'solids', 'layout'].includes(f.name)) && (component.name !== 'AnimatedPart' || !['more', 'near'].includes(f.name)) && (component.name !== 'AnimatedPart' || current!.building || f.name !== 'door'))" :key="field.name">
             <div class="field-row" :class="{ overridden: field.overridden }">
               <label :title="field.overridden ? `${field.description}\n(Changed on this copy)` : field.description">
                 {{ (component.name === 'AnimatedPart' || component.name === 'DoorPart') && field.name === 'opens' ? 'activation' : field.name }}

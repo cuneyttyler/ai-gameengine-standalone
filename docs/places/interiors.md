@@ -91,6 +91,11 @@ For each building:
    InteriorKind`; built places their piece's role, `role_description`), lit and decorated as such a building is in its
    time (candles and lanterns, or lamps and ceiling lights; rugs, pictures, plants, banners), and **the user's design**
    when given (the Redesign dialog's description: "The interior's design, as asked: …").
+   **Its layout** (`floor_layout`, returned with the pictures, kept on the exterior's catalog entry as
+   `interiorLayout=` and on the Building Plan as `Interior.layout`): the painted room's floor in the picture (its back,
+   right and left corners), a storey in the picture's pixels, the picture's size and the stairs' share of the walls
+   (`STAIRS_ALONG`, `STAIRS_DEEP`): "bx,by;rx,ry;lx,ly;storey;w,h;along,deep". Every floor is painted from it, so the game
+   knows where its walls and stairs are without matching cells to the picture.
 3. **Laid on the exterior** (`lay_floor`): floor k's picture is the exterior's own storeys below it (cut at its front
    edge on its level), the floor below's room seen a little darker through a hole where its staircase comes up (half
    the yellow box both ways from the upper corner, its own stairs up kept over it: `stairs_hole`), its room on top. So
@@ -143,6 +148,25 @@ struct Interior {
   component is the behaviour.
 - **Built places:** `PlaceScene` `PlaceObject` adds the component to a building whose sprite texture's `.meta` names an
   `interior`. The door comes from the plan object's `facing`.
+
+### A building painted from a layout
+
+`InteriorRoom` puts its painted room in the world from its layout and where its picture is drawn (the picture's corners
+on screen, unprojected): its back corner and its two back walls as world vectors (its picture's own: mirrored, its
+stairs stay along the walls they're painted on). Then, instead of its footprint's cells:
+
+- **Who's inside**: whoever stands in its room (a tenth of a cell's leeway).
+- **Walls** (`TileGrid::AddRoom`, from inside and out alike): a thin wall just outside each of the room's edges, open at
+  its **ways in on the room's grid** (`Interior.entries` "r side,index": side 0 its picture's back-right wall, 1 its
+  back-left, 2 its front-left, 3 its front-right; cells half a scene cell, `RoomSideCells`), drawn in the building
+  editor's Ways in layer on its picture's walls; none drawn, where each passable door meets the nearest wall, as wide as
+  it is (`PartOpen::feet`); a shut door closes a drawn way in it. Inside, all walkable; its solid things as before.
+- **Stairs** (`UpdateInteriors`): where its room's are (odd floors' along its picture's back-left wall, even floors'
+  its back-right, `along` of the wall from the back corner, `deep` of the other wall deep, half a cell's leeway at their
+  side), a step half a cell: climbed from the foot, the floor above on the top step; down from the top, the floor below
+  a step down. The building editor's floor tabs show them in blue.
+
+A building painted before has no layout: its footprint's cells, as below.
 
 ### Collision
 

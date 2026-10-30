@@ -360,6 +360,9 @@ struct PartOpen {
     // footprint's back row (y0), 1 its front row (y1), 2 its left column (x0), 3 its right column (x1); side -1 none (an
     // open doorway, or not drawn yet): the whole cell.
     std::vector<std::array<float, 3>> gaps;
+    // Each door's foot in the world and half its width (cells), for a building painted from a layout: its gap where it
+    // meets the room's nearest wall (half <= 0: none).
+    std::vector<std::array<float, 3>> feet;
 };
 
 // Runtime: an Action's clock.
@@ -399,6 +402,10 @@ struct Interior {
     std::string entries;
     // A storey's height on screen, in scene pixels: how much higher one stands on each floor up (0: from its picture).
     float storeyHeight = 0.0f;
+    // Its floors' layout, as they were painted from it (matched.py floor_layout): the room's corners in its picture, a
+    // storey, the picture's size, the stairs' share of the walls. With it its stairs are exactly where they're painted
+    // (InteriorRoom); empty (painted before): its stairs cells.
+    std::string layout;
     // Its solid things inside (furniture, a counter, a well), each floor's: quarter cells one can't walk through while that
     // floor shows, "floor:qx,qy|qx,qy;floor:…", qx,qy in half cells from its footprint's top-left (the building editor's
     // Solid layer paints them).
