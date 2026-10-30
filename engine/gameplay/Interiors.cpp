@@ -9,6 +9,7 @@
 #include "physics2d/Components.h"
 #include "renderer2d/Components.h"
 
+#include <climits>
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
@@ -457,19 +458,25 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player, const Iso
                     if (std::abs(det) < 1e-6f) return f;
                     const float dx = world.x - r.bx, dy = world.y - r.by;
                     const float u = (dx * r.eyy - dy * r.eyx) / det, v = (r.exx * dy - r.exy * dx) / det;
-                    // Drawn on its room's grid: those cells, top first (nearest its back corner), a step a cell.
-                    if (auto drawn = InteriorRoomStairs(interior, change); !drawn.empty()) {
+                    // Drawn on its room's grid (as wide as one likes): on them while in one of their cells; how far down them
+                    // measured along their wall (odd floors' the back-left, even floors' the back-right), from their cell
+                    // nearest its back corner (their top) to their farthest (their foot); a step half a scene cell (two
+                    // room cells: one can't stand nearer a wall than that).
+                    if (const auto drawn = InteriorRoomStairs(interior, change); !drawn.empty()) {
                         const int cols = RoomSideCells(r, 0), rows = RoomSideCells(r, 1);
-                        std::stable_sort(drawn.begin(), drawn.end(), [](const auto& a, const auto& c) {
-                            return std::hypot(a.first + 0.5f, a.second + 0.5f) < std::hypot(c.first + 0.5f, c.second + 0.5f);
-                        });
+                        const bool leftWall = change % 2 == 1;
                         const std::pair<int, int> here{static_cast<int>(std::floor(u * cols)), static_cast<int>(std::floor(v * rows))};
-                        const auto it = std::find(drawn.begin(), drawn.end(), here);
-                        f.on = it != drawn.end();
-                        f.single = drawn.size() == 1;
-                        f.down = f.on ? (static_cast<float>(it - drawn.begin()) + 0.5f) / drawn.size() : 0.0f;
-                        // A step at least half a scene cell (a room cell is a quarter): one can't stand nearer a wall than that.
-                        f.step = std::min(1.0f, std::max(1.0f, 0.5f / 0.25f) / drawn.size());
+                        int top = INT_MAX, foot = INT_MIN;
+                        for (const auto& [i, j] : drawn) {
+                            const int at = leftWall ? j : i;
+                            top = std::min(top, at), foot = std::max(foot, at + 1);
+                        }
+                        const float length = static_cast<float>(foot - top); // room cells
+                        const float at = (leftWall ? v * rows : u * cols) - top;
+                        f.on = std::find(drawn.begin(), drawn.end(), here) != drawn.end();
+                        f.single = length <= 2.0f;
+                        f.down = std::clamp(at / std::max(1.0f, length), 0.0f, 1.0f);
+                        f.step = std::min(1.0f, 2.0f / std::max(1.0f, length));
                         return f;
                     }
                     const bool leftWall = change % 2 == 1; // odd floors' stairs along the back-left wall
