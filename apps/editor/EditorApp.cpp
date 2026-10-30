@@ -6223,6 +6223,29 @@ bool EditorApp::HandleGenerateMessage(const std::string& type, const nlohmann::j
         // plays it shows nothing).
         const std::string path = message.value("path", "");
         if (path.rfind("assets/", 0) != 0 || path.find("..") != std::string::npos || !path.ends_with(".anim.json")) return true;
+        // Still played (a scene's or a prefab's parts, animators): not deleted; the part is removed first.
+        std::vector<std::string> users;
+        std::error_code walk;
+        for (const char* folder : {"scenes", "prefabs"}) {
+            const auto root = assets_.GetProject().Resolve(folder);
+            if (!std::filesystem::is_directory(root, walk)) continue;
+            for (const auto& f : std::filesystem::recursive_directory_iterator(root, walk)) {
+                if (!f.is_regular_file()) continue;
+                std::ifstream in(f.path(), std::ios::binary);
+                const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                if (text.find(path) != std::string::npos) users.push_back(std::filesystem::relative(f.path(), assets_.GetProject().Resolve("")).generic_string());
+            }
+        }
+        for (auto [e, part] : registry_.view<AnimatedPart>().each()) {
+            for (const auto& d : DoorsOf(part)) {
+                if (d.sheet == path && users.empty()) users.push_back("this scene");
+            }
+        }
+        if (!users.empty()) {
+            post_({{"type", "notify"}, {"text", "Not deleted: " + users.front() + (users.size() > 1 ? " and " + std::to_string(users.size() - 1) + " more" : "") +
+                                                   " still play it. Remove the part first (Edit parts… ▸ Remove this part), save, then delete it"}});
+            return true;
+        }
         const nlohmann::json all = FxJson().value("sheets", nlohmann::json::array());
         std::string texture;
         for (const auto& s : all) {
