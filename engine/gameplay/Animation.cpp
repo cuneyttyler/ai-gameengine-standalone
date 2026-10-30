@@ -885,6 +885,7 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
         // An open doorway (§4.5): an overlay unseen, no animator, only so where its doorway is is known in play.
         const bool opening = part.sheet.empty() && part.opens == "open";
         if (part.sheet.empty() && !opening) continue;
+        if (!opening && library.Find(part.sheet) == nullptr) continue; // its sheet deleted: nothing over the picture (it shows as it is)
         const std::string slot = index == 0 ? std::string("part") : "part" + std::to_string(index);
         Entity made{entt::null};
         if (auto it = shown.find({owner, slot}); it != shown.end() && registry.get<AttachmentLink>(it->second).item == part.sheet) {

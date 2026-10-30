@@ -6219,32 +6219,56 @@ bool EditorApp::HandleGenerateMessage(const std::string& type, const nlohmann::j
     } else if (type == "animations:request") {
         post_(AnimationsJson());
     } else if (type == "animation:delete") {
-        // Assets ▸ Animations ▸ Delete…: the sheet's file, and its picture when no other sheet plays it (what still
-        // plays it shows nothing).
+        // Assets ▸ Animations ▸ Delete…: the sheet's file, and its picture when no other sheet plays it. The parts that
+        // played it go too (its prefabs', this scene's, the pictures' kept ones): the picture shows as it was painted.
         const std::string path = message.value("path", "");
         if (path.rfind("assets/", 0) != 0 || path.find("..") != std::string::npos || !path.ends_with(".anim.json")) return true;
-        // Still played (a scene's or a prefab's parts, animators): not deleted; the part is removed first.
-        std::vector<std::string> users;
-        std::error_code walk;
-        for (const char* folder : {"scenes", "prefabs"}) {
-            const auto root = assets_.GetProject().Resolve(folder);
-            if (!std::filesystem::is_directory(root, walk)) continue;
-            for (const auto& f : std::filesystem::recursive_directory_iterator(root, walk)) {
-                if (!f.is_regular_file()) continue;
-                std::ifstream in(f.path(), std::ios::binary);
-                const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-                if (text.find(path) != std::string::npos) users.push_back(std::filesystem::relative(f.path(), assets_.GetProject().Resolve("")).generic_string());
-            }
+        auto plays = [&](const AnimatedPart& part) {
+            const auto list = DoorsOf(part);
+            return std::any_of(list.begin(), list.end(), [&](const AnimatedPart& d) { return d.sheet == path; });
+        };
+        // Its parts left out; none left: the component gone.
+        auto dropFrom = [&](Registry& r, Entity t) {
+            auto list = DoorsOf(r.get<AnimatedPart>(t));
+            std::erase_if(list, [&](const AnimatedPart& d) { return d.sheet == path; });
+            if (list.empty()) r.remove<AnimatedPart>(t);
+            else SetDoors(r.get<AnimatedPart>(t), list);
+        };
+        std::set<std::string> pictures; // the pictures whose kept parts may name it
+        int removed = 0;
+        for (const PrefabInfo& info : std::vector<PrefabInfo>(prefabs_.Prefabs())) {
+            bool uses = false;
+            prefabs_.VisitTemplate(info.path, [&](Registry& r, Entity t) {
+                if (const auto* part = r.try_get<AnimatedPart>(t)) uses = plays(*part);
+                if (const auto* s = r.try_get<Sprite>(t)) pictures.insert(s->texture);
+            });
+            if (!uses) continue;
+            if (prefabs_.EditTemplate(info.path, [&](Registry& r, Entity t) { dropFrom(r, t); })) continue;
+            prefabs_.SyncAll(registry_, info.path);
+            ++removed;
         }
-        for (auto [e, part] : registry_.view<AnimatedPart>().each()) {
-            for (const auto& d : DoorsOf(part)) {
-                if (d.sheet == path && users.empty()) users.push_back("this scene");
+        ApplyOneShotEdit([&] {
+            // Copies keeping their own parts, things of no prefab: theirs left out here.
+            std::vector<Entity> users;
+            for (auto [e, part] : registry_.view<AnimatedPart>().each()) {
+                if (plays(part)) users.push_back(e);
             }
-        }
-        if (!users.empty()) {
-            post_({{"type", "notify"}, {"text", "Not deleted: " + users.front() + (users.size() > 1 ? " and " + std::to_string(users.size() - 1) + " more" : "") +
-                                                   " still play it. Remove the part first (Edit parts… ▸ Remove this part), save, then delete it"}});
-            return true;
+            for (Entity e : users) {
+                if (const auto* s = registry_.try_get<Sprite>(e)) pictures.insert(s->texture);
+                if (const auto* in = registry_.try_get<Interior>(e); in && !in->exteriorTexture.empty()) pictures.insert(in->exteriorTexture);
+                dropFrom(registry_, e);
+                for (const char* f : {"sheet", "x", "y", "width", "height", "opens", "trigger", "prompt", "door", "floor", "locked", "key", "consumeKey", "more"}) {
+                    RecordOverride(registry_, e, "AnimatedPart", f);
+                }
+                ++removed;
+            }
+            return !users.empty();
+        });
+        for (const std::string& picture : pictures) {
+            auto kept = AssetDoors(assets_.GetProject(), picture);
+            const size_t before = kept.size();
+            std::erase_if(kept, [&](const AnimatedPart& d) { return d.sheet == path; });
+            if (kept.size() != before) SetAssetDoors(assets_.GetProject(), picture, kept);
         }
         const nlohmann::json all = FxJson().value("sheets", nlohmann::json::array());
         std::string texture;
@@ -6262,7 +6286,8 @@ bool EditorApp::HandleGenerateMessage(const std::string& type, const nlohmann::j
         }
         RefreshAssets();
         post_(AnimationsJson()); // the Effects panel's list too: it reloads the sheets
-        post_({{"type", "notify"}, {"text", "Deleted " + path}});
+        inspectorStale_ = true;
+        post_({{"type", "notify"}, {"text", "Deleted " + path + (removed ? " and the parts that played it" : "")}});
     } else if (type == "fx:sheet-read" || type == "fx:sheet-save" || type == "fx:sheet-addPictures") {
         // The sheet editor (Project ▸ Effects ▸ Sheets ▸ Edit): a sheet's file as it is, written back, or pictures added.
         const std::string path = message.value("path", "");

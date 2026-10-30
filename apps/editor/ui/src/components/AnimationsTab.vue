@@ -129,7 +129,7 @@ function menu(sheet: Sheet, event: MouseEvent): void {
         label: 'Delete…',
         danger: true,
         disabled: editorState.playing,
-        confirm: `Delete ${sheet.path}? Its picture goes too unless another sheet uses it; what plays it will show nothing.`,
+        confirm: `Delete ${sheet.path}? Its picture goes too unless another sheet uses it, and the parts that play it are removed (the picture under them shows as it was).`,
         action: () => sendToHost({ type: 'animation:delete', path: sheet.path }),
       },
     ])
@@ -151,7 +151,7 @@ function menu(sheet: Sheet, event: MouseEvent): void {
       label: 'Delete…',
       danger: true,
       disabled: editorState.playing,
-      confirm: `Delete ${sheet.path}? Its picture goes too unless another sheet uses it; what plays it will show nothing.`,
+      confirm: `Delete ${sheet.path}? Its picture goes too unless another sheet uses it, and the parts that play it are removed (the picture under them shows as it was).`,
       action: () => sendToHost({ type: 'animation:delete', path: sheet.path }),
     },
   ]
