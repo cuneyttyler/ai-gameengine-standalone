@@ -205,12 +205,17 @@ cells round it, open in front of each way in.
 
 ### 5c. The building editor
 
+(The Interior component shows in the Inspector as **Building Plan**; scenes and prefabs keep its name, `Interior`.)
+
 Inspector ▸ Interior ▸ **Edit building…** (`BuildingEditor.vue`, `interior:art` / `interior:setArt`): the building's
 exterior and each floor's interior as tabs, its footprint's cells drawn over them as the scene draws them (diamonds in the
 pictures' pixels), and a brush (size, Draw, Erase, Clear) for two layers: **Stairs** (on floor *k*: the stairs from it up
 to *k+1*; several cells may be one staircase, `x,y|x,y` in `stairs`) and **Ways in** (cells of its edge). Blue cells are
 stairs (paler on the floor above: where they come up), green ways in. **Find the stairs (AI)** asks the vision model which
-corner each floor's stairs are in. Saved on this building (its copy: an override).
+corner each floor's stairs are in. **Doors** shows each of its doors (AnimatedPart) as a box on the picture, coloured by how
+it opens (yellow on use, teal by itself, green an open doorway, red locked); clicking one shows how it opens, its lock
+and key, and removes it. Inspector ▸ AnimatedPart lists how many doors it has, with **Edit doors…**. Saved on this
+building (its copy: an override).
 
 ## 6. Libraries
 

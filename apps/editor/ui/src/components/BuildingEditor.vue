@@ -10,12 +10,18 @@ import { trackOverlay, untrackOverlay } from '../overlay'
 
 const PROJECT_HOST = 'https://aige-project.local/'
 interface Cell { x: number; y: number; edge: boolean; poly: [number, number][] }
-interface Info { id: number; name: string; pictures: string[]; size: [number, number]; cells: Cell[]; stairs: [number, number][][]; entries: [number, number][] }
+interface Door { box: [number, number, number, number]; opens: string; locked: boolean; key: string; consumeKey: boolean; animated: boolean; index?: number }
+interface Info {
+  id: number; name: string; pictures: string[]; size: [number, number]; cells: Cell[]; stairs: [number, number][][]; entries: [number, number][]
+  doors: Door[]; projectOpens: string
+}
 
 const backdrop = ref<HTMLElement | null>(null)
 const info = ref<Info | null>(null)
 const tab = ref(0) // 0: the exterior; k: floor k's interior
-const layer = ref<'stairs' | 'entries'>('stairs')
+const layer = ref<'stairs' | 'entries' | 'doors'>('stairs')
+const doors = ref<Door[]>([]) // its doors (AnimatedPart), as edited here
+const picked = ref<number | null>(null) // the door clicked
 const tool = ref<'draw' | 'erase'>('draw')
 const brush = ref(14) // its radius, in the picture's pixels
 const stairs = reactive<Record<number, Set<string>>>({}) // floor change k (floor k up to k + 1) -> its cells "x,y"
@@ -54,6 +60,8 @@ onHostMessage((message) => {
     for (const k of Object.keys(stairs)) delete stairs[Number(k)]
     i.stairs.forEach((cells, n) => (stairs[n + 1] = new Set(cells.map(([x, y]) => `${x},${y}`))))
     entries.value = new Set(i.entries.map(([x, y]) => `${x},${y}`))
+    doors.value = (i.doors ?? []).map((d, n) => ({ ...d, index: n }))
+    picked.value = null
     dirty.value = false
     finding.value = false
     if (tab.value > i.pictures.length - 1) tab.value = 0
@@ -70,7 +78,13 @@ function save(): void {
   if (!info.value) return
   const list: [number, number][][] = []
   for (let k = 1; k < floors.value; ++k) list.push([...(stairs[k] ?? [])].map((c) => c.split(',').map(Number) as [number, number]))
-  sendToHost({ type: 'interior:setArt', id: info.value.id, stairs: list, entries: [...entries.value].map((c) => c.split(',').map(Number)) })
+  sendToHost({
+    type: 'interior:setArt',
+    id: info.value.id,
+    stairs: list,
+    entries: [...entries.value].map((c) => c.split(',').map(Number)),
+    doors: doors.value.map((d) => ({ index: d.index, opens: d.opens, locked: d.locked, key: d.key, consumeKey: d.consumeKey })),
+  })
   dirty.value = false
 }
 function findStairs(): void {
@@ -107,8 +121,33 @@ function stroke(event: MouseEvent): void {
   if (layer.value === 'entries') entries.value = new Set(entries.value) // seen as changed
 }
 function down(event: MouseEvent): void {
+  if (layer.value === 'doors') {
+    // A door picked: the one under the click.
+    const r = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    const px = (event.clientX - r.left) / scale.value, py = (event.clientY - r.top) / scale.value
+    const hit = doors.value.findIndex((d) => px >= d.box[0] && px <= d.box[0] + d.box[2] && py >= d.box[1] && py <= d.box[1] + d.box[3])
+    picked.value = hit >= 0 ? hit : null
+    return
+  }
   painting = true
   stroke(event)
+}
+// How a door opens, in words (its own, or the project's).
+function opensText(d: Door): string {
+  const way = d.opens === 'project' ? info.value?.projectOpens ?? 'use' : d.opens
+  return d.locked ? `locked${d.key ? ': ' + d.key : ''}` : way === 'auto' ? 'opens by itself' : way === 'open' ? 'an open doorway' : 'opens on use'
+}
+function doorColour(d: Door): string {
+  const way = d.opens === 'project' ? info.value?.projectOpens ?? 'use' : d.opens
+  return d.locked ? '#e65a5a' : way === 'auto' ? '#4ec9b0' : way === 'open' ? '#9cdc6c' : '#f5c542'
+}
+function editDoor(): void {
+  dirty.value = true
+}
+function removeDoor(i: number): void {
+  doors.value.splice(i, 1)
+  picked.value = null
+  dirty.value = true
 }
 function move(event: MouseEvent): void {
   if (painting) stroke(event)
@@ -146,27 +185,60 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
         <button :class="{ active: layer === 'stairs' }" :disabled="!change" :title="change ? `The stairs from floor ${change} up to ${change + 1}` : 'Stairs are drawn on a floor below the top one'"
                 @click="layer = 'stairs'">Stairs{{ change ? ` (floor ${change} → ${change + 1})` : '' }}</button>
         <button :class="{ active: layer === 'entries' }" title="Its ways in: cells of its edge where it's entered" @click="layer = 'entries'">Ways in</button>
+        <button :class="{ active: layer === 'doors' }" title="Its doors: click one to see how it opens and whether it's locked" @click="layer = 'doors'">
+          Doors ({{ doors.length }})</button>
         <span class="sep"></span>
-        <button :class="{ active: tool === 'draw' }" @click="tool = 'draw'">Draw</button>
-        <button :class="{ active: tool === 'erase' }" @click="tool = 'erase'">Erase</button>
-        <label class="inline">Brush <input v-model.number="brush" type="range" min="4" max="60" /></label>
-        <button title="Clear what's drawn on this layer" @click="clearLayer">Clear</button>
+        <template v-if="layer !== 'doors'">
+          <button :class="{ active: tool === 'draw' }" @click="tool = 'draw'">Draw</button>
+          <button :class="{ active: tool === 'erase' }" @click="tool = 'erase'">Erase</button>
+          <label class="inline">Brush <input v-model.number="brush" type="range" min="4" max="60" /></label>
+          <button title="Clear what's drawn on this layer" @click="clearLayer">Clear</button>
+        </template>
         <span class="sep"></span>
         <button :disabled="finding || floors < 2 || editorState.ai.state !== 'ready'" title="The vision model says which corner each floor's stairs are in"
                 @click="findStairs">{{ finding ? 'Finding…' : 'Find the stairs (AI)' }}</button>
       </div>
-      <div v-if="info" class="picture" :style="{ width: `${info.size[0] * scale}px`, height: `${info.size[1] * scale}px` }"
+      <div v-if="info" class="work">
+      <div class="picture" :style="{ width: `${info.size[0] * scale}px`, height: `${info.size[1] * scale}px` }"
            @mousedown.prevent="down" @mousemove="move" @mouseup="up" @mouseleave="up">
         <img :src="PROJECT_HOST + info.pictures[tab]" alt="" :style="{ width: `${info.size[0] * scale}px`, height: `${info.size[1] * scale}px` }" />
         <svg :width="info.size[0] * scale" :height="info.size[1] * scale">
           <polygon v-for="c in info.cells" :key="`${c.x},${c.y}`" :points="points(c.poly)" :fill="fillOf(c)"
                    :stroke="c.edge ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.15)'" stroke-width="1" />
+          <!-- Its doors: a box each, coloured by how it opens (red: locked); the picked one thicker. -->
+          <g v-for="(d, i) in doors" :key="'door' + i" :opacity="layer === 'doors' ? 1 : 0.6">
+            <rect :x="d.box[0] * scale" :y="d.box[1] * scale" :width="d.box[2] * scale" :height="d.box[3] * scale" fill="none"
+                  :stroke="doorColour(d)" :stroke-width="picked === i ? 3 : 1.5" />
+            <text :x="d.box[0] * scale + 3" :y="d.box[1] * scale + 13" :fill="doorColour(d)" font-size="12">{{ d.locked ? '🔒 ' : '' }}{{ i + 1 }}</text>
+          </g>
         </svg>
+      </div>
+      <!-- The door picked: how it opens, its lock. -->
+      <div v-if="layer === 'doors'" class="door-panel">
+        <p v-if="!doors.length" class="muted small">No doors: animate one (Build ▸ Animate, or right-click ▸ Animate a part…).</p>
+        <div v-for="(d, i) in doors" :key="'row' + i" class="door-row" :class="{ picked: picked === i }" @click="picked = i">
+          <b :style="{ color: doorColour(d) }">Door {{ i + 1 }}</b> <span class="muted small">{{ opensText(d) }}{{ d.animated ? '' : ' · not animated' }}</span>
+        </div>
+        <template v-if="picked !== null && doors[picked]">
+          <label>Opens
+            <select v-model="doors[picked]!.opens" @change="editDoor">
+              <option value="project">as the project says ({{ info.projectOpens }})</option>
+              <option value="use">on use (the door shortcuts, a double click)</option>
+              <option value="auto">by itself, as someone comes near</option>
+              <option value="open">always open (a doorway)</option>
+            </select>
+          </label>
+          <label class="inline"><input v-model="doors[picked]!.locked" type="checkbox" @change="editDoor" /> Locked</label>
+          <label v-if="doors[picked]!.locked">Key (an item id) <input v-model="doors[picked]!.key" spellcheck="false" placeholder="iron_key" @change="editDoor" /></label>
+          <label v-if="doors[picked]!.locked" class="inline"><input v-model="doors[picked]!.consumeKey" type="checkbox" @change="editDoor" /> The key is used up</label>
+          <button class="small" @click="removeDoor(picked)">Remove this door</button>
+        </template>
+      </div>
       </div>
       <p v-else class="muted">Loading the building…</p>
       <p class="muted small">
         Paint over the stairs on a floor (they take one up from it; down from the floor above) and along its edge where it's
-        entered. Blue: stairs; green: ways in. Saved on this building.
+        entered. Blue: stairs; green: ways in. Doors: yellow opens on use, teal by itself, red locked. Saved on this building.
       </p>
       <div class="buttons">
         <button @click="close">{{ dirty ? 'Cancel' : 'Close' }}</button>
@@ -209,6 +281,34 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
 }
 .sep {
   width: 10px;
+}
+.work {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.door-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+}
+.door-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.door-panel label.inline {
+  flex-direction: row;
+  align-items: center;
+}
+.door-row {
+  padding: 3px 5px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.door-row.picked {
+  border-color: var(--accent, #4a8);
 }
 .picture {
   position: relative;

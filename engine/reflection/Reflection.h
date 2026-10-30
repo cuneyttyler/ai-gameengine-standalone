@@ -79,6 +79,7 @@ struct FieldInfo : FieldMeta {
 
 struct ComponentInfo {
     std::string name;
+    std::string label; // how the editor shows it ("" its name): Interior is the Building Plan; files keep `name`
     std::string description;
     std::vector<FieldInfo> fields;
     // Users (and the AI) can add/remove it; false for structural components
@@ -414,6 +415,11 @@ public:
 
     ComponentBuilder& DependsOn(std::vector<std::string> components) {
         Info().dependencies = std::move(components);
+        return *this;
+    }
+    // How the editor shows it (its name stays in scenes and prefabs).
+    ComponentBuilder& Label(std::string label) {
+        Info().label = std::move(label);
         return *this;
     }
     // Not addable/removable by users (structural, like Tile).

@@ -295,7 +295,8 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                               "higher or lower than where one stands) can't be walked up or down.")
         .Field("rise", &Ramp::rise, "How high it climbs, in pixels (informative; 0: any).").Min(0)
         .DependsOn({"WorldTransform2D"});
-    r.Component<Interior>("Interior", "A place one can go into (Phase 27): its interior shows while the player is inside; only its walls block.")
+    r.Component<Interior>("Interior", "A building's plan (Phase 27): its floors' pictures, its stairs and its ways in; its interior shows while the player is inside, only its walls block.")
+        .Label("Building Plan")
         .Field("kind", &Interior::kind, "cutaway: the building drawn cut away in place; scene: its own scene, through its door.").Options({"cutaway", "scene"})
         .Field("scene", &Interior::scene, "A scene interior: its scene.")
         .Field("marker", &Interior::marker, "A scene interior: where one arrives in it.")

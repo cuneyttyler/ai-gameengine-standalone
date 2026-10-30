@@ -23,6 +23,7 @@ interface ScriptProperty {
 
 interface ComponentData {
   name: string
+  label?: string // how it's shown (Interior: Building Plan)
   description: string
   removable: boolean
   derived: boolean
@@ -36,7 +37,7 @@ interface InspectorData {
   prefab: { path: string; name: string; missing: boolean; overrides: string[] } | null
   size: number | null // % of its prefab's size (prefab copies with a sprite)
   components: ComponentData[]
-  addable: { name: string; description: string }[]
+  addable: { name: string; label?: string; description: string }[]
   choices: Choices
 }
 
@@ -260,7 +261,7 @@ function numberFrom(event: Event): number {
             :title="component.description"
             @click="collapsed[component.name] = !collapsed[component.name]"
           >
-            {{ collapsed[component.name] ? '▸' : '▾' }} {{ component.name }}
+            {{ collapsed[component.name] ? '▸' : '▾' }} {{ component.label ?? component.name }}
           </button>
           <span v-if="component.derived" class="derived" title="Computed every frame from the world position">
             derived
@@ -293,7 +294,14 @@ function numberFrom(event: Event): number {
             :id="current.id"
             @set="(name, value) => setField('Interior', component.fields.find((f) => f.name === name)!, value)"
           />
-          <template v-for="field in component.fields.filter((f) => component.name !== 'Interior' || !['floors', 'stairs', 'entries', 'texture'].includes(f.name))" :key="field.name">
+          <!-- AnimatedPart: its doors listed (its own fields are the first; the others are in "more"), edited in the building editor. -->
+          <div v-if="component.name === 'AnimatedPart'" class="field-row doors-summary">
+            <span>{{ 1 + (String(component.fields.find((f) => f.name === 'more')?.value ?? '').match(/"sheet"/g)?.length ?? 0) }} door(s)</span>
+            <button v-if="current.components.some((s) => s.name === 'Interior')" :disabled="editorState.playing"
+                    title="See each door on the building, how it opens and whether it's locked" @click="editorState.buildingEditor = current!.id">
+              Edit doors…</button>
+          </div>
+          <template v-for="field in component.fields.filter((f) => (component.name !== 'Interior' || !['floors', 'stairs', 'entries', 'texture'].includes(f.name)) && (component.name !== 'AnimatedPart' || f.name !== 'more'))" :key="field.name">
             <div class="field-row" :class="{ overridden: field.overridden }">
               <label :title="field.overridden ? `${field.description}\n(Changed on this copy)` : field.description">
                 {{ field.name }}
@@ -394,8 +402,8 @@ function numberFrom(event: Event): number {
       <div v-if="!editorState.playing" class="footer">
         <select v-if="current.addable.length > 0" class="add" @change="addComponent">
           <option value="">+ Add component</option>
-          <option v-for="item in [...current.addable].sort((a, b) => a.name.localeCompare(b.name))" :key="item.name" :value="item.name" :title="item.description">
-            {{ item.name }}
+          <option v-for="item in [...current.addable].sort((a, b) => (a.label ?? a.name).localeCompare(b.label ?? b.name))" :key="item.name" :value="item.name" :title="item.description">
+            {{ item.label ?? item.name }}
           </option>
         </select>
 

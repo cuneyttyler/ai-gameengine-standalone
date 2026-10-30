@@ -7046,9 +7046,20 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
         }
         nlohmann::json entries = nlohmann::json::array();
         for (const auto& [ex, ey] : InteriorEntries(registry_, e, *interior)) entries.push_back({ex, ey});
+        // Its doors (AnimatedPart: each its box in the exterior's pixels, how it opens, its lock).
+        nlohmann::json doors = nlohmann::json::array();
+        if (const auto* part = registry_.try_get<AnimatedPart>(e); part && (!part->sheet.empty() || part->opens == "open" || !part->more.empty())) {
+            const float frameW = std::abs(sprite->u1 - sprite->u0) * W;
+            for (const AnimatedPart& d : DoorsOf(*part)) {
+                const float cx = mirrored ? frameW - d.x : d.x;
+                doors.push_back({{"box", {cx - d.width / 2, d.y - d.height / 2, d.width, d.height}}, {"opens", d.opens}, {"locked", d.locked},
+                                 {"key", d.key}, {"consumeKey", d.consumeKey}, {"animated", !d.sheet.empty()}});
+            }
+        }
         const auto* name = registry_.try_get<Name>(e);
         post_({{"type", "interior:artInfo"}, {"id", static_cast<uint32_t>(e)}, {"name", name ? name->value : std::string("Building")},
-               {"pictures", floors}, {"size", {W, H}}, {"cells", cells}, {"stairs", stairs}, {"entries", entries}});
+               {"pictures", floors}, {"size", {W, H}}, {"cells", cells}, {"stairs", stairs}, {"entries", entries}, {"doors", doors},
+               {"projectOpens", ActiveSettings().game.doorsOpen}});
         return true;
     }
     if (type == "interior:setArt") {
@@ -7076,6 +7087,24 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             interior->entries = entries;
             RecordOverride(registry_, e, "Interior", "stairs");
             RecordOverride(registry_, e, "Interior", "entries");
+            // Its doors' ways and locks (in their order; a door left out is removed).
+            if (auto* part = registry_.try_get<AnimatedPart>(e); part && message.contains("doors")) {
+                const auto now = DoorsOf(*part);
+                std::vector<AnimatedPart> kept;
+                for (const auto& d : message["doors"]) {
+                    const size_t i = d.value("index", 0);
+                    if (i >= now.size()) continue;
+                    AnimatedPart door = now[i];
+                    door.opens = d.value("opens", door.opens);
+                    door.locked = d.value("locked", door.locked);
+                    door.key = d.value("key", door.key);
+                    door.consumeKey = d.value("consumeKey", door.consumeKey);
+                    kept.push_back(door);
+                }
+                if (kept.empty()) registry_.remove<AnimatedPart>(e);
+                else SetDoors(*part, kept);
+                for (const char* f : {"sheet", "x", "y", "width", "height", "opens", "locked", "key", "consumeKey", "more"}) RecordOverride(registry_, e, "AnimatedPart", f);
+            }
             return true;
         });
         inspectorStale_ = true;
@@ -9497,7 +9526,8 @@ nlohmann::json EditorApp::InspectorJson(Entity entity) {
     for (const auto& component : Components()) {
         if (!component.has(registry_, entity)) {
             if (component.userEditable) {
-                addable.push_back({{"name", component.name}, {"description", component.description}});
+                addable.push_back({{"name", component.name}, {"label", component.label.empty() ? component.name : component.label},
+                                   {"description", component.description}});
             }
             continue;
         }
@@ -9515,6 +9545,7 @@ nlohmann::json EditorApp::InspectorJson(Entity entity) {
             fields.push_back(entry);
         }
         nlohmann::json section = {{"name", component.name},
+                                  {"label", component.label.empty() ? component.name : component.label},
                                   {"description", component.description},
                                   {"removable", component.userEditable},
                                   {"derived", component.derived(registry_, entity)},
