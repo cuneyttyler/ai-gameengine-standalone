@@ -134,9 +134,21 @@ void UpdatePlayerMove(Registry& registry, Entity player, float inputRight, float
             return there && std::abs(*there - h) > step && !rampAt(x, y) && !rampAt(cx, cy);
         };
     }
+    const SolidQueryFn& solid = ActiveSettings().physics.playerCollides ? withCliffs : kNothingSolid;
     Vec2 resolved = ResolveAabbMovement({world.x, world.y}, {collider.halfWidth, collider.halfHeight},
-                                         {velocity.x * dt, velocity.y * dt},
-                                         ActiveSettings().physics.playerCollides ? withCliffs : kNothingSolid);
+                                         {velocity.x * dt, velocity.y * dt}, solid);
+    // Into a wall at an angle (walls run along the world's axes: diagonals on an isometric screen): along it at full
+    // speed, facing its way (a wall from the lower left to the upper right: up turns north-east, down south-west).
+    if (length > 1e-4f) {
+        const bool blockedX = std::abs(velocity.x * dt) > 1e-5f && std::abs(resolved.x - world.x) < 1e-6f;
+        const bool blockedY = std::abs(velocity.y * dt) > 1e-5f && std::abs(resolved.y - world.y) < 1e-6f;
+        if (blockedX != blockedY) {
+            const float step = moveSpeed * strength * dt;
+            const Vec2 along = blockedX ? Vec2{0.0f, velocity.y > 0.0f ? 1.0f : -1.0f} : Vec2{velocity.x > 0.0f ? 1.0f : -1.0f, 0.0f};
+            resolved = ResolveAabbMovement({world.x, world.y}, {collider.halfWidth, collider.halfHeight}, {along.x * step, along.y * step}, solid);
+            if (std::abs(resolved.x - world.x) + std::abs(resolved.y - world.y) > 1e-6f) registry.emplace_or_replace<Facing>(player, along.x, along.y);
+        }
+    }
     world.x = resolved.x;
     world.y = resolved.y;
 }

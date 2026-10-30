@@ -416,6 +416,8 @@ struct OnFloor {
     int floor = 1;
     bool onStairs = false;   // on a staircase since the last step (off it before it goes again)
     float climb = 0.0f;      // how far up its floor's stairs it stands (0 their foot, 1 their top): it rises as it climbs
+    bool climbing = false;   // on its floor's stairs, got on at their foot: their top takes it up
+    bool atTop = false;      // on the top of the stairs from the floor below, come from this floor: a step down takes it down
     float lift = 0.0f;       // scene pixels above the ground, eased toward its floor's and its climb's
     bool hidden = false;     // hidden by it (its alpha kept in `alpha`)
     float alpha = 1.0f;

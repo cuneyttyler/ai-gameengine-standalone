@@ -245,7 +245,8 @@ std::vector<std::pair<int, int>> StairsCells(const Interior& interior, int chang
         std::stringstream each(parts[static_cast<size_t>(change - 1)]);
         for (std::string cell; std::getline(each, cell, '|');) {
             int x = 0, y = 0;
-            if (std::sscanf(cell.c_str(), "%d,%d", &x, &y) == 2) cells.push_back({x, y});
+            // Only cells of its footprint (one listed outside it is from an older layout: the default instead).
+            if (std::sscanf(cell.c_str(), "%d,%d", &x, &y) == 2 && x >= x0 && x <= x1 && y >= y0 && y <= y1) cells.push_back({x, y});
         }
     }
     if (!cells.empty()) return cells;
@@ -332,19 +333,19 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player) {
         return nullptr;
     };
     // Each character's floor (the player's and everyone's): in through a door, the ground floor. A floor's stairs up
-    // (their cells from the top, by the back corner, down to the foot) are climbed: it rises with them, and stands on the
-    // floor above only on their top cell; coming down from the floor above, the top cell is still that floor, and the
-    // second from the top the floor below (where it stands that high on its stairs). Stairs of one cell: walked onto, up
-    // or down (off them before they go again).
+    // (their cells from the top, by the back corner, down to the foot) are climbed: got on at their foot, it rises with
+    // them and stands on the floor above on their top cell; on from the side, they're only floor. Down: onto their top
+    // from the floor above, then a step down: on the floor below, on its stairs (that high), and down them. Stairs of one
+    // cell: walked onto, up or down (off them before they go again).
     for (auto [mover, velocity, world] : registry.view<Velocity2D, WorldTransform2D>().each()) {
         const Building* b = buildingAt(world.x, world.y);
         auto* on = registry.try_get<OnFloor>(mover);
         if (b == nullptr) {
-            if (on) on->building = entt::null, on->floor = 1, on->onStairs = false;
+            if (on) on->building = entt::null, on->floor = 1, on->onStairs = false, on->climbing = false, on->atTop = false;
             continue;
         }
         if (on == nullptr) on = &registry.emplace<OnFloor>(mover);
-        if (on->building != b->entity) on->building = b->entity, on->floor = 1, on->onStairs = false;
+        if (on->building != b->entity) on->building = b->entity, on->floor = 1, on->onStairs = false, on->climbing = false, on->atTop = false;
         bool onStairs = false;
         on->climb = 0.0f;
         if (b->floors > 1) {
@@ -364,19 +365,31 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player) {
                 return static_cast<int>(std::find(cells.begin(), cells.end(), cell) - cells.begin());
             };
             const int onUp = at(up), onDown = at(down); // its place on them (0 the top), or past the end: not on them
-            if (onUp < static_cast<int>(up.size()) && up.size() == 1) {
+            const bool onUpFlight = onUp < static_cast<int>(up.size()), onDownFlight = onDown < static_cast<int>(down.size());
+            if (onUpFlight && up.size() == 1) {
                 onStairs = true;
                 if (!on->onStairs) ++on->floor;
-            } else if (onDown < static_cast<int>(down.size()) && down.size() == 1) {
+            } else if (onDownFlight && down.size() == 1) {
                 onStairs = true;
                 if (!on->onStairs) --on->floor;
-            } else if (onUp == 0 && !up.empty()) {
-                ++on->floor; // the top cell: on the floor above
-            } else if (onDown >= 1 && onDown < static_cast<int>(down.size())) {
-                --on->floor; // the second cell down from the top: on the floor below, on its stairs
+            } else if (onUpFlight) {
+                if (onUp == static_cast<int>(up.size()) - 1) on->climbing = true; // got on at the foot
+                if (on->climbing && onUp == 0) {
+                    ++on->floor; // climbed to the top: on the floor above, at the top of its stairs down
+                    on->climbing = false, on->atTop = true;
+                }
+            } else if (onDownFlight) {
+                if (onDown == 0) {
+                    on->atTop = true; // on the top, from this floor
+                } else if (on->atTop) {
+                    --on->floor; // a step down from the top: on the floor below, on its stairs
+                    on->atTop = false, on->climbing = true;
+                }
+            } else {
+                on->climbing = false, on->atTop = false; // off the stairs
             }
             // Climbing its floor's stairs: how far up it stands, from the foot cell's middle to the top cell's.
-            const auto climbing = on->floor < b->floors ? flight(on->floor) : std::vector<std::pair<int, int>>{};
+            const auto climbing = on->floor < b->floors && on->climbing ? flight(on->floor) : std::vector<std::pair<int, int>>{};
             if (climbing.size() > 1 && at(climbing) < static_cast<int>(climbing.size())) {
                 const auto& top = climbing.front();
                 const auto& foot = climbing.back();
