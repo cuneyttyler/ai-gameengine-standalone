@@ -692,6 +692,14 @@ bool Ontology::IsSolid(const std::string& role) const {
     return false;
 }
 
+bool Ontology::IsBuilding(const std::string& role) const {
+    std::set<std::string> seen;
+    for (const Role* r = FindRole(role); r && seen.insert(r->id).second; r = FindRole(r->broader)) {
+        if (r->id == "building") return true;
+    }
+    return false;
+}
+
 const std::vector<Concept>* Ontology::Scheme(const std::string& id) const {
     auto it = schemes_.find(id);
     return it == schemes_.end() ? nullptr : &it->second;

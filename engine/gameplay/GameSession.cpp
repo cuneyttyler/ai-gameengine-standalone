@@ -192,7 +192,11 @@ void UpdateGroundHeights(Registry& registry) {
     // Whatever moves stands at the land's height under its foot (place-refine.md §10), eased so a slope doesn't jitter.
     for (auto [entity, velocity, world, sprite] : registry.view<Velocity2D, WorldTransform2D, Sprite>(entt::exclude<Tile>).each()) {
         if (sprite.flat) continue;
-        if (const std::optional<float> h = GroundHeightAt(registry, world.x, world.y)) sprite.lift += (*h - sprite.lift) * 0.5f;
+        // Inside a building, its floor's storeys higher (OnFloor, docs/places/interiors.md §4).
+        const auto* on = registry.try_get<OnFloor>(entity);
+        const float storeys = on ? on->lift : 0.0f;
+        if (const std::optional<float> h = GroundHeightAt(registry, world.x, world.y)) sprite.lift += (*h + storeys - sprite.lift) * 0.5f;
+        else if (on) sprite.lift = storeys;
     }
 }
 
@@ -2591,9 +2595,10 @@ void GameSession::StepActions(float dt) {
             }
         }
     }
+    const std::vector<std::string> fired = actionEvents_; // for parts activated by an event, below
     actionEvents_.clear();
     actionEventUsers_.clear();
-    // Animated parts (a building's doors; docs/assets/animations.md §4.2, §4.3). Each door opens its project's way or
+    // Animated parts (a building's doors, a lever, a mill's sails; docs/assets/animations.md §4.2, §4.3). Each door opens its project's way or
     // its own: auto, as someone comes near; use, for the player's door shortcuts (Project Settings ▸ Game ▸
     // doorActions) or a double click on it, near it, and for other characters as they come. A locked one opens only
     // for the player carrying its key (then it's unlocked for good). It closes once everyone has gone. Near is measured
@@ -2640,25 +2645,37 @@ void GameSession::StepActions(float dt) {
                 AnimatedPart door; // a painted door's ways, read as a building's door's
                 door.sheet = "painted", door.clip = painted->clip, door.closeClip = painted->closeClip, door.range = painted->range;
                 door.opens = painted->opens, door.locked = painted->locked, door.key = painted->key, door.consumeKey = painted->consumeKey;
+                door.trigger = painted->trigger, door.prompt = painted->prompt;
                 all[d.owner] = {door};
             } else {
                 all[d.owner] = DoorsOf(registry_.get<AnimatedPart>(d.owner));
             }
         }
-        // The one door the player's shortcut (or double click) is for: the nearest within its range.
+        // Whether the player can activate a part now: by use (the door shortcuts, a double click), its own input action,
+        // or a locked one's lock (by either).
+        auto byPlayer = [&](const AnimatedPart& part) {
+            const std::string way = DoorOpens(part);
+            return part.locked || way == "use" || way == "action";
+        };
+        auto pressedFor = [&](const AnimatedPart& part) {
+            return DoorOpens(part) == "action" ? input_.Pressed(part.trigger) : doorKey;
+        };
+        // The one part the player's shortcut (or double click) is for: the nearest within its range.
         const DoorAt* used = nullptr;
         float usedDistance = 1e9f;
         for (const auto& d : doors) {
             const auto& list = all[d.owner];
-            if (!at || d.index >= list.size()) continue;
+            if (!at || d.index >= list.size() || !byPlayer(list[d.index])) continue;
             const float dist = std::hypot(at->x - d.x, at->y - d.y);
             const auto* screen = registry_.try_get<ScreenTransform2D>(d.overlay);
             const auto* sprite = registry_.try_get<Sprite>(d.overlay);
             const bool clicked = click && screen && sprite && std::abs(click->first - screen->x) <= sprite->width * 0.5f &&
                                  std::abs(click->second - screen->y) <= sprite->height * 0.5f;
-            if (dist <= list[d.index].range + (clicked ? 1.0f : 0.0f) && (doorKey || clicked) && dist < usedDistance) used = &d, usedDistance = dist;
+            const bool pressed = pressedFor(list[d.index]) || (clicked && DoorOpens(list[d.index]) != "action");
+            if (dist <= list[d.index].range + (clicked ? 1.0f : 0.0f) && pressed && dist < usedDistance) used = &d, usedDistance = dist;
         }
-        // The prompt (the HUD's, as at a chest): the nearest door opened by use within its range.
+        // The prompt (the HUD's, as at a chest): the nearest part the player activates within its range; its own words
+        // ("Pull the lever", or "shut|open"), else a door's.
         doorPrompt_.clear();
         float promptDistance = 1e9f;
         for (const auto& d : doors) {
@@ -2673,8 +2690,11 @@ void GameSession::StepActions(float dt) {
                 auto* inventory = registry_.try_get<Inventory>(*player);
                 const bool hasKey = !door.key.empty() && inventory && CountItem(*inventory, door.key) > 0;
                 doorPrompt_ = hasKey ? "Unlock the door" : door.key.empty() ? "Locked" : "Locked: needs " + ItemName(door.key);
-            } else if (DoorOpens(door) == "use") {
-                doorPrompt_ = open ? "Close the door" : "Open the door";
+            } else if (byPlayer(door)) {
+                const size_t bar = door.prompt.find('|');
+                if (door.prompt.empty()) doorPrompt_ = !door.door ? "Use" : open ? "Close the door" : "Open the door";
+                else if (bar == std::string::npos) doorPrompt_ = door.prompt;
+                else doorPrompt_ = open ? door.prompt.substr(bar + 1) : door.prompt.substr(0, bar);
             } else {
                 continue;
             }
@@ -2691,8 +2711,8 @@ void GameSession::StepActions(float dt) {
             if (state.cells.size() < list.size()) state.cells.resize(list.size(), {INT_MIN, INT_MIN});
             if (state.age.size() < list.size()) state.age.resize(list.size(), 0.0f);
             state.age[d.index] += dt;
-            // Its doorway: the footprint's edge cell nearest the door.
-            if (const auto* interior = registry_.try_get<Interior>(d.owner)) {
+            // Its doorway: the footprint's edge cell nearest the door (a building's doors only: not a window, a lever).
+            if (const auto* interior = registry_.try_get<Interior>(d.owner); interior && door.door) {
                 int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
                 const auto ways = InteriorEntries(registry_, d.owner, *interior);
                 if (!ways.empty()) {
@@ -2710,13 +2730,32 @@ void GameSession::StepActions(float dt) {
                                          : nearest == 2 ? std::make_pair(cx, y0) : std::make_pair(cx, y1);
                 }
             }
-            const bool byUse = DoorOpens(door) == "use";
+            const std::string way = DoorOpens(door);
+            const bool byUse = way == "use";
+            const bool toggled = way == "action" || way == "event"; // stays as it's left, no one closes it by leaving
+            char& open = state.open[d.index];
+            if (way == "always") {
+                // On and on: its clip again each time it ends.
+                if (!open || state.age[d.index] >= std::max(0.2f, AnimationLength(registry_, animations_, d.overlay, door.clip))) {
+                    open = 1;
+                    state.age[d.index] = 0.0f;
+                    TriggerAnimation(registry_, d.overlay, door.clip);
+                }
+                state.passable[d.index] = 1;
+                continue;
+            }
+            if (way == "event" && std::find(fired.begin(), fired.end(), door.trigger) != fired.end() && !door.locked) {
+                open = !open; // its event: it opens, or shuts again
+                state.age[d.index] = 0.0f;
+                TriggerAnimation(registry_, d.overlay, open ? door.clip : door.closeClip);
+                state.passable[d.index] = open;
+                continue;
+            }
             bool playerNear = false, othersNear = false;
             for (auto [mover, v, mw] : registry_.view<Velocity2D, WorldTransform2D>().each()) {
                 if (std::hypot(mw.x - d.x, mw.y - d.y) > door.range) continue;
                 (player && mover == *player ? playerNear : othersNear) = true;
             }
-            char& open = state.open[d.index];
             bool opening = false;
             if (used == &d) {
                 if (door.locked) {
@@ -2730,8 +2769,8 @@ void GameSession::StepActions(float dt) {
                         Toast("Unlocked with " + ItemName(door.key) + ".");
                         opening = true;
                     }
-                } else if (open && byUse) {
-                    open = 0; // by use: the shortcut opens it, or shuts it again
+                } else if (open && (byUse || toggled)) {
+                    open = 0; // by use (or its action): the shortcut opens it, or shuts it again
                     TriggerAnimation(registry_, d.overlay, door.closeClip);
                     state.passable[d.index] = 0;
                     continue;
@@ -2739,17 +2778,18 @@ void GameSession::StepActions(float dt) {
                     opening = true;
                 }
             }
-            if (!door.locked && (byUse ? othersNear : (playerNear || othersNear))) opening = true;
+            // Others open a door as they come (by use or by itself); a part that isn't a door only its own way.
+            if (!door.locked && !toggled && (byUse ? othersNear && door.door : (playerNear || othersNear))) opening = true;
             if (opening && !open) {
                 open = 1;
                 state.age[d.index] = 0.0f;
                 TriggerAnimation(registry_, d.overlay, door.clip);
-            } else if (open && !playerNear && !othersNear &&
+            } else if (open && !toggled && !playerNear && !othersNear &&
                        state.age[d.index] >= std::max(1.0f, AnimationLength(registry_, animations_, d.overlay, door.clip)) + 0.4f) {
                 open = 0; // everyone gone, and it has finished opening (and stood open a moment): it closes
                 TriggerAnimation(registry_, d.overlay, door.closeClip);
             }
-            state.passable[d.index] = open || (!door.locked && !byUse);
+            state.passable[d.index] = open || (!door.locked && (way == "auto" || way == "open"));
         }
         for (Entity owner : unlocked) {
             if (auto* painted = registry_.try_get<DoorPart>(owner)) painted->locked = all[owner].front().locked;

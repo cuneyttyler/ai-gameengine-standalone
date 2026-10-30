@@ -5428,6 +5428,28 @@ void EditorApp::PollAi() {
                     interiorFor_.erase(waiting);
                     AddInterior(prefab, entity, "cutaway");
                 }
+                // Redesigned: its old stairs don't fit the new pictures; found again on them.
+                if (auto redone = interiorRedesign_.find(path); redone != interiorRedesign_.end()) {
+                    const Entity e = redone->second;
+                    interiorRedesign_.erase(redone);
+                    if (registry_.valid(e)) {
+                        if (const auto* link = registry_.try_get<PrefabInstance>(e); link && prefabs_.Find(link->path)) {
+                            prefabs_.SetTemplateField(link->path, "Interior", "stairs", std::string());
+                            prefabs_.SetTemplateField(link->path, "Interior", "floors", upper);
+                        }
+                        if (auto* interior = registry_.try_get<Interior>(e)) {
+                            interior->texture = inside, interior->floors = upper, interior->stairs.clear();
+                            ApplyInteriors(registry_);
+                            if (InteriorFloors(*interior) > 1) HandleInteriorMessage("interior:findStairs", {{"id", static_cast<uint32_t>(e)}});
+                        }
+                        assetVersions_[inside]++;
+                        for (const auto& f : result->body.value("floors", nlohmann::json::array())) {
+                            if (f.is_string()) assetVersions_[f.get<std::string>()]++;
+                        }
+                        post_(AssetsJson());
+                        inspectorStale_ = true;
+                    }
+                }
             } else {
                 const auto errors = result->body.value("errors", nlohmann::json::array());
                 interiorFor_.erase(path);
@@ -6592,8 +6614,11 @@ void EditorApp::PlacePart(const nlohmann::json& result) {
         made.clip = clip;
         made.closeClip = clip == "open" ? "close" : "";
         made.opens = p.value("opens", std::string("project"));
+        made.trigger = p.value("trigger", std::string());
+        made.prompt = p.value("prompt", std::string());
         made.locked = p.value("locked", false);
         made.key = p.value("key", std::string());
+        made.door = p.value("door", false) && IsBuilding(parentEntity); // a way in: a building's door only (not a lever, a sign)
         // Another door of its (§4.3), or one it has redone: the door whose box this one's middle falls in.
         auto doorIndex = [&](const AnimatedPart* now) -> size_t {
             if (!now || (now->sheet.empty() && now->opens != "open" && now->more.empty())) return 0;
@@ -6967,7 +6992,11 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
         const float frameW = std::abs(sprite->u1 - sprite->u0) * W, frameH = (sprite->v1 - sprite->v0) * H;
         partPending_ = {{"parent", parent}, {"crop", path}, {"box", box}, {"frameW", frameW}, {"frameH", frameH},
                         {"scale", sprite->width / std::max(1.0f, frameW)}, {"mirrored", sprite->u0 > sprite->u1},
-                        {"action", message.value("action", "the door swings open")}};
+                        {"action", message.value("action", "the door swings open")},
+                        // What activates it and what the player is shown (a door: by default as the project's doors; another part: use).
+                        {"opens", message.value("opens", std::string(message.value("kind", std::string("door")) == "door" ? "project" : "use"))},
+                        {"trigger", message.value("trigger", std::string())}, {"prompt", message.value("prompt", std::string())},
+                        {"locked", message.value("locked", false)}, {"key", message.value("key", std::string())}};
         RefreshAssets();
         if (message.value("kind", std::string("door")) == "opening") {
             // An open doorway (§4.5): its entry point on the building, nothing to animate.
@@ -6979,9 +7008,6 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
         if (message.value("kind", std::string("door")) == "door") {
             partPending_["door"] = true;
             partPending_["region"] = {bx - box[0].get<int>(), by - box[1].get<int>()};
-            partPending_["opens"] = message.value("opens", std::string("project"));
-            partPending_["locked"] = message.value("locked", false);
-            partPending_["key"] = message.value("key", std::string());
             partRequest_ = Ai()->Request("POST", "/parts/door",
                                          {{"path", sprite->texture}, {"box", {bx, by, bw, bh}}, {"name", stem + "-door-" + std::to_string(n - 1)},
                                           {"exact", true}, // the box drawn (or found) round the door, as it is
@@ -7007,17 +7033,18 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
     if (type == "interior:art") {
         // Inspector ▸ Interior ▸ Show art… (docs/places/interiors.md §5c): the building's pictures (outside, each floor's
         // inside), each footprint cell as a diamond in the pictures' pixels (as the scene draws it), and its stairs and
-        // ways in, to draw over.
+        // ways in, to draw over. A thing that isn't a building (no Building Plan): its picture and its parts only (Edit parts…).
         const Entity e = static_cast<Entity>(message.value("id", 0u));
         const auto* interior = registry_.valid(e) ? registry_.try_get<Interior>(e) : nullptr;
         const auto* sprite = registry_.valid(e) ? registry_.try_get<Sprite>(e) : nullptr;
         const auto* screen = registry_.valid(e) ? registry_.try_get<ScreenTransform2D>(e) : nullptr;
         int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-        if (!interior || !sprite || !screen || interior->texture.empty() || !InteriorFootprint(registry_, e, *interior, x0, y0, x1, y1)) {
-            post_({{"type", "notify"}, {"text", "It has no cut-away interior to draw on"}});
+        const bool plan = interior && !interior->texture.empty() && InteriorFootprint(registry_, e, *interior, x0, y0, x1, y1);
+        if (!sprite || !screen || (!plan && !registry_.all_of<AnimatedPart>(e))) {
+            post_({{"type", "notify"}, {"text", "It has no cut-away interior or moving parts to show"}});
             return true;
         }
-        const std::string outside = interior->exteriorTexture.empty() || sprite->texture != interior->texture ? sprite->texture : interior->exteriorTexture;
+        const std::string outside = !plan || interior->exteriorTexture.empty() || sprite->texture != interior->texture ? sprite->texture : interior->exteriorTexture;
         const AssetInfo* asset = assets_.Find(outside);
         const float W = asset && asset->width ? static_cast<float>(asset->width) : sprite->width;
         const float H = asset && asset->height ? static_cast<float>(asset->height) : sprite->height;
@@ -7030,22 +7057,24 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             return nlohmann::json::array({std::round(px * 10) / 10, std::round(py * 10) / 10});
         };
         nlohmann::json cells = nlohmann::json::array();
-        for (int gy = y0; gy <= y1; ++gy) {
+        for (int gy = y0; plan && gy <= y1; ++gy) {
             for (int gx = x0; gx <= x1; ++gx) {
                 cells.push_back({{"x", gx}, {"y", gy}, {"edge", gx == x0 || gx == x1 || gy == y0 || gy == y1},
                                  {"poly", {pixel(gx, gy), pixel(gx + 1.0f, gy), pixel(gx + 1.0f, gy + 1.0f), pixel(gx, gy + 1.0f)}}});
             }
         }
         nlohmann::json floors = nlohmann::json::array({outside});
-        for (int k = 1; k <= InteriorFloors(*interior); ++k) floors.push_back(InteriorPicture(*interior, k));
+        for (int k = 1; plan && k <= InteriorFloors(*interior); ++k) floors.push_back(InteriorPicture(*interior, k));
         nlohmann::json stairs = nlohmann::json::array();
-        for (int k = 1; k < InteriorFloors(*interior); ++k) {
+        for (int k = 1; plan && k < InteriorFloors(*interior); ++k) {
             nlohmann::json change = nlohmann::json::array();
             for (const auto& [sx, sy] : StairsCells(*interior, k, x0, y0, x1, y1)) change.push_back({sx, sy});
             stairs.push_back(change);
         }
         nlohmann::json entries = nlohmann::json::array();
-        for (const auto& [ex, ey] : InteriorEntries(registry_, e, *interior)) entries.push_back({ex, ey});
+        if (plan) {
+            for (const auto& [ex, ey] : InteriorEntries(registry_, e, *interior)) entries.push_back({ex, ey});
+        }
         // Its doors (AnimatedPart: each its box in the exterior's pixels, how it opens, its lock).
         nlohmann::json doors = nlohmann::json::array();
         if (const auto* part = registry_.try_get<AnimatedPart>(e); part && (!part->sheet.empty() || part->opens == "open" || !part->more.empty())) {
@@ -7053,13 +7082,14 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             for (const AnimatedPart& d : DoorsOf(*part)) {
                 const float cx = mirrored ? frameW - d.x : d.x;
                 doors.push_back({{"box", {cx - d.width / 2, d.y - d.height / 2, d.width, d.height}}, {"opens", d.opens}, {"locked", d.locked},
-                                 {"key", d.key}, {"consumeKey", d.consumeKey}, {"animated", !d.sheet.empty()}});
+                                 {"key", d.key}, {"consumeKey", d.consumeKey}, {"animated", !d.sheet.empty()}, {"trigger", d.trigger},
+                                 {"prompt", d.prompt}, {"door", d.door}});
             }
         }
         const auto* name = registry_.try_get<Name>(e);
         post_({{"type", "interior:artInfo"}, {"id", static_cast<uint32_t>(e)}, {"name", name ? name->value : std::string("Building")},
                {"pictures", floors}, {"size", {W, H}}, {"cells", cells}, {"stairs", stairs}, {"entries", entries}, {"doors", doors},
-               {"projectOpens", ActiveSettings().game.doorsOpen}});
+               {"projectOpens", ActiveSettings().game.doorsOpen}, {"plan", plan}, {"building", IsBuilding(e)}});
         return true;
     }
     if (type == "interior:setArt") {
@@ -7067,7 +7097,8 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
         const Entity e = static_cast<Entity>(message.value("id", 0u));
         auto* interior = registry_.valid(e) ? registry_.try_get<Interior>(e) : nullptr;
         int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-        if (!interior || !InteriorFootprint(registry_, e, *interior, x0, y0, x1, y1)) return true;
+        if (interior && !InteriorFootprint(registry_, e, *interior, x0, y0, x1, y1)) interior = nullptr;
+        if (!interior && !(registry_.valid(e) && registry_.all_of<AnimatedPart>(e))) return true;
         std::string stairs;
         for (const auto& change : message.value("stairs", nlohmann::json::array())) {
             std::string cells;
@@ -7083,10 +7114,12 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             }
         }
         ApplyOneShotEdit([&] {
-            interior->stairs = stairs;
-            interior->entries = entries;
-            RecordOverride(registry_, e, "Interior", "stairs");
-            RecordOverride(registry_, e, "Interior", "entries");
+            if (interior) {
+                interior->stairs = stairs;
+                interior->entries = entries;
+                RecordOverride(registry_, e, "Interior", "stairs");
+                RecordOverride(registry_, e, "Interior", "entries");
+            }
             // Its doors' ways and locks (in their order; a door left out is removed).
             if (auto* part = registry_.try_get<AnimatedPart>(e); part && message.contains("doors")) {
                 const auto now = DoorsOf(*part);
@@ -7099,16 +7132,50 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                     door.locked = d.value("locked", door.locked);
                     door.key = d.value("key", door.key);
                     door.consumeKey = d.value("consumeKey", door.consumeKey);
+                    door.trigger = d.value("trigger", door.trigger);
+                    door.prompt = d.value("prompt", door.prompt);
+                    door.door = d.value("door", door.door);
                     kept.push_back(door);
                 }
                 if (kept.empty()) registry_.remove<AnimatedPart>(e);
                 else SetDoors(*part, kept);
-                for (const char* f : {"sheet", "x", "y", "width", "height", "opens", "locked", "key", "consumeKey", "more"}) RecordOverride(registry_, e, "AnimatedPart", f);
+                for (const char* f : {"sheet", "x", "y", "width", "height", "opens", "trigger", "prompt", "door", "locked", "key", "consumeKey", "more"}) {
+                    RecordOverride(registry_, e, "AnimatedPart", f);
+                }
             }
             return true;
         });
         inspectorStale_ = true;
-        post_({{"type", "notify"}, {"text", "Its stairs and ways in are set"}});
+        post_({{"type", "notify"}, {"text", interior ? "Its stairs, ways in and parts are set" : "Its parts are set"}});
+        return true;
+    }
+    if (type == "interior:redesign") {
+        // Redesign interiors (docs/places/interiors.md §5): its floors painted again from its exterior (as many as it has
+        // now), a new design; when they come, its prefab's (or its own) Building Plan takes them, its stairs found again.
+        const Entity e = static_cast<Entity>(message.value("id", 0u));
+        const auto* interior = registry_.valid(e) ? registry_.try_get<Interior>(e) : nullptr;
+        const auto* sprite = registry_.valid(e) ? registry_.try_get<Sprite>(e) : nullptr;
+        if (!interior || !sprite || interior->kind == "scene") return true;
+        if (!Ai() || Ai()->GetState() != AiClient::State::Ready) {
+            post_({{"type", "notify"}, {"text", "Redesigning its interiors needs the AI service: turn AI on"}});
+            return true;
+        }
+        const std::string outside = interior->exteriorTexture.empty() || sprite->texture != InteriorPicture(*interior, interior->floor)
+                                        ? sprite->texture : interior->exteriorTexture;
+        const AssetInfo* asset = assets_.Find(outside);
+        if (asset == nullptr) return true;
+        const auto* link = registry_.try_get<PrefabInstance>(e);
+        interiorFor_[outside] = {link && prefabs_.Find(link->path) ? link->path : std::string(),
+                                 link && prefabs_.Find(link->path) ? std::optional<Entity>{} : std::optional<Entity>{e}};
+        interiorRedesign_[outside] = e;
+        const std::string purpose = asset->analysis.contains("description") ? asset->analysis.at("description") : std::string();
+        const int seed = static_cast<int>(std::chrono::steady_clock::now().time_since_epoch().count() % 100000); // a new design
+        if (const int id = Ai()->Request("POST", "/assets/interior",
+                                         {{"path", outside}, {"purpose", purpose}, {"storeys", InteriorFloors(*interior)}, {"seed", seed}}, 1200);
+            id != 0) {
+            interiorRequests_[id] = outside;
+            post_({{"type", "notify"}, {"text", "Redesigning its interiors (BFL, floor by floor: a few minutes)…"}});
+        }
         return true;
     }
     if (type == "interior:findStairs") {
@@ -9522,10 +9589,11 @@ nlohmann::json EditorApp::EditorStateJson() {
 nlohmann::json EditorApp::InspectorJson(Entity entity) {
     nlohmann::json components = nlohmann::json::array();
     nlohmann::json addable = nlohmann::json::array();
+    const bool building = IsBuilding(entity);
 
     for (const auto& component : Components()) {
         if (!component.has(registry_, entity)) {
-            if (component.userEditable) {
+            if (component.userEditable && (component.name != "Interior" || building)) { // a Building Plan: buildings only
                 addable.push_back({{"name", component.name}, {"label", component.label.empty() ? component.name : component.label},
                                    {"description", component.description}});
             }
@@ -9585,11 +9653,50 @@ nlohmann::json EditorApp::InspectorJson(Entity entity) {
     return {{"type", "inspector:data"},
             {"id", static_cast<uint32_t>(entity)},
             {"label", LabelOf(entity)},
+            {"building", building},
             {"prefab", prefab},
             {"size", size ? nlohmann::json(std::round(*size * 10.0f) / 10.0f) : nlohmann::json(nullptr)},
             {"components", components},
             {"addable", addable},
             {"choices", {{"entities", entities}, {"textures", textures}, {"audio", audio}, {"scripts", ListScripts()}}}};
+}
+
+bool EditorApp::IsBuilding(Entity entity) {
+    const auto* sprite = registry_.try_get<Sprite>(entity);
+    const AssetInfo* asset = sprite && !sprite->texture.empty() ? assets_.Find(sprite->texture) : nullptr;
+    if (asset && !asset->analysis.empty()) {
+        const Ontology& ontology = Places();
+        auto get = [&](const char* key) {
+            const auto it = asset->analysis.find(key);
+            return it == asset->analysis.end() ? std::string() : it->second;
+        };
+        auto words = [](const std::string& text) {
+            std::vector<std::string> out;
+            std::string word;
+            for (char c : text + " ") {
+                if (std::isalpha(static_cast<unsigned char>(c))) word += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                else if (!word.empty()) out.push_back(word), word.clear();
+            }
+            return out;
+        };
+        if (const std::string roles = get("roles"); !roles.empty()) {
+            std::stringstream list(roles);
+            for (std::string role; std::getline(list, role, '|');) {
+                for (std::stringstream more(role); std::getline(more, role, ',');) {
+                    role.erase(0, role.find_first_not_of(' '));
+                    role.erase(role.find_last_not_of(' ') + 1);
+                    if (ontology.IsBuilding(role)) return true;
+                }
+            }
+            return false;
+        }
+        if (get("kind") == "building" || get("layer") == "building") return true;
+        for (const auto& w : words(get("name"))) {
+            if (ontology.IsBuilding(w)) return true;
+        }
+        if (!get("kind").empty()) return false; // it says what it is, and it isn't a building
+    }
+    return registry_.all_of<Interior>(entity);
 }
 
 std::string EditorApp::LabelOf(Entity entity) {

@@ -5,6 +5,7 @@
 import { computed, ref } from 'vue'
 import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
 import { editorState } from '../editorState'
+import { sendToHost } from '../ipc'
 
 const props = defineProps<{ fields: FieldData[]; choices?: Choices; disabled?: boolean; id?: number }>()
 const emit = defineEmits<{ (e: 'set', field: string, value: string | number): void }>()
@@ -53,6 +54,12 @@ function setStairs(change: number, cell: string): void {
   while (next.length && !next[next.length - 1]) next.pop()
   emit('set', 'stairs', next.join(';'))
 }
+// Its floors painted again from its exterior (as many as it has now): a new design, its stairs found again on it.
+function redesign(): void {
+  if (props.id === undefined) return
+  if (!window.confirm(`Paint its ${floorCount.value} floor(s) again from its exterior? Its pictures are replaced (every copy of its prefab), its stairs found again.`)) return
+  sendToHost({ type: 'interior:redesign', id: props.id })
+}
 function removeEntry(index: number): void {
   emit('set', 'entries', entries.value.filter((_, i) => i !== index).join(';'))
 }
@@ -80,6 +87,9 @@ function removeEntry(index: number): void {
     </p>
     <button v-if="id !== undefined && ground" :disabled="disabled" title="Its exterior and each floor's interior: draw its stairs and its ways in"
             @click="editorState.buildingEditor = id">Edit building…</button>
+    <button v-if="id !== undefined && ground" :disabled="disabled || editorState.ai.state !== 'ready'"
+            title="Its floors painted again from its exterior (BFL, floor by floor, each on the one below so the stairs meet): a new design"
+            @click="redesign">Redesign interiors…</button>
   </div>
 </template>
 

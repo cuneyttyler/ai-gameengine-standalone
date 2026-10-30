@@ -10,10 +10,15 @@ import { trackOverlay, untrackOverlay } from '../overlay'
 
 const PROJECT_HOST = 'https://aige-project.local/'
 interface Cell { x: number; y: number; edge: boolean; poly: [number, number][] }
-interface Door { box: [number, number, number, number]; opens: string; locked: boolean; key: string; consumeKey: boolean; animated: boolean; index?: number }
+interface Door {
+  box: [number, number, number, number]; opens: string; locked: boolean; key: string; consumeKey: boolean; animated: boolean; index?: number
+  trigger: string; prompt: string; door: boolean
+}
 interface Info {
   id: number; name: string; pictures: string[]; size: [number, number]; cells: Cell[]; stairs: [number, number][][]; entries: [number, number][]
   doors: Door[]; projectOpens: string
+  plan?: boolean // it has a Building Plan (floors, cells); else only its picture and its parts (Edit parts…)
+  building?: boolean // the ontology says it's a building
 }
 
 const backdrop = ref<HTMLElement | null>(null)
@@ -65,7 +70,7 @@ onHostMessage((message) => {
     dirty.value = false
     finding.value = false
     if (tab.value > i.pictures.length - 1) tab.value = 0
-    layer.value = tab.value >= 1 && tab.value < i.pictures.length - 1 ? 'stairs' : 'entries'
+    layer.value = i.plan === false ? 'doors' : tab.value >= 1 && tab.value < i.pictures.length - 1 ? 'stairs' : 'entries'
   }
   if (message.type === 'interior:stairsFound' && editorState.buildingEditor !== null) sendToHost({ type: 'interior:art', id: editorState.buildingEditor })
 })
@@ -83,7 +88,9 @@ function save(): void {
     id: info.value.id,
     stairs: list,
     entries: [...entries.value].map((c) => c.split(',').map(Number)),
-    doors: doors.value.map((d) => ({ index: d.index, opens: d.opens, locked: d.locked, key: d.key, consumeKey: d.consumeKey })),
+    doors: doors.value.map((d) => ({
+      index: d.index, opens: d.opens, locked: d.locked, key: d.key, consumeKey: d.consumeKey, trigger: d.trigger, prompt: d.prompt, door: d.door,
+    })),
   })
   dirty.value = false
 }
@@ -132,15 +139,20 @@ function down(event: MouseEvent): void {
   painting = true
   stroke(event)
 }
-// How a door opens, in words (its own, or the project's).
+// What activates a part, in words (its own, or the project's).
 function opensText(d: Door): string {
   const way = d.opens === 'project' ? info.value?.projectOpens ?? 'use' : d.opens
-  return d.locked ? `locked${d.key ? ': ' + d.key : ''}` : way === 'auto' ? 'opens by itself' : way === 'open' ? 'an open doorway' : 'opens on use'
+  if (d.locked) return `locked${d.key ? ': ' + d.key : ''}`
+  return way === 'auto' ? 'opens as someone comes near' : way === 'open' ? 'an open doorway' : way === 'always' ? 'plays on and on'
+    : way === 'action' ? `the ${d.trigger || '?'} action` : way === 'event' ? `the event ${d.trigger || '?'}` : 'on use'
 }
 function doorColour(d: Door): string {
   const way = d.opens === 'project' ? info.value?.projectOpens ?? 'use' : d.opens
-  return d.locked ? '#e65a5a' : way === 'auto' ? '#4ec9b0' : way === 'open' ? '#9cdc6c' : '#f5c542'
+  return d.locked ? '#e65a5a' : way === 'auto' ? '#4ec9b0' : way === 'open' ? '#9cdc6c' : way === 'always' ? '#c586c0'
+    : way === 'action' || way === 'event' ? '#569cd6' : '#f5c542'
 }
+// A part's name: a door (a way in of a building) or another part.
+const partName = (d: Door, i: number) => `${d.door && info.value?.building !== false ? 'Door' : 'Part'} ${i + 1}`
 function editDoor(): void {
   dirty.value = true
 }
@@ -175,18 +187,18 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
 <template>
   <div v-if="editorState.buildingEditor !== null" ref="backdrop" class="backdrop ed-form" tabindex="-1" @mousedown.self="close" @keydown.esc.stop="close">
     <div class="sheet">
-      <h3>Building editor<template v-if="info">: {{ info.name }}</template></h3>
-      <div v-if="info" class="tabs">
+      <h3>{{ info?.plan === false ? 'Parts' : 'Building editor' }}<template v-if="info">: {{ info.name }}</template></h3>
+      <div v-if="info && info.plan !== false" class="tabs">
         <button v-for="(_, k) in info.pictures" :key="k" :class="{ active: tab === k }" @click="tab = k; layer = k >= 1 && k < floors ? 'stairs' : 'entries'">
           {{ tabLabel(k) }}
         </button>
       </div>
-      <div v-if="info" class="tools">
+      <div v-if="info && info.plan !== false" class="tools">
         <button :class="{ active: layer === 'stairs' }" :disabled="!change" :title="change ? `The stairs from floor ${change} up to ${change + 1}` : 'Stairs are drawn on a floor below the top one'"
                 @click="layer = 'stairs'">Stairs{{ change ? ` (floor ${change} → ${change + 1})` : '' }}</button>
         <button :class="{ active: layer === 'entries' }" title="Its ways in: cells of its edge where it's entered" @click="layer = 'entries'">Ways in</button>
-        <button :class="{ active: layer === 'doors' }" title="Its doors: click one to see how it opens and whether it's locked" @click="layer = 'doors'">
-          Doors ({{ doors.length }})</button>
+        <button :class="{ active: layer === 'doors' }" title="Its doors and other moving parts: click one to see what activates it and whether it's locked" @click="layer = 'doors'">
+          Doors and parts ({{ doors.length }})</button>
         <span class="sep"></span>
         <template v-if="layer !== 'doors'">
           <button :class="{ active: tool === 'draw' }" @click="tool = 'draw'">Draw</button>
@@ -215,23 +227,35 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
       </div>
       <!-- The door picked: how it opens, its lock. -->
       <div v-if="layer === 'doors'" class="door-panel">
-        <p v-if="!doors.length" class="muted small">No doors: animate one (Build ▸ Animate, or right-click ▸ Animate a part…).</p>
+        <p v-if="!doors.length" class="muted small">No moving parts: animate one (Build ▸ Animate, or right-click ▸ Animate a part…).</p>
         <div v-for="(d, i) in doors" :key="'row' + i" class="door-row" :class="{ picked: picked === i }" @click="picked = i">
-          <b :style="{ color: doorColour(d) }">Door {{ i + 1 }}</b> <span class="muted small">{{ opensText(d) }}{{ d.animated ? '' : ' · not animated' }}</span>
+          <b :style="{ color: doorColour(d) }">{{ partName(d, i) }}</b> <span class="muted small">{{ opensText(d) }}{{ d.animated ? '' : ' · not animated' }}</span>
         </div>
         <template v-if="picked !== null && doors[picked]">
-          <label>Opens
+          <label v-if="info.building !== false" class="inline" title="A way in of the building: blocked while shut. A window, a sign or a lever on it isn't.">
+            <input v-model="doors[picked]!.door" type="checkbox" @change="editDoor" /> A door (a way in)</label>
+          <label>Activation
             <select v-model="doors[picked]!.opens" @change="editDoor">
-              <option value="project">as the project says ({{ info.projectOpens }})</option>
+              <option value="project">as the project's doors ({{ info.projectOpens }})</option>
               <option value="use">on use (the door shortcuts, a double click)</option>
               <option value="auto">by itself, as someone comes near</option>
-              <option value="open">always open (a doorway)</option>
+              <option value="action">an input action, near it</option>
+              <option value="event">a game event (a script's, a trigger's)</option>
+              <option value="always">always playing (a loop)</option>
+              <option v-if="doors[picked]!.door" value="open">always open (a doorway)</option>
             </select>
+          </label>
+          <label v-if="doors[picked]!.opens === 'action' || doors[picked]!.opens === 'event'">
+            {{ doors[picked]!.opens === 'action' ? 'Input action (Project Settings ▸ Input)' : 'Event name' }}
+            <input v-model="doors[picked]!.trigger" spellcheck="false" :placeholder="doors[picked]!.opens === 'action' ? 'interact' : 'bridge_down'" @change="editDoor" />
+          </label>
+          <label v-if="['project', 'use', 'action'].includes(doors[picked]!.opens)" title="Shown near it; 'shut|open' for each way">
+            Prompt <input v-model="doors[picked]!.prompt" :placeholder="doors[picked]!.door ? 'Open the door|Close the door' : 'Pull the lever'" @change="editDoor" />
           </label>
           <label class="inline"><input v-model="doors[picked]!.locked" type="checkbox" @change="editDoor" /> Locked</label>
           <label v-if="doors[picked]!.locked">Key (an item id) <input v-model="doors[picked]!.key" spellcheck="false" placeholder="iron_key" @change="editDoor" /></label>
           <label v-if="doors[picked]!.locked" class="inline"><input v-model="doors[picked]!.consumeKey" type="checkbox" @change="editDoor" /> The key is used up</label>
-          <button class="small" @click="removeDoor(picked)">Remove this door</button>
+          <button class="small" @click="removeDoor(picked)">Remove this part</button>
         </template>
       </div>
       </div>

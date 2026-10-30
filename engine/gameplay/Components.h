@@ -312,16 +312,25 @@ struct AnimatedPart {
     std::string closeClip = "close";
     float range = 1.8f;         // cells, from the part itself (a door: its foot)
     bool opensNear = true;      // older scenes' switch: off is opens = "use"
-    // How it opens (docs/assets/animations.md §4.2): "project" (Project Settings ▸ Game: doorsOpen), "auto" (as someone
-    // comes near) or "use" (the player's door shortcuts or a double click on it, near it; other characters open it as
-    // they come). It closes once everyone has gone. "open": an open doorway (§4.5), no door in it: its entry point,
-    // always passable, nothing to animate (no sheet).
+    // What activates it (the Inspector's "activation"; docs/assets/animations.md §4.2): "project" (Project Settings ▸
+    // Game: doorsOpen), "auto" (as someone comes near) or "use" (the player's door shortcuts or a double click on it,
+    // near it; other characters open a door as they come): it closes once everyone has gone. "action": the player's
+    // input action `trigger`, near it; "event": a game event named `trigger` (a script's, a trigger zone's), from
+    // anywhere: each toggles it. "always": it plays on and on (a mill's sails, a fire). "open": an open doorway (§4.5),
+    // no door in it: its entry point, always passable, nothing to animate (no sheet).
     std::string opens = "project";
+    std::string trigger;        // action: the input action's name ("pull"); event: the event's name ("bridge_down")
+    // What the player is shown near it ("Pull the lever"); "shut|open" for each way ("Open the door|Close the door");
+    // "": a door's "Open the door", another part's "Use".
+    std::string prompt;
+    // A doorway of its building (a way in, blocked while shut). Only a building's parts are (Building Plan); a window, a
+    // sign or a lever on one isn't. Set by Build ▸ Animate and Animate a part…
+    bool door = true;
     bool locked = false;        // shut (its doorway blocked) until the player uses it carrying `key`: then unlocked
     std::string key;            // the item that unlocks it ("": it can't be opened)
     bool consumeKey = false;    // the key is used up
-    // A building's other doors (docs/assets/animations.md §4.3): a JSON list, each with the fields above
-    // ({"sheet", "x", "y", "width", "height", "clip", "closeClip", "range", "opens", "locked", "key", "consumeKey"});
+    // Its other parts (docs/assets/animations.md §4.3): a JSON list, each with the fields above ({"sheet", "x", "y",
+    // "width", "height", "clip", "closeClip", "range", "opens", "trigger", "prompt", "door", "locked", "key", "consumeKey"});
     // DoorsOf gives them all, this one first.
     std::string more;
 };
@@ -332,7 +341,9 @@ struct DoorPart {
     std::string clip = "open";
     std::string closeClip = "close";
     float range = 1.8f;
-    std::string opens = "project"; // project, auto, use (as AnimatedPart's)
+    std::string opens = "project"; // project, auto, use, action, event, always (as AnimatedPart's)
+    std::string trigger;           // action or event: its name
+    std::string prompt;            // what the player is shown ("": the door's)
     bool locked = false;
     std::string key;
     bool consumeKey = false;
@@ -381,9 +392,23 @@ struct Interior {
     // Its ways in (docs/places/interiors.md §5b), set by hand: cells of its footprint's edge, "dx,dy;dx,dy" from its
     // footprint's top-left (so a copy moved keeps them). Empty: its doors' cells, else its door side's middle.
     std::string entries;
+    // A storey's height on screen, in scene pixels: how much higher one stands on each floor up (0: from its picture).
+    float storeyHeight = 0.0f;
     // Runtime only (not reflected): going up or down next, and standing on the stairs since the last step.
     bool climbing = true;
     bool onStairs = false;
+};
+
+// Runtime (not saved): the floor a character is on inside a building of several storeys (docs/places/interiors.md §4).
+// Its stairs take it up or down; it stands that many storeys higher (its sprite's lift), and is hidden while another
+// floor shows.
+struct OnFloor {
+    Entity building = entt::null;
+    int floor = 1;
+    bool onStairs = false;   // on a staircase since the last step (off it before it goes again)
+    float lift = 0.0f;       // scene pixels above the ground, eased toward its floor's
+    bool hidden = false;     // hidden by it (its alpha kept in `alpha`)
+    float alpha = 1.0f;
 };
 
 // A door: open, it doesn't block its cell.

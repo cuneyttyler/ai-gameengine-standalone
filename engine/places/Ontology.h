@@ -232,6 +232,8 @@ public:
     const Role* FindRole(const std::string& id) const;
     // Whether a thing of this role blocks walking: its "solid", else its broader role's; a building's always does.
     bool IsSolid(const std::string& role) const;
+    // Whether a thing of this role is a building: the role, or one it's a kind of, is "building" (a house, an inn).
+    bool IsBuilding(const std::string& role) const;
     const Concept* FindConcept(const std::string& scheme, const std::string& id) const;
     const std::vector<Concept>* Scheme(const std::string& id) const;
     const Tolerances& Tolerance() const { return tolerances_; }

@@ -76,6 +76,10 @@ For each building:
    gone *entirely* (windows, doors, timbers) down to the floor, its back walls one storey high, the floors below closed
    (as seen outside: the base it stands on), its rooms and furniture, a staircase in a back corner when there's more
    than one floor. Each is an edit of the exterior on a 1024 magenta canvas (`cutaway`, background cleared, no clip).
+   Floor 1 is told it's the *ground* floor: its floor at ground level, its front walls cut down to a low sill at the
+   base (a model otherwise paints it raised a storey, walls under it). The floors are painted **one after another**,
+   each with the floor below as a second image (placed the same way): its staircase arrives where that floor's goes up,
+   its walls the same.
 3. **Laid on the footprint** (`footing`, `fit_floor`): where a building stands is read from each picture: the lowest
    opaque pixel of each column makes a V falling to the front corner; the wall corners are where it stops following
    its slope (eaves, the gap past the wall; a bush or a step below the line is passed). The floor is scaled so its
@@ -135,6 +139,8 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
 - only the edge cells of its footprint (the Obstacle's left/right/back around its cell) block;
 - the middle cell of the `door` side stays open;
 - the inside is walkable.
+- while its interior shows, its whole footprint is walkable (`TileGrid::inside_`), whatever the place's layers or a prop
+  on it say; the ring of cells round it is its walls, open in front of each passable doorway.
 
 ### Showing it
 
@@ -158,7 +164,14 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
   staircase). Walked onto from the floor below it goes up, from the floor above down (stepping off before it goes
   again); out of the building, the exterior, and floor 1 next time. Right-click inside a building showing a floor ▸
   **Stairs here** sets that floor's stairs to the cell under the cursor (Assembled and Paint alike).
+- **Everyone's floor** (`OnFloor`, runtime): every character inside a building has its own floor, its stairs taking it
+  up or down as the player's do. It stands that many storeys higher (its sprite's lift, eased: it climbs), a storey
+  being `Interior.storeyHeight` pixels (0: from its picture: what stands above its footprint's diamond, three fifths of
+  it, shared by its storeys). One on another floor than the one shown is hidden (in a building the player isn't in:
+  above the ground floor). The building the player is in shows the player's floor.
 - **Editor:** H steps through exterior, floor 1, floor 2… and back; the right-click menu has **Show floor k**.
+- **Redesign interiors…** (Inspector ▸ Building Plan): its floors painted again from its exterior, as many as it has
+  now, with a new seed; its prefab (or itself) takes them and its stairs are found again on the new pictures.
 
 ## 5. In the editor
 

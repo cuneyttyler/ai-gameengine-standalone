@@ -34,6 +34,7 @@ interface ComponentData {
 interface InspectorData {
   id: number
   label: string
+  building?: boolean // the ontology says it's a building (a Building Plan, ways in)
   prefab: { path: string; name: string; missing: boolean; overrides: string[] } | null
   size: number | null // % of its prefab's size (prefab copies with a sprite)
   components: ComponentData[]
@@ -296,15 +297,16 @@ function numberFrom(event: Event): number {
           />
           <!-- AnimatedPart: its doors listed (its own fields are the first; the others are in "more"), edited in the building editor. -->
           <div v-if="component.name === 'AnimatedPart'" class="field-row doors-summary">
-            <span>{{ 1 + (String(component.fields.find((f) => f.name === 'more')?.value ?? '').match(/"sheet"/g)?.length ?? 0) }} door(s)</span>
-            <button v-if="current.components.some((s) => s.name === 'Interior')" :disabled="editorState.playing"
-                    title="See each door on the building, how it opens and whether it's locked" @click="editorState.buildingEditor = current!.id">
-              Edit doors…</button>
+            <span>{{ 1 + (String(component.fields.find((f) => f.name === 'more')?.value ?? '').match(/"sheet"/g)?.length ?? 0) }}
+              {{ current.building ? 'part(s): doors and others' : 'moving part(s)' }}</span>
+            <button :disabled="editorState.playing" title="See each part on its picture, what activates it and what the player is shown"
+                    @click="editorState.buildingEditor = current!.id">
+              {{ current.building && current.components.some((s) => s.name === 'Interior') ? 'Edit doors…' : 'Edit parts…' }}</button>
           </div>
-          <template v-for="field in component.fields.filter((f) => (component.name !== 'Interior' || !['floors', 'stairs', 'entries', 'texture'].includes(f.name)) && (component.name !== 'AnimatedPart' || f.name !== 'more'))" :key="field.name">
+          <template v-for="field in component.fields.filter((f) => (component.name !== 'Interior' || !['floors', 'stairs', 'entries', 'texture'].includes(f.name)) && (component.name !== 'AnimatedPart' || !['more', 'near'].includes(f.name)) && (component.name !== 'AnimatedPart' || current!.building || f.name !== 'door'))" :key="field.name">
             <div class="field-row" :class="{ overridden: field.overridden }">
               <label :title="field.overridden ? `${field.description}\n(Changed on this copy)` : field.description">
-                {{ field.name }}
+                {{ (component.name === 'AnimatedPart' || component.name === 'DoorPart') && field.name === 'opens' ? 'activation' : field.name }}
                 <button
                   v-if="editorState.ai.state === 'ready' && !editorState.playing"
                   class="ask-ai"

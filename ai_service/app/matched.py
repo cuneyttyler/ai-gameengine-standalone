@@ -979,9 +979,10 @@ dormers in its roof is 2. Answer as JSON: {"storeys": <1-4>, "why": "<the rows y
 _ORDINAL = {1: "ground", 2: "second", 3: "third", 4: "fourth"}
 
 
-def floor_prompt(k: int, n: int, purpose: str, style: str) -> str:
+def floor_prompt(k: int, n: int, purpose: str, style: str, below: bool = False) -> str:
     """Floor `k` of `n` (docs/places/interiors.md §2, builder_tests/interior_test): the building cut open above it, its
-    camera-facing walls gone on that floor, the floors below closed under it."""
+    camera-facing walls gone on that floor, the floors below closed under it. `below`: image 2 is the floor under it (its
+    staircase arrives here, at the same place)."""
     above = "the roof and everything else above it" if k == n else f"every storey above it ({n - k} more) and the roof"
     lines = [
         "Game asset. Isometric view. Flat magenta background (#FF00FF).",
@@ -992,9 +993,17 @@ def floor_prompt(k: int, n: int, purpose: str, style: str) -> str:
         "shutters and timber frames, down to the level of the floor: the floor's front edges are open, nothing stands on them;",
         "- this floor's two back walls stay, one storey high, with their windows and the hearth, shelves and beds against them;",
     ]
-    if k > 1:
+    if k == 1:
+        lines.append("- this is the GROUND floor: its floor lies at ground level, where the walls of image 1 meet the ground (on "
+                     "the stone footing only): no storey, no wall, no windows below it or in front of it; the front walls are cut "
+                     "down to a low sill a few stones high right at the base, so the floor is seen from above at ground height;")
+    else:
         lines.append(f"- the {k - 1} storey{'s' if k > 2 else ''} below stay{'' if k > 2 else 's'} closed, as seen from outside in "
-                     "image 1: the solid base this floor stands on;")
+                     "image 1, exactly as tall as there: the solid base this floor stands on;")
+    if below:
+        lines.append(f"- image 2 is the floor below ({_ORDINAL[k - 1]}), cut away the same way: its staircase going up rises into this "
+                     "floor, so the top of that staircase and its opening in the floor (with a railing) are at exactly the same place "
+                     "of the plan here, above it; the same outer walls, the same corners;")
     # Each floor change's staircase in its own corner (the game's: Interiors.cpp StairsCell): from floor 1 the back (top)
     # corner, then the right corner, then the left, round again.
     corners = ["the back corner (the top of the picture)", "the right corner", "the left corner"]
@@ -1085,18 +1094,27 @@ def fit_floor(inside: Image.Image, exterior: Image.Image) -> tuple[Image.Image, 
     return Image.fromarray(px), sx, angle
 
 
-def cutaway(painter, exterior: Image.Image, purpose: str, style: str, seed: int, prompt: str | None = None, clip: bool = True) -> Image.Image | None:
-    """`exterior` (RGBA, transparent round the building) edited on a magenta canvas where it stands as it is, then cut
-    back to exactly its size, its background cleared (and, `clip`, all outside the building's outline). None when the
-    edit fails."""
-    side = 1024
-    k = min(1.0, side * 0.78 / max(exterior.width, exterior.height))
-    shown = exterior.resize((max(1, round(exterior.width * k)), max(1, round(exterior.height * k))), Image.LANCZOS) if k < 1 else exterior
+def _on_canvas(picture: Image.Image, side: int = 1024) -> tuple[Image.Image, int, int, Image.Image]:
+    """`picture` (RGBA) on a magenta canvas `side` square, in its middle, as large as fits in about four fifths of it:
+    the canvas, where it lies, and the picture as placed."""
+    k = min(1.0, side * 0.78 / max(picture.width, picture.height))
+    shown = picture.resize((max(1, round(picture.width * k)), max(1, round(picture.height * k))), Image.LANCZOS) if k < 1 else picture
     ox, oy = (side - shown.width) // 2, (side - shown.height) // 2
     canvas = Image.new("RGB", (side, side), (255, 0, 255))
     canvas.paste(shown, (ox, oy), shown)
+    return canvas, ox, oy, shown
+
+
+def cutaway(painter, exterior: Image.Image, purpose: str, style: str, seed: int, prompt: str | None = None, clip: bool = True,
+            below: Image.Image | None = None) -> Image.Image | None:
+    """`exterior` (RGBA, transparent round the building) edited on a magenta canvas where it stands as it is, then cut
+    back to exactly its size, its background cleared (and, `clip`, all outside the building's outline). `below`: the floor
+    under this one (in the exterior's frame), a second image placed the same way. None when the edit fails."""
+    side = 1024
+    canvas, ox, oy, shown = _on_canvas(exterior, side)
+    references = [_png(_on_canvas(below.resize(exterior.size, Image.LANCZOS) if below.size != exterior.size else below, side)[0])] if below is not None else []
     try:
-        png = painter.repaint(_png(canvas), prompt or floor_prompt(1, 1, purpose, style), references=[], seed=seed, width=side, height=side)
+        png = painter.repaint(_png(canvas), prompt or floor_prompt(1, 1, purpose, style), references=references, seed=seed, width=side, height=side)
     except Exception:  # noqa: BLE001 - the building stays closed this run; asked again next run
         return None
     painted = Image.open(io.BytesIO(png)).convert("RGB")
@@ -1119,18 +1137,17 @@ def make_floors(painter, exterior: Image.Image, purpose: str, style: str, seed: 
     """A building's interiors, one a floor (docs/places/interiors.md §2): floor k is the building cut open above it, its
     front walls gone, the floors below closed, each laid on its footprint (`fit_floor`). A floor painted far off (its
     angle or its size: a model paints a ground floor from higher up, or smaller) is painted once more, then fitted."""
-    from concurrent.futures import ThreadPoolExecutor
     import numpy as np
     # Its footing read wrong (narrower than half its solid width: stilts, a deck, a yard round it): every floor as painted.
     eL, eR = footing(exterior)[:2]
     solid = np.nonzero((np.array(exterior.convert("RGBA"))[:, :, 3] >= 230).any(axis=0))[0]
     trusted = solid.size > 0 and (eR - eL) >= 0.5 * (solid.max() - solid.min())
 
-    def one(k: int) -> Image.Image | None:
+    def one(k: int, below: Image.Image | None) -> Image.Image | None:
         best = None
         for attempt in range(2):
             raw = cutaway(painter, exterior, purpose, style, seed + 977 + 31 * k + 101 * attempt,
-                          prompt=floor_prompt(k, storeys, purpose, style), clip=False)
+                          prompt=floor_prompt(k, storeys, purpose, style, below=below is not None), clip=False, below=below)
             if raw is None:
                 continue
             fitted, sx, angle = fit_floor(raw, exterior)
@@ -1152,8 +1169,12 @@ def make_floors(painter, exterior: Image.Image, purpose: str, style: str, seed: 
                 if ep[x, y][3] < 128:
                     px[x, y] = (0, 0, 0, 0)
         return raw
-    with ThreadPoolExecutor(min(4, storeys)) as pool:
-        return list(pool.map(one, range(1, storeys + 1)))
+    # One after another, each painted with the floor below it beside the building: its staircase arrives where that
+    # floor's goes up, its walls the same.
+    made: list[Image.Image | None] = []
+    for k in range(1, storeys + 1):
+        made.append(one(k, made[-1] if made else None))
+    return made
 
 
 def floor_name(stem: str, k: int) -> str:

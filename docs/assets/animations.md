@@ -273,9 +273,31 @@ A request says which is which by the picture's words (`is_humanoid`).
   **Animate all** (doors free; things about 5 AutoSprite credits each), each one's **Animate** / **Skip**. `apps/editor/BuildAnimate.cpp`,
   `components/AnimatePartsView.vue`.
 
-### 4.2 How doors open
+### 4.2 What activates a part (doors and others)
 
-A building's animated door (its **AnimatedPart**) opens one of two ways:
+An AnimatedPart stays about animation (its sheet, its box, its clips); its **activation** (the Inspector's name for the
+`opens` field) says what plays it:
+
+| activation | plays when | e.g. |
+|---|---|---|
+| `project` | as Project Settings ▸ Game ▸ **doorsOpen** says (`use` or `auto`) | most doors |
+| `use` | the player's door shortcuts or a double click, near it (others open a door as they come) | a door |
+| `auto` | anyone comes near; it closes once they've gone | a shop door |
+| `action` | the player presses the input action named in **trigger**, near it; again, it goes back | a lever (`pull`) |
+| `event` | the game event named in **trigger** fires (a script's `emit`, a trigger zone's); again, it goes back | a drawbridge (`bridge_down`) |
+| `always` | on and on, from the start | a mill's sails, a fire |
+| `open` | never: an open doorway, no sheet (§4.5) | an archway |
+
+**prompt** is what the player is shown near it ("Pull the lever"); `shut|open` gives one for each way ("Open the
+door|Close the door"); empty, a door's "Open the door" / "Close the door", another part's "Use". **door** says whether it
+is a doorway of its building (a way in, blocked while shut): only a building's parts can be — whether a thing is a
+building comes from the ontology (its picture's roles, else its kind or its name's words, reach the role `building`;
+`EditorApp::IsBuilding`, `Ontology::IsBuilding`). Animate a part sets it for a door on a building and clears it for
+anything else; a window or a lever on a building isn't one. The **Building Plan** (Interior) is offered only for
+buildings; the Inspector's AnimatedPart row opens **Edit doors…** (a building) or **Edit parts…** (anything else: its
+picture and its parts only).
+
+A building's animated door opens one of two ways (or `action` / `event` above):
 
 - **use**: the player's door shortcuts — Project Settings ▸ Game ▸ **doorActions**, input actions comma-separated
   (`interact` by default: E, Space, the pad's A; add others, e.g. `interact, open_door`) — or a **double click** on
@@ -285,15 +307,15 @@ A building's animated door (its **AnimatedPart**) opens one of two ways:
 - **auto**: by itself, as anyone comes near.
 
 The project's way is Project Settings ▸ Game ▸ **doorsOpen** (`use` by default). Each door can say its own: Inspector
-▸ AnimatedPart ▸ **opens** (`project`, `auto`, `use`), and **locked** / **key** / **consumeKey**: a locked door stays
+▸ AnimatedPart ▸ **activation** (`project`, `auto`, `use`, `action`, `event`, `always`, `open`), and **locked** / **key** / **consumeKey**: a locked door stays
 shut, its doorway blocked, and "Locked: needs Iron Key" shows when the player tries it; carrying the key, it unlocks
 for good and opens. Either way it closes once everyone has gone. Near is measured from the door itself (its foot), not
 the building's middle, so a big building's door opens too.
 
 **Animate a part…** (right-click a building, or anything with a picture) does the same for a building generated or
 imported by hand: drag a box round the door or press **Find the door** (the vision model), choose **a door** (opened
-from its own pixels) or **something else** (AutoSprite, from the motion you give), and for a door how it opens and
-whether it's locked, with which key. On a prefab's copy, every copy gets it.
+from its own pixels) or **something else** (PixelLab, from the motion you give), its activation and prompt, and for a
+door whether it's locked, with which key. On a prefab's copy, every copy gets it.
 
 In code: `AnimatedPart` / `PartOpen` (`engine/gameplay/Components.h`), `DoorOpens` / `DoorwayShut`
 (`engine/gameplay/Interiors.cpp`), the doorway in `TileGrid::Build`, characters' paths in `Behaviour.cpp`, the rules in

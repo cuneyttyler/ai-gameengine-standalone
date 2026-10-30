@@ -14,7 +14,9 @@ const info = ref<{ id: number; name: string; texture: string; region: number[]; 
 const box = ref<number[] | null>(null) // x, y, w, h in the picture's pixels (its region's)
 const action = ref('the door swings open')
 const kind = ref<'door' | 'opening' | 'other' | 'character'>('door')
-const opens = ref<'project' | 'auto' | 'use'>('project')
+const opens = ref<'project' | 'auto' | 'use' | 'action' | 'event' | 'always'>('project')
+const trigger = ref('') // action / event: its name
+const prompt = ref('') // what the player is shown near it ("Pull the lever")
 const locked = ref(false)
 const key = ref('')
 const finding = ref(false)
@@ -119,7 +121,9 @@ function animate(): void {
     box: box.value,
     kind: kind.value,
     action: action.value.trim() || 'the door swings open',
-    opens: opens.value,
+    opens: kind.value === 'other' && opens.value === 'project' ? 'use' : opens.value,
+    trigger: trigger.value.trim(),
+    prompt: prompt.value.trim(),
     locked: locked.value,
     key: key.value.trim(),
   })
@@ -180,15 +184,27 @@ const boxStyle = computed(() => {
         <input v-model="action" spellcheck="false"
                :placeholder="kind === 'character' ? 'waves at the player' : 'the sign swings gently in the wind'" />
       </div>
-      <template v-else-if="kind === 'door'">
+      <template v-if="kind === 'door' || kind === 'other'">
         <div class="row">
-          <label>Opens</label>
+          <label>Activation</label>
           <select v-model="opens">
-            <option value="project">as the project says (Project Settings ▸ Game ▸ doorsOpen)</option>
+            <option v-if="kind === 'door'" value="project">as the project's doors (Project Settings ▸ Game ▸ doorsOpen)</option>
             <option value="use">with the door shortcuts or a double click</option>
             <option value="auto">by itself, as someone comes near</option>
+            <option value="action">an input action, near it</option>
+            <option value="event">a game event (a script's, a trigger's)</option>
+            <option value="always">always playing (a loop)</option>
           </select>
+          <input v-if="opens === 'action' || opens === 'event'" v-model="trigger" spellcheck="false"
+                 :placeholder="opens === 'action' ? 'the input action (interact)' : 'the event (bridge_down)'" />
         </div>
+        <div v-if="['project', 'use', 'action'].includes(opens)" class="row">
+          <label>Prompt</label>
+          <input v-model="prompt" :placeholder="kind === 'door' ? 'Open the door|Close the door' : 'Pull the lever'"
+                 title="Shown near it; 'shut|open' for each way" />
+        </div>
+      </template>
+      <template v-if="kind === 'door'">
         <div class="row">
           <label>Locked</label>
           <input v-model="locked" type="checkbox" title="Shut, its doorway blocked, until the player uses it carrying the key" />

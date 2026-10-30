@@ -38,6 +38,7 @@ private:
 
     std::unordered_map<int64_t, Cell> cells_;
     std::unordered_set<int64_t> blocked_; // obstacles standing on layer cells
+    std::unordered_set<int64_t> inside_;  // a shown interior's footprint: walkable whatever stands or lies there
     std::vector<const TileLayer*> layers_;  // the scene's tile layers, low to high
 };
 

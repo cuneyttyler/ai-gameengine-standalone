@@ -55,7 +55,8 @@ std::vector<std::pair<int, int>> InteriorEntries(Registry& registry, Entity enti
 }
 
 std::string DoorOpens(const AnimatedPart& part) {
-    if (part.opens == "auto" || part.opens == "use" || part.opens == "open") return part.opens;
+    if (part.opens == "auto" || part.opens == "use" || part.opens == "open" || part.opens == "always") return part.opens;
+    if (part.opens == "action" || part.opens == "event") return part.trigger.empty() ? "use" : part.opens; // nothing named: by use
     if (!part.opensNear) return "use";
     return ActiveSettings().game.doorsOpen == "auto" ? "auto" : "use";
 }
@@ -73,6 +74,9 @@ std::vector<AnimatedPart> DoorsFromJson(const std::string& text) {
         door.closeClip = d.value("closeClip", std::string("close"));
         door.range = d.value("range", 1.8f);
         door.opens = d.value("opens", std::string("project"));
+        door.trigger = d.value("trigger", std::string());
+        door.prompt = d.value("prompt", std::string());
+        door.door = d.value("door", true);
         door.locked = d.value("locked", false);
         door.key = d.value("key", std::string());
         door.consumeKey = d.value("consumeKey", false);
@@ -86,7 +90,7 @@ std::string DoorsJson(const std::vector<AnimatedPart>& doors) {
     for (const AnimatedPart& d : doors) {
         list.push_back({{"sheet", d.sheet}, {"x", d.x}, {"y", d.y}, {"width", d.width}, {"height", d.height}, {"clip", d.clip},
                         {"closeClip", d.closeClip}, {"range", d.range}, {"opens", d.opens}, {"locked", d.locked}, {"key", d.key},
-                        {"consumeKey", d.consumeKey}});
+                        {"consumeKey", d.consumeKey}, {"trigger", d.trigger}, {"prompt", d.prompt}, {"door", d.door}});
     }
     return list.empty() ? std::string() : list.dump();
 }
@@ -118,6 +122,9 @@ bool DoorwayShut(Registry& registry, Entity entity) {
         return std::find(ways.begin(), ways.end(), std::make_pair(dx, dy)) == ways.end();
     }
     if (part == nullptr || (part->sheet.empty() && part->opens != "open" && part->more.empty())) return false;
+    if (const auto all = DoorsOf(*part); std::none_of(all.begin(), all.end(), [](const AnimatedPart& d) { return d.door; })) {
+        return false; // parts only, no doors
+    }
     // In play, each door's doorway is known (PartOpen): the interior's own doorway is shut when a door at it is.
     if (const auto* interior = registry.try_get<Interior>(entity); interior && !interior->entries.empty()) {
         int dx = 0, dy = 0;
@@ -135,7 +142,9 @@ bool DoorwayShut(Registry& registry, Entity entity) {
         // No door at it: the way in is where its doors are drawn (each its own doorway), not this side's middle.
         return true;
     }
-    return part->locked || DoorOpens(*part) == "use";
+    if (!part->door) return false;
+    const std::string way = DoorOpens(*part);
+    return part->locked || (way != "auto" && way != "open" && way != "always");
 }
 
 namespace {
@@ -249,39 +258,86 @@ std::string InteriorPicture(const Interior& interior, int floor) {
 }
 
 void UpdateInteriors(Registry& registry, std::optional<Entity> player) {
-    const WorldTransform2D* at = player && registry.valid(*player) ? registry.try_get<WorldTransform2D>(*player) : nullptr;
+    // The buildings one goes into (cutaways), each its footprint and a storey's height on screen.
+    struct Building {
+        Entity entity;
+        int x0, y0, x1, y1, floors;
+        float storey;
+    };
+    std::vector<Building> buildings;
     for (auto [entity, interior] : registry.view<Interior>().each()) {
         if (interior.texture.empty() || interior.kind == "scene") continue;
-        int x0 = 0, y0 = 0, x1 = -1, y1 = -1;
-        bool inside = false;
-        int px = 0, py = 0;
-        if (at != nullptr && InteriorFootprint(registry, entity, interior, x0, y0, x1, y1)) {
-            px = static_cast<int>(std::floor(at->x)), py = static_cast<int>(std::floor(at->y));
-            inside = px >= x0 && px <= x1 && py >= y0 && py <= y1;
+        Building b{entity, 0, 0, -1, -1, InteriorFloors(interior), interior.storeyHeight};
+        if (!InteriorFootprint(registry, entity, interior, b.x0, b.y0, b.x1, b.y1)) continue;
+        if (b.storey <= 0.0f) {
+            // From its picture: what stands above its footprint's diamond (about half its width), its walls about
+            // three fifths of that (the rest its roof), shared by its storeys.
+            const auto* sprite = registry.try_get<Sprite>(entity);
+            b.storey = sprite ? std::max(0.0f, sprite->height - sprite->width * 0.5f) * 0.6f / std::max(1, b.floors) : 0.0f;
         }
-        if (inside && !interior.shown) interior.floor = 1, interior.climbing = true; // in through the door: the ground floor
-        interior.shown = inside;
-        if (!inside) {
-            interior.floor = 1;
-            interior.onStairs = false;
+        buildings.push_back(b);
+    }
+    auto buildingAt = [&](float wx, float wy) -> const Building* {
+        const int px = static_cast<int>(std::floor(wx)), py = static_cast<int>(std::floor(wy));
+        for (const auto& b : buildings) {
+            if (px >= b.x0 && px <= b.x1 && py >= b.y0 && py <= b.y1) return &b;
+        }
+        return nullptr;
+    };
+    // Each character's floor (the player's and everyone's): in through a door, the ground floor; a floor change's stairs
+    // walked onto from the floor below go up, from the floor above down; off them before they go again.
+    for (auto [mover, velocity, world] : registry.view<Velocity2D, WorldTransform2D>().each()) {
+        const Building* b = buildingAt(world.x, world.y);
+        auto* on = registry.try_get<OnFloor>(mover);
+        if (b == nullptr) {
+            if (on) on->building = entt::null, on->floor = 1, on->onStairs = false;
             continue;
         }
-        // Its stairs: each floor change has its cell; walked onto from the floor below it goes up, from the floor above
-        // down; off it before it goes again.
-        const int floors = InteriorFloors(interior);
+        if (on == nullptr) on = &registry.emplace<OnFloor>(mover);
+        if (on->building != b->entity) on->building = b->entity, on->floor = 1, on->onStairs = false;
         bool onStairs = false;
-        if (floors > 1) {
-            const auto up = StairsCells(interior, interior.floor, x0, y0, x1, y1);   // up from this floor
-            const auto down = StairsCells(interior, interior.floor - 1, x0, y0, x1, y1); // down to the one below
-            const auto on = [&](const std::vector<std::pair<int, int>>& cells) {
-                return std::find(cells.begin(), cells.end(), std::make_pair(px, py)) != cells.end();
-            };
-            const bool onUp = interior.floor < floors && on(up);
-            const bool onDown = interior.floor > 1 && on(down);
+        if (b->floors > 1) {
+            const Interior& interior = registry.get<Interior>(b->entity);
+            const std::pair<int, int> cell{static_cast<int>(std::floor(world.x)), static_cast<int>(std::floor(world.y))};
+            const auto up = StairsCells(interior, on->floor, b->x0, b->y0, b->x1, b->y1);       // up from its floor
+            const auto down = StairsCells(interior, on->floor - 1, b->x0, b->y0, b->x1, b->y1); // down to the one below
+            const bool onUp = on->floor < b->floors && std::find(up.begin(), up.end(), cell) != up.end();
+            const bool onDown = on->floor > 1 && std::find(down.begin(), down.end(), cell) != down.end();
             onStairs = onUp || onDown;
-            if (onStairs && !interior.onStairs) interior.floor = std::clamp(interior.floor + (onUp ? 1 : -1), 1, floors);
+            if (onStairs && !on->onStairs) on->floor = std::clamp(on->floor + (onUp ? 1 : -1), 1, b->floors);
         }
-        interior.onStairs = onStairs;
+        on->onStairs = onStairs;
+    }
+    // The player's building shows its interior, at the player's floor.
+    const OnFloor* mine = player && registry.valid(*player) ? registry.try_get<OnFloor>(*player) : nullptr;
+    for (const auto& b : buildings) {
+        auto& interior = registry.get<Interior>(b.entity);
+        const bool inside = mine && mine->building == b.entity;
+        if (inside && !interior.shown) interior.climbing = true;
+        interior.shown = inside;
+        interior.floor = inside ? mine->floor : 1;
+        interior.onStairs = inside && mine->onStairs;
+    }
+    // Each one stands its floor's storeys higher (eased: it climbs), and is hidden on a floor not shown (inside a building
+    // the player isn't in: above the ground floor).
+    for (auto [mover, on] : registry.view<OnFloor>().each()) {
+        const Building* b = nullptr;
+        for (const auto& each : buildings) {
+            if (each.entity == on.building) b = &each;
+        }
+        const float target = b ? (on.floor - 1) * b->storey : 0.0f;
+        on.lift += (target - on.lift) * 0.25f;
+        if (std::abs(target - on.lift) < 0.5f) on.lift = target;
+        bool hide = false;
+        if (b && !(player && mover == *player)) {
+            const auto& interior = registry.get<Interior>(b->entity);
+            hide = interior.shown ? on.floor != interior.floor : on.floor > 1;
+        }
+        if (auto* sprite = registry.try_get<Sprite>(mover); sprite && hide != on.hidden) {
+            if (hide) on.alpha = sprite->a, sprite->a = 0.0f;
+            else sprite->a = on.alpha;
+            on.hidden = hide;
+        }
     }
     ApplyInteriors(registry);
 }

@@ -73,6 +73,9 @@ TileGrid TileGrid::Build(Registry& registry) {
                         for (int gy = y0 - 1; gy <= y1 + 1; ++gy) {
                             const bool ring = gx == x0 - 1 || gx == x1 + 1 || gy == y0 - 1 || gy == y1 + 1;
                             if (ring && !out.contains({gx, gy})) block(gx, gy);
+                            // Its floor: walkable though the place's layers mark the building's cells solid, or a prop
+                            // placed on it blocks (the cutaway draws what's inside).
+                            if (!ring) grid.inside_.insert(Key(gx, gy));
                         }
                     }
                     continue;
@@ -99,6 +102,7 @@ TileGrid TileGrid::Build(Registry& registry) {
 }
 
 bool TileGrid::IsSolid(int gx, int gy) const {
+    if (inside_.contains(Key(gx, gy))) return false;
     auto it = cells_.find(Key(gx, gy));
     if (it != cells_.end()) return it->second.solid; // a painted tile wins over layers
     for (auto layer = layers_.rbegin(); layer != layers_.rend(); ++layer) {

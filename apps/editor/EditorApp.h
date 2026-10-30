@@ -337,6 +337,9 @@ private:
 
     nlohmann::json SceneJson();
     nlohmann::json InspectorJson(Entity entity);
+    // Whether it's a building, by the ontology: its picture's roles (else its kind, its name's words) reach "building".
+    // A picture that says nothing: one with a Building Plan (Interior) is.
+    bool IsBuilding(Entity entity);
     nlohmann::json EditorStateJson();
     void CreateScriptFor(Entity entity, const std::string& name);
     std::string LabelOf(Entity entity);
@@ -381,6 +384,7 @@ private:
     int webPreviewRequest_ = 0;
     int segmentRequest_ = 0; // ⑤ Mark's click-to-select (POST /images/segment)
     std::map<int, std::string> interiorRequests_; // Generate interior (POST /assets/interior): request -> the asset
+    std::map<std::string, Entity> interiorRedesign_; // Redesign interiors: the exterior -> the building (its stairs found again)
     int sceneBackgroundRequest_ = 0;  // Edit ▸ Background Image, no build (POST /images/background)
     nlohmann::json sceneBackground_;  // its {path, description, model}
     bool relayBackground_ = false;    // a build's background painted again: its scene laid with it when it comes

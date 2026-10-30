@@ -534,6 +534,7 @@ void EditorApp::ApplyDoorToPrefab(const std::string& prefab, size_t index, const
             // Redone: its ways (how it opens, its lock) kept.
             made.opens = doors[index].opens, made.locked = doors[index].locked, made.key = doors[index].key;
             made.consumeKey = doors[index].consumeKey, made.range = doors[index].range;
+            made.trigger = doors[index].trigger, made.prompt = doors[index].prompt, made.door = doors[index].door;
             doors[index] = made;
         } else {
             doors.push_back(made);

@@ -270,9 +270,15 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("clip", &AnimatedPart::clip, "Played when someone comes near (or it's used).")
         .Field("closeClip", &AnimatedPart::closeClip, "Played when they leave.")
         .Field("range", &AnimatedPart::range, "How near, in cells, from the part itself.").Range(0.3, 10)
-        .Field("opens", &AnimatedPart::opens, "How it opens: project (Project Settings ▸ Game ▸ doorsOpen), auto (as someone "
-               "comes near), use (the door shortcuts or a double click, near it), or open (an open doorway: always passable, no "
-               "door to animate).").Options({"project", "auto", "use", "open"})
+        .Field("opens", &AnimatedPart::opens, "What activates it (shown as activation): project (Project Settings ▸ Game ▸ "
+               "doorsOpen), auto (as someone comes near), use (the door shortcuts or a double click, near it), action (the input "
+               "action named in trigger, near it), event (the game event named in trigger), always (it plays on and on), or "
+               "open (an open doorway: always passable, no door to animate).")
+            .Options({"project", "auto", "use", "action", "event", "always", "open"})
+        .Field("trigger", &AnimatedPart::trigger, "action: the input action's name (Project Settings ▸ Input); event: the event's name.")
+        .Field("prompt", &AnimatedPart::prompt, "What the player is shown near it (\"Pull the lever\"); \"shut|open\" for each way "
+               "(\"Open the door|Close the door\"); empty: a door's own, another part's \"Use\".")
+        .Field("door", &AnimatedPart::door, "A doorway of its building: a way in, blocked while shut (a window or a lever isn't).")
         .Field("locked", &AnimatedPart::locked, "Shut, its doorway blocked, until the player uses it with the key.")
         .Field("key", &AnimatedPart::key, "The item that unlocks it (empty: it can't be opened).")
         .Field("consumeKey", &AnimatedPart::consumeKey, "The key is used up unlocking it.")
@@ -285,8 +291,11 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("clip", &DoorPart::clip, "Played as it opens.")
         .Field("closeClip", &DoorPart::closeClip, "Played as it shuts.")
         .Field("range", &DoorPart::range, "How near, in cells.").Range(0.3, 10)
-        .Field("opens", &DoorPart::opens, "How it opens: project (Project Settings ▸ Game ▸ doorsOpen), auto (as someone comes "
-               "near) or use (the door shortcuts or a double click, near it).").Options({"project", "auto", "use"})
+        .Field("opens", &DoorPart::opens, "What activates it (shown as activation): project (Project Settings ▸ Game ▸ doorsOpen), "
+               "auto (as someone comes near), use (the door shortcuts or a double click, near it), action or event (named in "
+               "trigger), always.").Options({"project", "auto", "use", "action", "event", "always"})
+        .Field("trigger", &DoorPart::trigger, "action: the input action's name; event: the event's name.")
+        .Field("prompt", &DoorPart::prompt, "What the player is shown near it; \"shut|open\" for each way.")
         .Field("locked", &DoorPart::locked, "Shut until the player uses it with the key.")
         .Field("key", &DoorPart::key, "The item that unlocks it (empty: it can't be opened).")
         .Field("consumeKey", &DoorPart::consumeKey, "The key is used up unlocking it.")
@@ -307,6 +316,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("cells", &Interior::cells, "A painted building's footprint, x0,y0,x1,y1 in cells (else its Obstacle's).")
         .Field("hides", &Interior::hides, "A painted building's occluders, hidden while the interior shows.")
         .Field("floors", &Interior::floors, "The upper floors' pictures (floor 2, 3…), ';' between.")
+        .Field("storeyHeight", &Interior::storeyHeight, "A storey's height on screen in pixels: how much higher one stands each floor up (0: from its picture).").Min(0)
         .Field("floor", &Interior::floor, "The floor shown: the player's while inside, a preview in the editor.")
         .Field("stairs", &Interior::stairs, "Each floor change's stairs cell, x,y;x,y (floor 1 to 2, 2 to 3...): walked onto from below goes up, from above down. Empty: its corners in turn (top, right, left). Right-click inside it ▸ Stairs here.")
         .Field("entries", &Interior::entries, "Its ways in, set by hand: cells of its footprint's edge, dx,dy;dx,dy from its "
