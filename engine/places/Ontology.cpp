@@ -293,6 +293,7 @@ std::vector<std::string> Ontology::Load(const std::vector<fs::path>& dirs) {
                 Role role;
                 role.id = id;
                 role.label = spec.is_object() ? spec.value("label", id) : id;
+                role.description = spec.is_object() ? spec.value("description", std::string()) : std::string();
                 role.broader = spec.is_object() ? spec.value("broader", "") : "";
                 role.affordance = spec.is_object() ? spec.value("affordance", "") : "";
                 role.size = spec.is_object() ? spec.value("size", 0.0f) : 0.0f;
@@ -690,6 +691,14 @@ bool Ontology::IsSolid(const std::string& role) const {
         if (r->solid >= 0) return r->solid == 1;
     }
     return false;
+}
+
+std::string Ontology::RoleDescription(const std::string& role) const {
+    std::set<std::string> seen;
+    for (const Role* r = FindRole(role); r && seen.insert(r->id).second; r = FindRole(r->broader)) {
+        if (!r->description.empty()) return r->description;
+    }
+    return {};
 }
 
 bool Ontology::IsBuilding(const std::string& role) const {

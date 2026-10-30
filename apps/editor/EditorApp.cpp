@@ -7195,9 +7195,10 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
         interiorRedesign_[outside] = e;
         const std::string purpose = asset->analysis.contains("description") ? asset->analysis.at("description") : std::string();
         const int seed = static_cast<int>(std::chrono::steady_clock::now().time_since_epoch().count() % 100000); // a new design
-        if (const int id = Ai()->Request("POST", "/assets/interior",
-                                         {{"path", outside}, {"purpose", purpose}, {"storeys", InteriorFloors(*interior)}, {"seed", seed}}, 1200);
-            id != 0) {
+        nlohmann::json body = InteriorKind(outside); // what kind of building, its rooms (the ontology's)
+        body["path"] = outside, body["purpose"] = purpose, body["storeys"] = InteriorFloors(*interior), body["seed"] = seed;
+        body["design"] = message.value("design", std::string()); // the user's words for it (the Redesign dialog), or none
+        if (const int id = Ai()->Request("POST", "/assets/interior", body, 1200); id != 0) {
             interiorRequests_[id] = outside;
             post_({{"type", "notify"}, {"text", "Redesigning its interiors (BFL, floor by floor: a few minutes)…"}});
         }
@@ -7341,7 +7342,9 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             return true;
         }
         const std::string purpose = asset->analysis.contains("description") ? asset->analysis.at("description") : std::string();
-        if (const int id = Ai()->Request("POST", "/assets/interior", {{"path", path}, {"purpose", purpose}}, 600); id != 0) {
+        nlohmann::json body = InteriorKind(path); // what kind of building, its rooms (the ontology's)
+        body["path"] = path, body["purpose"] = purpose, body["design"] = message.value("design", std::string());
+        if (const int id = Ai()->Request("POST", "/assets/interior", body, 1200); id != 0) {
             interiorRequests_[id] = path;
             post_({{"type", "notify"}, {"text", "Making the interior of " + path + "…"}});
         }
@@ -9686,41 +9689,62 @@ nlohmann::json EditorApp::InspectorJson(Entity entity) {
             {"choices", {{"entities", entities}, {"textures", textures}, {"audio", audio}, {"scripts", ListScripts()}}}};
 }
 
+std::optional<std::string> EditorApp::BuildingRoleOf(const std::string& texture) {
+    const AssetInfo* asset = texture.empty() ? nullptr : assets_.Find(texture);
+    if (!asset || asset->analysis.empty()) return std::nullopt;
+    const Ontology& ontology = Places();
+    auto get = [&](const char* key) {
+        const auto it = asset->analysis.find(key);
+        return it == asset->analysis.end() ? std::string() : it->second;
+    };
+    // The most specific building role among `candidates` ("warehouse" before "building"), "" if none is one.
+    auto pick = [&](const std::vector<std::string>& candidates) {
+        std::string general;
+        for (const auto& role : candidates) {
+            if (!ontology.IsBuilding(role)) continue;
+            if (role != "building") return role;
+            general = role;
+        }
+        return general;
+    };
+    if (const std::string roles = get("roles"); !roles.empty()) {
+        std::vector<std::string> listed;
+        std::stringstream list(roles);
+        for (std::string role; std::getline(list, role, '|');) {
+            for (std::stringstream more(role); std::getline(more, role, ',');) {
+                role.erase(0, role.find_first_not_of(' '));
+                role.erase(role.find_last_not_of(' ') + 1);
+                listed.push_back(role);
+            }
+        }
+        return pick(listed);
+    }
+    // Its name's words, and each pair joined ("guard-tower").
+    std::vector<std::string> words, candidates;
+    std::string word;
+    for (char c : get("name") + " ") {
+        if (std::isalpha(static_cast<unsigned char>(c))) word += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        else if (!word.empty()) words.push_back(word), word.clear();
+    }
+    for (size_t i = 0; i + 1 < words.size(); ++i) candidates.push_back(words[i] + "-" + words[i + 1]);
+    candidates.insert(candidates.end(), words.begin(), words.end());
+    if (std::string role = pick(candidates); !role.empty()) return role;
+    if (get("kind") == "building" || get("layer") == "building") return std::string("building");
+    if (!get("kind").empty()) return std::string(); // it says what it is, and it isn't a building
+    return std::nullopt;
+}
+
+nlohmann::json EditorApp::InteriorKind(const std::string& texture) {
+    const auto role = BuildingRoleOf(texture);
+    if (!role || role->empty()) return {{"kind", ""}, {"kindDescription", ""}};
+    const Ontology& ontology = Places();
+    const Role* r = ontology.FindRole(*role);
+    return {{"kind", r ? r->label : *role}, {"kindDescription", ontology.RoleDescription(*role)}};
+}
+
 bool EditorApp::IsBuilding(Entity entity) {
     const auto* sprite = registry_.try_get<Sprite>(entity);
-    const AssetInfo* asset = sprite && !sprite->texture.empty() ? assets_.Find(sprite->texture) : nullptr;
-    if (asset && !asset->analysis.empty()) {
-        const Ontology& ontology = Places();
-        auto get = [&](const char* key) {
-            const auto it = asset->analysis.find(key);
-            return it == asset->analysis.end() ? std::string() : it->second;
-        };
-        auto words = [](const std::string& text) {
-            std::vector<std::string> out;
-            std::string word;
-            for (char c : text + " ") {
-                if (std::isalpha(static_cast<unsigned char>(c))) word += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-                else if (!word.empty()) out.push_back(word), word.clear();
-            }
-            return out;
-        };
-        if (const std::string roles = get("roles"); !roles.empty()) {
-            std::stringstream list(roles);
-            for (std::string role; std::getline(list, role, '|');) {
-                for (std::stringstream more(role); std::getline(more, role, ',');) {
-                    role.erase(0, role.find_first_not_of(' '));
-                    role.erase(role.find_last_not_of(' ') + 1);
-                    if (ontology.IsBuilding(role)) return true;
-                }
-            }
-            return false;
-        }
-        if (get("kind") == "building" || get("layer") == "building") return true;
-        for (const auto& w : words(get("name"))) {
-            if (ontology.IsBuilding(w)) return true;
-        }
-        if (!get("kind").empty()) return false; // it says what it is, and it isn't a building
-    }
+    if (const auto role = BuildingRoleOf(sprite ? sprite->texture : std::string())) return !role->empty();
     return registry_.all_of<Interior>(entity);
 }
 

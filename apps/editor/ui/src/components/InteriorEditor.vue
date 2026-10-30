@@ -6,7 +6,7 @@ import { computed, ref } from 'vue'
 import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
 import { editorState } from '../editorState'
 import { sendToHost } from '../ipc'
-import { confirmDialog } from '../dialogs'
+import { promptDialog } from '../dialogs'
 import { aiCalls } from '../aiProgress'
 import { redesigns } from '../redesigns'
 
@@ -61,14 +61,17 @@ function setStairs(change: number, cell: string): void {
 async function redesign(): Promise<void> {
   const id = props.id
   if (id === undefined) return
-  const ok = await confirmDialog({
+  // Its design in the user's words (empty: as the building is, from what kind it is).
+  const design = await promptDialog({
     title: 'Redesign interiors',
-    message: `Paint its ${floorCount.value} floor(s) again from its exterior? Its pictures are replaced (every copy of its prefab), its stairs where they're painted.`,
+    message: `Paint its ${floorCount.value} floor(s) again from its exterior? Its pictures are replaced (every copy of its prefab). ` +
+      'Describe the interior you want, or leave it empty for one that fits the building.',
+    placeholder: "e.g. a cosy candle-lit family home, a cluttered alchemist's lab",
     confirmLabel: 'Redesign',
   })
-  if (!ok) return
+  if (design === null) return
   redesigns[id] = { state: 'working', text: '' }
-  sendToHost({ type: 'interior:redesign', id })
+  sendToHost({ type: 'interior:redesign', id, design: design.trim() })
 }
 // This building's redesign: working (its bar: the floors painted of all, from the service's progress), done, failed.
 const redesign_ = computed(() => (props.id === undefined ? undefined : redesigns[props.id]))

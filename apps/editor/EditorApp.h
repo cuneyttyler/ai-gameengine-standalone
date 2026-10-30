@@ -343,6 +343,13 @@ private:
     // Whether it's a building, by the ontology: its picture's roles (else its kind, its name's words) reach "building".
     // A picture that says nothing: one with a Building Plan (Interior) is.
     bool IsBuilding(Entity entity);
+    // A picture's building role, by the ontology: its catalog roles' most specific one that's a building, else its name's
+    // words' (a pair joined: guard-tower), else "building" for one of kind or layer building; "" when it says it's
+    // something else; nullopt when it says nothing.
+    std::optional<std::string> BuildingRoleOf(const std::string& texture);
+    // What a picture's interior is to look like, for its painting: its building role's label and description (the
+    // ontology's), as {"kind", "kindDescription"} (empty when it isn't known).
+    nlohmann::json InteriorKind(const std::string& texture);
     nlohmann::json EditorStateJson();
     void CreateScriptFor(Entity entity, const std::string& name);
     std::string LabelOf(Entity entity);

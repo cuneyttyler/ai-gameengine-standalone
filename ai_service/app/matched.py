@@ -977,13 +977,36 @@ the roof never count. A cottage with a window in its gable is 1; a house with tw
 dormers in its roof is 2. Answer as JSON: {"storeys": <1-4>, "why": "<the rows you counted>"}."""
 
 
-# What each floor holds (so the floors differ): the ground floor's living and working rooms, the floors above sleeping
-# and keeping, the top one under the roof.
+# What each floor holds (so the floors differ), whatever the building: its main rooms and entrance below, the others
+# above; what they are comes from what the building is (`room_prompt`: its role's description).
 _FLOOR_USE = {
-    "ground": "its main rooms: the hearth or kitchen, a table, the working or selling space, the entrance",
-    "middle": "bedrooms and private rooms: beds, chests, a washstand, a small table",
-    "top": "the top floor's rooms: bedrooms or storage, crates, sacks",
+    "ground": "its main rooms and its entrance",
+    "middle": "its other rooms",
+    "top": "its upper rooms",
 }
+
+
+def role_description(role: str) -> tuple[str, str]:
+    """A building role's label and description from the ontology (data/places/roles.json: its own, else its nearest broader
+    role's), ("", "") when it isn't one."""
+    global _ROLES
+    try:
+        _ROLES
+    except NameError:
+        path = Path(__file__).resolve().parents[2] / "data" / "places" / "roles.json"
+        try:
+            _ROLES = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _ROLES = {}
+    label, seen, r = "", set(), role
+    while r in _ROLES and r not in seen:
+        seen.add(r)
+        spec = _ROLES[r] if isinstance(_ROLES[r], dict) else {}
+        label = label or spec.get("label", r)
+        if spec.get("description"):
+            return label, spec["description"]
+        r = spec.get("broader", "")
+    return label, ""
 
 
 def _floor_frame(exterior: Image.Image, storeys: int):
@@ -1129,38 +1152,50 @@ def _on_canvas(picture: Image.Image, side: int = 1024) -> tuple[Image.Image, int
     return canvas, ox, oy, shown
 
 
-_REFERENCE = ("Image 2 is the building from outside: ONLY its design reference: its walls' materials, timber framing, windows and "
+_REFERENCE = ("Image 2 is the building from outside: ONLY its design reference: its walls' materials, framing, windows and "
               "colours (this floor's back walls look like its walls). Do not paint the building of image 2 or anything else of it.\n"
               "Only this floor's room: nothing round it, no ground, no shadow, no people, no text. No green, red, yellow, blue or "
               "white shape left in the picture. Keep the magenta empty.")
 
 
-def room_prompt(k: int, n: int, purpose: str, style: str = "", doors: bool = False) -> str:
+def room_prompt(k: int, n: int, purpose: str, style: str = "", doors: bool = False, kind: str = "", kind_description: str = "",
+                design: str = "") -> str:
     """Floor k of n painted as its room alone from its blockout (image 1, `room_blockout`), the exterior its design
     reference (image 2) (docs/places/interiors.md §2): the green box its storey, the cyan its floor to fill with its rooms,
     the red ramp its stairs up (odd floors against the back-left wall rising left to right, even ones the back-right wall
     rising right to left), the yellow box a flat rug in the upper corner flush with the wall (where the stairs from below
-    come up: the hole is cut there when it's laid on the exterior), the blue boxes the ground floor's doors."""
+    come up: the hole is cut there when it's laid on the exterior), the blue boxes the ground floor's doors. What the
+    building is (`kind`, its role's `kind_description`: the ontology's; else `purpose`) says what its rooms hold, its era
+    and its lights; `design`, the user's words for it (the Redesign dialog), comes before all."""
     use = _FLOOR_USE["ground" if k == 1 else "top" if k == n else "middle"]
+    what = (kind_description or (f"a {kind}" if kind else "") or purpose).strip()
     lines = ["Game asset. Isometric view. Flat magenta background (#FF00FF).",
              "Image 1 is a blockout of one floor of a building, as a game shows a room the player walks in, cut away from above. "
              "Paint exactly what it shows, at exactly its place, size and angle in the picture:",
              "- the GREEN box is this floor's storey: its floor at the bottom of the box (the white outline), its two BACK walls up to "
              "the top of the box, one storey high, with windows; its two FRONT walls gone, the floor's front edges open; no ceiling, no "
              "roof, nothing above the box, nothing below the floor but its thin edge;",
-             f"- the CYAN area is this floor: fill it with its rooms and furniture - this area holds {use}, {purpose}; its rooms with "
-             "low inner partitions only, the floor fully visible, lit warmly;"]
+             f"- the CYAN area is this floor: fill it with its rooms and furniture - this area holds {use}, as this building has them; "
+             "its rooms with low inner partitions only, the floor fully visible;",
+             "- lit and decorated as such a building is in its time: its own kind of lights (candles, lanterns and torches, or lamps "
+             "and ceiling lights, as fits it) and decorations (rugs, pictures, plants, banners, shelves of things, as fits it), so "
+             "its rooms feel lived in and warm;"]
+    if what:
+        lines.insert(1, f"This is the inside of {what}. Its rooms, furniture, materials and lights are those of such a building, "
+                        "in its era and style.")
+    if design:
+        lines.insert(2 if what else 1, f"The interior's design, as asked: {design.strip()}. Follow it.")
     if k == 1 and doors:
         lines.append("- each BLUE box is one of its doors, in its front walls: this floor's entrance is there, a gap in a low front "
                      "sill with a threshold and a doormat inside;")
     if k < n:
         wall = ("against the back-LEFT wall, rising from LEFT to RIGHT" if k % 2 == 1 else
                 "against the back-RIGHT wall, rising from RIGHT to LEFT")
-        lines.append(f"- the RED ramp is this floor's staircase going UP to the next floor: a straight wooden staircase exactly there, "
+        lines.append(f"- the RED ramp is this floor's staircase going UP to the next floor: a straight staircase exactly there, "
                      f"{wall}, its top at the upper corner;")
     if k > 1:
         side = "back-LEFT" if (k - 1) % 2 == 1 else "back-RIGHT"
-        lines.append(f"- the YELLOW box is a large flat woven rug lying on the floor boards, exactly filling it: it's in the upper corner "
+        lines.append(f"- the YELLOW box is a large flat rug lying on the floor, exactly filling it: it's in the upper corner "
                      f"of the room (the top of the picture), right next to the {side} wall, touching it along its length, nothing "
                      "between the rug and the wall; flat on the floor; nothing stands on it, nothing tall there; the rug reaches right "
                      "into the upper corner next to the walls: its corner is the room's corner; no bed or furniture in the upper corner;")
@@ -1169,7 +1204,7 @@ def room_prompt(k: int, n: int, purpose: str, style: str = "", doors: bool = Fal
 
 
 def paint_room(painter, exterior: Image.Image, k: int, storeys: int, purpose: str, style: str, seed: int,
-               doors: list[list[int]] | None = None) -> Image.Image | None:
+               doors: list[list[int]] | None = None, kind: str = "", kind_description: str = "", design: str = "") -> Image.Image | None:
     """Floor k's room alone (docs/places/interiors.md §2): its blockout centred on a magenta canvas (image 1), the exterior
     beside it (image 2, a design reference), painted, the room moved back to where it stands in the exterior's frame, the
     magenta cleared. None when the painting fails."""
@@ -1178,7 +1213,7 @@ def paint_room(painter, exterior: Image.Image, k: int, storeys: int, purpose: st
     canvas, ox, oy, shown = _on_canvas(blockout, side)
     reference = _on_canvas(exterior, side)[0]
     try:
-        png = painter.repaint(_png(canvas), room_prompt(k, storeys, purpose, style, bool(doors) and k == 1),
+        png = painter.repaint(_png(canvas), room_prompt(k, storeys, purpose, style, bool(doors) and k == 1, kind, kind_description, design),
                               references=[_png(reference)], seed=seed, width=side, height=side)
     except Exception:  # noqa: BLE001 - this floor stays unpainted this run
         return None
@@ -1246,7 +1281,7 @@ def lay_floor(exterior: Image.Image, rooms: dict, k: int, storeys: int) -> Image
 
 
 def make_floors(painter, exterior: Image.Image, purpose: str, style: str, seed: int, storeys: int, report=None,
-                vision=None) -> list[Image.Image | None]:
+                vision=None, kind: str = "", kind_description: str = "", design: str = "") -> list[Image.Image | None]:
     """A building's interiors, one a floor (docs/places/interiors.md §2): each floor's room painted by itself from its
     blockout (`paint_room`: its storey, its stairs up, the flat rug where the stairs from below come up, the ground floor's
     doors found on the exterior by the vision model), the floors at once; then each laid on the exterior's own storeys
@@ -1260,7 +1295,8 @@ def make_floors(painter, exterior: Image.Image, purpose: str, style: str, seed: 
     if report:
         report(0, storeys, f"Painting {storeys} floor{'s' if storeys > 1 else ''}")
     with ThreadPoolExecutor(min(4, storeys)) as pool:
-        jobs = {pool.submit(paint_room, painter, exterior, k, storeys, purpose, style, seed + 977 + 31 * k, doors): k
+        jobs = {pool.submit(paint_room, painter, exterior, k, storeys, purpose, style, seed + 977 + 31 * k, doors, kind,
+                            kind_description, design): k
                 for k in range(1, storeys + 1)}
         for finished, job in enumerate(as_completed(jobs), 1):
             rooms[jobs[job]] = job.result()
@@ -1298,7 +1334,9 @@ def make_interiors(painter, folder: Path, pieces: list[dict], context: dict, see
         with Image.open(exterior_path) as im:
             exterior = im.convert("RGBA")
         storeys = int(p.get("storeys") or 0) or count_storeys(vision, exterior)  # the Build panel's, else counted
-        floors = make_floors(painter, exterior, _purpose(p), style, seed + len(p["key"]), storeys, vision=vision)
+        kind, about = role_description(str(p.get("role") or ""))
+        floors = make_floors(painter, exterior, _purpose(p), style, seed + len(p["key"]), storeys, vision=vision, kind=kind,
+                             kind_description=about)
         if not floors or floors[0] is None:
             return None
         for k, floor in enumerate(floors, 1):
@@ -1332,7 +1370,9 @@ def paint_interiors(painter, folder: Path, items: list[dict], context: dict, see
         exterior = whole.crop((x, y, x + w, y + h))
         exterior.putalpha(mask)
         storeys = int(item.get("storeys") or 0) or count_storeys(vision, exterior)  # the Build panel's, else counted
-        floors = make_floors(painter, exterior, _purpose(item), style, seed + len(item["id"]), storeys, vision=vision)
+        kind, about = role_description(str(item.get("role") or ""))
+        floors = make_floors(painter, exterior, _purpose(item), style, seed + len(item["id"]), storeys, vision=vision, kind=kind,
+                             kind_description=about)
         if not floors or floors[0] is None:
             return None
         (folder / "marks").mkdir(exist_ok=True)

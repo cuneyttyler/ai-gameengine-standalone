@@ -38,6 +38,7 @@
   },
   "building": {
     "label": "building",
+    "description": "a building people live or work in; its rooms furnished for what it is used for",
     "affordance": "environmental-object",
     "look": {
       "variety": "high",
@@ -49,30 +50,35 @@
   },
   "house": {
     "label": "house",
+    "description": "a family home of a pre-industrial village or town: a hearth and kitchen, a table and benches, bedrooms with beds and chests, shelves of crockery, lit by candles and the fire",
     "affordance": "environmental-object",
     "broader": "building",
     "solid": true
   },
   "townhouse": {
     "label": "townhouse",
+    "description": "a narrow town house of a merchant or craftsman family: a parlour, a kitchen with a hearth, bedrooms upstairs, wooden panelling, candles and oil lamps",
     "affordance": "environmental-object",
     "broader": "building",
     "solid": true
   },
   "shack": {
     "label": "shack",
+    "description": "a poor one-room shack: a cot, a small stove or fire pit, a rough table, sacks and tools, a single lantern",
     "affordance": "environmental-object",
     "broader": "building",
     "solid": true
   },
   "farmhouse": {
     "label": "farmhouse",
+    "description": "a farming family's house: a big kitchen hearth, a long table, a pantry of sacks and jars, farm tools by the door, simple bedrooms, candles and the fire",
     "affordance": "environmental-object",
     "broader": "building",
     "solid": true
   },
   "manor": {
     "label": "manor",
+    "description": "a noble family's manor house: a great hall with a long table and fireplace, tapestries and portraits, fine bedrooms with canopy beds, rugs, candelabra",
     "affordance": "environmental-object",
     "broader": "building",
     "look": {
@@ -82,30 +88,35 @@
   },
   "outbuilding": {
     "label": "outbuilding",
+    "description": "a small farm outbuilding: stored tools, sacks, barrels and firewood, a workbench",
     "affordance": "environmental-object",
     "broader": "building",
     "solid": true
   },
   "barn": {
     "label": "barn",
+    "description": "a farm barn: hay bales and a hayloft, stalls, carts, farm tools, sacks of grain, lanterns on hooks",
     "affordance": "environmental-object",
     "broader": "building",
     "solid": true
   },
   "shed": {
     "label": "shed",
+    "description": "a garden or tool shed: tools on the walls, a workbench, pots, sacks, a lantern",
     "affordance": "environmental-object",
     "broader": "building",
     "solid": true
   },
   "workshop": {
     "label": "workshop",
+    "description": "a craftsman's workshop: workbenches, tools on racks, materials and half-finished work, shelves of supplies, lamps",
     "affordance": "environmental-object",
     "broader": "building",
     "solid": true
   },
   "inn": {
     "label": "inn",
+    "description": "an inn: a common room with tables, benches and a bar with barrels, a hearth, guest rooms with beds upstairs, candles and lanterns",
     "affordance": "environmental-object",
     "broader": "building",
     "look": {
@@ -115,24 +126,28 @@
   },
   "stable": {
     "label": "stable",
+    "description": "a stable: horse stalls with straw, saddles and tack on the walls, feed sacks and buckets, a hayloft, lanterns",
     "affordance": "environmental-object",
     "broader": "building",
     "solid": true
   },
   "shop": {
     "label": "shop",
+    "description": "a shop: a counter, shelves and displays of goods, crates and barrels of stock, a back room, lamps",
     "affordance": "environmental-object",
     "broader": "building",
     "solid": true
   },
   "warehouse": {
     "label": "warehouse",
+    "description": "a goods warehouse: rows of crates, barrels and sacks, shelving, a small office desk with ledgers, lanterns",
     "affordance": "environmental-object",
     "broader": "building",
     "solid": true
   },
   "temple": {
     "label": "temple",
+    "description": "a temple: an altar, statues of its gods, offering bowls and incense, braziers and candles, benches or prayer mats, banners",
     "affordance": "environmental-object",
     "broader": "building",
     "look": {
@@ -142,12 +157,14 @@
   },
   "mill": {
     "label": "mill",
+    "description": "a mill: millstones and wooden gears, sacks of grain and flour, a hopper, the miller's table, lanterns",
     "affordance": "environmental-object",
     "broader": "building",
     "solid": true
   },
   "guard-tower": {
     "label": "guard tower",
+    "description": "a guard tower: weapon racks, a table with maps, a brazier, cots for the guards, ladders between floors, torches",
     "affordance": "environmental-object",
     "broader": "building",
     "solid": true
@@ -1033,6 +1050,7 @@
   },
   "tent": {
     "label": "tent",
+    "description": "a tent: bedrolls, a chest, a lantern, packs and supplies on the ground",
     "affordance": "environmental-object",
     "broader": "building",
     "size": 2.0,
@@ -1046,6 +1064,7 @@
   },
   "command-tent": {
     "label": "command tent",
+    "description": "a commander's tent: a map table with markers, chairs, a cot, weapon and armour stands, banners, lanterns",
     "affordance": "environmental-object",
     "broader": "tent",
     "relative": {
@@ -1056,6 +1075,7 @@
   },
   "keep": {
     "label": "keep",
+    "description": "a castle keep: a great hall with a long table and throne, tapestries and banners, an armoury, stone walls, torches and braziers",
     "affordance": "environmental-object",
     "broader": "building",
     "look": {
@@ -1065,6 +1085,7 @@
   },
   "barracks": {
     "label": "barracks",
+    "description": "soldiers' barracks: rows of bunks, foot lockers, weapon racks, a mess table, torches",
     "affordance": "environmental-object",
     "broader": "building",
     "look": {
@@ -1074,6 +1095,7 @@
   },
   "chapel": {
     "label": "chapel",
+    "description": "a small chapel: an altar, pews, candles and candlesticks, devotional paintings, a lectern",
     "affordance": "environmental-object",
     "broader": "temple",
     "look": {
@@ -1083,24 +1105,28 @@
   },
   "storehouse": {
     "label": "storehouse",
+    "description": "a storehouse: sacks, crates, barrels and jars on shelves, a tally desk, lanterns",
     "affordance": "environmental-object",
     "broader": "warehouse",
     "solid": true
   },
   "gatehouse": {
     "label": "gatehouse",
+    "description": "a gatehouse: the gate winch, weapon racks, a guard table, stools, torches",
     "affordance": "environmental-object",
     "broader": "building",
     "solid": true
   },
   "smithy": {
     "label": "smithy",
+    "description": "a blacksmith's smithy: a forge glowing with fire, an anvil, a quenching trough, hammers and tongs on racks, finished blades and horseshoes",
     "affordance": "environmental-object",
     "broader": "workshop",
     "solid": true
   },
   "ruin": {
     "label": "ruin",
+    "description": "an abandoned ruin: broken furniture, rubble and fallen beams, dust, cobwebs and creeping plants",
     "affordance": "environmental-object",
     "broader": "building",
     "look": {
@@ -1110,6 +1136,7 @@
   },
   "site-marker": {
     "label": "site marker",
+    "description": "a small marked site: a few objects that mark it",
     "affordance": "environmental-object",
     "broader": "building",
     "look": {
@@ -1119,6 +1146,7 @@
   },
   "landmark": {
     "label": "landmark",
+    "description": "a landmark building: its main room arranged around what it is known for",
     "affordance": "environmental-object",
     "broader": "building",
     "look": {
@@ -2149,6 +2177,7 @@
   },
   "office-tower": {
     "label": "office tower",
+    "description": "a modern office tower: open-plan desks with computers, meeting rooms with glass walls, office chairs, plants, ceiling lights",
     "affordance": "environmental-object",
     "broader": "building",
     "draw": "a modern glass and steel office skyscraper with a flat roof and rooftop plant",
@@ -2165,6 +2194,7 @@
   },
   "office-building": {
     "label": "office building",
+    "description": "a modern office building: desks with computers, a reception, meeting rooms, filing cabinets, a kitchenette, ceiling lights",
     "affordance": "environmental-object",
     "broader": "building",
     "draw": "a modern mid-rise office building of glass and concrete with a flat roof",
@@ -2180,6 +2210,7 @@
   },
   "apartment-block": {
     "label": "apartment block",
+    "description": "a modern apartment block: flats with a living room, sofa and TV, a kitchen, bedrooms, bathrooms, lamps",
     "affordance": "environmental-object",
     "broader": "building",
     "draw": "a modern mid-rise apartment block with balconies and a flat roof",
@@ -2195,6 +2226,7 @@
   },
   "apartment-tower": {
     "label": "apartment tower",
+    "description": "a modern apartment tower: flats with a living room, sofa and TV, a kitchen, bedrooms, bathrooms, lamps",
     "affordance": "environmental-object",
     "broader": "apartment-block",
     "draw": "a modern high-rise residential tower with balconies",
@@ -2211,6 +2243,7 @@
   },
   "suburban-house": {
     "label": "suburban house",
+    "description": "a modern suburban family house: a living room with a sofa and TV, a kitchen with appliances, a dining table, bedrooms, lamps",
     "affordance": "environmental-object",
     "broader": "house",
     "draw": "a detached suburban family house with a pitched roof, a porch and a garage",
@@ -2226,6 +2259,7 @@
   },
   "row-house": {
     "label": "row house",
+    "description": "a modern row house: a living room, a small kitchen, bedrooms upstairs, a bathroom, lamps",
     "affordance": "environmental-object",
     "broader": "townhouse",
     "draw": "a narrow modern terraced town house in a row",
@@ -2241,6 +2275,7 @@
   },
   "retail-store": {
     "label": "retail store",
+    "description": "a modern retail store: shelves and racks of products, a checkout counter with a till, displays, bright ceiling lights",
     "affordance": "environmental-object",
     "broader": "shop",
     "draw": "a small modern shop with a glass shopfront, a sign and an awning",
@@ -2256,6 +2291,7 @@
   },
   "supermarket": {
     "label": "supermarket",
+    "description": "a supermarket: aisles of shelves with groceries, fridges, checkouts, shopping carts, bright ceiling lights",
     "affordance": "environmental-object",
     "broader": "shop",
     "draw": "a large single-storey supermarket with a glass entrance and a big sign",
@@ -2272,6 +2308,7 @@
   },
   "mall": {
     "label": "shopping mall",
+    "description": "a shopping mall: shop fronts, benches, planters, escalators, bright lights",
     "affordance": "environmental-object",
     "broader": "shop",
     "draw": "a large modern shopping mall with glass entrances",
@@ -2288,6 +2325,7 @@
   },
   "restaurant": {
     "label": "restaurant",
+    "description": "a restaurant: dining tables with chairs and table settings, a bar, a kitchen with stoves, warm lighting",
     "affordance": "environmental-object",
     "broader": "building",
     "draw": "a modern restaurant with large windows and a sign",
@@ -2303,6 +2341,7 @@
   },
   "cafe": {
     "label": "café",
+    "description": "a cafe: small tables and chairs, a counter with a coffee machine and pastries, menu boards, warm lamps",
     "affordance": "environmental-object",
     "broader": "restaurant",
     "draw": "a small café with a glass front and an awning",
@@ -2318,6 +2357,7 @@
   },
   "hotel": {
     "label": "hotel",
+    "description": "a hotel: a reception desk and lobby with sofas, guest rooms with beds, desks and bathrooms, lamps",
     "affordance": "environmental-object",
     "broader": "building",
     "draw": "a modern hotel tower with a canopied entrance",
@@ -2334,6 +2374,7 @@
   },
   "gas-station": {
     "label": "gas station",
+    "description": "a gas station shop: shelves of snacks and drinks, fridges, a counter with a till, bright lights",
     "affordance": "environmental-object",
     "broader": "building",
     "draw": "a gas station: a canopy over the pumps and a small shop",
@@ -2349,6 +2390,7 @@
   },
   "parking-garage": {
     "label": "parking garage",
+    "description": "a parking garage: parked cars in painted bays, concrete pillars, ramps, ceiling lights",
     "affordance": "environmental-object",
     "broader": "building",
     "draw": "a multi-storey concrete parking garage with open decks",
@@ -2364,6 +2406,7 @@
   },
   "factory": {
     "label": "factory",
+    "description": "a modern factory: machines and conveyor belts, control panels, pallets and crates, safety markings, ceiling lights",
     "affordance": "environmental-object",
     "broader": "workshop",
     "draw": "a modern factory hall with a sawtooth roof, chimneys and loading doors",
@@ -2379,6 +2422,7 @@
   },
   "logistics-warehouse": {
     "label": "logistics warehouse",
+    "description": "a modern logistics warehouse: tall pallet racks, forklifts, stacked boxes, loading bays, ceiling lights",
     "affordance": "environmental-object",
     "broader": "warehouse",
     "draw": "a large low logistics warehouse with loading docks",
@@ -2394,6 +2438,7 @@
   },
   "school": {
     "label": "school",
+    "description": "a school: classrooms with desks, chairs and a blackboard or whiteboard, a teacher's desk, bookshelves, ceiling lights",
     "affordance": "environmental-object",
     "broader": "building",
     "draw": "a modern school building with large windows",
@@ -2410,6 +2455,7 @@
   },
   "hospital": {
     "label": "hospital",
+    "description": "a hospital: wards with beds and medical equipment, a reception, corridors, ceiling lights",
     "affordance": "environmental-object",
     "broader": "building",
     "draw": "a modern hospital with an emergency entrance and a helipad on the roof",
@@ -2426,6 +2472,7 @@
   },
   "police-station": {
     "label": "police station",
+    "description": "a police station: a front desk, desks with computers, holding cells, filing cabinets, ceiling lights",
     "affordance": "environmental-object",
     "broader": "building",
     "draw": "a modern police station with a sign and blue lamp",
@@ -2442,6 +2489,7 @@
   },
   "fire-station": {
     "label": "fire station",
+    "description": "a fire station: fire engines in the bay, equipment and hoses on the walls, a crew room, ceiling lights",
     "affordance": "environmental-object",
     "broader": "building",
     "draw": "a fire station with big red bay doors",
@@ -2458,6 +2506,7 @@
   },
   "city-hall": {
     "label": "city hall",
+    "description": "a city hall: a lobby with a front desk, offices, a council chamber with seats, flags, ceiling lights",
     "affordance": "environmental-object",
     "broader": "building",
     "draw": "a grand civic building with columns and steps",
@@ -2474,6 +2523,7 @@
   },
   "transit-station": {
     "label": "transit station",
+    "description": "a transit station: platforms, benches, ticket machines, signs and maps, ceiling lights",
     "affordance": "environmental-object",
     "broader": "building",
     "draw": "a modern bus or metro station with a glass canopy",
@@ -2490,6 +2540,7 @@
   },
   "modern-church": {
     "label": "church",
+    "description": "a modern church: rows of pews, an altar, a cross, stained or tall windows, soft lighting",
     "affordance": "environmental-object",
     "broader": "temple",
     "draw": "a modern church with a bell tower",

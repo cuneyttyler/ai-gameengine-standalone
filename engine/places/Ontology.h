@@ -131,6 +131,7 @@ struct Concept {
 struct Role {
     std::string id;
     std::string label;
+    std::string description; // what it is (a building: what its rooms hold, its era), for art prompts (an interior's)
     std::string broader;
     std::string affordance; // terrain, environmental-object, interactive-object, item, character
     // How big a thing of this role is (cells across; a cell is about a metre) and how tall for its
@@ -234,6 +235,8 @@ public:
     bool IsSolid(const std::string& role) const;
     // Whether a thing of this role is a building: the role, or one it's a kind of, is "building" (a house, an inn).
     bool IsBuilding(const std::string& role) const;
+    // A role's description: its own, else its nearest broader role's ("" if none).
+    std::string RoleDescription(const std::string& role) const;
     const Concept* FindConcept(const std::string& scheme, const std::string& id) const;
     const std::vector<Concept>* Scheme(const std::string& id) const;
     const Tolerances& Tolerance() const { return tolerances_; }

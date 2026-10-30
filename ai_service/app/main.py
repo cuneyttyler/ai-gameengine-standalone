@@ -250,6 +250,9 @@ class AssetInteriorRequest(BaseModel):
     purpose: str = ""                  # what it is, for its rooms (its analysis' description)
     seed: int = 7
     storeys: int = 0                   # its floors, as the user says (0: counted by the vision model)
+    kind: str = ""                     # what building it is (its ontology role's label: "warehouse")
+    kindDescription: str = ""          # the role's description (what its rooms hold, its era): the ontology's
+    design: str = ""                   # the user's words for its interior (the Redesign dialog), or none
 
 
 class SegmentRequest(BaseModel):
@@ -967,7 +970,8 @@ def create_app(
         purpose = f"of {request.purpose}" if request.purpose else "a building like this has"
         storeys = request.storeys or count_storeys(state["vision"], exterior)
         report(0, 1, f"The interior of {source.name}: {storeys} floor{'s' if storeys > 1 else ''}")
-        floors = make_floors(BflPainter(key, "flux-3-image"), exterior, purpose, "", request.seed, storeys, report=report, vision=state["vision"])
+        floors = make_floors(BflPainter(key, "flux-3-image"), exterior, purpose, "", request.seed, storeys, report=report, vision=state["vision"],
+                             kind=request.kind, kind_description=request.kindDescription, design=request.design)
         if not floors or floors[0] is None:
             return {"ok": False, "errors": ["BFL couldn't cut it away; try again"]}
         paths = []

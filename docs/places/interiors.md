@@ -76,7 +76,7 @@ For each building:
    (image 2: its walls' materials, framing, windows, colours), the floors at once. The blockout, in the exterior's frame:
    - the floor's storey a GREEN box from its level to the next (a storey: what stands above the footprint's back corner,
      seventeen twentieths of it walls, shared by the storeys: `_floor_frame`); its floor CYAN ("fill it with its rooms
-     and furniture": the ground floor its main rooms, the floors above bedrooms, the top one bedrooms or storage);
+     and furniture": the ground floor its main rooms and entrance, the floors above its other rooms);
    - its stairs up a RED ramp from its level to the next, at the far end: odd floors against the back-left wall rising
      left to right, even floors against the back-right wall rising right to left, each top at the upper corner
      (`stairs_ramp`; not on the top floor);
@@ -85,6 +85,12 @@ For each building:
      wall … no bed or furniture in the upper corner" (asked to stay empty, the model filled it; a rug it leaves be);
    - on the ground floor each door, found on the exterior by the vision model (`vision.locate_doors`; Mistral answers
      boxes in thousandths of the picture), a BLUE box: its entrance there.
+   The prompt says **what the building is**: its ontology role's description (`roles.json` "description", each
+   building role's: what its rooms hold, its era, its lights: "a goods warehouse: rows of crates, barrels and sacks…",
+   "a modern office tower: open-plan desks with computers…"; the editor sends its picture's role, `EditorApp::
+   InteriorKind`; built places their piece's role, `role_description`), lit and decorated as such a building is in its
+   time (candles and lanterns, or lamps and ceiling lights; rugs, pictures, plants, banners), and **the user's design**
+   when given (the Redesign dialog's description: "The interior's design, as asked: …").
 3. **Laid on the exterior** (`lay_floor`): floor k's picture is the exterior's own storeys below it (cut at its front
    edge on its level), the floor below's room seen a little darker through a hole where its staircase comes up (half
    the yellow box both ways from the upper corner, its own stairs up kept over it: `stairs_hole`), its room on top. So
@@ -176,7 +182,8 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
   it, shared by its storeys). One on another floor than the one shown is hidden (in a building the player isn't in:
   above the ground floor). The building the player is in shows the player's floor.
 - **Editor:** H steps through exterior, floor 1, floor 2… and back; the right-click menu has **Show floor k**.
-- **Redesign interiors…** (Inspector ▸ Building Plan): its floors painted again from its exterior, as many as it has
+- **Redesign interiors…** (Inspector ▸ Building Plan) asks for a description of the interior (empty: one that fits the
+  building) and paints its floors again from its exterior, as many as it has
   now, with a new seed; its prefab (or itself) takes them, its stairs listed none (the defaults are where they are painted).
 
 ## 5. In the editor
