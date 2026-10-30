@@ -40,12 +40,17 @@ function tokens(n: number): string {
         <span class="name">{{ callName(c) }}</span>
         <span class="phase">{{ phase(c) }}</span>
         <span class="spacer"></span>
-        <span class="tokens" :title="`Thinking ${tokens(c.thinkingTokens)} · answer ${tokens(c.answerTokens)} · read ${tokens(c.inputTokens)}`">
+        <span v-if="c.step" class="step">{{ c.step }}</span>
+        <span v-if="c.outputTokens" class="tokens" :title="`Thinking ${tokens(c.thinkingTokens)} · answer ${tokens(c.answerTokens)} · read ${tokens(c.inputTokens)}`">
           {{ tokens(c.outputTokens) }} tokens
         </span>
         <span class="time">{{ seconds(c) }}</span>
       </div>
-      <div class="track"><div class="run"></div></div>
+      <!-- Steps counted (a floor of several): how far; else a bar that runs while it works. -->
+      <div class="track">
+        <div v-if="c.total && c.phase !== 'done' && c.phase !== 'failed'" class="part" :style="{ width: `${Math.round((100 * (c.done ?? 0)) / c.total)}%` }"></div>
+        <div v-else class="run"></div>
+      </div>
     </div>
   </div>
 </template>
@@ -88,6 +93,20 @@ function tokens(n: number): string {
 }
 .spacer {
   flex: 1;
+}
+.step {
+  color: #c8c8d8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.part {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: #3b82f6;
+  transition: width 0.4s;
 }
 .tokens,
 .time {

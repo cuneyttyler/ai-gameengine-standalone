@@ -58,6 +58,8 @@ const names: Record<string, string> = {
   '/assets/web-fetch': 'Downloading from the web',
   '/characters/generate': 'Generating a character',
   '/animations/generate': 'Generating animations',
+  '/assets/interior': 'Painting the interiors',
+  '/parts/stairs': 'Finding the stairs',
 }
 
 export function callName(call: AiCall): string {

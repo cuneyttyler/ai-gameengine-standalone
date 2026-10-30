@@ -1133,7 +1133,7 @@ def cutaway(painter, exterior: Image.Image, purpose: str, style: str, seed: int,
     return inside
 
 
-def make_floors(painter, exterior: Image.Image, purpose: str, style: str, seed: int, storeys: int) -> list[Image.Image | None]:
+def make_floors(painter, exterior: Image.Image, purpose: str, style: str, seed: int, storeys: int, report=None) -> list[Image.Image | None]:
     """A building's interiors, one a floor (docs/places/interiors.md §2): floor k is the building cut open above it, its
     front walls gone, the floors below closed, each laid on its footprint (`fit_floor`). A floor painted far off (its
     angle or its size: a model paints a ground floor from higher up, or smaller) is painted once more, then fitted."""
@@ -1173,7 +1173,11 @@ def make_floors(painter, exterior: Image.Image, purpose: str, style: str, seed: 
     # floor's goes up, its walls the same.
     made: list[Image.Image | None] = []
     for k in range(1, storeys + 1):
+        if report:
+            report(k - 1, storeys, f"Floor {k} of {storeys}" + (" (on the floor below, so the stairs meet)" if k > 1 else " (the ground floor)"))
         made.append(one(k, made[-1] if made else None))
+    if report:
+        report(storeys, storeys, "Floors painted")
     return made
 
 

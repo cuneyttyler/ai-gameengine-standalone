@@ -967,7 +967,7 @@ def create_app(
         purpose = f"of {request.purpose}" if request.purpose else "a building like this has"
         storeys = request.storeys or count_storeys(state["vision"], exterior)
         report(0, 1, f"The interior of {source.name}: {storeys} floor{'s' if storeys > 1 else ''}")
-        floors = make_floors(BflPainter(key, "flux-3-image"), exterior, purpose, "", request.seed, storeys)
+        floors = make_floors(BflPainter(key, "flux-3-image"), exterior, purpose, "", request.seed, storeys, report=report)
         if not floors or floors[0] is None:
             return {"ok": False, "errors": ["BFL couldn't cut it away; try again"]}
         paths = []

@@ -7,6 +7,7 @@ import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
 import { editorState } from '../editorState'
 import { sendToHost } from '../ipc'
 import { confirmDialog } from '../dialogs'
+import AiProgress from './AiProgress.vue'
 
 const props = defineProps<{ fields: FieldData[]; choices?: Choices; disabled?: boolean; id?: number }>()
 const emit = defineEmits<{ (e: 'set', field: string, value: string | number): void }>()
@@ -96,6 +97,8 @@ function removeEntry(index: number): void {
     <button v-if="id !== undefined && ground" :disabled="disabled || editorState.ai.state !== 'ready'"
             title="Its floors painted again from its exterior (BFL, floor by floor, each on the one below so the stairs meet): a new design"
             @click="redesign">Redesign interiors…</button>
+    <!-- Its floors being painted (one after another: which one, how far), then its stairs being found. -->
+    <AiProgress :paths="['/assets/interior', '/parts/stairs']" />
   </div>
 </template>
 
