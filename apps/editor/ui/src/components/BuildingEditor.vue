@@ -25,6 +25,8 @@ interface Info {
   layoutStairs?: Record<string, [number, number][]> // painted from a layout: floor k's stairs up, where they're painted
   roomEdges?: { key: string; poly: [number, number][] }[] // painted from a layout: its room's edge cells (ways in drawn on them)
   roomWays?: string[] // those drawn: "side,index"
+  roomCells?: { key: string; poly: [number, number][] }[] // painted from a layout: its room's grid at ground level ("i,j")
+  roomSolids?: Record<string, string[]> // each floor's solid things on it
 }
 
 const backdrop = ref<HTMLElement | null>(null)
@@ -39,6 +41,7 @@ const brush = ref(14) // its radius, in the picture's pixels
 const stairs = reactive<Record<number, Set<string>>>({}) // floor change k (floor k up to k + 1) -> its cells "x,y"
 const entries = ref(new Set<string>()) // its ways in: quarter cells "qx,qy" of its edge cells
 const roomWays = ref(new Set<string>()) // painted from a layout: its ways in on its room's edge cells "side,index"
+const roomSolids = reactive<Record<number, Set<string>>>({}) // painted from a layout: floor k's solid room cells "i,j"
 const byRoom = computed(() => (info.value?.roomEdges?.length ?? 0) > 0)
 const dirty = ref(false)
 const finding = ref(false)
@@ -100,6 +103,8 @@ onHostMessage((message) => {
     i.stairs.forEach((cells, n) => (stairs[n + 1] = new Set(cells.map(([x, y]) => `${x},${y}`))))
     entries.value = new Set((i.wayQuarters ?? []).map(([x, y]) => `${x},${y}`))
     roomWays.value = new Set(i.roomWays ?? [])
+    for (const k of Object.keys(roomSolids)) delete roomSolids[Number(k)]
+    for (const [k, cells] of Object.entries(i.roomSolids ?? {})) roomSolids[Number(k)] = new Set(cells)
     for (const k of Object.keys(solids)) delete solids[Number(k)]
     for (const [k, quarters] of Object.entries(i.solids ?? {})) solids[Number(k)] = new Set(quarters.map(([x, y]) => `${x},${y}`))
     doors.value = (i.doors ?? []).map((d, n) => ({ ...d, index: n }))
@@ -107,7 +112,7 @@ onHostMessage((message) => {
     dirty.value = false
     finding.value = false
     if (tab.value > i.pictures.length - 1) tab.value = 0
-    layer.value = i.plan === false || tab.value === 0 ? 'doors' : tab.value < i.pictures.length - 1 ? 'stairs' : tab.value === 1 ? 'entries' : 'solid'
+    layer.value = i.plan === false || tab.value === 0 ? 'doors' : tab.value < i.pictures.length - 1 && !(i.roomCells?.length) ? 'stairs' : tab.value === 1 ? 'entries' : 'solid'
   }
   if (message.type === 'interior:stairsFound' && editorState.buildingEditor !== null) sendToHost({ type: 'interior:art', id: editorState.buildingEditor })
 })
@@ -125,6 +130,7 @@ function save(): void {
     id: info.value.id,
     stairs: list,
     ...(byRoom.value ? { roomWays: [...roomWays.value] } : { wayQuarters: [...entries.value].map((c) => c.split(',').map(Number)) }),
+    ...(byRoom.value ? { roomSolids: Object.fromEntries(Object.entries(roomSolids).map(([k, set]) => [k, [...set]])) } : {}),
     solids: Object.fromEntries(Object.entries(solids).map(([k, set]) => [k, [...set].map((c) => c.split(',').map(Number))])),
     doors: doors.value.map((d) => ({
       index: d.index, opens: d.opens, locked: d.locked, key: d.key, consumeKey: d.consumeKey, trigger: d.trigger, prompt: d.prompt, door: d.door,
@@ -163,6 +169,17 @@ function stroke(event: MouseEvent): void {
       if (tool.value === 'erase' && roomWays.value.has(edge.key)) roomWays.value.delete(edge.key), (dirty.value = true)
     }
     roomWays.value = new Set(roomWays.value)
+    return
+  }
+  if (layer.value === 'solid' && byRoom.value) {
+    // Painted from a layout: solid things on its room's grid (at this floor's height).
+    if (tab.value < 1) return
+    const set = (roomSolids[tab.value] ??= new Set())
+    for (const c of info.value.roomCells ?? []) {
+      if (!probes.some(([x, y]) => inside(x, y, lifted(c.poly)))) continue
+      if (tool.value === 'draw' && !set.has(c.key)) set.add(c.key), (dirty.value = true)
+      if (tool.value === 'erase' && set.has(c.key)) set.delete(c.key), (dirty.value = true)
+    }
     return
   }
   if (layer.value === 'solid' || layer.value === 'entries') {
@@ -233,6 +250,7 @@ function up(): void {
 function clearLayer(): void {
   if (layer.value === 'entries' && byRoom.value) roomWays.value = new Set()
   else if (layer.value === 'entries') entries.value = new Set()
+  else if (layer.value === 'solid' && byRoom.value) roomSolids[tab.value] = new Set()
   else if (layer.value === 'solid') solids[tab.value] = new Set()
   else if (change.value) stairs[change.value] = new Set()
   dirty.value = true
@@ -253,12 +271,12 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
     <div class="sheet">
       <h3>{{ info?.plan === false ? 'Parts' : 'Building editor' }}<template v-if="info">: {{ info.name }}</template></h3>
       <div v-if="info && info.plan !== false" class="tabs">
-        <button v-for="(_, k) in info.pictures" :key="k" :class="{ active: tab === k }" @click="tab = k; layer = k === 0 ? 'doors' : k === 1 && layer === 'entries' ? 'entries' : k < floors ? 'stairs' : 'solid'">
+        <button v-for="(_, k) in info.pictures" :key="k" :class="{ active: tab === k }" @click="tab = k; layer = k === 0 ? 'doors' : k === 1 && layer === 'entries' ? 'entries' : k < floors && !byRoom ? 'stairs' : 'solid'">
           {{ tabLabel(k) }}
         </button>
       </div>
       <div v-if="info && info.plan !== false" class="tools">
-        <button :class="{ active: layer === 'stairs' }" :disabled="!change" :title="change ? `The stairs from floor ${change} up to ${change + 1}` : 'Stairs are drawn on a floor below the top one'"
+        <button :class="{ active: layer === 'stairs' }" :disabled="!change || byRoom" :title="change ? `The stairs from floor ${change} up to ${change + 1}` : 'Stairs are drawn on a floor below the top one'"
                 @click="layer = 'stairs'">Stairs{{ change ? ` (floor ${change} → ${change + 1})` : '' }}</button>
         <button :class="{ active: layer === 'entries' }" :disabled="tab !== 1" title="Its ways in (on floor 1): quarter cells of its edge; one goes in only where they're painted (a door half a cell wide: two quarters)"
                 @click="layer = 'entries'">Ways in</button>
@@ -283,13 +301,19 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
            @mousedown.prevent="down" @mousemove="move" @mouseup="up" @mouseleave="up">
         <img :src="PROJECT_HOST + info.pictures[tab]" alt="" :style="{ width: `${info.size[0] * scale}px`, height: `${info.size[1] * scale}px` }" />
         <svg :width="info.size[0] * scale" :height="info.size[1] * scale">
-          <polygon v-for="c in info.cells" :key="`${c.x},${c.y}`" :points="points(lifted(c.poly))" :fill="fillOf(c)"
+          <!-- Painted from a layout, on a floor: its room's own grid (its solid things red), not the scene's cells. -->
+          <template v-if="byRoom && tab >= 1">
+            <polygon v-for="c in info.roomCells" :key="'rc' + c.key" :points="points(lifted(c.poly))"
+                     :fill="roomSolids[tab]?.has(c.key) ? 'rgba(230, 60, 60, 0.5)' : 'transparent'"
+                     stroke="rgba(255,255,255,0.14)" stroke-width="1" pointer-events="none" />
+          </template>
+          <polygon v-for="c in byRoom && tab >= 1 ? [] : info.cells" :key="`${c.x},${c.y}`" :points="points(lifted(c.poly))" :fill="fillOf(c)"
                    :stroke="c.edge ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.15)'" stroke-width="1" />
           <!-- Painted from a layout: this floor's stairs up where they're painted (the game climbs them there). -->
           <polygon v-if="tab >= 1 && info.layoutStairs?.[String(tab)]" :points="points(info.layoutStairs[String(tab)]!)"
                    fill="rgba(80, 150, 255, 0.35)" stroke="rgba(80, 150, 255, 0.9)" stroke-width="2" pointer-events="none" />
           <!-- This floor's solid things: their quarter cells red (the Solid layer's grid faint while it's chosen). -->
-          <template v-if="tab >= 1">
+          <template v-if="tab >= 1 && !byRoom">
             <polygon v-for="q in quarters" :key="'q' + q.key" :points="points(q.poly)"
                      :fill="solids[tab]?.has(q.key) ? 'rgba(230, 60, 60, 0.5)' : 'transparent'"
                      :stroke="layer === 'solid' ? 'rgba(255,255,255,0.08)' : 'none'" stroke-width="1" pointer-events="none" />

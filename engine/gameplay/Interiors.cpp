@@ -284,6 +284,21 @@ float InteriorStorey(Registry& registry, Entity entity, const Interior& interior
     return sprite ? std::max(0.0f, sprite->height - sprite->width * 0.5f) * 0.85f / std::max(1, InteriorFloors(interior)) : 0.0f;
 }
 
+std::vector<std::pair<int, int>> InteriorRoomSolids(const Interior& interior, int floor) {
+    std::vector<std::pair<int, int>> cells;
+    std::stringstream in(interior.solids);
+    for (std::string part; std::getline(in, part, ';');) {
+        const size_t colon = part.find(':');
+        if (colon == std::string::npos || std::atoi(part.substr(0, colon).c_str()) != floor) continue;
+        std::stringstream each(part.substr(colon + 1));
+        for (std::string q; std::getline(each, q, '|');) {
+            int i = 0, j = 0;
+            if (std::sscanf(q.c_str(), "r%d,%d", &i, &j) == 2) cells.push_back({i, j});
+        }
+    }
+    return cells;
+}
+
 std::vector<std::pair<float, float>> InteriorSolids(const Interior& interior, int floor) {
     std::vector<std::pair<float, float>> quarters;
     std::stringstream in(interior.solids);
@@ -293,7 +308,7 @@ std::vector<std::pair<float, float>> InteriorSolids(const Interior& interior, in
         std::stringstream each(part.substr(colon + 1));
         for (std::string q; std::getline(each, q, '|');) {
             int x = 0, y = 0;
-            if (std::sscanf(q.c_str(), "%d,%d", &x, &y) == 2) quarters.push_back({x * 0.5f, y * 0.5f});
+            if (q.rfind('r', 0) != 0 && std::sscanf(q.c_str(), "%d,%d", &x, &y) == 2) quarters.push_back({x * 0.5f, y * 0.5f});
         }
     }
     return quarters;

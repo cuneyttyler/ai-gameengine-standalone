@@ -272,6 +272,18 @@ void TileGrid::AddRoom(Registry& registry, Entity entity, const Interior& interi
     for (int gx = gx0; gx <= gx1; ++gx) {
         for (int gy = gy0; gy <= gy1; ++gy) inside_.insert(Key(gx, gy));
     }
+    // Its solid things on its room's grid: each cell's box (its corners' bounds).
+    if (interior.shown) {
+        const int cols = RoomSideCells(room, 0), rows = RoomSideCells(room, 1);
+        for (const auto& [i, j] : InteriorRoomSolids(interior, interior.floor)) {
+            float cx[4], cy[4];
+            for (int c = 0; c < 4; ++c) {
+                const float u = static_cast<float>(i + (c == 1 || c == 2)) / cols, v = static_cast<float>(j + (c >= 2)) / rows;
+                cx[c] = bx + room.exx * u + room.eyx * v, cy[c] = by + room.exy * u + room.eyy * v;
+            }
+            AddBox(*std::min_element(cx, cx + 4), *std::min_element(cy, cy + 4), *std::max_element(cx, cx + 4), *std::max_element(cy, cy + 4));
+        }
+    }
     int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
     if (interior.shown && InteriorFootprint(registry, entity, interior, x0, y0, x1, y1)) {
         for (const auto& [qx, qy] : InteriorSolids(interior, interior.floor)) {

@@ -54,6 +54,9 @@ std::map<std::pair<int, int>, std::vector<std::pair<float, float>>> InteriorWayQ
                                                                                        const Interior& interior);
 // A storey's height on screen (scene pixels): its storeyHeight, else as its floors are painted (from its picture).
 float InteriorStorey(Registry& registry, Entity entity, const Interior& interior);
+// Floor `floor`'s solid things on its room's grid (Interior::solids' "r" cells: i along its picture's back-right wall,
+// j along its back-left, RoomSideCells of each), for a building painted from a layout.
+std::vector<std::pair<int, int>> InteriorRoomSolids(const Interior& interior, int floor);
 // Floor `floor`'s solid things (Interior::solids): each quarter cell's top-left, in cells from its footprint's top-left.
 std::vector<std::pair<float, float>> InteriorSolids(const Interior& interior, int floor);
 int InteriorFloors(const Interior& interior);

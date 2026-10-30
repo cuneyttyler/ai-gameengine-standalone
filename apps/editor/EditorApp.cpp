@@ -7177,6 +7177,43 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                     }
                     return edges;
                 }()},
+               // Painted from a layout: its room's grid at ground level in its picture (its floor tabs lift it a storey a
+               // floor), and each floor's solid things on it.
+               {"roomCells", [&] {
+                    nlohmann::json cellsOut = nlohmann::json::array();
+                    float bx, by, rx, ry, lx, ly, storey, pw, ph, along, deep;
+                    RoomFrame room;
+                    if (!plan || !InteriorRoom(registry_, e, *interior, iso_, room) ||
+                        std::sscanf(interior->layout.c_str(), "%f,%f;%f,%f;%f,%f;%f;%f,%f;%f,%f", &bx, &by, &rx, &ry, &lx, &ly, &storey,
+                                    &pw, &ph, &along, &deep) != 11) {
+                        return cellsOut;
+                    }
+                    const float k2 = W / std::max(1.0f, pw);
+                    const int cols = RoomSideCells(room, 0), rows = RoomSideCells(room, 1);
+                    auto p = [&](float u, float v) {
+                        float x = bx + (rx - bx) * u + (lx - bx) * v, y = by + (ry - by) * u + (ly - by) * v;
+                        if (mirrored) x = pw - x;
+                        return nlohmann::json::array({std::round(x * k2 * 10) / 10, std::round(y * k2 * 10) / 10});
+                    };
+                    for (int i = 0; i < cols; ++i) {
+                        for (int j = 0; j < rows; ++j) {
+                            const float u0 = static_cast<float>(i) / cols, u1 = static_cast<float>(i + 1) / cols;
+                            const float v0 = static_cast<float>(j) / rows, v1 = static_cast<float>(j + 1) / rows;
+                            cellsOut.push_back({{"key", std::to_string(i) + "," + std::to_string(j)},
+                                                {"poly", {p(u0, v0), p(u1, v0), p(u1, v1), p(u0, v1)}}});
+                        }
+                    }
+                    return cellsOut;
+                }()},
+               {"roomSolids", [&] {
+                    nlohmann::json all = nlohmann::json::object();
+                    for (int k = 1; plan && k <= InteriorFloors(*interior); ++k) {
+                        nlohmann::json floor = nlohmann::json::array();
+                        for (const auto& [i, j] : InteriorRoomSolids(*interior, k)) floor.push_back(std::to_string(i) + "," + std::to_string(j));
+                        if (!floor.empty()) all[std::to_string(k)] = floor;
+                    }
+                    return all;
+                }()},
                {"roomWays", [&] {
                     nlohmann::json ways = nlohmann::json::array();
                     if (plan) {
@@ -7253,8 +7290,20 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                 interior->entries = entries;
                 RecordOverride(registry_, e, "Interior", "stairs");
                 RecordOverride(registry_, e, "Interior", "entries");
+                // Each floor's solid things on its room's grid (painted from a layout): "floor:ri,j|ri,j;…".
+                if (message.contains("roomSolids") && message["roomSolids"].is_object()) {
+                    std::string solids;
+                    for (const auto& [floor, cells] : message["roomSolids"].items()) {
+                        std::string list;
+                        for (const auto& c : cells) {
+                            if (c.is_string()) list += (list.empty() ? "r" : "|r") + c.get<std::string>();
+                        }
+                        if (!list.empty()) solids += (solids.empty() ? "" : ";") + floor + ":" + list;
+                    }
+                    interior->solids = solids;
+                    RecordOverride(registry_, e, "Interior", "solids");
+                } else if (message.contains("solids") && message["solids"].is_object()) {
                 // Each floor's solid things: "floor:qx,qy|qx,qy;…".
-                if (message.contains("solids") && message["solids"].is_object()) {
                     std::string solids;
                     for (const auto& [floor, quarters] : message["solids"].items()) {
                         std::string cells;
