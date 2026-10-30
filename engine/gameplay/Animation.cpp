@@ -921,6 +921,11 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
             auto& unseen = registry.get<Sprite>(made);
             unseen.width = part.width * kx, unseen.height = part.height * ky, unseen.a = 0.0f;
             attachment.size = 0.0f;
+        } else {
+            // Its building's interior showing (one is inside): its front walls cut away, the doors in them too; it still
+            // opens and shuts (play reads where it is, not whether it shows).
+            const auto* interior = registry.try_get<Interior>(owner);
+            registry.get<Sprite>(made).a = interior && interior->shown && interior->kind != "scene" ? 0.0f : 1.0f;
         }
       }
     }
