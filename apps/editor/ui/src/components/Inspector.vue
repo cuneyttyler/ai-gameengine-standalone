@@ -624,7 +624,7 @@ header {
   opacity: 1;
   border-color: #ef4444;
 }
-.part-tabs {
+.field-row.part-tabs {
   justify-content: flex-start;
   flex-wrap: wrap;
   gap: 2px;

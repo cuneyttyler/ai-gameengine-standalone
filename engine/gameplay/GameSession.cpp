@@ -2801,8 +2801,15 @@ void GameSession::StepActions(float dt) {
             const bool byUse = way == "use";
             const bool toggled = way == "action" || way == "event"; // stays as it's left, no one closes it by leaving
             char& open = state.open[d.index];
+            // A part with one clip (no closing one: a fire, a pot stirred): still on its first frame until it's activated,
+            // playing while it is, still again once it's shut.
+            if (way != "always" && door.closeClip.empty()) {
+                if (auto* animator = registry_.try_get<Animator>(d.overlay)) animator->speed = open ? 1.0f : 0.0f;
+                if (auto* at = registry_.try_get<AnimatorState>(d.overlay); at && !open) at->time = 0.0f, at->oneShot.clear();
+            }
             if (way == "always") {
                 // On and on: its clip again each time it ends.
+                if (auto* animator = registry_.try_get<Animator>(d.overlay)) animator->speed = 1.0f;
                 if (!open || state.age[d.index] >= std::max(0.2f, AnimationLength(registry_, animations_, d.overlay, door.clip))) {
                     open = 1;
                     state.age[d.index] = 0.0f;
