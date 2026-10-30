@@ -191,8 +191,10 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
   staircase). Walked onto from the floor below it goes up, from the floor above down (stepping off before it goes
   again); out of the building, the exterior, and floor 1 next time. Right-click inside a building showing a floor ▸
   **Stairs here** sets that floor's stairs to the cell under the cursor (Assembled and Paint alike).
-- **Everyone's floor** (`OnFloor`, runtime): every character inside a building has its own floor, its stairs taking it
-  up or down as the player's do. It stands that many storeys higher (its sprite's lift, eased: it climbs), a storey
+- **Everyone's floor** (`OnFloor`, runtime): every character inside a building has its own floor. A floor's stairs up
+  (their cells ordered from the top, by the back corner, to the foot) are climbed: it rises with how far up it stands
+  (`OnFloor::climb`) and is on the floor above only on their top cell; coming down, the top cell is still the floor
+  above and the second from the top the floor below. Stairs of one cell: walked onto, up or down. It stands that many storeys higher (its sprite's lift, eased: it climbs), a storey
   being `Interior.storeyHeight` pixels (0: from its picture: what stands above its footprint's diamond, three fifths of
   it, shared by its storeys). One on another floor than the one shown is hidden (in a building the player isn't in:
   above the ground floor). The building the player is in shows the player's floor.
