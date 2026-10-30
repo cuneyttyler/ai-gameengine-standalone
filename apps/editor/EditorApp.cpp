@@ -6744,6 +6744,10 @@ void EditorApp::PlacePart(const nlohmann::json& result) {
         made.trigger = p.value("trigger", std::string());
         made.prompt = p.value("prompt", std::string());
         made.fires = p.value("fires", std::string());
+        made.duration = p.value("duration", 0.0f);
+        made.playerClip = p.value("playerClip", std::string());
+        made.playerLoop = p.value("playerLoop", true);
+        made.holdsPlayer = p.value("holdsPlayer", false);
         made.locked = p.value("locked", false);
         made.key = p.value("key", std::string());
         made.floor = p.value("floor", 0); // the picture it moves on: the outside, or an interior's floor
@@ -7136,7 +7140,9 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                         // What activates it and what the player is shown (a door: by default as the project's doors; another part: use).
                         {"opens", message.value("opens", std::string(message.value("kind", std::string("door")) == "door" ? "project" : "use"))},
                         {"trigger", message.value("trigger", std::string())}, {"prompt", message.value("prompt", std::string())},
-                        {"fires", message.value("fires", std::string())},
+                        {"fires", message.value("fires", std::string())}, {"duration", message.value("duration", 0.0f)},
+                        {"playerClip", message.value("playerClip", std::string())}, {"playerLoop", message.value("playerLoop", true)},
+                        {"holdsPlayer", message.value("holdsPlayer", false)},
                         {"locked", message.value("locked", false)}, {"key", message.value("key", std::string())}};
         RefreshAssets();
         if (message.value("kind", std::string("door")) == "opening") {
@@ -7225,7 +7231,8 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                 doors.push_back({{"box", {cx - d.width / 2, d.y - d.height / 2, d.width, d.height}}, {"opens", d.opens}, {"locked", d.locked},
                                  {"key", d.key}, {"consumeKey", d.consumeKey}, {"animated", !d.sheet.empty() && d.sheet != "spot"},
                                  {"spot", d.sheet == "spot"}, {"trigger", d.trigger}, {"prompt", d.prompt}, {"door", d.door},
-                                 {"fires", d.fires}, {"floor", d.floor}});
+                                 {"fires", d.fires}, {"floor", d.floor}, {"duration", d.duration}, {"playerClip", d.playerClip},
+                                 {"playerLoop", d.playerLoop}, {"holdsPlayer", d.holdsPlayer}});
             }
         }
         const auto* name = registry_.try_get<Name>(e);
@@ -7508,6 +7515,10 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                     door.prompt = d.value("prompt", door.prompt);
                     door.door = d.value("door", door.door);
                     door.fires = d.value("fires", door.fires);
+                    door.duration = d.value("duration", door.duration);
+                    door.playerClip = d.value("playerClip", door.playerClip);
+                    door.playerLoop = d.value("playerLoop", door.playerLoop);
+                    door.holdsPlayer = d.value("holdsPlayer", door.holdsPlayer);
                     kept.push_back(door);
                 }
                 if (kept.empty()) registry_.remove<AnimatedPart>(e);

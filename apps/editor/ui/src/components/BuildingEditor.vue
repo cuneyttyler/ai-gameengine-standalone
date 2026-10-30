@@ -8,12 +8,14 @@ import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 import { trackOverlay, untrackOverlay } from '../overlay'
 import ActionPicker from './ActionPicker.vue'
+import PartActiveFields from './PartActiveFields.vue'
 
 const PROJECT_HOST = 'https://aige-project.local/'
 interface Cell { x: number; y: number; edge: boolean; poly: [number, number][] }
 interface Door {
   box: [number, number, number, number]; opens: string; locked: boolean; key: string; consumeKey: boolean; animated: boolean; index?: number
   trigger: string; prompt: string; door: boolean
+  duration: number; playerClip: string; playerLoop: boolean; holdsPlayer: boolean // while it's active
   fires: string; floor: number; spot?: boolean // fires: the event it sends; floor: its picture (0 the outside); spot: nothing animated
 }
 interface Info {
@@ -144,7 +146,7 @@ function save(): void {
     solids: Object.fromEntries(Object.entries(solids).map(([k, set]) => [k, [...set].map((c) => c.split(',').map(Number))])),
     doors: doors.value.map((d) => ({
       index: d.index, opens: d.opens, locked: d.locked, key: d.key, consumeKey: d.consumeKey, trigger: d.trigger, prompt: d.prompt, door: d.door,
-      fires: d.fires,
+      fires: d.fires, duration: d.duration, playerClip: d.playerClip, playerLoop: d.playerLoop, holdsPlayer: d.holdsPlayer,
     })),
   })
   dirty.value = false
@@ -412,6 +414,10 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
           <label v-if="!['auto', 'event'].includes(doors[picked]!.opens)" title="Sent each time the player activates it: scripts, triggers and quests react to it">
             Sends event <input v-model="doors[picked]!.fires" spellcheck="false" placeholder="optional (cooked)" @change="editDoor" />
           </label>
+          <PartActiveFields v-if="!['auto', 'always', 'open'].includes(doors[picked]!.opens)" :duration="doors[picked]!.duration ?? 0"
+                            :player-clip="doors[picked]!.playerClip ?? ''" :player-loop="doors[picked]!.playerLoop ?? true"
+                            :holds-player="doors[picked]!.holdsPlayer ?? false"
+                            @set="(k, v) => { (doors[picked!] as unknown as Record<string, unknown>)[k] = v; editDoor() }" />
           <label v-if="['project', 'use', 'action'].includes(doors[picked]!.opens) || (doors[picked]!.opens === 'always' && doors[picked]!.trigger)" title="Shown near it; 'shut|open' for each way">
             Prompt <input v-model="doors[picked]!.prompt" :placeholder="doors[picked]!.door ? 'Open the door|Close the door' : 'Pull the lever'" @change="editDoor" />
           </label>

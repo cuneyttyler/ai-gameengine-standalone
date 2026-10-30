@@ -12,6 +12,7 @@ import { onHostMessage, sendToHost } from '../ipc'
 import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
 import InteriorEditor from './InteriorEditor.vue'
 import ActionPicker from './ActionPicker.vue'
+import PartActiveFields from './PartActiveFields.vue'
 import { difficultyView, showTab } from '../paneltabs'
 
 interface ScriptProperty {
@@ -153,7 +154,7 @@ function savePrefab(): void {
 }
 
 // AnimatedPart: which of its parts is shown (0: its own fields; k: the k-th of "more", edited here and written back).
-interface MorePart { opens: string; trigger: string; prompt: string; fires: string; sheet: string; range: number; locked: boolean; key: string; consumeKey: boolean; door: boolean; floor: number }
+interface MorePart { opens: string; trigger: string; prompt: string; fires: string; sheet: string; duration: number; playerClip: string; playerLoop: boolean; holdsPlayer: boolean; range: number; locked: boolean; key: string; consumeKey: boolean; door: boolean; floor: number }
 const partShown = ref(0)
 const partsField = (component: { fields: FieldData[] }) => component.fields.find((f) => f.name === 'more')
 function moreParts(component: { fields: FieldData[] }): MorePart[] {
@@ -366,6 +367,11 @@ function numberFrom(event: Event): number {
               <label title="Shown near it; 'shut|open' for each way">prompt</label>
               <input :value="moreParts(component)[partShown - 1]!.prompt" :disabled="editorState.playing" placeholder="Pull the lever"
                      @change="setMorePart(component, 'prompt', ($event.target as HTMLInputElement).value)" />
+            </div>
+            <div v-if="!['auto', 'always', 'open'].includes(moreParts(component)[partShown - 1]!.opens)" class="field-row">
+              <PartActiveFields :duration="moreParts(component)[partShown - 1]!.duration ?? 0" :player-clip="moreParts(component)[partShown - 1]!.playerClip ?? ''"
+                                :player-loop="moreParts(component)[partShown - 1]!.playerLoop ?? true" :holds-player="moreParts(component)[partShown - 1]!.holdsPlayer ?? false"
+                                :disabled="editorState.playing" style="width: 100%" @set="(k, v) => setMorePart(component, k, v)" />
             </div>
             <div class="field-row">
               <label title="How near (in cells) one must be to use it">range</label>

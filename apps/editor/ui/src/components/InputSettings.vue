@@ -27,6 +27,8 @@ interface Action {
   plays?: string // a clip the player plays when it's pressed (parry, attack_kick)
   event?: string // emitted when it's pressed, for scripts
   effect?: string // an effect played on the player when it's pressed
+  nearOnly?: boolean // its clip, event and effect only when something it activates is in range
+  group?: string // actions of one group pressed together: only the one whose target is nearest acts
 }
 
 const actions = ref<Action[]>([])
@@ -127,6 +129,17 @@ function setField(action: Action, field: 'description' | 'plays' | 'event' | 'ef
   save()
 }
 
+function setGroup(action: Action, group: string): void {
+  if (group.trim()) action.group = group.trim()
+  else delete action.group
+  save()
+}
+function setNear(action: Action, on: boolean): void {
+  if (on) action.nearOnly = true
+  else delete action.nearOnly
+  save()
+}
+
 function resetDefaults(): void {
   sendToHost({ type: 'input:reset' })
 }
@@ -208,6 +221,11 @@ function resetDefaults(): void {
                 <option v-if="action.effect && !choices.effects.includes(action.effect)" :value="action.effect">{{ action.effect }} (missing)</option>
                 <option v-for="f in choices.effects" :key="f" :value="f">{{ f }}</option>
               </select>
+              <label class="near" title="Its clip, event and effect only when something it activates is in range (a part with it as its input action, a thing's Action): cook only at a stove">
+                <input type="checkbox" :checked="!!action.nearOnly" @change="setNear(action, ($event.target as HTMLInputElement).checked)" /> only near something it activates</label>
+              <input class="small-in" :value="action.group ?? ''" list="input-groups" placeholder="group" spellcheck="false"
+                     title="Actions sharing a key in one group (use: interact, cook): pressed together, only the one whose target is nearest acts"
+                     @change="setGroup(action, ($event.target as HTMLInputElement).value)" />
             </template>
           </td>
           <td>
@@ -216,6 +234,9 @@ function resetDefaults(): void {
         </tr>
       </tbody>
     </table>
+    <datalist id="input-groups">
+      <option v-for="g in [...new Set(actions.map((a) => a.group).filter(Boolean))]" :key="g" :value="g" />
+    </datalist>
     <div class="actions">
       <button @click="resetDefaults">Reset to defaults</button>
       <span v-if="saved" class="muted">Saved</span>
@@ -230,6 +251,11 @@ function resetDefaults(): void {
   width: 100%;
   margin-top: 2px;
   font-size: 0.85em;
+}
+.near {
+  display: block;
+  font-size: 0.82em;
+  opacity: 0.85;
 }
 .small-in {
   width: 80px;

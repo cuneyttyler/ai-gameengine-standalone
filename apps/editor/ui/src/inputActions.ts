@@ -39,7 +39,7 @@ export const actionName = (text: string) => text.trim().toLowerCase().replace(/[
 // name is taken or the actions aren't known yet.
 export function addInputAction(name: string, key: string, description: string): boolean {
   if (!map || !name || map.actions.some((a) => a.name === name)) return false
-  const actions = [...map.actions, { name, description, context: 'gameplay', keys: key ? [key] : [] }]
+  const actions = [...map.actions, { name, description, context: 'gameplay', keys: key ? [key] : [], nearOnly: true }]
   sendToHost({ type: 'input:save', map: { schema: map.schema ?? 'aige.input/1', actions } })
   return true
 }
@@ -56,4 +56,13 @@ export function engineKey(event: KeyboardEvent): string | null {
     ShiftRight: 'RightShift', ControlLeft: 'LeftCtrl', ControlRight: 'RightCtrl', AltLeft: 'LeftAlt', AltRight: 'RightAlt',
   }
   return named[code] ?? null
+}
+
+// The characters' clips (input:choices): what a part's player clip can be.
+export const playerClips = ref<string[]>([])
+onHostMessage((message) => {
+  if (message.type === 'input:choices') playerClips.value = (message.clips as string[]) ?? []
+})
+export function requestPlayerClips(): void {
+  sendToHost({ type: 'input:choices' })
 }

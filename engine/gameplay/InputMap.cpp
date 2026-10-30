@@ -123,6 +123,8 @@ nlohmann::json InputMap::ToJson() const {
         if (!action.plays.empty()) json["plays"] = action.plays;
         if (!action.event.empty()) json["event"] = action.event;
         if (!action.effect.empty()) json["effect"] = action.effect;
+        if (action.nearOnly) json["nearOnly"] = true;
+        if (!action.group.empty()) json["group"] = action.group;
         list.push_back(json);
     }
     return {{"schema", "aige.input/1"}, {"actions", list}};
@@ -146,6 +148,8 @@ InputMap InputMap::FromJson(const nlohmann::json& json, std::vector<std::string>
         action.plays = a.value("plays", "");
         action.event = a.value("event", "");
         action.effect = a.value("effect", "");
+        action.nearOnly = a.value("nearOnly", false);
+        action.group = a.value("group", "");
         if (std::find(kContexts.begin(), kContexts.end(), action.context) == kContexts.end()) {
             report(action.name + ": unknown context \"" + action.context + "\"");
             action.context = "gameplay";

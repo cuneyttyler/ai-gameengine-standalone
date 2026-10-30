@@ -8,6 +8,7 @@ import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
 import { trackOverlay, untrackOverlay } from '../overlay'
 import ActionPicker from './ActionPicker.vue'
+import PartActiveFields from './PartActiveFields.vue'
 
 const PROJECT_HOST = 'https://aige-project.local/'
 const backdrop = ref<HTMLElement | null>(null)
@@ -18,6 +19,8 @@ const kind = ref<'door' | 'opening' | 'other' | 'character'>('door')
 const opens = ref<'project' | 'auto' | 'use' | 'action' | 'event' | 'always'>('project')
 const trigger = ref('') // action / event: its name
 const fires = ref('') // the game event it sends each time the player activates it
+// While it's active: how long it plays, the player's clip (again and again), the player held still.
+const active = ref({ duration: 0, playerClip: '', playerLoop: true, holdsPlayer: false })
 const prompt = ref('') // what the player is shown near it ("Pull the lever")
 const locked = ref(false)
 const key = ref('')
@@ -126,6 +129,7 @@ function animate(): void {
     opens: kind.value === 'other' && opens.value === 'project' ? 'use' : opens.value,
     trigger: trigger.value.trim(),
     fires: fires.value.trim(),
+    ...active.value,
     prompt: prompt.value.trim(),
     locked: locked.value,
     key: key.value.trim(),
@@ -208,6 +212,10 @@ const boxStyle = computed(() => {
         <div v-if="opens !== 'auto' && opens !== 'event'" class="row">
           <label title="Sent each time the player activates it: scripts, triggers and quests react to it">Sends event</label>
           <input v-model="fires" spellcheck="false" placeholder="optional (cooked)" />
+        </div>
+        <div v-if="!['auto', 'always'].includes(opens)" class="row">
+          <label>While active</label>
+          <PartActiveFields v-bind="active" @set="(k, v) => (active = { ...active, [k]: v })" />
         </div>
         <div v-if="['project', 'use', 'action'].includes(opens) || (opens === 'always' && trigger)" class="row">
           <label>Prompt</label>

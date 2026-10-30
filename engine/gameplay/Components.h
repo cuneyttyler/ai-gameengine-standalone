@@ -327,6 +327,13 @@ struct AnimatedPart {
     // The game event sent each time the player activates it ("cooked"): scripts, triggers and quests react to it. A
     // part always playing sends it too, by its input action (trigger). sheet "spot": a spot with no animation, only this.
     std::string fires;
+    // Once activated, it plays this long (seconds) and shuts by itself; 0: until it's shut (used again, or left).
+    float duration = 0.0f;
+    // While the player has it active: a clip the player plays (cooking), again and again with playerLoop; holdsPlayer:
+    // the player stands still until it shuts.
+    std::string playerClip;
+    bool playerLoop = true;
+    bool holdsPlayer = false;
     // A doorway of its building (a way in, blocked while shut). Only a building's parts are (Building Plan); a window, a
     // sign or a lever on one isn't. Set by Build ▸ Animate and Animate a part…
     bool door = true;

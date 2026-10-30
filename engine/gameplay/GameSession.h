@@ -393,6 +393,14 @@ private:
     // Actions (docs/systems/actions.md): input actions' plays and events, and Action triggers (presses, timers,
     // touches, events).
     void StepActions(float dt);
+    // How near the player the nearest thing an action activates is (a part with it as its input action, or opened by
+    // it as a door shortcut; a thing's Action; for interact, an Interactable): within its range, else 1e9.
+    float ActionTargetDistance(const std::string& name);
+    // Actions of one group pressed together: only the one whose target is nearest keeps its press.
+    void ResolveActionGroups();
+    // The part the player has active that holds them or plays their clip (its owner and index), till it shuts.
+    Entity heldBy_ = entt::null;
+    size_t heldIndex_ = 0;
     std::vector<std::string> actionEvents_; // events delivered since the last StepActions, for trigger: event
     std::vector<std::pair<Entity, Entity>> actionEventUsers_;
     // Phase 14: character AI each step; a remark shown under the action; a

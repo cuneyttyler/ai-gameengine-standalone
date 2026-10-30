@@ -280,6 +280,11 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "(\"Open the door|Close the door\"); empty: a door's own, another part's \"Use\".")
         .Field("fires", &AnimatedPart::fires, "The game event sent each time the player activates it (\"cooked\"), for scripts, "
                "triggers and quests; an always playing part sends it by its input action.")
+        .Field("duration", &AnimatedPart::duration, "Once activated, it plays this long (seconds), then shuts by itself; 0: until "
+               "it's shut.").Min(0.0f)
+        .Field("playerClip", &AnimatedPart::playerClip, "A clip the player plays while it's active (cook, pray).")
+        .Field("playerLoop", &AnimatedPart::playerLoop, "The player's clip again and again while it's active (else once).")
+        .Field("holdsPlayer", &AnimatedPart::holdsPlayer, "The player can't move while it's active (until it shuts).")
         .Field("floor", &AnimatedPart::floor, "Which picture it moves on: 0 the outside, k its interior's floor k (shown only "
                "while that floor shows).").Min(0)
         .Field("door", &AnimatedPart::door, "A doorway of its building: a way in, blocked while shut (a window or a lever isn't).")
