@@ -284,6 +284,20 @@ float InteriorStorey(Registry& registry, Entity entity, const Interior& interior
     return sprite ? std::max(0.0f, sprite->height - sprite->width * 0.5f) * 0.85f / std::max(1, InteriorFloors(interior)) : 0.0f;
 }
 
+std::vector<std::pair<int, int>> InteriorRoomStairs(const Interior& interior, int change) {
+    std::vector<std::pair<int, int>> cells;
+    std::vector<std::string> parts;
+    std::stringstream in(interior.stairs);
+    for (std::string part; std::getline(in, part, ';');) parts.push_back(part);
+    if (change < 1 || change > static_cast<int>(parts.size())) return cells;
+    std::stringstream each(parts[static_cast<size_t>(change - 1)]);
+    for (std::string c; std::getline(each, c, '|');) {
+        int i = 0, j = 0;
+        if (std::sscanf(c.c_str(), "r%d,%d", &i, &j) == 2) cells.push_back({i, j});
+    }
+    return cells;
+}
+
 std::vector<std::pair<int, int>> InteriorRoomSolids(const Interior& interior, int floor) {
     std::vector<std::pair<int, int>> cells;
     std::stringstream in(interior.solids);
@@ -335,7 +349,7 @@ std::vector<std::pair<int, int>> InteriorRoomWays(const Interior& interior) {
 
 int RoomSideCells(const RoomFrame& room, int side) {
     const float length = side == 0 || side == 2 ? std::hypot(room.exx, room.exy) : std::hypot(room.eyx, room.eyy);
-    return std::max(1, static_cast<int>(std::lround(length * 2.0f))); // half a scene cell each
+    return std::max(1, static_cast<int>(std::lround(length * 4.0f))); // a quarter of a scene cell each (4 x 4 a scene cell)
 }
 
 bool InteriorRoom(Registry& registry, Entity entity, const Interior& interior, const IsoParams& iso, RoomFrame& room) {
@@ -411,7 +425,8 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player, const Iso
     // on the floor above on their top step; on from the side, they're only floor. Down: onto their top from the floor
     // above, then a step down: on the floor below, on its stairs (that high), and down them. A building painted from a
     // layout: its stairs where its room's are (odd floors' along its back-left wall, even floors' its back-right; a step
-    // half a cell); else its stairs cells (a step a cell; stairs of one cell walked onto, up or down).
+    // a room cell, a quarter of a scene cell); else its stairs cells (a step a cell; stairs of one cell walked onto, up
+    // or down).
     for (auto [mover, velocity, world] : registry.view<Velocity2D, WorldTransform2D>().each()) {
         const Building* b = buildingAt(world.x, world.y);
         auto* on = registry.try_get<OnFloor>(mover);
@@ -442,6 +457,20 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player, const Iso
                     if (std::abs(det) < 1e-6f) return f;
                     const float dx = world.x - r.bx, dy = world.y - r.by;
                     const float u = (dx * r.eyy - dy * r.eyx) / det, v = (r.exx * dy - r.exy * dx) / det;
+                    // Drawn on its room's grid: those cells, top first (nearest its back corner), a step a cell.
+                    if (auto drawn = InteriorRoomStairs(interior, change); !drawn.empty()) {
+                        const int cols = RoomSideCells(r, 0), rows = RoomSideCells(r, 1);
+                        std::stable_sort(drawn.begin(), drawn.end(), [](const auto& a, const auto& c) {
+                            return std::hypot(a.first + 0.5f, a.second + 0.5f) < std::hypot(c.first + 0.5f, c.second + 0.5f);
+                        });
+                        const std::pair<int, int> here{static_cast<int>(std::floor(u * cols)), static_cast<int>(std::floor(v * rows))};
+                        const auto it = std::find(drawn.begin(), drawn.end(), here);
+                        f.on = it != drawn.end();
+                        f.single = drawn.size() == 1;
+                        f.step = 1.0f / drawn.size();
+                        f.down = f.on ? (static_cast<float>(it - drawn.begin()) + 0.5f) * f.step : 0.0f;
+                        return f;
+                    }
                     const bool leftWall = change % 2 == 1; // odd floors' stairs along the back-left wall
                     const float along = leftWall ? v : u, across = leftWall ? u : v;
                     const float wallLength = leftWall ? std::hypot(r.eyx, r.eyy) : std::hypot(r.exx, r.exy);
@@ -451,7 +480,7 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player, const Iso
                     f.on = along >= -0.1f && along * wallLength <= run + 0.1f && across * acrossLength >= -0.25f &&
                            across * acrossLength <= r.deep * acrossLength + 0.5f;
                     f.down = std::clamp(along * wallLength / std::max(0.5f, run), 0.0f, 1.0f);
-                    f.step = std::min(1.0f, 0.5f / std::max(0.5f, run));
+                    f.step = std::min(1.0f, 0.25f / std::max(0.25f, run)); // a step a room cell (a quarter of a scene cell)
                     return f;
                 }
                 auto cells = StairsCells(interior, change, b->x0, b->y0, b->x1, b->y1);

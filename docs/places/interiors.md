@@ -158,12 +158,12 @@ stairs stay along the walls they're painted on). Then, instead of its footprint'
 - **Who's inside**: whoever stands in its room (a tenth of a cell's leeway).
 - **Walls** (`TileGrid::AddRoom`, from inside and out alike): a thin wall just outside each of the room's edges, open at
   its **ways in on the room's grid** (`Interior.entries` "r side,index": side 0 its picture's back-right wall, 1 its
-  back-left, 2 its front-left, 3 its front-right; cells half a scene cell, `RoomSideCells`), drawn in the building
+  back-left, 2 its front-left, 3 its front-right; cells a quarter of a scene cell each, 4 x 4 a scene cell, `RoomSideCells`), drawn in the building
   editor's Ways in layer on floor 1's walls (the floor one comes in on); none drawn, where each passable door meets the nearest wall, as wide as
   it is (`PartOpen::feet`); a shut door closes a drawn way in it. Inside, all walkable; its solid things as before.
 - **Stairs** (`UpdateInteriors`): where its room's are (odd floors' along its picture's back-left wall, even floors'
   its back-right, `along` of the wall from the back corner, `deep` of the other wall deep, half a cell's leeway at their
-  side), a step half a cell: climbed from the foot, the floor above on the top step; down from the top, the floor below
+  side), a step a room cell: climbed from the foot, the floor above on the top step; down from the top, the floor below
   a step down. The building editor's floor tabs show them in blue.
 
 A building painted before has no layout: its footprint's cells, as below.

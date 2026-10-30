@@ -7205,6 +7205,15 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                     }
                     return cellsOut;
                 }()},
+               {"roomStairs", [&] {
+                    nlohmann::json all = nlohmann::json::object();
+                    for (int k = 1; plan && k < InteriorFloors(*interior); ++k) {
+                        nlohmann::json change = nlohmann::json::array();
+                        for (const auto& [i, j] : InteriorRoomStairs(*interior, k)) change.push_back(std::to_string(i) + "," + std::to_string(j));
+                        if (!change.empty()) all[std::to_string(k)] = change;
+                    }
+                    return all;
+                }()},
                {"roomSolids", [&] {
                     nlohmann::json all = nlohmann::json::object();
                     for (int k = 1; plan && k <= InteriorFloors(*interior); ++k) {
@@ -7285,6 +7294,19 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             }
         }
         ApplyOneShotEdit([&] {
+            if (interior && message.contains("roomStairs") && message["roomStairs"].is_object()) {
+                // Drawn on its room's grid (painted from a layout): each floor change's "r" cells, in order.
+                std::string drawn;
+                for (int k = 1; k < InteriorFloors(*interior); ++k) {
+                    std::string cells;
+                    for (const auto& c : message["roomStairs"].value(std::to_string(k), nlohmann::json::array())) {
+                        if (c.is_string()) cells += (cells.empty() ? "r" : "|r") + c.get<std::string>();
+                    }
+                    drawn += (k > 1 ? ";" : "") + cells;
+                }
+                while (!drawn.empty() && drawn.back() == ';') drawn.pop_back();
+                stairs = drawn;
+            }
             if (interior) {
                 interior->stairs = stairs;
                 interior->entries = entries;

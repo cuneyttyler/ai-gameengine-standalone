@@ -28,7 +28,8 @@ struct RoomFrame {
     float storey = 0.0f;
 };
 // Its ways in on its room's grid (Interior::entries' "r" parts): each {side, index}, side 0 its picture's back-right wall,
-// 1 its back-left, 2 its front-left, 3 its front-right; index its cells along it (half a scene cell each, RoomSideCells).
+// 1 its back-left, 2 its front-left, 3 its front-right; index its cells along it (a quarter of a scene cell each, 4 x 4 a
+// scene cell: RoomSideCells).
 std::vector<std::pair<int, int>> InteriorRoomWays(const Interior& interior);
 int RoomSideCells(const RoomFrame& room, int side);
 // Its room, from its layout and where its picture is drawn (`iso`: the scene's projection); false without a layout.
@@ -57,6 +58,9 @@ float InteriorStorey(Registry& registry, Entity entity, const Interior& interior
 // Floor `floor`'s solid things on its room's grid (Interior::solids' "r" cells: i along its picture's back-right wall,
 // j along its back-left, RoomSideCells of each), for a building painted from a layout.
 std::vector<std::pair<int, int>> InteriorRoomSolids(const Interior& interior, int floor);
+// Floor change `change`'s stairs drawn on its room's grid (Interior::stairs' "r" cells), for a building painted from a
+// layout; none drawn: where its room's are painted.
+std::vector<std::pair<int, int>> InteriorRoomStairs(const Interior& interior, int change);
 // Floor `floor`'s solid things (Interior::solids): each quarter cell's top-left, in cells from its footprint's top-left.
 std::vector<std::pair<float, float>> InteriorSolids(const Interior& interior, int floor);
 int InteriorFloors(const Interior& interior);
