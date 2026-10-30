@@ -159,7 +159,7 @@ stairs stay along the walls they're painted on). Then, instead of its footprint'
 - **Walls** (`TileGrid::AddRoom`, from inside and out alike): a thin wall just outside each of the room's edges, open at
   its **ways in on the room's grid** (`Interior.entries` "r side,index": side 0 its picture's back-right wall, 1 its
   back-left, 2 its front-left, 3 its front-right; cells half a scene cell, `RoomSideCells`), drawn in the building
-  editor's Ways in layer on its picture's walls; none drawn, where each passable door meets the nearest wall, as wide as
+  editor's Ways in layer on floor 1's walls (the floor one comes in on); none drawn, where each passable door meets the nearest wall, as wide as
   it is (`PartOpen::feet`); a shut door closes a drawn way in it. Inside, all walkable; its solid things as before.
 - **Stairs** (`UpdateInteriors`): where its room's are (odd floors' along its picture's back-left wall, even floors'
   its back-right, `along` of the wall from the back corner, `deep` of the other wall deep, half a cell's leeway at their
@@ -272,7 +272,7 @@ cells round it, open in front of each way in.
 
 ### 5c. The building editor
 
-Its floor tabs draw the cells where that floor is in its picture ((k - 1) storeys up, `InteriorStorey`); the **Solid**
+Ways in are drawn on the Floor 1 tab (the exterior tab shows its doors). Its floor tabs draw the cells where that floor is in its picture ((k - 1) storeys up, `InteriorStorey`); the **Solid**
 layer (a floor tab) paints quarter cells red: that floor's solid things.
 
 (The Interior component shows in the Inspector as **Building Plan**; scenes and prefabs keep its name, `Interior`.)

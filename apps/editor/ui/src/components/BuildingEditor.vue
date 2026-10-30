@@ -107,7 +107,7 @@ onHostMessage((message) => {
     dirty.value = false
     finding.value = false
     if (tab.value > i.pictures.length - 1) tab.value = 0
-    layer.value = i.plan === false ? 'doors' : tab.value >= 1 && tab.value < i.pictures.length - 1 ? 'stairs' : 'entries'
+    layer.value = i.plan === false || tab.value === 0 ? 'doors' : tab.value < i.pictures.length - 1 ? 'stairs' : tab.value === 1 ? 'entries' : 'solid'
   }
   if (message.type === 'interior:stairsFound' && editorState.buildingEditor !== null) sendToHost({ type: 'interior:art', id: editorState.buildingEditor })
 })
@@ -154,6 +154,7 @@ function stroke(event: MouseEvent): void {
   const px = (event.clientX - r.left) / scale.value, py = (event.clientY - r.top) / scale.value
   const probes: [number, number][] = [[px, py]]
   for (let a = 0; a < 8; ++a) probes.push([px + Math.cos((a * Math.PI) / 4) * brush.value, py + Math.sin((a * Math.PI) / 4) * brush.value])
+  if (layer.value === 'entries' && tab.value !== 1) return // ways in are drawn on floor 1
   if (layer.value === 'entries' && byRoom.value) {
     // Painted from a layout: its ways in on its room's edge cells (each a gap in its wall).
     for (const edge of info.value.roomEdges ?? []) {
@@ -252,14 +253,14 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
     <div class="sheet">
       <h3>{{ info?.plan === false ? 'Parts' : 'Building editor' }}<template v-if="info">: {{ info.name }}</template></h3>
       <div v-if="info && info.plan !== false" class="tabs">
-        <button v-for="(_, k) in info.pictures" :key="k" :class="{ active: tab === k }" @click="tab = k; layer = k >= 1 && k < floors ? 'stairs' : 'entries'">
+        <button v-for="(_, k) in info.pictures" :key="k" :class="{ active: tab === k }" @click="tab = k; layer = k === 0 ? 'doors' : k === 1 && layer === 'entries' ? 'entries' : k < floors ? 'stairs' : 'solid'">
           {{ tabLabel(k) }}
         </button>
       </div>
       <div v-if="info && info.plan !== false" class="tools">
         <button :class="{ active: layer === 'stairs' }" :disabled="!change" :title="change ? `The stairs from floor ${change} up to ${change + 1}` : 'Stairs are drawn on a floor below the top one'"
                 @click="layer = 'stairs'">Stairs{{ change ? ` (floor ${change} → ${change + 1})` : '' }}</button>
-        <button :class="{ active: layer === 'entries' }" title="Its ways in: quarter cells of its edge; one goes in only where they're painted (a door half a cell wide: two quarters)"
+        <button :class="{ active: layer === 'entries' }" :disabled="tab !== 1" title="Its ways in (on floor 1): quarter cells of its edge; one goes in only where they're painted (a door half a cell wide: two quarters)"
                 @click="layer = 'entries'">Ways in</button>
         <button :class="{ active: layer === 'solid' }" :disabled="tab < 1"
                 :title="tab < 1 ? 'Solid things are drawn on a floor' : `Floor ${tab}'s solid things (furniture, a counter): one can't walk through them`"
@@ -293,14 +294,14 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
                      :fill="solids[tab]?.has(q.key) ? 'rgba(230, 60, 60, 0.5)' : 'transparent'"
                      :stroke="layer === 'solid' ? 'rgba(255,255,255,0.08)' : 'none'" stroke-width="1" pointer-events="none" />
           </template>
-          <!-- Painted from a layout: its ways in on its room's edge cells, green (on the exterior). -->
-          <template v-else-if="byRoom">
+          <!-- Its ways in, green, on floor 1 (where one comes in): painted from a layout, its room's edge cells. -->
+          <template v-if="byRoom && tab === 1">
             <polygon v-for="edge in info.roomEdges" :key="'r' + edge.key" :points="points(edge.poly)"
                      :fill="roomWays.has(edge.key) ? 'rgba(80, 220, 120, 0.55)' : 'transparent'"
                      :stroke="layer === 'entries' ? 'rgba(255,255,255,0.18)' : 'none'" stroke-width="1" pointer-events="none" />
           </template>
-          <!-- Its ways in: their quarter cells green (on the exterior, where they're drawn). -->
-          <template v-else>
+          <!-- Else quarter cells of its edge. -->
+          <template v-if="!byRoom && tab === 1">
             <polygon v-for="q in quarters" :key="'w' + q.key" :points="points(q.poly)"
                      :fill="entries.has(q.key) ? 'rgba(80, 220, 120, 0.5)' : 'transparent'"
                      :stroke="layer === 'entries' && q.edge ? 'rgba(255,255,255,0.1)' : 'none'" stroke-width="1" pointer-events="none" />
