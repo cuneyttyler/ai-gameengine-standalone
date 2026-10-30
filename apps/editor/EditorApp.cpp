@@ -1274,6 +1274,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
                    {"component", component},
                    {"field", field},
                    {"error", error ? nlohmann::json(*error) : nlohmann::json(nullptr)}});
+            if (!error && component == "Interior" && (field == "floors" || field == "texture")) KeepInteriorPairing(entity);
             inspectorStale_ = true;
             sceneTreeStale_ = true; // a Name edit changes the tree's label
         }
@@ -5988,6 +5989,23 @@ void EditorApp::AddInterior(const std::string& prefab, std::optional<Entity> ent
                         : " has its interior: H shows it, Shift+H every building's")}});
 }
 
+void EditorApp::KeepInteriorPairing(Entity entity) {
+    const auto* interior = registry_.valid(entity) ? registry_.try_get<Interior>(entity) : nullptr;
+    const auto* sprite = registry_.valid(entity) ? registry_.try_get<Sprite>(entity) : nullptr;
+    if (!interior || !sprite || interior->kind == "scene" || !interior->cells.empty() || interior->texture.empty()) return;
+    // Its exterior: the picture drawn, else (its interior showing) the one kept to put back.
+    std::string outside = sprite->texture;
+    for (int k = 1; k <= InteriorFloors(*interior); ++k) {
+        if (sprite->texture == InteriorPicture(*interior, k)) outside = interior->exteriorTexture;
+    }
+    const AssetInfo* asset = outside.empty() ? nullptr : assets_.Find(outside);
+    if (asset == nullptr) return;
+    const auto field = [&](const char* key) { return asset->analysis.contains(key) ? asset->analysis.at(key) : std::string(); };
+    if (field("interior") == interior->texture && field("interiorFloors") == interior->floors) return;
+    SetCatalogFields(assets_, outside, {{"interior", interior->texture}, {"interiorFloors", interior->floors}});
+    post_(CatalogJson());
+}
+
 int EditorApp::RepairInteriorArt() {
     // A building drawn with an interior picture (its art chosen before interiors were kept out of a build's choices):
     // its exterior again, the picture its Interior's, shown while one is inside.
@@ -6837,6 +6855,7 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             RecordOverride(registry_, e, "Interior", "floors");
             return true;
         });
+        KeepInteriorPairing(e);
         inspectorStale_ = true;
         post_({{"type", "notify"}, {"text", "It has " + std::to_string(want) + (want == 1 ? " floor" : " floors") + " now"}});
         return true;

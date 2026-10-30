@@ -190,6 +190,9 @@ private:
     bool HandleBackgroundMessage(const std::string& type, const nlohmann::json& message);
     // Buildings drawn with an interior picture: their exterior again, an Interior for the picture. How many.
     int RepairInteriorArt();
+    // A building's floors edited by hand (removed, added, a picture changed): its exterior's pairing (interior=,
+    // interiorFloors=) says the same, so opening a scene (RepairInteriorArt) doesn't put the old ones back.
+    void KeepInteriorPairing(Entity entity);
     // Add interior (a prefab's or a building's right-click): its Interior of `kind` on the prefab (every copy) or the
     // entity, with a footprint when it has none; a cutaway's picture its art's pair, generated first when it has none.
     void AddInterior(const std::string& prefab, std::optional<Entity> entity, const std::string& kind);
