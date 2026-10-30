@@ -19,12 +19,15 @@ interface Info {
   doors: Door[]; projectOpens: string
   plan?: boolean // it has a Building Plan (floors, cells); else only its picture and its parts (Edit parts…)
   building?: boolean // the ontology says it's a building
+  storeyPx?: number // a storey's height in the pictures' pixels: floor k is drawn (k - 1) storeys up
+  solids?: Record<string, [number, number][]> // each floor's solid things: quarter cells (qx, qy) from the footprint's top-left
 }
 
 const backdrop = ref<HTMLElement | null>(null)
 const info = ref<Info | null>(null)
 const tab = ref(0) // 0: the exterior; k: floor k's interior
-const layer = ref<'stairs' | 'entries' | 'doors'>('stairs')
+const layer = ref<'stairs' | 'entries' | 'doors' | 'solid'>('stairs')
+const solids = reactive<Record<number, Set<string>>>({}) // floor k -> its solid quarter cells "qx,qy"
 const doors = ref<Door[]>([]) // its doors (AnimatedPart), as edited here
 const picked = ref<number | null>(null) // the door clicked
 const tool = ref<'draw' | 'erase'>('draw')
@@ -43,6 +46,31 @@ const scale = computed(() => {
 })
 // The stairs drawn on this tab: floor k's are its stairs up (the top floor has none of its own).
 const change = computed(() => (tab.value >= 1 && tab.value < floors.value ? tab.value : 0))
+// Floor k's cells drawn where its floor is in its picture: (k - 1) storeys up.
+const lift = computed(() => (tab.value >= 1 ? (tab.value - 1) * (info.value?.storeyPx ?? 0) : 0))
+const lifted = (poly: [number, number][]): [number, number][] => poly.map(([x, y]) => [x, y - lift.value])
+// Each cell's four quarters (the Solid layer's), keyed "qx,qy" in half cells from the footprint's top-left.
+interface Quarter { key: string; poly: [number, number][] }
+const quarters = computed<Quarter[]>(() => {
+  if (!info.value || !info.value.cells.length) return []
+  const ox = Math.min(...info.value.cells.map((c) => c.x)), oy = Math.min(...info.value.cells.map((c) => c.y))
+  const out: Quarter[] = []
+  for (const c of info.value.cells) {
+    const [p0, p1, p2, p3] = lifted(c.poly) as [[number, number], [number, number], [number, number], [number, number]]
+    // A point of the cell, u along its x and v along its y (0-1), from its corners.
+    const at = (u: number, v: number): [number, number] => [
+      p0[0] * (1 - u) * (1 - v) + p1[0] * u * (1 - v) + p2[0] * u * v + p3[0] * (1 - u) * v,
+      p0[1] * (1 - u) * (1 - v) + p1[1] * u * (1 - v) + p2[1] * u * v + p3[1] * (1 - u) * v,
+    ]
+    for (const i of [0, 1]) {
+      for (const j of [0, 1]) {
+        const u = i / 2, v = j / 2
+        out.push({ key: `${2 * (c.x - ox) + i},${2 * (c.y - oy) + j}`, poly: [at(u, v), at(u + 0.5, v), at(u + 0.5, v + 0.5), at(u, v + 0.5)] })
+      }
+    }
+  }
+  return out
+})
 
 watch(
   () => editorState.buildingEditor,
@@ -65,6 +93,8 @@ onHostMessage((message) => {
     for (const k of Object.keys(stairs)) delete stairs[Number(k)]
     i.stairs.forEach((cells, n) => (stairs[n + 1] = new Set(cells.map(([x, y]) => `${x},${y}`))))
     entries.value = new Set(i.entries.map(([x, y]) => `${x},${y}`))
+    for (const k of Object.keys(solids)) delete solids[Number(k)]
+    for (const [k, quarters] of Object.entries(i.solids ?? {})) solids[Number(k)] = new Set(quarters.map(([x, y]) => `${x},${y}`))
     doors.value = (i.doors ?? []).map((d, n) => ({ ...d, index: n }))
     picked.value = null
     dirty.value = false
@@ -88,6 +118,7 @@ function save(): void {
     id: info.value.id,
     stairs: list,
     entries: [...entries.value].map((c) => c.split(',').map(Number)),
+    solids: Object.fromEntries(Object.entries(solids).map(([k, set]) => [k, [...set].map((c) => c.split(',').map(Number))])),
     doors: doors.value.map((d) => ({
       index: d.index, opens: d.opens, locked: d.locked, key: d.key, consumeKey: d.consumeKey, trigger: d.trigger, prompt: d.prompt, door: d.door,
     })),
@@ -114,13 +145,24 @@ function stroke(event: MouseEvent): void {
   if (!info.value) return
   const r = (event.currentTarget as HTMLElement).getBoundingClientRect()
   const px = (event.clientX - r.left) / scale.value, py = (event.clientY - r.top) / scale.value
-  const set = layer.value === 'entries' ? entries.value : change.value ? (stairs[change.value] ??= new Set()) : null
-  if (!set) return
   const probes: [number, number][] = [[px, py]]
   for (let a = 0; a < 8; ++a) probes.push([px + Math.cos((a * Math.PI) / 4) * brush.value, py + Math.sin((a * Math.PI) / 4) * brush.value])
+  if (layer.value === 'solid') {
+    // Solid things: the quarter cells the brush touches, on this floor.
+    if (tab.value < 1) return
+    const set = (solids[tab.value] ??= new Set())
+    for (const q of quarters.value) {
+      if (!probes.some(([x, y]) => inside(x, y, q.poly))) continue
+      if (tool.value === 'draw' && !set.has(q.key)) set.add(q.key), (dirty.value = true)
+      if (tool.value === 'erase' && set.has(q.key)) set.delete(q.key), (dirty.value = true)
+    }
+    return
+  }
+  const set = layer.value === 'entries' ? entries.value : change.value ? (stairs[change.value] ??= new Set()) : null
+  if (!set) return
   for (const cell of info.value.cells) {
     if (layer.value === 'entries' && !cell.edge) continue // a way in is on its edge
-    if (!probes.some(([x, y]) => inside(x, y, cell.poly))) continue
+    if (!probes.some(([x, y]) => inside(x, y, lifted(cell.poly)))) continue
     const key = `${cell.x},${cell.y}`
     if (tool.value === 'draw' && !set.has(key)) set.add(key), (dirty.value = true)
     if (tool.value === 'erase' && set.has(key)) set.delete(key), (dirty.value = true)
@@ -169,6 +211,7 @@ function up(): void {
 }
 function clearLayer(): void {
   if (layer.value === 'entries') entries.value = new Set()
+  else if (layer.value === 'solid') solids[tab.value] = new Set()
   else if (change.value) stairs[change.value] = new Set()
   dirty.value = true
 }
@@ -197,6 +240,9 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
         <button :class="{ active: layer === 'stairs' }" :disabled="!change" :title="change ? `The stairs from floor ${change} up to ${change + 1}` : 'Stairs are drawn on a floor below the top one'"
                 @click="layer = 'stairs'">Stairs{{ change ? ` (floor ${change} → ${change + 1})` : '' }}</button>
         <button :class="{ active: layer === 'entries' }" title="Its ways in: cells of its edge where it's entered" @click="layer = 'entries'">Ways in</button>
+        <button :class="{ active: layer === 'solid' }" :disabled="tab < 1"
+                :title="tab < 1 ? 'Solid things are drawn on a floor' : `Floor ${tab}'s solid things (furniture, a counter): one can't walk through them`"
+                @click="layer = 'solid'">Solid</button>
         <button :class="{ active: layer === 'doors' }" title="Its doors and other moving parts: click one to see what activates it and whether it's locked" @click="layer = 'doors'">
           Doors and parts ({{ doors.length }})</button>
         <span class="sep"></span>
@@ -215,8 +261,14 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
            @mousedown.prevent="down" @mousemove="move" @mouseup="up" @mouseleave="up">
         <img :src="PROJECT_HOST + info.pictures[tab]" alt="" :style="{ width: `${info.size[0] * scale}px`, height: `${info.size[1] * scale}px` }" />
         <svg :width="info.size[0] * scale" :height="info.size[1] * scale">
-          <polygon v-for="c in info.cells" :key="`${c.x},${c.y}`" :points="points(c.poly)" :fill="fillOf(c)"
+          <polygon v-for="c in info.cells" :key="`${c.x},${c.y}`" :points="points(lifted(c.poly))" :fill="fillOf(c)"
                    :stroke="c.edge ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.15)'" stroke-width="1" />
+          <!-- This floor's solid things: their quarter cells red (the Solid layer's grid faint while it's chosen). -->
+          <template v-if="tab >= 1">
+            <polygon v-for="q in quarters" :key="'q' + q.key" :points="points(q.poly)"
+                     :fill="solids[tab]?.has(q.key) ? 'rgba(230, 60, 60, 0.5)' : 'transparent'"
+                     :stroke="layer === 'solid' ? 'rgba(255,255,255,0.08)' : 'none'" stroke-width="1" pointer-events="none" />
+          </template>
           <!-- Its doors: a box each, coloured by how it opens (red: locked); the picked one thicker. -->
           <g v-for="(d, i) in doors" :key="'door' + i" :opacity="layer === 'doors' ? 1 : 0.6">
             <rect :x="d.box[0] * scale" :y="d.box[1] * scale" :width="d.box[2] * scale" :height="d.box[3] * scale" fill="none"
@@ -262,7 +314,7 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
       <p v-else class="muted">Loading the building…</p>
       <p class="muted small">
         Paint over the stairs on a floor (they take one up from it; down from the floor above) and along its edge where it's
-        entered. Blue: stairs; green: ways in. Doors: yellow opens on use, teal by itself, red locked. Saved on this building.
+        entered. Blue: stairs; green: ways in; red (Solid, on a floor): its solid things, quarter cells one can't walk through. Doors: yellow opens on use, teal by itself, red locked. Saved on this building.
       </p>
       <div class="buttons">
         <button @click="close">{{ dirty ? 'Cancel' : 'Close' }}</button>

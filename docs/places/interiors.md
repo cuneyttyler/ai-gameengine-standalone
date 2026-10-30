@@ -153,6 +153,16 @@ A building without an interior blocks its whole footprint. With one (`TileGrid`,
 - the inside is walkable.
 - while its interior shows, its whole footprint is walkable (`TileGrid::inside_`), whatever the place's layers or a prop
   on it say; the ring of cells round it is its walls, open in front of each passable doorway.
+- **Door gaps** (a door narrower than its cell: half a cell at a person a cell tall): the doorway's cell (from outside),
+  or the ring's cell in front of it (from inside), is wall but for a gap as wide as the door's picture, where it is
+  (`PartOpen::gaps`, made with the doors' rules in `GameSession::StepActions`: its width from its overlay on screen,
+  never narrower than the player plus a little; its side the footprint's edge nearest its foot). An open doorway, or a
+  way in with no door, stays a whole cell.
+- **Solid things inside** (`Interior.solids`: furniture, a counter): each floor's quarter cells, painted in the building
+  editor's Solid layer; while that floor shows they block (a cell whose four quarters all do is a wall, paths go round).
+- Both are **partly blocked cells** (`TileGrid::AddPart`, `BlocksBox`): the game registers them each step
+  (`SetBlockedParts`) and every mover's collision (`ResolveAabbMovement`) checks them as well as solid cells; paths stay
+  on cells, crossing a gap's cell at its middle (`SetPassPoints`, `WaypointIn`).
 
 ### Showing it
 
@@ -230,6 +240,9 @@ door side's middle is shut unless it's one of them. Inside, the whole footprint 
 cells round it, open in front of each way in.
 
 ### 5c. The building editor
+
+Its floor tabs draw the cells where that floor is in its picture ((k - 1) storeys up, `InteriorStorey`); the **Solid**
+layer (a floor tab) paints quarter cells red: that floor's solid things.
 
 (The Interior component shows in the Inspector as **Building Plan**; scenes and prefabs keep its name, `Interior`.)
 

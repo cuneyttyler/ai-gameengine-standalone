@@ -285,7 +285,8 @@ struct Run {
             if (state.stuck > 3.0f) state.path.clear(); // still shut: look for another way
             return false;
         }
-        float tx = gx + 0.5f, ty = gy + 0.5f;
+        const Vec2 waypoint = WaypointIn(gx, gy); // its middle, or a door's gap in it
+        float tx = waypoint.x, ty = waypoint.y;
         if (state.next + 1 == state.path.size()) {
             tx = to.first;
             ty = to.second;

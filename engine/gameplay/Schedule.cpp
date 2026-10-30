@@ -243,7 +243,8 @@ void UpdateRoutines(Registry& registry, const ScheduleLibrary& schedules, float 
         // Walk the path, waypoint by waypoint (cell centers).
         if (state.next < state.path.size()) {
             auto [gx, gy] = state.path[state.next];
-            float tx = gx + 0.5f, ty = gy + 0.5f;
+            const Vec2 waypoint = WaypointIn(gx, gy); // its middle, or a door's gap in it
+            float tx = waypoint.x, ty = waypoint.y;
             float dx = tx - world.x, dy = ty - world.y;
             float distance = std::sqrt(dx * dx + dy * dy);
             if (distance < 0.12f) {

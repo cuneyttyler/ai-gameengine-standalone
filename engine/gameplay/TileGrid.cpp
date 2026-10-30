@@ -5,8 +5,10 @@
 #include "gameplay/TileLayer.h"
 #include "physics2d/Components.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <map>
 #include <set>
 
 namespace aige {
@@ -56,7 +58,46 @@ TileGrid TileGrid::Build(Registry& registry) {
                     if (!doorCells.contains(way)) through.insert(way);
                 }
                 const int x0 = sx - left, x1 = sx + right, y0 = sy - back, y1 = sy;
+                // A door narrower than its cell: its doorway's cell (from outside), or the cell outside it where the wall
+                // ring opens (from inside), is wall but for the door's gap (PartOpen::gaps).
+                if (const auto* open = registry.try_get<PartOpen>(entity)) {
+                    for (size_t i = 0; i < open->gaps.size() && i < open->cells.size(); ++i) {
+                        const auto& [middle, half, side] = open->gaps[i];
+                        if (side < 0.0f || !(i < open->passable.size() && open->passable[i])) continue;
+                        auto [cx, cy] = open->cells[i];
+                        const int s = static_cast<int>(side);
+                        if (interior->shown) {
+                            if (s == 0) cy = y0 - 1;
+                            else if (s == 1) cy = y1 + 1;
+                            else if (s == 2) cx = x0 - 1;
+                            else cx = x1 + 1;
+                        }
+                        const bool alongX = s <= 1; // the wall runs along x: the gap spans x
+                        const float c0 = (alongX ? cx : cy), lo = middle - half, hi = middle + half;
+                        if (alongX) {
+                            grid.AddPart(cx, cy, c0, cy, lo, cy + 1.0f);
+                            grid.AddPart(cx, cy, hi, cy, c0 + 1.0f, cy + 1.0f);
+                            grid.passPoints_[Key(cx, cy)] = {middle, cy + 0.5f};
+                        } else {
+                            grid.AddPart(cx, cy, cx, c0, cx + 1.0f, lo);
+                            grid.AddPart(cx, cy, cx, hi, cx + 1.0f, c0 + 1.0f);
+                            grid.passPoints_[Key(cx, cy)] = {cx + 0.5f, middle};
+                        }
+                    }
+                }
                 if (interior->shown) {
+                    // Its solid things on the floor showing (Interior::solids): their quarter cells block; a cell all four
+                    // of whose quarters do is a wall (paths go round it).
+                    std::map<std::pair<int, int>, int> quarters;
+                    for (const auto& [qx, qy] : InteriorSolids(*interior, interior->floor)) {
+                        const float wx = x0 + qx, wy = y0 + qy;
+                        const int gx = static_cast<int>(std::floor(wx)), gy = static_cast<int>(std::floor(wy));
+                        grid.AddPart(gx, gy, wx, wy, wx + 0.5f, wy + 0.5f);
+                        ++quarters[{gx, gy}];
+                    }
+                    for (const auto& [cell, count] : quarters) {
+                        if (count >= 4) block(cell.first, cell.second);
+                    }
                     // Inside (docs/places/interiors.md §5): all of its footprint walkable (its edge cells were its walls, and
                     // a small building's edge is most of it), its walls the ring of cells round it, open in front of each
                     // passable doorway (the way out).
@@ -75,7 +116,8 @@ TileGrid TileGrid::Build(Registry& registry) {
                             if (ring && !out.contains({gx, gy})) block(gx, gy);
                             // Its floor: walkable though the place's layers mark the building's cells solid, or a prop
                             // placed on it blocks (the cutaway draws what's inside).
-                            if (!ring) grid.inside_.insert(Key(gx, gy));
+                            const auto full = quarters.find({gx, gy});
+                            if (!ring && (full == quarters.end() || full->second < 4)) grid.inside_.insert(Key(gx, gy));
                         }
                     }
                     continue;
@@ -108,6 +150,34 @@ bool TileGrid::IsSolid(int gx, int gy) const {
     for (auto layer = layers_.rbegin(); layer != layers_.rend(); ++layer) {
         if (const TileDef* def = (*layer)->Def((*layer)->Get(gx, gy))) return def->solid || blocked_.contains(Key(gx, gy));
     }
+    return true;
+}
+
+void TileGrid::AddPart(int gx, int gy, float x0, float y0, float x1, float y1) {
+    x0 = std::max(x0, static_cast<float>(gx)), y0 = std::max(y0, static_cast<float>(gy));
+    x1 = std::min(x1, gx + 1.0f), y1 = std::min(y1, gy + 1.0f);
+    if (x1 - x0 < 1e-3f || y1 - y0 < 1e-3f) return;
+    parts_[Key(gx, gy)].push_back({x0, y0, x1, y1});
+}
+
+bool TileGrid::BlocksBox(float x0, float y0, float x1, float y1) const {
+    if (parts_.empty()) return false;
+    for (int gx = static_cast<int>(std::floor(x0)); gx <= static_cast<int>(std::floor(x1)); ++gx) {
+        for (int gy = static_cast<int>(std::floor(y0)); gy <= static_cast<int>(std::floor(y1)); ++gy) {
+            const auto it = parts_.find(Key(gx, gy));
+            if (it == parts_.end()) continue;
+            for (const auto& b : it->second) {
+                if (x0 < b[2] && x1 > b[0] && y0 < b[3] && y1 > b[1]) return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool TileGrid::PassPoint(int gx, int gy, float& x, float& y) const {
+    const auto it = passPoints_.find(Key(gx, gy));
+    if (it == passPoints_.end()) return false;
+    x = it->second.first, y = it->second.second;
     return true;
 }
 

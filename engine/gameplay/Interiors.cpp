@@ -254,6 +254,29 @@ std::pair<int, int> StairsCell(const Interior& interior, int change, int x0, int
     return {std::min(x0 + 1, x1), y0};                                     // the back-right wall
 }
 
+float InteriorStorey(Registry& registry, Entity entity, const Interior& interior) {
+    if (interior.storeyHeight > 0.0f) return interior.storeyHeight;
+    // As its floors are painted (matched.py _floor_frame): what stands above its footprint's diamond (about half its
+    // width), seventeen twentieths of it walls, shared by its storeys.
+    const auto* sprite = registry.try_get<Sprite>(entity);
+    return sprite ? std::max(0.0f, sprite->height - sprite->width * 0.5f) * 0.85f / std::max(1, InteriorFloors(interior)) : 0.0f;
+}
+
+std::vector<std::pair<float, float>> InteriorSolids(const Interior& interior, int floor) {
+    std::vector<std::pair<float, float>> quarters;
+    std::stringstream in(interior.solids);
+    for (std::string part; std::getline(in, part, ';');) {
+        const size_t colon = part.find(':');
+        if (colon == std::string::npos || std::atoi(part.substr(0, colon).c_str()) != floor) continue;
+        std::stringstream each(part.substr(colon + 1));
+        for (std::string q; std::getline(each, q, '|');) {
+            int x = 0, y = 0;
+            if (std::sscanf(q.c_str(), "%d,%d", &x, &y) == 2) quarters.push_back({x * 0.5f, y * 0.5f});
+        }
+    }
+    return quarters;
+}
+
 int InteriorFloors(const Interior& interior) {
     return interior.texture.empty() ? 0 : 1 + static_cast<int>(UpperFloors(interior).size());
 }
@@ -276,10 +299,7 @@ void UpdateInteriors(Registry& registry, std::optional<Entity> player) {
         Building b{entity, 0, 0, -1, -1, InteriorFloors(interior), interior.storeyHeight};
         if (!InteriorFootprint(registry, entity, interior, b.x0, b.y0, b.x1, b.y1)) continue;
         if (b.storey <= 0.0f) {
-            // From its picture: what stands above its footprint's diamond (about half its width), its walls about
-            // three fifths of that (the rest its roof), shared by its storeys.
-            const auto* sprite = registry.try_get<Sprite>(entity);
-            b.storey = sprite ? std::max(0.0f, sprite->height - sprite->width * 0.5f) * 0.6f / std::max(1, b.floors) : 0.0f;
+            b.storey = InteriorStorey(registry, entity, interior);
         }
         buildings.push_back(b);
     }

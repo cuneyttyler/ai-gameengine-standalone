@@ -297,6 +297,11 @@ lua_Integer ToId(Entity entity) {
 
 } // namespace
 
+GameSession::~GameSession() {
+    SetBlockedParts({});
+    SetPassPoints({});
+}
+
 GameSession::GameSession(Registry& registry, LuaVM& lua, IsoParams iso, std::filesystem::path scriptRoot)
     : registry_(registry), lua_(lua), iso_(iso), scriptRoot_(std::move(scriptRoot)) {
     binder_ = [this](sol::environment& env, Entity self) { BindScriptApi(env, self); };
@@ -2710,6 +2715,7 @@ void GameSession::StepActions(float dt) {
             if (state.passable.size() < list.size()) state.passable.resize(list.size(), 0);
             if (state.cells.size() < list.size()) state.cells.resize(list.size(), {INT_MIN, INT_MIN});
             if (state.age.size() < list.size()) state.age.resize(list.size(), 0.0f);
+            if (state.gaps.size() < list.size()) state.gaps.resize(list.size(), {0.0f, 0.0f, -1.0f});
             state.age[d.index] += dt;
             // Its doorway: the footprint's edge cell nearest the door (a building's doors only: not a window, a lever).
             if (const auto* interior = registry_.try_get<Interior>(d.owner); interior && door.door) {
@@ -2728,6 +2734,27 @@ void GameSession::StepActions(float dt) {
                     const int nearest = static_cast<int>(std::min_element(toEdge, toEdge + 4) - toEdge);
                     state.cells[d.index] = nearest == 0 ? std::make_pair(x0, cy) : nearest == 1 ? std::make_pair(x1, cy)
                                          : nearest == 2 ? std::make_pair(cx, y0) : std::make_pair(cx, y1);
+                }
+                // Its gap: a door narrower than its cell lets one through only where it is (TileGrid: the rest of the
+                // cell is wall). Its width from its picture on screen (along a wall, a cell is half a tile wide), never
+                // narrower than the player with a little room; its side the footprint's edge nearest its foot.
+                state.gaps[d.index] = {0.0f, 0.0f, -1.0f};
+                const auto* doorSprite = registry_.try_get<Sprite>(d.overlay);
+                if (int x0 = 0, y0 = 0, x1 = 0, y1 = 0; d.placed && !door.sheet.empty() && DoorOpens(door) != "open" && doorSprite &&
+                                                        InteriorFootprint(registry_, d.owner, *interior, x0, y0, x1, y1)) {
+                    const auto [cx, cy] = state.cells[d.index];
+                    const float toEdge[4] = {std::abs(d.y - y0), std::abs(d.y - (y1 + 1.0f)), std::abs(d.x - x0), std::abs(d.x - (x1 + 1.0f))};
+                    int side = static_cast<int>(std::min_element(toEdge, toEdge + 4) - toEdge); // 0 back row, 1 front, 2 left, 3 right
+                    if (cy != y0 && cy != y1) side = cx == x0 ? 2 : 3; // its cell decides when it's on one edge only
+                    else if (cx != x0 && cx != x1) side = cy == y0 ? 0 : 1;
+                    float playerHalf = 0.3f;
+                    if (const auto* c = player ? registry_.try_get<Collider2D>(*player) : nullptr) playerHalf = std::max(c->halfWidth, c->halfHeight);
+                    const float half = std::max(doorSprite->width / std::max(1.0f, iso_.tileWidth), playerHalf + 0.06f);
+                    if (half < 0.5f) {
+                        const float base = side <= 1 ? static_cast<float>(cx) : static_cast<float>(cy);
+                        const float middle = std::clamp(side <= 1 ? d.x : d.y, base + half, base + 1.0f - half);
+                        state.gaps[d.index] = {middle, half, static_cast<float>(side)};
+                    }
                 }
             }
             const std::string way = DoorOpens(door);
@@ -3004,6 +3031,10 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
 
     grid_ = TileGrid::Build(registry_);
     auto isSolid = [this](int gx, int gy) { return grid_.IsSolid(gx, gy); };
+    // Parts of cells that block (a door's cell but its gap, an interior's solid things): every mover's collision checks
+    // them, and paths cross such a cell at its pass point.
+    SetBlockedParts([this](float x0, float y0, float x1, float y1) { return grid_.BlocksBox(x0, y0, x1, y1); });
+    SetPassPoints([this](int gx, int gy, float& x, float& y) { return grid_.PassPoint(gx, gy, x, y); });
 
     int steps = 0;
     bool firstStep = true; // this frame's presses act once

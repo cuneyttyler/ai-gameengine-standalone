@@ -7114,7 +7114,18 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
         const auto* name = registry_.try_get<Name>(e);
         post_({{"type", "interior:artInfo"}, {"id", static_cast<uint32_t>(e)}, {"name", name ? name->value : std::string("Building")},
                {"pictures", floors}, {"size", {W, H}}, {"cells", cells}, {"stairs", stairs}, {"entries", entries}, {"doors", doors},
-               {"projectOpens", ActiveSettings().game.doorsOpen}, {"plan", plan}, {"building", IsBuilding(e)}});
+               {"projectOpens", ActiveSettings().game.doorsOpen}, {"plan", plan}, {"building", IsBuilding(e)},
+               // Floor k drawn (k - 1) storeys up in its picture; each floor's solid things (quarter cells).
+               {"storeyPx", plan ? InteriorStorey(registry_, e, *interior) * H / std::max(1.0f, sprite->height) : 0.0f},
+               {"solids", [&] {
+                    nlohmann::json all = nlohmann::json::object();
+                    for (int k = 1; plan && k <= InteriorFloors(*interior); ++k) {
+                        nlohmann::json floor = nlohmann::json::array();
+                        for (const auto& [qx, qy] : InteriorSolids(*interior, k)) floor.push_back({std::lround(qx * 2), std::lround(qy * 2)});
+                        if (!floor.empty()) all[std::to_string(k)] = floor;
+                    }
+                    return all;
+                }()}});
         return true;
     }
     if (type == "interior:setArt") {
@@ -7144,6 +7155,19 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
                 interior->entries = entries;
                 RecordOverride(registry_, e, "Interior", "stairs");
                 RecordOverride(registry_, e, "Interior", "entries");
+                // Each floor's solid things: "floor:qx,qy|qx,qy;…".
+                if (message.contains("solids") && message["solids"].is_object()) {
+                    std::string solids;
+                    for (const auto& [floor, quarters] : message["solids"].items()) {
+                        std::string cells;
+                        for (const auto& q : quarters) {
+                            if (q.is_array() && q.size() == 2) cells += (cells.empty() ? "" : "|") + std::to_string(q[0].get<int>()) + "," + std::to_string(q[1].get<int>());
+                        }
+                        if (!cells.empty()) solids += (solids.empty() ? "" : ";") + floor + ":" + cells;
+                    }
+                    interior->solids = solids;
+                    RecordOverride(registry_, e, "Interior", "solids");
+                }
             }
             // Its doors' ways and locks (in their order; a door left out is removed).
             if (auto* part = registry_.try_get<AnimatedPart>(e); part && message.contains("doors")) {
@@ -7171,7 +7195,7 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             return true;
         });
         inspectorStale_ = true;
-        post_({{"type", "notify"}, {"text", interior ? "Its stairs, ways in and parts are set" : "Its parts are set"}});
+        post_({{"type", "notify"}, {"text", interior ? "Its stairs, ways in, solid things and parts are set" : "Its parts are set"}});
         return true;
     }
     if (type == "interior:redesign") {

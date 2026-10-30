@@ -3,8 +3,10 @@
 #include "ecs/Registry.h"
 #include "gameplay/TileLayer.h"
 
+#include <array>
 #include <cstdint>
 #include <unordered_map>
+#include <utility>
 #include <unordered_set>
 #include <vector>
 
@@ -26,6 +28,14 @@ public:
     // The tile entity in a cell, or entt::null.
     Entity At(int gx, int gy) const;
 
+    // Whether a part of a passable cell blocks anywhere in the world box [x0, x1) x [y0, y1): a door's cell but its gap,
+    // an interior's solid things (SetBlockedParts lets movement check it).
+    bool BlocksBox(float x0, float y0, float x1, float y1) const;
+    // Where a path crosses a partly blocked cell (a door's gap's middle), if it has such a point.
+    bool PassPoint(int gx, int gy, float& x, float& y) const;
+    // A blocked part of cell (gx, gy): the world box, clipped to the cell.
+    void AddPart(int gx, int gy, float x0, float y0, float x1, float y1);
+
 private:
     struct Cell {
         Entity entity;
@@ -39,6 +49,9 @@ private:
     std::unordered_map<int64_t, Cell> cells_;
     std::unordered_set<int64_t> blocked_; // obstacles standing on layer cells
     std::unordered_set<int64_t> inside_;  // a shown interior's footprint: walkable whatever stands or lies there
+    // Parts of passable cells that block (world boxes x0, y0, x1, y1): a door's cell but its gap.
+    std::unordered_map<int64_t, std::vector<std::array<float, 4>>> parts_;
+    std::unordered_map<int64_t, std::pair<float, float>> passPoints_; // where a path crosses such a cell
     std::vector<const TileLayer*> layers_;  // the scene's tile layers, low to high
 };
 

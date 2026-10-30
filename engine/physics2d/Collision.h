@@ -26,4 +26,16 @@ using SolidQueryFn = std::function<bool(int gridX, int gridY)>;
 // wall instead of stopping dead when approaching it at an angle.
 Vec2 ResolveAabbMovement(Vec2 pos, Vec2 halfSize, Vec2 delta, const SolidQueryFn& isSolid);
 
+// Parts of cells that block though their cell doesn't (a door's cell: wall but for the door's gap): "does anything block
+// in the world box [x0, x1) x [y0, y1)?". The game sets it while it plays (GameSession, from its TileGrid); every
+// ResolveAabbMovement checks it as well as its solid cells. Empty: nothing more blocks.
+using BoxQueryFn = std::function<bool(float x0, float y0, float x1, float y1)>;
+void SetBlockedParts(BoxQueryFn query);
+// Where a path crossing a partly blocked cell goes through it (a door's gap's middle), when it has such a point: walkers
+// steer to it instead of the cell's middle. The game sets it with SetBlockedParts.
+using PassPointFn = std::function<bool(int gridX, int gridY, float& x, float& y)>;
+void SetPassPoints(PassPointFn query);
+// A path's waypoint in cell (gx, gy): its pass point, else its middle.
+Vec2 WaypointIn(int gridX, int gridY);
+
 } // namespace aige

@@ -91,6 +91,7 @@ public:
     // `scriptRoot` is what relative LuaScript paths resolve against (the
     // project root).
     GameSession(Registry& registry, LuaVM& lua, IsoParams iso, std::filesystem::path scriptRoot = {});
+    ~GameSession(); // its grid's blocked parts no longer asked (SetBlockedParts)
 
     // Consumes `frameSeconds` of real time in kFixedDt steps (clamped, to
     // avoid a spiral of death after a long stall). Returns steps run.

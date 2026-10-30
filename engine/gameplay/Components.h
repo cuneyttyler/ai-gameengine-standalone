@@ -2,6 +2,7 @@
 
 #include "ecs/Registry.h"
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -355,6 +356,10 @@ struct PartOpen {
     std::vector<char> open;                 // open now
     std::vector<char> passable;             // its doorway passable: open, or auto and not locked
     std::vector<std::pair<int, int>> cells; // its doorway: the footprint's edge cell nearest the door
+    // Its doorway's gap (a door narrower than its cell): {middle along the wall, half its width, side}, side 0 the
+    // footprint's back row (y0), 1 its front row (y1), 2 its left column (x0), 3 its right column (x1); side -1 none (an
+    // open doorway, or not drawn yet): the whole cell.
+    std::vector<std::array<float, 3>> gaps;
 };
 
 // Runtime: an Action's clock.
@@ -394,6 +399,10 @@ struct Interior {
     std::string entries;
     // A storey's height on screen, in scene pixels: how much higher one stands on each floor up (0: from its picture).
     float storeyHeight = 0.0f;
+    // Its solid things inside (furniture, a counter, a well), each floor's: quarter cells one can't walk through while that
+    // floor shows, "floor:qx,qy|qx,qy;floor:…", qx,qy in half cells from its footprint's top-left (the building editor's
+    // Solid layer paints them).
+    std::string solids;
     // Runtime only (not reflected): going up or down next, and standing on the stairs since the last step.
     bool climbing = true;
     bool onStairs = false;
