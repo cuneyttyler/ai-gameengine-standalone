@@ -215,7 +215,7 @@ const boxStyle = computed(() => {
         </div>
         <div v-if="!['auto', 'always'].includes(opens)" class="row">
           <label>While active</label>
-          <PartActiveFields v-bind="active" @set="(k, v) => (active = { ...active, [k]: v })" />
+          <PartActiveFields v-bind="active" :action="['action', 'always'].includes(opens) ? trigger : ''" @set="(k, v) => (active = { ...active, [k]: v })" />
         </div>
         <div v-if="['project', 'use', 'action'].includes(opens) || (opens === 'always' && trigger)" class="row">
           <label>Prompt</label>

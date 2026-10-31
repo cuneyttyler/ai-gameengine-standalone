@@ -13,7 +13,7 @@ interface ActionInfo {
 }
 
 let map: { schema?: string; actions: ActionInfo[] } | null = null
-export const inputActions = ref<{ name: string; keys: string; description: string }[]>([])
+export const inputActions = ref<{ name: string; keys: string; description: string; plays: string }[]>([])
 
 onHostMessage((message) => {
   if (message.type !== 'input:data') return
@@ -23,6 +23,7 @@ onHostMessage((message) => {
     name: a.name,
     description: a.description,
     keys: a.keys.map((k) => (typeof k === 'string' ? k : k.key)).join(', '),
+    plays: typeof a.plays === 'string' ? a.plays : '',
   }))
 })
 

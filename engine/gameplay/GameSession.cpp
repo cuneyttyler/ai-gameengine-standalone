@@ -2563,7 +2563,7 @@ std::optional<Entity> GameSession::ActionTarget(Entity user, const std::string& 
     return best;
 }
 
-float GameSession::ActionTargetDistance(const std::string& name) {
+float GameSession::ActionTargetDistance(const std::string& name, bool ownParts) {
     const auto player = FindPlayer(registry_);
     const auto* me = player ? registry_.try_get<WorldTransform2D>(*player) : nullptr;
     float best = 1e9f;
@@ -2586,7 +2586,7 @@ float GameSession::ActionTargetDistance(const std::string& name) {
         if (index >= list.size()) continue;
         const AnimatedPart& part = list[index];
         const std::string way = DoorOpens(part);
-        const bool mine = ((way == "action" || way == "always") && part.trigger == name) || (doorShortcut && (way == "use" || part.locked));
+        const bool mine = ((way == "action" || way == "always") && part.trigger == name) || (!ownParts && doorShortcut && (way == "use" || part.locked));
         if (!mine) continue;
         const auto* inside = registry_.try_get<Interior>(link.parent);
         const bool in = inside && inside->shown && inside->kind != "scene";
@@ -2597,6 +2597,7 @@ float GameSession::ActionTargetDistance(const std::string& name) {
         const float d = std::hypot(me->x - x, me->y - y);
         if (d <= part.range) best = std::min(best, d);
     }
+    if (ownParts) return best;
     for (auto [e, action, w] : registry_.view<Action, WorldTransform2D>().each()) {
         const float d = std::hypot(me->x - w.x, me->y - w.y);
         if (action.trigger == "input" && action.action == name && d <= action.range) best = std::min(best, d);
@@ -2636,7 +2637,9 @@ void GameSession::StepActions(float dt) {
         for (const auto& a : ActiveInputMap().actions) {
             if (a.axis || (a.plays.empty() && a.event.empty() && a.effect.empty()) || !input_.Pressed(a.name)) continue;
             if (a.nearOnly && !somethingNear(a.name)) continue;
-            if (!a.plays.empty()) TriggerAnimation(registry_, *player, a.plays);
+            // Its clip: unless a part with it as its input action is near (the part plays the player's clip, its own or
+            // this one, as it says: once or on and on, held still or not).
+            if (!a.plays.empty() && ActionTargetDistance(a.name, true) >= 1e8f) TriggerAnimation(registry_, *player, a.plays);
             if (!a.effect.empty()) {
                 if (const auto* at = registry_.try_get<WorldTransform2D>(*player)) PlayEffect(a.effect, at->x, at->y, *player);
             }
@@ -2771,6 +2774,14 @@ void GameSession::StepActions(float dt) {
         auto pressedFor = [&](const AnimatedPart& part) {
             const std::string way = DoorOpens(part);
             return way == "action" || way == "always" ? input_.Pressed(part.trigger) : doorKey;
+        };
+        // The clip the player plays while a part is active: its own, else its input action's (Project Settings > Input).
+        auto playerClipOf = [&](const AnimatedPart& part) -> std::string {
+            if (!part.playerClip.empty()) return part.playerClip;
+            const std::string way = DoorOpens(part);
+            if (way != "action" && way != "always") return {};
+            const InputAction* action = ActiveInputMap().Find(part.trigger);
+            return action ? action->plays : std::string();
         };
         // Usable where one is: a part on an interior's floor while that floor shows, the outside's others from outside;
         // a door from either side.
@@ -2948,9 +2959,9 @@ void GameSession::StepActions(float dt) {
                 state.age[d.index] = 0.0f;
                 TriggerAnimation(registry_, d.overlay, door.clip);
                 // The player activated it: their clip while it's active, held still if it holds them.
-                if (used == &d && player && (door.holdsPlayer || !door.playerClip.empty())) {
+                if (used == &d && player && (door.holdsPlayer || !playerClipOf(door).empty())) {
                     heldBy_ = d.owner, heldIndex_ = d.index;
-                    if (!door.playerClip.empty()) TriggerAnimation(registry_, *player, door.playerClip);
+                    if (const std::string clip = playerClipOf(door); !clip.empty()) TriggerAnimation(registry_, *player, clip);
                 }
             } else if (open && !toggled && !playerNear && !othersNear &&
                        state.age[d.index] >= std::max(1.0f, AnimationLength(registry_, animations_, d.overlay, door.clip)) + 0.4f) {
@@ -2969,9 +2980,10 @@ void GameSession::StepActions(float dt) {
             if (!active) {
                 if (player) TriggerAnimation(registry_, *player, "stop");
                 heldBy_ = entt::null;
-            } else if (const AnimatedPart& part = it->second[heldIndex_]; player && part.playerLoop && !part.playerClip.empty()) {
+            } else if (const AnimatedPart& part = it->second[heldIndex_]; player && part.playerLoop && !playerClipOf(part).empty()) {
+                const std::string clip = playerClipOf(part);
                 const auto* at = registry_.try_get<AnimatorState>(*player);
-                if (!at || (at->oneShot != part.playerClip && at->clip != part.playerClip)) TriggerAnimation(registry_, *player, part.playerClip);
+                if (!at || (at->oneShot != clip && at->clip != clip)) TriggerAnimation(registry_, *player, clip);
             }
         }
         for (Entity owner : unlocked) {

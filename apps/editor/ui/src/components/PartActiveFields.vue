@@ -1,14 +1,18 @@
 <script setup lang="ts">
 // A part's settings for while it's active (Animate a part, the building editor, the Inspector): how long it plays once
 // activated, the clip the player plays meanwhile (once, or again and again), and whether the player is held still.
-import { onMounted } from 'vue'
-import { playerClips, requestPlayerClips } from '../inputActions'
+import { computed, onMounted } from 'vue'
+import { inputActions, playerClips, requestInputActions, requestPlayerClips } from '../inputActions'
 
-defineProps<{ duration: number; playerClip: string; playerLoop: boolean; holdsPlayer: boolean; disabled?: boolean }>()
+// action: its input action (activated by one, or always playing with one), whose clip it plays when it has none of its own.
+const props = defineProps<{ duration: number; playerClip: string; playerLoop: boolean; holdsPlayer: boolean; disabled?: boolean; action?: string }>()
+const actionClip = computed(() => (props.action ? inputActions.value.find((a) => a.name === props.action)?.plays ?? '' : ''))
+const clipShown = computed(() => props.playerClip || actionClip.value)
 const emit = defineEmits<{ (e: 'set', key: 'duration' | 'playerClip' | 'playerLoop' | 'holdsPlayer', value: number | string | boolean): void }>()
 
 onMounted(() => {
   if (!playerClips.value.length) requestPlayerClips()
+  if (props.action && !inputActions.value.length) requestInputActions()
 })
 </script>
 
@@ -19,15 +23,15 @@ onMounted(() => {
       <input type="number" min="0" step="0.5" :value="duration" :disabled="disabled"
              @change="emit('set', 'duration', Math.max(0, Number(($event.target as HTMLInputElement).value) || 0))" />
     </label>
-    <label title="A clip the player plays while it's active (the characters' clips)">
+    <label title="A clip the player plays while it's active (the characters' clips); none of its own: its input action's (Project Settings ▸ Input)">
       Player clip
       <select :value="playerClip" :disabled="disabled" @change="emit('set', 'playerClip', ($event.target as HTMLSelectElement).value)">
-        <option value="">none</option>
+        <option value="">{{ actionClip ? `the ${action} action's (${actionClip})` : 'none' }}</option>
         <option v-if="playerClip && !playerClips.includes(playerClip)" :value="playerClip">{{ playerClip }} (missing)</option>
         <option v-for="c in playerClips" :key="c" :value="c">{{ c }}</option>
       </select>
     </label>
-    <label v-if="playerClip" class="inline" title="The player's clip again and again while it's active (else once)">
+    <label v-if="clipShown" class="inline" title="The player's clip again and again while it's active (else once)">
       <input type="checkbox" :checked="playerLoop" :disabled="disabled" @change="emit('set', 'playerLoop', ($event.target as HTMLInputElement).checked)" />
       Player's clip plays continuously</label>
     <label class="inline" title="The player can't move while it's active: until it's used again or its duration is over">

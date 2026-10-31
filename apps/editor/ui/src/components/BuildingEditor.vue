@@ -417,6 +417,7 @@ const tabLabel = (k: number) => (k === 0 ? 'Exterior' : `Floor ${k}${k === floor
           <PartActiveFields v-if="!['auto', 'always', 'open'].includes(doors[picked]!.opens)" :duration="doors[picked]!.duration ?? 0"
                             :player-clip="doors[picked]!.playerClip ?? ''" :player-loop="doors[picked]!.playerLoop ?? true"
                             :holds-player="doors[picked]!.holdsPlayer ?? false"
+                            :action="['action', 'always'].includes(doors[picked]!.opens) ? doors[picked]!.trigger : ''"
                             @set="(k, v) => { (doors[picked!] as unknown as Record<string, unknown>)[k] = v; editDoor() }" />
           <label v-if="['project', 'use', 'action'].includes(doors[picked]!.opens) || (doors[picked]!.opens === 'always' && doors[picked]!.trigger)" title="Shown near it; 'shut|open' for each way">
             Prompt <input v-model="doors[picked]!.prompt" :placeholder="doors[picked]!.door ? 'Open the door|Close the door' : 'Pull the lever'" @change="editDoor" />

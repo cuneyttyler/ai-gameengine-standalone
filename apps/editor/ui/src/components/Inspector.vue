@@ -371,6 +371,7 @@ function numberFrom(event: Event): number {
             <div v-if="!['auto', 'always', 'open'].includes(moreParts(component)[partShown - 1]!.opens)" class="field-row">
               <PartActiveFields :duration="moreParts(component)[partShown - 1]!.duration ?? 0" :player-clip="moreParts(component)[partShown - 1]!.playerClip ?? ''"
                                 :player-loop="moreParts(component)[partShown - 1]!.playerLoop ?? true" :holds-player="moreParts(component)[partShown - 1]!.holdsPlayer ?? false"
+                                :action="['action', 'always'].includes(moreParts(component)[partShown - 1]!.opens) ? moreParts(component)[partShown - 1]!.trigger : ''"
                                 :disabled="editorState.playing" style="width: 100%" @set="(k, v) => setMorePart(component, k, v)" />
             </div>
             <div class="field-row">
