@@ -18,6 +18,10 @@ export interface Effect {
   faction?: string
   cutscene?: string
   screen?: string
+  package?: string
+  text?: string
+  event?: string
+  who?: string
 }
 
 const props = defineProps<{
@@ -45,6 +49,10 @@ const ops: Record<string, string> = {
   play_cutscene: 'play cutscene',
   open_screen: 'open a screen',
   close_screen: 'close a screen',
+  push_package: 'a character starts doing',
+  pop_package: 'a character stops doing',
+  say: 'a character says',
+  send_event: 'send an event',
 }
 
 const questOps = ['start_quest', 'complete_quest', 'fail_quest', 'complete_objective', 'set_stage']
@@ -65,6 +73,9 @@ function setOp(e: Effect, op: string): void {
     e.item = ''
     e.count = 1
   } else if (op === 'open_screen' || op === 'close_screen') e.screen = ''
+  else if (op === 'push_package' || op === 'pop_package') e.package = ''
+  else if (op === 'say') e.text = ''
+  else if (op === 'send_event') e.event = ''
   else if (op === 'give_gold' || op === 'give_xp') e.amount = 10
   else if (op === 'reputation') {
     e.faction = ''
@@ -115,6 +126,12 @@ function add(): void {
         <input v-model="e.faction" placeholder="faction" spellcheck="false" class="short" />
         <span class="word">by</span><input v-model.number="e.value" type="number" class="num" />
       </template>
+      <template v-else-if="e.op === 'push_package' || e.op === 'pop_package' || e.op === 'say'">
+        <input v-if="e.op === 'say'" v-model="e.text" placeholder="what they say" />
+        <input v-else v-model="e.package" placeholder="package id" spellcheck="false" />
+        <input v-model="e.who" placeholder="who (empty: this one)" spellcheck="false" />
+      </template>
+      <input v-else-if="e.op === 'send_event'" v-model="e.event" placeholder="event name" spellcheck="false" />
       <input v-else-if="e.op === 'open_screen' || e.op === 'close_screen'" v-model="e.screen" placeholder="inventory, crafting, or a screen's id" spellcheck="false" />
       <input v-else-if="e.op === 'play_cutscene'" v-model="e.cutscene" placeholder="cutscene id" spellcheck="false" />
       <button title="Remove" @click="effects.splice(i, 1)">×</button>

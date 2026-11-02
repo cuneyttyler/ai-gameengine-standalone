@@ -38,6 +38,8 @@ Recipe RecipeFromJson(const std::string& id, const nlohmann::json& data) {
     recipe.text = data.value("text", std::string());
     recipe.conditions = data.value("if", std::string());
     recipe.doEffects = data.value("do", std::string());
+    recipe.doStart = data.value("start", std::string());
+    recipe.doInterrupted = data.value("interrupted", std::string());
     return recipe;
 }
 

@@ -2522,13 +2522,13 @@ bool EditorApp::AskToSaveChanges(const wchar_t* question) {
 }
 
 void EditorApp::OpenScene(const std::string& scene) {
-    if (scene.empty() || scene == OpenSceneRelative()) {
+    if (scene.empty() || (scene == OpenSceneRelative() && !forceOpenScene_)) {
         return;
     }
     if (playing_) {
         StopPlay();
     }
-    if (!AskToSaveChanges(L"Save changes to this scene before opening another?")) {
+    if (!forceOpenScene_ && !AskToSaveChanges(L"Save changes to this scene before opening another?")) {
         return;
     }
     const std::string path = assets_.GetProject().Resolve(scene).string();
@@ -4419,12 +4419,17 @@ std::unique_ptr<GameBuild> EditorApp::MakeGameBuild() {
     host.projectRoot = assets_.GetProject().root;
     host.places = [this]() -> const Ontology& { return Places(); };
     host.buildMethod = [this] { return PlanBuildMethod(); };
-    host.startFeature = [this](const std::string& request) -> std::string {
+    host.startFeature = [this](const std::string& request, const std::string& scene) -> std::string {
         if (!Ai() || Ai()->GetState() != AiClient::State::Ready) return "the AI isn't ready";
         std::lock_guard lock(plannerBuildMutex_);
         plannerFeature_ = request;
+        plannerFeatureScene_ = scene;
         plannerFeatureStatus_ = "queued";
         return {};
+    };
+    host.featuresDone = [this] {
+        std::lock_guard lock(plannerBuildMutex_);
+        featuresEnded_ = true;
     };
     host.featureStatus = [this]() -> std::string {
         std::lock_guard lock(plannerBuildMutex_);
@@ -4525,17 +4530,44 @@ void EditorApp::StepGameBuild() {
 // A gameplay feature of the plan (GameBuild's "features" stage): the AI panel's own way of working, read tools and tasks
 // included, with what it proposes applied unreviewed: the plan was the review. On the editor's thread.
 void EditorApp::StepPlannerFeature() {
-    std::string request;
+    std::string request, scene;
+    bool ended = false;
+    {
+        std::lock_guard lock(plannerBuildMutex_);
+        ended = featuresEnded_;
+        featuresEnded_ = false;
+    }
+    if (ended && !sceneBeforeFeatures_.empty() && !playing_) {
+        forceOpenScene_ = true;
+        OpenScene(sceneBeforeFeatures_);
+        forceOpenScene_ = false;
+        sceneBeforeFeatures_.clear();
+    }
     {
         std::lock_guard lock(plannerBuildMutex_);
         if (plannerFeatureStatus_ != "queued") return;
         if (task_ || playing_) return; // the panel is busy with another: its turn comes
         request = plannerFeature_;
+        scene = plannerFeatureScene_;
         plannerFeatureStatus_ = "working";
     }
     if (!Ai() || Ai()->GetState() != AiClient::State::Ready) {
         FinishPlannerFeature("failed: the AI isn't ready");
         return;
+    }
+    // The scene from its file: ⑪ wrote the characters there, and what's in memory may be older. What was unsaved in it is
+    // kept beside it, never saved over them.
+    if (sceneBeforeFeatures_.empty()) sceneBeforeFeatures_ = OpenSceneRelative();
+    const std::string target = scene.empty() ? OpenSceneRelative() : scene;
+    if (dirty_ && !scenePath_.empty()) SaveScene(registry_, scenePath_ + ".before-gameplay");
+    if (!target.empty()) {
+        forceOpenScene_ = true;
+        OpenScene(target);
+        forceOpenScene_ = false;
+        if (OpenSceneRelative() != target) {
+            FinishPlannerFeature("failed: couldn't open " + target);
+            return;
+        }
     }
     ContextOptions options;
     options.scene = OpenSceneRelative();

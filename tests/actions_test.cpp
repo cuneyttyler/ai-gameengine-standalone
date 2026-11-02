@@ -143,6 +143,71 @@ TEST(ActionsTest, WhatItAcceptsMustBeInThePlayersHand) {
     EXPECT_EQ(w.session->HeldItem(), "");
 }
 
+TEST(ActionsTest, CharactersRespondByTheirRules) {
+    ActionsWorld w;
+    const aige::Entity guard = w.registry.create();
+    w.registry.emplace<aige::WorldTransform2D>(guard, 2.5f, 2.5f);
+    w.registry.emplace<aige::Name>(guard, "Mara");
+    w.registry.emplace<aige::Responses>(guard).rules = R"([
+        {"event": "alarm", "if": [{"flag": "on_watch"}], "do": [{"op": "set_flag", "flag": "chasing"}, {"op": "send_event", "event": "chase_begun"}]},
+        {"event": "chase_begun", "once": true, "do": [{"op": "add_var", "var": "chases", "value": 1}]}
+    ])";
+    auto noKeys = [](aige::Key) { return false; };
+    auto step = [&] { w.session->Advance(aige::GameSession::kFixedDt, noKeys); };
+    w.session->Emit({"alarm"});
+    step();
+    EXPECT_FALSE(w.session->Story().Flag("chasing")); // not on watch
+    w.session->Story().SetFlag("on_watch", true);
+    w.session->Emit({"alarm"});
+    step();
+    EXPECT_TRUE(w.session->Story().Flag("chasing"));
+    EXPECT_EQ(w.session->Story().Var("chases"), 1); // what it sent, answered in turn
+    w.session->Emit({"alarm"});
+    step();
+    EXPECT_EQ(w.session->Story().Var("chases"), 1); // once
+}
+
+TEST(ActionsTest, EffectsChangeWhatACharacterDoes) {
+    ActionsWorld w;
+    const aige::Entity guard = w.registry.create();
+    w.registry.emplace<aige::WorldTransform2D>(guard, 2.5f, 2.5f);
+    w.registry.emplace<aige::Name>(guard, "Mara");
+    w.session->RunEffects(R"([{"op": "push_package", "package": "chase", "who": "Mara"}])");
+    auto* state = w.registry.try_get<aige::BehaviourState>(guard);
+    ASSERT_NE(state, nullptr);
+    EXPECT_EQ(state->pushed.size(), 1u);
+    w.session->RunEffects(R"([{"op": "pop_package", "package": "chase"}])", guard);
+    EXPECT_TRUE(w.registry.get<aige::BehaviourState>(guard).pushed.empty());
+}
+
+TEST(ActionsTest, AReactionThatTakesTimeHasItsStages) {
+    ActionsWorld w;
+    auto& action = w.registry.get<aige::Action>(w.field);
+    action.once = false;
+    action.duration = 0.5f;
+    action.doEnd = R"([{"op": "set_flag", "flag": "ended"}])";
+    action.doInterrupted = R"([{"op": "set_flag", "flag": "cut"}])";
+    auto& pockets = w.registry.get_or_emplace<aige::Inventory>(w.player);
+    aige::AddItem(pockets, "seeds", 2);
+    auto noKeys = [](aige::Key) { return false; };
+    auto run = [&](int steps) { for (int i = 0; i < steps; ++i) w.session->Advance(aige::GameSession::kFixedDt, noKeys); };
+    ASSERT_TRUE(w.session->Act(w.player, w.field));
+    EXPECT_EQ(aige::CountItem(pockets, "seeds"), 1); // taken at the start
+    EXPECT_EQ(aige::CountItem(pockets, "wheat"), 0); // given at the end
+    EXPECT_FALSE(w.session->Act(w.player, w.field)); // not again until it's over
+    run(60);
+    EXPECT_EQ(aige::CountItem(pockets, "wheat"), 3);
+    EXPECT_TRUE(w.session->Story().Flag("ended"));
+    // Walking off cuts it short: what it took comes back, nothing is given.
+    ASSERT_TRUE(w.session->Act(w.player, w.field));
+    EXPECT_EQ(aige::CountItem(pockets, "seeds"), 0);
+    w.registry.get<aige::WorldTransform2D>(w.player).x = 0.5f;
+    run(5);
+    EXPECT_TRUE(w.session->Story().Flag("cut"));
+    EXPECT_EQ(aige::CountItem(pockets, "seeds"), 1);
+    EXPECT_EQ(aige::CountItem(pockets, "wheat"), 3);
+}
+
 TEST(ActionsTest, AnyoneCanAct) {
     ActionsWorld w;
     // A character (not the player) with its own seeds, beside the field.

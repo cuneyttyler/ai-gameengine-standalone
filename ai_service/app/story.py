@@ -11,7 +11,7 @@ from typing import Any
 
 EFFECT_OPS = {"set_flag", "clear_flag", "start_quest", "complete_quest", "complete_objective", "fail_quest",
               "set_stage", "set_var", "add_var", "give_item", "take_item", "give_gold", "give_xp", "reputation",
-              "play_cutscene", "open_screen", "close_screen"}
+              "play_cutscene", "open_screen", "close_screen", "push_package", "pop_package", "say", "send_event"}
 QUEST_OPS = {"start_quest", "complete_quest", "complete_objective", "fail_quest", "set_stage"}
 OBJECTIVE_TYPES = {"defeat", "talk", "collect", "reach", "deliver", "use", "examine", "have", "survive", "defend",
                    "escort"}
@@ -90,6 +90,11 @@ def _check_effects(effects: Any, where: str, scope: StoryScope) -> list[str]:
         if op == "reputation":
             if not effect.get("faction"):
                 errors.append(f"{where}: reputation needs a \"faction\"")
+            continue
+        if op in ("push_package", "pop_package", "say", "send_event"):
+            key = {"say": "text", "send_event": "event"}.get(op, "package")
+            if not effect.get(key):
+                errors.append(f"{where}: {op} needs a \"{key}\"")
             continue
         if op in ("open_screen", "close_screen"):
             if not effect.get("screen"):

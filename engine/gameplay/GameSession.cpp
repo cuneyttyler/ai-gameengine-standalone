@@ -1107,7 +1107,9 @@ void GameSession::SetScene(const std::string& scene) {
 }
 
 nlohmann::json GameSession::MakeSave() const {
-    nlohmann::json save = {{"version", 1}, {"scene", scene_}, {"clock", clockMinutes_}, {"story", story_.ToJson()},
+    nlohmann::json crafting = nlohmann::json::array();
+    for (const auto& c : pendingCrafts_) crafting.push_back({{"recipe", c.recipe}, {"seconds", c.seconds}});
+    nlohmann::json save = {{"version", 1}, {"scene", scene_}, {"crafting", crafting}, {"clock", clockMinutes_}, {"story", story_.ToJson()},
                            {"difficulty", {{"level", difficultyLevel_}, {"adaptive", adaptive_.ToJson()}}}};
     if (auto player = FindPlayer(const_cast<Registry&>(registry_))) {
         // What the player knows and what's on them (19).
@@ -1135,6 +1137,11 @@ void GameSession::ApplySave(const nlohmann::json& save) {
     if (!save.is_object()) return;
     story_ = StoryState::FromJson(save.value("story", nlohmann::json::object()));
     WireStory();
+    // What was being made goes on; a Reaction under way (its things are the scene's) ends with the save.
+    pendingCrafts_.clear();
+    pendingReactions_.clear();
+    partWasOpen_.clear();
+    for (const auto& c : save.value("crafting", nlohmann::json::array())) pendingCrafts_.push_back({c.value("recipe", std::string()), c.value("seconds", 0.0f)});
     if (const auto difficulty = save.value("difficulty", nlohmann::json::object()); difficulty.is_object()) {
         if (difficultyModel_.Find(difficulty.value("level", ""))) difficultyLevel_ = difficulty.value("level", "");
         adaptive_ = AdaptiveDifficulty::FromJson(difficulty.value("adaptive", nlohmann::json::object()));
@@ -1522,6 +1529,8 @@ void GameSession::ShowNotices() {
               : notice.kind == Kind::StageChanged   ? "quest_stage"
                                                     : "objective_completed",
               entt::null, entt::null, 0.0, notice.quest});
+        // A stage by name, for what listens for that one stage.
+        if (notice.kind == Kind::StageChanged && storyLibrary_) Emit({"quest:" + notice.quest + ":" + std::to_string(story_.StageOf(notice.quest, *storyLibrary_)), entt::null, entt::null, 0.0, notice.quest});
     }
     ApplyWorldEffects(); // and any the notices caused
 }
@@ -1589,6 +1598,19 @@ void GameSession::ApplyWorldEffects() {
         }
         if (e.op == "close_screen") {
             if (screenHook_) screenHook_(e.name, 0);
+            continue;
+        }
+        if (e.op == "push_package" || e.op == "pop_package" || e.op == "say" || e.op == "send_event") {
+            // On the one named, else the one it runs on.
+            Entity who = effectSelf_;
+            if (!e.who.empty()) who = EntityNamed(e.who).value_or(Entity{entt::null});
+            if (e.op == "send_event") {
+                Emit({e.name, who, player ? *player : Entity{entt::null}, 0.0, ""});
+            } else if (registry_.valid(who)) {
+                if (e.op == "push_package") PushPackage(registry_, who, e.name);
+                else if (e.op == "pop_package") PopPackage(registry_, who, e.name);
+                else ShowBark(who, e.name);
+            }
             continue;
         }
         if (e.op == "reputation") {
@@ -2461,7 +2483,7 @@ void GameSession::UseInteractable(Entity target, Entity user) {
     }
     if (!result.event.empty()) Emit({result.event, target, user, 0.0, ""});
     if (result.used) Emit({"interact", registry_.valid(target) ? target : Entity{entt::null}, user, 0.0, ""});
-    if (result.used) RunEffects(doEffects);
+    if (result.used) RunEffects(doEffects, target);
     if (result.used && byPlayer && storyLibrary_ != nullptr) {
         for (const auto& name : NamesOf(target)) story_.OnUsed(name, *storyLibrary_); // use/examine objectives
     }
@@ -2537,6 +2559,9 @@ bool GameSession::Act(Entity user, Entity target) {
             return false;
         }
     }
+    // Taking time: not again until it's over.
+    const bool timed = action->duration > 0.0f || action->untilAnimation;
+    if (std::any_of(pendingReactions_.begin(), pendingReactions_.end(), [&](const PendingReaction& p) { return p.target == target; })) return false;
     // Animations, then what it takes and gives.
     float playing = 0.0f;
     if (hasUser && !action->userAnimation.empty()) {
@@ -2558,16 +2583,7 @@ bool GameSession::Act(Entity user, Entity target) {
             if (stack.item == "gold") inventory->gold = std::max(0, inventory->gold - stack.count);
             else RemoveItem(*inventory, stack.item, stack.count);
         }
-        if (!action->gives.empty()) {
-            auto& pockets = registry_.get_or_emplace<Inventory>(user);
-            for (const auto& stack : ParseItems(action->gives)) {
-                if (stack.item == "gold") {
-                    pockets.gold += stack.count;
-                } else if (const int n = AddItem(pockets, stack.item, stack.count); n > 0) {
-                    Emit({"item_added", user, target, static_cast<double>(n), stack.item});
-                }
-            }
-        }
+        if (!timed) GiveReactionItems(user, target, *action);
     }
     // Effects: on the thing, on its user.
     if (!action->effect.empty()) {
@@ -2583,7 +2599,15 @@ bool GameSession::Act(Entity user, Entity target) {
     state.done = true;
     state.cooling = action->cooldown;
     const std::string becomes = action->becomes;
-    RunEffects(action->doEffects);
+    if (timed) {
+        // Its stages: begun now; what it gives and becomes, and its end, when it's over (StepTimedThings).
+        pendingReactions_.push_back({target, hasUser ? user : Entity{entt::null}, action->untilAnimation ? std::max(playing, action->duration) : action->duration, HealthOf(user)});
+        Emit({"reaction_began", target, hasUser ? user : Entity{entt::null}, 0.0, action->action});
+        RunEffects(action->doEffects, target);
+        return true;
+    }
+    RunEffects(action->doEffects, target);
+    if (!action->doEnd.empty()) RunEffects(registry_.get<Action>(target).doEnd, target);
     // Becomes, once the animations have played.
     if (!becomes.empty()) {
         if (playing > 0.0f) pendingBecomes_.push_back({target, becomes, playing});
@@ -2592,19 +2616,140 @@ bool GameSession::Act(Entity user, Entity target) {
     return true;
 }
 
+void GameSession::GiveReactionItems(Entity user, Entity target, const Action& action) {
+    if (action.gives.empty() || !registry_.valid(user)) return;
+    auto& pockets = registry_.get_or_emplace<Inventory>(user);
+    for (const auto& stack : ParseItems(action.gives)) {
+        if (stack.item == "gold") {
+            pockets.gold += stack.count;
+        } else if (const int n = AddItem(pockets, stack.item, stack.count); n > 0) {
+            Emit({"item_added", user, target, static_cast<double>(n), stack.item});
+        }
+    }
+}
+
+float GameSession::HealthOf(Entity entity) const {
+    const auto* health = registry_.valid(entity) ? registry_.try_get<Health>(entity) : nullptr;
+    return health ? health->current : -1.0f;
+}
+
+// What takes time: Reactions and recipes, each over when its time is up, or cut short (their user hit or gone, a cutscene).
+void GameSession::StepTimedThings(float dt) {
+    const auto player = FindPlayer(registry_);
+    auto hit = [&](Entity who, float was) { return was >= 0.0f && HealthOf(who) >= 0.0f && HealthOf(who) < was; };
+    for (size_t i = 0; i < pendingReactions_.size();) {
+        PendingReaction now = pendingReactions_[i];
+        pendingReactions_[i].seconds -= dt;
+        const bool gone = !registry_.valid(now.target) || !registry_.all_of<Action>(now.target);
+        const Action* action = gone ? nullptr : &registry_.get<Action>(now.target);
+        bool cut = gone || cutscene_.Active() || hit(now.user, now.health) || (now.user != entt::null && !registry_.valid(now.user));
+        if (!cut && action && action->trigger == "input" && registry_.valid(now.user)) {
+            const auto* a = registry_.try_get<WorldTransform2D>(now.user);
+            const auto* b = registry_.try_get<WorldTransform2D>(now.target);
+            cut = a && b && std::hypot(a->x - b->x, a->y - b->y) > action->range + 1.0f; // walked off
+        }
+        if (!cut && pendingReactions_[i].seconds > 0.0f) {
+            ++i;
+            continue;
+        }
+        pendingReactions_.erase(pendingReactions_.begin() + static_cast<std::ptrdiff_t>(i));
+        if (gone) continue;
+        const Action copy = *action;
+        if (cut) {
+            if (copy.refund && registry_.valid(now.user)) {
+                auto& pockets = registry_.get_or_emplace<Inventory>(now.user);
+                for (const auto& stack : ParseItems(copy.takes)) {
+                    if (stack.item == "gold") pockets.gold += stack.count;
+                    else AddItem(pockets, stack.item, stack.count);
+                }
+            }
+            registry_.get_or_emplace<ActionState>(now.target).done = false;
+            Emit({"reaction_interrupted", now.target, now.user, 0.0, copy.action});
+            RunEffects(copy.doInterrupted, now.target);
+        } else {
+            GiveReactionItems(now.user, now.target, copy);
+            Emit({"reaction_ended", now.target, now.user, 0.0, copy.action});
+            RunEffects(copy.doEnd, now.target);
+            if (!copy.becomes.empty()) BecomePrefab(now.target, copy.becomes);
+        }
+    }
+    for (size_t i = 0; i < pendingCrafts_.size();) {
+        pendingCrafts_[i].seconds -= dt;
+        const PendingCraft now = pendingCrafts_[i];
+        const bool cut = cutscene_.Active() || (player && hit(*player, now.health));
+        if (!cut && now.seconds > 0.0f) {
+            ++i;
+            continue;
+        }
+        pendingCrafts_.erase(pendingCrafts_.begin() + static_cast<std::ptrdiff_t>(i));
+        if (!cut) {
+            FinishCraft(now.recipe);
+            continue;
+        }
+        if (const auto recipe = FindRecipe(now.recipe); recipe && player) {
+            auto& inventory = registry_.get_or_emplace<Inventory>(*player);
+            for (const auto& stack : recipe->inputs) AddItem(inventory, stack.item, stack.count);
+            ShowNotice(recipe->name + " was interrupted", 2.5, "alert");
+            Emit({"craft_interrupted", *player, Entity{entt::null}, 0.0, now.recipe});
+            RunEffects(recipe->doInterrupted);
+        }
+    }
+}
+
 bool GameSession::ConditionsHold(const std::string& conditions) const {
     if (conditions.empty()) return true;
     const nlohmann::json list = nlohmann::json::parse(conditions, nullptr, false);
     return list.is_array() && story_.Holds(StoryConditionsFromJson(list));
 }
 
-void GameSession::RunEffects(const std::string& effects) {
+void GameSession::RunEffects(const std::string& effects, Entity self) {
     if (effects.empty()) return;
     const nlohmann::json list = nlohmann::json::parse(effects, nullptr, false);
     if (!list.is_array()) return;
     static const StoryLibrary noStory; // a game without quests: flags, items and screens still work
     story_.Apply(StoryEffectsFromJson(list), storyLibrary_ ? *storyLibrary_ : noStory);
+    effectSelf_ = self;
     ApplyWorldEffects();
+    effectSelf_ = entt::null;
+}
+
+std::optional<Entity> GameSession::EntityNamed(const std::string& name) const {
+    for (auto [entity, given] : registry_.view<Name>().each()) {
+        if (given.value == name) return entity;
+    }
+    for (auto [entity, actor] : registry_.view<Actor>().each()) {
+        if (actor.key == name) return entity;
+    }
+    return std::nullopt;
+}
+
+void GameSession::RunResponses(const ScriptEvent& event) {
+    const auto player = FindPlayer(registry_);
+    std::vector<Entity> people;
+    for (auto [entity, responses] : registry_.view<Responses>().each()) people.push_back(entity);
+    for (Entity entity : people) {
+        if (!registry_.valid(entity) || !registry_.all_of<Responses>(entity)) continue;
+        const nlohmann::json rules = nlohmann::json::parse(registry_.get<Responses>(entity).rules, nullptr, false);
+        if (!rules.is_array()) continue;
+        int index = -1;
+        for (const auto& rule : rules) {
+            ++index;
+            if (!rule.is_object() || rule.value("event", std::string()) != event.name) continue;
+            const auto& fired = registry_.get<Responses>(entity).fired;
+            if (rule.value("once", false) && std::find(fired.begin(), fired.end(), index) != fired.end()) continue;
+            if (const float range = rule.value("range", 0.0f); range > 0.0f) {
+                const auto* me = registry_.try_get<WorldTransform2D>(entity);
+                const auto* them = player ? registry_.try_get<WorldTransform2D>(*player) : nullptr;
+                if (!me || !them || std::hypot(me->x - them->x, me->y - them->y) > range) continue;
+            }
+            if (rule.contains("if") && !ConditionsHold(rule["if"].dump())) continue;
+            if (rule.value("once", false)) registry_.get<Responses>(entity).fired.push_back(index);
+            if (const std::string clip = rule.value("clip", std::string()); !clip.empty()) TriggerAnimation(registry_, entity, clip);
+            if (const std::string says = rule.value("says", std::string()); !says.empty()) ShowBark(entity, says);
+            if (rule.contains("do")) RunEffects(rule["do"].dump(), entity);
+            if (!registry_.valid(entity) || !registry_.all_of<Responses>(entity)) break;
+        }
+    }
 }
 
 bool GameSession::OpenPanel(const std::string& id) {
@@ -2704,7 +2849,8 @@ std::string GameSession::Craft(const std::string& id, const std::string& station
     if (!recipe->effect.empty()) {
         if (const auto* at = registry_.try_get<WorldTransform2D>(*player)) PlayEffect(recipe->effect, at->x, at->y, *player);
     }
-    if (recipe->seconds > 0.0f) pendingCrafts_.push_back({id, recipe->seconds});
+    RunEffects(recipe->doStart);
+    if (recipe->seconds > 0.0f) pendingCrafts_.push_back({id, recipe->seconds, HealthOf(*player)});
     else FinishCraft(id);
     return {};
 }
@@ -2853,23 +2999,14 @@ void GameSession::ResolveActionGroups() {
 
 void GameSession::StepActions(float dt) {
     const auto player = FindPlayer(registry_);
-    // What's being made: done when its time is up.
-    for (size_t i = 0; i < pendingCrafts_.size();) {
-        pendingCrafts_[i].seconds -= dt;
-        if (pendingCrafts_[i].seconds > 0.0f) {
-            ++i;
-            continue;
-        }
-        const std::string recipe = pendingCrafts_[i].recipe;
-        pendingCrafts_.erase(pendingCrafts_.begin() + static_cast<std::ptrdiff_t>(i));
-        FinishCraft(recipe);
-    }
+    StepTimedThings(dt);
     // Input actions that play a clip on the player or emit an event (Project Settings ▸ Input).
     if (player) {
         auto somethingNear = [&](const std::string& name) { return ActionTargetDistance(name) < 1e8f; };
         for (const auto& a : ActiveInputMap().actions) {
             if (a.axis || (a.plays.empty() && a.event.empty() && a.effect.empty() && a.screen.empty()) || !input_.Pressed(a.name)) continue;
             if (a.nearOnly && !somethingNear(a.name)) continue;
+            if (!InputMap::Defaults().Find(a.name)) Emit({"action:" + a.name, *player, Entity{entt::null}, 0.0, a.name}); // the project's own: characters can respond
             if (!a.screen.empty()) OpenPanel(a.screen);
             // Its clip: unless a part with it as its input action is near (the part plays the player's clip, its own or
             // this one, as it says: once or on and on, held still or not).
@@ -3075,6 +3212,20 @@ void GameSession::StepActions(float dt) {
                 doorPrompt_ = "In hand: " + ItemName(held_);
             }
         }
+        // Each part's stages after this step: begun, over; its "end" when it stops.
+        auto partStages = [&] {
+            for (const auto& d : doors) {
+                const auto* state = registry_.try_get<PartOpen>(d.owner);
+                const auto& list = all[d.owner];
+                if (!state || d.index >= state->open.size() || d.index >= list.size() || registry_.all_of<DoorPart>(d.owner)) continue;
+                const bool open = state->open[d.index];
+                bool& was = partWasOpen_[{d.owner, d.index}];
+                if (open == was) continue;
+                was = open;
+                Emit({open ? "reaction_began" : "reaction_ended", d.owner, player ? *player : Entity{entt::null}, 0.0, list[d.index].sheet});
+                if (!open) RunEffects(list[d.index].doEnd, d.owner);
+            }
+        };
         std::set<Entity> unlocked;
         for (const auto& d : doors) {
             auto& list = all[d.owner];
@@ -3142,7 +3293,7 @@ void GameSession::StepActions(float dt) {
             }
             // Activated by the player (unlocked): its event sent.
             if (used == &d && !door.locked && !door.fires.empty()) Emit({door.fires, d.owner, player ? *player : entt::null});
-            if (used == &d && !door.locked) RunEffects(door.doEffects);
+            if (used == &d && !door.locked) RunEffects(door.doEffects, d.owner);
             // A part with one clip (no closing one: a fire, a pot stirred): still on its first frame until it's activated,
             // playing while it is, still again once it's shut.
             if (way != "always" && door.closeClip.empty()) {
@@ -3231,6 +3382,7 @@ void GameSession::StepActions(float dt) {
                 if (!at || (at->oneShot != clip && at->clip != clip)) TriggerAnimation(registry_, *player, clip);
             }
         }
+        partStages();
         for (Entity owner : unlocked) {
             if (auto* painted = registry_.try_get<DoorPart>(owner)) painted->locked = all[owner].front().locked;
             else SetDoors(registry_.get<AnimatedPart>(owner), all[owner]);
@@ -3316,6 +3468,7 @@ void GameSession::DispatchEvents() {
         std::vector<ScriptEvent> batch;
         batch.swap(pendingEvents_);
         for (const auto& event : batch) {
+            RunResponses(event);
             delivered_.push_back(event);
             actionEvents_.push_back(event.name);
             actionEventUsers_.push_back({event.entity, event.other});

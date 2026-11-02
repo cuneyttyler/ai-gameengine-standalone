@@ -160,6 +160,13 @@ inline json Answer(const std::string& path, const json& body) {
     } else if (path == "/planner/gameplay") {
         a["gameplay"] = {{"features", {{{"id", "cooking"}, {"name", "Cooking"}, {"kind", "crafting"}, {"description", "Cook at a stove."},
                                         {"howItPlays", "Press E at a stove."}, {"buildRequest", "Add a stew recipe at a stove."}}}}};
+    } else if (path == "/planner/system") {
+        a["system"] = {{"rules", {"Cook at a stove."}}, {"sends", {{{"event", "stew_cooked"}, {"when", "a stew is made"}}}},
+                       {"actions", {{{"name", "cook"}, {"key", "E"}}}}, {"steps", {{{"place", ""}, {"request", "Add a stew recipe at a stove."}}}}};
+    } else if (path == "/planner/behaviour") {
+        a["plan"] = {{"character", body.value("character", json::object()).value("name", "")},
+                     {"packages", {{{"id", "hungry"}, {"template", "wander"}}}},
+                     {"behaviour", {{{"when", {{"event", "stew_cooked"}}}, {"does", {{"says", "Smells good."}, {"package", "hungry"}}}}}}};
     } else if (path == "/planner/systems") {
         a["systems"] = {{"summary", {{"economy", "gold"}}}, {"records", {{{"type", "item"}, {"id", "warden-blade"}, {"record", {{"name", "Warden's Blade"}}}}}}};
     } else if (path == "/planner/dialogue") {

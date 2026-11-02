@@ -337,9 +337,20 @@ words. How many follows the Brief's **Gameplay mechanics** (① Concept): small 
 (`data/planner/scope.json`); apart from Scope, since a short game can have deep mechanics. It's a document of its own:
 regenerated or locked alone, and locking it keeps the design when the data is written again.
 
-In ⑫ each feature's `buildRequest` goes to the AI panel's machinery, on records, prefabs and input actions, with what
-it proposes applied unreviewed (the plan was the review). One that fails is reported on the result page, and the game
-goes on being built.
+**Each system worked out** (`planner/systemdesigns/<id>.json`, one call each): its rules, numbers, items, recipes, input
+actions, the events it sends and listens for, the characters in it, and `steps`, each `{place, request}`.
+
+**Each character's behaviour plan** (`planner/behaviours/<id>.json`, one call each, after the data): for each quest stage,
+event and player action that concerns them, what they do: a package, a line, a clip, an event sent, effects. Small plans
+the major characters, medium the supporting too, extensive everyone. The planner's page shows them as a table: who does
+what, when. Validate's event map (`X-behaviour`) checks every event is sent, every quest stage and action exists and
+every package is theirs; each error remakes that character's plan.
+
+In ⑫ each step goes to the AI panel's machinery, with what it proposes applied unreviewed (the plan was the review): an
+empty `place` on what the project shares; a place's scene opened from its file (where ⑪ wrote the characters), the request
+run on it, and saved. What was unsaved in the open scene is kept beside it as `.before-gameplay`, never saved over them,
+and the scene open before is open again after. One that fails is reported on the result page, and the game goes on. Each
+character's plan becomes its Character Rules in ⑪, with no AI call.
 
 **Then the data**, from the Brief's systems tab, the features and what the story and characters use:
 

@@ -8,6 +8,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
 import { confirmDialog } from '../dialogs'
 import RecordValue from './story/RecordValue.vue'
+import RulesEditor from './RulesEditor.vue'
 import { defaultFor, type RecordFieldSpec } from '../records'
 
 interface RecordType {
@@ -256,7 +257,15 @@ function goTo(key: string): void {
           :title="draft.own[field.name] ? 'Set here (untick to inherit from the base)' : 'Inherited from the base (tick to set here)'"
           @change="setOwn(field.name, ($event.target as HTMLInputElement).checked)"
         />
+        <RulesEditor
+          v-if="draft.type === 'recipe' && ['if', 'do', 'start', 'interrupted'].includes(field.name)"
+          :mode="field.name === 'if' ? 'if' : 'do'"
+          :value="draft.data[field.name]"
+          :disabled="!!draft.base && !draft.own[field.name]"
+          @update="draft.data[field.name] = $event"
+        />
         <RecordValue
+          v-else
           :field="field"
           :value="draft.data[field.name]"
           :ids="ids"

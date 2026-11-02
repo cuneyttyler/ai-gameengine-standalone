@@ -1432,7 +1432,7 @@
       "dependencies": [
         "WorldTransform2D"
       ],
-      "description": "Used with the interact action (13.5): a lever, a sign, a bed, a locked door or chest. Door, Container, Merchant and ItemPickup add what happens.",
+      "description": "One kind of Reaction. Used with the interact action (13.5): a lever, a sign, a bed, a locked door or chest. Door, Container, Merchant and ItemPickup add what happens.",
       "fields": [
         {
           "description": "The prompt's verb: Open, Read, Pull, Sleep.",
@@ -1644,6 +1644,32 @@
           "type": "string"
         },
         {
+          "description": "Seconds it lasts (0: at once): what it gives, becomes and its end come after.",
+          "min": 0.0,
+          "name": "duration",
+          "type": "float"
+        },
+        {
+          "description": "It lasts as long as its animations (or duration, if longer).",
+          "name": "untilAnimation",
+          "type": "bool"
+        },
+        {
+          "description": "Effects, as do's: run when it's over.",
+          "name": "end",
+          "type": "string"
+        },
+        {
+          "description": "Effects, as do's: run if it's cut short (its user hit or gone, a cutscene).",
+          "name": "interrupted",
+          "type": "string"
+        },
+        {
+          "description": "Cut short: what it took is given back.",
+          "name": "refund",
+          "type": "bool"
+        },
+        {
           "description": "Items, one of which the player must have in hand: key, lockpick. Other users just carry one.",
           "name": "accepts",
           "type": "string"
@@ -1779,6 +1805,11 @@
           "type": "string"
         },
         {
+          "description": "Effects, as do's: run when it stops.",
+          "name": "end",
+          "type": "string"
+        },
+        {
           "description": "Which picture it moves on: 0 the outside, k its interior's floor k (shown only while that floor shows).",
           "min": 0.0,
           "name": "floor",
@@ -1881,6 +1912,19 @@
         }
       ],
       "name": "DoorPart",
+      "userEditable": true
+    },
+    {
+      "dependencies": [],
+      "description": "What this character does when something happens, as many as it needs: quest stages, events, the player's actions (docs/systems/actions.md).",
+      "fields": [
+        {
+          "description": "A JSON list of {\"event\", \"if\", \"do\", \"clip\", \"says\", \"range\", \"once\"}. event: any event's name, quest:<id>:<stage>, or action:<name> for the player's input action.",
+          "name": "rules",
+          "type": "string"
+        }
+      ],
+      "name": "Responses",
       "userEditable": true
     },
     {
@@ -3732,6 +3776,16 @@
         {
           "description": "Effects, as dialogue's JSON: run when it's made.",
           "name": "do",
+          "type": "string"
+        },
+        {
+          "description": "Effects: run when it's begun (with seconds).",
+          "name": "start",
+          "type": "string"
+        },
+        {
+          "description": "Effects: run if it's cut short (the player hit, a cutscene); its inputs are given back.",
+          "name": "interrupted",
           "type": "string"
         }
       ],

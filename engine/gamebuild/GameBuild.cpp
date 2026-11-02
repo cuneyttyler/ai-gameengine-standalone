@@ -944,6 +944,34 @@ void GameBuild::ConnectScenes() {
 
 // --- ⑪ Populate and bind -------------------------------------------------------------------------------
 
+// A behaviour plan's entries as a character's rules (Responses): its package names made its own.
+static json BehaviourRules(const json& plan, const std::string& character) {
+    json rules = json::array();
+    for (const auto& entry : plan.value("behaviour", json::array())) {
+        if (!entry.is_object()) continue;
+        const json when = entry.value("when", json::object());
+        std::string event = when.value("event", std::string());
+        if (when.contains("quest")) event = "quest:" + when.value("quest", std::string()) + ":" + std::to_string(when.value("stage", 0));
+        else if (when.contains("playerAction")) event = "action:" + when.value("playerAction", std::string());
+        if (event.empty()) continue;
+        const json does = entry.value("does", json::object());
+        json rule = {{"event", event}};
+        if (entry.contains("if")) rule["if"] = entry["if"];
+        if (does.contains("clip")) rule["clip"] = does["clip"];
+        if (does.contains("says")) rule["says"] = does["says"];
+        if (when.contains("range")) rule["range"] = when["range"];
+        if (entry.value("once", false)) rule["once"] = true;
+        json effects = does.value("do", json::array());
+        if (!effects.is_array()) effects = json::array();
+        if (const std::string package = does.value("package", std::string()); !package.empty()) effects.push_back({{"op", "push_package"}, {"package", character + "-" + package}});
+        if (const std::string done = does.value("stops", std::string()); !done.empty()) effects.push_back({{"op", "pop_package"}, {"package", character + "-" + done}});
+        if (const std::string sends = does.value("sends", std::string()); !sends.empty()) effects.push_back({{"op", "send_event"}, {"event", sends}});
+        if (!effects.empty()) rule["do"] = effects;
+        rules.push_back(rule);
+    }
+    return rules;
+}
+
 void GameBuild::Populate() {
     const Project project{host_.projectRoot};
     const StoryGraph g = StoryGraph::Load(StoryGraph::PathIn(host_.projectRoot)).value_or(StoryGraph{});
@@ -1009,6 +1037,9 @@ void GameBuild::Populate() {
             }
             if (!packages.empty()) reg->get_or_emplace<Behaviour>(e).packages = packages;
         }
+        // What it does when things happen (⑦): its rules, from its behaviour plan.
+        const json plan = store_.Read("behaviours/" + PlanSlug(n->id)).value_or(json::object());
+        if (const json rules = BehaviourRules(plan, PlanSlug(n->id)); !rules.empty()) reg->emplace_or_replace<Responses>(e, Responses{rules.dump()});
         reg->emplace_or_replace<Name>(e, name);
         entityOf[n->id] = name;
         actors.push_back({{"character", n->id}, {"scene", FindRow(home)->scene}, {"entity", name}, {"boss", boss}});
@@ -1281,6 +1312,16 @@ void GameBuild::WriteFiles() {
             if (!records.Write("package", id, package)) files_["records/package/" + id + ".json"] = {{"planner", doc}};
         }
     }
+    // The packages the characters' behaviour plans add.
+    for (const auto& doc : store_.List("behaviours")) {
+        const json plan = store_.Read(doc).value_or(json::object());
+        for (const auto& p : plan.value("packages", json::array())) {
+            const std::string id = PlanSlug(doc) + "-" + p.value("id", p.value("template", ""));
+            json package = {{"template", p.value("template", "")}, {"description", plan.value("character", doc) + ": " + p.value("id", "")}};
+            if (!p.value("place", "").empty()) package["location"] = {{"in", p.value("place", "")}};
+            if (!records.Write("package", id, package)) files_["records/package/" + id + ".json"] = {{"planner", doc}};
+        }
+    }
     // The interface's theme, and the game's own file.
     const json ui = store_.Read("ui").value_or(json::object());
     const json brief = store_.Read("brief").value_or(json::object());
@@ -1490,7 +1531,7 @@ bool GameBuild::DriveFeatures() {
             f["error"] = request.empty() ? "it has no build request" : "no AI panel here";
             return true;
         }
-        if (const std::string why = host_.startFeature(request); !why.empty()) {
+        if (const std::string why = host_.startFeature(request, f.value("scene", "")); !why.empty()) {
             f["status"] = "failed";
             f["error"] = why;
             return true;
@@ -1532,8 +1573,25 @@ bool GameBuild::Pump() {
             // The features, from the plan: each its id, name, request and how it went.
             features_ = json::array();
             for (const auto& f : store_.Read("gameplay").value_or(json::object()).value("features", json::array())) {
-                features_.push_back({{"id", f.value("id", "")}, {"name", f.value("name", "")}, {"request", f.value("buildRequest", "")},
-                                     {"needsScript", f.value("needsScript", false)}, {"status", "queued"}, {"error", ""}});
+                // Its steps, each where it runs; a feature without any: its one request, for the whole project.
+                json steps = store_.Read("systemdesigns/" + PlanSlug(f.value("id", ""))).value_or(json::object()).value("steps", json::array());
+                if (steps.empty() && !f.value("buildRequest", "").empty()) steps.push_back({{"place", ""}, {"request", f.value("buildRequest", "")}});
+                for (const auto& step : steps) {
+                    const std::string place = step.value("place", "");
+                    json row = {{"id", f.value("id", "")}, {"name", f.value("name", "")}, {"place", place}, {"scene", ""}, {"request", step.value("request", "")},
+                                {"needsScript", f.value("needsScript", false)}, {"status", "queued"}, {"error", ""}};
+                    if (!place.empty()) {
+                        const Row* built = FindRow(place);
+                        if (!built) {
+                            for (const auto& r : rows_) {
+                                if (PlanSlug(r.place) == PlanSlug(place)) built = &r;
+                            }
+                        }
+                        if (built) row["scene"] = built->scene;
+                        else row["status"] = "failed", row["error"] = "no scene was built for " + place;
+                    }
+                    features_.push_back(row);
+                }
             }
             Next("features");
             did = true;
@@ -1545,6 +1603,7 @@ bool GameBuild::Pump() {
             return f.value("status", "") == "queued" || f.value("status", "") == "running";
         });
         if (idle) {
+            if (host_.featuresDone) host_.featuresDone();
             Next("playtest");
             did = true;
         }

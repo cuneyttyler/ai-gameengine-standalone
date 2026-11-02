@@ -631,7 +631,9 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
         .Field("effect", FieldType::String, "An effect played on the player.")
         .Field("text", FieldType::String, "Shown when it's made.")
         .Field("if", FieldType::String, "Conditions, as dialogue's JSON: it can be made only while they hold.")
-        .Field("do", FieldType::String, "Effects, as dialogue's JSON: run when it's made.");
+        .Field("do", FieldType::String, "Effects, as dialogue's JSON: run when it's made.")
+        .Field("start", FieldType::String, "Effects: run when it's begun (with seconds).")
+        .Field("interrupted", FieldType::String, "Effects: run if it's cut short (the player hit, a cutscene); its inputs are given back.");
 
     r.RecordType("perk", "A perk (13.2): taken with a perk point at a level, it changes attributes from then on.")
         .Field("name", FieldType::String, "Shown to the player.").Required()

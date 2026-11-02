@@ -148,6 +148,8 @@ Effects: {"op": "set_flag"|"clear_flag", "flag": "..."} | {"op": "start_quest"|"
   | {"op": "give_item"|"take_item", "item": "<item id>", "count": n} | {"op": "give_gold"|"give_xp", "amount": n}
   | {"op": "reputation", "faction": "<id>", "value": n} | {"op": "play_cutscene", "cutscene": "<id>"}
   | {"op": "open_screen"|"close_screen", "screen": "inventory"|"crafting"|"spellbook"|"journal"|"<a screen's id>"}
+  | {"op": "push_package"|"pop_package", "package": "<package id>", "who": "<a character's name; empty: the one it runs on>"}
+  | {"op": "say", "text": "...", "who"} | {"op": "send_event", "event": "<name>", "who"}
 Quest: {"name": "...", "description": "...", "giver": "<World Bible key>",
   "aliases": [{"id": "thief", "kind": "character"|"item"|"location"|"entity", "fill": "<key, item id, marker, name>"}],
   "stages": [{"index": 10, "journal": "the journal's line for this stage",
@@ -462,6 +464,15 @@ GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
   "Rope and hook make a grappling hook": a recipe with those two inputs. "Cook stew at the stove": an Action with
   "station": "stove" on the stove's entity or prefab, and a recipe with "at": "stove". Events the game sends:
   item_used (text: the item), item_combined and crafted (text: the recipe).
+  An Action can take time: "duration" (seconds) or "untilAnimation": true. Then "do" runs at the start, and what it
+  gives, its "becomes" and "end" (Effects text) when it's over; "interrupted" (Effects text) if it's cut short (its user
+  hit or walking off, a cutscene), with what it took given back unless "refund": false. It sends reaction_began,
+  reaction_ended and reaction_interrupted. AnimatedPart has "end" too; recipes "start" and "interrupted".
+  A thing has one Action; a CHARACTER that does many things has Responses (the user's "Character Rules"): "rules", JSON
+  text holding a list of {"event", "if", "do", "clip", "says", "range", "once"}, where "event" is any event's name, or
+  "quest:<id>:<stage>" for a quest stage, or "action:<name>" for the player pressing the project's own action; "do" holds
+  Effects, so {"op": "push_package", "package": "chase-player"} changes what they do with no script. "When the alarm
+  sounds this guard chases the player" is this. Packages' "conditions" take everything Conditions does.
   A field farmed (becomes a seeded field), a timer growing it, a harvest. Anyone uses it: the player
   pressing its action, a character (package template "tend" with data {"action": "farm"}, or procedure step
   {"type": "act", "action": "farm"}), Lua act(user, target) or act(user, "farm"). An Interactable is used the same way.

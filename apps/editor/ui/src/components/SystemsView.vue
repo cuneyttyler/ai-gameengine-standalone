@@ -22,7 +22,25 @@ interface Feature {
 const props = defineProps<{
   systems: { summary?: Record<string, unknown>; records?: SystemRecord[] }
   gameplay?: { features?: Feature[] } | null
+  designs?: { subject?: string; rules?: string[]; sends?: { event: string; when?: string }[] }[]
+  behaviours?: BehaviourPlan[]
 }>()
+const designOf = (id: string) => (props.designs ?? []).find((d) => d?.subject === id)
+// Who does what, when: each character's entries as rows.
+interface BehaviourPlan {
+  subject?: string
+  character?: string
+  behaviour?: { when?: Record<string, unknown>; does?: Record<string, unknown>; if?: unknown[] }[]
+}
+const whenText = (w?: Record<string, unknown>) =>
+  !w ? '' : w.quest ? `quest ${w.quest}, stage ${w.stage}` : w.playerAction ? `the player's ${w.playerAction}` : `event ${w.event}`
+const doesText = (d?: Record<string, unknown>) =>
+  Object.entries(d ?? {}).filter(([k]) => k !== 'do').map(([k, v]) => (k === 'says' ? `says "${v}"` : k === 'package' ? `starts ${v}` : k === 'stops' ? `stops ${v}` : `${k} ${v}`)).join('; ')
+const whoDoesWhat = computed(() =>
+  (props.behaviours ?? []).flatMap((p) => (p?.behaviour ?? []).map((e) => ({
+    who: p.character ?? p.subject ?? '', when: whenText(e.when), does: doesText(e.does), conditional: !!e.if?.length,
+  }))),
+)
 defineEmits<{ (e: 'open-gameplay'): void }>()
 
 const parts = computed(() => Object.entries(props.systems.summary ?? {}).filter(([, v]) => v !== null && v !== undefined && v !== ''))
@@ -95,8 +113,19 @@ function tags(r: SystemRecord): string[] {
             <span v-if="f.needsScript" class="count" title="The engine can't do this without a script: the AI panel will try to write one">needs a script</span></div>
           <p>{{ f.description }}</p>
           <p v-if="f.howItPlays"><b>How it plays:</b> {{ f.howItPlays }}</p>
+          <ul v-if="designOf(f.id)?.rules?.length"><li v-for="(rule, i) in designOf(f.id)!.rules" :key="i">{{ rule }}</li></ul>
+          <p v-if="designOf(f.id)?.sends?.length"><b>Sends:</b> {{ designOf(f.id)!.sends!.map((s) => s.event).join(', ') }}</p>
         </div>
       </div>
+    </section>
+    <section v-if="whoDoesWhat.length">
+      <h4 class="head" @click="toggle('__who')">
+        <span class="caret">{{ folded.__who ? '▸' : '▾' }}</span> Who does what, when <span class="count">{{ whoDoesWhat.length }}</span>
+      </h4>
+      <table v-if="!folded.__who" class="who">
+        <thead><tr><th>Character</th><th>When</th><th>Does</th></tr></thead>
+        <tbody><tr v-for="(row, i) in whoDoesWhat" :key="i"><td>{{ row.who }}</td><td>{{ row.when }}{{ row.conditional ? ' (if…)' : '' }}</td><td>{{ row.does }}</td></tr></tbody>
+      </table>
     </section>
     <section v-if="parts.length">
       <h4 class="head" @click="toggle('__design')">
@@ -137,6 +166,8 @@ function tags(r: SystemRecord): string[] {
 </template>
 
 <style scoped>
+.who { width: 100%; border-collapse: collapse; }
+.who th, .who td { text-align: left; padding: 3px 6px; border-top: 1px solid #2a2a3a; vertical-align: top; }
 .systems {
   display: flex;
   flex-direction: column;

@@ -35,6 +35,7 @@
 #include <functional>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <set>
 
 namespace aige {
@@ -2367,9 +2368,31 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
     const auto previous = PlaceEntities(registry, options.place);
     std::string previousText = SerializeEntities(registry, previous);
     std::vector<Entity> replaced;
+    // What a copy was given by hand (its moving parts, its building's ways in, solids and stairs) stays when it's built
+    // again with the same picture: its background painted anew doesn't take its doors.
+    struct HandMade {
+        std::string texture;
+        std::optional<AnimatedPart> part;
+        bool ownPart = false;
+        std::string stairs, solids, entries;
+    };
+    std::map<std::string, HandMade> handMade;
     for (Entity e : previous) {
         const auto& n = registry.get<PlaceNode>(e);
-        if (!Kept(options, n.node, n.statement)) replaced.push_back(e);
+        if (Kept(options, n.node, n.statement)) continue;
+        replaced.push_back(e);
+        HandMade kept;
+        if (const auto* sprite = registry.try_get<Sprite>(e)) kept.texture = sprite->texture;
+        if (const auto* interior = registry.try_get<Interior>(e)) {
+            if (!interior->exteriorTexture.empty()) kept.texture = interior->exteriorTexture;
+            kept.stairs = interior->stairs, kept.solids = interior->solids, kept.entries = interior->entries;
+        }
+        const auto* link = registry.try_get<PrefabInstance>(e);
+        if (const auto* part = registry.try_get<AnimatedPart>(e); part && (!link || link->overrides.find("AnimatedPart.") != std::string::npos)) {
+            kept.part = *part;
+            kept.ownPart = true;
+        }
+        if (kept.part || !kept.stairs.empty() || !kept.solids.empty() || !kept.entries.empty()) handMade[n.statement] = kept;
     }
     registry.destroy(replaced.begin(), replaced.end());
 
@@ -3056,6 +3079,30 @@ std::unique_ptr<EditCommand> BuildPlaceScene(Registry& registry, PrefabLibrary& 
     // Furniture characters use (14.3): beds, chairs, counters, forges become smart
     // objects their routines find by type and affordance.
     out["smartObjects"] = WireSmartObjects(registry, assetPlan, options);
+    for (Entity e : PlaceEntities(registry, options.place)) {
+        const auto it = handMade.find(registry.get<PlaceNode>(e).statement);
+        if (it == handMade.end()) continue;
+        const auto* sprite = registry.try_get<Sprite>(e);
+        const auto* interior = registry.try_get<Interior>(e);
+        const std::string texture = interior && !interior->exteriorTexture.empty() ? interior->exteriorTexture : sprite ? sprite->texture : std::string();
+        if (texture != it->second.texture) continue; // other art: its boxes wouldn't fit
+        if (it->second.part) {
+            registry.emplace_or_replace<AnimatedPart>(e, *it->second.part);
+            for (const char* f : {"sheet", "x", "y", "width", "height", "opens", "trigger", "prompt", "door", "floor", "locked", "key", "consumeKey", "more"}) {
+                RecordOverride(registry, e, "AnimatedPart", f);
+            }
+        }
+        if (auto* own = registry.try_get<Interior>(e)) {
+            auto keep = [&](std::string& field, const std::string& value, const char* name) {
+                if (value.empty() || field == value) return;
+                field = value;
+                RecordOverride(registry, e, "Interior", name);
+            };
+            keep(own->stairs, it->second.stairs, "stairs");
+            keep(own->solids, it->second.solids, "solids");
+            keep(own->entries, it->second.entries, "entries");
+        }
+    }
     if (report) *report = out;
     auto build = std::make_unique<CompoundCommand>("Build " + options.place);
     build->Add(std::make_unique<TileLayerCommand>(std::vector<TileLayerEdit>{edit}, "Ground of " + options.place));

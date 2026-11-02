@@ -217,8 +217,9 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("buyRate", &Merchant::buyRate, "The player pays an item's value times this.").Range(0, 100).Scalable("price")
         .Field("sellRate", &Merchant::sellRate, "The player gets an item's value times this.").Range(0, 100).Scalable("loot")
         .DependsOn({"WorldTransform2D"});
-    r.Component<Interactable>("Interactable", "Used with the interact action (13.5): a lever, a sign, a bed, a locked "
+    r.Component<Interactable>("Interactable", "One kind of Reaction. Used with the interact action (13.5): a lever, a sign, a bed, a locked "
                                               "door or chest. Door, Container, Merchant and ItemPickup add what happens.")
+        .Label("Reaction: Door, Chest, Sign")
         .Field("verb", &Interactable::verb, "The prompt's verb: Open, Read, Pull, Sleep.")
         .Field("name", &Interactable::name, "What it's called on the prompt (empty: its Name).")
         .Field("range", &Interactable::range, "How close the player must be, in cells.").Range(0.3, 10)
@@ -261,6 +262,11 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("text", &Action::text, "Shown when it happens.")
         .Field("if", &Action::conditions, "Conditions, as dialogue's JSON ([{\"flag\": \"met_mira\"}, {\"item\": \"potion\", \"count\": 2}]): it happens only if they hold.")
         .Field("do", &Action::doEffects, "Effects, as dialogue's JSON ([{\"op\": \"set_flag\", \"flag\": \"x\"}, {\"op\": \"open_screen\", \"screen\": \"inventory\"}]): run when it happens.")
+        .Field("duration", &Action::duration, "Seconds it lasts (0: at once): what it gives, becomes and its end come after.").Min(0.0f)
+        .Field("untilAnimation", &Action::untilAnimation, "It lasts as long as its animations (or duration, if longer).")
+        .Field("end", &Action::doEnd, "Effects, as do's: run when it's over.")
+        .Field("interrupted", &Action::doInterrupted, "Effects, as do's: run if it's cut short (its user hit or gone, a cutscene).")
+        .Field("refund", &Action::refund, "Cut short: what it took is given back.")
         .Field("accepts", &Action::accepts, "Items, one of which the player must have in hand: key, lockpick. Other users just carry one.")
         .Field("station", &Action::station, "A crafting station (stove): using it opens the Crafting list with this station's recipes.")
         .Field("once", &Action::once, "Works only once.")
@@ -269,6 +275,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
     r.Component<AnimatedPart>("AnimatedPart", "A part of its picture that moves on its own (a door, a window, a sign): drawn "
                                               "over the box it came from, playing its clip when someone comes near and its "
                                               "close clip when they leave. Build ▸ Animate makes them; or right-click ▸ Animate a part…")
+        .Label("Reaction: Moving Part")
         .Field("sheet", &AnimatedPart::sheet, "Its animation sheet (assets/.../<name>.anim.json).")
         .Field("x", &AnimatedPart::x, "The box's middle across, in pixels of this thing's picture.")
         .Field("y", &AnimatedPart::y, "The box's middle down, in pixels of this thing's picture.")
@@ -294,6 +301,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("holdsPlayer", &AnimatedPart::holdsPlayer, "The player can't move while it's active (until it shuts).")
         .Field("if", &AnimatedPart::conditions, "Conditions, as dialogue's JSON ([{\"flag\": \"met_mira\"}, {\"item\": \"potion\", \"count\": 2}]): the player can activate it only while they hold.")
         .Field("do", &AnimatedPart::doEffects, "Effects, as dialogue's JSON ([{\"op\": \"set_flag\", \"flag\": \"x\"}, {\"op\": \"open_screen\", \"screen\": \"inventory\"}]): run each time the player activates it.")
+        .Field("end", &AnimatedPart::doEnd, "Effects, as do's: run when it stops.")
         .Field("floor", &AnimatedPart::floor, "Which picture it moves on: 0 the outside, k its interior's floor k (shown only "
                "while that floor shows).").Min(0)
         .Field("door", &AnimatedPart::door, "A doorway of its building: a way in, blocked while shut (a window or a lever isn't).")
@@ -318,6 +326,11 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("key", &DoorPart::key, "The item that unlocks it (empty: it can't be opened).")
         .Field("consumeKey", &DoorPart::consumeKey, "The key is used up unlocking it.")
         .DependsOn({"WorldTransform2D"});
+    r.Component<Responses>("Responses", "What this character does when something happens, as many as it needs: quest stages, "
+                                        "events, the player's actions (docs/systems/actions.md).")
+        .Label("Reaction: Character Rules")
+        .Field("rules", &Responses::rules, "A JSON list of {\"event\", \"if\", \"do\", \"clip\", \"says\", \"range\", \"once\"}. "
+               "event: any event's name, quest:<id>:<stage>, or action:<name> for the player's input action.");
     r.Component<Ramp>("Ramp", "Characters walk between heights here: stairs, a ramp, a ladder. Elsewhere a cliff (a step much "
                               "higher or lower than where one stands) can't be walked up or down.")
         .Field("rise", &Ramp::rise, "How high it climbs, in pixels (informative; 0: any).").Min(0)

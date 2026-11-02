@@ -24,7 +24,9 @@ struct Recipe {
     std::string effect;   // an effect played on the player
     std::string text;     // shown when it's made
     std::string conditions; // "if": JSON, as dialogue's
-    std::string doEffects;  // "do": JSON, as dialogue's
+    std::string doEffects;  // "do": JSON, as dialogue's: run when it's made
+    std::string doStart;    // "start": run when it's begun (with seconds)
+    std::string doInterrupted; // "interrupted": run if it's cut short (the player hit, a cutscene): its inputs are given back
 };
 
 Recipe RecipeFromJson(const std::string& id, const nlohmann::json& data);

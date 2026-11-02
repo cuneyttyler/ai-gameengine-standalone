@@ -233,6 +233,9 @@ private:
     std::vector<std::string> HandleCharacter(Job& job, const nlohmann::json& character, const std::string& decision);
     std::vector<std::string> HandleQuests(Job& job, const nlohmann::json& quests, const std::string& decision);
     std::vector<std::string> HandlePlace(Job& job, const nlohmann::json& place, const std::string& decision);
+    void QueueDesigns(); // after the features: each system's design, the data, each character's behaviour plan
+    std::vector<std::string> HandleSystem(Job& job, const nlohmann::json& system, const std::string& decision);
+    std::vector<std::string> HandleBehaviour(Job& job, const nlohmann::json& plan, const std::string& decision);
     std::vector<std::string> HandleGameplay(Job& job, const nlohmann::json& systems, const std::string& decision);
     std::vector<std::string> HandleSystems(Job& job, const nlohmann::json& systems, const std::string& decision);
     std::vector<std::string> HandleVisuals(Job& job, const nlohmann::json& ui, const std::string& decision);

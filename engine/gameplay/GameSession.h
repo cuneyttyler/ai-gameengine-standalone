@@ -132,7 +132,8 @@ public:
     }
     // A thing's "if" and "do": JSON, as dialogue's. Text that isn't a JSON list doesn't hold.
     bool ConditionsHold(const std::string& conditions) const;
-    void RunEffects(const std::string& effects);
+    // `self`: the one "push_package" and the like act on when they name no one.
+    void RunEffects(const std::string& effects, Entity self = entt::null);
 
     struct ScriptError {
         Entity entity;
@@ -419,14 +420,28 @@ private:
     void StepHeldItem(); // before anything reads this frame's presses: the item in hand used, put back
     std::optional<Entity> HeldItemTarget() const; // the nearest thing in range that takes the item in hand
     void FinishCraft(const std::string& recipe);
+    void RunResponses(const ScriptEvent& event); // each character's rules for it
+    std::optional<Entity> EntityNamed(const std::string& name) const;
+    Entity effectSelf_ = entt::null;
     std::string held_; // the item in the player's hand
     std::optional<std::pair<float, float>> requestedHeld_; // a click's scene point, with an item in hand
     std::optional<std::string> requestedPanel_; // inventory, crafting (crafting:<station>), spellbook, journal
     struct PendingCraft {
         std::string recipe;
         float seconds = 0.0f;
+        float health = -1.0f; // the player's when it began: hit, it's cut short
     };
     std::vector<PendingCraft> pendingCrafts_;
+    struct PendingReaction { // a Reaction that takes time
+        Entity target{entt::null}, user{entt::null};
+        float seconds = 0.0f;
+        float health = -1.0f;
+    };
+    std::vector<PendingReaction> pendingReactions_;
+    void StepTimedThings(float dt);
+    void GiveReactionItems(Entity user, Entity target, const Action& action);
+    float HealthOf(Entity entity) const;
+    std::map<std::pair<Entity, size_t>, bool> partWasOpen_; // each part's last state: its stages' events
     // How near the player the nearest thing an action activates is (a part with it as its input action, or opened by
     // it as a door shortcut; a thing's Action; for interact, an Interactable): within its range, else 1e9.
     // ownParts: only parts with it as their input action (they play the player's clip for it).

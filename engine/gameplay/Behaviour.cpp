@@ -816,6 +816,7 @@ bool PackageHolds(const nlohmann::json& package, const AiContext& context, Entit
             condition.quest = c.value("quest", std::string());
             condition.questState = c.value("questState", std::string("active"));
             if (!condition.flag.empty() || !condition.quest.empty()) conditions.push_back(condition);
+            else for (auto& other : StoryConditionsFromJson(nlohmann::json::array({c}))) conditions.push_back(other); // the rest dialogue has: items, time, factions...
         }
         if (!context.story->Holds(conditions)) return false;
     }

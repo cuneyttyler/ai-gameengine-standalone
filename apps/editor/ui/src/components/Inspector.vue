@@ -12,6 +12,8 @@ import { onHostMessage, sendToHost } from '../ipc'
 import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
 import InteriorEditor from './InteriorEditor.vue'
 import ActionPicker from './ActionPicker.vue'
+import RulesEditor from './RulesEditor.vue'
+import CharacterRulesEditor from './CharacterRulesEditor.vue'
 import PartActiveFields from './PartActiveFields.vue'
 import { difficultyView, showTab } from '../paneltabs'
 
@@ -154,7 +156,7 @@ function savePrefab(): void {
 }
 
 // AnimatedPart: which of its parts is shown (0: the component's own fields; k: the k-th of "more"), all edited with one form.
-interface MorePart { if: string; do: string; clip: string; closeClip: string; x: number; y: number; width: number; height: number; opens: string; trigger: string; prompt: string; fires: string; sheet: string; duration: number; playerClip: string; playerLoop: boolean; holdsPlayer: boolean; range: number; locked: boolean; key: string; consumeKey: boolean; door: boolean; floor: number }
+interface MorePart { if: string; do: string; end: string; clip: string; closeClip: string; x: number; y: number; width: number; height: number; opens: string; trigger: string; prompt: string; fires: string; sheet: string; duration: number; playerClip: string; playerLoop: boolean; holdsPlayer: boolean; range: number; locked: boolean; key: string; consumeKey: boolean; door: boolean; floor: number }
 const partShown = ref(0)
 const partsField = (component: { fields: FieldData[] }) => component.fields.find((f) => f.name === 'more')
 function moreParts(component: { fields: FieldData[] }): MorePart[] {
@@ -183,15 +185,6 @@ function setPart(component: { fields: FieldData[] }, key: keyof MorePart, value:
   if (!field || !list[k - 1]) return
   list[k - 1]![key] = value
   setField('AnimatedPart', field, JSON.stringify(list))
-}
-// An "if" or "do": empty, or a JSON list (else it never holds, and does nothing).
-function jsonListOk(text: string | undefined): boolean {
-  if (!text) return true
-  try {
-    return Array.isArray(JSON.parse(text))
-  } catch {
-    return false
-  }
 }
 // Its picture and clips (where it sits on the picture, what it plays): rarely changed by hand.
 const partPlacement: { key: keyof MorePart; number?: boolean }[] = [
@@ -434,15 +427,17 @@ function numberFrom(event: Event): number {
               <input type="checkbox" :checked="partOf(component).door" :disabled="editorState.playing"
                      @change="setPart(component, 'door', ($event.target as HTMLInputElement).checked)" />
             </div>
-            <div class="field-row">
-              <label title='It can be activated only while these hold, as dialogue&apos;s conditions: [{"flag": "met_mira"}, {"item": "potion", "count": 2}]'>if</label>
-              <input :class="{ bad: !jsonListOk(partOf(component).if) }" :value="partOf(component).if ?? ''" spellcheck="false" :disabled="editorState.playing" placeholder="always"
-                     @change="setPart(component, 'if', ($event.target as HTMLInputElement).value)" />
+            <div class="rule-block" title="It can be activated only while these hold">
+              <label>Only if</label>
+              <RulesEditor :key="partIndex(component) + 'if'" mode="if" :value="partOf(component).if" :disabled="editorState.playing" @update="setPart(component, 'if', $event)" />
             </div>
-            <div class="field-row">
-              <label title='Run each time the player activates it, as dialogue&apos;s effects: [{"op": "set_flag", "flag": "x"}]'>do</label>
-              <input :class="{ bad: !jsonListOk(partOf(component).do) }" :value="partOf(component).do ?? ''" spellcheck="false" :disabled="editorState.playing" placeholder="nothing more"
-                     @change="setPart(component, 'do', ($event.target as HTMLInputElement).value)" />
+            <div class="rule-block" title="Run each time the player activates it">
+              <label>When activated</label>
+              <RulesEditor :key="partIndex(component) + 'do'" mode="do" :value="partOf(component).do" :disabled="editorState.playing" @update="setPart(component, 'do', $event)" />
+            </div>
+            <div class="rule-block" title="Run when it stops: used again, its duration over, or left">
+              <label>When it stops</label>
+              <RulesEditor :key="partIndex(component) + 'end'" mode="do" :value="partOf(component).end" :disabled="editorState.playing" @update="setPart(component, 'end', $event)" />
             </div>
             <details class="part-placement">
               <summary>Picture and clips</summary>
@@ -499,7 +494,21 @@ function numberFrom(event: Event): number {
                   ↺
                 </button>
               </label>
+              <RulesEditor
+                v-if="['Action', 'Interactable'].includes(component.name) && ['if', 'do', 'end', 'interrupted'].includes(field.name)"
+                :mode="field.name === 'if' ? 'if' : 'do'"
+                :value="field.value"
+                :disabled="editorState.playing"
+                @update="setField(component.name, field, $event)"
+              />
+              <CharacterRulesEditor
+                v-else-if="component.name === 'Responses' && field.name === 'rules'"
+                :value="field.value"
+                :disabled="editorState.playing"
+                @update="setField(component.name, field, $event)"
+              />
               <FieldEditor
+                v-else
                 :field="field"
                 :choices="current.choices"
                 :disabled="component.derived"
@@ -709,8 +718,11 @@ header {
   opacity: 1;
   border-color: #ef4444;
 }
-input.bad {
-  border-color: #ef4444;
+.rule-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px 0;
 }
 .part-placement summary {
   cursor: pointer;

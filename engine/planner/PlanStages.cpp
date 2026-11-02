@@ -254,7 +254,7 @@ std::string GamePlan::PathFor(const Job& job) const {
     static const std::map<std::string, std::string> paths = {
         {"interpret", "/planner/concept"}, {"outline", "/planner/outline"}, {"act", "/planner/act"},
         {"scene", "/planner/scene"},       {"critic", "/planner/critic"},   {"character", "/planner/character"},
-        {"quests", "/planner/quests"},     {"quest", "/planner/quests"},    {"place", "/planner/place"},     {"gameplay", "/planner/gameplay"}, {"systems", "/planner/systems"},
+        {"quests", "/planner/quests"},     {"quest", "/planner/quests"},    {"place", "/planner/place"},     {"gameplay", "/planner/gameplay"}, {"system", "/planner/system"}, {"behaviour", "/planner/behaviour"}, {"systems", "/planner/systems"},
         {"visuals", "/planner/visuals"},   {"review", "/planner/review"},   {"revise", "/planner/revise"}};
     auto it = paths.find(job.kind);
     return it == paths.end() ? "" : it->second;
@@ -495,18 +495,56 @@ json GamePlan::RequestBody(const Job& job) {
         json characters = json::array(), quests = json::array(), places = json::array();
         for (const auto& doc : store_.List("characters")) {
             const json c = store_.Read(doc).value_or(json::object());
-            characters.push_back({{"name", c.value("name", "")}, {"gameplay", c.value("gameplay", json::object())}});
+            characters.push_back({{"name", c.value("name", json())}, {"gameplay", c.value("gameplay", json::object())}});
         }
         for (const auto& doc : store_.List("quests")) {
             const json q = store_.Read(doc).value_or(json::object());
-            quests.push_back({{"name", q.value("name", "")}, {"description", q.value("description", "")}});
+            quests.push_back({{"name", q.value("name", json())}, {"description", q.value("description", json())}});
         }
         for (const auto& doc : store_.List("places")) {
             const json p = store_.Read(doc).value_or(json::object());
-            places.push_back(p.value("name", doc));
+            places.push_back(p.value("name", json(doc)));
         }
         return {{"brief", brief}, {"mechanics", mechanics}, {"count", ranges.value(mechanics, json::array({4, 7}))},
                 {"characters", characters}, {"quests", quests}, {"places", places}};
+    }
+    if (job.kind == "system" || job.kind == "behaviour") {
+        // What's known of the game: its quests with their stages, its places, its systems as designed so far.
+        json quests = json::array(), places = json::array(), systems = json::array(), people = json::array();
+        for (const auto& doc : store_.List("quests")) {
+            const json q = store_.Read(doc).value_or(json::object());
+            json stages = json::array(), journal = json::array();
+            for (const auto& s : q.value("stages", json::array())) {
+                stages.push_back(s.value("index", json()));
+                journal.push_back(s.value("journal", json()));
+            }
+            quests.push_back({{"id", q.value("id", json())}, {"name", q.value("name", json())}, {"giver", q.value("giver", json())}, {"stages", stages}, {"journal", journal}});
+        }
+        for (const auto& doc : store_.List("places")) places.push_back(store_.Read(doc).value_or(json::object()).value("name", json(PlanSlug(doc))));
+        for (const auto& doc : store_.List("characters")) {
+            const json c = store_.Read(doc).value_or(json::object());
+            people.push_back({{"id", c.value("id", json())}, {"name", c.value("name", json())}, {"home", c.value("home", json())}, {"line", c.value("line", json())}});
+        }
+        const json features = store_.Read("gameplay").value_or(json::object()).value("features", json::array());
+        for (const auto& f : features) {
+            const json d = store_.Read("systemdesigns/" + PlanSlug(Text(f, "id"))).value_or(json::object());
+            json sends = json::array(), actions = json::array();
+            for (const auto& s : d.value("sends", json::array())) sends.push_back(Text(s, "event"));
+            for (const auto& a : d.value("actions", json::array())) actions.push_back(Text(a, "name"));
+            systems.push_back({{"id", f.value("id", json())}, {"name", f.value("name", json())}, {"howItPlays", f.value("howItPlays", json())},
+                               {"rules", d.value("rules", json::array())}, {"sends", sends}, {"actions", actions}});
+        }
+        if (job.kind == "system") {
+            json feature = json::object();
+            for (const auto& f : features) {
+                if (PlanSlug(Text(f, "id")) == PlanSlug(job.subject)) feature = f;
+            }
+            return {{"brief", brief}, {"feature", feature}, {"systems", systems}, {"quests", quests}, {"places", places}, {"characters", people}};
+        }
+        const json character = store_.Read("characters/" + PlanSlug(job.subject)).value_or(json::object());
+        return {{"brief", brief}, {"character", character}, {"systems", systems}, {"quests", quests}, {"places", places},
+                {"characters", people}, {"packageTemplates", host_.catalog.value("packageTemplates", json::array())},
+                {"engineEvents", json::array({"quest_started", "quest_completed", "quest_failed", "item_used", "item_combined", "crafted", "interact", "level_up"})}};
     }
     if (job.kind == "systems") {
         json characters = json::array();
@@ -520,7 +558,11 @@ json GamePlan::RequestBody(const Job& job) {
             quests.push_back({{"id", q.value("id", "")}, {"level", q.value("level", json())}, {"rewards", q.value("rewards", json::array())}});
         }
         return {{"brief", brief}, {"characters", characters}, {"quests", quests},
-                {"features", store_.Read("gameplay").value_or(json::object()).value("features", json::array())},
+                {"features", [&] {
+                     json out = store_.Read("gameplay").value_or(json::object()).value("features", json::array());
+                     for (auto& f : out) f["design"] = store_.Read("systemdesigns/" + PlanSlug(Text(f, "id"))).value_or(json::object());
+                     return out;
+                 }()},
                 {"recordTypes", host_.catalog.value("recordTypes", json::object())},
                 {"abilities", host_.catalog.value("abilities", json::array())}, {"effects", host_.catalog.value("effects", json::array())}};
     }
@@ -713,6 +755,8 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
     if (job.kind == "quests" || job.kind == "quest") return HandleQuests(job, body.value("quests", json::array()), rationale);
     if (job.kind == "place") return HandlePlace(job, body.value("place", json::object()), rationale);
     if (job.kind == "gameplay") return HandleGameplay(job, body.value("gameplay", json::object()), rationale);
+    if (job.kind == "system") return HandleSystem(job, body.value("system", json::object()), rationale);
+    if (job.kind == "behaviour") return HandleBehaviour(job, body.value("plan", json::object()), rationale);
     if (job.kind == "systems") return HandleSystems(job, body.value("systems", json::object()), rationale);
     if (job.kind == "visuals") return HandleVisuals(job, body.value("ui", json::object()), rationale);
     if (job.kind == "revise") {
@@ -776,7 +820,7 @@ std::vector<std::string> GamePlan::HandleOutline(Job&, const json& outline, cons
         };
         int major = 0, supporting = 0, minor = 0, companions = 0;
         for (const auto& c : outline.value("cast", json::array())) {
-            const std::string importance = c.value("importance", "");
+            const std::string importance = Text(c, "importance");
             major += importance == "major";
             supporting += importance == "supporting";
             minor += importance == "minor" || importance == "extra";
@@ -1836,6 +1880,62 @@ std::vector<std::string> GamePlan::HandleGameplay(Job&, const json& answer, cons
     doc["rationale"] = rationale;
     // Stale only when the Brief changes: a quest edited doesn't put a design of the game's mechanics in question.
     store_.Write("gameplay", doc, store_.Decide(d), {"brief"});
+    QueueDesigns();
+    return {};
+}
+
+void GamePlan::QueueDesigns() {
+    // Each system worked out; the data knowing them; then each character, knowing what the systems send. How many
+    // characters follows the Brief's Gameplay mechanics: the major ones, and the supporting, and everyone.
+    std::vector<std::string> designs;
+    for (const auto& f : store_.Read("gameplay").value_or(json::object()).value("features", json::array())) {
+        const std::string id = PlanSlug(Text(f, "id"));
+        if (!id.empty() && !store_.Locked("systemdesigns/" + id)) designs.push_back(AddJob("system", id));
+    }
+    std::vector<std::string> data;
+    if (!store_.Locked("systems")) data.push_back(AddJob("systems", "systems", designs));
+    else data = designs;
+    const json extent = BriefGet(Brief(), "mechanics");
+    const std::string mechanics = extent.is_string() ? extent.get<std::string>() : "medium";
+    for (const auto& doc : store_.List("characters")) {
+        const json c = store_.Read(doc).value_or(json::object());
+        const std::string importance = Text(c, "importance");
+        const bool wanted = mechanics == "extensive" || importance == "major" || (mechanics == "medium" && importance == "supporting");
+        if (wanted && !store_.Locked("behaviours/" + PlanSlug(doc))) AddJob("behaviour", PlanSlug(doc), data);
+    }
+}
+
+std::vector<std::string> GamePlan::HandleSystem(Job& job, const json& answer, const std::string& rationale) {
+    PlanDecision d;
+    d.stage = "systems";
+    d.actor = "ai";
+    d.kind = "design-system";
+    d.subject = job.subject;
+    d.chosen = std::to_string(answer.value("rules", json::array()).size()) + " rules, " + std::to_string(answer.value("steps", json::array()).size()) + " steps";
+    d.rationale = rationale;
+    json doc = answer.is_object() ? answer : json::object();
+    doc["schema"] = "aige.system-design/1";
+    doc["subject"] = job.subject;
+    doc["rationale"] = rationale;
+    store_.Write("systemdesigns/" + PlanSlug(job.subject), doc, store_.Decide(d), {"gameplay"});
+    return {};
+}
+
+std::vector<std::string> GamePlan::HandleBehaviour(Job& job, const json& answer, const std::string& rationale) {
+    PlanDecision d;
+    d.stage = "systems";
+    d.actor = "ai";
+    d.kind = "plan-behaviour";
+    d.subject = job.subject;
+    d.chosen = std::to_string(answer.value("behaviour", json::array()).size()) + " entries";
+    d.rationale = rationale;
+    json doc = answer.is_object() ? answer : json::object();
+    doc["schema"] = "aige.behaviour-plan/1";
+    doc["subject"] = job.subject;
+    doc["rationale"] = rationale;
+    std::vector<std::string> inputs = {"gameplay", "characters/" + PlanSlug(job.subject)};
+    for (const auto& q : store_.List("quests")) inputs.push_back(q);
+    store_.Write("behaviours/" + PlanSlug(job.subject), doc, store_.Decide(d), inputs);
     return {};
 }
 
@@ -1998,6 +2098,50 @@ void GamePlan::BuildReport(const json& review) {
         for (const auto& r : q.value("rewards", json::array())) {
             const std::string item = PlanSlug(r.value("item", ""));
             if (!item.empty() && !items.contains(item)) add("X-item", "warning", q.value("id", ""), "reward item '" + item + "' has no record (⑦)", {{"addItem", item}});
+        }
+    }
+    // The event map: what each character responds to is sent by something, and what they'd start doing exists.
+    {
+        std::set<std::string> sent = {"quest_started", "quest_completed", "quest_failed", "item_used", "item_combined", "crafted", "interact", "level_up"}, actions;
+        for (const auto& doc : store_.List("systemdesigns")) {
+            const json design = store_.Read(doc).value_or(json::object());
+            for (const auto& s : design.value("sends", json::array())) sent.insert(Text(s, "event"));
+            for (const auto& a : design.value("actions", json::array())) actions.insert(Text(a, "name"));
+        }
+        for (const auto& doc : store_.List("behaviours")) {
+            for (const auto& e : store_.Read(doc).value_or(json::object()).value("behaviour", json::array())) {
+                const json does = e.value("does", json::object());
+                if (does.is_object() && !Text(does, "sends").empty()) sent.insert(Text(does, "sends"));
+            }
+        }
+        for (const auto& doc : store_.List("behaviours")) {
+            const json plan = store_.Read(doc).value_or(json::object());
+            const std::string who = Text(plan, "character").empty() ? PlanSlug(doc) : Text(plan, "character");
+            std::set<std::string> packages;
+            for (const auto& p : plan.value("packages", json::array())) packages.insert(Text(p, "id"));
+            auto problem = [&](const std::string& message) {
+                add("X-behaviour", "error", plan.value("subject", PlanSlug(doc)), who + ": " + message, {{"make", {{"kind", "behaviour"}, {"subject", plan.value("subject", PlanSlug(doc))}}}});
+            };
+            for (const auto& e : plan.value("behaviour", json::array())) {
+                const json when = e.value("when", json::object()), does = e.value("does", json::object());
+                if (when.contains("quest")) {
+                    const json q = store_.Read("quests/" + when.value("quest", std::string())).value_or(json::object());
+                    const json stages = q.value("stages", json::array());
+                    const int stage = when.value("stage", 0);
+                    if (std::none_of(stages.begin(), stages.end(), [&](const json& s) { return s.value("index", -1) == stage; })) {
+                        problem("no stage " + std::to_string(stage) + " in quest " + when.value("quest", std::string()));
+                    }
+                } else if (when.contains("playerAction")) {
+                    if (!actions.contains(when.value("playerAction", std::string()))) problem("no system has the action " + when.value("playerAction", std::string()));
+                } else if (!sent.contains(when.value("event", std::string()))) {
+                    problem("nothing sends the event " + when.value("event", std::string()));
+                }
+                for (const char* key : {"package", "stops"}) {
+                    if (does.is_object() && !does.value(key, std::string()).empty() && !packages.contains(does.value(key, std::string()))) {
+                        problem(does.value(key, std::string()) + " isn't one of their packages");
+                    }
+                }
+            }
         }
     }
     if (!BriefGet(brief, "systems.abilities.on").is_boolean() || !BriefGet(brief, "systems.abilities.on").get<bool>()) {

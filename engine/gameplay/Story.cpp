@@ -15,10 +15,10 @@ namespace {
 const std::set<std::string> kEffectOps = {"set_flag",   "clear_flag", "start_quest", "complete_quest", "complete_objective",
                                           "fail_quest", "set_stage",  "set_var",     "add_var",        "give_item",
                                           "take_item",  "give_gold",  "give_xp",     "reputation",     "play_cutscene",
-                                          "open_screen", "close_screen"};
+                                          "open_screen", "close_screen", "push_package", "pop_package", "say", "send_event"};
 // Effects only the game can carry out (StoryState::TakeWorldEffects).
 const std::set<std::string> kWorldOps = {"give_item", "take_item", "give_gold", "give_xp", "reputation", "play_cutscene",
-                                         "open_screen", "close_screen"};
+                                         "open_screen", "close_screen", "push_package", "pop_package", "say", "send_event"};
 const std::set<std::string> kObjectiveTypes = {"defeat", "talk", "collect", "reach", "deliver", "use", "examine",
                                                "have", "survive", "defend", "escort"};
 const std::set<std::string> kQuestStates = {"inactive", "active", "completed", "failed"};
@@ -74,13 +74,14 @@ std::vector<StoryEffect> EffectsFromJson(const nlohmann::json& list) {
         StoryEffect effect;
         effect.op = item.value("op", "");
         // The name: whichever of these the op uses.
-        for (const char* key : {"flag", "quest", "var", "item", "faction", "cutscene", "screen"}) {
+        for (const char* key : {"flag", "quest", "var", "item", "faction", "cutscene", "screen", "package", "text", "event"}) {
             if (item.contains(key) && item[key].is_string()) {
                 effect.name = item[key].get<std::string>();
                 break;
             }
         }
         effect.objective = item.value("objective", "");
+        effect.who = item.value("who", "");
         effect.stage = item.value("stage", 0);
         if (item.contains("value")) effect.value = item["value"];
         else if (item.contains("count")) effect.value = item["count"];
@@ -99,11 +100,15 @@ nlohmann::json EffectsToJson(const std::vector<StoryEffect>& effects) {
                           : e.op == "reputation"                         ? "faction"
                           : e.op == "play_cutscene"                      ? "cutscene"
                           : e.op == "open_screen" || e.op == "close_screen" ? "screen"
+                          : e.op == "push_package" || e.op == "pop_package" ? "package"
+                          : e.op == "say"                                ? "text"
+                          : e.op == "send_event"                         ? "event"
                           : e.op == "give_gold" || e.op == "give_xp"     ? nullptr
                                                                          : "quest";
         nlohmann::json item = {{"op", e.op}};
         if (key) item[key] = e.name;
         if (!e.objective.empty()) item["objective"] = e.objective;
+        if (!e.who.empty()) item["who"] = e.who;
         if (e.op == "set_stage") item["stage"] = e.stage;
         if (!e.value.is_null()) {
             const char* as = e.op == "give_item" || e.op == "take_item" ? "count"
@@ -460,6 +465,9 @@ void CheckEffects(std::vector<std::string>& problems, const std::string& where, 
                                : effect.op == "reputation"                  ? "a faction"
                                : effect.op == "play_cutscene"               ? "a cutscene"
                                : effect.op.find("screen") != std::string::npos ? "a screen"
+                               : effect.op.find("package") != std::string::npos ? "a package"
+                               : effect.op == "say"                         ? "text"
+                               : effect.op == "send_event"                  ? "an event"
                                                                             : "an item";
             problems.push_back(where + ": " + effect.op + " needs " + what);
         }

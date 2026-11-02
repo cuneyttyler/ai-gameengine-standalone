@@ -151,7 +151,7 @@ TEST(PlannerTest, AnEditRegeneratesOnlyWhatDependsOnIt) {
     const size_t before = p.service.paths.size();
     ASSERT_EQ(p.plan->RegenerateStale(), "");
     std::set<std::string> asked(p.service.paths.begin() + static_cast<long>(before), p.service.paths.end());
-    EXPECT_EQ(asked, (std::set<std::string>{"/planner/quests", "/planner/systems"}));
+    EXPECT_EQ(asked, (std::set<std::string>{"/planner/behaviour", "/planner/quests", "/planner/systems"}));
     p.service.Drive(*p.plan);
     // A locked document is never regenerated.
     ASSERT_EQ(p.plan->Lock("places/crypt", true), "");

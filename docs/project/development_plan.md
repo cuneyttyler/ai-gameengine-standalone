@@ -2995,7 +2995,7 @@ through its door and sees its rooms, and walks out again; a pair kept in the lib
 
 ## Phase 28 — Actions, reactions and items, for designers (`docs/systems/actions.md`)
 
-Written, not yet compiled or tried: several items required, `if` and `do`, opening panels without scripts, recipes, the
+**Status (2026-11-02): built, to be tried** (tests pass with a fake AI; no live AI run yet). Built: several items required, `if` and `do`, opening panels without scripts, recipes, the
 item in hand, the Crafting list, clicks on the game's windows, the Reaction name.
 
 Also written: the Brief's Gameplay mechanics, and ⑦ Systems designing gameplay features that ⑫ sets up through the AI
@@ -3009,6 +3009,9 @@ panel (`docs/ai/ai-planner.md` §5.7).
 - **The event map checked**: every event listened to is sent by something; every quest stage's actors exist; nothing a character does names a package, clip or item that doesn't exist. Errors go back for repair.
 - **Depth follows Gameplay mechanics**: small, medium or extensive sets how many, and how much AI use a plan costs.
 - **Needs NPC behaviour without scripts** (step 3 below) first, and quests that can change what a character does.
+
+**One concept for designers, as far as it goes**: Reaction, Moving Part, Door/Chest/Sign and Character Rules are named as
+one family in the Inspector; they're still separate components underneath (merging them means migrating saved scenes).
 
 In this order:
 

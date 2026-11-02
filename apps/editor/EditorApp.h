@@ -704,7 +704,10 @@ private:
     void StepPlannerFeature();
     void FinishPlannerFeature(const std::string& status);
     bool IsPlannerFeature(const std::string& instruction);
-    std::string plannerFeature_, plannerFeatureStatus_; // the plan's feature the AI panel is setting up (plannerBuildMutex_)
+    std::string plannerFeature_, plannerFeatureStatus_, plannerFeatureScene_; // the plan's feature the AI panel is setting up (plannerBuildMutex_)
+    std::string sceneBeforeFeatures_; // open again when they're done
+    bool featuresEnded_ = false;      // (plannerBuildMutex_)
+    bool forceOpenScene_ = false;     // OpenScene reads the file again, asking nothing
     // The build's heavy steps (planning, laying out: half a minute for a city) run off
     // the UI thread, one at a time (7.10). Nothing else touches build_ meanwhile: its
     // AI answers wait in buildDeferred_, the panel shows the last state as busy.

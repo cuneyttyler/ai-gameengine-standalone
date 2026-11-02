@@ -543,9 +543,7 @@ it (the Brief's Gameplay mechanics setting). Each feature:
 - description: what it is, for the designer, in a sentence or two; howItPlays: what the player does, step by step;
 - uses: which of the engine's mechanics it's built from; needs: the places, items and characters it relies on, by name;
 - needsScript: true only if the engine can't do it without a script;
-- buildRequest: a complete request for the engine's AI panel to set it up, in plain words naming the real items, places
-  and prefabs. It runs once the places are built, so it must work on records, prefabs and input actions, which hold in
-  every scene, not on one scene's entities. Name the keys for input actions.
+- buildRequest: a one-paragraph summary of what setting it up takes.
 Prefer features that work together and that the story uses. Don't describe what the engine gives every game (walking).
 """ + MECHANICS
 
@@ -581,8 +579,113 @@ def plan_gameplay(provider: Provider, inputs: dict) -> dict:
     return _step(provider, GAMEPLAY_TASK, inputs, GAMEPLAY_SHAPE, "gameplay", check, inputs.get("problems"))
 
 
-SYSTEMS_TASK = """⑦ Systems: the game's data, from the Brief's systems, its gameplay features (features) and what the
-characters and quests use. Every item and recipe a feature needs is written here (recipes: type "recipe").
+SYSTEM_TASK = """⑦ Systems, second part: one system worked out in detail, so it can be built without guessing. For the
+feature given, write:
+- rules: how it works, every rule, including what happens on failure and at the limits;
+- numbers: the values it uses, sensible for the game's length and levels;
+- items and recipes: every item and recipe it needs, by id and name;
+- actions: the input actions the player uses for it, each with a key, a group if it shares a key, and nearOnly;
+- sends: every event it sends, each with when; listens: every event or quest stage it reacts to, each with what happens;
+- characters: which characters take part and how;
+- steps: how the engine's AI panel sets it up, in order. Each {"place": "" (records, prefabs and input actions, shared by
+  every scene) or the name of a place (from places: that scene is opened, with its characters and things in it, so the
+  request may name them), "request": a complete request in plain words naming the real things}. Prefer "" for anything
+  shared. A step that needs a script says what the script does and which character or thing it goes on.
+""" + MECHANICS
+
+SYSTEM_SHAPE = """{"system": {"rules": [""], "numbers": {}, "items": [{"id": "", "name": ""}], "recipes": [{"id": "", "inputs": [""], "gives": [""], "at": ""}],
+   "actions": [{"name": "cook", "key": "E", "group": "use", "nearOnly": true}], "sends": [{"event": "stew_cooked", "when": ""}],
+   "listens": [{"event": "", "does": ""}], "characters": [{"character": "", "role": ""}],
+   "steps": [{"place": "", "request": ""}]}, "rationale": ""}"""
+
+
+def plan_system(provider: Provider, inputs: dict) -> dict:
+    places = {str(p).lower() for p in inputs.get("places") or []}
+
+    def check(answer: dict) -> list[str]:
+        s = answer.get("system")
+        if not isinstance(s, dict):
+            return ["'system' must be an object"]
+        problems = []
+        if not s.get("rules"):
+            problems.append("rules is empty: work the system out")
+        steps = s.get("steps")
+        if not isinstance(steps, list) or not steps:
+            problems.append("steps is empty: say how it's set up")
+            steps = []
+        for i, step in enumerate(steps):
+            if not isinstance(step, dict) or not str(step.get("request", "")).strip():
+                problems.append(f"step {i}: it has no request")
+            elif places and step.get("place") and str(step["place"]).lower() not in places:
+                problems.append(f"step {i}: no place named {step['place']!r} (places: {', '.join(sorted(places))})")
+        return problems
+
+    return _step(provider, SYSTEM_TASK, inputs, SYSTEM_SHAPE, "system", check, inputs.get("problems"))
+
+
+BEHAVIOUR_TASK = """⑦ Systems, last part: one character's behaviour plan: what they do at every moment that concerns them,
+worked out in detail. Go through each quest stage (quests), each system (systems) and what the player can do near them.
+Each entry of "behaviour":
+- when: exactly one of {"quest": "<quest id>", "stage": <stage index>}, {"event": "<event name>"} (one a system sends
+  (systems[].sends), an engine event (engineEvents), or one you send below), {"playerAction": "<action>"} (from
+  systems[].actions), with "range": cells for "only with the player this near";
+- if: optional Conditions, as dialogue's ([{"flag": "..."}, {"item": "...", "count": 1}, {"time": {"from": 20, "to": 6}}]);
+- does: any of {"package": "<id from your packages>" (they start doing this), "stops": "<a package id>", "says": a short
+  line in their voice, "clip": a clip they play, "sends": an event, "do": Effects as dialogue's};
+- once: true when it happens one time only.
+"packages": what they can come to do beyond their daily routine: {"id", "template" (from packageTemplates), "place"}.
+Say what's specific to them; don't give them an entry just to have one. An unimportant moment needs no entry. Only use
+the quest ids, stages, actions and events given."""
+
+BEHAVIOUR_SHAPE = """{"plan": {"character": "", "packages": [{"id": "chase-player", "template": "", "place": ""}],
+   "behaviour": [{"when": {"quest": "q-main", "stage": 20}, "if": [], "does": {"package": "chase-player", "says": ""}, "once": false}]},
+ "rationale": ""}"""
+
+
+def plan_behaviour(provider: Provider, inputs: dict) -> dict:
+    stages = {(q.get("id"), s) for q in inputs.get("quests") or [] for s in q.get("stages") or []}
+    actions = {a for s in inputs.get("systems") or [] for a in s.get("actions") or []}
+    events = set(inputs.get("engineEvents") or [])
+    events |= {e for s in inputs.get("systems") or [] for e in s.get("sends") or []}
+    templates = set(inputs.get("packageTemplates") or [])
+
+    def check(answer: dict) -> list[str]:
+        plan = answer.get("plan")
+        if not isinstance(plan, dict) or not isinstance(plan.get("behaviour"), list):
+            return ["'plan.behaviour' must be a list"]
+        problems = []
+        packages = {p.get("id") for p in plan.get("packages") or [] if isinstance(p, dict)}
+        for p in plan.get("packages") or []:
+            if templates and isinstance(p, dict) and p.get("template") not in templates:
+                problems.append(f"package {p.get('id')!r}: template {p.get('template')!r} isn't one of {', '.join(sorted(templates))}")
+        own = {e.get("does", {}).get("sends") for e in plan["behaviour"] if isinstance(e, dict) and isinstance(e.get("does"), dict)}
+        for i, entry in enumerate(plan["behaviour"]):
+            when = entry.get("when") if isinstance(entry, dict) else None
+            does = entry.get("does") if isinstance(entry, dict) else None
+            if not isinstance(when, dict) or not isinstance(does, dict) or not does:
+                problems.append(f"behaviour {i}: it needs when and does")
+                continue
+            if "quest" in when:
+                if (when.get("quest"), when.get("stage")) not in stages:
+                    problems.append(f"behaviour {i}: no quest stage {when.get('quest')!r} {when.get('stage')!r}")
+            elif "playerAction" in when:
+                if when["playerAction"] not in actions:
+                    problems.append(f"behaviour {i}: no action {when['playerAction']!r} (actions: {', '.join(sorted(actions))})")
+            elif "event" in when:
+                if when["event"] not in events and when["event"] not in own:
+                    problems.append(f"behaviour {i}: nothing sends the event {when['event']!r}")
+            else:
+                problems.append(f"behaviour {i}: when must be a quest stage, an event or a playerAction")
+            for key in ("package", "stops"):
+                if does.get(key) and does[key] not in packages:
+                    problems.append(f"behaviour {i}: {key} {does[key]!r} isn't one of its packages")
+        return problems
+
+    return _step(provider, BEHAVIOUR_TASK, inputs, BEHAVIOUR_SHAPE, "plan", check, inputs.get("problems"))
+
+
+SYSTEMS_TASK = """⑦ Systems: the game's data, from the Brief's systems, its gameplay features and their designs (features) and
+what the characters and quests use. Every item and recipe a feature's design names is written here (recipes: type "recipe").
 Write a summary (attributes and progression, the economy and its prices, loot, abilities and schools, factions,
 enemies per region and level band, the difficulty curve) and the records the game needs, each {type, id,
 record} with only the record types and fields given (recordTypes): the unique items quests and characters name
@@ -718,6 +821,6 @@ def plan_dialogue(provider: Provider, inputs: dict) -> dict:
 
 STEPS: dict[str, Callable[[Provider, dict], dict]] = {
     "concept": plan_concept, "outline": plan_outline, "act": plan_act, "scene": plan_scene, "critic": plan_critic,
-    "character": plan_character, "quests": plan_quests, "place": plan_place, "gameplay": plan_gameplay, "systems": plan_systems,
+    "character": plan_character, "quests": plan_quests, "place": plan_place, "gameplay": plan_gameplay, "system": plan_system, "behaviour": plan_behaviour, "systems": plan_systems,
     "visuals": plan_visuals, "review": plan_review, "revise": plan_revise, "dialogue": plan_dialogue,
 }

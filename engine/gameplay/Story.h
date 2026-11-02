@@ -39,12 +39,14 @@ struct StoryCondition {
 struct StoryEffect {
     // set_flag | clear_flag | start_quest | complete_quest | complete_objective |
     // fail_quest | set_stage (15.1) | set_var | add_var (15.2) | give_item | take_item |
-    // give_gold | give_xp | reputation | play_cutscene (handed to the game, 15.5)
+    // give_gold | give_xp | reputation | play_cutscene (handed to the game, 15.5) | open_screen | close_screen |
+    // push_package | pop_package | say | send_event (docs/systems/actions.md §5)
     std::string op;
     std::string name;      // the flag, quest, variable, item, faction or cutscene
     std::string objective; // complete_objective: which one
     int stage = 0;         // set_stage
     nlohmann::json value;  // set_var / add_var; a count or amount for the world's ops
+    std::string who;       // push_package, pop_package, say, send_event: the character's name (empty: the one it runs on)
 };
 
 struct DialogueChoice {

@@ -245,7 +245,7 @@ function retryJob(id: string) {
   sendToHost({ type: 'planner:retryJob', id })
 }
 function jobName(j: FailedJob): string {
-  const what = { gameplay: 'Gameplay', outline: 'The outline', act: 'Act', scene: 'Scene', critic: 'Review of act', character: 'Character', quests: 'The quests', place: 'Place', systems: 'The systems', visuals: 'The interface', review: 'The review', interpret: 'Reading' }[j.kind] ?? j.kind
+  const what = { gameplay: 'Gameplay', system: 'System', behaviour: 'Behaviour of', outline: 'The outline', act: 'Act', scene: 'Scene', critic: 'Review of act', character: 'Character', quests: 'The quests', place: 'Place', systems: 'The systems', visuals: 'The interface', review: 'The review', interpret: 'Reading' }[j.kind] ?? j.kind
   return j.subject && j.subject !== j.kind ? `${what} ${j.subject}` : what
 }
 const waiting = computed(() => state.value.status === 'waiting' || state.value.status === 'failed')
@@ -754,7 +754,7 @@ function statusMark(status: string): string {
           <template v-else-if="view === 'systems'">
             <div v-if="state.systems" class="section">
               <div class="row"><span class="spacer"></span><a href="#" @click.prevent="open('systems')">open the document</a></div>
-              <SystemsView :systems="state.systems" :gameplay="state.gameplay" @open-gameplay="open('gameplay')" />
+              <SystemsView :systems="state.systems" :gameplay="state.gameplay" :designs="state.systemDesigns" :behaviours="state.behaviours" @open-gameplay="open('gameplay')" />
             </div>
             <div v-else class="muted">Not yet.</div>
           </template>
@@ -856,6 +856,17 @@ function statusMark(status: string): string {
                     <tr v-for="(a, i) in state.build.result.askedVsMade" :key="i"><td>{{ a.what }}</td><td>asked {{ a.asked }}</td><td>made {{ a.made }}</td></tr>
                   </tbody>
                 </table>
+                <template v-if="state.build.result.features?.length">
+                  <h4>Gameplay set up</h4>
+                  <table class="grid">
+                    <tbody>
+                      <tr v-for="(f, i) in state.build.result.features" :key="i">
+                        <td>{{ f.name }}</td><td>{{ f.place || 'the whole project' }}</td>
+                        <td :class="{ err: f.status === 'failed' }">{{ f.status }}<template v-if="f.error">: {{ f.error }}</template></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </template>
                 <div class="row"><button class="primary" @click="sendToHost({ type: 'planner:play' })">Play from the start</button></div>
               </template>
             </template>

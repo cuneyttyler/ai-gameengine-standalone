@@ -61,8 +61,10 @@ public:
         std::function<std::string()> buildMethod;
         // A gameplay feature's request carried out by the AI panel's machinery, unreviewed: it starts and returns why not;
         // featureStatus says how it goes ("working", "done", "failed: why"). Without them features are noted, not built.
-        std::function<std::string(const std::string& request)> startFeature;
+        // `scene`: opened from disk first and saved after (empty: what the whole project shares).
+        std::function<std::string(const std::string& request, const std::string& scene)> startFeature;
         std::function<std::string()> featureStatus;
+        std::function<void()> featuresDone; // the scene open before them, open again
     };
 
     explicit GameBuild(Host host);

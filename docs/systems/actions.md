@@ -139,6 +139,17 @@ flags, start quests, give items...). Text that isn't a JSON list never holds and
 `journal`, or a screen's id in `ui/screens`), and `close_screen`. So can an input action's **screen** (Project Settings ▸
 Input), and a screen's button with `action('open:inventory')` or `action('close:shop')`: no script needed.
 
+`do` can change what a character does, with no script: `{"op": "push_package", "package": "chase-player", "who": "Mara"}`
+(no `who`: the character or thing it runs on), `pop_package`, `{"op": "say", "text": "..."}`, `{"op": "send_event", "event":
+"alarm"}`.
+
+**Taking time**: a Reaction with `duration` (seconds) or `untilAnimation`. `do` runs at the start; what it gives, its
+`becomes` and `end` when it's over; `interrupted` if it's cut short (its user hit or walking off, a cutscene), and what
+it took comes back unless `refund` is off. It sends `reaction_began`, `reaction_ended`, `reaction_interrupted`. A moving
+part sends the first two and has `end`. A recipe with `seconds` has `start` and `interrupted`, and its inputs come back if
+it's cut short; one under way is kept in a save. A Reaction under way isn't: a save loaded ends it, and what it took stays
+taken.
+
 ## 6. Items in hand and recipes
 
 **In hand**: pick an item in the inventory: one with no use of its own by a click; any by a right click (`ui_context`
@@ -172,7 +183,14 @@ Lines that can't be made are greyed, and say what's missing.
 Example, a stove: a Reaction with `station: stove`, and a recipe `{"name": "Stew", "inputs": [{"item": "meat"},
 {"item": "water"}, {"item": "turnip", "count": 2}], "keeps": ["pot"], "gives": [{"item": "stew"}], "at": "stove"}`.
 
-## 7. Where it lives
+## 7. Characters that respond
+
+A thing has one Reaction. A character can do many things, so it has **Character Rules** (`Responses`): a list of
+`{"event", "if", "do", "clip", "says", "range", "once"}`. `event` is any event's name, `quest:<id>:<stage>` when a quest
+reaches that stage, or `action:<name>` when the player presses one of the project's own actions; `range` needs the player
+that near. The planner writes these from each character's behaviour plan (⑦ Systems).
+
+## 8. Where it lives
 
 | | |
 |---|---|

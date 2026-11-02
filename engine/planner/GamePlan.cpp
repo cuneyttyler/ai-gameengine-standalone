@@ -313,7 +313,7 @@ std::string GamePlan::StageOfJob(const std::string& kind) const {
     static const std::map<std::string, std::string> stages = {
         {"interpret", "concept"}, {"outline", "outline"},       {"act", "story"},       {"scene", "story"},
         {"critic", "story"},      {"character", "characters"}, {"quests", "quests"},   {"quest", "quests"},   {"place", "places"},
-        {"gameplay", "systems"},  {"systems", "systems"},   {"visuals", "visuals"},      {"review", "validate"}, {"report", "validate"}};
+        {"gameplay", "systems"},  {"system", "systems"},   {"behaviour", "systems"}, {"systems", "systems"},   {"visuals", "visuals"},      {"review", "validate"}, {"report", "validate"}};
     auto it = stages.find(kind);
     return it == stages.end() ? "" : it->second;
 }
@@ -611,6 +611,8 @@ std::string GamePlan::DocOfJob(const Job& job) const {
     }
     if (job.kind == "place") return "places/" + PlanSlug(job.subject);
     if (job.kind == "gameplay") return "gameplay";
+    if (job.kind == "system") return "systemdesigns/" + PlanSlug(job.subject);
+    if (job.kind == "behaviour") return "behaviours/" + PlanSlug(job.subject);
     if (job.kind == "systems") return "systems";
     if (job.kind == "visuals") return "ui";
     if (job.kind == "review" || job.kind == "report") return "report";
@@ -819,9 +821,8 @@ void GamePlan::BeginStage(const std::string& stage) {
         }
     } else if (stage == "systems") {
         // The features first; the data then knows what they need (each can be regenerated, or locked, alone).
-        std::vector<std::string> after;
-        if (!store_.Locked("gameplay")) after.push_back(AddJob("gameplay", "gameplay"));
-        AddJob("systems", "systems", after);
+        if (!store_.Locked("gameplay")) AddJob("gameplay", "gameplay"); // QueueDesigns when it's answered
+        else QueueDesigns();
     } else if (stage == "visuals") {
         AddJob("visuals", "ui");
     } else if (stage == "validate") {
@@ -1096,6 +1097,8 @@ std::string GamePlan::Regenerate(const std::string& doc) {
     }
     else if (doc.rfind("places/", 0) == 0) kind = "place", subject = "location/" + PlanSlug(doc);
     else if (doc == "gameplay") kind = "gameplay", subject = "gameplay";
+    else if (doc.rfind("systemdesigns/", 0) == 0) kind = "system", subject = PlanSlug(doc);
+    else if (doc.rfind("behaviours/", 0) == 0) kind = "behaviour", subject = store_.Read(doc).value_or(json::object()).value("subject", PlanSlug(doc));
     else if (doc == "systems") kind = "systems", subject = "systems";
     else if (doc == "ui") kind = "visuals", subject = "ui";
     else if (doc == "report") kind = "review", subject = "review";
@@ -1310,7 +1313,7 @@ json GamePlan::State() const {
                                         : s.rfind("characters/", 0) == 0   ? "characters"
                                         : s.rfind("quests/", 0) == 0       ? "quests"
                                         : s.rfind("places/", 0) == 0       ? "places"
-                                        : s == "systems" || s == "gameplay" ? "systems"
+                                        : s == "systems" || s == "gameplay" || s.rfind("systemdesigns/", 0) == 0 || s.rfind("behaviours/", 0) == 0 ? "systems"
                                         : s == "ui"                        ? "visuals"
                                                                            : "";
             staleCount += stageOf == *it;
@@ -1434,7 +1437,7 @@ json GamePlan::State() const {
             else if (rule.rfind("R-K", 0) == 0 || rule == "X-character") stage = "characters";
             else if (rule.rfind("R-Q", 0) == 0) stage = "quests";
             else if (rule.rfind("R-P", 0) == 0 || rule == "X-place" || rule == "X-anchor") stage = "places";
-            else if (rule == "X-item" || rule == "X-system") stage = "systems";
+            else if (rule == "X-item" || rule == "X-system" || rule == "X-behaviour") stage = "systems";
             else if (rule == "X-screen") stage = "visuals";
             else if (rule == "critic") stage = "validate";
             else if (rule == "stage") {
@@ -1481,6 +1484,16 @@ json GamePlan::State() const {
             {"quests", quests},
             {"places", places},
             {"gameplay", store_.Read("gameplay").value_or(json())},
+            {"systemDesigns", [&] {
+                 json out = json::array();
+                 for (const auto& doc : store_.List("systemdesigns")) out.push_back(store_.Read(doc).value_or(json()));
+                 return out;
+             }()},
+            {"behaviours", [&] {
+                 json out = json::array();
+                 for (const auto& doc : store_.List("behaviours")) out.push_back(store_.Read(doc).value_or(json()));
+                 return out;
+             }()},
             {"systems", store_.Read("systems").value_or(json())},
             {"ui", store_.Read("ui").value_or(json())},
             {"report", reportShown},

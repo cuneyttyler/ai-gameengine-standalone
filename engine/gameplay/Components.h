@@ -296,10 +296,23 @@ struct Action {
     std::string text;              // shown when it happens
     std::string conditions;        // "if": JSON, as dialogue's: it happens only if they hold
     std::string doEffects;         // "do": JSON, as dialogue's: run when it happens
+    float duration = 0.0f;         // seconds it lasts (0: at once): what it gives, becomes and end's effects come after
+    bool untilAnimation = false;   // it lasts as long as its animations (or duration, if longer)
+    std::string doEnd;             // "end": JSON, as "do": run when it's over
+    std::string doInterrupted;     // "interrupted": JSON, as "do": run if it's cut short (its user hit or gone, a cutscene)
+    bool refund = true;            // cut short: what it took is given back
     std::string accepts;           // items one of which the player must have in hand ("key, lockpick"); others: carry
     std::string station;           // a crafting station ("stove"): using it opens the Crafting list, its recipes too
     bool once = false;
     float cooldown = 0.0f;         // seconds before it works again
+};
+
+// What a character does when something happens (docs/systems/actions.md §7), as many as it needs, where a thing's Action
+// is one: a JSON list of {"event", "if", "do", "clip", "says", "range", "once"}. "event" is any event's name, a quest's
+// "quest:<id>:<stage>" or the player's "action:<name>"; "range": only with the player this near (cells; 0: anywhere).
+struct Responses {
+    std::string rules;
+    std::vector<int> fired; // runtime: the "once" rules that have run (not saved)
 };
 
 // Where characters walk between heights (place-refine.md §10): stairs, a ramp, a ladder. On high ground a step too high
@@ -342,6 +355,7 @@ struct AnimatedPart {
     bool holdsPlayer = false;
     std::string conditions; // "if": JSON, as dialogue's: the player can activate it only while they hold
     std::string doEffects;  // "do": JSON, as dialogue's: run each time the player activates it
+    std::string doEnd;      // "end": JSON, as "do": run when it stops (used again, its duration over, left)
     // A doorway of its building (a way in, blocked while shut). Only a building's parts are (Building Plan); a window, a
     // sign or a lever on one isn't. Set by Build ▸ Animate and Animate a part…
     bool door = true;
