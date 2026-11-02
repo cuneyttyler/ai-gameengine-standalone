@@ -42,6 +42,8 @@ add_library(aige_gameplay STATIC
     Attributes.cpp
     Items.h
     Items.cpp
+    Crafting.h
+    Crafting.cpp
     Interact.h
     Interact.cpp
     Interiors.cpp

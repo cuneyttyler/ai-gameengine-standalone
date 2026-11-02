@@ -5,12 +5,13 @@ would show — before anything reaches the review panel. Format: docs/systems/st
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
 EFFECT_OPS = {"set_flag", "clear_flag", "start_quest", "complete_quest", "complete_objective", "fail_quest",
               "set_stage", "set_var", "add_var", "give_item", "take_item", "give_gold", "give_xp", "reputation",
-              "play_cutscene"}
+              "play_cutscene", "open_screen", "close_screen"}
 QUEST_OPS = {"start_quest", "complete_quest", "complete_objective", "fail_quest", "set_stage"}
 OBJECTIVE_TYPES = {"defeat", "talk", "collect", "reach", "deliver", "use", "examine", "have", "survive", "defend",
                    "escort"}
@@ -90,6 +91,10 @@ def _check_effects(effects: Any, where: str, scope: StoryScope) -> list[str]:
             if not effect.get("faction"):
                 errors.append(f"{where}: reputation needs a \"faction\"")
             continue
+        if op in ("open_screen", "close_screen"):
+            if not effect.get("screen"):
+                errors.append(f"{where}: {op} needs a \"screen\" (inventory, crafting, spellbook, journal, or a screen's id)")
+            continue
         if op == "play_cutscene":
             if not effect.get("cutscene"):
                 errors.append(f"{where}: play_cutscene needs a \"cutscene\" id")
@@ -133,6 +138,21 @@ def _check_conditions(conditions: Any, where: str, scope: StoryScope) -> list[st
         elif "stage" in c and c["stage"] not in (scope.stages_of(c["quest"]) or []):
             errors.append(f"{where}: quest {c['quest']!r} has no stage {c['stage']!r}")
     return errors
+
+
+def check_rule_text(field: str, text: Any, where: str, scope: StoryScope) -> list[str]:
+    """A Reaction's, Interactable's, animated part's or recipe's "if" or "do": JSON text holding dialogue's list."""
+    if text in (None, ""):
+        return []
+    if not isinstance(text, str):
+        return [f"{where}: {field} must be JSON text (a string holding a list), not {type(text).__name__}"]
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return [f"{where}: {field} isn't valid JSON: {text!r} (as written it would never hold and do nothing)"]
+    if not isinstance(value, list):
+        return [f"{where}: {field} must be a JSON list"]
+    return _check_conditions(value, where, scope) if field == "if" else _check_effects(value, where, scope)
 
 
 def check_dialogue(dialogue_id: str, d: dict[str, Any], scope: StoryScope, where: str) -> list[str]:

@@ -63,6 +63,7 @@ TEST(InteriorsTest, ShownWhileThePlayerIsInside) {
     registry.emplace<Sprite>(house, sprite);
     registry.emplace<Interior>(house).texture = "assets/house-interior.png";
     const Entity player = registry.create();
+    registry.emplace<Velocity2D>(player); // a character: what walks has a floor
     auto& at = registry.emplace<WorldTransform2D>(player, 9.0f, 9.0f);
 
     UpdateInteriors(registry, player);
@@ -88,7 +89,7 @@ TEST(InteriorsTest, ItsStairsTakeOneUpAndDownTheFloors) {
     Registry registry;
     const Entity house = registry.create();
     registry.emplace<WorldTransform2D>(house, 5.0f, 5.0f);
-    registry.emplace<Obstacle>(house, Obstacle{2, 0, 2}); // cells 3..5 x 3..5; its back corner 3,3 the stairs
+    registry.emplace<Obstacle>(house, Obstacle{2, 0, 2}); // cells 3..5 x 3..5; stairs of one cell: 3,4 and then 4,3
     registry.emplace<Sprite>(house).texture = "house.png";
     auto& interior = registry.emplace<Interior>(house);
     interior.texture = "house-interior.png";
@@ -96,6 +97,7 @@ TEST(InteriorsTest, ItsStairsTakeOneUpAndDownTheFloors) {
     EXPECT_EQ(InteriorFloors(interior), 3);
     EXPECT_EQ(InteriorPicture(interior, 3), "house-interior-3.png");
     const Entity player = registry.create();
+    registry.emplace<Velocity2D>(player); // a character: what walks has a floor
     auto& at = registry.emplace<WorldTransform2D>(player, 4.5f, 4.5f);
     UpdateInteriors(registry, player);
     EXPECT_EQ(registry.get<Interior>(house).floor, 1);
@@ -104,18 +106,18 @@ TEST(InteriorsTest, ItsStairsTakeOneUpAndDownTheFloors) {
         at.x = x, at.y = y;
         UpdateInteriors(registry, player);
     };
-    step(3.5f, 3.5f); // on the stairs: up
+    step(3.5f, 4.5f); // on the stairs: up
     EXPECT_EQ(registry.get<Interior>(house).floor, 2);
     EXPECT_EQ(registry.get<Sprite>(house).texture, "house-interior-2.png");
-    step(3.5f, 3.5f); // still on them: no more
+    step(3.5f, 4.5f); // still on them: no more
     EXPECT_EQ(registry.get<Interior>(house).floor, 2);
-    step(4.5f, 4.5f), step(5.5f, 3.5f); // floor 2's stairs up stand in the right corner: up to the top
+    step(4.5f, 4.5f), step(4.5f, 3.5f); // floor 2's stairs up, along the other wall: up to the top
     EXPECT_EQ(registry.get<Interior>(house).floor, 3);
-    step(4.5f, 4.5f), step(5.5f, 3.5f); // from the top, the same stairs: down
+    step(4.5f, 4.5f), step(4.5f, 3.5f); // from the top, the same stairs: down
     EXPECT_EQ(registry.get<Interior>(house).floor, 2);
-    step(4.5f, 4.5f), step(3.5f, 3.5f); // the first stairs again: down to the ground floor
+    step(4.5f, 4.5f), step(3.5f, 4.5f); // the first stairs again: down to the ground floor
     EXPECT_EQ(registry.get<Interior>(house).floor, 1);
-    step(4.5f, 4.5f), step(3.5f, 3.5f); // and up
+    step(4.5f, 4.5f), step(3.5f, 4.5f); // and up
     EXPECT_EQ(registry.get<Interior>(house).floor, 2);
     step(4.5f, 9.5f); // out: the exterior, and the ground floor next time
     EXPECT_EQ(registry.get<Sprite>(house).texture, "house.png");
@@ -141,6 +143,7 @@ TEST(InteriorsTest, PaintedBuildingHidesItsOccluders) {
     registry.emplace<Sprite>(other, Sprite{});
     registry.emplace<PlaceNode>(other, "v", "", "painting#o12/0");
     const Entity player = registry.create();
+    registry.emplace<Velocity2D>(player); // a character: what walks has a floor
     auto& at = registry.emplace<WorldTransform2D>(player, 11.5f, 11.5f);
 
     UpdateInteriors(registry, player);
@@ -216,6 +219,7 @@ TEST(InteriorsTest, ASceneInteriorIsSolidButItsDoorway) {
     // Not shown in place: a scene interior has no cutaway.
     registry.emplace<Sprite>(inn, Sprite{});
     const Entity player = registry.create();
+    registry.emplace<Velocity2D>(player); // a character: what walks has a floor
     registry.emplace<WorldTransform2D>(player, 4.5f, 4.5f);
     UpdateInteriors(registry, player);
     EXPECT_FALSE(registry.get<Interior>(inn).shown);

@@ -575,6 +575,9 @@ struct DocumentUi::Impl {
             c.BindEventCallback("choose", [this](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList& args) {
                 if (!args.empty() && owner->onMenuChoose) owner->onMenuChoose(args[0].Get<int>());
             });
+            c.BindEventCallback("context", [this](Rml::DataModelHandle, Rml::Event& event, const Rml::VariantList& args) {
+                if (!args.empty() && event.GetParameter<int>("button", 0) == 1 && owner->onMenuContext) owner->onMenuContext(args[0].Get<int>());
+            });
             menuModel = c.GetModelHandle();
         }
         if (auto c = context->CreateDataModel("dialogue")) {

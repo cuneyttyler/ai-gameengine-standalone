@@ -233,6 +233,7 @@ private:
     std::vector<std::string> HandleCharacter(Job& job, const nlohmann::json& character, const std::string& decision);
     std::vector<std::string> HandleQuests(Job& job, const nlohmann::json& quests, const std::string& decision);
     std::vector<std::string> HandlePlace(Job& job, const nlohmann::json& place, const std::string& decision);
+    std::vector<std::string> HandleGameplay(Job& job, const nlohmann::json& systems, const std::string& decision);
     std::vector<std::string> HandleSystems(Job& job, const nlohmann::json& systems, const std::string& decision);
     std::vector<std::string> HandleVisuals(Job& job, const nlohmann::json& ui, const std::string& decision);
     void BuildReport(const nlohmann::json& critic);

@@ -613,6 +613,26 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                 "What can be given.")
         .List();
 
+    r.RecordType("recipe", "A recipe: items made from items (docs/systems/actions.md §6). Two items combine by using one on "
+                           "the other; more than two, or at a station, from the Crafting list.")
+        .Field("name", FieldType::String, "Shown in the Crafting list.").Required()
+        .Object("inputs",
+                {MakeRecordRef("item", "item", "An item used up"), MakeRecordValue("count", FieldType::Int, "How many (1 when empty)")},
+                "What it uses up.")
+        .List()
+        .Ref("keeps", "item", "Items needed but not used up (a knife).").List()
+        .Object("gives",
+                {MakeRecordRef("item", "item", "An item made"), MakeRecordValue("count", FieldType::Int, "How many (1 when empty)")},
+                "What it makes.")
+        .List()
+        .Field("at", FieldType::String, "A station it's made at (stove: an Action with that station); empty: anywhere.")
+        .Field("seconds", FieldType::Float, "How long it takes: what it makes comes after this.").Min(0)
+        .Field("clip", FieldType::String, "The clip the player plays.")
+        .Field("effect", FieldType::String, "An effect played on the player.")
+        .Field("text", FieldType::String, "Shown when it's made.")
+        .Field("if", FieldType::String, "Conditions, as dialogue's JSON: it can be made only while they hold.")
+        .Field("do", FieldType::String, "Effects, as dialogue's JSON: run when it's made.");
+
     r.RecordType("perk", "A perk (13.2): taken with a perk point at a level, it changes attributes from then on.")
         .Field("name", FieldType::String, "Shown to the player.").Required()
         .Field("description", FieldType::String, "What it does, in a line.")

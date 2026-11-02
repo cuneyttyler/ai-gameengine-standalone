@@ -111,6 +111,29 @@ public:
     // (Project Settings ▸ Game ▸ doorDoubleClick).
     void RequestUseAt(float sceneX, float sceneY);
 
+    // The item in the player's hand (docs/systems/actions.md §6): picked in the inventory, used on another item (a
+    // recipe) or on a thing in the world.
+    const std::string& HeldItem() const { return held_; }
+    void HoldItem(const std::string& item);
+    void PutBackItem() { held_.clear(); }
+    std::string CombineHeldWith(const std::string& item); // what happened, in words
+    bool UseHeldOn(Entity target);
+    void RequestUseHeldAt(float sceneX, float sceneY) { requestedHeld_ = std::make_pair(sceneX, sceneY); }
+    // Why the player can't make it now ("Needs 2 Flour"); empty: they can.
+    std::string CraftProblem(const std::string& recipe, const std::string& station) const;
+    // Made by the player (at a station, if any): empty, or why not.
+    std::string Craft(const std::string& recipe, const std::string& station);
+    // A panel of the windows over play (inventory, crafting, crafting:<station>, spellbook, journal), or a screen of the project's.
+    bool OpenPanel(const std::string& id);
+    std::optional<std::string> TakePanelRequest() {
+        auto out = requestedPanel_;
+        requestedPanel_.reset();
+        return out;
+    }
+    // A thing's "if" and "do": JSON, as dialogue's. Text that isn't a JSON list doesn't hold.
+    bool ConditionsHold(const std::string& conditions) const;
+    void RunEffects(const std::string& effects);
+
     struct ScriptError {
         Entity entity;
         std::string path;
@@ -393,6 +416,17 @@ private:
     // Actions (docs/systems/actions.md): input actions' plays and events, and Action triggers (presses, timers,
     // touches, events).
     void StepActions(float dt);
+    void StepHeldItem(); // before anything reads this frame's presses: the item in hand used, put back
+    std::optional<Entity> HeldItemTarget() const; // the nearest thing in range that takes the item in hand
+    void FinishCraft(const std::string& recipe);
+    std::string held_; // the item in the player's hand
+    std::optional<std::pair<float, float>> requestedHeld_; // a click's scene point, with an item in hand
+    std::optional<std::string> requestedPanel_; // inventory, crafting (crafting:<station>), spellbook, journal
+    struct PendingCraft {
+        std::string recipe;
+        float seconds = 0.0f;
+    };
+    std::vector<PendingCraft> pendingCrafts_;
     // How near the player the nearest thing an action activates is (a part with it as its input action, or opened by
     // it as a door shortcut; a thing's Action; for interact, an Interactable): within its range, else 1e9.
     // ownParts: only parts with it as their input action (they play the player's clip for it).

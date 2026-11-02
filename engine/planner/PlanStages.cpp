@@ -254,7 +254,7 @@ std::string GamePlan::PathFor(const Job& job) const {
     static const std::map<std::string, std::string> paths = {
         {"interpret", "/planner/concept"}, {"outline", "/planner/outline"}, {"act", "/planner/act"},
         {"scene", "/planner/scene"},       {"critic", "/planner/critic"},   {"character", "/planner/character"},
-        {"quests", "/planner/quests"},     {"quest", "/planner/quests"},    {"place", "/planner/place"},     {"systems", "/planner/systems"},
+        {"quests", "/planner/quests"},     {"quest", "/planner/quests"},    {"place", "/planner/place"},     {"gameplay", "/planner/gameplay"}, {"systems", "/planner/systems"},
         {"visuals", "/planner/visuals"},   {"review", "/planner/review"},   {"revise", "/planner/revise"}};
     auto it = paths.find(job.kind);
     return it == paths.end() ? "" : it->second;
@@ -487,6 +487,27 @@ json GamePlan::RequestBody(const Job& job) {
         return {{"brief", brief}, {"entry", entry}, {"kind", kind}, {"scenes", scenes}, {"anchors", anchors}, {"residents", residents},
                 {"connections", connections}, {"interpret", interpret}};
     }
+    if (job.kind == "gameplay") {
+        // What it's for: the Brief, its extent (Gameplay mechanics: an older plan's is medium), the cast, quests and places.
+        const json extent = BriefGet(brief, "mechanics");
+        const std::string mechanics = extent.is_string() ? extent.get<std::string>() : "medium";
+        const json ranges = PlannerData::Engine().scope.value("mechanics", json::object());
+        json characters = json::array(), quests = json::array(), places = json::array();
+        for (const auto& doc : store_.List("characters")) {
+            const json c = store_.Read(doc).value_or(json::object());
+            characters.push_back({{"name", c.value("name", "")}, {"gameplay", c.value("gameplay", json::object())}});
+        }
+        for (const auto& doc : store_.List("quests")) {
+            const json q = store_.Read(doc).value_or(json::object());
+            quests.push_back({{"name", q.value("name", "")}, {"description", q.value("description", "")}});
+        }
+        for (const auto& doc : store_.List("places")) {
+            const json p = store_.Read(doc).value_or(json::object());
+            places.push_back(p.value("name", doc));
+        }
+        return {{"brief", brief}, {"mechanics", mechanics}, {"count", ranges.value(mechanics, json::array({4, 7}))},
+                {"characters", characters}, {"quests", quests}, {"places", places}};
+    }
     if (job.kind == "systems") {
         json characters = json::array();
         for (const auto& doc : store_.List("characters")) {
@@ -499,6 +520,7 @@ json GamePlan::RequestBody(const Job& job) {
             quests.push_back({{"id", q.value("id", "")}, {"level", q.value("level", json())}, {"rewards", q.value("rewards", json::array())}});
         }
         return {{"brief", brief}, {"characters", characters}, {"quests", quests},
+                {"features", store_.Read("gameplay").value_or(json::object()).value("features", json::array())},
                 {"recordTypes", host_.catalog.value("recordTypes", json::object())},
                 {"abilities", host_.catalog.value("abilities", json::array())}, {"effects", host_.catalog.value("effects", json::array())}};
     }
@@ -690,6 +712,7 @@ std::vector<std::string> GamePlan::Handle(Job& job, const json& body) {
     }
     if (job.kind == "quests" || job.kind == "quest") return HandleQuests(job, body.value("quests", json::array()), rationale);
     if (job.kind == "place") return HandlePlace(job, body.value("place", json::object()), rationale);
+    if (job.kind == "gameplay") return HandleGameplay(job, body.value("gameplay", json::object()), rationale);
     if (job.kind == "systems") return HandleSystems(job, body.value("systems", json::object()), rationale);
     if (job.kind == "visuals") return HandleVisuals(job, body.value("ui", json::object()), rationale);
     if (job.kind == "revise") {
@@ -1800,6 +1823,22 @@ std::vector<std::string> GamePlan::HandlePlace(Job& job, const json& answer, con
 
 // --- ⑦ Systems and ⑧ Visuals -----------------------------------------------------------------------
 
+std::vector<std::string> GamePlan::HandleGameplay(Job&, const json& answer, const std::string& rationale) {
+    PlanDecision d;
+    d.stage = "systems";
+    d.actor = "ai";
+    d.kind = "design-gameplay";
+    d.subject = "gameplay";
+    d.chosen = std::to_string(answer.value("features", json::array()).size()) + " features";
+    d.rationale = rationale;
+    json doc = answer.is_object() ? answer : json::object();
+    doc["schema"] = "aige.gameplay/1";
+    doc["rationale"] = rationale;
+    // Stale only when the Brief changes: a quest edited doesn't put a design of the game's mechanics in question.
+    store_.Write("gameplay", doc, store_.Decide(d), {"brief"});
+    return {};
+}
+
 std::vector<std::string> GamePlan::HandleSystems(Job&, const json& answer, const std::string& rationale) {
     // Each record put right instead of the whole answer sent back: a field the record type
     // refuses ("stack": false) is left out, so its default applies; a record still refused, of
@@ -1862,6 +1901,7 @@ std::vector<std::string> GamePlan::HandleSystems(Job&, const json& answer, const
     doc["schema"] = "aige.systems/1";
     doc["rationale"] = rationale;
     std::vector<std::string> inputs = {"brief"};
+    if (store_.Read("gameplay")) inputs.push_back("gameplay");
     for (const auto& c : store_.List("characters")) inputs.push_back(c);
     for (const auto& q : store_.List("quests")) inputs.push_back(q);
     store_.Write("systems", doc, store_.Decide(d), inputs);

@@ -14,13 +14,24 @@
 
 namespace aige {
 
+class GameSession;
+
 // The windows over play (development_plan.md 13.3–13.4): the inventory (use,
 // equip, unequip, with the character's numbers) and a merchant's shop (buy and
 // sell), and the quest journal (15.4). The engine's built-in look until the game
 // UI (Phase 17) makes them customisable documents. The game is paused while one is open.
 class PlayWindows {
 public:
-    enum class Kind { None, Inventory, Shop, Journal, Spellbook, Achievements };
+    enum class Kind { None, Inventory, Shop, Journal, Spellbook, Achievements, Crafting };
+
+    // The game they act for (the item in hand, recipes). Without one: an inventory that only uses and equips.
+    void SetSession(GameSession* session) { session_ = session; }
+    // Opens what this frame's input (inventory, crafting, spellbook) or the game (a station, an effect) asked for.
+    void OpenAsked(Registry& registry, GameSession& session, Entity player);
+    // What can be made here (a station's and anywhere's); of an item: only recipes using it.
+    void OpenCrafting(Entity player, const std::string& station, const std::string& item = "");
+    // An inventory line's options (a right click, ui_context): use it, use it on something, crafting.
+    void OpenItemMenu(Registry& registry, int index);
 
     void OpenInventory(Entity player);
     // Restocks the merchant from its loot table when it's a new day.
@@ -60,6 +71,10 @@ private:
     std::string achievementPoints_;
     Entity player_ = entt::null;
     Entity merchant_ = entt::null;
+    GameSession* session_ = nullptr;
+    std::string itemMenu_;      // the item whose options show
+    std::string craftStation_;  // the station the Crafting list is at
+    std::string craftItem_;     // the item the Crafting list is about
     int highlighted_ = 0;
     std::string message_;
     struct JournalQuest {

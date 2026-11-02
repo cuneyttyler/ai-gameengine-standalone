@@ -11,7 +11,19 @@ interface SystemRecord {
   id: string
   record?: Record<string, unknown>
 }
-const props = defineProps<{ systems: { summary?: Record<string, unknown>; records?: SystemRecord[] } }>()
+interface Feature {
+  id: string
+  name: string
+  kind?: string
+  description?: string
+  howItPlays?: string
+  needsScript?: boolean
+}
+const props = defineProps<{
+  systems: { summary?: Record<string, unknown>; records?: SystemRecord[] }
+  gameplay?: { features?: Feature[] } | null
+}>()
+defineEmits<{ (e: 'open-gameplay'): void }>()
 
 const parts = computed(() => Object.entries(props.systems.summary ?? {}).filter(([, v]) => v !== null && v !== undefined && v !== ''))
 
@@ -72,6 +84,20 @@ function tags(r: SystemRecord): string[] {
 
 <template>
   <div class="systems">
+    <section v-if="gameplay?.features?.length">
+      <h4 class="head" @click="toggle('__gameplay')">
+        <span class="caret">{{ folded.__gameplay ? '▸' : '▾' }}</span> Gameplay <span class="count">{{ gameplay.features.length }}</span>
+        <a href="#" @click.stop.prevent="$emit('open-gameplay')">open the document</a>
+      </h4>
+      <div v-if="!folded.__gameplay" class="stack">
+        <div v-for="f in gameplay.features" :key="f.id" class="card part">
+          <div class="card-title">{{ f.name }} <span v-if="f.kind" class="count">{{ f.kind }}</span>
+            <span v-if="f.needsScript" class="count" title="The engine can't do this without a script: the AI panel will try to write one">needs a script</span></div>
+          <p>{{ f.description }}</p>
+          <p v-if="f.howItPlays"><b>How it plays:</b> {{ f.howItPlays }}</p>
+        </div>
+      </div>
+    </section>
     <section v-if="parts.length">
       <h4 class="head" @click="toggle('__design')">
         <span class="caret">{{ folded.__design ? '▸' : '▾' }}</span> The design <span class="count">{{ parts.length }}</span>

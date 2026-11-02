@@ -357,7 +357,9 @@ void GameRunner::FrameLogic(double seconds, const KeyQueryFn& keys, const AxisQu
     }
     menuInput_.SetContext("gameplay"); // so the key that closes the menu doesn't reopen it
     menuInput_.Update(ActiveInputMap(), keys, axes);
-    if (options_.pauseMenu && menuInput_.Pressed("menu") && !session_->Conversation().Active() && !session_->InCutscene()) {
+    if (menuInput_.Pressed("menu") && !session_->HeldItem().empty()) {
+        session_->PutBackItem(); // Esc puts the item in hand away first
+    } else if (options_.pauseMenu && menuInput_.Pressed("menu") && !session_->Conversation().Active() && !session_->InCutscene()) {
         flow_.SetSlots(saves_.List());
         flow_.Pause();
         return;
@@ -368,8 +370,7 @@ void GameRunner::FrameLogic(double seconds, const KeyQueryFn& keys, const AxisQu
     TravelIfAsked();
     if (const auto player = FindPlayer(registry_)) {
         const bool free = !session_->Conversation().Active() && !session_->InCutscene();
-        if (session_->Input().Pressed("inventory") && free) windows_.OpenInventory(*player);
-        if (session_->Input().Pressed("spellbook") && free) windows_.OpenSpellbook(*player);
+        if (free) windows_.OpenAsked(registry_, *session_, *player);
         if (session_->Input().Pressed("journal") && free && ActiveSettings().story.journal && session_->StoryLibraryInUse()) {
             windows_.OpenJournal(*player, session_->Story(), *session_->StoryLibraryInUse());
         }
@@ -440,6 +441,7 @@ void GameRunner::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float vi
 std::string GameRunner::MenuScreen() const {
     switch (windows_.Open()) {
         case PlayWindows::Kind::Inventory: return "inventory";
+        case PlayWindows::Kind::Crafting: return "inventory";
         case PlayWindows::Kind::Shop: return "shop";
         case PlayWindows::Kind::Journal: return "journal";
         case PlayWindows::Kind::Spellbook: return "spellbook";
@@ -477,8 +479,12 @@ void GameRunner::EnableDocuments(DocumentUi::ImageLoader images) {
             HandleCommand(flow_.Choose(index));
         }
     };
+    docs_->onMenuContext = [this](int index) { windows_.OpenItemMenu(registry_, index); };
     docs_->onDialogueChoose = [this](int index) { session_->ChooseDialogue(index); };
     docs_->onAction = [this](const std::string& action) {
+        // A screen's button: "open:inventory" and "close:shop" need no script.
+        if (action.rfind("open:", 0) == 0) session_->OpenPanel(action.substr(5));
+        else if (action.rfind("close:", 0) == 0) docs_->ShowScreen(action.substr(6), false);
         session_->Emit({"ui_action", entt::null, entt::null, 0.0, action}); // scripts: on("ui_action", fn)
     };
     session_->SetNoticeSink([this](const std::string& channel, const std::string& text, const std::string& key, double seconds) {

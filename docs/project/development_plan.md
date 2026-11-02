@@ -2993,6 +2993,46 @@ through its door and sees its rooms, and walks out again; a pair kept in the lib
 
 ---
 
+## Phase 28 — Actions, reactions and items, for designers (`docs/systems/actions.md`)
+
+Written, not yet compiled or tried: several items required, `if` and `do`, opening panels without scripts, recipes, the
+item in hand, the Crafting list, clicks on the game's windows, the Reaction name.
+
+Also written: the Brief's Gameplay mechanics, and ⑦ Systems designing gameplay features that ⑫ sets up through the AI
+panel (`docs/ai/ai-planner.md` §5.7).
+
+**The planner designs in depth** (`docs/ai/ai-planner.md` §5.7), before the rest of this list's designer work:
+
+- **Feature steps by place**: each feature's steps say where they run (empty: the whole project; a place: its scene, opened from disk, the AI panel run on it, saved).
+- **A detailed design per system**: one AI call per feature, after the feature list: its rules, items, recipes, numbers, events it sends, and how it fails.
+- **A behaviour plan per character**: one AI call per character: for each quest stage, world event and player action that concerns them, what they do (a package, a reaction, a line, a script), and where.
+- **The event map checked**: every event listened to is sent by something; every quest stage's actors exist; nothing a character does names a package, clip or item that doesn't exist. Errors go back for repair.
+- **Depth follows Gameplay mechanics**: small, medium or extensive sets how many, and how much AI use a plan costs.
+- **Needs NPC behaviour without scripts** (step 3 below) first, and quests that can change what a character does.
+
+In this order:
+
+1. **Build and test what's written**: fix what doesn't compile, run the tests, regenerate the schema snapshot, try it in
+   a game.
+2. **A visual rule editor**: `if` and `do` picked from lists, as the story editor's effects are, instead of typed JSON,
+   on Reactions, Interactables, animated parts and recipes.
+3. **NPC behaviour without scripts** (its effects in the rule editor's lists):
+   - `push_package` and `pop_package` effects, acting on the NPC the Reaction is on: when this happens, this NPC does that;
+   - packages' conditions the full rule set dialogue has (items, variables, attributes, time, factions...), not only
+     flags and quests.
+4. **Reactions that take time**:
+   - a duration: seconds, or until its animation ends;
+   - three stages, each its own `do`: at the start, at the end, if interrupted (hit, a cutscene, the scene left: what it
+     took can be given back);
+   - events sent by themselves: `reaction_began`, `reaction_ended`, `reaction_interrupted` (with the thing as their
+     entity), which scripts hear with `on(...)`. Direct `on_begin` and `on_end` script fields only if they're asked for.
+   Events get no begin or end: an event is an instant.
+5. **Animated parts and recipes on the same stages**, in place of their own durations (a timed recipe's items are then
+   safe when it's interrupted or saved).
+6. **One concept for designers**: Reaction, Interactable and AnimatedPart shown as one thing, the animation an option on it.
+
+---
+
 ## Later
 
 Phases after 5 are planned as development goes (2026-10-17): each new phase is written

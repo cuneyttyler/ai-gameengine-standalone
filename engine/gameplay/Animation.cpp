@@ -884,9 +884,9 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
         const AnimatedPart& part = doors[index];
         // An open doorway (§4.5): an overlay unseen, no animator, only so where its doorway is is known in play.
         // A spot (no animation, only an activation): unseen likewise.
-        const bool opening = (part.sheet.empty() && part.opens == "open") || part.sheet == "spot";
-        if (part.sheet.empty() && !opening) continue;
-        if (!opening && library.Find(part.sheet) == nullptr) continue; // its sheet deleted: nothing over the picture (it shows as it is)
+        // A sheet that's gone: unseen too (the picture shows as it was painted), but still a door that opens and shuts.
+        if (part.sheet.empty() && part.opens != "open") continue;
+        const bool opening = part.sheet.empty() || part.sheet == "spot" || library.Find(part.sheet) == nullptr; // its sheet deleted: nothing over the picture (it shows as it is)
         const std::string slot = index == 0 ? std::string("part") : "part" + std::to_string(index);
         Entity made{entt::null};
         if (auto it = shown.find({owner, slot}); it != shown.end() && registry.get<AttachmentLink>(it->second).item == part.sheet) {
@@ -899,6 +899,8 @@ void UpdateAttachments(Registry& registry, const AnimLibrary& library) {
             registry.emplace<Sprite>(made);
             if (!opening) registry.emplace<Animator>(made, part.sheet, "prop");
         }
+        // Its sheet has come (back) since: it plays.
+        if (!opening && !registry.all_of<Animator>(made)) registry.emplace<Animator>(made, part.sheet, "prop");
         kept.insert(made);
         auto& attachment = registry.get_or_emplace<Attachment>(made);
         attachment.point.clear();

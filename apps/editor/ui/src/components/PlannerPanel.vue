@@ -245,7 +245,7 @@ function retryJob(id: string) {
   sendToHost({ type: 'planner:retryJob', id })
 }
 function jobName(j: FailedJob): string {
-  const what = { outline: 'The outline', act: 'Act', scene: 'Scene', critic: 'Review of act', character: 'Character', quests: 'The quests', place: 'Place', systems: 'The systems', visuals: 'The interface', review: 'The review', interpret: 'Reading' }[j.kind] ?? j.kind
+  const what = { gameplay: 'Gameplay', outline: 'The outline', act: 'Act', scene: 'Scene', critic: 'Review of act', character: 'Character', quests: 'The quests', place: 'Place', systems: 'The systems', visuals: 'The interface', review: 'The review', interpret: 'Reading' }[j.kind] ?? j.kind
   return j.subject && j.subject !== j.kind ? `${what} ${j.subject}` : what
 }
 const waiting = computed(() => state.value.status === 'waiting' || state.value.status === 'failed')
@@ -754,7 +754,7 @@ function statusMark(status: string): string {
           <template v-else-if="view === 'systems'">
             <div v-if="state.systems" class="section">
               <div class="row"><span class="spacer"></span><a href="#" @click.prevent="open('systems')">open the document</a></div>
-              <SystemsView :systems="state.systems" />
+              <SystemsView :systems="state.systems" :gameplay="state.gameplay" @open-gameplay="open('gameplay')" />
             </div>
             <div v-else class="muted">Not yet.</div>
           </template>

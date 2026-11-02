@@ -325,6 +325,17 @@ int main(int argc, char** argv) {
             double frameSeconds = std::chrono::duration<double>(currentTime - previousTime).count();
             previousTime = currentTime;
             const auto updateStart = Clock::now();
+            // The mouse on the game's menus and windows (left and right buttons).
+            {
+                float cx = 0.0f, cy = 0.0f;
+                window.GetCursorPosition(cx, cy);
+                game.UiMouse(static_cast<int>(cx), static_cast<int>(cy), -1, false);
+                static bool uiLeft = false, uiRight = false;
+                const bool left = window.IsKeyDown(aige::Key::MouseLeft), right = window.IsKeyDown(aige::Key::MouseRight);
+                if (left != uiLeft) game.UiMouse(static_cast<int>(cx), static_cast<int>(cy), 0, left);
+                if (right != uiRight) game.UiMouse(static_cast<int>(cx), static_cast<int>(cy), 1, right);
+                uiLeft = left, uiRight = right;
+            }
             // A double click (two presses of the left button within 0.35 s, near each other): a door under it opens
             // when the player is near (docs/assets/animations.md §4.2).
             {
@@ -333,7 +344,12 @@ int main(int argc, char** argv) {
                     float mx = 0.0f, my = 0.0f;
                     window.GetCursorPosition(mx, my);
                     const auto now = Clock::now();
-                    if (std::chrono::duration<double>(now - lastClick).count() < 0.35 && std::abs(mx - lastClickX) < 8.0f &&
+                    // With an item in hand: used on what's clicked.
+                    if (!session.HeldItem().empty() && !game.WindowOpen()) {
+                        float hx = 0.0f, hy = 0.0f;
+                        camera.ViewportToScene(mx, my, hx, hy);
+                        session.RequestUseHeldAt(hx, hy);
+                    } else if (std::chrono::duration<double>(now - lastClick).count() < 0.35 && std::abs(mx - lastClickX) < 8.0f &&
                         std::abs(my - lastClickY) < 8.0f) {
                         float sx = 0.0f, sy = 0.0f;
                         camera.ViewportToScene(mx, my, sx, sy);

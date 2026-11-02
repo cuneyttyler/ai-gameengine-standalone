@@ -93,6 +93,8 @@ public:
     std::vector<DocumentUi::NewTexture> TakeUiTextures();
     // The mouse over the documents (viewport pixels; button -1: a move).
     void UiMouse(int x, int y, int button, bool down);
+    // A window over play (inventory, crafting...) is open: clicks are for it, not the world.
+    bool WindowOpen() const { return windows_.Open() != PlayWindows::Kind::None; }
 
     // The world's changes per scene, so far (tests, the debug overlay).
     const std::map<std::string, nlohmann::json>& Worlds() const { return worlds_; }

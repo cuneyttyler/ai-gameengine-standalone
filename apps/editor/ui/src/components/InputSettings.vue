@@ -2,7 +2,7 @@
 // Project Settings ▸ Input (development_plan.md 12.3, docs/systems/actions.md): the game's actions (move, attack,
 // interact… and the project's own: farm, parry, kick) and what triggers each: keys, mouse buttons and gamepad buttons
 // and sticks. An action of the project's can be added and removed, and can play a clip on the player or emit an event
-// when pressed; things react to it with an Action component. Saved to the project's input.json.
+// when pressed; things react to it with a Reaction component. Saved to the project's input.json.
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
 import { promptDialog } from '../dialogs'
@@ -28,6 +28,7 @@ interface Action {
   event?: string // emitted when it's pressed, for scripts
   effect?: string // an effect played on the player when it's pressed
   nearOnly?: boolean // its clip, event and effect only when something it activates is in range
+  screen?: string // a panel or screen opened when it's pressed
   group?: string // actions of one group pressed together: only the one whose target is nearest acts
 }
 
@@ -40,7 +41,7 @@ const capturing = ref<{ action: string; scale: number } | null>(null)
 const error = ref('')
 const saved = ref(false)
 // What plays / event / effect can be (input:choices): the characters' clips, the project's events and effects.
-const choices = ref<{ clips: string[]; events: string[]; effects: string[] }>({ clips: [], events: [], effects: [] })
+const choices = ref<{ clips: string[]; events: string[]; effects: string[]; screens: string[] }>({ clips: [], events: [], effects: [], screens: [] })
 
 onHostMessage((message) => {
   if (message.type === 'input:data') {
@@ -50,7 +51,7 @@ onHostMessage((message) => {
     builtIn.value = (message.builtIn as string[]) ?? []
     error.value = ((message.errors as string[]) ?? []).join('; ')
   } else if (message.type === 'input:choices') {
-    choices.value = { clips: (message.clips as string[]) ?? [], events: (message.events as string[]) ?? [], effects: (message.effects as string[]) ?? [] }
+    choices.value = { clips: (message.clips as string[]) ?? [], events: (message.events as string[]) ?? [], effects: (message.effects as string[]) ?? [], screens: (message.screens as string[]) ?? [] }
   } else if (message.type === 'input:saved') {
     error.value = (message.error as string | null) ?? ''
     saved.value = !error.value
@@ -129,6 +130,11 @@ function setField(action: Action, field: 'description' | 'plays' | 'event' | 'ef
   save()
 }
 
+function setScreen(action: Action, screen: string): void {
+  if (screen) action.screen = screen
+  else delete action.screen
+  save()
+}
 function setGroup(action: Action, group: string): void {
   if (group.trim()) action.group = group.trim()
   else delete action.group
@@ -154,7 +160,7 @@ function resetDefaults(): void {
     <div class="add">
       <input v-model="newAction" placeholder="a new action: farm, parry, kick…" spellcheck="false" @keydown.enter="addAction" />
       <button :disabled="!newAction.trim()" @click="addAction">Add action</button>
-      <span class="muted">Things react to it with an Action component (Inspector), or a part's input action.</span>
+      <span class="muted">Things react to it with a Reaction component (Inspector), or a part's input action.</span>
     </div>
     <table>
       <thead>
@@ -221,7 +227,12 @@ function resetDefaults(): void {
                 <option v-if="action.effect && !choices.effects.includes(action.effect)" :value="action.effect">{{ action.effect }} (missing)</option>
                 <option v-for="f in choices.effects" :key="f" :value="f">{{ f }}</option>
               </select>
-              <label class="near" title="Its clip, event and effect only when something it activates is in range (a part with it as its input action, a thing's Action): cook only at a stove">
+              <select class="small-in" :value="action.screen ?? ''" title="A panel, or a screen of the project's (ui/screens), opened when it's pressed" @change="setScreen(action, ($event.target as HTMLSelectElement).value)">
+                <option value="">no screen</option>
+                <option v-if="action.screen && !choices.screens.includes(action.screen)" :value="action.screen">{{ action.screen }} (missing)</option>
+                <option v-for="s in choices.screens" :key="s" :value="s">{{ s }}</option>
+              </select>
+              <label class="near" title="Its clip, event and effect only when something it activates is in range (a part with it as its input action, a thing's Reaction): cook only at a stove">
                 <input type="checkbox" :checked="!!action.nearOnly" @change="setNear(action, ($event.target as HTMLInputElement).checked)" /> only near something it activates</label>
               <input class="small-in" :value="action.group ?? ''" list="input-groups" placeholder="group" spellcheck="false"
                      title="Actions sharing a key in one group (use: interact, cook): pressed together, only the one whose target is nearest acts"

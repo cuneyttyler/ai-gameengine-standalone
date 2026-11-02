@@ -1401,7 +1401,13 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         }
         clips.erase("");
         events.erase("");
-        post_({{"type", "input:choices"}, {"clips", clips}, {"effects", effects}, {"events", events}});
+        // What an action can open: the windows over play, and the project's own screens (ui/screens).
+        std::set<std::string> screens = {"inventory", "crafting", "spellbook", "journal"};
+        std::error_code folder;
+        for (const auto& f : std::filesystem::directory_iterator(assets_.GetProject().Resolve("ui/screens"), folder)) {
+            if (f.path().extension() == ".rml") screens.insert(f.path().stem().string());
+        }
+        post_({{"type", "input:choices"}, {"clips", clips}, {"effects", effects}, {"events", events}, {"screens", screens}});
     } else if (type == "input:request" || type == "input:reset" || type == "input:save") {
         // Project Settings ▸ Input (12.3): the project's actions and bindings, input.json.
         const auto root = assets_.GetProject().root;
@@ -2763,6 +2769,14 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
             return;
         case Type::Down:
             post_({{"type", "panel:focused"}, {"id", "viewport"}}); // the maximise shortcut's panel (8.1)
+            // A window over Play takes its clicks.
+            if (playing_ && playWindows_.Open() != PlayWindows::Kind::None) {
+                if (uiDocs_ && ActiveSettings().ui.documents) {
+                    uiDocs_->MouseMove(static_cast<int>(event.x), static_cast<int>(event.y));
+                    uiDocs_->MouseButton(event.button == Button::Right ? 1 : 0, true);
+                }
+                return;
+            }
             if (event.button == Button::Right || event.button == Button::Middle) {
                 panning_ = true;
                 panLastX_ = event.x;
@@ -2778,6 +2792,11 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                 return;
             }
             if (playing_) {
+                // With an item in hand: used on what's clicked, no attack.
+                if (!session_.HeldItem().empty()) {
+                    session_.RequestUseHeldAt(sceneX, sceneY);
+                    return;
+                }
                 // A double click: a door under it opens, the player near it (Project Settings ▸ Game ▸ doorDoubleClick).
                 const auto now = std::chrono::steady_clock::now();
                 if (now - lastPlayClick_ < std::chrono::milliseconds(350) && std::abs(sceneX - lastPlayClickX_) < 8.0f &&
@@ -2829,6 +2848,13 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
             }
             return;
         case Type::Up:
+            if (playing_ && playWindows_.Open() != PlayWindows::Kind::None) {
+                if (uiDocs_ && ActiveSettings().ui.documents) {
+                    uiDocs_->MouseMove(static_cast<int>(event.x), static_cast<int>(event.y));
+                    uiDocs_->MouseButton(event.button == Button::Right ? 1 : 0, false);
+                }
+                return;
+            }
             if (event.button == Button::Right && !rightMoved_ && !playing_) {
                 // A right-click: the menu for what's under the cursor (the UI draws it).
                 auto picked = PickEntity(registry_, sceneX, sceneY, iso_);
@@ -3778,6 +3804,12 @@ void EditorApp::StartPlay() {
     if (ActiveSettings().ui.documents) {
         UiDocs().Reload();
         session_.SetDocumentHud(true);
+        // A click on a window's line, or a right click: as in a shipped game.
+        UiDocs().onMenuChoose = [this](int index) {
+            playWindows_.Choose(registry_, index);
+            if (const std::string message = playWindows_.TakeMessage(); !message.empty()) session_.Toast(message);
+        };
+        UiDocs().onMenuContext = [this](int index) { playWindows_.OpenItemMenu(registry_, index); };
         session_.SetNoticeSink([this](const std::string& channel, const std::string& text, const std::string& key, double seconds) {
             UiDocs().Notify({channel, text, "", seconds, 1, key});
         });
@@ -3869,9 +3901,12 @@ std::vector<UiQuad> EditorApp::BuildUi() {
     int height = 0;
     viewport_.GetFramebufferSize(width, height);
     session_.BuildUi(ui, static_cast<float>(width), static_cast<float>(height));
+    if (!(uiDocs_ && ActiveSettings().ui.documents)) {
+        if (auto view = playWindows_.View(registry_)) AddMenu(ui, *view, static_cast<float>(width), static_cast<float>(height));
+    }
     if (uiDocs_ && ActiveSettings().ui.documents) {
         uiDocs_->SetViewport(width, height);
-        uiDocs_->SetMenu(std::nullopt, "");
+        uiDocs_->SetMenu(playWindows_.View(registry_), playWindows_.Open() == PlayWindows::Kind::None ? "" : "inventory");
         uiDocs_->SetDialogue(session_.CurrentDialogueView());
         uiDocs_->SetHud(session_.MakeHud(static_cast<float>(width), static_cast<float>(height)));
         uiDocs_->Render(ui);
@@ -4384,6 +4419,17 @@ std::unique_ptr<GameBuild> EditorApp::MakeGameBuild() {
     host.projectRoot = assets_.GetProject().root;
     host.places = [this]() -> const Ontology& { return Places(); };
     host.buildMethod = [this] { return PlanBuildMethod(); };
+    host.startFeature = [this](const std::string& request) -> std::string {
+        if (!Ai() || Ai()->GetState() != AiClient::State::Ready) return "the AI isn't ready";
+        std::lock_guard lock(plannerBuildMutex_);
+        plannerFeature_ = request;
+        plannerFeatureStatus_ = "queued";
+        return {};
+    };
+    host.featureStatus = [this]() -> std::string {
+        std::lock_guard lock(plannerBuildMutex_);
+        return plannerFeatureStatus_ == "done" || plannerFeatureStatus_.rfind("failed", 0) == 0 ? plannerFeatureStatus_ : std::string("working");
+    };
     return std::make_unique<GameBuild>(std::move(host));
 }
 
@@ -4452,6 +4498,7 @@ void EditorApp::StepGameBuild() {
         RestartGameBuildNow();
         PostPlanner();
     }
+    StepPlannerFeature();
     if (!gameBuild_ || gameBuildJob_) return;
     while (!gameBuildAnswers_.empty()) {
         const auto [id, body] = gameBuildAnswers_.front();
@@ -4473,6 +4520,44 @@ void EditorApp::StepGameBuild() {
         job->done = true;
     });
     // Whatever it does next (an answer, a user action) pumps again.
+}
+
+// A gameplay feature of the plan (GameBuild's "features" stage): the AI panel's own way of working, read tools and tasks
+// included, with what it proposes applied unreviewed: the plan was the review. On the editor's thread.
+void EditorApp::StepPlannerFeature() {
+    std::string request;
+    {
+        std::lock_guard lock(plannerBuildMutex_);
+        if (plannerFeatureStatus_ != "queued") return;
+        if (task_ || playing_) return; // the panel is busy with another: its turn comes
+        request = plannerFeature_;
+        plannerFeatureStatus_ = "working";
+    }
+    if (!Ai() || Ai()->GetState() != AiClient::State::Ready) {
+        FinishPlannerFeature("failed: the AI isn't ready");
+        return;
+    }
+    ContextOptions options;
+    options.scene = OpenSceneRelative();
+    const nlohmann::json context = BuildEditorContext(registry_, EngineReflection(), prefabs_, assets_, assets_.GetProject(), options);
+    const int id = Ai()->Propose(request, context, nlohmann::json::array());
+    requestInstructions_[id] = request;
+    post_({{"type", "ai:message"}, {"role", "user"}, {"text", "Planner: " + request}, {"requestId", id}});
+    post_({{"type", "ai:busy"}, {"busy", true}});
+}
+
+void EditorApp::FinishPlannerFeature(const std::string& status) {
+    if (dirty_ && !playing_ && status == "done") Save();
+    std::lock_guard lock(plannerBuildMutex_);
+    plannerFeature_.clear();
+    plannerFeatureStatus_ = status;
+    gameBuildDirty_ = true;
+}
+
+// This request is the plan's feature, being carried out (its status "working").
+bool EditorApp::IsPlannerFeature(const std::string& instruction) {
+    std::lock_guard lock(plannerBuildMutex_);
+    return plannerFeatureStatus_ == "working" && !instruction.empty() && instruction == plannerFeature_;
 }
 
 bool EditorApp::ArchivePlan() {
@@ -5021,6 +5106,7 @@ void EditorApp::AddStatsOverlay(std::vector<UiQuad>& ui) {
 }
 
 void EditorApp::Tick(double frameSeconds) {
+    if (!playing_) playWindows_.Close();
     const SlowWatch whole("frame (all of Tick: if only this is logged, it was the rest of the frame's work)");
     { const SlowWatch w("frame: the AI's answers"); PollAi(); }
     if (!playing_) ApplyInteriors(registry_); // the Inspector's Interior ▸ shown previews it
@@ -5044,7 +5130,20 @@ void EditorApp::Tick(double frameSeconds) {
     if (!playing_) session_.StepPreviewFx(static_cast<float>(frameSeconds)); // effects tried while editing
     if (playing_) {
         const auto updateStart = std::chrono::steady_clock::now();
-        session_.Advance(frameSeconds, [this](Key key) { return viewport_.IsKeyDown(key); });
+        // The windows over play (inventory, crafting...): the game waits while one is open.
+        if (playWindows_.Open() != PlayWindows::Kind::None) {
+            playMenuInput_.SetContext("menu");
+            playMenuInput_.Update(ActiveInputMap(), [this](Key key) { return viewport_.IsKeyDown(key); });
+            playWindows_.HandleInput(registry_, playMenuInput_);
+            if (const std::string message = playWindows_.TakeMessage(); !message.empty()) session_.Toast(message);
+            if (playWindows_.Open() == PlayWindows::Kind::None) session_.ResetClock();
+        } else {
+            session_.Advance(frameSeconds, [this](Key key) { return viewport_.IsKeyDown(key); });
+            if (const auto who = FindPlayer(registry_); who && !session_.Conversation().Active() && !session_.InCutscene()) {
+                playWindows_.OpenAsked(registry_, session_, *who);
+                if (playWindows_.Open() != PlayWindows::Kind::None) playMenuInput_.HoldCurrent(); // the key that opened it doesn't close it
+            }
+        }
         HandleTravel();
         ApplyAudio(audio_, assets_.GetProject(), DirectAudio(registry_, session_, playManifest_, false), registry_,
                    static_cast<float>(frameSeconds));
@@ -8300,8 +8399,10 @@ void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
     post_({{"type", "ai:busy"}, {"busy", false}});
     std::string instruction = requestInstructions_[requestId];
     requestInstructions_.erase(requestId);
+    const bool feature = IsPlannerFeature(instruction);
 
     if (!body.value("ok", false) || !body.contains("proposal") || body["proposal"].is_null()) {
+        if (feature) FinishPlannerFeature("failed: " + FailureText(body, "the AI couldn't produce a valid change"));
         post_({{"type", "ai:message"}, {"role", "error"}, {"text", FailureText(body, "The AI couldn't produce a valid change.")}});
         conversation_.emplace_back("assistant", "(failed: no valid proposal)");
         return;
@@ -8315,6 +8416,13 @@ void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
         return;
     }
     toolRounds_.erase(requestId);
+    // No one to answer a question or take a card: reported on the result page.
+    if (feature && (scope == "route" || scope == "ask" || scope == "split")) {
+        FinishPlannerFeature("failed: the AI " + std::string(scope == "route" ? "sent it to another panel"
+                                                            : scope == "ask" ? "asked: " + proposal.value("ask", nlohmann::json::object()).value("question", "")
+                                                                             : "found it too big and split it"));
+        return;
+    }
     if (scope == "route") {
         // Another panel's work: a card that opens it with the request filled in.
         const nlohmann::json route = proposal.value("route", nlohmann::json::object());
@@ -8402,6 +8510,12 @@ void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
                                   {"appliedCount", autoOutcome.applied},
                                   {"errors", autoOutcome.errors},
                                   {"operations", autoOps}});
+    }
+    if (feature) {
+        nlohmann::json decisions = nlohmann::json::array();
+        for (size_t i = 0; i < resolved.items.size(); ++i) decisions.push_back({{"index", i}, {"accepted", true}});
+        ApplyProposal(requestId, decisions);
+        FinishPlannerFeature("done");
     }
 }
 
@@ -8699,6 +8813,14 @@ void EditorApp::FinishTask() {
                             {"steps", task->Steps().size()},
                             {"stopReason", task->StopReason()},
                             {"history", task->History()}});
+    if (IsPlannerFeature(task->Instruction())) {
+        nlohmann::json decisions = nlohmann::json::array();
+        for (size_t i = 0; i < pending.proposal.value("operations", nlohmann::json::array()).size(); ++i) {
+            decisions.push_back({{"index", i}, {"accepted", true}});
+        }
+        ApplyProposal(taskId_, decisions);
+        FinishPlannerFeature("done");
+    }
 }
 
 void EditorApp::PostProposalStates() {
@@ -8830,6 +8952,7 @@ void EditorApp::StopTask(int id, const std::string& reason) {
     if (taskRequestId_ != 0) {
         cancelledRequests_.insert(taskRequestId_);
     }
+    if (IsPlannerFeature(task_->Instruction())) FinishPlannerFeature("failed: " + reason);
     LogAiDecision(taskId_, {{"decision", "task-stopped"}, {"reason", reason}, {"steps", task_->Steps().size()}});
     task_.reset();
     taskPaused_ = false;

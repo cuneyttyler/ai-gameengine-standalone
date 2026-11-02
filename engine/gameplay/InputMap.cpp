@@ -68,6 +68,8 @@ InputMap InputMap::Defaults() {
                                  {Key::LeftCtrl, Key::PadLB}));
     map.actions.push_back(Button("dodge", "A quick dash you can't be hit during.", "gameplay", {Key::LeftShift, Key::PadB}));
     map.actions.push_back(Button("inventory", "Open your inventory.", "gameplay", {Key::I, Key::Tab, Key::PadY}));
+    map.actions.push_back(Button("crafting", "Open the list of what you can make.", "gameplay", {Key::C}));
+    map.actions.push_back(Button("put_back", "Put away the item in your hand.", "gameplay", {Key::MouseRight, Key::Z, Key::PadB}));
     for (int i = 1; i <= 4; ++i) {
         map.actions.push_back(Button("ability_" + std::to_string(i), "Use the ability in quick slot " + std::to_string(i) + ".",
                                      "gameplay", {static_cast<Key>(static_cast<int>(Key::Num0) + i)}));
@@ -88,6 +90,7 @@ InputMap InputMap::Defaults() {
     map.actions.push_back(Button("ui_select", "Pick the highlighted menu item.", "menu",
                                  {Key::Enter, Key::Space, Key::E, Key::PadA}));
     map.actions.push_back(Button("ui_back", "Go back to the previous menu.", "menu", {Key::Backspace, Key::PadB}));
+    map.actions.push_back(Button("ui_context", "The highlighted item's options (a right click).", "menu", {Key::Q, Key::PadX}));
     map.actions.push_back(Button("menu", "Open the pause menu, or close the top one.", "any", {Key::Escape, Key::PadStart}));
     map.actions.push_back(Button("quicksave", "Save the game to the quick slot.", "any", {Key::F6}));
     map.actions.push_back(Button("quickload", "Load the quick slot.", "any", {Key::F9}));
@@ -125,6 +128,7 @@ nlohmann::json InputMap::ToJson() const {
         if (!action.effect.empty()) json["effect"] = action.effect;
         if (action.nearOnly) json["nearOnly"] = true;
         if (!action.group.empty()) json["group"] = action.group;
+        if (!action.screen.empty()) json["screen"] = action.screen;
         list.push_back(json);
     }
     return {{"schema", "aige.input/1"}, {"actions", list}};
@@ -150,6 +154,7 @@ InputMap InputMap::FromJson(const nlohmann::json& json, std::vector<std::string>
         action.effect = a.value("effect", "");
         action.nearOnly = a.value("nearOnly", false);
         action.group = a.value("group", "");
+        action.screen = a.value("screen", "");
         if (std::find(kContexts.begin(), kContexts.end(), action.context) == kContexts.end()) {
             report(action.name + ": unknown context \"" + action.context + "\"");
             action.context = "gameplay";

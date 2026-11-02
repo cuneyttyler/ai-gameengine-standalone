@@ -329,9 +329,19 @@ proposed, or a new module proposed for the ontology (Phase 9's mechanism).
 
 Output: `planner/places/<id>.json` (description + draft Brief).
 
-### 5.7 ⑦ Systems — the game's data
+### 5.7 ⑦ Systems — the game's mechanics and data
 
-From the Brief's systems tab and what the story and characters use:
+**Gameplay first** (`planner/gameplay.json`): the features the game will have (cooking at a stove, farming, item
+enhancement, magic), each a description, how it plays, the engine's mechanics it uses, and a `buildRequest` in plain
+words. How many follows the Brief's **Gameplay mechanics** (① Concept): small 1-3, medium 4-7, extensive 8-15
+(`data/planner/scope.json`); apart from Scope, since a short game can have deep mechanics. It's a document of its own:
+regenerated or locked alone, and locking it keeps the design when the data is written again.
+
+In ⑫ each feature's `buildRequest` goes to the AI panel's machinery, on records, prefabs and input actions, with what
+it proposes applied unreviewed (the plan was the review). One that fails is reported on the result page, and the game
+goes on being built.
+
+**Then the data**, from the Brief's systems tab, the features and what the story and characters use:
 
 | System | What the Planner writes | Doc |
 |---|---|---|

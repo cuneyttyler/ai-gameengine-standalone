@@ -93,6 +93,7 @@ public:
     const std::vector<Notification>& Live() const; // showing now
     // A menu or dialogue item picked with the mouse (its index among the items).
     std::function<void(int index)> onMenuChoose;
+    std::function<void(int index)> onMenuContext; // a right click on one
     std::function<void(int index)> onDialogueChoose;
     // A screen of the project's own (ui/screens/<id>.rml), opened by Lua; its
     // elements call action('...') (the "ui" model), handed to `onAction`.

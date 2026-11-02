@@ -59,6 +59,10 @@ public:
         std::function<std::string(const std::string& buildId)> editorBuildStatus;
         // The plan's build method for its places (Assembled or Paint).
         std::function<std::string()> buildMethod;
+        // A gameplay feature's request carried out by the AI panel's machinery, unreviewed: it starts and returns why not;
+        // featureStatus says how it goes ("working", "done", "failed: why"). Without them features are noted, not built.
+        std::function<std::string(const std::string& request)> startFeature;
+        std::function<std::string()> featureStatus;
     };
 
     explicit GameBuild(Host host);
@@ -142,6 +146,7 @@ private:
     nlohmann::json bindings_ = nlohmann::json::object();
     nlohmann::json files_ = nlohmann::json::object();   // path -> provenance
     nlohmann::json playtest_ = nlohmann::json::object();
+    nlohmann::json features_ = nlohmann::json::array(); // the plan's gameplay features, as they're built
     int nextJob_ = 1;
 
     void Save();
@@ -166,6 +171,7 @@ private:
     void WriteFiles();
     void WriteDialogue(const std::string& character, const nlohmann::json& dialogue, const std::string& madeBy);
     nlohmann::json FallbackDialogue(const std::string& character) const;
+    bool DriveFeatures(); // each gameplay feature in turn
     void Playtest();
     // ⑬
     void WriteResult();

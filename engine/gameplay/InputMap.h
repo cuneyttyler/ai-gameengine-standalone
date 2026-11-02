@@ -47,6 +47,9 @@ struct InputAction {
     bool nearOnly = false;
     // Actions sharing a key in one group ("use": interact, cook): pressed together, only the one whose target is nearest acts.
     std::string group;
+    // A panel opened (or a screen of the project's shown) when it's pressed: inventory, crafting, spellbook, journal, or
+    // a screen's id.
+    std::string screen;
 };
 
 struct InputMap {

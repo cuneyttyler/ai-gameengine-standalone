@@ -539,6 +539,10 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
         .Param("keys", FieldType::String, "Its keys, comma-separated: E, Space, F, Q, MouseLeft, MouseRight, PadA, PadX...")
         .Param("plays", FieldType::String, "A clip the player plays when it's pressed (may be empty).")
         .Param("event", FieldType::String, "An event emitted when it's pressed, for scripts (may be empty).")
+        .Param("effect", FieldType::String, "An effect played on the player when it's pressed.").Optional()
+        .Param("group", FieldType::String, "Actions sharing a key in one group: only the one whose target is nearest acts.").Optional()
+        .Param("nearOnly", FieldType::Bool, "Its clip, event and screen only when something it activates is in range.").Optional()
+        .Param("screen", FieldType::String, "Opened when it's pressed: inventory, crafting, spellbook, journal, or a screen's id.").Optional()
         .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
             if (context.project == nullptr) return Fail("no project is open");
             std::string name = ToString(args[0]);
@@ -566,6 +570,10 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
             if (!bound.empty()) action->keys = bound;
             action->plays = ToString(args[3]);
             action->event = ToString(args[4]);
+            action->effect = ToString(args[5]);
+            action->group = ToString(args[6]);
+            action->nearOnly = std::get<bool>(args[7]);
+            action->screen = ToString(args[8]);
             if (!SaveInputMap(context.project->root, map)) return Fail("can't write input.json");
             ActiveInputMap() = map;
             return {};

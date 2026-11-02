@@ -292,3 +292,15 @@ def test_a_dialogue_can_ask_about_difficulty(schema, demo_context):
             {"text": "Yes", "next": "", "if": [{"difficulty": "story"}]},
             {"text": "No", "next": "", "if": [{"difficulty": {"enemies": {"atLeast": 4}}}]}]}])})
     assert validate_proposal(p, schema, demo_context) == []
+
+
+def test_rules_on_what_reacts_are_checked():
+    from app.story import StoryScope, check_rule_text
+    scope = StoryScope({}, set(), set())
+    assert check_rule_text("if", "", "x", scope) == []
+    assert check_rule_text("if", '[{"flag": "met_mira"}]', "x", scope) == []
+    assert check_rule_text("do", '[{"op": "open_screen", "screen": "crafting"}]', "x", scope) == []
+    assert "isn't valid JSON" in check_rule_text("if", "[{flag}]", "x", scope)[0]
+    assert "must be a JSON list" in check_rule_text("do", '{"op": "set_flag"}', "x", scope)[0]
+    assert "needs a" in check_rule_text("do", '[{"op": "open_screen"}]', "x", scope)[0]
+    assert "unknown effect" in check_rule_text("do", '[{"op": "explode"}]', "x", scope)[0]

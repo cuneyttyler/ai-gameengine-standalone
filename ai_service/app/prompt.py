@@ -147,6 +147,7 @@ Effects: {"op": "set_flag"|"clear_flag", "flag": "..."} | {"op": "start_quest"|"
   | {"op": "set_stage", "quest": "<id>", "stage": <index>} | {"op": "set_var"|"add_var", "var": "name", "value": ...}
   | {"op": "give_item"|"take_item", "item": "<item id>", "count": n} | {"op": "give_gold"|"give_xp", "amount": n}
   | {"op": "reputation", "faction": "<id>", "value": n} | {"op": "play_cutscene", "cutscene": "<id>"}
+  | {"op": "open_screen"|"close_screen", "screen": "inventory"|"crafting"|"spellbook"|"journal"|"<a screen's id>"}
 Quest: {"name": "...", "description": "...", "giver": "<World Bible key>",
   "aliases": [{"id": "thief", "kind": "character"|"item"|"location"|"entity", "fill": "<key, item id, marker, name>"}],
   "stages": [{"index": 10, "journal": "the journal's line for this stage",
@@ -437,18 +438,38 @@ GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
   requiresFlag, setFlag, text, event, becomes: a prefab it turns into when used, in its place, e.g. an open
   chest; give that prefab a becomes back for a toggle; animation: the clip it plays, Open plays open). Merchant opens
   a shop.
-- Actions (docs/systems/actions.md): the game's input actions are in input.json (interact is the default action, E
-  and Space; a project adds its own: farm, parry, each with keys, "plays" a clip on the player, "event" for scripts).
-  Action {"trigger": "input"|"event"|"timer"|"touch", "action": "farm", "event", "seconds", "range", "requires":
-  "seeds", "requiresFlag", "takes": "seeds", "gives": "wheat*3", "userAnimation": "farm", "animation", "becomes":
-  "<prefab>", "emits", "setFlag", "text", "once", "cooldown"} makes anything do something to whoever uses it, no
-  script needed: a field farmed (becomes a seeded field), a timer growing it, a harvest. Anyone uses it: the player
+- Actions, events, reactions (docs/systems/actions.md). Three words users use: an ACTION is a button the player
+  presses (input.json); an EVENT is a named message the game sends; a REACTION is what a thing does when set off. The
+  user's "Reaction" is the component named "Action" in the schema, in operations and in files: always write "Action".
+  Input actions: interact is the default (E and Space); a project adds its own with the command input.addAction: farm,
+  parry, each with "keys", "plays" (a clip on the player), "event" (sent when pressed), "group" (actions sharing a key in
+  one group: only the one whose target is nearest acts: put cook with interact), "nearOnly" (true: its clip, event and
+  screen only when something it activates is in range), "screen" (opens inventory, crafting, spellbook, journal, or a
+  screen's id when pressed).
+  Action {"trigger": "input"|"event"|"timer"|"touch"|"near", "action": "farm", "event", "seconds", "range", "requires":
+  "hoe, seeds*2" (a list; kept unless taken too), "requiresFlag", "takes": "seeds" (all must be carried, or nothing
+  happens), "gives": "wheat*3", "userAnimation": "farm", "animation", "becomes":
+  "<prefab>", "emits", "setFlag", "text", "once", "cooldown", "if", "do", "accepts", "station"} makes anything do
+  something to whoever uses it, no script needed. "if" and "do" (on Action, Interactable and AnimatedPart, and recipes)
+  are JSON TEXT, a string holding the Conditions or Effects list dialogue uses: "if": "[{\"flag\": \"met_mira\"}]".
+  "accepts": "key, lockpick": the player must have one in hand (others carry one); it takes it only if "takes" says so.
+  "station": "stove": using it opens the Crafting list with this station's recipes.
+  Item in hand: the player picks an item in the inventory and uses it on another item (a recipe) or a thing (its
+  "accepts"). Recipes are records "recipe": {"name", "inputs": [{"item": "<id>", "count": n}], "keeps": ["<item id>"]
+  (needed, not used up), "gives": [{"item", "count"}], "at": "stove" (a station; empty: anywhere), "seconds", "clip",
+  "effect", "text", "if", "do"}. Two items combine by using one on the other; more than two, or at a station, are made
+  from the Crafting list (right click an item, the crafting action, or the station). Write items before recipes.
+  "Rope and hook make a grappling hook": a recipe with those two inputs. "Cook stew at the stove": an Action with
+  "station": "stove" on the stove's entity or prefab, and a recipe with "at": "stove". Events the game sends:
+  item_used (text: the item), item_combined and crafted (text: the recipe).
+  A field farmed (becomes a seeded field), a timer growing it, a harvest. Anyone uses it: the player
   pressing its action, a character (package template "tend" with data {"action": "farm"}, or procedure step
   {"type": "act", "action": "farm"}), Lua act(user, target) or act(user, "farm"). An Interactable is used the same way.
   Action.trigger "near" plays `animation` as someone comes within range and `awayAnimation` when they've gone (a door);
   Action "effect" / "userEffect" play an effect record on the thing / its user (sparks, dust, a flash, a sound).
 - AnimatedPart {"sheet", "x", "y", "width", "height" (a box of its picture), "clip": "open", "closeClip": "close",
-  "range", "opens", "trigger", "prompt", "door", "locked", "key", "consumeKey", "more"} is a part of its picture that
+  "range", "opens", "trigger", "prompt", "fires", "duration", "playerClip", "playerLoop", "holdsPlayer", "floor", "if",
+  "do", "door", "locked", "key", "consumeKey", "more"} is a part of its picture that
   moves: a building's door, a window, a lever, a mill's sails. "opens" (shown as activation) is what plays it: "project"
   (Project Settings ▸ Game ▸ doorsOpen: "use" or "auto"), "auto" (as someone comes near), "use" (the player's door
   shortcuts, settings Game.doorActions, or a double click, near it; other characters open a door as they come),
@@ -458,7 +479,12 @@ GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
   doorway of its building (a way in, blocked while shut); only a building's (ontology role "building") parts are, not a
   window or a lever. A Building Plan (Interior) is only for buildings. "locked" with "key" (an item id):
   shut, its doorway blocked, until the player uses it carrying the key. "more": the building's other doors, a JSON list
-  of objects with the same fields (a front and a side door). Set a door's way with set_field on AnimatedPart (the first
+  of objects with the same fields (a front and a side door). "fires": an event sent each time the player activates it.
+  "duration": seconds it plays once activated, then stops by itself (0: until used again or left). "playerClip": a clip
+  the player plays while it's active (empty: its input action's "plays"); "playerLoop": again and again; "holdsPlayer":
+  the player can't move while it's active. "floor": the picture it's on (0 the outside, k the interior's floor k).
+  "always" with a "trigger" keeps playing and still sends its event on that action. A spot: "sheet": "spot" (a box
+  that's activated with nothing animated, usable the same way); Doors and parts ▸ Add a spot draws one by hand. Set a door's way with set_field on AnimatedPart (the first
   door) or set_prefab_field on the building's prefab (every copy). A door's animation itself is made in Build ▸ Animate
   (doors and objects by PixelLab, characters by AutoSprite) or right-click ▸ Animate a part…, not by you.
   Ramp marks where characters walk between heights (stairs, a ramp, a ladder): elsewhere a cliff can't be walked.
@@ -515,7 +541,8 @@ second while playing). These are ALL the engine functions — there are no other
   used(name)                           counts as using something (use/examine objectives)
   play_cutscene(id) -> boolean / skip_cutscene() / in_cutscene() -> boolean
   difficulty() -> level id / difficulty_step(category) -> 1..5 / set_difficulty(id) -> boolean
-  notify(channel, text[, seconds]) / open_screen(id) -> boolean / close_screen(id) / is_open(id) -> boolean
+  notify(channel, text[, seconds]) / open_screen(id) -> boolean (inventory, crafting too) / close_screen(id) / is_open(id) -> boolean
+  hold_item(item) / held_item() -> item or "" / put_back_item() / craft(recipe[, station]) -> "" or why not
   play_effect(id, x, y) or play_effect(id, entity) -> boolean / emit_particles(id, x, y[, seconds])
   shake(trauma) / hitstop(seconds) / slow_motion(scale, seconds) / anim_trigger(id, "attacking"|"casting"|...)
   tween(id, "Component.field", to, seconds[, ease]) -> handle / tween_done(handle) -> boolean

@@ -313,7 +313,7 @@ std::string GamePlan::StageOfJob(const std::string& kind) const {
     static const std::map<std::string, std::string> stages = {
         {"interpret", "concept"}, {"outline", "outline"},       {"act", "story"},       {"scene", "story"},
         {"critic", "story"},      {"character", "characters"}, {"quests", "quests"},   {"quest", "quests"},   {"place", "places"},
-        {"systems", "systems"},   {"visuals", "visuals"},      {"review", "validate"}, {"report", "validate"}};
+        {"gameplay", "systems"},  {"systems", "systems"},   {"visuals", "visuals"},      {"review", "validate"}, {"report", "validate"}};
     auto it = stages.find(kind);
     return it == stages.end() ? "" : it->second;
 }
@@ -610,6 +610,7 @@ std::string GamePlan::DocOfJob(const Job& job) const {
         return "quests/" + job.subject;
     }
     if (job.kind == "place") return "places/" + PlanSlug(job.subject);
+    if (job.kind == "gameplay") return "gameplay";
     if (job.kind == "systems") return "systems";
     if (job.kind == "visuals") return "ui";
     if (job.kind == "review" || job.kind == "report") return "report";
@@ -817,7 +818,10 @@ void GamePlan::BeginStage(const std::string& stage) {
             if (!store_.Locked("places/" + PlanSlug(n->id))) AddJob("place", n->id);
         }
     } else if (stage == "systems") {
-        AddJob("systems", "systems");
+        // The features first; the data then knows what they need (each can be regenerated, or locked, alone).
+        std::vector<std::string> after;
+        if (!store_.Locked("gameplay")) after.push_back(AddJob("gameplay", "gameplay"));
+        AddJob("systems", "systems", after);
     } else if (stage == "visuals") {
         AddJob("visuals", "ui");
     } else if (stage == "validate") {
@@ -1091,6 +1095,7 @@ std::string GamePlan::Regenerate(const std::string& doc) {
                                       ? q["slot"].get<std::string>() : PlanSlug(doc);
     }
     else if (doc.rfind("places/", 0) == 0) kind = "place", subject = "location/" + PlanSlug(doc);
+    else if (doc == "gameplay") kind = "gameplay", subject = "gameplay";
     else if (doc == "systems") kind = "systems", subject = "systems";
     else if (doc == "ui") kind = "visuals", subject = "ui";
     else if (doc == "report") kind = "review", subject = "review";
@@ -1305,7 +1310,7 @@ json GamePlan::State() const {
                                         : s.rfind("characters/", 0) == 0   ? "characters"
                                         : s.rfind("quests/", 0) == 0       ? "quests"
                                         : s.rfind("places/", 0) == 0       ? "places"
-                                        : s == "systems"                   ? "systems"
+                                        : s == "systems" || s == "gameplay" ? "systems"
                                         : s == "ui"                        ? "visuals"
                                                                            : "";
             staleCount += stageOf == *it;
@@ -1475,6 +1480,7 @@ json GamePlan::State() const {
             {"characters", characters},
             {"quests", quests},
             {"places", places},
+            {"gameplay", store_.Read("gameplay").value_or(json())},
             {"systems", store_.Read("systems").value_or(json())},
             {"ui", store_.Read("ui").value_or(json())},
             {"report", reportShown},

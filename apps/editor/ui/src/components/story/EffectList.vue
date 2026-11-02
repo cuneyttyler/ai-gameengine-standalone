@@ -17,6 +17,7 @@ export interface Effect {
   amount?: number
   faction?: string
   cutscene?: string
+  screen?: string
 }
 
 const props = defineProps<{
@@ -42,6 +43,8 @@ const ops: Record<string, string> = {
   give_xp: 'give experience',
   reputation: 'change reputation',
   play_cutscene: 'play cutscene',
+  open_screen: 'open a screen',
+  close_screen: 'close a screen',
 }
 
 const questOps = ['start_quest', 'complete_quest', 'fail_quest', 'complete_objective', 'set_stage']
@@ -61,7 +64,8 @@ function setOp(e: Effect, op: string): void {
   } else if (op === 'give_item' || op === 'take_item') {
     e.item = ''
     e.count = 1
-  } else if (op === 'give_gold' || op === 'give_xp') e.amount = 10
+  } else if (op === 'open_screen' || op === 'close_screen') e.screen = ''
+  else if (op === 'give_gold' || op === 'give_xp') e.amount = 10
   else if (op === 'reputation') {
     e.faction = ''
     e.value = 10
@@ -111,6 +115,7 @@ function add(): void {
         <input v-model="e.faction" placeholder="faction" spellcheck="false" class="short" />
         <span class="word">by</span><input v-model.number="e.value" type="number" class="num" />
       </template>
+      <input v-else-if="e.op === 'open_screen' || e.op === 'close_screen'" v-model="e.screen" placeholder="inventory, crafting, or a screen's id" spellcheck="false" />
       <input v-else-if="e.op === 'play_cutscene'" v-model="e.cutscene" placeholder="cutscene id" spellcheck="false" />
       <button title="Remove" @click="effects.splice(i, 1)">×</button>
     </div>

@@ -96,7 +96,7 @@ def test_visuals_pick_from_the_themes_windows_and_widgets():
 
 
 def test_every_step_has_an_endpoint():
-    assert set(STEPS) == {"concept", "outline", "act", "scene", "critic", "character", "quests", "place", "systems",
+    assert set(STEPS) == {"concept", "outline", "act", "scene", "critic", "character", "quests", "place", "gameplay", "systems",
                           "visuals", "review", "revise", "dialogue"}
     provider = scripted({"findings": [], "rationale": "fine"})
     client = TestClient(create_app(provider=provider))
@@ -210,3 +210,20 @@ def test_a_place_is_planned_with_the_story_set_there():
     part = story_part(context)
     assert "THE STORY SET HERE" in part and "stolen amulet" in part and "altar" in part
     assert story_part({}) == ""
+
+
+
+def test_gameplay_features_stay_within_the_briefs_extent():
+    from app.planner import plan_gameplay
+    feature = {"id": "cooking", "name": "Cooking", "description": "Cook at a stove.", "howItPlays": "Press E at a stove.",
+               "buildRequest": "Add a stew recipe at a stove."}
+    second = {**feature, "id": "farming", "name": "Farming"}
+    # Too many for "small" (one to one here), then right.
+    provider = scripted({"gameplay": {"features": [feature, second]}}, {"gameplay": {"features": [feature]}})
+    result = plan_gameplay(provider, {"count": [1, 1]})
+    assert result["ok"] and [f["id"] for f in result["gameplay"]["features"]] == ["cooking"]
+    assert "2 features: the Brief asks for 1 to 1" in provider.requests[-1][-1]["content"]
+    # What the AI panel needs is required of each.
+    provider = scripted({"gameplay": {"features": [{**feature, "buildRequest": ""}]}}, {"gameplay": {"features": [feature]}})
+    assert plan_gameplay(provider, {"count": [1, 3]})["ok"]
+    assert "buildRequest is missing" in provider.requests[-1][-1]["content"]

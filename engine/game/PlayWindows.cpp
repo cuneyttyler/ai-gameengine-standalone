@@ -2,6 +2,8 @@
 
 #include "gameplay/Attributes.h"
 #include "gameplay/Components.h"
+#include "gameplay/Crafting.h"
+#include "gameplay/GameSession.h"
 #include "gameplay/Interact.h"
 #include "gameplay/Items.h"
 #include "gameplay/Localization.h"
@@ -147,6 +149,31 @@ std::vector<PlayWindows::Line> PlayWindows::Lines(Registry& registry) const {
     }
     if (!registry.valid(player_)) return lines;
     const auto* inventory = registry.try_get<Inventory>(player_);
+    if (kind_ == Kind::Crafting) {
+        if (session_) {
+            for (const Recipe& recipe : AllRecipes()) {
+                if (!recipe.at.empty() && recipe.at != craftStation_) continue;
+                const auto uses = [&](const std::string& item) {
+                    return std::any_of(recipe.inputs.begin(), recipe.inputs.end(), [&](const ItemStack& s) { return s.item == item; }) ||
+                           std::find(recipe.keeps.begin(), recipe.keeps.end(), item) != recipe.keeps.end();
+                };
+                if (!craftItem_.empty() && !uses(craftItem_)) continue;
+                lines.push_back({"craft:" + recipe.id, recipe.name, session_->CraftProblem(recipe.id, craftStation_).empty()});
+            }
+        }
+        lines.push_back({"close", Tr("menu.close", "Close")});
+        return lines;
+    }
+    if (kind_ == Kind::Inventory && !itemMenu_.empty()) {
+        if (Equippable(itemMenu_)) lines.push_back({"equip:" + itemMenu_, Tr("inventory.equip", "equip")});
+        else if (Usable(itemMenu_)) lines.push_back({"use:" + itemMenu_, Tr("inventory.use", "use")});
+        lines.push_back({"hold:" + itemMenu_, Tr("inventory.useOn", "Use on...")});
+        lines.push_back({"crafting:" + itemMenu_, Tr("inventory.crafting", "Crafting")});
+        lines.push_back({"back", Tr("menu.back", "Back")});
+        return lines;
+    }
+    const std::string held = session_ && kind_ == Kind::Inventory ? session_->HeldItem() : std::string();
+    if (!held.empty()) lines.push_back({"put", Tr("inventory.putBack", "Put back") + " " + ItemName(held)});
     if (kind_ == Kind::Inventory) {
         if (const auto* equipment = registry.try_get<Equipment>(player_)) {
             auto copy = *equipment;
@@ -162,8 +189,12 @@ std::vector<PlayWindows::Line> PlayWindows::Lines(Registry& registry) const {
                 std::string hint = Equippable(stack.item) ? "  - " + Tr("inventory.equip", "equip")
                                    : Usable(stack.item)   ? "  - " + Tr("inventory.use", "use")
                                                           : "";
-                lines.push_back({Equippable(stack.item) ? "equip:" + stack.item : "use:" + stack.item,
-                                 Counted(stack.item, stack.count) + hint, Equippable(stack.item) || Usable(stack.item)});
+                // With an item in hand: this one combined with it. Nothing to do with it itself: taken in hand.
+                const bool does = Equippable(stack.item) || Usable(stack.item);
+                if (!held.empty()) lines.push_back({"combine:" + stack.item, Counted(stack.item, stack.count)});
+                else if (!does && session_) lines.push_back({"hold:" + stack.item, Counted(stack.item, stack.count)});
+                else lines.push_back({Equippable(stack.item) ? "equip:" + stack.item : "use:" + stack.item,
+                                      Counted(stack.item, stack.count) + hint, does});
             }
         }
     } else if (kind_ == Kind::Shop && registry.valid(merchant_)) {
@@ -201,6 +232,39 @@ void PlayWindows::Choose(Registry& registry, int index) {
     const std::string what = colon == std::string::npos ? std::string() : action.substr(colon + 1);
     if (verb == "close") {
         Close();
+        return;
+    }
+    if (verb == "back") {
+        itemMenu_.clear();
+        highlighted_ = 0;
+        return;
+    }
+    if (session_ && verb == "put") {
+        session_->PutBackItem();
+        return;
+    }
+    if (session_ && verb == "hold") {
+        session_->HoldItem(what);
+        itemMenu_.clear();
+        highlighted_ = 0;
+        return;
+    }
+    if (session_ && verb == "combine") {
+        message_ = session_->CombineHeldWith(what);
+        highlighted_ = std::min(highlighted_, static_cast<int>(Lines(registry).size()) - 1);
+        return;
+    }
+    if (verb == "crafting") {
+        const Entity player = player_;
+        itemMenu_.clear();
+        OpenCrafting(player, "", what);
+        return;
+    }
+    if (session_ && verb == "craft") {
+        const auto recipe = FindRecipe(what);
+        const std::string why = session_->Craft(what, craftStation_);
+        message_ = why.empty() ? (recipe && recipe->seconds > 0.0f ? "Making " : "Made ") + (recipe ? recipe->name : what) : why;
+        highlighted_ = std::min(highlighted_, static_cast<int>(Lines(registry).size()) - 1);
         return;
     }
     if (verb == "slot") {
@@ -251,6 +315,41 @@ void PlayWindows::Choose(Registry& registry, int index) {
     highlighted_ = std::min(highlighted_, static_cast<int>(Lines(registry).size()) - 1);
 }
 
+void PlayWindows::OpenCrafting(Entity player, const std::string& station, const std::string& item) {
+    kind_ = Kind::Crafting;
+    player_ = player;
+    craftStation_ = station;
+    craftItem_ = item;
+    highlighted_ = 0;
+}
+
+void PlayWindows::OpenItemMenu(Registry& registry, int index) {
+    if (kind_ != Kind::Inventory || !session_ || !itemMenu_.empty()) return;
+    const auto lines = Lines(registry);
+    if (index < 0 || index >= static_cast<int>(lines.size())) return;
+    const std::string& action = lines[index].action;
+    const auto colon = action.find(':');
+    if (colon == std::string::npos) return;
+    const std::string verb = action.substr(0, colon);
+    if (verb != "equip" && verb != "use" && verb != "hold") return; // an item carried (not what's worn, not a combine)
+    itemMenu_ = action.substr(colon + 1);
+    highlighted_ = 0;
+}
+
+void PlayWindows::OpenAsked(Registry& registry, GameSession& session, Entity player) {
+    SetSession(&session);
+    if (session.Input().Pressed("inventory")) OpenInventory(player);
+    if (session.Input().Pressed("spellbook")) OpenSpellbook(player);
+    if (session.Input().Pressed("crafting")) OpenCrafting(player, "");
+    if (const auto panel = session.TakePanelRequest()) {
+        if (*panel == "inventory") OpenInventory(player);
+        else if (*panel == "spellbook") OpenSpellbook(player);
+        else if (*panel == "journal" && session.StoryLibraryInUse()) OpenJournal(player, session.Story(), *session.StoryLibraryInUse());
+        else if (panel->rfind("crafting", 0) == 0) OpenCrafting(player, panel->size() > 9 ? panel->substr(9) : std::string());
+    }
+    (void)registry;
+}
+
 void PlayWindows::HandleInput(Registry& registry, const InputState& input) {
     if (kind_ == Kind::None) return;
     const auto lines = Lines(registry);
@@ -258,6 +357,8 @@ void PlayWindows::HandleInput(Registry& registry, const InputState& input) {
     if (input.Pressed("ui_up")) highlighted_ = (highlighted_ - 1 + count) % count;
     if (input.Pressed("ui_down")) highlighted_ = (highlighted_ + 1) % count;
     if (input.Pressed("ui_select")) Choose(registry, highlighted_);
+    else if (input.Pressed("ui_context")) OpenItemMenu(registry, highlighted_);
+    else if (!itemMenu_.empty() && (input.Pressed("ui_back") || input.Pressed("menu"))) itemMenu_.clear(), highlighted_ = 0;
     else if (input.Pressed("ui_back") || input.Pressed("menu") || input.Pressed("inventory") || input.Pressed("journal")) Close();
 }
 
@@ -266,7 +367,23 @@ std::optional<MenuView> PlayWindows::View(Registry& registry) const {
     MenuView view;
     const auto* inventory = registry.try_get<Inventory>(player_);
     const int gold = inventory ? inventory->gold : 0;
-    if (kind_ == Kind::Spellbook) {
+    if (kind_ == Kind::Crafting) {
+        view.title = Tr("crafting.title", "Crafting");
+        // The highlighted recipe: what it uses, and why it can't be made.
+        const auto lines = Lines(registry);
+        if (highlighted_ >= 0 && highlighted_ < static_cast<int>(lines.size()) && lines[highlighted_].action.rfind("craft:", 0) == 0) {
+            const std::string id = lines[highlighted_].action.substr(6);
+            if (const auto recipe = FindRecipe(id)) {
+                for (const auto& stack : recipe->inputs) view.body += (view.body.empty() ? "" : ", ") + Counted(stack.item, stack.count);
+                for (const auto& keep : recipe->keeps) view.body += (view.body.empty() ? "" : ", ") + ItemName(keep);
+                if (session_) {
+                    if (const std::string why = session_->CraftProblem(id, craftStation_); !why.empty()) view.body += "\n" + why;
+                }
+            }
+        } else if (lines.size() <= 1) {
+            view.body = Tr("crafting.empty", "Nothing to make here.");
+        }
+    } else if (kind_ == Kind::Spellbook) {
         view.title = Tr("spellbook.title", "Abilities");
         view.body = Tr("spellbook.help", "Pick one to put it in quick slot 1 (keys 1-4 use the slots).");
     } else if (kind_ == Kind::Achievements) {
@@ -297,6 +414,11 @@ std::optional<MenuView> PlayWindows::View(Registry& registry) const {
                     "   " + Tr("inventory.defense", "Defense") + " " + std::to_string(static_cast<int>(std::round(stats->defense)));
         }
         view.body = body;
+        if (!itemMenu_.empty()) view.title = ItemName(itemMenu_);
+        if (session_ && !session_->HeldItem().empty()) {
+            view.body += "\n" + Tr("inventory.inHand", "In hand:") + " " + ItemName(session_->HeldItem()) + ". " +
+                         Tr("inventory.inHandHelp", "Pick another item to combine, or close and use it on something.");
+        }
     } else {
         const auto* name = registry.valid(merchant_) ? registry.try_get<Name>(merchant_) : nullptr;
         view.title = name && !name->value.empty() ? name->value : Tr("shop.title", "Shop");

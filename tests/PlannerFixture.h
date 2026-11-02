@@ -157,6 +157,9 @@ inline json Answer(const std::string& path, const json& body) {
         place["brief"]["components"] = {{"rooms", {{"count", 4}}}, {"kind", "crypt"}, {"features", json::array()}};
         place["brief"]["features"] = json::array({""});
         a["place"] = place;
+    } else if (path == "/planner/gameplay") {
+        a["gameplay"] = {{"features", {{{"id", "cooking"}, {"name", "Cooking"}, {"kind", "crafting"}, {"description", "Cook at a stove."},
+                                        {"howItPlays", "Press E at a stove."}, {"buildRequest", "Add a stew recipe at a stove."}}}}};
     } else if (path == "/planner/systems") {
         a["systems"] = {{"summary", {{"economy", "gold"}}}, {"records", {{{"type", "item"}, {"id", "warden-blade"}, {"record", {{"name", "Warden's Blade"}}}}}}};
     } else if (path == "/planner/dialogue") {

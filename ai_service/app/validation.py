@@ -43,7 +43,7 @@ from .physics import check_physics
 from .storygraph import check_story_graph
 from .shipping import check_shipping
 from .gameui import check_ui
-from .story import StoryScope, check_cutscene, check_dialogue, check_quest, check_schedule
+from .story import StoryScope, check_cutscene, check_dialogue, check_quest, check_rule_text, check_schedule
 
 _SAFE_SCRIPT = re.compile(r"^scripts/[A-Za-z0-9_\-/]+\.lua$")
 
@@ -312,6 +312,20 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
             trigger = op.value
         if isinstance(trigger, str) and trigger and trigger not in cutscenes:
             errors.append(f"operation {index} ({op.op}): cutscene {trigger!r} doesn't exist and isn't written here")
+
+    # "if" and "do" on what reacts, and on recipes: JSON text holding dialogue's lists, naming things that exist.
+    for index, op in enumerate(proposal.operations, start=1):
+        where = f"operation {index} ({op.op})"
+        rules = {}
+        if isinstance(op, AddComponent) and op.component in ("Action", "Interactable", "AnimatedPart"):
+            rules = op.fields
+        elif isinstance(op, (SetField, SetPrefabField)) and op.component in ("Action", "Interactable", "AnimatedPart"):
+            rules = {op.field: op.value}
+        elif getattr(op, "op", "") == "write_record" and getattr(op, "type", "") == "recipe":
+            rules = getattr(op, "record", None) or {}
+        for field in ("if", "do"):
+            if field in rules:
+                errors += check_rule_text(field, rules[field], where, scope)
 
     # Routines: places must be markers in the scene or added here; a Routine
     # must point at a schedule that exists or is written here.

@@ -30,10 +30,11 @@ with **MeleeAttack** (or RangedAttack: `fire`), added in the Inspector when a ga
 Right click to parry: add `parry`, bind MouseRight, plays `parry`.
 Scripts ask for actions by name (`action_pressed("farm")`), so rebinding changes nothing in them.
 
-## 2. Things that react: the Action component
+## 2. Things that react: the Reaction component
 
-An entity with an **Action** (Inspector) does something when its trigger happens, to whoever (or whatever) uses it.
-The **Interactable** is an Action with set settings: trigger input, action `interact`, plus what doors, chests, signs
+An entity with a **Reaction** (Inspector) does something when its trigger happens, to whoever (or whatever) uses it.
+(The Inspector calls it **Reaction**, so it isn't mistaken for an input action; in files and code it is still `Action`.)
+The **Interactable** is a Reaction with set settings: trigger input, action `interact`, plus what doors, chests, signs
 and merchants add. Both go through the same use (`Act(user, target)`), so anything can use either.
 
 | Field | |
@@ -43,9 +44,9 @@ and merchants add. Both go through the same use (`Act(user, target)`), so anythi
 | `event` | the event, for `trigger: event` |
 | `seconds` | for `trigger: timer` |
 | `range` | how close the user must be, in cells |
-| `requires` | an item the user must carry (`seeds`); empty: none |
+| `requires` | items the user must carry, kept unless taken too (`hoe, seeds*2`); empty: none |
 | `requiresFlag` | a story flag that must be set |
-| `takes` | items taken from the user (`seeds`, `ore*2`) |
+| `takes` | items taken from the user (`seeds`, `ore*2`); all must be carried, or it doesn't happen |
 | `gives` | items given to the user (`wheat*3`) |
 | `userAnimation` | the clip the user plays (farm, use_pickup, pray) |
 | `animation` | the clip this plays |
@@ -58,7 +59,8 @@ and merchants add. Both go through the same use (`Act(user, target)`), so anythi
 | `once` | works only once |
 | `cooldown` | seconds before it works again |
 
-Missing what it `requires`: it says so ("Needs seeds") and does nothing.
+Missing anything it `requires` or `takes`: it says what ("Needs 2 seeds, Hoe"), does nothing and takes nothing. An item
+named in both counts once, at the larger number.
 
 ### Who uses it
 
@@ -73,9 +75,9 @@ and it plays `userAnimation`.
   it happened.
 - **Events and timers**: `trigger: event` / `timer` act with no user (or the event's entity as the user).
 
-### The Interactable, an Action with set settings
+### The Interactable, a Reaction with set settings
 
-| Interactable | As an Action |
+| Interactable | As a Reaction |
 |---|---|
 | (the interact key) | trigger `input`, action `interact` |
 | `range` | `range` |
@@ -95,7 +97,7 @@ It stays as its own component (doors, chests, signs, merchants are made with it)
 Every use, whoever does it, runs the same steps:
 
 1. **Can it?** The target isn't used up (`once`) or cooling down; the user is within `range` (characters walk there
-   first); the user carries what it `requires`; the story flag is set.
+   first); the user carries all it `requires` and `takes`; the story flag is set.
 2. **Animations**: the user plays `userAnimation`, the target plays `animation`.
 3. **Effects**: `takes` from the user's inventory, `gives` to it; `setFlag`; `emits` (the event's entity the target,
    its other the user); `text` shown (to the player).
@@ -127,13 +129,58 @@ its location and waits. A second package for `interact` harvests. The same Actio
 A door is an Interactable with a Door (verb Open). An NPC on its way through a closed door, or a package step `act`
 on it, opens it as the player would: its key from the NPC's own inventory, its `open` clip played, its Door toggled.
 
-## 5. Where it lives
+## 5. Conditions and effects
+
+Action, Interactable and AnimatedPart (and recipes) have **`if`** and **`do`**: the same JSON lists as dialogue
+([story.md](story.md): flags, quests, variables, items, gold, level, day, attributes, time, factions, difficulty; set
+flags, start quests, give items...). Text that isn't a JSON list never holds and does nothing.
+
+`do` can also open what the player sees: `{"op": "open_screen", "screen": "inventory"}` (`crafting`, `spellbook`,
+`journal`, or a screen's id in `ui/screens`), and `close_screen`. So can an input action's **screen** (Project Settings ▸
+Input), and a screen's button with `action('open:inventory')` or `action('close:shop')`: no script needed.
+
+## 6. Items in hand and recipes
+
+**In hand**: pick an item in the inventory: one with no use of its own by a click; any by a right click (`ui_context`
+on keys and gamepads) ▸ **Use on...**. Then:
+
+- another item in the inventory: the recipe of those two is made, or "That doesn't work";
+- close the window and click a thing, or press interact near it: its Action runs if it `accepts` the item (seeds on a
+  field, a key on a lock), or a station's recipe of that item alone is made, or the station's list opens;
+- right click or Esc (`put_back`, the gamepad's B): put away.
+
+An Action with `accepts` works for the player only with the item in hand; anyone else just carries one. It takes the
+item only if `takes` says so. Scripts: `hold_item(id)`, `held_item()`, `put_back_item()`, `craft(id, station)`. Events:
+`item_used` (text: the item), `item_combined` and `crafted` (text: the recipe).
+
+**Recipes** (`recipe` records, Records panel):
+
+| Field | |
+|---|---|
+| `inputs` | items used up, each with a count |
+| `keeps` | items needed but kept (a knife) |
+| `gives` | what it makes |
+| `at` | a station, a Reaction whose `station` names it (`stove`); empty: anywhere |
+| `seconds` | how long it takes (what it makes comes after this; not kept in a save made meanwhile) |
+| `clip`, `effect`, `text` | on the player, as it's made |
+| `if`, `do` | as §5 |
+
+**Two items** combine by using one on the other. **More than two**: right click an item ▸ **Crafting** (the recipes using
+it), the `crafting` action (C, all that can be made here), or a station (a Reaction with `station`: its recipes too).
+Lines that can't be made are greyed, and say what's missing.
+
+Example, a stove: a Reaction with `station: stove`, and a recipe `{"name": "Stew", "inputs": [{"item": "meat"},
+{"item": "water"}, {"item": "turnip", "count": 2}], "keeps": ["pot"], "gives": [{"item": "stew"}], "at": "stove"}`.
+
+## 7. Where it lives
 
 | | |
 |---|---|
 | Actions and their keys | `engine/gameplay/InputMap.h/.cpp` (`InputAction`: `plays`, `event`), `input.json` |
-| The Action component | `engine/gameplay/Components.h` (`Action`, runtime `ActionState`) |
+| The Reaction component | `engine/gameplay/Components.h` (`Action`, runtime `ActionState`) |
 | `Act(user, target)`, triggers (presses, timers, touches, events) | `engine/gameplay/GameSession.cpp` (`Act`, `StepActions`) |
 | The NPC step `act` | `engine/gameplay/Behaviour.cpp` (`AiContext::act`) |
 | Lua `act` | `engine/gameplay/GameSession.cpp` |
 | Input settings (add, remove, plays, event) | `apps/editor/ui/src/components/InputSettings.vue` |
+| Recipes, the item in hand | `engine/gameplay/Crafting.h/.cpp`, `GameSession` (`Craft`, `UseHeldOn`, `StepHeldItem`) |
+| The Crafting list, an item's right-click options | `engine/game/PlayWindows.cpp` |

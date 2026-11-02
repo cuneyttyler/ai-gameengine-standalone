@@ -268,7 +268,7 @@ void GameBuild::Save() {
     std::ofstream(store_.Dir() / "buildplan.json", std::ios::binary) << json{{"schema", "aige.build-plan/1"}, {"mode", mode_}, {"rows", rows}}.dump(2);
     std::ofstream(store_.Dir() / "buildstate.json", std::ios::binary)
         << json{{"stage", stage_}, {"status", status_}, {"message", message_}, {"mode", mode_}, {"jobs", jobs}, {"nextJob", nextJob_},
-                {"bindings", bindings_}, {"files", files_}, {"playtest", playtest_}}
+                {"bindings", bindings_}, {"files", files_}, {"playtest", playtest_}, {"features", features_}}
                .dump(2);
 }
 
@@ -286,6 +286,7 @@ void GameBuild::Load() {
     bindings_ = s.value("bindings", json::object());
     files_ = s.value("files", json::object());
     playtest_ = s.value("playtest", json::object());
+    features_ = s.value("features", json::array());
     jobs_.clear();
     for (const auto& j : s.value("jobs", json::array())) {
         Job job;
@@ -1448,6 +1449,7 @@ void GameBuild::WriteResult() {
                                  std::to_string(completed) + " of " + std::to_string(quests) + " quests can be finished.";
     const json result = {{"schema", "aige.plan-result/1"},
                          {"headline", headline},
+                         {"features", features_},
                          {"askedVsMade", asked},
                          {"places", places},
                          {"quests", playtest_.value("quests", json::array())},
@@ -1465,8 +1467,39 @@ void GameBuild::Next(const std::string& stage) {
     stage_ = stage;
     static const std::map<std::string, std::string> labels = {
         {"populate", "⑪ Placing characters and binding the quests…"}, {"write", "⑫ Writing the game's files…"},
-        {"playtest", "⑫ Playtesting…"}, {"result", "⑬ The result…"}};
+        {"features", "⑫ Setting up the gameplay…"}, {"playtest", "⑫ Playtesting…"}, {"result", "⑬ The result…"}};
     if (labels.count(stage)) message_ = labels.at(stage);
+}
+
+bool GameBuild::DriveFeatures() {
+    for (auto& f : features_) {
+        const std::string status = f.value("status", "");
+        if (status == "running") {
+            const std::string now = host_.featureStatus ? host_.featureStatus() : std::string("failed: no AI panel");
+            if (now == "working") return false; // its answer pumps again
+            f["status"] = now == "done" ? "done" : "failed";
+            if (now != "done") f["error"] = now.rfind("failed: ", 0) == 0 ? now.substr(8) : now;
+            Record("feature", f.value("id", ""), f.value("status", ""), f.value("error", ""));
+            return true;
+        }
+        if (status != "queued") continue;
+        // One that failed is reported on the result page; the game goes on being built.
+        const std::string request = f.value("request", "");
+        if (!host_.startFeature || request.empty()) {
+            f["status"] = "skipped";
+            f["error"] = request.empty() ? "it has no build request" : "no AI panel here";
+            return true;
+        }
+        if (const std::string why = host_.startFeature(request); !why.empty()) {
+            f["status"] = "failed";
+            f["error"] = why;
+            return true;
+        }
+        f["status"] = "running";
+        message_ = "⑫ Setting up " + f.value("name", "a feature") + "…";
+        return true;
+    }
+    return false;
 }
 
 bool GameBuild::Pump() {
@@ -1496,6 +1529,22 @@ bool GameBuild::Pump() {
         const bool idle = std::none_of(jobs_.begin(), jobs_.end(), [](const Job& j) { return j.status == "queued" || j.status == "running"; });
         if (idle) {
             WriteFiles();
+            // The features, from the plan: each its id, name, request and how it went.
+            features_ = json::array();
+            for (const auto& f : store_.Read("gameplay").value_or(json::object()).value("features", json::array())) {
+                features_.push_back({{"id", f.value("id", "")}, {"name", f.value("name", "")}, {"request", f.value("buildRequest", "")},
+                                     {"needsScript", f.value("needsScript", false)}, {"status", "queued"}, {"error", ""}});
+            }
+            Next("features");
+            did = true;
+        }
+    }
+    if (stage_ == "features") {
+        did = DriveFeatures() || did;
+        const bool idle = std::none_of(features_.begin(), features_.end(), [](const json& f) {
+            return f.value("status", "") == "queued" || f.value("status", "") == "running";
+        });
+        if (idle) {
             Next("playtest");
             did = true;
         }

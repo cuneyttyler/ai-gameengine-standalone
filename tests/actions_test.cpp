@@ -69,6 +69,80 @@ TEST(ActionsTest, ActNeedsTakesAndGives) {
     EXPECT_FALSE(w.session->ActionTarget(w.player, "farm", 1.5f).has_value());
 }
 
+TEST(ActionsTest, ItNeedsAllItsItemsAndTakesOnlyWhatItTakes) {
+    ActionsWorld w;
+    auto& action = w.registry.get<aige::Action>(w.field);
+    action.requiresItem = "hoe, seeds*2";
+    action.takes = "seeds*2, water";
+    auto& pockets = w.registry.get_or_emplace<aige::Inventory>(w.player);
+    aige::AddItem(pockets, "hoe", 1);
+    aige::AddItem(pockets, "seeds", 1);
+    aige::AddItem(pockets, "water", 1);
+    // One seed short: nothing happens, nothing is taken.
+    EXPECT_FALSE(w.session->Act(w.player, w.field));
+    EXPECT_EQ(aige::CountItem(pockets, "seeds"), 1);
+    EXPECT_EQ(aige::CountItem(pockets, "water"), 1);
+    aige::AddItem(pockets, "seeds", 1);
+    EXPECT_TRUE(w.session->Act(w.player, w.field));
+    // The hoe is kept; what it takes is gone (asked by both, taken once).
+    EXPECT_EQ(aige::CountItem(pockets, "hoe"), 1);
+    EXPECT_EQ(aige::CountItem(pockets, "seeds"), 0);
+    EXPECT_EQ(aige::CountItem(pockets, "water"), 0);
+}
+
+TEST(ActionsTest, ItNeedsWhatItTakesEvenIfItRequiresNothing) {
+    ActionsWorld w;
+    auto& action = w.registry.get<aige::Action>(w.field);
+    action.requiresItem.clear();
+    action.takes = "ore*2, gold*5";
+    auto& pockets = w.registry.get_or_emplace<aige::Inventory>(w.player);
+    aige::AddItem(pockets, "ore", 2);
+    pockets.gold = 4;
+    EXPECT_FALSE(w.session->Act(w.player, w.field));
+    EXPECT_EQ(aige::CountItem(pockets, "ore"), 2);
+    pockets.gold = 5;
+    EXPECT_TRUE(w.session->Act(w.player, w.field));
+    EXPECT_EQ(aige::CountItem(pockets, "ore"), 0);
+    EXPECT_EQ(pockets.gold, 0);
+}
+
+TEST(ActionsTest, ItsConditionsAndEffectsAreDialoguesOwn) {
+    ActionsWorld w;
+    auto& action = w.registry.get<aige::Action>(w.field);
+    action.requiresItem.clear();
+    action.takes.clear();
+    action.once = false;
+    action.conditions = R"([{"flag": "may_farm"}])";
+    action.doEffects = R"([{"op": "set_flag", "flag": "farmed_once"}, {"op": "open_screen", "screen": "crafting"}])";
+    EXPECT_FALSE(w.session->Act(w.player, w.field));
+    w.session->Story().SetFlag("may_farm", true);
+    EXPECT_TRUE(w.session->Act(w.player, w.field));
+    EXPECT_TRUE(w.session->Story().Flag("farmed_once"));
+    EXPECT_EQ(w.session->TakePanelRequest().value_or(""), "crafting");
+    // Text that isn't a list never holds.
+    action.conditions = "not json";
+    EXPECT_FALSE(w.session->Act(w.player, w.field));
+}
+
+TEST(ActionsTest, WhatItAcceptsMustBeInThePlayersHand) {
+    ActionsWorld w;
+    auto& action = w.registry.get<aige::Action>(w.field);
+    action.requiresItem.clear();
+    action.takes = "seeds";
+    action.accepts = "seeds";
+    auto& pockets = w.registry.get_or_emplace<aige::Inventory>(w.player);
+    aige::AddItem(pockets, "seeds", 1);
+    // Carried isn't enough for the player.
+    EXPECT_FALSE(w.session->Act(w.player, w.field));
+    w.session->HoldItem("seeds");
+    EXPECT_EQ(w.session->HeldItem(), "seeds");
+    EXPECT_TRUE(w.session->UseHeldOn(w.field));
+    EXPECT_EQ(aige::CountItem(pockets, "seeds"), 0);
+    // Not carried: not held.
+    w.session->HoldItem("rope");
+    EXPECT_EQ(w.session->HeldItem(), "");
+}
+
 TEST(ActionsTest, AnyoneCanAct) {
     ActionsWorld w;
     // A character (not the player) with its own seeds, beside the field.
@@ -165,7 +239,7 @@ TEST(ActionsTest, DoorsOpenTheirWayAndLockedOnesNeedTheKey) {
     EXPECT_FALSE(doorwaySolid());
     // Everyone gone: it closes.
     at.x = 1.5f, at.y = 1.5f;
-    step(false);
+    for (int i = 0; i < 60; ++i) step(false); // it stands open a moment first
     EXPECT_FALSE(isOpen());
 
     // Its own way, auto: it opens as the player comes.
@@ -174,7 +248,7 @@ TEST(ActionsTest, DoorsOpenTheirWayAndLockedOnesNeedTheKey) {
     step(false);
     EXPECT_TRUE(isOpen());
     at.x = 1.5f, at.y = 1.5f;
-    step(false);
+    for (int i = 0; i < 60; ++i) step(false);
 
     // Locked: shut even near and pressed, until the player carries the key.
     auto& locked = w.registry.get<aige::AnimatedPart>(house);

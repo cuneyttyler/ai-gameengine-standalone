@@ -111,7 +111,8 @@ READINGS = {
     "generous": "Read the request generously: a rich, memorable version of what was asked, never contradicting it.",
 }
 
-CONCEPT_TASK = """① Concept: read a request for a game and fill its Game Brief.
+CONCEPT_TASK = """Set "mechanics" (small, medium or extensive: how deep the game's mechanics are, apart from its length) from the request.
+① Concept: read a request for a game and fill its Game Brief.
 {reading}
 Rules: genre is one of the genres given (its id); every enum field takes one of its options; numbers stay in
 range; playTime is in hours; tone is a list of tone words from its options; write a title, a logline (one
@@ -519,7 +520,69 @@ def plan_place(provider: Provider, inputs: dict) -> dict:
 
 # --- ⑦ Systems and ⑧ Visuals ----------------------------------------------------------------
 
-SYSTEMS_TASK = """⑦ Systems: the game's data, from the Brief's systems and what the characters and quests use.
+MECHANICS = """What the engine can do without a script (use these; anything else is "needsScript": true):
+- input actions: named buttons with keys; groups sharing a key; only near what they activate; opening a panel
+- things that react (component Action, shown as Reaction): on a press, an event, a timer, a touch, someone near; requires,
+  takes and gives items; animations and effects; becomes another prefab; conditions ("if") and effects ("do") like dialogue's
+- moving parts of a picture (AnimatedPart: doors, levers, fires) and activation spots with no animation
+- crafting: "recipe" records, two items combined, more from the Crafting list, stations (a stove)
+- using an item in hand on a thing ("accepts"), e.g. seeds on a field, a key on a lock
+- farming and growth: a thing that becomes another after a timer; NPCs can work the same things
+- combat: melee, ranged, block, dodge, enemies, loot tables
+- magic: abilities, spells, effects, scrolls, books, enchantments on equipment
+- item enhancement: a recipe from an item and a material to a better item; enchantments
+- character growth: attributes, levels, perks; equipment and consumables
+- economy: gold, merchants, prices; factions and reputation; day and night; schedules and NPC behaviour packages;
+  stealth by sight and sound; dialogue skill checks; achievements; difficulty levels; custom screens"""
+
+GAMEPLAY_TASK = """⑦ Systems, first part: Gameplay. Decide the game's mechanics, from the Brief (its genre, concept and
+systems switches) and what the story, characters and quests need. "count" is how many features to design: stay inside
+it (the Brief's Gameplay mechanics setting). Each feature:
+- id: lowercase-with-dashes; name: what a player would call it; kind: crafting, farming, combat, magic, enhancement,
+  economy, progression, stealth, social, exploration or other;
+- description: what it is, for the designer, in a sentence or two; howItPlays: what the player does, step by step;
+- uses: which of the engine's mechanics it's built from; needs: the places, items and characters it relies on, by name;
+- needsScript: true only if the engine can't do it without a script;
+- buildRequest: a complete request for the engine's AI panel to set it up, in plain words naming the real items, places
+  and prefabs. It runs once the places are built, so it must work on records, prefabs and input actions, which hold in
+  every scene, not on one scene's entities. Name the keys for input actions.
+Prefer features that work together and that the story uses. Don't describe what the engine gives every game (walking).
+""" + MECHANICS
+
+GAMEPLAY_SHAPE = """{"gameplay": {"features": [{"id": "cooking", "name": "Cooking", "kind": "crafting", "description": "",
+   "howItPlays": "", "uses": ["recipe", "station"], "needs": ["stove"], "needsScript": false, "buildRequest": ""}]},
+ "rationale": ""}"""
+
+
+def plan_gameplay(provider: Provider, inputs: dict) -> dict:
+    count = inputs.get("count") or [1, 15]
+
+    def check(answer: dict) -> list[str]:
+        g = answer.get("gameplay")
+        if not isinstance(g, dict) or not isinstance(g.get("features"), list):
+            return ["'gameplay.features' must be a list"]
+        problems = []
+        features = g["features"]
+        if not count[0] <= len(features) <= count[1]:
+            problems.append(f"{len(features)} features: the Brief asks for {count[0]} to {count[1]}")
+        seen = set()
+        for i, f in enumerate(features):
+            if not isinstance(f, dict):
+                problems.append(f"feature {i} must be an object")
+                continue
+            for key in ("id", "name", "description", "howItPlays", "buildRequest"):
+                if not isinstance(f.get(key), str) or not f[key].strip():
+                    problems.append(f"feature {i}: {key} is missing")
+            if f.get("id") in seen:
+                problems.append(f"feature {i}: the id {f.get('id')!r} is used twice")
+            seen.add(f.get("id"))
+        return problems
+
+    return _step(provider, GAMEPLAY_TASK, inputs, GAMEPLAY_SHAPE, "gameplay", check, inputs.get("problems"))
+
+
+SYSTEMS_TASK = """⑦ Systems: the game's data, from the Brief's systems, its gameplay features (features) and what the
+characters and quests use. Every item and recipe a feature needs is written here (recipes: type "recipe").
 Write a summary (attributes and progression, the economy and its prices, loot, abilities and schools, factions,
 enemies per region and level band, the difficulty curve) and the records the game needs, each {type, id,
 record} with only the record types and fields given (recordTypes): the unique items quests and characters name
@@ -655,6 +718,6 @@ def plan_dialogue(provider: Provider, inputs: dict) -> dict:
 
 STEPS: dict[str, Callable[[Provider, dict], dict]] = {
     "concept": plan_concept, "outline": plan_outline, "act": plan_act, "scene": plan_scene, "critic": plan_critic,
-    "character": plan_character, "quests": plan_quests, "place": plan_place, "systems": plan_systems,
+    "character": plan_character, "quests": plan_quests, "place": plan_place, "gameplay": plan_gameplay, "systems": plan_systems,
     "visuals": plan_visuals, "review": plan_review, "revise": plan_revise, "dialogue": plan_dialogue,
 }

@@ -19,6 +19,7 @@
 #include "editor/ViewportWindow.h"
 #include "gameplay/Archetypes.h"
 #include "game/GameFlow.h"
+#include "game/PlayWindows.h"
 #include "gameplay/CameraFollow.h"
 #include "gameplay/GameSession.h"
 #include "gameplay/Isometric.h"
@@ -636,6 +637,8 @@ private:
 
     IsoParams iso_;
     GameSession session_;
+    PlayWindows playWindows_; // inventory, crafting... over Play
+    InputState playMenuInput_;
     std::string playDifficulty_; // "Play at a level" (16.5); empty: the default
     std::unique_ptr<DocumentUi> uiDocs_; // the game's UI documents (17), made when first needed
     std::string uiPreview_;              // the UI tab's previewed screen ("" none)
@@ -698,6 +701,10 @@ private:
     bool gameBuildDirty_ = false;
     std::unique_ptr<GameBuild> MakeGameBuild();
     void StepGameBuild();
+    void StepPlannerFeature();
+    void FinishPlannerFeature(const std::string& status);
+    bool IsPlannerFeature(const std::string& instruction);
+    std::string plannerFeature_, plannerFeatureStatus_; // the plan's feature the AI panel is setting up (plannerBuildMutex_)
     // The build's heavy steps (planning, laying out: half a minute for a city) run off
     // the UI thread, one at a time (7.10). Nothing else touches build_ meanwhile: its
     // AI answers wait in buildDeferred_, the panel shows the last state as busy.

@@ -8,6 +8,7 @@
 #include "gameplay/Attributes.h"
 #include "gameplay/Encounters.h"
 #include "gameplay/Interact.h"
+#include "gameplay/Crafting.h"
 #include "gameplay/Interiors.h"
 #include "gameplay/Items.h"
 #include "gameplay/TileLayer.h"
@@ -724,7 +725,11 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
     env["notify"] = [this](const std::string& channel, const std::string& text, sol::optional<double> seconds) {
         ShowNotice(text, seconds.value_or(3.0), channel);
     };
-    env["open_screen"] = [this](const std::string& id) { return screenHook_ && screenHook_(id, 1); };
+    env["open_screen"] = [this](const std::string& id) { return OpenPanel(id); };
+    env["hold_item"] = [this](const std::string& item) { HoldItem(item); };
+    env["held_item"] = [this]() { return held_; };
+    env["put_back_item"] = [this]() { PutBackItem(); };
+    env["craft"] = [this](const std::string& recipe, sol::optional<std::string> station) { return Craft(recipe, station.value_or("")); };
     env["close_screen"] = [this](const std::string& id) {
         if (screenHook_) screenHook_(id, 0);
     };
@@ -1576,6 +1581,14 @@ void GameSession::ApplyWorldEffects() {
         const int amount = e.value.is_number() ? static_cast<int>(e.value.get<double>()) : 1;
         if (e.op == "play_cutscene") {
             PlayCutscene(e.name);
+            continue;
+        }
+        if (e.op == "open_screen") {
+            OpenPanel(e.name);
+            continue;
+        }
+        if (e.op == "close_screen") {
+            if (screenHook_) screenHook_(e.name, 0);
             continue;
         }
         if (e.op == "reputation") {
@@ -2435,6 +2448,11 @@ void GameSession::UseInteractable(Entity target, Entity user) {
     }
     if (!registry_.valid(user)) return;
     const bool byPlayer = player && user == *player;
+    std::string doEffects;
+    if (const auto* thing = registry_.try_get<Interactable>(target)) {
+        if (!ConditionsHold(thing->conditions)) return;
+        doEffects = thing->doEffects;
+    }
     const InteractResult result = Interact(registry_, user, target, story_, LevelOf(user), gameplayRng_);
     if (byPlayer && !result.text.empty()) {
         ShowNotice(result.text, 4.0 + result.text.size() / 30.0); // time to read it
@@ -2443,6 +2461,7 @@ void GameSession::UseInteractable(Entity target, Entity user) {
     }
     if (!result.event.empty()) Emit({result.event, target, user, 0.0, ""});
     if (result.used) Emit({"interact", registry_.valid(target) ? target : Entity{entt::null}, user, 0.0, ""});
+    if (result.used) RunEffects(doEffects);
     if (result.used && byPlayer && storyLibrary_ != nullptr) {
         for (const auto& name : NamesOf(target)) story_.OnUsed(name, *storyLibrary_); // use/examine objectives
     }
@@ -2486,11 +2505,38 @@ bool GameSession::Act(Entity user, Entity target) {
     }
     // What it needs from its user.
     auto* inventory = hasUser ? registry_.try_get<Inventory>(user) : nullptr;
-    if (!action->requiresItem.empty() && (!inventory || CountItem(*inventory, action->requiresItem) < 1)) {
-        if (byPlayer) ShowNotice("Needs " + action->requiresItem, 2.5, "alert");
+    // Everything it requires, and with a user everything it takes (the most either asks of an item), or nothing happens.
+    std::vector<ItemStack> needed = ParseItems(action->requiresItem);
+    if (hasUser) {
+        for (const auto& stack : ParseItems(action->takes)) {
+            auto it = std::find_if(needed.begin(), needed.end(), [&](const ItemStack& s) { return s.item == stack.item; });
+            if (it == needed.end()) needed.push_back(stack);
+            else it->count = std::max(it->count, stack.count);
+        }
+    }
+    std::string missing;
+    for (const auto& stack : needed) {
+        const int carried = !inventory ? 0 : stack.item == "gold" ? inventory->gold : CountItem(*inventory, stack.item);
+        if (carried >= stack.count) continue;
+        missing += (missing.empty() ? "" : ", ") + (stack.count > 1 ? std::to_string(stack.count) + " " : std::string()) + ItemName(stack.item);
+    }
+    if (!missing.empty()) {
+        if (byPlayer) ShowNotice("Needs " + missing, 2.5, "alert");
         return false;
     }
     if (!action->requiresFlag.empty() && !story_.Flag(action->requiresFlag)) return false;
+    if (!ConditionsHold(action->conditions)) return false;
+    // In hand (the player), or carried (anyone else): one of what it accepts.
+    if (hasUser && !action->accepts.empty()) {
+        const auto accepted = ParseItems(action->accepts);
+        const bool fits = std::any_of(accepted.begin(), accepted.end(), [&](const ItemStack& stack) {
+            return byPlayer ? stack.item == held_ : inventory && CountItem(*inventory, stack.item) > 0;
+        });
+        if (!fits) {
+            if (byPlayer && !accepted.empty()) ShowNotice("Use " + ItemName(accepted.front().item) + " on it", 2.5, "alert");
+            return false;
+        }
+    }
     // Animations, then what it takes and gives.
     float playing = 0.0f;
     if (hasUser && !action->userAnimation.empty()) {
@@ -2533,15 +2579,190 @@ bool GameSession::Act(Entity user, Entity target) {
     if (!action->setFlag.empty()) story_.SetFlag(action->setFlag, true);
     if (!action->emits.empty()) Emit({action->emits, target, hasUser ? user : Entity{entt::null}, 0.0, action->action});
     if (byPlayer && !action->text.empty()) ShowNotice(action->text, 3.0 + action->text.size() / 30.0);
+    if (byPlayer && !action->station.empty()) requestedPanel_ = "crafting:" + action->station;
     state.done = true;
     state.cooling = action->cooldown;
+    const std::string becomes = action->becomes;
+    RunEffects(action->doEffects);
     // Becomes, once the animations have played.
-    if (!action->becomes.empty()) {
-        if (playing > 0.0f) pendingBecomes_.push_back({target, action->becomes, playing});
-        else BecomePrefab(target, action->becomes);
+    if (!becomes.empty()) {
+        if (playing > 0.0f) pendingBecomes_.push_back({target, becomes, playing});
+        else BecomePrefab(target, becomes);
     }
     return true;
 }
+
+bool GameSession::ConditionsHold(const std::string& conditions) const {
+    if (conditions.empty()) return true;
+    const nlohmann::json list = nlohmann::json::parse(conditions, nullptr, false);
+    return list.is_array() && story_.Holds(StoryConditionsFromJson(list));
+}
+
+void GameSession::RunEffects(const std::string& effects) {
+    if (effects.empty()) return;
+    const nlohmann::json list = nlohmann::json::parse(effects, nullptr, false);
+    if (!list.is_array()) return;
+    static const StoryLibrary noStory; // a game without quests: flags, items and screens still work
+    story_.Apply(StoryEffectsFromJson(list), storyLibrary_ ? *storyLibrary_ : noStory);
+    ApplyWorldEffects();
+}
+
+bool GameSession::OpenPanel(const std::string& id) {
+    if (id == "inventory" || id == "spellbook" || id == "journal" || id == "crafting" || id.rfind("crafting:", 0) == 0) {
+        requestedPanel_ = id;
+        return true;
+    }
+    return screenHook_ && screenHook_(id, 1);
+}
+
+void GameSession::HoldItem(const std::string& item) {
+    const auto player = FindPlayer(registry_);
+    const auto* inventory = player ? registry_.try_get<Inventory>(*player) : nullptr;
+    held_ = inventory && CountItem(*inventory, item) > 0 ? item : std::string();
+}
+
+std::string GameSession::CombineHeldWith(const std::string& item) {
+    if (held_.empty() || item == held_) {
+        held_.clear();
+        return {};
+    }
+    const auto recipe = MatchRecipe({held_, item}, "");
+    if (!recipe) return "That doesn't work";
+    const std::string why = Craft(recipe->id, "");
+    if (why.empty()) {
+        const auto player = FindPlayer(registry_);
+        Emit({"item_combined", player ? *player : Entity{entt::null}, Entity{entt::null}, 0.0, recipe->id});
+        held_.clear();
+    }
+    return why;
+}
+
+std::optional<Entity> GameSession::HeldItemTarget() const {
+    const auto player = FindPlayer(registry_);
+    const auto* me = player ? registry_.try_get<WorldTransform2D>(*player) : nullptr;
+    if (!me || held_.empty()) return std::nullopt;
+    std::optional<Entity> best;
+    float nearest = 1e9f;
+    for (auto [entity, action, world] : registry_.view<Action, WorldTransform2D>().each()) {
+        const auto accepted = ParseItems(action.accepts);
+        const bool takes = std::any_of(accepted.begin(), accepted.end(), [&](const ItemStack& stack) { return stack.item == held_; });
+        if (!takes && action.station.empty()) continue;
+        const float d = std::hypot(world.x - me->x, world.y - me->y);
+        if (d <= action.range && d < nearest) best = entity, nearest = d;
+    }
+    return best;
+}
+
+bool GameSession::UseHeldOn(Entity target) {
+    const auto player = FindPlayer(registry_);
+    const auto* action = registry_.valid(target) ? registry_.try_get<Action>(target) : nullptr;
+    if (!player || !action || held_.empty()) {
+        if (!held_.empty()) ShowNotice("That doesn't work", 2.5, "alert");
+        return false;
+    }
+    const std::string item = held_;
+    const auto accepted = ParseItems(action->accepts);
+    if (std::any_of(accepted.begin(), accepted.end(), [&](const ItemStack& stack) { return stack.item == item; })) {
+        if (!Act(*player, target)) return false;
+        Emit({"item_used", target, *player, 0.0, item});
+        return true;
+    }
+    if (!action->station.empty()) {
+        // One item at a station: a recipe of that item alone, made; else the station's list.
+        const std::string station = action->station;
+        if (const auto recipe = MatchRecipe({item}, station)) {
+            const std::string why = Craft(recipe->id, station);
+            if (!why.empty()) ShowNotice(why, 2.5, "alert");
+            else Emit({"item_used", target, *player, 0.0, item});
+            return why.empty();
+        }
+        requestedPanel_ = "crafting:" + station;
+        return true;
+    }
+    ShowNotice("That doesn't work", 2.5, "alert");
+    return false;
+}
+
+std::string GameSession::CraftProblem(const std::string& id, const std::string& station) const {
+    const auto recipe = FindRecipe(id);
+    if (!recipe) return "No such recipe";
+    if (!recipe->at.empty() && recipe->at != station) return "Only at " + recipe->at;
+    if (!ConditionsHold(recipe->conditions)) return "You can't make this now";
+    const auto player = FindPlayer(registry_);
+    const std::string missing = RecipeMissing(*recipe, player ? registry_.try_get<Inventory>(*player) : nullptr);
+    return missing.empty() ? std::string() : "Needs " + missing;
+}
+
+std::string GameSession::Craft(const std::string& id, const std::string& station) {
+    if (std::string why = CraftProblem(id, station); !why.empty()) return why;
+    const auto recipe = FindRecipe(id);
+    const auto player = FindPlayer(registry_);
+    if (!recipe || !player) return "No such recipe";
+    auto& inventory = registry_.get_or_emplace<Inventory>(*player);
+    for (const auto& stack : recipe->inputs) RemoveItem(inventory, stack.item, stack.count);
+    if (!recipe->clip.empty()) TriggerAnimation(registry_, *player, recipe->clip);
+    if (!recipe->effect.empty()) {
+        if (const auto* at = registry_.try_get<WorldTransform2D>(*player)) PlayEffect(recipe->effect, at->x, at->y, *player);
+    }
+    if (recipe->seconds > 0.0f) pendingCrafts_.push_back({id, recipe->seconds});
+    else FinishCraft(id);
+    return {};
+}
+
+void GameSession::FinishCraft(const std::string& id) {
+    const auto recipe = FindRecipe(id);
+    const auto player = FindPlayer(registry_);
+    if (!recipe || !player) return;
+    auto& inventory = registry_.get_or_emplace<Inventory>(*player);
+    for (const auto& stack : recipe->gives) {
+        const int added = AddItem(inventory, stack.item, stack.count);
+        if (added > 0) Emit({"item_added", *player, Entity{entt::null}, static_cast<double>(added), stack.item});
+        if (added < stack.count) ShowNotice("No room for " + ItemName(stack.item), 2.5, "alert");
+    }
+    if (!recipe->text.empty()) ShowNotice(recipe->text, 3.0 + recipe->text.size() / 30.0);
+    Emit({"crafted", *player, Entity{entt::null}, 0.0, id});
+    RunEffects(recipe->doEffects);
+}
+
+void GameSession::StepHeldItem() {
+    const auto player = FindPlayer(registry_);
+    if (!player) {
+        held_.clear(), requestedHeld_.reset();
+        return;
+    }
+    const auto click = requestedHeld_;
+    requestedHeld_.reset();
+    if (const auto* inventory = registry_.try_get<Inventory>(*player); !held_.empty() && (!inventory || CountItem(*inventory, held_) <= 0)) held_.clear();
+    if (held_.empty()) return;
+    input_.Swallow("attack"); // a click is for the item in hand
+    if (input_.Pressed("put_back")) {
+        held_.clear();
+        return;
+    }
+    if (click) {
+        // The thing under the click, within reach (a cell's grace, as a door's click has).
+        const auto* me = registry_.try_get<WorldTransform2D>(*player);
+        std::optional<Entity> hit;
+        float nearest = 1e9f;
+        for (auto [entity, action, screen, sprite] : registry_.view<Action, ScreenTransform2D, Sprite>().each()) {
+            if (std::abs(click->first - screen.x) > sprite.width * 0.5f || std::abs(click->second - screen.y) > sprite.height * 0.5f) continue;
+            const auto* world = registry_.try_get<WorldTransform2D>(entity);
+            if (!me || !world) continue;
+            const float d = std::hypot(world->x - me->x, world->y - me->y);
+            if (d <= action.range + 1.0f && d < nearest) hit = entity, nearest = d;
+        }
+        if (hit) UseHeldOn(*hit);
+        else ShowNotice("That doesn't work", 2.5, "alert");
+        return;
+    }
+    if (input_.Pressed("interact")) {
+        if (const auto target = HeldItemTarget()) {
+            input_.Swallow("interact"); // not also a door or a talk
+            UseHeldOn(*target);
+        }
+    }
+}
+
 
 std::optional<Entity> GameSession::ActionTarget(Entity user, const std::string& action, float radius) const {
     auto& registry = const_cast<Registry&>(registry_);
@@ -2585,6 +2806,7 @@ float GameSession::ActionTargetDistance(const std::string& name, bool ownParts) 
         const size_t index = link.slot.size() > 4 ? static_cast<size_t>(std::atoi(link.slot.c_str() + 4)) : 0;
         if (index >= list.size()) continue;
         const AnimatedPart& part = list[index];
+        if (!ConditionsHold(part.conditions)) continue;
         const std::string way = DoorOpens(part);
         const bool mine = ((way == "action" || way == "always") && part.trigger == name) || (!ownParts && doorShortcut && (way == "use" || part.locked));
         if (!mine) continue;
@@ -2631,12 +2853,24 @@ void GameSession::ResolveActionGroups() {
 
 void GameSession::StepActions(float dt) {
     const auto player = FindPlayer(registry_);
+    // What's being made: done when its time is up.
+    for (size_t i = 0; i < pendingCrafts_.size();) {
+        pendingCrafts_[i].seconds -= dt;
+        if (pendingCrafts_[i].seconds > 0.0f) {
+            ++i;
+            continue;
+        }
+        const std::string recipe = pendingCrafts_[i].recipe;
+        pendingCrafts_.erase(pendingCrafts_.begin() + static_cast<std::ptrdiff_t>(i));
+        FinishCraft(recipe);
+    }
     // Input actions that play a clip on the player or emit an event (Project Settings ▸ Input).
     if (player) {
         auto somethingNear = [&](const std::string& name) { return ActionTargetDistance(name) < 1e8f; };
         for (const auto& a : ActiveInputMap().actions) {
-            if (a.axis || (a.plays.empty() && a.event.empty() && a.effect.empty()) || !input_.Pressed(a.name)) continue;
+            if (a.axis || (a.plays.empty() && a.event.empty() && a.effect.empty() && a.screen.empty()) || !input_.Pressed(a.name)) continue;
             if (a.nearOnly && !somethingNear(a.name)) continue;
+            if (!a.screen.empty()) OpenPanel(a.screen);
             // Its clip: unless a part with it as its input action is near (the part plays the player's clip, its own or
             // this one, as it says: once or on and on, held still or not).
             if (!a.plays.empty() && ActionTargetDistance(a.name, true) >= 1e8f) TriggerAnimation(registry_, *player, a.plays);
@@ -2786,6 +3020,7 @@ void GameSession::StepActions(float dt) {
         // Usable where one is: a part on an interior's floor while that floor shows, the outside's others from outside;
         // a door from either side.
         auto usableHere = [&](const DoorAt& d, const AnimatedPart& part) {
+            if (!ConditionsHold(part.conditions)) return false;
             const auto* inside = registry_.try_get<Interior>(d.owner);
             const bool in = inside && inside->shown && inside->kind != "scene";
             if (part.floor > 0) return in && inside->floor == part.floor;
@@ -2830,6 +3065,15 @@ void GameSession::StepActions(float dt) {
                 continue;
             }
             promptDistance = dist;
+        }
+        // The item in hand: what it can be used on here, else that it's held.
+        if (!held_.empty()) {
+            if (const auto target = HeldItemTarget()) {
+                const auto names = NamesOf(*target);
+                doorPrompt_ = "Use " + ItemName(held_) + (names.empty() ? std::string() : " on " + names.front());
+            } else if (doorPrompt_.empty()) {
+                doorPrompt_ = "In hand: " + ItemName(held_);
+            }
         }
         std::set<Entity> unlocked;
         for (const auto& d : doors) {
@@ -2898,6 +3142,7 @@ void GameSession::StepActions(float dt) {
             }
             // Activated by the player (unlocked): its event sent.
             if (used == &d && !door.locked && !door.fires.empty()) Emit({door.fires, d.owner, player ? *player : entt::null});
+            if (used == &d && !door.locked) RunEffects(door.doEffects);
             // A part with one clip (no closing one: a fire, a pot stirred): still on its first frame until it's activated,
             // playing while it is, still again once it's shut.
             if (way != "always" && door.closeClip.empty()) {
@@ -3154,6 +3399,7 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
     input_.SetContext(cutscene_.Active() ? "cutscene" : conversation_.Active() ? "dialogue" : "gameplay");
     input_.Update(ActiveInputMap(), isKeyDown, axisQuery_);
     ResolveActionGroups();
+    StepHeldItem();
     bool attackPressed = input_.Pressed("attack");
     if (input_.Pressed("debug_ai")) showAiDebug_ = !showAiDebug_;
     if (input_.Pressed("debug_physics")) showPhysicsDebug_ = !showPhysicsDebug_;

@@ -153,8 +153,8 @@ function savePrefab(): void {
   savingPrefab.value = false
 }
 
-// AnimatedPart: which of its parts is shown (0: its own fields; k: the k-th of "more", edited here and written back).
-interface MorePart { opens: string; trigger: string; prompt: string; fires: string; sheet: string; duration: number; playerClip: string; playerLoop: boolean; holdsPlayer: boolean; range: number; locked: boolean; key: string; consumeKey: boolean; door: boolean; floor: number }
+// AnimatedPart: which of its parts is shown (0: the component's own fields; k: the k-th of "more"), all edited with one form.
+interface MorePart { if: string; do: string; clip: string; closeClip: string; x: number; y: number; width: number; height: number; opens: string; trigger: string; prompt: string; fires: string; sheet: string; duration: number; playerClip: string; playerLoop: boolean; holdsPlayer: boolean; range: number; locked: boolean; key: string; consumeKey: boolean; door: boolean; floor: number }
 const partShown = ref(0)
 const partsField = (component: { fields: FieldData[] }) => component.fields.find((f) => f.name === 'more')
 function moreParts(component: { fields: FieldData[] }): MorePart[] {
@@ -165,13 +165,43 @@ function moreParts(component: { fields: FieldData[] }): MorePart[] {
     return []
   }
 }
-function setMorePart(component: { fields: FieldData[] }, key: keyof MorePart, value: unknown): void {
+const partIndex = (component: { fields: FieldData[] }) => Math.min(partShown.value, moreParts(component).length)
+function partOf(component: { fields: FieldData[] }): MorePart {
+  const k = partIndex(component)
+  if (k > 0) return moreParts(component)[k - 1]!
+  return Object.fromEntries(component.fields.map((f) => [f.name, f.value])) as unknown as MorePart
+}
+function setPart(component: { fields: FieldData[] }, key: keyof MorePart, value: unknown): void {
+  const k = partIndex(component)
+  if (k === 0) {
+    const own = component.fields.find((f) => f.name === key)
+    if (own) setField('AnimatedPart', own, value)
+    return
+  }
   const field = partsField(component)
   const list = moreParts(component) as unknown as Record<string, unknown>[]
-  const part = list[partShown.value - 1]
-  if (!field || !part) return
-  part[key] = value
+  if (!field || !list[k - 1]) return
+  list[k - 1]![key] = value
   setField('AnimatedPart', field, JSON.stringify(list))
+}
+// An "if" or "do": empty, or a JSON list (else it never holds, and does nothing).
+function jsonListOk(text: string | undefined): boolean {
+  if (!text) return true
+  try {
+    return Array.isArray(JSON.parse(text))
+  } catch {
+    return false
+  }
+}
+// Its picture and clips (where it sits on the picture, what it plays): rarely changed by hand.
+const partPlacement: { key: keyof MorePart; number?: boolean }[] = [
+  { key: 'sheet' }, { key: 'clip' }, { key: 'closeClip' }, { key: 'x', number: true }, { key: 'y', number: true },
+  { key: 'width', number: true }, { key: 'height', number: true },
+]
+// What this copy changed of its parts, to give to the prefab or take back.
+const changedFields = (component: { fields: FieldData[] }) => component.fields.filter((f) => f.overridden).map((f) => f.name)
+function eachChanged(component: { fields: FieldData[] }, send: (key: string) => void): void {
+  for (const name of changedFields(component)) send(`AnimatedPart.${name}`)
 }
 
 function revert(key: string): void {
@@ -327,7 +357,7 @@ function numberFrom(event: Event): number {
                     @click="editorState.buildingEditor = current!.id">
               {{ current.building && current.components.some((s) => s.name === 'Interior') ? 'Edit doors…' : 'Edit parts…' }}</button>
           </div>
-          <!-- More than one part: each picked to see and set (the first is its own fields below; the others written into "more"). -->
+          <!-- More than one part: each picked, and seen and set with the one form below. -->
           <div v-if="component.name === 'AnimatedPart' && moreParts(component).length" class="field-row part-tabs">
             <button v-for="(p, k) in [null, ...moreParts(component)]" :key="k" :class="{ active: Math.min(partShown, moreParts(component).length) === k }"
                     @click="partShown = k">
@@ -335,67 +365,104 @@ function numberFrom(event: Event): number {
                 : (k === 0 ? component.fields.find((f) => f.name === 'door')?.value : p?.door) && current.building ? 'Door' : 'Part' }} {{ k + 1 }}
             </button>
           </div>
-          <template v-if="component.name === 'AnimatedPart' && partShown > 0 && moreParts(component)[partShown - 1]">
+          <template v-if="component.name === 'AnimatedPart'">
             <div class="field-row">
               <label title="What sets it moving">activation</label>
-              <select :value="moreParts(component)[partShown - 1]!.opens" :disabled="editorState.playing" @change="setMorePart(component, 'opens', ($event.target as HTMLSelectElement).value)">
+              <select :value="partOf(component).opens" :disabled="editorState.playing" @change="setPart(component, 'opens', ($event.target as HTMLSelectElement).value)">
                 <option value="project">as the project's doors</option>
                 <option value="use">on use</option>
                 <option value="auto">by itself, as someone comes near</option>
                 <option value="action">an input action, near it</option>
                 <option value="event">a game event</option>
                 <option value="always">always playing (a loop)</option>
-                <option v-if="moreParts(component)[partShown - 1]!.door" value="open">always open (a doorway)</option>
+                <option v-if="partOf(component).door" value="open">always open (a doorway)</option>
               </select>
             </div>
-            <div v-if="moreParts(component)[partShown - 1]!.opens === 'event'" class="field-row">
+            <div v-if="partOf(component).opens === 'event'" class="field-row">
               <label title="The event that plays it">trigger</label>
-              <input :value="moreParts(component)[partShown - 1]!.trigger" spellcheck="false" :disabled="editorState.playing" placeholder="bridge_down"
-                     @change="setMorePart(component, 'trigger', ($event.target as HTMLInputElement).value)" />
+              <input :value="partOf(component).trigger" spellcheck="false" :disabled="editorState.playing" placeholder="bridge_down"
+                     @change="setPart(component, 'trigger', ($event.target as HTMLInputElement).value)" />
             </div>
-            <div v-if="['action', 'always'].includes(moreParts(component)[partShown - 1]!.opens)" class="field-row">
-              <label :title="moreParts(component)[partShown - 1]!.opens === 'always' ? 'Optional: pressed near it, it sends its event' : 'Pressed near it: it plays'">input action</label>
-              <ActionPicker :model-value="moreParts(component)[partShown - 1]!.trigger" :disabled="editorState.playing"
-                            @update:model-value="setMorePart(component, 'trigger', $event)" />
+            <div v-if="['action', 'always'].includes(partOf(component).opens)" class="field-row">
+              <label :title="partOf(component).opens === 'always' ? 'Optional: pressed near it, it sends its event' : 'Pressed near it: it plays'">input action</label>
+              <ActionPicker :model-value="partOf(component).trigger" :disabled="editorState.playing"
+                            @update:model-value="setPart(component, 'trigger', $event)" />
             </div>
-            <div v-if="!['auto', 'event'].includes(moreParts(component)[partShown - 1]!.opens)" class="field-row">
+            <div v-if="!['auto', 'event'].includes(partOf(component).opens)" class="field-row">
               <label title="Sent each time the player activates it: scripts, triggers and quests react to it">sends event</label>
-              <input :value="moreParts(component)[partShown - 1]!.fires ?? ''" spellcheck="false" :disabled="editorState.playing" placeholder="optional (cooked)"
-                     @change="setMorePart(component, 'fires', ($event.target as HTMLInputElement).value)" />
+              <input :value="partOf(component).fires ?? ''" spellcheck="false" :disabled="editorState.playing" placeholder="optional (cooked)"
+                     @change="setPart(component, 'fires', ($event.target as HTMLInputElement).value)" />
             </div>
-            <div v-if="['project', 'use', 'action'].includes(moreParts(component)[partShown - 1]!.opens) || (moreParts(component)[partShown - 1]!.opens === 'always' && moreParts(component)[partShown - 1]!.trigger)" class="field-row">
+            <div v-if="['project', 'use', 'action'].includes(partOf(component).opens) || (partOf(component).opens === 'always' && partOf(component).trigger)" class="field-row">
               <label title="Shown near it; 'shut|open' for each way">prompt</label>
-              <input :value="moreParts(component)[partShown - 1]!.prompt" :disabled="editorState.playing" placeholder="Pull the lever"
-                     @change="setMorePart(component, 'prompt', ($event.target as HTMLInputElement).value)" />
+              <input :value="partOf(component).prompt" :disabled="editorState.playing" placeholder="Pull the lever"
+                     @change="setPart(component, 'prompt', ($event.target as HTMLInputElement).value)" />
             </div>
-            <div v-if="!['auto', 'always', 'open'].includes(moreParts(component)[partShown - 1]!.opens)" class="field-row">
-              <PartActiveFields :duration="moreParts(component)[partShown - 1]!.duration ?? 0" :player-clip="moreParts(component)[partShown - 1]!.playerClip ?? ''"
-                                :player-loop="moreParts(component)[partShown - 1]!.playerLoop ?? true" :holds-player="moreParts(component)[partShown - 1]!.holdsPlayer ?? false"
-                                :action="['action', 'always'].includes(moreParts(component)[partShown - 1]!.opens) ? moreParts(component)[partShown - 1]!.trigger : ''"
-                                :disabled="editorState.playing" style="width: 100%" @set="(k, v) => setMorePart(component, k, v)" />
+            <div v-if="!['auto', 'always', 'open'].includes(partOf(component).opens)" class="field-row">
+              <PartActiveFields :duration="partOf(component).duration ?? 0" :player-clip="partOf(component).playerClip ?? ''"
+                                :player-loop="partOf(component).playerLoop ?? true" :holds-player="partOf(component).holdsPlayer ?? false"
+                                :action="['action', 'always'].includes(partOf(component).opens) ? partOf(component).trigger : ''"
+                                :disabled="editorState.playing" style="width: 100%" @set="(k, v) => setPart(component, k, v)" />
             </div>
             <div class="field-row">
               <label title="How near (in cells) one must be to use it">range</label>
-              <input type="number" step="0.1" min="0" :value="moreParts(component)[partShown - 1]!.range" :disabled="editorState.playing"
-                     @change="setMorePart(component, 'range', Number(($event.target as HTMLInputElement).value))" />
+              <input type="number" step="0.1" min="0" :value="partOf(component).range" :disabled="editorState.playing"
+                     @change="setPart(component, 'range', Number(($event.target as HTMLInputElement).value))" />
+            </div>
+            <div v-if="(partOf(component).floor ?? 0) > 0 || !partOf(component).door" class="field-row">
+              <label title="Which picture it's on: 0 the outside, k the interior's floor k">floor</label>
+              <input type="number" step="1" min="0" :value="partOf(component).floor ?? 0" :disabled="editorState.playing"
+                     @change="setPart(component, 'floor', Math.max(0, Math.round(Number(($event.target as HTMLInputElement).value))))" />
             </div>
             <div class="field-row">
               <label title="It won't move without its key">locked</label>
-              <input type="checkbox" :checked="moreParts(component)[partShown - 1]!.locked" :disabled="editorState.playing"
-                     @change="setMorePart(component, 'locked', ($event.target as HTMLInputElement).checked)" />
+              <input type="checkbox" :checked="partOf(component).locked" :disabled="editorState.playing"
+                     @change="setPart(component, 'locked', ($event.target as HTMLInputElement).checked)" />
             </div>
-            <div v-if="moreParts(component)[partShown - 1]!.locked" class="field-row">
+            <div v-if="partOf(component).locked" class="field-row">
               <label title="The item that unlocks it">key</label>
-              <input :value="moreParts(component)[partShown - 1]!.key" spellcheck="false" :disabled="editorState.playing"
-                     @change="setMorePart(component, 'key', ($event.target as HTMLInputElement).value)" />
+              <input :value="partOf(component).key" spellcheck="false" :disabled="editorState.playing"
+                     @change="setPart(component, 'key', ($event.target as HTMLInputElement).value)" />
+            </div>
+            <div v-if="partOf(component).locked" class="field-row">
+              <label title="The key is used up unlocking it">key used up</label>
+              <input type="checkbox" :checked="partOf(component).consumeKey" :disabled="editorState.playing"
+                     @change="setPart(component, 'consumeKey', ($event.target as HTMLInputElement).checked)" />
             </div>
             <div v-if="current.building" class="field-row">
               <label title="A way in of the building: blocked while shut">door</label>
-              <input type="checkbox" :checked="moreParts(component)[partShown - 1]!.door" :disabled="editorState.playing"
-                     @change="setMorePart(component, 'door', ($event.target as HTMLInputElement).checked)" />
+              <input type="checkbox" :checked="partOf(component).door" :disabled="editorState.playing"
+                     @change="setPart(component, 'door', ($event.target as HTMLInputElement).checked)" />
             </div>
+            <div class="field-row">
+              <label title='It can be activated only while these hold, as dialogue&apos;s conditions: [{"flag": "met_mira"}, {"item": "potion", "count": 2}]'>if</label>
+              <input :class="{ bad: !jsonListOk(partOf(component).if) }" :value="partOf(component).if ?? ''" spellcheck="false" :disabled="editorState.playing" placeholder="always"
+                     @change="setPart(component, 'if', ($event.target as HTMLInputElement).value)" />
+            </div>
+            <div class="field-row">
+              <label title='Run each time the player activates it, as dialogue&apos;s effects: [{"op": "set_flag", "flag": "x"}]'>do</label>
+              <input :class="{ bad: !jsonListOk(partOf(component).do) }" :value="partOf(component).do ?? ''" spellcheck="false" :disabled="editorState.playing" placeholder="nothing more"
+                     @change="setPart(component, 'do', ($event.target as HTMLInputElement).value)" />
+            </div>
+            <details class="part-placement">
+              <summary>Picture and clips</summary>
+              <div v-for="row in partPlacement" :key="row.key" class="field-row">
+                <label>{{ row.key }}</label>
+                <input :type="row.number ? 'number' : 'text'" spellcheck="false" :value="partOf(component)[row.key]" :disabled="editorState.playing"
+                       @change="setPart(component, row.key, row.number ? Number(($event.target as HTMLInputElement).value) : ($event.target as HTMLInputElement).value)" />
+              </div>
+            </details>
+            <!-- What this copy changed of its parts (any of them): given to the prefab, or taken back. -->
+            <div v-if="changedFields(component).length && !editorState.playing" class="field-row overridden">
+              <span :title="changedFields(component).join(', ')">Parts changed on this copy</span>
+              <span>
+                <button class="revert" title="Apply these to the prefab: every copy gets them" @click="eachChanged(component, (key) => sendToHost({ type: 'prefab:applySelected', key }))">⤒</button>
+                <button class="revert" title="Revert to the prefab's parts" @click="eachChanged(component, revert)">↺</button>
+              </span>
+            </div>
+            <div v-for="f in component.fields.filter((f) => errors[`AnimatedPart.${f.name}`])" :key="f.name" class="field-error">{{ errors[`AnimatedPart.${f.name}`] }}</div>
           </template>
-          <template v-for="field in component.name === 'AnimatedPart' && partShown > 0 && moreParts(component)[partShown - 1] ? [] : component.fields.filter((f) => (component.name !== 'Interior' || !['floors', 'stairs', 'entries', 'texture', 'solids', 'layout'].includes(f.name)) && (component.name !== 'AnimatedPart' || !['more', 'near'].includes(f.name)) && (component.name !== 'AnimatedPart' || current!.building || f.name !== 'door'))" :key="field.name">
+          <template v-for="field in component.name === 'AnimatedPart' ? [] : component.fields.filter((f) => component.name !== 'Interior' || !['floors', 'stairs', 'entries', 'texture', 'solids', 'layout'].includes(f.name))" :key="field.name">
             <div class="field-row" :class="{ overridden: field.overridden }">
               <label :title="field.overridden ? `${field.description}\n(Changed on this copy)` : field.description">
                 {{ (component.name === 'AnimatedPart' || component.name === 'DoorPart') && field.name === 'opens' ? 'activation' : field.name }}
@@ -432,15 +499,7 @@ function numberFrom(event: Event): number {
                   ↺
                 </button>
               </label>
-              <!-- A part's input action: the project's actions, or a new one. -->
-              <ActionPicker
-                v-if="component.name === 'AnimatedPart' && field.name === 'trigger' && ['action', 'always'].includes(String(component.fields.find((f) => f.name === 'opens')?.value))"
-                :model-value="String(field.value ?? '')"
-                :disabled="editorState.playing"
-                @update:model-value="setField(component.name, field, $event)"
-              />
               <FieldEditor
-                v-else
                 :field="field"
                 :choices="current.choices"
                 :disabled="component.derived"
@@ -649,6 +708,14 @@ header {
 .remove:hover {
   opacity: 1;
   border-color: #ef4444;
+}
+input.bad {
+  border-color: #ef4444;
+}
+.part-placement summary {
+  cursor: pointer;
+  opacity: 0.75;
+  padding: 2px 0;
 }
 .field-row.part-tabs {
   justify-content: flex-start;

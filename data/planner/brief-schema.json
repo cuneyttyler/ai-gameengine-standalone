@@ -11,6 +11,7 @@
       {"path": "camera", "label": "Camera", "type": "enum", "options": ["follow", "fixed-screen", "rooms"]},
       {"path": "playTime", "label": "Play time (hours)", "type": "number", "asked": true, "min": 0.25, "max": 100},
       {"path": "scopeClass", "label": "Scope", "type": "enum", "options": ["micro", "short", "medium", "long", "epic"]},
+      {"path": "mechanics", "label": "Gameplay mechanics", "type": "enum", "asked": true, "options": ["small", "medium", "extensive"]},
       {"path": "scope.places", "label": "Places", "type": "range", "min": 1, "max": 200},
       {"path": "scope.mainQuestStages", "label": "Main quest stages", "type": "range", "min": 1, "max": 200},
       {"path": "scope.sideQuests", "label": "Side quests", "type": "range", "min": 0, "max": 400},

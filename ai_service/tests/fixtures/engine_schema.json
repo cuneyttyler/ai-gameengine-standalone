@@ -399,6 +399,30 @@
           "description": "An event emitted when it's pressed, for scripts (may be empty).",
           "name": "event",
           "type": "string"
+        },
+        {
+          "description": "An effect played on the player when it's pressed.",
+          "name": "effect",
+          "optional": true,
+          "type": "string"
+        },
+        {
+          "description": "Actions sharing a key in one group: only the one whose target is nearest acts.",
+          "name": "group",
+          "optional": true,
+          "type": "string"
+        },
+        {
+          "description": "Its clip, event and screen only when something it activates is in range.",
+          "name": "nearOnly",
+          "optional": true,
+          "type": "bool"
+        },
+        {
+          "description": "Opened when it's pressed: inventory, crafting, spellbook, journal, or a screen's id.",
+          "name": "screen",
+          "optional": true,
+          "type": "string"
         }
       ]
     },
@@ -1463,6 +1487,16 @@
           "type": "string"
         },
         {
+          "description": "Conditions, as dialogue's JSON ([{\"flag\": \"met_mira\"}, {\"item\": \"potion\", \"count\": 2}]): it works only while they hold.",
+          "name": "if",
+          "type": "string"
+        },
+        {
+          "description": "Effects, as dialogue's JSON ([{\"op\": \"set_flag\", \"flag\": \"x\"}, {\"op\": \"open_screen\", \"screen\": \"inventory\"}]): run when it is used.",
+          "name": "do",
+          "type": "string"
+        },
+        {
           "description": "Works only once.",
           "name": "once",
           "type": "bool"
@@ -1534,7 +1568,7 @@
           "type": "float"
         },
         {
-          "description": "An item the user must carry (seeds); empty: none.",
+          "description": "Items the user must carry, kept unless it takes them too: hoe, seeds*2; empty: none.",
           "name": "requires",
           "type": "string"
         },
@@ -1544,7 +1578,7 @@
           "type": "string"
         },
         {
-          "description": "Items taken from the user: seeds, ore*2.",
+          "description": "Items taken from the user: seeds, ore*2. All must be carried, or it doesn't happen.",
           "name": "takes",
           "type": "string"
         },
@@ -1597,6 +1631,26 @@
         {
           "description": "Shown when it happens.",
           "name": "text",
+          "type": "string"
+        },
+        {
+          "description": "Conditions, as dialogue's JSON ([{\"flag\": \"met_mira\"}, {\"item\": \"potion\", \"count\": 2}]): it happens only if they hold.",
+          "name": "if",
+          "type": "string"
+        },
+        {
+          "description": "Effects, as dialogue's JSON ([{\"op\": \"set_flag\", \"flag\": \"x\"}, {\"op\": \"open_screen\", \"screen\": \"inventory\"}]): run when it happens.",
+          "name": "do",
+          "type": "string"
+        },
+        {
+          "description": "Items, one of which the player must have in hand: key, lockpick. Other users just carry one.",
+          "name": "accepts",
+          "type": "string"
+        },
+        {
+          "description": "A crafting station (stove): using it opens the Crafting list with this station's recipes.",
+          "name": "station",
           "type": "string"
         },
         {
@@ -1658,6 +1712,129 @@
           "type": "string"
         },
         {
+          "description": "How near, in cells, from the part itself.",
+          "max": 10.0,
+          "min": 0.3,
+          "name": "range",
+          "type": "float"
+        },
+        {
+          "description": "What activates it (shown as activation): project (Project Settings ▸ Game ▸ doorsOpen), auto (as someone comes near), use (the door shortcuts or a double click, near it), action (the input action named in trigger, near it), event (the game event named in trigger), always (it plays on and on), or open (an open doorway: always passable, no door to animate).",
+          "name": "opens",
+          "options": [
+            "project",
+            "auto",
+            "use",
+            "action",
+            "event",
+            "always",
+            "open"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "action: the input action's name (Project Settings ▸ Input); event: the event's name.",
+          "name": "trigger",
+          "type": "string"
+        },
+        {
+          "description": "What the player is shown near it (\"Pull the lever\"); \"shut|open\" for each way (\"Open the door|Close the door\"); empty: a door's own, another part's \"Use\".",
+          "name": "prompt",
+          "type": "string"
+        },
+        {
+          "description": "The game event sent each time the player activates it (\"cooked\"), for scripts, triggers and quests; an always playing part sends it by its input action.",
+          "name": "fires",
+          "type": "string"
+        },
+        {
+          "description": "Once activated, it plays this long (seconds), then shuts by itself; 0: until it's shut.",
+          "min": 0.0,
+          "name": "duration",
+          "type": "float"
+        },
+        {
+          "description": "A clip the player plays while it's active (cook, pray).",
+          "name": "playerClip",
+          "type": "string"
+        },
+        {
+          "description": "The player's clip again and again while it's active (else once).",
+          "name": "playerLoop",
+          "type": "bool"
+        },
+        {
+          "description": "The player can't move while it's active (until it shuts).",
+          "name": "holdsPlayer",
+          "type": "bool"
+        },
+        {
+          "description": "Conditions, as dialogue's JSON ([{\"flag\": \"met_mira\"}, {\"item\": \"potion\", \"count\": 2}]): the player can activate it only while they hold.",
+          "name": "if",
+          "type": "string"
+        },
+        {
+          "description": "Effects, as dialogue's JSON ([{\"op\": \"set_flag\", \"flag\": \"x\"}, {\"op\": \"open_screen\", \"screen\": \"inventory\"}]): run each time the player activates it.",
+          "name": "do",
+          "type": "string"
+        },
+        {
+          "description": "Which picture it moves on: 0 the outside, k its interior's floor k (shown only while that floor shows).",
+          "min": 0.0,
+          "name": "floor",
+          "type": "int"
+        },
+        {
+          "description": "A doorway of its building: a way in, blocked while shut (a window or a lever isn't).",
+          "name": "door",
+          "type": "bool"
+        },
+        {
+          "description": "Shut, its doorway blocked, until the player uses it with the key.",
+          "name": "locked",
+          "type": "bool"
+        },
+        {
+          "description": "The item that unlocks it (empty: it can't be opened).",
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "description": "The key is used up unlocking it.",
+          "name": "consumeKey",
+          "type": "bool"
+        },
+        {
+          "description": "Older scenes' switch (off: opens by use); opens says it now.",
+          "name": "near",
+          "type": "bool"
+        },
+        {
+          "description": "Its other doors, a JSON list (each with sheet, x, y, width, height, clip, closeClip, range, opens, locked, key, consumeKey). Build ▸ Animate and Animate a part… add them.",
+          "name": "more",
+          "type": "string"
+        }
+      ],
+      "name": "AnimatedPart",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "A painted place's door: this entity's sprite is the door over the painting (Build ▸ Animate made it); it opens as a building's door does.",
+      "fields": [
+        {
+          "description": "Played as it opens.",
+          "name": "clip",
+          "type": "string"
+        },
+        {
+          "description": "Played as it shuts.",
+          "name": "closeClip",
+          "type": "string"
+        },
+        {
           "description": "How near, in cells.",
           "max": 10.0,
           "min": 0.3,
@@ -1665,12 +1842,45 @@
           "type": "float"
         },
         {
-          "description": "Opens as someone comes near (off: only when this thing is used).",
-          "name": "near",
+          "description": "What activates it (shown as activation): project (Project Settings ▸ Game ▸ doorsOpen), auto (as someone comes near), use (the door shortcuts or a double click, near it), action or event (named in trigger), always.",
+          "name": "opens",
+          "options": [
+            "project",
+            "auto",
+            "use",
+            "action",
+            "event",
+            "always"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "action: the input action's name; event: the event's name.",
+          "name": "trigger",
+          "type": "string"
+        },
+        {
+          "description": "What the player is shown near it; \"shut|open\" for each way.",
+          "name": "prompt",
+          "type": "string"
+        },
+        {
+          "description": "Shut until the player uses it with the key.",
+          "name": "locked",
+          "type": "bool"
+        },
+        {
+          "description": "The item that unlocks it (empty: it can't be opened).",
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "description": "The key is used up unlocking it.",
+          "name": "consumeKey",
           "type": "bool"
         }
       ],
-      "name": "AnimatedPart",
+      "name": "DoorPart",
       "userEditable": true
     },
     {
@@ -1691,7 +1901,7 @@
     },
     {
       "dependencies": [],
-      "description": "A place one can go into (Phase 27): its interior shows while the player is inside; only its walls block.",
+      "description": "A building's plan (Phase 27): its floors' pictures, its stairs and its ways in; its interior shows while the player is inside, only its walls block.",
       "fields": [
         {
           "description": "cutaway: the building drawn cut away in place; scene: its own scene, through its door.",
@@ -1754,6 +1964,12 @@
           "type": "string"
         },
         {
+          "description": "A storey's height on screen in pixels: how much higher one stands each floor up (0: from its picture).",
+          "min": 0.0,
+          "name": "storeyHeight",
+          "type": "float"
+        },
+        {
           "description": "The floor shown: the player's while inside, a preview in the editor.",
           "name": "floor",
           "type": "int"
@@ -1761,6 +1977,21 @@
         {
           "description": "Each floor change's stairs cell, x,y;x,y (floor 1 to 2, 2 to 3...): walked onto from below goes up, from above down. Empty: its corners in turn (top, right, left). Right-click inside it ▸ Stairs here.",
           "name": "stairs",
+          "type": "string"
+        },
+        {
+          "description": "Its floors' layout, as they were painted (the room's corners in its picture, a storey, its stairs): its stairs where they're painted. Redesign interiors writes it.",
+          "name": "layout",
+          "type": "string"
+        },
+        {
+          "description": "Its solid things inside, each floor's quarter cells one can't walk through: floor:qx,qy|qx,qy;… in half cells from its footprint's top-left (Edit building… ▸ Solid).",
+          "name": "solids",
+          "type": "string"
+        },
+        {
+          "description": "Its ways in, set by hand: cells of its footprint's edge, dx,dy;dx,dy from its footprint's top-left. Empty: where its doors are (else its door side's middle). Right-click on its edge ▸ Entry point here.",
+          "name": "entries",
           "type": "string"
         }
       ],
@@ -3414,6 +3645,99 @@
       "name": "loot"
     },
     {
+      "description": "A recipe: items made from items (docs/systems/actions.md §6). Two items combine by using one on the other; more than two, or at a station, from the Crafting list.",
+      "fields": [
+        {
+          "description": "Shown in the Crafting list.",
+          "name": "name",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "description": "What it uses up.",
+          "fields": [
+            {
+              "description": "An item used up",
+              "name": "item",
+              "recordType": "item",
+              "type": "record"
+            },
+            {
+              "description": "How many (1 when empty)",
+              "name": "count",
+              "type": "int"
+            }
+          ],
+          "list": true,
+          "name": "inputs",
+          "type": "object"
+        },
+        {
+          "description": "Items needed but not used up (a knife).",
+          "list": true,
+          "name": "keeps",
+          "recordType": "item",
+          "type": "record"
+        },
+        {
+          "description": "What it makes.",
+          "fields": [
+            {
+              "description": "An item made",
+              "name": "item",
+              "recordType": "item",
+              "type": "record"
+            },
+            {
+              "description": "How many (1 when empty)",
+              "name": "count",
+              "type": "int"
+            }
+          ],
+          "list": true,
+          "name": "gives",
+          "type": "object"
+        },
+        {
+          "description": "A station it's made at (stove: an Action with that station); empty: anywhere.",
+          "name": "at",
+          "type": "string"
+        },
+        {
+          "description": "How long it takes: what it makes comes after this.",
+          "min": 0.0,
+          "name": "seconds",
+          "type": "float"
+        },
+        {
+          "description": "The clip the player plays.",
+          "name": "clip",
+          "type": "string"
+        },
+        {
+          "description": "An effect played on the player.",
+          "name": "effect",
+          "type": "string"
+        },
+        {
+          "description": "Shown when it's made.",
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "description": "Conditions, as dialogue's JSON: it can be made only while they hold.",
+          "name": "if",
+          "type": "string"
+        },
+        {
+          "description": "Effects, as dialogue's JSON: run when it's made.",
+          "name": "do",
+          "type": "string"
+        }
+      ],
+      "name": "recipe"
+    },
+    {
       "description": "A perk (13.2): taken with a perk point at a level, it changes attributes from then on.",
       "fields": [
         {
@@ -4990,6 +5314,25 @@
           "description": "A picture shown for a moment when the game starts (assets/...).",
           "name": "splash",
           "type": "string"
+        },
+        {
+          "description": "How buildings' doors open, unless a door says otherwise: use (its shortcuts or a double click, near it) or auto (as someone comes near).",
+          "name": "doorsOpen",
+          "options": [
+            "use",
+            "auto"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The input actions that open a door, comma-separated (Input: interact is E, Space, the pad's A).",
+          "name": "doorActions",
+          "type": "string"
+        },
+        {
+          "description": "A double click on a door opens it, the player near it.",
+          "name": "doorDoubleClick",
+          "type": "bool"
         }
       ],
       "name": "Game"

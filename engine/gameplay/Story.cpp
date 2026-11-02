@@ -14,9 +14,11 @@ namespace {
 
 const std::set<std::string> kEffectOps = {"set_flag",   "clear_flag", "start_quest", "complete_quest", "complete_objective",
                                           "fail_quest", "set_stage",  "set_var",     "add_var",        "give_item",
-                                          "take_item",  "give_gold",  "give_xp",     "reputation",     "play_cutscene"};
+                                          "take_item",  "give_gold",  "give_xp",     "reputation",     "play_cutscene",
+                                          "open_screen", "close_screen"};
 // Effects only the game can carry out (StoryState::TakeWorldEffects).
-const std::set<std::string> kWorldOps = {"give_item", "take_item", "give_gold", "give_xp", "reputation", "play_cutscene"};
+const std::set<std::string> kWorldOps = {"give_item", "take_item", "give_gold", "give_xp", "reputation", "play_cutscene",
+                                         "open_screen", "close_screen"};
 const std::set<std::string> kObjectiveTypes = {"defeat", "talk", "collect", "reach", "deliver", "use", "examine",
                                                "have", "survive", "defend", "escort"};
 const std::set<std::string> kQuestStates = {"inactive", "active", "completed", "failed"};
@@ -72,7 +74,7 @@ std::vector<StoryEffect> EffectsFromJson(const nlohmann::json& list) {
         StoryEffect effect;
         effect.op = item.value("op", "");
         // The name: whichever of these the op uses.
-        for (const char* key : {"flag", "quest", "var", "item", "faction", "cutscene"}) {
+        for (const char* key : {"flag", "quest", "var", "item", "faction", "cutscene", "screen"}) {
             if (item.contains(key) && item[key].is_string()) {
                 effect.name = item[key].get<std::string>();
                 break;
@@ -96,6 +98,7 @@ nlohmann::json EffectsToJson(const std::vector<StoryEffect>& effects) {
                           : e.op == "give_item" || e.op == "take_item"   ? "item"
                           : e.op == "reputation"                         ? "faction"
                           : e.op == "play_cutscene"                      ? "cutscene"
+                          : e.op == "open_screen" || e.op == "close_screen" ? "screen"
                           : e.op == "give_gold" || e.op == "give_xp"     ? nullptr
                                                                          : "quest";
         nlohmann::json item = {{"op", e.op}};
@@ -456,6 +459,7 @@ void CheckEffects(std::vector<std::string>& problems, const std::string& where, 
                                : effect.op.find("var") != std::string::npos ? "a variable name"
                                : effect.op == "reputation"                  ? "a faction"
                                : effect.op == "play_cutscene"               ? "a cutscene"
+                               : effect.op.find("screen") != std::string::npos ? "a screen"
                                                                             : "an item";
             problems.push_back(where + ": " + effect.op + " needs " + what);
         }

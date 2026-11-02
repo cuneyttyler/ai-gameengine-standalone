@@ -263,6 +263,8 @@ struct Interactable {
     std::string setFlag;            // a story flag set when used
     std::string text;               // shown when used (a sign, a book)
     std::string event;              // emitted when used (scripts listen)
+    std::string conditions;         // "if": JSON, as dialogue's: it works only while they hold
+    std::string doEffects;          // "do": JSON, as dialogue's: run when it's used
     bool once = false;
     bool used = false;
     std::string becomes;            // a prefab it turns into when used, in its place (a chest opened, a lever pulled)
@@ -279,9 +281,9 @@ struct Action {
     std::string event;             // trigger event: the event
     float seconds = 0.0f;          // trigger timer: after this long
     float range = 1.3f;            // how close the user must be, in cells
-    std::string requiresItem;      // an item the user must carry ("requires")
+    std::string requiresItem;      // items the user must carry ("requires"), kept unless taken too: "hoe, seeds*2"
     std::string requiresFlag;      // a story flag that must be set
-    std::string takes;             // items taken from the user: "seeds", "ore*2"
+    std::string takes;             // items taken from the user, all carried or it doesn't happen: "seeds", "ore*2"
     std::string gives;             // items given to the user: "wheat*3"
     std::string userAnimation;     // the clip the user plays (farm, use_pickup)
     std::string animation;         // the clip this plays
@@ -292,6 +294,10 @@ struct Action {
     std::string emits;             // an event emitted (its entity this, its other the user)
     std::string setFlag;           // a story flag set
     std::string text;              // shown when it happens
+    std::string conditions;        // "if": JSON, as dialogue's: it happens only if they hold
+    std::string doEffects;         // "do": JSON, as dialogue's: run when it happens
+    std::string accepts;           // items one of which the player must have in hand ("key, lockpick"); others: carry
+    std::string station;           // a crafting station ("stove"): using it opens the Crafting list, its recipes too
     bool once = false;
     float cooldown = 0.0f;         // seconds before it works again
 };
@@ -334,6 +340,8 @@ struct AnimatedPart {
     std::string playerClip;
     bool playerLoop = true;
     bool holdsPlayer = false;
+    std::string conditions; // "if": JSON, as dialogue's: the player can activate it only while they hold
+    std::string doEffects;  // "do": JSON, as dialogue's: run each time the player activates it
     // A doorway of its building (a way in, blocked while shut). Only a building's parts are (Building Plan); a window, a
     // sign or a lever on one isn't. Set by Build ▸ Animate and Animate a part…
     bool door = true;
