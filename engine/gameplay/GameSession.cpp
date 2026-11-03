@@ -1318,6 +1318,13 @@ void GameSession::OnStoryEvents(size_t firstEvent) {
     }
 }
 
+double GameSession::Reputation(const std::string& faction) const {
+    const nlohmann::json value = story_.Var("reputation." + faction);
+    if (value.is_number()) return value.get<double>();
+    const Record* record = ActiveRecords().Find("faction", faction);
+    return record ? record->resolved.value("playerStanding", 0.0) : 0.0;
+}
+
 float GameSession::MinuteOfDay() const {
     double minutes = std::max(0.0, clockMinutes_);
     return static_cast<float>(std::fmod(minutes, static_cast<double>(kMinutesPerDay)));
@@ -1610,8 +1617,7 @@ void GameSession::WireStory() {
             return true;
         }
         if (c.contains("faction")) {
-            const nlohmann::json value = story_.Var("reputation." + c.value("faction", ""));
-            const double reputation = value.is_number() ? value.get<double>() : 0.0;
+            const double reputation = Reputation(c.value("faction", ""));
             if (c.contains("below")) return reputation < c.value("below", 0.0);
             return reputation >= c.value("atLeast", 0.0);
         }
@@ -1649,8 +1655,7 @@ void GameSession::ApplyWorldEffects() {
             continue;
         }
         if (e.op == "reputation") {
-            const nlohmann::json now = story_.Var("reputation." + e.name);
-            story_.SetVar("reputation." + e.name, (now.is_number() ? now.get<int>() : 0) + amount);
+            story_.SetVar("reputation." + e.name, static_cast<int>(Reputation(e.name)) + amount);
             for (auto [entity, member] : registry_.view<FactionMember>().each()) {
                 if (member.faction == e.name) member.disposition = std::clamp(member.disposition + amount, -100, 100);
             }

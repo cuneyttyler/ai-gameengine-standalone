@@ -187,6 +187,8 @@ public:
     double ClockMinutes() const { return clockMinutes_; }
     void SetClockMinutes(double minutes) { clockMinutes_ = minutes; }
     float MinuteOfDay() const;
+    // The player's reputation with a faction: as changed in play, else its record's playerStanding (0 without one).
+    double Reputation(const std::string& faction) const;
     int Day() const;
 
     // Gateways (development_plan.md 5.3): stepping into a Gateway's cell

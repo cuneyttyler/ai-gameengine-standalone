@@ -16,7 +16,7 @@ import RulesEditor from './RulesEditor.vue'
 import CharacterRulesEditor from './CharacterRulesEditor.vue'
 import ItemListEditor from './ItemListEditor.vue'
 import SearchSelect from './SearchSelect.vue'
-import { recordsByType, requestRecords } from '../recordIds'
+import { recordsAndWorld, requestRecords } from '../recordIds'
 import { effectIds, playerClips, requestPlayerClips, sheetClips } from '../inputActions'
 import PartActiveFields from './PartActiveFields.vue'
 import { difficultyView, showTab } from '../paneltabs'
@@ -535,7 +535,7 @@ function numberFrom(event: Event): number {
               <SearchSelect
                 v-else-if="component.name === 'FactionMember' && field.name === 'faction'"
                 :model-value="String(field.value ?? '')"
-                :options="recordsByType.faction ?? []"
+                :options="recordsAndWorld('faction')"
                 :disabled="editorState.playing"
                 empty="none"
                 custom

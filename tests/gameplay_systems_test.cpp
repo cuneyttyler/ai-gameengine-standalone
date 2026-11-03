@@ -56,6 +56,7 @@ protected:
                                                              "perLevel": [{"attribute": "maxHealth", "value": 5}]})");
         Write(root_ / "records/faction/wardens.json", R"({"name": "Wardens", "relations": [{"faction": "bandits", "standing": -80}]})");
         Write(root_ / "records/faction/bandits.json", R"({"name": "Bandits"})");
+        Write(root_ / "records/faction/temple.json", R"({"name": "Temple", "playerStanding": 10})");
         Write(root_ / "prefabs/skeleton.prefab", "# a placeholder: the spawner test makes its own\n");
         Write(root_ / "records/encounter/crypt.json", R"({"entries": [{"prefab": "prefabs/skeleton.prefab", "weight": 1, "min": 2, "max": 2}]})");
         aige::ActiveRecords().Open(aige::EngineReflection(), root_);
@@ -314,6 +315,16 @@ TEST_F(SystemsTest, SpawnersFillAndRespawn) {
     EXPECT_TRUE(aige::UpdateSpawners(registry, 0.5f, spawn, {}, rng).empty()); // waiting
     EXPECT_EQ(aige::UpdateSpawners(registry, 0.6f, spawn, {}, rng).size(), 1u);
     EXPECT_EQ(spawned, 3);
+}
+
+TEST_F(SystemsTest, ReputationStartsAtTheFactionsPlayerStanding) {
+    aige::LuaVM lua;
+    aige::Registry registry;
+    aige::CreatePlayer(registry, 1.5f, 1.5f);
+    aige::GameSession session(registry, lua, aige::IsoParams{});
+    EXPECT_EQ(session.Reputation("temple"), 10.0);
+    EXPECT_TRUE(session.ConditionsHold(R"([{"faction": "temple", "atLeast": 10}])"));
+    EXPECT_FALSE(session.ConditionsHold(R"([{"faction": "bandits", "atLeast": 1}])")); // none set: 0
 }
 
 TEST_F(SystemsTest, KillsGiveExperienceAndDropLootInPlay) {
