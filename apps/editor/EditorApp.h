@@ -176,6 +176,9 @@ private:
     void EnsureStarterPrefabs();
     nlohmann::json PrefabsJson();
     // `flat`: the art is top-down; it's mapped onto the grid's diamond (5.2).
+    // A ground picture (a field) fitted to the cells it covers: cropped to what's drawn, its top face's diamond scaled
+    // to the cells' diamond (art drawn at a steeper or shallower angle than the grid's lies on it all the same).
+    void FitGroundToCell(Sprite& sprite);
     void CreatePrefabFromAsset(const std::string& asset, int tile, bool asTile, bool solid, const std::string& name, bool ground,
                                bool flat = false);
     void SaveSelectedAsPrefab(const std::string& name);

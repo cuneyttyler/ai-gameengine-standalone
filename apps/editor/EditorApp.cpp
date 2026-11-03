@@ -1276,6 +1276,9 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
                    {"field", field},
                    {"error", error ? nlohmann::json(*error) : nlohmann::json(nullptr)}});
             if (!error && component == "Interior" && (field == "floors" || field == "texture")) KeepInteriorPairing(entity);
+            // Set to lie on the ground: fitted to its cell (a field drawn at a steeper angle than the grid's).
+            if (!error && component == "Sprite" && field == "ground" && message["value"] == true)
+                if (auto* sprite = registry_.try_get<Sprite>(entity)) ApplyOneShotEdit([&] { FitGroundToCell(*sprite); return true; });
             inspectorStale_ = true;
             sceneTreeStale_ = true; // a Name edit changes the tree's label
         }
@@ -9513,6 +9516,47 @@ nlohmann::json EditorApp::PrefabsJson() {
     return {{"type", "prefabs:list"}, {"prefabs", list}};
 }
 
+void EditorApp::FitGroundToCell(Sprite& sprite) {
+    const auto image = sprite.texture.empty() ? std::nullopt : DecodeImage(assets_.GetProject().Resolve(sprite.texture));
+    if (!image || image->width == 0 || image->height == 0) return;
+    const int W = static_cast<int>(image->width), H = static_cast<int>(image->height);
+    const int x0 = std::clamp(static_cast<int>(sprite.u0 * W), 0, W), x1 = std::clamp(static_cast<int>(std::ceil(sprite.u1 * W)), 0, W);
+    const int y0 = std::clamp(static_cast<int>(sprite.v0 * H), 0, H), y1 = std::clamp(static_cast<int>(std::ceil(sprite.v1 * H)), 0, H);
+    if (x1 - x0 < 2 || y1 - y0 < 2) return;
+    // What's drawn, and each row's width: the widest rows are the top face's side corners.
+    int left = x1, right = -1, top = y1, bottom = -1, widest = 0;
+    std::vector<int> rowWidth(static_cast<size_t>(y1 - y0), 0);
+    for (int y = y0; y < y1; ++y) {
+        int a = -1, b = -1;
+        for (int x = x0; x < x1; ++x) {
+            if (image->rgba[(static_cast<size_t>(y) * W + x) * 4 + 3] < 128) continue;
+            if (a < 0) a = x;
+            b = x;
+        }
+        if (a < 0) continue;
+        left = std::min(left, a), right = std::max(right, b), top = std::min(top, y), bottom = std::max(bottom, y);
+        rowWidth[static_cast<size_t>(y - y0)] = b - a + 1;
+        widest = std::max(widest, b - a + 1);
+    }
+    if (right < left || bottom <= top) return;
+    int firstWide = -1, lastWide = -1; // the corners' rows (a plateau when they're blunt)
+    for (int y = top; y <= bottom; ++y) {
+        if (rowWidth[static_cast<size_t>(y - y0)] * 100 < widest * 97) continue;
+        if (firstWide < 0) firstWide = y;
+        lastWide = y;
+    }
+    const float corner = (firstWide + lastWide) * 0.5f + 0.5f;
+    const float faceHalf = std::max(1.0f, corner - static_cast<float>(top));
+    // How many cells across: its drawn width at its current size, in cells.
+    const float perPixel = sprite.width / std::max(1, x1 - x0);
+    const float cells = std::max(1.0f, std::round(widest * perPixel / iso_.tileWidth));
+    const float sx = cells * iso_.tileWidth / widest, sy = cells * iso_.tileHeight / (2.0f * faceHalf);
+    sprite.u0 = static_cast<float>(left) / W, sprite.u1 = static_cast<float>(right + 1) / W;
+    sprite.v0 = static_cast<float>(top) / H, sprite.v1 = static_cast<float>(bottom + 1) / H;
+    sprite.width = (right + 1 - left) * sx;
+    sprite.height = (bottom + 1 - top) * sy;
+}
+
 void EditorApp::CreatePrefabFromAsset(const std::string& asset, int tile, bool asTile, bool solid,
                                       const std::string& requestedName, bool ground, bool flat) {
     auto style = TilesetStyle(asset, tile, solid);
@@ -9556,6 +9600,7 @@ void EditorApp::CreatePrefabFromAsset(const std::string& asset, int tile, bool a
         sprite.v1 = style->v1;
         sprite.flat = style->flat;
         sprite.ground = ground && !style->flat;
+        if (sprite.ground) FitGroundToCell(sprite);
         scratch.emplace<Name>(entity, name);
         if (solid) {
             scratch.emplace<Obstacle>(entity);
