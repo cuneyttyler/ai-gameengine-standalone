@@ -124,7 +124,7 @@ class RepairNodeRequest(BaseModel):
 
 
 class ProviderRequest(BaseModel):
-    provider: str          # mistral or claude
+    provider: str          # mistral, claude or openrouter
     model: str = ""        # empty: the provider's default
 
 
@@ -375,7 +375,7 @@ class ProposeResponse(BaseModel):
     model: str = ""
 
 
-PROVIDERS = ("mistral", "claude")
+PROVIDERS = ("mistral", "claude", "openrouter")
 
 
 def available_providers() -> dict[str, bool]:
@@ -436,9 +436,13 @@ def list_models(provider: str) -> list[str]:
 
 
 def make_provider(name: str, model: str | None = None) -> Provider | None:
-    """The model that writes: Mistral (MISTRAL_API_KEY) or Claude (ANTHROPIC_API_KEY)."""
+    """The model that writes: Mistral (MISTRAL_API_KEY), Claude (ANTHROPIC_API_KEY) or any of OpenRouter's
+    (OPENROUTER_API_KEY; OPENROUTER_MODEL, else GPT-6 Luna)."""
     if not available_providers().get(name):
         return None
+    if name == "openrouter":
+        return OpenRouterProvider(os.environ["OPENROUTER_API_KEY"], model or os.environ.get("OPENROUTER_MODEL", OPENROUTER_WRITE_MODEL),
+                                  timeout_s=300.0, max_tokens=16000)
     if name == "claude":
         return ClaudeProvider(api_key=os.environ.get("ANTHROPIC_API_KEY") or None,
                               model=model or os.environ.get("CLAUDE_MODEL", "claude-opus-5-5"),
@@ -459,6 +463,7 @@ def default_provider() -> Provider | None:
 # Haiku saw two storeys. Free, for a key without credits: nvidia/nemotron-3-ultra-550b-a55b:free checks (found the
 # contradictions, ~10 s) and nvidia/nemotron-3.5-super-vl:free looks (~9 s); free models are rate limited.
 OPENROUTER_CHECK_MODEL = "openai/gpt-6-luna"
+OPENROUTER_WRITE_MODEL = "openai/gpt-6-luna"  # the writer's default with OpenRouter; pick a bigger one in Preferences ▸ AI
 OPENROUTER_VISION_MODEL = "openai/gpt-6-luna"
 
 
@@ -1548,7 +1553,7 @@ def create_app(
             return {"ok": False, "errors": [f"Unknown provider {request.provider}: one of {', '.join(PROVIDERS)}"]}
         chosen = make_provider(request.provider, request.model or None)
         if chosen is None:
-            key = "ANTHROPIC_API_KEY" if request.provider == "claude" else "MISTRAL_API_KEY"
+            key = {"claude": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API_KEY"}.get(request.provider, "MISTRAL_API_KEY")
             return {"ok": False, "errors": [f"No key for {request.provider}: set {key} in ai_service/.env"],
                     "available": available_providers()}
         state["provider"] = chosen

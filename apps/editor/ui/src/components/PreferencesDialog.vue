@@ -226,6 +226,7 @@ function close(): void {
                   <select :value="editorState.ai.provider" :disabled="!editorState.ai.enabled" @change="setProvider(($event.target as HTMLSelectElement).value)">
                     <option value="mistral">Mistral{{ noKey('mistral') }}</option>
                     <option value="claude">Claude{{ noKey('claude') }}</option>
+                    <option value="openrouter">OpenRouter{{ noKey('openrouter') }}</option>
                   </select>
                 </div>
               </div>
@@ -233,10 +234,9 @@ function close(): void {
                 <label>Model</label>
                 <div class="control">
                   <div class="row">
-                    <select :value="editorState.ai.model" :disabled="!editorState.ai.enabled" @focus="listModels" @change="setModel(($event.target as HTMLSelectElement).value)">
-                      <option v-if="!models.includes(editorState.ai.model)" :value="editorState.ai.model">{{ editorState.ai.model || 'the default model' }}</option>
-                      <option v-for="m in models" :key="m" :value="m">{{ m }}</option>
-                    </select>
+                    <SearchSelect :model-value="editorState.ai.model" :disabled="!editorState.ai.enabled" empty="the default model" custom
+                                  :options="models.map((m) => ({ value: m, hint: m.endsWith(':free') ? 'free' : undefined }))"
+                                  @update:model-value="setModel" />
                     <button :disabled="!editorState.ai.enabled" title="Ask the provider for its models again" @click="listModels">↻</button>
                   </div>
                   <p v-if="editorState.ai.modelsError" class="error">{{ editorState.ai.modelsError }}</p>

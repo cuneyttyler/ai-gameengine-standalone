@@ -142,8 +142,9 @@ class OpenRouterProvider:
     BACKOFF_S = (3.0, 8.0, 15.0)  # free models answer 429 when busy
     NO_JSON_MODE = {"nvidia/nemotron-3-ultra-550b-a55b:free", "nvidia/nemotron-3.5-lightning:free"}
 
-    def __init__(self, api_key: str, model: str, timeout_s: float = 180.0, json_mode: bool = True):
+    def __init__(self, api_key: str, model: str, timeout_s: float = 180.0, json_mode: bool = True, max_tokens: int = 8000):
         self.model = model
+        self._max_tokens = max_tokens
         self._key = api_key
         self._timeout_s = timeout_s
         # Models whose endpoints don't take JSON mode: asked for JSON in words from the start.
@@ -151,7 +152,7 @@ class OpenRouterProvider:
         self.reasoning = False
 
     def complete(self, messages: list[dict], max_tokens: int | None = None) -> Completion:
-        return self._call(messages, json_mode=self._json_mode, max_tokens=max_tokens or 8000)
+        return self._call(messages, json_mode=self._json_mode, max_tokens=max_tokens or self._max_tokens)
 
     def complete_text(self, messages: list[dict]) -> Completion:
         return self._call(messages, json_mode=False, max_tokens=3000)
