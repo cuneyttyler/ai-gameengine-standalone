@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { plainCopy } from '../plainCopy'
 // A character's rules (Responses): when something happens, what they do. Saved as the JSON text the engine reads.
 import { computed } from 'vue'
 import RulesEditor from './RulesEditor.vue'
@@ -28,12 +29,12 @@ function write(next: Rule[]): void {
   emit('update', next.length ? JSON.stringify(next) : '')
 }
 function set(i: number, patch: Partial<Rule>): void {
-  const next = structuredClone(rules.value ?? [])
+  const next = plainCopy(rules.value ?? [])
   next[i] = { ...next[i], ...patch }
   write(next)
 }
 function setList(i: number, key: 'if' | 'do', text: string): void {
-  const next = structuredClone(rules.value ?? [])
+  const next = plainCopy(rules.value ?? [])
   const rule = next[i]!
   if (text) rule[key] = JSON.parse(text)
   else delete rule[key]

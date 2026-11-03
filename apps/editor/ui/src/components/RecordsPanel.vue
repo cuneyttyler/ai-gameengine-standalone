@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { plainCopy } from '../plainCopy'
 // Records (development_plan.md 12.1): the game's typed data — items and every
 // other record type the engine or the project's modules declare. Each record
 // is a file, records/<type>/<id>.json (engine/records); the host reads,
@@ -101,7 +102,7 @@ function load(type: string, data: Record<string, unknown>, resolved: Record<stri
   draft.data = {}
   for (const field of t?.fields ?? []) {
     draft.own[field.name] = !draft.base || field.name in data
-    draft.data[field.name] = structuredClone(field.name in data ? data[field.name] : resolved[field.name] ?? defaultFor(field))
+    draft.data[field.name] = plainCopy(field.name in data ? data[field.name] : resolved[field.name] ?? defaultFor(field))
   }
   saveError.value = ''
   snapshot.value = JSON.stringify(draftOut())
@@ -118,14 +119,14 @@ function startNew(type: string): void {
   const t = typeOf(type)
   if (!t) return
   selected.value = { type, id: '' }
-  load(type, structuredClone(t.defaults), t.defaults, '', '')
+  load(type, plainCopy(t.defaults), t.defaults, '', '')
 }
 
 function duplicate(): void {
   const r = find(draft.type, draft.originalId)
   if (!r) return
   selected.value = { type: draft.type, id: '' }
-  load(draft.type, structuredClone(r.data), r.resolved, uniqueId(r.id + '-copy'), '')
+  load(draft.type, plainCopy(r.data), r.resolved, uniqueId(r.id + '-copy'), '')
   snapshot.value = ''
 }
 
@@ -150,7 +151,7 @@ function setOwn(name: string, own: boolean): void {
   draft.own[name] = own
   if (!own) {
     const field = currentType.value?.fields.find((f) => f.name === name)
-    draft.data[name] = structuredClone(baseRecord.value?.resolved[name] ?? (field ? defaultFor(field) : ''))
+    draft.data[name] = plainCopy(baseRecord.value?.resolved[name] ?? (field ? defaultFor(field) : ''))
   }
 }
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { plainCopy } from '../plainCopy'
 // A thing's "if" or "do" (a Reaction's, a moving part's, a recipe's, a character rule's), picked from lists as the story
 // editor's are, and saved as the JSON text the engine reads. Text that isn't a list stays editable as text, marked.
 import { onMounted, ref, watch } from 'vue'
@@ -26,7 +27,7 @@ const stagesOf = (id: string) => (details.get(id)?.stages ?? []).map((s) => s.in
 const objectivesOf = (id: string) => (details.get(id)?.objectives ?? []).map((o) => o.id)
 
 function parse(value: unknown): unknown[] | null {
-  if (Array.isArray(value)) return structuredClone(value)
+  if (Array.isArray(value)) return plainCopy(value)
   if (value === '' || value === null || value === undefined) return []
   try {
     const list = JSON.parse(String(value))
