@@ -246,7 +246,7 @@ function when(iso: string): string {
         <input v-model="weaponClass" placeholder="class: sword, axe, spear…" spellcheck="false" title="Its weapon class: the clip is attack_<class>, chosen when a weapon of that class is wielded" />
       </div>
       <div v-if="!byAutoSprite || motion === 'custom'" class="row">
-        <label>Action</label>
+        <label :title="byAutoSprite ? 'The motion, in words: what moves and how' : ''">{{ byAutoSprite ? 'Describe it' : 'Action' }}</label>
         <input v-model="form.action" list="animate-actions" :placeholder="byAutoSprite ? 'the lid swings open, gold glints inside' : 'walking'" />
         <datalist id="animate-actions">
           <option v-for="a in ACTIONS" :key="a" :value="a" />
