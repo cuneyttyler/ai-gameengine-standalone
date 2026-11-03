@@ -81,7 +81,7 @@ Entities are referred to by integer **ids** (as returned by `find_nearest` or `s
 | `play_music(path)` | — | Music instead of the scene's (a boss fight); `play_music("")` goes back to the scene's. |
 | attributes, items, experience, ranged attacks, factions | | `attribute`, `add_modifier`, `give_item`, `take_item`, `count_item`, `equip`, `use_item`, `award_xp`, `level`, `take_perk`, `drop_loot`, `shoot`, `dodge`, `is_hostile`, `set_disposition`: see [gameplay-systems.md](./gameplay-systems.md#lua). |
 | `push_package(id, package)` / `pop_package(id, package)` | — | A character AI package on top of its stack, until popped ([ai-packages.md](../ai/ai-packages.md)). |
-| `bark(text)` | — | A one-line remark from this entity, shown at the bottom (`a|b` picks one). |
+| `say(text)` | — | A line from this entity, in a bubble over its head or on the subtitle line (Project Settings ▸ UI ▸ speech; `a|b` picks one). `bark(text)` is its old name and still works. |
 | `awareness_of([id])` | number | How aware a character is of the player, 0-1. |
 | `set_visible(id, visible)` / `face(id)` | — | Show or hide an entity; turn this one toward another. |
 | `start_dialogue(path)` | boolean | Starts a conversation with this entity as the speaker. |

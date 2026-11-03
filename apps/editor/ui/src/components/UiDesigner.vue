@@ -9,7 +9,7 @@ import { trackOverlay, untrackOverlay } from '../overlay'
 import { plainCopy } from '../plainCopy'
 import RulesEditor from './RulesEditor.vue'
 import UiDesignNode from './UiDesignNode.vue'
-import { ACTIONS, ANCHORS, MODEL_DATA, allIds, make, move, resize, type UiDesign, type UiNode } from '../uiDesign'
+import { ACTIONS, ANCHORS, MODEL_DATA, allIds, isOverhead, make, move, resize, type UiDesign, type UiNode } from '../uiDesign'
 
 const PROJECT_HOST = 'https://aige-project.local/'
 const PRESETS = [
@@ -27,7 +27,12 @@ const PALETTE: { type: UiNode['type']; label: string; title: string }[] = [
   { type: 'input', label: 'Checkbox / slider', title: 'A checkbox, a slider or a text box that sends an event when changed' },
   { type: 'notes', label: 'Notifications', title: 'Toasts, the feed and banners' },
   { type: 'rml', label: 'Custom RML', title: 'RML written by hand, for what the designer has no element for' },
+  { type: 'bubbles', label: 'Speech bubbles', title: "Over someone's head when they say something (Speech, say, a rule's says): its look is yours" },
+  { type: 'labels', label: 'Labels', title: 'Over things and characters with a Label: a name, "Shop open"' },
+  { type: 'numbers', label: 'Floating numbers', title: 'Damage, heals and items gained, rising over who it happened to' },
 ]
+// The project's fonts (.ttf, .otf), for text in them.
+const fonts = ref<string[]>([])
 
 const backdrop = ref<HTMLElement | null>(null)
 const canvasBox = ref<HTMLElement | null>(null)
@@ -51,6 +56,7 @@ watch(
     if (!id) return
     sendToHost({ type: 'ui:design:load', id })
     sendToHost({ type: 'ui:request' })
+    sendToHost({ type: 'ui:fonts' })
     await nextTick()
     if (backdrop.value) {
       trackOverlay(backdrop.value)
@@ -69,6 +75,11 @@ onHostMessage((m) => {
     selectedId.value = ''
   } else if (m.type === 'ui:list' || m.tokens) {
     if (m.tokens) tokens.value = m.tokens as Record<string, string>
+  } else if (m.type === 'ui:designFont' && design.value) {
+    const n = find(design.value.root, m.for as string)
+    if (n) (remember(), (n.font = m.path as string))
+  } else if (m.type === 'ui:fonts') {
+    fonts.value = (m.fonts as string[]) ?? []
   } else if (m.type === 'ui:designSaved' && m.id === editorState.uiDesigner) {
     rml.value = m.rml as string
     problems.value = (m.problems as string[]) ?? []
@@ -135,7 +146,7 @@ function add(type: UiNode['type']): void {
   remember()
   const node = make(type, allIds(design.value.root))
   // Into the panel picked, else the screen.
-  const into = selected.value && (selected.value.type === 'panel' || selected.value.type === 'button') ? selected.value : null
+  const into = !isOverhead(type) && selected.value && (selected.value.type === 'panel' || selected.value.type === 'button') ? selected.value : null
   if (into) (into.children ??= []).push(node)
   else design.value.root.push(node)
   selectedId.value = node.id
@@ -223,7 +234,8 @@ function onDrag(event: MouseEvent): void {
   const dx = Math.round((event.clientX - grab.x) / scale.value), dy = Math.round((event.clientY - grab.y) / scale.value)
   if (!dx && !dy) return
   if (!grab.started) (remember(), (grab.started = true))
-  if (grab.mode === 'move') move(n, dx, dy)
+  if (isOverhead(n.type)) (n.x = (n.x ?? 0) + dx), (n.y = (n.y ?? 0) - dy) // over a head: y is how far above it
+  else if (grab.mode === 'move') move(n, dx, dy)
   else resize(n, dx, dy)
   grab.x += dx * scale.value
   grab.y += dy * scale.value
@@ -245,7 +257,9 @@ function onKey(event: KeyboardEvent): void {
   if (arrows[event.key]) {
     event.preventDefault()
     remember()
-    move(selected.value, ...arrows[event.key]!)
+    const [dx, dy] = arrows[event.key]!
+    if (isOverhead(selected.value.type)) (selected.value.x = (selected.value.x ?? 0) + dx), (selected.value.y = (selected.value.y ?? 0) - dy)
+    else move(selected.value, dx, dy)
   }
 }
 
@@ -283,6 +297,16 @@ function insertBinding(name: string): void {
   if (!selected.value) return
   set('text', `${selected.value.text ?? ''}{{${name}}}`)
 }
+function setKind(kind: string, value: string): void {
+  if (!selected.value) return
+  remember()
+  selected.value.kinds = { ...(selected.value.kinds ?? {}), [kind]: value }
+}
+const hasText = computed(() => !!selected.value && (['text', 'button'].includes(selected.value.type) || isOverhead(selected.value.type)))
+const dataChoices = computed(() =>
+  selected.value && isOverhead(selected.value.type) ? ['it.text', ...(selected.value.type === 'bubbles' ? ['it.name'] : [])] : MODEL_DATA[design.value?.model ?? 'hud']!.values,
+)
+const overheadWhat = (type: string) => (type === 'bubbles' ? 'speaker' : type === 'labels' ? 'thing with a Label' : 'hit, heal or item gained')
 function addAction(): void {
   if (!selected.value) return
   remember()
@@ -390,7 +414,8 @@ watch(design, () => nextTick(measure))
           <template v-if="selected">
             <h4>{{ selected.type }}</h4>
             <label>Name <input :value="selected.name ?? ''" @change="set('name', ($event.target as HTMLInputElement).value)" /></label>
-            <label title="Which point of its parent it keeps its place from: it stays there at any screen size">Anchor
+            <p v-if="isOverhead(selected.type)" class="muted small">One shows over each {{ overheadWhat(selected.type) }}: its bottom middle just above their head. x and y move it from there (y up); w is its widest.{{ design.model !== 'hud' ? ' It needs HUD data (above).' : '' }}</p>
+            <label v-if="!isOverhead(selected.type)" title="Which point of its parent it keeps its place from: it stays there at any screen size">Anchor
               <select :value="selected.anchor ?? 'tl'" @change="set('anchor', ($event.target as HTMLSelectElement).value)">
                 <option v-for="a in ANCHORS" :key="a.id" :value="a.id">{{ a.label }}</option>
               </select></label>
@@ -398,7 +423,7 @@ watch(design, () => nextTick(measure))
               <label>x <input type="number" :value="selected.x ?? 0" @change="set('x', Number(($event.target as HTMLInputElement).value))" /></label>
               <label>y <input type="number" :value="selected.y ?? 0" @change="set('y', Number(($event.target as HTMLInputElement).value))" /></label>
               <label :title="(selected.anchor ?? '').startsWith('stretch') ? 'For a stretched side: its margin from the right' : 'Width'">w <input type="number" :value="selected.w ?? 0" @change="set('w', Number(($event.target as HTMLInputElement).value))" /></label>
-              <label :title="(selected.anchor ?? '').startsWith('stretch') ? 'For a stretched side: its margin from the bottom' : 'Height'">h <input type="number" :value="selected.h ?? 0" @change="set('h', Number(($event.target as HTMLInputElement).value))" /></label>
+              <label v-if="!isOverhead(selected.type)" :title="(selected.anchor ?? '').startsWith('stretch') ? 'For a stretched side: its margin from the bottom' : 'Height'">h <input type="number" :value="selected.h ?? 0" @change="set('h', Number(($event.target as HTMLInputElement).value))" /></label>
             </div>
             <template v-if="selected.type !== 'rml'">
               <h4>Look</h4>
@@ -416,12 +441,12 @@ watch(design, () => nextTick(measure))
               <label>Opacity <input type="range" min="0" max="1" step="0.05" :value="selected.opacity ?? 1" @change="set('opacity', Number(($event.target as HTMLInputElement).value))" /></label>
               <label>Padding <input type="number" min="0" :value="selected.padding ?? 0" @change="set('padding', Number(($event.target as HTMLInputElement).value))" /></label>
             </template>
-            <template v-if="selected.type === 'text' || selected.type === 'button'">
+            <template v-if="hasText">
               <h4>Text</h4>
               <label>Text <input :value="selected.text ?? ''" @change="set('text', ($event.target as HTMLInputElement).value)" /></label>
               <label title="The game's data, shown in the text">Insert data
                 <select :value="''" @change="insertBinding(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''">
-                  <option value="">choose…</option><option v-for="v in MODEL_DATA[design.model]!.values" :key="v" :value="v">{{ v }}</option>
+                  <option value="">choose…</option><option v-for="v in dataChoices" :key="v" :value="v">{{ v }}</option>
                 </select></label>
               <div class="grid4">
                 <label>Size <input type="number" min="6" :value="selected.size ?? 16" @change="set('size', Number(($event.target as HTMLInputElement).value))" /></label>
@@ -430,6 +455,21 @@ watch(design, () => nextTick(measure))
               <label>Colour <select :value="selected.color ?? ''" @change="set('color', ($event.target as HTMLSelectElement).value)">
                 <option value="">the theme's text</option><option v-for="c in colourChoices" :key="c" :value="c">{{ c }}</option></select></label>
               <label class="inline"><input type="checkbox" :checked="!!selected.bold" @change="set('bold', ($event.target as HTMLInputElement).checked)" /> Bold</label>
+              <label title="A font of the project's (a .ttf or .otf under assets/); none: the engine's">Font
+                <select :value="selected.font ?? ''" @change="set('font', ($event.target as HTMLSelectElement).value)">
+                  <option value="">the engine's</option>
+                  <option v-if="selected.font && !fonts.includes(selected.font)" :value="selected.font">{{ selected.font }} (missing)</option>
+                  <option v-for="f in fonts" :key="f" :value="f">{{ f.split('/').pop() }}</option>
+                </select></label>
+              <button class="small" title="A .ttf or .otf from your computer, copied into assets/fonts/" @click="sendToHost({ type: 'ui:design:font', for: selected.id })">Import font…</button>
+              <label v-if="isOverhead(selected.type)" class="inline" title="Long text breaks into lines at w (else it stays on one line)">
+                <input type="checkbox" :checked="!!selected.wrap" @change="set('wrap', ($event.target as HTMLInputElement).checked)" /> Wrap long text</label>
+            </template>
+            <template v-if="selected.type === 'numbers'">
+              <h4>Colours by kind</h4>
+              <label v-for="kind in ['damage', 'heal', 'item']" :key="kind" :title="`The ${kind} numbers' colour: a theme colour or #rrggbb`">{{ kind }}
+                <input :value="selected.kinds?.[kind] ?? ''" list="ui-colour-tokens" placeholder="#ff5a4a or accent" @change="setKind(kind, ($event.target as HTMLInputElement).value)" /></label>
+              <datalist id="ui-colour-tokens"><option v-for="c in colourChoices" :key="c" :value="c" /></datalist>
             </template>
             <template v-if="selected.type === 'button'">
               <h4>States</h4>
@@ -472,7 +512,7 @@ watch(design, () => nextTick(measure))
               <h4>Custom RML</h4>
               <textarea rows="10" spellcheck="false" :value="selected.rml ?? ''" @change="set('rml', ($event.target as HTMLTextAreaElement).value)"></textarea>
             </template>
-            <template v-if="selected.type !== 'notes' && selected.type !== 'rml'">
+            <template v-if="selected.type !== 'notes' && selected.type !== 'rml' && !isOverhead(selected.type)">
               <h4>On click</h4>
               <div v-for="(a, i) in selected.actions ?? []" :key="i" class="action">
                 <select :value="a.do" @change="remember(), (a.do = ($event.target as HTMLSelectElement).value)">

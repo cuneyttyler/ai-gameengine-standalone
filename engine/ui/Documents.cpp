@@ -220,6 +220,11 @@ struct FileSystem : Rml::FileInterface {
             std::error_code ec;
             if (fs::exists(root / relative, ec)) return root / relative;
         }
+        // The project's own files (a font in assets/, as a design names it: /assets/fonts/x.ttf).
+        if (!roots.empty()) {
+            std::error_code ec;
+            if (fs::exists(roots.front().parent_path() / relative, ec)) return roots.front().parent_path() / relative;
+        }
         return std::nullopt;
     }
     Rml::FileHandle Open(const Rml::String& path) override {
@@ -273,6 +278,8 @@ struct System : Rml::SystemInterface {
     }
 };
 
+FileSystem& Files();
+
 // Our TrueType fonts (renderer2d/Text) as RmlUi's font engine: the built-in face for
 // any family, or a .ttf a style loads with @font-face (by its file name).
 struct Fonts : Rml::FontEngineInterface {
@@ -286,7 +293,7 @@ struct Fonts : Rml::FontEngineInterface {
     std::map<std::string, Font*> byAtlas;
 
     bool LoadFontFace(const Rml::String& file, bool, Rml::Style::FontWeight) override {
-        std::ifstream in(file, std::ios::binary);
+        std::ifstream in(Files().Find(file).value_or(fs::path(file)), std::ios::binary);
         if (!in) return false;
         std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         if (bytes.empty()) return false;
@@ -467,6 +474,10 @@ struct ItemModel {
     Rml::String id, name, icon;
     int count = 1;
 };
+struct OverheadModel {
+    Rml::String text, name, kind;
+    float x = 0, y = 0, alpha = 1;
+};
 struct NoteModel {
     Rml::String channel, text, icon;
     int count = 1;
@@ -500,6 +511,7 @@ struct DocumentUi::Impl {
     } dialogue;
     HudData hud;
     Rml::Vector<ItemModel> items;
+    Rml::Vector<OverheadModel> bubbles, labels, numbers;
     int tick = 0; // counted each HUD update: a designed screen's conditions are asked again
     struct {
         Rml::Vector<NoteModel> toast, feed, banner, alert;
@@ -640,6 +652,19 @@ struct DocumentUi::Impl {
             }
             c.RegisterArray<Rml::Vector<ItemModel>>();
             c.Bind("items", &items);
+            // Over people's heads (game-ui.md §13): x, y the point above a head, in viewport pixels.
+            if (auto over = c.RegisterStruct<OverheadModel>()) {
+                over.RegisterMember("text", &OverheadModel::text);
+                over.RegisterMember("name", &OverheadModel::name);
+                over.RegisterMember("kind", &OverheadModel::kind);
+                over.RegisterMember("x", &OverheadModel::x);
+                over.RegisterMember("y", &OverheadModel::y);
+                over.RegisterMember("alpha", &OverheadModel::alpha);
+            }
+            c.RegisterArray<Rml::Vector<OverheadModel>>();
+            c.Bind("bubbles", &bubbles);
+            c.Bind("labels", &labels);
+            c.Bind("numbers", &numbers);
             c.Bind("tick", &tick);
             c.BindEventCallback("action", [this](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList& args) {
                 if (!args.empty() && owner->onAction) owner->onAction(args[0].Get<Rml::String>());
@@ -836,11 +861,24 @@ void DocumentUi::SetDialogue(const std::optional<DialogueView>& view) {
     impl_->Show(impl_->DocumentFor("dialogue"), view.has_value());
 }
 
+void PlaceOverhead(HudData& hud, const std::function<void(float, float, float&, float&)>& toViewport) {
+    for (auto* list : {&hud.bubbles, &hud.labels, &hud.numbers}) {
+        for (auto& o : *list) toViewport(o.x, o.y, o.x, o.y);
+    }
+}
+
 void DocumentUi::SetHud(const HudData& hud) {
     if (!impl_->context) return;
     impl_->hud = hud;
     impl_->items.clear();
     for (const auto& i : hud.items) impl_->items.push_back({i.id, i.name, i.icon, i.count});
+    const auto copy = [](const std::vector<HudOverhead>& from, Rml::Vector<OverheadModel>& to) {
+        to.clear();
+        for (const auto& o : from) to.push_back({o.text, o.name, o.kind, o.x, o.y, o.alpha});
+    };
+    copy(hud.bubbles, impl_->bubbles);
+    copy(hud.labels, impl_->labels);
+    copy(hud.numbers, impl_->numbers);
     ++impl_->tick;
     impl_->hudModel.DirtyAllVariables();
     impl_->menuModel.DirtyVariable("tick");

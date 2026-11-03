@@ -177,6 +177,45 @@
       "y": 24,
       "w": 0,
       "h": 300
+    },
+    {
+      "id": "labels",
+      "type": "labels",
+      "name": "Labels",
+      "x": 0,
+      "y": 4,
+      "w": 220,
+      "text": "{{it.text}}",
+      "size": 13,
+      "color": "highlight"
+    },
+    {
+      "id": "bubbles",
+      "type": "bubbles",
+      "name": "Speech bubbles",
+      "x": 0,
+      "y": 8,
+      "w": 280,
+      "text": "{{it.text}}",
+      "size": 15,
+      "bg": "panel",
+      "padding": 6
+    },
+    {
+      "id": "numbers",
+      "type": "numbers",
+      "name": "Floating numbers",
+      "x": 0,
+      "y": 10,
+      "w": 200,
+      "text": "{{it.text}}",
+      "size": 18,
+      "bold": true,
+      "kinds": {
+        "damage": "#ff5a4a",
+        "heal": "#6ee36e",
+        "item": "accent"
+      }
     }
   ]
 }

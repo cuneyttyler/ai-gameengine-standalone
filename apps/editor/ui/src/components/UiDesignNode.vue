@@ -2,7 +2,7 @@
 // One element on the UI designer's canvas, and its children inside it: drawn as the game will show it (near enough:
 // the game's renderer has the last word, Preview shows it), dragged to move, its corner dragged to resize.
 import { computed } from 'vue'
-import { boxOf, sampleText, type UiNode } from '../uiDesign'
+import { OVERHEAD_POINT, boxOf, fontFamily, isOverhead, overheadSample, sampleText, type UiNode } from '../uiDesign'
 
 defineOptions({ name: 'UiDesignNode' })
 const props = defineProps<{
@@ -50,7 +50,26 @@ const style = computed<Record<string, string>>(() => {
     textAlign: (n.align as string) ?? 'left',
     padding: `${(n.padding ?? 0) * k}px`,
     opacity: String(n.opacity ?? 1),
+    fontFamily: fontFamily(n.font, props.picture) ?? '',
     ...pictureStyle(n.image),
+  }
+})
+// Over people's heads: drawn at a sample head's point, its bottom middle there (x, y move it), as wide as its text.
+const overhead = computed(() => isOverhead(props.node.type))
+const point = computed((): [number, number] => OVERHEAD_POINT[props.node.type] ?? [960, 500])
+const overheadStyle = computed<Record<string, string>>(() => {
+  const n = props.node, k = props.scale
+  const kinds = n.kinds ?? {}
+  return {
+    ...style.value,
+    left: `${(point.value[0] + (n.x ?? 0)) * k}px`,
+    top: `${(point.value[1] - (n.y ?? 0)) * k}px`,
+    width: n.wrap ? `${(n.w ?? 260) * k}px` : 'auto',
+    maxWidth: `${(n.w ?? 260) * k}px`,
+    height: 'auto',
+    transform: 'translate(-50%, -100%)',
+    whiteSpace: n.wrap ? 'normal' : 'nowrap',
+    color: (n.type === 'numbers' ? colour(kinds.damage) : undefined) ?? style.value.color ?? '',
   }
 })
 const inner = computed(() => ({ w: box.value.width - (props.node.padding ?? 0) * 2, h: box.value.height - (props.node.padding ?? 0) * 2 }))
@@ -63,8 +82,18 @@ function rowText(i: number): string {
 </script>
 
 <template>
+  <template v-if="overhead && !node.hidden">
+    <div class="head-mark" :style="{ left: `${point[0] * scale}px`, top: `${point[1] * scale}px` }" title="Someone's head: where it shows over them"></div>
+    <div class="ui-node over" :class="{ selected: selected === node.id, locked: node.locked }" :style="overheadStyle" :title="node.name"
+         @mousedown.stop="emit('pick', node.id); !node.locked && emit('grab', node.id, 'move', $event)">
+      {{ overheadSample(node.type, node.text) }}
+      <UiDesignNode v-for="child in node.children ?? []" :key="child.id" :node="child" :pw="node.w ?? 260" :ph="(node.size ?? 16) * 2"
+                    :scale="scale" :selected="selected" :tokens="tokens" :picture="picture"
+                    @pick="(id) => emit('pick', id)" @grab="(id, mode, e) => emit('grab', id, mode, e)" />
+    </div>
+  </template>
   <div
-    v-if="!node.hidden"
+    v-else-if="!node.hidden"
     class="ui-node"
     :class="[node.type, { selected: selected === node.id, locked: node.locked }]"
     :style="style"
@@ -110,5 +139,7 @@ function rowText(i: number): string {
 .slot { display: inline-block; vertical-align: top; }
 .note { text-align: center; background: rgba(0, 0, 0, 0.5); margin: 0 auto; width: 40%; padding: 4px; }
 .rml { border: 1px dashed #e6a23c; color: #e6a23c; height: 100%; display: flex; align-items: center; justify-content: center; }
+.ui-node.over { overflow: visible; }
+.head-mark { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; background: rgba(255, 255, 255, 0.35); pointer-events: none; }
 .handle { position: absolute; right: -6px; bottom: -6px; width: 10px; height: 10px; background: #3b82f6; cursor: nwse-resize; }
 </style>

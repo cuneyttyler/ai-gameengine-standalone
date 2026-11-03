@@ -10,6 +10,7 @@
 #include "gameplay/GameSession.h"
 #include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
+#include "renderer2d/Camera2D.h"
 #include "world/WorldBible.h"
 
 #include <functional>
@@ -50,7 +51,8 @@ public:
     void Frame(double seconds, const KeyQueryFn& keys, const AxisQueryFn& axes = {});
     // The game's UI on top of the scene: the session's (dialogue, objective),
     // the menus, toasts and the fade.
-    void BuildUi(std::vector<UiQuad>& out, float viewportWidth, float viewportHeight);
+    // `camera`: the play camera, for what's over people's heads (speech bubbles, labels, floating numbers).
+    void BuildUi(std::vector<UiQuad>& out, float viewportWidth, float viewportHeight, const Camera2D* camera = nullptr);
 
     void NewGame();
     bool SaveTo(const std::string& slot);

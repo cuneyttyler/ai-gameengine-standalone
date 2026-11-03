@@ -1382,7 +1382,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         // (Project ▸ Effects); the events the engine sends and those this scene's things and the actions send or wait for.
         nlohmann::json sheetClips = nlohmann::json::object(); // every sheet's clips: what a Reaction's own animation can be
         std::set<std::string> clips, events = {"interact", "talk", "item_added", "level_up", "achievement", "cutscene_started",
-                                               "cutscene_ended", "bark", "anim_event", "ui_action", "difficulty_changed"};
+                                               "cutscene_ended", "say", "anim_event", "ui_action", "difficulty_changed"};
         for (const auto& sheet : AnimationsJson().value("sheets", nlohmann::json::array())) {
             auto& names = sheetClips[sheet.value("path", "")] = nlohmann::json::array();
             for (const auto& clip : sheet.value("clips", nlohmann::json::array())) names.push_back(clip.value("name", ""));
@@ -3927,7 +3927,9 @@ std::vector<UiQuad> EditorApp::BuildUi() {
         uiDocs_->SetViewport(width, height);
         uiDocs_->SetMenu(playWindows_.View(registry_), playWindows_.Open() == PlayWindows::Kind::None ? "" : "inventory");
         uiDocs_->SetDialogue(session_.CurrentDialogueView());
-        uiDocs_->SetHud(session_.MakeHud(static_cast<float>(width), static_cast<float>(height)));
+        HudData hud = session_.MakeHud(static_cast<float>(width), static_cast<float>(height));
+        PlaceOverhead(hud, [&](float x, float y, float& vx, float& vy) { camera_.SceneToViewport(x, y, vx, vy); });
+        uiDocs_->SetHud(hud);
         uiDocs_->Render(ui);
         for (const auto& texture : uiDocs_->TakeNewTextures()) renderer_.RegisterTexture(texture.name, texture.image);
     }
@@ -4095,6 +4097,19 @@ bool EditorApp::HandleUiMessage(const std::string& type, const nlohmann::json& m
         UiDocs().Reload();
         post_(UiJson());
     };
+    if (type == "ui:fonts") {
+        // The project's fonts (.ttf, .otf), for the designer's text: project-relative paths.
+        nlohmann::json fonts = nlohmann::json::array();
+        std::error_code ec;
+        const auto root = assets_.GetProject().root;
+        for (auto it = std::filesystem::recursive_directory_iterator(root / "assets", ec); !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+            std::string ext = it->path().extension().string();
+            for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (ext == ".ttf" || ext == ".otf") fonts.push_back(std::filesystem::relative(it->path(), root, ec).generic_string());
+        }
+        post_({{"type", "ui:fonts"}, {"fonts", fonts}});
+        return true;
+    }
     if (type == "ui:design:load") {
         // A screen in the designer: the project's design; else one from the engine's starting points (the HUD, a
         // window, a menu, the dialogue); else a hand-written screen of the project's, kept whole; else empty.
@@ -4159,6 +4174,20 @@ bool EditorApp::HandleUiMessage(const std::string& type, const nlohmann::json& m
         RefreshAssets();
         post_({{"type", "ui:designImage"}, {"path", rel}, {"for", message.value("for", "")}, {"slot", message.value("slot", "")},
                {"w", image ? image->width : 0}, {"h", image ? image->height : 0}});
+    } else if (type == "ui:design:font") {
+        // A font for an element's text: chosen on the computer, copied into assets/fonts/.
+        const auto file = ShowOpenFileDialog(mainWindow_, L"A font for the UI", L"Fonts", L"*.ttf;*.otf");
+        if (!file) return true;
+        std::error_code ec;
+        fs::create_directories(root / "assets" / "fonts", ec);
+        const std::string rel = "assets/fonts/" + WideToUtf8(file->filename().wstring());
+        fs::copy_file(*file, root / rel, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            post_({{"type", "notify"}, {"text", "Couldn't copy the font: " + ec.message()}});
+            return true;
+        }
+        post_({{"type", "ui:designFont"}, {"path", rel}, {"for", message.value("for", "")}});
+        HandleUiMessage("ui:fonts", message);
     } else if (type == "ui:request") {
         post_(UiJson());
     } else if (type == "ui:source") {

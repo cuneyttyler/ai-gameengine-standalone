@@ -280,6 +280,31 @@ written by hand opens as one Custom RML element, kept whole, with new elements b
 Not yet: edits in the code view taken back into the design; a checkbox's or slider's value passed on (it sends its
 event); the canvas is the editor's drawing, close to the game's but not exact (Preview is exact).
 
+### Over people's heads (2026-11-03)
+
+Text shown over people and things in the world, on the HUD document, its look made in the designer:
+
+- **Speech bubbles**: what characters say: the Speech component's lines (idle, alert, hit, flee; the component is
+  `Barks` in files), the `say` effect, a Character Rule's `says`, Lua `say(text)` (`bark` still works). Project
+  Settings ▸ UI ▸ **speech**: `bubble`, `subtitle` (the old line at the bottom) or `both`; **speechSeconds**. One bubble
+  per speaker; a new line replaces its last. The event `say` is sent (it was `bark`).
+- **Labels**: the `Label` component `{text, within, height}`: always over its thing, or only while the player is
+  `within` cells; **labels** turns them off.
+- **Floating numbers**: hits (`damage`) and pickups' heals (`heal`) over who took them (**damageNumbers**), items
+  gained over the player, "+3 Wheat" (`item`, **itemNumbers**). They rise 36 px and fade over 1.2 s.
+
+The hud model has three lists, `bubbles`, `labels`, `numbers`, each entry `{text, name, kind, x, y, alpha}`: x, y the
+point just above the head (the sprite's top), in viewport pixels. GameSession::MakeHud gives scene pixels; the host
+puts them on screen with its camera (`PlaceOverhead`: the game runner, and the editor's Play). The designer's element
+types `bubbles`, `labels` and `numbers` are templates repeated for each entry: the element's bottom middle on the
+point (`transform: translate(-50%, -100%)`), `x`, `y` moving it (y up), `w` its widest, `wrap` to break long text,
+its text `{{it.text}}` by default (`{{it.name}}` a bubble's speaker), any look (colour, nine-slice picture, font,
+padding), children inside it, and numbers' colours by kind (`kinds`). The engine's `hud.rml` and `hud.json` have
+default ones. Without the documents (Settings ▸ UI ▸ documents off), speech stays on the subtitle line.
+
+**Fonts**: any text element can have a `font`, a project `.ttf` or `.otf` (Import font… copies it to `assets/fonts/`);
+the generated RML loads it with `@font-face` and names it by its file.
+
 ## 13. Files
 
 | File | Holds |

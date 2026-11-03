@@ -237,6 +237,46 @@ TEST(ActionsTest, PressingItsKeyNeedsWhatItRequiresAndShowsItsPrompt) {
     EXPECT_EQ(w.session->MakeHud(1280, 720).promptText, "");
 }
 
+TEST(ActionsTest, WhatsSaidLabelsAndNumbersShowOverHeads) {
+    ActionsWorld w;
+    w.session->SetDocumentHud(true); // bubbles are the HUD document's
+    const aige::Entity guard = w.registry.create();
+    w.registry.emplace<aige::WorldTransform2D>(guard, 2.5f, 2.5f);
+    w.registry.emplace<aige::ScreenTransform2D>(guard);
+    w.registry.emplace<aige::Sprite>(guard).height = 64.0f;
+    w.registry.emplace<aige::Name>(guard, "Mara");
+    w.registry.emplace<aige::Label>(guard, "Guard", 0.0f, 0.0f);
+    auto noKeys = [](aige::Key) { return false; };
+    w.session->Advance(aige::GameSession::kFixedDt, noKeys); // placed on screen
+    w.session->RunEffects(R"([{"op": "say", "text": "Halt!", "who": "Mara"}])");
+    aige::HudData hud = w.session->MakeHud(1280, 720);
+    ASSERT_EQ(hud.bubbles.size(), 1u);
+    EXPECT_EQ(hud.bubbles[0].text, "Halt!");
+    EXPECT_EQ(hud.bubbles[0].name, "Mara");
+    EXPECT_TRUE(hud.subtitle.empty()); // a bubble, not the subtitle line (Settings UI.speech)
+    const auto& screen = w.registry.get<aige::ScreenTransform2D>(guard);
+    EXPECT_FLOAT_EQ(hud.bubbles[0].y, screen.y - 32.0f); // just above its head
+    ASSERT_EQ(hud.labels.size(), 1u);
+    EXPECT_EQ(hud.labels[0].text, "Guard");
+    // An item gained rises over the player, and is gone after a while.
+    auto& pockets = w.registry.get_or_emplace<aige::Inventory>(w.player);
+    w.session->RunEffects(R"([{"op": "give_item", "item": "wheat", "amount": 3}])");
+    (void)pockets;
+    hud = w.session->MakeHud(1280, 720);
+    ASSERT_EQ(hud.numbers.size(), 1u);
+    EXPECT_EQ(hud.numbers[0].kind, "item");
+    EXPECT_NE(hud.numbers[0].text.find("+3"), std::string::npos);
+    for (int i = 0; i < 400; ++i) w.session->Advance(aige::GameSession::kFixedDt, noKeys);
+    hud = w.session->MakeHud(1280, 720);
+    EXPECT_TRUE(hud.numbers.empty());
+    EXPECT_TRUE(hud.bubbles.empty()); // said, then gone
+    // The host puts them on screen with its camera.
+    w.session->RunEffects(R"([{"op": "say", "text": "Again", "who": "Mara"}])");
+    hud = w.session->MakeHud(1280, 720);
+    aige::PlaceOverhead(hud, [](float x, float y, float& vx, float& vy) { vx = x + 100.0f, vy = y + 50.0f; });
+    EXPECT_FLOAT_EQ(hud.bubbles[0].x, screen.x + 100.0f);
+}
+
 TEST(ActionsTest, AnyoneCanAct) {
     ActionsWorld w;
     // A character (not the player) with its own seeds, beside the field.

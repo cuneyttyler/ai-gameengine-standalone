@@ -746,7 +746,7 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
 
     r.RecordType("procedure", "A procedure (14.1): a behaviour tree a package template can be, written by hand. "
                               "Nodes: sequence, selector, random, parallel, loop, condition, cooldown, invert; "
-                              "move-to, wander, wait, idle, face, bark, use-object, talk-to-player, follow, flee, "
+                              "move-to, wander, wait, idle, face, say, use-object, talk-to-player, follow, flee, "
                               "patrol, ambush, escort, set, emit, script.")
         .Field("description", FieldType::String, "What it does.")
         .Field("tree", FieldType::String, "The tree as JSON: {\"type\": \"sequence\", \"children\": [...]}.").Required();

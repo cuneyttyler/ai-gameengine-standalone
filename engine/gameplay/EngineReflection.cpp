@@ -239,6 +239,11 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("becomeAfterAnimation", &Interactable::becomeAfterAnimation, "Its becomes waits until that animation has played.")
         .Field("used", &Interactable::used, "Already used (with once).")
         .DependsOn({"WorldTransform2D"});
+    r.Component<Label>("Label", "Text always over it (a name, \"Shop open\"), shown by the HUD's Labels element (UI designer).")
+        .Field("text", &Label::text, "What it says.")
+        .Field("within", &Label::within, "Shown only while the player is this close, in cells (0: always).").Range(0, 100)
+        .Field("height", &Label::height, "Raised this much more above its head, in pixels.").Range(-500, 500)
+        .DependsOn({"WorldTransform2D"});
     r.Component<Action>("Action", "Does something when its trigger happens, to whoever uses it: the player pressing its action "
                                   "near it, a character (Behaviour step act), a script (act), an event or a timer. A field "
                                   "farmed, a crop grown, a crop harvested (docs/systems/actions.md).")
@@ -419,7 +424,9 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("minDuration", &SmartObject::minDuration, "A use lasts at least this many seconds.").Range(0, 100000)
         .Field("maxDuration", &SmartObject::maxDuration, "A use lasts at most this many seconds.").Range(0, 100000)
         .DependsOn({"WorldTransform2D"});
-    r.Component<Barks>("Barks", "One-line remarks (14.5); alternatives separated by |.")
+    r.Component<Barks>("Barks", "What it says by itself (14.5), over its head (Project Settings ▸ UI ▸ speech): lines for "
+                                "each moment, alternatives separated by |.")
+        .Label("Speech")
         .Field("alert", &Barks::alert, "When it notices the player as an enemy.")
         .Field("hit", &Barks::hit, "When it's hurt.")
         .Field("idle", &Barks::idle, "Now and then, near the player.")
@@ -761,7 +768,14 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("vignette", &LightingSettings::vignette, "Darken the screen's edges.");
     r.Settings("UI", "The game's own UI (game-ui.md).", &settings.ui)
         .Field("documents", &UiSettings::documents,
-               "Menus, windows and the HUD as themed documents (ui/); off: the built-in overlays.");
+               "Menus, windows and the HUD as themed documents (ui/); off: the built-in overlays.")
+        .Field("speech", &UiSettings::speech, "What people say (Speech, say, a rule's says): in a bubble over them, as "
+               "the subtitle line, or both. The bubble's look is the HUD's Bubbles element (UI designer).")
+        .Options({"bubble", "subtitle", "both"})
+        .Field("speechSeconds", &UiSettings::speechSeconds, "How long a line stays, plus a second for every 25 letters.").Range(0.5, 20)
+        .Field("damageNumbers", &UiSettings::damageNumbers, "Hits and heals rise over who took them (the HUD's Numbers element).")
+        .Field("itemNumbers", &UiSettings::itemNumbers, "Items gained rise over the player: +3 Wheat.")
+        .Field("labels", &UiSettings::labels, "Labels show over their things (the HUD's Labels element).");
     r.Settings("Story", "Quest help on screen.", &settings.story)
         .Field("objectiveMarkers", &StorySettings::objectiveMarkers, "Point the way to the current objective.")
         .Field("journal", &StorySettings::journal, "The quest journal window (J).");

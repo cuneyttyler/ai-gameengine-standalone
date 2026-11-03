@@ -87,6 +87,7 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso);
 class GameSession {
 public:
     static constexpr double kFixedDt = 1.0 / 60.0;
+    static constexpr double kFloatSeconds = 1.2; // a floating number rises and fades in this long
 
     // `scriptRoot` is what relative LuaScript paths resolve against (the
     // project root).
@@ -348,7 +349,10 @@ public:
         double amount = 0.0;
         std::string text;           // a quest id, a prefab path...
     };
-    void Emit(ScriptEvent event) { pendingEvents_.push_back(std::move(event)); }
+    void Emit(ScriptEvent event) {
+        FloatFrom(event);
+        pendingEvents_.push_back(std::move(event));
+    }
 
     // Input actions (12.3): the gamepad's sticks and triggers (the keys and
     // buttons come through Advance's KeyQueryFn), and the actions' state this
@@ -461,7 +465,12 @@ private:
     // Phase 14: character AI each step; a remark shown under the action; a
     // scripted package's Lua (false when its run() has finished).
     void StepCharacters(float dt, const SolidQueryFn& isSolid);
-    void ShowBark(Entity speaker, const std::string& text);
+    void ShowBark(Entity speaker, const std::string& text); // a line said: over them and/or the subtitle (Settings ▸ UI)
+    // Over people's heads (game-ui.md §13): the point above one's head, in scene pixels; a number rising from it.
+    std::optional<std::pair<float, float>> HeadOf(Entity entity) const;
+    void FloatText(Entity on, const std::string& text, const std::string& kind);
+    void FloatFrom(const ScriptEvent& event); // an item gained: "+3 Wheat" over the player
+    void StepOverhead(float dt);
     bool RunScriptedPackage(Entity actor, const std::string& script, float dt);
 
     Registry& registry_;
@@ -506,6 +515,18 @@ private:
     std::vector<AiNoise> noises_;       // heard by characters next step
     std::string barkText_;              // "Bandit: There you are!"
     double barkSeconds_ = 0.0;
+    struct Spoken {                     // a line in a bubble over its speaker, one each
+        Entity who = entt::null;
+        std::string name, text;
+        double seconds = 0.0;
+    };
+    std::vector<Spoken> spoken_;
+    struct Floating {                   // a number rising from where it happened
+        float x = 0, y = 0;
+        std::string text, kind;
+        double age = 0.0;
+    };
+    std::vector<Floating> floating_;
     std::map<Entity, std::string> scriptedPackages_; // actor -> the package script running
     std::map<Entity, sol::environment> scriptEnvs_;
     bool showAiDebug_ = false;

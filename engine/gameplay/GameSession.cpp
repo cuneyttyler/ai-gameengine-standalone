@@ -982,7 +982,8 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
     env["pop_package"] = [this](lua_Integer id, const std::string& package) {
         if (registry_.valid(ToEntity(id))) PopPackage(registry_, ToEntity(id), package);
     };
-    env["bark"] = [this, self](const std::string& text) { ShowBark(self, text); };
+    env["say"] = [this, self](const std::string& text) { ShowBark(self, text); }; // a line over this one's head
+    env["bark"] = [this, self](const std::string& text) { ShowBark(self, text); }; // say's old name, for old scripts
     env["awareness_of"] = [this, self](sol::optional<lua_Integer> id) {
         const Entity who = id ? ToEntity(*id) : self;
         const auto* state = registry_.valid(who) ? registry_.try_get<BehaviourState>(who) : nullptr;
@@ -1431,6 +1432,27 @@ HudData GameSession::MakeHud(float viewportWidth, float viewportHeight) {
         hud.clock = "Day " + std::to_string(Day()) + "  " + FormatClockTime(static_cast<int>(MinuteOfDay()));
     }
     if (!barkText_.empty() && !conversation_.Active()) hud.subtitle = barkText_;
+    if (!cutscene_.Active()) {
+        // Over people's heads (game-ui.md §13), in scene pixels: the host puts them on screen with its camera.
+        for (const Spoken& s : spoken_) {
+            if (const auto head = HeadOf(s.who)) {
+                hud.bubbles.push_back({s.text, s.name, "speech", head->first, head->second, static_cast<float>(std::clamp(s.seconds / 0.3, 0.0, 1.0))});
+            }
+        }
+        if (ActiveSettings().ui.labels) {
+            const auto player = FindPlayer(registry_);
+            const auto* me = player ? registry_.try_get<WorldTransform2D>(*player) : nullptr;
+            for (auto [entity, label, world] : registry_.view<Label, WorldTransform2D>().each()) {
+                if (label.text.empty()) continue;
+                if (label.within > 0.0f && (!me || std::hypot(world.x - me->x, world.y - me->y) > label.within)) continue;
+                if (const auto head = HeadOf(entity)) hud.labels.push_back({label.text, "", "label", head->first, head->second - label.height, 1.0f});
+            }
+        }
+        for (const Floating& f : floating_) {
+            const float t = static_cast<float>(f.age / kFloatSeconds);
+            hud.numbers.push_back({f.text, "", f.kind, f.x, f.y - 36.0f * t, std::clamp((1.0f - t) * 3.0f, 0.0f, 1.0f)});
+        }
+    }
     if (cutscene_.Active()) {
         hud.subtitle = subtitle_;
         return hud;
@@ -2427,9 +2449,19 @@ void GameSession::ShowBark(Entity speaker, const std::string& text) {
     const auto* name = registry_.valid(speaker) ? registry_.try_get<Name>(speaker) : nullptr;
     const auto* talk = registry_.valid(speaker) ? registry_.try_get<Talk>(speaker) : nullptr;
     std::string who = talk ? NameOf(talk->character, speaker) : name ? name->value : std::string();
-    barkText_ = who.empty() ? line : who + ": " + line;
-    barkSeconds_ = 2.5 + line.size() / 25.0;
-    Emit({"bark", speaker, entt::null, 0.0, line});
+    const UiSettings& ui = ActiveSettings().ui;
+    const double seconds = std::max(0.5f, ui.speechSeconds) + line.size() / 25.0;
+    // Over their head (a bubble: the HUD document's), on the subtitle line, or both; without the documents, the subtitle.
+    const bool bubble = documentHud_ && ui.speech != "subtitle" && registry_.valid(speaker);
+    if (bubble) {
+        std::erase_if(spoken_, [&](const Spoken& s) { return s.who == speaker; });
+        spoken_.push_back({speaker, who, line, seconds});
+    }
+    if (!bubble || ui.speech == "both") {
+        barkText_ = who.empty() ? line : who + ": " + line;
+        barkSeconds_ = seconds;
+    }
+    Emit({"say", speaker, entt::null, 0.0, line});
 }
 
 bool GameSession::RunScriptedPackage(Entity actor, const std::string& script, float dt) {
@@ -2462,11 +2494,41 @@ bool GameSession::RunScriptedPackage(Entity actor, const std::string& script, fl
     return false;
 }
 
-void GameSession::StepCharacters(float dt, const SolidQueryFn& isSolid) {
+std::optional<std::pair<float, float>> GameSession::HeadOf(Entity entity) const {
+    const auto* screen = registry_.valid(entity) ? registry_.try_get<ScreenTransform2D>(entity) : nullptr;
+    if (!screen) return std::nullopt;
+    const auto* sprite = registry_.try_get<Sprite>(entity);
+    if (!sprite) return std::pair{screen->x, screen->y - 32.0f};
+    return std::pair{screen->x, screen->y - sprite->height * 0.5f - sprite->lift};
+}
+
+void GameSession::FloatText(Entity on, const std::string& text, const std::string& kind) {
+    const auto head = HeadOf(on);
+    if (!head || text.empty() || !documentHud_) return;
+    floating_.push_back({head->first, head->second, text, kind, 0.0});
+    if (floating_.size() > 40) floating_.erase(floating_.begin());
+}
+
+void GameSession::FloatFrom(const ScriptEvent& event) {
+    if (event.name != "item_added" || event.amount <= 0.0 || !ActiveSettings().ui.itemNumbers) return;
+    const auto player = FindPlayer(registry_);
+    if (!player || event.entity != *player) return;
+    FloatText(event.entity, "+" + std::to_string(static_cast<int>(event.amount)) + " " + ItemName(event.text), "item");
+}
+
+void GameSession::StepOverhead(float dt) {
     if (barkSeconds_ > 0.0) {
         barkSeconds_ -= dt;
         if (barkSeconds_ <= 0.0) barkText_.clear();
     }
+    for (auto& s : spoken_) s.seconds -= dt;
+    std::erase_if(spoken_, [&](const Spoken& s) { return s.seconds <= 0.0 || !registry_.valid(s.who); });
+    for (auto& f : floating_) f.age += dt;
+    std::erase_if(floating_, [](const Floating& f) { return f.age >= kFloatSeconds; });
+}
+
+void GameSession::StepCharacters(float dt, const SolidQueryFn& isSolid) {
+    StepOverhead(dt);
     if (registry_.view<Behaviour>().empty()) {
         noises_.clear();
         return;
@@ -3751,6 +3813,10 @@ int GameSession::Advance(double frameSeconds, const KeyQueryFn& isKeyDown) {
         for (size_t i = firstEvent; i < events_.size(); ++i) {
             const GameEvent& event = events_[i];
             if (event.type == GameEvent::Type::Hit && TeamOf(registry_, event.entity) == Team::Player) playerHurtSinceKill_ = true;
+            if (ActiveSettings().ui.damageNumbers && event.amount >= 0.5f) {
+                if (event.type == GameEvent::Type::Hit) FloatText(event.entity, std::to_string(static_cast<int>(std::round(event.amount))), "damage");
+                if (event.type == GameEvent::Type::Pickup) FloatText(event.entity, "+" + std::to_string(static_cast<int>(std::round(event.amount))), "heal");
+            }
             if (event.type == GameEvent::Type::Hit && registry_.valid(event.entity) && registry_.all_of<Behaviour>(event.entity)) {
                 AlertActor(registry_, event.entity, event.other);
                 if (const auto* barks = registry_.try_get<Barks>(event.entity); barks && !barks->hit.empty()) {

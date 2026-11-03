@@ -500,7 +500,7 @@ struct Run {
             }
             return AiStatus::Success;
         }
-        if (type == "bark") {
+        if (type == "say" || type == "bark") { // a line over its head ("bark": its old name)
             std::string text = Str(node, "text");
             if (text == "@idle") text = R().all_of<Barks>(actor) ? R().get<Barks>(actor).idle : std::string();
             if (!text.empty() && ctx.bark) {

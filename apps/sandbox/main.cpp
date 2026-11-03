@@ -395,7 +395,7 @@ int main(int argc, char** argv) {
                 VkExtent2D extent = rhi.SwapchainExtent();
                 const float width = static_cast<float>(extent.width);
                 const float height = static_cast<float>(extent.height);
-                game.BuildUi(ui, width, height);
+                game.BuildUi(ui, width, height, &camera);
                 for (const auto& texture : game.TakeUiTextures()) renderer.RegisterTexture(texture.name, texture.image);
                 if (showStats) {
                     const aige::RenderStats& stats = renderer.LastStats();

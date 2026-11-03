@@ -31,6 +31,16 @@ struct HudItem {
     int count = 1;
 };
 
+// Text over someone in the world (game-ui.md §13): a speech bubble, a label, a floating number. Its point is just above
+// their head, where the element's bottom middle goes: in scene pixels as the game makes it, in viewport pixels once
+// placed with the camera (PlaceOverhead).
+struct HudOverhead {
+    std::string text, name; // what it says; who (a speaker's name)
+    std::string kind;       // speech, label; damage, heal, item (a floating number)
+    float x = 0, y = 0;
+    float alpha = 1;
+};
+
 struct HudData {
     bool visible = true;
     float health = 0, healthMax = 0, mana = 0, manaMax = 0, stamina = 0, staminaMax = 0;
@@ -45,7 +55,11 @@ struct HudData {
     float markerX = 0, markerY = 0; // its position on screen
     std::vector<HudItem> items; // what the player carries
     std::string abilities; // the quick slots: "1 Firebolt   2 Heal (3s)" (19)
+    std::vector<HudOverhead> bubbles, labels, numbers; // over people's heads (game-ui.md §13)
 };
+
+// Puts what's over people's heads from scene pixels into the viewport's (the camera's SceneToViewport).
+void PlaceOverhead(HudData& hud, const std::function<void(float sceneX, float sceneY, float& viewX, float& viewY)>& toViewport);
 
 // A timed message (game-ui.md §9), in a channel: toast, feed, banner, alert.
 struct Notification {

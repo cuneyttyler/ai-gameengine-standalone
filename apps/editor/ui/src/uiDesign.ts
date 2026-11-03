@@ -12,7 +12,7 @@ export interface UiAction {
 }
 export interface UiNode {
   id: string
-  type: 'panel' | 'image' | 'button' | 'text' | 'bar' | 'list' | 'slots' | 'input' | 'notes' | 'rml'
+  type: 'panel' | 'image' | 'button' | 'text' | 'bar' | 'list' | 'slots' | 'input' | 'notes' | 'rml' | 'bubbles' | 'labels' | 'numbers'
   name?: string
   hidden?: boolean
   locked?: boolean
@@ -33,6 +33,9 @@ export interface UiNode {
   color?: string
   align?: string
   bold?: boolean
+  font?: string // a .ttf or .otf of the project's (empty: the engine's)
+  wrap?: boolean // over a head: long text wraps at w (else one line)
+  kinds?: Record<string, string> // numbers: a colour for each kind (damage, heal, item)
   padding?: number
   actions?: UiAction[]
   show?: unknown[]
@@ -171,7 +174,43 @@ export function make(type: UiNode['type'], taken: Set<string>): UiNode {
   if (type === 'input') Object.assign(base, { w: 200, h: 30, input: { kind: 'checkbox', event: '' } })
   if (type === 'notes') Object.assign(base, { anchor: 'stretch-top', x: 0, y: 24, w: 0, h: 300 })
   if (type === 'rml') Object.assign(base, { anchor: 'stretch', x: 0, y: 0, w: 0, h: 0, rml: '<div>…</div>' })
+  // Over people's heads: x, y move it from the point above a head; w is its widest.
+  if (type === 'bubbles') Object.assign(base, { name: 'Speech bubbles', x: 0, y: 8, w: 280, h: 0, text: '{{it.text}}', size: 15, bg: 'panel', padding: 6 })
+  if (type === 'labels') Object.assign(base, { name: 'Labels', x: 0, y: 4, w: 220, h: 0, text: '{{it.text}}', size: 13, color: 'highlight' })
+  if (type === 'numbers') Object.assign(base, { name: 'Floating numbers', x: 0, y: 10, w: 200, h: 0, text: '{{it.text}}', size: 18, bold: true,
+    kinds: { damage: '#ff5a4a', heal: '#6ee36e', item: 'accent' } })
   return base
+}
+
+// Over people's heads (game-ui.md §13): each type, what it shows, and where the designer draws its sample (a head's
+// point, in design pixels) with sample text.
+export const OVERHEAD_TYPES = ['bubbles', 'labels', 'numbers'] as const
+export const isOverhead = (type: string) => (OVERHEAD_TYPES as readonly string[]).includes(type)
+export const OVERHEAD_POINT: Record<string, [number, number]> = { bubbles: [960, 470], labels: [1320, 520], numbers: [620, 500] }
+export const OVERHEAD_SAMPLES: Record<string, string> = { bubbles: 'Good morning, Warden!', labels: 'Shop open', numbers: '12' }
+let OVERHEAD_SAMPLE = ''
+export function overheadSample(type: string, text: string | undefined): string {
+  OVERHEAD_SAMPLE = OVERHEAD_SAMPLES[type] ?? ''
+  return sampleText(text || '{{it.text}}')
+}
+
+// A project font (.ttf / .otf), loaded into the editor once, so the canvas shows text in it: its family name.
+const loadedFonts = new Map<string, string>()
+export function fontFamily(path: string | undefined, url: (path: string) => string): string | undefined {
+  if (!path) return undefined
+  let family = loadedFonts.get(path)
+  if (!family) {
+    family = `design-${loadedFonts.size}`
+    loadedFonts.set(path, family)
+    try {
+      const face = new FontFace(family, `url("${url(path)}")`)
+      document.fonts.add(face)
+      void face.load().catch(() => undefined)
+    } catch {
+      /* the canvas falls back to the editor's font */
+    }
+  }
+  return `"${family}", sans-serif`
 }
 
 // A design-time picture of a value: its sample, for text with {{bindings}}.
@@ -181,6 +220,8 @@ export function sampleText(text: string | undefined): string {
     if (key in SAMPLE) return String(SAMPLE[key])
     if (key.startsWith('item.')) return key === 'item.count' ? '2' : 'Potion'
     if (key === 'i + 1') return '1'
+    if (key === 'it.text') return OVERHEAD_SAMPLE
+    if (key === 'it.name') return 'Old Tamsin'
     return `[${key}]`
   })
 }

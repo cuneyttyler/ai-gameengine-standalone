@@ -80,10 +80,24 @@ std::string Rect(const json& n) {
     return css;
 }
 
+// What's over people's heads (game-ui.md §13): each element type and the hud model's list it repeats for.
+const char* OverheadSource(const std::string& type) {
+    return type == "bubbles" ? "bubbles" : type == "labels" ? "labels" : type == "numbers" ? "numbers" : nullptr;
+}
+
 struct Writer {
     std::string model;
     std::ostringstream style, body, notes, outside; // outside: blocks with their own data models
-    std::set<std::string> sheets;
+    std::set<std::string> sheets, fonts;
+
+    // A font of the project's (a .ttf or .otf): loaded once, named by its file (as the engine's font engine knows it).
+    std::string Font(const std::string& path) {
+        if (path.empty()) return {};
+        std::string family = path.substr(path.find_last_of("/\\") + 1);
+        family = family.substr(0, family.find_last_of('.'));
+        if (fonts.insert(path).second) style << "@font-face { font-family: " << family << "; src: " << Picture(path) << "; }\n";
+        return "font-family: " + family + "; ";
+    }
 
     // A picture as a background: whole, or in nine pieces (its corners kept, its edges and middle stretched).
     std::string Decorator(const json& n, const std::string& image, const std::string& name) {
@@ -137,8 +151,15 @@ struct Writer {
         if (type == "notes" && depth > 0) return; // notifications sit at the top, in their own model
         const std::string id = Safe(n.value("id", std::string("n")));
         const std::string cls = "n-" + id;
-        // Its look, and a button's states.
-        std::string css = Rect(n);
+        // Its look, and a button's states. Over someone's head: its bottom middle on the point above them (x, y move it
+        // from there), as wide as its text up to w.
+        const char* overhead = OverheadSource(type);
+        std::string css = overhead ? "position: absolute; transform: translate(-50%, -100%); white-space: nowrap; max-width: " +
+                                         Num(n.value("w", 260.0)) + "dp; margin-left: " + Num(n.value("x", 0.0)) + "dp; margin-top: " +
+                                         Num(-n.value("y", 0.0)) + "dp; "
+                                   : Rect(n);
+        if (overhead && n.value("wrap", false)) css += "white-space: normal; width: " + Num(n.value("w", 260.0)) + "dp; ";
+        css += Font(n.value("font", std::string()));
         if (n.contains("opacity") && n["opacity"].is_number()) css += "opacity: " + Num(n["opacity"].get<double>()) + "; ";
         css += Look(n, id, {{"bg", n.value("bg", std::string())}, {"image", n.value("image", std::string())}, {"color", n.value("color", std::string())}});
         if (n.contains("size")) css += "font-size: " + Num(n.value("size", 16.0)) + "dp; ";
@@ -162,7 +183,25 @@ struct Writer {
         }
         if (const std::string click = Click(n); !click.empty()) attrs += " data-event-click=\"" + click + "\"";
         const std::string text = Escape(n.value("text", std::string()));
-        if (type == "bar") {
+        if (overhead) {
+            // One for each: its text says {{it.text}} (and a bubble's {{it.name}}); numbers styled by their kind.
+            const json kinds = n.value("kinds", json::object());
+            for (const auto& [kind, colour] : kinds.items()) {
+                if (colour.is_string() && !colour.get<std::string>().empty()) style << "." << cls << "." << Safe(kind) << " { color: " << Colour(colour.get<std::string>()) << "; }\n";
+            }
+            const json show = n.value("show", json::array());
+            const bool gated = show.is_array() && !show.empty();
+            if (gated) out << pad << "<div style=\"position: absolute; left: 0; top: 0; right: 0; bottom: 0;\" data-if=\"tick | holds('" << HexEncode(show.dump()) << "')\">\n";
+            out << pad << "<div class=\"" << cls << "\" data-for=\"it : " << overhead
+                << "\" data-style-left=\"it.x + 'px'\" data-style-top=\"it.y + 'px'\" data-style-opacity=\"it.alpha\"";
+            if (type == "numbers") {
+                for (const char* kind : {"damage", "heal", "item"}) out << " data-class-" << kind << "=\"it.kind == '" << kind << "'\"";
+            }
+            out << ">" << (text.empty() ? std::string("{{it.text}}") : text) << "\n";
+            for (const auto& child : n.value("children", json::array())) Node(child, out, depth + 1);
+            out << pad << "</div>\n";
+            if (gated) out << pad << "</div>\n";
+        } else if (type == "bar") {
             const json bar = n.value("bar", json::object());
             const std::string value = bar.value("value", std::string("health")), max = bar.value("max", std::string("health_max"));
             out << pad << "<div" << attrs << " data-if=\"" << max << " > 0\">"
@@ -255,7 +294,8 @@ std::vector<std::string> CheckDesign(const json& design) {
         problems.push_back("a design needs a \"root\" list");
         return problems;
     }
-    static const std::set<std::string> types = {"panel", "image", "button", "text", "bar", "list", "slots", "input", "notes", "rml"};
+    static const std::set<std::string> types = {"panel", "image", "button", "text", "bar", "list", "slots", "input", "notes", "rml",
+                                                "bubbles", "labels", "numbers"};
     static const std::set<std::string> actions = {"open", "close", "event", "press", "flag", "clear", "effects", "quit", "save", "load"};
     static const std::set<std::string> anchors = {"tl", "t", "tr", "l", "c", "r", "bl", "b", "br", "stretch", "stretch-x", "stretch-y", "stretch-top", "stretch-bottom", "stretch-left", "stretch-right"};
     std::set<std::string> ids;
@@ -273,6 +313,12 @@ std::vector<std::string> CheckDesign(const json& design) {
             }
         }
         if (n.value("type", std::string()) == "button" && n.value("actions", json::array()).empty()) problems.push_back(where + ": a button that does nothing");
+        if (OverheadSource(n.value("type", std::string())) && design.value("model", std::string("hud")) != "hud") {
+            problems.push_back(where + ": over people's heads shows on the HUD only (its model hud)");
+        }
+        if (const std::string font = n.value("font", std::string()); !font.empty() && !font.ends_with(".ttf") && !font.ends_with(".otf")) {
+            problems.push_back(where + ": its font isn't a .ttf or .otf file");
+        }
         for (const auto& c : n.value("children", json::array())) visit(c);
     };
     for (const auto& n : design["root"]) visit(n);

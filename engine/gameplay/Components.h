@@ -275,6 +275,14 @@ struct Interactable {
 // Something that happens to a thing when its trigger does, to whoever uses it (docs/systems/actions.md): a field farmed,
 // a crop grown, a crop harvested. The Interactable is one with set settings (the interact key); both run through
 // GameSession::Act, so the player, a character (the Behaviour step "act") or a script can use it.
+// Text always over a thing or a character (game-ui.md §13): a name, "Shop open", "Ripe"; the HUD's label element shows
+// it (the UI designer's Labels).
+struct Label {
+    std::string text;
+    float within = 0.0f; // shown only while the player is this close, in cells (0: always)
+    float height = 0.0f; // raised this much more above its head, in pixels
+};
+
 struct Action {
     std::string trigger = "input"; // input (its action pressed in range), event, timer, touch, near (someone within range)
     std::string action = "interact"; // the input action (farm, interact, any of the project's)

@@ -403,7 +403,7 @@ void GameRunner::FrameLogic(double seconds, const KeyQueryFn& keys, const AxisQu
     }
 }
 
-void GameRunner::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float viewportHeight) {
+void GameRunner::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float viewportHeight, const Camera2D* camera) {
     if (splashLeft_ > 0.0) {
         AddUiRect(out, 0.0f, 0.0f, viewportWidth, viewportHeight, {0.0f, 0.0f, 0.0f, 1.0f});
         UiQuad picture;
@@ -429,6 +429,8 @@ void GameRunner::BuildUi(std::vector<UiQuad>& out, float viewportWidth, float vi
         docs_->SetDialogue(view ? std::nullopt : session_->CurrentDialogueView());
         HudData hud = session_->MakeHud(viewportWidth, viewportHeight);
         hud.visible = hud.visible && !title && flow_.InPlay();
+        if (camera) PlaceOverhead(hud, [&](float x, float y, float& vx, float& vy) { camera->SceneToViewport(x, y, vx, vy); });
+        else hud.bubbles.clear(), hud.labels.clear(), hud.numbers.clear();
         docs_->SetHud(hud);
         docs_->Render(out);
     } else {

@@ -409,7 +409,8 @@ GAME UI (docs/systems/game-ui.md; the game's menus, windows, HUD and notificatio
   writes ui/screens/<id>.rml from it, and the user can then change it in the UI designer (Project ▸ UI ▸ Design…).
   A design: {"schema": "aige.ui-design/1", "model": "hud" (health, gold, items...) | "menu" (title, body, items) |
   "dialogue" (speaker, text, choices), "width": 1920, "height": 1080, "root": [element...]}. An element: {"id"
-  (unique), "type": "panel"|"image"|"button"|"text"|"bar"|"list"|"slots"|"input"|"notes"|"rml", "name", "anchor":
+  (unique), "type": "panel"|"image"|"button"|"text"|"bar"|"list"|"slots"|"input"|"notes"|"rml"|"bubbles"|"labels"|
+  "numbers", "name", "anchor":
   "tl"|"t"|"tr"|"l"|"c"|"r"|"bl"|"b"|"br" (x, y from that point of its parent; w, h its size) | "stretch" |
   "stretch-top"|"stretch-bottom"|"stretch-x" (across: x and w the left and right margins) |
   "stretch-left"|"stretch-right"|"stretch-y" (down: y and h the top and bottom margins), "x", "y", "w", "h" (design
@@ -420,7 +421,16 @@ GAME UI (docs/systems/game-ui.md; the game's menus, windows, HUD and notificatio
   "arg": a screen, an event, an input action, a flag, or Effects}]), "show" (Conditions: only shown while they
   hold), "bar": {"value": "health", "max": "health_max", "color": "health"}, "list": {"source": "items"|"choices",
   "row": "{{item.label}}", "rowH": 34}, "slots": {"cell": 64, "gap": 6} (what the player carries; a click uses it),
-  "children": [...]}. Buttons need actions.
+  "font": "assets/fonts/x.ttf" (a project font; empty: the engine's), "children": [...]}. Buttons need actions.
+- OVER PEOPLE'S HEADS, on the HUD (model "hud"): "bubbles" (what characters say: Speech lines, the say effect, a
+  rule's says, say() in Lua), "labels" (a Label component's text: {"text", "within": cells from the player, 0 always,
+  "height"}), "numbers" (damage, heals, items gained: kinds damage | heal | item). One element of each type is the
+  look of every one: its bottom middle sits just above the head; "x", "y" move it from there (y up), "w" is its
+  widest, "wrap": true breaks long text; "text" defaults to {{it.text}} ({{it.name}}: a bubble's speaker); bg, image +
+  slice, size, color, bold, font, padding as any element; numbers' "kinds": {"damage": "#ff5a4a", "heal": ...,
+  "item": "accent"}. To restyle bubbles, change the "bubbles" element of ui/designs/hud.json (read it first; the
+  engine's starting design is used when the project has none). Settings UI: speech, speechSeconds, damageNumbers,
+  itemNumbers, labels.
 - A project's own screen (a map, a codex): ui/screens/<id>.rml with data-model="ui"; open it from Lua with
   open_screen("<id>"), close it with close_screen("<id>"); notify(channel, text) shows a notification.
 """
@@ -520,8 +530,9 @@ GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
   disposition < 0 is hostile). A Spawner makes enemies from an "encounter" record around itself.
 - Character AI: Behaviour holds a stack of "package" records (template: work, sleep, sandbox, patrol, follow,
   guard, ambush, script...; location, schedule, data); the first that holds runs. Perception (sight, hearing),
-  aggression and confidence decide fights; a "combat-style" record says how they fight; Barks are one-line
-  remarks (alternatives separated by |). SmartObject marks beds, chairs, counters for packages to use. Actor
+  aggression and confidence decide fights; a "combat-style" record says how they fight; Speech (component
+  "Barks") holds lines it says by itself: idle, alert, hit, flee (alternatives separated by |), shown in a bubble
+  over its head (Settings UI.speech: bubble | subtitle | both). SmartObject marks beds, chairs, counters for packages to use. Actor
   {key, prefab} makes one person persist across scenes (dead stays dead).
 - Interior: a building one can go into, of two kinds (door: s, e, n or w, its doorway's side).
   kind "cutaway": texture is its interior picture (the same building cut away); its collision becomes its walls with
@@ -592,10 +603,10 @@ second while playing). These are ALL the engine functions — there are no other
   equip(id, item) / use_item(id, item) -> ok, reason
   award_xp(id, n) / level(id) / take_perk(id, perk);  drop_loot(x, y, loot_table[, level])
   shoot(x, y) / dodge(dx, dy);  is_hostile(a, b) -> boolean;  set_disposition(id, n)
-  push_package(id, package) / pop_package(id, package);  bark(text);  awareness_of([id]) -> 0..1
+  push_package(id, package) / pop_package(id, package);  say(text) (a line over this one's head);  awareness_of([id]) -> 0..1
   set_visible(id, visible) / face(id);  start_dialogue(path) -> boolean;  find_object(type[, radius]) -> id
   move_to(x, y)   (in a scripted package's run() coroutine: walks there around walls)
-Events: hit, death, pickup, attack, victory, talk, item_added, level_up, interact, bark, quest_started,
+Events: hit, death, pickup, attack, victory, talk, item_added, level_up, interact, say, quest_started,
 quest_completed, quest_failed, quest_stage, objective_completed, cutscene_started, cutscene_ended,
 difficulty_changed, ui_action (text: the action's name), anim_event (text: a frame event), effect, ability_used,
 ability_learned, effect_applied, effect_removed (text: the ability's or effect's id).

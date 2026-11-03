@@ -72,6 +72,33 @@ TEST(UiDesignTest, AHandWrittenScreenIsKeptWhole) {
     EXPECT_LT(again.find("</div>\n\t<div data-model") == std::string::npos ? 0u : 1u, 2u);
 }
 
+TEST(UiDesignTest, OverHeadElementsRepeatForEachWithTheirLook) {
+    const nlohmann::json design = nlohmann::json::parse(R"({"model": "hud", "root": [
+        {"id": "speech", "type": "bubbles", "x": 0, "y": 8, "w": 280, "bg": "panel", "font": "assets/fonts/Quill.ttf",
+         "text": "{{it.name}}: {{it.text}}", "wrap": true},
+        {"id": "num", "type": "numbers", "kinds": {"damage": "#ff0000", "item": "accent"}},
+        {"id": "lab", "type": "labels"}]})");
+    const std::string rml = aige::DesignToRml(design);
+    EXPECT_NE(rml.find("data-for=\"it : bubbles\""), std::string::npos);
+    EXPECT_NE(rml.find("data-for=\"it : numbers\""), std::string::npos);
+    EXPECT_NE(rml.find("data-for=\"it : labels\""), std::string::npos);
+    EXPECT_NE(rml.find("translate(-50%, -100%)"), std::string::npos); // its bottom middle on the head's point
+    EXPECT_NE(rml.find("{{it.name}}: {{it.text}}"), std::string::npos);
+    EXPECT_NE(rml.find("{{it.text}}"), std::string::npos); // the default text (labels)
+    EXPECT_NE(rml.find("@font-face { font-family: Quill; src: /assets/fonts/Quill.ttf; }"), std::string::npos);
+    EXPECT_NE(rml.find("font-family: Quill;"), std::string::npos);
+    EXPECT_NE(rml.find(".n-num.damage { color: #ff0000; }"), std::string::npos);
+    EXPECT_NE(rml.find(".n-num.item { color: var(--accent); }"), std::string::npos);
+    EXPECT_NE(rml.find("data-class-damage=\"it.kind == 'damage'\""), std::string::npos);
+    EXPECT_TRUE(aige::CheckDesign(design).empty());
+    // Only the HUD has what's over heads; a font is a .ttf or .otf.
+    nlohmann::json menu = design;
+    menu["model"] = "menu";
+    menu["root"][0]["font"] = "assets/fonts/Quill.png";
+    const auto problems = aige::CheckDesign(menu);
+    EXPECT_EQ(problems.size(), 4u); // three over-head elements on a menu, one bad font
+}
+
 TEST(UiDesignTest, TheEnginesStartingDesignsAreValid) {
     for (const char* name : {"hud", "window", "menu", "dialogue"}) {
         std::ifstream in(std::filesystem::path(AIGE_SOURCE_DIR) / "data" / "ui" / "designs" / (std::string(name) + ".json"));

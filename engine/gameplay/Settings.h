@@ -76,6 +76,12 @@ struct LightingSettings {
 // The game's UI (development_plan.md 17, game-ui.md).
 struct UiSettings {
     bool documents = true; // menus, windows and the HUD as themed documents (off: the built-in overlays)
+    // What people say (Speech, say, a rule's says): in a bubble over them, as the subtitle line, or both (game-ui.md §13).
+    std::string speech = "bubble";
+    float speechSeconds = 2.5f;  // how long a line stays, plus a second for every 25 letters
+    bool damageNumbers = true;   // hits and heals rise over who took them
+    bool itemNumbers = true;     // "+3 Wheat" rises over the player
+    bool labels = true;          // Labels show over their things
 };
 
 // The story's on-screen help (development_plan.md 15.4).
