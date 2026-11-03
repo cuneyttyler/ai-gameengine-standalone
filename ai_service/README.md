@@ -72,8 +72,9 @@ verified against the entry before they're returned. Fixtures:
 `tests/golden/checks/`, recorded by `python -m tests.golden.record_checks`.
 
 The check model and the vision model can instead be OpenRouter's (`OPENROUTER_API_KEY`; Preferences ▸ AI ▸
-Checks, or `AIGE_CHECK_PROVIDER` / `AIGE_VISION_PROVIDER=openrouter`): by default its free
-`nvidia/nemotron-3-ultra-550b-a55b:free` checks and `nvidia/nemotron-3.5-super-vl:free` looks
+Checks, or `AIGE_CHECK_PROVIDER` / `AIGE_VISION_PROVIDER=openrouter`): by default `openai/gpt-6-luna` does both
+(cheap, and right on the tried checks); for no cost, the free `nvidia/nemotron-3-ultra-550b-a55b:free` checks and
+`nvidia/nemotron-3.5-super-vl:free` looks
 (`OPENROUTER_CHECK_MODEL`, `OPENROUTER_VISION_MODEL` pick others; `PUT /check-models` sets them at run time). Free
 models are rate limited; a busy one is retried after a wait.
 

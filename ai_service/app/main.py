@@ -452,10 +452,14 @@ def default_provider() -> Provider | None:
     return make_provider(os.environ.get("AIGE_PROVIDER", "mistral"))
 
 
-# OpenRouter's free models for the checks (tried 2026-11-03 on a canon contradiction and a sprite; free models come
-# and go, so Preferences ▸ AI ▸ Checks lists what's there now). OPENROUTER_CHECK_MODEL / OPENROUTER_VISION_MODEL pick others.
-OPENROUTER_CHECK_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"  # found all three contradictions, ~10 s
-OPENROUTER_VISION_MODEL = "nvidia/nemotron-3.5-super-vl:free"  # read the sprite right, ~9 s (Gemma 4: rate limited)
+# OpenRouter's models for the checks (OPENROUTER_CHECK_MODEL / OPENROUTER_VISION_MODEL pick others). Tried 2026-11-03 on
+# a canon check with a real contradiction, one explained away and two consistent lines, and on a cutaway interior
+# (one storey, stairs going up). GPT-6 Luna ($0.10 / $0.50 per million tokens) was right on both, in 3-5 s; Qwen 3.7
+# Flash, GLM 5.3 Flash, Gemini 3.1 Flash Lite and Claude Haiku 5.5 flagged the explained line; DeepSeek V4.1 Flash and
+# Haiku saw two storeys. Free, for a key without credits: nvidia/nemotron-3-ultra-550b-a55b:free checks (found the
+# contradictions, ~10 s) and nvidia/nemotron-3.5-super-vl:free looks (~9 s); free models are rate limited.
+OPENROUTER_CHECK_MODEL = "openai/gpt-6-luna"
+OPENROUTER_VISION_MODEL = "openai/gpt-6-luna"
 
 
 def make_checker(provider: str = "auto", model: str = "") -> Provider | None:

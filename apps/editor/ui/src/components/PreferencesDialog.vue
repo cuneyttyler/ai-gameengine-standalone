@@ -49,9 +49,9 @@ interface CheckChoice {
 }
 const CHECKS: CheckChoice[] = [
   { which: 'check', label: 'Canon check', provider: 'checkProvider', model: 'checkModel', auto: 'Mistral Medium (default)',
-    free: 'Nemotron 3 Ultra, free', desc: 'Reads new writing against the World Bible and flags contradictions.' },
+    free: 'GPT-6 Luna; free: nvidia/nemotron-3-ultra-550b-a55b:free', desc: 'Reads new writing against the World Bible and flags contradictions.' },
   { which: 'vision', label: 'Vision', provider: 'visionProvider', model: 'visionModel', auto: 'Claude itself when it writes, else Mistral Large 4',
-    free: 'Nemotron 3.5 Super VL, free', desc: 'Looks at pictures: generated art, maps, doors, storeys.' },
+    free: 'GPT-6 Luna; free: nvidia/nemotron-3.5-super-vl:free', desc: 'Looks at pictures: generated art, maps, doors, storeys.' },
 ]
 const askedModels = new Set<string>()
 function checkModels(c: CheckChoice): { value: string; hint?: string }[] {
@@ -266,7 +266,7 @@ function close(): void {
                 </div>
               </div>
               <p v-if="editorState.ai.checkError" class="error">{{ editorState.ai.checkError }}</p>
-              <p class="desc">OpenRouter's free models (:free) cost nothing but are rate limited, and can be slow or busy at times; they're listed first.</p>
+              <p class="desc">OpenRouter's default is GPT-6 Luna (cheap, and right on our checks). Its free models (:free) cost nothing but are rate limited and can be busy; they're listed first.</p>
             </section>
             <section class="group">
               <h5>Keys</h5>
