@@ -16,6 +16,7 @@ import RulesEditor from './RulesEditor.vue'
 import CharacterRulesEditor from './CharacterRulesEditor.vue'
 import ItemListEditor from './ItemListEditor.vue'
 import SearchSelect from './SearchSelect.vue'
+import { recordsByType, requestRecords } from '../recordIds'
 import { effectIds, playerClips, requestPlayerClips, sheetClips } from '../inputActions'
 import PartActiveFields from './PartActiveFields.vue'
 import { difficultyView, showTab } from '../paneltabs'
@@ -76,7 +77,7 @@ function reactionChoices(field: string): { value: string; hint?: string }[] | nu
   if (!animator) return [] // no Animator: nothing of its own plays (the list says so)
   return [...out].map(([value, hint]) => ({ value, hint }))
 }
-onMounted(requestPlayerClips)
+onMounted(() => { requestPlayerClips(); requestRecords() })
 // A ground cell of a tile layer (a built place's ground), selected with the Select tool.
 const cell = ref<{ layer: string; x: number; y: number; prefab: string; texture: string; solid: boolean } | null>(null)
 // The selected cell's tile prefab, with its picture.
@@ -530,6 +531,15 @@ function numberFrom(event: Event): number {
                 :counts="field.name !== 'accepts'"
                 :disabled="editorState.playing"
                 @update="setField(component.name, field, $event)"
+              />
+              <SearchSelect
+                v-else-if="component.name === 'FactionMember' && field.name === 'faction'"
+                :model-value="String(field.value ?? '')"
+                :options="recordsByType.faction ?? []"
+                :disabled="editorState.playing"
+                empty="none"
+                custom
+                @update:model-value="setField(component.name, field, $event)"
               />
               <SearchSelect
                 v-else-if="component.name === 'Action' && reactionChoices(field.name)"

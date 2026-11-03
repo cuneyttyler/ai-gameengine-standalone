@@ -102,28 +102,40 @@ std::optional<Entity> TryMeleeAttack(Registry& registry, Entity attacker, float 
     return hitbox;
 }
 
+namespace {
+// The relation between two factions, in either one's record (below zero is war); none when neither names the other.
+std::optional<int> FactionStanding(const std::string& a, const std::string& b) {
+    auto standing = [](const std::string& from, const std::string& to) -> std::optional<int> {
+        const Record* record = ActiveRecords().Find("faction", from);
+        if (!record) return std::nullopt;
+        for (const auto& r : record->resolved.value("relations", nlohmann::json::array())) {
+            if (r.value("faction", "") == to) return r.value("standing", 0);
+        }
+        return std::nullopt;
+    };
+    auto s = standing(a, b);
+    return s ? s : standing(b, a);
+}
+} // namespace
+
 bool AreHostile(Registry& registry, Entity attacker, Entity target) {
     if (attacker == target) return false;
     const auto* a = registry.valid(attacker) ? registry.try_get<FactionMember>(attacker) : nullptr;
     const auto* b = registry.valid(target) ? registry.try_get<FactionMember>(target) : nullptr;
     const Team at = TeamOf(registry, attacker), bt = TeamOf(registry, target);
-    // The player and a faction member: by the member's disposition.
-    if (at == Team::Player && b) return b->disposition < 0;
-    if (bt == Team::Player && a) return a->disposition < 0;
+    // The player and a faction member: by the member's disposition (below zero, it's turned on them); the player in a
+    // faction too (a FactionMember on the player): also by their factions, a faction at war with theirs fighting them.
+    auto playerAnd = [](const FactionMember* player, const FactionMember& member) {
+        if (member.disposition < 0) return true;
+        if (!player || player->faction.empty() || member.faction.empty() || player->faction == member.faction) return false;
+        const auto s = FactionStanding(player->faction, member.faction);
+        return s && *s < 0;
+    };
+    if (at == Team::Player && b) return playerAnd(a, *b);
+    if (bt == Team::Player && a) return playerAnd(b, *a);
     if (a && b && !a->faction.empty() && !b->faction.empty()) {
         if (a->faction == b->faction) return false;
-        // The relation in either faction's record: below zero is war.
-        auto standing = [](const std::string& from, const std::string& to) -> std::optional<int> {
-            const Record* record = ActiveRecords().Find("faction", from);
-            if (!record) return std::nullopt;
-            for (const auto& r : record->resolved.value("relations", nlohmann::json::array())) {
-                if (r.value("faction", "") == to) return r.value("standing", 0);
-            }
-            return std::nullopt;
-        };
-        auto s = standing(a->faction, b->faction);
-        if (!s) s = standing(b->faction, a->faction);
-        if (s) return *s < 0;
+        if (const auto s = FactionStanding(a->faction, b->faction)) return *s < 0;
     }
     return IsHostile(at, bt);
 }

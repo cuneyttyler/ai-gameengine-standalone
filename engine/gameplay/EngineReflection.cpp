@@ -106,7 +106,8 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
     // --- Combat ------------------------------------------------------------------
 
     r.Component<Faction>("Faction", "Which side an entity is on. Attacks never hurt members of the same "
-                                    "non-neutral team.")
+                                    "non-neutral team. A faction of the project's (Records ▸ faction) is FactionMember's.")
+        .Label("Team")
         .Field("team", &Faction::team, "Neutral, Player or Enemy.").Options({"Neutral", "Player", "Enemy"});
 
     r.Component<Health>("Health", "Hit points. At 0 the entity dies (enemies are removed; the player stays, dead).")

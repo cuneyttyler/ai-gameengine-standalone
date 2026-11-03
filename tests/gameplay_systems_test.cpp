@@ -285,6 +285,11 @@ TEST_F(SystemsTest, FactionsDecideWhoFights) {
     aige::DealDamage(registry, warden, 1.0f, hero, nullptr); // the player hits a warden
     EXPECT_LT(registry.get<aige::FactionMember>(warden).disposition, 0);
     EXPECT_TRUE(aige::AreHostile(registry, warden, hero));
+    // The player joins the wardens: the bandits, at war with them, fight the player too.
+    EXPECT_FALSE(aige::AreHostile(registry, bandit, hero));
+    registry.emplace<aige::FactionMember>(hero, "wardens", 0);
+    EXPECT_TRUE(aige::AreHostile(registry, bandit, hero));
+    EXPECT_TRUE(aige::AreHostile(registry, hero, bandit));
 }
 
 TEST_F(SystemsTest, SpawnersFillAndRespawn) {

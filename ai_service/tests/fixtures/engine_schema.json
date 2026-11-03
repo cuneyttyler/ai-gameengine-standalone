@@ -861,7 +861,7 @@
     },
     {
       "dependencies": [],
-      "description": "Which side an entity is on. Attacks never hurt members of the same non-neutral team.",
+      "description": "Which side an entity is on. Attacks never hurt members of the same non-neutral team. A faction of the project's (Records ▸ faction) is FactionMember's.",
       "fields": [
         {
           "description": "Neutral, Player or Enemy.",
