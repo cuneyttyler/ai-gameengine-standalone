@@ -1380,9 +1380,12 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     } else if (type == "input:choices") {
         // Project Settings ▸ Input's plays / event / effect: what the project has. The characters' clips; the effects
         // (Project ▸ Effects); the events the engine sends and those this scene's things and the actions send or wait for.
+        nlohmann::json sheetClips = nlohmann::json::object(); // every sheet's clips: what a Reaction's own animation can be
         std::set<std::string> clips, events = {"interact", "talk", "item_added", "level_up", "achievement", "cutscene_started",
                                                "cutscene_ended", "bark", "anim_event", "ui_action", "difficulty_changed"};
         for (const auto& sheet : AnimationsJson().value("sheets", nlohmann::json::array())) {
+            auto& names = sheetClips[sheet.value("path", "")] = nlohmann::json::array();
+            for (const auto& clip : sheet.value("clips", nlohmann::json::array())) names.push_back(clip.value("name", ""));
             if (sheet.value("kind", "") != "character") continue;
             for (const auto& clip : sheet.value("clips", nlohmann::json::array())) clips.insert(clip.value("name", ""));
         }
@@ -1411,7 +1414,8 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         for (const auto& f : std::filesystem::directory_iterator(assets_.GetProject().Resolve("ui/screens"), folder)) {
             if (f.path().extension() == ".rml") screens.insert(f.path().stem().string());
         }
-        post_({{"type", "input:choices"}, {"clips", clips}, {"effects", effects}, {"events", events}, {"screens", screens}});
+        post_({{"type", "input:choices"}, {"clips", clips}, {"effects", effects}, {"events", events}, {"screens", screens},
+               {"sheetClips", sheetClips}});
     } else if (type == "input:request" || type == "input:reset" || type == "input:save") {
         // Project Settings ▸ Input (12.3): the project's actions and bindings, input.json.
         const auto root = assets_.GetProject().root;

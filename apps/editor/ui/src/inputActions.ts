@@ -61,8 +61,14 @@ export function engineKey(event: KeyboardEvent): string | null {
 
 // The characters' clips (input:choices): what a part's player clip can be.
 export const playerClips = ref<string[]>([])
+// Every animation sheet's clips, by its path (a thing's own clips), and the effects (the project's and the presets).
+export const sheetClips = ref<Record<string, string[]>>({})
+export const effectIds = ref<string[]>([])
 onHostMessage((message) => {
-  if (message.type === 'input:choices') playerClips.value = (message.clips as string[]) ?? []
+  if (message.type !== 'input:choices') return
+  playerClips.value = (message.clips as string[]) ?? []
+  sheetClips.value = (message.sheetClips as Record<string, string[]>) ?? {}
+  effectIds.value = (message.effects as string[]) ?? []
 })
 export function requestPlayerClips(): void {
   sendToHost({ type: 'input:choices' })

@@ -3,7 +3,7 @@
 // engine's reflection registry (apps/editor/EditorApp InspectorJson /
 // SettingsJson) — names, types, descriptions, constraints. Project settings
 // have their own window (ProjectSettingsDialog, 5.5).
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { armPrefab, askAiAbout, editorState } from '../editorState'
 import { replacePrefab } from '../sceneMenus'
 import PrefabThumb from './PrefabThumb.vue'
@@ -15,6 +15,8 @@ import ActionPicker from './ActionPicker.vue'
 import RulesEditor from './RulesEditor.vue'
 import CharacterRulesEditor from './CharacterRulesEditor.vue'
 import ItemListEditor from './ItemListEditor.vue'
+import SearchSelect from './SearchSelect.vue'
+import { effectIds, playerClips, requestPlayerClips, sheetClips } from '../inputActions'
 import PartActiveFields from './PartActiveFields.vue'
 import { difficultyView, showTab } from '../paneltabs'
 
@@ -55,6 +57,26 @@ function showDifficultyPreview(): void {
 }
 
 const current = ref<InspectorData | null>(null)
+
+// A Reaction's clips and effects, picked from what there is: its user's from the characters' clips, its own from its
+// Animator's sheet (and the states it maps), effects from Project ▸ Effects and the presets. Null: not one of those.
+function reactionChoices(field: string): { value: string; hint?: string }[] | null {
+  if (field === 'userAnimation') return playerClips.value.map((c) => ({ value: c }))
+  if (field === 'effect' || field === 'userEffect') return effectIds.value.map((e) => ({ value: e }))
+  if (field !== 'animation' && field !== 'awayAnimation') return null
+  const animator = current.value?.components.find((c) => c.name === 'Animator')
+  const valueOf = (name: string) => String(animator?.fields.find((f) => f.name === name)?.value ?? '')
+  const sheet = valueOf('sheet')
+  const out = new Map<string, string>()
+  for (const c of sheetClips.value[sheet] ?? []) out.set(c, 'clip')
+  for (const pair of valueOf('clips').split(/[;,]/)) {
+    const state = pair.split('=')[0]?.trim()
+    if (state && !out.has(state)) out.set(state, 'state')
+  }
+  if (!animator) return [] // no Animator: nothing of its own plays (the list says so)
+  return [...out].map(([value, hint]) => ({ value, hint }))
+}
+onMounted(requestPlayerClips)
 // A ground cell of a tile layer (a built place's ground), selected with the Select tool.
 const cell = ref<{ layer: string; x: number; y: number; prefab: string; texture: string; solid: boolean } | null>(null)
 // The selected cell's tile prefab, with its picture.
@@ -508,6 +530,15 @@ function numberFrom(event: Event): number {
                 :counts="field.name !== 'accepts'"
                 :disabled="editorState.playing"
                 @update="setField(component.name, field, $event)"
+              />
+              <SearchSelect
+                v-else-if="component.name === 'Action' && reactionChoices(field.name)"
+                :model-value="String(field.value ?? '')"
+                :options="reactionChoices(field.name) ?? []"
+                :disabled="editorState.playing"
+                empty="none"
+                custom
+                @update:model-value="setField(component.name, field, $event)"
               />
               <ActionPicker
                 v-else-if="component.name === 'Action' && field.name === 'action'"
