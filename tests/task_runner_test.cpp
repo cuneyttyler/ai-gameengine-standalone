@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "ai_bridge/AiTools.h"
 #include "ai_bridge/TaskRunner.h"
 #include "assets/AssetDatabase.h"
 #include "assets/Prefab.h"
@@ -266,4 +267,78 @@ TEST_F(TaskRunnerTest, SkippedOperationsAreReportedAndAFailedStepKeepsTheWorkSoF
     EXPECT_EQ(task->GetState(), aige::TaskRunner::State::GaveUp);
     EXPECT_EQ(task->CombinedProposal()["operations"].size(), 1u); // step 1 is still there to accept
     EXPECT_EQ(task->StopReason(), "The AI couldn't produce the next step.");
+}
+
+// An outline first (a village's people): nothing is applied until the user approves it; changes bring a revised one,
+// and the approved outline goes with every step after.
+TEST_F(TaskRunnerTest, AnOutlineWaitsForApprovalBeforeAnyStep) {
+    auto task = Start();
+    const nlohmann::json outline = {{"title", "Oakvale's people"},
+                                    {"text", "The miller owes the smith."},
+                                    {"parts", {{{"heading", "The Mill"}, {"items", {"Bren, the miller"}}}}}};
+    auto state = task->OnAnswer({{"summary", "outline"}, {"scope", "task"}, {"plan", {"canon", "people", "dialogue"}},
+                                 {"outline", outline}, {"operations", nlohmann::json::array()}});
+    EXPECT_EQ(state, aige::TaskRunner::State::Working); // an outline alone doesn't end the task
+    EXPECT_TRUE(task->AwaitingOutline());
+    EXPECT_TRUE(task->Steps().empty());
+    EXPECT_EQ(task->Plan().size(), 3u);
+
+    task->AnswerOutline("make the smith a woman");
+    EXPECT_FALSE(task->AwaitingOutline());
+    EXPECT_NE(task->NextInstruction().find("make the smith a woman"), std::string::npos);
+    nlohmann::json revised = outline;
+    revised["text"] = "The miller owes the smith, Mira.";
+    task->OnAnswer({{"summary", "outline"}, {"scope", "task"}, {"outline", revised}, {"operations", nlohmann::json::array()}});
+    ASSERT_TRUE(task->AwaitingOutline());
+    EXPECT_EQ(task->Outline()["text"], "The miller owes the smith, Mira.");
+    EXPECT_EQ(task->Plan().size(), 3u); // kept: the revision didn't give a new one
+
+    task->AnswerOutline("");
+    EXPECT_NE(task->NextInstruction().find("approved"), std::string::npos);
+    state = task->OnAnswer(Answer({{{"op", "set_field"}, {"entity", Id(skeleton_)}, {"component", "Health"}, {"field", "max"},
+                                    {"value", 30}}},
+                                  false));
+    ASSERT_EQ(state, aige::TaskRunner::State::Working);
+    ASSERT_EQ(task->Steps().size(), 1u);
+    EXPECT_NE(task->NextInstruction().find("Mira"), std::string::npos); // the approved outline goes along
+}
+
+// The buildings tool: a cutaway's cells to stand someone in, inside its walls and off its furniture; a scene
+// interior's people go in its own scene.
+TEST_F(TaskRunnerTest, TheBuildingsToolSaysWhereSomeoneCanStandInside) {
+    const aige::Entity house = registry_.create();
+    registry_.emplace<aige::WorldTransform2D>(house, 12.0f, 12.0f);
+    registry_.emplace<aige::Name>(house, aige::Name{"Mill"});
+    aige::Interior cutaway;
+    cutaway.cells = "10,10,13,13"; // inside its walls: 11..12 x 11..12
+    cutaway.solids = "1:2,2";      // a quarter cell at (1,1) cells from its corner: (11, 11) is taken
+    registry_.emplace<aige::Interior>(house, cutaway);
+    const aige::Entity inn = registry_.create();
+    registry_.emplace<aige::WorldTransform2D>(inn, 20.0f, 20.0f);
+    aige::Interior scene;
+    scene.kind = "scene";
+    scene.scene = "scenes/inn.aige";
+    scene.cells = "18,18,22,22";
+    registry_.emplace<aige::Interior>(inn, scene);
+
+    aige::AssetDatabase assets(project_);
+    aige::AiToolContext tools{registry_, aige::EngineReflection(), *prefabs_, assets, project_};
+    const nlohmann::json result = aige::RunAiTool("buildings", nlohmann::json::object(), tools);
+    ASSERT_EQ(result["buildings"].size(), 2u) << result.dump();
+    for (const auto& b : result["buildings"]) {
+        if (b["kind"] == "cutaway") {
+            EXPECT_EQ(b["name"], "Mill");
+            EXPECT_EQ(b["footprint"], nlohmann::json({10, 10, 13, 13}));
+            std::vector<std::pair<double, double>> spots;
+            for (const auto& s : b["standHere"]) spots.push_back({s[0].get<double>(), s[1].get<double>()});
+            EXPECT_EQ(spots.size(), 3u) << b.dump();
+            for (const auto& [x, y] : spots) {
+                EXPECT_TRUE(x > 11 && x < 13 && y > 11 && y < 13) << x << "," << y;
+                EXPECT_FALSE(x == 11.5 && y == 11.5) << "under its furniture";
+            }
+        } else {
+            EXPECT_EQ(b["scene"], "scenes/inn.aige");
+            EXPECT_FALSE(b.contains("standHere"));
+        }
+    }
 }

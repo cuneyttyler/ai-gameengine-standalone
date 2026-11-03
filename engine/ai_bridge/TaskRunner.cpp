@@ -130,12 +130,23 @@ TaskRunner::State TaskRunner::OnAnswer(const nlohmann::json& proposal, int input
     history_.push_back({{"role", "assistant"}, {"content", proposal.dump()}});
     inputTokens_ += inputTokens;
 
-    if (plan_.empty()) {
+    // An outline (first, or revised) before any step: nothing applied, it waits for the user.
+    const nlohmann::json outline = proposal.value("outline", nlohmann::json());
+    const bool outlineOnly = outline.is_object() && !outline.empty() && steps_.empty() &&
+                             proposal.value("operations", nlohmann::json::array()).empty();
+    if (plan_.empty() || outlineOnly) {
+        std::vector<std::string> plan;
         for (const auto& line : proposal.value("plan", nlohmann::json::array())) {
             if (line.is_string()) {
-                plan_.push_back(line.get<std::string>());
+                plan.push_back(line.get<std::string>());
             }
         }
+        if (!plan.empty() || plan_.empty()) plan_ = std::move(plan);
+    }
+    if (outlineOnly) {
+        outline_ = outline;
+        awaitingOutline_ = true;
+        return state_;
     }
 
     TaskStep step;
@@ -170,6 +181,24 @@ TaskRunner::State TaskRunner::OnAnswer(const nlohmann::json& proposal, int input
         pendingUser_ = nextInstruction_;
     }
     return state_;
+}
+
+void TaskRunner::AnswerOutline(const std::string& changes) {
+    if (!awaitingOutline_) return;
+    awaitingOutline_ = false;
+    std::ostringstream out;
+    out << "TASK IN PROGRESS. Original request: \"" << instruction_ << "\"\n";
+    if (changes.empty()) {
+        out << "The user approved your outline:\n" << outline_.dump(1)
+            << "\nCarry it out now, step by step, exactly as outlined (names, places, lines). Answer with the FIRST step's "
+               "operations, with \"scope\": \"task\" and no \"outline\". Set \"done\": true on the step that finishes it.";
+    } else {
+        out << "The user wants changes to your outline before anything is made:\n\"" << changes
+            << "\"\nAnswer with the whole revised outline in \"outline\" (and \"plan\" if it changed), \"scope\": \"task\", "
+               "and no operations; the user approves it before the steps start.";
+    }
+    nextInstruction_ = out.str();
+    pendingUser_ = nextInstruction_;
 }
 
 void TaskRunner::ApplyStep(const nlohmann::json& operations, TaskStep& step) {
@@ -212,6 +241,9 @@ void TaskRunner::BuildNextInstruction(const TaskStep& step, bool done) {
             out << "\n" << (i + 1) << ". " << plan_[i];
         }
         out << "\n";
+    }
+    if (outline_.is_object() && !outline_.empty()) {
+        out << "The outline the user approved (keep to it):\n" << outline_.dump() << "\n";
     }
     out << "Step " << step.number << " (" << step.summary << ") was applied to a working copy of the project.";
     if (!step.applyErrors.empty()) {

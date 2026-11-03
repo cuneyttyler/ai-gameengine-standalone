@@ -4,8 +4,11 @@
 #include "assets/Prefab.h"
 #include "assets/Project.h"
 #include "assets/SceneFiles.h"
+#include "gameplay/Behaviour.h"
 #include "gameplay/Components.h"
 #include "gameplay/InputMap.h"
+#include "gameplay/Interiors.h"
+#include "gameplay/Story.h"
 #include "physics2d/Components.h"
 #include "reflection/Reflection.h"
 #include "scripting/Components.h"
@@ -16,6 +19,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 
 namespace aige {
@@ -89,7 +93,7 @@ bool Readable(const std::string& path) {
 const std::vector<std::string>& AiToolNames() {
     static const std::vector<std::string> names = {"find_entities", "read_entity", "find_assets", "find_prefabs", "read_file",
                                                    "list_scenes", "read_settings", "read_input", "search_world", "what_is_at",
-                                                   "check", "look", "playtest"};
+                                                   "buildings", "check", "look", "playtest"};
     return names;
 }
 
@@ -223,11 +227,78 @@ nlohmann::json RunAiTool(const std::string& tool, const nlohmann::json& args, Ai
             }
             return {{"at", {x, y}}, {"things", rows}};
         }
+        if (tool == "buildings") {
+            // The buildings one can go into (an Interior), for populating a place: where each is, where someone can stand
+            // inside it, what's there to use, and who's in it already.
+            std::vector<std::pair<float, float>> people;
+            for (auto [e, at] : c.registry.view<WorldTransform2D>().each()) {
+                if (c.registry.any_of<Talk, Dialogue, Barks, Behaviour, Routine>(e)) people.push_back({at.x, at.y});
+            }
+            nlohmann::json rows = nlohmann::json::array();
+            for (auto [e, interior] : c.registry.view<Interior>().each()) {
+                nlohmann::json row = Summary(c.registry, e);
+                if (const auto* node = c.registry.try_get<PlaceNode>(e)) row["what"] = node->statement;
+                row["kind"] = interior.kind;
+                row["door"] = interior.door;
+                int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+                if (!InteriorFootprint(c.registry, e, interior, x0, y0, x1, y1)) {
+                    row["note"] = "no footprint: it can't be gone into yet";
+                    rows.push_back(row);
+                    continue;
+                }
+                row["footprint"] = {x0, y0, x1, y1};
+                if (interior.kind == "scene") {
+                    // Its inside is another scene: people for it are placed there, not here.
+                    row["scene"] = interior.scene.empty() ? "(not built yet)" : interior.scene;
+                    row["note"] = "its inside is its own scene: people for it go in that scene (open it), not in this one";
+                    int dx = 0, dy = 0;
+                    if (InteriorDoor(c.registry, e, interior, dx, dy)) row["doorway"] = {dx, dy};
+                    rows.push_back(row);
+                    continue;
+                }
+                row["floors"] = std::max(1, InteriorFloors(interior));
+                // Floor 1's open cells: inside its walls (the footprint's edge), not under its furniture or on its stairs.
+                std::set<std::pair<int, int>> taken;
+                for (const auto& [sx, sy] : InteriorSolids(interior, 1)) {
+                    taken.insert({x0 + static_cast<int>(std::floor(sx)), y0 + static_cast<int>(std::floor(sy))});
+                }
+                if (InteriorFloors(interior) > 1) {
+                    for (const auto& cell : StairsCells(interior, 1, x0, y0, x1, y1)) taken.insert(cell);
+                }
+                int already = 0;
+                for (const auto& [px, py] : people) {
+                    const int cx = static_cast<int>(std::floor(px)), cy = static_cast<int>(std::floor(py));
+                    if (cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1) {
+                        taken.insert({cx, cy});
+                        ++already;
+                    }
+                }
+                nlohmann::json spots = nlohmann::json::array();
+                for (int y = y0 + 1; y < y1 && spots.size() < 8; ++y) {
+                    for (int x = x0 + 1; x < x1 && spots.size() < 8; ++x) {
+                        if (!taken.contains({x, y})) spots.push_back({x + 0.5, y + 0.5});
+                    }
+                }
+                row["standHere"] = spots; // scene.spawn x, y for someone inside, on its ground floor
+                row["peopleInside"] = already;
+                nlohmann::json things = nlohmann::json::array();
+                for (auto [o, smart, at] : c.registry.view<SmartObject, WorldTransform2D>().each()) {
+                    if (at.x >= x0 && at.x < x1 + 1 && at.y >= y0 && at.y < y1 + 1) {
+                        things.push_back({{"id", static_cast<uint32_t>(o)}, {"type", smart.type}, {"at", {at.x, at.y}}});
+                    }
+                }
+                if (!things.empty()) row["smartObjects"] = things;
+                rows.push_back(row);
+                if (rows.size() >= kMaxList) break;
+            }
+            if (rows.empty()) return {{"buildings", rows}, {"note", "no building in this scene can be gone into (none has an Interior)"}};
+            return {{"buildings", rows}};
+        }
         if (tool == "check") return c.check ? c.check() : nlohmann::json{{"error", "checks aren't available here"}};
         if (tool == "look") return c.look ? c.look(args) : nlohmann::json{{"error", "pictures of the view aren't available here"}};
         if (tool == "playtest") return c.playtest ? c.playtest(args) : nlohmann::json{{"error", "playtests aren't available here"}};
         return {{"error", "no tool " + tool + " (tools: find_entities, read_entity, find_assets, find_prefabs, read_file, list_scenes, "
-                          "read_settings, read_input, search_world, what_is_at, check, look, playtest)"}};
+                          "read_settings, read_input, search_world, what_is_at, buildings, check, look, playtest)"}};
     } catch (const std::exception& error) {
         return {{"error", std::string("bad arguments: ") + error.what()}};
     }

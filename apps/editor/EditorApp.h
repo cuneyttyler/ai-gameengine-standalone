@@ -575,6 +575,7 @@ private:
                    const nlohmann::json& usage);
     void FeedTask(const nlohmann::json& answer, int inputTokens);
     void OnTaskAnswer(const nlohmann::json& body);
+    void AnswerTaskOutline(const std::string& changes); // a task's outline approved (empty) or sent back with changes
     void FinishTask();
     void StopTask(int id, const std::string& reason);
     void UndoAutoApplied(int proposalId);

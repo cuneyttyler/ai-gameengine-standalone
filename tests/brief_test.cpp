@@ -88,6 +88,11 @@ TEST(BriefTest, BuildRequestsAreRecognised) {
                                                   "content for a small village"));
     EXPECT_TRUE(LooksLikeBuildRequest(Library(), "build a large village by river with several sections (marketplace, accodomations etc)"));
     EXPECT_TRUE(LooksLikeBuildRequest(Library(), "Build a walled town. It should have a market, a temple and lots of gardens around the houses, and a river through the middle with two bridges."));
+    // A place's people and story are the AI panel's, not a build.
+    EXPECT_FALSE(LooksLikeBuildRequest(Library(), "Create a story about this village and populate it with NPCs"));
+    EXPECT_FALSE(LooksLikeBuildRequest(Library(), "let's make a story. create a story about this village and let's populate this village."));
+    EXPECT_FALSE(LooksLikeBuildRequest(Library(), "add villagers to every house in the village"));
+    EXPECT_TRUE(LooksLikeBuildRequest(Library(), "Build a village. Populate it later."));
 }
 
 TEST(BriefTest, VagueQueryDraftsDisagreeAndAreMarked) {

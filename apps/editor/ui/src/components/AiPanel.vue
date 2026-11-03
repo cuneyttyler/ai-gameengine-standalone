@@ -78,6 +78,17 @@ interface TaskEntry {
   state: 'working' | 'finished' | 'stopped'
   reason: string
   paused?: { step: number; summary: string; operations: unknown[] } // Review each step: waiting for Continue
+  // An outline first (a village's people, a story): shown for approval before anything is made.
+  outline?: TaskOutline
+  outlineWaiting?: boolean
+  outlineChanges?: string
+  outlineNotes?: string
+}
+
+interface TaskOutline {
+  title?: string
+  text?: string
+  parts?: { heading: string; items: string[] }[]
 }
 
 // Another panel's work (a whole place, a whole game): a card that opens it with the request filled in.
@@ -164,6 +175,7 @@ function restore(events: Record<string, unknown>[]): void {
       if (entry.status === 'pending') entry.status = 'expired'
       if (entry.consistency.state === 'checking') entry.consistency.state = 'none'
     } else if (entry.kind === 'task' && entry.id < 0 && entry.state === 'working') {
+      entry.outlineWaiting = false
       entry.state = 'stopped'
       entry.reason = 'The editor was closed while it was working.'
     }
@@ -241,20 +253,19 @@ function handle(message: Record<string, unknown>): void {
       entry.canUndo = message.canUndo as boolean
       entry.canApply = message.canApply as boolean
     }
+  } else if (message.type === 'ai:taskOutline') {
+    const entry = taskEntry(message.id as number)
+    entry.plan = (message.plan as string[]) ?? []
+    entry.outline = (message.outline as TaskOutline) ?? {}
+    entry.outlineNotes = (message.notes as string) ?? ''
+    entry.outlineWaiting = true
+    entry.outlineChanges = ''
+  } else if (message.type === 'ai:taskOutlineAnswered') {
+    const entry = entries.value.find((e) => e.kind === 'task' && e.id === message.id) as TaskEntry | undefined
+    if (entry) entry.outlineWaiting = false
   } else if (message.type === 'ai:taskProgress') {
-    let entry = entries.value.find((e) => e.kind === 'task' && e.id === message.id) as TaskEntry | undefined
-    if (!entry) {
-      const created: TaskEntry = reactive({
-        kind: 'task',
-        id: message.id as number,
-        plan: [],
-        steps: [],
-        state: 'working',
-        reason: '',
-      })
-      entries.value.push(created)
-      entry = created
-    }
+    const entry = taskEntry(message.id as number)
+    entry.outlineWaiting = false
     entry.plan = (message.plan as string[]) ?? []
     entry.steps.push({
       number: message.step as number,
@@ -426,6 +437,23 @@ function fixContradictions(entry: ProposalEntry): void {
     text: `Your last proposal contradicts the World Bible:\n${lines.join('\n')}\nPropose it again, consistent with the canon.`,
     focus: '',
   })
+}
+
+// A task's card, made on its first message (an outline, or its first step).
+function taskEntry(id: number): TaskEntry {
+  const found = entries.value.find((e) => e.kind === 'task' && e.id === id) as TaskEntry | undefined
+  if (found) return found
+  const created: TaskEntry = reactive({ kind: 'task', id, plan: [], steps: [], state: 'working', reason: '' })
+  entries.value.push(created)
+  return created
+}
+
+// The outline: approved as it is (the steps start), or sent back with the changes asked for.
+function answerOutline(entry: TaskEntry, withChanges: boolean): void {
+  const changes = withChanges ? (entry.outlineChanges ?? '').trim() : ''
+  if (withChanges && !changes) return
+  entry.outlineWaiting = false
+  sendToHost({ type: 'ai:taskOutlineAnswer', id: entry.id, changes })
 }
 
 function continueTask(entry: TaskEntry): void {
@@ -627,8 +655,12 @@ const examples = [
           <div class="task-head">
             <span class="task-title">
               {{
-                entry.state === 'working'
-                  ? `Working — step ${entry.steps.length + 1}`
+                entry.outlineWaiting
+                  ? 'Outline — waiting for you'
+                  : entry.state === 'working' && !entry.steps.length && entry.outline
+                    ? 'Outline approved — starting'
+                    : entry.state === 'working'
+                  ? `Working — step ${entry.steps.length + 1}${entry.plan.length ? ` of about ${entry.plan.length}` : ''}`
                   : entry.state === 'stopped'
                     ? 'Stopped'
                     : `Done in ${entry.steps.length} ${entry.steps.length === 1 ? 'step' : 'steps'}`
@@ -645,6 +677,33 @@ const examples = [
               ({{ entry.paused.operations.length }} {{ entry.paused.operations.length === 1 ? 'change' : 'changes' }}). Nothing
               reaches the project until the whole is reviewed.
             </div>
+          </div>
+          <div v-if="entry.outline" class="outline" :class="{ waiting: entry.outlineWaiting }">
+            <div class="outline-title">{{ entry.outline.title || 'Outline' }}</div>
+            <p v-if="entry.outline.text" class="outline-text">{{ entry.outline.text }}</p>
+            <div v-for="(part, p) in entry.outline.parts ?? []" :key="p" class="outline-part">
+              <div class="outline-heading">{{ part.heading }}</div>
+              <ul>
+                <li v-for="(item, i) in part.items ?? []" :key="i">{{ item }}</li>
+              </ul>
+            </div>
+            <template v-if="entry.outlineWaiting">
+              <p v-if="entry.outlineNotes" class="task-note">{{ entry.outlineNotes }}</p>
+              <textarea
+                v-model="entry.outlineChanges"
+                class="outline-changes"
+                rows="2"
+                placeholder="Changes, if any: “make the smith a woman”, “two people at the inn”, “less gossip about the mayor”…"
+              />
+              <div class="outline-actions">
+                <button class="primary" title="Make it as outlined, step by step; you review the whole result" @click="answerOutline(entry, false)">
+                  Approve and make it
+                </button>
+                <button :disabled="!(entry.outlineChanges ?? '').trim()" title="Send the changes; a revised outline comes back" @click="answerOutline(entry, true)">
+                  Change it
+                </button>
+              </div>
+            </template>
           </div>
           <ol v-if="entry.plan.length" class="task-plan">
             <li v-for="(line, i) in entry.plan" :key="i">{{ line }}</li>
@@ -1072,6 +1131,44 @@ h2 {
 }
 .task-title {
   font-weight: 600;
+}
+.outline {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 2px solid #3f3f55;
+  background: #15151f;
+}
+.outline.waiting {
+  border-left-color: #3b82f6;
+}
+.outline-title {
+  font-weight: 600;
+}
+.outline-text {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+.outline-part {
+  margin-top: 8px;
+}
+.outline-heading {
+  font-weight: 600;
+  color: #93c5fd;
+}
+.outline-part ul {
+  margin: 2px 0 0;
+  padding-left: 18px;
+}
+.outline-changes {
+  width: 100%;
+  margin-top: 8px;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.outline-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
 }
 .task-plan {
   margin: 8px 0 0;

@@ -134,6 +134,17 @@ bool LooksLikeGameRequest(const std::string& text) {
     return false;
 }
 
+// "Populate the village", "put NPCs in each house", "give them gossip": a place's people, the AI panel's (a task,
+// outline first) even when the place is in the plan.
+bool LooksLikePopulateRequest(const std::string& text) {
+    std::string t;
+    for (char c : text) t += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (const char* word : {"populate", "npc", "villagers", "residents", "inhabitants", "gossip", "townsfolk", "townspeople"}) {
+        if (t.find(word) != std::string::npos) return true;
+    }
+    return false;
+}
+
 } // namespace
 
 namespace fs = std::filesystem;
@@ -794,6 +805,9 @@ bool EditorApp::HandleAiSettingsMessage(const std::string& type, const nlohmann:
             taskRequestId_ = Ai()->Propose(task_->NextInstruction(), task_->Context(assets_), task_->History());
             post_({{"type", "ai:busy"}, {"busy", true}});
         }
+    } else if (type == "ai:taskOutlineAnswer") {
+        // The outline approved (no changes: the steps start) or sent back with changes (a revised one comes).
+        if (message.value("id", 0) == taskId_) AnswerTaskOutline(message.value("changes", ""));
     } else if (type == "ai:setReviewPolicy") {
         if (userPrefs_) {
             userPrefs_->Set("reviewPolicy", ReviewPolicyName(ParseReviewPolicy(message.value("policy", ""))));
@@ -8409,6 +8423,18 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool
         post_({{"type", "ai:message"}, {"role", "error"}, {"text", "Stop Play mode before asking for changes."}});
         return;
     }
+    // A task's outline waiting for the user: what they type is its answer ("go ahead" approves it, anything else
+    // is a change to it).
+    if (!asChange && task_ && taskPaused_ && task_->AwaitingOutline()) {
+        std::string lower;
+        for (char ch : text) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        while (!lower.empty() && (lower.back() == '.' || lower.back() == '!' || std::isspace(static_cast<unsigned char>(lower.back())))) lower.pop_back();
+        static const std::set<std::string> approvals = {"ok", "okay", "yes", "approve", "approved", "go ahead", "looks good",
+                                                        "do it", "make it", "go", "fine", "good", "perfect", "great"};
+        post_({{"type", "ai:message"}, {"role", "user"}, {"text", text}});
+        AnswerTaskOutline(approvals.contains(lower) ? "" : text);
+        return;
+    }
     // ④ Paint and ⑤ Mark from the AI panel (docs/places/painted-places.md §6): painting the open place again (the words
     // its notes), pre-filling or checking its marks. Marking itself is the user's: the AI never says it's done.
     if (!asChange && build_ && !buildJob_ && (build_->Stage() == "planned" || build_->Stage() == "sourced" || build_->Stage() == "built")) {
@@ -8455,7 +8481,7 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool
     // being planned. Once it's built it's the scene's: the AI panel edits it (adds things, changes
     // them) like any other part of the scene.
     if (!asChange && build_ && !buildJob_ && (build_->Stage() == "plan" || build_->Stage() == "planned") &&
-        build_->AboutThisPlace(text)) {
+        build_->AboutThisPlace(text) && !LooksLikePopulateRequest(text)) {
         conversation_.emplace_back("user", text);
         post_({{"type", "ai:message"}, {"role", "user"}, {"text", text}});
         const std::string why = build_->Revise(text);
@@ -8480,7 +8506,7 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool
         return;
     }
     // A change to the plan that's open ("make Aldric the mentor's son") goes to it as an edit (22).
-    if (!asChange && plan_ && plan_->AboutThePlan(text) && !LooksLikeGameRequest(text)) {
+    if (!asChange && plan_ && plan_->AboutThePlan(text) && !LooksLikeGameRequest(text) && !LooksLikePopulateRequest(text)) {
         conversation_.emplace_back("user", text);
         post_({{"type", "ai:message"}, {"role", "user"}, {"text", text}});
         const std::string why = plan_->Revise(text);
@@ -8774,6 +8800,26 @@ void EditorApp::StartTask(int requestId, const std::string& instruction, const n
 
 void EditorApp::FeedTask(const nlohmann::json& answer, int inputTokens) {
     TaskRunner::State state = task_->OnAnswer(answer, inputTokens);
+    if (task_->AwaitingOutline() && IsPlannerFeature(task_->Instruction()) && Ai() != nullptr) {
+        // The Planner's own feature work has no one to approve an outline: it goes ahead as outlined.
+        task_->AnswerOutline("");
+        taskRequestId_ = Ai()->Propose(task_->NextInstruction(), task_->Context(assets_), task_->History());
+        return;
+    }
+    if (task_->AwaitingOutline()) {
+        // An outline first: shown for the user to approve or change; nothing is made until they approve it.
+        taskPaused_ = true;
+        conversation_.emplace_back("assistant", "Outline: " + task_->Outline().dump());
+        post_({{"type", "ai:taskOutline"},
+               {"id", taskId_},
+               {"instruction", task_->Instruction()},
+               {"summary", answer.value("summary", "")},
+               {"notes", answer.value("notes", "")},
+               {"plan", task_->Plan()},
+               {"outline", task_->Outline()}});
+        post_({{"type", "ai:busy"}, {"busy", false}});
+        return;
+    }
     const TaskStep& step = task_->Steps().back();
     nlohmann::json problems = nlohmann::json::array();
     for (const auto& problem : step.problems) {
@@ -8805,6 +8851,17 @@ void EditorApp::FeedTask(const nlohmann::json& answer, int inputTokens) {
         post_({{"type", "ai:busy"}, {"busy", false}});
         return;
     }
+    taskRequestId_ = Ai()->Propose(task_->NextInstruction(), task_->Context(assets_), task_->History());
+    post_({{"type", "ai:busy"}, {"busy", true}});
+}
+
+// The outline a task opened with: approved (`changes` empty: the steps start) or sent back with changes.
+void EditorApp::AnswerTaskOutline(const std::string& changes) {
+    if (!task_ || !taskPaused_ || !task_->AwaitingOutline() || Ai() == nullptr) return;
+    taskPaused_ = false;
+    task_->AnswerOutline(changes);
+    conversation_.emplace_back("user", changes.empty() ? "Outline approved." : "Change the outline: " + changes);
+    post_({{"type", "ai:taskOutlineAnswered"}, {"id", taskId_}, {"approved", changes.empty()}, {"changes", changes}});
     taskRequestId_ = Ai()->Propose(task_->NextInstruction(), task_->Context(assets_), task_->History());
     post_({{"type", "ai:busy"}, {"busy", true}});
 }
@@ -8979,7 +9036,7 @@ void EditorApp::FinishTask() {
            {"summary", task->Instruction()},
            {"notes", task->StopReason()},
            {"items", ItemsJson(task->CombinedItems())},
-           {"task", {{"plan", task->Plan()}, {"steps", steps}, {"stopped", task->StopReason()}}},
+           {"task", {{"plan", task->Plan()}, {"steps", steps}, {"stopped", task->StopReason()}, {"outline", task->Outline()}}},
            {"usage", nlohmann::json::object()}});
     if (RequestConsistencyCheck(taskId_, pending.proposal.value("operations", nlohmann::json::array()))) {
         post_({{"type", "ai:consistency"}, {"id", taskId_}, {"result", {{"checking", true}}}});

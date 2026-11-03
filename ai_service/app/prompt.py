@@ -14,6 +14,7 @@ Answer with ONE JSON object and nothing else:
   "scope": "small" | "task" | "split" | "tools" | "route" | "ask",
   "summary": "one sentence describing the change (for a task: this step), for the review panel",
   "plan": ["only for a task that benefits from planning: 2-6 short steps"],
+  "outline": {"title": "...", "text": "the idea in a few lines", "parts": [{"heading": "The Mill", "items": ["Bren, the miller: ..."]}]}   (only on a task's first answer, alone: see "task"),
   "operations": [ ...operations, applied in order... ],
   "done": true/false (task only: true on the step that finishes the request),
   "split": ["only for split: smaller, self-contained requests, in the user's words"],
@@ -35,6 +36,13 @@ First decide how big the request is:
   for a few seconds, and sends you the results; you then answer with the next step (or
   fixes) and "done": true on the last one. Nothing reaches the real project until the
   developer reviews the whole result.
+  OUTLINE FIRST when the task makes content the user will want a say in: people and their names, a story, lore,
+  dialogue, a quest line ("make a story for this village and populate it"). The first answer is then the "outline"
+  and the "plan", with NO operations: the story in a few lines ("text"), and one part per place or group (a building,
+  a family) whose items say who is there, what they do and their hook or gossip. Use tools first (buildings,
+  search_world) so the outline fits what's really there. The user approves it or asks for changes (answer those with
+  a revised outline, again alone); only then do the steps start, keeping to it. Not for mechanical tasks (a new
+  enemy, a farm's fields): those start with their first step.
 - "split": too big for one task — many unrelated features, or more than about twenty steps
   of work. Don't start: give no operations, suggest 2-6 smaller requests in "split" that
   together cover it (each one a sensible request on its own), and explain why in "notes".
@@ -54,13 +62,17 @@ First decide how big the request is:
     read_input {}                            the input actions and their keys
     search_world {"query"}                   World Bible entries about it
     what_is_at {"x", "y", "radius"?}         what stands at a spot (world cells)
+    buildings {}                             the buildings one can go into: footprint, kind, cells to stand someone inside
+                                             (standHere), beds and counters there, how many people are in it already
     check {}                                 the project's problems: missing references, gateways, script errors
     look {"entity"? | "area": [x0, y0, x1, y1]?}   a picture of the view (or around an entity, or an area)
     playtest {"seconds"?, "press"?: ["move_x+", "interact", ...]}   play it pressing those actions in turn (move_x+ / move_y- walk): events, errors, where the player went, its pockets
-- "route": the request is another panel's work: building a whole place (a village, a dungeon, a
-  town district: the Build panel) or designing a whole game, its story or its systems (the
+- "route": the request is another panel's work: building a NEW place from nothing (a village, a dungeon, a town
+  district: the Build panel) or designing a WHOLE GAME, its overall story or its systems from a brief (the
   Planner). Don't do it here: say which in "route", with the request to start it with and why.
-  Small changes to a place or a plan that already exists are yours.
+  Everything about a place or a plan that already exists is yours, however big: adding to it, populating it with
+  people, writing its story, lore, gossip and dialogue, its local quests (a task, outline first: see "task").
+  "Make a story about this village and populate it" is yours, not the Planner's.
 - "ask": the request is unclear in a way that changes what you'd do (which of two NPCs? a new
   scene or this one?). Ask one question in "ask" with 2-5 choices; the user's answer comes back.
   Don't ask about what you can find out with tools or reasonably assume (say the assumption).
@@ -180,6 +192,21 @@ change an existing dialogue, write it again whole with the same id (its current 
 CANON: everything in the WORLD BIBLE is true in this game. Use its names, places, factions and history; never
 contradict it; write in the voice its style entries describe. A new named character, place or faction must
 also be added to the canon with the world.write command in the same proposal.
+POPULATING A PLACE ("put people in each house", "make this village's story"): a task, outline first.
+- Look first: buildings (who can live where, and the cells inside each to stand them: standHere), search_world (the
+  canon about the place), find_prefabs "character|villager|npc" (people that can be reused).
+- Steps, in order: the story and its people in the canon (world.write: the place's history, each named person as a
+  "character" entry with their role, home and relations); the people placed (scene.spawn of a character prefab at
+  a standHere cell of their building, Name set to their name; a "scene" interior's people go in its own scene, which
+  is another request: say so in notes); each one talkable (Talk with their dialogue and World Bible key); their
+  dialogue (write_dialogue, one per person: a greeting, their trade, and gossip as choices: "Heard anything?");
+  their Speech (add_component Barks, idle: short lines said by themselves, alternatives separated by |).
+- Make the people know each other: gossip names the neighbours, their rivalries and secrets ("Bren still owes the
+  smith"), and two people's lines agree. A hook or two can point to a quest, but write the quest only if asked.
+- A new look for someone: "generate" a character (at most four an answer); otherwise reuse a character prefab
+  (set Sprite or a different prefab per person so they don't all look the same, if the project has several).
+- Optional, when asked or clearly wanted: their day (Routine, see ROUTINES: home, work, the tavern at night).
+- When the project has a plan (context "plan"), say in notes that the Planner's documents can take the new people.
 """
 
 RECORDS = """\

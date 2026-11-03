@@ -14,7 +14,7 @@ One JSON object a turn (`ai_service/app/prompt.py` OUTPUT_FORMAT, `models.py` Pr
 | `task` | step by step on a working copy (`TaskRunner`, up to 20 steps), each applied, played, its results sent back; the whole reviewed at the end |
 | `split` | too big: smaller requests; **Do them all, step by step** runs them as one task |
 | `tools` | it reads or looks first: the editor runs its `tools` and asks again with the results (up to 8 rounds) |
-| `route` | another panel's work: a card opens the Build panel or the Planner with the request filled in |
+| `route` | another panel's work — a NEW place from nothing (Build) or a whole game from a brief (Planner): a card opens that panel with the request filled in. Everything about a place or plan that already exists stays here, however big |
 | `ask` | unclear: one question with 2–5 answers to click (or the user answers in words) |
 
 Any answer can also carry:
@@ -22,6 +22,21 @@ Any answer can also carry:
 - `editor`: select, frame, open a scene or a panel, play (done when it arrives: nothing in the project changes);
 - `art`: sprites to draw first (`art:<name>` in its operations becomes the path);
 - `generate`: characters and animations to make first (`character:<name>`, `animation:<name>`).
+
+### Outline first
+
+A task that makes content the user will want a say in — a village's people, a story, lore, dialogue, a quest line
+("make a story about this village and populate it") — opens with an `outline` and a `plan`, and no operations:
+the idea in a few lines, and one part per building or group saying who is there, what they do and their gossip.
+The task card shows it with **Approve and make it** and **Change it** (a box for the changes); changes bring a
+revised outline, approval starts the steps, and the approved outline goes with every step after so they keep to it
+(`TaskRunner::AwaitingOutline` / `AnswerOutline`, `ai:taskOutline` / `ai:taskOutlineAnswer`). The Planner's own
+feature work goes ahead without waiting. Mechanical tasks (a new enemy, a farm) start with their first step.
+
+Such requests stay in this panel: the Build router ignores requests about a place's people and story
+(`LooksLikeBuildRequest`: story, populate, NPCs, dialogue, gossip, lore, villagers...), and a place named in the plan
+doesn't make "populate it" a plan revision. People for a building whose inside is its own scene go in that scene, as
+another request.
 
 ## Tools
 
@@ -37,6 +52,7 @@ Run by the editor (`engine/ai_bridge/AiTools.cpp`, `EditorApp::RunAiTools`), rea
 | `read_settings` / `read_input` | project settings; input actions and keys |
 | `search_world` | World Bible entries about something |
 | `what_is_at` | what stands at a spot, solid or not |
+| `buildings` | the buildings one can go into: footprint, kind (cutaway or scene), up to 8 cells inside to stand someone (`standHere`: inside the walls, off the furniture and stairs, not where someone already is), smart objects there, how many people are in it; a scene interior's own scene |
 | `check` | the project's problems: gateways, records, sheets, script errors |
 | `look` | a picture of the scene (around an entity, an area, or all of it), drawn by the CPU renderer and attached to the next message |
 | `playtest` | the scene played headless for a few seconds, pressing the actions asked for in turn (`move_x+` walks): its events, script errors, where the player went, its pockets and health |

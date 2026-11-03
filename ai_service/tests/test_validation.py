@@ -154,3 +154,16 @@ def test_a_split_suggests_requests_instead_of_operations(schema, context):
 
     one_part = Proposal.model_validate({"scope": "split", "summary": "too big", "split": ["everything"]})
     assert "at least two" in validate_proposal(one_part, schema, context)[0]
+
+
+def test_a_task_can_open_with_an_outline_alone(schema, context):
+    # A village's people: the outline first, for the user to approve before any step (docs/ai/agent.md).
+    p = Proposal.model_validate({
+        "scope": "task", "summary": "the village's people", "plan": ["canon", "people", "dialogue"],
+        "outline": {"title": "Oakvale", "text": "The miller owes the smith.",
+                    "parts": [{"heading": "The Mill", "items": ["Bren, the miller: owes Mira"]}]},
+    })
+    assert p.outline is not None and p.outline.parts[0].heading == "The Mill"
+    assert validate_proposal(p, schema, context) == []
+    small = Proposal.model_validate({"scope": "small", "summary": "x", "outline": {"text": "a story"}})
+    assert any("outline" in e for e in validate_proposal(small, schema, context))

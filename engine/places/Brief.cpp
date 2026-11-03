@@ -129,7 +129,11 @@ bool LooksLikeBuildRequest(const Ontology& ontology, const std::string& text) {
     static const std::set<std::string> verbs = {"build", "make", "create", "generate", "design", "construct", "lay",
                                                 "add", "place", "put"};
     static const std::set<std::string> edits = {"move", "delete", "remove", "rename", "change", "edit", "fix", "tougher",
-                                                "weaker", "faster", "slower", "recolor", "recolour"};
+                                                "weaker", "faster", "slower", "recolor", "recolour",
+                                                // About a place's people and story, not its building: "create a story
+                                                // about this village and populate it" is the AI panel's.
+                                                "story", "stories", "populate", "npc", "npcs", "dialogue", "dialogues",
+                                                "gossip", "lore", "villagers", "inhabitants", "residents"};
     std::set<std::string> places;
     for (const auto& [id, build] : ontology.Builds()) {
         places.insert(id);

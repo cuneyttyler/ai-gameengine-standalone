@@ -390,6 +390,18 @@ class GenerateRequest(BaseModel):
     action: str = ""            # an animation: walk, attack, "the lid swings open"...
 
 
+class OutlinePart(BaseModel):
+    heading: str                # a building, a family, a group: "The Mill"
+    items: list[str] = []       # one line each: who, what they do, their hook
+
+
+class Outline(BaseModel):
+    """What a task will make, for the user to approve first (docs/ai/agent.md): a village's people, a story."""
+    title: str = ""
+    text: str = ""              # the idea in a few lines (the story)
+    parts: list[OutlinePart] = []
+
+
 class Proposal(BaseModel):
     summary: str
     # Art to make first: the service draws each, and "art:<name>" in the operations becomes its path.
@@ -409,6 +421,8 @@ class Proposal(BaseModel):
     #   ask   - unclear: `ask`, a question with choices
     scope: Literal["small", "task", "split", "tools", "route", "ask"] = "small"
     plan: list[str] = []
+    # A task's outline, first and alone (no operations): the user approves it before any step is made.
+    outline: Outline | None = None
     done: bool = False
     split: list[str] = []
     tools: list[ToolCall] = []

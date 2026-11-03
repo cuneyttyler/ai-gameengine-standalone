@@ -103,6 +103,9 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
         if len(proposal.split) < 2:
             errors.append('a "split" answer needs at least two smaller requests in "split"')
         return errors
+    # An outline is a task's (shown alone, before any step; with operations, after approval, it's ignored).
+    if proposal.outline is not None and proposal.scope != "task" and (proposal.outline.text.strip() or proposal.outline.parts):
+        errors.append('an "outline" belongs to a "task": the user approves it before the steps start')
     entities = {e.id: e for e in context.entities}
     written_scripts: set[str] = set()
 

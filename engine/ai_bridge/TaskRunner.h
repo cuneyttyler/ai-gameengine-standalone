@@ -64,6 +64,13 @@ public:
         stopReason_ = reason;
     }
 
+    // An outline first (docs/ai/agent.md): a task that makes content the user will want a say in (a village's people,
+    // a story) answers first with an "outline" and no operations. It waits, the outline shown, until the user approves
+    // it (`changes` empty: the steps start) or asks for changes (a revised outline comes back).
+    bool AwaitingOutline() const { return awaitingOutline_; }
+    const nlohmann::json& Outline() const { return outline_; }
+    void AnswerOutline(const std::string& changes);
+
     // For the next request while Working: the follow-up message (step
     // results, what to do next), the task's own conversation so far, and the
     // working copy described as the AI context.
@@ -106,6 +113,8 @@ private:
     ProjectSettings settings_; // the working copy's settings (ActiveSettings is global)
 
     std::vector<std::string> plan_;
+    nlohmann::json outline_;            // the approved (or proposed) outline; null when none
+    bool awaitingOutline_ = false;
     std::vector<TaskStep> steps_;
     std::vector<nlohmann::json> operations_; // combined, in order
     std::vector<ChangeItem> items_;

@@ -16,7 +16,7 @@ AiTranscript::AiTranscript(std::filesystem::path file, size_t maxEvents)
 bool AiTranscript::Records(const std::string& type) {
     static const std::set<std::string> kept = {
         "ai:message",     "ai:proposal",    "ai:decided",     "ai:taskProgress", "ai:taskStopped",
-        "ai:split",       "ai:consistency", "ai:autoUndone",  "ai:scriptCheck",
+        "ai:split",       "ai:consistency", "ai:autoUndone",  "ai:scriptCheck", "ai:taskOutline", "ai:taskOutlineAnswered",
     };
     return kept.contains(type);
 }

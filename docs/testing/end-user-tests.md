@@ -290,6 +290,11 @@ Everything in the Inspector, menus and panels, as operations:
 - ✓ Script errors after applying: shown, with "Ask AI to fix".
 - ✓ Stop mid-task: nothing applied; everything applied is one undo.
 - ✗ It asks when a request is unclear, with choices to click.
+- ◐ "Make a story about this village and populate it: people in each building, named, with gossip": stays in the
+  AI panel (not the Planner or Build); it reads the buildings, shows an outline (the story, each building's people and
+  their hooks) to approve or change, then makes the canon, places each person inside their building, and writes their
+  dialogue and Speech, step by step, reviewed at the end. People for a building whose inside is its own scene are left
+  for a request in that scene.
 
 ## 21. Accessibility and help
 
