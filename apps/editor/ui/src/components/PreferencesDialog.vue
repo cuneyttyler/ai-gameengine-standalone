@@ -8,6 +8,7 @@ import { sendToHost } from '../ipc'
 import { trackOverlay, untrackOverlay } from '../overlay'
 import { prefs, requestPrefs, setPref } from '../prefs'
 import { projectState } from '../projects'
+import SearchSelect from './SearchSelect.vue'
 
 const backdrop = ref<HTMLElement | null>(null)
 
@@ -35,6 +36,36 @@ watch(
 )
 
 const models = computed(() => editorState.ai.models[editorState.ai.provider] ?? [])
+
+// Preferences ▸ AI ▸ Checks: the contradiction checker and the vision model, each a provider and a model.
+interface CheckChoice {
+  which: 'check' | 'vision'
+  label: string
+  provider: 'checkProvider' | 'visionProvider'
+  model: 'checkModel' | 'visionModel'
+  auto: string
+  free: string
+  desc: string
+}
+const CHECKS: CheckChoice[] = [
+  { which: 'check', label: 'Canon check', provider: 'checkProvider', model: 'checkModel', auto: 'Mistral Medium (default)',
+    free: 'Nemotron 3 Ultra, free', desc: 'Reads new writing against the World Bible and flags contradictions.' },
+  { which: 'vision', label: 'Vision', provider: 'visionProvider', model: 'visionModel', auto: 'Claude itself when it writes, else Mistral Large 4',
+    free: 'Nemotron 3.5 Super VL, free', desc: 'Looks at pictures: generated art, maps, doors, storeys.' },
+]
+const askedModels = new Set<string>()
+function checkModels(c: CheckChoice): { value: string; hint?: string }[] {
+  const provider = editorState.ai[c.provider]
+  const key = provider === 'openrouter' && c.which === 'vision' ? 'openrouter-vision' : provider
+  if (!editorState.ai.models[key] && editorState.ai.enabled && !askedModels.has(key)) {
+    askedModels.add(key) // once: the list comes back as ai:models
+    sendToHost({ type: 'ai:listModels', provider: key })
+  }
+  return (editorState.ai.models[key] ?? []).map((m) => ({ value: m, hint: m.endsWith(':free') ? 'free' : undefined }))
+}
+function setCheck(c: CheckChoice, provider: string, model: string): void {
+  sendToHost({ type: 'ai:setCheckModels', [c.provider]: provider, [c.model]: model })
+}
 function listModels(): void {
   if (editorState.ai.enabled) sendToHost({ type: 'ai:listModels', provider: editorState.ai.provider })
 }
@@ -217,11 +248,32 @@ function close(): void {
               </div>
             </section>
             <section class="group">
+              <h5>Checks</h5>
+              <div v-for="c in CHECKS" :key="c.which" class="field">
+                <label>{{ c.label }}</label>
+                <div class="control">
+                  <div class="row">
+                    <select :value="editorState.ai[c.provider]" :disabled="!editorState.ai.enabled" @change="setCheck(c, ($event.target as HTMLSelectElement).value, '')">
+                      <option value="auto">{{ c.auto }}</option>
+                      <option value="mistral">Mistral{{ noKey('mistral') }}</option>
+                      <option value="openrouter">OpenRouter{{ noKey('openrouter') }}</option>
+                    </select>
+                    <SearchSelect v-if="editorState.ai[c.provider] !== 'auto'" :model-value="editorState.ai[c.model]" :disabled="!editorState.ai.enabled"
+                                  :options="checkModels(c)" :empty="`its default${editorState.ai[c.provider] === 'openrouter' ? ` (${c.free})` : ''}`" custom
+                                  @update:model-value="(m) => setCheck(c, editorState.ai[c.provider], m)" />
+                  </div>
+                  <p class="desc">{{ c.desc }}<template v-if="c.which === 'check' ? editorState.ai.checkInUse : editorState.ai.visionInUse"> In use: {{ c.which === 'check' ? editorState.ai.checkInUse : editorState.ai.visionInUse }}.</template></p>
+                </div>
+              </div>
+              <p v-if="editorState.ai.checkError" class="error">{{ editorState.ai.checkError }}</p>
+              <p class="desc">OpenRouter's free models (:free) cost nothing but are rate limited, and can be slow or busy at times; they're listed first.</p>
+            </section>
+            <section class="group">
               <h5>Keys</h5>
               <div class="field">
                 <label>API keys</label>
                 <div class="control">
-                  <p class="desc">In ai_service/.env (MISTRAL_API_KEY, ANTHROPIC_API_KEY, PIXELLAB_API_KEY, BFL_API_KEY). They never leave this computer except to that service.</p>
+                  <p class="desc">In ai_service/.env (MISTRAL_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, PIXELLAB_API_KEY, BFL_API_KEY). They never leave this computer except to that service.</p>
                 </div>
               </div>
             </section>

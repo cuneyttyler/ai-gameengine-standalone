@@ -41,7 +41,7 @@ from .websource import all_candidates, candidates, fetch_file, search_web
 from .art_brief import better_queries, write_art_prompt
 from . import progress
 from . import style as project_style
-from .providers import ClaudeProvider, MistralEmbedder, MistralProvider, Provider, ProviderError
+from .providers import ClaudeProvider, MistralEmbedder, MistralProvider, OpenRouterProvider, Provider, ProviderError
 from .service import propose
 from .world import Embedder, WorldIndex, format_entry, load_entries
 
@@ -126,6 +126,14 @@ class RepairNodeRequest(BaseModel):
 class ProviderRequest(BaseModel):
     provider: str          # mistral or claude
     model: str = ""        # empty: the provider's default
+
+
+class CheckModelsRequest(BaseModel):
+    """Preferences ▸ AI ▸ Checks: who checks new writing against the canon, and who looks at pictures."""
+    checkProvider: str = "auto"   # auto (Mistral Medium) | mistral | openrouter
+    checkModel: str = ""
+    visionProvider: str = "auto"  # auto (Claude itself when it writes, else Mistral Large 4) | mistral | openrouter
+    visionModel: str = ""
 
 
 class RevisePlanRequest(BaseModel):
@@ -375,6 +383,7 @@ def available_providers() -> dict[str, bool]:
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     return {"mistral": bool(os.environ.get("MISTRAL_API_KEY")),
             "claude": bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")),
+            "openrouter": bool(os.environ.get("OPENROUTER_API_KEY")),
             "pixellab": bool(os.environ.get("PIXELLAB_API_KEY")),
             "bfl": bool(os.environ.get("BFL_API_KEY")),
             "autosprite": bool(os.environ.get("AUTO_SPRITE_API_KEY") or os.environ.get("AUTOSPRITE_API_KEY"))}
@@ -411,6 +420,14 @@ def list_models(provider: str) -> list[str]:
     if provider == "mistral" and os.environ.get("MISTRAL_API_KEY"):
         from mistralai.client import Mistral
         return sorted({m.id for m in Mistral(api_key=os.environ["MISTRAL_API_KEY"]).models.list().data})
+    if provider in ("openrouter", "openrouter-vision") and os.environ.get("OPENROUTER_API_KEY"):
+        # Its whole list (no key needed to read it), free models first; "-vision": the ones that take pictures.
+        import httpx
+        data = httpx.get("https://openrouter.ai/api/v1/models", timeout=30).json().get("data", [])
+        if provider == "openrouter-vision":
+            data = [m for m in data if "image" in (m.get("architecture") or {}).get("input_modalities", [])]
+        free = lambda m: m["id"].endswith(":free") or (m.get("pricing") or {}).get("prompt") == "0"
+        return [m["id"] for m in sorted(data, key=lambda m: (not free(m), m["id"]))]
     if provider == "claude" and (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
         import anthropic
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY") or None)
@@ -435,9 +452,41 @@ def default_provider() -> Provider | None:
     return make_provider(os.environ.get("AIGE_PROVIDER", "mistral"))
 
 
-def default_checker() -> Provider | None:
-    """The contradiction checker: a cheaper model than the one that writes."""
+# OpenRouter's free models for the checks (tried 2026-11-03 on a canon contradiction and a sprite; free models come
+# and go, so Preferences ▸ AI ▸ Checks lists what's there now). OPENROUTER_CHECK_MODEL / OPENROUTER_VISION_MODEL pick others.
+OPENROUTER_CHECK_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"  # found all three contradictions, ~10 s
+OPENROUTER_VISION_MODEL = "nvidia/nemotron-3.5-super-vl:free"  # read the sprite right, ~9 s (Gemma 4: rate limited)
+
+
+def make_checker(provider: str = "auto", model: str = "") -> Provider | None:
+    """The contradiction checker: a cheaper model than the one that writes. auto: Mistral Medium."""
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    if provider == "openrouter":
+        key = os.environ.get("OPENROUTER_API_KEY")
+        return OpenRouterProvider(key, model or os.environ.get("OPENROUTER_CHECK_MODEL", OPENROUTER_CHECK_MODEL)) if key else None
+    key = os.environ.get("MISTRAL_API_KEY")
+    if not key:
+        return None
+    return MistralProvider(api_key=key, model=model or os.environ.get("MISTRAL_CHECK_MODEL", "mistral-medium-latest"))
+
+
+def make_vision(provider: str = "auto", model: str = "") -> Provider | None:
+    """Looks at images (6.2). auto and mistral: Mistral Large 4; openrouter: a vision model there."""
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    if provider == "openrouter":
+        key = os.environ.get("OPENROUTER_API_KEY")
+        return OpenRouterProvider(key, model or os.environ.get("OPENROUTER_VISION_MODEL", OPENROUTER_VISION_MODEL), timeout_s=240.0) if key else None
+    key = os.environ.get("MISTRAL_API_KEY")
+    if not key:
+        return None
+    return MistralProvider(api_key=key, model=model or os.environ.get("MISTRAL_VISION_MODEL", "mistral-large-4"), timeout_s=180.0)
+
+
+def default_checker() -> Provider | None:
+    """The contradiction checker: a cheaper model than the one that writes (AIGE_CHECK_PROVIDER: auto, mistral, openrouter)."""
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    if os.environ.get("AIGE_CHECK_PROVIDER") == "openrouter":
+        return make_checker("openrouter")
     key = os.environ.get("MISTRAL_API_KEY")
     if not key:
         return None
@@ -447,8 +496,11 @@ def default_checker() -> Provider | None:
 
 
 def default_vision() -> Provider | None:
-    """Looks at images (6.2): Mistral's best vision model (Large 4); MISTRAL_VISION_MODEL picks another."""
+    """Looks at images (6.2): Mistral's best vision model (Large 4); MISTRAL_VISION_MODEL picks another;
+    AIGE_VISION_PROVIDER=openrouter, OpenRouter's."""
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    if os.environ.get("AIGE_VISION_PROVIDER") == "openrouter":
+        return make_vision("openrouter")
     key = os.environ.get("MISTRAL_API_KEY")
     if not key:
         return None
@@ -753,8 +805,8 @@ def create_app(
 
     @app.get("/models")
     def models(provider: str = "mistral") -> dict:
-        """The models a provider offers (Preferences ▸ AI ▸ Model)."""
-        if provider not in PROVIDERS:
+        """The models a provider offers (Preferences ▸ AI ▸ Model, ▸ Checks: openrouter, openrouter-vision)."""
+        if provider not in PROVIDERS + ("openrouter", "openrouter-vision"):
             return {"ok": False, "errors": [f"Unknown provider {provider}"]}
         try:
             return {"ok": True, "provider": provider, "models": list_models(provider)}
@@ -1496,9 +1548,39 @@ def create_app(
             return {"ok": False, "errors": [f"No key for {request.provider}: set {key} in ai_service/.env"],
                     "available": available_providers()}
         state["provider"] = chosen
-        # Claude sees images itself; with Mistral, its vision model looks at them.
-        state["vision"] = chosen if request.provider == "claude" else (state.get("mistralVision") or state["vision"])
+        # Claude sees images itself (unless a vision model was chosen in Preferences ▸ AI ▸ Checks); with Mistral, its
+        # vision model looks at them.
+        chosenVision = state.get("chosenVision")
+        state["vision"] = chosenVision or (chosen if request.provider == "claude" else (state.get("mistralVision") or state["vision"]))
         return {"ok": True, "provider": chosen.name, "model": chosen.model, "available": available_providers()}
+
+    @app.put("/check-models")
+    def set_check_models(request: CheckModelsRequest) -> dict:
+        """Who checks new writing against the canon, and who looks at pictures (Preferences ▸ AI ▸ Checks): auto, mistral
+        or openrouter, each with a model (empty: its default)."""
+        errors = []
+        for which, provider in (("check", request.checkProvider), ("vision", request.visionProvider)):
+            if provider not in ("auto", "mistral", "openrouter"):
+                errors.append(f"Unknown {which} provider {provider}: auto, mistral or openrouter")
+        if errors:
+            return {"ok": False, "errors": errors}
+        checker = make_checker(request.checkProvider, request.checkModel)
+        if checker is None and request.checkProvider != "auto":
+            key = "OPENROUTER_API_KEY" if request.checkProvider == "openrouter" else "MISTRAL_API_KEY"
+            errors.append(f"No key for the check model: set {key} in ai_service/.env")
+        else:
+            state["checker"] = checker
+        vision = make_vision(request.visionProvider, request.visionModel) if request.visionProvider != "auto" else None
+        if request.visionProvider != "auto" and vision is None:
+            key = "OPENROUTER_API_KEY" if request.visionProvider == "openrouter" else "MISTRAL_API_KEY"
+            errors.append(f"No key for the vision model: set {key} in ai_service/.env")
+        else:
+            # auto: Claude itself when it writes, else Mistral Large 4 (as before).
+            state["chosenVision"] = vision
+            current = state["provider"]
+            state["vision"] = vision or (current if getattr(current, "name", "") == "claude" else (state.get("mistralVision") or make_vision()))
+        return {"ok": not errors, "errors": errors, "check": getattr(state["checker"], "model", ""),
+                "vision": getattr(state["vision"], "model", ""), "available": available_providers()}
 
     @app.post("/places/revise-plan")
     def places_revise_plan(request: RevisePlanRequest) -> dict:

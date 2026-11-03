@@ -60,6 +60,14 @@ export const editorState = reactive({
     artError: '',
     backgroundProvider: 'bfl:flux-3-image' as string, // what paints backgrounds (Preferences ▸ AI ▸ Background)
     backgroundError: '',
+    // Preferences ▸ AI ▸ Checks: who checks writing against the canon, and who looks at pictures (auto, mistral, openrouter).
+    checkProvider: 'auto' as string,
+    checkModel: '',
+    visionProvider: 'auto' as string,
+    visionModel: '',
+    checkInUse: '',
+    visionInUse: '',
+    checkError: '',
     // The project's own choices (Project Settings ▸ AI), each '' when it uses the app's.
     project: { provider: '', model: '', art: '', background: '' } as Record<string, string>,
     models: {} as Record<string, string[]>, // each provider's models (Preferences ▸ AI ▸ Model)
@@ -150,6 +158,13 @@ onHostMessage((message) => {
     editorState.ai.artError = (message.artError as string) ?? ''
     editorState.ai.backgroundProvider = (message.backgroundProvider as string) ?? 'bfl:flux-3-image'
     editorState.ai.backgroundError = (message.backgroundError as string) ?? ''
+    editorState.ai.checkProvider = (message.checkProvider as string) ?? 'auto'
+    editorState.ai.checkModel = (message.checkModel as string) ?? ''
+    editorState.ai.visionProvider = (message.visionProvider as string) ?? 'auto'
+    editorState.ai.visionModel = (message.visionModel as string) ?? ''
+    editorState.ai.checkInUse = (message.checkInUse as string) ?? ''
+    editorState.ai.visionInUse = (message.visionInUse as string) ?? ''
+    editorState.ai.checkError = (message.checkError as string) ?? ''
     editorState.ai.project = (message.project as Record<string, string>) ?? { provider: '', model: '', art: '', background: '' }
   } else if (message.type === 'ai:models') {
     const provider = (message.provider as string) ?? editorState.ai.provider

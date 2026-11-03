@@ -384,6 +384,8 @@ private:
     int artProviderRequest_ = 0;   // PUT /art-provider: what draws the art (Preferences ▸ AI ▸ Prefab art)
     int backgroundProviderRequest_ = 0; // PUT /background-provider: what paints backgrounds (Preferences ▸ AI ▸ Background)
     nlohmann::json backgroundStatus_ = nlohmann::json::object(); // its answer
+    int checkModelsRequest_ = 0; // PUT /check-models: the check and vision models (Preferences ▸ AI ▸ Checks)
+    nlohmann::json checkStatus_ = nlohmann::json::object(); // its answer
     int modelsRequest_ = 0;        // GET /models: the provider's models, for Preferences
     int characterRequest_ = 0;     // Generate ▸ Character in flight
     int animationRequest_ = 0;     // Generate ▸ Animate in flight

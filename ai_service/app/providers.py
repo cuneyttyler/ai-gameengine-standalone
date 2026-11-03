@@ -131,6 +131,101 @@ class MistralProvider:
         return Completion(text="".join(parts), usage=usage, model=used, thinking="".join(thoughts))
 
 
+class OpenRouterProvider:
+    """Any model on OpenRouter (openrouter.ai), through its OpenAI-style chat API: for the contradiction checker and
+    the vision model (Preferences ▸ AI ▸ Checks). Its free models (":free") cost nothing but are rate limited and
+    can be slow when busy; a model that doesn't take JSON mode is asked for JSON in words (the prompts spell the
+    shape out)."""
+
+    name = "openrouter"
+    URL = "https://openrouter.ai/api/v1/chat/completions"
+    BACKOFF_S = (3.0, 8.0, 15.0)  # free models answer 429 when busy
+    NO_JSON_MODE = {"nvidia/nemotron-3-ultra-550b-a55b:free", "nvidia/nemotron-3.5-lightning:free"}
+
+    def __init__(self, api_key: str, model: str, timeout_s: float = 180.0, json_mode: bool = True):
+        self.model = model
+        self._key = api_key
+        self._timeout_s = timeout_s
+        # Models whose endpoints don't take JSON mode: asked for JSON in words from the start.
+        self._json_mode = json_mode and model not in self.NO_JSON_MODE
+        self.reasoning = False
+
+    def complete(self, messages: list[dict], max_tokens: int | None = None) -> Completion:
+        return self._call(messages, json_mode=self._json_mode, max_tokens=max_tokens or 8000)
+
+    def complete_text(self, messages: list[dict]) -> Completion:
+        return self._call(messages, json_mode=False, max_tokens=3000)
+
+    @staticmethod
+    def _convert(messages: list[dict]) -> list[dict]:
+        """Our messages carry images as Mistral does ({"type": "image_url", "image_url": "data:..."}); OpenAI's API
+        wants {"image_url": {"url": ...}}."""
+        out = []
+        for message in messages:
+            content = message.get("content")
+            if isinstance(content, list):
+                parts = []
+                for part in content:
+                    if part.get("type") == "image_url" and isinstance(part.get("image_url"), str):
+                        parts.append({"type": "image_url", "image_url": {"url": part["image_url"]}})
+                    else:
+                        parts.append(part)
+                content = parts
+            out.append({**message, "content": content})
+        return out
+
+    def _call(self, messages: list[dict], json_mode: bool, max_tokens: int) -> Completion:
+        import httpx
+
+        body = {"model": self.model, "messages": self._convert(messages), "temperature": 0.2, "max_tokens": max_tokens}
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
+        headers = {"Authorization": f"Bearer {self._key}", "X-Title": "AIGE", "HTTP-Referer": "https://aige.local"}
+        progress.call_started(thinking=not json_mode)
+        last = ""
+        for wait in (0.0,) + self.BACKOFF_S:
+            if wait:
+                time.sleep(wait)
+            try:
+                response = httpx.post(self.URL, json=body, headers=headers, timeout=self._timeout_s)
+                data = response.json()
+            except Exception as error:  # network, a timeout, a page that isn't JSON
+                last = str(error)
+                continue
+            error = data.get("error") if isinstance(data, dict) else None
+            if error or response.status_code >= 400:
+                last = (error or {}).get("message", "") if isinstance(error, dict) else str(error or response.status_code)
+                if response.status_code in (429, 502, 503) or "rate" in last.lower():
+                    continue
+                # A model without JSON mode: asked again without it (the prompt asks for JSON in words).
+                if json_mode and "response_format" in body and any(w in last.lower() for w in ("response_format", "json", "no endpoints", "parameter")):
+                    body.pop("response_format")
+                    continue
+                progress.call_ended()
+                raise ProviderError(f"OpenRouter request failed ({self.model}): {last}")
+            choice = (data.get("choices") or [{}])[0]
+            text = (choice.get("message") or {}).get("content") or ""
+            usage = data.get("usage") or {}
+            result = Completion(text=_strip_fence(text), model=data.get("model") or self.model,
+                                usage=Usage(inputTokens=usage.get("prompt_tokens", 0) or 0,
+                                            outputTokens=usage.get("completion_tokens", 0) or 0, requests=1))
+            progress.streamed(result.text, thinking=not json_mode)
+            progress.call_ended(result.usage.inputTokens, result.usage.outputTokens)
+            return result
+        progress.call_ended()
+        raise ProviderError(f"OpenRouter request failed ({self.model}): busy after retries: {last}")
+
+
+def _strip_fence(text: str) -> str:
+    """A model asked for JSON in words may wrap it in a ```json fence."""
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = stripped.split("\n", 1)[1] if "\n" in stripped else stripped[3:]
+        if stripped.rstrip().endswith("```"):
+            stripped = stripped.rstrip()[:-3]
+    return stripped.strip()
+
+
 class ClaudeProvider:
     """Anthropic's Claude (Claude Opus 5.5 by default). It thinks before it
     answers (adaptive thinking), so steps run in native mode: the thinking comes

@@ -760,6 +760,16 @@ bool EditorApp::HandleAiSettingsMessage(const std::string& type, const nlohmann:
         if (userPrefs_) userPrefs_->Set("artProvider", message.value("provider", "auto"));
         SendProvider();
         post_(AiStatusJson());
+    } else if (type == "ai:setCheckModels") {
+        // Who checks new writing against the canon and who looks at pictures (Preferences ▸ AI ▸ Checks): auto, mistral
+        // or openrouter, each with a model. Applied at once.
+        if (userPrefs_) {
+            for (const char* key : {"checkProvider", "checkModel", "visionProvider", "visionModel"}) {
+                if (message.contains(key) && message[key].is_string()) userPrefs_->Set(key, message[key].get<std::string>());
+            }
+        }
+        SendProvider();
+        post_(AiStatusJson());
     } else if (type == "ai:setBackgroundProvider") {
         // What paints backgrounds (Preferences ▸ AI ▸ Background). Applied at once, unless the project has its own.
         if (userPrefs_) userPrefs_->Set("backgroundProvider", message.value("provider", "bfl:flux-3-image"));
@@ -768,7 +778,8 @@ bool EditorApp::HandleAiSettingsMessage(const std::string& type, const nlohmann:
     } else if (type == "ai:listModels") {
         // The models the provider offers (its own list), for Preferences ▸ AI ▸ Model.
         const std::string provider = message.value("provider", "mistral");
-        if (Ai() && Ai()->GetState() == AiClient::State::Ready && (provider == "mistral" || provider == "claude")) {
+        if (Ai() && Ai()->GetState() == AiClient::State::Ready &&
+            (provider == "mistral" || provider == "claude" || provider == "openrouter" || provider == "openrouter-vision")) {
             modelsRequest_ = Ai()->Request("GET", "/models?provider=" + provider, nlohmann::json::object(), 30);
         } else {
             post_({{"type", "ai:models"}, {"provider", provider}, {"models", nlohmann::json::array()}, {"errors", {"the AI service isn't running"}}});
@@ -5562,6 +5573,13 @@ void EditorApp::SendProvider() {
     artProviderRequest_ = Ai()->Request("PUT", "/art-provider", {{"provider", ChosenAi("art")}, {"style", ActiveSettings().ai.artStyle}});
     backgroundProviderRequest_ = Ai()->Request("PUT", "/background-provider", {{"provider", ChosenAi("background")}});
     providerRequest_ = Ai()->Request("PUT", "/provider", {{"provider", ChosenAi("provider")}, {"model", ChosenAi("model")}});
+    // After the provider (Claude sees pictures itself unless a vision model was chosen).
+    auto pref = [&](const char* key, const char* fallback) {
+        const nlohmann::json v = userPrefs_->Get(key, fallback);
+        return v.is_string() ? v.get<std::string>() : std::string(fallback);
+    };
+    checkModelsRequest_ = Ai()->Request("PUT", "/check-models", {{"checkProvider", pref("checkProvider", "auto")}, {"checkModel", pref("checkModel", "")},
+                                                                 {"visionProvider", pref("visionProvider", "auto")}, {"visionModel", pref("visionModel", "")}});
 }
 
 AiClient* EditorApp::Ai() {
@@ -5618,6 +5636,15 @@ nlohmann::json EditorApp::AiStatusJson() {
             {"animateProvider", userPrefs_ ? userPrefs_->Get("animateProvider", "autosprite") : nlohmann::json("autosprite")},
             {"objectAnimateProvider", userPrefs_ ? userPrefs_->Get("objectAnimateProvider", "pixellab") : nlohmann::json("pixellab")},
             {"backgroundProvider", userPrefs_ ? userPrefs_->Get("backgroundProvider", "bfl:flux-3-image") : nlohmann::json("bfl:flux-3-image")},
+            // Preferences ▸ AI ▸ Checks: what was chosen, what's in use, and why not.
+            {"checkProvider", userPrefs_ ? userPrefs_->Get("checkProvider", "auto") : nlohmann::json("auto")},
+            {"checkModel", userPrefs_ ? userPrefs_->Get("checkModel", "") : nlohmann::json("")},
+            {"visionProvider", userPrefs_ ? userPrefs_->Get("visionProvider", "auto") : nlohmann::json("auto")},
+            {"visionModel", userPrefs_ ? userPrefs_->Get("visionModel", "") : nlohmann::json("")},
+            {"checkInUse", checkStatus_.value("check", "")},
+            {"visionInUse", checkStatus_.value("vision", "")},
+            {"checkError", checkStatus_.value("ok", true) ? "" : (checkStatus_.contains("errors") && !checkStatus_["errors"].empty()
+                                                                  ? checkStatus_["errors"][0].get<std::string>() : "")},
             {"backgroundError", backgroundStatus_.value("ok", true) ? "" : (backgroundStatus_.contains("errors") && !backgroundStatus_["errors"].empty()
                                                                             ? backgroundStatus_["errors"][0].get<std::string>() : "")},
             // What this project uses instead of the app's, where it has its own (Project Settings ▸ AI).
@@ -5751,6 +5778,10 @@ void EditorApp::PollAi() {
             } else if (result->requestId != 0 && result->requestId == artProviderRequest_) {
                 artProviderRequest_ = 0;
                 artStatus_ = result->body.is_object() ? result->body : nlohmann::json{{"ok", false}};
+                post_(AiStatusJson());
+            } else if (result->requestId != 0 && result->requestId == checkModelsRequest_) {
+                checkModelsRequest_ = 0;
+                checkStatus_ = result->body.is_object() ? result->body : nlohmann::json{{"ok", false}};
                 post_(AiStatusJson());
             } else if (result->requestId != 0 && result->requestId == backgroundProviderRequest_) {
                 backgroundProviderRequest_ = 0;
