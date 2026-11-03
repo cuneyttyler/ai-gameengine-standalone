@@ -254,6 +254,32 @@ A panel, **UI**, docked like the others:
 - **Checks:** unresolved bindings, unsupported RCSS, contrast, text overflowing at the
   longest translation, unreachable focusable elements, a screen no action opens.
 
+### As built (2026-11-03)
+
+**Project ▸ UI ▸ Design…** opens a screen in the designer (a new screen id starts there too):
+
+- **Canvas** with the 16:9, 16:10, 21:9, 4:3 and Steam Deck shapes and a safe area; drag to move, the corner to resize,
+  arrows to nudge; undo and redo.
+- **Add**: panel, image, button, text, bar, list, slot grid, checkbox or slider, notifications, Custom RML.
+- **Layers**: order, into or out of a panel, duplicate, delete, hide, lock.
+- **Properties**: anchor (a corner, an edge, the middle, or stretched across or down: it keeps its place at any size),
+  position and size, theme colours, pictures imported from the computer (copied to `assets/ui/`) whole or in nine
+  pieces, opacity, padding, text with the model's data inserted, a button's hover, pressed and disabled looks.
+- **On click**: open or close a screen, send an event, press an input action, set or clear a flag, run effects (the
+  rule editor), quick save, quick load, quit. **Only show if**: conditions, asked each frame.
+- **Data**: the model a screen shows (the HUD's, a menu's or window's, the dialogue's); bars, lists (a click picks the
+  line, as the keys do) and the slot grid (what the player carries; a click uses, wears or takes it in hand).
+- **Code** shows the RML written from it; **Preview** saves and shows it in the game's renderer; **Checks** list what
+  would break (a button that does nothing, an id twice, a missing picture, text that may not fit).
+
+Saved as `ui/designs/<id>.json`; `ui/screens/<id>.rml` is written from it (`engine/ui/UiDesign.cpp`), and the game
+runs that. The HUD, windows, menus and the dialogue start from the engine's designs (`data/ui/designs/`). A screen
+written by hand opens as one Custom RML element, kept whole, with new elements beside it. The AI panel writes designs
+(`write_ui` to `ui/designs/`), checked as the designer checks them.
+
+Not yet: edits in the code view taken back into the design; a checkbox's or slider's value passed on (it sends its
+event); the canvas is the editor's drawing, close to the game's but not exact (Preview is exact).
+
 ## 13. Files
 
 | File | Holds |

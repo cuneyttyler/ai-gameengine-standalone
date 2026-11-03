@@ -150,11 +150,13 @@ function when(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
 }
 
+// Make prefab: lies on the ground as drawn (a field, a rug), by result.
+const onGround = reactive<Record<string, boolean>>({})
 function makePrefab(item: Item): void {
   const name = item.path.split('/').pop()!.replace(/\.png$/, '')
   // A generated ground tile becomes a flat tile on the grid (5.2).
   const isTile = item.meta.kind === 'tile'
-  sendToHost({ type: 'prefab:createFromAsset', asset: item.path, tile: 0, asTile: isTile, solid: false, name, flat: isTile })
+  sendToHost({ type: 'prefab:createFromAsset', asset: item.path, tile: 0, asTile: isTile, solid: false, name, flat: isTile, ground: !isTile && onGround[item.path] === true })
 }
 
 async function discard(item: Item): Promise<void> {
@@ -295,6 +297,8 @@ const whyOff = computed(() =>
           <div class="actions">
             <button :disabled="busy || !aiReady" title="Draw it again" @click="regenerate(item)">Regenerate</button>
             <button title="A placeable prefab with this sprite" @click="makePrefab(item)">Make prefab</button>
+            <label v-if="item.meta.kind !== 'tile'" class="small" title="A field, a rug, a path piece: its bottom edge on the cell's front corner, and drawn under characters so they walk over it">
+              <input v-model="onGround[item.path]" type="checkbox" /> lies on the ground</label>
             <button title="Delete the file" @click="discard(item)">Discard</button>
           </div>
         </div>

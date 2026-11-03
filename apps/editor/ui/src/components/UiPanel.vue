@@ -88,24 +88,8 @@ function togglePreview(id: string): void {
 function newScreen(): void {
   const id = newId.value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-')
   if (!id) return
-  const text = `<rml>
-<head>
-\t<title>${id}</title>
-\t<link type="text/rcss" href="../styles/base.rcss"/>
-</head>
-<!-- A screen of the project's own: open it from Lua with open_screen("${id}");
-     action('...') calls reach scripts as the "ui_action" event. -->
-<body>
-<div data-model="ui">
-\t<div class="panel" style="position: absolute; left: 30%; top: 25%; width: 40%;">
-\t\t<h1>${id}</h1>
-\t\t<p data-event-click="action('close-${id}')">Close</p>
-\t</div>
-</div>
-</body>
-</rml>
-`
-  sendToHost({ type: 'ui:save', path: `ui/screens/${id}.rml`, text })
+  // A new screen starts in the designer (saving it there writes its document).
+  editorState.uiDesigner = id
   newId.value = ''
   selected.value = id
 }
@@ -168,6 +152,7 @@ function isColour(value: string): boolean {
           <button :class="{ on: preview === current.id }" :disabled="editorState.playing" @click="togglePreview(current.id)">
             {{ preview === current.id ? 'Stop preview' : 'Preview' }}
           </button>
+          <button class="primary" :disabled="editorState.playing" title="Change it in the UI designer: place elements, import pictures, give buttons actions" @click="editorState.uiDesigner = current.id">Design…</button>
           <button v-if="!source.project" title="Copy it into the project's ui/ folder to change it" @click="customise">
             Customise
           </button>

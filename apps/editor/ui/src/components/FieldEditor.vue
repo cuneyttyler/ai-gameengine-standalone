@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SearchSelect from './SearchSelect.vue'
 // One reflected field's editor, generated entirely from the registry's
 // metadata (type, description, min/max, options) — the same for component
 // fields and project settings. Emits `change` with the new value in its JSON
@@ -116,72 +117,49 @@ function emitNumber(event: Event): void {
       @change="emit('change', ($event.target as HTMLInputElement).value)"
     />
 
-    <select
+    <SearchSelect
       v-else-if="field.type === 'enum'"
-      :value="field.value as string"
+      :model-value="field.value as string"
+      :options="(field.options ?? []).map((o) => ({ value: o }))"
       :disabled="disabled"
-      @change="emit('change', ($event.target as HTMLSelectElement).value)"
-    >
-      <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
-    </select>
+      @update:model-value="emit('change', $event)"
+    />
 
-    <select
+    <SearchSelect
       v-else-if="field.type === 'entity'"
-      :value="field.value ?? ''"
+      :model-value="field.value === null || field.value === undefined ? '' : String(field.value)"
+      :options="(choices?.entities ?? []).map((e) => ({ value: String(e.id), label: e.label, hint: `#${e.id}` }))"
       :disabled="disabled"
-      @change="
-        emit(
-          'change',
-          ($event.target as HTMLSelectElement).value === '' ? null : Number(($event.target as HTMLSelectElement).value),
-        )
-      "
-    >
-      <option value="">(none)</option>
-      <option v-for="entity in choices?.entities ?? []" :key="entity.id" :value="entity.id">
-        {{ entity.label }} #{{ entity.id }}
-      </option>
-    </select>
+      empty="(none)"
+      @update:model-value="emit('change', $event === '' ? null : Number($event))"
+    />
 
-    <select
+    <SearchSelect
       v-else-if="field.type === 'texture' || field.type === 'audio'"
-      :value="field.value as string"
-      :title="field.value as string"
+      :model-value="field.value as string"
+      :options="((field.type === 'texture' ? choices?.textures : choices?.audio) ?? []).map((path) => ({ value: path, label: fileName(path), hint: path }))"
       :disabled="disabled"
-      @change="emit('change', ($event.target as HTMLSelectElement).value)"
-    >
-      <option value="">{{ field.type === 'texture' ? '(built-in)' : '(none)' }}</option>
-      <option
-        v-for="path in (field.type === 'texture' ? choices?.textures : choices?.audio) ?? []"
-        :key="path"
-        :value="path"
-      >
-        {{ fileName(path) }}
-      </option>
-    </select>
+      :empty="field.type === 'texture' ? '(built-in)' : '(none)'"
+      @update:model-value="emit('change', $event)"
+    />
 
-    <select
+    <SearchSelect
       v-else-if="field.type === 'prefab'"
-      :value="field.value as string"
-      :title="field.value as string"
+      :model-value="field.value as string"
+      :options="editorState.prefabs.filter((x) => !x.isTile).map((p) => ({ value: p.path, label: p.path.replace(/^prefabs\//, '') }))"
       :disabled="disabled"
-      @change="emit('change', ($event.target as HTMLSelectElement).value)"
-    >
-      <option value="">(none)</option>
-      <option v-for="p in editorState.prefabs.filter((x) => !x.isTile)" :key="p.path" :value="p.path">{{ p.path.replace(/^prefabs\//, '') }}</option>
-    </select>
+      empty="(none)"
+      @update:model-value="emit('change', $event)"
+    />
 
     <span v-else-if="field.type === 'script'" class="script-field">
-      <select
-        :value="field.value as string"
-        :title="field.value as string"
+      <SearchSelect
+        :model-value="field.value as string"
+        :options="(choices?.scripts ?? []).map((script) => ({ value: script, label: fileName(script), hint: script }))"
         :disabled="disabled"
-        @change="emit('change', ($event.target as HTMLSelectElement).value)"
-      >
-        <option value="">(none)</option>
-        <option v-for="script in choices?.scripts ?? []" :key="script" :value="script">
-          {{ fileName(script) }}
-        </option>
-      </select>
+        empty="(none)"
+        @update:model-value="emit('change', $event)"
+      />
       <button v-if="field.value" title="Open in your editor" @click="emit('openScript', field.value as string)">
         Open
       </button>

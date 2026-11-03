@@ -125,6 +125,9 @@ public:
     std::string Craft(const std::string& recipe, const std::string& station);
     // A panel of the windows over play (inventory, crafting, crafting:<station>, spellbook, journal), or a screen of the project's.
     bool OpenPanel(const std::string& id);
+    // A designed screen's button (docs/systems/game-ui.md §12): open:<screen>, close:<screen>, event:<name>,
+    // press:<action>, flag:<name>, clear:<name>, effects~<hex>, use:<item>. False: not one of these.
+    bool HandleUiAction(const std::string& action);
     std::optional<std::string> TakePanelRequest() {
         auto out = requestedPanel_;
         requestedPanel_.reset();

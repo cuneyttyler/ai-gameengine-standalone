@@ -1,5 +1,6 @@
 #include "ai_bridge/Proposal.h"
 
+#include "ui/UiDesign.h"
 #include "assets/Prefab.h"
 #include "editing/Edits.h"
 #include "assets/Project.h"
@@ -434,6 +435,15 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             std::ofstream out(project.Resolve(path), std::ios::binary | std::ios::trunc);
             if (!out) error = "couldn't write " + path;
             else out << content;
+            // A design (the UI designer's): its screen written from it, as the designer does.
+            if (error.empty() && std::filesystem::path(path).generic_string().rfind("ui/designs/", 0) == 0) {
+                const std::string screen = "ui/screens/" + std::filesystem::path(path).stem().string() + ".rml";
+                nlohmann::json design = nlohmann::json::parse(content, nullptr, false);
+                if (design.is_object()) {
+                    design["id"] = std::filesystem::path(path).stem().string();
+                    std::ofstream(project.Resolve(screen), std::ios::binary | std::ios::trunc) << DesignToRml(design);
+                }
+            }
         }
 
     } else if (kind == "story_graph") {

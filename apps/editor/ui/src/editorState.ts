@@ -72,6 +72,7 @@ export const editorState = reactive({
   showOntology: false, // File ▸ Ontology…, the Build panel's menu (development_plan.md 9)
   showBackground: false, // Edit ▸ Background Image…
   partDialog: null as number | null, // Animate a part…: the entity whose picture a part is animated of
+  uiDesigner: null as string | null, // the UI designer: the screen it has open (Project ▸ UI ▸ Design…)
   buildingEditor: null as number | null, // the building editor (Inspector ▸ Interior ▸ Edit building…): its entity
   fxSheet: '', // Assets ▸ Animations ▸ Show in Effects: the sheet to open there
   fxSheetEdit: false, // …and open in the sheet editor (Edit)

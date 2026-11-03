@@ -208,6 +208,35 @@ TEST(ActionsTest, AReactionThatTakesTimeHasItsStages) {
     EXPECT_EQ(aige::CountItem(pockets, "wheat"), 3);
 }
 
+TEST(ActionsTest, PressingItsKeyNeedsWhatItRequiresAndShowsItsPrompt) {
+    ActionsWorld w;
+    auto& action = w.registry.get<aige::Action>(w.field);
+    action.action = "interact";
+    action.prompt = "Plant seeds";
+    bool pressE = false;
+    auto keys = [&](aige::Key k) { return pressE && k == aige::Key::E; };
+    auto press = [&] {
+        pressE = true;
+        w.session->Advance(aige::GameSession::kFixedDt, keys);
+        pressE = false;
+        w.session->Advance(aige::GameSession::kFixedDt, keys);
+    };
+    // Near it, ready: its prompt with interact's key.
+    const aige::HudData hud = w.session->MakeHud(1280, 720);
+    EXPECT_EQ(hud.promptText, "Plant seeds");
+    EXPECT_FALSE(hud.promptKey.empty());
+    // Without seeds the key does nothing; with them it plants.
+    press();
+    auto& pockets = w.registry.get_or_emplace<aige::Inventory>(w.player);
+    EXPECT_EQ(aige::CountItem(pockets, "wheat"), 0);
+    aige::AddItem(pockets, "seeds", 1);
+    press();
+    EXPECT_EQ(aige::CountItem(pockets, "seeds"), 0);
+    EXPECT_EQ(aige::CountItem(pockets, "wheat"), 3);
+    // Used up (once): no prompt.
+    EXPECT_EQ(w.session->MakeHud(1280, 720).promptText, "");
+}
+
 TEST(ActionsTest, AnyoneCanAct) {
     ActionsWorld w;
     // A character (not the player) with its own seeds, beside the field.

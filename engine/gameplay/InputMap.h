@@ -102,6 +102,8 @@ public:
     bool Pressed(const std::string& action) const;  // went down this frame
     bool Released(const std::string& action) const; // went up this frame
     float Value(const std::string& action) const;   // axes: [-1, 1]; buttons: 0 or 1
+    // Pressed as if by a key, at the next Update (a button on a screen that presses an action).
+    void Press(const std::string& action) { pressedByUi_.push_back(action); }
     // Its press this frame not counted (another of its group acts instead): held, as if held before.
     void Swallow(const std::string& action) {
         if (auto it = now_.find(action); it != now_.end()) before_[action] = it->second;
@@ -133,6 +135,7 @@ private:
     bool contextChanged_ = false;
     std::map<std::string, float> now_;
     std::map<std::string, float> before_;
+    std::vector<std::string> pressedByUi_;
 };
 
 } // namespace aige

@@ -36,10 +36,10 @@
 <body class="hud">
 	<div data-model="hud">
 		<div class="bars" data-if="health_max > 0">
-			<div class="bar health"><div class="fill" data-style-width="(health / health_max * 100) + '%'"></div></div>
-			<div class="bar mana" data-if="mana_max > 0"><div class="fill" data-style-width="(mana / mana_max * 100) + '%'"></div></div>
-			<div class="bar stamina" data-if="stamina_max > 0"><div class="fill" data-style-width="(stamina / stamina_max * 100) + '%'"></div></div>
-			<div class="bar xp" data-if="xp_next > 0"><div class="fill" data-style-width="(xp / xp_next * 100) + '%'"></div></div>
+			<div class="bar health"><div class="fill" data-style-width="(health / (health_max > 0 ? health_max : 1) * 100) + '%'"></div></div>
+			<div class="bar mana" data-if="mana_max > 0"><div class="fill" data-style-width="(mana / (mana_max > 0 ? mana_max : 1) * 100) + '%'"></div></div>
+			<div class="bar stamina" data-if="stamina_max > 0"><div class="fill" data-style-width="(stamina / (stamina_max > 0 ? stamina_max : 1) * 100) + '%'"></div></div>
+			<div class="bar xp" data-if="xp_next > 0"><div class="fill" data-style-width="(xp / (xp_next > 0 ? xp_next : 1) * 100) + '%'"></div></div>
 		</div>
 		<div class="quest panel" data-if="objective != ''">
 			<div class="name">{{quest}}</div>

@@ -1,0 +1,62 @@
+{
+  "schema": "aige.ui-design/1",
+  "model": "dialogue",
+  "width": 1920,
+  "height": 1080,
+  "root": [
+    {
+      "id": "box",
+      "type": "panel",
+      "name": "Dialogue box",
+      "anchor": "stretch-bottom",
+      "x": 120,
+      "y": 30,
+      "w": 120,
+      "h": 280,
+      "bg": "panel",
+      "padding": 20,
+      "children": [
+        {
+          "id": "speaker",
+          "type": "text",
+          "name": "Speaker",
+          "anchor": "tl",
+          "x": 0,
+          "y": 0,
+          "w": 600,
+          "h": 30,
+          "text": "{{speaker}}",
+          "size": 20,
+          "color": "accent"
+        },
+        {
+          "id": "line",
+          "type": "text",
+          "name": "Line",
+          "anchor": "stretch-top",
+          "x": 0,
+          "y": 36,
+          "w": 0,
+          "h": 80,
+          "text": "{{text}}",
+          "size": 18
+        },
+        {
+          "id": "choices",
+          "type": "list",
+          "name": "Choices",
+          "anchor": "stretch-top",
+          "x": 0,
+          "y": 124,
+          "w": 0,
+          "h": 120,
+          "list": {
+            "source": "choices",
+            "row": "{{i + 1}}. {{item.label}}",
+            "rowH": 30
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,182 @@
+{
+  "schema": "aige.ui-design/1",
+  "model": "hud",
+  "width": 1920,
+  "height": 1080,
+  "root": [
+    {
+      "id": "bars",
+      "type": "panel",
+      "name": "Bars",
+      "anchor": "tl",
+      "x": 20,
+      "y": 20,
+      "w": 240,
+      "h": 60,
+      "children": [
+        {
+          "id": "health",
+          "type": "bar",
+          "name": "Health",
+          "anchor": "tl",
+          "x": 0,
+          "y": 0,
+          "w": 240,
+          "h": 14,
+          "bg": "bar-back",
+          "bar": {
+            "value": "health",
+            "max": "health_max",
+            "color": "health"
+          }
+        },
+        {
+          "id": "mana",
+          "type": "bar",
+          "name": "Mana",
+          "anchor": "tl",
+          "x": 0,
+          "y": 18,
+          "w": 240,
+          "h": 14,
+          "bg": "bar-back",
+          "bar": {
+            "value": "mana",
+            "max": "mana_max",
+            "color": "mana"
+          }
+        },
+        {
+          "id": "stamina",
+          "type": "bar",
+          "name": "Stamina",
+          "anchor": "tl",
+          "x": 0,
+          "y": 36,
+          "w": 240,
+          "h": 14,
+          "bg": "bar-back",
+          "bar": {
+            "value": "stamina",
+            "max": "stamina_max",
+            "color": "stamina"
+          }
+        }
+      ]
+    },
+    {
+      "id": "quest",
+      "type": "panel",
+      "name": "Tracked quest",
+      "anchor": "tl",
+      "x": 20,
+      "y": 94,
+      "w": 360,
+      "h": 64,
+      "bg": "panel",
+      "padding": 10,
+      "children": [
+        {
+          "id": "quest-name",
+          "type": "text",
+          "name": "Quest name",
+          "anchor": "tl",
+          "x": 0,
+          "y": 0,
+          "w": 340,
+          "h": 22,
+          "text": "{{quest}}",
+          "color": "accent",
+          "size": 15
+        },
+        {
+          "id": "objective",
+          "type": "text",
+          "name": "Objective",
+          "anchor": "tl",
+          "x": 0,
+          "y": 24,
+          "w": 340,
+          "h": 22,
+          "text": "{{objective}}",
+          "size": 15
+        }
+      ]
+    },
+    {
+      "id": "clock",
+      "type": "text",
+      "name": "Clock",
+      "anchor": "tr",
+      "x": 20,
+      "y": 20,
+      "w": 200,
+      "h": 30,
+      "text": "{{clock}}",
+      "align": "right",
+      "bg": "panel",
+      "padding": 6
+    },
+    {
+      "id": "gold",
+      "type": "text",
+      "name": "Gold",
+      "anchor": "tr",
+      "x": 20,
+      "y": 56,
+      "w": 200,
+      "h": 26,
+      "text": "{{gold}} gold",
+      "align": "right"
+    },
+    {
+      "id": "prompt",
+      "type": "text",
+      "name": "Interaction prompt",
+      "anchor": "b",
+      "x": 0,
+      "y": 210,
+      "w": 600,
+      "h": 30,
+      "text": "{{prompt_key}}  {{prompt_text}}",
+      "align": "center",
+      "size": 18
+    },
+    {
+      "id": "subtitle",
+      "type": "text",
+      "name": "Subtitle",
+      "anchor": "stretch-bottom",
+      "x": 192,
+      "y": 100,
+      "w": 192,
+      "h": 40,
+      "text": "{{subtitle}}",
+      "align": "center",
+      "size": 18
+    },
+    {
+      "id": "slots",
+      "type": "text",
+      "name": "Quick slots",
+      "anchor": "b",
+      "x": 0,
+      "y": 20,
+      "w": 700,
+      "h": 30,
+      "text": "{{abilities}}",
+      "align": "center",
+      "bg": "panel"
+    },
+    {
+      "id": "notes",
+      "type": "notes",
+      "name": "Notifications",
+      "anchor": "stretch-top",
+      "x": 0,
+      "y": 24,
+      "w": 0,
+      "h": 300
+    }
+  ]
+}

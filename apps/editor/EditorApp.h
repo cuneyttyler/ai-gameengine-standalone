@@ -176,7 +176,7 @@ private:
     void EnsureStarterPrefabs();
     nlohmann::json PrefabsJson();
     // `flat`: the art is top-down; it's mapped onto the grid's diamond (5.2).
-    void CreatePrefabFromAsset(const std::string& asset, int tile, bool asTile, bool solid, const std::string& name,
+    void CreatePrefabFromAsset(const std::string& asset, int tile, bool asTile, bool solid, const std::string& name, bool ground,
                                bool flat = false);
     void SaveSelectedAsPrefab(const std::string& name);
     // This copy's overrides made the prefab's: all of them (`key` empty) or one ("Sprite.width"). Copies that

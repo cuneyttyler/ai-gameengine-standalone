@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FrameThumb from './FrameThumb.vue'
 // Generate ▸ Character: a character drawn from 4 or 8 directions by PixelLab, each
 // direction a texture in assets/textures/generated/characters/<name>/ (with a
 // .gen.json saying how it was made). The Animate tab then makes it move.
@@ -215,7 +216,7 @@ function thumb(path: string, created: string): string {
         <div v-if="entry.state === 'working'" class="muted small">Drawing…</div>
         <div v-else-if="entry.state === 'failed'" class="error small">{{ entry.errors[0] ?? 'Failed' }}</div>
         <div v-else-if="sheetOf(entry)" class="sheet">
-          <img :src="thumb(pictureOf(entry), entry.created)" alt="its sheet" class="sheet-picture" />
+          <FrameThumb :path="pictureOf(entry)" :src="thumb(pictureOf(entry), entry.created)" :size="96" class="sheet-picture" />
           <div class="muted small">{{ sheetOf(entry) }} · every direction, its idle; Animate adds actions</div>
         </div>
         <div v-else class="dirs">

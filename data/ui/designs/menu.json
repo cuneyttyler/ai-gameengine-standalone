@@ -1,0 +1,75 @@
+{
+  "schema": "aige.ui-design/1",
+  "model": "menu",
+  "width": 1920,
+  "height": 1080,
+  "root": [
+    {
+      "id": "shade",
+      "type": "panel",
+      "name": "Shade",
+      "anchor": "stretch",
+      "x": 0,
+      "y": 0,
+      "w": 0,
+      "h": 0,
+      "bg": "shade",
+      "children": [
+        {
+          "id": "title",
+          "type": "text",
+          "name": "Title",
+          "anchor": "t",
+          "x": 0,
+          "y": 160,
+          "w": 900,
+          "h": 60,
+          "text": "{{title}}",
+          "size": 44,
+          "align": "center",
+          "color": "accent"
+        },
+        {
+          "id": "subtitle",
+          "type": "text",
+          "name": "Subtitle",
+          "anchor": "t",
+          "x": 0,
+          "y": 226,
+          "w": 900,
+          "h": 30,
+          "text": "{{subtitle}}",
+          "size": 18,
+          "align": "center"
+        },
+        {
+          "id": "items",
+          "type": "list",
+          "name": "Menu",
+          "anchor": "c",
+          "x": 0,
+          "y": 60,
+          "w": 420,
+          "h": 360,
+          "list": {
+            "source": "items",
+            "row": "{{item.label}}",
+            "rowH": 44
+          }
+        },
+        {
+          "id": "footer",
+          "type": "text",
+          "name": "Footer",
+          "anchor": "b",
+          "x": 0,
+          "y": 40,
+          "w": 900,
+          "h": 26,
+          "text": "{{footer}}",
+          "align": "center"
+        }
+      ]
+    }
+  ]
+}

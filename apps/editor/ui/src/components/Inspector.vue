@@ -14,6 +14,7 @@ import InteriorEditor from './InteriorEditor.vue'
 import ActionPicker from './ActionPicker.vue'
 import RulesEditor from './RulesEditor.vue'
 import CharacterRulesEditor from './CharacterRulesEditor.vue'
+import ItemListEditor from './ItemListEditor.vue'
 import PartActiveFields from './PartActiveFields.vue'
 import { difficultyView, showTab } from '../paneltabs'
 
@@ -500,6 +501,19 @@ function numberFrom(event: Event): number {
                 :value="field.value"
                 :disabled="editorState.playing"
                 @update="setField(component.name, field, $event)"
+              />
+              <ItemListEditor
+                v-else-if="component.name === 'Action' && ['requires', 'takes', 'gives', 'accepts'].includes(field.name)"
+                :value="field.value"
+                :counts="field.name !== 'accepts'"
+                :disabled="editorState.playing"
+                @update="setField(component.name, field, $event)"
+              />
+              <ActionPicker
+                v-else-if="component.name === 'Action' && field.name === 'action'"
+                :model-value="String(field.value ?? '')"
+                :disabled="editorState.playing"
+                @update:model-value="setField(component.name, field, $event)"
               />
               <CharacterRulesEditor
                 v-else-if="component.name === 'Responses' && field.name === 'rules'"

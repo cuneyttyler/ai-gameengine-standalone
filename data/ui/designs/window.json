@@ -1,0 +1,99 @@
+{
+  "schema": "aige.ui-design/1",
+  "model": "menu",
+  "width": 1920,
+  "height": 1080,
+  "root": [
+    {
+      "id": "shade",
+      "type": "panel",
+      "name": "Shade",
+      "anchor": "stretch",
+      "x": 0,
+      "y": 0,
+      "w": 0,
+      "h": 0,
+      "bg": "shade",
+      "children": [
+        {
+          "id": "window",
+          "type": "panel",
+          "name": "Window",
+          "anchor": "c",
+          "x": 0,
+          "y": 0,
+          "w": 960,
+          "h": 640,
+          "bg": "panel",
+          "padding": 20,
+          "children": [
+            {
+              "id": "title",
+              "type": "text",
+              "name": "Title",
+              "anchor": "tl",
+              "x": 0,
+              "y": 0,
+              "w": 900,
+              "h": 40,
+              "text": "{{title}}",
+              "size": 28,
+              "color": "accent"
+            },
+            {
+              "id": "items",
+              "type": "list",
+              "name": "Lines",
+              "anchor": "tl",
+              "x": 0,
+              "y": 56,
+              "w": 440,
+              "h": 520,
+              "list": {
+                "source": "items",
+                "row": "{{item.label}}",
+                "rowH": 34
+              }
+            },
+            {
+              "id": "body",
+              "type": "text",
+              "name": "Details",
+              "anchor": "tl",
+              "x": 470,
+              "y": 56,
+              "w": 430,
+              "h": 520,
+              "text": "{{body}}",
+              "size": 15
+            },
+            {
+              "id": "close",
+              "type": "button",
+              "name": "Close",
+              "anchor": "br",
+              "x": 0,
+              "y": 0,
+              "w": 120,
+              "h": 40,
+              "text": "Close",
+              "bg": "panel-border",
+              "align": "center",
+              "states": {
+                "hover": {
+                  "bg": "accent"
+                }
+              },
+              "actions": [
+                {
+                  "do": "press",
+                  "arg": "ui_back"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

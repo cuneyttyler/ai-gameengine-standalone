@@ -21,6 +21,7 @@ add_executable(aige_tests
     component_table_test.cpp
     combat_test.cpp
     actions_test.cpp
+    ui_design_test.cpp
     slice_test.cpp
     prefab_test.cpp
     reflection_test.cpp

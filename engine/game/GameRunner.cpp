@@ -480,11 +480,14 @@ void GameRunner::EnableDocuments(DocumentUi::ImageLoader images) {
         }
     };
     docs_->onMenuContext = [this](int index) { windows_.OpenItemMenu(registry_, index); };
+    docs_->onCondition = [this](const std::string& conditions) { return session_->ConditionsHold(conditions); };
     docs_->onDialogueChoose = [this](int index) { session_->ChooseDialogue(index); };
     docs_->onAction = [this](const std::string& action) {
-        // A screen's button: "open:inventory" and "close:shop" need no script.
-        if (action.rfind("open:", 0) == 0) session_->OpenPanel(action.substr(5));
-        else if (action.rfind("close:", 0) == 0) docs_->ShowScreen(action.substr(6), false);
+        // A screen's button: open, close, an event, a key, a flag, effects, an item; the game's own: quit, save, load.
+        if (action == "quit") quit_ = true;
+        else if (action == "save") SaveTo("quick");
+        else if (action == "load") LoadFrom("quick");
+        else session_->HandleUiAction(action);
         session_->Emit({"ui_action", entt::null, entt::null, 0.0, action}); // scripts: on("ui_action", fn)
     };
     session_->SetNoticeSink([this](const std::string& channel, const std::string& text, const std::string& key, double seconds) {

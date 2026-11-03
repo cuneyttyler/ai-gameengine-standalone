@@ -5,6 +5,7 @@
 #include "assets/Project.h"
 #include "assets/SceneIO.h"
 #include "game/GameRunner.h"
+#include "ui/UiDesign.h"
 #include "gameplay/Archetypes.h"
 #include "gameplay/EngineReflection.h"
 #include "gameplay/InputMap.h"
@@ -14,6 +15,10 @@
 
 #include <filesystem>
 #include <fstream>
+
+#ifndef AIGE_SOURCE_DIR
+#define AIGE_SOURCE_DIR "."
+#endif
 
 namespace fs = std::filesystem;
 
@@ -328,4 +333,44 @@ TEST(GameUiTest, TheGamePlaysWithDocuments) {
     ASSERT_FALSE(game.Documents()->Live().empty());
     EXPECT_EQ(game.Documents()->Live().back().text, "Game saved");
     aige::ActiveSettings() = saved;
+}
+
+TEST(GameUiTest, ADesignedHudLoadsAndShowsTheGamesData) {
+    UiProject p;
+    // The engine's starting HUD design, with a slot grid and a button only shown while a flag is set.
+    std::ifstream in(std::filesystem::path(AIGE_SOURCE_DIR) / "data" / "ui" / "designs" / "hud.json");
+    ASSERT_TRUE(in);
+    nlohmann::json design = nlohmann::json::parse(in);
+    design["id"] = "hud";
+    design["root"].push_back({{"id", "bag"}, {"type", "slots"}, {"anchor", "br"}, {"x", 20}, {"y", 80}, {"w", 300}, {"h", 140}});
+    design["root"].push_back({{"id", "craft"}, {"type", "button"}, {"text", "Craft"}, {"anchor", "br"}, {"x", 20}, {"y", 20}, {"w", 120}, {"h", 40},
+                              {"actions", {{{"do", "open"}, {"arg", "crafting"}}}}, {"show", {{{"flag", "can_craft"}}}}});
+    std::filesystem::create_directories(p.root / "ui" / "screens");
+    std::ofstream(p.root / "ui" / "screens" / "hud.rml") << aige::DesignToRml(design);
+    aige::DocumentUi ui(p.root);
+    ASSERT_TRUE(ui.Ready());
+    bool canCraft = false;
+    ui.onCondition = [&](const std::string& conditions) { return conditions.find("can_craft") != std::string::npos ? canCraft : true; };
+    ui.SetViewport(1280, 720);
+    aige::HudData hud;
+    hud.health = 5;
+    hud.healthMax = 10;
+    hud.gold = 120;
+    hud.items = {{"potion", "Potion", "", 3}, {"rope", "Rope", "", 1}};
+    ui.SetHud(hud);
+    ui.Update(0.016);
+    std::vector<aige::UiQuad> quads;
+    ui.Render(quads);
+    EXPECT_FALSE(quads.empty());
+    const auto gold = ui.TextOf("n-gold");
+    ASSERT_EQ(gold.size(), 1u);
+    EXPECT_NE(gold[0].find("120"), std::string::npos);
+    EXPECT_EQ(ui.TextOf("slot").size(), 2u); // one slot an item
+    EXPECT_TRUE(ui.TextOf("n-craft").empty()); // its flag isn't set
+    canCraft = true;
+    ui.SetHud(hud);
+    ui.Update(0.016);
+    ui.Render(quads);
+    EXPECT_EQ(ui.TextOf("n-craft").size(), 1u);
+    for (const auto& problem : ui.TakeProblems()) ADD_FAILURE() << problem;
 }

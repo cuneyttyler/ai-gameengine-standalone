@@ -1,4 +1,5 @@
 #include "ui/Documents.h"
+#include "ui/UiDesign.h"
 
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/FontEngineInterface.h>
@@ -67,6 +68,10 @@ std::vector<std::string> CheckUiFile(const std::string& path, const std::string&
         const nlohmann::json json = nlohmann::json::parse(content, nullptr, false);
         if (json.is_discarded() || !json.is_object()) {
             problems.push_back(path + " isn't a JSON object");
+            return problems;
+        }
+        if (generic.rfind("ui/designs/", 0) == 0) {
+            for (auto& p : CheckDesign(json)) problems.push_back(path + ": " + p);
             return problems;
         }
         if (generic == "ui/theme.json") {
@@ -458,6 +463,10 @@ struct MenuItemModel {
     Rml::String label;
     bool enabled = true;
 };
+struct ItemModel {
+    Rml::String id, name, icon;
+    int count = 1;
+};
 struct NoteModel {
     Rml::String channel, text, icon;
     int count = 1;
@@ -490,6 +499,8 @@ struct DocumentUi::Impl {
         int highlighted = 0;
     } dialogue;
     HudData hud;
+    Rml::Vector<ItemModel> items;
+    int tick = 0; // counted each HUD update: a designed screen's conditions are asked again
     struct {
         Rml::Vector<NoteModel> toast, feed, banner, alert;
     } notes;
@@ -572,6 +583,10 @@ struct DocumentUi::Impl {
             c.Bind("items", &menu.items);
             c.Bind("highlighted", &menu.highlighted);
             c.Bind("dim", &menu.dim);
+            c.Bind("tick", &tick);
+            c.BindEventCallback("action", [this](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList& args) {
+                if (!args.empty() && owner->onAction) owner->onAction(args[0].Get<Rml::String>());
+            });
             c.BindEventCallback("choose", [this](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList& args) {
                 if (!args.empty() && owner->onMenuChoose) owner->onMenuChoose(args[0].Get<int>());
             });
@@ -588,6 +603,10 @@ struct DocumentUi::Impl {
             c.Bind("highlighted", &dialogue.highlighted);
             c.BindEventCallback("choose", [this](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList& args) {
                 if (!args.empty() && owner->onDialogueChoose) owner->onDialogueChoose(args[0].Get<int>());
+            });
+            c.Bind("tick", &tick);
+            c.BindEventCallback("action", [this](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList& args) {
+                if (!args.empty() && owner->onAction) owner->onAction(args[0].Get<Rml::String>());
             });
             dialogueModel = c.GetModelHandle();
         }
@@ -613,6 +632,23 @@ struct DocumentUi::Impl {
             c.Bind("marker_x", &hud.markerX);
             c.Bind("marker_y", &hud.markerY);
             c.Bind("abilities", &hud.abilities);
+            if (auto item = c.RegisterStruct<ItemModel>()) {
+                item.RegisterMember("id", &ItemModel::id);
+                item.RegisterMember("name", &ItemModel::name);
+                item.RegisterMember("icon", &ItemModel::icon);
+                item.RegisterMember("count", &ItemModel::count);
+            }
+            c.RegisterArray<Rml::Vector<ItemModel>>();
+            c.Bind("items", &items);
+            c.Bind("tick", &tick);
+            c.BindEventCallback("action", [this](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList& args) {
+                if (!args.empty() && owner->onAction) owner->onAction(args[0].Get<Rml::String>());
+            });
+            // A designed element's conditions: "tick | holds('<hex>')", asked again each tick.
+            c.RegisterTransformFunc("holds", [this](const Rml::VariantList& args) -> Rml::Variant {
+                if (args.size() < 2 || !owner->onCondition) return Rml::Variant(true);
+                return Rml::Variant(owner->onCondition(HexDecode(args[1].Get<Rml::String>())));
+            });
             hudModel = c.GetModelHandle();
         }
         if (auto c = context->CreateDataModel("ui")) {
@@ -803,7 +839,11 @@ void DocumentUi::SetDialogue(const std::optional<DialogueView>& view) {
 void DocumentUi::SetHud(const HudData& hud) {
     if (!impl_->context) return;
     impl_->hud = hud;
+    impl_->items.clear();
+    for (const auto& i : hud.items) impl_->items.push_back({i.id, i.name, i.icon, i.count});
+    ++impl_->tick;
     impl_->hudModel.DirtyAllVariables();
+    impl_->menuModel.DirtyVariable("tick");
     impl_->Show(impl_->DocumentFor("hud"), hud.visible);
 }
 
@@ -869,7 +909,7 @@ std::vector<std::string> DocumentUi::TextOf(const std::string& className) const 
         Rml::ElementList found;
         doc->GetElementsByClassName(found, className);
         for (Rml::Element* e : found) {
-            if (!e->HasAttribute("data-for")) out.push_back(e->GetInnerRML());
+            if (!e->HasAttribute("data-for") && e->IsVisible(true)) out.push_back(e->GetInnerRML()); // what's shown
         }
     }
     return out;

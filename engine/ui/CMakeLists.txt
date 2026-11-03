@@ -22,6 +22,8 @@ add_library(aige_ui STATIC
     GameUi.cpp
     Documents.h
     Documents.cpp
+    UiDesign.h
+    UiDesign.cpp
 )
 target_include_directories(aige_ui PUBLIC ${CMAKE_SOURCE_DIR}/engine)
 target_link_libraries(aige_ui PUBLIC aige_renderer2d nlohmann_json::nlohmann_json PRIVATE RmlUi::Core)

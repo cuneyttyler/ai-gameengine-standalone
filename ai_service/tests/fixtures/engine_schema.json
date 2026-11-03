@@ -1670,6 +1670,11 @@
           "type": "bool"
         },
         {
+          "description": "trigger input: what the player is shown near it (Plant seeds), with its action's key; empty: Use.",
+          "name": "prompt",
+          "type": "string"
+        },
+        {
           "description": "Items, one of which the player must have in hand: key, lockpick. Other users just carry one.",
           "name": "accepts",
           "type": "string"
@@ -3263,6 +3268,11 @@
           "min": 0.0,
           "name": "a",
           "type": "float"
+        },
+        {
+          "description": "Lies on the ground as it's drawn (a field, a rug, a path piece): its bottom edge on its cell's front corner, drawn under what stands.",
+          "name": "ground",
+          "type": "bool"
         },
         {
           "description": "Lies flat on the ground: for art drawn top-down. The image is mapped onto the cell's diamond (width x height) instead of standing upright.",

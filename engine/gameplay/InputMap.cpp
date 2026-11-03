@@ -245,6 +245,11 @@ void InputState::Update(const InputMap& map, const KeyQueryFn& keys, const AxisQ
             else if (!toggled_.contains(a)) toggled_[a] = false;
         }
     }
+    for (const auto& name : pressedByUi_) {
+        now_[name] = 1.0f;
+        before_.erase(name);
+    }
+    pressedByUi_.clear();
 }
 
 std::string ActionGlyph(const InputMap& map, const std::string& action, bool pad) {

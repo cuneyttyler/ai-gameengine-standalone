@@ -301,6 +301,7 @@ struct Action {
     std::string doEnd;             // "end": JSON, as "do": run when it's over
     std::string doInterrupted;     // "interrupted": JSON, as "do": run if it's cut short (its user hit or gone, a cutscene)
     bool refund = true;            // cut short: what it took is given back
+    std::string prompt;            // trigger input: shown near it ("Plant seeds"); empty: "Use"
     std::string accepts;           // items one of which the player must have in hand ("key, lockpick"); others: carry
     std::string station;           // a crafting station ("stove"): using it opens the Crafting list, its recipes too
     bool once = false;

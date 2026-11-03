@@ -267,6 +267,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("end", &Action::doEnd, "Effects, as do's: run when it's over.")
         .Field("interrupted", &Action::doInterrupted, "Effects, as do's: run if it's cut short (its user hit or gone, a cutscene).")
         .Field("refund", &Action::refund, "Cut short: what it took is given back.")
+        .Field("prompt", &Action::prompt, "trigger input: what the player is shown near it (Plant seeds), with its action's key; empty: Use.")
         .Field("accepts", &Action::accepts, "Items, one of which the player must have in hand: key, lockpick. Other users just carry one.")
         .Field("station", &Action::station, "A crafting station (stove): using it opens the Crafting list with this station's recipes.")
         .Field("once", &Action::once, "Works only once.")
@@ -604,6 +605,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Field("g", &Sprite::g, "Green tint (0-1).").Range(0, 1)
         .Field("b", &Sprite::b, "Blue tint (0-1).").Range(0, 1)
         .Field("a", &Sprite::a, "Opacity (0-1).").Range(0, 1)
+        .Field("ground", &Sprite::ground, "Lies on the ground as it's drawn (a field, a rug, a path piece): its bottom edge on its cell's front corner, drawn under what stands.")
         .Field("flat", &Sprite::flat,
                "Lies flat on the ground: for art drawn top-down. The image is mapped onto the cell's diamond "
                "(width x height) instead of standing upright.")

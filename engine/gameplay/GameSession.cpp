@@ -9,6 +9,7 @@
 #include "gameplay/Encounters.h"
 #include "gameplay/Interact.h"
 #include "gameplay/Crafting.h"
+#include "ui/UiDesign.h"
 #include "gameplay/Interiors.h"
 #include "gameplay/Items.h"
 #include "gameplay/TileLayer.h"
@@ -237,6 +238,13 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
             // where it is.
             screen.x = pose.x;
             screen.y = pose.y;
+            screen.depth = kFlatLayerDepth + static_cast<float>(std::clamp(sprite->order, -9, 9)) * 5000.0f + pose.depth;
+            continue;
+        }
+        if (sprite && sprite->ground) {
+            // Lies on the ground as drawn (a field): its bottom edge on its cell's front corner, under what stands.
+            screen.x = pose.x;
+            screen.y = pose.y + iso.tileHeight * 0.5f - sprite->height * 0.5f - sprite->lift;
             screen.depth = kFlatLayerDepth + static_cast<float>(std::clamp(sprite->order, -9, 9)) * 5000.0f + pose.depth;
             continue;
         }
@@ -1390,7 +1398,15 @@ HudData GameSession::MakeHud(float viewportWidth, float viewportHeight) {
             hud.xp = progression->experience;
             hud.xpNext = ExperienceForLevel(progression->level);
         }
-        if (const auto* inventory = registry_.try_get<Inventory>(*player)) hud.gold = inventory->gold;
+        if (const auto* inventory = registry_.try_get<Inventory>(*player)) {
+            hud.gold = inventory->gold;
+            for (const auto& stack : ParseItems(inventory->items)) {
+                const Record* record = ActiveRecords().Find("item", stack.item);
+                std::string icon = record ? record->resolved.value("icon", std::string()) : std::string();
+                if (!icon.empty() && icon[0] != '/') icon = "/" + icon;
+                hud.items.push_back({stack.item, ItemName(stack.item), icon, stack.count});
+            }
+        }
         // The quick slots with their cooldowns (19).
         if (const auto* abilities = registry_.try_get<Abilities>(*player)) {
             int n = 1;
@@ -1445,10 +1461,29 @@ HudData GameSession::MakeHud(float viewportWidth, float viewportHeight) {
             hud.promptText = InteractPrompt(registry_, target->entity);
         }
         if (hud.promptText.empty()) hud.promptText = doorPrompt_; // a door opened by use (docs/assets/animations.md §4.2)
-        // The key or button the interact action is bound to, for the device in use (17.6).
+        // A Reaction pressed for, in reach and ready (not used up, not cooling down, its conditions holding): its
+        // prompt, with its own action's key.
+        std::string promptAction = "interact";
+        if (hud.promptText.empty()) {
+            if (const auto player = FindPlayer(registry_)) {
+                const auto* me = registry_.try_get<WorldTransform2D>(*player);
+                float nearest = 1e9f;
+                for (auto [entity, action, world] : registry_.view<Action, WorldTransform2D>().each()) {
+                    if (!me || action.trigger != "input") continue;
+                    const float d = std::hypot(world.x - me->x, world.y - me->y);
+                    if (d > action.range || d >= nearest) continue;
+                    if (const auto* state = registry_.try_get<ActionState>(entity); state && ((action.once && state->done) || state->cooling > 0.0f)) continue;
+                    if (!ConditionsHold(action.conditions)) continue;
+                    nearest = d;
+                    hud.promptText = action.prompt.empty() ? std::string("Use") : action.prompt;
+                    promptAction = action.action;
+                }
+            }
+        }
+        // The key or button the action is bound to, for the device in use (17.6).
         if (!hud.promptText.empty()) {
-            hud.promptKey = ActionGlyph(ActiveInputMap(), "interact", input_.UsingPad());
-            if (hud.promptKey.empty()) hud.promptKey = ActionGlyph(ActiveInputMap(), "interact", !input_.UsingPad());
+            hud.promptKey = ActionGlyph(ActiveInputMap(), promptAction, input_.UsingPad());
+            if (hud.promptKey.empty()) hud.promptKey = ActionGlyph(ActiveInputMap(), promptAction, !input_.UsingPad());
         }
     }
     return hud;
@@ -2750,6 +2785,28 @@ void GameSession::RunResponses(const ScriptEvent& event) {
             if (!registry_.valid(entity) || !registry_.all_of<Responses>(entity)) break;
         }
     }
+}
+
+bool GameSession::HandleUiAction(const std::string& action) {
+    // "what:arg", or "what~<hex>" for an argument quotes can't carry (effects, a name with spaces).
+    std::string what = action, arg;
+    if (const size_t tilde = action.find('~'); tilde != std::string::npos) what = action.substr(0, tilde), arg = HexDecode(action.substr(tilde + 1));
+    else if (const size_t colon = action.find(':'); colon != std::string::npos) what = action.substr(0, colon), arg = action.substr(colon + 1);
+    const auto player = FindPlayer(registry_);
+    if (what == "open") return OpenPanel(arg);
+    if (what == "close") return screenHook_ && screenHook_(arg, 0);
+    if (what == "event") Emit({arg, Entity{entt::null}, player ? *player : Entity{entt::null}, 0.0, "ui"});
+    else if (what == "press") input_.Press(arg);
+    else if (what == "flag") story_.SetFlag(arg, true);
+    else if (what == "clear") story_.SetFlag(arg, false);
+    else if (what == "effects") RunEffects(arg);
+    else if (what == "use" && player) {
+        // A slot clicked: used or worn; one with no use of its own goes in hand.
+        if (UseItem(registry_, *player, arg).empty()) Emit({"item_used", Entity{entt::null}, *player, 0.0, arg});
+        else if (Equip(registry_, *player, arg).empty()) Emit({"item_equipped", Entity{entt::null}, *player, 0.0, arg});
+        else HoldItem(arg);
+    } else return false;
+    return true;
 }
 
 bool GameSession::OpenPanel(const std::string& id) {

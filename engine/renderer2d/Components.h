@@ -40,6 +40,9 @@ struct Sprite {
     // around the position (an isometric cell when they're the tile size)
     // instead of standing upright.
     bool flat = false;
+    // Lies on the ground as it's drawn (a field, a rug, a path piece painted in perspective): not stretched over a cell
+    // as a flat thing is, its bottom edge on its cell's front corner, and drawn under what stands, among flat things.
+    bool ground = false;
     // Lit by itself (windows at night, glowing runes): 2D lighting leaves it alone (18.6).
     bool emissive = false;
     // A flat thing's place among the ground's pieces (-9..9, higher on top: a road over a grass patch, a rug over the

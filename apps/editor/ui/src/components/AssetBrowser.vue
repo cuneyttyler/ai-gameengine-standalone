@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FrameThumb from './FrameThumb.vue'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { armPrefab, editorState } from '../editorState'
 import PrefabThumb from './PrefabThumb.vue'
@@ -766,7 +767,7 @@ onMounted(() => {
             @contextmenu.prevent="assetMenu(asset, $event)"
           >
             <span class="thumb">
-              <img v-if="asset.type !== 'audio' && !asset.error" :src="urlOf(asset)" alt="" draggable="false" />
+              <FrameThumb v-if="asset.type !== 'audio' && !asset.error" :path="asset.path" :src="urlOf(asset)" />
               <span v-else class="glyph">{{ asset.type === 'audio' ? '♪' : '!' }}</span>
             </span>
             <span class="name">{{ asset.name }}</span>

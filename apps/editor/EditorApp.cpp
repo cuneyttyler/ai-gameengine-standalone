@@ -1,5 +1,6 @@
 #include "game/Accessibility.h"
 #include "game/Templates.h"
+#include "ui/UiDesign.h"
 #include "gameplay/Behaviour.h"
 #include "planner/GamePlan.h"
 #include "story/StoryGraph.h"
@@ -1679,7 +1680,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         }
     } else if (type == "prefab:createFromAsset") {
         CreatePrefabFromAsset(message.value("asset", ""), message.value("tile", 0), message.value("asTile", false),
-                              message.value("solid", false), message.value("name", ""), message.value("flat", false));
+                              message.value("solid", false), message.value("name", ""), message.value("ground", false), message.value("flat", false));
     } else if (type == "edit:rotate") {
         Rotate(message.value("direction", 1) < 0 ? -1 : 1);
     } else if (type == "prefab:setFlat") {
@@ -3274,7 +3275,7 @@ void EditorApp::MakeAssetFromCell(int gx, int gy) {
     }
     RefreshAssets();
     // A tile prefab of it, lying flat on the grid (the ground's pictures are top-down), solid if the cell was.
-    CreatePrefabFromAsset(rel, 0, true, def->solid, name, true);
+    CreatePrefabFromAsset(rel, 0, true, def->solid, name, false, true);
     post_({{"type", "notify"}, {"text", "Made " + name + " (a tile prefab): paint with it from the Prefabs panel"}});
 }
 
@@ -3810,6 +3811,17 @@ void EditorApp::StartPlay() {
             if (const std::string message = playWindows_.TakeMessage(); !message.empty()) session_.Toast(message);
         };
         UiDocs().onMenuContext = [this](int index) { playWindows_.OpenItemMenu(registry_, index); };
+        UiDocs().onCondition = [this](const std::string& conditions) { return session_.ConditionsHold(conditions); };
+        UiDocs().onAction = [this](const std::string& action) {
+            if (action == "save") SaveGame();
+            else session_.HandleUiAction(action);
+            session_.Emit({"ui_action", entt::null, entt::null, 0.0, action});
+        };
+        session_.SetScreenHook([this](const std::string& id, int open) {
+            if (open < 0) return UiDocs().IsShown(id);
+            UiDocs().ShowScreen(id, open == 1);
+            return true;
+        });
         session_.SetNoticeSink([this](const std::string& channel, const std::string& text, const std::string& key, double seconds) {
             UiDocs().Notify({channel, text, "", seconds, 1, key});
         });
@@ -4076,7 +4088,71 @@ bool EditorApp::HandleUiMessage(const std::string& type, const nlohmann::json& m
         UiDocs().Reload();
         post_(UiJson());
     };
-    if (type == "ui:request") {
+    if (type == "ui:design:load") {
+        // A screen in the designer: the project's design; else one from the engine's starting points (the HUD, a
+        // window, a menu, the dialogue); else a hand-written screen of the project's, kept whole; else empty.
+        const std::string id = message.value("id", "");
+        nlohmann::json design;
+        std::string from = "project";
+        auto read = [](const fs::path& file) {
+            std::ifstream in(file, std::ios::binary);
+            return in ? nlohmann::json::parse(in, nullptr, false) : nlohmann::json();
+        };
+        design = read(root / "ui" / "designs" / (id + ".json"));
+        if (!design.is_object()) {
+            std::error_code ec;
+            if (fs::exists(root / "ui" / "screens" / (id + ".rml"), ec)) {
+                std::ifstream in(root / "ui" / "screens" / (id + ".rml"), std::ios::binary);
+                std::stringstream text;
+                text << in.rdbuf();
+                design = DesignFromRml(id, text.str());
+                from = "imported";
+            } else {
+                const std::string start = id == "hud" || id == "dialogue" ? id
+                                          : id == "inventory" || id == "shop" || id == "journal" || id == "crafting" || id == "spellbook" ? "window"
+                                          : id == "title" || id == "pause" || id == "settings" || id == "load" || id == "save" || id == "game-over" ||
+                                                    id == "victory" || id == "credits" || id == "difficulty" ? "menu" : "";
+                design = start.empty() ? nlohmann::json() : read(EngineUiDir() / "designs" / (start + ".json"));
+                from = design.is_object() ? "template" : "new";
+                if (!design.is_object()) {
+                    design = {{"schema", "aige.ui-design/1"}, {"model", "hud"}, {"width", 1920}, {"height", 1080}, {"root", nlohmann::json::array()}};
+                }
+            }
+            design["id"] = id;
+        }
+        post_({{"type", "ui:design"}, {"id", id}, {"design", design}, {"from", from}, {"rml", DesignToRml(design)},
+               {"problems", CheckDesign(design)}});
+    } else if (type == "ui:design:save") {
+        // Saved: the design, and the screen written from it (the game runs that); a screen the manifest doesn't list
+        // shows by its id.
+        const std::string id = message.value("id", "");
+        nlohmann::json design = message.value("design", nlohmann::json::object());
+        design["id"] = id;
+        design["schema"] = "aige.ui-design/1";
+        std::optional<std::string> error;
+        if (id.empty() || id.find_first_of("/\\.") != std::string::npos) error = "a screen needs a plain id";
+        if (!error) error = write("ui/designs/" + id + ".json", design.dump(2) + "\n");
+        if (!error) error = write("ui/screens/" + id + ".rml", DesignToRml(design));
+        if (error) post_({{"type", "notify"}, {"text", *error}});
+        post_({{"type", "ui:designSaved"}, {"id", id}, {"rml", DesignToRml(design)}, {"problems", CheckDesign(design)}, {"error", error ? *error : ""}});
+        reload();
+    } else if (type == "ui:design:image") {
+        // A picture for an element: chosen on the computer, copied into assets/ui/, with its size (for nine pieces).
+        const auto file = ShowOpenFileDialog(mainWindow_, L"A picture for the UI", L"Images", L"*.png;*.jpg;*.jpeg");
+        if (!file) return true;
+        std::error_code ec;
+        fs::create_directories(root / "assets" / "ui", ec);
+        const std::string rel = "assets/ui/" + WideToUtf8(file->filename().wstring());
+        fs::copy_file(*file, root / rel, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            post_({{"type", "notify"}, {"text", "Couldn't copy the picture: " + ec.message()}});
+            return true;
+        }
+        const auto image = DecodeImage(root / rel);
+        RefreshAssets();
+        post_({{"type", "ui:designImage"}, {"path", rel}, {"for", message.value("for", "")}, {"slot", message.value("slot", "")},
+               {"w", image ? image->width : 0}, {"h", image ? image->height : 0}});
+    } else if (type == "ui:request") {
         post_(UiJson());
     } else if (type == "ui:source") {
         // The document a screen uses: the project's copy, else the engine's.
@@ -8906,7 +8982,11 @@ std::vector<std::string> EditorApp::FilesWrittenBy(const nlohmann::json& op) con
     else if (kind == "write_quest") out.push_back("quests/" + op.value("id", "") + ".json");
     else if (kind == "write_schedule") out.push_back("schedules/" + op.value("id", "") + ".json");
     else if (kind == "write_cutscene") out.push_back("cutscenes/" + op.value("id", "") + ".json");
-    else if (kind == "write_ui" || kind == "write_anim") out.push_back(op.value("path", ""));
+    else if (kind == "write_ui" || kind == "write_anim") {
+        out.push_back(op.value("path", ""));
+        // A design writes its screen too.
+        if (const std::string p = op.value("path", ""); p.rfind("ui/designs/", 0) == 0) out.push_back("ui/screens/" + fs::path(p).stem().string() + ".rml");
+    }
     else if (kind == "write_record" || kind == "delete_record") out.push_back("records/" + op.value("type", "") + "/" + op.value("id", "") + ".json");
     else if (kind == "command") {
         if (name == "script.write") out.push_back(args.value("path", ""));
@@ -9434,7 +9514,7 @@ nlohmann::json EditorApp::PrefabsJson() {
 }
 
 void EditorApp::CreatePrefabFromAsset(const std::string& asset, int tile, bool asTile, bool solid,
-                                      const std::string& requestedName, bool flat) {
+                                      const std::string& requestedName, bool ground, bool flat) {
     auto style = TilesetStyle(asset, tile, solid);
     if (!style) {
         post_({{"type", "notify"}, {"text", "Pick a texture (and tile) first"}});
@@ -9475,6 +9555,7 @@ void EditorApp::CreatePrefabFromAsset(const std::string& asset, int tile, bool a
         sprite.u1 = style->u1;
         sprite.v1 = style->v1;
         sprite.flat = style->flat;
+        sprite.ground = ground && !style->flat;
         scratch.emplace<Name>(entity, name);
         if (solid) {
             scratch.emplace<Obstacle>(entity);
@@ -10047,6 +10128,18 @@ nlohmann::json EditorApp::CatalogJson() {
 
 nlohmann::json EditorApp::AssetsJson() {
     nlohmann::json list = nlohmann::json::array();
+    // An animation sheet's picture: its first frame (idle, facing the camera), so a thumbnail shows one pose, not all.
+    std::map<std::string, nlohmann::json> firstFrame;
+    for (const AnimSheet& sheet : session_.Animations().Sheets()) {
+        if (sheet.texture.empty() || firstFrame.contains(sheet.texture)) continue;
+        const AnimClip* clip = sheet.Clip("idle") ? sheet.Clip("idle") : sheet.clips.empty() ? nullptr : &sheet.clips.begin()->second;
+        bool flip = false;
+        const auto* frames = clip ? clip->FramesFor("s", &flip) : nullptr;
+        if (frames && !frames->empty()) {
+            const AnimFrame& f = frames->front();
+            firstFrame[sheet.texture] = {f.x, f.y, f.w, f.h};
+        }
+    }
     for (const auto& asset : assets_.Assets()) {
         nlohmann::json entry = {
             {"path", asset.path},
@@ -10068,6 +10161,7 @@ nlohmann::json EditorApp::AssetsJson() {
         } else {
             entry["width"] = asset.width;
             entry["height"] = asset.height;
+            if (const auto it = firstFrame.find(asset.path); it != firstFrame.end()) entry["frame"] = it->second;
             if (asset.type == AssetType::Tileset) {
                 entry["tileWidth"] = asset.tileWidth;
                 entry["tileHeight"] = asset.tileHeight;

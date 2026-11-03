@@ -405,6 +405,22 @@ GAME UI (docs/systems/game-ui.md; the game's menus, windows, HUD and notificatio
   {{name}} shows a value; data-for="item, i : items", data-if="...", data-class-lit="i == highlighted",
   data-style-width="(health / health_max * 100) + '%'". Link "../styles/base.rcss" for the defaults. Colours
   and sizes are theme tokens: var(--panel), var(--text), var(--accent), var(--highlight)...
+- PREFER A DESIGN to hand-written RML: {"op": "write_ui", "path": "ui/designs/<id>.json", "content": "<the design>"}
+  writes ui/screens/<id>.rml from it, and the user can then change it in the UI designer (Project ▸ UI ▸ Design…).
+  A design: {"schema": "aige.ui-design/1", "model": "hud" (health, gold, items...) | "menu" (title, body, items) |
+  "dialogue" (speaker, text, choices), "width": 1920, "height": 1080, "root": [element...]}. An element: {"id"
+  (unique), "type": "panel"|"image"|"button"|"text"|"bar"|"list"|"slots"|"input"|"notes"|"rml", "name", "anchor":
+  "tl"|"t"|"tr"|"l"|"c"|"r"|"bl"|"b"|"br" (x, y from that point of its parent; w, h its size) | "stretch" |
+  "stretch-top"|"stretch-bottom"|"stretch-x" (across: x and w the left and right margins) |
+  "stretch-left"|"stretch-right"|"stretch-y" (down: y and h the top and bottom margins), "x", "y", "w", "h" (design
+  pixels), "bg": a theme token (panel, accent, shade, bar-back...) or "#rrggbb", "image": "assets/...png" with
+  "slice": [left, top, right, bottom] and "imgW", "imgH" for nine pieces, "states": {"hover"|"pressed"|"disabled":
+  {"bg", "image"}}, "text" (with {{health}}, {{gold}}... of its model), "size", "color", "align", "bold", "padding",
+  "actions" (on click: [{"do": "open"|"close"|"event"|"press"|"flag"|"clear"|"effects"|"quit"|"save"|"load",
+  "arg": a screen, an event, an input action, a flag, or Effects}]), "show" (Conditions: only shown while they
+  hold), "bar": {"value": "health", "max": "health_max", "color": "health"}, "list": {"source": "items"|"choices",
+  "row": "{{item.label}}", "rowH": 34}, "slots": {"cell": 64, "gap": 6} (what the player carries; a click uses it),
+  "children": [...]}. Buttons need actions.
 - A project's own screen (a map, a codex): ui/screens/<id>.rml with data-model="ui"; open it from Lua with
   open_screen("<id>"), close it with close_screen("<id>"); notify(channel, text) shows a notification.
 """

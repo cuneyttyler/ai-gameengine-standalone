@@ -25,6 +25,12 @@ namespace aige {
 // data/ui, so a project customises a screen by copying it.
 
 // What the HUD shows (bound as the "hud" model).
+// One thing the player carries, for a screen's slot grid (the UI designer's "slots").
+struct HudItem {
+    std::string id, name, icon; // icon: the picture's path from the project's root ("/assets/...")
+    int count = 1;
+};
+
 struct HudData {
     bool visible = true;
     float health = 0, healthMax = 0, mana = 0, manaMax = 0, stamina = 0, staminaMax = 0;
@@ -37,6 +43,7 @@ struct HudData {
     std::string subtitle;         // a bark or a cutscene line
     std::string marker;           // the objective marker's distance ("12 m"; empty: hidden)
     float markerX = 0, markerY = 0; // its position on screen
+    std::vector<HudItem> items; // what the player carries
     std::string abilities; // the quick slots: "1 Firebolt   2 Heal (3s)" (19)
 };
 
@@ -100,6 +107,8 @@ public:
     void ShowScreen(const std::string& id, bool visible);
     bool IsShown(const std::string& id) const;
     std::function<void(const std::string& action)> onAction;
+    // A designed screen's "only show if" (Conditions as dialogue's, JSON): asked as it's drawn. None: it shows.
+    std::function<bool(const std::string& conditions)> onCondition;
 
     // Mouse input in viewport pixels; true when the UI took it.
     bool MouseMove(int x, int y);
