@@ -244,7 +244,7 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
         if (sprite && sprite->ground) {
             // Lies on the ground as drawn (a field): its bottom edge on its cell's front corner, under what stands.
             screen.x = pose.x;
-            screen.y = pose.y + iso.tileHeight * 0.5f - sprite->height * 0.5f - sprite->lift;
+            screen.y = pose.y + iso.tileHeight * 0.5f - sprite->height * 0.5f; // (its lift is applied when drawn)
             screen.depth = kFlatLayerDepth + static_cast<float>(std::clamp(sprite->order, -9, 9)) * 5000.0f + pose.depth;
             continue;
         }
