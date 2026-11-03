@@ -56,6 +56,10 @@ const style = computed<Record<string, string>>(() => {
 const inner = computed(() => ({ w: box.value.width - (props.node.padding ?? 0) * 2, h: box.value.height - (props.node.padding ?? 0) * 2 }))
 const rows = computed(() => Math.max(1, Math.min(6, Math.floor(box.value.height / (props.node.list?.rowH ?? 34)))))
 const cells = computed(() => Math.max(1, Math.min(24, Math.floor(box.value.width / ((props.node.slots?.cell ?? 64) + (props.node.slots?.gap ?? 6))) * Math.floor(box.value.height / ((props.node.slots?.cell ?? 64) + (props.node.slots?.gap ?? 6))))))
+// A list's sample row: its row text with sample data, numbered.
+function rowText(i: number): string {
+  return sampleText(props.node.list?.row ?? '{{item.label}}').replace('Potion', `Line ${i}`)
+}
 </script>
 
 <template>
@@ -70,7 +74,7 @@ const cells = computed(() => Math.max(1, Math.min(24, Math.floor(box.value.width
     <template v-if="node.type === 'text' || node.type === 'button'">{{ sampleText(node.text) }}</template>
     <div v-else-if="node.type === 'bar'" class="fill" :style="{ width: '70%', background: colour(node.bar?.color) ?? '#d64545' }"></div>
     <template v-else-if="node.type === 'list'">
-      <div v-for="i in rows" :key="i" class="row" :style="{ height: `${(node.list?.rowH ?? 34) * scale}px` }">{{ sampleText(node.list?.row ?? '{{item.label}}').replace('Potion', `Line ${i}`) }}</div>
+      <div v-for="i in rows" :key="i" class="row" :style="{ height: `${(node.list?.rowH ?? 34) * scale}px` }">{{ rowText(i) }}</div>
     </template>
     <template v-else-if="node.type === 'slots'">
       <div v-for="i in cells" :key="i" class="slot"

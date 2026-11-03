@@ -7,7 +7,7 @@ const props = defineProps<{ path: string; src: string; size?: number }>()
 onMounted(requestAssetFrames)
 const box = computed(() => props.size ?? 56)
 const sheet = computed(() => sheetFrames.value[props.path])
-const style = computed<Record<string, string>>(() => {
+const style = computed((): Record<string, string> => {
   const s = sheet.value
   if (!s) return {}
   const [x, y, w, h] = s.frame

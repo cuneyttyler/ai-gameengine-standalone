@@ -259,7 +259,7 @@ function set<K extends keyof UiNode>(key: K, value: UiNode[K]): void {
 function setIn(group: 'bar' | 'list' | 'slots' | 'input', key: string, value: unknown): void {
   if (!selected.value) return
   remember()
-  const g = ((selected.value as Record<string, unknown>)[group] ??= {}) as Record<string, unknown>
+  const g = ((selected.value as unknown as Record<string, unknown>)[group] ??= {}) as Record<string, unknown>
   g[key] = value
 }
 function setState(state: 'hover' | 'pressed' | 'disabled', key: 'bg' | 'color', value: string): void {
