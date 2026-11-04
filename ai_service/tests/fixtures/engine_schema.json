@@ -150,6 +150,34 @@
       ]
     },
     {
+      "description": "Makes a character prefab (an NPC, or the player) from a character sheet (assets/characters/<name>/<name>.character.anim.json, as \"generate\" makes them): its picture facing the camera, animated by its clips (idle, walk...), about two cells tall. Use this, not prefab.create, for anyone who walks or talks. Saved as prefabs/<name>.prefab; then place copies with scene.spawn.",
+      "name": "prefab.createCharacter",
+      "params": [
+        {
+          "description": "The character sheet, e.g. assets/characters/nella-voss/nella-voss.character.anim.json (or \"character:<name>\" for one generated in this answer).",
+          "name": "sheet",
+          "type": "string"
+        },
+        {
+          "description": "Prefab path under prefabs/, without .prefab: letters, digits, - _ and /.",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "true: the player; left out: an NPC (the usual).",
+          "name": "player",
+          "optional": true,
+          "type": "bool"
+        },
+        {
+          "description": "Their name (Name), e.g. Nella Voss; left out = from the sheet.",
+          "name": "displayName",
+          "optional": true,
+          "type": "string"
+        }
+      ]
+    },
+    {
       "description": "Paints a rectangle of cells with a terrain (e.g. dirt for a village square) and lets the engine pick every tile, edges and corners included, from the analyzed ground tiles. Use the terrain names in the assets' \"edges\".",
       "name": "terrain.paintRect",
       "params": [
@@ -1530,6 +1558,35 @@
       "dependencies": [
         "WorldTransform2D"
       ],
+      "description": "Text always over it (a name, \"Shop open\"), shown by the HUD's Labels element (UI designer).",
+      "fields": [
+        {
+          "description": "What it says.",
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "description": "Shown only while the player is this close, in cells (0: always).",
+          "max": 100.0,
+          "min": 0.0,
+          "name": "within",
+          "type": "float"
+        },
+        {
+          "description": "Raised this much more above its head, in pixels.",
+          "max": 500.0,
+          "min": -500.0,
+          "name": "height",
+          "type": "float"
+        }
+      ],
+      "name": "Label",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
       "description": "Does something when its trigger happens, to whoever uses it: the player pressing its action near it, a character (Behaviour step act), a script (act), an event or a timer. A field farmed, a crop grown, a crop harvested (docs/systems/actions.md).",
       "fields": [
         {
@@ -2351,7 +2408,7 @@
     },
     {
       "dependencies": [],
-      "description": "One-line remarks (14.5); alternatives separated by |.",
+      "description": "What it says by itself (14.5), over its head (Project Settings ▸ UI ▸ speech): lines for each moment, alternatives separated by |.",
       "fields": [
         {
           "description": "When it notices the player as an enemy.",
@@ -4182,7 +4239,7 @@
       "name": "package"
     },
     {
-      "description": "A procedure (14.1): a behaviour tree a package template can be, written by hand. Nodes: sequence, selector, random, parallel, loop, condition, cooldown, invert; move-to, wander, wait, idle, face, bark, use-object, talk-to-player, follow, flee, patrol, ambush, escort, set, emit, script.",
+      "description": "A procedure (14.1): a behaviour tree a package template can be, written by hand. Nodes: sequence, selector, random, parallel, loop, condition, cooldown, invert; move-to, wander, wait, idle, face, say, use-object, talk-to-player, follow, flee, patrol, ambush, escort, set, emit, script.",
       "fields": [
         {
           "description": "What it does.",
@@ -5278,7 +5335,8 @@
           "options": [
             "",
             "mistral",
-            "claude"
+            "claude",
+            "openrouter"
           ],
           "type": "string"
         },
@@ -5516,6 +5574,38 @@
         {
           "description": "Menus, windows and the HUD as themed documents (ui/); off: the built-in overlays.",
           "name": "documents",
+          "type": "bool"
+        },
+        {
+          "description": "What people say (Speech, say, a rule's says): in a bubble over them, as the subtitle line, or both. The bubble's look is the HUD's Bubbles element (UI designer).",
+          "name": "speech",
+          "options": [
+            "bubble",
+            "subtitle",
+            "both"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "How long a line stays, plus a second for every 25 letters.",
+          "max": 20.0,
+          "min": 0.5,
+          "name": "speechSeconds",
+          "type": "float"
+        },
+        {
+          "description": "Hits and heals rise over who took them (the HUD's Numbers element).",
+          "name": "damageNumbers",
+          "type": "bool"
+        },
+        {
+          "description": "Items gained rise over the player: +3 Wheat.",
+          "name": "itemNumbers",
+          "type": "bool"
+        },
+        {
+          "description": "Labels show over their things (the HUD's Labels element).",
+          "name": "labels",
           "type": "bool"
         }
       ],

@@ -12,6 +12,7 @@
 #include "gameplay/Components.h"
 #include "gameplay/EngineReflection.h"
 #include "gameplay/Settings.h"
+#include "physics2d/Components.h"
 #include "scripting/Components.h"
 
 #include <filesystem>
