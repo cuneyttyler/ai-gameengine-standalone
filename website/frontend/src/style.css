@@ -1,0 +1,121 @@
+/* AIGE website: the brand's navy and blue-to-cyan (docs/brand), square corners like the editor. */
+:root {
+  --bg: #0b1020;
+  --bg-2: #0f1630;
+  --panel: #121a36;
+  --panel-2: #172144;
+  --line: #24305a;
+  --line-2: #33427a;
+  --text: #e6eeff;
+  --muted: #9aa8cc;
+  --dim: #6c7aa3;
+  --blue: #2f7cf6;
+  --deep: #1d4ed8;
+  --cyan: #22d3ee;
+  --ice: #a5dcff;
+  --pale: #cfe3ff;
+  --gold: #f5c76b;
+  --grad: linear-gradient(135deg, var(--blue), var(--cyan));
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --max: 1200px;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+img { max-width: 100%; display: block; }
+a { color: var(--ice); text-decoration: none; }
+a:hover { color: #fff; }
+h1, h2, h3, h4 { margin: 0; line-height: 1.15; letter-spacing: -0.02em; }
+p { margin: 0; }
+
+.wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+@media (max-width: 640px) { .wrap { padding: 0 16px; } }
+
+section { padding: 112px 0; position: relative; }
+@media (max-width: 760px) { section { padding: 72px 0; } }
+section.alt { background: var(--bg-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+
+.eyebrow {
+  font: 500 12px/1 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.eyebrow::before { content: ''; width: 18px; height: 2px; background: var(--grad); }
+
+.section-head { max-width: 760px; margin-bottom: 56px; }
+.section-head h2 { font-size: clamp(30px, 4.2vw, 46px); font-weight: 800; margin: 16px 0 18px; }
+.section-head p { color: var(--muted); font-size: 18px; }
+.grad-text { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  font: 600 15px/1 Inter, sans-serif;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s, border-color 0.15s;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn.primary { background: var(--grad); color: #04101f; }
+.btn.primary:hover { color: #04101f; filter: brightness(1.08); }
+.btn.ghost { border-color: var(--line-2); color: var(--text); background: rgba(255, 255, 255, 0.02); }
+.btn.ghost:hover { border-color: var(--ice); }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 28px;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.card:hover { border-color: var(--line-2); }
+.card h3 { font-size: 19px; font-weight: 700; margin-bottom: 10px; }
+.card p { color: var(--muted); font-size: 15px; }
+
+.grid { display: grid; gap: 20px; }
+.grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1000px) { .grid.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid.three { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .grid.two, .grid.three, .grid.four { grid-template-columns: minmax(0, 1fr); } }
+
+.chip {
+  display: inline-block;
+  padding: 6px 10px;
+  border: 1px solid var(--line-2);
+  color: var(--pale);
+  font: 500 12px/1 var(--mono);
+  background: rgba(47, 124, 246, 0.06);
+}
+
+.num {
+  font: 500 13px/1 var(--mono);
+  color: var(--cyan);
+}
+
+/* Small iso cube, the brand's mark, as a bullet. */
+.cube {
+  width: 12px; height: 12px; flex: none;
+  background: var(--grad);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.reveal.shown { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .reveal { opacity: 1; transform: none; transition: none; }
+}
