@@ -306,6 +306,12 @@ struct Run {
             state.stuck = 0.0f;
             if (state.path.empty()) return false;
         }
+        // The path's first cell: its middle can lie behind a painted room's wall from where one stands (a wall runs
+        // across the cell): on to the next cell instead of into the wall.
+        if (state.next == 0 && state.path.size() > 1 && ctx.wallBetween) {
+            const Vec2 first = WaypointIn(state.path[0].first, state.path[0].second);
+            if (ctx.wallBetween(at.x, at.y, first.x, first.y)) state.next = 1;
+        }
         auto [gx, gy] = state.path[state.next];
         if (const Entity door = closedDoorAt(gx, gy); door != entt::null && ctx.act) {
             ctx.act(actor, door); // opened (or not: locked without its key, and the way is blocked)
@@ -329,12 +335,21 @@ struct Run {
         const float step = std::min(speed * dt, distance);
         Vec2 half{0.3f, 0.3f};
         if (const auto* c = R().try_get<Collider2D>(actor)) half = {c->halfWidth, c->halfHeight};
-        const Vec2 moved = ResolveAabbMovement({at.x, at.y}, half, {dx / distance * step, dy / distance * step}, ctx.isSolid);
+        Vec2 moved = ResolveAabbMovement({at.x, at.y}, half, {dx / distance * step, dy / distance * step}, ctx.isSolid);
+        bool slipped = false;
+        // Caught on a thin wall's piece (a narrow doorway's edge) where the planned way itself is clear of walls: it slips
+        // along the way rather than pushing against the corner for ever.
+        if (std::hypot(moved.x - at.x, moved.y - at.y) < step * 0.25f && state.stuck > 0.35f && ctx.wallBetween &&
+            !ctx.wallBetween(at.x, at.y, tx, ty)) {
+            const float nx = at.x + dx / distance * step, ny = at.y + dy / distance * step;
+            if (!ctx.isSolid(static_cast<int>(std::floor(nx)), static_cast<int>(std::floor(ny)))) moved = {nx, ny}, slipped = true;
+        }
         const float progress = std::hypot(moved.x - at.x, moved.y - at.y);
         at.x = moved.x;
         at.y = moved.y;
         R().emplace_or_replace<Facing>(actor, dx / distance, dy / distance);
-        state.stuck = progress < step * 0.25f ? state.stuck + dt : 0.0f;
+        // Slipping past a corner: still caught, so it keeps slipping (not a step every third of a second), not replanning.
+        state.stuck = slipped ? 0.5f : progress < step * 0.25f ? state.stuck + dt : 0.0f;
         if (state.stuck > 1.0f) state.path.clear(); // blocked: plan again
         return false;
     }
