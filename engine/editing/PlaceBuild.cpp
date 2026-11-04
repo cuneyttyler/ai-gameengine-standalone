@@ -4622,6 +4622,28 @@ std::string PlaceBuild::RefineArt(const std::string& key, const std::string& tex
     return {};
 }
 
+bool PlaceBuild::StopArt() {
+    bool stopped = false;
+    for (auto it = pending_.begin(); it != pending_.end();) {
+        const std::string kind = it->second.kind;
+        if (kind == "background" || kind == "matched-art" || kind == "interiors") {
+            it = pending_.erase(it);
+            stopped = true;
+        } else {
+            ++it;
+        }
+    }
+    if (makingBackground_ || makingInteriors_ || matched_.value("state", std::string()) == "making") stopped = true;
+    makingBackground_ = makingInteriors_ = false;
+    if (matched_.value("state", std::string()) == "making") matched_["state"] = "stopped";
+    if (stopped) {
+        status_ = "Stopped: what was made so far is kept; make it again when you're ready.";
+        Log({{"step", "art stopped"}});
+        Save();
+    }
+    return stopped;
+}
+
 void PlaceBuild::SkipSourcing() {
     if (stage_ != "sourcing") return;
     for (auto& [key, s] : sourcing_) s.done = true; // answers still on their way are ignored

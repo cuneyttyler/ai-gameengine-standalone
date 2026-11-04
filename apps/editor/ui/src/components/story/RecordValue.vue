@@ -19,7 +19,12 @@ const emit = defineEmits<{ update: [value: unknown] }>()
 
 const single = computed<RecordFieldSpec>(() => ({ ...props.field, list: false }))
 // Picked from a searchable list: scripts, paths, markers, named things, dialogues (RecordField::choices).
-const picks = computed(() => (props.field.list ? null : optionsFor((props.field as { choices?: string }).choices, props.field.type)))
+const picks = computed(() => {
+  if (props.field.list) return null
+  // A reference to another record: its type's ids.
+  if (props.field.type === 'record') return (props.ids[props.field.recordType ?? ''] ?? []).map((id) => ({ value: id, hint: props.field.recordType }))
+  return optionsFor((props.field as { choices?: string }).choices, props.field.type)
+})
 const items = computed(() => (Array.isArray(props.value) ? (props.value as unknown[]) : []))
 const object = computed(() =>
   props.value && typeof props.value === 'object' && !Array.isArray(props.value)

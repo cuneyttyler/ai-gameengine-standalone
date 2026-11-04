@@ -2105,6 +2105,9 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
                 (state.matched.report?.interiors ? `, ${state.matched.report.interiors} buildings with interiors` : '') +
                 (state.matched.report?.flagged ? `, ${state.matched.report.flagged} off the style` : '') }}
           </span>
+          <button v-if="state?.backgroundMaking || state?.matched?.state === 'making' || state?.paint?.makingInteriors" class="danger"
+                  title="Stop painting the background and making the art: what was made so far is kept" @click="sendToHost({ type: 'build:stopArt' })">
+            ■ Stop</button>
           <button v-if="SCENE_BUILD" class="primary"
                   :disabled="stage === 'sourcing' || stage === 'building' || state?.backgroundMaking || state?.matched?.state === 'making' || state?.paint?.makingInteriors"
                   :title="(state?.background ? '' : 'The background first (the whole ground, painted), then: ') + (makesArt
@@ -2118,6 +2121,7 @@ function setSize(c: Component, p: Control, side: 'w' | 'h', text: string): void 
       <!-- The background: painted first (the whole place, then each detail window), then on to the art. -->
       <template v-else-if="assetsTab === 'background'">
         <section v-if="state?.backgroundMaking" class="build-progress">
+          <button class="danger stop-art" title="Stop painting the background: what was made so far is kept" @click="sendToHost({ type: 'build:stopArt' })">■ Stop</button>
           <h4>
             Painting the background<span v-if="backgroundCall?.total" class="dim">: step {{ Math.min(backgroundCall.total, (backgroundCall.done ?? 0) + 1) }} of {{ backgroundCall.total }}</span>
           </h4>

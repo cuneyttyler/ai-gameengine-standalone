@@ -3,7 +3,7 @@
 // interact… and the project's own: farm, parry, kick) and what triggers each: keys, mouse buttons and gamepad buttons
 // and sticks. An action of the project's can be added and removed, and can play a clip on the player or emit an event
 // when pressed; things react to it with a Reaction component. Saved to the project's input.json.
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onHostMessage, sendToHost } from '../ipc'
 import { promptDialog } from '../dialogs'
 import { engineKey } from '../inputActions'
@@ -34,6 +34,16 @@ interface Action {
 
 const actions = ref<Action[]>([])
 const builtIn = ref<string[]>([]) // the engine's own actions: rebound, never removed
+// The search box: actions whose name, description, keys, group, clip or event have every word typed.
+const query = ref('')
+const shownActions = computed(() => {
+  const words = query.value.toLowerCase().split(/\s+/).filter(Boolean)
+  if (!words.length) return actions.value
+  return actions.value.filter((a) => {
+    const text = JSON.stringify(a).toLowerCase()
+    return words.every((w) => text.includes(w))
+  })
+})
 const newAction = ref('')
 const keyNames = ref<string[]>([])
 const axisNames = ref<string[]>([])
@@ -162,12 +172,16 @@ function resetDefaults(): void {
       <button :disabled="!newAction.trim()" @click="addAction">Add action</button>
       <span class="muted">Things react to it with a Reaction component (Inspector), or a part's input action.</span>
     </div>
+    <div class="search-row">
+      <input v-model="query" class="search" spellcheck="false" placeholder="Search actions, keys, groups, clips, events…" />
+      <span v-if="query" class="muted">{{ shownActions.length }} of {{ actions.length }}</span>
+    </div>
     <table>
       <thead>
         <tr><th>Action</th><th>When</th><th>Bindings</th><th title="A clip the player plays when it's pressed, and an event for scripts">Plays / event</th><th></th></tr>
       </thead>
       <tbody>
-        <tr v-for="action in actions" :key="action.name">
+        <tr v-for="action in shownActions" :key="action.name">
           <td :title="action.description">
             <b>{{ action.name }}</b><span v-if="action.axis" class="muted"> (axis)</span>
             <input
@@ -257,6 +271,16 @@ function resetDefaults(): void {
 </template>
 
 <style scoped>
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+.search-row .search {
+  flex: 1;
+  max-width: 360px;
+}
 .desc {
   display: block;
   width: 100%;

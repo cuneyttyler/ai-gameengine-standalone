@@ -31,6 +31,7 @@ nlohmann::json MetaToJson(const FieldMeta& meta) {
     if (!meta.scalable.empty()) {
         json["scalable"] = meta.scalable;
     }
+    if (!meta.choices.empty()) json["choices"] = meta.choices;
     return json;
 }
 
@@ -238,7 +239,6 @@ nlohmann::json RecordFieldToJson(const RecordField& field) {
     if (field.required) json["required"] = true;
     if (!field.defaultValue.is_null()) json["default"] = field.defaultValue;
     if (!field.whenField.empty()) json["when"] = {{"field", field.whenField}, {"values", field.whenValues}};
-    if (!field.choices.empty()) json["choices"] = field.choices;
     return json;
 }
 

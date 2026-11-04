@@ -2704,6 +2704,7 @@ void GameSession::StepCharacters(float dt, const SolidQueryFn& isSolid) {
     context.usePart = [this](Entity actor, Entity owner, size_t index) { return UsePart(actor, owner, index); };
     context.partOpen = [this](Entity owner, size_t index) { return PartIsOpen(owner, index); };
     context.conditionsHold = [this](Entity, const std::string& conditions) { return ConditionsHold(conditions); };
+    context.wallBetween = [this](float ax, float ay, float bx, float by) { return grid_.WallBetween(ax, ay, bx, by, true); };
     context.runEffects = [this](Entity actor, const std::string& effects) { RunEffects(effects, actor); };
     context.runScript = [this](Entity actor, const std::string& script, float stepDt) {
         return RunScriptedPackage(actor, script, stepDt);

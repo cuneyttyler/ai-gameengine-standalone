@@ -7,6 +7,8 @@
 #include "gameplay/Behaviour.h"
 #include "gameplay/Components.h"
 #include "gameplay/Paths.h"
+#include "gameplay/EngineReflection.h"
+#include "gameplay/InputMap.h"
 #include "assets/Prefab.h"
 #include "physics2d/Components.h"
 #include "records/Records.h"
@@ -57,7 +59,46 @@ nlohmann::json EditorApp::LookupsJson() {
             scriptUsers[data["script"].get<std::string>()].push_back("package " + r->id);
         }
     }
+    // The project's scenes, schedules and cutscenes (files), its World Bible's characters, its records by type, and the
+    // input actions: for components' fields (a Gateway's scene, a Talk's character, a Container's loot).
+    auto filesIn = [&](const std::string& dir, const std::string& ext, bool keepPath) {
+        nlohmann::json out = nlohmann::json::array();
+        const auto root = assets_.GetProject().Resolve(dir);
+        std::error_code e2;
+        if (!std::filesystem::is_directory(root, e2)) return out;
+        for (const auto& f : std::filesystem::recursive_directory_iterator(root, e2)) {
+            if (!f.is_regular_file() || f.path().extension() != ext) continue;
+            const std::string rel = assets_.GetProject().Relative(f.path());
+            out.push_back(keepPath ? rel : f.path().stem().string());
+        }
+        return out;
+    };
+    nlohmann::json worldCharacters = nlohmann::json::array();
+    for (const auto& entry : world_.Entries()) {
+        if (entry.kind == "character") worldCharacters.push_back({{"key", entry.kind + "/" + entry.id}, {"name", entry.name}});
+    }
+    nlohmann::json recordIds = nlohmann::json::object();
+    for (const auto& type : EngineReflection().RecordTypes()) {
+        nlohmann::json ids = nlohmann::json::array();
+        for (const Record* r : ActiveRecords().OfType(type.name)) ids.push_back(r->id);
+        recordIds[type.name] = ids;
+    }
+    nlohmann::json textures = nlohmann::json::array(), audio = nlohmann::json::array();
+    for (const auto& asset : assets_.Assets()) {
+        if (asset.type == AssetType::Audio) audio.push_back(asset.path);
+        else if (asset.type == AssetType::Texture || asset.type == AssetType::Tileset) textures.push_back(asset.path);
+    }
+    nlohmann::json actions = nlohmann::json::array();
+    for (const auto& a : ActiveInputMap().actions) actions.push_back(a.name);
     return {{"type", "lookups"},
+            {"scenes", filesIn("scenes", ".aige", true)},
+            {"schedules", filesIn("schedules", ".json", true)},
+            {"cutscenes", filesIn("cutscenes", ".json", false)},
+            {"worldCharacters", worldCharacters},
+            {"records", recordIds},
+            {"actions", actions},
+            {"textures", textures},
+            {"audio", audio},
             {"scripts", ListScripts()},
             {"scriptUsers", scriptUsers},
             {"markers", std::vector<std::string>(markers.begin(), markers.end())},
@@ -65,7 +106,8 @@ nlohmann::json EditorApp::LookupsJson() {
             {"entities", std::vector<std::string>(names.begin(), names.end())},
             {"characters", std::vector<std::string>(characters.begin(), characters.end())},
             {"dialogues", dialogues},
-            {"packages", packages}};
+            {"packages", packages},
+            {"templates", TemplateTrees()}};
 }
 
 bool EditorApp::HandleListsMessage(const std::string& type, const nlohmann::json& message) {

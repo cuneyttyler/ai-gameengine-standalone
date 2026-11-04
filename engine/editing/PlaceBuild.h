@@ -194,6 +194,9 @@ public:
     void ClearSourcingDone() { sourcingDone_ = false; }
     // Stops sourcing (the user won't wait for the art): what's missing gets placeholders, the build goes on.
     void SkipSourcing();
+    // Stops painting the background and making the art (Build ▸ Assets' Stop): answers still on their way are ignored,
+    // what was made so far is kept. True when something was stopped.
+    bool StopArt();
     // Refine one piece of the build's art: made again with the user's words, checked again
     // (3 tries). While sourcing, in its place; after the build, then the place is built again
     // with it (the editor goes on as after sourcing). Returns why not, or "".

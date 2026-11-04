@@ -7,7 +7,8 @@ import { plainCopy } from '../plainCopy'
 // with a form generated from its type's fields.
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { editorState } from '../editorState'
-import { requestLookups } from '../lookups'
+import { lookups, requestLookups } from '../lookups'
+import StepOutline from './StepOutline.vue'
 import { onHostMessage, sendToHost } from '../ipc'
 import { confirmDialog } from '../dialogs'
 import RecordValue from './story/RecordValue.vue'
@@ -172,6 +173,14 @@ function setOwn(name: string, own: boolean): void {
   }
 }
 
+// The template's steps copied into this package's own procedure (template custom), to change any of them.
+function makeCustom(): void {
+  const tree = lookups.templates[String(draft.data.template ?? '')]
+  if (!tree) return
+  draft.data.procedure = JSON.stringify(tree, null, 2)
+  draft.data.template = 'custom'
+}
+
 function save(): void {
   saveError.value = ''
   sendToHost({ type: 'records:save', recordType: draft.type, id: draft.id.trim(), originalId: draft.originalId, data: draftOut() })
@@ -293,6 +302,15 @@ function goTo(key: string): void {
           :disabled="!!draft.base && !draft.own[field.name]"
           @update="draft.data[field.name] = $event"
         />
+      </div>
+      <!-- A package's template: its steps, in words; copied into a custom package to change any of them. -->
+      <div v-if="draft.type === 'package' && lookups.templates[String(draft.data.template ?? '')]" class="form-row top section">
+        <label>What {{ draft.data.template }} does <span class="about">its steps, with this package's data</span></label>
+        <div class="outline">
+          <StepOutline :step="lookups.templates[String(draft.data.template)]!" :data="(draft.data.data as Record<string, unknown>) ?? {}" />
+        </div>
+        <button class="small" title="Template custom, with these steps in its procedure, to change any of them" @click="makeCustom">
+          Copy into a custom package…</button>
       </div>
       <ul v-if="draft.originalId && problemsFor(draft.type + '/' + draft.originalId).length" class="problems">
         <li v-for="message in problemsFor(draft.type + '/' + draft.originalId)" :key="message">{{ message }}</li>
@@ -445,6 +463,11 @@ function goTo(key: string): void {
   font-weight: 400;
   opacity: 0.6;
   margin-left: 8px;
+}
+.outline {
+  border: 1px solid #2f2f40;
+  background: #17171f;
+  padding: 6px 8px;
 }
 .form-row.lead {
   border-bottom: 1px solid #2f2f40;

@@ -267,6 +267,7 @@ nlohmann::json FieldJson(const FieldMeta& meta, const FieldValue& value) {
     if (!meta.scalable.empty()) {
         entry["scalable"] = meta.scalable; // the Inspector offers "by difficulty" (16.2)
     }
+    if (!meta.choices.empty()) entry["choices"] = meta.choices; // picked from a searchable list (EditorLists.cpp)
     return entry;
 }
 
@@ -424,7 +425,7 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         return true;
     }
     if (buildJob_ && type != "build:request" && type != "build:list" && type != "build:sourcingRequest" && type != "build:sourcing" &&
-        type != "build:choicesRequest" && type != "build:advanced" && type != "background:request") {
+        type != "build:choicesRequest" && type != "build:advanced" && type != "background:request" && type != "build:stopArt") {
         post_({{"type", "notify"}, {"text", "The build is still working: a moment"}});
         PostBuild();
         return true;
@@ -744,6 +745,10 @@ bool EditorApp::HandleBuildMessage(const std::string& type, const nlohmann::json
         }
     } else if (type == "build:cancel") {
         if (build_) build_->Cancel();
+        PostBuild();
+    } else if (type == "build:stopArt") {
+        // Build ▸ Assets' Stop: the background and the art being made, abandoned (the service's call runs out unread).
+        if (build_ && build_->StopArt()) post_({{"type", "notify"}, {"text", "Stopped making the art: what was made is kept"}});
         PostBuild();
     } else {
         return false;
@@ -2881,6 +2886,24 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                 int gx = 0, gy = 0;
                 CellAt(sceneX, sceneY, iso_, gx, gy);
                 post_({{"type", "marker:ask"}, {"gx", gx}, {"gy", gy}});
+                return;
+            }
+            if (tool_ == Tool::Select && (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) {
+                // Ctrl+click: the thing added to (or taken off) the selection, as a box selection is.
+                auto picked = PickEntity(registry_, sceneX, sceneY, iso_);
+                if (!picked) picked = MarkerAt(sceneX, sceneY);
+                if (!picked) return;
+                if (selectedMany_.empty() && selected_ && registry_.valid(*selected_)) selectedMany_.push_back(*selected_);
+                selectedCells_.clear();
+                if (auto it = std::find(selectedMany_.begin(), selectedMany_.end(), *picked); it != selectedMany_.end()) selectedMany_.erase(it);
+                else selectedMany_.push_back(*picked);
+                if (selectedMany_.size() <= 1) {
+                    const auto one = selectedMany_.empty() ? std::nullopt : std::optional<Entity>(selectedMany_.front());
+                    Select(one);
+                } else {
+                    selected_ = selectedMany_.back();
+                    post_({{"type", "inspector:many"}, {"entities", selectedMany_.size()}, {"cells", 0}});
+                }
                 return;
             }
             if (tool_ == Tool::Select) {

@@ -74,7 +74,7 @@ const char* kTemplates = R"JSON({
                                           {"type": "wait", "min": 2, "max": 6}]},
       {"type": "sequence", "children": [{"type": "wander", "around": "@location", "inside": true},
                                           {"type": "wait", "min": 2, "max": 6}]},
-      {"type": "selector", "children": [{"type": "use-part", "part": "@data:action", "around": "@location", "radius": "@data:radius",
+      {"type": "selector", "children": [{"type": "use-part", "part": "@data:action", "around": "@location", "radius": 15,
                                            "seconds": "@data:duration"},
                                           {"type": "wait", "seconds": 2}]}]}]},
   "tend": {"type": "loop", "children": [{"type": "selector", "children": [
@@ -288,6 +288,12 @@ struct Run {
             state.next = 0;
             // High ground: no step up or down a cliff, except where a Ramp is (place-refine.md §10).
             const StepQueryFn noCliffs = [this](int fx, int fy, int tx, int ty) {
+                // A painted room's thin wall between the two cells' waypoints (a doorway's gap middle, else the cell's
+                // middle): not a step; in through its doorway instead.
+                if (ctx.wallBetween) {
+                    const Vec2 a = WaypointIn(fx, fy), b = WaypointIn(tx, ty);
+                    if (ctx.wallBetween(a.x, a.y, b.x, b.y)) return false;
+                }
                 const std::optional<float> a = GroundHeightAt(R(), fx + 0.5f, fy + 0.5f), b = GroundHeightAt(R(), tx + 0.5f, ty + 0.5f);
                 if (!a || !b || std::abs(*a - *b) <= 14.0f) return true;
                 for (auto [e, ramp, w] : R().view<Ramp, WorldTransform2D>().each()) {
@@ -672,6 +678,12 @@ struct Run {
             }
             ns["t"] = ns.value("t", 0.0f) + dt;
             if (Walk({ns.value("x", 0.0f), ns.value("y", 0.0f)}, 0.4f) || ns.value("t", 0.0f) > 12.0f) {
+                Reset(index, p);
+                return AiStatus::Success;
+            }
+            // No way there (a spot behind a wall, outside the rooms): another spot soon, not standing till the timeout.
+            ns["noWay"] = state.path.empty() ? ns.value("noWay", 0.0f) + dt : 0.0f;
+            if (ns.value("noWay", 0.0f) > 0.5f) {
                 Reset(index, p);
                 return AiStatus::Success;
             }
@@ -1108,6 +1120,8 @@ const Procedure* PackageProcedure(const std::string& id, const nlohmann::json& p
     }
     return FindProcedure(package.value("template", std::string("stay")));
 }
+
+nlohmann::json TemplateTrees() { return nlohmann::json::parse(kTemplates); }
 
 std::vector<std::string> ProcedureNames() {
     std::vector<std::string> names;

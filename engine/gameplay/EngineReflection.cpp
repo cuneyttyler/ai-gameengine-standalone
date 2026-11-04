@@ -208,12 +208,12 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                                         "from its loot table the first time.")
         .Field("items", &Container::items, "What's inside, as item ids with *count.")
         .Field("gold", &Container::gold, "Gold inside.").Min(0).Scalable("gold")
-        .Field("loot", &Container::loot, "A loot record rolled when it's first opened.")
+        .Field("loot", &Container::loot, "A loot record rolled when it's first opened.").Choices("records:loot")
         .Field("looted", &Container::looted, "Already opened and filled.")
         .DependsOn({"WorldTransform2D"});
     r.Component<Merchant>("Merchant", "Someone who trades (13.4): the interact action opens their shop. Stock comes "
                                       "from a loot table, filled again each day.")
-        .Field("stock", &Merchant::stock, "A loot record their wares come from.")
+        .Field("stock", &Merchant::stock, "A loot record their wares come from.").Choices("records:loot")
         .Field("items", &Merchant::items, "What's for sale now.")
         .Field("gold", &Merchant::gold, "Gold they can pay for what they buy.").Min(0)
         .Field("buyRate", &Merchant::buyRate, "The player pays an item's value times this.").Range(0, 100).Scalable("price")
@@ -297,7 +297,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "action named in trigger, near it), event (the game event named in trigger), always (it plays on and on), or "
                "open (an open doorway: always passable, no door to animate).")
             .Options({"project", "auto", "use", "action", "event", "always", "open"})
-        .Field("trigger", &AnimatedPart::trigger, "action: the input action's name (Project Settings ▸ Input); event: the event's name.")
+        .Field("trigger", &AnimatedPart::trigger, "action: the input action's name (Project Settings ▸ Input); event: the event's name.").Choices("actions")
         .Field("prompt", &AnimatedPart::prompt, "What the player is shown near it (\"Pull the lever\"); \"shut|open\" for each way "
                "(\"Open the door|Close the door\"); empty: a door's own, another part's \"Use\".")
         .Field("fires", &AnimatedPart::fires, "The game event sent each time the player activates it (\"cooked\"), for scripts, "
@@ -348,8 +348,8 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
     r.Component<Interior>("Interior", "A building's plan (Phase 27): its floors' pictures, its stairs and its ways in; its interior shows while the player is inside, only its walls block.")
         .Label("Building Plan")
         .Field("kind", &Interior::kind, "cutaway: the building drawn cut away in place; scene: its own scene, through its door.").Options({"cutaway", "scene"})
-        .Field("scene", &Interior::scene, "A scene interior: its scene.")
-        .Field("marker", &Interior::marker, "A scene interior: where one arrives in it.")
+        .Field("scene", &Interior::scene, "A scene interior: its scene.").Choices("scenes")
+        .Field("marker", &Interior::marker, "A scene interior: where one arrives in it.").Choices("markers")
         .Field("texture", &Interior::texture, "The interior picture (the same building cut away).").As(FieldType::Texture)
         .Field("door", &Interior::door, "The doorway's side.").Options({"s", "e", "n", "w"})
         .Field("shown", &Interior::shown, "The interior showing now (in the editor: a preview).")
@@ -383,11 +383,11 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .DependsOn({"WorldTransform2D"});
     r.Component<FactionMember>("FactionMember", "Belongs to a faction record (13.7). Below 0, its disposition makes "
                                                 "it hostile to the player; attacking it lowers it.")
-        .Field("faction", &FactionMember::faction, "A faction record id.")
+        .Field("faction", &FactionMember::faction, "A faction record id.").Choices("records:faction")
         .Field("disposition", &FactionMember::disposition, "How it feels about the player.").Range(-100, 100);
     r.Component<Spawner>("Spawner", "Makes enemies from an encounter record around it (13.7), up to maxAlive, "
                                     "again after respawnSeconds.")
-        .Field("encounter", &Spawner::encounter, "An encounter record id.")
+        .Field("encounter", &Spawner::encounter, "An encounter record id.").Choices("records:encounter")
         .Field("radius", &Spawner::radius, "How far from it they appear, in cells.").Range(0, 50)
         .Field("maxAlive", &Spawner::maxAlive, "How many at once.").Range(0, 100).Scalable("count")
         .Field("respawnSeconds", &Spawner::respawnSeconds, "Seconds until the next after one dies (0: never).")
@@ -400,9 +400,9 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                                         "first that holds runs; how it fights and helps.")
         .Field("packages", &Behaviour::packages, "Package record ids, comma-separated; the first whose schedule and "
                                                  "conditions hold runs.")
-        .Field("home", &Behaviour::home, "A marker: where @home is.")
-        .Field("work", &Behaviour::work, "A marker: where @work is.")
-        .Field("bed", &Behaviour::bed, "A marker: where @bed is (else the nearest free bed).")
+        .Field("home", &Behaviour::home, "A marker: where @home is.").Choices("markers")
+        .Field("work", &Behaviour::work, "A marker: where @work is.").Choices("markers")
+        .Field("bed", &Behaviour::bed, "A marker: where @bed is (else the nearest free bed).").Choices("markers")
         .Field("aggression", &Behaviour::aggression, "Peaceful: never fights. Defensive: fights when attacked. "
                                                      "Aggressive: attacks enemies it notices. Frenzied: attacks anyone.")
         .Options({"Peaceful", "Defensive", "Aggressive", "Frenzied"})
@@ -410,7 +410,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .Options({"Cowardly", "Cautious", "Average", "Brave", "Foolhardy"})
         .Field("assistance", &Behaviour::assistance, "Who it helps in a fight.")
         .Options({"Nobody", "Allies", "Friends"})
-        .Field("combatStyle", &Behaviour::combatStyle, "A combat-style record (empty: melee, runs at 20% health).")
+        .Field("combatStyle", &Behaviour::combatStyle, "A combat-style record (empty: melee, runs at 20% health).").Choices("records:combat-style")
         .Field("speed", &Behaviour::speed, "Walking speed, cells per second.").Range(0.1, 20)
         .DependsOn({"WorldTransform2D"});
     r.Component<Perception>("Perception", "What a character notices (14.5): sight in a cone, hearing of noises.")
@@ -485,19 +485,19 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
         .DependsOn({"WorldTransform2D"});
     r.Component<Gateway>("Gateway",
                          "A way into another scene: stepping into its cell during play takes the player there.")
-        .Field("scene", &Gateway::scene, "The scene it leads to, e.g. scenes/cave.aige.")
-        .Field("marker", &Gateway::marker, "The Marker in that scene the player arrives at.")
+        .Field("scene", &Gateway::scene, "The scene it leads to, e.g. scenes/cave.aige.").Choices("scenes")
+        .Field("marker", &Gateway::marker, "The Marker in that scene the player arrives at.").Choices("markers")
         .DependsOn({"WorldTransform2D"});
     r.Component<Routine>("Routine", "Follows a daily schedule: where to be, and what to do there, through the day.")
-        .Field("schedule", &Routine::schedule, "The schedule, schedules/<id>.json.")
+        .Field("schedule", &Routine::schedule, "The schedule, schedules/<id>.json.").Choices("schedules")
         .Field("speed", &Routine::speed, "Walking speed, cells per second.").Range(0.1, 20)
         .DependsOn({"WorldTransform2D"});
 
     r.Component<Talk>("Talk", "Someone the player can talk to: pressing E within range starts the dialogue.")
-        .Field("dialogue", &Talk::dialogue, "The conversation, dialogue/<id>.json.")
+        .Field("dialogue", &Talk::dialogue, "The conversation, dialogue/<id>.json.").Choices("dialogues")
         .Field("character", &Talk::character,
                "Who they are in the World Bible (e.g. character/villager): their name on screen, and "
-               "what 'talk to' quest objectives point at.")
+               "what 'talk to' quest objectives point at.").Choices("worldCharacters")
         .Field("range", &Talk::range, "How close the player must be, in cells.").Range(0.3, 10)
         .DependsOn({"WorldTransform2D"});
     // --- Animation and effects (18) ---------------------------------------------------
@@ -590,7 +590,7 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                                      "{\"Health.max\": {\"hard\": 20}}. The Inspector's 'by difficulty' edits it.")
         .Field("values", &DifficultyOverrides::values, "Per field, per level.");
     r.Component<CutsceneTrigger>("CutsceneTrigger", "Plays a cutscene when the player comes near (15.5).")
-        .Field("cutscene", &CutsceneTrigger::cutscene, "The cutscene, cutscenes/<id>.json (its id).")
+        .Field("cutscene", &CutsceneTrigger::cutscene, "The cutscene, cutscenes/<id>.json (its id).").Choices("cutscenes")
         .Field("radius", &CutsceneTrigger::radius, "How close the player must come, in cells.").Range(0.2, 50)
         .Field("once", &CutsceneTrigger::once, "Only the first time (remembered in saves).")
         .DependsOn({"WorldTransform2D"});

@@ -1,0 +1,69 @@
+<script setup lang="ts">
+// A package template's (or procedure's) steps as an indented outline, in words: what the character does, in order.
+// "@data:radius" shows as the package's own value when it has one.
+import { computed } from 'vue'
+
+interface Step { type?: string; children?: Step[]; [key: string]: unknown }
+const props = defineProps<{ step: Step; data?: Record<string, unknown>; depth?: number }>()
+
+const WORDS: Record<string, string> = {
+  loop: 'again and again', sequence: 'in order', selector: 'the first that works', stack: 'the first that works',
+  random: 'one at random', parallel: 'together', condition: 'only if', cooldown: 'not more often than', invert: 'the opposite of',
+  'move-to': 'walk to', wander: 'wander', wait: 'wait', idle: 'stand', face: 'turn to', say: 'say', bark: 'say',
+  'use-object': 'use a smart object', 'use-part': 'use the part', act: 'use', play: 'play the clip', 'talk-to-player': 'talk to the player',
+  follow: 'follow', flee: 'run from', patrol: 'patrol', 'follow-path': 'walk the path', ambush: 'wait in ambush', escort: 'escort',
+  set: 'set', emit: 'send the event', script: 'run the script',
+}
+function shown(v: unknown): string {
+  if (typeof v === 'string' && v.startsWith('@data:')) {
+    const key = v.slice(6)
+    const own = props.data?.[key]
+    return own !== undefined && own !== '' && own !== 0 ? `${String(own)} (data.${key})` : `data.${key}`
+  }
+  if (v === '@location') return 'the place'
+  if (v === '@target') return 'the target'
+  if (typeof v === 'string' && v.startsWith('@')) return v.slice(1)
+  return Array.isArray(v) ? v.join(', ') : String(v)
+}
+const params = computed(() =>
+  Object.entries(props.step)
+    .filter(([k]) => k !== 'type' && k !== 'children')
+    .map(([k, v]) => `${k === 'type_' ? 'type' : k} ${shown(v)}`),
+)
+const weights = computed(() => (Array.isArray(props.step.weights) ? (props.step.weights as number[]) : null))
+</script>
+
+<template>
+  <div class="step" :style="{ paddingLeft: `${(depth ?? 0) * 14}px` }">
+    <span class="kind" :class="{ group: !!step.children?.length }">{{ WORDS[step.type ?? ''] ?? step.type }}</span>
+    <span class="params">{{ params.filter((p) => !p.startsWith('weights')).join(' · ') }}</span>
+  </div>
+  <template v-for="(child, i) in step.children ?? []" :key="i">
+    <div v-if="weights" class="weight" :style="{ paddingLeft: `${((depth ?? 0) + 1) * 14}px` }">weight {{ weights[i] }}:</div>
+    <StepOutline :step="child" :data="data" :depth="(depth ?? 0) + (weights ? 2 : 1)" />
+  </template>
+</template>
+
+<style scoped>
+.step {
+  display: flex;
+  gap: 6px;
+  font-size: 11.5px;
+  line-height: 18px;
+}
+.kind {
+  color: #93c5fd;
+}
+.kind.group {
+  color: #c4b5fd;
+  font-weight: 600;
+}
+.params {
+  opacity: 0.75;
+}
+.weight {
+  font-size: 10.5px;
+  opacity: 0.55;
+  line-height: 16px;
+}
+</style>

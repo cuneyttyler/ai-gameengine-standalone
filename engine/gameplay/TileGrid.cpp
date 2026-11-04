@@ -229,6 +229,18 @@ void TileGrid::AddRoom(Registry& registry, Entity entity, const Interior& interi
             if (best < 0 || bestDistance > 1.5f) continue;
             const bool passable = i < doors->passable.size() && doors->passable[i];
             const float lo = bestT - half / bestLength, hi = bestT + half / bestLength;
+            // Where the door is, for paths (they go through it whether it's open or not: it opens as one comes) and
+            // for walkers (its middle is where one goes through).
+            {
+                const float ax = corners[best][0][0], ay = corners[best][0][1];
+                const float vx = corners[best][1][0] - ax, vy = corners[best][1][1] - ay;
+                const float x0 = ax + vx * std::clamp(lo, 0.0f, 1.0f), y0 = ay + vy * std::clamp(lo, 0.0f, 1.0f);
+                const float x1 = ax + vx * std::clamp(hi, 0.0f, 1.0f), y1 = ay + vy * std::clamp(hi, 0.0f, 1.0f);
+                constexpr float kReach = 0.35f; // the wall's thickness and a little
+                if (!passable) shutDoors_.push_back({std::min(x0, x1) - kReach, std::min(y0, y1) - kReach, std::max(x0, x1) + kReach, std::max(y0, y1) + kReach});
+                const float mxDoor = (x0 + x1) * 0.5f, myDoor = (y0 + y1) * 0.5f;
+                passPoints_.emplace(Key(static_cast<int>(std::floor(mxDoor)), static_cast<int>(std::floor(myDoor))), std::pair{mxDoor, myDoor});
+            }
             if (!passable) {
                 auto& gaps = open[best];
                 gaps.erase(std::remove_if(gaps.begin(), gaps.end(), [&](const auto& g) { return g.first < hi && g.second > lo; }), gaps.end());
@@ -266,6 +278,10 @@ void TileGrid::AddRoom(Registry& registry, Entity entity, const Interior& interi
         for (const auto& [lo, hi] : gaps) {
             wall(from, std::clamp(lo, 0.0f, 1.0f));
             from = std::max(from, std::clamp(hi, 0.0f, 1.0f));
+            // Its middle: where a path through this gap crosses the wall (its cell's waypoint).
+            const float mid = (std::clamp(lo, 0.0f, 1.0f) + std::clamp(hi, 0.0f, 1.0f)) * 0.5f;
+            const float gx = ax + vx * mid, gy = ay + vy * mid;
+            passPoints_.emplace(Key(static_cast<int>(std::floor(gx)), static_cast<int>(std::floor(gy))), std::pair{gx, gy});
         }
         wall(from, 1.0f);
     }
@@ -308,6 +324,26 @@ bool TileGrid::BlocksBox(float x0, float y0, float x1, float y1) const {
             for (const auto& b : it->second) {
                 if (x0 < b[2] && x1 > b[0] && y0 < b[3] && y1 > b[1]) return true;
             }
+        }
+    }
+    return false;
+}
+
+bool TileGrid::WallBetween(float ax, float ay, float bx, float by, bool throughDoors) const {
+    if (parts_.empty()) return false;
+    const float length = std::hypot(bx - ax, by - ay);
+    const int steps = std::max(2, static_cast<int>(std::ceil(length / 0.08f)));
+    for (int s = 1; s < steps; ++s) { // the ends left out: a waypoint in a doorway's gap is on the wall's line
+        const float t = static_cast<float>(s) / steps;
+        const float x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+        const auto it = parts_.find(Key(static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y))));
+        if (it == parts_.end()) continue;
+        for (const auto& b : it->second) {
+            if (x < b[0] || x > b[2] || y < b[1] || y > b[3]) continue;
+            const bool door = throughDoors && std::any_of(shutDoors_.begin(), shutDoors_.end(), [&](const auto& d) {
+                                  return x >= d[0] && x <= d[2] && y >= d[1] && y <= d[3];
+                              });
+            if (!door) return true;
         }
     }
     return false;

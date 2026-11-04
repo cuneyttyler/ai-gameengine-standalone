@@ -92,6 +92,9 @@ const Procedure* FindProcedure(const std::string& name);
 // Parses a procedure tree: {"type": "sequence", "children": [...], ...params}.
 std::optional<Procedure> ParseProcedure(const nlohmann::json& tree, std::string* error = nullptr);
 std::vector<std::string> ProcedureNames();
+// The built-in templates' trees as written (ai-packages.md §5): {name: {"type": ..., "children": [...]}}, for the editor
+// to show what a template does and to copy one into a custom package.
+nlohmann::json TemplateTrees();
 // A package's procedure: its own ("procedure", a tree written in the package) else its template's (built in, or a
 // procedure record of that name). `id` keys the parsed tree.
 const Procedure* PackageProcedure(const std::string& id, const nlohmann::json& package);
@@ -163,6 +166,9 @@ struct AiContext {
     // Conditions as dialogue's (JSON text: flags, quests, items, time) and effects (JSON text), for paths' forks and
     // stops (docs/ai/ai-paths.md).
     std::function<bool(Entity actor, const std::string& conditions)> conditionsHold;
+    // A thin wall (a painted room's) on the straight way between two points, shut doors counting as open: paths go
+    // round walls and in through doorways, not into a wall.
+    std::function<bool(float ax, float ay, float bx, float by)> wallBetween;
     std::function<void(Entity actor, const std::string& effects)> runEffects;
 };
 

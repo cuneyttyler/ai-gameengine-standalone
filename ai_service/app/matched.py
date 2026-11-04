@@ -1204,6 +1204,9 @@ def room_prompt(k: int, n: int, purpose: str, style: str = "", doors: bool = Fal
              "roof, nothing above the box, nothing below the floor but its thin edge;",
              f"- the CYAN area is this floor: fill it with its rooms and furniture - this area holds {use}, as this building has them; "
              "its rooms with low inner partitions only, the floor fully visible;",
+             "- every room can be walked into: every inner door stands OPEN (doors swung wide against their walls, or open "
+             "doorways with no door), no room closed off, a clear way on the floor from the entrance (and the stairs) to every "
+             "room, nothing blocking a doorway;",
              "- lit and decorated as such a building is in its time: its own kind of lights (candles, lanterns and torches, or lamps "
              "and ceiling lights, as fits it) and decorations (rugs, pictures, plants, banners, shelves of things, as fits it), so "
              "its rooms feel lived in and warm;"]

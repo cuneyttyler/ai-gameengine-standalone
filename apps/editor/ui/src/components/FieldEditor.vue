@@ -5,7 +5,8 @@ import SearchSelect from './SearchSelect.vue'
 // fields and project settings. Emits `change` with the new value in its JSON
 // form (enums by option name, entity references by id); the host validates
 // it again before anything is written.
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
+import { optionsFor, requestLookups } from '../lookups'
 import { editorState } from '../editorState'
 
 export type FieldType =
@@ -32,6 +33,7 @@ export interface FieldData {
   scalable?: string // difficulty scales it, as this kind (16.2)
   locked?: string // why it can't change now
   appDefault?: string // a choice left empty uses the app's: its "Use app default (…)" (Project Settings ▸ AI)
+  choices?: string // picked from a searchable list: scenes, markers, dialogues, records:<type>… (FieldMeta::choices)
 }
 
 export interface Choices {
@@ -42,6 +44,11 @@ export interface Choices {
 }
 
 const props = defineProps<{ field: FieldData; choices?: Choices; disabled?: boolean }>()
+// A field that names something (a scene, a marker, a dialogue, a record): picked from the project's lists.
+const picks = computed(() => (props.field.choices ? optionsFor(props.field.choices) : null))
+onMounted(() => {
+  if (props.field.choices) requestLookups()
+})
 const emit = defineEmits<{ change: [value: unknown]; openScript: [path: string] }>()
 
 // Bounded 0-1 values (tints, opacity, texture regions) also get a slider.
@@ -95,6 +102,16 @@ function emitNumber(event: Event): void {
       :checked="field.value as boolean"
       :disabled="disabled"
       @change="emit('change', ($event.target as HTMLInputElement).checked)"
+    />
+
+    <SearchSelect
+      v-else-if="field.type === 'string' && picks"
+      :model-value="(field.value as string) ?? ''"
+      :options="picks"
+      :disabled="disabled"
+      custom
+      empty="(none)"
+      @update:model-value="emit('change', $event)"
     />
 
     <select

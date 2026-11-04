@@ -45,6 +45,10 @@ public:
     void AddBox(float x0, float y0, float x1, float y1);
     // A building painted from a layout: its painted room's walls (open at its ways in, or its doors), inside walkable.
     void AddRoom(Registry& registry, Entity entity, const Interior& interior, const RoomFrame& room);
+    // Whether a wall in a cell's part (a painted room's thin walls) lies on the straight way from (ax, ay) to (bx, by),
+    // for paths: they go round walls and through doorways. `throughDoors`: a shut door counts as open (it opens as one
+    // comes to it).
+    bool WallBetween(float ax, float ay, float bx, float by, bool throughDoors) const;
 
 private:
     struct Cell {
@@ -62,6 +66,7 @@ private:
     // Parts of passable cells that block (world boxes x0, y0, x1, y1): a door's cell but its gap.
     std::unordered_map<int64_t, std::vector<std::array<float, 4>>> parts_;
     std::unordered_map<int64_t, std::pair<float, float>> passPoints_; // where a path crosses such a cell
+    std::vector<std::array<float, 4>> shutDoors_; // a painted room's shut doors (world boxes): walls, but not for paths
     std::vector<const TileLayer*> layers_;  // the scene's tile layers, low to high
 };
 

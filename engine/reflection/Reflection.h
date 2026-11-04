@@ -65,6 +65,9 @@ struct FieldMeta {
     // "defense", "speed", "perception", "count", "gold", "loot", "price", "xp");
     // empty: not scaled.
     std::string scalable;
+    // What the editor offers to pick it from (a searchable list; typing another still works): scenes, markers, paths,
+    // entities, characters, targets, dialogues, schedules, cutscenes, worldCharacters, actions, records:<type>.
+    std::string choices;
 };
 
 // A value that breaks `meta`'s type or constraints, as a message; nullopt
@@ -177,10 +180,6 @@ struct RecordField : FieldMeta {
     // `whenValues` (a package's data.route only for templates follow-path and patrol). Empty: always.
     std::string whenField;
     std::vector<std::string> whenValues;
-    // What the editor offers to pick it from (a searchable list; typing a new one still works): paths, markers,
-    // entities (named things in the scene), characters, targets (the player, characters, markers), dialogues.
-    std::string choices;
-
     const RecordField* Field(const std::string& fieldName) const;
 };
 
@@ -389,6 +388,11 @@ public:
     }
     Derived& Optional() {
         Last().optional = true;
+        return Self();
+    }
+    // Picked from a list in the editor (FieldMeta::choices).
+    Derived& Choices(std::string kind) {
+        Last().choices = std::move(kind);
         return Self();
     }
     // Scaled by the difficulty level, as this kind of value (difficulty.md §3.1).

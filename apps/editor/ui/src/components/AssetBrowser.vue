@@ -925,7 +925,7 @@ onMounted(() => {
               height: `${selected.height! * pickerScale}px`,
             }"
           >
-            <img :src="urlOf(selected)" alt="" draggable="false" />
+            <FrameThumb :path="selected.path" :src="urlOf(selected)" :size="220" />
             <button
               v-for="tile in tiles"
               :key="tile.index"

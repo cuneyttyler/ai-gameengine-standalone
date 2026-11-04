@@ -90,8 +90,9 @@ function clipFrames(sheet: Sheet, name: string): Frame[] {
 }
 function frameStyle(sheet: Sheet): Record<string, string> {
   const chosen = clipShown[sheet.path]
-  const frames = chosen ? clipFrames(sheet, chosen) : sheet.kind === 'character' ? turningOf(sheet) : framesOf(sheet)
-  const step = !chosen && sheet.kind === 'character' ? Math.floor(tick.value / 5) : tick.value
+  // A character: one pose (idle, facing the camera) until a clip is clicked; other sheets play their first clip.
+  const frames = chosen ? clipFrames(sheet, chosen) : sheet.kind === 'character' ? turningOf(sheet).slice(0, 1) : framesOf(sheet)
+  const step = tick.value
   const f = frames.length ? frames[step % frames.length]! : null
   if (!f || f.w <= 0 || f.h <= 0) return {}
   const scale = Math.min(76 / f.w, 76 / f.h)
