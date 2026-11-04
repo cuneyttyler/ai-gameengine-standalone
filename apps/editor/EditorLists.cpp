@@ -7,6 +7,7 @@
 #include "gameplay/Behaviour.h"
 #include "gameplay/Components.h"
 #include "gameplay/Paths.h"
+#include "gameplay/Interiors.h"
 #include "gameplay/EngineReflection.h"
 #include "gameplay/InputMap.h"
 #include "assets/Prefab.h"
@@ -90,6 +91,21 @@ nlohmann::json EditorApp::LookupsJson() {
     }
     nlohmann::json actions = nlohmann::json::array();
     for (const auto& a : ActiveInputMap().actions) actions.push_back(a.name);
+    // What characters can use things by (a package's data.action): the input actions, and the scene's parts' and
+    // Reactions' own names (their action, station, clip, event).
+    std::set<std::string> uses;
+    for (const auto& a : ActiveInputMap().actions) uses.insert(a.name);
+    for (auto [e, whole] : registry_.view<AnimatedPart>().each()) {
+        for (const auto& part : DoorsOf(whole)) {
+            for (const std::string* name : {&part.trigger, &part.station, &part.fires}) {
+                if (!name->empty()) uses.insert(*name);
+            }
+        }
+    }
+    for (auto [e, action] : registry_.view<Action>().each()) {
+        if (!action.action.empty()) uses.insert(action.action);
+        if (!action.station.empty()) uses.insert(action.station);
+    }
     return {{"type", "lookups"},
             {"scenes", filesIn("scenes", ".aige", true)},
             {"schedules", filesIn("schedules", ".json", true)},
@@ -97,6 +113,7 @@ nlohmann::json EditorApp::LookupsJson() {
             {"worldCharacters", worldCharacters},
             {"records", recordIds},
             {"actions", actions},
+            {"uses", std::vector<std::string>(uses.begin(), uses.end())},
             {"textures", textures},
             {"audio", audio},
             {"scripts", ListScripts()},

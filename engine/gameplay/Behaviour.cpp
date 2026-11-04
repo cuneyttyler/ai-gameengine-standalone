@@ -254,6 +254,50 @@ struct Run {
             return true;
         }
         const auto goal = Cell(to.first, to.second);
+        // Recovery from being stuck (any reason: a wall's corner, a door that didn't open, someone in the way): getting
+        // no nearer the goal, it plans again, then slips past thin walls, then steps out to an open spot; at last it's
+        // moved to the goal if the player can't see it, else gives the goal up so its package does something else.
+        {
+            const float left = std::sqrt(dxT * dxT + dyT * dyT);
+            if (goal != state.goal) state.noProgress = 0.0f, state.nearest = left, state.recovery = 0, state.gaveUp = false;
+            if (left < state.nearest - 0.2f) state.nearest = left, state.noProgress = 0.0f, state.recovery = 0;
+            else state.noProgress += dt;
+            if (state.gaveUp) return false;
+            if (state.noProgress > 1.5f && state.recovery < 1) {
+                state.recovery = 1;
+                state.path.clear(); // plan again
+            } else if (state.noProgress > 3.0f && state.recovery < 2) {
+                state.recovery = 2; // slips past thin walls below
+            } else if (state.noProgress > 5.0f && state.recovery < 3) {
+                state.recovery = 3;
+                // The nearest open spot within two cells that isn't where it stands: stepped to.
+                const auto here = Cell(at.x, at.y);
+                float best = 1e9f;
+                std::pair<float, float> spot{at.x, at.y};
+                for (int oy = -2; oy <= 2; ++oy) {
+                    for (int ox = -2; ox <= 2; ++ox) {
+                        const int cx = here.first + ox, cy = here.second + oy;
+                        if ((ox == 0 && oy == 0) || ctx.isSolid(cx, cy)) continue;
+                        const float d = std::hypot(cx + 0.5f - to.first, cy + 0.5f - to.second) + 0.3f * std::hypot(ox, oy);
+                        if (d < best) best = d, spot = {cx + 0.5f, cy + 0.5f};
+                    }
+                }
+                at.x = spot.first, at.y = spot.second;
+                state.path.clear();
+            } else if (state.noProgress > 8.0f) {
+                const auto player = FindPlayer(R());
+                const auto* pw = player ? R().try_get<WorldTransform2D>(*player) : nullptr;
+                const bool seen = pw && std::hypot(pw->x - at.x, pw->y - at.y) < 10.0f && std::hypot(pw->x - to.first, pw->y - to.second) < 10.0f;
+                state.path.clear();
+                if (!seen) {
+                    at.x = to.first, at.y = to.second; // out of sight: there
+                    state.noProgress = 0.0f, state.recovery = 0;
+                    return true;
+                }
+                state.gaveUp = true;
+                return false;
+            }
+        }
         // A closed door on the way is opened (docs/systems/actions.md): its cell counts as open for the path, and the
         // character uses the door when it gets there (its own key for a locked one).
         auto closedDoorAt = [this](int x, int y) -> Entity {
@@ -339,8 +383,8 @@ struct Run {
         bool slipped = false;
         // Caught on a thin wall's piece (a narrow doorway's edge) where the planned way itself is clear of walls: it slips
         // along the way rather than pushing against the corner for ever.
-        if (std::hypot(moved.x - at.x, moved.y - at.y) < step * 0.25f && state.stuck > 0.35f && ctx.wallBetween &&
-            !ctx.wallBetween(at.x, at.y, tx, ty)) {
+        if (std::hypot(moved.x - at.x, moved.y - at.y) < step * 0.25f && ctx.wallBetween &&
+            ((state.stuck > 0.35f && !ctx.wallBetween(at.x, at.y, tx, ty)) || state.recovery >= 2)) {
             const float nx = at.x + dx / distance * step, ny = at.y + dy / distance * step;
             if (!ctx.isSolid(static_cast<int>(std::floor(nx)), static_cast<int>(std::floor(ny)))) moved = {nx, ny}, slipped = true;
         }
@@ -471,7 +515,8 @@ struct Run {
             if (Crowded(name, to, point)) return AiStatus::Running;
             if (!Walk({point.x, point.y}, 0.35f)) {
                 ns["t"] = ns.value("t", 0.0f) + dt;
-                if (ns.value("t", 0.0f) > 30.0f) { // no way to this point
+                if (ns.value("t", 0.0f) > 30.0f || state.gaveUp) { // no way to this point
+                    state.gaveUp = false;
                     Reset(index, p);
                     return AiStatus::Failure;
                 }
@@ -652,6 +697,10 @@ struct Run {
         // --- Leaves ---
         if (type == "move-to") {
             const auto to = Point(Str(node, "to", "@location"));
+            if (state.gaveUp && to && Cell(to->first, to->second) == state.goal) {
+                state.gaveUp = false;
+                return AiStatus::Failure; // no way there: the package goes on
+            }
             if (!to) return AiStatus::Failure;
             return Walk(*to, Num(node, "radius", 0.5f)) ? AiStatus::Success : AiStatus::Running;
         }
@@ -834,7 +883,12 @@ struct Run {
                     Reset(index, p);
                     return AiStatus::Failure;
                 }
-                if (!Walk({ns.value("x", 0.0f), ns.value("y", 0.0f)}, std::max(0.5f, ns.value("range", 1.8f) - 0.4f))) return AiStatus::Running;
+                if (!Walk({ns.value("x", 0.0f), ns.value("y", 0.0f)}, std::max(0.5f, ns.value("range", 1.8f) - 0.4f))) {
+                    if (!state.gaveUp) return AiStatus::Running;
+                    state.gaveUp = false;
+                    Reset(index, p);
+                    return AiStatus::Failure;
+                }
                 const bool did = ctx.usePart && ctx.usePart(actor, owner, ns.value("partIndex", size_t{0}));
                 Reset(index, p);
                 return did ? AiStatus::Success : AiStatus::Failure;
@@ -846,7 +900,12 @@ struct Run {
             }
             const auto& tw = R().get<WorldTransform2D>(target);
             const float reach = R().all_of<Action>(target) ? R().get<Action>(target).range : 1.1f;
-            if (!Walk({tw.x, tw.y}, std::max(0.6f, reach - 0.2f))) return AiStatus::Running;
+            if (!Walk({tw.x, tw.y}, std::max(0.6f, reach - 0.2f))) {
+                if (!state.gaveUp) return AiStatus::Running;
+                state.gaveUp = false;
+                Reset(index, p);
+                return AiStatus::Failure;
+            }
             const bool did = ctx.act && ctx.act(actor, target);
             Reset(index, p);
             return did ? AiStatus::Success : AiStatus::Failure;
@@ -877,7 +936,8 @@ struct Run {
             if (ns.value("phase", 0) == 0) {
                 ns["t"] = ns.value("t", 0.0f) + dt;
                 if (!Walk({ns.value("x", 0.0f), ns.value("y", 0.0f)}, std::max(0.5f, ns.value("range", 1.8f) - 0.4f))) {
-                    if (ns.value("t", 0.0f) > 40.0f) { // no way there
+                    if (ns.value("t", 0.0f) > 40.0f || state.gaveUp) { // no way there
+                        state.gaveUp = false;
                         Reset(index, p);
                         return AiStatus::Failure;
                     }

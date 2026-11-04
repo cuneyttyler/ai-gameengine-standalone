@@ -706,7 +706,7 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                  }(),
                  MakeRecordValue("x", FieldType::Float, "Or a point: x"),
                  MakeRecordValue("y", FieldType::Float, "and y"),
-                 MakeRecordValue("scene", FieldType::String, "The scene it's in (empty: wherever the character is)")},
+                 PickedFrom(MakeRecordValue("scene", FieldType::String, "The scene it's in (empty: wherever the character is)"), "scenes")},
                 "Where.")
         .When("template", {"stay", "travel", "wander", "sandbox", "live", "sleep", "eat", "work", "vendor", "use-part", "tend",
                            "guard", "hide", "ambush", "use-object", "escort", "custom", "script"})
@@ -749,8 +749,8 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                           {"wander", "sandbox", "live", "use-part", "tend", "ambush", "custom"}),
                  OnlyWhen(MakeRecordValue("duration", FieldType::Float, "Seconds: how long a part is used, or a stop on the way"), "template",
                           {"live", "use-part", "patrol", "custom"}),
-                 OnlyWhen(MakeRecordValue("action", FieldType::String, "What it uses: an animated part's or a Reaction's name: its "
-                                                                       "input action, station, clip or event (cook)"),
+                 OnlyWhen(PickedFrom(MakeRecordValue("action", FieldType::String, "What it uses: an animated part's or a Reaction's name: "
+                                                                                  "its input action, station, clip or event (cook)"), "uses"),
                           "template", {"live", "use-part", "tend", "custom"}),
                  OnlyWhen(MakeRecordValue("object", FieldType::String, "A smart object type (counter, forge, desk)"), "template",
                           {"work", "use-object", "custom"}),

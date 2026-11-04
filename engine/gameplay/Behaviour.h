@@ -112,6 +112,12 @@ struct BehaviourState {
     size_t next = 0;
     std::pair<int, int> goal{INT32_MIN, INT32_MIN};
     float stuck = 0.0f;
+    // Getting no nearer the goal (Walk's recovery): how long, the nearest it has come, and how far recovery has gone
+    // (1 planned again, 2 slipping past thin walls, 3 stepped out to an open spot, then gave up or was moved there).
+    float noProgress = 0.0f;
+    float nearest = 1e9f;
+    int recovery = 0;
+    bool gaveUp = false; // the goal given up (a step walking to it fails, and the package goes on)
     // Using a smart object.
     Entity using_ = entt::null;
     bool hidden = false;

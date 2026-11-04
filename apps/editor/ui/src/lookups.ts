@@ -22,6 +22,7 @@ export const lookups = reactive({
   worldCharacters: [] as { key: string; name: string }[],
   records: {} as Record<string, string[]>, // record type -> ids
   actions: [] as string[], // the input actions
+  uses: [] as string[], // what characters use things by: input actions, parts' and Reactions' names
   textures: [] as string[],
   audio: [] as string[],
 })
@@ -69,6 +70,8 @@ export function optionsFor(choices: string | undefined, type?: string): Option[]
       return lookups.worldCharacters.map((c) => ({ value: c.key, label: c.name || c.key, hint: c.key }))
     case 'actions':
       return lookups.actions.map((a) => ({ value: a, hint: 'input action' }))
+    case 'uses':
+      return lookups.uses.map((a) => ({ value: a, hint: lookups.actions.includes(a) ? 'input action' : 'a part or Reaction' }))
     case 'targets':
       return [
         { value: 'player', hint: 'the player' },

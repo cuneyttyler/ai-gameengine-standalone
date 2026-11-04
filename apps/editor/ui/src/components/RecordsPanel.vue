@@ -9,6 +9,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { editorState } from '../editorState'
 import { lookups, requestLookups } from '../lookups'
 import StepOutline from './StepOutline.vue'
+import ProcedureEditor from './ProcedureEditor.vue'
 import { onHostMessage, sendToHost } from '../ipc'
 import { confirmDialog } from '../dialogs'
 import RecordValue from './story/RecordValue.vue'
@@ -286,8 +287,15 @@ function goTo(key: string): void {
           :title="draft.own[field.name] ? 'Set here (untick to inherit from the base)' : 'Inherited from the base (tick to set here)'"
           @change="setOwn(field.name, ($event.target as HTMLInputElement).checked)"
         />
+        <ProcedureEditor
+          v-if="draft.type === 'package' && field.name === 'procedure'"
+          :value="draft.data[field.name]"
+          :data="(draft.data.data as Record<string, unknown>) ?? {}"
+          :disabled="!!draft.base && !draft.own[field.name]"
+          @update="draft.data[field.name] = $event"
+        />
         <RulesEditor
-          v-if="draft.type === 'recipe' && ['if', 'do', 'start', 'interrupted'].includes(field.name)"
+          v-else-if="draft.type === 'recipe' && ['if', 'do', 'start', 'interrupted'].includes(field.name)"
           :mode="field.name === 'if' ? 'if' : 'do'"
           :value="draft.data[field.name]"
           :disabled="!!draft.base && !draft.own[field.name]"
@@ -309,6 +317,8 @@ function goTo(key: string): void {
         <div class="outline">
           <StepOutline :step="lookups.templates[String(draft.data.template)]!" :data="(draft.data.data as Record<string, unknown>) ?? {}" />
         </div>
+        <details class="raw"><summary>As JSON (the package language: a behaviour tree)</summary>
+          <pre>{{ JSON.stringify(lookups.templates[String(draft.data.template)], null, 2) }}</pre></details>
         <button class="small" title="Template custom, with these steps in its procedure, to change any of them" @click="makeCustom">
           Copy into a custom package…</button>
       </div>
@@ -463,6 +473,20 @@ function goTo(key: string): void {
   font-weight: 400;
   opacity: 0.6;
   margin-left: 8px;
+}
+.raw pre {
+  max-height: 240px;
+  overflow: auto;
+  font-size: 11px;
+  background: #15151c;
+  border: 1px solid #2f2f40;
+  padding: 6px;
+  margin: 4px 0 0;
+}
+.raw summary {
+  font-size: 11px;
+  opacity: 0.7;
+  cursor: pointer;
 }
 .outline {
   border: 1px solid #2f2f40;
