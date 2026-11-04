@@ -120,10 +120,10 @@ public:
     std::string CombineHeldWith(const std::string& item); // what happened, in words
     bool UseHeldOn(Entity target);
     void RequestUseHeldAt(float sceneX, float sceneY) { requestedHeld_ = std::make_pair(sceneX, sceneY); }
-    // Why the player can't make it now ("Needs 2 Flour"); empty: they can.
-    std::string CraftProblem(const std::string& recipe, const std::string& station) const;
-    // Made by the player (at a station, if any): empty, or why not.
-    std::string Craft(const std::string& recipe, const std::string& station);
+    // Why the player (or `user`, a character) can't make it now ("Needs 2 Flour"); empty: they can.
+    std::string CraftProblem(const std::string& recipe, const std::string& station, Entity user = entt::null) const;
+    // Made by the player, or by `user` (a character: from its own inventory, into it), at a station if any: empty, or why not.
+    std::string Craft(const std::string& recipe, const std::string& station, Entity user = entt::null);
     // A panel of the windows over play (inventory, crafting, crafting:<station>, spellbook, journal), or a screen of the project's.
     bool OpenPanel(const std::string& id);
     // A designed screen's button (docs/systems/game-ui.md §12): open:<screen>, close:<screen>, event:<name>,
@@ -173,6 +173,27 @@ public:
     bool Act(Entity user, Entity target);
     // The nearest thing `user` can act on with `action` (an Action's, or interact for an Interactable) within `radius`.
     std::optional<Entity> ActionTarget(Entity user, const std::string& action, float radius) const;
+
+    // Animated parts (docs/assets/animations.md §4): every part where it stands (its foot, in cells), a building's doors
+    // and other parts (a stove, a lever), and a painted place's doors.
+    struct PartSpot {
+        Entity owner{entt::null}, overlay{entt::null};
+        size_t index = 0;
+        float x = 0.0f, y = 0.0f;
+        bool placed = false; // where it's drawn is known (else its owner's middle, until it's drawn)
+    };
+    std::vector<PartSpot> PartSpots() const;
+    // The nearest part `user` can use named `name` within `radius` cells: its input action or event (trigger), its
+    // station, its clip, the event it fires, its prompt, or "door" for a doorway's door. Not one locked without its key.
+    // `around`: measured from there instead of from `user` (a package's place).
+    std::optional<PartSpot> FindPart(Entity user, const std::string& name, float radius,
+                                     std::optional<std::pair<float, float>> around = std::nullopt) const;
+    // `user` (a character; the player's are by their keys) uses a part as the player would: it opens or shuts (by its
+    // activation's way), sends its event, runs its "do", plays its player clip on `user`, unlocks it with `user`'s key.
+    // Done at the next step. False: no such part, out of its range (+1 cell), or its conditions don't hold.
+    bool UsePart(Entity user, Entity owner, size_t index);
+    // Whether a part is open (active) now: a door open, a stove cooking, a part always playing.
+    bool PartIsOpen(Entity owner, size_t index) const;
 
     // Dialogue and quests (development_plan.md 3.2b). With a library, E talks
     // to the nearest Talk entity in range, conversations pause the game, and
@@ -428,7 +449,7 @@ private:
     void StepActions(float dt);
     void StepHeldItem(); // before anything reads this frame's presses: the item in hand used, put back
     std::optional<Entity> HeldItemTarget() const; // the nearest thing in range that takes the item in hand
-    void FinishCraft(const std::string& recipe);
+    void FinishCraft(const std::string& recipe, Entity user = entt::null);
     void RunResponses(const ScriptEvent& event); // each character's rules for it
     std::optional<Entity> EntityNamed(const std::string& name) const;
     Entity effectSelf_ = entt::null;
@@ -439,7 +460,14 @@ private:
         std::string recipe;
         float seconds = 0.0f;
         float health = -1.0f; // the player's when it began: hit, it's cut short
+        Entity user{entt::null}; // a character making it (none: the player)
     };
+    // Parts used by characters (UsePart), carried out at the next step's parts.
+    struct PartUse {
+        Entity user{entt::null}, owner{entt::null};
+        size_t index = 0;
+    };
+    std::vector<PartUse> partUses_;
     std::vector<PendingCraft> pendingCrafts_;
     struct PendingReaction { // a Reaction that takes time
         Entity target{entt::null}, user{entt::null};

@@ -297,6 +297,16 @@ class StairsRequest(BaseModel):
     floors: list[str]               # each floor's picture but the top's (floor 1, 2...), relative to the project
 
 
+class InteriorPartsRequest(BaseModel):
+    floors: list[str]               # each floor's interior picture (floor 1, 2...), relative to the project
+    rects: list[list[int]] = []     # each one's frame in its picture (x, y, w, h): where the building is drawn; none: all
+    building: str = ""              # what it is ("a blacksmith's smithy"), its ontology role's label
+    description: str = ""           # its role's description: what its rooms hold
+    # The interior objects the ontology says such a building holds and that move (EditorApp: Ontology::InteriorObjects):
+    # [{id, label, draw, animate: [{clip, motion, opens, prompt, duration}]}]
+    candidates: list[dict] = []
+
+
 class DoorRequest(BaseModel):
     path: str                       # the building's picture (or a painting)
     box: list[int]                  # its door, as found (x, y, w, h: its pixels)
@@ -1113,6 +1123,18 @@ def create_app(
         if root is None or vision is None:
             return {"ok": False, "errors": ["Finding the stairs needs the project open and a vision model (AI on)"]}
         return find_stairs(vision, root, request.floors[:4])
+
+    @app.post("/interiors/parts")
+    def interiors_parts(request: InteriorPartsRequest) -> dict:
+        """The things in a building's interior that move (docs/places/interior-objects.md): each floor looked at by the
+        vision model for the ontology's interior objects such a building holds, then how each moves written by the LLM."""
+        from .interior_parts import interior_parts
+        root: Path | None = state["root"]
+        vision = state.get("vision")
+        if root is None or vision is None:
+            return {"ok": False, "errors": ["Finding an interior's things needs the project open and a vision model (AI on)"]}
+        return interior_parts(vision, state.get("provider"), root, request.floors, request.candidates, request.building,
+                              request.description, request.rects)
 
     @app.post("/parts/door")
     def parts_door(request: DoorRequest) -> dict:

@@ -108,6 +108,9 @@ function removeEntry(index: number): void {
     <button v-if="id !== undefined && ground" :disabled="disabled || editorState.ai.state !== 'ready'"
             title="Its floors painted again from its exterior (BFL: each floor's room from a blockout, laid on the exterior): a new design"
             @click="redesign">Redesign interiors…</button>
+    <button v-if="id !== undefined && ground" :disabled="disabled || editorState.ai.state !== 'ready'"
+            title="Its floors' things that move (a fireplace, a clock, a stove) found by the vision model, their motions written by the LLM, then animated on their floors"
+            @click="editorState.interiorPartsDialog = id">Animate the interior…</button>
     <!-- Its redesign: a bar while its floors are painted, then that it's done (or why not). -->
     <div v-if="redesign_" class="redesign" :class="redesign_.state">
       <template v-if="redesign_.state === 'working'">

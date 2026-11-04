@@ -140,7 +140,7 @@ public:
 private:
     // Everything placeable is a prefab, so there are only three tools: pick,
     // erase, and the prefab brush (paints tile prefabs, places the others).
-    enum class Tool { Select, Erase, Prefab, Height };
+    enum class Tool { Select, Erase, Prefab, Height, Path };
 
     // Edit transactions: BeginEdit snapshots the scene; the snapshot only
     // becomes an undo step once MarkChanged reports a real change, so clicks
@@ -152,6 +152,21 @@ private:
 
     void Select(std::optional<Entity> entity);
     void SetTool(Tool tool);
+    // Paths characters follow (PathTool.cpp, docs/ai/ai-paths.md): the one being drawn and its picked point (the next
+    // click's point links from it: a fork when it isn't the last), a point being dragged, and whether paths show.
+    Entity pathEditing_{entt::null};
+    int pathPoint_ = -1;
+    bool pathDragging_ = false;
+    bool showPaths_ = true;
+    std::optional<std::pair<Entity, int>> PathPointAt(float sceneX, float sceneY);
+    void PathToolDown(float sceneX, float sceneY, bool shift);
+    void PathToolMove(float sceneX, float sceneY);
+    void PathToolUp();
+    void FinishPath();
+    void AddPathOverlay(std::vector<OverlayLine>& overlay);
+    bool HandlePathMessage(const std::string& type, const nlohmann::json& message);
+    std::vector<std::string> PackagesUsingPath(const std::string& name);
+    std::vector<Entity> CharactersUsingPath(const std::string& name);
     void Undo();
     void Redo();
     void DeleteSelected();
@@ -596,7 +611,21 @@ private:
     nlohmann::json partFindRegion_;     // the picture's region it was looked for in
     nlohmann::json partPending_;
     void PlacePart(const nlohmann::json& result);
+    // A part on a thing (its AnimatedPart's parts; on its prefab, every copy, when it's a copy of one): the part on the
+    // same picture whose box holds this one's middle redone, else added.
+    void PutPart(Entity parent, const AnimatedPart& made);
     void ApplyPartToPrefab(const std::string& prefab, const AnimatedPart& part);
+    // Animate the interior (InteriorAnimate.cpp, docs/places/interior-objects.md): a building's interior things found
+    // on each floor by the vision model among the ontology's interior objects such a building holds, how each moves
+    // written by the LLM, checked, then animated one at a time and put on their floors.
+    nlohmann::json interiorParts_ = nlohmann::json::object(); // {id, name, building, floors: [{floor, texture, size, region}], parts: [...], running, status}
+    int interiorPartsRequest_ = 0;
+    std::string interiorPartKey_;      // the part in flight
+    bool HandleInteriorPartsMessage(const std::string& type, const nlohmann::json& message);
+    void PostInteriorParts();
+    void InteriorPartsNext();
+    void OnInteriorPartsResult(const nlohmann::json& body);
+    nlohmann::json InteriorPartCandidates(const std::string& buildingRole);
     // Build ▸ Animate (BuildAnimate.cpp): the open build's moving parts, found and animated one at a time.
     nlohmann::json animate_;       // {targets: [...], running, only, done, failed, total}
     int animateRequest_ = 0;

@@ -161,7 +161,8 @@ on keys and gamepads) ▸ **Use on...**. Then:
 - right click or Esc (`put_back`, the gamepad's B): put away.
 
 An Action with `accepts` works for the player only with the item in hand; anyone else just carries one. It takes the
-item only if `takes` says so. Scripts: `hold_item(id)`, `held_item()`, `put_back_item()`, `craft(id, station)`. Events:
+item only if `takes` says so. Scripts: `hold_item(id)`, `held_item()`, `put_back_item()`, `craft(id, station[, who])` (who:
+a character making it from its own inventory: docs/ai/ai-packages.md §6b). Events:
 `item_used` (text: the item), `item_combined` and `crafted` (text: the recipe).
 
 **Recipes** (`recipe` records, Records panel):
@@ -171,13 +172,14 @@ item only if `takes` says so. Scripts: `hold_item(id)`, `held_item()`, `put_back
 | `inputs` | items used up, each with a count |
 | `keeps` | items needed but kept (a knife) |
 | `gives` | what it makes |
-| `at` | a station, a Reaction whose `station` names it (`stove`); empty: anywhere |
+| `at` | a station: a Reaction, or an animated part, whose `station` names it (`stove`); empty: anywhere |
 | `seconds` | how long it takes (what it makes comes after this; not kept in a save made meanwhile) |
 | `clip`, `effect`, `text` | on the player, as it's made |
 | `if`, `do` | as §5 |
 
 **Two items** combine by using one on the other. **More than two**: right click an item ▸ **Crafting** (the recipes using
-it), the `crafting` action (C, all that can be made here), or a station (a Reaction with `station`: its recipes too).
+it), the `crafting` action (C, all that can be made here), or a station (a Reaction or an animated part with `station`:
+its recipes too; a part is used by its own input action, else the door shortcuts).
 Lines that can't be made are greyed, and say what's missing.
 
 Example, a stove: a Reaction with `station: stove`, and a recipe `{"name": "Stew", "inputs": [{"item": "meat"},

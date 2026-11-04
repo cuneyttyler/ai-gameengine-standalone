@@ -370,9 +370,10 @@ class Ask(BaseModel):
 
 
 class EditorAction(BaseModel):
-    """Something done in the editor itself, not to the project: select, frame the view, open a scene or a panel, play.
-    Done when the answer arrives (no review: nothing in the project changes)."""
-    do: Literal["select", "frame", "openScene", "openPanel", "play"]
+    """Something done in the editor itself, not to the project: select, frame the view, open a scene or a panel, play,
+    or open Animate the interior for a building (its moving things looked for, shown to the user to animate). Done
+    when the answer arrives (no review: nothing in the project changes until the user animates them)."""
+    do: Literal["select", "frame", "openScene", "openPanel", "play", "animateInterior"]
     entities: list[int] = []
     entity: int | None = None
     path: str = ""

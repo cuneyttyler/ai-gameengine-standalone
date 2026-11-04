@@ -11,6 +11,7 @@ import { projectState } from '../projects'
 import { onHostMessage, sendToHost } from '../ipc'
 import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
 import InteriorEditor from './InteriorEditor.vue'
+import PathEditor from './PathEditor.vue'
 import ActionPicker from './ActionPicker.vue'
 import RulesEditor from './RulesEditor.vue'
 import CharacterRulesEditor from './CharacterRulesEditor.vue'
@@ -357,6 +358,14 @@ function numberFrom(event: Event): number {
               <option v-for="d in ['south', 'south-east', 'east', 'north-east', 'north', 'north-west', 'west', 'south-west']" :key="d" :value="d">{{ d }}</option>
             </select>
           </div>
+          <!-- Path: its points and forks edited as what they are (the raw JSON below is the same fields). -->
+          <PathEditor
+            v-if="component.name === 'Path'"
+            :fields="component.fields"
+            :disabled="editorState.playing"
+            :id="current.id"
+            @set="(name, value) => setField('Path', component.fields.find((f) => f.name === name)!, value)"
+          />
           <!-- Interior: its floors, stairs and ways in edited as what they are (the raw lists below are the same fields). -->
           <InteriorEditor
             v-if="component.name === 'Interior'"

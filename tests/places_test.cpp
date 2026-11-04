@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 #include <sstream>
 
 using namespace aige;
@@ -221,6 +222,43 @@ TEST(PlacesOntologyTest, ProjectLibraryAddsAndReplaces) {
 }
 
 // --- the expression language ---------------------------------------------------------
+
+// Interior objects (docs/places/interior-objects.md): what a kind of building holds that moves, and how, from the ontology.
+TEST(PlacesOntologyTest, InteriorObjectsByBuilding) {
+    const Ontology& o = Library();
+    auto ids = [&](const std::string& building, bool animated) {
+        std::set<std::string> out;
+        for (const Role* r : o.InteriorObjects(building, animated)) out.insert(r->id);
+        return out;
+    };
+    const auto smithy = ids("smithy", true);
+    EXPECT_TRUE(smithy.contains("forge"));
+    EXPECT_TRUE(smithy.contains("anvil"));
+    EXPECT_TRUE(smithy.contains("grindstone")); // a workshop's, and a smithy is a kind of workshop
+    EXPECT_TRUE(smithy.contains("candle"));     // found in any building
+    EXPECT_FALSE(smithy.contains("tesla-coil"));
+    EXPECT_FALSE(smithy.contains("hearth"));    // a category, not a thing
+    EXPECT_FALSE(smithy.contains("workbench")); // doesn't move
+    EXPECT_TRUE(ids("smithy", false).contains("workbench"));
+    EXPECT_TRUE(ids("laboratory", true).contains("tesla-coil"));
+    EXPECT_TRUE(ids("alchemy-lab", true).contains("alembic"));
+    EXPECT_TRUE(ids("suburban-house", true).contains("ceiling-fan"));
+    EXPECT_FALSE(ids("house", true).contains("ceiling-fan")); // a modern home's, not an old house's
+    EXPECT_TRUE(ids("suburban-house", true).contains("fireplace")); // a house's, and a suburban house is one
+
+    // How they move: their own, and found where their category says.
+    const auto fire = o.RoleAnimations("fireplace");
+    ASSERT_FALSE(fire.empty());
+    EXPECT_EQ(fire[0].value("opens", ""), "always");
+    EXPECT_FALSE(fire[0].value("motion", "").empty());
+    EXPECT_FALSE(o.RoleFoundIn("piano").empty()); // musical-instrument's
+    EXPECT_TRUE(o.RoleFoundIn("tree").empty());   // not an interior object
+    // Moved under interior-object, furniture keeps its look, its solidity and its size.
+    EXPECT_TRUE(o.IsKindOfRole("fireplace", "prop"));
+    EXPECT_EQ(o.RoleLook("fireplace", "at"), "wall");
+    EXPECT_TRUE(o.IsSolid("fireplace"));
+    EXPECT_FALSE(o.IsSolid("candle"));
+}
 
 TEST(PlacesExprTest, IntervalsMakeComparisonsMaybe) {
     FieldScope s;

@@ -15,6 +15,8 @@
 #include "assets/Project.h"
 #include "gameplay/Components.h"
 #include "gameplay/GameSession.h"
+#include "gameplay/Interiors.h"
+#include "gameplay/Paths.h"
 #include "gameplay/TileLayer.h"
 #include "physics2d/Components.h"
 #include "editing/Autotile.h"
@@ -745,6 +747,83 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
             context.registry.emplace<WorldTransform2D>(entity, ToFloat(args[1]), ToFloat(args[2]));
             context.registry.emplace<ScreenTransform2D>(entity);
             context.registry.emplace<Marker>(entity, name);
+            return {true, {}, entity};
+        });
+
+    // Paths characters follow (docs/ai/ai-paths.md): named, shared by packages, forking by weight or conditions.
+    r.Command("scene.addPath", "Adds a named path characters follow (or changes the one of that name): packages use it by "
+                               "name (data.path, the step follow-path), any number of them. Points in world cells; links "
+                               "make forks (random by weight, or by conditions) and joins; none: point to point in order.")
+        .Param("name", FieldType::String, "Lowercase letters, digits, - and _, e.g. market-loop.")
+        .Param("points", FieldType::String, "JSON list of points in world cells: [[x, y], ...] or [{\"x\", \"y\", \"wait\": "
+                                            "seconds, \"clip\", \"use\": a part used there, \"do\": effects, \"label\"}].")
+        .Param("links", FieldType::String, "JSON list of links (forks and joins): [{\"from\": i, \"to\": j, \"weight\", \"if\": "
+                                           "conditions, \"priority\", \"default\", \"do\", \"label\"}]; left out: in order.").Optional()
+        .Param("end", FieldType::String, "stop (the default), loop (back to the first point) or back (the way it came).").Optional()
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            const std::string name = ToString(args[0]);
+            const bool safe = !name.empty() && std::all_of(name.begin(), name.end(), [](unsigned char c) {
+                return (std::isalnum(c) && !std::isupper(c)) || c == '_' || c == '-';
+            });
+            if (!safe) return Fail("path names are lowercase letters, digits, - and _");
+            const nlohmann::json given = nlohmann::json::parse(ToString(args[1]), nullptr, false);
+            if (!given.is_array() || given.size() < 2) return Fail("points: a JSON list of at least two points");
+            nlohmann::json points = nlohmann::json::array();
+            for (const auto& p : given) {
+                if (p.is_array() && p.size() >= 2 && p[0].is_number() && p[1].is_number()) points.push_back({{"x", p[0]}, {"y", p[1]}});
+                else if (p.is_object() && p.contains("x") && p.contains("y")) points.push_back(p);
+                else return Fail("each point is [x, y] or {\"x\", \"y\", ...}");
+            }
+            const float ox = points[0].value("x", 0.0f), oy = points[0].value("y", 0.0f);
+            for (auto& p : points) p["x"] = p.value("x", 0.0f) - ox, p["y"] = p.value("y", 0.0f) - oy; // from its own place
+            Path path;
+            path.name = name;
+            path.points = points.dump();
+            path.links = args.size() > 2 ? ToString(args[2]) : std::string();
+            path.end = args.size() > 3 && !ToString(args[3]).empty() ? ToString(args[3]) : std::string("stop");
+            if (const auto problems = CheckPath(ReadPath(path)); !problems.empty()) return Fail(problems.front());
+            Entity entity = FindPathEntity(context.registry, name).value_or(entt::null);
+            if (entity == entt::null) {
+                entity = context.registry.create();
+                context.registry.emplace<Name>(entity, "Path " + name);
+                context.registry.emplace<ScreenTransform2D>(entity);
+            }
+            context.registry.emplace_or_replace<WorldTransform2D>(entity, ox, oy);
+            context.registry.emplace_or_replace<Path>(entity, path);
+            return {true, {}, entity};
+        });
+    r.Command("path.around", "Adds (or changes) a named path round a building or thing: a loop a step outside its "
+                             "footprint, corner to corner, for characters to walk round it (a guard's rounds, a stroll).")
+        .Param("name", FieldType::String, "The path's name, e.g. house-4-round.")
+        .Param("entity", FieldType::EntityRef, "The building or thing to go round.")
+        .Param("margin", FieldType::Float, "Cells outside its footprint (1 when left out).").Optional()
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            const std::string name = ToString(args[0]);
+            const Entity target = ToEntity(args[1]);
+            if (!context.registry.valid(target)) return Fail("no such thing to go round");
+            const Interior none;
+            const auto* interior = context.registry.try_get<Interior>(target);
+            int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+            if (!InteriorFootprint(context.registry, target, interior ? *interior : none, x0, y0, x1, y1)) {
+                const auto* w = context.registry.try_get<WorldTransform2D>(target);
+                if (!w) return Fail("it has no place to go round");
+                x0 = x1 = static_cast<int>(std::floor(w->x)), y0 = y1 = static_cast<int>(std::floor(w->y));
+            }
+            const float m = args.size() > 2 && ToFloat(args[2]) > 0.0f ? ToFloat(args[2]) : 1.0f;
+            const float l = x0 - m + 0.5f, t = y0 - m + 0.5f, rr = x1 + m + 0.5f, b = y1 + m + 0.5f;
+            const nlohmann::json corners = {{{"x", 0.0f}, {"y", 0.0f}}, {{"x", rr - l}, {"y", 0.0f}}, {{"x", rr - l}, {"y", b - t}}, {{"x", 0.0f}, {"y", b - t}}};
+            Path path;
+            path.name = name;
+            path.points = corners.dump();
+            path.end = "loop";
+            Entity entity = FindPathEntity(context.registry, name).value_or(entt::null);
+            if (entity == entt::null) {
+                entity = context.registry.create();
+                context.registry.emplace<Name>(entity, "Path " + name);
+                context.registry.emplace<ScreenTransform2D>(entity);
+            }
+            context.registry.emplace_or_replace<WorldTransform2D>(entity, l, t);
+            context.registry.emplace_or_replace<Path>(entity, path);
             return {true, {}, entity};
         });
 

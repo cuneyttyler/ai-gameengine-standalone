@@ -682,15 +682,22 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
         .List();
 
     // Character AI (14, ai-packages.md).
-    r.RecordType("package", "An AI package (14.2): what a character does, where and when. A Behaviour lists "
-                            "packages; the first whose schedule and conditions hold runs its template.")
-        .Field("template", FieldType::Enum, "What it does.")
-        .Options({"stay", "travel", "wander", "sandbox", "sleep", "eat", "work", "vendor", "patrol", "guard", "follow",
-                  "accompany", "escort", "flee", "hide", "ambush", "wait", "use-object", "approach-player", "script"})
+    r.RecordType("package", "An AI package (14.2, docs/ai/ai-packages.md): what a character does, where and when. A "
+                            "Behaviour lists packages; the first whose schedule and conditions hold runs its template "
+                            "(or its own procedure).")
+        .Field("template", FieldType::Enum, "What it does: a built-in behaviour taking the data below (custom: its own "
+                                            "procedure; script: a Lua run()).")
+        .Options({"stay", "travel", "wander", "sandbox", "live", "sleep", "eat", "work", "vendor", "use-part", "tend",
+                  "patrol", "follow-path", "guard", "follow", "accompany", "escort", "flee", "hide", "ambush", "wait", "use-object",
+                  "approach-player", "custom", "script"})
         .Required()
         .Field("description", FieldType::String, "What it's for, in a line.")
+        .Field("procedure", FieldType::String, "Its own behaviour tree as JSON, for template custom: {\"type\": \"loop\", "
+                                               "\"children\": [...]} with the procedure steps (docs/ai/ai-packages.md §5.1).")
         .Object("location",
-                {MakeRecordValue("marker", FieldType::String, "A marker's name"),
+                {MakeRecordValue("building", FieldType::String, "A building or thing by its name (house-4): around it, or in it"),
+                 MakeRecordValue("entity", FieldType::String, "Or a character or thing by its name: near it"),
+                 MakeRecordValue("marker", FieldType::String, "Or a marker's name"),
                  [] {
                      RecordField alias = MakeRecordValue("alias", FieldType::Enum, "Or the character's own place");
                      alias.options = {"none", "home", "work", "bed"};
@@ -731,8 +738,10 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                  MakeRecordValue("run", FieldType::Bool, "Runs rather than walks")},
                 "How it behaves.")
         .Object("data",
-                {MakeRecordValue("radius", FieldType::Float, "Cells around the place (wander, sandbox, ambush)"),
-                 MakeRecordValue("duration", FieldType::Float, "Seconds (waits, patrol stops)"),
+                {MakeRecordValue("radius", FieldType::Float, "Cells around the place (wander, sandbox, live, use-part, ambush)"),
+                 MakeRecordValue("duration", FieldType::Float, "Seconds (waits, patrol stops, how long a part is used)"),
+                 MakeRecordValue("action", FieldType::String, "What it uses (use-part, live, tend): an animated part's or a "
+                                                              "Reaction's name: its input action, station, clip or event (cook)"),
                  MakeRecordValue("object", FieldType::String, "A smart object type (work, use-object)"),
                  MakeRecordValue("dialogue", FieldType::String, "A dialogue file (approach-player)"),
                  [] {
@@ -740,14 +749,25 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                      path.list = true;
                      return path;
                  }(),
+                 MakeRecordValue("route", FieldType::String, "A named path to walk (follow-path, patrol: docs/ai/ai-paths.md)"),
+                 [] {
+                     RecordField mode = MakeRecordValue("mode", FieldType::Enum, "How a path is walked (follow-path): once, loop, wander");
+                     mode.options = {"once", "loop", "wander"};
+                     return mode;
+                 }(),
+                 [] {
+                     RecordField from = MakeRecordValue("from", FieldType::Enum, "Where on the path it begins (follow-path)");
+                     from.options = {"nearest", "start", "end"};
+                     return from;
+                 }(),
                  MakeRecordValue("distance", FieldType::Float, "Cells (follow, escort, flee)"),
                  MakeRecordValue("script", FieldType::Script, "A Lua file with run() (script)")},
                 "What the template needs.");
 
     r.RecordType("procedure", "A procedure (14.1): a behaviour tree a package template can be, written by hand. "
                               "Nodes: sequence, selector, random, parallel, loop, condition, cooldown, invert; "
-                              "move-to, wander, wait, idle, face, say, use-object, talk-to-player, follow, flee, "
-                              "patrol, ambush, escort, set, emit, script.")
+                              "move-to, wander, wait, idle, face, say, use-object, use-part, act, play, talk-to-player, "
+                              "follow, flee, patrol, ambush, escort, set, emit, script.")
         .Field("description", FieldType::String, "What it does.")
         .Field("tree", FieldType::String, "The tree as JSON: {\"type\": \"sequence\", \"children\": [...]}.").Required();
 

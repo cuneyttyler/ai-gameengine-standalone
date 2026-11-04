@@ -6,6 +6,7 @@
 #include "gameplay/Components.h"
 #include "gameplay/EngineReflection.h"
 #include "gameplay/GameSession.h"
+#include "gameplay/Paths.h"
 #include "gameplay/Story.h"
 #include "gameplay/TileGrid.h"
 #include "physics2d/Components.h"
@@ -49,6 +50,12 @@ protected:
         Write(root_ / "records/package/haunt.json", R"({"template": "script", "data": {"script": "scripts/ghost.lua"}})");
         Write(root_ / "records/package/elsewhere.json", R"({"template": "stay", "location": {"marker": "x", "scene": "scenes/b.aige"}})");
         Write(root_ / "records/combat-style/coward.json", R"({"range": "melee", "fleeAt": 0.5})");
+        // A place by a thing's name, and a package with its own procedure (docs/ai/ai-packages.md §4.1, §5.1).
+        Write(root_ / "records/package/to-well.json", R"({"template": "travel", "location": {"building": "Well"}})");
+        // A named path walked once (docs/ai/ai-paths.md).
+        Write(root_ / "records/package/walk-lane.json", R"({"template": "follow-path", "data": {"route": "lane", "mode": "once", "from": "start"}})");
+        Write(root_ / "records/package/own-walk.json",
+              R"({"template": "custom", "procedure": "{\"type\": \"sequence\", \"children\": [{\"type\": \"move-to\", \"to\": \"b\"}, {\"type\": \"play\", \"clip\": \"wave\", \"seconds\": 0.2}]}"})");
         aige::ActiveRecords().Open(aige::EngineReflection(), root_);
         ASSERT_TRUE(aige::ActiveRecords().Problems().empty()) << aige::ActiveRecords().Problems()[0].message;
         for (int x = 0; x < 20; ++x) {
@@ -121,6 +128,29 @@ TEST_F(AiTest, TemplatesParseAndRolesGiveAffordances) {
     EXPECT_FALSE(aige::ParseProcedure(nlohmann::json::object()).has_value());
     EXPECT_EQ(aige::AffordancesForRole("bed"), "sleep");
     EXPECT_EQ(aige::AffordancesForRole("house"), "");
+}
+
+TEST_F(AiTest, NewTemplatesAndAPackagesOwnProcedure) {
+    for (const char* name : {"live", "use-part", "tend"}) ASSERT_NE(aige::FindProcedure(name), nullptr) << name;
+    const auto* record = aige::ActiveRecords().Find("package", "own-walk");
+    ASSERT_NE(record, nullptr);
+    const aige::Procedure* own = aige::PackageProcedure("own-walk", record->resolved);
+    ASSERT_NE(own, nullptr);
+    EXPECT_EQ(own->nodes[0].type, "sequence"); // its own tree, not the template's
+    // It runs: walks to the marker.
+    MarkerAt("b", 12.5f, 3.5f);
+    auto walker = Villager(3.5f, 3.5f, "own-walk");
+    Run(10.0f);
+    EXPECT_LT(DistanceTo(walker, 12.5f, 3.5f), 0.8f);
+}
+
+TEST_F(AiTest, APlaceByAThingsName) {
+    auto well = registry_.create();
+    registry_.emplace<aige::WorldTransform2D>(well, 12.5f, 12.5f);
+    registry_.emplace<aige::Name>(well, "Well");
+    auto walker = Villager(3.5f, 3.5f, "to-well");
+    Run(12.0f);
+    EXPECT_LT(DistanceTo(walker, 12.5f, 12.5f), 0.8f);
 }
 
 TEST_F(AiTest, TheScheduleChoosesWorkByDayAndBedByNight) {
@@ -253,4 +283,74 @@ TEST_F(AiTest, ActorsAreOnePersonAcrossScenes) {
     aige::ActorRoster back;
     back.FromJson(saved);
     EXPECT_FALSE(back.Entries().at("character/mira").alive);
+}
+
+// docs/ai/ai-paths.md: a path read and written, forks chosen by conditions, priority, weight and default.
+TEST_F(AiTest, PathsForkByConditionsPriorityAndWeight) {
+    aige::Path path;
+    path.name = "lane";
+    path.points = R"([{"x": 0, "y": 0}, {"x": 5, "y": 0, "wait": 1}, {"x": 5, "y": 5}])";
+    aige::PathGraph graph = aige::ReadPath(path, 3.5f, 3.5f);
+    ASSERT_EQ(graph.points.size(), 3u);
+    EXPECT_FLOAT_EQ(graph.points[1].x, 8.5f); // from its own place
+    ASSERT_EQ(graph.links.size(), 2u);        // in order
+    path.end = "loop";
+    EXPECT_EQ(aige::ReadPath(path).links.size(), 3u); // and round
+    aige::Path written;
+    aige::WritePath(aige::ReadPath(path, 3.5f, 3.5f), written, 3.5f, 3.5f);
+    EXPECT_TRUE(written.links.empty()); // links in order aren't written
+    EXPECT_TRUE(aige::CheckPath(graph).empty());
+
+    // A fork: a conditional link, a weighted pair, a default.
+    aige::PathGraph fork;
+    fork.points.resize(4);
+    fork.links = {{0, 1, 3.0f, "", false, false, "", "market"}, {0, 2, 1.0f, "", false, false, "", "well"},
+                  {0, 3, 1.0f, R"([{"flag": "never"}])", false, true, "", "home"}};
+    std::mt19937 rng{3};
+    auto holds = [](const aige::PathLink& l) { return l.conditions.empty(); };
+    int market = 0;
+    for (int i = 0; i < 400; ++i) market += aige::ChooseLink(fork, {0, 1, 2}, holds, rng) == 0;
+    EXPECT_GT(market, 250); // 3:1
+    EXPECT_LT(market, 350);
+    // A package's own preference by label.
+    int well = 0;
+    for (int i = 0; i < 200; ++i) well += aige::ChooseLink(fork, {0, 1, 2}, holds, rng, {{"well", 100.0}, {"market", 0.0}}) == 1;
+    EXPECT_GT(well, 190);
+    // None holds: the default (whatever its conditions); a priority one whenever it holds.
+    EXPECT_EQ(aige::ChooseLink(fork, {0, 1, 2}, [](const aige::PathLink&) { return false; }, rng), 2);
+    fork.links[1].priority = true;
+    EXPECT_EQ(aige::ChooseLink(fork, {0, 1, 2}, holds, rng), 1);
+    // The path's own conditions, and dialogue's handed on.
+    bool asked = false;
+    EXPECT_FALSE(aige::LinkConditionsHold(R"([{"playerNear": 4}, {"flag": "x"}])", [](const nlohmann::json&) { return false; },
+                                          [&](const std::string&) { return asked = true; }));
+    EXPECT_FALSE(asked);
+    EXPECT_TRUE(aige::LinkConditionsHold(R"([{"flag": "x"}])", nullptr, [&](const std::string& text) { return text.find("flag") != std::string::npos; }));
+    // Problems.
+    fork.links.push_back({0, 9});
+    EXPECT_FALSE(aige::CheckPath(fork).empty());
+}
+
+// docs/ai/ai-paths.md §4: characters walk a named path, each its own way at a fork: a link that needs the player near
+// is taken (it goes first) only when the player is.
+TEST_F(AiTest, CharactersFollowANamedPathAndChooseAtForks) {
+    auto lane = registry_.create();
+    registry_.emplace<aige::WorldTransform2D>(lane, 3.5f, 3.5f);
+    auto& path = registry_.emplace<aige::Path>(lane);
+    path.name = "lane";
+    path.points = R"([{"x": 0, "y": 0}, {"x": 5, "y": 0}, {"x": 5, "y": 6}, {"x": 10, "y": 0}])";
+    path.links = R"([{"from": 0, "to": 1}, {"from": 1, "to": 2, "priority": true, "if": [{"playerNear": 40}]}, {"from": 1, "to": 3}])";
+    auto mira = Villager(3.5f, 3.5f, "walk-lane");
+    Run(14.0f);
+    EXPECT_LT(DistanceTo(mira, 13.5f, 3.5f), 0.8f); // no player: the other way
+    EXPECT_EQ(registry_.get<aige::BehaviourState>(mira).blackboard["path"], "lane");
+
+    // With the player about: the first way. Two walkers share the path.
+    aige::CreatePlayer(registry_, 1.5f, 15.5f);
+    registry_.get<aige::WorldTransform2D>(mira) = {3.5f, 3.5f};
+    registry_.get<aige::BehaviourState>(mira).nodeState.clear();
+    auto second = Villager(3.5f, 4.5f, "walk-lane");
+    Run(16.0f);
+    EXPECT_LT(DistanceTo(mira, 8.5f, 9.5f), 0.8f);
+    EXPECT_LT(DistanceTo(second, 8.5f, 9.5f), 1.6f);
 }

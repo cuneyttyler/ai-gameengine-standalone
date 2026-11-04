@@ -91,6 +91,15 @@ function send(type: string): void {
         Erase
       </button>
       <button
+        :class="{ active: editorState.tool === 'path' }"
+        title="Path: click to draw a path characters follow (click a point first to branch from it; Shift+click a point to join it; Enter finishes). Packages use it by its name."
+        :disabled="editorState.playing"
+        @click="setTool('path')"
+      >
+        Path
+      </button>
+      <button v-if="editorState.tool === 'path'" title="Finish this path: the next click begins another (Enter)" @click="send('path:finish')">Finish path</button>
+      <button
         :class="{ active: editorState.tool === 'height' }"
         title="Height: drag over the ground to raise it, lower it or level it (a built place's ground)"
         :disabled="editorState.playing"

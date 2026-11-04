@@ -23615,6 +23615,24 @@ gbr:ac-unit
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:alchemy-lab
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "alchemist's laboratory"@en ;
+    skos:notation "alchemy-lab" ;
+    skos:broader gbr:workshop ;
+    gbo:affordance gbv:affordance.environmental-object .
+
+gbr:alembic
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "alembic"@en ;
+    skos:notation "alembic" ;
+    skos:broader gbr:lab-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:alchemy-lab, gbr:laboratory ;
+    gbo:animation "{\"clip\":\"distil\",\"motion\":\"the liquid in the glass flask bubbles over the small flame and vapour drips through the coiled tube\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:altar
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
@@ -23636,8 +23654,10 @@ gbr:anvil
     skos:inScheme gbo:roles ;
     skos:prefLabel "anvil"@en ;
     skos:notation "anvil" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.interactive-object .
+    skos:broader gbr:craft-equipment ;
+    gbo:affordance gbv:affordance.interactive-object ;
+    gbo:foundIn gbr:smithy ;
+    gbo:animation "{\"clip\":\"strike\",\"duration\":2.0,\"motion\":\"the glowing metal on the anvil throws up a shower of sparks\",\"opens\":\"use\",\"prompt\":\"Strike\"}"^^rdf:JSON .
 
 gbr:apartment-block
     a gbo:Role, skos:Concept ;
@@ -23654,6 +23674,35 @@ gbr:apartment-tower
     skos:notation "apartment-tower" ;
     skos:broader gbr:apartment-block ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:appliance
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "appliance"@en ;
+    skos:notation "appliance" ;
+    skos:broader gbr:interior-object ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:office-building, gbr:office-tower, gbr:school, gbr:hospital, gbr:police-station, gbr:fire-station, gbr:city-hall, gbr:hotel, gbr:restaurant, gbr:transit-station, gbr:mall, gbr:cafe .
+
+gbr:aquarium
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "aquarium"@en ;
+    skos:notation "aquarium" ;
+    skos:broader gbr:water-fixture ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:restaurant, gbr:hotel, gbr:office-building, gbr:school, gbr:hospital, gbr:laboratory ;
+    gbo:animation "{\"clip\":\"swim\",\"motion\":\"the fish swim slowly to and fro, bubbles rise and the water plants sway\",\"opens\":\"always\"}"^^rdf:JSON .
+
+gbr:arcade-machine
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "arcade machine"@en ;
+    skos:notation "arcade-machine" ;
+    skos:broader gbr:electronic ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:cafe, gbr:mall, gbr:restaurant, gbr:apartment-block, gbr:suburban-house ;
+    gbo:animation "{\"clip\":\"play\",\"motion\":\"the arcade screen flashes with moving game pictures and its buttons light up in turn\",\"opens\":\"always\"}"^^rdf:JSON .
 
 gbr:awning
     a gbo:Role, skos:Concept ;
@@ -23685,7 +23734,9 @@ gbr:banner
     skos:prefLabel "banner"@en ;
     skos:notation "banner" ;
     skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:keep, gbr:manor, gbr:temple, gbr:barracks, gbr:guard-tower, gbr:city-hall, gbr:gatehouse ;
+    gbo:animation "{\"clip\":\"ripple\",\"motion\":\"the banner ripples gently as if in a draught\",\"opens\":\"always\"}"^^rdf:JSON .
 
 gbr:barn
     a gbo:Role, skos:Concept ;
@@ -23711,13 +23762,34 @@ gbr:barrel
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.interactive-object .
 
+gbr:bathtub
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "bathtub"@en ;
+    skos:notation "bathtub" ;
+    skos:broader gbr:water-fixture ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:hotel, gbr:manor ;
+    gbo:animation "{\"clip\":\"fill\",\"duration\":4.0,\"motion\":\"water pours from the tap and ripples as the tub fills\",\"opens\":\"use\",\"prompt\":\"Run a bath\"}"^^rdf:JSON .
+
 gbr:bed
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "bed"@en ;
     skos:notation "bed" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:house, gbr:townhouse, gbr:farmhouse, gbr:manor, gbr:shack, gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:inn, gbr:hotel, gbr:barracks, gbr:keep, gbr:hospital, gbr:tent .
+
+gbr:bellows
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "bellows"@en ;
+    skos:notation "bellows" ;
+    skos:broader gbr:craft-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:smithy ;
+    gbo:animation "{\"clip\":\"pump\",\"duration\":3.0,\"motion\":\"the bellows press down and rise again, and the forge's coals flare up\",\"opens\":\"use\",\"prompt\":\"Pump the bellows\"}"^^rdf:JSON .
 
 gbr:bench
     a gbo:Role, skos:Concept ;
@@ -23725,7 +23797,8 @@ gbr:bench
     skos:prefLabel "bench"@en ;
     skos:notation "bench" ;
     skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.interactive-object .
+    gbo:affordance gbv:affordance.interactive-object ;
+    gbo:foundIn gbr:building .
 
 gbr:bicycle
     a gbo:Role, skos:Concept ;
@@ -23742,6 +23815,16 @@ gbr:billboard
     skos:notation "billboard" ;
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:birdcage
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "birdcage"@en ;
+    skos:notation "birdcage" ;
+    skos:broader gbr:decoration ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:house, gbr:townhouse, gbr:manor, gbr:inn, gbr:shop, gbr:suburban-house, gbr:apartment-block ;
+    gbo:animation "{\"clip\":\"flutter\",\"motion\":\"the small bird in the cage hops along its perch and flutters its wings\",\"opens\":\"always\"}"^^rdf:JSON .
 
 gbr:boat
     a gbo:Role, skos:Concept ;
@@ -23772,7 +23855,7 @@ gbr:bookshelf
     skos:inScheme gbo:roles ;
     skos:prefLabel "bookshelf"@en ;
     skos:notation "bookshelf" ;
-    skos:broader gbr:prop ;
+    skos:broader gbr:storage ;
     gbo:affordance gbv:affordance.environmental-object .
 
 gbr:boss
@@ -23791,6 +23874,16 @@ gbr:boulder
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:brazier
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "brazier"@en ;
+    skos:notation "brazier" ;
+    skos:broader gbr:hearth ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:temple, gbr:keep, gbr:guard-tower, gbr:barracks, gbr:gatehouse ;
+    gbo:animation "{\"clip\":\"burn\",\"motion\":\"the flames in the brazier's bowl flicker and leap, embers glowing\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:bridge
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
@@ -23806,6 +23899,15 @@ gbr:building
     skos:notation "building" ;
     skos:topConceptOf gbo:roles ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:bunk-bed
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "bunk bed"@en ;
+    skos:notation "bunk-bed" ;
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:barracks, gbr:inn, gbr:school .
 
 gbr:bus
     a gbo:Role, skos:Concept ;
@@ -23863,13 +23965,24 @@ gbr:campfire
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.interactive-object .
 
+gbr:candelabra
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "candelabra"@en ;
+    skos:notation "candelabra" ;
+    skos:broader gbr:interior-light ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:manor, gbr:keep, gbr:temple, gbr:inn, gbr:townhouse ;
+    gbo:animation "{\"clip\":\"flicker\",\"motion\":\"the candles' flames flicker and sway gently, their glow pulsing\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:candle
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "candle"@en ;
     skos:notation "candle" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:interior-light ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:animation "{\"clip\":\"flicker\",\"motion\":\"the candle's flame flickers and sways gently, its glow pulsing softly\",\"opens\":\"always\"}"^^rdf:JSON .
 
 gbr:car
     a gbo:Role, skos:Concept ;
@@ -23887,6 +24000,16 @@ gbr:cart
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.interactive-object .
 
+gbr:cauldron
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "cauldron"@en ;
+    skos:notation "cauldron" ;
+    skos:broader gbr:hearth ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:house, gbr:shack, gbr:farmhouse, gbr:inn, gbr:alchemy-lab, gbr:temple, gbr:tent ;
+    gbo:animation "{\"clip\":\"bubble\",\"motion\":\"the liquid in the cauldron bubbles and steams, the fire under it flickers\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:cave-mouth
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
@@ -23894,6 +24017,16 @@ gbr:cave-mouth
     skos:notation "cave-mouth" ;
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:ceiling-fan
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "ceiling fan"@en ;
+    skos:notation "ceiling-fan" ;
+    skos:broader gbr:appliance ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:office-building, gbr:restaurant, gbr:cafe, gbr:hotel, gbr:retail-store, gbr:school ;
+    gbo:animation "{\"clip\":\"spin\",\"motion\":\"the fan's blades turn steadily round; the ceiling and its mount stay still\",\"opens\":\"always\"}"^^rdf:JSON .
 
 gbr:ceiling-light
     a gbo:Role, skos:Concept ;
@@ -23903,13 +24036,33 @@ gbr:ceiling-light
     skos:broader gbr:light-prop ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:centrifuge
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "centrifuge"@en ;
+    skos:notation "centrifuge" ;
+    skos:broader gbr:lab-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:laboratory, gbr:hospital ;
+    gbo:animation "{\"clip\":\"spin\",\"duration\":3.0,\"motion\":\"its lid light glows and it hums as it spins\",\"opens\":\"use\",\"prompt\":\"Spin samples\"}"^^rdf:JSON .
+
 gbr:chair
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "chair"@en ;
     skos:notation "chair" ;
-    skos:broader gbr:prop ;
+    skos:broader gbr:furnishing ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:chandelier
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "chandelier"@en ;
+    skos:notation "chandelier" ;
+    skos:broader gbr:interior-light ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:manor, gbr:keep, gbr:inn, gbr:temple, gbr:hotel, gbr:restaurant ;
+    gbo:animation "{\"clip\":\"flicker\",\"motion\":\"the candles on the chandelier flicker and it sways very slightly on its chain\",\"opens\":\"always\"}"^^rdf:JSON .
 
 gbr:chapel
     a gbo:Role, skos:Concept ;
@@ -23924,8 +24077,9 @@ gbr:checkout-counter
     skos:inScheme gbo:roles ;
     skos:prefLabel "checkout counter"@en ;
     skos:notation "checkout-counter" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:retail-store, gbr:supermarket, gbr:gas-station, gbr:mall .
 
 gbr:chest
     a gbo:Role, skos:Concept ;
@@ -23933,7 +24087,9 @@ gbr:chest
     skos:prefLabel "chest"@en ;
     skos:notation "chest" ;
     skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.interactive-object .
+    gbo:affordance gbv:affordance.interactive-object ;
+    gbo:foundIn gbr:house, gbr:townhouse, gbr:farmhouse, gbr:manor, gbr:shack, gbr:inn, gbr:barracks, gbr:keep, gbr:tent, gbr:warehouse, gbr:temple ;
+    gbo:animation "{\"clip\":\"open\",\"motion\":\"the chest's lid swings open\",\"opens\":\"use\",\"prompt\":\"Open\"}"^^rdf:JSON .
 
 gbr:city-hall
     a gbo:Role, skos:Concept ;
@@ -23951,13 +24107,24 @@ gbr:cliff-piece
     skos:broader gbr:piece-set ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:coffee-machine
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "coffee machine"@en ;
+    skos:notation "coffee-machine" ;
+    skos:broader gbr:appliance ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:cafe, gbr:restaurant, gbr:office-building, gbr:office-tower, gbr:hotel ;
+    gbo:animation "{\"clip\":\"brew\",\"duration\":3.0,\"motion\":\"steam puffs from the machine and coffee drips into the cup below\",\"opens\":\"use\",\"prompt\":\"Make coffee\"}"^^rdf:JSON .
+
 gbr:coffee-table
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "coffee table"@en ;
     skos:notation "coffee-table" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:hotel, gbr:office-building, gbr:cafe .
 
 gbr:command-tent
     a gbo:Role, skos:Concept ;
@@ -23967,21 +24134,62 @@ gbr:command-tent
     skos:broader gbr:tent ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:computer
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "computer"@en ;
+    skos:notation "computer" ;
+    skos:broader gbr:electronic ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:office-building, gbr:office-tower, gbr:school, gbr:hospital, gbr:police-station, gbr:fire-station, gbr:city-hall, gbr:hotel, gbr:restaurant, gbr:transit-station, gbr:mall, gbr:laboratory, gbr:factory, gbr:retail-store ;
+    gbo:animation "{\"clip\":\"work\",\"motion\":\"the monitor's screen flickers with scrolling text and windows opening and closing\",\"opens\":\"always\"}"^^rdf:JSON .
+
+gbr:control-panel
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "control panel"@en ;
+    skos:notation "control-panel" ;
+    skos:broader gbr:electronic ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:factory, gbr:laboratory, gbr:police-station, gbr:fire-station, gbr:transit-station, gbr:logistics-warehouse ;
+    gbo:animation "{\"clip\":\"blink\",\"motion\":\"the lights and small screens on the panel blink and flicker, a needle on a dial wavers\",\"opens\":\"always\"}"^^rdf:JSON .
+
+gbr:conveyor-belt
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "conveyor belt"@en ;
+    skos:notation "conveyor-belt" ;
+    skos:broader gbr:craft-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:factory, gbr:logistics-warehouse ;
+    gbo:animation "{\"clip\":\"run\",\"motion\":\"the belt moves steadily along and the boxes on it slide forward\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:copier
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "copier"@en ;
     skos:notation "copier" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:electronic ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:animation "{\"clip\":\"copy\",\"duration\":3.0,\"motion\":\"a light sweeps across under its lid and a sheet of paper slides out\",\"opens\":\"use\",\"prompt\":\"Copy\"}"^^rdf:JSON .
 
 gbr:counter
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "counter"@en ;
     skos:notation "counter" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:shop, gbr:inn, gbr:restaurant, gbr:workshop .
+
+gbr:craft-equipment
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "craft equipment"@en ;
+    skos:notation "craft-equipment" ;
+    skos:broader gbr:interior-object ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:workshop, gbr:mill .
 
 gbr:crate
     a gbo:Role, skos:Concept ;
@@ -24007,13 +24215,44 @@ gbr:crypt
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:crystal-ball
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "crystal ball"@en ;
+    skos:notation "crystal-ball" ;
+    skos:broader gbr:lab-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:alchemy-lab, gbr:temple, gbr:shop, gbr:tent, gbr:manor ;
+    gbo:animation "{\"clip\":\"swirl\",\"motion\":\"mist swirls slowly inside the crystal ball and it glows softly\",\"opens\":\"always\"}"^^rdf:JSON .
+
+gbr:cuckoo-clock
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "cuckoo clock"@en ;
+    skos:notation "cuckoo-clock" ;
+    skos:broader gbr:timepiece ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:house, gbr:farmhouse, gbr:townhouse, gbr:inn ;
+    gbo:animation "{\"clip\":\"tick\",\"motion\":\"the pendulum swings to and fro, and now and then the little door opens and the bird pops out\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:cupboard
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "cupboard"@en ;
     skos:notation "cupboard" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:storage ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:animation "{\"clip\":\"open\",\"motion\":\"its doors swing open, showing the shelves inside\",\"opens\":\"use\",\"prompt\":\"Open\"}"^^rdf:JSON .
+
+gbr:curtain
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "curtain"@en ;
+    skos:notation "curtain" ;
+    skos:broader gbr:decoration ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:building ;
+    gbo:animation "{\"clip\":\"stir\",\"motion\":\"the curtains stir gently in a breeze\",\"opens\":\"always\"}"^^rdf:JSON .
 
 gbr:curtain-wall
     a gbo:Role, skos:Concept ;
@@ -24039,21 +24278,40 @@ gbr:decal
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:decoration
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "decoration"@en ;
+    skos:notation "decoration" ;
+    skos:broader gbr:interior-object ;
+    gbo:affordance gbv:affordance.environmental-object .
+
 gbr:desk
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "desk"@en ;
     skos:notation "desk" ;
-    skos:broader gbr:prop ;
+    skos:broader gbr:furnishing ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:dishwasher
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "dishwasher"@en ;
+    skos:notation "dishwasher" ;
+    skos:broader gbr:appliance ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:restaurant, gbr:cafe ;
+    gbo:animation "{\"clip\":\"open\",\"motion\":\"its front door folds down, showing the racks of plates\",\"opens\":\"use\",\"prompt\":\"Open\"}"^^rdf:JSON .
 
 gbr:display-stand
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "display stand"@en ;
     skos:notation "display-stand" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:shop, gbr:temple, gbr:manor, gbr:mall .
 
 gbr:door
     a gbo:Role, skos:Concept ;
@@ -24070,6 +24328,25 @@ gbr:drawbridge
     skos:notation "drawbridge" ;
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:dresser
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "dresser"@en ;
+    skos:notation "dresser" ;
+    skos:broader gbr:storage ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:house, gbr:townhouse, gbr:farmhouse, gbr:manor, gbr:shack, gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:inn, gbr:hotel ;
+    gbo:animation "{\"clip\":\"open\",\"duration\":2.0,\"motion\":\"its top drawer slides out and back in\",\"opens\":\"use\",\"prompt\":\"Search\"}"^^rdf:JSON .
+
+gbr:electronic
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "electronic device"@en ;
+    skos:notation "electronic" ;
+    skos:broader gbr:interior-object ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:office-building, gbr:office-tower, gbr:school, gbr:hospital, gbr:police-station, gbr:fire-station, gbr:city-hall, gbr:hotel, gbr:restaurant, gbr:transit-station, gbr:mall, gbr:cafe, gbr:laboratory, gbr:factory, gbr:retail-store, gbr:supermarket, gbr:gas-station .
 
 gbr:enemy
     a gbo:Role, skos:Concept ;
@@ -24108,8 +24385,10 @@ gbr:filing-cabinet
     skos:inScheme gbo:roles ;
     skos:prefLabel "filing cabinet"@en ;
     skos:notation "filing-cabinet" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:storage ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:office-building, gbr:office-tower, gbr:school, gbr:hospital, gbr:police-station, gbr:fire-station, gbr:city-hall, gbr:hotel, gbr:restaurant, gbr:transit-station, gbr:mall, gbr:laboratory ;
+    gbo:animation "{\"clip\":\"open\",\"duration\":2.0,\"motion\":\"a drawer slides out of the cabinet and back in\",\"opens\":\"use\",\"prompt\":\"Search\"}"^^rdf:JSON .
 
 gbr:fire-hydrant
     a gbo:Role, skos:Concept ;
@@ -24140,8 +24419,10 @@ gbr:fireplace
     skos:inScheme gbo:roles ;
     skos:prefLabel "fireplace"@en ;
     skos:notation "fireplace" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:hearth ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:house, gbr:townhouse, gbr:farmhouse, gbr:manor, gbr:inn, gbr:keep, gbr:barracks, gbr:guard-tower, gbr:hotel, gbr:suburban-house ;
+    gbo:animation "{\"clip\":\"burn\",\"motion\":\"the flames in the fireplace flicker and dance, the embers glow and pulse, a thin wisp of smoke rises into the chimney; the stones, the mantel and everything around stay still\",\"opens\":\"always\"}"^^rdf:JSON .
 
 gbr:flagpole
     a gbo:Role, skos:Concept ;
@@ -24150,6 +24431,15 @@ gbr:flagpole
     skos:notation "flagpole" ;
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:floor-lamp
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "floor lamp"@en ;
+    skos:notation "floor-lamp" ;
+    skos:broader gbr:interior-light ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:hotel, gbr:office-building .
 
 gbr:floor-tile
     a gbo:Role, skos:Concept ;
@@ -24175,6 +24465,16 @@ gbr:flowerbed
     skos:broader gbr:plant ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:forge
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "forge"@en ;
+    skos:notation "forge" ;
+    skos:broader gbr:hearth ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:smithy ;
+    gbo:animation "{\"clip\":\"glow\",\"motion\":\"the coals in the forge glow and pulse orange, small flames lick up and a few sparks drift\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:fountain
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
@@ -24188,8 +24488,9 @@ gbr:fridge
     skos:inScheme gbo:roles ;
     skos:prefLabel "fridge"@en ;
     skos:notation "fridge" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:appliance ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:animation "{\"clip\":\"open\",\"motion\":\"the fridge's door swings open and its inside light shines on the shelves\",\"opens\":\"use\",\"prompt\":\"Open\"}"^^rdf:JSON .
 
 gbr:fruit-tree
     a gbo:Role, skos:Concept ;
@@ -24205,6 +24506,14 @@ gbr:fuel-pump
     skos:prefLabel "fuel pump"@en ;
     skos:notation "fuel-pump" ;
     skos:broader gbr:prop ;
+    gbo:affordance gbv:affordance.environmental-object .
+
+gbr:furnishing
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "furnishing"@en ;
+    skos:notation "furnishing" ;
+    skos:broader gbr:interior-object ;
     gbo:affordance gbv:affordance.environmental-object .
 
 gbr:garden-bed
@@ -24247,6 +24556,46 @@ gbr:gatehouse
     skos:broader gbr:building ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:gear-works
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "gear works"@en ;
+    skos:notation "gear-works" ;
+    skos:broader gbr:craft-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:mill, gbr:workshop, gbr:factory ;
+    gbo:animation "{\"clip\":\"turn\",\"motion\":\"the big gears turn slowly, their teeth meshing, the shafts rotating\",\"opens\":\"always\"}"^^rdf:JSON .
+
+gbr:globe
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "globe"@en ;
+    skos:notation "globe" ;
+    skos:broader gbr:decoration ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:manor, gbr:school, gbr:laboratory, gbr:office-building, gbr:townhouse ;
+    gbo:animation "{\"clip\":\"spin\",\"duration\":3.0,\"motion\":\"the globe turns round on its stand\",\"opens\":\"use\",\"prompt\":\"Spin the globe\"}"^^rdf:JSON .
+
+gbr:gramophone
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "gramophone"@en ;
+    skos:notation "gramophone" ;
+    skos:broader gbr:musical-instrument ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:manor, gbr:townhouse, gbr:inn, gbr:hotel, gbr:suburban-house ;
+    gbo:animation "{\"clip\":\"play\",\"motion\":\"the record turns on the gramophone and its needle rides the groove\",\"opens\":\"use\",\"prompt\":\"Play music\"}"^^rdf:JSON .
+
+gbr:grandfather-clock
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "grandfather clock"@en ;
+    skos:notation "grandfather-clock" ;
+    skos:broader gbr:timepiece ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:house, gbr:townhouse, gbr:manor, gbr:inn, gbr:hotel, gbr:suburban-house ;
+    gbo:animation "{\"clip\":\"tick\",\"motion\":\"the pendulum swings slowly back and forth behind the glass\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:grass
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
@@ -24262,6 +24611,16 @@ gbr:grave
     skos:notation "grave" ;
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:grindstone
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "grindstone"@en ;
+    skos:notation "grindstone" ;
+    skos:broader gbr:craft-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:smithy, gbr:workshop, gbr:mill ;
+    gbo:animation "{\"clip\":\"grind\",\"duration\":3.0,\"motion\":\"the grinding wheel spins fast and sparks fly from its edge\",\"opens\":\"use\",\"prompt\":\"Sharpen\"}"^^rdf:JSON .
 
 gbr:ground-tile
     a gbo:Role, skos:Concept ;
@@ -24279,6 +24638,16 @@ gbr:guard-tower
     skos:broader gbr:building ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:harp
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "harp"@en ;
+    skos:notation "harp" ;
+    skos:broader gbr:musical-instrument ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:manor, gbr:keep, gbr:temple, gbr:inn ;
+    gbo:animation "{\"clip\":\"play\",\"duration\":4.0,\"motion\":\"the harp's strings shimmer and quiver as if plucked\",\"opens\":\"use\",\"prompt\":\"Play\"}"^^rdf:JSON .
+
 gbr:hay
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
@@ -24293,6 +24662,14 @@ gbr:headstone
     skos:prefLabel "headstone"@en ;
     skos:notation "headstone" ;
     skos:broader gbr:prop ;
+    gbo:affordance gbv:affordance.environmental-object .
+
+gbr:hearth
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "hearth"@en ;
+    skos:notation "hearth" ;
+    skos:broader gbr:interior-object ;
     gbo:affordance gbv:affordance.environmental-object .
 
 gbr:hedge
@@ -24351,6 +24728,16 @@ gbr:hotel
     skos:broader gbr:building ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:hourglass
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "hourglass"@en ;
+    skos:notation "hourglass" ;
+    skos:broader gbr:lab-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:alchemy-lab, gbr:temple, gbr:manor, gbr:shop ;
+    gbo:animation "{\"clip\":\"trickle\",\"motion\":\"sand trickles in a thin stream from the top bulb into the bottom one\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:house
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
@@ -24359,6 +24746,26 @@ gbr:house
     skos:broader gbr:building ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:incense-burner
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "incense burner"@en ;
+    skos:notation "incense-burner" ;
+    skos:broader gbr:decoration ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:temple, gbr:house, gbr:manor, gbr:shop ;
+    gbo:animation "{\"clip\":\"smoke\",\"motion\":\"a thin curl of incense smoke rises and drifts\",\"opens\":\"always\"}"^^rdf:JSON .
+
+gbr:indoor-fountain
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "indoor fountain"@en ;
+    skos:notation "indoor-fountain" ;
+    skos:broader gbr:water-fixture ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:manor, gbr:hotel, gbr:mall, gbr:temple, gbr:city-hall, gbr:keep ;
+    gbo:animation "{\"clip\":\"flow\",\"motion\":\"water flows and splashes from the fountain into its basin, ripples spreading\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:inn
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
@@ -24366,6 +24773,33 @@ gbr:inn
     skos:notation "inn" ;
     skos:broader gbr:building ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:interior-light
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "interior light"@en ;
+    skos:notation "interior-light" ;
+    skos:broader gbr:interior-object ;
+    gbo:affordance gbv:affordance.environmental-object .
+
+gbr:interior-object
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "interior object"@en ;
+    skos:notation "interior-object" ;
+    skos:broader gbr:prop ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:building .
+
+gbr:jukebox
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "jukebox"@en ;
+    skos:notation "jukebox" ;
+    skos:broader gbr:electronic ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:cafe, gbr:restaurant, gbr:inn ;
+    gbo:animation "{\"clip\":\"glow\",\"motion\":\"the jukebox's lights cycle slowly through their colours and a record turns behind the glass\",\"opens\":\"always\"}"^^rdf:JSON .
 
 gbr:keep
     a gbo:Role, skos:Concept ;
@@ -24383,12 +24817,48 @@ gbr:key
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.item .
 
+gbr:kiln
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "kiln"@en ;
+    skos:notation "kiln" ;
+    skos:broader gbr:hearth ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:workshop, gbr:factory ;
+    gbo:animation "{\"clip\":\"glow\",\"motion\":\"the fire glows and pulses through the kiln's opening, heat shimmering above it\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:kiosk
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "kiosk"@en ;
     skos:notation "kiosk" ;
     skos:broader gbr:stall ;
+    gbo:affordance gbv:affordance.environmental-object .
+
+gbr:lab-bench
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "lab bench"@en ;
+    skos:notation "lab-bench" ;
+    skos:broader gbr:lab-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:laboratory, gbr:school, gbr:hospital .
+
+gbr:lab-equipment
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "lab equipment"@en ;
+    skos:notation "lab-equipment" ;
+    skos:broader gbr:interior-object ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:laboratory, gbr:alchemy-lab .
+
+gbr:laboratory
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "laboratory"@en ;
+    skos:notation "laboratory" ;
+    skos:broader gbr:building ;
     gbo:affordance gbv:affordance.environmental-object .
 
 gbr:lamp
@@ -24407,13 +24877,44 @@ gbr:landmark
     skos:broader gbr:building ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:lantern
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "lantern"@en ;
+    skos:notation "lantern" ;
+    skos:broader gbr:interior-light ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:building ;
+    gbo:animation "{\"clip\":\"flicker\",\"motion\":\"the flame in the lantern flickers and the lantern sways gently on its hook\",\"opens\":\"always\"}"^^rdf:JSON .
+
+gbr:lathe
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "lathe"@en ;
+    skos:notation "lathe" ;
+    skos:broader gbr:craft-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:workshop, gbr:factory ;
+    gbo:animation "{\"clip\":\"turn\",\"duration\":3.0,\"motion\":\"the piece of wood in the lathe spins fast and shavings curl off it\",\"opens\":\"use\",\"prompt\":\"Turn wood\"}"^^rdf:JSON .
+
+gbr:lava-lamp
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "lava lamp"@en ;
+    skos:notation "lava-lamp" ;
+    skos:broader gbr:interior-light ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block ;
+    gbo:animation "{\"clip\":\"flow\",\"motion\":\"the glowing blobs of wax rise, stretch and sink slowly inside the lamp\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:lectern
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "lectern"@en ;
     skos:notation "lectern" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:temple, gbr:school, gbr:keep, gbr:city-hall .
 
 gbr:lever
     a gbo:Role, skos:Concept ;
@@ -24444,8 +24945,10 @@ gbr:locker
     skos:inScheme gbo:roles ;
     skos:prefLabel "locker"@en ;
     skos:notation "locker" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:storage ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:school, gbr:fire-station, gbr:police-station, gbr:hospital, gbr:factory ;
+    gbo:animation "{\"clip\":\"open\",\"motion\":\"the locker's metal door swings open\",\"opens\":\"use\",\"prompt\":\"Open\"}"^^rdf:JSON .
 
 gbr:log
     a gbo:Role, skos:Concept ;
@@ -24478,6 +24981,16 @@ gbr:lookout
     skos:notation "lookout" ;
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:loom
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "loom"@en ;
+    skos:notation "loom" ;
+    skos:broader gbr:craft-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:house, gbr:farmhouse, gbr:workshop ;
+    gbo:animation "{\"clip\":\"weave\",\"duration\":4.0,\"motion\":\"the shuttle slides across between the threads and the beam swings forward\",\"opens\":\"use\",\"prompt\":\"Weave\"}"^^rdf:JSON .
 
 gbr:loot
     a gbo:Role, skos:Concept ;
@@ -24524,8 +25037,28 @@ gbr:meeting-table
     skos:inScheme gbo:roles ;
     skos:prefLabel "meeting table"@en ;
     skos:notation "meeting-table" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:office-building, gbr:office-tower, gbr:city-hall, gbr:police-station .
+
+gbr:microscope
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "microscope"@en ;
+    skos:notation "microscope" ;
+    skos:broader gbr:lab-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:laboratory, gbr:hospital, gbr:school .
+
+gbr:microwave
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "microwave"@en ;
+    skos:notation "microwave" ;
+    skos:broader gbr:appliance ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:cafe, gbr:office-building, gbr:hospital ;
+    gbo:animation "{\"clip\":\"heat\",\"duration\":3.0,\"motion\":\"the light inside comes on and the plate inside turns slowly\",\"opens\":\"use\",\"prompt\":\"Heat food\"}"^^rdf:JSON .
 
 gbr:mill
     a gbo:Role, skos:Concept ;
@@ -24534,6 +25067,16 @@ gbr:mill
     skos:notation "mill" ;
     skos:broader gbr:building ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:millstone
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "millstone"@en ;
+    skos:notation "millstone" ;
+    skos:broader gbr:craft-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:mill ;
+    gbo:animation "{\"clip\":\"grind\",\"motion\":\"the top millstone turns slowly round and flour dusts out from between the stones\",\"opens\":\"always\"}"^^rdf:JSON .
 
 gbr:modern-church
     a gbo:Role, skos:Concept ;
@@ -24559,13 +25102,33 @@ gbr:mushroom
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:musical-instrument
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "musical instrument"@en ;
+    skos:notation "musical-instrument" ;
+    skos:broader gbr:interior-object ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:manor, gbr:townhouse, gbr:inn, gbr:temple, gbr:school, gbr:hotel, gbr:restaurant, gbr:cafe, gbr:suburban-house, gbr:row-house, gbr:apartment-block .
+
+gbr:neon-sign
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "neon sign"@en ;
+    skos:notation "neon-sign" ;
+    skos:broader gbr:interior-light ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:cafe, gbr:restaurant, gbr:retail-store, gbr:gas-station, gbr:mall, gbr:apartment-block ;
+    gbo:animation "{\"clip\":\"flicker\",\"motion\":\"the neon tubes glow and now and then flicker off and on again\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:nightstand
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "nightstand"@en ;
     skos:notation "nightstand" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:house, gbr:townhouse, gbr:farmhouse, gbr:manor, gbr:shack, gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:inn, gbr:hotel .
 
 gbr:office-building
     a gbo:Role, skos:Concept ;
@@ -24580,16 +25143,18 @@ gbr:office-chair
     skos:inScheme gbo:roles ;
     skos:prefLabel "office chair"@en ;
     skos:notation "office-chair" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.interactive-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.interactive-object ;
+    gbo:foundIn gbr:office-building, gbr:office-tower, gbr:school, gbr:hospital, gbr:police-station, gbr:fire-station, gbr:city-hall, gbr:hotel, gbr:restaurant, gbr:transit-station, gbr:mall, gbr:laboratory, gbr:suburban-house, gbr:row-house, gbr:apartment-block .
 
 gbr:office-desk
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "office desk"@en ;
     skos:notation "office-desk" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:office-building, gbr:office-tower, gbr:school, gbr:hospital, gbr:police-station, gbr:fire-station, gbr:city-hall, gbr:hotel, gbr:restaurant, gbr:transit-station, gbr:mall, gbr:laboratory .
 
 gbr:office-tower
     a gbo:Role, skos:Concept ;
@@ -24599,6 +25164,36 @@ gbr:office-tower
     skos:broader gbr:building ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:oil-lamp
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "oil lamp"@en ;
+    skos:notation "oil-lamp" ;
+    skos:broader gbr:interior-light ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:house, gbr:townhouse, gbr:farmhouse, gbr:shack, gbr:inn, gbr:shop, gbr:workshop, gbr:tent ;
+    gbo:animation "{\"clip\":\"flicker\",\"motion\":\"the flame inside the glass chimney flickers, its warm glow pulsing\",\"opens\":\"always\"}"^^rdf:JSON .
+
+gbr:organ
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "organ"@en ;
+    skos:notation "organ" ;
+    skos:broader gbr:musical-instrument ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:temple ;
+    gbo:animation "{\"clip\":\"play\",\"duration\":4.0,\"motion\":\"the keys press down and the air shimmers around the pipes\",\"opens\":\"use\",\"prompt\":\"Play\"}"^^rdf:JSON .
+
+gbr:orrery
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "orrery"@en ;
+    skos:notation "orrery" ;
+    skos:broader gbr:lab-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:alchemy-lab, gbr:laboratory, gbr:manor, gbr:keep, gbr:school ;
+    gbo:animation "{\"clip\":\"orbit\",\"motion\":\"the brass planets of the orrery circle slowly round the sun on their arms\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:outbuilding
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
@@ -24606,6 +25201,16 @@ gbr:outbuilding
     skos:notation "outbuilding" ;
     skos:broader gbr:building ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:oven
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "oven"@en ;
+    skos:notation "oven" ;
+    skos:broader gbr:hearth ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:house, gbr:farmhouse, gbr:inn, gbr:restaurant, gbr:shop, gbr:keep ;
+    gbo:animation "{\"clip\":\"burn\",\"motion\":\"the fire glows and flickers inside the oven's mouth, heat shimmering above it\",\"opens\":\"always\"}"^^rdf:JSON .
 
 gbr:park-bench
     a gbo:Role, skos:Concept ;
@@ -24644,8 +25249,18 @@ gbr:pew
     skos:inScheme gbo:roles ;
     skos:prefLabel "pew"@en ;
     skos:notation "pew" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:temple .
+
+gbr:piano
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "piano"@en ;
+    skos:notation "piano" ;
+    skos:broader gbr:musical-instrument ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:animation "{\"clip\":\"play\",\"duration\":4.0,\"motion\":\"the keys press down and rise in turn as if played\",\"opens\":\"use\",\"prompt\":\"Play\"}"^^rdf:JSON .
 
 gbr:picnic-table
     a gbo:Role, skos:Concept ;
@@ -24735,13 +25350,44 @@ gbr:pot
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.interactive-object .
 
+gbr:potion-rack
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "potion rack"@en ;
+    skos:notation "potion-rack" ;
+    skos:broader gbr:lab-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:alchemy-lab, gbr:shop ;
+    gbo:animation "{\"clip\":\"bubble\",\"motion\":\"the coloured potions in the flasks bubble and glow softly\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:potted-plant
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "potted plant"@en ;
     skos:notation "potted-plant" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:decoration ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:office-building, gbr:office-tower, gbr:school, gbr:hospital, gbr:police-station, gbr:fire-station, gbr:city-hall, gbr:hotel, gbr:restaurant, gbr:transit-station, gbr:mall, gbr:cafe, gbr:manor, gbr:townhouse .
+
+gbr:potters-wheel
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "potter's wheel"@en ;
+    skos:notation "potters-wheel" ;
+    skos:broader gbr:craft-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:workshop ;
+    gbo:animation "{\"clip\":\"spin\",\"duration\":4.0,\"motion\":\"the wheel spins and the wet clay pot on it turns\",\"opens\":\"use\",\"prompt\":\"Throw a pot\"}"^^rdf:JSON .
+
+gbr:printing-press
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "printing press"@en ;
+    skos:notation "printing-press" ;
+    skos:broader gbr:craft-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:workshop, gbr:shop ;
+    gbo:animation "{\"clip\":\"press\",\"duration\":3.0,\"motion\":\"the press's screw turns and the platen lowers onto the paper and rises again\",\"opens\":\"use\",\"prompt\":\"Print\"}"^^rdf:JSON .
 
 gbr:prisoner
     a gbo:Role, skos:Concept ;
@@ -24759,13 +25405,24 @@ gbr:prop
     skos:topConceptOf gbo:roles ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:radio
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "radio"@en ;
+    skos:notation "radio" ;
+    skos:broader gbr:electronic ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:police-station, gbr:fire-station, gbr:workshop ;
+    gbo:animation "{\"clip\":\"play\",\"motion\":\"its dial lights up and the speaker's grille trembles with sound\",\"opens\":\"use\",\"prompt\":\"Turn on\"}"^^rdf:JSON .
+
 gbr:reception-desk
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "reception desk"@en ;
     skos:notation "reception-desk" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:hotel, gbr:hospital, gbr:office-building, gbr:office-tower, gbr:city-hall, gbr:police-station .
 
 gbr:reed
     a gbo:Role, skos:Concept ;
@@ -24822,6 +25479,16 @@ gbr:rock
     skos:notation "rock" ;
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
+
+gbr:rocking-chair
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "rocking chair"@en ;
+    skos:notation "rocking-chair" ;
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.interactive-object ;
+    gbo:foundIn gbr:house, gbr:farmhouse, gbr:townhouse, gbr:suburban-house ;
+    gbo:animation "{\"clip\":\"rock\",\"duration\":4.0,\"motion\":\"the chair rocks gently back and forth\",\"opens\":\"use\",\"prompt\":\"Rock\"}"^^rdf:JSON .
 
 gbr:row-house
     a gbo:Role, skos:Concept ;
@@ -24884,8 +25551,9 @@ gbr:school-desk
     skos:inScheme gbo:roles ;
     skos:prefLabel "school desk"@en ;
     skos:notation "school-desk" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.interactive-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.interactive-object ;
+    gbo:foundIn gbr:school .
 
 gbr:secret-door
     a gbo:Role, skos:Concept ;
@@ -24894,6 +25562,16 @@ gbr:secret-door
     skos:notation "secret-door" ;
     skos:broader gbr:door ;
     gbo:affordance gbv:affordance.interactive-object .
+
+gbr:server-rack
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "server rack"@en ;
+    skos:notation "server-rack" ;
+    skos:broader gbr:electronic ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:office-building, gbr:office-tower, gbr:laboratory, gbr:factory, gbr:police-station, gbr:hospital ;
+    gbo:animation "{\"clip\":\"blink\",\"motion\":\"the small green and amber lights on the server rack blink on and off\",\"opens\":\"always\"}"^^rdf:JSON .
 
 gbr:shack
     a gbo:Role, skos:Concept ;
@@ -24916,7 +25594,7 @@ gbr:shelf
     skos:inScheme gbo:roles ;
     skos:prefLabel "shelf"@en ;
     skos:notation "shelf" ;
-    skos:broader gbr:prop ;
+    skos:broader gbr:storage ;
     gbo:affordance gbv:affordance.environmental-object .
 
 gbr:shop
@@ -24940,8 +25618,10 @@ gbr:shower
     skos:inScheme gbo:roles ;
     skos:prefLabel "shower"@en ;
     skos:notation "shower" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:water-fixture ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:hotel, gbr:hospital, gbr:fire-station, gbr:barracks ;
+    gbo:animation "{\"clip\":\"run\",\"duration\":4.0,\"motion\":\"water sprays down from the shower head\",\"opens\":\"use\",\"prompt\":\"Shower\"}"^^rdf:JSON .
 
 gbr:shrine
     a gbo:Role, skos:Concept ;
@@ -24964,8 +25644,9 @@ gbr:sink
     skos:inScheme gbo:roles ;
     skos:prefLabel "sink"@en ;
     skos:notation "sink" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:water-fixture ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:animation "{\"clip\":\"run\",\"duration\":3.0,\"motion\":\"water runs from the tap into the basin\",\"opens\":\"use\",\"prompt\":\"Wash\"}"^^rdf:JSON .
 
 gbr:site-marker
     a gbo:Role, skos:Concept ;
@@ -24988,8 +25669,29 @@ gbr:sofa
     skos:inScheme gbo:roles ;
     skos:prefLabel "sofa"@en ;
     skos:notation "sofa" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.interactive-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.interactive-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:hotel, gbr:office-building, gbr:office-tower, gbr:cafe .
+
+gbr:specimen-tank
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "specimen tank"@en ;
+    skos:notation "specimen-tank" ;
+    skos:broader gbr:lab-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:laboratory, gbr:hospital, gbr:alchemy-lab ;
+    gbo:animation "{\"clip\":\"bubble\",\"motion\":\"bubbles rise through the green liquid in the tank and the specimen inside drifts a little\",\"opens\":\"always\"}"^^rdf:JSON .
+
+gbr:spinning-wheel
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "spinning wheel"@en ;
+    skos:notation "spinning-wheel" ;
+    skos:broader gbr:craft-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:house, gbr:farmhouse, gbr:townhouse, gbr:workshop ;
+    gbo:animation "{\"clip\":\"spin\",\"duration\":4.0,\"motion\":\"the big wheel turns round and the thread winds onto the spindle\",\"opens\":\"use\",\"prompt\":\"Spin wool\"}"^^rdf:JSON .
 
 gbr:sports-hoop
     a gbo:Role, skos:Concept ;
@@ -25060,7 +25762,15 @@ gbr:stool
     skos:inScheme gbo:roles ;
     skos:prefLabel "stool"@en ;
     skos:notation "stool" ;
-    skos:broader gbr:prop ;
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object .
+
+gbr:storage
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "storage"@en ;
+    skos:notation "storage" ;
+    skos:broader gbr:interior-object ;
     gbo:affordance gbv:affordance.environmental-object .
 
 gbr:store-shelf
@@ -25084,8 +25794,10 @@ gbr:stove
     skos:inScheme gbo:roles ;
     skos:prefLabel "stove"@en ;
     skos:notation "stove" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:hearth ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:house, gbr:townhouse, gbr:farmhouse, gbr:manor, gbr:shack, gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:inn, gbr:restaurant, gbr:cafe, gbr:barracks, gbr:workshop ;
+    gbo:animation "{\"clip\":\"burn\",\"motion\":\"the fire glows and flickers behind the stove's grate, a little smoke curls from its pipe\",\"opens\":\"always\"}"^^rdf:JSON, "{\"clip\":\"cook\",\"duration\":4.0,\"motion\":\"steam rises from the pot on the stove and its lid rattles\",\"opens\":\"use\",\"prompt\":\"Cook\"}"^^rdf:JSON .
 
 gbr:street-light
     a gbo:Role, skos:Concept ;
@@ -25117,7 +25829,17 @@ gbr:table
     skos:prefLabel "table"@en ;
     skos:notation "table" ;
     skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:building .
+
+gbr:tapestry
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "tapestry"@en ;
+    skos:notation "tapestry" ;
+    skos:broader gbr:decoration ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:manor, gbr:keep, gbr:temple, gbr:inn .
 
 gbr:taxi
     a gbo:Role, skos:Concept ;
@@ -25151,13 +25873,24 @@ gbr:terrain
     skos:topConceptOf gbo:roles ;
     gbo:affordance gbv:affordance.terrain .
 
+gbr:tesla-coil
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "tesla coil"@en ;
+    skos:notation "tesla-coil" ;
+    skos:broader gbr:lab-equipment ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:laboratory ;
+    gbo:animation "{\"clip\":\"arc\",\"motion\":\"bright electric arcs crackle and jump around the coil's top ring\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:throne
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "throne"@en ;
     skos:notation "throne" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:keep, gbr:manor, gbr:temple .
 
 gbr:tilled-terrain
     a gbo:Role, skos:Concept ;
@@ -25167,12 +25900,20 @@ gbr:tilled-terrain
     skos:broader gbr:terrain ;
     gbo:affordance gbv:affordance.terrain .
 
+gbr:timepiece
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "timepiece"@en ;
+    skos:notation "timepiece" ;
+    skos:broader gbr:interior-object ;
+    gbo:affordance gbv:affordance.environmental-object .
+
 gbr:toilet
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "toilet"@en ;
     skos:notation "toilet" ;
-    skos:broader gbr:prop ;
+    skos:broader gbr:water-fixture ;
     gbo:affordance gbv:affordance.environmental-object .
 
 gbr:tool
@@ -25268,8 +26009,9 @@ gbr:tv
     skos:inScheme gbo:roles ;
     skos:prefLabel "television"@en ;
     skos:notation "tv" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:electronic ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:animation "{\"clip\":\"play\",\"motion\":\"the picture on the screen changes, moving colours and shapes flickering across it\",\"opens\":\"always\"}"^^rdf:JSON .
 
 gbr:utility-pole
     a gbo:Role, skos:Concept ;
@@ -25311,12 +26053,22 @@ gbr:wall-block
     skos:broader gbr:prop ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:wall-clock
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "wall clock"@en ;
+    skos:notation "wall-clock" ;
+    skos:broader gbr:timepiece ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:building ;
+    gbo:animation "{\"clip\":\"tick\",\"motion\":\"the second hand ticks round the clock's face\",\"opens\":\"always\"}"^^rdf:JSON .
+
 gbr:wall-decor
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "wall decor"@en ;
     skos:notation "wall-decor" ;
-    skos:broader gbr:prop ;
+    skos:broader gbr:decoration ;
     gbo:affordance gbv:affordance.environmental-object .
 
 gbr:wall-piece-set
@@ -25341,15 +26093,19 @@ gbr:wall-torch
     skos:prefLabel "wall torch"@en ;
     skos:notation "wall-torch" ;
     skos:broader gbr:light-prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:keep, gbr:barracks, gbr:guard-tower, gbr:temple, gbr:inn, gbr:gatehouse ;
+    gbo:animation "{\"clip\":\"flicker\",\"motion\":\"the torch's flame flickers and leaps, sparks drifting up\",\"opens\":\"always\"}"^^rdf:JSON .
 
 gbr:wardrobe
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "wardrobe"@en ;
     skos:notation "wardrobe" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:storage ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:house, gbr:townhouse, gbr:farmhouse, gbr:manor, gbr:shack, gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:inn, gbr:hotel ;
+    gbo:animation "{\"clip\":\"open\",\"motion\":\"its doors swing open, showing the clothes hanging inside\",\"opens\":\"use\",\"prompt\":\"Open\"}"^^rdf:JSON .
 
 gbr:warehouse
     a gbo:Role, skos:Concept ;
@@ -25359,13 +26115,34 @@ gbr:warehouse
     skos:broader gbr:building ;
     gbo:affordance gbv:affordance.environmental-object .
 
+gbr:washing-machine
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "washing machine"@en ;
+    skos:notation "washing-machine" ;
+    skos:broader gbr:appliance ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:hotel, gbr:hospital ;
+    gbo:animation "{\"clip\":\"wash\",\"duration\":4.0,\"motion\":\"the drum spins and the clothes tumble behind the round glass door\",\"opens\":\"use\",\"prompt\":\"Wash clothes\"}"^^rdf:JSON .
+
 gbr:water-cooler
     a gbo:Role, skos:Concept ;
     skos:inScheme gbo:roles ;
     skos:prefLabel "water cooler"@en ;
     skos:notation "water-cooler" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:water-fixture ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:office-building, gbr:office-tower, gbr:school, gbr:hospital, gbr:police-station, gbr:city-hall ;
+    gbo:animation "{\"clip\":\"pour\",\"duration\":2.0,\"motion\":\"a bubble rises through the water bottle as water pours into a cup\",\"opens\":\"use\",\"prompt\":\"Drink\"}"^^rdf:JSON .
+
+gbr:water-fixture
+    a gbo:Role, skos:Concept ;
+    skos:inScheme gbo:roles ;
+    skos:prefLabel "water fixture"@en ;
+    skos:notation "water-fixture" ;
+    skos:broader gbr:interior-object ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:suburban-house, gbr:row-house, gbr:apartment-block, gbr:office-building, gbr:office-tower, gbr:school, gbr:hospital, gbr:police-station, gbr:fire-station, gbr:city-hall, gbr:hotel, gbr:restaurant, gbr:transit-station, gbr:mall, gbr:cafe, gbr:laboratory .
 
 gbr:water-terrain
     a gbo:Role, skos:Concept ;
@@ -25396,8 +26173,9 @@ gbr:whiteboard
     skos:inScheme gbo:roles ;
     skos:prefLabel "whiteboard"@en ;
     skos:notation "whiteboard" ;
-    skos:broader gbr:prop ;
-    gbo:affordance gbv:affordance.environmental-object .
+    skos:broader gbr:furnishing ;
+    gbo:affordance gbv:affordance.environmental-object ;
+    gbo:foundIn gbr:school, gbr:office-building, gbr:office-tower, gbr:laboratory, gbr:police-station .
 
 gbr:window
     a gbo:Role, skos:Concept ;
@@ -25412,7 +26190,7 @@ gbr:workbench
     skos:inScheme gbo:roles ;
     skos:prefLabel "workbench"@en ;
     skos:notation "workbench" ;
-    skos:broader gbr:prop ;
+    skos:broader gbr:craft-equipment ;
     gbo:affordance gbv:affordance.environmental-object .
 
 gbr:workshop

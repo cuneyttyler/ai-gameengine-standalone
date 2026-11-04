@@ -59,6 +59,12 @@ export function entityMenu(entity: MenuEntity): MenuItem[] {
       : []),
     // A part of its picture animated (a door, a window, a sign; a part of a painted scene): docs/assets/animations.md §4.
     ...(!entity.tile ? [{ label: 'Animate a part…', disabled: editorState.playing, action: () => (editorState.partDialog = entity.id) }] : []),
+    // Its interior's things that move (a fireplace, a clock, a stove), found by the vision model among the ontology's
+    // interior objects, their motions written by the LLM, animated on their floors: docs/places/interior-objects.md.
+    ...(typeof entity.interior === 'boolean'
+      ? [{ label: 'Animate the interior…', disabled: editorState.playing || editorState.ai.state !== 'ready',
+           action: () => (editorState.interiorPartsDialog = entity.id) }]
+      : []),
     // None yet: one added (on its prefab, so every copy has it).
     ...(!entity.tile && typeof entity.interior !== 'boolean' && entity.interiorScene === undefined
       ? [
@@ -138,11 +144,36 @@ function groundMenu(cell: [number, number], brush: string): MenuItem[] {
   ]
 }
 
+// A path's point (docs/ai/ai-paths.md): branch from it, what's done there, delete it.
+function pathPointMenu(p: { id: number; point: number; name: string }): MenuItem[] {
+  const set = (op: string, value: unknown) => sendToHost({ type: 'path:point', id: p.id, point: p.point, op, value })
+  const ask = async (op: string, title: string, message: string, placeholder = '') => {
+    const value = await promptDialog({ title, message, value: placeholder })
+    if (value !== null && value !== undefined) set(op, op === 'wait' ? Number(value) || 0 : value)
+  }
+  return [
+    { label: `Path ${p.name} · point ${p.point + 1}`, disabled: true, action: () => {} },
+    { label: 'Branch from here (a fork)', action: () => set('branch', null) },
+    { label: 'Draw on from here', action: () => sendToHost({ type: 'path:edit', id: p.id, point: p.point }) },
+    { label: 'Wait here…', action: () => ask('wait', 'Wait here', 'Seconds a character waits at this point (0: none).', '3') },
+    { label: 'Play a clip here…', action: () => ask('clip', 'Play a clip here', 'The clip the character plays while it waits (empty: none).', 'idle') },
+    { label: 'Use a part here…', action: () => ask('use', 'Use a part here', 'A part used at this point by its name: its input action, station, clip or prompt (cook).', 'cook') },
+    { label: 'Label…', action: () => ask('label', 'Label', 'A name for this point (well, market).') },
+    separator,
+    { label: 'Delete point', danger: true, action: () => set('delete', null) },
+    { label: 'Finish drawing', action: () => sendToHost({ type: 'path:finish' }) },
+  ]
+}
+
 onHostMessage((message) => {
   if (message.type !== 'viewport:contextMenu') return
   const entity = message.entity as MenuEntity | null
   const x = message.x as number
   const y = message.y as number
+  if (message.pathPoint) {
+    openContextMenu(x, y, pathPointMenu(message.pathPoint as { id: number; point: number; name: string }))
+    return
+  }
   if (entity && !entity.tile) {
     openContextMenu(x, y, entityMenu(entity))
   } else {

@@ -303,6 +303,12 @@ std::vector<std::string> Ontology::Load(const std::vector<fs::path>& dirs) {
                 role.draw = spec.is_object() ? spec.value("draw", "") : "";
                 role.look = spec.is_object() ? spec.value("look", nlohmann::json::object()) : nlohmann::json::object();
                 if (spec.is_object() && spec.contains("solid") && spec["solid"].is_boolean()) role.solid = spec["solid"].get<bool>() ? 1 : 0;
+                if (spec.is_object() && spec.contains("found_in") && spec["found_in"].is_array()) {
+                    for (const auto& b : spec["found_in"]) {
+                        if (b.is_string()) role.foundIn.push_back(b.get<std::string>());
+                    }
+                }
+                if (spec.is_object() && spec.contains("animate") && spec["animate"].is_array()) role.animate = spec["animate"];
                 roles_[id] = role;
             }
         }
@@ -640,8 +646,20 @@ std::vector<std::string> Ontology::Check() const {
             }
         }
     }
+    static const std::set<std::string> kOpens = {"always", "use", "auto", "action", "event", "project"};
     for (const auto& [id, role] : roles_) {
         if (!role.broader.empty() && !roles_.contains(role.broader)) problems.push_back("role " + id + ": unknown broader role " + role.broader);
+        for (const auto& b : role.foundIn) {
+            if (!roles_.contains(b)) problems.push_back("role " + id + ": found in unknown role " + b);
+            else if (!IsBuilding(b)) problems.push_back("role " + id + ": found in " + b + ", which isn't a building");
+        }
+        for (const auto& a : role.animate) {
+            if (!a.is_object() || a.value("clip", std::string()).empty() || a.value("motion", std::string()).empty()) {
+                problems.push_back("role " + id + ": each animation has a clip and a motion");
+            } else if (!kOpens.contains(a.value("opens", std::string("use")))) {
+                problems.push_back("role " + id + ": animation " + a.value("clip", std::string()) + " opens by unknown " + a.value("opens", std::string()));
+            }
+        }
     }
     for (const auto& rule : rules_) {
         if (rule.source.empty()) problems.push_back("rule " + rule.id + ": every design rule names its source");
@@ -699,6 +717,43 @@ std::string Ontology::RoleDescription(const std::string& role) const {
         if (!r->description.empty()) return r->description;
     }
     return {};
+}
+
+std::vector<std::string> Ontology::RoleFoundIn(const std::string& role) const {
+    std::set<std::string> seen;
+    for (const Role* r = FindRole(role); r && seen.insert(r->id).second; r = FindRole(r->broader)) {
+        if (!r->foundIn.empty()) return r->foundIn;
+    }
+    return {};
+}
+
+nlohmann::json Ontology::RoleAnimations(const std::string& role) const {
+    std::set<std::string> seen;
+    for (const Role* r = FindRole(role); r && seen.insert(r->id).second; r = FindRole(r->broader)) {
+        if (r->animate.is_array() && !r->animate.empty()) return r->animate;
+    }
+    return nlohmann::json::array();
+}
+
+bool Ontology::IsKindOfRole(const std::string& role, const std::string& ancestor) const {
+    std::set<std::string> seen;
+    for (const Role* r = FindRole(role); r && seen.insert(r->id).second; r = FindRole(r->broader)) {
+        if (r->id == ancestor) return true;
+    }
+    return false;
+}
+
+std::vector<const Role*> Ontology::InteriorObjects(const std::string& building, bool animated) const {
+    // Not the branch and its categories (a "hearth" isn't a thing to find): the things under them.
+    std::vector<const Role*> out;
+    for (const auto& [id, r] : roles_) {
+        if (id == "interior-object" || r.broader == "interior-object") continue;
+        const auto where = RoleFoundIn(id);
+        if (where.empty() || (animated && RoleAnimations(id).empty())) continue;
+        const bool here = building.empty() || std::any_of(where.begin(), where.end(), [&](const std::string& b) { return IsKindOfRole(building, b); });
+        if (here) out.push_back(&r);
+    }
+    return out;
 }
 
 bool Ontology::IsBuilding(const std::string& role) const {

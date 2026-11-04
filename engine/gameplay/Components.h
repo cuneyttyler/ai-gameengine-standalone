@@ -355,6 +355,9 @@ struct AnimatedPart {
     // The game event sent each time the player activates it ("cooked"): scripts, triggers and quests react to it. A
     // part always playing sends it too, by its input action (trigger). sheet "spot": a spot with no animation, only this.
     std::string fires;
+    // A crafting station ("stove"): the player using it gets the Crafting list with the recipes "at" it; a character's
+    // script makes one there (craft(recipe, station, who)). As a Reaction's station.
+    std::string station;
     // Once activated, it plays this long (seconds) and shuts by itself; 0: until it's shut (used again, or left).
     float duration = 0.0f;
     // While the player has it active: a clip the player plays (cooking), again and again with playerLoop; holdsPlayer:

@@ -534,6 +534,56 @@
       ]
     },
     {
+      "description": "Adds a named path characters follow (or changes the one of that name): packages use it by name (data.path, the step follow-path), any number of them. Points in world cells; links make forks (random by weight, or by conditions) and joins; none: point to point in order.",
+      "name": "scene.addPath",
+      "params": [
+        {
+          "description": "Lowercase letters, digits, - and _, e.g. market-loop.",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "JSON list of points in world cells: [[x, y], ...] or [{\"x\", \"y\", \"wait\": seconds, \"clip\", \"use\": a part used there, \"do\": effects, \"label\"}].",
+          "name": "points",
+          "type": "string"
+        },
+        {
+          "description": "JSON list of links (forks and joins): [{\"from\": i, \"to\": j, \"weight\", \"if\": conditions, \"priority\", \"default\", \"do\", \"label\"}]; left out: in order.",
+          "name": "links",
+          "optional": true,
+          "type": "string"
+        },
+        {
+          "description": "stop (the default), loop (back to the first point) or back (the way it came).",
+          "name": "end",
+          "optional": true,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "description": "Adds (or changes) a named path round a building or thing: a loop a step outside its footprint, corner to corner, for characters to walk round it (a guard's rounds, a stroll).",
+      "name": "path.around",
+      "params": [
+        {
+          "description": "The path's name, e.g. house-4-round.",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "The building or thing to go round.",
+          "name": "entity",
+          "type": "entity"
+        },
+        {
+          "description": "Cells outside its footprint (1 when left out).",
+          "name": "margin",
+          "optional": true,
+          "type": "float"
+        }
+      ]
+    },
+    {
       "description": "Builds a dungeon in a rectangle of grid cells: rooms joined by corridors, walled in, every room reachable, with enemies (more of them further from the start) and pickups. Everything already in the area except the player is replaced. Deterministic: the same seed gives the same level. Pick an area away from what should stay (see the tile bounds).",
       "name": "level.generate",
       "params": [
@@ -1836,6 +1886,11 @@
           "type": "string"
         },
         {
+          "description": "A crafting station (\"stove\"): using it opens the Crafting list with the recipes whose \"at\" names it; a character's script makes one there with craft(recipe, station, who).",
+          "name": "station",
+          "type": "string"
+        },
+        {
           "description": "Once activated, it plays this long (seconds), then shuts by itself; 0: until it's shut.",
           "min": 0.0,
           "name": "duration",
@@ -2594,6 +2649,46 @@
         }
       ],
       "name": "Marker",
+      "userEditable": true
+    },
+    {
+      "dependencies": [
+        "WorldTransform2D"
+      ],
+      "description": "A path characters follow (docs/ai/ai-paths.md): named, shared by any number of packages (data.path, the step follow-path). Points, and links that fork (by weight or conditions) and join again. Drawn with the viewport's Path tool; invisible in play.",
+      "fields": [
+        {
+          "description": "Packages refer to it by this (market-loop).",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "description": "Its points, a JSON list in cells from its own place: [{\"x\", \"y\", \"wait\": seconds, \"clip\", \"use\": a part used there, \"do\": effects, \"label\"}].",
+          "name": "points",
+          "type": "string"
+        },
+        {
+          "description": "Its links, a JSON list (empty: point to point in order): [{\"from\", \"to\", \"weight\", \"if\": conditions, \"priority\", \"default\", \"do\", \"label\"}].",
+          "name": "links",
+          "type": "string"
+        },
+        {
+          "description": "At an end: stop, loop (the last point back to the first) or back (the way it came).",
+          "name": "end",
+          "options": [
+            "stop",
+            "loop",
+            "back"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Drawn in the viewport.",
+          "name": "shown",
+          "type": "bool"
+        }
+      ],
+      "name": "Path",
       "userEditable": true
     },
     {
@@ -4035,21 +4130,25 @@
       "name": "faction"
     },
     {
-      "description": "An AI package (14.2): what a character does, where and when. A Behaviour lists packages; the first whose schedule and conditions hold runs its template.",
+      "description": "An AI package (14.2, docs/ai/ai-packages.md): what a character does, where and when. A Behaviour lists packages; the first whose schedule and conditions hold runs its template (or its own procedure).",
       "fields": [
         {
-          "description": "What it does.",
+          "description": "What it does: a built-in behaviour taking the data below (custom: its own procedure; script: a Lua run()).",
           "name": "template",
           "options": [
             "stay",
             "travel",
             "wander",
             "sandbox",
+            "live",
             "sleep",
             "eat",
             "work",
             "vendor",
+            "use-part",
+            "tend",
             "patrol",
+            "follow-path",
             "guard",
             "follow",
             "accompany",
@@ -4060,6 +4159,7 @@
             "wait",
             "use-object",
             "approach-player",
+            "custom",
             "script"
           ],
           "required": true,
@@ -4071,10 +4171,25 @@
           "type": "string"
         },
         {
+          "description": "Its own behaviour tree as JSON, for template custom: {\"type\": \"loop\", \"children\": [...]} with the procedure steps (docs/ai/ai-packages.md §5.1).",
+          "name": "procedure",
+          "type": "string"
+        },
+        {
           "description": "Where.",
           "fields": [
             {
-              "description": "A marker's name",
+              "description": "A building or thing by its name (house-4): around it, or in it",
+              "name": "building",
+              "type": "string"
+            },
+            {
+              "description": "Or a character or thing by its name: near it",
+              "name": "entity",
+              "type": "string"
+            },
+            {
+              "description": "Or a marker's name",
               "name": "marker",
               "type": "string"
             },
@@ -4196,14 +4311,19 @@
           "description": "What the template needs.",
           "fields": [
             {
-              "description": "Cells around the place (wander, sandbox, ambush)",
+              "description": "Cells around the place (wander, sandbox, live, use-part, ambush)",
               "name": "radius",
               "type": "float"
             },
             {
-              "description": "Seconds (waits, patrol stops)",
+              "description": "Seconds (waits, patrol stops, how long a part is used)",
               "name": "duration",
               "type": "float"
+            },
+            {
+              "description": "What it uses (use-part, live, tend): an animated part's or a Reaction's name: its input action, station, clip or event (cook)",
+              "name": "action",
+              "type": "string"
             },
             {
               "description": "A smart object type (work, use-object)",
@@ -4220,6 +4340,31 @@
               "list": true,
               "name": "path",
               "type": "string"
+            },
+            {
+              "description": "A named path to walk (follow-path, patrol: docs/ai/ai-paths.md)",
+              "name": "route",
+              "type": "string"
+            },
+            {
+              "description": "How a path is walked (follow-path): once, loop, wander",
+              "name": "mode",
+              "options": [
+                "once",
+                "loop",
+                "wander"
+              ],
+              "type": "enum"
+            },
+            {
+              "description": "Where on the path it begins (follow-path)",
+              "name": "from",
+              "options": [
+                "nearest",
+                "start",
+                "end"
+              ],
+              "type": "enum"
             },
             {
               "description": "Cells (follow, escort, flee)",
@@ -4239,7 +4384,7 @@
       "name": "package"
     },
     {
-      "description": "A procedure (14.1): a behaviour tree a package template can be, written by hand. Nodes: sequence, selector, random, parallel, loop, condition, cooldown, invert; move-to, wander, wait, idle, face, say, use-object, talk-to-player, follow, flee, patrol, ambush, escort, set, emit, script.",
+      "description": "A procedure (14.1): a behaviour tree a package template can be, written by hand. Nodes: sequence, selector, random, parallel, loop, condition, cooldown, invert; move-to, wander, wait, idle, face, say, use-object, use-part, act, play, talk-to-player, follow, flee, patrol, ambush, escort, set, emit, script.",
       "fields": [
         {
           "description": "What it does.",

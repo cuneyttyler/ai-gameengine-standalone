@@ -61,6 +61,7 @@ source of truth, not a copy.
 | `hasField` | Module → Field | the type, range, default and density map |
 | `needsRole` | Module → Role | essential or adaptable; joins |
 | `canFill` | Asset → Role | from the catalog: confidence, perspective, footprint |
+| `foundIn` / `animation` | Role → building Role / JSON | an interior object's buildings and how it moves when animated ([interior-objects.md](interior-objects.md)) |
 | `label` / `altLabel` | any → text | names and synonyms in several languages, for interpretation |
 | `broader` / `narrower` | Concept ↔ Concept | the SKOS hierarchy of vocabulary values |
 | `source` | any fact → source | a paper, a design rule, a user, or a verified build |

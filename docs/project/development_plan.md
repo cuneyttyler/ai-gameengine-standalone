@@ -3090,6 +3090,172 @@ In this order:
 
 ---
 
+## Phase 30 — Living NPCs: conversations in natural language (`docs/systems/conversations.md`)
+
+**Status (2026-11-04): planned.** Today an NPC speaks only the lines its dialogue tree has, and the player only picks
+from the choices it offers. Here an NPC can also **talk**: the player types (later, speaks) in their own words, and
+the NPC answers in character. It answers from who it is (its **profile**) and what it knows (its **knowledge**), and
+from the state of the story: quests, flags, what happened, what the player told it before.
+
+The story stays the author's. A conversation can move the story only through what the dialogue, the quest and the
+character allow: start or advance a quest, give an item, set a flag, change how the NPC feels about the player. It
+never invents quests, items or facts that aren't there.
+
+### 30.1 Character profile
+
+Every character in the World Bible gets a **profile**, edited in Project ▸ Characters (the World panel's characters,
+a new Profile tab). It shapes how the character talks.
+
+- **Personality**: outgoing ↔ reserved, talkative ↔ terse, warm ↔ cold, honest ↔ deceitful, brave ↔ timid, curious,
+  humorous, patient. These are sliders, with a sentence of their own for nuance.
+- **Speech**: formality, vocabulary and education, dialect or verbal tics, catchphrases, how long its answers run, and
+  what it won't talk about. Sample lines in its voice are written or generated, then kept.
+- **Inner life**:
+  - its goals, fears and wants;
+  - its mood today, which can follow events ("grieving since the fire");
+  - its secrets, each with when it would tell (trust above a level, a quest stage, an item shown).
+- **Toward the player**: a starting disposition, plus what raises or lowers it: flattery, threats, gifts, helping its
+  friends. Its trust and how much it likes the player are kept in the save, as reputation is.
+- **Relationships**: the World Bible's relations (friend of, rival of, works for), and what it thinks of each.
+- **Conversation rules**:
+  - whether it talks freely at all (some NPCs only use their dialogue tree);
+  - how long it will chat before it has to go;
+  - topics that bore it;
+  - whether it gossips (§30.3);
+  - the actions it may take in a conversation (§30.4).
+
+Profiles are stored with the character's World Bible entry (`world/character/<id>.md`: front matter for the fields,
+the body as its background). The AI panel and the AI Planner can write and revise them like any entry.
+
+### 30.2 Knowledge
+
+What an NPC can say it knows. There are three layers, merged when it answers:
+
+| Layer | What | Example |
+|---|---|---|
+| **World** | the setting's general knowledge: history, geography, customs, common facts (the World Bible's lore, places, factions, events) | "The old king died in the winter of the flood" |
+| **Groups** | what members of a group share: a village, a guild, a family, the guard, a faction; a character can be in several | Millbrook villagers know the mill burned; the guard knows the patrol routes |
+| **Character** | what only it knows | where it hid the key; that it saw the stranger at night |
+
+**Each fact** is a short entry with:
+- its topic and aliases;
+- **who knows it** (the world, groups, characters);
+- **when** it's known: always, from a quest stage, after an event, while a flag holds;
+- **how freely it's told**: freely, to friends (trust above a level), only when asked about it directly, or never (a
+  secret it lies about or deflects);
+- **its source**: authored, from the story, learned in play.
+
+**Learned in play**:
+- What happens in the game becomes knowledge for those who saw it, or who would hear of it: quest stages, deaths, the
+  player's deeds, items stolen. A rule per event says who learns it.
+- With **gossip**, it spreads in a group after a while ("everyone in the village knows by tomorrow").
+- What the player tells an NPC is remembered as "the player said …", true or not.
+
+**Picked per answer**: an NPC can't be given everything. Each turn the facts it may use are filtered by who knows them,
+when, and how freely, then ranked by relevance to what was said. The World Bible's embeddings index
+(`ai_service/app/world.py`) does the ranking, with a token budget per answer. The character's own facts and the
+current quest's always come first.
+
+**Edited in** a Knowledge panel:
+- world facts, groups and their members, characters' own facts;
+- for any NPC and story moment, what it would know right now;
+- facts that contradict the World Bible or each other, flagged.
+
+### 30.3 Memory and relationship
+
+- **Conversation memory**: each NPC remembers its conversations with the player as short summaries, what it promised
+  and what it was told. They're kept in the save, so a later conversation picks up ("Did you find my brother?").
+- **Disposition**: trust and liking change with what's said and done, within limits the profile sets. They open
+  secrets and better prices, or end a conversation ("I've nothing more to say to you").
+- **Between NPCs** (later in the phase): gossip spreads facts within groups. NPCs near each other can exchange a few
+  lines in character as barks, from their profiles and shared knowledge, generated ahead and cached rather than live.
+
+### 30.4 With dialogues, quests and the story
+
+Free talk works inside the existing systems, not beside them:
+
+- **Dialogue trees stay**: quest-critical lines are authored. A dialogue node can open **free talk** ("Ask her
+  anything…"): the player types, and the NPC answers until the player or the NPC returns to the tree.
+- **Intent to choices**: what the player types is matched to the node's choices when it means one of them. "Fine, I'll
+  find your ring" takes "Accept the quest", with its effects. So a quest advances whether the player clicks or talks.
+- **Allowed actions**: per character and per dialogue node, what a conversation may do:
+  - start or advance these quests;
+  - give these items;
+  - set these flags;
+  - change disposition by up to so much;
+  - start a trade;
+  - push a package ("follow me", "wait here").
+
+  The model answers in structure: what it says, its emotion and clip, at most a few allowed actions, and whether the
+  conversation ends. The engine carries out only actions on the list, and checks their conditions as dialogue would.
+- **Quest objectives by talk**: a new objective type, `talk-about` ("ask Mara about the mill"). It's met when the
+  conversation covers that topic (judged by the model against the topic's description and aliases), or by the tree's
+  choice as before.
+- **Consistency**: before an answer is shown it's checked:
+  - no item, quest, place or character that doesn't exist;
+  - no secret told before its time;
+  - nothing contradicting what the story has made true (a dead character isn't alive).
+
+  An answer that fails is asked again once; otherwise a safe in-character line is used ("I'd rather not say").
+- **Speech in the world**: answers show as dialogue lines (portrait, name, the conversation box) and as speech bubbles
+  for short exchanges. Barks keep working as before.
+
+### 30.5 Runtime
+
+- **Who answers in play**:
+  - in the editor's Play, the AI service (the project's provider);
+  - in a shipped game, the developer's choice in Project Settings ▸ Conversations: their own server or endpoint, the
+    player's own key, or a local model;
+  - with no model: free talk is off and the trees work alone, so every game still plays.
+- **Speed**: answers stream word by word with a "thinking" pause the profile can colour ("hmm…"). Facts are picked
+  before the player finishes typing. A conversation's knowledge is cached.
+- **Cost and safety**:
+  - token budgets per answer and per conversation, which the player can see in the editor;
+  - a content rating per project, which the prompt holds to;
+  - the player's input filtered, and attempts to break the character answered in character;
+  - logs of conversations in Play for the designer to review.
+- **Determinism**: tests and playtests can use a scripted provider. Recorded conversations replay, as the AI panel's
+  golden tests do.
+
+### 30.6 Editor and AI
+
+- **Project ▸ Characters ▸ Profile**: the fields of §30.1, sample lines, and **Talk to them**. That's a chat window for
+  trying the character in any story state (pick the quest stages and flags). It shows the facts used, the actions
+  proposed and the check's verdict.
+- **Knowledge panel** (§30.2), and the groups in the World panel (a character's groups, a group's members).
+- **Dialogue editor**: a node's free-talk switch, its allowed actions, its intents to choices, its topics.
+- **AI panel**: it writes and revises profiles, knowledge and groups ("make the blacksmith gruff and secretive about
+  his past", "everyone in Millbrook knows about the fire"). It can set up free talk on a dialogue, and add `talk-about`
+  objectives. Its checks cover facts that name entries that exist, groups with members, and allowed actions that name
+  existing quests and items.
+- **AI Planner**: the characters stage writes each character's profile. A new knowledge stage writes world and group
+  knowledge from the story and the World Bible, and each character's own facts from its role in the quests: what it
+  knows, hides, and learns at each stage.
+
+### 30.7 Later
+
+Spoken conversation: speech to text for the player, and text to speech with a voice per character, matched to its
+profile. NPCs who remember the player across playthroughs (opt-in). Free talk between the player's companions about
+what they've seen.
+
+In this order:
+
+1. **Profiles**: fields on World Bible characters, the Profile tab, the AI panel writing them, and a migration that
+   gives existing characters a default profile from their summary.
+2. **Knowledge**: facts, groups and layers, the Knowledge panel, and selection per answer with the embeddings index;
+   the AI panel writing knowledge.
+3. **Talk to them** in the editor: the conversation service (`/conversations/turn`), structured answers, the
+   consistency check, and the facts used shown. This is tried with no game running.
+4. **In play**: a dialogue node's free talk, intents to choices, allowed actions carried out by the engine, the
+   conversation UI (typing, streaming, the box and bubbles), and Project Settings ▸ Conversations.
+5. **Memory and disposition** kept in the save; secrets that open with trust; conversation summaries.
+6. **Quests**: `talk-about` objectives; knowledge learned from events; gossip.
+7. **The AI Planner**: the profile and knowledge stages. Tests: scripted conversations (a secret kept until trust, a
+   quest accepted by words, an invented item refused, a dead character spoken of as dead), and an evaluation set
+   recorded against live models.
+
+---
+
 ## Later
 
 Phases after 5 are planned as development goes (2026-10-17): each new phase is written

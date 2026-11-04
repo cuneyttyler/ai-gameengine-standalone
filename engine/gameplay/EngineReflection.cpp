@@ -9,6 +9,7 @@
 #include "gameplay/Effects.h"
 #include "gameplay/Magic.h"
 #include "gameplay/Physics.h"
+#include "gameplay/Paths.h"
 #include "gameplay/Items.h"
 #include "gameplay/Settings.h"
 #include "records/Records.h"
@@ -301,6 +302,8 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "(\"Open the door|Close the door\"); empty: a door's own, another part's \"Use\".")
         .Field("fires", &AnimatedPart::fires, "The game event sent each time the player activates it (\"cooked\"), for scripts, "
                "triggers and quests; an always playing part sends it by its input action.")
+        .Field("station", &AnimatedPart::station, "A crafting station (\"stove\"): using it opens the Crafting list with the "
+               "recipes whose \"at\" names it; a character's script makes one there with craft(recipe, station, who).")
         .Field("duration", &AnimatedPart::duration, "Once activated, it plays this long (seconds), then shuts by itself; 0: until "
                "it's shut.").Min(0.0f)
         .Field("playerClip", &AnimatedPart::playerClip, "A clip the player plays while it's active (cook, pray).")
@@ -467,6 +470,18 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
 
     r.Component<Marker>("Marker", "A named place in the scene, for routines to send people to. Invisible in play.")
         .Field("name", &Marker::name, "The place's name, e.g. herb_garden.")
+        .DependsOn({"WorldTransform2D"});
+    r.Component<Path>("Path", "A path characters follow (docs/ai/ai-paths.md): named, shared by any number of packages "
+                              "(data.path, the step follow-path). Points, and links that fork (by weight or conditions) and "
+                              "join again. Drawn with the viewport's Path tool; invisible in play.")
+        .Field("name", &Path::name, "Packages refer to it by this (market-loop).")
+        .Field("points", &Path::points, "Its points, a JSON list in cells from its own place: [{\"x\", \"y\", \"wait\": "
+                                        "seconds, \"clip\", \"use\": a part used there, \"do\": effects, \"label\"}].")
+        .Field("links", &Path::links, "Its links, a JSON list (empty: point to point in order): [{\"from\", \"to\", "
+                                      "\"weight\", \"if\": conditions, \"priority\", \"default\", \"do\", \"label\"}].")
+        .Field("end", &Path::end, "At an end: stop, loop (the last point back to the first) or back (the way it came).")
+        .Options({"stop", "loop", "back"})
+        .Field("shown", &Path::shown, "Drawn in the viewport.")
         .DependsOn({"WorldTransform2D"});
     r.Component<Gateway>("Gateway",
                          "A way into another scene: stepping into its cell during play takes the player there.")

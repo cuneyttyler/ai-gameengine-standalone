@@ -6,6 +6,7 @@
 #include "gameplay/TileLayer.h"
 #include "gameplay/GameSession.h"
 #include "gameplay/Interiors.h"
+#include "gameplay/Paths.h"
 #include "gameplay/Pathfinding.h"
 #include "gameplay/Schedule.h"
 #include "gameplay/Story.h"
@@ -49,7 +50,8 @@ const char* kTemplates = R"JSON({
   "vendor": {"type": "loop", "children": [{"type": "selector", "children": [
       {"type": "use-object", "type_": "counter", "affordance": "work", "around": "@location", "radius": 10, "forever": true},
       {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "idle"}]}]}]},
-  "patrol": {"type": "patrol", "points": "@data:path", "wait": "@data:duration"},
+  "patrol": {"type": "patrol", "points": "@data:path", "route": "@data:route", "wait": "@data:duration"},
+  "follow-path": {"type": "follow-path", "path": "@data:route", "mode": "@data:mode", "from": "@data:from", "hold": true},
   "guard": {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "idle"}]},
   "follow": {"type": "follow", "target": "@target", "distance": "@data:distance"},
   "accompany": {"type": "follow", "target": "@player", "distance": 2},
@@ -62,6 +64,19 @@ const char* kTemplates = R"JSON({
   "use-object": {"type": "use-object", "type_": "@data:object", "around": "@location", "radius": 12},
   "approach-player": {"type": "talk-to-player", "dialogue": "@data:dialogue"},
   "script": {"type": "script", "script": "@data:script"},
+  "use-part": {"type": "loop", "children": [{"type": "selector", "children": [
+      {"type": "sequence", "children": [{"type": "use-part", "part": "@data:action", "around": "@location", "radius": "@data:radius",
+                                           "seconds": "@data:duration"},
+                                          {"type": "wait", "min": 2, "max": 5}]},
+      {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "wait", "seconds": 6}]}]}]},
+  "live": {"type": "loop", "children": [{"type": "random", "weights": [3, 2, 1], "children": [
+      {"type": "sequence", "children": [{"type": "wander", "around": "@location", "radius": "@data:radius"},
+                                          {"type": "wait", "min": 2, "max": 6}]},
+      {"type": "sequence", "children": [{"type": "wander", "around": "@location", "inside": true},
+                                          {"type": "wait", "min": 2, "max": 6}]},
+      {"type": "selector", "children": [{"type": "use-part", "part": "@data:action", "around": "@location", "radius": "@data:radius",
+                                           "seconds": "@data:duration"},
+                                          {"type": "wait", "seconds": 2}]}]}]},
   "tend": {"type": "loop", "children": [{"type": "selector", "children": [
       {"type": "sequence", "children": [{"type": "act", "action": "@data:action", "around": "@location", "radius": "@data:radius"},
                                           {"type": "wait", "min": 1, "max": 3}]},
@@ -184,6 +199,13 @@ struct Run {
         const auto& behaviour = R().get<Behaviour>(actor);
         if (spec == "@location" && package) {
             const nlohmann::json loc = package->value("location", nlohmann::json::object());
+            // A thing by its name: a building ("house-4"), a stall, a character.
+            if (const std::string named = loc.value("building", loc.value("entity", std::string())); !named.empty()) {
+                if (auto e = EntityNamed(R(), named); e && R().all_of<WorldTransform2D>(*e)) {
+                    const auto& w = R().get<WorldTransform2D>(*e);
+                    return std::pair{w.x, w.y};
+                }
+            }
             const std::string alias = loc.value("alias", std::string("none"));
             if (alias == "home") return Point("@home");
             if (alias == "work") return Point("@work");
@@ -352,6 +374,167 @@ struct Run {
         return true;
     }
 
+    // A path's fork conditions (docs/ai/ai-paths.md §3): its own (playerNear, partOpen, free; "not": true inverts one)
+    // and dialogue's (flags, quests, items, time) by the game.
+    bool LinkHolds(const PathGraph& graph, const PathLink& link, int at) {
+        auto special = [&](const nlohmann::json& c) {
+            bool yes = true;
+            if (c.contains("playerNear")) {
+                const auto player = FindPlayer(R());
+                const float within = c.value("playerNear", 5.0f);
+                yes = player && R().all_of<WorldTransform2D>(*player) &&
+                      std::hypot(R().get<WorldTransform2D>(*player).x - At().x, R().get<WorldTransform2D>(*player).y - At().y) <= within;
+            } else if (c.contains("partOpen")) {
+                const auto part = ctx.findPart ? ctx.findPart(actor, c.value("partOpen", std::string()), At().x, At().y, 20.0f) : std::nullopt;
+                yes = part && ctx.partOpen && ctx.partOpen(part->owner, part->index);
+            } else if (c.contains("free")) {
+                // Nobody else at its far point (the well taken: the market instead).
+                const PathPoint& there = graph.points[static_cast<size_t>(OtherEnd(link, at))];
+                bool taken = false;
+                for (auto [other, b, w] : R().view<Behaviour, WorldTransform2D>().each()) {
+                    if (other != actor && std::hypot(w.x - there.x, w.y - there.y) < 1.2f) taken = true;
+                }
+                yes = !taken == c.value("free", true);
+                return yes;
+            }
+            return yes != c.value("not", false);
+        };
+        return LinkConditionsHold(link.conditions, special,
+                                  [&](const std::string& text) { return !ctx.conditionsHold || ctx.conditionsHold(actor, text); });
+    }
+
+    // Someone on the same path just ahead, going to the same point: wait a moment rather than walk into them.
+    bool Crowded(const std::string& name, int to, const PathPoint& point) {
+        const float mine = std::hypot(point.x - At().x, point.y - At().y);
+        for (auto [other, s, w] : R().view<BehaviourState, WorldTransform2D>().each()) {
+            if (other == actor) continue;
+            auto pathIt = s.blackboard.find("path");
+            auto pointIt = s.blackboard.find("pathPoint");
+            if (pathIt == s.blackboard.end() || pointIt == s.blackboard.end() || pathIt->second != name || pointIt->second != to) continue;
+            if (std::hypot(point.x - w.x, point.y - w.y) < mine && std::hypot(w.x - At().x, w.y - At().y) < 0.9f) return true;
+        }
+        return false;
+    }
+
+    // follow-path (docs/ai/ai-paths.md §4): walks a named path point by point, stopping where its points say (wait, a
+    // clip, a part used, effects), choosing at each fork (conditions, priority, weights, default). mode once (to an
+    // end, or a lap), loop (on and on) or wander (any way at each point, never stopping). Each character keeps its own
+    // place on it; several share one.
+    AiStatus FollowPath(const Procedure& p, int index, const ProcedureNode& node, nlohmann::json& ns, bool patrol) {
+        const std::string name = !patrol ? Str(node, "path") : Param(node, "route").is_string() ? Param(node, "route").get<std::string>()
+                                                                                                  : Param(node, "points").get<std::string>();
+        const auto graph = FindNamedPath(R(), name);
+        if (!graph || graph->points.empty()) return AiStatus::Failure;
+        const int n = static_cast<int>(graph->points.size());
+        const std::string mode = patrol ? std::string("loop") : Str(node, "mode", "once");
+        const bool stops = node.params.value("stops", true);
+        const nlohmann::json weights = Param(node, "weights", nlohmann::json::object());
+        // Walked to its end (mode once) with "hold" (the package template): it stays there, not walking it again.
+        if (ns.value("held", false)) return AiStatus::Running;
+        if (!ns.contains("to")) {
+            const std::string from = Str(node, "from", "nearest");
+            const int start = from == "start" ? 0 : from == "end" ? n - 1 : std::max(0, NearestPoint(*graph, At().x, At().y));
+            ns["to"] = start, ns["prev"] = -1, ns["start"] = start, ns["moved"] = false;
+            ns["history"] = nlohmann::json::array();
+            ns["phase"] = "walk", ns["backing"] = false, ns["t"] = 0.0f;
+        }
+        const int to = ns.value("to", 0);
+        if (to < 0 || to >= n) {
+            Reset(index, p);
+            return AiStatus::Failure;
+        }
+        state.blackboard["path"] = name;
+        state.blackboard["pathPoint"] = to;
+        const PathPoint& point = graph->points[static_cast<size_t>(to)];
+        if (ns.value("phase", std::string("walk")) == "walk") {
+            if (Crowded(name, to, point)) return AiStatus::Running;
+            if (!Walk({point.x, point.y}, 0.35f)) {
+                ns["t"] = ns.value("t", 0.0f) + dt;
+                if (ns.value("t", 0.0f) > 30.0f) { // no way to this point
+                    Reset(index, p);
+                    return AiStatus::Failure;
+                }
+                return AiStatus::Running;
+            }
+            ns["t"] = 0.0f;
+            ns["phase"] = "stop";
+            ns["left"] = 0.0f;
+            if (stops) {
+                if (!point.doEffects.empty() && ctx.runEffects) ctx.runEffects(actor, point.doEffects);
+                if (!point.clip.empty()) TriggerAnimation(R(), actor, point.clip);
+                if (!point.use.empty() && ctx.findPart && ctx.usePart) {
+                    if (const auto part = ctx.findPart(actor, point.use, point.x, point.y, 3.0f)) ctx.usePart(actor, part->owner, part->index);
+                }
+                ns["left"] = point.wait;
+            }
+        }
+        const float left = ns.value("left", 0.0f) - dt;
+        if (left > 0.0f) {
+            ns["left"] = left;
+            return AiStatus::Running;
+        }
+        if (stops && !point.clip.empty()) TriggerAnimation(R(), actor, "stop");
+        // On: the way back (an end that turns back), or the next link chosen.
+        nlohmann::json history = ns.value("history", nlohmann::json::array());
+        const int prev = ns.value("prev", -1);
+        int next = -1;
+        if (ns.value("backing", false)) {
+            if (!history.empty()) {
+                next = history.back().get<int>();
+                history.erase(history.size() - 1);
+            } else if (mode == "once") {
+                if (node.params.value("hold", false)) {
+                    ns["held"] = true;
+                    return AiStatus::Running;
+                }
+                Reset(index, p);
+                return AiStatus::Success; // back where it began
+            } else {
+                ns["backing"] = false; // and out again
+            }
+        }
+        if (next < 0) {
+            const int link = ChooseLink(*graph, LinksFrom(*graph, to, mode == "wander", prev),
+                                        [&](const PathLink& l) { return LinkHolds(*graph, l, to); },
+                                        ctx.rng ? *ctx.rng : FallbackRng(), weights);
+            if (link >= 0) {
+                const PathLink& l = graph->links[static_cast<size_t>(link)];
+                if (!l.doEffects.empty() && ctx.runEffects) ctx.runEffects(actor, l.doEffects);
+                state.blackboard["pathBranch"] = l.label.empty() ? std::to_string(link) : l.label;
+                next = OtherEnd(l, to);
+                history.push_back(to);
+            } else if (graph->end == "back" || mode == "wander") {
+                ns["backing"] = true; // an end: the way it came
+                if (!history.empty()) {
+                    next = history.back().get<int>();
+                    history.erase(history.size() - 1);
+                }
+            } else if (mode == "loop" && to != ns.value("start", 0)) {
+                next = ns.value("start", 0); // round to where it began
+                history = nlohmann::json::array();
+            }
+        }
+        if (next < 0 || (mode == "once" && ns.value("moved", false) && next == ns.value("start", 0) && !ns.value("backing", false))) {
+            if (node.params.value("hold", false)) {
+                ns["held"] = true;
+                return AiStatus::Running;
+            }
+            Reset(index, p);
+            return AiStatus::Success; // an end, or a lap
+        }
+        ns["history"] = history;
+        ns["prev"] = to;
+        ns["to"] = next;
+        ns["moved"] = true;
+        ns["phase"] = "walk";
+        return AiStatus::Running;
+    }
+
+    static std::mt19937& FallbackRng() {
+        static std::mt19937 rng{0x9A7Bu};
+        return rng;
+    }
+
     AiStatus Tick(const Procedure& p, int index) {
         const ProcedureNode& node = p.nodes[index];
         nlohmann::json& ns = state.nodeState[index];
@@ -456,7 +639,26 @@ struct Run {
                 const auto around = Point(Str(node, "around", "@location")).value_or(std::pair{At().x, At().y});
                 const float radius = Num(node, "radius", 3.0f);
                 std::pair<float, float> pick = around;
-                for (int attempt = 0; attempt < 10; ++attempt) {
+                // "inside": in a building's rooms (true: the package's location.building; or a building's name).
+                const nlohmann::json in = Param(node, "inside", false);
+                std::string building = in.is_string() ? in.get<std::string>() : std::string();
+                if (in.is_boolean() && in.get<bool>() && package) {
+                    const nlohmann::json loc = package->value("location", nlohmann::json::object());
+                    building = loc.value("building", loc.value("entity", std::string()));
+                }
+                bool picked = false;
+                if (const auto b = building.empty() ? std::nullopt : EntityNamed(R(), building)) {
+                    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+                    const auto* interior = R().try_get<Interior>(*b);
+                    if (interior && InteriorFootprint(R(), *b, *interior, x0, y0, x1, y1)) {
+                        for (int attempt = 0; attempt < 20 && !picked; ++attempt) {
+                            const int cx = static_cast<int>(Randf(ctx.rng, static_cast<float>(x0), static_cast<float>(x1) + 0.999f));
+                            const int cy = static_cast<int>(Randf(ctx.rng, static_cast<float>(y0), static_cast<float>(y1) + 0.999f));
+                            if (!ctx.isSolid(cx, cy)) pick = {cx + 0.5f, cy + 0.5f}, picked = true;
+                        }
+                    }
+                }
+                for (int attempt = 0; attempt < 10 && !picked; ++attempt) {
                     const float a = Randf(ctx.rng, 0.0f, 2.0f * kPi), r = Randf(ctx.rng, 0.0f, radius);
                     const auto cell = Cell(around.first + std::cos(a) * r, around.second + std::sin(a) * r);
                     if (!ctx.isSolid(cell.first, cell.second)) {
@@ -587,8 +789,28 @@ struct Run {
                     const float d = std::hypot(w.x - around.first, w.y - around.second);
                     if (d <= radius && d < bestD) bestD = d, best = e;
                 }
-                if (!best) return AiStatus::Failure;
-                ns["target"] = static_cast<uint32_t>(*best);
+                if (!best) {
+                    // Else an animated part named so (a stove's "cook"): walked to and used, as the player would.
+                    const auto part = ctx.findPart ? ctx.findPart(actor, action, around.first, around.second, radius) : std::nullopt;
+                    if (!part) return AiStatus::Failure;
+                    ns["partOwner"] = static_cast<uint32_t>(part->owner);
+                    ns["partIndex"] = part->index;
+                    ns["x"] = part->x, ns["y"] = part->y, ns["range"] = part->range;
+                    ns["target"] = static_cast<uint32_t>(part->owner);
+                } else {
+                    ns["target"] = static_cast<uint32_t>(*best);
+                }
+            }
+            if (ns.contains("partOwner")) {
+                const Entity owner = static_cast<Entity>(ns.value("partOwner", 0u));
+                if (!R().valid(owner)) {
+                    Reset(index, p);
+                    return AiStatus::Failure;
+                }
+                if (!Walk({ns.value("x", 0.0f), ns.value("y", 0.0f)}, std::max(0.5f, ns.value("range", 1.8f) - 0.4f))) return AiStatus::Running;
+                const bool did = ctx.usePart && ctx.usePart(actor, owner, ns.value("partIndex", size_t{0}));
+                Reset(index, p);
+                return did ? AiStatus::Success : AiStatus::Failure;
             }
             const Entity target = static_cast<Entity>(ns.value("target", 0u));
             if (!R().valid(target) || !R().all_of<WorldTransform2D>(target)) {
@@ -601,6 +823,83 @@ struct Run {
             const bool did = ctx.act && ctx.act(actor, target);
             Reset(index, p);
             return did ? AiStatus::Success : AiStatus::Failure;
+        }
+        if (type == "use-part") {
+            // An animated part named `part` near the place (a stove's "cook", a lever's "pull", a door): walked to, used
+            // as the player would, stayed at for `seconds` (its own duration when it has one, else 5), then left; one it
+            // turned on that's still on (used again to shut, no duration) is turned off unless `leaveOn`.
+            if (!ctx.findPart || !ctx.usePart) return AiStatus::Failure;
+            if (!ns.contains("owner")) {
+                const std::string name = Str(node, "part", Str(node, "action"));
+                const auto around = Point(Str(node, "around", "@location")).value_or(std::pair{At().x, At().y});
+                const auto found = ctx.findPart(actor, name, around.first, around.second, Num(node, "radius", 12.0f));
+                if (!found) return AiStatus::Failure;
+                ns["owner"] = static_cast<uint32_t>(found->owner);
+                ns["index"] = found->index;
+                ns["x"] = found->x, ns["y"] = found->y, ns["range"] = found->range;
+                ns["way"] = found->way;
+                ns["seconds"] = Num(node, "seconds", found->duration > 0.0f ? found->duration : 5.0f);
+                ns["phase"] = 0;
+            }
+            const Entity owner = static_cast<Entity>(ns.value("owner", 0u));
+            const size_t part = ns.value("index", size_t{0});
+            if (!R().valid(owner)) {
+                Reset(index, p);
+                return AiStatus::Failure;
+            }
+            if (ns.value("phase", 0) == 0) {
+                ns["t"] = ns.value("t", 0.0f) + dt;
+                if (!Walk({ns.value("x", 0.0f), ns.value("y", 0.0f)}, std::max(0.5f, ns.value("range", 1.8f) - 0.4f))) {
+                    if (ns.value("t", 0.0f) > 40.0f) { // no way there
+                        Reset(index, p);
+                        return AiStatus::Failure;
+                    }
+                    return AiStatus::Running;
+                }
+                const float dx = ns.value("x", 0.0f) - At().x, dy = ns.value("y", 0.0f) - At().y;
+                const float l = std::max(0.001f, std::sqrt(dx * dx + dy * dy));
+                R().emplace_or_replace<Facing>(actor, dx / l, dy / l);
+                // Already on (a door open, a stove cooking): not used again, which would shut it; one always playing is
+                // used anyway (its clip on this one, its event, its "do").
+                const bool always = ns.value("way", std::string()) == "always";
+                const bool on = !always && ctx.partOpen && ctx.partOpen(owner, part);
+                if (!on && !ctx.usePart(actor, owner, part)) {
+                    Reset(index, p);
+                    return AiStatus::Failure;
+                }
+                if (const std::string clip = Str(node, "clip"); !clip.empty()) TriggerAnimation(R(), actor, clip);
+                ns["turnedOn"] = !on && !always;
+                ns["left"] = ns.value("seconds", 5.0f);
+                ns["phase"] = 1;
+                return AiStatus::Running;
+            }
+            const float left = ns.value("left", 0.0f) - dt;
+            if (left > 0.0f) {
+                ns["left"] = left;
+                return AiStatus::Running;
+            }
+            if (ns.value("turnedOn", false) && !node.params.value("leaveOn", false) && ctx.partOpen && ctx.partOpen(owner, part) &&
+                ns.value("way", std::string()) != "auto") {
+                ctx.usePart(actor, owner, part); // shut again
+            }
+            TriggerAnimation(R(), actor, "stop");
+            Reset(index, p);
+            return AiStatus::Success;
+        }
+        if (type == "play") {
+            // A clip on itself (cook, sweep, wave), held for `seconds` (2), then stopped.
+            if (!ns.contains("left")) {
+                TriggerAnimation(R(), actor, Str(node, "clip"));
+                ns["left"] = Num(node, "seconds", 2.0f);
+            }
+            const float left = ns.value("left", 0.0f) - dt;
+            if (left > 0.0f) {
+                ns["left"] = left;
+                return AiStatus::Running;
+            }
+            TriggerAnimation(R(), actor, "stop");
+            Reset(index, p);
+            return AiStatus::Success;
         }
         if (type == "talk-to-player") {
             auto player = FindPlayer(R());
@@ -629,6 +928,9 @@ struct Run {
             const float d = std::max(0.001f, std::sqrt(dx * dx + dy * dy));
             if (d < distance) Walk({At().x + dx / d * 3.0f, At().y + dy / d * 3.0f}, 0.4f, 1.4f);
             return AiStatus::Running;
+        }
+        if (type == "follow-path" || (type == "patrol" && (Param(node, "route").is_string() || Param(node, "points").is_string()))) {
+            return FollowPath(p, index, node, ns, type == "patrol");
         }
         if (type == "patrol") {
             std::vector<std::string> points;
@@ -695,6 +997,9 @@ struct Run {
             if (auto it = state.blackboard.find("scriptGoal"); it != state.blackboard.end() && it->second.is_array()) {
                 const bool arrived = Walk({it->second[0].get<float>(), it->second[1].get<float>()}, 0.4f);
                 state.blackboard["scriptArrived"] = arrived;
+                // No way there, step after step: move_to gives up (a goal in a wall, behind a locked door).
+                const int noPath = state.blackboard["scriptNoPath"].is_number() ? state.blackboard["scriptNoPath"].get<int>() : 0;
+                state.blackboard["scriptNoPath"] = !arrived && state.path.empty() ? noPath + 1 : 0;
             }
             return running ? AiStatus::Running : AiStatus::Success;
         }
@@ -784,6 +1089,24 @@ const Procedure* FindProcedure(const std::string& name) {
     auto& builtIns = BuiltIns();
     auto it = builtIns.find(name);
     return it == builtIns.end() ? nullptr : &it->second;
+}
+
+const Procedure* PackageProcedure(const std::string& id, const nlohmann::json& package) {
+    // Its own tree ("procedure": JSON, or JSON as text), else its template's.
+    const nlohmann::json own = package.value("procedure", nlohmann::json());
+    const bool has = own.is_object() || (own.is_string() && !own.get<std::string>().empty());
+    if (has) {
+        static std::map<std::string, std::pair<std::string, Procedure>> cache;
+        const std::string text = own.is_string() ? own.get<std::string>() : own.dump();
+        auto& cached = cache[id];
+        if (cached.first != text || cached.second.nodes.empty()) {
+            const nlohmann::json tree = own.is_string() ? nlohmann::json::parse(text, nullptr, false) : own;
+            auto parsed = ParseProcedure(tree);
+            cached = {text, parsed ? *parsed : Procedure{}};
+        }
+        if (!cached.second.nodes.empty()) return &cached.second;
+    }
+    return FindProcedure(package.value("template", std::string("stay")));
 }
 
 std::vector<std::string> ProcedureNames() {
@@ -1034,7 +1357,7 @@ void UpdateBehaviours(AiContext& ctx, float dt) {
             run.Hide(true);
             continue;
         }
-        const Procedure* procedure = FindProcedure(package->value("template", std::string("stay")));
+        const Procedure* procedure = PackageProcedure(state.package, *package);
         if (!procedure || procedure->nodes.empty()) continue;
         run.package = package;
         const AiStatus status = run.Tick(*procedure, 0);

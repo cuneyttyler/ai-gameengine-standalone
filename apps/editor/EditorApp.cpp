@@ -47,6 +47,7 @@
 #include "gameplay/InputMap.h"
 #include "gameplay/Animation.h"
 #include "gameplay/Interiors.h"
+#include "gameplay/Paths.h"
 #include "world/StoryReferences.h"
 #include "editing/SceneEditing.h"
 #include "gameplay/BootstrapLevel.h"
@@ -157,7 +158,7 @@ constexpr float kMaxZoom = 4.0f;
 constexpr double kPlayInspectorRefreshSeconds = 0.1;
 
 // Ids shared with the UI's toolbar (apps/editor/ui/src/components/Toolbar.vue).
-constexpr const char* kToolIds[] = {"select", "erase", "prefab", "height"};
+constexpr const char* kToolIds[] = {"select", "erase", "prefab", "height", "path"};
 
 // Accent colors for viewport overlays, matching the UI's accent.
 constexpr float kAccent[3] = {0.231f, 0.510f, 0.965f};
@@ -948,6 +949,8 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     const std::string type = message.value("type", "");
     const SlowWatch watch("message " + type);
     if (HandleInteriorMessage(type, message)) return; // interiors (docs/places/interiors.md): the viewport's, the Assets panel's, the Build panel's
+    if (type.rfind("interiorParts:", 0) == 0 && HandleInteriorPartsMessage(type, message)) return; // Animate the interior (InteriorAnimate.cpp)
+    if (type.rfind("path:", 0) == 0 && HandlePathMessage(type, message)) return; // paths characters follow (PathTool.cpp)
     if (HandleGenerateMessage(type, message)) return; // Generate ▸ Character / Animate's history, and animations (Assets ▸ Animations)
     if ((type.rfind("build:", 0) == 0 || type.rfind("background:", 0) == 0 || type == "scene:backgroundImage") && HandleBuildMessage(type, message)) return;
     if (type == "prefs:request" || type == "prefs:set") {
@@ -2859,8 +2862,20 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                 brushing_ = true;
                 return;
             }
+            if (tool_ == Tool::Path) {
+                PathToolDown(sceneX, sceneY, (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0);
+                return;
+            }
             if (tool_ == Tool::Select) {
                 auto picked = PickEntity(registry_, sceneX, sceneY, iso_);
+                // Nothing with a picture there: a path's point (the path selected; the Path tool draws on it).
+                if (!picked) {
+                    if (const auto point = PathPointAt(sceneX, sceneY)) {
+                        Select(point->first);
+                        pathEditing_ = point->first, pathPoint_ = point->second;
+                        return;
+                    }
+                }
                 Select(picked);
                 if (picked) {
                     dragging_ = true;
@@ -2927,7 +2942,14 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                         if (const TileDef* def = layer ? layer->Def(layer->Get(cell->gx, cell->gy)) : nullptr) cellPrefab = def->prefab;
                     }
                 }
+                // A path's point under it: its menu (branch from it, delete it, what's done there).
+                nlohmann::json pathPoint = nullptr;
+                if (const auto point = PathPointAt(sceneX, sceneY)) {
+                    pathPoint = {{"id", static_cast<uint32_t>(point->first)}, {"point", point->second},
+                                 {"name", registry_.get<Path>(point->first).name}};
+                }
                 post_({{"type", "viewport:contextMenu"},
+                       {"pathPoint", pathPoint},
                        {"x", viewportBounds_.x + static_cast<int>(event.x)},
                        {"y", viewportBounds_.y + static_cast<int>(event.y)},
                        {"entity", entity},
@@ -2973,6 +2995,7 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                 return;
             }
             if (event.button == Button::Left || event.button == Button::None) {
+                PathToolUp();
                 if (dragging_ || stroking_) {
                     EndEdit();
                 }
@@ -3012,6 +3035,7 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
             if (stroking_) {
                 ToolStroke(sceneX, sceneY, false);
             }
+            if (pathDragging_) PathToolMove(sceneX, sceneY);
             if (brushing_) CellAt(sceneX, sceneY, iso_, brushToX_, brushToY_);
             if (boxing_) {
                 boxToX_ = sceneX;
@@ -3079,6 +3103,11 @@ void EditorApp::OnViewportKey(int virtualKey, bool ctrl, bool shift) {
             return;
         }
     } else if (!ctrl && !alt) {
+        // The Path tool: Enter or Escape finish the path being drawn (the next click begins another).
+        if (tool_ == Tool::Path && (virtualKey == VK_RETURN || virtualKey == VK_ESCAPE) && registry_.valid(pathEditing_)) {
+            FinishPath();
+            return;
+        }
         switch (virtualKey) {
             case VK_LEFT:
             case VK_RIGHT:
@@ -3629,6 +3658,15 @@ void EditorApp::DeleteSelected() {
         return;
     }
     Entity entity = *selected_;
+    // A path packages still use: deleted (undo brings it back), and said which (they stand still until it's drawn again).
+    if (const auto* path = registry_.try_get<Path>(entity)) {
+        if (const auto users = PackagesUsingPath(path->name); !users.empty()) {
+            std::string list;
+            for (const auto& u : users) list += (list.empty() ? "" : ", ") + u;
+            post_({{"type", "notify"}, {"text", "Path " + path->name + " was used by " + list + ": undo to keep it"}});
+        }
+        if (pathEditing_ == entity) FinishPath();
+    }
     ApplyOneShotEdit([&] {
         DeleteEntity(registry_, entity);
         return true;
@@ -5450,6 +5488,7 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
                     if (!tiled.contains({gx, gy})) AddCellOutline(overlay, gx, gy, iso_, kGridColor, 0.25f, 1.0f);
         }
     }
+    AddPathOverlay(overlay); // paths characters follow (PathTool.cpp)
     static constexpr float kMarkerColor[3] = {0.99f, 0.86f, 0.45f};
     for (auto [entity, marker, world] : registry_.view<Marker, WorldTransform2D>().each()) {
         AddCellOutline(overlay, static_cast<int>(std::floor(world.x)), static_cast<int>(std::floor(world.y)), iso_,
@@ -5902,6 +5941,8 @@ void EditorApp::PollAi() {
                 }
             } else if (animateRequest_ != 0 && result->requestId == animateRequest_) {
                 OnAnimateResult(result->body);
+            } else if (interiorPartsRequest_ != 0 && result->requestId == interiorPartsRequest_) {
+                OnInteriorPartsResult(result->body);
             } else if (stairsRequest_ != 0 && result->requestId == stairsRequest_) {
                 // Its stairs, a corner (or the middle) a floor: its footprint's cell there (a mirrored copy: left and
                 // right the other way round, as its pictures are).
@@ -7019,35 +7060,7 @@ void EditorApp::PlacePart(const nlohmann::json& result) {
         made.key = p.value("key", std::string());
         made.floor = p.value("floor", 0); // the picture it moves on: the outside, or an interior's floor
         made.door = made.floor == 0 && p.value("door", false) && IsBuilding(parentEntity); // a way in: a building's door only (not a lever, a sign, a floor's things)
-        // Another door of its (§4.3), or one it has redone: the door whose box this one's middle falls in.
-        auto doorIndex = [&](const AnimatedPart* now) -> size_t {
-            if (!now || (now->sheet.empty() && now->opens != "open" && now->more.empty())) return 0;
-            const auto doors = DoorsOf(*now);
-            for (size_t i = 0; i < doors.size(); ++i) {
-                if (doors[i].floor == made.floor && std::abs(doors[i].x - made.x) < doors[i].width / 2 &&
-                    std::abs(doors[i].y - made.y) < doors[i].height / 2) {
-                    return i; // redone: the part on the same picture whose box its middle falls in
-                }
-            }
-            return doors.size();
-        };
-        const auto* link = registry_.try_get<PrefabInstance>(parentEntity);
-        if (link && prefabs_.Find(link->path)) {
-            // On the prefab: every copy (in this scene and the others) shows it.
-            size_t index = 0;
-            prefabs_.VisitTemplate(link->path, [&](Registry& r, Entity t) { index = doorIndex(r.try_get<AnimatedPart>(t)); });
-            ApplyDoorToPrefab(link->path, index, made, false, false);
-        } else {
-            ApplyOneShotEdit([&] {
-                auto& part = registry_.get_or_emplace<AnimatedPart>(parentEntity);
-                const size_t index = doorIndex(&part);
-                std::vector<AnimatedPart> doors = part.sheet.empty() && part.opens != "open" && part.more.empty() ? std::vector<AnimatedPart>{} : DoorsOf(part);
-                if (index < doors.size()) doors[index] = made;
-                else doors.push_back(made);
-                SetDoors(part, doors);
-                return true;
-            });
-        }
+        PutPart(parentEntity, made);
         inspectorStale_ = true; // (the Animate a part window says it's done: part:done)
         return;
     }
@@ -7079,6 +7092,42 @@ void EditorApp::PlacePart(const nlohmann::json& result) {
         return true;
     });
     post_({{"type", "notify"}, {"text", "The part is animated (" + clip + "): it plays when someone comes to it. Its Action and Attachment are in the Inspector."}});
+}
+
+void EditorApp::PutPart(Entity parentEntity, const AnimatedPart& made) {
+    // On a thing (a building, a sign): one of its AnimatedPart's parts, on its prefab's copies too when it has one (every
+    // house of that kind gets the moving door, the burning fireplace).
+    {
+        // Another door of its (§4.3), or one it has redone: the door whose box this one's middle falls in.
+        auto doorIndex = [&](const AnimatedPart* now) -> size_t {
+            if (!now || (now->sheet.empty() && now->opens != "open" && now->more.empty())) return 0;
+            const auto doors = DoorsOf(*now);
+            for (size_t i = 0; i < doors.size(); ++i) {
+                if (doors[i].floor == made.floor && std::abs(doors[i].x - made.x) < doors[i].width / 2 &&
+                    std::abs(doors[i].y - made.y) < doors[i].height / 2) {
+                    return i; // redone: the part on the same picture whose box its middle falls in
+                }
+            }
+            return doors.size();
+        };
+        const auto* link = registry_.try_get<PrefabInstance>(parentEntity);
+        if (link && prefabs_.Find(link->path)) {
+            // On the prefab: every copy (in this scene and the others) shows it.
+            size_t index = 0;
+            prefabs_.VisitTemplate(link->path, [&](Registry& r, Entity t) { index = doorIndex(r.try_get<AnimatedPart>(t)); });
+            ApplyDoorToPrefab(link->path, index, made, false, false);
+        } else {
+            ApplyOneShotEdit([&] {
+                auto& part = registry_.get_or_emplace<AnimatedPart>(parentEntity);
+                const size_t index = doorIndex(&part);
+                std::vector<AnimatedPart> doors = part.sheet.empty() && part.opens != "open" && part.more.empty() ? std::vector<AnimatedPart>{} : DoorsOf(part);
+                if (index < doors.size()) doors[index] = made;
+                else doors.push_back(made);
+                SetDoors(part, doors);
+                return true;
+            });
+        }
+    }
 }
 
 std::string EditorApp::MakeAnimationSheet(const nlohmann::json& made, std::string* sheet) {
@@ -9051,6 +9100,13 @@ void EditorApp::ApplyEditorActions(const nlohmann::json& actions) {
             post_({{"type", "panel:show"}, {"panel", a.value("panel", "")}});
         } else if (what == "play" && !playing_) {
             StartPlay();
+        } else if (what == "animateInterior" && !playing_) {
+            // Animate the interior (InteriorAnimate.cpp): its window opened on the building and its moving things looked for.
+            const Entity e = static_cast<Entity>(a.value("entity", 0u));
+            if (!registry_.valid(e) || !registry_.all_of<Interior>(e)) continue;
+            HandleInteriorPartsMessage("interiorParts:open", {{"id", static_cast<uint32_t>(e)}});
+            if (interiorParts_.value("id", 0u) == static_cast<uint32_t>(e)) HandleInteriorPartsMessage("interiorParts:find", nlohmann::json::object());
+            post_({{"type", "interiorParts:show"}, {"id", static_cast<uint32_t>(e)}});
         }
     }
 }
@@ -10418,6 +10474,7 @@ nlohmann::json EditorApp::SceneJson() {
 nlohmann::json EditorApp::EditorStateJson() {
     return {{"type", "editor:state"},
             {"tool", kToolIds[static_cast<int>(tool_)]},
+            {"showPaths", showPaths_},
             {"heightMode", heightMode_},
             {"heightRadius", heightRadius_},
             {"brush", brushPrefab_},

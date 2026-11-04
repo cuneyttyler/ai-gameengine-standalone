@@ -24,6 +24,8 @@ function updateMenus(): void {
     { label: 'Frame stats', shortcut: keyLabel('view.stats'), action: () => sendToHost({ type: 'view:stats' }) },
     { label: 'Physics shapes (colliders, triggers, bodies)', action: () => sendToHost({ type: 'view:physics' }) },
     { label: `${editorState.grid ? '✓ ' : ''}Tile grid on empty ground`, shortcut: keyLabel('view.grid'), action: () => sendToHost({ type: 'view:grid' }) },
+    // Paths characters follow (docs/ai/ai-paths.md): all drawn, or only the selected one and the selected character's.
+    { label: `${editorState.showPaths ? '✓ ' : ''}Paths (and, in Play, where each character is walking)`, action: () => sendToHost({ type: 'path:show', shown: !editorState.showPaths }) },
     // Interiors (docs/places/interiors.md): the selected building's, or every building's in the scene.
     {
       label: "Selected building's interior / exterior",

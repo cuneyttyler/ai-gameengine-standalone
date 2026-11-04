@@ -147,6 +147,11 @@ struct Role {
     std::string draw;
     nlohmann::json look; // how it shows (vary, light {radius, strength}, doorway): place-refine.md §13
     int solid = -1;      // blocks walking (1) or not (0); -1: its broader role's (roles.json "solid")
+    // An interior object (docs/places/interior-objects.md): the buildings it's found in (building roles; a narrower one
+    // counts, "building" any), and how it moves when animated: [{clip, motion, opens, prompt, duration}] (opens as
+    // AnimatedPart's: always, use, auto, action, event). Empty: its broader role's.
+    std::vector<std::string> foundIn;
+    nlohmann::json animate = nlohmann::json::array();
 };
 
 struct RelationType {
@@ -237,6 +242,13 @@ public:
     bool IsBuilding(const std::string& role) const;
     // A role's description: its own, else its nearest broader role's ("" if none).
     std::string RoleDescription(const std::string& role) const;
+    // Interior objects (docs/places/interior-objects.md): where a role is found (its own found_in, else its nearest
+    // broader role's; empty: not an interior object), how it moves (its animate, likewise), and every interior object a
+    // building of `building` holds (found in it or in a role it's a kind of), those that move only with `animated`.
+    std::vector<std::string> RoleFoundIn(const std::string& role) const;
+    nlohmann::json RoleAnimations(const std::string& role) const;
+    bool IsKindOfRole(const std::string& role, const std::string& ancestor) const;
+    std::vector<const Role*> InteriorObjects(const std::string& building, bool animated) const;
     const Concept* FindConcept(const std::string& scheme, const std::string& id) const;
     const std::vector<Concept>* Scheme(const std::string& id) const;
     const Tolerances& Tolerance() const { return tolerances_; }

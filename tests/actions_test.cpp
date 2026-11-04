@@ -12,7 +12,12 @@
 #include "physics2d/Components.h"
 #include "scripting/LuaVM.h"
 
+#include "gameplay/Behaviour.h"
+#include "gameplay/EngineReflection.h"
+#include "records/Records.h"
+
 #include <filesystem>
+#include <fstream>
 
 // docs/systems/actions.md: Actions used by anyone, what they need, take and give, once and cooldowns; custom input
 // actions' plays and event.
@@ -397,4 +402,80 @@ TEST(ActionsTest, DoorsOpenTheirWayAndLockedOnesNeedTheKey) {
     step(true);
     EXPECT_TRUE(isOpen());
     EXPECT_FALSE(w.registry.get<aige::AnimatedPart>(house).locked);
+}
+
+// docs/ai/ai-packages.md §6b: a character walking by its package (no velocity of its own) opens a door as it comes, as
+// the player does.
+TEST(ActionsTest, DoorsOpenForCharactersWalkingByTheirPackages) {
+    ActionsWorld w;
+    const aige::Entity house = w.registry.create();
+    w.registry.emplace<aige::WorldTransform2D>(house, 5.5f, 5.5f);
+    w.registry.emplace<aige::Obstacle>(house, aige::Obstacle{2, 0, 2});
+    w.registry.emplace<aige::Sprite>(house).texture = "house.png";
+    w.registry.emplace<aige::Interior>(house).texture = "house-interior.png";
+    w.registry.emplace<aige::AnimatedPart>(house).sheet = "assets/door.anim.json";
+    w.registry.get<aige::WorldTransform2D>(w.player) = {1.5f, 1.5f}; // far away
+    const aige::Entity vara = w.registry.create();
+    w.registry.emplace<aige::WorldTransform2D>(vara, 4.5f, 6.9f); // at the door
+    w.registry.emplace<aige::Behaviour>(vara);
+    ASSERT_FALSE(w.registry.all_of<aige::Velocity2D>(vara));
+    for (int i = 0; i < 2; ++i) w.session->Advance(aige::GameSession::kFixedDt, [](aige::Key) { return false; });
+    const auto* open = w.registry.try_get<aige::PartOpen>(house);
+    ASSERT_TRUE(open && !open->open.empty());
+    EXPECT_TRUE(open->open[0]);
+}
+
+// docs/ai/ai-packages.md §6b: a character uses an animated part as the player would (a stove's "cook"), and makes a
+// recipe at the part's station from its own inventory.
+TEST(ActionsTest, CharactersUsePartsAndCookAtTheirStations) {
+    ActionsWorld w;
+    auto write = [&](const std::string& path, const std::string& text) {
+        std::filesystem::create_directories((w.root / path).parent_path());
+        std::ofstream(w.root / path, std::ios::binary) << text;
+    };
+    write("records/item/carrot.json", R"({"name": "Carrot"})");
+    write("records/item/stew.json", R"({"name": "Stew"})");
+    write("records/recipe/stew.json", R"({"name": "Stew", "inputs": [{"item": "carrot", "count": 2}], "gives": [{"item": "stew"}], "at": "stove"})");
+    aige::ActiveRecords().Open(aige::EngineReflection(), w.root);
+    const aige::Entity stove = w.registry.create();
+    w.registry.emplace<aige::WorldTransform2D>(stove, 6.5f, 6.5f);
+    w.registry.emplace<aige::Sprite>(stove).texture = "stove.png";
+    auto& part = w.registry.emplace<aige::AnimatedPart>(stove);
+    part.sheet = "assets/stove.anim.json";
+    part.opens = "action";
+    part.trigger = "cook";
+    part.station = "stove";
+    part.door = false;
+    w.registry.get<aige::WorldTransform2D>(w.player) = {1.5f, 1.5f};
+    const aige::Entity vara = w.registry.create();
+    w.registry.emplace<aige::WorldTransform2D>(vara, 6.5f, 7.2f);
+    w.registry.emplace<aige::Behaviour>(vara);
+    auto none = [](aige::Key) { return false; };
+    w.session->Advance(aige::GameSession::kFixedDt, none); // its overlay made
+
+    const auto byAction = w.session->FindPart(vara, "cook", 3.0f);
+    ASSERT_TRUE(byAction.has_value());
+    EXPECT_EQ(byAction->owner, stove);
+    EXPECT_TRUE(w.session->FindPart(vara, "stove", 3.0f).has_value()); // by its station too
+    EXPECT_FALSE(w.session->FindPart(vara, "pull", 3.0f).has_value());
+    EXPECT_FALSE(w.session->PartIsOpen(stove, 0));
+    ASSERT_TRUE(w.session->UsePart(vara, stove, 0));
+    w.session->Advance(aige::GameSession::kFixedDt, none);
+    EXPECT_TRUE(w.session->PartIsOpen(stove, 0)); // cooking
+    ASSERT_TRUE(w.session->UsePart(vara, stove, 0));
+    w.session->Advance(aige::GameSession::kFixedDt, none);
+    EXPECT_FALSE(w.session->PartIsOpen(stove, 0)); // turned off again
+    // Too far: not used.
+    w.registry.get<aige::WorldTransform2D>(vara) = {1.5f, 6.5f};
+    EXPECT_FALSE(w.session->UsePart(vara, stove, 0));
+
+    // The station's recipe, made by her from her own inventory, into it.
+    auto& bag = w.registry.emplace<aige::Inventory>(vara);
+    EXPECT_NE(w.session->Craft("stew", "stove", vara), ""); // no carrots
+    aige::AddItem(bag, "carrot", 2);
+    EXPECT_NE(w.session->Craft("stew", "", vara), ""); // only at the stove
+    EXPECT_EQ(w.session->Craft("stew", "stove", vara), "");
+    EXPECT_EQ(aige::CountItem(w.registry.get<aige::Inventory>(vara), "stew"), 1);
+    EXPECT_EQ(aige::CountItem(w.registry.get<aige::Inventory>(vara), "carrot"), 0);
+    aige::ActiveRecords().Close();
 }

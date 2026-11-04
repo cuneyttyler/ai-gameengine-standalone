@@ -99,6 +99,7 @@ std::vector<AnimatedPart> DoorsFromJson(const std::string& text) {
         door.trigger = d.value("trigger", std::string());
         door.prompt = d.value("prompt", std::string());
         door.fires = d.value("fires", std::string());
+        door.station = d.value("station", std::string());
         door.duration = d.value("duration", 0.0f);
         door.playerClip = d.value("playerClip", std::string());
         door.playerLoop = d.value("playerLoop", true);
@@ -122,7 +123,7 @@ std::string DoorsJson(const std::vector<AnimatedPart>& doors) {
         list.push_back({{"sheet", d.sheet}, {"x", d.x}, {"y", d.y}, {"width", d.width}, {"height", d.height}, {"clip", d.clip},
                         {"closeClip", d.closeClip}, {"range", d.range}, {"opens", d.opens}, {"locked", d.locked}, {"key", d.key},
                         {"consumeKey", d.consumeKey}, {"trigger", d.trigger}, {"prompt", d.prompt}, {"door", d.door},
-                        {"floor", d.floor}, {"fires", d.fires},
+                        {"floor", d.floor}, {"fires", d.fires}, {"station", d.station},
                         {"duration", d.duration}, {"playerClip", d.playerClip}, {"playerLoop", d.playerLoop}, {"holdsPlayer", d.holdsPlayer},
                         {"if", d.conditions}, {"do", d.doEffects}, {"end", d.doEnd}});
     }

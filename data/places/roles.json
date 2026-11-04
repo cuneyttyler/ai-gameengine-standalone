@@ -1059,7 +1059,10 @@
       "to": "door",
       "height": 0.35
     },
-    "solid": false
+    "solid": false,
+    "found_in": [
+      "building"
+    ]
   },
   "animal": {
     "label": "animal",
@@ -1394,7 +1397,28 @@
       "height": 0.35,
       "width": 0.7
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "house",
+      "townhouse",
+      "farmhouse",
+      "manor",
+      "shack",
+      "inn",
+      "barracks",
+      "keep",
+      "tent",
+      "warehouse",
+      "temple"
+    ],
+    "animate": [
+      {
+        "clip": "open",
+        "motion": "the chest's lid swings open",
+        "opens": "use",
+        "prompt": "Open"
+      }
+    ]
   },
   "altar": {
     "label": "altar",
@@ -1495,7 +1519,7 @@
   "bookshelf": {
     "label": "bookshelf",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "storage",
     "look": {
       "at": "wall",
       "relations": [
@@ -1527,7 +1551,7 @@
   "bed": {
     "label": "bed",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "look": {
       "at": "wall",
       "relations": [
@@ -1544,7 +1568,23 @@
       "height": 0.4,
       "width": 1.2
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "house",
+      "townhouse",
+      "farmhouse",
+      "manor",
+      "shack",
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "inn",
+      "hotel",
+      "barracks",
+      "keep",
+      "hospital",
+      "tent"
+    ]
   },
   "table": {
     "label": "table",
@@ -1558,12 +1598,15 @@
       "height": 0.45,
       "width": 1.0
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "building"
+    ]
   },
   "chair": {
     "label": "chair",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "look": {
       "near": "table",
       "dependsOn": [
@@ -1587,7 +1630,7 @@
   "nightstand": {
     "label": "nightstand",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "look": {
       "near": "bed",
       "dependsOn": [
@@ -1605,12 +1648,24 @@
       "height": 0.35,
       "width": 0.5
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "house",
+      "townhouse",
+      "farmhouse",
+      "manor",
+      "shack",
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "inn",
+      "hotel"
+    ]
   },
   "fireplace": {
     "label": "fireplace",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "hearth",
     "look": {
       "at": "wall",
       "relations": [
@@ -1631,12 +1686,31 @@
       "height": 0.8,
       "width": 1.0
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "house",
+      "townhouse",
+      "farmhouse",
+      "manor",
+      "inn",
+      "keep",
+      "barracks",
+      "guard-tower",
+      "hotel",
+      "suburban-house"
+    ],
+    "animate": [
+      {
+        "clip": "burn",
+        "motion": "the flames in the fireplace flicker and dance, the embers glow and pulse, a thin wisp of smoke rises into the chimney; the stones, the mantel and everything around stay still",
+        "opens": "always"
+      }
+    ]
   },
   "counter": {
     "label": "counter",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "look": {
       "at": "wall",
       "relations": [
@@ -1652,12 +1726,18 @@
       "height": 0.6,
       "width": 1.5
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "shop",
+      "inn",
+      "restaurant",
+      "workshop"
+    ]
   },
   "stool": {
     "label": "stool",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "look": {
       "near": "counter",
       "dependsOn": [
@@ -1681,7 +1761,7 @@
   "shelf": {
     "label": "shelf",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "storage",
     "look": {
       "at": "wall",
       "relations": [
@@ -1702,7 +1782,7 @@
   "workbench": {
     "label": "workbench",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "craft-equipment",
     "look": {
       "at": "wall",
       "relations": [
@@ -1722,7 +1802,7 @@
   "anvil": {
     "label": "anvil",
     "affordance": "interactive-object",
-    "broader": "prop",
+    "broader": "craft-equipment",
     "look": {
       "at": "wall"
     },
@@ -1731,12 +1811,24 @@
       "height": 0.35,
       "width": 0.6
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "smithy"
+    ],
+    "animate": [
+      {
+        "clip": "strike",
+        "motion": "the glowing metal on the anvil throws up a shower of sparks",
+        "opens": "use",
+        "prompt": "Strike",
+        "duration": 2.0
+      }
+    ]
   },
   "display-stand": {
     "label": "display stand",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "look": {
       "at": "wall"
     },
@@ -1745,12 +1837,18 @@
       "height": 0.7,
       "width": 0.7
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "shop",
+      "temple",
+      "manor",
+      "mall"
+    ]
   },
   "lectern": {
     "label": "lectern",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "look": {
       "at": "wall"
     },
@@ -1759,12 +1857,18 @@
       "height": 0.7,
       "width": 0.5
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "temple",
+      "school",
+      "keep",
+      "city-hall"
+    ]
   },
   "throne": {
     "label": "throne",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "look": {
       "at": "wall",
       "relations": [
@@ -1780,7 +1884,12 @@
       "height": 1.0,
       "width": 0.8
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "keep",
+      "manor",
+      "temple"
+    ]
   },
   "banner": {
     "label": "banner",
@@ -1806,12 +1915,28 @@
       "to": "door",
       "height": 1.0
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "keep",
+      "manor",
+      "temple",
+      "barracks",
+      "guard-tower",
+      "city-hall",
+      "gatehouse"
+    ],
+    "animate": [
+      {
+        "clip": "ripple",
+        "motion": "the banner ripples gently as if in a draught",
+        "opens": "always"
+      }
+    ]
   },
   "pew": {
     "label": "pew",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "look": {
       "at": "wall",
       "relations": [
@@ -1827,12 +1952,15 @@
       "height": 0.5,
       "width": 1.5
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "temple"
+    ]
   },
   "cupboard": {
     "label": "cupboard",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "storage",
     "look": {
       "at": "wall",
       "relations": [
@@ -1848,12 +1976,20 @@
       "height": 1.0,
       "width": 0.8
     },
-    "solid": true
+    "solid": true,
+    "animate": [
+      {
+        "clip": "open",
+        "motion": "its doors swing open, showing the shelves inside",
+        "opens": "use",
+        "prompt": "Open"
+      }
+    ]
   },
   "stove": {
     "label": "stove",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "hearth",
     "look": {
       "at": "wall",
       "relations": [
@@ -1869,12 +2005,41 @@
       "height": 0.55,
       "width": 0.7
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "house",
+      "townhouse",
+      "farmhouse",
+      "manor",
+      "shack",
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "inn",
+      "restaurant",
+      "cafe",
+      "barracks",
+      "workshop"
+    ],
+    "animate": [
+      {
+        "clip": "burn",
+        "motion": "the fire glows and flickers behind the stove's grate, a little smoke curls from its pipe",
+        "opens": "always"
+      },
+      {
+        "clip": "cook",
+        "motion": "steam rises from the pot on the stove and its lid rattles",
+        "opens": "use",
+        "prompt": "Cook",
+        "duration": 4.0
+      }
+    ]
   },
   "wardrobe": {
     "label": "wardrobe",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "storage",
     "look": {
       "at": "wall",
       "relations": [
@@ -1890,12 +2055,32 @@
       "height": 1.1,
       "width": 0.9
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "house",
+      "townhouse",
+      "farmhouse",
+      "manor",
+      "shack",
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "inn",
+      "hotel"
+    ],
+    "animate": [
+      {
+        "clip": "open",
+        "motion": "its doors swing open, showing the clothes hanging inside",
+        "opens": "use",
+        "prompt": "Open"
+      }
+    ]
   },
   "desk": {
     "label": "desk",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "look": {
       "at": "wall",
       "relations": [
@@ -1915,7 +2100,7 @@
   "wall-decor": {
     "label": "wall decor",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "decoration",
     "look": {
       "at": "wall",
       "dependsOn": [
@@ -1941,14 +2126,21 @@
   "candle": {
     "label": "candle",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "interior-light",
     "size": 0.12,
     "tall": 1.2,
     "look": {
       "orient": "none",
       "views": 1
     },
-    "solid": false
+    "solid": false,
+    "animate": [
+      {
+        "clip": "flicker",
+        "motion": "the candle's flame flickers and sways gently, its glow pulsing softly",
+        "opens": "always"
+      }
+    ]
   },
   "stand": {
     "label": "stand",
@@ -2192,7 +2384,22 @@
       ],
       "faces": "away-from-wall"
     },
-    "solid": false
+    "solid": false,
+    "found_in": [
+      "keep",
+      "barracks",
+      "guard-tower",
+      "temple",
+      "inn",
+      "gatehouse"
+    ],
+    "animate": [
+      {
+        "clip": "flicker",
+        "motion": "the torch's flame flickers and leaps, sparks drifting up",
+        "opens": "always"
+      }
+    ]
   },
   "curtain-wall": {
     "label": "curtain wall",
@@ -3130,7 +3337,7 @@
   "sofa": {
     "label": "sofa",
     "affordance": "interactive-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "size": 2.0,
     "tall": 0.5,
     "draw": "a modern fabric sofa",
@@ -3151,12 +3358,21 @@
       "to": "door",
       "height": 0.45
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "hotel",
+      "office-building",
+      "office-tower",
+      "cafe"
+    ]
   },
   "tv": {
     "label": "television",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "electronic",
     "size": 1.2,
     "tall": 0.6,
     "draw": "a flat-screen television on a low stand",
@@ -3173,12 +3389,19 @@
       "to": "door",
       "height": 0.4
     },
-    "solid": true
+    "solid": true,
+    "animate": [
+      {
+        "clip": "play",
+        "motion": "the picture on the screen changes, moving colours and shapes flickering across it",
+        "opens": "always"
+      }
+    ]
   },
   "coffee-table": {
     "label": "coffee table",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "size": 1.0,
     "tall": 0.4,
     "draw": "a low coffee table",
@@ -3189,12 +3412,20 @@
       "to": "door",
       "height": 0.25
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "hotel",
+      "office-building",
+      "cafe"
+    ]
   },
   "fridge": {
     "label": "fridge",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "appliance",
     "size": 0.8,
     "tall": 2.0,
     "draw": "a tall fridge",
@@ -3212,12 +3443,20 @@
       "to": "door",
       "height": 1.0
     },
-    "solid": true
+    "solid": true,
+    "animate": [
+      {
+        "clip": "open",
+        "motion": "the fridge's door swings open and its inside light shines on the shelves",
+        "opens": "use",
+        "prompt": "Open"
+      }
+    ]
   },
   "sink": {
     "label": "sink",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "water-fixture",
     "size": 0.8,
     "tall": 1.0,
     "draw": "a sink unit",
@@ -3234,12 +3473,21 @@
       "to": "door",
       "height": 0.55
     },
-    "solid": true
+    "solid": true,
+    "animate": [
+      {
+        "clip": "run",
+        "motion": "water runs from the tap into the basin",
+        "opens": "use",
+        "prompt": "Wash",
+        "duration": 3.0
+      }
+    ]
   },
   "toilet": {
     "label": "toilet",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "water-fixture",
     "size": 0.6,
     "tall": 1.0,
     "draw": "a toilet",
@@ -3261,7 +3509,7 @@
   "shower": {
     "label": "shower",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "water-fixture",
     "size": 1.0,
     "tall": 2.2,
     "draw": "a glass shower cubicle",
@@ -3278,12 +3526,30 @@
       "to": "door",
       "height": 1.15
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "hotel",
+      "hospital",
+      "fire-station",
+      "barracks"
+    ],
+    "animate": [
+      {
+        "clip": "run",
+        "motion": "water sprays down from the shower head",
+        "opens": "use",
+        "prompt": "Shower",
+        "duration": 4.0
+      }
+    ]
   },
   "office-desk": {
     "label": "office desk",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "size": 1.4,
     "tall": 0.6,
     "draw": "a modern office desk with a monitor",
@@ -3291,12 +3557,26 @@
       "to": "door",
       "height": 0.45
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "office-building",
+      "office-tower",
+      "school",
+      "hospital",
+      "police-station",
+      "fire-station",
+      "city-hall",
+      "hotel",
+      "restaurant",
+      "transit-station",
+      "mall",
+      "laboratory"
+    ]
   },
   "office-chair": {
     "label": "office chair",
     "affordance": "interactive-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "size": 0.6,
     "tall": 1.4,
     "draw": "a swivel office chair",
@@ -3314,12 +3594,29 @@
       "to": "door",
       "height": 0.6
     },
-    "solid": false
+    "solid": false,
+    "found_in": [
+      "office-building",
+      "office-tower",
+      "school",
+      "hospital",
+      "police-station",
+      "fire-station",
+      "city-hall",
+      "hotel",
+      "restaurant",
+      "transit-station",
+      "mall",
+      "laboratory",
+      "suburban-house",
+      "row-house",
+      "apartment-block"
+    ]
   },
   "filing-cabinet": {
     "label": "filing cabinet",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "storage",
     "size": 0.6,
     "tall": 1.4,
     "draw": "a metal filing cabinet",
@@ -3336,12 +3633,35 @@
       "to": "door",
       "height": 0.75
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "office-building",
+      "office-tower",
+      "school",
+      "hospital",
+      "police-station",
+      "fire-station",
+      "city-hall",
+      "hotel",
+      "restaurant",
+      "transit-station",
+      "mall",
+      "laboratory"
+    ],
+    "animate": [
+      {
+        "clip": "open",
+        "motion": "a drawer slides out of the cabinet and back in",
+        "opens": "use",
+        "prompt": "Search",
+        "duration": 2.0
+      }
+    ]
   },
   "meeting-table": {
     "label": "meeting table",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "size": 3.0,
     "tall": 0.3,
     "draw": "a long meeting table",
@@ -3352,12 +3672,18 @@
       "to": "door",
       "height": 0.45
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "office-building",
+      "office-tower",
+      "city-hall",
+      "police-station"
+    ]
   },
   "whiteboard": {
     "label": "whiteboard",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "size": 1.6,
     "tall": 0.8,
     "draw": "a whiteboard on the wall",
@@ -3375,12 +3701,19 @@
       "to": "door",
       "height": 0.7
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "school",
+      "office-building",
+      "office-tower",
+      "laboratory",
+      "police-station"
+    ]
   },
   "reception-desk": {
     "label": "reception desk",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "size": 2.4,
     "tall": 0.5,
     "draw": "a curved reception desk",
@@ -3392,12 +3725,20 @@
       "to": "door",
       "height": 0.6
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "hotel",
+      "hospital",
+      "office-building",
+      "office-tower",
+      "city-hall",
+      "police-station"
+    ]
   },
   "potted-plant": {
     "label": "potted plant",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "decoration",
     "size": 0.6,
     "tall": 1.6,
     "draw": "a tall potted plant",
@@ -3410,12 +3751,31 @@
       "to": "tree",
       "height": 0.35
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "office-building",
+      "office-tower",
+      "school",
+      "hospital",
+      "police-station",
+      "fire-station",
+      "city-hall",
+      "hotel",
+      "restaurant",
+      "transit-station",
+      "mall",
+      "cafe",
+      "manor",
+      "townhouse"
+    ]
   },
   "checkout-counter": {
     "label": "checkout counter",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "size": 1.6,
     "tall": 0.6,
     "draw": "a shop checkout counter with a till",
@@ -3427,7 +3787,13 @@
       "to": "door",
       "height": 0.55
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "retail-store",
+      "supermarket",
+      "gas-station",
+      "mall"
+    ]
   },
   "store-shelf": {
     "label": "store shelf",
@@ -3445,7 +3811,7 @@
   "school-desk": {
     "label": "school desk",
     "affordance": "interactive-object",
-    "broader": "prop",
+    "broader": "furnishing",
     "size": 0.8,
     "tall": 0.8,
     "draw": "a school desk with a chair",
@@ -3461,12 +3827,15 @@
       "to": "door",
       "height": 0.45
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "school"
+    ]
   },
   "copier": {
     "label": "copier",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "electronic",
     "size": 0.8,
     "tall": 1.2,
     "draw": "an office photocopier",
@@ -3483,12 +3852,21 @@
       "to": "door",
       "height": 0.65
     },
-    "solid": true
+    "solid": true,
+    "animate": [
+      {
+        "clip": "copy",
+        "motion": "a light sweeps across under its lid and a sheet of paper slides out",
+        "opens": "use",
+        "prompt": "Copy",
+        "duration": 3.0
+      }
+    ]
   },
   "water-cooler": {
     "label": "water cooler",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "water-fixture",
     "size": 0.4,
     "tall": 2.6,
     "draw": "a water cooler",
@@ -3505,12 +3883,29 @@
       "to": "door",
       "height": 0.75
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "office-building",
+      "office-tower",
+      "school",
+      "hospital",
+      "police-station",
+      "city-hall"
+    ],
+    "animate": [
+      {
+        "clip": "pour",
+        "motion": "a bubble rises through the water bottle as water pours into a cup",
+        "opens": "use",
+        "prompt": "Drink",
+        "duration": 2.0
+      }
+    ]
   },
   "locker": {
     "label": "locker",
     "affordance": "environmental-object",
-    "broader": "prop",
+    "broader": "storage",
     "size": 0.6,
     "tall": 2.8,
     "draw": "a row of metal lockers",
@@ -3528,7 +3923,22 @@
       "to": "door",
       "height": 1.1
     },
-    "solid": true
+    "solid": true,
+    "found_in": [
+      "school",
+      "fire-station",
+      "police-station",
+      "hospital",
+      "factory"
+    ],
+    "animate": [
+      {
+        "clip": "open",
+        "motion": "the locker's metal door swings open",
+        "opens": "use",
+        "prompt": "Open"
+      }
+    ]
   },
   "ceiling-light": {
     "label": "ceiling light",
@@ -3588,5 +3998,1720 @@
     "look": {
       "found": "background"
     }
+  },
+  "interior-object": {
+    "label": "interior object",
+    "description": "a thing that stands, hangs or works inside a building: furniture, fires and lights, appliances, machines and tools, instruments, clocks and decorations",
+    "affordance": "environmental-object",
+    "broader": "prop",
+    "found_in": [
+      "building"
+    ]
+  },
+  "furnishing": {
+    "label": "furnishing",
+    "description": "furniture to sit, lie, work or serve at",
+    "affordance": "environmental-object",
+    "broader": "interior-object"
+  },
+  "storage": {
+    "label": "storage",
+    "description": "furniture that holds things: shelves, cupboards, wardrobes, cabinets",
+    "affordance": "environmental-object",
+    "broader": "interior-object"
+  },
+  "hearth": {
+    "label": "hearth",
+    "description": "a fire that heats, cooks or works metal: a fireplace, a stove, a forge, an oven",
+    "affordance": "environmental-object",
+    "broader": "interior-object"
+  },
+  "interior-light": {
+    "label": "interior light",
+    "description": "a light inside: candles, lamps, lanterns, chandeliers",
+    "affordance": "environmental-object",
+    "broader": "interior-object"
+  },
+  "appliance": {
+    "label": "appliance",
+    "description": "a modern household or kitchen appliance",
+    "affordance": "environmental-object",
+    "broader": "interior-object",
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "office-building",
+      "office-tower",
+      "school",
+      "hospital",
+      "police-station",
+      "fire-station",
+      "city-hall",
+      "hotel",
+      "restaurant",
+      "transit-station",
+      "mall",
+      "cafe"
+    ]
+  },
+  "electronic": {
+    "label": "electronic device",
+    "description": "a screen, a computer or another electronic device",
+    "affordance": "environmental-object",
+    "broader": "interior-object",
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "office-building",
+      "office-tower",
+      "school",
+      "hospital",
+      "police-station",
+      "fire-station",
+      "city-hall",
+      "hotel",
+      "restaurant",
+      "transit-station",
+      "mall",
+      "cafe",
+      "laboratory",
+      "factory",
+      "retail-store",
+      "supermarket",
+      "gas-station"
+    ]
+  },
+  "water-fixture": {
+    "label": "water fixture",
+    "description": "a fixture with running or standing water: a sink, a shower, a tank",
+    "affordance": "environmental-object",
+    "broader": "interior-object",
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "office-building",
+      "office-tower",
+      "school",
+      "hospital",
+      "police-station",
+      "fire-station",
+      "city-hall",
+      "hotel",
+      "restaurant",
+      "transit-station",
+      "mall",
+      "cafe",
+      "laboratory"
+    ]
+  },
+  "craft-equipment": {
+    "label": "craft equipment",
+    "description": "a craftsman's or a factory's tools and machines",
+    "affordance": "environmental-object",
+    "broader": "interior-object",
+    "found_in": [
+      "workshop",
+      "mill"
+    ]
+  },
+  "lab-equipment": {
+    "label": "lab equipment",
+    "description": "a laboratory's or an alchemist's apparatus",
+    "affordance": "environmental-object",
+    "broader": "interior-object",
+    "found_in": [
+      "laboratory",
+      "alchemy-lab"
+    ]
+  },
+  "timepiece": {
+    "label": "timepiece",
+    "description": "a clock or another thing that keeps time",
+    "affordance": "environmental-object",
+    "broader": "interior-object"
+  },
+  "musical-instrument": {
+    "label": "musical instrument",
+    "description": "an instrument or a machine that plays music",
+    "affordance": "environmental-object",
+    "broader": "interior-object",
+    "found_in": [
+      "manor",
+      "townhouse",
+      "inn",
+      "temple",
+      "school",
+      "hotel",
+      "restaurant",
+      "cafe",
+      "suburban-house",
+      "row-house",
+      "apartment-block"
+    ]
+  },
+  "decoration": {
+    "label": "decoration",
+    "description": "a thing kept for its look: hangings, curtains, ornaments, a pet in a cage",
+    "affordance": "environmental-object",
+    "broader": "interior-object"
+  },
+  "forge": {
+    "label": "forge",
+    "affordance": "environmental-object",
+    "broader": "hearth",
+    "draw": "a blacksmith's brick forge with glowing coals and a hood above it",
+    "relative": {
+      "to": "door",
+      "height": 0.8,
+      "width": 1.0
+    },
+    "solid": true,
+    "found_in": [
+      "smithy"
+    ],
+    "animate": [
+      {
+        "clip": "glow",
+        "motion": "the coals in the forge glow and pulse orange, small flames lick up and a few sparks drift",
+        "opens": "always"
+      }
+    ]
+  },
+  "oven": {
+    "label": "oven",
+    "affordance": "environmental-object",
+    "broader": "hearth",
+    "draw": "a domed brick bread oven with a fire glowing in its mouth",
+    "relative": {
+      "to": "door",
+      "height": 0.7,
+      "width": 0.9
+    },
+    "solid": true,
+    "found_in": [
+      "house",
+      "farmhouse",
+      "inn",
+      "restaurant",
+      "shop",
+      "keep"
+    ],
+    "animate": [
+      {
+        "clip": "burn",
+        "motion": "the fire glows and flickers inside the oven's mouth, heat shimmering above it",
+        "opens": "always"
+      }
+    ]
+  },
+  "cauldron": {
+    "label": "cauldron",
+    "affordance": "environmental-object",
+    "broader": "hearth",
+    "draw": "a black iron cauldron over a small fire",
+    "relative": {
+      "to": "door",
+      "height": 0.4,
+      "width": 0.5
+    },
+    "solid": true,
+    "found_in": [
+      "house",
+      "shack",
+      "farmhouse",
+      "inn",
+      "alchemy-lab",
+      "temple",
+      "tent"
+    ],
+    "animate": [
+      {
+        "clip": "bubble",
+        "motion": "the liquid in the cauldron bubbles and steams, the fire under it flickers",
+        "opens": "always"
+      }
+    ]
+  },
+  "brazier": {
+    "label": "brazier",
+    "affordance": "environmental-object",
+    "broader": "hearth",
+    "draw": "an iron brazier on legs with flames burning in its bowl",
+    "relative": {
+      "to": "door",
+      "height": 0.6,
+      "width": 0.4
+    },
+    "solid": true,
+    "found_in": [
+      "temple",
+      "keep",
+      "guard-tower",
+      "barracks",
+      "gatehouse"
+    ],
+    "animate": [
+      {
+        "clip": "burn",
+        "motion": "the flames in the brazier's bowl flicker and leap, embers glowing",
+        "opens": "always"
+      }
+    ]
+  },
+  "kiln": {
+    "label": "kiln",
+    "affordance": "environmental-object",
+    "broader": "hearth",
+    "draw": "a potter's brick kiln with fire glowing through its opening",
+    "relative": {
+      "to": "door",
+      "height": 0.8,
+      "width": 0.9
+    },
+    "solid": true,
+    "found_in": [
+      "workshop",
+      "factory"
+    ],
+    "animate": [
+      {
+        "clip": "glow",
+        "motion": "the fire glows and pulses through the kiln's opening, heat shimmering above it",
+        "opens": "always"
+      }
+    ]
+  },
+  "candelabra": {
+    "label": "candelabra",
+    "affordance": "environmental-object",
+    "broader": "interior-light",
+    "draw": "a tall branched candelabra with lit candles",
+    "relative": {
+      "to": "door",
+      "height": 0.9
+    },
+    "solid": false,
+    "found_in": [
+      "manor",
+      "keep",
+      "temple",
+      "inn",
+      "townhouse"
+    ],
+    "animate": [
+      {
+        "clip": "flicker",
+        "motion": "the candles' flames flicker and sway gently, their glow pulsing",
+        "opens": "always"
+      }
+    ]
+  },
+  "chandelier": {
+    "label": "chandelier",
+    "affordance": "environmental-object",
+    "broader": "interior-light",
+    "draw": "a hanging chandelier with rings of lit candles",
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 0.8
+    },
+    "solid": false,
+    "found_in": [
+      "manor",
+      "keep",
+      "inn",
+      "temple",
+      "hotel",
+      "restaurant"
+    ],
+    "animate": [
+      {
+        "clip": "flicker",
+        "motion": "the candles on the chandelier flicker and it sways very slightly on its chain",
+        "opens": "always"
+      }
+    ]
+  },
+  "oil-lamp": {
+    "label": "oil lamp",
+    "affordance": "environmental-object",
+    "broader": "interior-light",
+    "draw": "a small brass oil lamp with a glass chimney and a lit wick",
+    "relative": {
+      "to": "door",
+      "height": 0.25
+    },
+    "solid": false,
+    "found_in": [
+      "house",
+      "townhouse",
+      "farmhouse",
+      "shack",
+      "inn",
+      "shop",
+      "workshop",
+      "tent"
+    ],
+    "animate": [
+      {
+        "clip": "flicker",
+        "motion": "the flame inside the glass chimney flickers, its warm glow pulsing",
+        "opens": "always"
+      }
+    ]
+  },
+  "lantern": {
+    "label": "lantern",
+    "affordance": "environmental-object",
+    "broader": "interior-light",
+    "draw": "a hanging iron lantern with a candle burning inside",
+    "relative": {
+      "to": "door",
+      "height": 0.3
+    },
+    "solid": false,
+    "found_in": [
+      "building"
+    ],
+    "animate": [
+      {
+        "clip": "flicker",
+        "motion": "the flame in the lantern flickers and the lantern sways gently on its hook",
+        "opens": "always"
+      }
+    ]
+  },
+  "floor-lamp": {
+    "label": "floor lamp",
+    "affordance": "environmental-object",
+    "broader": "interior-light",
+    "draw": "a modern standing floor lamp with a fabric shade",
+    "relative": {
+      "to": "door",
+      "height": 1.1
+    },
+    "solid": false,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "hotel",
+      "office-building"
+    ]
+  },
+  "neon-sign": {
+    "label": "neon sign",
+    "affordance": "environmental-object",
+    "broader": "interior-light",
+    "draw": "a glowing neon sign on the wall",
+    "relative": {
+      "to": "door",
+      "height": 0.4,
+      "width": 0.8
+    },
+    "solid": false,
+    "found_in": [
+      "cafe",
+      "restaurant",
+      "retail-store",
+      "gas-station",
+      "mall",
+      "apartment-block"
+    ],
+    "animate": [
+      {
+        "clip": "flicker",
+        "motion": "the neon tubes glow and now and then flicker off and on again",
+        "opens": "always"
+      }
+    ]
+  },
+  "lava-lamp": {
+    "label": "lava lamp",
+    "affordance": "environmental-object",
+    "broader": "interior-light",
+    "draw": "a lava lamp with glowing blobs of wax",
+    "relative": {
+      "to": "door",
+      "height": 0.25
+    },
+    "solid": false,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block"
+    ],
+    "animate": [
+      {
+        "clip": "flow",
+        "motion": "the glowing blobs of wax rise, stretch and sink slowly inside the lamp",
+        "opens": "always"
+      }
+    ]
+  },
+  "microwave": {
+    "label": "microwave",
+    "affordance": "environmental-object",
+    "broader": "appliance",
+    "draw": "a microwave oven on the kitchen counter",
+    "relative": {
+      "to": "door",
+      "height": 0.2,
+      "width": 0.3
+    },
+    "solid": true,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "cafe",
+      "office-building",
+      "hospital"
+    ],
+    "animate": [
+      {
+        "clip": "heat",
+        "motion": "the light inside comes on and the plate inside turns slowly",
+        "opens": "use",
+        "prompt": "Heat food",
+        "duration": 3.0
+      }
+    ]
+  },
+  "washing-machine": {
+    "label": "washing machine",
+    "affordance": "environmental-object",
+    "broader": "appliance",
+    "draw": "a front-loading washing machine with a round glass door",
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 0.4
+    },
+    "solid": true,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "hotel",
+      "hospital"
+    ],
+    "animate": [
+      {
+        "clip": "wash",
+        "motion": "the drum spins and the clothes tumble behind the round glass door",
+        "opens": "use",
+        "prompt": "Wash clothes",
+        "duration": 4.0
+      }
+    ]
+  },
+  "coffee-machine": {
+    "label": "coffee machine",
+    "affordance": "environmental-object",
+    "broader": "appliance",
+    "draw": "an espresso coffee machine",
+    "relative": {
+      "to": "door",
+      "height": 0.25,
+      "width": 0.3
+    },
+    "solid": true,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "cafe",
+      "restaurant",
+      "office-building",
+      "office-tower",
+      "hotel"
+    ],
+    "animate": [
+      {
+        "clip": "brew",
+        "motion": "steam puffs from the machine and coffee drips into the cup below",
+        "opens": "use",
+        "prompt": "Make coffee",
+        "duration": 3.0
+      }
+    ]
+  },
+  "ceiling-fan": {
+    "label": "ceiling fan",
+    "affordance": "environmental-object",
+    "broader": "appliance",
+    "draw": "a ceiling fan with wide blades",
+    "relative": {
+      "to": "door",
+      "height": 0.2,
+      "width": 0.8
+    },
+    "solid": false,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "office-building",
+      "restaurant",
+      "cafe",
+      "hotel",
+      "retail-store",
+      "school"
+    ],
+    "animate": [
+      {
+        "clip": "spin",
+        "motion": "the fan's blades turn steadily round; the ceiling and its mount stay still",
+        "opens": "always"
+      }
+    ]
+  },
+  "dishwasher": {
+    "label": "dishwasher",
+    "affordance": "environmental-object",
+    "broader": "appliance",
+    "draw": "a kitchen dishwasher under the counter",
+    "relative": {
+      "to": "door",
+      "height": 0.45,
+      "width": 0.4
+    },
+    "solid": true,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "restaurant",
+      "cafe"
+    ],
+    "animate": [
+      {
+        "clip": "open",
+        "motion": "its front door folds down, showing the racks of plates",
+        "opens": "use",
+        "prompt": "Open"
+      }
+    ]
+  },
+  "computer": {
+    "label": "computer",
+    "affordance": "environmental-object",
+    "broader": "electronic",
+    "draw": "a desk computer with a monitor and keyboard",
+    "relative": {
+      "to": "door",
+      "height": 0.35,
+      "width": 0.4
+    },
+    "solid": true,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "office-building",
+      "office-tower",
+      "school",
+      "hospital",
+      "police-station",
+      "fire-station",
+      "city-hall",
+      "hotel",
+      "restaurant",
+      "transit-station",
+      "mall",
+      "laboratory",
+      "factory",
+      "retail-store"
+    ],
+    "animate": [
+      {
+        "clip": "work",
+        "motion": "the monitor's screen flickers with scrolling text and windows opening and closing",
+        "opens": "always"
+      }
+    ]
+  },
+  "server-rack": {
+    "label": "server rack",
+    "affordance": "environmental-object",
+    "broader": "electronic",
+    "draw": "a tall black server rack with rows of blinking lights",
+    "relative": {
+      "to": "door",
+      "height": 1.0,
+      "width": 0.5
+    },
+    "solid": true,
+    "found_in": [
+      "office-building",
+      "office-tower",
+      "laboratory",
+      "factory",
+      "police-station",
+      "hospital"
+    ],
+    "animate": [
+      {
+        "clip": "blink",
+        "motion": "the small green and amber lights on the server rack blink on and off",
+        "opens": "always"
+      }
+    ]
+  },
+  "arcade-machine": {
+    "label": "arcade machine",
+    "affordance": "environmental-object",
+    "broader": "electronic",
+    "draw": "an upright arcade game cabinet with a glowing screen",
+    "relative": {
+      "to": "door",
+      "height": 0.9,
+      "width": 0.4
+    },
+    "solid": true,
+    "found_in": [
+      "cafe",
+      "mall",
+      "restaurant",
+      "apartment-block",
+      "suburban-house"
+    ],
+    "animate": [
+      {
+        "clip": "play",
+        "motion": "the arcade screen flashes with moving game pictures and its buttons light up in turn",
+        "opens": "always"
+      }
+    ]
+  },
+  "jukebox": {
+    "label": "jukebox",
+    "affordance": "environmental-object",
+    "broader": "electronic",
+    "draw": "a jukebox with glowing coloured lights",
+    "relative": {
+      "to": "door",
+      "height": 0.8,
+      "width": 0.5
+    },
+    "solid": true,
+    "found_in": [
+      "cafe",
+      "restaurant",
+      "inn"
+    ],
+    "animate": [
+      {
+        "clip": "glow",
+        "motion": "the jukebox's lights cycle slowly through their colours and a record turns behind the glass",
+        "opens": "always"
+      }
+    ]
+  },
+  "control-panel": {
+    "label": "control panel",
+    "affordance": "environmental-object",
+    "broader": "electronic",
+    "draw": "a console of dials, buttons, switches and small screens",
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 0.8
+    },
+    "solid": true,
+    "found_in": [
+      "factory",
+      "laboratory",
+      "police-station",
+      "fire-station",
+      "transit-station",
+      "logistics-warehouse"
+    ],
+    "animate": [
+      {
+        "clip": "blink",
+        "motion": "the lights and small screens on the panel blink and flicker, a needle on a dial wavers",
+        "opens": "always"
+      }
+    ]
+  },
+  "radio": {
+    "label": "radio",
+    "affordance": "environmental-object",
+    "broader": "electronic",
+    "draw": "a radio set",
+    "relative": {
+      "to": "door",
+      "height": 0.2,
+      "width": 0.3
+    },
+    "solid": false,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "police-station",
+      "fire-station",
+      "workshop"
+    ],
+    "animate": [
+      {
+        "clip": "play",
+        "motion": "its dial lights up and the speaker's grille trembles with sound",
+        "opens": "use",
+        "prompt": "Turn on"
+      }
+    ]
+  },
+  "bathtub": {
+    "label": "bathtub",
+    "affordance": "environmental-object",
+    "broader": "water-fixture",
+    "draw": "a bathtub",
+    "relative": {
+      "to": "door",
+      "height": 0.35,
+      "width": 1.0
+    },
+    "solid": true,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "hotel",
+      "manor"
+    ],
+    "animate": [
+      {
+        "clip": "fill",
+        "motion": "water pours from the tap and ripples as the tub fills",
+        "opens": "use",
+        "prompt": "Run a bath",
+        "duration": 4.0
+      }
+    ]
+  },
+  "aquarium": {
+    "label": "aquarium",
+    "affordance": "environmental-object",
+    "broader": "water-fixture",
+    "draw": "a glass fish tank with fish and water plants",
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 0.7
+    },
+    "solid": true,
+    "found_in": [
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "restaurant",
+      "hotel",
+      "office-building",
+      "school",
+      "hospital",
+      "laboratory"
+    ],
+    "animate": [
+      {
+        "clip": "swim",
+        "motion": "the fish swim slowly to and fro, bubbles rise and the water plants sway",
+        "opens": "always"
+      }
+    ]
+  },
+  "indoor-fountain": {
+    "label": "indoor fountain",
+    "affordance": "environmental-object",
+    "broader": "water-fixture",
+    "draw": "a small decorative indoor fountain in a stone basin",
+    "relative": {
+      "to": "door",
+      "height": 0.6,
+      "width": 0.6
+    },
+    "solid": true,
+    "found_in": [
+      "manor",
+      "hotel",
+      "mall",
+      "temple",
+      "city-hall",
+      "keep"
+    ],
+    "animate": [
+      {
+        "clip": "flow",
+        "motion": "water flows and splashes from the fountain into its basin, ripples spreading",
+        "opens": "always"
+      }
+    ]
+  },
+  "grindstone": {
+    "label": "grindstone",
+    "affordance": "environmental-object",
+    "broader": "craft-equipment",
+    "draw": "a treadle grindstone wheel on a wooden frame",
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 0.5
+    },
+    "solid": true,
+    "found_in": [
+      "smithy",
+      "workshop",
+      "mill"
+    ],
+    "animate": [
+      {
+        "clip": "grind",
+        "motion": "the grinding wheel spins fast and sparks fly from its edge",
+        "opens": "use",
+        "prompt": "Sharpen",
+        "duration": 3.0
+      }
+    ]
+  },
+  "bellows": {
+    "label": "bellows",
+    "affordance": "environmental-object",
+    "broader": "craft-equipment",
+    "draw": "a big leather bellows beside a forge",
+    "relative": {
+      "to": "door",
+      "height": 0.4,
+      "width": 0.6
+    },
+    "solid": true,
+    "found_in": [
+      "smithy"
+    ],
+    "animate": [
+      {
+        "clip": "pump",
+        "motion": "the bellows press down and rise again, and the forge's coals flare up",
+        "opens": "use",
+        "prompt": "Pump the bellows",
+        "duration": 3.0
+      }
+    ]
+  },
+  "spinning-wheel": {
+    "label": "spinning wheel",
+    "affordance": "environmental-object",
+    "broader": "craft-equipment",
+    "draw": "a wooden spinning wheel with wool on its distaff",
+    "relative": {
+      "to": "door",
+      "height": 0.6,
+      "width": 0.6
+    },
+    "solid": true,
+    "found_in": [
+      "house",
+      "farmhouse",
+      "townhouse",
+      "workshop"
+    ],
+    "animate": [
+      {
+        "clip": "spin",
+        "motion": "the big wheel turns round and the thread winds onto the spindle",
+        "opens": "use",
+        "prompt": "Spin wool",
+        "duration": 4.0
+      }
+    ]
+  },
+  "loom": {
+    "label": "loom",
+    "affordance": "environmental-object",
+    "broader": "craft-equipment",
+    "draw": "a wooden weaving loom with cloth on it",
+    "relative": {
+      "to": "door",
+      "height": 0.8,
+      "width": 0.9
+    },
+    "solid": true,
+    "found_in": [
+      "house",
+      "farmhouse",
+      "workshop"
+    ],
+    "animate": [
+      {
+        "clip": "weave",
+        "motion": "the shuttle slides across between the threads and the beam swings forward",
+        "opens": "use",
+        "prompt": "Weave",
+        "duration": 4.0
+      }
+    ]
+  },
+  "potters-wheel": {
+    "label": "potter's wheel",
+    "affordance": "environmental-object",
+    "broader": "craft-equipment",
+    "draw": "a potter's wheel with a clay pot on it",
+    "relative": {
+      "to": "door",
+      "height": 0.4,
+      "width": 0.5
+    },
+    "solid": true,
+    "found_in": [
+      "workshop"
+    ],
+    "animate": [
+      {
+        "clip": "spin",
+        "motion": "the wheel spins and the wet clay pot on it turns",
+        "opens": "use",
+        "prompt": "Throw a pot",
+        "duration": 4.0
+      }
+    ]
+  },
+  "printing-press": {
+    "label": "printing press",
+    "affordance": "environmental-object",
+    "broader": "craft-equipment",
+    "draw": "a wooden screw printing press",
+    "relative": {
+      "to": "door",
+      "height": 0.9,
+      "width": 0.8
+    },
+    "solid": true,
+    "found_in": [
+      "workshop",
+      "shop"
+    ],
+    "animate": [
+      {
+        "clip": "press",
+        "motion": "the press's screw turns and the platen lowers onto the paper and rises again",
+        "opens": "use",
+        "prompt": "Print",
+        "duration": 3.0
+      }
+    ]
+  },
+  "lathe": {
+    "label": "lathe",
+    "affordance": "environmental-object",
+    "broader": "craft-equipment",
+    "draw": "a turning lathe with a piece of wood in it",
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 0.8
+    },
+    "solid": true,
+    "found_in": [
+      "workshop",
+      "factory"
+    ],
+    "animate": [
+      {
+        "clip": "turn",
+        "motion": "the piece of wood in the lathe spins fast and shavings curl off it",
+        "opens": "use",
+        "prompt": "Turn wood",
+        "duration": 3.0
+      }
+    ]
+  },
+  "conveyor-belt": {
+    "label": "conveyor belt",
+    "affordance": "environmental-object",
+    "broader": "craft-equipment",
+    "draw": "a long conveyor belt carrying boxes",
+    "relative": {
+      "to": "door",
+      "height": 0.35,
+      "width": 1.5
+    },
+    "solid": true,
+    "found_in": [
+      "factory",
+      "logistics-warehouse"
+    ],
+    "animate": [
+      {
+        "clip": "run",
+        "motion": "the belt moves steadily along and the boxes on it slide forward",
+        "opens": "always"
+      }
+    ]
+  },
+  "gear-works": {
+    "label": "gear works",
+    "affordance": "environmental-object",
+    "broader": "craft-equipment",
+    "draw": "big interlocking wooden or iron gears and shafts",
+    "relative": {
+      "to": "door",
+      "height": 0.9,
+      "width": 0.9
+    },
+    "solid": false,
+    "found_in": [
+      "mill",
+      "workshop",
+      "factory"
+    ],
+    "animate": [
+      {
+        "clip": "turn",
+        "motion": "the big gears turn slowly, their teeth meshing, the shafts rotating",
+        "opens": "always"
+      }
+    ]
+  },
+  "millstone": {
+    "label": "millstone",
+    "affordance": "environmental-object",
+    "broader": "craft-equipment",
+    "draw": "a pair of round millstones in a wooden housing",
+    "relative": {
+      "to": "door",
+      "height": 0.4,
+      "width": 0.8
+    },
+    "solid": true,
+    "found_in": [
+      "mill"
+    ],
+    "animate": [
+      {
+        "clip": "grind",
+        "motion": "the top millstone turns slowly round and flour dusts out from between the stones",
+        "opens": "always"
+      }
+    ]
+  },
+  "alembic": {
+    "label": "alembic",
+    "affordance": "environmental-object",
+    "broader": "lab-equipment",
+    "draw": "an alchemist's glass still: a flask over a flame and a coiled tube",
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 0.4
+    },
+    "solid": true,
+    "found_in": [
+      "alchemy-lab",
+      "laboratory"
+    ],
+    "animate": [
+      {
+        "clip": "distil",
+        "motion": "the liquid in the glass flask bubbles over the small flame and vapour drips through the coiled tube",
+        "opens": "always"
+      }
+    ]
+  },
+  "potion-rack": {
+    "label": "potion rack",
+    "affordance": "environmental-object",
+    "broader": "lab-equipment",
+    "draw": "a rack of glass flasks and bottles of coloured potions",
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 0.6
+    },
+    "solid": false,
+    "found_in": [
+      "alchemy-lab",
+      "shop"
+    ],
+    "animate": [
+      {
+        "clip": "bubble",
+        "motion": "the coloured potions in the flasks bubble and glow softly",
+        "opens": "always"
+      }
+    ]
+  },
+  "crystal-ball": {
+    "label": "crystal ball",
+    "affordance": "environmental-object",
+    "broader": "lab-equipment",
+    "draw": "a crystal ball on a carved stand",
+    "relative": {
+      "to": "door",
+      "height": 0.25
+    },
+    "solid": false,
+    "found_in": [
+      "alchemy-lab",
+      "temple",
+      "shop",
+      "tent",
+      "manor"
+    ],
+    "animate": [
+      {
+        "clip": "swirl",
+        "motion": "mist swirls slowly inside the crystal ball and it glows softly",
+        "opens": "always"
+      }
+    ]
+  },
+  "tesla-coil": {
+    "label": "tesla coil",
+    "affordance": "environmental-object",
+    "broader": "lab-equipment",
+    "draw": "a tall tesla coil with a metal ring at its top",
+    "relative": {
+      "to": "door",
+      "height": 1.0,
+      "width": 0.4
+    },
+    "solid": true,
+    "found_in": [
+      "laboratory"
+    ],
+    "animate": [
+      {
+        "clip": "arc",
+        "motion": "bright electric arcs crackle and jump around the coil's top ring",
+        "opens": "always"
+      }
+    ]
+  },
+  "specimen-tank": {
+    "label": "specimen tank",
+    "affordance": "environmental-object",
+    "broader": "lab-equipment",
+    "draw": "a tall glass tank of glowing green liquid with a specimen floating in it",
+    "relative": {
+      "to": "door",
+      "height": 1.0,
+      "width": 0.5
+    },
+    "solid": true,
+    "found_in": [
+      "laboratory",
+      "hospital",
+      "alchemy-lab"
+    ],
+    "animate": [
+      {
+        "clip": "bubble",
+        "motion": "bubbles rise through the green liquid in the tank and the specimen inside drifts a little",
+        "opens": "always"
+      }
+    ]
+  },
+  "centrifuge": {
+    "label": "centrifuge",
+    "affordance": "environmental-object",
+    "broader": "lab-equipment",
+    "draw": "a benchtop laboratory centrifuge",
+    "relative": {
+      "to": "door",
+      "height": 0.25,
+      "width": 0.3
+    },
+    "solid": true,
+    "found_in": [
+      "laboratory",
+      "hospital"
+    ],
+    "animate": [
+      {
+        "clip": "spin",
+        "motion": "its lid light glows and it hums as it spins",
+        "opens": "use",
+        "prompt": "Spin samples",
+        "duration": 3.0
+      }
+    ]
+  },
+  "microscope": {
+    "label": "microscope",
+    "affordance": "environmental-object",
+    "broader": "lab-equipment",
+    "draw": "a microscope on a lab bench",
+    "relative": {
+      "to": "door",
+      "height": 0.3
+    },
+    "solid": false,
+    "found_in": [
+      "laboratory",
+      "hospital",
+      "school"
+    ]
+  },
+  "lab-bench": {
+    "label": "lab bench",
+    "affordance": "environmental-object",
+    "broader": "lab-equipment",
+    "draw": "a laboratory bench with glassware and instruments",
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 1.2
+    },
+    "solid": true,
+    "found_in": [
+      "laboratory",
+      "school",
+      "hospital"
+    ]
+  },
+  "orrery": {
+    "label": "orrery",
+    "affordance": "environmental-object",
+    "broader": "lab-equipment",
+    "draw": "a brass orrery: planets on arms around a sun",
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 0.5
+    },
+    "solid": true,
+    "found_in": [
+      "alchemy-lab",
+      "laboratory",
+      "manor",
+      "keep",
+      "school"
+    ],
+    "animate": [
+      {
+        "clip": "orbit",
+        "motion": "the brass planets of the orrery circle slowly round the sun on their arms",
+        "opens": "always"
+      }
+    ]
+  },
+  "hourglass": {
+    "label": "hourglass",
+    "affordance": "environmental-object",
+    "broader": "lab-equipment",
+    "draw": "a large hourglass in a wooden frame",
+    "relative": {
+      "to": "door",
+      "height": 0.3
+    },
+    "solid": false,
+    "found_in": [
+      "alchemy-lab",
+      "temple",
+      "manor",
+      "shop"
+    ],
+    "animate": [
+      {
+        "clip": "trickle",
+        "motion": "sand trickles in a thin stream from the top bulb into the bottom one",
+        "opens": "always"
+      }
+    ]
+  },
+  "grandfather-clock": {
+    "label": "grandfather clock",
+    "affordance": "environmental-object",
+    "broader": "timepiece",
+    "draw": "a tall wooden grandfather clock with a pendulum behind glass",
+    "relative": {
+      "to": "door",
+      "height": 1.2,
+      "width": 0.4
+    },
+    "solid": true,
+    "found_in": [
+      "house",
+      "townhouse",
+      "manor",
+      "inn",
+      "hotel",
+      "suburban-house"
+    ],
+    "animate": [
+      {
+        "clip": "tick",
+        "motion": "the pendulum swings slowly back and forth behind the glass",
+        "opens": "always"
+      }
+    ]
+  },
+  "wall-clock": {
+    "label": "wall clock",
+    "affordance": "environmental-object",
+    "broader": "timepiece",
+    "draw": "a round clock on the wall",
+    "relative": {
+      "to": "door",
+      "height": 0.25
+    },
+    "solid": false,
+    "found_in": [
+      "building"
+    ],
+    "animate": [
+      {
+        "clip": "tick",
+        "motion": "the second hand ticks round the clock's face",
+        "opens": "always"
+      }
+    ]
+  },
+  "cuckoo-clock": {
+    "label": "cuckoo clock",
+    "affordance": "environmental-object",
+    "broader": "timepiece",
+    "draw": "a carved wooden cuckoo clock with pine-cone weights",
+    "relative": {
+      "to": "door",
+      "height": 0.3
+    },
+    "solid": false,
+    "found_in": [
+      "house",
+      "farmhouse",
+      "townhouse",
+      "inn"
+    ],
+    "animate": [
+      {
+        "clip": "tick",
+        "motion": "the pendulum swings to and fro, and now and then the little door opens and the bird pops out",
+        "opens": "always"
+      }
+    ]
+  },
+  "piano": {
+    "label": "piano",
+    "affordance": "environmental-object",
+    "broader": "musical-instrument",
+    "draw": "an upright piano",
+    "relative": {
+      "to": "door",
+      "height": 0.8,
+      "width": 1.0
+    },
+    "solid": true,
+    "animate": [
+      {
+        "clip": "play",
+        "motion": "the keys press down and rise in turn as if played",
+        "opens": "use",
+        "prompt": "Play",
+        "duration": 4.0
+      }
+    ]
+  },
+  "harp": {
+    "label": "harp",
+    "affordance": "environmental-object",
+    "broader": "musical-instrument",
+    "draw": "a tall harp",
+    "relative": {
+      "to": "door",
+      "height": 1.0,
+      "width": 0.5
+    },
+    "solid": true,
+    "found_in": [
+      "manor",
+      "keep",
+      "temple",
+      "inn"
+    ],
+    "animate": [
+      {
+        "clip": "play",
+        "motion": "the harp's strings shimmer and quiver as if plucked",
+        "opens": "use",
+        "prompt": "Play",
+        "duration": 4.0
+      }
+    ]
+  },
+  "organ": {
+    "label": "organ",
+    "affordance": "environmental-object",
+    "broader": "musical-instrument",
+    "draw": "a church pipe organ with tall pipes",
+    "relative": {
+      "to": "door",
+      "height": 1.5,
+      "width": 1.2
+    },
+    "solid": true,
+    "found_in": [
+      "temple"
+    ],
+    "animate": [
+      {
+        "clip": "play",
+        "motion": "the keys press down and the air shimmers around the pipes",
+        "opens": "use",
+        "prompt": "Play",
+        "duration": 4.0
+      }
+    ]
+  },
+  "gramophone": {
+    "label": "gramophone",
+    "affordance": "environmental-object",
+    "broader": "musical-instrument",
+    "draw": "a gramophone with a big brass horn",
+    "relative": {
+      "to": "door",
+      "height": 0.4
+    },
+    "solid": false,
+    "found_in": [
+      "manor",
+      "townhouse",
+      "inn",
+      "hotel",
+      "suburban-house"
+    ],
+    "animate": [
+      {
+        "clip": "play",
+        "motion": "the record turns on the gramophone and its needle rides the groove",
+        "opens": "use",
+        "prompt": "Play music"
+      }
+    ]
+  },
+  "birdcage": {
+    "label": "birdcage",
+    "affordance": "environmental-object",
+    "broader": "decoration",
+    "draw": "a birdcage with a small songbird inside",
+    "relative": {
+      "to": "door",
+      "height": 0.4
+    },
+    "solid": false,
+    "found_in": [
+      "house",
+      "townhouse",
+      "manor",
+      "inn",
+      "shop",
+      "suburban-house",
+      "apartment-block"
+    ],
+    "animate": [
+      {
+        "clip": "flutter",
+        "motion": "the small bird in the cage hops along its perch and flutters its wings",
+        "opens": "always"
+      }
+    ]
+  },
+  "curtain": {
+    "label": "curtain",
+    "affordance": "environmental-object",
+    "broader": "decoration",
+    "draw": "curtains hanging at a window",
+    "relative": {
+      "to": "door",
+      "height": 1.0,
+      "width": 0.6
+    },
+    "solid": false,
+    "found_in": [
+      "building"
+    ],
+    "animate": [
+      {
+        "clip": "stir",
+        "motion": "the curtains stir gently in a breeze",
+        "opens": "always"
+      }
+    ]
+  },
+  "globe": {
+    "label": "globe",
+    "affordance": "environmental-object",
+    "broader": "decoration",
+    "draw": "a world globe on a wooden stand",
+    "relative": {
+      "to": "door",
+      "height": 0.4
+    },
+    "solid": false,
+    "found_in": [
+      "manor",
+      "school",
+      "laboratory",
+      "office-building",
+      "townhouse"
+    ],
+    "animate": [
+      {
+        "clip": "spin",
+        "motion": "the globe turns round on its stand",
+        "opens": "use",
+        "prompt": "Spin the globe",
+        "duration": 3.0
+      }
+    ]
+  },
+  "incense-burner": {
+    "label": "incense burner",
+    "affordance": "environmental-object",
+    "broader": "decoration",
+    "draw": "a bronze incense burner with smoke rising from it",
+    "relative": {
+      "to": "door",
+      "height": 0.3
+    },
+    "solid": false,
+    "found_in": [
+      "temple",
+      "house",
+      "manor",
+      "shop"
+    ],
+    "animate": [
+      {
+        "clip": "smoke",
+        "motion": "a thin curl of incense smoke rises and drifts",
+        "opens": "always"
+      }
+    ]
+  },
+  "tapestry": {
+    "label": "tapestry",
+    "affordance": "environmental-object",
+    "broader": "decoration",
+    "draw": "a woven tapestry hanging on the wall",
+    "relative": {
+      "to": "door",
+      "height": 1.0,
+      "width": 0.8
+    },
+    "solid": false,
+    "found_in": [
+      "manor",
+      "keep",
+      "temple",
+      "inn"
+    ]
+  },
+  "rocking-chair": {
+    "label": "rocking chair",
+    "affordance": "interactive-object",
+    "broader": "furnishing",
+    "draw": "a wooden rocking chair",
+    "relative": {
+      "to": "door",
+      "height": 0.6,
+      "width": 0.5
+    },
+    "solid": true,
+    "found_in": [
+      "house",
+      "farmhouse",
+      "townhouse",
+      "suburban-house"
+    ],
+    "animate": [
+      {
+        "clip": "rock",
+        "motion": "the chair rocks gently back and forth",
+        "opens": "use",
+        "prompt": "Rock",
+        "duration": 4.0
+      }
+    ]
+  },
+  "bunk-bed": {
+    "label": "bunk bed",
+    "affordance": "environmental-object",
+    "broader": "furnishing",
+    "draw": "a wooden bunk bed",
+    "relative": {
+      "to": "door",
+      "height": 0.9,
+      "width": 1.0
+    },
+    "solid": true,
+    "found_in": [
+      "barracks",
+      "inn",
+      "school"
+    ]
+  },
+  "dresser": {
+    "label": "dresser",
+    "affordance": "environmental-object",
+    "broader": "storage",
+    "draw": "a chest of drawers",
+    "relative": {
+      "to": "door",
+      "height": 0.5,
+      "width": 0.6
+    },
+    "solid": true,
+    "found_in": [
+      "house",
+      "townhouse",
+      "farmhouse",
+      "manor",
+      "shack",
+      "suburban-house",
+      "row-house",
+      "apartment-block",
+      "inn",
+      "hotel"
+    ],
+    "animate": [
+      {
+        "clip": "open",
+        "motion": "its top drawer slides out and back in",
+        "opens": "use",
+        "prompt": "Search",
+        "duration": 2.0
+      }
+    ]
+  },
+  "laboratory": {
+    "label": "laboratory",
+    "description": "a modern laboratory: lab benches with glassware, microscopes and centrifuges, fume hoods, computers and screens, specimen tanks, shelves of chemicals, bright ceiling lights",
+    "outside": "a modern laboratory building: clean walls, wide windows, vents on the roof, a sign by the door",
+    "affordance": "environmental-object",
+    "broader": "building",
+    "draw": "a modern laboratory building of concrete and glass with a flat roof and rooftop vents",
+    "look": {
+      "floors": [
+        1,
+        3
+      ],
+      "roof": "flat",
+      "cover": 0.7
+    },
+    "solid": true
+  },
+  "alchemy-lab": {
+    "label": "alchemist's laboratory",
+    "description": "an alchemist's laboratory: tables crowded with glass flasks, alembics and bubbling potions over small flames, a cauldron, shelves of jars, herbs and old books, a crystal ball, candles",
+    "outside": "an alchemist's house: a crooked old building with coloured smoke from its chimney and odd jars in its window",
+    "affordance": "environmental-object",
+    "broader": "workshop",
+    "solid": true
   }
 }

@@ -11,6 +11,7 @@
 #include "gameplay/Crafting.h"
 #include "ui/UiDesign.h"
 #include "gameplay/Interiors.h"
+#include "gameplay/Paths.h"
 #include "gameplay/Items.h"
 #include "gameplay/TileLayer.h"
 #include "gameplay/Localization.h"
@@ -25,6 +26,7 @@
 #include "ui/GameUi.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <climits>
 #include <map>
@@ -308,6 +310,42 @@ void UpdateWorldToScreen(Registry& registry, const IsoParams& iso) {
 }
 
 namespace {
+
+// Everyone who moves, where they are: the player and bodies with a velocity, and characters walking by their packages
+// or following (Behaviour and Follow move them without one): who opens a door or sets off a "near" Reaction.
+struct Mover {
+    Entity entity;
+    float x, y;
+};
+std::vector<Mover> Movers(Registry& registry) {
+    std::vector<Mover> out;
+    for (auto [e, w] : registry.view<WorldTransform2D>().each()) {
+        if (registry.any_of<Velocity2D, Behaviour, Follow>(e) && !registry.all_of<Sleeping>(e)) out.push_back({e, w.x, w.y}); // not one asleep in its bed
+    }
+    return out;
+}
+
+// A part's ways, a painted door's read as a building's door's.
+std::optional<AnimatedPart> PartOf(Registry& registry, Entity owner, size_t index) {
+    if (const auto* painted = registry.try_get<DoorPart>(owner)) {
+        if (index != 0) return std::nullopt;
+        AnimatedPart door;
+        door.sheet = "painted", door.clip = painted->clip, door.closeClip = painted->closeClip, door.range = painted->range;
+        door.opens = painted->opens, door.locked = painted->locked, door.key = painted->key, door.trigger = painted->trigger;
+        door.prompt = painted->prompt;
+        return door;
+    }
+    const auto* whole = registry.try_get<AnimatedPart>(owner);
+    if (!whole) return std::nullopt;
+    const auto list = DoorsOf(*whole);
+    if (index >= list.size()) return std::nullopt;
+    return list[index];
+}
+
+std::string Lower(std::string text) {
+    for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return text;
+}
 
 std::optional<Team> ParseTeam(const std::string& name) {
     if (name == "Player" || name == "player") return Team::Player;
@@ -665,12 +703,14 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
         return made ? sol::make_object(lua_.State(), ToId(*made)) : sol::lua_nil;
     };
     // act(user, target) or act(user, "farm") -> boolean: `user` uses `target` (its Action or Interactable), or the nearest
-    // thing with that action within 1.5 cells (docs/systems/actions.md).
+    // thing with that action within 1.5 cells (docs/systems/actions.md), else the nearest animated part named so within
+    // its range (a stove's "cook": UsePart).
     env["act"] = [this](lua_Integer userId, sol::object target) {
         const Entity user = ToEntity(userId);
         if (target.is<std::string>()) {
-            const auto found = ActionTarget(user, target.as<std::string>(), 1.5f);
-            return found ? Act(user, *found) : false;
+            if (const auto found = ActionTarget(user, target.as<std::string>(), 1.5f)) return Act(user, *found);
+            const auto part = FindPart(user, target.as<std::string>(), 3.0f);
+            return part ? UsePart(user, part->owner, part->index) : false;
         }
         return target.is<lua_Integer>() ? Act(user, ToEntity(target.as<lua_Integer>())) : false;
     };
@@ -737,7 +777,11 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
     env["hold_item"] = [this](const std::string& item) { HoldItem(item); };
     env["held_item"] = [this]() { return held_; };
     env["put_back_item"] = [this]() { PutBackItem(); };
-    env["craft"] = [this](const std::string& recipe, sol::optional<std::string> station) { return Craft(recipe, station.value_or("")); };
+    // craft(recipe[, station[, who]]) -> "" or why not: made by the player, or by `who` (a character, from its own
+    // inventory into it: an NPC cooking at the stove).
+    env["craft"] = [this](const std::string& recipe, sol::optional<std::string> station, sol::optional<lua_Integer> who) {
+        return Craft(recipe, station.value_or(""), who ? ToEntity(*who) : Entity{entt::null});
+    };
     env["close_screen"] = [this](const std::string& id) {
         if (screenHook_) screenHook_(id, 0);
     };
@@ -1020,20 +1064,116 @@ void GameSession::BindScriptApi(sol::environment& env, Entity self) {
         }
         return best ? sol::make_object(L, ToId(*best)) : sol::lua_nil;
     };
-    // ai_step_to(x, y) -> arrived: a scripted package's walking (move_to below loops on it).
-    env["ai_step_to"] = [this, self](float x, float y) {
+    // Animated parts for characters (docs/ai/ai-packages.md §10): a stove, a door, a lever, as the player uses them.
+    // find_part("cook"[, radius]) -> {id, index, x, y} or nil: the nearest part this one can use named so (its input
+    // action or event, its station, its clip, its event sent, its prompt's words, or "door").
+    env["find_part"] = [this, self, L](const std::string& name, sol::optional<float> radius) -> sol::object {
+        const auto spot = FindPart(self, name, radius.value_or(20.0f));
+        if (!spot) return sol::lua_nil;
+        sol::table t = sol::state_view(L).create_table();
+        t["id"] = ToId(spot->owner), t["index"] = static_cast<lua_Integer>(spot->index), t["x"] = spot->x, t["y"] = spot->y;
+        return t;
+    };
+    // use_part("cook") or use_part(id[, index]) -> boolean: this one uses it (it opens or shuts as its activation says,
+    // sends its event, runs its "do", plays its player clip on this one). Within its range (+1 cell); done next step.
+    env["use_part"] = [this, self](sol::object target, sol::optional<lua_Integer> index) {
+        if (target.is<std::string>()) {
+            const auto spot = FindPart(self, target.as<std::string>(), 3.0f);
+            return spot ? UsePart(self, spot->owner, spot->index) : false;
+        }
+        return target.is<lua_Integer>() ? UsePart(self, ToEntity(target.as<lua_Integer>()), static_cast<size_t>(index.value_or(0))) : false;
+    };
+    // part_open(id[, index]) -> boolean: a door open, a stove cooking, a part always playing.
+    env["part_open"] = [this](lua_Integer id, sol::optional<lua_Integer> index) {
+        return PartIsOpen(ToEntity(id), static_cast<size_t>(index.value_or(0)));
+    };
+    // entity_named("house-4") -> id or nil: a thing by its name (a character by its name or World Bible key).
+    env["entity_named"] = [this, L](const std::string& name) -> sol::object {
+        const auto e = EntityNamed(name);
+        return e ? sol::make_object(L, ToId(*e)) : sol::lua_nil;
+    };
+    // random_point_near(x, y, radius[, inside]) -> x, y or nil: a cell's middle one can walk to, within radius cells;
+    // with `inside` (a building's id), within its footprint (in its rooms).
+    env["random_point_near"] = [this, L](float x, float y, float radius, sol::optional<lua_Integer> inside) -> std::tuple<sol::object, sol::object> {
+        int x0 = static_cast<int>(std::floor(x - radius)), y0 = static_cast<int>(std::floor(y - radius));
+        int x1 = static_cast<int>(std::floor(x + radius)), y1 = static_cast<int>(std::floor(y + radius));
+        if (inside) {
+            const Entity b = ToEntity(*inside);
+            const auto* interior = registry_.valid(b) ? registry_.try_get<Interior>(b) : nullptr;
+            int fx0 = 0, fy0 = 0, fx1 = 0, fy1 = 0;
+            if (!interior || !InteriorFootprint(registry_, b, *interior, fx0, fy0, fx1, fy1)) return {sol::lua_nil, sol::lua_nil};
+            x0 = fx0, y0 = fy0, x1 = fx1, y1 = fy1;
+        }
+        std::vector<std::pair<int, int>> open;
+        for (int cy = y0; cy <= y1; ++cy) {
+            for (int cx = x0; cx <= x1; ++cx) {
+                if (!inside && std::hypot(cx + 0.5f - x, cy + 0.5f - y) > radius) continue;
+                if (!grid_.IsSolid(cx, cy)) open.emplace_back(cx, cy);
+            }
+        }
+        if (open.empty()) return {sol::lua_nil, sol::lua_nil};
+        const auto [cx, cy] = open[std::uniform_int_distribution<size_t>(0, open.size() - 1)(gameplayRng_)];
+        return {sol::make_object(L, cx + 0.5f), sol::make_object(L, cy + 0.5f)};
+    };
+    // path_route(name[, from]) -> list of {x, y, wait, clip, use} or nil: a walk along a named path (docs/ai/ai-paths.md)
+    // from its point nearest this one ("start": its first), to an end or once round, each fork chosen as a package's
+    // would be (conditions, priority, weights, default). follow_path below walks it.
+    env["path_route"] = [this, self, L](const std::string& name, sol::optional<std::string> from) -> sol::object {
+        const auto graph = FindNamedPath(registry_, name);
+        const auto* at = registry_.try_get<WorldTransform2D>(self);
+        if (!graph || graph->points.empty() || !at) return sol::lua_nil;
+        const int start = from && *from == "start" ? 0 : std::max(0, NearestPoint(*graph, at->x, at->y));
+        auto holds = [&](const PathLink& link) {
+            return LinkConditionsHold(link.conditions, [&](const nlohmann::json& c) {
+                bool yes = true;
+                if (c.contains("playerNear")) {
+                    const auto player = FindPlayer(registry_);
+                    const auto* p = player ? registry_.try_get<WorldTransform2D>(*player) : nullptr;
+                    yes = p && std::hypot(p->x - at->x, p->y - at->y) <= c.value("playerNear", 5.0f);
+                } else if (c.contains("partOpen")) {
+                    const auto part = FindPart(self, c.value("partOpen", std::string()), 20.0f);
+                    yes = part && PartIsOpen(part->owner, part->index);
+                }
+                return yes != c.value("not", false);
+            }, [&](const std::string& text) { return ConditionsHold(text); });
+        };
+        sol::table route = sol::state_view(L).create_table();
+        int i = 1;
+        for (int k : PathRoute(*graph, start, holds, gameplayRng_)) {
+            const PathPoint& p = graph->points[static_cast<size_t>(k)];
+            sol::table point = sol::state_view(L).create_table();
+            point["x"] = p.x, point["y"] = p.y, point["wait"] = p.wait;
+            if (!p.clip.empty()) point["clip"] = p.clip;
+            if (!p.use.empty()) point["use"] = p.use;
+            route[i++] = point;
+        }
+        return route;
+    };
+    // ai_step_to(x, y) -> arrived, failed: a scripted package's walking (move_to below loops on it); failed when there's
+    // no way there.
+    env["ai_step_to"] = [this, self](float x, float y) -> std::tuple<bool, bool> {
         auto& state = registry_.get_or_emplace<BehaviourState>(self);
         const nlohmann::json goal = {x, y};
         if (state.blackboard["scriptGoal"] != goal) {
             state.blackboard["scriptGoal"] = goal;
             state.blackboard["scriptArrived"] = false;
-            return false;
+            state.blackboard["scriptNoPath"] = 0;
+            return {false, false};
         }
         auto arrived = state.blackboard.find("scriptArrived");
-        return arrived != state.blackboard.end() && arrived->second.is_boolean() && arrived->second.get<bool>();
+        const bool there = arrived != state.blackboard.end() && arrived->second.is_boolean() && arrived->second.get<bool>();
+        return {there, !there && state.blackboard["scriptNoPath"].is_number() && state.blackboard["scriptNoPath"].get<int>() >= 3};
     };
-    lua_.State().safe_script("function move_to(x, y) while not ai_step_to(x, y) do wait() end end", env,
+    // move_to(x, y) -> true there, false no way there (doors on the way are opened as they're reached).
+    lua_.State().safe_script("function move_to(x, y) while true do local there, failed = ai_step_to(x, y) "
+                             "if there then return true end if failed then return false end wait() end end", env,
                              sol::script_pass_on_error);
+    // follow_path(name[, from]) -> true at its end: walks a named path, stopping where its points say.
+    lua_.State().safe_script("function follow_path(name, from) local route = path_route(name, from) "
+                             "if not route then return false end for _, p in ipairs(route) do "
+                             "if not move_to(p.x, p.y) then return false end if p.clip then play(self_id(), p.clip) end "
+                             "if p.use then use_part(p.use) end if p.wait and p.wait > 0 then wait(p.wait) end end return true end",
+                             env, sol::script_pass_on_error);
 
     // Records (12.1): record("item", "iron-sword") -> a table of its fields
     // (with its base and defaults applied), or nil; records("item") -> ids.
@@ -2550,6 +2690,21 @@ void GameSession::StepCharacters(float dt, const SolidQueryFn& isSolid) {
     };
     context.emit = [this](const std::string& event, Entity entity) { Emit({event, entity}); };
     context.act = [this](Entity actor, Entity target) { return Act(actor, target); };
+    context.findPart = [this](Entity actor, const std::string& name, float x, float y, float radius) -> std::optional<AiContext::PartRef> {
+        const auto spot = FindPart(actor, name, radius, std::pair{x, y});
+        if (!spot) return std::nullopt;
+        AiContext::PartRef ref{spot->owner, spot->index, spot->x, spot->y};
+        if (const auto part = PartOf(registry_, spot->owner, spot->index)) {
+            ref.range = part->range;
+            ref.way = DoorOpens(*part);
+            ref.duration = part->duration;
+        }
+        return ref;
+    };
+    context.usePart = [this](Entity actor, Entity owner, size_t index) { return UsePart(actor, owner, index); };
+    context.partOpen = [this](Entity owner, size_t index) { return PartIsOpen(owner, index); };
+    context.conditionsHold = [this](Entity, const std::string& conditions) { return ConditionsHold(conditions); };
+    context.runEffects = [this](Entity actor, const std::string& effects) { RunEffects(effects, actor); };
     context.runScript = [this](Entity actor, const std::string& script, float stepDt) {
         return RunScriptedPackage(actor, script, stepDt);
     };
@@ -2778,21 +2933,23 @@ void GameSession::StepTimedThings(float dt) {
     for (size_t i = 0; i < pendingCrafts_.size();) {
         pendingCrafts_[i].seconds -= dt;
         const PendingCraft now = pendingCrafts_[i];
-        const bool cut = cutscene_.Active() || (player && hit(*player, now.health));
+        const Entity maker = registry_.valid(now.user) ? now.user : player ? *player : Entity{entt::null};
+        const bool byPlayer = maker != entt::null && player && maker == *player;
+        const bool cut = (byPlayer && cutscene_.Active()) || (maker != entt::null && hit(maker, now.health));
         if (!cut && now.seconds > 0.0f) {
             ++i;
             continue;
         }
         pendingCrafts_.erase(pendingCrafts_.begin() + static_cast<std::ptrdiff_t>(i));
         if (!cut) {
-            FinishCraft(now.recipe);
+            FinishCraft(now.recipe, now.user);
             continue;
         }
-        if (const auto recipe = FindRecipe(now.recipe); recipe && player) {
-            auto& inventory = registry_.get_or_emplace<Inventory>(*player);
+        if (const auto recipe = FindRecipe(now.recipe); recipe && maker != entt::null) {
+            auto& inventory = registry_.get_or_emplace<Inventory>(maker);
             for (const auto& stack : recipe->inputs) AddItem(inventory, stack.item, stack.count);
-            ShowNotice(recipe->name + " was interrupted", 2.5, "alert");
-            Emit({"craft_interrupted", *player, Entity{entt::null}, 0.0, now.recipe});
+            if (byPlayer) ShowNotice(recipe->name + " was interrupted", 2.5, "alert");
+            Emit({"craft_interrupted", maker, Entity{entt::null}, 0.0, now.recipe});
             RunEffects(recipe->doInterrupted);
         }
     }
@@ -2952,46 +3109,51 @@ bool GameSession::UseHeldOn(Entity target) {
     return false;
 }
 
-std::string GameSession::CraftProblem(const std::string& id, const std::string& station) const {
+std::string GameSession::CraftProblem(const std::string& id, const std::string& station, Entity user) const {
     const auto recipe = FindRecipe(id);
     if (!recipe) return "No such recipe";
     if (!recipe->at.empty() && recipe->at != station) return "Only at " + recipe->at;
     if (!ConditionsHold(recipe->conditions)) return "You can't make this now";
     const auto player = FindPlayer(registry_);
-    const std::string missing = RecipeMissing(*recipe, player ? registry_.try_get<Inventory>(*player) : nullptr);
+    const std::optional<Entity> maker = registry_.valid(user) ? std::optional<Entity>(user) : player;
+    const std::string missing = RecipeMissing(*recipe, maker ? registry_.try_get<Inventory>(*maker) : nullptr);
     return missing.empty() ? std::string() : "Needs " + missing;
 }
 
-std::string GameSession::Craft(const std::string& id, const std::string& station) {
-    if (std::string why = CraftProblem(id, station); !why.empty()) return why;
+std::string GameSession::Craft(const std::string& id, const std::string& station, Entity user) {
+    if (std::string why = CraftProblem(id, station, user); !why.empty()) return why;
     const auto recipe = FindRecipe(id);
     const auto player = FindPlayer(registry_);
-    if (!recipe || !player) return "No such recipe";
-    auto& inventory = registry_.get_or_emplace<Inventory>(*player);
+    const Entity maker = registry_.valid(user) ? user : player ? *player : Entity{entt::null};
+    if (!recipe || maker == entt::null) return "No such recipe";
+    const Entity by = registry_.valid(user) && !(player && user == *player) ? user : Entity{entt::null}; // a character, not the player
+    auto& inventory = registry_.get_or_emplace<Inventory>(maker);
     for (const auto& stack : recipe->inputs) RemoveItem(inventory, stack.item, stack.count);
-    if (!recipe->clip.empty()) TriggerAnimation(registry_, *player, recipe->clip);
+    if (!recipe->clip.empty()) TriggerAnimation(registry_, maker, recipe->clip);
     if (!recipe->effect.empty()) {
-        if (const auto* at = registry_.try_get<WorldTransform2D>(*player)) PlayEffect(recipe->effect, at->x, at->y, *player);
+        if (const auto* at = registry_.try_get<WorldTransform2D>(maker)) PlayEffect(recipe->effect, at->x, at->y, maker);
     }
-    RunEffects(recipe->doStart);
-    if (recipe->seconds > 0.0f) pendingCrafts_.push_back({id, recipe->seconds, HealthOf(*player)});
-    else FinishCraft(id);
+    RunEffects(recipe->doStart, by);
+    if (recipe->seconds > 0.0f) pendingCrafts_.push_back({id, recipe->seconds, HealthOf(maker), by});
+    else FinishCraft(id, by);
     return {};
 }
 
-void GameSession::FinishCraft(const std::string& id) {
+void GameSession::FinishCraft(const std::string& id, Entity user) {
     const auto recipe = FindRecipe(id);
     const auto player = FindPlayer(registry_);
-    if (!recipe || !player) return;
-    auto& inventory = registry_.get_or_emplace<Inventory>(*player);
+    const Entity maker = registry_.valid(user) ? user : player ? *player : Entity{entt::null};
+    if (!recipe || maker == entt::null) return;
+    const bool byPlayer = player && maker == *player;
+    auto& inventory = registry_.get_or_emplace<Inventory>(maker);
     for (const auto& stack : recipe->gives) {
         const int added = AddItem(inventory, stack.item, stack.count);
-        if (added > 0) Emit({"item_added", *player, Entity{entt::null}, static_cast<double>(added), stack.item});
-        if (added < stack.count) ShowNotice("No room for " + ItemName(stack.item), 2.5, "alert");
+        if (added > 0) Emit({"item_added", maker, Entity{entt::null}, static_cast<double>(added), stack.item});
+        if (added < stack.count && byPlayer) ShowNotice("No room for " + ItemName(stack.item), 2.5, "alert");
     }
-    if (!recipe->text.empty()) ShowNotice(recipe->text, 3.0 + recipe->text.size() / 30.0);
-    Emit({"crafted", *player, Entity{entt::null}, 0.0, id});
-    RunEffects(recipe->doEffects);
+    if (!recipe->text.empty() && byPlayer) ShowNotice(recipe->text, 3.0 + recipe->text.size() / 30.0);
+    Emit({"crafted", maker, Entity{entt::null}, 0.0, id});
+    RunEffects(recipe->doEffects, byPlayer ? Entity{entt::null} : maker);
 }
 
 void GameSession::StepHeldItem() {
@@ -3052,6 +3214,72 @@ std::optional<Entity> GameSession::ActionTarget(Entity user, const std::string& 
         if (d <= radius && d < bestDistance) best = entity, bestDistance = d;
     }
     return best;
+}
+
+std::vector<GameSession::PartSpot> GameSession::PartSpots() const {
+    auto& registry = const_cast<Registry&>(registry_);
+    std::vector<PartSpot> spots;
+    for (auto [overlay, link] : registry.view<AttachmentLink, Transient>().each()) {
+        if (link.slot.rfind("part", 0) != 0 || !registry.valid(link.parent)) continue;
+        const size_t index = link.slot.size() > 4 ? static_cast<size_t>(std::atoi(link.slot.c_str() + 4)) : 0;
+        const auto* w = registry.try_get<WorldTransform2D>(link.parent);
+        if (!w || !registry.all_of<AnimatedPart>(link.parent)) continue;
+        float dx = w->x, dy = w->y;
+        const auto* screen = registry.try_get<ScreenTransform2D>(overlay);
+        const auto* sprite = registry.try_get<Sprite>(overlay);
+        const bool placed = screen && sprite && sprite->height > 0.0f;
+        if (placed) UnprojectIso(screen->x, screen->y + sprite->height * 0.5f, iso_, dx, dy);
+        spots.push_back({link.parent, overlay, index, dx, dy, placed});
+    }
+    // A painted place's doors (§4.6): each its own door, where it stands (its cell at the door's foot).
+    for (auto [e, part, w] : registry.view<DoorPart, WorldTransform2D>().each()) spots.push_back({e, e, 0, w.x, w.y, true});
+    return spots;
+}
+
+
+std::optional<GameSession::PartSpot> GameSession::FindPart(Entity user, const std::string& name, float radius,
+                                                           std::optional<std::pair<float, float>> around) const {
+    auto& registry = const_cast<Registry&>(registry_);
+    const auto* userAt = registry.valid(user) ? registry.try_get<WorldTransform2D>(user) : nullptr;
+    if (!userAt || name.empty()) return std::nullopt;
+    const WorldTransform2D from = around ? WorldTransform2D{around->first, around->second} : *userAt;
+    const auto* at = &from;
+    const std::string want = Lower(name);
+    const auto* inventory = registry.try_get<Inventory>(user);
+    std::optional<PartSpot> best;
+    float nearest = 1e9f;
+    for (const PartSpot& spot : PartSpots()) {
+        const auto part = PartOf(registry, spot.owner, spot.index);
+        if (!part || !ConditionsHold(part->conditions)) continue;
+        const std::string prompt = Lower(part->prompt);
+        const bool named = Lower(part->trigger) == want || Lower(part->station) == want || Lower(part->clip) == want ||
+                           Lower(part->fires) == want || (!prompt.empty() && prompt.find(want) != std::string::npos) ||
+                           (want == "door" && part->door);
+        if (!named) continue;
+        if (part->locked && (part->key.empty() || !inventory || CountItem(*inventory, part->key) <= 0)) continue;
+        const float d = std::hypot(spot.x - at->x, spot.y - at->y);
+        if (d <= radius && d < nearest) best = spot, nearest = d;
+    }
+    return best;
+}
+
+bool GameSession::UsePart(Entity user, Entity owner, size_t index) {
+    if (!registry_.valid(user) || !registry_.valid(owner)) return false;
+    const auto part = PartOf(registry_, owner, index);
+    const auto* at = registry_.try_get<WorldTransform2D>(user);
+    if (!part || !at || !ConditionsHold(part->conditions)) return false;
+    for (const PartSpot& spot : PartSpots()) {
+        if (spot.owner != owner || spot.index != index) continue;
+        if (std::hypot(spot.x - at->x, spot.y - at->y) > part->range + 1.0f) return false;
+        partUses_.push_back({user, owner, index});
+        return true;
+    }
+    return false;
+}
+
+bool GameSession::PartIsOpen(Entity owner, size_t index) const {
+    const auto* state = registry_.valid(owner) ? registry_.try_get<PartOpen>(owner) : nullptr;
+    return state && index < state->open.size() && state->open[index];
 }
 
 float GameSession::ActionTargetDistance(const std::string& name, bool ownParts) {
@@ -3123,6 +3351,7 @@ void GameSession::ResolveActionGroups() {
 
 void GameSession::StepActions(float dt) {
     const auto player = FindPlayer(registry_);
+    const std::vector<Mover> movers = Movers(registry_);
     StepTimedThings(dt);
     // Input actions that play a clip on the player or emit an event (Project Settings ▸ Input).
     if (player) {
@@ -3170,10 +3399,10 @@ void GameSession::StepActions(float dt) {
             bool someone = false;
             Entity who{entt::null};
             if (world) {
-                for (auto [mover, v, mw] : registry_.view<Velocity2D, WorldTransform2D>().each()) {
-                    if (mover != entity && std::hypot(mw.x - world->x, mw.y - world->y) <= action.range) {
+                for (const Mover& m : movers) {
+                    if (m.entity != entity && std::hypot(m.x - world->x, m.y - world->y) <= action.range) {
                         someone = true;
-                        who = mover;
+                        who = m.entity;
                         break;
                     }
                 }
@@ -3204,27 +3433,8 @@ void GameSession::StepActions(float dt) {
     // from the door itself (its foot). Each door's doorway (the footprint's edge cell nearest it) is passable while
     // it's open, or opens by itself and isn't locked (PartOpen, read by TileGrid and characters' paths).
     {
-        struct DoorAt {
-            Entity owner, overlay;
-            size_t index;
-            float x, y;
-            bool placed; // where it's drawn is known (else its building's middle, until it's drawn)
-        };
-        std::vector<DoorAt> doors;
-        for (auto [overlay, link] : registry_.view<AttachmentLink, Transient>().each()) {
-            if (link.slot.rfind("part", 0) != 0 || !registry_.valid(link.parent)) continue;
-            const size_t index = link.slot.size() > 4 ? static_cast<size_t>(std::atoi(link.slot.c_str() + 4)) : 0;
-            const auto* w = registry_.try_get<WorldTransform2D>(link.parent);
-            if (!w || !registry_.all_of<AnimatedPart>(link.parent)) continue;
-            float dx = w->x, dy = w->y;
-            const auto* screen = registry_.try_get<ScreenTransform2D>(overlay);
-            const auto* sprite = registry_.try_get<Sprite>(overlay);
-            const bool placed = screen && sprite && sprite->height > 0.0f;
-            if (placed) UnprojectIso(screen->x, screen->y + sprite->height * 0.5f, iso_, dx, dy);
-            doors.push_back({link.parent, overlay, index, dx, dy, placed});
-        }
-        // A painted place's doors (§4.6): each its own door, where it stands (its cell at the door's foot).
-        for (auto [e, part, w] : registry_.view<DoorPart, WorldTransform2D>().each()) doors.push_back({e, e, 0, w.x, w.y, true});
+        using DoorAt = PartSpot;
+        const std::vector<DoorAt> doors = PartSpots();
         bool doorKey = false; // a door shortcut pressed this step
         {
             std::stringstream names(ActiveSettings().game.doorActions);
@@ -3262,13 +3472,14 @@ void GameSession::StepActions(float dt) {
         // Whether the player can activate a part now: by use (the door shortcuts, a double click), its own input action,
         // or a locked one's lock (by either).
         // One always playing: by its input action, if it has one (it sends its event).
+        // A station (a stove: its recipes) is used by the door shortcuts when it has no input action of its own.
         auto byPlayer = [&](const AnimatedPart& part) {
             const std::string way = DoorOpens(part);
-            return part.locked || way == "use" || way == "action" || (way == "always" && !part.trigger.empty());
+            return part.locked || way == "use" || way == "action" || (way == "always" && (!part.trigger.empty() || !part.station.empty()));
         };
         auto pressedFor = [&](const AnimatedPart& part) {
             const std::string way = DoorOpens(part);
-            return way == "action" || way == "always" ? input_.Pressed(part.trigger) : doorKey;
+            return (way == "action" || way == "always") && !part.trigger.empty() ? input_.Pressed(part.trigger) : doorKey;
         };
         // The clip the player plays while a part is active: its own, else its input action's (Project Settings > Input).
         auto playerClipOf = [&](const AnimatedPart& part) -> std::string {
@@ -3406,6 +3617,14 @@ void GameSession::StepActions(float dt) {
                 }
             }
             const std::string way = DoorOpens(door);
+            // Who uses it this step, if anyone: the player (their keys, a click) or a character (UsePart).
+            Entity activator{entt::null};
+            if (used == &d && player) activator = *player;
+            for (const auto& u : partUses_) {
+                if (activator == entt::null && u.owner == d.owner && u.index == d.index && registry_.valid(u.user)) activator = u.user;
+            }
+            const bool activated = activator != entt::null;
+            const bool byThePlayer = activated && used == &d;
             const bool byUse = way == "use";
             const bool toggled = way == "action" || way == "event"; // stays as it's left, no one closes it by leaving
             char& open = state.open[d.index];
@@ -3416,8 +3635,14 @@ void GameSession::StepActions(float dt) {
                 state.passable[d.index] = 0;
             }
             // Activated by the player (unlocked): its event sent.
-            if (used == &d && !door.locked && !door.fires.empty()) Emit({door.fires, d.owner, player ? *player : entt::null});
-            if (used == &d && !door.locked) RunEffects(door.doEffects, d.owner);
+            if (activated && !door.locked && !door.fires.empty()) Emit({door.fires, d.owner, activator});
+            if (activated && !door.locked) RunEffects(door.doEffects, d.owner);
+            // A station: the player gets its recipes (Crafting); a character makes one by a script's craft().
+            if (byThePlayer && !door.locked && !door.station.empty()) requestedPanel_ = "crafting:" + door.station;
+            // A character using it plays its clip (the player's are held below).
+            if (activated && !byThePlayer && !door.locked) {
+                if (const std::string clip = playerClipOf(door); !clip.empty()) TriggerAnimation(registry_, activator, clip);
+            }
             // A part with one clip (no closing one: a fire, a pot stirred): still on its first frame until it's activated,
             // playing while it is, still again once it's shut.
             if (way != "always" && door.closeClip.empty()) {
@@ -3446,21 +3671,21 @@ void GameSession::StepActions(float dt) {
                 continue;
             }
             bool playerNear = false, othersNear = false;
-            for (auto [mover, v, mw] : registry_.view<Velocity2D, WorldTransform2D>().each()) {
-                if (std::hypot(mw.x - d.x, mw.y - d.y) > door.range) continue;
-                (player && mover == *player ? playerNear : othersNear) = true;
+            for (const Mover& m : movers) {
+                if (std::hypot(m.x - d.x, m.y - d.y) > door.range) continue;
+                (player && m.entity == *player ? playerNear : othersNear) = true;
             }
             bool opening = false;
-            if (used == &d) {
+            if (activated) {
                 if (door.locked) {
-                    auto* inventory = registry_.try_get<Inventory>(*player);
+                    auto* inventory = registry_.try_get<Inventory>(activator);
                     if (door.key.empty() || !inventory || CountItem(*inventory, door.key) <= 0) {
-                        Toast(door.key.empty() ? "Locked." : "Locked: needs " + ItemName(door.key) + ".");
+                        if (byThePlayer) Toast(door.key.empty() ? "Locked." : "Locked: needs " + ItemName(door.key) + ".");
                     } else {
                         if (door.consumeKey) RemoveItem(*inventory, door.key, 1);
                         door.locked = false;
                         unlocked.insert(d.owner);
-                        Toast("Unlocked with " + ItemName(door.key) + ".");
+                        if (byThePlayer) Toast("Unlocked with " + ItemName(door.key) + ".");
                         opening = true;
                     }
                 } else if (open && (byUse || toggled)) {
@@ -3506,6 +3731,7 @@ void GameSession::StepActions(float dt) {
                 if (!at || (at->oneShot != clip && at->clip != clip)) TriggerAnimation(registry_, *player, clip);
             }
         }
+        partUses_.clear(); // carried out (or its part gone)
         partStages();
         for (Entity owner : unlocked) {
             if (auto* painted = registry_.try_get<DoorPart>(owner)) painted->locked = all[owner].front().locked;

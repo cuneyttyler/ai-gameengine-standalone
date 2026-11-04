@@ -441,6 +441,13 @@ std::string ExportLibraryTurtle(const Ontology& ontology) {
             b.Add("gbo:affordance", ontology.FindConcept("affordance", role.affordance) ? ConceptTerm("affordance", role.affordance)
                                                                                          : Lit(role.affordance));
         }
+        // An interior object (docs/places/interior-objects.md): the buildings it's found in, how it moves.
+        std::vector<std::string> foundIn;
+        for (const auto& where : role.foundIn) foundIn.push_back(RoleTerm(where));
+        b.AddAll("gbo:foundIn", foundIn);
+        std::vector<std::string> animations;
+        for (const auto& a : role.animate) animations.push_back(Json(a));
+        b.AddAll("gbo:animation", animations);
         out << b.Str();
     }
 

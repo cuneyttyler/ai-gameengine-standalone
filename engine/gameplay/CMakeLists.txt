@@ -51,6 +51,7 @@ add_library(aige_gameplay STATIC
     Encounters.cpp
     Behaviour.h
     Behaviour.cpp
+    Paths.cpp
     Story.h
     Story.cpp
     Cutscene.h

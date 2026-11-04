@@ -8,7 +8,7 @@ import { setPanelVisible } from './layout'
 // Everything placeable is a prefab, so there are three tools: pick, erase,
 // and the prefab brush (paints tile prefabs, places everything else); and the
 // height brush, which raises, lowers or levels the ground.
-export type ToolId = 'select' | 'erase' | 'prefab' | 'height'
+export type ToolId = 'select' | 'erase' | 'prefab' | 'height' | 'path'
 
 export interface Prefab {
   path: string
@@ -81,6 +81,7 @@ export const editorState = reactive({
   showOntology: false, // File ▸ Ontology…, the Build panel's menu (development_plan.md 9)
   showBackground: false, // Edit ▸ Background Image…
   partDialog: null as number | null, // Animate a part…: the entity whose picture a part is animated of
+  interiorPartsDialog: null as number | null, // Animate the interior…: the building whose interior things are found and animated
   uiDesigner: null as string | null, // the UI designer: the screen it has open (Project ▸ UI ▸ Design…)
   buildingEditor: null as number | null, // the building editor (Inspector ▸ Interior ▸ Edit building…): its entity
   fxSheet: '', // Assets ▸ Animations ▸ Show in Effects: the sheet to open there
@@ -91,6 +92,7 @@ export const editorState = reactive({
   replacePrefab: null as string | null, // Edit ▸ Replace prefab…: the prefab to replace ('' : choose)
   replaceEntity: null as number | null, // …of one thing (the viewport's or the Inspector's Replace prefab): it, or every copy
   grid: false, // tile borders on empty ground (G)
+  showPaths: true, // paths characters follow, drawn over the scene (View ▸ Paths)
   brushScale: 1, // the prefab brush places copies at this size
   brushRotation: 0, // quarter turns for flat things the brush places (R)
   autotile: true, // Auto-fit: terrain tiles pick their pieces (6.4)
@@ -121,6 +123,7 @@ let noticeTimer: number | undefined
 onHostMessage((message) => {
   if (message.type === 'editor:state') {
     editorState.tool = message.tool as ToolId
+    editorState.showPaths = (message.showPaths as boolean) ?? true
     editorState.brush = message.brush as string
     editorState.heightMode = ((message.heightMode as string) ?? 'raise') as 'raise' | 'lower' | 'flatten'
     editorState.heightRadius = (message.heightRadius as number) ?? 2

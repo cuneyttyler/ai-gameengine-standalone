@@ -535,7 +535,7 @@ void EditorApp::ApplyDoorToPrefab(const std::string& prefab, size_t index, const
             made.opens = doors[index].opens, made.locked = doors[index].locked, made.key = doors[index].key;
             made.consumeKey = doors[index].consumeKey, made.range = doors[index].range;
             made.trigger = doors[index].trigger, made.prompt = doors[index].prompt, made.door = doors[index].door;
-            made.fires = doors[index].fires;
+            made.fires = doors[index].fires; made.station = doors[index].station;
             made.duration = doors[index].duration, made.playerClip = doors[index].playerClip, made.playerLoop = doors[index].playerLoop, made.holdsPlayer = doors[index].holdsPlayer;
             made.conditions = doors[index].conditions, made.doEffects = doors[index].doEffects, made.doEnd = doors[index].doEnd;
             doors[index] = made;
@@ -585,7 +585,7 @@ void EditorApp::ApplyDoorToPrefab(const std::string& prefab, size_t index, const
             made.opens = list[mine].opens, made.locked = list[mine].locked, made.key = list[mine].key;
             made.consumeKey = list[mine].consumeKey, made.range = list[mine].range;
             made.trigger = list[mine].trigger, made.prompt = list[mine].prompt, made.door = list[mine].door;
-            made.fires = list[mine].fires;
+            made.fires = list[mine].fires; made.station = list[mine].station;
             made.duration = list[mine].duration, made.playerClip = list[mine].playerClip, made.playerLoop = list[mine].playerLoop, made.holdsPlayer = list[mine].holdsPlayer;
             made.conditions = list[mine].conditions, made.doEffects = list[mine].doEffects, made.doEnd = list[mine].doEnd;
         }

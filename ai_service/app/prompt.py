@@ -21,7 +21,7 @@ Answer with ONE JSON object and nothing else:
   "tools": [{"tool": "<name>", "args": {...}}]   (only for tools: what to read or look at first),
   "route": {"panel": "build" | "planner", "request": "<what to start it with>", "reason": "<why>"}   (only for route),
   "ask": {"question": "<one question>", "choices": ["2-5 short answers"]}   (only for ask),
-  "editor": [{"do": "select", "entities": [<ids>]} | {"do": "frame", "entity": <id>} | {"do": "openScene", "path": "scenes/<name>.aige"} | {"do": "openPanel", "panel": "build"|"planner"|"generate"|"assets"} | {"do": "play"}]   (optional, any scope),
+  "editor": [{"do": "select", "entities": [<ids>]} | {"do": "frame", "entity": <id>} | {"do": "openScene", "path": "scenes/<name>.aige"} | {"do": "openPanel", "panel": "build"|"planner"|"generate"|"assets"} | {"do": "play"} | {"do": "animateInterior", "entity": <a building with a cutaway Interior>}]   (optional, any scope),
   "generate": [{"kind": "character", "name": "<name>", "description": "...", "directions": 8} | {"kind": "animation", "name": "<name>", "target": "character:<name>" | "<sheet or picture path>", "action": "walk"}]   (optional: made before the operations; use "character:<name>" / "animation:<name>" in them; one the project already has is reused unless you add "new": true, only when the user asked for a new one),
   "notes": "optional: anything the user should know (assumptions, how to test it)"
 }
@@ -544,8 +544,9 @@ GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
   Action.trigger "near" plays `animation` as someone comes within range and `awayAnimation` when they've gone (a door);
   Action "effect" / "userEffect" play an effect record on the thing / its user (sparks, dust, a flash, a sound).
 - AnimatedPart {"sheet", "x", "y", "width", "height" (a box of its picture), "clip": "open", "closeClip": "close",
-  "range", "opens", "trigger", "prompt", "fires", "duration", "playerClip", "playerLoop", "holdsPlayer", "floor", "if",
-  "do", "door", "locked", "key", "consumeKey", "more"} is a part of its picture that
+  "range", "opens", "trigger", "prompt", "fires", "station", "duration", "playerClip", "playerLoop", "holdsPlayer",
+  "floor", "if", "do", "door", "locked", "key", "consumeKey", "more"} ("station": a crafting station like a Reaction's:
+  the player using it gets the recipes "at" it; characters use parts too: AI PACKAGES) is a part of its picture that
   moves: a building's door, a window, a lever, a mill's sails. "opens" (shown as activation) is what plays it: "project"
   (Project Settings ▸ Game ▸ doorsOpen: "use" or "auto"), "auto" (as someone comes near), "use" (the player's door
   shortcuts, settings Game.doorActions, or a double click, near it; other characters open a door as they come),
@@ -563,16 +564,94 @@ GAMEPLAY SYSTEMS (components and records in the schema; how they fit together)
   that's activated with nothing animated, usable the same way); Doors and parts ▸ Add a spot draws one by hand. Set a door's way with set_field on AnimatedPart (the first
   door) or set_prefab_field on the building's prefab (every copy). A door's animation itself is made in Build ▸ Animate
   (doors and objects by PixelLab, characters by AutoSprite) or right-click ▸ Animate a part…, not by you.
+  A building's interior things that move (a fireplace burning, a clock's pendulum, a stove, a lab's tesla coil) are
+  animated by Animate the interior (right-click a building with a cutaway ▸ Animate the interior…): the vision model
+  finds them on each floor among the ontology's interior objects for that kind of building (roles under
+  interior-object, each with found_in and its animations), the LLM writes each one's motion, the user checks them and
+  animates them; each becomes a part with "floor" k, "door" false. When the user asks to animate an interior (its
+  fireplace, "make the inside come alive"), answer with the editor action {"do": "animateInterior", "entity": <id>} for
+  each building (no operations), and say in notes that the window lists what was found to check and animate.
   Ramp marks where characters walk between heights (stairs, a ramp, a ladder): elsewhere a cliff can't be walked.
 - Combat (only when the game has fighting: characters come without it): MeleeAttack, RangedAttack (projectiles),
   Health, Stats, Faction/FactionMember (records "faction";
   disposition < 0 is hostile). A Spawner makes enemies from an "encounter" record around itself.
-- Character AI: Behaviour holds a stack of "package" records (template: work, sleep, sandbox, patrol, follow,
-  guard, ambush, script...; location, schedule, data); the first that holds runs. Perception (sight, hearing),
-  aggression and confidence decide fights; a "combat-style" record says how they fight; Speech (component
-  "Barks") holds lines it says by itself: idle, alert, hit, flee (alternatives separated by |), shown in a bubble
-  over its head (Settings UI.speech: bubble | subtitle | both). SmartObject marks beds, chairs, counters for packages to use. Actor
-  {key, prefab} makes one person persist across scenes (dead stays dead).
+- Character AI: Perception (sight, hearing), aggression and confidence decide fights; a "combat-style" record says how
+  they fight; Speech (component "Barks") holds lines it says by itself: idle, alert, hit, flee (alternatives separated
+  by |), shown in a bubble over its head (Settings UI.speech: bubble | subtitle | both). SmartObject marks beds, chairs,
+  counters for packages to use. Actor {key, prefab} makes one person persist across scenes (dead stays dead).
+AI PACKAGES (what a character does on its own: docs/ai/ai-packages.md)
+- A character's Behaviour component lists package ids in "packages" ("vara-cook, vara-sleep"): the first whose
+  schedule and conditions hold runs; quests and Effects push_package / pop_package one on top. To give a character a
+  package: write_record type "package" AND put its id in the character's Behaviour.packages (add_component Behaviour
+  when it has none, or set_field / set_prefab_field Behaviour.packages on its prefab so every copy has it; keep the
+  packages it already has unless asked to replace them). To change one, write the record again whole with the same id.
+  The project's packages are in context "records"; a character's stack is its Behaviour in context.
+- A package record: {"template", "description", "location": {"building" | "entity" | "marker" | "alias": home|work|bed
+  | "x","y", "scene"}, "target", "schedule": {"from": "HH:MM", "to": "HH:MM", "days": "1,2,3,4,5"}, "conditions": [...
+  as dialogue's], "flags": {"interruptible", "mustComplete", "run"}, "data": {...}, "procedure"}. Place it by NAME
+  (location.building "house-4", the name of the thing in the scene), never by coordinates you guessed.
+- Templates (built-in behaviours set by data, as the Creation Kit's; choose these first):
+  stay (at the place) · travel (go there, done) · wander (data.radius around the place) · sandbox (uses the place's
+  smart objects: sit, eat, read; wanders; idle remarks) · live (lives in and around location.building: wanders round it
+  within data.radius, wanders in its rooms, now and then uses data.action there, e.g. "cook") · use-part (walks to the
+  part named data.action near the place, uses it for data.duration seconds, again and again) · tend (uses the
+  Reaction or part named data.action again and again: a field to farm) · work (data.object: a smart object type) ·
+  vendor · sleep (its bed, location.alias bed) · eat · patrol (data.route: a named path, or data.path: markers) · guard · follow / accompany /
+  escort / flee (target, data.distance) · hide · ambush (data.radius) · wait · use-object · approach-player
+  (data.dialogue) · custom (its own "procedure") · script (data.script: a Lua file with run()).
+- custom: "procedure" is a behaviour tree as JSON. Composites: sequence, selector (first that succeeds), random
+  ("weights": one per child), parallel, loop ("count", none: for ever); decorators (one child): condition ("if":
+  conditions, "time": {"from","to"}), cooldown ("seconds"), invert. Steps: move-to {"to": "@location"|"@home"|
+  "@player"|"@target"|"<marker>"}, wander {"around", "radius", "inside": true (in location.building's rooms) or a
+  building's name}, wait {"seconds"} or {"min","max"}, idle, face {"to"}, say {"text": "a|b"}, use-object {"type",
+  "affordance"}, use-part {"part": "<its name>", "around", "radius", "seconds", "clip": "<its own clip>", "leaveOn"},
+  act {"action"} (a Reaction, Interactable or part), play {"clip", "seconds"}, talk-to-player {"dialogue"}, follow
+  {"target","distance"}, flee, patrol {"points"}, emit {"event"}, script {"script"}. "@data:<name>" in a step reads the
+  package's data. Characters open the doors on their way by themselves (a door, a building's animated door).
+- Animated parts and Reactions are used by characters as by the player: a part named by its input action ("cook"), its
+  station, its clip, the event it fires or its prompt's words. A character using one plays the part's playerClip;
+  without one, its own clip by use-part "clip" or play. If the character has no such clip, make it (generate kind
+  animation, target "character:<name>", action "cook") and name the clip.
+- script: for logic the steps can't say (a sequence with choices, counting, reacting to the world, recipes). Write
+  the Lua file (script.write) with run(), a coroutine read top to bottom; use names, not coordinates:
+    function run()
+      local house = entity_named("house-4")
+      local hx, hy = position_of(house)
+      while true do
+        local x, y = random_point_near(hx, hy, 4)          -- around the house
+        if x then move_to(x, y) end
+        wait(2 + math.random() * 3)
+        x, y = random_point_near(hx, hy, 0, house)          -- in its rooms (doors open on the way)
+        if x then move_to(x, y) end
+        local stove = find_part("cook", 12)
+        if stove and move_to(stove.x, stove.y) then
+          use_part(stove.id, stove.index)                   -- as the player would: its clip on her, its event, its "do"
+          craft("vegetable-stew", "stove", self_id())       -- a recipe at that station, from her own inventory
+          wait(6)
+          if part_open(stove.id, stove.index) then use_part(stove.id, stove.index) end  -- turned off again
+        end
+        wait(3)
+      end
+    end
+  A wander-and-cook request is either "live" with data.action "cook" (simple), or a script like this when it says
+  more (an order, recipes, conditions). Never hard-code a route of coordinates.
+- PATHS (docs/ai/ai-paths.md): a route is a named Path in the scene (an entity with component Path: name, points,
+  links, end), drawn by the user with the Path tool or added by you. Many characters share one, each with its own
+  place on it. Reuse a path the scene has (context entities with Path) when it fits; else add one:
+    {"op": "command", "name": "scene.addPath", "args": {"name": "vara-errands", "points": "[[12.5, 8.5], [16.5, 8.5],
+     [16.5, 12.5], [20.5, 12.5], [16.5, 4.5]]", "links": "[{\\"from\\":0,\\"to\\":1}, {\\"from\\":1,\\"to\\":2,\\"weight\\":3,\\"label\\":\\"market\\"},
+     {\\"from\\":1,\\"to\\":4,\\"label\\":\\"well\\",\\"if\\":[{\\"flag\\":\\"well_fixed\\"}]}, {\\"from\\":2,\\"to\\":3}]", "end": "back"}}
+  or {"op": "command", "name": "path.around", "args": {"name": "house-4-round", "entity": <id>, "margin": 1}} (a loop
+  round a building). Points are world cells on walkable ground (cell middles n + 0.5); a point can say what's done
+  there: {"x", "y", "wait": seconds, "clip", "use": a part (cook), "do": effects}. Links (none: in order) make FORKS:
+  several links from one point; at a fork the character takes, of the links whose "if" holds (dialogue's conditions,
+  plus {"playerNear": cells}, {"partOpen": "<part>"}, {"free": true}: nobody at its far end; "not": true inverts one),
+  a "priority" one, else one at random by "weight", else the "default" one. Links join again by pointing to the same
+  point. "end": stop, loop or back.
+  Use a path from a package: template follow-path {"data": {"route": "<name>", "mode": "once"|"loop"|"wander", "from":
+  "nearest"|"start"}} (wander: any way at every point, never stopping: town folk), patrol {"data": {"route": "<name>"}}
+  (on and on), or the step {"type": "follow-path", "path", "mode", "weights": {"<link label>": weight}} (a character's
+  own preference). Scripts: follow_path(name) / path_route(name).
 - Interior: a building one can go into, of two kinds (door: s, e, n or w, its doorway's side).
   kind "cutaway": texture is its interior picture (the same building cut away); its collision becomes its walls with
   a doorway, and while the player stands inside the interior shows in place (no Lua, no event). An asset's pair is in
@@ -644,7 +723,14 @@ second while playing). These are ALL the engine functions — there are no other
   shoot(x, y) / dodge(dx, dy);  is_hostile(a, b) -> boolean;  set_disposition(id, n)
   push_package(id, package) / pop_package(id, package);  say(text) (a line over this one's head);  awareness_of([id]) -> 0..1
   set_visible(id, visible) / face(id);  start_dialogue(path) -> boolean;  find_object(type[, radius]) -> id
-  move_to(x, y)   (in a scripted package's run() coroutine: walks there around walls)
+  move_to(x, y) -> true there, false no way   (in a scripted package's run(): walks around walls, opens doors on the way)
+  entity_named(name) -> id or nil;  position_of(id) -> x, y;  random_point_near(x, y, radius[, inside_building_id]) -> x, y
+  find_part(name[, radius]) -> {id, index, x, y} or nil   (an animated part this one can use: a stove's "cook", a door)
+  use_part(name) or use_part(id[, index]) -> boolean   (this one uses it as the player would: opens/shuts it, its
+  event, its "do", its playerClip on this one);  part_open(id[, index]) -> boolean
+  act(user, "cook") -> boolean   (a Reaction or Interactable with that action within 1.5 cells, else a part named so)
+  craft(recipe[, station[, who]]) -> "" or why not   (who: a character: from its inventory into it)
+  follow_path(name[, "start"]) -> true at its end   (walks a named path, forks chosen, stops done);  path_route(name) -> points
 Events: hit, death, pickup, attack, victory, talk, item_added, level_up, interact, say, quest_started,
 quest_completed, quest_failed, quest_stage, objective_completed, cutscene_started, cutscene_ended,
 difficulty_changed, ui_action (text: the action's name), anim_event (text: a frame event), effect, ability_used,

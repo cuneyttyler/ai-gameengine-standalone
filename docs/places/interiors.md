@@ -326,6 +326,13 @@ the building's own pixels, so it lines up the same way.
 - **Checks:** a building whose role has an interior but has none (its art made before Phase 27, or an edit that failed)
   is listed, with **Make interiors** to make the missing ones.
 
+## 8b. Animated things inside
+
+A floor's things that move (a fireplace, a clock, a stove, a fan) are found and animated by **Animate the interior…**
+(right-click a building with a cutaway, or Inspector ▸ Building Plan): the vision model finds them among the ontology's
+interior objects for that kind of building, the LLM writes how each moves, and each becomes a part on its floor
+(AnimatedPart `floor` k). See [interior-objects.md](interior-objects.md).
+
 ## 9. Limits
 
 - One interior per building. The upper floor is drawn but isn't a separate level to walk on, and the player walks on

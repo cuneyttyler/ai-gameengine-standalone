@@ -255,6 +255,12 @@ gbo:roles a skos:ConceptScheme ; skos:prefLabel "Asset roles"@en .
 gbo:affordance a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:label "affordance"@en ;
     rdfs:comment "GameTileNet's affordance class of what fills the role (terrain, environmental object, ...)."@en ;
     rdfs:domain gbo:Role ; rdfs:range skos:Concept .
+gbo:foundIn a owl:ObjectProperty ; rdfs:label "found in"@en ;
+    rdfs:comment "An interior object's buildings: the building roles it is found inside (a narrower role counts too; inherited down the role hierarchy). Interior objects sit under gbr:interior-object (docs/places/interior-objects.md)."@en ;
+    rdfs:domain gbo:Role ; rdfs:range gbo:Role .
+gbo:animation a owl:DatatypeProperty ; rdfs:label "animation"@en ;
+    rdfs:comment "How an interior object moves when animated: {clip, motion, opens, prompt, duration} as JSON; the motion is the animator's description, opens what plays it (always, use, auto, action, event)."@en ;
+    rdfs:domain gbo:Role ; rdfs:range rdf:JSON .
 
 gbo:Asset a owl:Class ; rdfs:label "Asset"@en ;
     rdfs:comment "A catalogued piece of art (a sprite, a tile set, a prefab). Instances come from a project's catalogue, not from this ontology."@en .

@@ -416,4 +416,28 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
             if (op.type, op.id) not in existing_records:
                 errors.append(f"{where}: there is no {op.type} {op.id!r} to delete")
 
+    # AI packages (docs/ai/ai-packages.md): what each template needs, its own procedure's steps, its script, the thing
+    # it's at; a Behaviour's stack names packages that exist or are written here.
+    from .packages import check_add_path, check_package, check_stacks
+    scene_names = {e.name for e in context.entities if e.name} | {p.name for p in context.prefabs}
+    # Paths (docs/ai/ai-paths.md): the scene's, and those this answer adds.
+    path_names = {str(e.components.get("Path", {}).get("name", "")) for e in context.entities if "Path" in e.components}
+    for index, op in enumerate(proposal.operations, start=1):
+        if isinstance(op, RunCommand) and op.name in ("scene.addPath", "path.around"):
+            path_names.add(str(op.args.get("name", "")))
+            if op.name == "scene.addPath":
+                errors += check_add_path(op.args, f"operation {index} (scene.addPath)")
+    path_names.discard("")
+    for index, op in enumerate(proposal.operations, start=1):
+        if isinstance(op, WriteRecord) and op.type == "package":
+            errors += check_package(op.id, op.record, f"operation {index} (write_record package/{op.id})", known_scripts,
+                                    scene_names, path_names)
+    stacks = []
+    for index, op in enumerate(proposal.operations, start=1):
+        if isinstance(op, AddComponent) and op.component == "Behaviour" and "packages" in op.fields:
+            stacks.append((f"operation {index} ({op.op})", op.fields["packages"]))
+        elif isinstance(op, (SetField, SetPrefabField)) and op.component == "Behaviour" and op.field == "packages":
+            stacks.append((f"operation {index} ({op.op})", op.value))
+    errors += check_stacks(stacks, lambda name: record_exists("package", name))
+
     return errors

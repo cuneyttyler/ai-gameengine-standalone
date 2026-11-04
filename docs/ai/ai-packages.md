@@ -1,6 +1,8 @@
 # Character AI — packages, behaviour, perception and scripted AI
 
-Status: **draft for review (2026-10-21)**. Phase 14 in `development_plan.md`. The AI
+Status: **built (Phase 14); revised 2026-11-04**: characters use animated parts, recipes and doors (§6b), packages
+carry their own procedure (§5.1), places are named things (§4.1), and the AI panel writes and checks packages (§14).
+Phase 14 in `development_plan.md`. The AI
 Planner writes every character's package (`ai-planner.md` §5.4).
 
 ---
@@ -77,7 +79,8 @@ Packages are **records** (`engine-gaps.md` §2.1) under `records/packages/`. A c
 | Field | Meaning |
 |---|---|
 | `template` | the template whose procedure runs (§5), or `script` (§10) |
-| `location` | where: a marker, an anchor in a part, an area, near an entity, an alias (`@name` resolves against the character's aliases: home, work, a quest's) |
+| `location` | where: `building` (a thing by its name: around it, or in its rooms), `entity` (near a character or thing by its name), a `marker`, an `alias` (home, work, bed), or `x`, `y`; `scene` when it's in another scene |
+| `procedure` | its own behaviour tree (§5.1), for template `custom`: the steps as JSON |
 | `target` | whom or what: an entity, an alias, a character, an object type |
 | `schedule` | `days` (all, weekdays, list, seasons), `from`, `to` or `duration`; empty = always |
 | `conditions` | the engine's condition language (story variables, quest stages, attributes, time, weather, faction standing, distance to player) |
@@ -128,6 +131,10 @@ library:
 | `ambush` | hides at a spot until the target is near, then attacks | trigger radius |
 | `wait` | stands until a condition or a time | |
 | `use-object` | uses one object a number of times | object, count |
+| `live` | lives in and around `location.building`: wanders round it, wanders in its rooms, now and then uses its `data.action` (a part or Reaction: `cook`) | radius, action, duration |
+| `use-part` | walks to the animated part named `data.action` near the place and uses it for `data.duration` seconds, again and again | action, radius, duration |
+| `tend` | uses the Reaction or part named `data.action` again and again (a field to farm) | action, radius |
+| `custom` | its own procedure (`procedure`) | |
 | `approach-player` | walks up to the player and starts a dialogue or a bark | dialogue, once |
 | `vendor` | `work` at a counter, opens the shop on Talk | shop record |
 | `script` | runs a Lua package (§10) | script, properties |
@@ -146,12 +153,42 @@ The procedure runtime is a behaviour tree with a **blackboard** per character:
 | `random` | composite | one child by weight |
 | `stack` | composite | like the Creation Kit's: tries the first, falls back to the next |
 | `condition`, `cooldown`, `timeout`, `repeat`, `invert` | decorator | |
-| `move-to`, `face`, `wait`, `use-object`, `animate`, `bark`, `say` (a dialogue line), `pick-up`, `drop`, `open`, `close`, `attack`, `cast`, `set-var`, `emit`, `lua` | leaf (action) | |
+| `move-to`, `wander` (`inside`: in a building's rooms), `face`, `wait`, `idle`, `use-object`, `use-part`, `act`, `play`, `say`, `talk-to-player`, `follow`, `flee`, `patrol`, `escort`, `ambush`, `set`, `emit`, `script` | leaf (action) | built |
+| `pick-up`, `drop`, `attack`, `cast` | leaf (action) | not yet |
+
+Built steps' parameters: `use-part {part, around, radius, seconds, clip, leaveOn}` (walks to the part, uses it as the
+player would, stays `seconds`, its own duration when it has one, and turns off again what it turned on);
+`act {action, around, radius}` (a Reaction or Interactable with that action, else a part named so); `play {clip,
+seconds}` (a clip on itself). Anywhere, `"@data:<name>"` reads the package's data. A package's `procedure` (JSON, or
+JSON as text) is used instead of its template's (`PackageProcedure`); the project's procedure records still name
+templates of their own.
 | `find-object`, `find-actor`, `find-spot` | leaf (query) | writes a blackboard key |
 
 A designer (or the AI) can write **new templates** as data from these nodes; they're
 validated like any record. A visual tree editor is later; the Records panel edits the JSON
 with a tree view.
+
+## 6b. Parts, doors and recipes for characters
+
+Characters use the world as the player does (`GameSession::FindPart`, `UsePart`, `PartIsOpen`):
+
+- **Doors.** A door opens for anyone who moves, the player and characters walking by their packages or following alike
+  (before, only bodies with a velocity counted, so an NPC stood at a shut door). A character's path goes through a
+  building's doorway and the door opens as it comes. A "near" Reaction counts them too. One asleep in its bed doesn't.
+- **Animated parts.** A part is found by a name: its input action or event (`trigger`), its `station`, its clip, the
+  event it fires, its prompt's words, or `door`. A character uses one as the player would, at the next step:
+  - it opens, or shuts by its activation;
+  - it sends its event and runs its `do`;
+  - the part's `playerClip` plays on the character;
+  - a locked one unlocks with the character's key.
+
+  The steps are `use-part` and `act`; in Lua, `use_part`, `find_part`, `part_open` and `act(user, "cook")`.
+- **Recipes.** A part can be a crafting `station`, as a Reaction is. The player using it gets the Crafting list with
+  the recipes `at` it. A character makes one from its own inventory, into it: `craft(recipe, station, who)`.
+  `Craft`, `CraftProblem` and `FinishCraft` take the maker.
+
+Recipes and choices are a script's (§10): structured packages say *what* a character does (follow, wander, use), a script
+*how* when it's more than that.
 
 ## 6. Smart objects
 
@@ -273,6 +310,11 @@ function stop(ctx)               -- interrupted or ended
 end
 ```
 
+For characters using the world (§6b): `move_to(x, y)` returns false when there's no way there; `entity_named(name)`,
+`position_of(id)`, `random_point_near(x, y, radius[, building])` (a walkable cell; in a building's rooms with one),
+`find_part(name[, radius])` (`{id, index, x, y}`), `use_part(name | id[, index])`, `part_open(id[, index])`,
+`act(user, name)` (Reactions, Interactables, then parts), `craft(recipe[, station[, who]])`.
+
 The AI API for scripts (added to `scripting.md` in Phase 14): `move_to(x, y | marker |
 id)`, `wait(s)`, `face(id)`, `use_object(id)`, `find_object(type, radius)`,
 `find_actor(filter)`, `bark(text)`, `say(line)`, `start_dialogue(path)`, `animate(name)`,
@@ -315,3 +357,32 @@ From each character's behaviour description and roles (`ai-planner.md` §5.4):
    written with its test (the headless run) and its check results recorded.
 5. **Validation:** schedule coverage, resolvable locations, combat style for every fighter
    (R-K6 of `story-ontology.md` §7.4).
+
+## 14. The AI panel writes packages
+
+Asked "make Vara wander around her house and cook", the AI panel:
+1. Writes a `package` record (`write_record`), and puts its id in the character's `Behaviour.packages`. On her prefab
+   that's `set_prefab_field`, so every copy gets it. It keeps the packages she has unless asked to replace them, and an
+   edit writes the record again whole.
+2. Chooses a **template set by data** first, as the Creation Kit does: `live` with `location.building` and
+   `data.action: "cook"`, or `follow` with `target` and `data.distance`. It writes its own `procedure` (template
+   `custom`) when the steps say it. It writes a **script** package (`script.write` and template `script`) when the
+   request has an order, choices or recipes. Places are named things, never coordinates it guessed.
+3. Makes a clip the character lacks (`generate` kind animation, target `character:<name>`) and names it in the
+   package (`use-part`'s `clip`, or `play`).
+
+The service checks each package before the user sees it (`ai_service/app/packages.py`, from `validation.py`):
+- a template has what it needs (`data.action` for use-part, live and tend; `target` for follow, escort and flee;
+  `data.path` for patrol; `data.script` for script);
+- an own procedure parses, each step is known, composites have children and decorators one, each leaf has what it
+  needs, and random's weights match its children;
+- a script exists or is written in the same answer;
+- `location.building` and `location.entity` name something in the scene;
+- every package a `Behaviour.packages` names exists or is written in the same answer.
+
+The prompt's AI PACKAGES section teaches all of this, with a worked script.
+
+Tests:
+- `tests/character_ai_test.cpp`: NewTemplatesAndAPackagesOwnProcedure, APlaceByAThingsName.
+- `tests/actions_test.cpp`: DoorsOpenForCharactersWalkingByTheirPackages, CharactersUsePartsAndCookAtTheirStations.
+- `ai_service/tests/test_packages.py`.

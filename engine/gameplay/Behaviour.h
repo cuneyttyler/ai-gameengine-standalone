@@ -92,6 +92,9 @@ const Procedure* FindProcedure(const std::string& name);
 // Parses a procedure tree: {"type": "sequence", "children": [...], ...params}.
 std::optional<Procedure> ParseProcedure(const nlohmann::json& tree, std::string* error = nullptr);
 std::vector<std::string> ProcedureNames();
+// A package's procedure: its own ("procedure", a tree written in the package) else its template's (built in, or a
+// procedure record of that name). `id` keys the parsed tree.
+const Procedure* PackageProcedure(const std::string& id, const nlohmann::json& package);
 
 struct BehaviourState {
     enum class Mode { Package, Combat, Flee, Search };
@@ -143,6 +146,24 @@ struct AiContext {
     std::function<bool(Entity actor, const std::string& script, float dt)> runScript;
     // The step "act" (docs/systems/actions.md): `actor` uses `target` (its Action or Interactable); true when it did.
     std::function<bool(Entity actor, Entity target)> act;
+    // Animated parts (a stove, a door, a lever; the steps "use-part" and "act"): the nearest one `actor` can use named
+    // `name` (its input action, station, clip, event or prompt) within `radius` cells of (x, y); `actor` using one (as
+    // the player would, done at the next step); whether one is open (active) now.
+    struct PartRef {
+        Entity owner{entt::null};
+        size_t index = 0;
+        float x = 0.0f, y = 0.0f; // its foot, where one stands to use it
+        float range = 1.8f;
+        std::string way;       // what activates it (DoorOpens: always, use, auto, action, event)
+        float duration = 0.0f; // how long it plays once used (0: until it's used again)
+    };
+    std::function<std::optional<PartRef>(Entity actor, const std::string& name, float x, float y, float radius)> findPart;
+    std::function<bool(Entity actor, Entity owner, size_t index)> usePart;
+    std::function<bool(Entity owner, size_t index)> partOpen;
+    // Conditions as dialogue's (JSON text: flags, quests, items, time) and effects (JSON text), for paths' forks and
+    // stops (docs/ai/ai-paths.md).
+    std::function<bool(Entity actor, const std::string& conditions)> conditionsHold;
+    std::function<void(Entity actor, const std::string& effects)> runEffects;
 };
 
 // Is the package's schedule and are its conditions true now?

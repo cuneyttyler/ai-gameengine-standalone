@@ -360,6 +360,13 @@ without animating anything; in the big view, **Draw the doors** with **Open door
 **Animate a part…** has **an open doorway**. On the building it's a door with `opens = open` and no sheet: its doorway
 in the walls is always passable (characters walk in), there's no prompt and nothing plays.
 
+### 4.5b An interior's things
+
+A building's interior things (a fireplace burning, a clock's pendulum, a stove) are parts on its floors (`floor` k,
+`door` false), found and animated together by **Animate the interior…**: the vision model finds them among the
+ontology's interior objects, the LLM writes each motion, PixelLab animates each. See
+[interior-objects.md](../places/interior-objects.md).
+
 ### 4.6 Doors in a painted place
 
 A painted place's door is an entity of its own over the painting (its sprite the door's frames). Its **DoorPart** gives
