@@ -14,23 +14,46 @@ const WORDS: Record<string, string> = {
   follow: 'follow', flee: 'run from', patrol: 'patrol', 'follow-path': 'walk the path', ambush: 'wait in ambush', escort: 'escort',
   set: 'set', emit: 'send the event', script: 'run the script',
 }
+// A value in words: a list of {action, weight} as "cook (weight 2), sweep", other objects as their fields.
+function words(v: unknown): string {
+  if (Array.isArray(v)) return v.map(words).join(', ')
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>
+    if (typeof o.action === 'string') return o.weight !== undefined && o.weight !== 1 ? `${o.action} (weight ${String(o.weight)})` : o.action
+    return Object.entries(o).map(([k, x]) => `${k} ${words(x)}`).join(' ')
+  }
+  return String(v)
+}
+// Empty in this package: "@data:action" when it has none (left out of the line).
+function unset(v: unknown): boolean {
+  if (typeof v !== 'string' || !v.startsWith('@data:') || !props.data) return false
+  const own = props.data[v.slice(6)]
+  return own === undefined || own === '' || (Array.isArray(own) && !own.length)
+}
 function shown(v: unknown): string {
   if (typeof v === 'string' && v.startsWith('@data:')) {
     const key = v.slice(6)
     const own = props.data?.[key]
-    return own !== undefined && own !== '' && own !== 0 ? `${String(own)} (data.${key})` : `data.${key}`
+    return own !== undefined && own !== '' && own !== 0 ? `${words(own)} (data.${key})` : `data.${key}`
   }
   if (v === '@location') return 'the place'
   if (v === '@target') return 'the target'
   if (typeof v === 'string' && v.startsWith('@')) return v.slice(1)
-  return Array.isArray(v) ? v.join(', ') : String(v)
+  return words(v)
 }
 const params = computed(() =>
   Object.entries(props.step)
-    .filter(([k]) => k !== 'type' && k !== 'children')
+    .filter(([k, v]) => k !== 'type' && k !== 'children' && !unset(v))
     .map(([k, v]) => `${k === 'type_' ? 'type' : k} ${shown(v)}`),
 )
-const weights = computed(() => (Array.isArray(props.step.weights) ? (props.step.weights as number[]) : null))
+const weights = computed(() => (Array.isArray(props.step.weights) ? (props.step.weights as unknown[]) : null))
+// A weight in words: a number, or "@actionsWeight" (live: its actions' weights together).
+function weightText(w: unknown): string {
+  if (w !== '@actionsWeight') return shown(w)
+  const list = Array.isArray(props.data?.actions) ? (props.data!.actions as Record<string, unknown>[]) : []
+  const sum = list.reduce((t, a) => t + (typeof a?.weight === 'number' ? a.weight : 1), 0) || (props.data?.action ? 1 : 0)
+  return `${sum} (the actions' weights together)`
+}
 </script>
 
 <template>
@@ -39,7 +62,7 @@ const weights = computed(() => (Array.isArray(props.step.weights) ? (props.step.
     <span class="params">{{ params.filter((p) => !p.startsWith('weights')).join(' · ') }}</span>
   </div>
   <template v-for="(child, i) in step.children ?? []" :key="i">
-    <div v-if="weights" class="weight" :style="{ paddingLeft: `${((depth ?? 0) + 1) * 14}px` }">weight {{ weights[i] }}:</div>
+    <div v-if="weights" class="weight" :style="{ paddingLeft: `${((depth ?? 0) + 1) * 14}px` }">weight {{ weightText(weights[i]) }}:</div>
     <StepOutline :step="child" :data="data" :depth="(depth ?? 0) + (weights ? 2 : 1)" />
   </template>
 </template>
