@@ -8774,11 +8774,24 @@ ApplyOutcome EditorApp::ApplyAccepted(const std::vector<nlohmann::json>& operati
         post_(PrefabsJson());
     }
     // Files its commands made, moved or deleted: the Assets panel and the scene list read again.
+    bool storyChanged = false;
+    bool worldChanged = false;
     for (const auto& op : operations) {
-        const std::string name = op.value("op", "") == "command" ? op.value("name", "") : "";
+        const std::string kind = op.value("op", "");
+        const std::string name = kind == "command" ? op.value("name", "") : "";
         if (name == "asset.import" || name == "asset.delete" || name == "file.move") RefreshAssets();
         if (name == "scene.create" || name == "scene.delete" || name == "scene.setType" || name == "file.move") post_(ScenesJson());
+        // Dialogues, quests and routines it wrote, and who talks (a Talk or Routine added): the Story panel lists them.
+        storyChanged |= kind == "write_dialogue" || kind == "write_quest" || kind == "write_schedule" ||
+                        kind == "add_component" || kind == "remove_component" || name == "scene.spawn" ||
+                        name == "entity.delete";
+        worldChanged |= name == "world.write" || name == "world.delete";
     }
+    if (worldChanged) {
+        world_.Refresh();
+        post_(WorldJson());
+    }
+    if (storyChanged || worldChanged) post_(StoryJson());
     sceneTreeStale_ = true;
     inspectorStale_ = true;
     editorStateStale_ = true;
@@ -9145,6 +9158,9 @@ void EditorApp::RestoreProposalFiles(PendingProposal& pending) {
     RefreshPrefabs();
     RefreshAssets();
     session_.ReloadAnimations();
+    world_.Refresh();
+    post_(WorldJson());
+    post_(StoryJson());
     post_({{"type", "notify"}, {"text", std::to_string(pending.filesBefore.size()) + " file(s) the AI wrote put back"}});
     post_(ScenesJson());
 }
