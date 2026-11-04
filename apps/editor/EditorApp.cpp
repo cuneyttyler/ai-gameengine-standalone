@@ -158,7 +158,7 @@ constexpr float kMaxZoom = 4.0f;
 constexpr double kPlayInspectorRefreshSeconds = 0.1;
 
 // Ids shared with the UI's toolbar (apps/editor/ui/src/components/Toolbar.vue).
-constexpr const char* kToolIds[] = {"select", "erase", "prefab", "height", "path"};
+constexpr const char* kToolIds[] = {"select", "erase", "prefab", "height", "path", "marker"};
 
 // Accent colors for viewport overlays, matching the UI's accent.
 constexpr float kAccent[3] = {0.231f, 0.510f, 0.965f};
@@ -951,6 +951,10 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     if (HandleInteriorMessage(type, message)) return; // interiors (docs/places/interiors.md): the viewport's, the Assets panel's, the Build panel's
     if (type.rfind("interiorParts:", 0) == 0 && HandleInteriorPartsMessage(type, message)) return; // Animate the interior (InteriorAnimate.cpp)
     if (type.rfind("path:", 0) == 0 && HandlePathMessage(type, message)) return; // paths characters follow (PathTool.cpp)
+    if ((type.rfind("lookups:", 0) == 0 || type == "script:read" || type == "script:save" || type.rfind("marker:", 0) == 0) &&
+        HandleListsMessage(type, message)) {
+        return; // pickers' lists, the script editor, markers (EditorLists.cpp)
+    }
     if (HandleGenerateMessage(type, message)) return; // Generate ▸ Character / Animate's history, and animations (Assets ▸ Animations)
     if ((type.rfind("build:", 0) == 0 || type.rfind("background:", 0) == 0 || type == "scene:backgroundImage") && HandleBuildMessage(type, message)) return;
     if (type == "prefs:request" || type == "prefs:set") {
@@ -1924,6 +1928,8 @@ void EditorApp::UpdateCursor() {
                 cursor = Cursor::Erase;
                 break;
             case Tool::Height:
+            case Tool::Path:
+            case Tool::Marker:
                 cursor = Cursor::Brush;
                 break;
             case Tool::Select:
@@ -2866,15 +2872,28 @@ void EditorApp::OnViewportMouse(const ViewportMouseEvent& event) {
                 PathToolDown(sceneX, sceneY, (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0);
                 return;
             }
+            if (tool_ == Tool::Marker) {
+                // The Marker tool: a click on a marker selects it; elsewhere the UI asks a name and adds one there.
+                if (const auto marker = MarkerAt(sceneX, sceneY)) {
+                    Select(*marker);
+                    return;
+                }
+                int gx = 0, gy = 0;
+                CellAt(sceneX, sceneY, iso_, gx, gy);
+                post_({{"type", "marker:ask"}, {"gx", gx}, {"gy", gy}});
+                return;
+            }
             if (tool_ == Tool::Select) {
                 auto picked = PickEntity(registry_, sceneX, sceneY, iso_);
-                // Nothing with a picture there: a path's point (the path selected; the Path tool draws on it).
+                // Nothing with a picture there: a path's point (the path selected; the Path tool draws on it), or a
+                // marker (selected, and dragged to move it).
                 if (!picked) {
                     if (const auto point = PathPointAt(sceneX, sceneY)) {
                         Select(point->first);
                         pathEditing_ = point->first, pathPoint_ = point->second;
                         return;
                     }
+                    picked = MarkerAt(sceneX, sceneY);
                 }
                 Select(picked);
                 if (picked) {
@@ -5491,8 +5510,9 @@ std::vector<OverlayLine> EditorApp::BuildOverlay() {
     AddPathOverlay(overlay); // paths characters follow (PathTool.cpp)
     static constexpr float kMarkerColor[3] = {0.99f, 0.86f, 0.45f};
     for (auto [entity, marker, world] : registry_.view<Marker, WorldTransform2D>().each()) {
+        if (!showMarkers_ && !(selected_ && *selected_ == entity)) continue; // View: markers hidden (the selected one shows)
         AddCellOutline(overlay, static_cast<int>(std::floor(world.x)), static_cast<int>(std::floor(world.y)), iso_,
-                       kMarkerColor, 0.9f, 1.5f);
+                       kMarkerColor, selected_ && *selected_ == entity ? 1.0f : 0.9f, selected_ && *selected_ == entity ? 2.5f : 1.5f);
     }
 
     if (selectedCell_) AddCellOutline(overlay, selectedCell_->gx, selectedCell_->gy, iso_, kAccent, 0.95f, 2.0f);
@@ -8580,6 +8600,67 @@ void EditorApp::SendToAi(const std::string& text, const std::string& focus, bool
     for (size_t i = first; i < conversation_.size(); ++i) {
         history.push_back({{"role", conversation_[i].first}, {"content", conversation_[i].second}});
     }
+    // What the user changed by hand since the last request (a record deleted in the Project panel, a component taken
+    // off a prefab in the Inspector): said after the turns, so the AI doesn't go by its earlier answers.
+    {
+        nlohmann::json digest = {{"records", nlohmann::json::array()}, {"prefabs", nlohmann::json::object()},
+                                 {"entities", nlohmann::json::object()}};
+        for (const auto& r : context.value("records", nlohmann::json::array())) {
+            digest["records"].push_back(r.value("type", std::string()) + "/" + r.value("id", std::string()));
+        }
+        for (const auto& p : context.value("prefabs", nlohmann::json::array())) {
+            nlohmann::json components = nlohmann::json::array();
+            for (const auto& [name, fields] : p.value("components", nlohmann::json::object()).items()) components.push_back(name);
+            digest["prefabs"][p.value("path", std::string())] = components;
+        }
+        for (const auto& en : context.value("entities", nlohmann::json::array())) {
+            const std::string name = en.value("name", std::string());
+            if (name.empty()) continue;
+            nlohmann::json components = nlohmann::json::array();
+            for (const auto& [c, fields] : en.value("components", nlohmann::json::object()).items()) components.push_back(c);
+            digest["entities"][name] = components;
+        }
+        std::vector<std::string> changes;
+        if (lastContextDigest_.is_object() && !conversation_.empty()) {
+            auto setOf = [](const nlohmann::json& list) {
+                std::set<std::string> out;
+                for (const auto& v : list) out.insert(v.get<std::string>());
+                return out;
+            };
+            const auto before = setOf(lastContextDigest_["records"]), now = setOf(digest["records"]);
+            for (const auto& r : before) {
+                if (!now.contains(r)) changes.push_back("deleted record " + r);
+            }
+            for (const auto& r : now) {
+                if (!before.contains(r)) changes.push_back("added record " + r);
+            }
+            for (const char* kind : {"prefabs", "entities"}) {
+                const std::string what = std::string(kind) == "prefabs" ? "prefab " : "";
+                for (const auto& [key, comps] : lastContextDigest_[kind].items()) {
+                    if (!digest[kind].contains(key)) {
+                        changes.push_back("deleted " + what + key);
+                        continue;
+                    }
+                    const auto had = setOf(comps), has = setOf(digest[kind][key]);
+                    for (const auto& c : had) {
+                        if (!has.contains(c)) changes.push_back("removed " + c + " from " + what + key);
+                    }
+                    for (const auto& c : has) {
+                        if (!had.contains(c)) changes.push_back("added " + c + " to " + what + key);
+                    }
+                }
+            }
+        }
+        lastContextDigest_ = digest;
+        if (!changes.empty()) {
+            std::string text = "(The editor) Since the last request the project changed (the user's own edits, and your changes they accepted): ";
+            for (size_t i = 0; i < changes.size() && i < 40; ++i) text += (i ? "; " : "") + changes[i];
+            if (changes.size() > 40) text += "; and " + std::to_string(changes.size() - 40) + " more";
+            text += ". The context is the project as it is now: go by it, not by earlier turns.";
+            history.push_back({{"role", "user"}, {"content", text}});
+            history.push_back({{"role", "assistant"}, {"content", "Understood: I'll go by the project as it is now."}});
+        }
+    }
 
     int id = Ai()->Propose(text, context, history);
     requestInstructions_[id] = text;
@@ -10475,6 +10556,7 @@ nlohmann::json EditorApp::EditorStateJson() {
     return {{"type", "editor:state"},
             {"tool", kToolIds[static_cast<int>(tool_)]},
             {"showPaths", showPaths_},
+            {"showMarkers", showMarkers_},
             {"heightMode", heightMode_},
             {"heightRadius", heightRadius_},
             {"brush", brushPrefab_},

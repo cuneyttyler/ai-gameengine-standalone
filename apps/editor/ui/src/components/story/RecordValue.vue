@@ -3,17 +3,23 @@
 // record type's schema like the Inspector's fields: values, references to
 // other records, lists and objects (which nest this same editor).
 import { computed } from 'vue'
-import { defaultFor, type RecordFieldSpec } from '../../records'
+import { defaultFor, fieldShown, type RecordFieldSpec } from '../../records'
+import SearchSelect from '../SearchSelect.vue'
+import { optionsFor } from '../../lookups'
+import { editorState } from '../../editorState'
 
 const props = defineProps<{
   field: RecordFieldSpec
   value: unknown
   ids: Record<string, string[]> // record type -> ids, for reference pickers
   disabled?: boolean
+  root?: Record<string, unknown> // the whole record: which of an object's fields apply (their `when`)
 }>()
 const emit = defineEmits<{ update: [value: unknown] }>()
 
 const single = computed<RecordFieldSpec>(() => ({ ...props.field, list: false }))
+// Picked from a searchable list: scripts, paths, markers, named things, dialogues (RecordField::choices).
+const picks = computed(() => (props.field.list ? null : optionsFor((props.field as { choices?: string }).choices, props.field.type)))
 const items = computed(() => (Array.isArray(props.value) ? (props.value as unknown[]) : []))
 const object = computed(() =>
   props.value && typeof props.value === 'object' && !Array.isArray(props.value)
@@ -47,17 +53,29 @@ function emitNumber(event: Event): void {
 <template>
   <div v-if="field.list" class="list">
     <div v-for="(item, i) in items" :key="i" class="item">
-      <RecordValue :field="single" :value="item" :ids="ids" :disabled="disabled" @update="setItem(i, $event)" />
+      <RecordValue :field="single" :value="item" :ids="ids" :disabled="disabled" :root="root" @update="setItem(i, $event)" />
       <button class="remove" title="Remove" :disabled="disabled" @click="removeItem(i)">×</button>
     </div>
     <button class="add" :disabled="disabled" @click="addItem">+ Add</button>
   </div>
   <div v-else-if="field.type === 'object'" class="object">
-    <div v-for="sub in field.fields ?? []" :key="sub.name" class="sub">
+    <div v-for="sub in (field.fields ?? []).filter((f) => fieldShown(f, root ?? {}))" :key="sub.name" class="sub">
       <label :title="sub.description">{{ sub.name }}<span v-if="sub.required" class="req">*</span></label>
-      <RecordValue :field="sub" :value="object[sub.name]" :ids="ids" :disabled="disabled" @update="setSub(sub.name, $event)" />
+      <RecordValue :field="sub" :value="object[sub.name]" :ids="ids" :disabled="disabled" :root="root" @update="setSub(sub.name, $event)" />
     </div>
   </div>
+  <span v-else-if="picks" class="pick">
+    <SearchSelect
+      :model-value="(value as string) ?? ''"
+      :options="picks"
+      :disabled="disabled"
+      custom
+      empty="(none)"
+      @update:model-value="emit('update', $event)"
+    />
+    <button v-if="field.type === 'script'" class="edit" :disabled="!value" title="Open it in the script editor"
+            @click="editorState.scriptEditor = value as string">✎</button>
+  </span>
   <select
     v-else-if="field.type === 'record'"
     :value="value ?? ''"
@@ -108,6 +126,21 @@ function emitNumber(event: Event): void {
 </template>
 
 <style scoped>
+.pick {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.pick > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.edit {
+  height: 22px;
+  min-width: 24px;
+  padding: 0 4px;
+}
 .list,
 .object {
   display: flex;

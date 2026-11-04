@@ -21,6 +21,7 @@ import ReplacePrefabDialog from './components/ReplacePrefabDialog.vue'
 import BackgroundDialog from './components/BackgroundDialog.vue'
 import PartDialog from './components/PartDialog.vue'
 import InteriorPartsDialog from './components/InteriorPartsDialog.vue'
+import ScriptEditorDialog from './components/ScriptEditorDialog.vue'
 import BuildingEditor from './components/BuildingEditor.vue'
 import UiDesigner from './components/UiDesigner.vue'
 import ProjectSettingsDialog from './components/ProjectSettingsDialog.vue'
@@ -162,6 +163,7 @@ onBeforeUnmount(() => setShell(null))
   <BackgroundDialog />
   <PartDialog />
   <InteriorPartsDialog />
+  <ScriptEditorDialog />
   <BuildingEditor />
   <UiDesigner />
   <ProjectSettingsDialog />

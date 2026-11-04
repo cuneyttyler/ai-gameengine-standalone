@@ -13,6 +13,29 @@ export interface RecordFieldSpec {
   list?: boolean
   required?: boolean
   default?: unknown
+  // Only for some records: while the record's field `field` is one of `values` (a package's fields by its template).
+  when?: { field: string; values: string[] }
+}
+
+// Whether a field applies to this record (`root`: the record's own values): its `when`, and an object's fields, any of
+// them.
+export function fieldShown(field: RecordFieldSpec, root: Record<string, unknown>): boolean {
+  if (field.when && !field.when.values.includes(String(root[field.when.field] ?? ''))) return false
+  if (field.type === 'object' && field.fields?.length && !field.list) return field.fields.some((sub) => fieldShown(sub, root))
+  return true
+}
+
+// The record's values without the fields that don't apply to it (a template's data left from another template).
+export function withoutUnused(fields: RecordFieldSpec[], data: Record<string, unknown>, root: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const field of fields) {
+    if (!(field.name in data) || !fieldShown(field, root)) continue
+    const value = data[field.name]
+    out[field.name] = field.type === 'object' && !field.list && value && typeof value === 'object' && !Array.isArray(value)
+      ? withoutUnused(field.fields ?? [], value as Record<string, unknown>, root)
+      : value
+  }
+  return out
 }
 
 // The empty value of a field, as engine/records' DefaultValue gives it.

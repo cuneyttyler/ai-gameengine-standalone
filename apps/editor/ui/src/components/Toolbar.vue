@@ -3,6 +3,10 @@ import { computed } from 'vue'
 import { armPrefab, editorState, type ToolId } from '../editorState'
 import { sendToHost } from '../ipc'
 import PrefabThumb from './PrefabThumb.vue'
+import SearchSelect from './SearchSelect.vue'
+import { lookups, requestLookups } from '../lookups'
+import { onHostMessage } from '../ipc'
+import { onMounted } from 'vue'
 
 const brush = computed(() => editorState.prefabs.find((p) => p.path === editorState.brush) ?? null)
 
@@ -18,6 +22,15 @@ function setBrushScale(percent: number): void {
 function send(type: string): void {
   sendToHost({ type })
 }
+
+// The markers listed for Go to marker: asked for as the editor starts and again when the scene changes.
+onMounted(requestLookups)
+let lookupTimer = 0
+onHostMessage((message) => {
+  if (message.type !== 'scene:update' && message.type !== 'scene:changed') return
+  window.clearTimeout(lookupTimer)
+  lookupTimer = window.setTimeout(requestLookups, 400)
+})
 </script>
 
 <template>
@@ -99,6 +112,28 @@ function send(type: string): void {
         Path
       </button>
       <button v-if="editorState.tool === 'path'" title="Finish this path: the next click begins another (Enter)" @click="send('path:finish')">Finish path</button>
+      <button
+        :class="{ active: editorState.tool === 'marker' }"
+        title="Marker: click a cell to add a named marker there (packages, gateways and schedules send people to markers); click a marker to select it, then drag it with Select"
+        :disabled="editorState.playing"
+        @click="setTool('marker')"
+      >
+        Marker
+      </button>
+      <span class="toggles">
+        <button :class="{ on: editorState.showMarkers }" title="Show markers in the viewport" @click="sendToHost({ type: 'marker:show', shown: !editorState.showMarkers })">◇ Markers</button>
+        <button :class="{ on: editorState.showPaths }" title="Show paths in the viewport (the selected one always shows)" @click="sendToHost({ type: 'path:show', shown: !editorState.showPaths })">⤳ Paths</button>
+      </span>
+      <SearchSelect
+        v-if="lookups.markers.length"
+        class="goto"
+        model-value=""
+        :options="lookups.markers.map((m) => ({ value: m }))"
+        empty="Go to marker…"
+        placeholder="Go to marker…"
+        title="Select a marker and centre the view on it"
+        @update:model-value="(m) => m && sendToHost({ type: 'marker:goto', name: m })"
+      />
       <button
         :class="{ active: editorState.tool === 'height' }"
         title="Height: drag over the ground to raise it, lower it or level it (a built place's ground)"
@@ -201,6 +236,20 @@ button:hover:not(:disabled) {
 button:disabled {
   opacity: 0.4;
   cursor: default;
+}
+.toggles {
+  display: flex;
+  gap: 2px;
+}
+.toggles button {
+  opacity: 0.55;
+}
+.toggles button.on {
+  opacity: 1;
+  border-color: #3b82f6;
+}
+.goto {
+  width: 150px;
 }
 button.active {
   background: #313148;

@@ -1092,9 +1092,9 @@ const Procedure* FindProcedure(const std::string& name) {
 }
 
 const Procedure* PackageProcedure(const std::string& id, const nlohmann::json& package) {
-    // Its own tree ("procedure": JSON, or JSON as text), else its template's.
+    // Template custom: its own tree ("procedure": JSON, or JSON as text); else its template's.
     const nlohmann::json own = package.value("procedure", nlohmann::json());
-    const bool has = own.is_object() || (own.is_string() && !own.get<std::string>().empty());
+    const bool has = package.value("template", std::string()) == "custom" && (own.is_object() || (own.is_string() && !own.get<std::string>().empty()));
     if (has) {
         static std::map<std::string, std::pair<std::string, Procedure>> cache;
         const std::string text = own.is_string() ? own.get<std::string>() : own.dump();

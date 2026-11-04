@@ -81,6 +81,14 @@ Packages are **records** (`engine-gaps.md` §2.1) under `records/packages/`. A c
 | `template` | the template whose procedure runs (§5), or `script` (§10) |
 | `location` | where: `building` (a thing by its name: around it, or in its rooms), `entity` (near a character or thing by its name), a `marker`, an `alias` (home, work, bed), or `x`, `y`; `scene` when it's in another scene |
 | `procedure` | its own behaviour tree (§5.1), for template `custom`: the steps as JSON |
+
+Each field belongs to the templates that read it: `procedure` to `custom`; `target` to follow, escort, flee, custom
+and script; and each of `data`'s values to its own templates. For example, `route` (a path drawn with the Path tool,
+by name) goes with follow-path, patrol and custom, while `path` (markers in order, the older way) goes only with
+patrol. The schema says so (`RecordField::whenField`, `OnlyWhen`, a record field's `when` in JSON), so:
+- the Records panel shows only a template's fields, and drops the rest when saving;
+- the AI's schema lines say "(only for template …)";
+- the runtime uses a `procedure` only for template `custom`.
 | `target` | whom or what: an entity, an alias, a character, an object type |
 | `schedule` | `days` (all, weekdays, list, seasons), `from`, `to` or `duration`; empty = always |
 | `conditions` | the engine's condition language (story variables, quest stages, attributes, time, weather, faction standing, distance to player) |

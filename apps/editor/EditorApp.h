@@ -140,7 +140,7 @@ public:
 private:
     // Everything placeable is a prefab, so there are only three tools: pick,
     // erase, and the prefab brush (paints tile prefabs, places the others).
-    enum class Tool { Select, Erase, Prefab, Height, Path };
+    enum class Tool { Select, Erase, Prefab, Height, Path, Marker };
 
     // Edit transactions: BeginEdit snapshots the scene; the snapshot only
     // becomes an undo step once MarkChanged reports a real change, so clicks
@@ -167,6 +167,11 @@ private:
     bool HandlePathMessage(const std::string& type, const nlohmann::json& message);
     std::vector<std::string> PackagesUsingPath(const std::string& name);
     std::vector<Entity> CharactersUsingPath(const std::string& name);
+    // The pickers' lists, the script editor, the markers' toolbar (EditorLists.cpp).
+    bool showMarkers_ = true;
+    nlohmann::json LookupsJson();
+    bool HandleListsMessage(const std::string& type, const nlohmann::json& message);
+    std::optional<Entity> MarkerAt(float sceneX, float sceneY);
     void Undo();
     void Redo();
     void DeleteSelected();
@@ -645,6 +650,9 @@ private:
     // The conversation so far, sent back as context for follow-ups ("make
     // them faster too"). Plain text turns, newest last.
     std::vector<std::pair<std::string, std::string>> conversation_;
+    // What the last request's context held (records, prefabs' components, the scene's things), to tell the AI what the
+    // user changed by hand since (removed a record, a prefab's component): its own earlier answers say otherwise.
+    nlohmann::json lastContextDigest_;
     // Kept per project (4.5): the chat as the panel showed it, and the Art tab's requests.
     AiTranscript transcript_;
     ArtHistory artHistory_;

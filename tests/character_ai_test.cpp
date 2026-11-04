@@ -354,3 +354,30 @@ TEST_F(AiTest, CharactersFollowANamedPathAndChooseAtForks) {
     EXPECT_LT(DistanceTo(mira, 8.5f, 9.5f), 0.8f);
     EXPECT_LT(DistanceTo(second, 8.5f, 9.5f), 1.6f);
 }
+
+// A package's fields by its template (the Records panel shows only those; the AI's schema says which): a route only for
+// follow-path, patrol and custom; markers only for patrol; its own procedure only for custom.
+TEST_F(AiTest, PackageFieldsBelongToTheirTemplates) {
+    const auto* type = aige::EngineReflection().FindRecordType("package");
+    ASSERT_NE(type, nullptr);
+    const nlohmann::json json = [&] {
+        nlohmann::json all = nlohmann::json::array();
+        for (const auto& f : type->fields) all.push_back(aige::RecordFieldToJson(f));
+        return all;
+    }();
+    auto field = [&](const std::string& name) {
+        for (const auto& f : json) {
+            if (f.value("name", "") == name) return f;
+        }
+        return nlohmann::json();
+    };
+    EXPECT_EQ(field("procedure")["when"]["values"], nlohmann::json::array({"custom"}));
+    EXPECT_FALSE(field("schedule").contains("when")); // every template
+    const nlohmann::json data = field("data");
+    for (const auto& sub : data["fields"]) {
+        const auto values = sub["when"]["values"];
+        if (sub["name"] == "route") EXPECT_EQ(values, nlohmann::json::array({"follow-path", "patrol", "custom"}));
+        if (sub["name"] == "path") EXPECT_EQ(values, nlohmann::json::array({"patrol"}));
+        if (sub["name"] == "mode") EXPECT_EQ(values, nlohmann::json::array({"follow-path"}));
+    }
+}

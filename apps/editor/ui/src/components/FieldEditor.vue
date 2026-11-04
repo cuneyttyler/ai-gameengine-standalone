@@ -160,9 +160,7 @@ function emitNumber(event: Event): void {
         empty="(none)"
         @update:model-value="emit('change', $event)"
       />
-      <button v-if="field.value" title="Open in your editor" @click="emit('openScript', field.value as string)">
-        Open
-      </button>
+      <button v-if="field.value" class="script-edit" title="Open it in the script editor" @click="emit('openScript', field.value as string)">✎</button>
     </span>
   </span>
 </template>

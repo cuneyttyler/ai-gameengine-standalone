@@ -11,6 +11,7 @@ import { projectState } from '../projects'
 import { onHostMessage, sendToHost } from '../ipc'
 import FieldEditor, { type Choices, type FieldData } from './FieldEditor.vue'
 import InteriorEditor from './InteriorEditor.vue'
+import PackagesField from './PackagesField.vue'
 import PathEditor from './PathEditor.vue'
 import ActionPicker from './ActionPicker.vue'
 import RulesEditor from './RulesEditor.vue'
@@ -165,7 +166,7 @@ function createScript(): void {
 }
 
 function openScript(path: string): void {
-  sendToHost({ type: 'script:open', path })
+  editorState.scriptEditor = path // the script editor (Open outside there for your own program)
 }
 
 function startSavePrefab(): void {
@@ -564,6 +565,12 @@ function numberFrom(event: Event): number {
                 :model-value="String(field.value ?? '')"
                 :disabled="editorState.playing"
                 @update:model-value="setField(component.name, field, $event)"
+              />
+              <PackagesField
+                v-else-if="component.name === 'Behaviour' && field.name === 'packages'"
+                :value="String(field.value ?? '')"
+                :disabled="editorState.playing"
+                @change="setField(component.name, field, $event)"
               />
               <CharacterRulesEditor
                 v-else-if="component.name === 'Responses' && field.name === 'rules'"

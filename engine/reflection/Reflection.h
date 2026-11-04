@@ -173,9 +173,21 @@ struct RecordField : FieldMeta {
     bool list = false;               // a JSON array of such values
     bool required = false;           // must be present (after the base is applied)
     nlohmann::json defaultValue;     // null: the type's empty value
+    // Only for some records: shown (and meant) only while the record's top-level field `whenField` is one of
+    // `whenValues` (a package's data.route only for templates follow-path and patrol). Empty: always.
+    std::string whenField;
+    std::vector<std::string> whenValues;
+    // What the editor offers to pick it from (a searchable list; typing a new one still works): paths, markers,
+    // entities (named things in the scene), characters, targets (the player, characters, markers), dialogues.
+    std::string choices;
 
     const RecordField* Field(const std::string& fieldName) const;
 };
+
+// A record field shown only while the record's field `field` is one of `values`.
+RecordField OnlyWhen(RecordField recordField, const std::string& field, std::vector<std::string> values);
+// A record field picked from a list (RecordField::choices).
+RecordField PickedFrom(RecordField recordField, const std::string& choices);
 
 struct RecordTypeInfo {
     std::string name; // the folder under records/: lower-case, e.g. "item"
@@ -280,6 +292,10 @@ public:
     RecordTypeBuilder& List();
     RecordTypeBuilder& Required();
     RecordTypeBuilder& Default(nlohmann::json value);
+    // The last field only while the record's `field` is one of `values` (RecordField::whenField).
+    RecordTypeBuilder& When(const std::string& field, std::vector<std::string> values);
+    // The last field picked from a list (RecordField::choices).
+    RecordTypeBuilder& Choices(const std::string& choices);
 
 private:
     RecordField& Last();

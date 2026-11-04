@@ -8,7 +8,7 @@ import { setPanelVisible } from './layout'
 // Everything placeable is a prefab, so there are three tools: pick, erase,
 // and the prefab brush (paints tile prefabs, places everything else); and the
 // height brush, which raises, lowers or levels the ground.
-export type ToolId = 'select' | 'erase' | 'prefab' | 'height' | 'path'
+export type ToolId = 'select' | 'erase' | 'prefab' | 'height' | 'path' | 'marker'
 
 export interface Prefab {
   path: string
@@ -82,6 +82,9 @@ export const editorState = reactive({
   showBackground: false, // Edit ▸ Background Image…
   partDialog: null as number | null, // Animate a part…: the entity whose picture a part is animated of
   interiorPartsDialog: null as number | null, // Animate the interior…: the building whose interior things are found and animated
+  scriptEditor: null as string | null, // the script open in the script editor (scripts/*.lua)
+  openRecord: null as { type: string; id: string } | null, // a record to show in Project ▸ Records (from elsewhere)
+  showMarkers: true, // markers drawn in the viewport (toolbar, View)
   uiDesigner: null as string | null, // the UI designer: the screen it has open (Project ▸ UI ▸ Design…)
   buildingEditor: null as number | null, // the building editor (Inspector ▸ Interior ▸ Edit building…): its entity
   fxSheet: '', // Assets ▸ Animations ▸ Show in Effects: the sheet to open there
@@ -124,6 +127,7 @@ onHostMessage((message) => {
   if (message.type === 'editor:state') {
     editorState.tool = message.tool as ToolId
     editorState.showPaths = (message.showPaths as boolean) ?? true
+    editorState.showMarkers = (message.showMarkers as boolean) ?? true
     editorState.brush = message.brush as string
     editorState.heightMode = ((message.heightMode as string) ?? 'raise') as 'raise' | 'lower' | 'flatten'
     editorState.heightRadius = (message.heightRadius as number) ?? 2

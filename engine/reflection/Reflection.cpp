@@ -237,7 +237,20 @@ nlohmann::json RecordFieldToJson(const RecordField& field) {
     if (field.list) json["list"] = true;
     if (field.required) json["required"] = true;
     if (!field.defaultValue.is_null()) json["default"] = field.defaultValue;
+    if (!field.whenField.empty()) json["when"] = {{"field", field.whenField}, {"values", field.whenValues}};
+    if (!field.choices.empty()) json["choices"] = field.choices;
     return json;
+}
+
+RecordField PickedFrom(RecordField recordField, const std::string& choices) {
+    recordField.choices = choices;
+    return recordField;
+}
+
+RecordField OnlyWhen(RecordField recordField, const std::string& field, std::vector<std::string> values) {
+    recordField.whenField = field;
+    recordField.whenValues = std::move(values);
+    return recordField;
 }
 
 const RecordTypeInfo* ReflectionRegistry::FindRecordType(const std::string& name) const {
@@ -307,6 +320,15 @@ RecordTypeBuilder& RecordTypeBuilder::List() {
 }
 RecordTypeBuilder& RecordTypeBuilder::Required() {
     Last().required = true;
+    return *this;
+}
+RecordTypeBuilder& RecordTypeBuilder::Choices(const std::string& choices) {
+    Last().choices = choices;
+    return *this;
+}
+RecordTypeBuilder& RecordTypeBuilder::When(const std::string& field, std::vector<std::string> values) {
+    Last().whenField = field;
+    Last().whenValues = std::move(values);
     return *this;
 }
 RecordTypeBuilder& RecordTypeBuilder::Default(nlohmann::json value) {

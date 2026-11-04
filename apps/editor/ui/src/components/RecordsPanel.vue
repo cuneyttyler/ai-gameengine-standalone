@@ -5,12 +5,14 @@ import { plainCopy } from '../plainCopy'
 // is a file, records/<type>/<id>.json (engine/records); the host reads,
 // checks and writes them, this tab lists them by type and edits one at a time
 // with a form generated from its type's fields.
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { editorState } from '../editorState'
+import { requestLookups } from '../lookups'
 import { onHostMessage, sendToHost } from '../ipc'
 import { confirmDialog } from '../dialogs'
 import RecordValue from './story/RecordValue.vue'
 import RulesEditor from './RulesEditor.vue'
-import { defaultFor, type RecordFieldSpec } from '../records'
+import { defaultFor, fieldShown, withoutUnused, type RecordFieldSpec } from '../records'
 
 interface RecordType {
   name: string
@@ -108,6 +110,18 @@ function load(type: string, data: Record<string, unknown>, resolved: Record<stri
   snapshot.value = JSON.stringify(draftOut())
 }
 
+// Shown from elsewhere (Inspector ▸ Behaviour's packages ✎): that record selected.
+watch(
+  () => editorState.openRecord,
+  (want) => {
+    if (!want) return
+    select(want.type, want.id)
+    editorState.openRecord = null
+  },
+  { immediate: true },
+)
+onMounted(requestLookups)
+
 function select(type: string, id: string): void {
   const r = find(type, id)
   if (!r) return
@@ -143,8 +157,11 @@ function draftOut(): Record<string, unknown> {
   for (const field of currentType.value?.fields ?? []) {
     if (!draft.base || draft.own[field.name]) out[field.name] = draft.data[field.name]
   }
-  if (draft.provenance !== undefined) out.provenance = draft.provenance
-  return out
+  // Fields that don't apply to it (a package's data from another template) aren't kept.
+  const kept = withoutUnused(currentType.value?.fields ?? [], out, draft.data)
+  if (draft.base) kept.base = draft.base
+  if (draft.provenance !== undefined) kept.provenance = draft.provenance
+  return kept
 }
 
 function setOwn(name: string, own: boolean): void {
@@ -246,9 +263,11 @@ function goTo(key: string): void {
           <option v-for="id in (ids[draft.type] ?? []).filter((i) => i !== draft.originalId)" :key="id" :value="id">{{ id }}</option>
         </select>
       </div>
-      <div v-for="field in currentType?.fields ?? []" :key="field.name" class="form-row top">
+      <div v-for="field in (currentType?.fields ?? []).filter((f) => fieldShown(f, draft.data))" :key="field.name" class="form-row top"
+           :class="{ section: field.type === 'object' && !field.list, 'list-section': field.type === 'object' && field.list, lead: field.name === 'template' }">
         <label :title="field.description">
           {{ field.name }}<span v-if="field.required" class="req">*</span>
+          <span v-if="field.type === 'object'" class="about">{{ field.description }}</span>
         </label>
         <input
           v-if="draft.base"
@@ -269,6 +288,7 @@ function goTo(key: string): void {
           v-else
           :field="field"
           :value="draft.data[field.name]"
+          :root="draft.data"
           :ids="ids"
           :disabled="!!draft.base && !draft.own[field.name]"
           @update="draft.data[field.name] = $event"
@@ -398,6 +418,38 @@ function goTo(key: string): void {
 }
 .form-row.top {
   align-items: flex-start;
+}
+/* A record's object fields (a package's location, schedule, conditions, flags, data): sections under a line. */
+.form-row.section,
+.form-row.list-section {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  border-top: 1px solid #2f2f40;
+  padding-top: 8px;
+  margin-top: 6px;
+}
+.form-row.section > label,
+.form-row.list-section > label {
+  width: auto;
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.form-row.section .about,
+.form-row.list-section .about {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  opacity: 0.6;
+  margin-left: 8px;
+}
+.form-row.lead {
+  border-bottom: 1px solid #2f2f40;
+  padding-bottom: 8px;
+  margin-bottom: 2px;
 }
 .form-row label {
   width: 90px;

@@ -12,12 +12,14 @@ import MagicPanel from './MagicPanel.vue'
 import StoryGraphPanel from './StoryGraphPanel.vue'
 import StoryPanel from './StoryPanel.vue'
 import WorldPanel from './WorldPanel.vue'
+import ScriptsPanel from './ScriptsPanel.vue'
 
 const tabs: { id: ProjectTab; label: string; title: string }[] = [
   { id: 'scenes', label: 'Scenes', title: "The project's scenes, the start scene, and gateways that lead nowhere" },
   { id: 'world', label: 'World', title: "World Bible: the game's canon (characters, places, factions…)" },
   { id: 'story', label: 'Story', title: 'Dialogue, quests and daily routines' },
   { id: 'records', label: 'Records', title: "Typed game data: items and the project's other record types" },
+  { id: 'scripts', label: 'Scripts', title: 'Every Lua script in the project, what uses it, and the script editor' },
   { id: 'difficulty', label: 'Difficulty', title: 'Difficulty levels, the category table, previews and the curve' },
   { id: 'ui', label: 'UI', title: "The game's screens, theme and notifications (documents in ui/)" },
   { id: 'fx', label: 'Effects', title: 'Animation sheets, particles and effects, cutscenes' },
@@ -44,6 +46,7 @@ const tabs: { id: ProjectTab; label: string; title: string }[] = [
     <ScenesPanel v-if="panelTab.project === 'scenes'" class="body" />
     <WorldPanel v-else-if="panelTab.project === 'world'" class="body" />
     <RecordsPanel v-else-if="panelTab.project === 'records'" class="body" />
+    <ScriptsPanel v-else-if="panelTab.project === 'scripts'" class="body" />
     <DifficultyPanel v-else-if="panelTab.project === 'difficulty'" class="body" />
     <UiPanel v-else-if="panelTab.project === 'ui'" class="body" />
     <FxPanel v-else-if="panelTab.project === 'fx'" class="body" />

@@ -165,6 +165,17 @@ function pathPointMenu(p: { id: number; point: number; name: string }): MenuItem
   ]
 }
 
+// The Marker tool's click: its name asked, then the marker added there.
+onHostMessage(async (message) => {
+  if (message.type !== 'marker:ask') return
+  const name = await promptDialog({
+    title: 'Marker',
+    message: 'A name for this place, for packages, gateways and schedules to send people to (e.g. village_well).',
+    placeholder: 'village_well',
+  })
+  if (name) sendToHost({ type: 'scene:addMarker', name, gx: message.gx, gy: message.gy })
+})
+
 onHostMessage((message) => {
   if (message.type !== 'viewport:contextMenu') return
   const entity = message.entity as MenuEntity | null

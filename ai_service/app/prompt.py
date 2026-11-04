@@ -25,6 +25,9 @@ Answer with ONE JSON object and nothing else:
   "generate": [{"kind": "character", "name": "<name>", "description": "...", "directions": 8} | {"kind": "animation", "name": "<name>", "target": "character:<name>" | "<sheet or picture path>", "action": "walk"}]   (optional: made before the operations; use "character:<name>" / "animation:<name>" in them; one the project already has is reused unless you add "new": true, only when the user asked for a new one),
   "notes": "optional: anything the user should know (assumptions, how to test it)"
 }
+The context is the project as it is NOW. The user also edits by hand between requests (deletes records, removes
+components from prefabs, deletes things): when the context and earlier turns of the conversation disagree, the context
+is right. Never assume something exists because an earlier answer made it; check the context (or look it up).
 
 First decide how big the request is:
 - "small": it fits in one reviewable set of operations. Most requests are small, including
@@ -799,6 +802,8 @@ def _record_field_line(spec: RecordFieldSpec, indent: str = "") -> str:
         parts.append(f"[{low}..{high}]")
     if spec.required:
         parts.append("(required)")
+    if spec.when:
+        parts.append(f"(only for {spec.when.get('field', '')} {', '.join(spec.when.get('values', []))})")
     line = " ".join(parts)
     line = f"{line} — {spec.description}" if spec.description else line
     for sub in spec.fields:

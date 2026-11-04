@@ -79,3 +79,11 @@ def test_add_path_is_checked_as_the_engine_reads_it():
     assert any("joins points" in e for e in found)
     assert any("weight" in e for e in found)
     assert any("conditions" in e for e in found)
+
+
+def test_the_schema_says_which_templates_a_field_is_for():
+    from app.models import RecordFieldSpec
+    from app.prompt import _record_field_line
+    spec = RecordFieldSpec(name="route", type="string", description="A path by its name",
+                           when={"field": "template", "values": ["follow-path", "patrol"]})
+    assert "(only for template follow-path, patrol)" in _record_field_line(spec)

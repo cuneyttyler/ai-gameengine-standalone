@@ -71,6 +71,8 @@ class RecordFieldSpec(BaseModel):
     list: bool = False
     required: bool = False
     default: Any = None
+    choices: str = ""  # what the editor picks it from: paths, markers, entities, characters, targets, dialogues
+    when: dict | None = None  # only for some records: {"field": "template", "values": [...]} (a package's fields by template)
 
     def field(self, name: str) -> "RecordFieldSpec | None":
         return next((f for f in self.fields if f.name == name), None)

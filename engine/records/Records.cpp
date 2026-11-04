@@ -692,12 +692,13 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                   "approach-player", "custom", "script"})
         .Required()
         .Field("description", FieldType::String, "What it's for, in a line.")
-        .Field("procedure", FieldType::String, "Its own behaviour tree as JSON, for template custom: {\"type\": \"loop\", "
-                                               "\"children\": [...]} with the procedure steps (docs/ai/ai-packages.md §5.1).")
+        .Field("procedure", FieldType::String, "Its own behaviour tree as JSON: {\"type\": \"loop\", \"children\": [...]} "
+                                               "with the procedure steps (docs/ai/ai-packages.md §5.1).")
+        .When("template", {"custom"})
         .Object("location",
-                {MakeRecordValue("building", FieldType::String, "A building or thing by its name (house-4): around it, or in it"),
-                 MakeRecordValue("entity", FieldType::String, "Or a character or thing by its name: near it"),
-                 MakeRecordValue("marker", FieldType::String, "Or a marker's name"),
+                {PickedFrom(MakeRecordValue("building", FieldType::String, "A building or thing by its name (house-4): around it, or in it"), "entities"),
+                 PickedFrom(MakeRecordValue("entity", FieldType::String, "Or a character or thing by its name: near it"), "entities"),
+                 PickedFrom(MakeRecordValue("marker", FieldType::String, "Or a marker's name"), "markers"),
                  [] {
                      RecordField alias = MakeRecordValue("alias", FieldType::Enum, "Or the character's own place");
                      alias.options = {"none", "home", "work", "bed"};
@@ -707,7 +708,11 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                  MakeRecordValue("y", FieldType::Float, "and y"),
                  MakeRecordValue("scene", FieldType::String, "The scene it's in (empty: wherever the character is)")},
                 "Where.")
+        .When("template", {"stay", "travel", "wander", "sandbox", "live", "sleep", "eat", "work", "vendor", "use-part", "tend",
+                           "guard", "hide", "ambush", "use-object", "escort", "custom", "script"})
         .Field("target", FieldType::String, "Whom: player, a character's name or World Bible key, or a marker.")
+        .When("template", {"follow", "escort", "flee", "custom", "script"})
+        .Choices("targets")
         .Object("schedule",
                 {MakeRecordValue("from", FieldType::String, "From HH:MM (empty: all day)"),
                  MakeRecordValue("to", FieldType::String, "To HH:MM"),
@@ -737,32 +742,47 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                  MakeRecordValue("mustComplete", FieldType::Bool, "Finishes before another package takes over"),
                  MakeRecordValue("run", FieldType::Bool, "Runs rather than walks")},
                 "How it behaves.")
+        // What each template needs: each value only for the templates that read it (custom's steps read any by
+        // "@data:<name>").
         .Object("data",
-                {MakeRecordValue("radius", FieldType::Float, "Cells around the place (wander, sandbox, live, use-part, ambush)"),
-                 MakeRecordValue("duration", FieldType::Float, "Seconds (waits, patrol stops, how long a part is used)"),
-                 MakeRecordValue("action", FieldType::String, "What it uses (use-part, live, tend): an animated part's or a "
-                                                              "Reaction's name: its input action, station, clip or event (cook)"),
-                 MakeRecordValue("object", FieldType::String, "A smart object type (work, use-object)"),
-                 MakeRecordValue("dialogue", FieldType::String, "A dialogue file (approach-player)"),
-                 [] {
-                     RecordField path = MakeRecordValue("path", FieldType::String, "Markers in order (patrol)");
+                {OnlyWhen(MakeRecordValue("radius", FieldType::Float, "Cells around the place"), "template",
+                          {"wander", "sandbox", "live", "use-part", "tend", "ambush", "custom"}),
+                 OnlyWhen(MakeRecordValue("duration", FieldType::Float, "Seconds: how long a part is used, or a stop on the way"), "template",
+                          {"live", "use-part", "patrol", "custom"}),
+                 OnlyWhen(MakeRecordValue("action", FieldType::String, "What it uses: an animated part's or a Reaction's name: its "
+                                                                       "input action, station, clip or event (cook)"),
+                          "template", {"live", "use-part", "tend", "custom"}),
+                 OnlyWhen(MakeRecordValue("object", FieldType::String, "A smart object type (counter, forge, desk)"), "template",
+                          {"work", "use-object", "custom"}),
+                 OnlyWhen(PickedFrom(MakeRecordValue("dialogue", FieldType::String, "A dialogue file"), "dialogues"), "template",
+                          {"approach-player", "custom"}),
+                 OnlyWhen(PickedFrom(MakeRecordValue("route", FieldType::String, "A path drawn with the Path tool, by its name "
+                                                                                 "(docs/ai/ai-paths.md)"), "paths"),
+                          "template", {"follow-path", "patrol", "custom"}),
+                 OnlyWhen([] {
+                     RecordField path = MakeRecordValue("path", FieldType::String, "Or markers by name, walked in order (an older "
+                                                                                   "way than a route)");
                      path.list = true;
+                     path.choices = "markers";
                      return path;
-                 }(),
-                 MakeRecordValue("route", FieldType::String, "A named path to walk (follow-path, patrol: docs/ai/ai-paths.md)"),
-                 [] {
-                     RecordField mode = MakeRecordValue("mode", FieldType::Enum, "How a path is walked (follow-path): once, loop, wander");
+                 }(), "template", {"patrol"}),
+                 OnlyWhen([] {
+                     RecordField mode = MakeRecordValue("mode", FieldType::Enum, "How the path is walked: once (then it stays at the "
+                                                                                 "end), loop, wander (any way at every fork)");
                      mode.options = {"once", "loop", "wander"};
                      return mode;
-                 }(),
-                 [] {
-                     RecordField from = MakeRecordValue("from", FieldType::Enum, "Where on the path it begins (follow-path)");
+                 }(), "template", {"follow-path"}),
+                 OnlyWhen([] {
+                     RecordField from = MakeRecordValue("from", FieldType::Enum, "Where on the path it begins");
                      from.options = {"nearest", "start", "end"};
                      return from;
-                 }(),
-                 MakeRecordValue("distance", FieldType::Float, "Cells (follow, escort, flee)"),
-                 MakeRecordValue("script", FieldType::Script, "A Lua file with run() (script)")},
-                "What the template needs.");
+                 }(), "template", {"follow-path"}),
+                 OnlyWhen(MakeRecordValue("distance", FieldType::Float, "Cells: how close it keeps, or how far it runs"), "template",
+                          {"follow", "escort", "flee", "custom"}),
+                 OnlyWhen(MakeRecordValue("script", FieldType::Script, "A Lua file with run()"), "template", {"script"})},
+                "What the template needs.")
+        .When("template", {"wander", "sandbox", "live", "use-part", "tend", "ambush", "patrol", "follow-path", "work",
+                           "use-object", "approach-player", "follow", "escort", "flee", "custom", "script"});
 
     r.RecordType("procedure", "A procedure (14.1): a behaviour tree a package template can be, written by hand. "
                               "Nodes: sequence, selector, random, parallel, loop, condition, cooldown, invert; "
