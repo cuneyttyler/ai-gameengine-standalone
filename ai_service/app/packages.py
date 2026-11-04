@@ -20,7 +20,7 @@ LEAVES: dict[str, list[str]] = {
 STEPS = COMPOSITES | DECORATORS | set(LEAVES)
 
 # Templates whose data must name something.
-NEEDS_DATA = {"use-part": "action", "live": "action", "tend": "action", "script": "script",
+NEEDS_DATA = {"use-part": "actions", "live": "actions", "tend": "action", "script": "script",
               "approach-player": "dialogue", "follow-path": "route"}
 PATH_ENDS = {"stop", "loop", "back"}
 PATH_MODES = {"once", "loop", "wander"}
@@ -101,8 +101,8 @@ def check_package(package_id: str, record: dict, where: str, scripts: set[str], 
     if tree is not None:
         errors += check_procedure(tree, where)
     need = NEEDS_DATA.get(template)
-    if need == "action" and data.get("actions"):
-        need = None  # several things it uses instead of one
+    if need == "actions" and data.get("action"):
+        need = None  # an older package's single action (still read)
     if template == "patrol" and not data.get("path") and not data.get("route"):
         errors.append(f"{where}: template patrol needs data.route (a named path) or data.path (markers)")
     if need and not data.get(need):

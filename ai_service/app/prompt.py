@@ -596,10 +596,10 @@ AI PACKAGES (what a character does on its own: docs/ai/ai-packages.md)
 - Templates (built-in behaviours set by data, as the Creation Kit's; choose these first):
   stay (at the place) · travel (go there, done) · wander (data.radius around the place) · sandbox (uses the place's
   smart objects: sit, eat, read; wanders; idle remarks) · live (lives in and around location.building: wanders round it
-  within data.radius, wanders in its rooms, now and then uses data.action there, e.g. "cook", or several by data.actions,
-  each with how often: [{"action": "cook", "weight": 2}, {"action": "sweep", "weight": 1}]; their weights together are
-  how often it uses something against wandering's 5) · use-part (walks to the
-  part named data.action near the place, uses it for data.duration seconds, again and again) · tend (uses the
+  within data.radius, wanders in its rooms, now and then uses what data.actions names, each with how often:
+  [{"action": "cook", "weight": 2}, {"action": "sweep", "weight": 1}]; their weights together are how often it uses
+  something against wandering's 5) · use-part (walks to the
+  part named in data.actions near the place (one by weight), uses it for data.duration seconds, again and again) · tend (uses the
   Reaction or part named data.action again and again: a field to farm) · work (data.object: a smart object type) ·
   vendor · sleep (its bed, location.alias bed) · eat · patrol (data.route: a named path, or data.path: markers) · guard · follow / accompany /
   escort / flee (target, data.distance) · hide · ambush (data.radius) · wait · use-object · approach-player
@@ -638,7 +638,7 @@ AI PACKAGES (what a character does on its own: docs/ai/ai-packages.md)
         wait(3)
       end
     end
-  A wander-and-cook request is either "live" with data.action "cook" (simple), or a script like this when it says
+  A wander-and-cook request is either "live" with data.actions [{"action": "cook", "weight": 1}] (simple), or a script like this when it says
   more (an order, recipes, conditions). Never hard-code a route of coordinates.
 - PATHS (docs/ai/ai-paths.md): a route is a named Path in the scene (an entity with component Path: name, points,
   links, end), drawn by the user with the Path tool or added by you. Many characters share one, each with its own

@@ -751,7 +751,7 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                           {"live", "use-part", "patrol", "custom"}),
                  OnlyWhen(PickedFrom(MakeRecordValue("action", FieldType::String, "What it uses: an animated part's or a Reaction's name: "
                                                                                   "its input action, station, clip or event (cook)"), "uses"),
-                          "template", {"live", "use-part", "tend", "custom"}),
+                          "template", {"tend", "custom"}),
                  OnlyWhen([] {
                      // Several things it uses, each with how often: chosen by weight, and (live) their weights together
                      // against wandering (round the place 3, in its rooms 2).

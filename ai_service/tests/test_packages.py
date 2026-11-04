@@ -12,12 +12,13 @@ def errors(record):
 
 
 def test_a_template_with_what_it_needs_passes():
-    assert errors({"template": "live", "location": {"building": "house-4"}, "data": {"action": "cook", "radius": 4}}) == []
+    assert errors({"template": "live", "location": {"building": "house-4"}, "data": {"actions": [{"action": "cook", "weight": 2}], "radius": 4}}) == []
+    assert errors({"template": "live", "location": {"building": "house-4"}, "data": {"action": "cook"}}) == []  # an older one
     assert errors({"template": "wander", "location": {"marker": "square"}, "data": {"radius": 3}}) == []
 
 
 def test_a_template_missing_its_data_is_said():
-    assert any("data.action" in e for e in errors({"template": "use-part", "location": {"building": "house-4"}}))
+    assert any("data.actions" in e for e in errors({"template": "use-part", "location": {"building": "house-4"}}))
     assert any("target" in e for e in errors({"template": "follow"}))
     assert any("data.script" in e for e in errors({"template": "script"}))
 

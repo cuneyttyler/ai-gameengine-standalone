@@ -108,9 +108,23 @@ function load(type: string, data: Record<string, unknown>, resolved: Record<stri
     draft.own[field.name] = !draft.base || field.name in data
     draft.data[field.name] = plainCopy(field.name in data ? data[field.name] : resolved[field.name] ?? defaultFor(field))
   }
+  foldAction()
   saveError.value = ''
   snapshot.value = JSON.stringify(draftOut())
 }
+
+// A live or use-part package's single action (older ones) moved into its actions list, the one field those templates
+// show; done when it's opened and when its template changes to one of them.
+function foldAction(): void {
+  if (draft.type !== 'package' || !['live', 'use-part'].includes(String(draft.data.template ?? ''))) return
+  const data = (draft.data.data ?? {}) as Record<string, unknown>
+  const one = typeof data.action === 'string' ? data.action.trim() : ''
+  if (!one) return
+  const list = Array.isArray(data.actions) ? [...(data.actions as Record<string, unknown>[])] : []
+  if (!list.some((a) => a?.action === one)) list.unshift({ action: one, weight: 1 })
+  draft.data.data = { ...data, actions: list, action: '' }
+}
+watch(() => draft.data.template, foldAction)
 
 // Shown from elsewhere (Inspector ▸ Behaviour's packages ✎): that record selected.
 watch(
