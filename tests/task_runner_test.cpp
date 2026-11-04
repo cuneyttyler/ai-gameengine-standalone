@@ -226,6 +226,22 @@ TEST_F(TaskRunnerTest, AnAnswerWithNothingLeftToDoFinishes) {
     EXPECT_EQ(task->CombinedProposal()["operations"].size(), 1u);
 }
 
+// A step that only generated characters (to use next) isn't the end (2026-11-04:
+// six wards of residents ended after the first four sheets, with nothing to apply).
+TEST_F(TaskRunnerTest, AStepThatOnlyMadeCharactersGoesOn) {
+    auto task = Start();
+    const nlohmann::json generate = {{{"kind", "character"}, {"name", "Nella Voss"}, {"description", "a shopkeeper"}}};
+    task->OnAnswer({{"summary", "draw Nella"}, {"scope", "task"}, {"generate", generate},
+                    {"notes", "Made: character:Nella Voss -> assets/characters/nella-voss.character.anim.json"},
+                    {"operations", nlohmann::json::array()}});
+    EXPECT_EQ(task->GetState(), aige::TaskRunner::State::Working);
+    EXPECT_NE(task->NextInstruction().find("use those paths now"), std::string::npos);
+    // ... but two empty steps running end it.
+    task->OnAnswer({{"summary", "draw her again"}, {"scope", "task"}, {"generate", generate},
+                    {"operations", nlohmann::json::array()}});
+    EXPECT_EQ(task->GetState(), aige::TaskRunner::State::Finished);
+}
+
 // Steps that read art (prefab.create, terrain commands, level.village) see the
 // project's assets: the working copy reads them in place instead of copying
 // them (2026-10-17: every village step failed with "can't read the image").

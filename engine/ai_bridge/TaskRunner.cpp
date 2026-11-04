@@ -162,8 +162,12 @@ TaskRunner::State TaskRunner::OnAnswer(const nlohmann::json& proposal, int input
     }
 
     // An answer with nothing left to do ends the task even if the model
-    // forgot to say "done".
-    const bool done = proposal.value("done", false) || operations.empty();
+    // forgot to say "done" -- unless it made art or characters this step (to
+    // use in the next one), and not twice running.
+    const bool madeSomething = !proposal.value("art", nlohmann::json::array()).empty() ||
+                               !proposal.value("generate", nlohmann::json::array()).empty();
+    emptySteps_ = operations.empty() ? emptySteps_ + 1 : 0;
+    const bool done = proposal.value("done", false) || (operations.empty() && (!madeSomething || emptySteps_ >= 2));
     const bool clean = step.applyErrors.empty() && step.problems.empty();
     steps_.push_back(step);
 
@@ -178,6 +182,10 @@ TaskRunner::State TaskRunner::OnAnswer(const nlohmann::json& proposal, int input
         stopReason_ = "Stopped: this task used its token budget (" + std::to_string(inputTokens_) + " input tokens).";
     } else {
         BuildNextInstruction(steps_.back(), done);
+        if (operations.empty() && madeSomething) {
+            nextInstruction_ += " This step only made art or characters (where each went is under \"Made:\" in your "
+                                "notes): use those paths now, in this step's operations.";
+        }
         pendingUser_ = nextInstruction_;
     }
     return state_;

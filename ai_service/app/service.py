@@ -139,15 +139,24 @@ def propose(
             # Characters first (an animation may be of one), each once.
             wanted = [g for g in sorted(proposal.generate, key=lambda g: g.kind != "character")
                       if f"{g.kind}:{g.name}" not in generated]
+            failed: dict[str, str] = {}
             if wanted and make_generated is not None:
-                generated.update(make_generated(wanted))
-            missing = [f"{g.kind} {g.name}" for g in proposal.generate if f"{g.kind}:{g.name}" not in generated]
+                make_generated(wanted, generated, failed)
+            missing = [f"{g.kind}:{g.name}" for g in proposal.generate if f"{g.kind}:{g.name}" not in generated]
             for prefix in ("character:", "animation:"):
                 proposal = _with_art(proposal, {k[len(prefix):]: v for k, v in generated.items() if k.startswith(prefix)}, prefix)
             if generated:
                 context = context.model_copy(update={"assets": list(context.assets) + [{"path": p, "type": "animation"} for p in generated.values()]})
+                # Where each went, in the answer itself: a task's next step reads it there (its history), even
+                # when this step only made them.
+                made_line = "Made: " + "; ".join(f"{k} -> {v}" for k, v in generated.items() if
+                                                 any(f"{g.kind}:{g.name}" == k for g in proposal.generate))
+                if made_line not in proposal.notes:
+                    proposal = proposal.model_copy(update={"notes": (proposal.notes + "\n" + made_line).strip()})
             if missing:
-                errors = [f"{', '.join(missing)} couldn't be made (the animator or the art provider is off or failed)"]
+                why = failed if make_generated is not None else {}
+                errors = ["couldn't make " + "; ".join(f"{m} ({why.get(m, 'the animator or the art provider is off')})" for m in missing)
+                          + ". Those made are kept: use them, and ask for the rest again only if the reason allows"]
         if proposal is not None and not errors:
             errors = validate_proposal(proposal, schema, context)
         if not errors:

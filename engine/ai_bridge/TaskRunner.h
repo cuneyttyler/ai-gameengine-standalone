@@ -115,6 +115,7 @@ private:
     std::vector<std::string> plan_;
     nlohmann::json outline_;            // the approved (or proposed) outline; null when none
     bool awaitingOutline_ = false;
+    int emptySteps_ = 0; // steps running with no operations (one that only made art goes on)
     std::vector<TaskStep> steps_;
     std::vector<nlohmann::json> operations_; // combined, in order
     std::vector<ChangeItem> items_;

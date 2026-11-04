@@ -203,7 +203,9 @@ POPULATING A PLACE ("put people in each house", "make this village's story"): a 
   their Speech (add_component Barks, idle: short lines said by themselves, alternatives separated by |).
 - Make the people know each other: gossip names the neighbours, their rivalries and secrets ("Bren still owes the
   smith"), and two people's lines agree. A hook or two can point to a quest, but write the quest only if asked.
-- A new look for someone: "generate" a character (at most four an answer); otherwise reuse a character prefab
+- A new look for someone: "generate" a character (at most four characters and four animations an answer, e.g. four
+  people and their walks) and use "character:<name>" in the same answer's operations (the prefab, placing them);
+  in a task, a few people a step. Otherwise reuse a character prefab
   (set Sprite or a different prefab per person so they don't all look the same, if the project has several).
 - Optional, when asked or clearly wanted: their day (Routine, see ROUTINES: home, work, the tavern at night).
 - When the project has a plan (context "plan"), say in notes that the Planner's documents can take the new people.

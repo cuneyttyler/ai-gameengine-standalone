@@ -645,36 +645,48 @@ def create_app(
                     chunks.append(map_chunk(file))
             return chunks
 
-        def make_generated(requests) -> dict:
-            """A proposal's characters and animations (docs/ai/agent.md), made as Generate makes them: {"character:<name>"
-            | "animation:<name>": the sheet's path}. An animation of "character:<name>" uses the one just made."""
-            made: dict[str, str] = {}
-            for g in requests[:4]:
+        def make_generated(requests, made: dict, failed: dict) -> None:
+            """A proposal's characters and animations (docs/ai/agent.md), made as Generate makes them, into `made`:
+            {"character:<name>" | "animation:<name>": the sheet's path}; what wasn't made goes in `failed` with why.
+            An animation of "character:<name>" uses the one made for it (now or by an earlier attempt). At most four
+            characters and four animations an answer (four people and their walks)."""
+            counts = {"character": 0, "animation": 0}
+            for g in requests:
+                key = f"{g.kind}:{g.name}"
+                counts[g.kind] = counts.get(g.kind, 0) + 1
+                if counts[g.kind] > 4:
+                    failed[key] = f"at most four {g.kind}s an answer: ask for it in the next step"
+                    continue
                 try:
                     if g.kind == "character":
                         answer = characters_generate(CharacterRequest(name=g.name, description=g.description or g.name,
                                                                       directions=8 if g.directions >= 8 else 4, isometric=True))
                         if answer.get("ok"):
-                            made[f"character:{g.name}"] = answer["sheet"]
+                            made[key] = answer["sheet"]
+                        else:
+                            failed[key] = "; ".join(answer.get("errors") or []) or "the character generator said no"
                         continue
                     target = g.target
                     if target.startswith("character:"):
                         target = made.get(target, "")
+                        if not target:
+                            failed[key] = f"{g.target} wasn't made, so there's nothing to animate"
+                            continue
                     if not target:
+                        failed[key] = "no target: \"character:<name>\" or a sheet or picture path"
                         continue
                     if target.endswith(".character.anim.json"):
                         answer = characters_animate(CharacterAnimateRequest(sheet=target, action=g.action or "walk",
                                                                             description=g.description))
-                        if answer.get("ok"):
-                            made[f"animation:{g.name}"] = answer["sheet"]
                     else:
                         answer = animations_generate(AnimationRequest(path=target, action=g.action or "idle",
                                                                       description=g.description, name=g.name))
-                        if answer.get("ok"):
-                            made[f"animation:{g.name}"] = answer["sheet"]
-                except Exception:  # noqa: BLE001 - not made: the proposal is told
-                    continue
-            return made
+                    if answer.get("ok"):
+                        made[key] = answer["sheet"]
+                    else:
+                        failed[key] = "; ".join(answer.get("errors") or []) or "the animator said no"
+                except Exception as error:  # noqa: BLE001 - not made: the proposal is told why
+                    failed[key] = str(error) or type(error).__name__
 
         def make_art(requests) -> dict:
             """A proposal's art, drawn by the Art tool (with its brief), into the project."""
