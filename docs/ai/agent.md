@@ -11,7 +11,7 @@ One JSON object a turn (`ai_service/app/prompt.py` OUTPUT_FORMAT, `models.py` Pr
 | Scope | What happens |
 |---|---|
 | `small` | its operations, reviewed and applied (most requests) |
-| `task` | step by step on a working copy (`TaskRunner`, up to 20 steps), each applied, played, its results sent back; the whole reviewed at the end |
+| `task` | step by step on a working copy (`TaskRunner`, up to 40 steps and 10 million input tokens by default: the AI panel's settings change the budget), each applied, played, its results sent back; the whole reviewed at the end |
 | `split` | too big: smaller requests; **Do them all, step by step** runs them as one task |
 | `tools` | it reads or looks first: the editor runs its `tools` and asks again with the results and every earlier round's lookups (up to 8 rounds; the last is told to answer with what it has) |
 | `route` | another panel's work — a NEW place from nothing (Build) or a whole game from a brief (Planner): a card opens that panel with the request filled in. Everything about a place or plan that already exists stays here, however big |
@@ -62,7 +62,7 @@ Run by the editor (`engine/ai_bridge/AiTools.cpp`, `EditorApp::RunAiTools`), rea
 Operations (reviewed): entity fields and components, prefab fields and **components on prefabs**
 (`add_prefab_component` / `remove_prefab_component`, every copy following), settings, script properties, dialogue, quests,
 schedules, cutscenes, UI, animation sheets, records (write and delete), the story graph, and commands — scene.spawn,
-scene.paintRect, entity.delete / turn / mirror, prefab.create / createFromEntity / replace, terrain paint / path /
+scene.paintRect, entity.delete / turn / mirror, prefab.create / createFromEntity / createCharacter (a character sheet as an NPC or the player, animated) / replace, terrain paint / path /
 replace, script.write, world.write / delete, scene.addMarker, level.generate / village, **scene.create** (with a
 type), **scene.setType**, **input.addAction**, **input.removeAction**, **file.move** (a prefab, asset or scene moved or
 renamed, every reference following — a scene's rename too), **asset.delete**, **scene.delete**, **asset.import** (a file

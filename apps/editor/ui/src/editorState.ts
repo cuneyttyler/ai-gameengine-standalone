@@ -48,6 +48,7 @@ export const editorState = reactive({
     choice: 'undecided' as 'undecided' | 'on' | 'off',
     reviewPolicy: 'reviewAll' as 'reviewAll' | 'autoApplyTweaks',
     stepReview: false, // a task waits after each step for Continue
+    taskBudget: 10, // millions of input tokens a bigger task may use
     provider: 'mistral' as string, // the model that writes: mistral or claude
     model: '',
     providerError: '',
@@ -146,6 +147,7 @@ onHostMessage((message) => {
     editorState.ai.choice = message.choice as typeof editorState.ai.choice
     editorState.ai.reviewPolicy = message.reviewPolicy as typeof editorState.ai.reviewPolicy
     editorState.ai.stepReview = Boolean(message.stepReview)
+    editorState.ai.taskBudget = typeof message.taskBudget === 'number' ? message.taskBudget : 10
     editorState.ai.provider = (message.provider as string) ?? 'mistral'
     editorState.ai.model = (message.model as string) ?? ''
     editorState.ai.providerError = (message.providerError as string) ?? ''

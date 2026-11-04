@@ -167,3 +167,17 @@ def test_a_task_can_open_with_an_outline_alone(schema, context):
     assert validate_proposal(p, schema, context) == []
     small = Proposal.model_validate({"scope": "small", "summary": "x", "outline": {"text": "a story"}})
     assert any("outline" in e for e in validate_proposal(small, schema, context))
+
+
+def test_a_prefab_made_earlier_in_the_answer_can_be_placed_and_changed(schema, context):
+    # 2026-11-04: residents' prefabs were made, then every spawn and edit of them was dropped as "no prefab".
+    p = proposal(
+        {"op": "command", "name": "prefab.createFromEntity", "args": {"entity": 7, "name": "nella-voss-npc"}},
+        {"op": "command", "name": "scene.spawn", "args": {"prefab": "prefabs/nella-voss-npc.prefab", "x": 4.5, "y": 2.5}},
+        {"op": "set_prefab_field", "prefab": "prefabs/nella-voss-npc.prefab", "component": "Health", "field": "max",
+         "value": 10},
+    )
+    assert validate_proposal(p, schema, context) == []
+    # Not made in this answer: still unknown.
+    p = proposal({"op": "command", "name": "scene.spawn", "args": {"prefab": "prefabs/nobody.prefab", "x": 1, "y": 1}})
+    assert any("no prefab" in e for e in validate_proposal(p, schema, context))

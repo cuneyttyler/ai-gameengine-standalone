@@ -601,6 +601,18 @@ const examples = [
         <input type="checkbox" :checked="editorState.ai.stepReview" @change="sendToHost({ type: 'ai:setStepReview', on: ($event.target as HTMLInputElement).checked })" />
         Review each step of a bigger task (it waits for Continue after each)
       </label>
+      <label class="budget">
+        A bigger task may use up to
+        <input
+          type="number"
+          min="0.5"
+          max="200"
+          step="0.5"
+          :value="editorState.ai.taskBudget"
+          @change="sendToHost({ type: 'ai:setTaskBudget', millions: Number(($event.target as HTMLInputElement).value) })"
+        />
+        million input tokens
+      </label>
       <p class="settings-hint">
         Small tweaks are new values for existing fields, settings and script properties. They apply right away and
         can be undone from the chat. Components, spawning, scripts, prefab edits and deletions are always reviewed.
@@ -1080,6 +1092,10 @@ h2 {
   align-items: center;
   gap: 6px;
   cursor: pointer;
+}
+.budget input {
+  width: 64px;
+  margin: 0 4px;
 }
 .settings-hint {
   margin: 0;

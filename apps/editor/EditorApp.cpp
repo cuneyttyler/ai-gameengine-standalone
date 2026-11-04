@@ -20,6 +20,7 @@
 #include "assets/TileLayerIO.h"
 #include "places/Planner.h"
 #include "editing/BuildWindow.h"
+#include "editing/Commands.h"
 #include "assets/ProjectTemplate.h"
 #include "places/OntologyEdit.h"
 #include "assets/UserLibrary.h"
@@ -797,6 +798,12 @@ bool EditorApp::HandleAiSettingsMessage(const std::string& type, const nlohmann:
         }
     } else if (type == "ai:setStepReview") {
         if (userPrefs_) userPrefs_->Set("aiStepReview", message.value("on", false));
+        post_(AiStatusJson());
+    } else if (type == "ai:setTaskBudget") {
+        // Millions of input tokens a bigger task may use before it stops.
+        if (userPrefs_ && message.contains("millions") && message["millions"].is_number()) {
+            userPrefs_->Set("aiTaskTokenBudget", std::clamp(message["millions"].get<double>(), 0.5, 200.0));
+        }
         post_(AiStatusJson());
     } else if (type == "ai:taskContinue") {
         // Review each step: the user saw the step, the task goes on.
@@ -5639,6 +5646,7 @@ nlohmann::json EditorApp::AiStatusJson() {
             {"choice", choice == AiChoice::On ? "on" : choice == AiChoice::Off ? "off" : "undecided"},
             {"reviewPolicy", ReviewPolicyName(CurrentReviewPolicy())},
             {"stepReview", userPrefs_ ? userPrefs_->Get("aiStepReview", false).get<bool>() : false},
+            {"taskBudget", userPrefs_ ? userPrefs_->Get("aiTaskTokenBudget", 10) : nlohmann::json(10)},
             {"provider", userPrefs_ ? userPrefs_->Get("aiProvider", "mistral") : nlohmann::json("mistral")},
             {"model", providerStatus_.value("model", "")},
             {"providerError", providerStatus_.value("ok", true) ? "" : (providerStatus_.contains("errors") && !providerStatus_["errors"].empty()
@@ -6876,42 +6884,13 @@ nlohmann::json EditorApp::AnimationsJson() {
 
 std::string EditorApp::MakeCharacterPrefab(const std::string& path, bool npc) {
     if (playing_) return "stop Play first";
-    RefreshAssets();
-    session_.ReloadAnimations();
-    const AnimSheet* sheet = session_.Animations().Find(path);
-    if (sheet == nullptr) return "no character sheet " + path;
-    const AssetInfo* picture = assets_.Find(sheet->texture);
-    if (picture == nullptr || picture->width == 0) return "its picture " + sheet->texture + " isn't in the project";
-    // Its first frame facing the camera, until it plays.
-    const AnimClip* idle = sheet->Clip("idle") ? sheet->Clip("idle") : sheet->clips.empty() ? nullptr : &sheet->clips.begin()->second;
-    bool flip = false;
-    const auto* frames = idle ? idle->FramesFor("s", &flip) : nullptr;
-    if (frames == nullptr || frames->empty()) return "it has no frames";
-    const AnimFrame frame = frames->front();
     std::string name = std::filesystem::path(path).filename().string();
     if (const size_t at = name.find(".character"); at != std::string::npos) name.resize(at);
     const std::string kind = npc ? "-npc" : "-player";
     std::string prefab = "prefabs/" + name + kind + ".prefab";
     for (int n = 2; prefabs_.Find(prefab) != nullptr; ++n) prefab = "prefabs/" + name + kind + "-" + std::to_string(n) + ".prefab";
-    const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
-    {
-        Registry scratch;
-        const Entity e = npc ? CreateNpc(scratch, 0.0f, 0.0f) : CreatePlayer(scratch, 0.0f, 0.0f);
-        scratch.get_or_emplace<Name>(e).value = name;
-        auto& sprite = scratch.get_or_emplace<Sprite>(e);
-        const float tw = static_cast<float>(picture->width), th = static_cast<float>(picture->height);
-        sprite.texture = sheet->texture;
-        sprite.u0 = frame.x / tw, sprite.u1 = (frame.x + frame.w) / tw, sprite.v0 = frame.y / th, sprite.v1 = (frame.y + frame.h) / th;
-        if (flip) std::swap(sprite.u0, sprite.u1);
-        sprite.height = std::max(48.0f, iso_.tileHeight * 2.0f); // about two cells tall
-        sprite.width = sprite.height * frame.w / std::max(1.0f, frame.h);
-        auto& animator = scratch.emplace_or_replace<Animator>(e);
-        animator.sheet = path;
-        animator.animator = "humanoid";
-        // Facing the camera (south on screen).
-        auto& facing = scratch.emplace_or_replace<Facing>(e);
-        facing.x = topDown ? 0.0f : 0.7071f, facing.y = topDown ? 1.0f : 0.7071f;
-        prefabs_.SaveAsPrefab(scratch, e, prefab);
+    if (std::string why = CreateCharacterPrefab(prefabs_, assets_.GetProject(), path, prefab, npc, name, iso_.tileHeight); !why.empty()) {
+        return why;
     }
     RefreshPrefabs();
     if (prefabs_.Find(prefab) == nullptr) return "the prefab wasn't made";
@@ -8806,7 +8785,13 @@ ApplyOutcome EditorApp::ApplyAccepted(const std::vector<nlohmann::json>& operati
 
 void EditorApp::StartTask(int requestId, const std::string& instruction, const nlohmann::json& firstAnswer,
                           const nlohmann::json& usage) {
-    task_ = std::make_shared<TaskRunner>(registry_, assets_.GetProject(), EngineReflection(), instruction);
+    TaskLimits limits;
+    if (userPrefs_) {
+        // The AI panel's settings: how many input tokens a bigger task may use, in millions.
+        const nlohmann::json budget = userPrefs_->Get("aiTaskTokenBudget", 10);
+        if (budget.is_number()) limits.maxInputTokens = static_cast<int>(std::clamp(budget.get<double>(), 0.5, 200.0) * 1000000.0);
+    }
+    task_ = std::make_shared<TaskRunner>(registry_, assets_.GetProject(), EngineReflection(), instruction, limits);
     taskId_ = requestId;
     proposals_[requestId] = {instruction, firstAnswer, false};
     FeedTask(firstAnswer, usage.value("inputTokens", 0));
@@ -9172,7 +9157,7 @@ std::vector<std::string> EditorApp::FilesWrittenBy(const nlohmann::json& op) con
     else if (kind == "command") {
         if (name == "script.write") out.push_back(args.value("path", ""));
         else if (name == "world.write" || name == "world.delete") out.push_back("world/" + args.value("kind", "") + "/" + args.value("id", "") + ".md");
-        else if (name == "prefab.create" || name == "prefab.createFromEntity") out.push_back("prefabs/" + args.value("name", "") + ".prefab");
+        else if (name == "prefab.create" || name == "prefab.createFromEntity" || name == "prefab.createCharacter") out.push_back("prefabs/" + args.value("name", "") + ".prefab");
         else if (name == "input.addAction" || name == "input.removeAction") out.push_back("input.json");
         else if (name == "scene.create") out.push_back("scenes/" + args.value("name", "") + ".aige");
         else if (name == "scene.setType") out.push_back(args.value("path", ""));

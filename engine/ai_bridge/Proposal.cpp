@@ -732,7 +732,7 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             return item;
         }
         item.touchesFiles = name == "script.write" || name == "prefab.createFromEntity" || name == "world.write" ||
-                            name == "world.delete" || name == "prefab.create";
+                            name == "world.delete" || name == "prefab.create" || name == "prefab.createCharacter";
         nlohmann::json args = op.value("args", nlohmann::json::object());
         std::vector<FieldValue> values;
         for (const auto& param : command->params) {
@@ -806,6 +806,11 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
             item.detail = DescribeVillage(*plan);
         } else if (name == "world.delete") {
             item.target = "World Bible · delete " + args.value("key", std::string());
+        } else if (name == "prefab.createCharacter") {
+            item.target = "New character prefabs/" + args.value("name", std::string()) + ".prefab";
+            item.detail = std::string(args.value("player", false) ? "The player" : "An NPC") +
+                          (args.value("displayName", std::string()).empty() ? std::string() : ", " + args.value("displayName", std::string())) +
+                          ", from " + args.value("sheet", std::string());
         } else if (name == "prefab.create") {
             // Shown as the prefab it will make (6.3).
             item.target = "New prefab prefabs/" + args.value("name", std::string()) + ".prefab";
@@ -827,7 +832,7 @@ ChangeItem Process(const nlohmann::json& op, Mode mode, Registry& registry, cons
                 error = result.error;
                 return item;
             }
-            if ((name == "prefab.createFromEntity" || name == "prefab.create") && outcome) {
+            if ((name == "prefab.createFromEntity" || name == "prefab.create" || name == "prefab.createCharacter") && outcome) {
                 outcome->prefabsChanged = true;
             }
             if (result.created && outcome) {

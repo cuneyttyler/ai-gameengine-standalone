@@ -18,6 +18,7 @@ from .models import (
     EditorContext,
     EngineSchema,
     FieldSpec,
+    PrefabSummary,
     Proposal,
     RemoveComponent,
     RunCommand,
@@ -108,9 +109,14 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
         errors.append('an "outline" belongs to a "task": the user approves it before the steps start')
     entities = {e.id: e for e in context.entities}
     written_scripts: set[str] = set()
+    made_prefabs: set[str] = set()  # made by an earlier operation of this answer: placed or changed after it
 
     for index, op in enumerate(proposal.operations, start=1):
         where = f"operation {index} ({op.op})"
+        if made_prefabs:
+            context = context.model_copy(update={"prefabs": list(context.prefabs) + [
+                PrefabSummary(path=p, name=p.rsplit("/", 1)[-1][:-7]) for p in made_prefabs
+                if p not in {q.path for q in context.prefabs}]})
 
         if isinstance(op, (SetField, AddComponent, RemoveComponent)):
             if op.entity not in entities:
@@ -143,6 +149,9 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
                     errors.append(f"{where}: entity {op.entity} has no {op.component}")
                 elif not component.userEditable:
                     errors.append(f"{where}: {op.component} can't be removed by hand")
+
+        elif isinstance(op, (SetPrefabField, AddPrefabComponent, RemovePrefabComponent)) and op.prefab in made_prefabs:
+            pass  # its components aren't known until it's made: the editor checks it as it applies
 
         elif isinstance(op, SetPrefabField):
             prefab = next((p for p in context.prefabs if p.path == op.prefab), None)
@@ -200,6 +209,8 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
                         errors.append(f"{where}: {op.name} needs {param.name!r}")
                     continue
                 errors += check_value(param, op.args[param.name], context, where)
+            if op.name in ("prefab.create", "prefab.createFromEntity", "prefab.createCharacter") and isinstance(op.args.get("name"), str):
+                made_prefabs.add(f"prefabs/{op.args['name']}.prefab")
             extra = set(op.args) - {p.name for p in command.params}
             if extra:
                 errors.append(f"{where}: {op.name} doesn't take {', '.join(sorted(extra))}")

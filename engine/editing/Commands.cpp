@@ -4,6 +4,10 @@
 #include "assets/SceneFiles.h"
 #include "assets/ProjectMove.h"
 #include "gameplay/InputMap.h"
+#include "gameplay/Animation.h"
+#include "gameplay/Archetypes.h"
+#include "gameplay/Settings.h"
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include "assets/Prefab.h"
 #include "assets/TextureCook.h"
@@ -81,6 +85,56 @@ bool ReplaceCopy(CommandContext& context, Entity old, const std::string& to, con
 }
 
 } // namespace
+
+std::string CreateCharacterPrefab(PrefabLibrary& prefabs, const Project& project, const std::string& sheetPath,
+                                  const std::string& prefabPath, bool npc, const std::string& displayName,
+                                  float tileHeight) {
+    if (sheetPath.rfind("assets/", 0) != 0 || sheetPath.find("..") != std::string::npos ||
+        sheetPath.size() < 10 || sheetPath.substr(sheetPath.size() - 10) != ".anim.json") {
+        return "not a character sheet path: " + sheetPath + " (assets/characters/<name>/<name>.character.anim.json)";
+    }
+    std::ifstream in(project.Resolve(sheetPath));
+    if (!in) return "no character sheet " + sheetPath;
+    nlohmann::json json = nlohmann::json::parse(in, nullptr, false);
+    std::string error;
+    auto sheet = json.is_discarded() ? std::nullopt : AnimSheetFromJson(json, sheetPath, &error);
+    if (!sheet) return sheetPath + " isn't a sheet" + (error.empty() ? "" : ": " + error);
+    float tw = static_cast<float>(sheet->textureWidth), th = static_cast<float>(sheet->textureHeight);
+    if (tw <= 0 || th <= 0) {
+        auto picture = DecodeImage(project.Resolve(sheet->texture));
+        if (!picture || picture->width == 0) return "its picture " + sheet->texture + " can't be read";
+        tw = static_cast<float>(picture->width), th = static_cast<float>(picture->height);
+    }
+    // Its first frame facing the camera, until it plays.
+    const AnimClip* idle = sheet->Clip("idle") ? sheet->Clip("idle") : sheet->clips.empty() ? nullptr : &sheet->clips.begin()->second;
+    bool flip = false;
+    const auto* frames = idle ? idle->FramesFor("s", &flip) : nullptr;
+    if (frames == nullptr || frames->empty()) return sheetPath + " has no frames";
+    const AnimFrame frame = frames->front();
+    std::string name = displayName;
+    if (name.empty()) {
+        name = std::filesystem::path(sheetPath).filename().string();
+        if (const size_t at = name.find(".character"); at != std::string::npos) name.resize(at);
+    }
+    const bool topDown = ActiveSettings().grid.style == GridStyle::TopDown;
+    Registry scratch;
+    const Entity e = npc ? CreateNpc(scratch, 0.0f, 0.0f) : CreatePlayer(scratch, 0.0f, 0.0f);
+    scratch.get_or_emplace<Name>(e).value = name;
+    auto& sprite = scratch.get_or_emplace<Sprite>(e);
+    sprite.texture = sheet->texture;
+    sprite.u0 = frame.x / tw, sprite.u1 = (frame.x + frame.w) / tw, sprite.v0 = frame.y / th, sprite.v1 = (frame.y + frame.h) / th;
+    if (flip) std::swap(sprite.u0, sprite.u1);
+    sprite.height = std::max(48.0f, tileHeight * 2.0f); // about two cells tall
+    sprite.width = sprite.height * frame.w / std::max(1.0f, frame.h);
+    auto& animator = scratch.emplace_or_replace<Animator>(e);
+    animator.sheet = sheetPath;
+    animator.animator = "humanoid";
+    auto& facing = scratch.emplace_or_replace<Facing>(e); // facing the camera (south on screen)
+    facing.x = topDown ? 0.0f : 0.7071f, facing.y = topDown ? 1.0f : 0.7071f;
+    if (!prefabs.SaveAsPrefab(scratch, e, prefabPath, &error)) return error.empty() ? "the prefab wasn't made" : error;
+    prefabs.Refresh();
+    return {};
+}
 
 void RegisterEditingCommands(ReflectionRegistry& r) {
     if (r.FindCommand("scene.spawn") != nullptr) {
@@ -262,6 +316,38 @@ void RegisterEditingCommands(ReflectionRegistry& r) {
             }
             if (std::string error = CreatePrefabFromPlan(*context.prefabs, plan, iso); !error.empty()) {
                 return Fail(error);
+            }
+            return {};
+        });
+
+    r.Command("prefab.createCharacter",
+              "Makes a character prefab (an NPC, or the player) from a character sheet "
+              "(assets/characters/<name>/<name>.character.anim.json, as \"generate\" makes them): its picture facing "
+              "the camera, animated by its clips (idle, walk...), about two cells tall. Use this, not prefab.create, "
+              "for anyone who walks or talks. Saved as prefabs/<name>.prefab; then place copies with scene.spawn.")
+        .Param("sheet", FieldType::String, "The character sheet, e.g. assets/characters/nella-voss/nella-voss.character.anim.json "
+                                           "(or \"character:<name>\" for one generated in this answer).")
+        .Param("name", FieldType::String, "Prefab path under prefabs/, without .prefab: letters, digits, - _ and /.")
+        .Param("player", FieldType::Bool, "true: the player; left out: an NPC (the usual).").Optional()
+        .Param("displayName", FieldType::String, "Their name (Name), e.g. Nella Voss; left out = from the sheet.").Optional()
+        .Run([](CommandContext& context, const std::vector<FieldValue>& args) -> CommandResult {
+            if (context.prefabs == nullptr || context.project == nullptr) {
+                return Fail("prefabs aren't available here");
+            }
+            const std::string name = ToString(args[1]);
+            for (char c : name) {
+                if (!std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_' && c != '/') {
+                    return Fail("prefab names can use letters, digits, -, _ and /");
+                }
+            }
+            if (name.empty() || name.find("..") != std::string::npos || name.front() == '/') {
+                return Fail("a prefab needs a name");
+            }
+            if (std::string why = CreateCharacterPrefab(*context.prefabs, *context.project, ToString(args[0]),
+                                                        "prefabs/" + name + ".prefab", !ToBool(args[2]), ToString(args[3]),
+                                                        BootstrapIso().tileHeight);
+                !why.empty()) {
+                return Fail(why);
             }
             return {};
         });

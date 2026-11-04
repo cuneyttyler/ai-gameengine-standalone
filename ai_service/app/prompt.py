@@ -211,7 +211,11 @@ POPULATING A PLACE ("put people in each house", "make this village's story"): a 
   smith"), and two people's lines agree. A hook or two can point to a quest, but write the quest only if asked.
 - A new look for someone: "generate" a character (at most four characters and four animations an answer, e.g. four
   people and their walks) and use "character:<name>" in the same answer's operations (the prefab, placing them);
-  in a task, a few people a step. Otherwise reuse a character prefab
+  in a task, a few people a step. A person's prefab: prefab.createCharacter {"sheet": their character sheet
+  (assets/characters/<name>/<name>.character.anim.json, or "character:<name>"), "name": "<name>-npc",
+  "displayName": "<Their Name>"}: complete and animated in one operation, then scene.spawn it. Never prefab.create
+  for a person (a flat prop of the whole sheet) and never animate a character's picture (its sheet has the clips:
+  "generate" an animation with target "character:<name>" or the sheet to add one, e.g. walk). Otherwise reuse a character prefab
   (set Sprite or a different prefab per person so they don't all look the same, if the project has several).
 - Optional, when asked or clearly wanted: their day (Routine, see ROUTINES: home, work, the tavern at night).
 - When the project has a plan (context "plan"), say in notes that the Planner's documents can take the new people.
