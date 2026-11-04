@@ -659,6 +659,12 @@ def create_app(
                     continue
                 try:
                     if g.kind == "character":
+                        # Someone already drawn (by an earlier step or attempt) is used as is, not drawn and paid again.
+                        slug = re.sub(r"[^a-z0-9-]+", "-", g.name.lower()).strip("-")[:40] or "character"
+                        existing = f"assets/characters/{slug}/{slug}.character.anim.json"
+                        if not g.new and state["root"] is not None and (state["root"] / existing).is_file():
+                            made[key] = existing
+                            continue
                         answer = characters_generate(CharacterRequest(name=g.name, description=g.description or g.name,
                                                                       directions=8 if g.directions >= 8 else 4, isometric=True))
                         if answer.get("ok"):
@@ -676,6 +682,14 @@ def create_app(
                         failed[key] = "no target: \"character:<name>\" or a sheet or picture path"
                         continue
                     if target.endswith(".character.anim.json"):
+                        # A sheet that already has this clip keeps it.
+                        try:
+                            clips = json.loads((state["root"] / target).read_text(encoding="utf-8")).get("clips", {})
+                        except (OSError, ValueError, TypeError):
+                            clips = {}
+                        if not g.new and (g.action or "walk") in clips:
+                            made[key] = target
+                            continue
                         answer = characters_animate(CharacterAnimateRequest(sheet=target, action=g.action or "walk",
                                                                             description=g.description))
                     else:

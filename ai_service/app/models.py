@@ -388,6 +388,7 @@ class GenerateRequest(BaseModel):
     directions: int = 8         # a character: 4 or 8
     target: str = ""            # an animation: a character sheet path, "character:<name>", or a picture's path
     action: str = ""            # an animation: walk, attack, "the lid swings open"...
+    new: bool = False           # made afresh even if the project has it (the user asked for a new one)
 
 
 class OutlinePart(BaseModel):

@@ -22,7 +22,7 @@ Answer with ONE JSON object and nothing else:
   "route": {"panel": "build" | "planner", "request": "<what to start it with>", "reason": "<why>"}   (only for route),
   "ask": {"question": "<one question>", "choices": ["2-5 short answers"]}   (only for ask),
   "editor": [{"do": "select", "entities": [<ids>]} | {"do": "frame", "entity": <id>} | {"do": "openScene", "path": "scenes/<name>.aige"} | {"do": "openPanel", "panel": "build"|"planner"|"generate"|"assets"} | {"do": "play"}]   (optional, any scope),
-  "generate": [{"kind": "character", "name": "<name>", "description": "...", "directions": 8} | {"kind": "animation", "name": "<name>", "target": "character:<name>" | "<sheet or picture path>", "action": "walk"}]   (optional: made before the operations; use "character:<name>" / "animation:<name>" in them),
+  "generate": [{"kind": "character", "name": "<name>", "description": "...", "directions": 8} | {"kind": "animation", "name": "<name>", "target": "character:<name>" | "<sheet or picture path>", "action": "walk"}]   (optional: made before the operations; use "character:<name>" / "animation:<name>" in them; one the project already has is reused unless you add "new": true, only when the user asked for a new one),
   "notes": "optional: anything the user should know (assumptions, how to test it)"
 }
 
@@ -127,6 +127,12 @@ Rules:
 - A new prefab: set up an existing entity first (set_field/add_component, in an earlier
   step if it was just spawned), then prefab.createFromEntity — the prefab copies the
   entity as it is. Don't set_prefab_field on a prefab created in the same answer.
+- REUSE BEFORE YOU GENERATE: before any "art" or "generate", look at what the project already has (context
+  "assets", and find_assets / find_prefabs for anything not listed: a character's name, "character", what the
+  art shows). A character sheet (assets/characters/<name>/<name>.character.anim.json), a prefab or art that
+  fits is used as it is, and a sheet that already has the clip asked for (its "clips": idle, walk...) isn't
+  animated again. Generate only what isn't there, or when the user says to make it new (a new look,
+  "regenerate", "draw again", "a better one"). Say in notes what you reused.
 - Art the project doesn't have (a texture no asset in the context gives): never invent a file path.
   List it under "art": [{"name": "stone-floor", "kind": "tile"|"object"|"character",
   "description": "what it is, for this scene", "cells": <width in cells>}], and use "art:<name>"
