@@ -378,6 +378,42 @@ def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorC
         if isinstance(value, str) and value and value not in dialogues:
             errors.append(f"operation {index} ({op.op}): dialogue {value!r} doesn't exist and isn't written here")
 
+    # A dialogue written here is started by something: a Talk (on a thing or a prefab, here or already), a script or an
+    # effect naming it. Written and given to nobody, no "Talk to" ever shows (the people placed but left mute).
+    started = set()
+    for e in context.entities:
+        talk = e.components.get("Talk") or {}
+        if talk.get("dialogue"):
+            started.add(str(talk["dialogue"]))
+    for p in context.prefabs:
+        talk = p.components.get("Talk") or {}
+        if talk.get("dialogue"):
+            started.add(str(talk["dialogue"]))
+    for op in proposal.operations:
+        if isinstance(op, AddComponent) and op.component == "Talk":
+            started.add(str(op.fields.get("dialogue", "")))
+        elif isinstance(op, (SetField, SetPrefabField)) and op.component == "Talk" and op.field == "dialogue":
+            started.add(str(op.value))
+    def slug(text: str) -> str:
+        text = str(text or "").rsplit("/", 1)[-1].removesuffix(".json")
+        return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+    # Its character, by name (the dialogue's id or speaker key: dialogue/vara-bell.json, character/vara_bell, "Vara
+    # Bell"): one in the scene or a prefab with no Talk, nor given one here, has been left mute.
+    mute = {slug(e.name): e.name for e in context.entities if e.name and "Talk" not in e.components}
+    mute.update({slug(p.name): p.name for p in context.prefabs if "Talk" not in p.components})
+    everything = json.dumps([op.model_dump() for op in proposal.operations if not isinstance(op, WriteDialogue)])
+    for index, op in enumerate(proposal.operations, start=1):
+        if not isinstance(op, WriteDialogue):
+            continue
+        path = f"dialogue/{op.id}.json"
+        speaker = op.dialogue.get("speaker", "") if isinstance(op.dialogue, dict) else ""
+        who = mute.get(slug(op.id)) or mute.get(slug(speaker)) or mute.get(slug(op.id) + "-resident")
+        if who and path not in started and path not in everything:
+            errors.append(f"operation {index} (write_dialogue {op.id}): {who} has no Talk, so no \"Talk to\" shows: add "
+                          f"add_component Talk {{\"dialogue\": \"{path}\", \"character\": \"{speaker or '<World Bible key>'}\"}} "
+                          f"on {who} (its prefab: set_prefab_field, so every copy talks)")
+
     # A script attached in this proposal must exist or be written by it.
     known_scripts = set(context.scripts) | written_scripts
     for index, op in enumerate(proposal.operations, start=1):

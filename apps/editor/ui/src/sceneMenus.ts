@@ -139,6 +139,8 @@ function groundMenu(cell: [number, number], brush: string): MenuItem[] {
     },
     // High ground: characters walk between heights only where a ramp is (stairs, a slope, a ladder); elsewhere a cliff.
     { label: 'Ramp here (walk between heights)', action: () => sendToHost({ type: 'scene:rampHere', gx: cell[0], gy: cell[1] }) },
+    // Dialogues written but given to nobody (no Talk): each given to its character by name, so "Talk to" shows.
+    { label: 'Connect dialogues to characters', action: () => sendToHost({ type: 'dialogue:connect' }) },
     separator,
     { label: 'Frame scene', shortcut: keyLabel('view.frame'), action: () => sendToHost({ type: 'view:frame' }) },
   ]

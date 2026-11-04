@@ -951,7 +951,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     if (HandleInteriorMessage(type, message)) return; // interiors (docs/places/interiors.md): the viewport's, the Assets panel's, the Build panel's
     if (type.rfind("interiorParts:", 0) == 0 && HandleInteriorPartsMessage(type, message)) return; // Animate the interior (InteriorAnimate.cpp)
     if (type.rfind("path:", 0) == 0 && HandlePathMessage(type, message)) return; // paths characters follow (PathTool.cpp)
-    if ((type.rfind("lookups:", 0) == 0 || type == "script:read" || type == "script:save" || type.rfind("marker:", 0) == 0) &&
+    if ((type.rfind("lookups:", 0) == 0 || type == "script:read" || type == "script:save" || type.rfind("marker:", 0) == 0 || type == "dialogue:connect") &&
         HandleListsMessage(type, message)) {
         return; // pickers' lists, the script editor, markers (EditorLists.cpp)
     }
