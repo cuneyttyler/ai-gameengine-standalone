@@ -65,16 +65,16 @@ const char* kTemplates = R"JSON({
   "approach-player": {"type": "talk-to-player", "dialogue": "@data:dialogue"},
   "script": {"type": "script", "script": "@data:script"},
   "use-part": {"type": "loop", "children": [{"type": "selector", "children": [
-      {"type": "sequence", "children": [{"type": "use-part", "part": "@data:action", "around": "@location", "radius": "@data:radius",
+      {"type": "sequence", "children": [{"type": "use-part", "part": "@data:action", "parts": "@data:actions", "around": "@location", "radius": "@data:radius",
                                            "seconds": "@data:duration"},
                                           {"type": "wait", "min": 2, "max": 5}]},
       {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "wait", "seconds": 6}]}]}]},
-  "live": {"type": "loop", "children": [{"type": "random", "weights": [3, 2, 1], "children": [
+  "live": {"type": "loop", "children": [{"type": "random", "weights": [3, 2, "@actionsWeight"], "children": [
       {"type": "sequence", "children": [{"type": "wander", "around": "@location", "radius": "@data:radius"},
                                           {"type": "wait", "min": 2, "max": 6}]},
       {"type": "sequence", "children": [{"type": "wander", "around": "@location", "inside": true},
                                           {"type": "wait", "min": 2, "max": 6}]},
-      {"type": "selector", "children": [{"type": "use-part", "part": "@data:action", "around": "@location", "radius": 15,
+      {"type": "selector", "children": [{"type": "use-part", "part": "@data:action", "parts": "@data:actions", "around": "@location", "radius": 15,
                                            "seconds": "@data:duration"},
                                           {"type": "wait", "seconds": 2}]}]}]},
   "tend": {"type": "loop", "children": [{"type": "selector", "children": [
@@ -629,12 +629,35 @@ struct Run {
         if (type == "random") {
             if (!ns.contains("pick")) {
                 const nlohmann::json weights = node.params.value("weights", nlohmann::json::array());
+                // A weight: a number, "@data:<name>" (the package's), or "@actionsWeight" (its actions' weights together:
+                // how often live uses something; a single action counts 1, none 0).
+                auto weightAt = [&](size_t i) -> float {
+                    if (i >= weights.size()) return 1.0f;
+                    const nlohmann::json& w = weights[i];
+                    if (w.is_number()) return std::max(0.0f, w.get<float>());
+                    if (!w.is_string() || !package) return 1.0f;
+                    const std::string spec = w.get<std::string>();
+                    const nlohmann::json data = package->value("data", nlohmann::json::object());
+                    if (spec == "@actionsWeight") {
+                        float sum = 0.0f;
+                        for (const auto& a : data.value("actions", nlohmann::json::array())) {
+                            sum += a.is_object() ? std::max(0.0f, a.value("weight", 1.0f)) : 1.0f;
+                        }
+                        if (sum <= 0.0f && !data.value("action", std::string()).empty()) sum = 1.0f;
+                        return sum;
+                    }
+                    if (spec.rfind("@data:", 0) == 0) {
+                        const nlohmann::json v = data.value(spec.substr(6), nlohmann::json());
+                        return v.is_number() ? std::max(0.0f, v.get<float>()) : 1.0f;
+                    }
+                    return 1.0f;
+                };
                 float total = 0.0f;
-                for (size_t i = 0; i < node.children.size(); ++i) total += i < weights.size() ? weights[i].get<float>() : 1.0f;
+                for (size_t i = 0; i < node.children.size(); ++i) total += weightAt(i);
                 float roll = Randf(ctx.rng, 0.0f, total);
                 int pick = 0;
                 for (size_t i = 0; i < node.children.size(); ++i) {
-                    roll -= i < weights.size() ? weights[i].get<float>() : 1.0f;
+                    roll -= weightAt(i);
                     if (roll <= 0.0f) {
                         pick = static_cast<int>(i);
                         break;
@@ -916,9 +939,54 @@ struct Run {
             // turned on that's still on (used again to shut, no duration) is turned off unless `leaveOn`.
             if (!ctx.findPart || !ctx.usePart) return AiStatus::Failure;
             if (!ns.contains("owner")) {
-                const std::string name = Str(node, "part", Str(node, "action"));
+                // Which part: "part" (one name), or one of "parts" (a list, or names with commas) at random, the others
+                // tried when it isn't there.
+                std::vector<std::string> names;
+                std::vector<float> weights;
+                const nlohmann::json many = Param(node, "parts", nlohmann::json());
+                if (many.is_array()) {
+                    // Each a name, or {action, weight}: the first tried is drawn by weight, the rest after it.
+                    for (const auto& n : many) {
+                        const std::string name = n.is_string() ? n.get<std::string>() : n.is_object() ? n.value("action", std::string()) : std::string();
+                        if (name.empty()) continue;
+                        names.push_back(name);
+                        weights.push_back(n.is_object() ? std::max(0.0f, n.value("weight", 1.0f)) : 1.0f);
+                    }
+                } else if (many.is_string()) {
+                    std::stringstream list(many.get<std::string>());
+                    for (std::string n; std::getline(list, n, ',');) {
+                        n.erase(0, n.find_first_not_of(' '));
+                        n.erase(n.find_last_not_of(' ') + 1);
+                        if (!n.empty()) names.push_back(n);
+                    }
+                }
+                if (const std::string one = Str(node, "part", Str(node, "action")); !one.empty()) names.push_back(one);
+                weights.resize(names.size(), 1.0f);
+                // A weighted order: each next one drawn by weight from those left.
+                std::vector<std::string> order;
+                while (!names.empty()) {
+                    float total = 0.0f;
+                    for (float w : weights) total += w;
+                    size_t pick = names.size() - 1;
+                    if (total > 0.0f) {
+                        float r = Randf(ctx.rng, 0.0f, total);
+                        for (size_t i = 0; i < names.size(); ++i) {
+                            if ((r -= weights[i]) <= 0.0f) {
+                                pick = i;
+                                break;
+                            }
+                        }
+                    }
+                    order.push_back(names[pick]);
+                    names.erase(names.begin() + static_cast<std::ptrdiff_t>(pick));
+                    weights.erase(weights.begin() + static_cast<std::ptrdiff_t>(pick));
+                }
+                names = order;
                 const auto around = Point(Str(node, "around", "@location")).value_or(std::pair{At().x, At().y});
-                const auto found = ctx.findPart(actor, name, around.first, around.second, Num(node, "radius", 12.0f));
+                std::optional<AiContext::PartRef> found;
+                for (const auto& name : names) {
+                    if ((found = ctx.findPart(actor, name, around.first, around.second, Num(node, "radius", 12.0f)))) break;
+                }
                 if (!found) return AiStatus::Failure;
                 ns["owner"] = static_cast<uint32_t>(found->owner);
                 ns["index"] = found->index;

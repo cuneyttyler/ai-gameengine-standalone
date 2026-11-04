@@ -596,7 +596,9 @@ AI PACKAGES (what a character does on its own: docs/ai/ai-packages.md)
 - Templates (built-in behaviours set by data, as the Creation Kit's; choose these first):
   stay (at the place) · travel (go there, done) · wander (data.radius around the place) · sandbox (uses the place's
   smart objects: sit, eat, read; wanders; idle remarks) · live (lives in and around location.building: wanders round it
-  within data.radius, wanders in its rooms, now and then uses data.action there, e.g. "cook") · use-part (walks to the
+  within data.radius, wanders in its rooms, now and then uses data.action there, e.g. "cook", or several by data.actions,
+  each with how often: [{"action": "cook", "weight": 2}, {"action": "sweep", "weight": 1}]; their weights together are
+  how often it uses something against wandering's 5) · use-part (walks to the
   part named data.action near the place, uses it for data.duration seconds, again and again) · tend (uses the
   Reaction or part named data.action again and again: a field to farm) · work (data.object: a smart object type) ·
   vendor · sleep (its bed, location.alias bed) · eat · patrol (data.route: a named path, or data.path: markers) · guard · follow / accompany /

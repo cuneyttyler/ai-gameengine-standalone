@@ -13,7 +13,7 @@ DECORATORS = {"invert", "condition", "cooldown"}
 # Leaf steps and what each needs (one of the keys, when a list).
 LEAVES: dict[str, list[str]] = {
     "move-to": ["to"], "wander": [], "wait": [], "idle": [], "face": [], "say": ["text"], "bark": ["text"],
-    "use-object": [], "use-part": ["part", "action"], "act": ["action"], "play": ["clip"], "talk-to-player": [],
+    "use-object": [], "use-part": ["part", "action", "parts"], "act": ["action"], "play": ["clip"], "talk-to-player": [],
     "follow": [], "flee": [], "patrol": ["points"], "ambush": [], "escort": [], "set": [], "emit": ["event"],
     "script": ["script"], "follow-path": ["path"],
 }
@@ -101,6 +101,8 @@ def check_package(package_id: str, record: dict, where: str, scripts: set[str], 
     if tree is not None:
         errors += check_procedure(tree, where)
     need = NEEDS_DATA.get(template)
+    if need == "action" and data.get("actions"):
+        need = None  # several things it uses instead of one
     if template == "patrol" and not data.get("path") and not data.get("route"):
         errors.append(f"{where}: template patrol needs data.route (a named path) or data.path (markers)")
     if need and not data.get(need):

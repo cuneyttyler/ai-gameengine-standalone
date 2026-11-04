@@ -752,6 +752,22 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                  OnlyWhen(PickedFrom(MakeRecordValue("action", FieldType::String, "What it uses: an animated part's or a Reaction's name: "
                                                                                   "its input action, station, clip or event (cook)"), "uses"),
                           "template", {"live", "use-part", "tend", "custom"}),
+                 OnlyWhen([] {
+                     // Several things it uses, each with how often: chosen by weight, and (live) their weights together
+                     // against wandering (round the place 3, in its rooms 2).
+                     RecordField action = PickedFrom(MakeRecordValue("action", FieldType::String, "A part's or a Reaction's name (cook)"), "uses");
+                     RecordField weight = MakeRecordValue("weight", FieldType::Float, "How often: 1 as often as the others, 2 twice as often "
+                                                                                     "(live: against wandering's 5)");
+                     weight.min = 0;
+                     weight.defaultValue = 1.0;
+                     RecordField uses;
+                     uses.name = "actions";
+                     uses.description = "Or several things it uses, each with how often (cook 2, sweep 1, read 1)";
+                     uses.kind = RecordFieldKind::Object;
+                     uses.fields = {action, weight};
+                     uses.list = true;
+                     return uses;
+                 }(), "template", {"live", "use-part", "custom"}),
                  OnlyWhen(MakeRecordValue("object", FieldType::String, "A smart object type (counter, forge, desk)"), "template",
                           {"work", "use-object", "custom"}),
                  OnlyWhen(PickedFrom(MakeRecordValue("dialogue", FieldType::String, "A dialogue file"), "dialogues"), "template",
