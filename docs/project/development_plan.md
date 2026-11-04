@@ -3036,6 +3036,60 @@ In this order:
 
 ---
 
+## Phase 29 — Actions anyone can do (`docs/systems/actions.md`)
+
+**Status (2026-11-04): planned.** Today a part or a thing's Action on an input action ("pull", "cook") answers only
+the player's key; NPCs can set off a part only by coming near an "auto" one or by a script sending an "event" part's
+event, from anywhere, with no one standing at it. Here the project's input actions become **verbs any character can
+do**: the player by a key, an NPC when its behaviour, a script or a dialogue says so. What answers "cook" doesn't care
+who cooked.
+
+**What doing an action is**: what the player pressing its key there does, done by the NPC.
+
+- its clip on the NPC (`plays`: the baker stirs), its effect on the NPC, its event sent with the NPC as its source
+  (quests and scripts see who did it);
+- the nearest part or Action within range that answers it is activated: opens, plays, runs its `do`;
+- `nearOnly` and `group` as for the player: only near a target, the nearest of a shared key's targets.
+
+**Not for NPCs**: what only the player can mean.
+
+- an action's `screen` (inventory, journal), axis actions, actions of the dialogue, menu or cutscene context;
+- the engine's own: moving and attacking (NPCs move and fight by their own AI), pause, and interact with chests and
+  pickups (what they give goes to the player's pockets).
+
+**How NPCs come to do one**:
+
+- **Behaviour**: a `perform` step for packages ("go to the oven, do *cook* for 10 seconds"): the NPC walks to the
+  nearest thing answering that action (or a marker named), does it, and stays the time given. A package template
+  `perform` built on it, so a work package can be "cook at the oven in the morning, sell at the counter after".
+- **Scripts and story**: Lua `perform(action, who?)`; a `perform` effect in dialogue, rules and quests
+  (`{"op": "perform", "action": "pull", "who": "Bren"}`): a dialogue choice "Lower the bridge" sends Bren to the lever.
+
+**Parts**:
+
+- one at a time: an NPC waits while the player has a part active, and the other way round;
+- their `do` runs for NPCs too, with the NPC as who (effects that give already go to whoever runs them); a part's
+  "player only" switch keeps it the player's ("only the player gets the bread");
+- doors unchanged: NPCs already open them as they pass.
+
+**The AI panel**: the prompt learns `perform` (the step, the effect, the Lua call) and the part's "player only"
+switch, so "make the baker use the oven every morning" or "Bren lowers the bridge when asked" work; the populate
+outline (docs/ai/agent.md) can give people a working day at their building's parts. Its checks: an action performed
+exists and isn't one of the player-only kinds; something in the scene answers it.
+
+In this order:
+
+1. **The runtime**: `Perform(who, action)` in GameSession, the player's key path going through it too (one code path:
+   clip, effect, event, the nearest part or Action); parts' one user at a time; "player only".
+2. **Lua and effects**: `perform()`, the `perform` effect (`who`: a name, empty the one it runs on).
+3. **Behaviour**: the `perform` step and package template; the editor's package form picks the action from the input
+   actions, the target from the scene.
+4. **Inspector**: the part's and the Action's "player only"; the input action's page says which NPCs' packages do it.
+5. **The AI panel**: prompt, checks, examples; tests (an NPC cooks at a stove part; a dialogue sends one to a lever;
+   a player-only part ignores NPCs; two users wait their turn).
+
+---
+
 ## Later
 
 Phases after 5 are planned as development goes (2026-10-17): each new phase is written
