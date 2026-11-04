@@ -18,8 +18,8 @@ namespace aige {
 namespace {
 
 constexpr int kStartupTimeoutSeconds = 45; // first launch may need uv to set up the environment
-constexpr int kProposeTimeoutSeconds = 3600; // a thinking model can take minutes with its retries, and an answer that draws
-                                             // and animates four people (generate) half an hour
+constexpr int kProposeTimeoutSeconds = 5 * 3600; // a thinking model can take minutes with its retries, and an answer that draws
+                                                 // and animates people (generate) can take hours
 
 nlohmann::json Failure(const std::string& message) {
     return {{"ok", false}, {"errors", nlohmann::json::array({message})}};
