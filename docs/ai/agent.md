@@ -13,7 +13,7 @@ One JSON object a turn (`ai_service/app/prompt.py` OUTPUT_FORMAT, `models.py` Pr
 | `small` | its operations, reviewed and applied (most requests) |
 | `task` | step by step on a working copy (`TaskRunner`, up to 20 steps), each applied, played, its results sent back; the whole reviewed at the end |
 | `split` | too big: smaller requests; **Do them all, step by step** runs them as one task |
-| `tools` | it reads or looks first: the editor runs its `tools` and asks again with the results (up to 8 rounds) |
+| `tools` | it reads or looks first: the editor runs its `tools` and asks again with the results and every earlier round's lookups (up to 8 rounds; the last is told to answer with what it has) |
 | `route` | another panel's work — a NEW place from nothing (Build) or a whole game from a brief (Planner): a card opens that panel with the request filled in. Everything about a place or plan that already exists stays here, however big |
 | `ask` | unclear: one question with 2–5 answers to click (or the user answers in words) |
 

@@ -584,6 +584,9 @@ private:
     std::map<int, std::string> requestInstructions_;
     // The AI panel as an agent (docs/ai/agent.md): how many rounds of tools a request has had (capped), and running them.
     std::map<int, int> toolRounds_;
+    // The lookups so far in a request's chain of tool rounds (what it asked, what came back), carried to each next
+    // round: without them it forgot round 1 by round 3 and asked again until the cap.
+    std::map<int, nlohmann::json> toolTrail_;
     bool taskPaused_ = false; // a task waiting at a step for the user's Continue (Review each step)
     // Animate a part (docs/assets/animations.md §4): the request in flight and what it's for.
     int partRequest_ = 0;

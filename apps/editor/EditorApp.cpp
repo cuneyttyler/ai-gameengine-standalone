@@ -8617,6 +8617,7 @@ void EditorApp::OnProposal(int requestId, const nlohmann::json& body) {
         return;
     }
     toolRounds_.erase(requestId);
+    toolTrail_.erase(requestId);
     // No one to answer a question or take a card: reported on the result page.
     if (feature && (scope == "route" || scope == "ask" || scope == "split")) {
         FinishPlannerFeature("failed: the AI " + std::string(scope == "route" ? "sent it to another panel"
@@ -8879,6 +8880,19 @@ void EditorApp::AnswerTaskOutline(const std::string& changes) {
     post_({{"type", "ai:busy"}, {"busy", true}});
 }
 
+namespace {
+
+constexpr int kMaxToolRounds = 8; // rounds of tools a request (or a task's step) may have before it must answer
+
+// Told on the last round it may look: answer with what it has.
+std::string LastToolRoundNote(int rounds) {
+    return rounds >= kMaxToolRounds ? "\nThat was your last lookup: answer now with what you have (operations, or a "
+                                      "task's step), and no more tools."
+                                    : "";
+}
+
+} // namespace
+
 void EditorApp::OnTaskAnswer(const nlohmann::json& body) {
     if (!body.value("ok", false) || !body.contains("proposal") || body["proposal"].is_null()) {
         const std::string reason = FailureText(body, "The AI couldn't produce the next step.");
@@ -8893,21 +8907,44 @@ void EditorApp::OnTaskAnswer(const nlohmann::json& body) {
         return;
     }
     const nlohmann::json& answer = body["proposal"];
-    if (answer.value("scope", "") == "tools" && task_ && Ai() != nullptr && toolRounds_[taskRequestId_] < 8) {
-        // Something to read first, mid-task: the results go back with the task's next instruction.
+    if (answer.value("scope", "") == "tools" && task_ && Ai() != nullptr && toolRounds_[taskRequestId_] < kMaxToolRounds) {
+        // Something to read first, mid-task: the results go back with the task's next instruction (and the
+        // step's earlier lookups, so it doesn't ask for them again).
         AiToolContext tools{registry_, EngineReflection(), prefabs_, assets_, assets_.GetProject(), &world_};
         std::vector<nlohmann::json> results;
         nlohmann::json names = nlohmann::json::array();
-        for (const auto& call : answer.value("tools", nlohmann::json::array())) {
+        const nlohmann::json calls = answer.value("tools", nlohmann::json::array());
+        for (const auto& call : calls) {
             results.push_back(RunAiTool(call.value("tool", ""), call.value("args", nlohmann::json::object()), tools));
             names.push_back(call.value("tool", ""));
         }
-        post_({{"type", "ai:tools"}, {"id", taskId_}, {"tools", names}});
+        post_({{"type", "ai:tools"}, {"id", taskId_}, {"tools", names}, {"calls", calls}, {"round", toolRounds_[taskRequestId_] + 1}});
         const int rounds = toolRounds_[taskRequestId_] + 1;
+        nlohmann::json trail = toolTrail_.contains(taskRequestId_) ? toolTrail_[taskRequestId_] : nlohmann::json::array();
         toolRounds_.erase(taskRequestId_);
-        taskRequestId_ = Ai()->Propose(task_->NextInstruction() + "\n\n" + AiToolResultsMessage(answer.value("tools", nlohmann::json::array()), results),
-                                       task_->Context(assets_), task_->History());
+        toolTrail_.erase(taskRequestId_);
+        nlohmann::json history = task_->History();
+        for (const auto& turn : trail) history.push_back(turn);
+        history.push_back({{"role", "assistant"}, {"content", answer.dump()}});
+        const std::string resultsText = AiToolResultsMessage(calls, results);
+        taskRequestId_ = Ai()->Propose(task_->NextInstruction() + "\n\n" + resultsText + LastToolRoundNote(rounds),
+                                       task_->Context(assets_), history);
+        trail.push_back({{"role", "assistant"}, {"content", answer.dump()}});
+        trail.push_back({{"role", "user"}, {"content", resultsText}});
         toolRounds_[taskRequestId_] = rounds;
+        toolTrail_[taskRequestId_] = trail;
+        return;
+    }
+    toolRounds_.erase(taskRequestId_);
+    toolTrail_.erase(taskRequestId_);
+    if (answer.value("scope", "") == "tools") {
+        // Still only asking after the last round: nothing to apply from this step.
+        if (task_ && !task_->Steps().empty()) {
+            task_->GiveUp("The AI kept asking to look things up without making the next step.");
+            FinishTask();
+        } else {
+            StopTask(taskId_, "The AI kept asking to look things up without answering; ask again, more precisely.");
+        }
         return;
     }
     FeedTask(answer, body.value("usage", nlohmann::json::object()).value("inputTokens", 0));
@@ -8915,8 +8952,10 @@ void EditorApp::OnTaskAnswer(const nlohmann::json& body) {
 
 void EditorApp::RunAiTools(int requestId, const std::string& instruction, const nlohmann::json& proposal) {
     const int rounds = toolRounds_[requestId] + 1;
+    nlohmann::json trail = toolTrail_.contains(requestId) ? toolTrail_[requestId] : nlohmann::json::array();
     toolRounds_.erase(requestId);
-    if (rounds > 8 || Ai() == nullptr) {
+    toolTrail_.erase(requestId);
+    if (rounds > kMaxToolRounds || Ai() == nullptr) {
         post_({{"type", "ai:message"}, {"role", "error"}, {"text", "The AI kept asking to look things up without answering; ask again, more precisely."}});
         return;
     }
@@ -8979,7 +9018,7 @@ void EditorApp::RunAiTools(int requestId, const std::string& instruction, const 
         results.push_back(RunAiTool(call.value("tool", ""), call.value("args", nlohmann::json::object()), tools));
         names.push_back(call.value("tool", ""));
     }
-    post_({{"type", "ai:tools"}, {"id", requestId}, {"tools", names}});
+    post_({{"type", "ai:tools"}, {"id", requestId}, {"tools", names}, {"calls", calls}, {"round", rounds}});
     // Asked again with what came back: the request, its context afresh, the turns so far and this lookup.
     ContextOptions options;
     options.selection = selected_;
@@ -8989,10 +9028,15 @@ void EditorApp::RunAiTools(int requestId, const std::string& instruction, const 
     nlohmann::json history = nlohmann::json::array();
     const size_t first = conversation_.size() > 8 ? conversation_.size() - 8 : 0;
     for (size_t i = first; i < conversation_.size(); ++i) history.push_back({{"role", conversation_[i].first}, {"content", conversation_[i].second}});
+    for (const auto& turn : trail) history.push_back(turn); // the earlier rounds' lookups and what came back
     history.push_back({{"role", "assistant"}, {"content", proposal.dump()}});
-    const int id = Ai()->Propose(instruction + "\n\n" + AiToolResultsMessage(calls, results), context, history, pictures);
+    const std::string resultsText = AiToolResultsMessage(calls, results);
+    const int id = Ai()->Propose(instruction + "\n\n" + resultsText + LastToolRoundNote(rounds), context, history, pictures);
+    trail.push_back({{"role", "assistant"}, {"content", proposal.dump()}});
+    trail.push_back({{"role", "user"}, {"content", resultsText}});
     requestInstructions_[id] = instruction;
     toolRounds_[id] = rounds;
+    toolTrail_[id] = trail;
     post_({{"type", "ai:busy"}, {"busy", true}});
 }
 
