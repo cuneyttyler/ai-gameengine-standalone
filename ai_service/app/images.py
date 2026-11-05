@@ -140,6 +140,7 @@ def generate_sprites(
     layer: str = "",
     with_images: list[str] | None = None,
     backdrops: tuple = (),
+    prompt_extra: str = "",
 ) -> list[dict]:
     """Generates one sprite per variant (one if no variants) into
     <root>/assets/textures/generated/, each with a .gen.json sidecar.
@@ -158,7 +159,8 @@ def generate_sprites(
     for variant in variants or [""]:
         slug = re.sub(r"[^a-z0-9]+", "-", variant.lower()).strip("-")[:24]
         file_name = f"{name}-{slug}.png" if slug else f"{name}.png"
-        prompt = build_prompt(description, kind, style, variant)
+        # A line for the model only (Match the background's colours), after the description; not kept as it.
+        prompt = build_prompt(f"{description.rstrip('.')}. {prompt_extra}" if prompt_extra else description, kind, style, variant)
         started = time.time()
         if getattr(generator, "takes_options", False):
             # A generator made for game art (PixelLab): its view, size and background, and the
