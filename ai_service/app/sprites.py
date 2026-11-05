@@ -26,6 +26,9 @@ class SpriteOptions:
     padding: int = 1           # transparent pixels kept around the object
     tile: bool = False         # a top-down ground tile (5.2): kept opaque and square, height x height
     even_light: bool = False   # a tile of one ground: its frame trimmed and its light evened (flatten_tile)
+    # Other backdrops the model may have painted behind the object (Match the background: the scene's colour, and the
+    # white it was asked for): cleared too where they join the cleared border, after the border's own colour.
+    backdrops: tuple = ()
 
 
 def _distance(a: tuple[int, int, int], b: tuple[int, int, int]) -> int:
@@ -49,8 +52,29 @@ def background_color(image: Image.Image) -> tuple[int, int, int]:
     return max(counts, key=counts.get)  # type: ignore[arg-type]
 
 
-def remove_background(image: Image.Image, tolerance: int = 40) -> Image.Image:
-    """RGBA with the border-connected background made transparent."""
+def clear_backdrop(rgba: Image.Image, colour: tuple[int, int, int], tolerance: int = 40) -> None:
+    """Pixels close to `colour` joined to what's already transparent (the cleared border) made transparent too: a second
+    backdrop the model painted inside the first (a white plate on the scene's colour)."""
+    w, h = rgba.size
+    px = rgba.load()
+    queue: deque[tuple[int, int]] = deque()
+    for y in range(h):
+        for x in range(w):
+            if px[x, y][3] == 0:
+                queue.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
+    while queue:
+        x, y = queue.popleft()
+        if x < 0 or y < 0 or x >= w or y >= h:
+            continue
+        r, g, b, a = px[x, y]
+        if a == 0 or _distance((r, g, b), colour) > tolerance:
+            continue
+        px[x, y] = (r, g, b, 0)
+        queue.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
+
+
+def remove_background(image: Image.Image, tolerance: int = 40, backdrops: tuple = ()) -> Image.Image:
+    """RGBA with the border-connected background made transparent (and any of `backdrops` joined to it)."""
     rgba = image.convert("RGBA")
     w, h = rgba.size
     px = rgba.load()
@@ -89,6 +113,9 @@ def remove_background(image: Image.Image, tolerance: int = 40) -> Image.Image:
     for x, y, alpha in halo:
         r, g, b, _ = px[x, y]
         px[x, y] = (r, g, b, alpha)
+    for colour in backdrops:
+        if _distance(tuple(colour), bg) > tolerance:
+            clear_backdrop(rgba, tuple(colour), tolerance)
     return rgba
 
 
@@ -156,7 +183,7 @@ def make_sprite(data: bytes, options: SpriteOptions) -> tuple[bytes, dict]:
         sprite = sprite.resize((options.height, options.height), resample=resample)
         sprite.putalpha(255)
     else:
-        sprite = remove_background(source, options.tolerance)
+        sprite = remove_background(source, options.tolerance, options.backdrops)
         sprite = crop_to_content(sprite, options.padding)
         cropped = sprite.size
         sprite = to_size(sprite, options.height, options.style)
