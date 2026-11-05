@@ -5687,7 +5687,11 @@ void EditorApp::SendProvider() {
     if (!Ai() || Ai()->GetState() != AiClient::State::Ready || !userPrefs_) return;
     // Each the project's choice (Project Settings ▸ AI), else the app's (Preferences ▸ AI); Mistral's small model unless
     // another was chosen (fast and cheap).
-    artProviderRequest_ = Ai()->Request("PUT", "/art-provider", {{"provider", ChosenAi("art")}, {"style", ActiveSettings().ai.artStyle}});
+    // With what animates people and things (Preferences ▸ AI ▸ Humanoid / Non-humanoid animation): the AI panel's
+    // walks and animations use them as Animate's requests do.
+    artProviderRequest_ = Ai()->Request("PUT", "/art-provider", {{"provider", ChosenAi("art")}, {"style", ActiveSettings().ai.artStyle},
+                                                                 {"animate", userPrefs_->Get("animateProvider", "autosprite")},
+                                                                 {"objectAnimate", userPrefs_->Get("objectAnimateProvider", "pixellab")}});
     backgroundProviderRequest_ = Ai()->Request("PUT", "/background-provider", {{"provider", ChosenAi("background")}});
     providerRequest_ = Ai()->Request("PUT", "/provider", {{"provider", ChosenAi("provider")}, {"model", ChosenAi("model")}});
     // After the provider (Claude sees pictures itself unless a vision model was chosen).
@@ -6617,10 +6621,12 @@ bool EditorApp::HandleGenerateMessage(const std::string& type, const nlohmann::j
     if (type == "ai:setAnimateProvider") {
         // What animates a person (Preferences ▸ AI ▸ Humanoid animation): sent with every Animate request.
         if (userPrefs_) userPrefs_->Set("animateProvider", message.value("provider", "autosprite"));
+        SendProvider(); // the AI panel's animations follow it
         post_(AiStatusJson());
     } else if (type == "ai:setObjectAnimateProvider") {
         // What animates a thing (Preferences ▸ AI ▸ Non-humanoid animation): a door, a chest, a lever, a flag.
         if (userPrefs_) userPrefs_->Set("objectAnimateProvider", message.value("provider", "pixellab"));
+        SendProvider();
         post_(AiStatusJson());
     } else if (type == "character:request" || type == "animation:request") {
         post_(GenerateHistoryJson(type == "character:request"));

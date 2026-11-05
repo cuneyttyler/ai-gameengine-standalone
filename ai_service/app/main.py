@@ -198,6 +198,10 @@ class WebFetchRequest(BaseModel):
 class ArtProviderRequest(BaseModel):
     provider: str = "auto"
     style: str = ""   # Project Settings ▸ AI ▸ Art style (style.ART_STYLES); "" from the project
+    # What animates people and things (Preferences ▸ AI ▸ Humanoid / Non-humanoid animation): the AI panel's
+    # animations use them (Animate's own requests carry them each time). "" keeps what was set.
+    animate: str = ""
+    objectAnimate: str = ""
 
 
 class ArrangeRequest(BaseModel):
@@ -701,10 +705,13 @@ def create_app(
                             made[key] = target
                             continue
                         answer = characters_animate(CharacterAnimateRequest(sheet=target, action=g.action or "walk",
-                                                                            description=g.description))
+                                                                            description=g.description,
+                                                                            provider=state.get("animateProvider", "")))
                     else:
                         answer = animations_generate(AnimationRequest(path=target, action=g.action or "idle",
-                                                                      description=g.description, name=g.name))
+                                                                      description=g.description, name=g.name,
+                                                                      provider=state.get("animateProvider", ""),
+                                                                      objectProvider=state.get("objectAnimateProvider", "pixellab")))
                     if answer.get("ok"):
                         made[key] = answer["sheet"]
                     else:
@@ -886,6 +893,10 @@ def create_app(
     @app.put("/art-provider")
     def set_art_provider(request: ArtProviderRequest) -> dict:
         """What draws the art (Preferences ▸ AI ▸ Art): auto (follows the LLM), mistral or pixellab."""
+        if request.animate:
+            state["animateProvider"] = request.animate
+        if request.objectAnimate:
+            state["objectAnimateProvider"] = request.objectAnimate
         if request.provider not in ART_PROVIDERS:
             return {"ok": False, "errors": [f"Unknown art provider {request.provider}: one of {', '.join(ART_PROVIDERS)}"]}
         images = make_image_generator(request.provider, getattr(state["provider"], "name", None))
