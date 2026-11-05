@@ -379,15 +379,6 @@ class GenerateAssetRequest(BaseModel):
     backgroundColour: str = ""
 
 
-def match_backdrops(colour: str) -> tuple:
-    """With Match the background, the backdrops the model may paint behind the object besides the white it's asked for:
-    the scene's colour, and white (cleared where they join the cut-out's border)."""
-    import re
-    if not re.fullmatch(r"#[0-9a-fA-F]{6}", colour or ""):
-        return ()
-    return ((255, 255, 255), tuple(int(colour[i:i + 2], 16) for i in (1, 3, 5)))
-
-
 def background_note(colour: str) -> str:
     """The prompt's line for a background colour ("#7a8f4c"): its RGB and a word for it, and what matching it means."""
     import re
@@ -401,11 +392,10 @@ def background_note(colour: str) -> str:
     if hue in ("orange", "yellow") and light < 0.45:
         hue = "brown"
     tone = ("dark " if light < 0.3 else "light " if light > 0.7 else "") + ("muted " if sat < 0.35 and hue != "grey" else "") + hue
-    return (f"Colours: the place it will be put in is mostly {colour} (RGB {r}, {g}, {b}: {tone}). Give the object itself "
-            "colours that belong there: the same lighting, a similar saturation and warmth, a palette harmonious with that "
-            "colour (its shadows tinted toward it), keeping its own colours recognisable. Still draw the object ALONE on the "
-            "plain pure white background as asked: do not paint that colour, a ground, a patch or any backdrop around or "
-            "behind it.")
+    return (f"It will stand on a background whose average colour is {colour} (RGB {r}, {g}, {b}: {tone}). Make its colours "
+            "belong there: the same lighting, a similar saturation and warmth, a palette harmonious with that colour (its "
+            "shadows tinted toward it), so it sits in the scene instead of standing out from it; keep its own colours "
+            "recognisable.")
 
 
 class ProposeResponse(BaseModel):
@@ -1810,7 +1800,7 @@ def create_app(
             results = generate_sprites(images, root, request.name, description, request.kind,
                                        request.height, request.style, request.variants, request.evenLight, brief,
                                        layer=str(request.context.get("layer", "")) if request.context else "",
-                                       with_images=with_images, backdrops=match_backdrops(request.backgroundColour))
+                                       with_images=with_images)
         except ValueError as error:
             return {"ok": False, "errors": [str(error)]}
         except ProviderError as error:

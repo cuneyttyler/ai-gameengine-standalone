@@ -139,7 +139,6 @@ def generate_sprites(
     brief: dict | None = None,
     layer: str = "",
     with_images: list[str] | None = None,
-    backdrops: tuple = (),
 ) -> list[dict]:
     """Generates one sprite per variant (one if no variants) into
     <root>/assets/textures/generated/, each with a .gen.json sidecar.
@@ -174,8 +173,7 @@ def generate_sprites(
             image = generator.generate(prompt, options)
         else:
             image = generator.generate(prompt)
-        png, processing = make_sprite(image.data, SpriteOptions(height=height, style=style, tile=kind == "tile",
-                                                                even_light=even_light and kind == "tile", backdrops=backdrops))
+        png, processing = make_sprite(image.data, SpriteOptions(height=height, style=style, tile=kind == "tile", even_light=even_light and kind == "tile"))
         (folder / file_name).write_bytes(png)
         meta = {
             "description": description,
