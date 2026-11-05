@@ -163,11 +163,14 @@ TaskRunner::State TaskRunner::OnAnswer(const nlohmann::json& proposal, int input
 
     // An answer with nothing left to do ends the task even if the model
     // forgot to say "done" -- unless it made art or characters this step (to
-    // use in the next one), and not twice running.
+    // use in the next one, or the step itself: walks for four characters at a
+    // time). Those go on while the plan has steps left; past it, not twice running.
     const bool madeSomething = !proposal.value("art", nlohmann::json::array()).empty() ||
                                !proposal.value("generate", nlohmann::json::array()).empty();
     emptySteps_ = operations.empty() ? emptySteps_ + 1 : 0;
-    const bool done = proposal.value("done", false) || (operations.empty() && (!madeSomething || emptySteps_ >= 2));
+    const bool planLeft = steps_.size() + 1 < plan_.size();
+    const bool done = proposal.value("done", false) ||
+                      (operations.empty() && (!madeSomething || (!planLeft && emptySteps_ >= 2)));
     const bool clean = step.applyErrors.empty() && step.problems.empty();
     steps_.push_back(step);
 
@@ -184,7 +187,8 @@ TaskRunner::State TaskRunner::OnAnswer(const nlohmann::json& proposal, int input
         BuildNextInstruction(steps_.back(), done);
         if (operations.empty() && madeSomething) {
             nextInstruction_ += " This step only made art or characters (where each went is under \"Made:\" in your "
-                                "notes): use those paths now, in this step's operations.";
+                                "notes): if they're to be placed or used, use those paths now, in this step's operations; "
+                                "otherwise go on with the plan's next step.";
         }
         pendingUser_ = nextInstruction_;
     }
