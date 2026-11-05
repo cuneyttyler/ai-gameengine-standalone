@@ -172,9 +172,6 @@ private:
     nlohmann::json LookupsJson();
     bool HandleListsMessage(const std::string& type, const nlohmann::json& message);
     std::optional<Entity> MarkerAt(float sceneX, float sceneY);
-    // The open scene's ground's average colour ("#rrggbb", "" with no ground): Generate ▸ Art's Match the background.
-    std::string BackgroundColour();
-    std::map<std::string, std::array<float, 4>> pictureAverages_; // texture|uv -> r, g, b, weight (opaque pixels)
     void Undo();
     void Redo();
     void DeleteSelected();

@@ -374,28 +374,6 @@ class GenerateAssetRequest(BaseModel):
     # The art of the pieces it's designed against (a door's wall), relative to the project: the image
     # model draws to match them, before the project's other references.
     withImages: list[str] = []
-    # Generate ▸ Art ▸ Match the background: the scene's ground's average colour ("#rrggbb"): the art's colours are made
-    # to sit on it (its light, saturation and warmth), so a piece doesn't stand out from the place.
-    backgroundColour: str = ""
-
-
-def background_note(colour: str) -> str:
-    """The prompt's line for a background colour ("#7a8f4c"): its RGB and a word for it, and what matching it means."""
-    import re
-    if not re.fullmatch(r"#[0-9a-fA-F]{6}", colour or ""):
-        return ""
-    import colorsys
-    r, g, b = (int(colour[i:i + 2], 16) for i in (1, 3, 5))
-    h, light, sat = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
-    names = [(15, "red"), (40, "orange"), (65, "yellow"), (160, "green"), (195, "teal"), (255, "blue"), (290, "purple"), (335, "pink"), (360, "red")]
-    hue = "grey" if sat < 0.12 else next(n for limit, n in names if h * 360 <= limit)
-    if hue in ("orange", "yellow") and light < 0.45:
-        hue = "brown"
-    tone = ("dark " if light < 0.3 else "light " if light > 0.7 else "") + ("muted " if sat < 0.35 and hue != "grey" else "") + hue
-    return (f"It will stand on a background whose average colour is {colour} (RGB {r}, {g}, {b}: {tone}). Make its colours "
-            "belong there: the same lighting, a similar saturation and warmth, a palette harmonious with that colour (its "
-            "shadows tinted toward it), so it sits in the scene instead of standing out from it; keep its own colours "
-            "recognisable.")
 
 
 class ProposeResponse(BaseModel):
@@ -1780,11 +1758,6 @@ def create_app(
         if len(request.variants) > 6:
             return {"ok": False, "errors": ["At most 6 variants at a time"]}
         description, brief = request.description, None
-        # Match the background: its colour, in words, for the art to sit on it.
-        if note := background_note(request.backgroundColour):
-            description = f"{description.rstrip('.')}. {note}"
-            if request.context:
-                request.context["background"] = note
         # The project's look, so new art matches what's there.
         if request.context and root is not None:
             if references := project_style.brief_context(root):

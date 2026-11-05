@@ -3,7 +3,7 @@
 // drawn (an image model, then cut out, cropped and scaled by the AI service),
 // and keep, regenerate or discard what comes back. Everything generated lands
 // in assets/textures/generated with a .gen.json saying how it was made.
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import AiProgress from './AiProgress.vue'
 import { editorState } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
@@ -67,34 +67,6 @@ onHostMessage((message) => {
 
 onMounted(() => sendToHost({ type: 'art:request' }))
 
-// Match the background: the open scene's ground's average colour, sent with the request for the art's colours to sit on
-// it; asked for (and shown) as it's ticked and when the panel opens. Remembered per computer.
-const matchBackground = ref((() => {
-  try {
-    return localStorage.getItem('aige.art.matchBackground') === '1'
-  } catch {
-    return false
-  }
-})())
-const backgroundColour = ref('')
-function askBackgroundColour(): void {
-  sendToHost({ type: 'art:backgroundColour' })
-}
-watch(matchBackground, (on) => {
-  try {
-    localStorage.setItem('aige.art.matchBackground', on ? '1' : '0')
-  } catch {
-    /* not kept */
-  }
-  if (on) askBackgroundColour()
-})
-onMounted(() => {
-  if (matchBackground.value) askBackgroundColour()
-})
-onHostMessage((message) => {
-  if (message.type === 'art:backgroundColour') backgroundColour.value = String(message.colour ?? '')
-})
-
 const variantList = computed(() =>
   form.variants
     .split(',')
@@ -128,7 +100,6 @@ function request(variants: string[], overrides: Partial<typeof form> = {}): void
       style: f.style,
       variants,
     },
-    matchBackground: matchBackground.value,
   })
 }
 
@@ -242,15 +213,6 @@ const whyOff = computed(() =>
         </select>
       </div>
       <div class="row">
-        <label title="The open scene's ground's average colour is sent with the request, so the art's colours sit on it">Background</label>
-        <label class="inline check"><input v-model="matchBackground" type="checkbox" /> Match the background</label>
-        <template v-if="matchBackground">
-          <span v-if="backgroundColour" class="swatch" :style="{ background: backgroundColour }" :title="backgroundColour"></span>
-          <span class="muted">{{ backgroundColour || 'no ground in this scene' }}</span>
-          <button class="small" title="Look at the ground again (after painting more of it)" @click="askBackgroundColour">↻</button>
-        </template>
-      </div>
-      <div class="row">
         <label>Variants</label>
         <input v-model="form.variants" placeholder="optional: mossy, broken, painted red" />
       </div>
@@ -350,17 +312,6 @@ const whyOff = computed(() =>
 </template>
 
 <style scoped>
-.swatch {
-  width: 18px;
-  height: 18px;
-  border: 1px solid #555;
-  display: inline-block;
-}
-.check {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
 .art {
   display: flex;
   flex-direction: column;

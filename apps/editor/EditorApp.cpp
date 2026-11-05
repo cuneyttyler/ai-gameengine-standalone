@@ -970,8 +970,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
     if (HandleInteriorMessage(type, message)) return; // interiors (docs/places/interiors.md): the viewport's, the Assets panel's, the Build panel's
     if (type.rfind("interiorParts:", 0) == 0 && HandleInteriorPartsMessage(type, message)) return; // Animate the interior (InteriorAnimate.cpp)
     if (type.rfind("path:", 0) == 0 && HandlePathMessage(type, message)) return; // paths characters follow (PathTool.cpp)
-    if ((type.rfind("lookups:", 0) == 0 || type == "script:read" || type == "script:save" || type.rfind("marker:", 0) == 0 || type == "dialogue:connect" ||
-         type == "art:backgroundColour") &&
+    if ((type.rfind("lookups:", 0) == 0 || type == "script:read" || type == "script:save" || type.rfind("marker:", 0) == 0 || type == "dialogue:connect") &&
         HandleListsMessage(type, message)) {
         return; // pickers' lists, the script editor, markers (EditorLists.cpp)
     }
@@ -1554,11 +1553,7 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         if (Ai() == nullptr || Ai()->GetState() != AiClient::State::Ready) {
             post_({{"type", "art:result"}, {"result", {{"ok", false}, {"errors", {"AI is off"}}}}});
         } else if (artRequest_ == 0) {
-            nlohmann::json request = message.value("request", nlohmann::json::object());
-            // Match the background: the scene's ground's average colour, for the art's colours to sit on it.
-            if (message.value("matchBackground", false)) {
-                if (const std::string colour = BackgroundColour(); !colour.empty()) request["backgroundColour"] = colour;
-            }
+            const nlohmann::json request = message.value("request", nlohmann::json::object());
             artRequest_ = Ai()->Request("POST", "/assets/generate", request, 300);
             artHistoryId_ = artHistory_.Begin(request);
             post_(ArtJson());
