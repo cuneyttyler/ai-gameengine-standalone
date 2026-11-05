@@ -89,6 +89,31 @@ def remove_background(image: Image.Image, tolerance: int = 40) -> Image.Image:
     for x, y, alpha in halo:
         r, g, b, _ = px[x, y]
         px[x, y] = (r, g, b, alpha)
+    # A light rim left round the object (a sticker-like outline the model drew, a blended edge darker than the
+    # tolerance): pixels touching the cleared area and close to the backdrop's colour, peeled off, up to three deep.
+    for _ in range(3):
+        peel = []
+        for y in range(h):
+            for x in range(w):
+                r, g, b, a = px[x, y]
+                if a == 0 or _distance((r, g, b), bg) > tolerance * 2.5:
+                    continue
+                if any(0 <= nx < w and 0 <= ny < h and px[nx, ny][3] == 0
+                       for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))):
+                    peel.append((x, y))
+        if not peel:
+            break
+        for x, y in peel:
+            r, g, b, _ = px[x, y]
+            px[x, y] = (r, g, b, 0)
+    # The edge's partly see-through pixels: the backdrop's colour taken out of them (un-blended), so they don't show as a
+    # light fringe on a dark ground.
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if 0 < a < 255:
+                k = a / 255
+                px[x, y] = tuple(max(0, min(255, round((c - bc * (1 - k)) / k))) for c, bc in zip((r, g, b), bg)) + (a,)
     return rgba
 
 

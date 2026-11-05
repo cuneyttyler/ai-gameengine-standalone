@@ -34,7 +34,8 @@ STYLE = {
     "pixel": "pixel art, clean outlines, limited palette",
     "smooth": "clean hand-painted game art",
 }
-BACKDROP = ("isolated cutout floating on a plain pure white background: nothing under it, no ground, no floor, no grass, no base, no shadow, no text, no frame")
+BACKDROP = ("a single isolated object on a plain pure white background: nothing under it, no ground, no floor, no grass, no base, "
+            "no shadow, no white outline or sticker border around it, no text, no frame")
 
 
 @dataclass
