@@ -3354,9 +3354,11 @@ int FitObstaclesToArt(Registry& registry, const Project& project, const IsoParam
         // left, along y further right; the footprint's own corner is half a tile out from its front cell's middle.
         float left = it->second.first * std::abs(sprite.width), right = it->second.second * std::abs(sprite.width);
         if (sprite.u0 > sprite.u1) std::swap(left, right);
+        // A row the walls cover a third of is blocked (rounded to the nearest, a building covering half its back row
+        // was walked on); grown as well as shrunk, so a footprint fitted smaller before covers its walls again.
         const float half = iso.tileWidth * 0.5f;
-        const int fitLeft = std::clamp(static_cast<int>(std::lround(left / half)) - 1, 0, obstacle.left);
-        const int fitBack = std::clamp(static_cast<int>(std::lround(right / half)) - 1, 0, obstacle.back);
+        const int fitLeft = std::clamp(static_cast<int>(std::ceil(left / half - 0.34f)) - 1, 0, 12);
+        const int fitBack = std::clamp(static_cast<int>(std::ceil(right / half - 0.34f)) - 1, 0, 12);
         if (fitLeft == obstacle.left && fitBack == obstacle.back) continue;
         obstacle.left = fitLeft;
         obstacle.back = fitBack;

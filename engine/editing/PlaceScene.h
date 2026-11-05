@@ -173,9 +173,9 @@ nlohmann::json RepairPlaceScene(Registry& registry, PrefabLibrary& prefabs, cons
 // footprint when its role is solid and nothing when it isn't, read from its build's plan (places/<id>/spec.json and
 // layout.solved.json). Buildings are left as they are. Returns how many it changed.
 int RepairPlaceSolidity(Registry& registry, const Project& project, const Ontology& ontology, bool topDown);
-// A thing blocking several cells (an isometric building) blocks no further than its art reaches: its walls' width near
-// the ground, either side of the point it stands on, in cells (its eaves left out). Only ever shrinks its Obstacle.
-// Returns how many it changed.
+// A thing blocking several cells (an isometric building) blocks what its art covers: its walls' width near the ground,
+// either side of the point it stands on, in cells (its eaves left out), a row counted once the art covers a third of
+// it, so no one walks on its walls (nor is blocked by air). Grows or shrinks its Obstacle. Returns how many it changed.
 int FitObstaclesToArt(Registry& registry, const Project& project, const IsoParams& iso);
 
 class RebuildPlaceCommand : public EditCommand {
