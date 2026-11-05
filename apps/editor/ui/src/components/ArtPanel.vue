@@ -431,11 +431,14 @@ const whyOff = computed(() =>
     0 0,
     8px 8px;
 }
+.thumb {
+  overflow: hidden; /* art of any size stays in its box, never over the card's actions */
+}
 .thumb img {
-  max-width: 92px;
-  max-height: 92px;
+  width: 92px;
+  height: 92px;
+  object-fit: contain; /* small art scaled up, big art scaled down */
   image-rendering: pixelated;
-  transform: scale(1.6);
 }
 .info {
   min-width: 0;
