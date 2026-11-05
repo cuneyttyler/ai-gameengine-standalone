@@ -603,7 +603,9 @@ AI PACKAGES (what a character does on its own: docs/ai/ai-packages.md)
   smart objects: sit, eat, read; wanders; idle remarks) · live (lives in and around location.building: wanders round it
   within data.radius, wanders in its rooms, now and then uses what data.actions names, each with how often:
   [{"action": "cook", "weight": 2}, {"action": "sweep", "weight": 1}]; their weights together are how often it uses
-  something against wandering's 5) · use-part (walks to the
+  something against wandering round it, data.outsideWeight (empty: 3), and in its rooms, data.insideWeight (empty: 2;
+  0 never: "stays indoors" = outsideWeight 0); it stands data.waitMin to data.waitMax seconds after a walk (2 to 6)) ·
+  use-part (walks to the
   part named in data.actions near the place (one by weight), uses it for data.duration seconds, again and again) · tend (uses the
   Reaction or part named data.action again and again: a field to farm) · work (data.object: a smart object type) ·
   vendor · sleep (its bed, location.alias bed) · eat · patrol (data.route: a named path, or data.path: markers) · guard · follow / accompany /

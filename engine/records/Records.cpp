@@ -757,7 +757,7 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                      // against wandering (round the place 3, in its rooms 2).
                      RecordField action = PickedFrom(MakeRecordValue("action", FieldType::String, "A part's or a Reaction's name (cook)"), "uses");
                      RecordField weight = MakeRecordValue("weight", FieldType::Float, "How often: 1 as often as the others, 2 twice as often "
-                                                                                     "(live: against wandering's 5)");
+                                                                                     "(live: against its wandering's weights, 3 and 2)");
                      weight.min = 0;
                      weight.defaultValue = 1.0;
                      RecordField uses;
@@ -768,6 +768,30 @@ void RegisterEngineRecordTypes(ReflectionRegistry& r) {
                      uses.list = true;
                      return uses;
                  }(), "template", {"live", "use-part", "custom"}),
+                 // live: how often it wanders round the place and in its rooms (against its actions' weights together),
+                 // and how long it stands between walks; empty: the template's own (3, 2; 2 to 6 seconds).
+                 OnlyWhen([] {
+                     RecordField f = MakeRecordValue("outsideWeight", FieldType::Float, "How often it wanders round the place "
+                                                                                       "(against the others; empty: 3, 0: never)");
+                     f.min = 0;
+                     return f;
+                 }(), "template", {"live"}),
+                 OnlyWhen([] {
+                     RecordField f = MakeRecordValue("insideWeight", FieldType::Float, "How often it wanders in its rooms "
+                                                                                      "(empty: 2, 0: never)");
+                     f.min = 0;
+                     return f;
+                 }(), "template", {"live"}),
+                 OnlyWhen([] {
+                     RecordField f = MakeRecordValue("waitMin", FieldType::Float, "Seconds it stands after a walk, at least (empty: 2)");
+                     f.min = 0;
+                     return f;
+                 }(), "template", {"live"}),
+                 OnlyWhen([] {
+                     RecordField f = MakeRecordValue("waitMax", FieldType::Float, "Seconds it stands after a walk, at most (empty: 6)");
+                     f.min = 0;
+                     return f;
+                 }(), "template", {"live"}),
                  OnlyWhen(MakeRecordValue("object", FieldType::String, "A smart object type (counter, forge, desk)"), "template",
                           {"work", "use-object", "custom"}),
                  OnlyWhen(PickedFrom(MakeRecordValue("dialogue", FieldType::String, "A dialogue file"), "dialogues"), "template",

@@ -167,7 +167,9 @@ The procedure runtime is a behaviour tree with a **blackboard** per character:
 Built steps' parameters: `use-part {part, around, radius, seconds, clip, leaveOn}` (walks to the part, uses it as the
 player would, stays `seconds`, its own duration when it has one, and turns off again what it turned on);
 `act {action, around, radius}` (a Reaction or Interactable with that action, else a part named so); `play {clip,
-seconds}` (a clip on itself). Anywhere, `"@data:<name>"` reads the package's data. A package's `procedure` (JSON, or
+seconds}` (a clip on itself). Anywhere, `"@data:<name>"` reads the package's data; `"@data:<name>=<default>"` falls back to the default when the
+package leaves it empty (live's `"@data:waitMin=2"`, `"@data:outsideWeight=3"`: its outsideWeight, insideWeight,
+waitMin and waitMax fields). A package's `procedure` (JSON, or
 JSON as text) is used instead of its template's (`PackageProcedure`); the project's procedure records still name
 templates of their own.
 | `find-object`, `find-actor`, `find-spot` | leaf (query) | writes a blackboard key |

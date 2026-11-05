@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <set>
 #include <sstream>
 
@@ -69,11 +70,11 @@ const char* kTemplates = R"JSON({
                                            "seconds": "@data:duration"},
                                           {"type": "wait", "min": 2, "max": 5}]},
       {"type": "sequence", "children": [{"type": "move-to", "to": "@location"}, {"type": "wait", "seconds": 6}]}]}]},
-  "live": {"type": "loop", "children": [{"type": "random", "weights": [3, 2, "@actionsWeight"], "children": [
+  "live": {"type": "loop", "children": [{"type": "random", "weights": ["@data:outsideWeight=3", "@data:insideWeight=2", "@actionsWeight"], "children": [
       {"type": "sequence", "children": [{"type": "wander", "around": "@location", "radius": "@data:radius"},
-                                          {"type": "wait", "min": 2, "max": 6}]},
+                                          {"type": "wait", "min": "@data:waitMin=2", "max": "@data:waitMax=6"}]},
       {"type": "sequence", "children": [{"type": "wander", "around": "@location", "inside": true},
-                                          {"type": "wait", "min": 2, "max": 6}]},
+                                          {"type": "wait", "min": "@data:waitMin=2", "max": "@data:waitMax=6"}]},
       {"type": "selector", "children": [{"type": "use-part", "part": "@data:action", "parts": "@data:actions", "around": "@location", "radius": 15,
                                            "seconds": "@data:duration"},
                                           {"type": "wait", "seconds": 2}]}]}]},
@@ -158,6 +159,16 @@ std::optional<Entity> EntityNamed(Registry& registry, const std::string& name) {
     return std::nullopt;
 }
 
+// A template parameter's default ("@data:waitMin=2" → 2): a number, true/false, else the text.
+nlohmann::json DataDefault(const std::string& text) {
+    if (text == "true") return true;
+    if (text == "false") return false;
+    char* end = nullptr;
+    const double number = std::strtod(text.c_str(), &end);
+    if (!text.empty() && end == text.c_str() + text.size()) return number;
+    return text;
+}
+
 struct Run {
     AiContext& ctx;
     Entity actor;
@@ -168,12 +179,17 @@ struct Run {
     Registry& R() { return ctx.registry; }
     WorldTransform2D& At() { return R().get<WorldTransform2D>(actor); }
 
-    // A parameter: "@data:<name>" reads the package's data.
+    // A parameter: "@data:<name>" reads the package's data; "@data:<name>=<value>" with the template's default when the
+    // package has none (a number, true/false, else text).
     nlohmann::json Param(const ProcedureNode& node, const char* key, nlohmann::json fallback = nullptr) {
         if (!node.params.contains(key)) return fallback;
         const nlohmann::json& v = node.params[key];
         if (v.is_string() && v.get<std::string>().rfind("@data:", 0) == 0) {
-            const std::string name = v.get<std::string>().substr(6);
+            std::string name = v.get<std::string>().substr(6);
+            if (const size_t eq = name.find('='); eq != std::string::npos) {
+                fallback = DataDefault(name.substr(eq + 1));
+                name.resize(eq);
+            }
             if (package && package->contains("data") && (*package)["data"].contains(name)) {
                 const nlohmann::json& d = (*package)["data"][name];
                 if (!d.is_null() && !(d.is_string() && d.get<std::string>().empty()) &&
@@ -668,8 +684,16 @@ struct Run {
                         return sum;
                     }
                     if (spec.rfind("@data:", 0) == 0) {
-                        const nlohmann::json v = data.value(spec.substr(6), nlohmann::json());
-                        return v.is_number() ? std::max(0.0f, v.get<float>()) : 1.0f;
+                        // "@data:<name>=<default>": the package's weight (0 never), else the template's default.
+                        std::string name = spec.substr(6);
+                        float fallback = 1.0f;
+                        if (const size_t eq = name.find('='); eq != std::string::npos) {
+                            const nlohmann::json d = DataDefault(name.substr(eq + 1));
+                            if (d.is_number()) fallback = d.get<float>();
+                            name.resize(eq);
+                        }
+                        const nlohmann::json v = data.value(name, nlohmann::json());
+                        return v.is_number() ? std::max(0.0f, v.get<float>()) : fallback;
                     }
                     return 1.0f;
                 };
@@ -800,7 +824,8 @@ struct Run {
         if (type == "wait") {
             if (!ns.contains("left")) {
                 const float seconds = Num(node, "seconds", -1.0f);
-                ns["left"] = seconds >= 0.0f ? seconds : Randf(ctx.rng, Num(node, "min", 2.0f), Num(node, "max", 5.0f));
+                const float lo = Num(node, "min", 2.0f), hi = Num(node, "max", 5.0f);
+                ns["left"] = seconds >= 0.0f ? seconds : Randf(ctx.rng, std::min(lo, hi), std::max(lo, hi));
             }
             const float left = ns.value("left", 0.0f) - dt;
             if (left <= 0.0f) {

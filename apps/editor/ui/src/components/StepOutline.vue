@@ -24,17 +24,25 @@ function words(v: unknown): string {
   }
   return String(v)
 }
-// Empty in this package: "@data:action" when it has none (left out of the line).
+// "@data:waitMin=2": the package's value by that name, else the template's default (2).
+function dataRef(v: string): { key: string; fallback?: string } {
+  const [key, fallback] = v.slice(6).split('=', 2) as [string, string | undefined]
+  return { key, fallback }
+}
+// Empty in this package: "@data:action" when it has none and no default (left out of the line).
 function unset(v: unknown): boolean {
   if (typeof v !== 'string' || !v.startsWith('@data:') || !props.data) return false
-  const own = props.data[v.slice(6)]
+  const { key, fallback } = dataRef(v)
+  if (fallback !== undefined) return false
+  const own = props.data[key]
   return own === undefined || own === '' || (Array.isArray(own) && !own.length)
 }
 function shown(v: unknown): string {
   if (typeof v === 'string' && v.startsWith('@data:')) {
-    const key = v.slice(6)
+    const { key, fallback } = dataRef(v)
     const own = props.data?.[key]
-    return own !== undefined && own !== '' && own !== 0 ? `${words(own)} (data.${key})` : `data.${key}`
+    if (own !== undefined && own !== '' && own !== null && (own !== 0 || fallback !== undefined)) return `${words(own)} (data.${key})`
+    return fallback !== undefined ? `${fallback} (data.${key}, the template's)` : `data.${key}`
   }
   if (v === '@location') return 'the place'
   if (v === '@target') return 'the target'
