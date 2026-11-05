@@ -326,7 +326,7 @@ void EditorApp::AnimateNext() {
             t["box"] = drawn ? t["drawn"] : t["given"];
             t["status"] = "animating";
             // Preferences ▸ AI ▸ Non-humanoid animation: PixelLab or FLUX video.
-            const std::string animator = userPrefs_ ? userPrefs_->Get("objectAnimateProvider", "pixellab").get<std::string>() : "pixellab";
+            const std::string animator = ChosenAi("objectAnimate");
             animateRequest_ = Ai()->Request("POST", "/parts/door", DoorRequest(build_->Id(), t, t["box"], drawn, animator), 900);
         } else if (!door && status == "pending") {
             t["status"] = "animating";
@@ -379,8 +379,8 @@ void EditorApp::AnimateCrop(nlohmann::json& target, const nlohmann::json& box) {
                                      {"action", door ? "the door swings open" : used ? used->action : "it opens"},
                                      {"clip", door ? "open" : used ? used->clip : "open"},
                                      {"description", target.value("label", "")},
-                                     {"provider", userPrefs_ ? userPrefs_->Get("animateProvider", "autosprite") : nlohmann::json("autosprite")},
-                                     {"objectProvider", userPrefs_ ? userPrefs_->Get("objectAnimateProvider", "pixellab") : nlohmann::json("pixellab")},
+                                     {"provider", ChosenAi("animate")},
+                                     {"objectProvider", ChosenAi("objectAnimate")},
                                      {"thing", true}, // a chest, a gate, a lever: the thing's animator (PixelLab), not a character's
                                      {"name", std::filesystem::path(path).stem().string()}},
                                     900);

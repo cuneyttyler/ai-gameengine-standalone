@@ -782,7 +782,8 @@ bool EditorApp::HandleAiSettingsMessage(const std::string& type, const nlohmann:
         // The open project's own choice (Project Settings ▸ AI: art, background, paint, provider) cleared: it follows the
         // app's (Preferences ▸ AI) from now on.
         const std::string which = message.value("which", std::string());
-        if (which == "art" || which == "background" || which == "paint" || which == "provider" || which == "model") {
+        if (which == "art" || which == "background" || which == "paint" || which == "provider" || which == "model" ||
+            which == "animate" || which == "objectAnimate") {
             if (auto error = EditSetting(EngineReflection(), "AI", which, std::string())) {
                 post_({{"type", "notify"}, {"text", *error}});
             } else {
@@ -1568,8 +1569,8 @@ void EditorApp::OnWebMessage(const nlohmann::json& message) {
         } else if (inFlight == 0) {
             nlohmann::json request = message.value("request", nlohmann::json::object());
             if (!character && userPrefs_) {
-                request["provider"] = userPrefs_->Get("animateProvider", "autosprite");             // Preferences ▸ AI ▸ Humanoid animation
-                request["objectProvider"] = userPrefs_->Get("objectAnimateProvider", "pixellab");   // ▸ Non-humanoid animation
+                request["provider"] = ChosenAi("animate");             // Project Settings ▸ AI, else Preferences ▸ AI ▸ Humanoid animation
+                request["objectProvider"] = ChosenAi("objectAnimate"); // ▸ Non-humanoid animation
             }
             inFlight = Ai()->Request("POST", character ? "/characters/generate" : request.contains("sheet") ? "/characters/animate" : "/animations/generate",
                                      request, 900); // a character's every direction: a few minutes
@@ -5680,6 +5681,8 @@ std::string EditorApp::ChosenAi(const std::string& which) {
     if (which == "art") return !project.art.empty() ? project.art : pref("artProvider", "auto");
     if (which == "background") return !project.background.empty() ? project.background : pref("backgroundProvider", "bfl:flux-3-image");
     if (which == "paint") return !project.paint.empty() ? project.paint : pref("paintModel", "flux-3-image");
+    if (which == "animate") return !project.animate.empty() ? project.animate : pref("animateProvider", "autosprite");
+    if (which == "objectAnimate") return !project.objectAnimate.empty() ? project.objectAnimate : pref("objectAnimateProvider", "pixellab");
     return {};
 }
 
@@ -5690,8 +5693,8 @@ void EditorApp::SendProvider() {
     // With what animates people and things (Preferences ▸ AI ▸ Humanoid / Non-humanoid animation): the AI panel's
     // walks and animations use them as Animate's requests do.
     artProviderRequest_ = Ai()->Request("PUT", "/art-provider", {{"provider", ChosenAi("art")}, {"style", ActiveSettings().ai.artStyle},
-                                                                 {"animate", userPrefs_->Get("animateProvider", "autosprite")},
-                                                                 {"objectAnimate", userPrefs_->Get("objectAnimateProvider", "pixellab")}});
+                                                                 {"animate", ChosenAi("animate")},
+                                                                 {"objectAnimate", ChosenAi("objectAnimate")}});
     backgroundProviderRequest_ = Ai()->Request("PUT", "/background-provider", {{"provider", ChosenAi("background")}});
     providerRequest_ = Ai()->Request("PUT", "/provider", {{"provider", ChosenAi("provider")}, {"model", ChosenAi("model")}});
     // After the provider (Claude sees pictures itself unless a vision model was chosen).
@@ -5771,7 +5774,8 @@ nlohmann::json EditorApp::AiStatusJson() {
                                                                             ? backgroundStatus_["errors"][0].get<std::string>() : "")},
             // What this project uses instead of the app's, where it has its own (Project Settings ▸ AI).
             {"project", {{"provider", ActiveSettings().ai.provider}, {"model", ActiveSettings().ai.model}, {"art", ActiveSettings().ai.art},
-                         {"background", ActiveSettings().ai.background}}},
+                         {"background", ActiveSettings().ai.background}, {"animate", ActiveSettings().ai.animate},
+                         {"objectAnimate", ActiveSettings().ai.objectAnimate}}},
             {"artError", artStatus_.value("ok", true) ? "" : (artStatus_.contains("errors") && !artStatus_["errors"].empty()
                                                               ? artStatus_["errors"][0].get<std::string>() : "")},
             {"text", status}};
@@ -7537,15 +7541,15 @@ bool EditorApp::HandleInteriorMessage(const std::string& type, const nlohmann::j
             partRequest_ = Ai()->Request("POST", "/parts/door",
                                          {{"path", sprite->texture}, {"box", {bx, by, bw, bh}}, {"name", stem + "-door-" + std::to_string(n - 1)},
                                           {"exact", true}, // the box drawn (or found) round the door, as it is
-                                          {"animator", userPrefs_ ? userPrefs_->Get("objectAnimateProvider", "pixellab") : nlohmann::json("pixellab")}},
+                                          {"animator", ChosenAi("objectAnimate")}},
                                          900); // PixelLab's queue: minutes (it gave up at two)
             post_({{"type", "part:progress"}, {"text", "Opening the door (PixelLab: a few minutes)…"}});
             return true;
         }
         partRequest_ = Ai()->Request("POST", "/animations/generate",
                                      {{"path", path}, {"action", message.value("action", "the door swings open")},
-                                      {"provider", userPrefs_ ? userPrefs_->Get("animateProvider", "autosprite") : nlohmann::json("autosprite")},
-                                      {"objectProvider", userPrefs_ ? userPrefs_->Get("objectAnimateProvider", "pixellab") : nlohmann::json("pixellab")},
+                                      {"provider", ChosenAi("animate")},
+                                      {"objectProvider", ChosenAi("objectAnimate")},
                                       // A character: the character's animator (Preferences ▸ AI ▸ Humanoid animation: AutoSprite); a
                                       // thing (a sign, a window, a flag): the thing's (PixelLab), not guessed.
                                       {"thing", message.value("kind", std::string("other")) != "character"},

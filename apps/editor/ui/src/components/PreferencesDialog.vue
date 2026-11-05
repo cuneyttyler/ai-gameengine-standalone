@@ -337,6 +337,10 @@ function close(): void {
                     <option value="pixellab:animate-v3">PixelLab Animate with text v3 (8 frames, up to 256 px; slow){{ noKey('pixellab') }}</option>
                   </select>
                   <p class="desc">What makes a person or a creature move (Generate ▸ Animate, a character in every direction).</p>
+                  <p v-if="editorState.ai.project.animate" class="override">
+                    This project uses its own: <b>{{ editorState.ai.project.animate }}</b> (Project Settings ▸ AI), so the choice above doesn't apply to it.
+                    <button class="small" @click="sendToHost({ type: 'ai:projectFollowsApp', which: 'animate' })">Use this choice in the project</button>
+                  </p>
                 </div>
               </div>
               <div class="field">
@@ -348,6 +352,10 @@ function close(): void {
                   </select>
                   <p class="desc">What makes a thing move: a door opening (Build ▸ Animate), a chest, a lever, a flag. AutoSprite animates
                     characters: given a thing, it adds a person.</p>
+                  <p v-if="editorState.ai.project.objectAnimate" class="override">
+                    This project uses its own: <b>{{ editorState.ai.project.objectAnimate }}</b> (Project Settings ▸ AI), so the choice above doesn't apply to it.
+                    <button class="small" @click="sendToHost({ type: 'ai:projectFollowsApp', which: 'objectAnimate' })">Use this choice in the project</button>
+                  </p>
                 </div>
               </div>
               <div class="field">

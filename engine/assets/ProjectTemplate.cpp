@@ -51,7 +51,7 @@ std::optional<std::string> CreateProject(const fs::path& root, const std::option
         fs::remove_all(root / "assets" / "textures" / "generated", ec);
     }
     std::string aiLine;
-    for (const char* field : {"provider", "model", "art", "background", "paint"}) {
+    for (const char* field : {"provider", "model", "art", "background", "paint", "animate", "objectAnimate"}) {
         if (const auto it = ai.find(field); it != ai.end() && !it->second.empty()) aiLine += std::string(" ") + field + "=\"" + it->second + "\"";
     }
     std::ofstream(root / "settings.aige") << "# AIGE Settings v1\n" << (topDown ? "Grid style=TopDown\n" : "")

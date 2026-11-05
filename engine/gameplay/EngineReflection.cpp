@@ -736,6 +736,14 @@ void RegisterGameplayTypes(ReflectionRegistry& r) {
                "the plan as a rough draft; FLUX-2-Pro and FLUX-2-Max: rich looks, may drift from the layout; FLUX-3-Image: keeps the layout best; FLUX-3-Image-to-Pro and -to-Klein: FLUX-3-Image "
                "paints the plan, then FLUX.2 pro or klein repaints its look.")
         .Options({"", "flux-2-klein-4b", "flux-2-pro", "flux-2-max", "flux-3-image", "flux-3-to-pro", "flux-3-to-klein"})
+        .Field("animate", &AiSettings::animate,
+               "What animates people and creatures (Generate ▸ Animate, the AI panel's walks; empty: the app's). AutoSprite: "
+               "a character's 8 directions at once; PixelLab Animate with text v3: 8 frames, slow.")
+        .Options({"", "autosprite", "pixellab:animate-v3"})
+        .Field("objectAnimate", &AiSettings::objectAnimate,
+               "What animates things: a door opening, a chest, a lever, a flag (empty: the app's). PixelLab keeps the thing as "
+               "drawn; BFL FLUX video takes 12 frames from a 5 s clip.")
+        .Options({"", "pixellab", "bfl:flux-video"})
         .Field("artStyle", &AiSettings::artStyle,
                "The art's look, in every art prompt (prefabs, backgrounds, paint, characters): 16-bit or 32-bit pixel art, "
                "painted, flat vector; empty: from the project (each kind of art its own look, matched to the art already "

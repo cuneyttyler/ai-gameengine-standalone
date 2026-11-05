@@ -259,8 +259,8 @@ void EditorApp::InteriorPartsNext() {
                                               {{"path", path}, {"action", p.value("motion", std::string("it moves gently in place"))},
                                                {"clip", p.value("clip", std::string("idle"))},
                                                {"description", p.value("label", p.value("kind", std::string("a thing")))},
-                                               {"provider", userPrefs_ ? userPrefs_->Get("animateProvider", "autosprite") : nlohmann::json("autosprite")},
-                                               {"objectProvider", userPrefs_ ? userPrefs_->Get("objectAnimateProvider", "pixellab") : nlohmann::json("pixellab")},
+                                               {"provider", ChosenAi("animate")},
+                                               {"objectProvider", ChosenAi("objectAnimate")},
                                                {"thing", true}, {"name", std::filesystem::path(path).stem().string()}},
                                               900);
         PostInteriorParts();

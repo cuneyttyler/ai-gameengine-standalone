@@ -110,6 +110,8 @@ struct AiSettings {
     std::string art;        // who draws the prefabs' art: mistral, pixellab, bfl:<model>
     std::string background; // who paints the places' backgrounds: bfl:flux-3-image
     std::string paint;      // who paints a place whole (the Paint method): flux-2-klein-4b, flux-3-image, flux-3-to-pro, flux-3-to-klein
+    std::string animate;       // what animates people and creatures: autosprite, pixellab:animate-v3
+    std::string objectAnimate; // what animates things (a door, a chest): pixellab, bfl:flux-video
     // The art's look, for every art prompt (prefabs, matched art, backgrounds, paint, characters): pixel-16, pixel-32,
     // painted, flat-vector; "" from the project (each pipeline's own look). The planner's art style fills it.
     std::string artStyle;

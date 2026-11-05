@@ -70,7 +70,7 @@ export const editorState = reactive({
     visionInUse: '',
     checkError: '',
     // The project's own choices (Project Settings ▸ AI), each '' when it uses the app's.
-    project: { provider: '', model: '', art: '', background: '' } as Record<string, string>,
+    project: { provider: '', model: '', art: '', background: '', animate: '', objectAnimate: '' } as Record<string, string>,
     models: {} as Record<string, string[]>, // each provider's models (Preferences ▸ AI ▸ Model)
     modelsError: '',
   },
