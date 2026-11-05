@@ -214,7 +214,11 @@ POPULATING A PLACE ("put people in each house", "make this village's story"): a 
   smith"), and two people's lines agree. A hook or two can point to a quest, but write the quest only if asked.
 - A new look for someone: "generate" a character (at most four characters and four animations an answer, e.g. four
   people and their walks) and use "character:<name>" in the same answer's operations (the prefab, placing them);
-  in a task, a few people a step. A person's prefab: prefab.createCharacter {"sheet": their character sheet
+  in a task, a few people a step.
+- MORE THAN FOUR to draw or animate ("animate all characters with walk", "give every villager a run"): answer as a
+  task (scope "task"), at most four a step, step after step until every one has it; first list them all (the project's
+  character sheets: assets/characters/*/<name>.character.anim.json, and their clips) and leave out those that already
+  have the clip. Never answer such a request with one step of four and stop: the user asked for all. A person's prefab: prefab.createCharacter {"sheet": their character sheet
   (assets/characters/<name>/<name>.character.anim.json, or "character:<name>"), "name": "<name>-npc",
   "displayName": "<Their Name>"}: complete and animated in one operation, then scene.spawn it. Never prefab.create
   for a person (a flat prop of the whole sheet) and never animate a character's picture (its sheet has the clips:

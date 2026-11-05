@@ -88,6 +88,12 @@ def check_value(spec: FieldSpec, value: Any, context: EditorContext, where: str)
 
 def validate_proposal(proposal: Proposal, schema: EngineSchema, context: EditorContext) -> list[str]:
     errors: list[str] = []
+    # More than four characters or animations: only a task makes them all (four a step); one answer would drop the rest.
+    for kind in ("character", "animation"):
+        n = sum(1 for g in proposal.generate if g.kind == kind)
+        if n > 4 and proposal.scope != "task":
+            errors.append(f"{n} {kind}s to make: answer as a task (scope \"task\"), at most four a step, step after step "
+                          f"until all are made")
     if proposal.scope in ("tools", "route", "ask"):
         if proposal.operations:
             errors.append(f'a "{proposal.scope}" answer has no operations: they come once it has what it asked for')

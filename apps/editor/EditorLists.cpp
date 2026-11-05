@@ -7,6 +7,8 @@
 #include "gameplay/Behaviour.h"
 #include "gameplay/Components.h"
 #include "gameplay/Paths.h"
+#include "gameplay/TileLayer.h"
+#include "assets/TextureCook.h"
 #include "gameplay/Interiors.h"
 #include "gameplay/EngineReflection.h"
 #include "gameplay/InputMap.h"
@@ -130,6 +132,11 @@ nlohmann::json EditorApp::LookupsJson() {
 bool EditorApp::HandleListsMessage(const std::string& type, const nlohmann::json& message) {
     if (type == "lookups:request") {
         post_(LookupsJson());
+        return true;
+    }
+    if (type == "art:backgroundColour") {
+        // Generate ▸ Art ▸ Match the background: the open scene's ground's average colour, shown beside the option.
+        post_({{"type", "art:backgroundColour"}, {"colour", BackgroundColour()}});
         return true;
     }
     // The script editor: a project script read and saved (scripts/*.lua only).
@@ -273,6 +280,63 @@ bool EditorApp::HandleListsMessage(const std::string& type, const nlohmann::json
         return true;
     }
     return false;
+}
+
+std::string EditorApp::BackgroundColour() {
+    // The ground: tile layers' cells and tile entities, each kind of tile by its picture's average (opaque pixels, its UV
+    // region) times how many cells it covers; a painted place's painting by its area.
+    auto average = [&](const Sprite& sprite) -> std::array<float, 4> {
+        const std::string key = sprite.texture + "|" + std::to_string(sprite.u0) + "," + std::to_string(sprite.v0) + "," +
+                                std::to_string(sprite.u1) + "," + std::to_string(sprite.v1);
+        if (const auto it = pictureAverages_.find(key); it != pictureAverages_.end()) return it->second;
+        std::array<float, 4> out{0, 0, 0, 0};
+        if (const auto image = sprite.texture.empty() ? std::nullopt : DecodeImage(assets_.GetProject().Resolve(sprite.texture))) {
+            const int W = static_cast<int>(image->width), H = static_cast<int>(image->height);
+            const int x0 = std::clamp(static_cast<int>(std::min(sprite.u0, sprite.u1) * W), 0, W), x1 = std::clamp(static_cast<int>(std::max(sprite.u0, sprite.u1) * W), 0, W);
+            const int y0 = std::clamp(static_cast<int>(sprite.v0 * H), 0, H), y1 = std::clamp(static_cast<int>(sprite.v1 * H), 0, H);
+            const int stepX = std::max(1, (x1 - x0) / 64), stepY = std::max(1, (y1 - y0) / 64); // at most 64 x 64 samples
+            double r = 0, g = 0, b = 0, n = 0;
+            for (int y = y0; y < y1; y += stepY) {
+                for (int x = x0; x < x1; x += stepX) {
+                    const uint8_t* p = &image->rgba[(static_cast<size_t>(y) * W + x) * 4];
+                    if (p[3] < 128) continue;
+                    r += p[0], g += p[1], b += p[2], n += 1;
+                }
+            }
+            if (n > 0) out = {static_cast<float>(r / n), static_cast<float>(g / n), static_cast<float>(b / n), 1.0f};
+        }
+        pictureAverages_[key] = out;
+        return out;
+    };
+    double r = 0, g = 0, b = 0, w = 0;
+    auto add = [&](const std::array<float, 4>& a, double weight) {
+        if (a[3] <= 0.0f || weight <= 0) return;
+        r += a[0] * weight, g += a[1] * weight, b += a[2] * weight, w += weight;
+    };
+    if (const TileLayers* layers = FindLayers(registry_)) {
+        for (const TileLayer* layer : layers->Ordered()) {
+            std::map<uint16_t, double> counts;
+            layer->ForEach([&](int, int, uint16_t id) { counts[id] += 1; });
+            for (const auto& [id, n] : counts) {
+                if (const TileDef* def = layer->Def(id)) add(average(def->sprite), n);
+            }
+        }
+    }
+    std::map<std::string, std::pair<Sprite, double>> tiles;
+    for (auto [e, tile, sprite] : registry_.view<Tile, Sprite>().each()) {
+        auto& t = tiles[sprite.texture];
+        t.first = sprite, t.second += 1;
+    }
+    for (const auto& [texture, t] : tiles) add(average(t.first), t.second);
+    for (auto [e, node, sprite] : registry_.view<PlaceNode, Sprite>().each()) {
+        if (node.statement.rfind("painting", 0) == 0 && node.statement.find('/') == std::string::npos) {
+            add(average(sprite), std::max(1.0, static_cast<double>(sprite.width * sprite.height) / 4096.0));
+        }
+    }
+    if (w <= 0) return {};
+    char hex[8];
+    std::snprintf(hex, sizeof(hex), "#%02x%02x%02x", static_cast<int>(r / w), static_cast<int>(g / w), static_cast<int>(b / w));
+    return hex;
 }
 
 std::optional<Entity> EditorApp::MarkerAt(float sceneX, float sceneY) {
