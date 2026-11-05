@@ -9857,44 +9857,99 @@ nlohmann::json EditorApp::PrefabsJson() {
 }
 
 void EditorApp::FitGroundToCell(Sprite& sprite) {
+    // A picture of something lying on the ground (a field, a rug), drawn at the image model's own angle: its top face's
+    // corners found (its top point, its leftmost and rightmost points; the fourth completes the parallelogram, so a
+    // thickness under it doesn't count), and the picture warped so they lie on the grid's lines (2:1), as many cells
+    // along each axis as it spans. Saved beside it as <name>-ground.png; the sprite shows that.
     const auto image = sprite.texture.empty() ? std::nullopt : DecodeImage(assets_.GetProject().Resolve(sprite.texture));
     if (!image || image->width == 0 || image->height == 0) return;
     const int W = static_cast<int>(image->width), H = static_cast<int>(image->height);
     const int x0 = std::clamp(static_cast<int>(sprite.u0 * W), 0, W), x1 = std::clamp(static_cast<int>(std::ceil(sprite.u1 * W)), 0, W);
     const int y0 = std::clamp(static_cast<int>(sprite.v0 * H), 0, H), y1 = std::clamp(static_cast<int>(std::ceil(sprite.v1 * H)), 0, H);
-    if (x1 - x0 < 2 || y1 - y0 < 2) return;
-    // What's drawn, and each row's width: the widest rows are the top face's side corners.
-    int left = x1, right = -1, top = y1, bottom = -1, widest = 0;
-    std::vector<int> rowWidth(static_cast<size_t>(y1 - y0), 0);
-    for (int y = y0; y < y1; ++y) {
-        int a = -1, b = -1;
+    if (x1 - x0 < 4 || y1 - y0 < 4) return;
+    auto opaque = [&](int x, int y) { return image->rgba[(static_cast<size_t>(y) * W + x) * 4 + 3] >= 128; };
+    // Its top point: the topmost row's middle; its side points: the leftmost and rightmost columns' middles.
+    int top = -1, topA = 0, topB = 0, left = x1, right = -1;
+    for (int y = y0; y < y1 && top < 0; ++y) {
         for (int x = x0; x < x1; ++x) {
-            if (image->rgba[(static_cast<size_t>(y) * W + x) * 4 + 3] < 128) continue;
-            if (a < 0) a = x;
-            b = x;
+            if (!opaque(x, y)) continue;
+            if (top < 0) top = y, topA = x;
+            topB = x;
         }
-        if (a < 0) continue;
-        left = std::min(left, a), right = std::max(right, b), top = std::min(top, y), bottom = std::max(bottom, y);
-        rowWidth[static_cast<size_t>(y - y0)] = b - a + 1;
-        widest = std::max(widest, b - a + 1);
     }
-    if (right < left || bottom <= top) return;
-    int firstWide = -1, lastWide = -1; // the corners' rows (a plateau when they're blunt)
-    for (int y = top; y <= bottom; ++y) {
-        if (rowWidth[static_cast<size_t>(y - y0)] * 100 < widest * 97) continue;
-        if (firstWide < 0) firstWide = y;
-        lastWide = y;
+    if (top < 0) return;
+    for (int y = y0; y < y1; ++y) {
+        for (int x = x0; x < x1; ++x) {
+            if (opaque(x, y)) left = std::min(left, x), right = std::max(right, x);
+        }
     }
-    const float corner = (firstWide + lastWide) * 0.5f + 0.5f;
-    const float faceHalf = std::max(1.0f, corner - static_cast<float>(top));
-    // How many cells across: its drawn width at its current size, in cells.
-    const float perPixel = sprite.width / std::max(1, x1 - x0);
-    const float cells = std::max(1.0f, std::round(widest * perPixel / iso_.tileWidth));
-    const float sx = cells * iso_.tileWidth / widest, sy = cells * iso_.tileHeight / (2.0f * faceHalf);
-    sprite.u0 = static_cast<float>(left) / W, sprite.u1 = static_cast<float>(right + 1) / W;
-    sprite.v0 = static_cast<float>(top) / H, sprite.v1 = static_cast<float>(bottom + 1) / H;
-    sprite.width = (right + 1 - left) * sx;
-    sprite.height = (bottom + 1 - top) * sy;
+    auto columnMiddle = [&](int x) {
+        int a = -1, b = -1;
+        for (int y = y0; y < y1; ++y) {
+            if (!opaque(x, y)) continue;
+            if (a < 0) a = y;
+            b = y;
+        }
+        // Its top end on the face (a side face hangs below a thick thing's corner): a little below where it starts.
+        return a < 0 ? 0.0f : std::min(static_cast<float>(b), a + (b - a) * 0.25f);
+    };
+    const float Tx = (topA + topB) * 0.5f + 0.5f, Ty = top + 0.5f;
+    const float Lx = left + 0.5f, Ly = columnMiddle(left) + 0.5f;
+    const float Rx = right + 0.5f, Ry = columnMiddle(right) + 0.5f;
+    const float ax = Rx - Tx, ay = Ry - Ty, bx = Lx - Tx, by = Ly - Ty; // its two edges from the top point
+    const float tw = iso_.tileWidth, th = iso_.tileHeight;
+    const float edge = std::hypot(tw * 0.5f, th * 0.5f);
+    const float perPixel = sprite.width / std::max(1, x1 - x0); // scene pixels per picture pixel as it is now
+    const float cellsA = std::max(1.0f, std::round(std::hypot(ax, ay) * perPixel / edge));
+    const float cellsB = std::max(1.0f, std::round(std::hypot(bx, by) * perPixel / edge));
+    if (std::abs(ax * by - ay * bx) < 4.0f) return; // not a face to fit
+    // Output pixels per scene pixel: its own resolution kept (its longer edge as many pixels as before).
+    const float k = std::max(std::hypot(ax, ay) / (cellsA * edge), std::hypot(bx, by) / (cellsB * edge));
+    // The target face (output pixels, its top point at the origin): edge A down-right along the grid, edge B down-left.
+    const float Ax = cellsA * tw * 0.5f * k, Ay = cellsA * th * 0.5f * k, Bx = -cellsB * tw * 0.5f * k, By = cellsB * th * 0.5f * k;
+    // The affine map picture -> output taking T, R, L to 0, A, B: p' = M (p - T). M = [A B] [a b]^-1.
+    const float det = ax * by - ay * bx;
+    const float i00 = by / det, i01 = -bx / det, i10 = -ay / det, i11 = ax / det; // [a b]^-1
+    const float m00 = Ax * i00 + Bx * i10, m01 = Ax * i01 + Bx * i11, m10 = Ay * i00 + By * i10, m11 = Ay * i01 + By * i11;
+    // Where the drawn region goes: its corners mapped, the output's bounds.
+    float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
+    for (const auto& [px, py] : {std::pair{x0, y0}, std::pair{x1, y0}, std::pair{x0, y1}, std::pair{x1, y1}}) {
+        const float dx = px - Tx, dy = py - Ty;
+        const float ox = m00 * dx + m01 * dy, oy = m10 * dx + m11 * dy;
+        minX = std::min(minX, ox), maxX = std::max(maxX, ox), minY = std::min(minY, oy), maxY = std::max(maxY, oy);
+    }
+    const int OW = static_cast<int>(std::ceil(maxX - minX)), OH = static_cast<int>(std::ceil(maxY - minY));
+    if (OW < 2 || OH < 2 || OW > 8192 || OH > 8192) return;
+    const float jdet = m00 * m11 - m01 * m10;
+    if (std::abs(jdet) < 1e-6f) return;
+    const float j00 = m11 / jdet, j01 = -m01 / jdet, j10 = -m10 / jdet, j11 = m00 / jdet; // output -> picture
+    ImageData out;
+    out.width = static_cast<uint32_t>(OW), out.height = static_cast<uint32_t>(OH);
+    out.rgba.assign(static_cast<size_t>(OW) * OH * 4, 0);
+    for (int oy = 0; oy < OH; ++oy) {
+        for (int ox = 0; ox < OW; ++ox) {
+            const float qx = ox + 0.5f + minX, qy = oy + 0.5f + minY;
+            const float sx = Tx + j00 * qx + j01 * qy - 0.5f, sy = Ty + j10 * qx + j11 * qy - 0.5f;
+            if (sx < x0 || sy < y0 || sx > x1 - 1 || sy > y1 - 1) continue;
+            const int ix = static_cast<int>(sx), iy = static_cast<int>(sy);
+            const float fx = sx - ix, fy = sy - iy;
+            const int ix1 = std::min(ix + 1, x1 - 1), iy1 = std::min(iy + 1, y1 - 1);
+            uint8_t* o = &out.rgba[(static_cast<size_t>(oy) * OW + ox) * 4];
+            for (int c = 0; c < 4; ++c) {
+                auto at = [&](int x, int y) { return static_cast<float>(image->rgba[(static_cast<size_t>(y) * W + x) * 4 + c]); };
+                const float v = at(ix, iy) * (1 - fx) * (1 - fy) + at(ix1, iy) * fx * (1 - fy) + at(ix, iy1) * (1 - fx) * fy + at(ix1, iy1) * fx * fy;
+                o[c] = static_cast<uint8_t>(std::clamp(v, 0.0f, 255.0f));
+            }
+        }
+    }
+    const std::filesystem::path source(sprite.texture);
+    const std::string fitted = (source.parent_path() / (source.stem().string() + "-ground.png")).generic_string();
+    if (!WritePng(assets_.GetProject().Resolve(fitted), out)) return;
+    RefreshAssets();
+    sprite.texture = fitted;
+    sprite.u0 = 0.0f, sprite.v0 = 0.0f, sprite.u1 = 1.0f, sprite.v1 = 1.0f;
+    sprite.width = OW / k;
+    sprite.height = OH / k;
 }
 
 void EditorApp::CreatePrefabFromAsset(const std::string& asset, int tile, bool asTile, bool solid,
