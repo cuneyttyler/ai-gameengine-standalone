@@ -35,6 +35,7 @@ export function requestLookups(): void {
 }
 
 onHostMessage((message) => {
+  if (message.type === 'records:list') requestLookups() // records written or deleted (the AI's packages): pickers follow
   if (message.type !== 'lookups') return
   for (const key of Object.keys(lookups) as (keyof typeof lookups)[]) {
     if (message[key] !== undefined) (lookups as Record<string, unknown>)[key] = message[key]

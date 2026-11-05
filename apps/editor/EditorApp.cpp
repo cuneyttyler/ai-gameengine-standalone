@@ -8960,9 +8960,11 @@ ApplyOutcome EditorApp::ApplyAccepted(const std::vector<nlohmann::json>& operati
     // Files its commands made, moved or deleted: the Assets panel and the scene list read again.
     bool storyChanged = false;
     bool worldChanged = false;
+    bool recordsChanged = false;
     for (const auto& op : operations) {
         const std::string kind = op.value("op", "");
         const std::string name = kind == "command" ? op.value("name", "") : "";
+        recordsChanged |= kind == "write_record" || kind == "delete_record" || name.rfind("record.", 0) == 0;
         if (name == "asset.import" || name == "asset.delete" || name == "file.move") RefreshAssets();
         if (name == "scene.create" || name == "scene.delete" || name == "scene.setType" || name == "file.move") post_(ScenesJson());
         // Dialogues, quests and routines it wrote, and who talks (a Talk or Routine added): the Story panel lists them.
@@ -8976,6 +8978,11 @@ ApplyOutcome EditorApp::ApplyAccepted(const std::vector<nlohmann::json>& operati
         post_(WorldJson());
     }
     if (storyChanged || worldChanged) post_(StoryJson());
+    // Records it wrote or deleted (packages, items, loot...): Project ▸ Records and the pickers list them now.
+    if (recordsChanged) {
+        ActiveRecords().Refresh();
+        post_(RecordsJson());
+    }
     sceneTreeStale_ = true;
     inspectorStale_ = true;
     editorStateStale_ = true;
