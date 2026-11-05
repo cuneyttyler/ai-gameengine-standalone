@@ -42,6 +42,8 @@ class Entry:
     done: int = 0
     total: int = 0  # its steps (0: not counted)
     plan: list = field(default_factory=list)  # its steps known beforehand: [{id, label, pieces, state, made}]
+    task_plan: list = field(default_factory=list)  # an AI panel task's plan (lines), known once its answer is read
+    task_step: str = ""  # that answer's step (its summary), while its art or characters are made
 
     def view(self) -> dict:
         now = self.ended or time.monotonic()
@@ -50,6 +52,8 @@ class Entry:
             "done": self.done,
             "total": self.total,
             "plan": self.plan,
+            "taskPlan": self.task_plan,
+            "taskStep": self.task_step,
             "id": self.id,
             "path": self.path,
             "label": self.label,
@@ -102,10 +106,11 @@ def label(text: str | None) -> None:
 
 def reporter():
     """A request's steps, reported from any thread (a pool's workers don't see the request's context):
-    report(done, total, step, plan); a value left None stays as it was."""
+    report(done, total, step, plan, task_plan, task_step); a value left None stays as it was."""
     entry_id = _current.get()
 
-    def report(done: int | None = None, total: int | None = None, step: str | None = None, plan: list | None = None) -> None:
+    def report(done: int | None = None, total: int | None = None, step: str | None = None, plan: list | None = None,
+               task_plan: list | None = None, task_step: str | None = None) -> None:
         with _lock:
             if entry_id is None or (entry := _active.get(entry_id)) is None:
                 return
@@ -117,6 +122,10 @@ def reporter():
                 entry.step = step
             if plan is not None:
                 entry.plan = plan
+            if task_plan is not None:
+                entry.task_plan = task_plan
+            if task_step is not None:
+                entry.task_step = task_step
             entry.calls = max(entry.calls, 1)  # shown on the strips, though its calls aren't streamed
     return report
 

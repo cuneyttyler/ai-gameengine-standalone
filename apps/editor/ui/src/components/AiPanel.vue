@@ -5,6 +5,7 @@
 // again on apply and runs everything through the same code as manual edits.
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import AiProgress from './AiProgress.vue'
+import { aiCalls } from '../aiProgress'
 import { confirmDialog } from '../dialogs'
 import { editorState, setAiEnabled, setAiOpen } from '../editorState'
 import { onHostMessage, sendToHost } from '../ipc'
@@ -448,6 +449,13 @@ function taskEntry(id: number): TaskEntry {
   return created
 }
 
+// A working task's answer being made now (its art or walks take minutes): its plan and step, from the service's
+// progress, before the answer reaches the editor.
+const liveTask = computed(() => aiCalls.value.find((c) => c.path === '/propose' && (c.taskPlan?.length || c.taskStep)))
+function taskPlan(entry: TaskEntry): string[] {
+  return entry.plan.length || entry.state !== 'working' ? entry.plan : (liveTask.value?.taskPlan ?? [])
+}
+
 // The outline: approved as it is (the steps start), or sent back with the changes asked for.
 function answerOutline(entry: TaskEntry, withChanges: boolean): void {
   const changes = withChanges ? (entry.outlineChanges ?? '').trim() : ''
@@ -672,7 +680,7 @@ const examples = [
                   : entry.state === 'working' && !entry.steps.length && entry.outline
                     ? 'Outline approved — starting'
                     : entry.state === 'working'
-                  ? `Working — step ${entry.steps.length + 1}${entry.plan.length ? ` of about ${entry.plan.length}` : ''}`
+                  ? `Working — step ${entry.steps.length + 1}${taskPlan(entry).length ? ` of about ${taskPlan(entry).length}` : ''}`
                   : entry.state === 'stopped'
                     ? 'Stopped'
                     : `Done in ${entry.steps.length} ${entry.steps.length === 1 ? 'step' : 'steps'}`
@@ -717,8 +725,8 @@ const examples = [
               </div>
             </template>
           </div>
-          <ol v-if="entry.plan.length" class="task-plan">
-            <li v-for="(line, i) in entry.plan" :key="i">{{ line }}</li>
+          <ol v-if="taskPlan(entry).length" class="task-plan">
+            <li v-for="(line, i) in taskPlan(entry)" :key="i">{{ line }}</li>
           </ol>
           <ul class="task-steps">
             <li v-for="step in entry.steps" :key="step.number">
@@ -728,6 +736,11 @@ const examples = [
                 {{ step.problems + step.applyErrors }} to fix
               </span>
               <span v-else class="step-ok">✓</span>
+            </li>
+            <li v-if="entry.state === 'working' && !entry.paused && liveTask?.taskStep" class="step-live">
+              <span class="step-number">{{ entry.steps.length + 1 }}</span>
+              <span class="step-summary">{{ liveTask.taskStep }}</span>
+              <span class="step-making">{{ liveTask.step || 'making…' }}</span>
             </li>
           </ul>
           <div v-if="entry.state === 'working'" class="task-note">
@@ -1195,6 +1208,17 @@ h2 {
   list-style: none;
   margin: 8px 0 0;
   padding: 0;
+}
+.step-live .step-summary {
+  opacity: 0.8;
+}
+.step-making {
+  font-size: 0.85em;
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
 }
 .task-steps li {
   display: flex;

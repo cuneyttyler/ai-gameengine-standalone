@@ -18,6 +18,8 @@ export interface AiCall {
   done?: number
   total?: number
   plan?: AiStep[] // its steps known beforehand (matched art: each sheet and its pieces, the check, the fixes)
+  taskPlan?: string[] // an AI panel task's plan, known once its answer is read (before its art or walks are made)
+  taskStep?: string // that answer's step, while its art or walks are made
 }
 
 export interface AiStep {

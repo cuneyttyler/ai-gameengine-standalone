@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 
 from pydantic import ValidationError
 
+from . import progress
 from .models import EditorContext, EngineSchema, Proposal, Usage
 from .prompt import build_messages, repair_message
 from .providers import Provider, ProviderError
@@ -124,6 +125,10 @@ def propose(
         result.model = completion.model
 
         proposal, errors = _parse(completion.text, schema)
+        if proposal is not None and (proposal.art or proposal.generate):
+            # Its plan and this step, shown in the AI panel now: making art or walks takes minutes, and the answer
+            # (which carries them) only reaches the editor after.
+            progress.reporter()(task_plan=list(proposal.plan), task_step=proposal.summary)
         if proposal is not None and proposal.art:
             # Its art first (once per name): then its operations can use it, and it's known art.
             wanted = [a for a in proposal.art if a.name not in made]
